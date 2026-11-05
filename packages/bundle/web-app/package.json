@@ -39,7 +39,10 @@
     "presets/ptc.patch.yml",
     "presets/minimal.patch.yml",
     "presets/cordis.patch.yml",
+    "wasdengine/telemetry.cordis.patch.yml",
+    "wasdengine/gamedev.cordis.patch.yml",
     "lib/public-url-*.js",
+    "wasdengine/skills",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
@@ -50,7 +53,9 @@
         "./presets/standard.patch.yml",
         "./presets/ptc.patch.yml",
         "./presets/minimal.patch.yml",
-        "./presets/cordis.patch.yml"
+        "./presets/cordis.patch.yml",
+        "./wasdengine/telemetry.cordis.patch.yml",
+        "./wasdengine/gamedev.cordis.patch.yml"
       ]
     }
   },

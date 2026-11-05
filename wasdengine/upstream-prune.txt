@@ -1,0 +1,30 @@
+# Upstream paths the WASDEngine fork deletes. After every upstream merge,
+# wasdengine/sync-upstream.sh removes each tracked file that an entry names or
+# that lies under an entry's directory, which also resolves the conflicts that
+# upstream edits to those files cause. Fork-owned workflows and composite
+# actions are named wasd-* and are never removed. One literal path or directory
+# per line, relative to the repository root; wildcards are not expanded, and
+# scripts/verify-md-links.ts reads the entries the same way. Blank lines and
+# lines starting with # are ignored.
+
+# GitHub Actions and Dependabot: they target DeepSeek's runners, secrets,
+# release channels, and repository settings.
+.github/workflows
+.github/actions
+.github/dependabot.yml
+.github/dependabot.yaml
+
+# Specs that read the deleted workflow files.
+apps/desktop/tests/desktop-publish-local-preflight.spec.ts
+scripts/ci-compatible-selfhosted.spec.ts
+scripts/ci-workflow.spec.ts
+scripts/client-build-environment.client.spec.ts
+scripts/cua-helper/payload.spec.ts
+scripts/desktop-package-forms.spec.ts
+scripts/desktop-package-source.spec.ts
+scripts/desktop-publish-workflow.spec.ts
+scripts/macos-package-workflow.spec.ts
+scripts/preview-workflow.spec.ts
+scripts/tests/ci-master-platforms.spec.ts
+scripts/tests/ci-release-selfhosted.spec.ts
+scripts/windows-package-workflow.spec.ts

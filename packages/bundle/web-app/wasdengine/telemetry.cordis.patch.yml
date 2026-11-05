@@ -1,0 +1,21 @@
+# WASDEngine product telemetry overlay (fork-owned; wasdengine/FORK.md lists the
+# fork changes). It is a dsh-web-app patch layer, so the Web and Desktop
+# profiles load it. It switches off the two dsh-web-app rows that report to the
+# DeepSeek collector, and it sends the account menu's Feedback item, with the
+# account and device details it appends, to WASDEngine instead of DeepSeek's
+# form. The provider endpoints, the Session log request field, and the Session
+# OpenTelemetry export are set for every profile that layers over dsh-base by
+# packages/bundle/base/wasdengine/gateway.cordis.patch.yml.
+
+# Desktop product analytics and its OTel exporter to the DeepSeek collector.
+- id: desktop-product-telemetry
+  disabled: true
+
+- id: product-analytics
+  disabled: true
+
+# The Feedback item opens this page with the account id, harness version, and
+# device description as URL parameters; the upstream row sets no other config.
+- id: ui-settings-account
+  config:
+    contactFormUrl: https://github.com/WASDEngine/WASDEngine/issues/new

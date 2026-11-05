@@ -1,4 +1,5 @@
 import type { AfterPackContext, BeforePackContext } from 'app-builder-lib'
+import type { WasdengineElectronBuilderConfig } from './scripts/wasdengine-builder-config.mjs'
 
 /** Electron-builder fields asserted by the Desktop release tests. */
 export interface DesktopElectronBuilderConfig {
@@ -80,6 +81,7 @@ export function createElectronBuilderConfig(
   preparedRuntimeVersion?: string,
 ): DesktopElectronBuilderConfig
 
-declare const electronBuilderConfig: DesktopElectronBuilderConfig
+/** Create the ordinary release configuration, with the WASDEngine identity, from the process environment. */
+declare function electronBuilderConfig(): WasdengineElectronBuilderConfig
 
 export default electronBuilderConfig

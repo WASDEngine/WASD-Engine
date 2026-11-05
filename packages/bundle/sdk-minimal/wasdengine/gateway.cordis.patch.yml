@@ -1,0 +1,37 @@
+# WASDEngine service overlay for the standalone sdk-minimal bundle (fork-owned;
+# wasdengine/FORK.md lists the fork changes). sdk-minimal does not layer over
+# dsh-base, so this last patch layer of the bundle sets the two dsh-base overlay
+# rows that this tree mounts; it has no account sign-in, account route, or
+# OpenTelemetry export. A patch replaces the target row's whole `config`, so
+# each row restates every key it keeps.
+#
+# A YAML alias cannot reach another file, so llm-deepseek.baseURL repeats the
+# API origin expression of packages/bundle/base/wasdengine/gateway.cordis.patch.yml,
+# which documents WASDENGINE_ORIGIN and the production origins;
+# packages/bundle/web-app/tests/wasdengine-overlay.spec.ts fails unless the
+# copies match.
+
+# API-key route ("deepseek-official"): x-api-key to
+# <API origin>/anthropic/v1/messages with the WASDEngine API token exported as
+# WASDENGINE_API_KEY. The catalog is the upstream deepseek-flash entry alone.
+- id: llm-deepseek
+  config:
+    baseURL: !!js >-
+      new URL('/anthropic', ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://api.wasdengine.com').href
+    apiKeyEnv: WASDENGINE_API_KEY
+    models:
+      - id: deepseek-flash
+        name: DeepSeek-V4.1-Flash
+        contextWindow: 1048576
+        inputModalities: [text, image]
+        systemPromptUpdate: in-history
+        toolUpdate: addition-only
+    # Restated from dsh-sdk-minimal's cordis.patch.yml.
+    defaultContextWindow: !!js Number(process.env.DSH_CONTEXT_WINDOW ?? 1000000)
+    streamIdleTimeoutMs: 172800000
+
+# The provider copy of the full Session log (`dsh_session_log` on every model
+# request).
+- id: session-log-deepseek
+  config:
+    enabled: false

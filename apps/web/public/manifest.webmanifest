@@ -1,6 +1,6 @@
 {
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "WASDEngine",
+  "short_name": "WASDEngine",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

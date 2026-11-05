@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import type { DesktopRetainedManifest } from './desktop-release-store.ts'
 import type { DesktopPublishConfig } from './desktop-publish-config.ts'
 import { verifyMacOSDiskImage, verifyMacOSNotarizedApplication } from './verify-macos-signature.mjs'
+import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
 
 /**
  * Verify Windows Authenticode or macOS DMG and archived app notarization on the original platform.
@@ -39,6 +40,6 @@ export async function verifyRetainedDesktopSignatures(
   const extracted = await mkdtemp(join(tmpdir(), 'desktop-publish-verify-'))
   try {
     run('/usr/bin/ditto', ['-x', '-k', zipPath, extracted])
-    verifyMacOSNotarizedApplication(join(extracted, 'DeepSeek Harness.app'), config.macOS)
+    verifyMacOSNotarizedApplication(join(extracted, `${WASDENGINE_DESKTOP_BRAND.productName}.app`), config.macOS)
   } finally { await rm(extracted, { recursive: true, force: true }) }
 }

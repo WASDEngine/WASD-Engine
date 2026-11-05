@@ -1,0 +1,461 @@
+/**
+ * WASDEngine fork drift guard for the fork-owned patch files under the `wasdengine/` directories of dsh-base,
+ * dsh-sdk-minimal, and dsh-web-app: every shipped profile template must compose the WASDEngine service rows
+ * without warnings, every row the files patch must still exist upstream with the same package and config keys,
+ * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
+ * open the WASDEngine issue tracker, and the `gamedev` preset must stay a copy of upstream `standard` apart from
+ * its display fields, persona, and bundled skill root.
+ * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
+ */
+
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { describe, expect, it } from 'vitest'
+import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
+import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
+import { bundlePatchPaths, composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } from '@deepseek-ai/dsh-launch-environment'
+import { PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
+
+const webAppDir = fileURLToPath(new URL('..', import.meta.url))
+const repoRoot = resolve(webAppDir, '../../..')
+const bundleRoot = join(repoRoot, 'packages/bundle')
+
+/** The fork's patch files, by bundle package, in the order they close that bundle's `dsh.bundle.patch` list. */
+const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
+  '@deepseek-ai/dsh-base': ['./wasdengine/gateway.cordis.patch.yml'],
+  '@deepseek-ai/dsh-sdk-minimal': ['./wasdengine/gateway.cordis.patch.yml'],
+  '@deepseek-ai/dsh-web-app': ['./wasdengine/telemetry.cordis.patch.yml', './wasdengine/gamedev.cordis.patch.yml'],
+}
+
+/** Bundled skills shipped under `wasdengine/skills`. */
+const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
+
+/** Production Platform origin when no trusted environment layer sets WASDENGINE_ORIGIN. */
+const PLATFORM_ORIGIN = 'https://app.wasdengine.com'
+
+/** Production API origin when no trusted environment layer sets WASDENGINE_ORIGIN. */
+const API_ORIGIN = 'https://api.wasdengine.com'
+
+/** Rows that export to the DeepSeek OpenTelemetry collector; every one a profile mounts stays switched off. */
+const COLLECTOR_ROWS = ['session-telemetry-otel', 'desktop-product-telemetry', 'product-analytics'] as const
+
+/** Page the account menu's Feedback item opens, in place of the upstream default, DeepSeek's Feishu form. */
+const FEEDBACK_URL = 'https://github.com/WASDEngine/WASDEngine/issues/new'
+
+/** Each row the fork patches: the package upstream mounts there and the sources that declare its config keys. */
+const TARGETS: Readonly<Record<string, { name: string; schema: readonly string[] }>> = {
+  'deepseek-account': {
+    name: '@deepseek-ai/dsh-deepseek-account-platform',
+    schema: ['packages/credentials/deepseek-account-platform/src/index.ts'],
+  },
+  'llm-deepseek-account': {
+    name: '@deepseek-ai/dsh-llm-deepseek-account',
+    schema: ['packages/llm/llm-deepseek-account/src/config.ts', 'packages/llm/llm-deepseek/src/config.ts'],
+  },
+  'llm-deepseek': {
+    name: '@deepseek-ai/dsh-llm-deepseek-api-key',
+    schema: ['packages/llm/llm-deepseek-api-key/src/config.ts', 'packages/llm/llm-deepseek/src/config.ts'],
+  },
+  'session-log-deepseek': {
+    name: '@deepseek-ai/dsh-session-log-deepseek',
+    schema: ['packages/session/session-log-deepseek/src/index.ts'],
+  },
+  'session-telemetry-otel': { name: '@deepseek-ai/dsh-session-telemetry-otel', schema: [] },
+  'desktop-product-telemetry': { name: '@deepseek-ai/dsh-host-product-telemetry-otel', schema: [] },
+  'product-analytics': { name: '@deepseek-ai/dsh-client-product-analytics', schema: [] },
+  'ui-settings-account': {
+    name: '@deepseek-ai/dsh-client-ui-settings-account',
+    schema: ['packages/client/ui-settings-account/src/index.ts'],
+  },
+  'agent-preset-registry': {
+    name: '@deepseek-ai/dsh-agent-preset-registry',
+    schema: ['packages/preset/agent-preset-registry/src/preset.ts'],
+  },
+}
+
+/** Upstream config keys the fork deliberately replaces instead of restating. */
+const REPLACED_KEYS: Readonly<Record<string, readonly string[]>> = {
+  'agent-preset-registry': ['default'],
+  // dsh-sdk-minimal names DEEPSEEK_API_KEY.
+  'llm-deepseek': ['apiKeyEnv'],
+}
+
+/** Rows of the `gamedev` preset whose config differs from `standard`, with the sources declaring the keys it sets. */
+const PRESET_OWN_ROWS: Readonly<Record<string, readonly string[]>> = {
+  persona: ['packages/preset/persona/src/index.ts'],
+  'skill-filesystem': ['packages/skill/skill-filesystem/src/index.ts'],
+}
+
+interface BundleManifest {
+  name: string
+  files: string[]
+  dsh: { bundle: { patch: string | string[] } }
+}
+
+function manifest(dir: string): BundleManifest {
+  return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as BundleManifest
+}
+
+function patchList(dir: string): string[] {
+  const { patch } = manifest(dir).dsh.bundle
+  return typeof patch === 'string' ? [patch] : patch
+}
+
+/** Workspace directory of each bundle package under `packages/bundle`, by package name. */
+const bundleDirs = new Map(readdirSync(bundleRoot, { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && existsSync(join(bundleRoot, entry.name, 'package.json')))
+  .map(entry => [manifest(join(bundleRoot, entry.name)).name, join(bundleRoot, entry.name)] as const))
+
+function bundleDir(name: string): string {
+  const dir = bundleDirs.get(name)
+  if (dir === undefined) throw new Error(`profile bundle ${name} is not a package under packages/bundle`)
+  return dir
+}
+
+/** One bundle's parsed patches, optionally without the fork's files. */
+function bundleLayer(dir: string, omit: readonly string[] = []): PatchOptions[] {
+  return bundlePatchPaths(dir, { patch: patchList(dir).filter(file => !omit.includes(file)) })
+    .flatMap(file => loadOverlayPatches('wasdengine-overlay', file))
+}
+
+/** The parsed patches of the fork's own files in one bundle. */
+function forkLayer(name: string): PatchOptions[] {
+  return (FORK_PATCHES[name] ?? []).flatMap(file => loadOverlayPatches('wasdengine-overlay', join(bundleDir(name), file)))
+}
+
+function compose(layers: PatchOptions[][]): { rows: EntryOptions[]; warnings: string[] } {
+  const warnings: string[] = []
+  const rows = composeEntries(layers, message => warnings.push(message))
+  return { rows, warnings }
+}
+
+/** A shipped profile template composed from its bundles, with and without the fork's files, and those files' patches. */
+interface ProfileComposition {
+  upstream: { rows: EntryOptions[]; warnings: string[] }
+  fork: { rows: EntryOptions[]; warnings: string[] }
+  patches: PatchOptions[]
+}
+
+function composeProfile(bundles: readonly string[]): ProfileComposition {
+  return {
+    upstream: compose(bundles.map(name => bundleLayer(bundleDir(name), FORK_PATCHES[name] ?? []))),
+    fork: compose(bundles.map(name => bundleLayer(bundleDir(name)))),
+    patches: bundles.flatMap(forkLayer),
+  }
+}
+
+const profiles = new Map(Object.entries(PROFILE_TEMPLATES).map(([name, { bundles }]) => [name, composeProfile(bundles)] as const))
+
+function profile(name: string): ProfileComposition {
+  const composition = profiles.get(name)
+  if (composition === undefined) throw new Error(`no shipped profile template ${name}`)
+  return composition
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function configOf(entry: { config?: unknown } | undefined): Record<string, unknown> {
+  return isRecord(entry?.config) ? entry.config : {}
+}
+
+function expression(value: unknown, label: string): string {
+  if (!isJsExpr(value)) throw new Error(`${label} must be a !!js expression`)
+  return value.__jsExpr
+}
+
+function rowsOf(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : []
+}
+
+/** Every row of a composition, including rows nested in groups and agent presets, with its id path. */
+function allRows(entries: readonly Record<string, unknown>[], path = ''): { id: string; entry: Record<string, unknown> }[] {
+  return entries.flatMap((entry) => {
+    const id = `${path}${String(entry.id)}`
+    const nested = entry.group === true
+      ? rowsOf(entry.config)
+      : entry.name === '@deepseek-ai/dsh-agent-preset' ? rowsOf(configOf(entry).plugins) : []
+    return [{ id, entry }, ...allRows(nested, `${id}/`)]
+  })
+}
+
+/** The configuration a row holds itself, without the rows nested in a group or an agent preset. */
+function ownConfig(entry: Record<string, unknown>): unknown {
+  if (entry.group === true) return null
+  if (entry.name === '@deepseek-ai/dsh-agent-preset') return { ...configOf(entry), plugins: undefined }
+  return entry.config ?? null
+}
+
+/** Whether one of the sources declares `key` as a Config member or schema field. */
+function declaresKey(sources: readonly string[], key: string): boolean {
+  const field = new RegExp(String.raw`^\s*(?:readonly\s+)?${key}\??\s*:`, 'm')
+  return sources.some(source => field.test(readFileSync(join(repoRoot, source), 'utf8')))
+}
+
+/** Evaluate a Loader expression the way a mounted row would, against an optional launch environment. */
+function evaluateWith(source: string, layers?: readonly LaunchEnvironmentLayerInput[]): unknown {
+  const environment = layers === undefined ? undefined : createLaunchEnvironmentSnapshot(layers)
+  const ctx = { get: (name: string) => name === 'launchEnvironment' ? environment : undefined }
+  const value: unknown = evaluate(ctx, source)
+  return value
+}
+
+function row(rows: readonly EntryOptions[], id: string): EntryOptions | undefined {
+  return rows.find(entry => entry.id === id)
+}
+
+function patchConfig(patches: readonly PatchOptions[], id: string): Record<string, unknown> {
+  return configOf(patches.find(patch => patch.insert === undefined && patch.id === id))
+}
+
+const baseGateway = forkLayer('@deepseek-ai/dsh-base')
+const minimalGateway = forkLayer('@deepseek-ai/dsh-sdk-minimal')
+const allPatches = Object.keys(FORK_PATCHES).flatMap(forkLayer)
+const rowPatches = allPatches.filter(patch => patch.insert === undefined)
+
+/** The single definitions of the origin expressions: the dsh-base overlay's anchors and its Anthropic route copy. */
+const account = patchConfig(baseGateway, 'deepseek-account')
+const platform = expression(account.platformOrigin, 'deepseek-account.platformOrigin')
+const api = expression(account.inferenceOrigin, 'deepseek-account.inferenceOrigin')
+const anthropic = expression(patchConfig(baseGateway, 'llm-deepseek').baseURL, 'llm-deepseek.baseURL')
+
+describe('WASDEngine overlay', () => {
+  it('closes each patched bundle\'s patch list and ships its files', () => {
+    for (const [name, patches] of Object.entries(FORK_PATCHES)) {
+      const dir = bundleDir(name)
+      expect(patchList(dir).slice(-patches.length), name).toEqual([...patches])
+      for (const file of patches) expect(manifest(dir).files, name).toContain(file.slice(2))
+    }
+    expect(manifest(webAppDir).files).toContain('wasdengine/skills')
+  })
+
+  it('patches exactly the target rows and inserts only the gamedev preset', () => {
+    expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
+    expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id)).toEqual(['preset-gamedev'])
+  })
+
+  it('sets only config keys that upstream still declares', () => {
+    for (const patch of rowPatches) {
+      const id = patch.id ?? ''
+      for (const key of Object.keys(configOf(patch))) {
+        expect(declaresKey(TARGETS[id]?.schema ?? [], key), `${id}.${key} is declared upstream`).toBe(true)
+      }
+    }
+  })
+
+  it('serves the API-key route only the upstream deepseek-flash catalog entry', async () => {
+    const models = pathToFileURL(join(repoRoot, 'packages/llm/llm-deepseek/src/models.ts')).href
+    const loaded: unknown = await import(models)
+    const flash = rowsOf((loaded as { DEFAULT_MODELS?: unknown }).DEFAULT_MODELS).find(model => model.id === 'deepseek-flash')
+    expect(flash).toBeDefined()
+    for (const gateway of [baseGateway, minimalGateway]) {
+      const config = patchConfig(gateway, 'llm-deepseek')
+      expect(config.apiKeyEnv).toBe('WASDENGINE_API_KEY')
+      expect(config.models).toEqual([flash])
+    }
+  })
+
+  it('opens a Feedback page that the account settings schema accepts', async () => {
+    const config = patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-account')
+    expect(config).toEqual({ contactFormUrl: FEEDBACK_URL })
+    // A URL the schema rejects fails the row's config validation, so the account settings plugin would not start.
+    const source = pathToFileURL(join(repoRoot, 'packages/client/ui-settings-account/src/contact-config.ts')).href
+    const loaded: unknown = await import(source)
+    const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => { contactFormUrl: string } }
+    expect(ContactConfig(config).contactFormUrl).toBe(FEEDBACK_URL)
+  })
+})
+
+describe.each([...profiles.keys()])('%s profile', (name) => {
+  const { upstream, fork, patches } = profile(name)
+  const mounts = (id: string): boolean => row(upstream.rows, id) !== undefined
+
+  it('composes the fork\'s files without warnings over rows upstream still mounts', () => {
+    expect(upstream.warnings).toEqual([])
+    expect(fork.warnings).toEqual([])
+    for (const patch of patches.filter(entry => entry.insert === undefined)) {
+      const id = patch.id ?? ''
+      expect(row(upstream.rows, id)?.name, `upstream row ${id}`).toBe(TARGETS[id]?.name)
+    }
+    const inserted = patches.flatMap(patch => patch.insert ?? []).map(entry => entry.id)
+    expect(fork.rows.map(entry => entry.id)).toEqual([...upstream.rows.map(entry => entry.id), ...inserted])
+  })
+
+  it('patches every row that mounts a package the fork configures', () => {
+    const patched = new Set(patches.map(patch => patch.id))
+    const packages = new Set(Object.values(TARGETS).map(target => target.name))
+    for (const { id, entry } of allRows(rowsOf(upstream.rows))) {
+      if (typeof entry.name === 'string' && packages.has(entry.name)) expect(patched.has(id), `${id} (${entry.name})`).toBe(true)
+    }
+  })
+
+  it('restates every upstream config key of a row whose config it replaces', () => {
+    for (const patch of patches) {
+      if (patch.insert !== undefined || patch.config === undefined) continue
+      const id = patch.id ?? ''
+      const replaced = REPLACED_KEYS[id] ?? []
+      const own = configOf(patch)
+      for (const [key, value] of Object.entries(configOf(row(upstream.rows, id)))) {
+        if (replaced.includes(key)) continue
+        expect(own[key], `${id}.${key} restated`).toEqual(value)
+      }
+    }
+  })
+
+  it('points every DeepSeek provider row it mounts at the WASDEngine origins and credential', () => {
+    const llm = configOf(row(fork.rows, 'llm-deepseek'))
+    expect(expression(llm.baseURL, 'llm-deepseek.baseURL')).toBe(anthropic)
+    expect(llm.apiKeyEnv).toBe('WASDENGINE_API_KEY')
+    expect(llm.models).toEqual(patchConfig(baseGateway, 'llm-deepseek').models)
+    if (mounts('deepseek-account')) {
+      const config = configOf(row(fork.rows, 'deepseek-account'))
+      expect(expression(config.platformOrigin, 'deepseek-account.platformOrigin')).toBe(platform)
+      expect(expression(config.inferenceOrigin, 'deepseek-account.inferenceOrigin')).toBe(api)
+      expect(config.allowLoopbackHttp).toBe(true)
+    }
+    if (mounts('llm-deepseek-account')) {
+      expect(expression(configOf(row(fork.rows, 'llm-deepseek-account')).baseURL, 'llm-deepseek-account.baseURL')).toBe(api)
+    }
+  })
+
+  it('sends the account menu\'s Feedback item to the WASDEngine issue tracker', () => {
+    if (mounts('ui-settings-account')) {
+      expect(configOf(row(fork.rows, 'ui-settings-account')).contactFormUrl).toBe(FEEDBACK_URL)
+    }
+  })
+
+  it('switches off the Session log request field and the DeepSeek collector exports', () => {
+    expect(configOf(row(fork.rows, 'session-log-deepseek'))).toEqual({ enabled: false })
+    for (const id of COLLECTOR_ROWS.filter(mounts)) expect(row(fork.rows, id)?.disabled, id).toBe(true)
+    // Any row whose own configuration names a DeepSeek host must stay switched off.
+    for (const { id, entry } of allRows(rowsOf(fork.rows))) {
+      if (/deepseek\.com|deepseeksvc\.com/u.test(JSON.stringify(ownConfig(entry)))) {
+        expect(entry.disabled, `${id} names a DeepSeek host`).toBe(true)
+      }
+    }
+  })
+})
+
+describe('WASDEngine origin', () => {
+  it('derives every origin value from the Platform and API expressions', () => {
+    expect(patchConfig(baseGateway, 'llm-deepseek-account').baseURL).toEqual(account.inferenceOrigin)
+    expect(anthropic).toBe(`new URL('/anthropic', ${api}).href`)
+    // A YAML alias cannot reach the sdk-minimal overlay, so it repeats the Anthropic route expression verbatim.
+    expect(expression(patchConfig(minimalGateway, 'llm-deepseek').baseURL, 'sdk-minimal llm-deepseek.baseURL')).toBe(anthropic)
+    // Each expression names its production origin once, and they differ only there.
+    expect(platform.split(PLATFORM_ORIGIN)).toHaveLength(2)
+    expect(api.split(API_ORIGIN)).toHaveLength(2)
+    expect(platform.replace(PLATFORM_ORIGIN, API_ORIGIN)).toBe(api)
+    expect(account.allowLoopbackHttp).toBe(true)
+  })
+
+  it.each([
+    { layers: undefined, expected: { platform: PLATFORM_ORIGIN, api: API_ORIGIN } },
+    { layers: [], expected: { platform: PLATFORM_ORIGIN, api: API_ORIGIN } },
+    {
+      layers: [{ source: 'process', values: { WASDENGINE_ORIGIN: 'http://127.0.0.1:8000' } }],
+      expected: { platform: 'http://127.0.0.1:8000', api: 'http://127.0.0.1:8000' },
+    },
+    {
+      layers: [{ source: 'user-env', path: '/home/.wasdengine/.env', values: { WASDENGINE_ORIGIN: 'https://staging.wasd.example' } }],
+      expected: { platform: 'https://staging.wasd.example', api: 'https://staging.wasd.example' },
+    },
+    // A cloned repository's .env never redirects WASDEngine credentials.
+    {
+      layers: [{ source: 'project-env', path: '/work/.env', values: { WASDENGINE_ORIGIN: 'https://attacker.example' } }],
+      expected: { platform: PLATFORM_ORIGIN, api: API_ORIGIN },
+    },
+    {
+      layers: [
+        { source: 'project-env', path: '/work/.env', values: { WASDENGINE_ORIGIN: 'https://attacker.example' } },
+        { source: 'process', values: { WASDENGINE_ORIGIN: 'https://wasd.example' } },
+      ],
+      expected: { platform: 'https://wasd.example', api: 'https://wasd.example' },
+    },
+  ] satisfies { layers: LaunchEnvironmentLayerInput[] | undefined; expected: { platform: string; api: string } }[])(
+    'resolves $expected.platform and $expected.api',
+    ({ layers, expected }) => {
+      expect(evaluateWith(platform, layers)).toBe(expected.platform)
+      expect(evaluateWith(api, layers)).toBe(expected.api)
+      expect(evaluateWith(anthropic, layers)).toBe(`${expected.api}/anthropic`)
+    },
+  )
+
+  it('appends the Anthropic path once when the origin ends with a slash', () => {
+    expect(evaluateWith(anthropic, [{ source: 'process', values: { WASDENGINE_ORIGIN: 'https://wasd.example/' } }]))
+      .toBe('https://wasd.example/anthropic')
+  })
+})
+
+describe('gamedev preset', () => {
+  const { fork } = profile('web')
+  const standard = configOf(row(fork.rows, 'preset-standard'))
+  const game = configOf(row(fork.rows, 'preset-gamedev'))
+  const standardRows = rowsOf(standard.plugins)
+  const gameRows = rowsOf(game.plugins)
+  const gameRow = (id: string): Record<string, unknown> => gameRows.find(entry => entry.id === id) ?? {}
+  const standardRow = (id: string): Record<string, unknown> => standardRows.find(entry => entry.id === id) ?? {}
+
+  it('is the deployment default while standard stays available', () => {
+    expect(configOf(row(fork.rows, 'agent-preset-registry'))).toEqual({ default: 'gamedev' })
+    expect(row(fork.rows, 'preset-standard')?.name).toBe('@deepseek-ai/dsh-agent-preset')
+    expect(row(fork.rows, 'preset-gamedev')?.name).toBe('@deepseek-ai/dsh-agent-preset')
+    expect(game.id).toBe('gamedev')
+    expect(game.order).toBeTypeOf('number')
+    expect(Number(game.order)).toBeLessThan(Number(standard.order))
+    for (const key of ['id', 'name', 'description', 'order', 'plugins']) {
+      expect(declaresKey(['packages/preset/agent-preset-registry/src/definition.ts'], key), `preset field ${key}`).toBe(true)
+    }
+  })
+
+  it('repeats every standard row and differs only in its display fields, persona, and skill root', () => {
+    expect(Object.keys(game).sort()).toEqual([...Object.keys(standard), 'name', 'description'].sort())
+    const shared = (rows: readonly Record<string, unknown>[]) => rows.map((entry) => {
+      if (typeof entry.id !== 'string' || !(entry.id in PRESET_OWN_ROWS)) return entry
+      const { config: _own, ...rest } = entry
+      return rest
+    })
+    expect(shared(gameRows)).toEqual(shared(standardRows))
+    // Own rows keep every key standard sets on them.
+    for (const [id, sources] of Object.entries(PRESET_OWN_ROWS)) {
+      const own = configOf(gameRow(id))
+      expect(Object.keys(own).every(key => declaresKey(sources, key)), `${id} keys are declared upstream`).toBe(true)
+      for (const [key, value] of Object.entries(configOf(standardRow(id)))) {
+        if (id === 'persona' && key === 'prefix') continue
+        expect(own[key], `${id}.${key} restated`).toEqual(value)
+      }
+    }
+  })
+
+  it('writes a persona prefix that uses only supported prompt variables', () => {
+    const prefix = configOf(gameRow('persona')).prefix
+    expect(prefix).toBeTypeOf('string')
+    expect(String(prefix)).toContain('{{model}}')
+    expect(String(prefix).replaceAll(/\{\{(?:model|provider)\}\}/gu, '')).not.toMatch(/\{\{|\}\}/u)
+  })
+
+  it('resolves its bundled skill root to valid skills inside this package', () => {
+    const source = expression(configOf(gameRow('skill-filesystem')).bundledSkillDir, 'skill-filesystem.bundledSkillDir')
+    const root: unknown = evaluate({ baseUrl: pathToFileURL(webAppDir).href }, source)
+    expect(root).toBe(join(webAppDir, 'wasdengine', 'skills'))
+    expect(readdirSync(String(root)).sort()).toEqual([...SKILLS])
+    for (const skill of SKILLS) {
+      const file = join(String(root), skill, 'SKILL.md')
+      expect(existsSync(file), file).toBe(true)
+      const text = readFileSync(file, 'utf8')
+      // The standard preset's tool-result pruner trims longer skill bodies.
+      expect(text.length, `${skill} length`).toBeLessThan(8192)
+      expect(text, skill).not.toMatch(/\{\{|\}\}/u)
+      const frontmatter = /^---\n([\s\S]*?)\n---\n/u.exec(text)?.[1] ?? ''
+      expect(/^name: (.+)$/mu.exec(frontmatter)?.[1], `${skill} name`).toBe(skill)
+      const description = /^description: (.+)$/mu.exec(frontmatter)?.[1] ?? ''
+      // The session catalog shows at most 500 description characters; a plain YAML scalar holds no ": " or " #".
+      expect(description.length, `${skill} description`).toBeGreaterThan(0)
+      expect(description.length, `${skill} description`).toBeLessThanOrEqual(500)
+      expect(description, `${skill} description`).not.toMatch(/: | #/u)
+    }
+  })
+})

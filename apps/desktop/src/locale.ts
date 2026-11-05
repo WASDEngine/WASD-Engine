@@ -1,5 +1,7 @@
 /** Typed shell copy for every shipped language owned by the Electron shell. */
 
+import { brandDesktopDictionaries } from './wasdengine-brand.ts'
+
 export const en = {
   cliCommandMenu: 'Manage dsh Command…',
   cliCommandTitle: 'Manage dsh Command',
@@ -1529,7 +1531,7 @@ export const pt = {
   mandatoryNotification: 'Retorne ao aplicativo para confirmar a instalação e reinicie.',
 } satisfies DesktopMessages
 
-const dictionaries = { en, zh, ja, es, fr, de, ru, pt }
+const dictionaries = brandDesktopDictionaries({ en, zh, ja, es, fr, de, ru, pt })
 
 /** Locale payload exposed to the Desktop-owned renderer. */
 export interface DesktopLocale {

@@ -1,0 +1,77 @@
+# WASDEngine service overlay (fork-owned; wasdengine/FORK.md lists the fork
+# changes). It is the last dsh-base patch layer, so every profile that layers
+# over dsh-base loads it: web (also the Desktop's desktop profile), acp,
+# headless, and sdk. The standalone sdk-minimal bundle carries the rows it
+# mounts in its own wasdengine/gateway.cordis.patch.yml. This file points the
+# DeepSeek provider rows at the WASDEngine service and switches off the Session
+# log request field and the Session OpenTelemetry export to the DeepSeek
+# collector; every other row keeps its upstream value. A patch replaces the
+# target row's whole `config`, so each row restates every key it keeps.
+#
+# The WASDEngine service has two production origins: the Platform origin
+# https://app.wasdengine.com (sign-in pages and the account API) and the API
+# origin https://api.wasdengine.com (model, model-list, search, and file
+# requests). WASDENGINE_ORIGIN, read from the launching environment or from
+# $DSH_HOME/.env, replaces both with one origin, such as http://127.0.0.1:8000
+# for a local backend. A project .env is not consulted, so a cloned repository
+# cannot redirect WASDEngine credentials.
+#
+# The anchored &wasdengine-platform-origin and &wasdengine-api-origin
+# expressions below define the two origins; rows that need an origin itself
+# alias an anchor. A YAML alias cannot append a path or reach another file, so
+# llm-deepseek here and in the sdk-minimal overlay wraps the API expression
+# text in `new URL('/anthropic', ...)`;
+# packages/bundle/web-app/tests/wasdengine-overlay.spec.ts fails unless every
+# copy matches. Origins must be HTTPS; HTTP works only for localhost,
+# 127.0.0.1, and [::1].
+
+# Account sign-in: browser PKCE against the Platform origin's /dsh/authorize
+# plus the account API under its /auth-api and /api. The account token is
+# released for model and file requests only to inferenceOrigin. At startup the
+# provider deletes a stored sign-in whose issuer is not platformOrigin.
+- id: deepseek-account
+  config:
+    platformOrigin: &wasdengine-platform-origin !!js >-
+      ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://app.wasdengine.com'
+    inferenceOrigin: &wasdengine-api-origin !!js >-
+      ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://api.wasdengine.com'
+    # The provider honors this flag only for localhost, 127.0.0.1, and [::1];
+    # an HTTPS origin ignores it.
+    allowLoopbackHttp: true
+    # Restated from dsh-base's cordis.patch.yml.
+    desktopPlatform: !!js "ctx.get('profileContext')?.name === 'desktop' && ['darwin', 'win32'].includes(process.platform) ? process.platform : null"
+
+# Account route: x-dsh-auth-token to <API origin>/v1/messages; the model list
+# follows GET <API origin>/models.
+- id: llm-deepseek-account
+  config:
+    baseURL: *wasdengine-api-origin
+
+# API-key route ("deepseek-official"): x-api-key to
+# <API origin>/anthropic/v1/messages. The key is a WASDEngine API token, stored
+# by the Models page or exported as WASDENGINE_API_KEY, so an ambient
+# DEEPSEEK_API_KEY is never sent to the gateway. Web search follows this route's
+# origin and credential (POST <API origin>/v1/tools/search), so it needs no row
+# of its own. The catalog is the upstream deepseek-flash entry alone.
+- id: llm-deepseek
+  config:
+    baseURL: !!js >-
+      new URL('/anthropic', ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://api.wasdengine.com').href
+    apiKeyEnv: WASDENGINE_API_KEY
+    models:
+      - id: deepseek-flash
+        name: DeepSeek-V4.1-Flash
+        contextWindow: 1048576
+        inputModalities: [text, image]
+        systemPromptUpdate: in-history
+        toolUpdate: addition-only
+
+# The provider copy of the full Session log (`dsh_session_log` on every model
+# request). Settings can still turn it on per user.
+- id: session-log-deepseek
+  config:
+    enabled: false
+
+# Session OTel export to the DeepSeek collector after user feedback.
+- id: session-telemetry-otel
+  disabled: true
