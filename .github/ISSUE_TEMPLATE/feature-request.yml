@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest a new capability or a change to how WASDEngine works.
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for the suggestion. If an [open issue](https://github.com/WASDEngine/WASDEngine/issues) already
+        proposes it, comment there instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do, and what makes it hard or impossible today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: >-
+        What WASDEngine should do: what you would see in the Desktop app or the Web UI, or what the agent should
+        do in your game project.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use today, or other approaches you considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: The game engine, genre, or workflow this is for, and any screenshots or examples.

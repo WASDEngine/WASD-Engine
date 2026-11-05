@@ -3,14 +3,15 @@
  * dsh-sdk-minimal, and dsh-web-app: every shipped profile template must compose the WASDEngine service rows
  * without warnings, every row the files patch must still exist upstream with the same package and config keys,
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
- * open the WASDEngine issue tracker, and the `gamedev` preset must stay a copy of upstream `standard` apart from
- * its display fields, persona, and bundled skill root.
+ * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, and the `gamedev`
+ * preset must stay a copy of upstream `standard` apart from its display fields, persona, and bundled skill root.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
@@ -43,6 +44,12 @@ const COLLECTOR_ROWS = ['session-telemetry-otel', 'desktop-product-telemetry', '
 
 /** Page the account menu's Feedback item opens, in place of the upstream default, DeepSeek's Feishu form. */
 const FEEDBACK_URL = 'https://github.com/WASDEngine/WASDEngine/issues/new'
+
+/** Directory whose files GitHub's new-issue page reads. */
+const ISSUE_TEMPLATE_DIR = join(repoRoot, '.github/ISSUE_TEMPLATE')
+
+/** The fork's two issue forms and the template chooser configuration; upstream's templates are pruned. */
+const ISSUE_TEMPLATES = ['bug-report.yml', 'config.yml', 'feature-request.yml'] as const
 
 /** Each row the fork patches: the package upstream mounts there and the sources that declare its config keys. */
 const TARGETS: Readonly<Record<string, { name: string; schema: readonly string[] }>> = {
@@ -211,6 +218,12 @@ function patchConfig(patches: readonly PatchOptions[], id: string): Record<strin
   return configOf(patches.find(patch => patch.insert === undefined && patch.id === id))
 }
 
+function issueTemplate(file: string): Record<string, unknown> {
+  const parsed: unknown = yaml.load(readFileSync(join(ISSUE_TEMPLATE_DIR, file), 'utf8'))
+  if (!isRecord(parsed)) throw new Error(`.github/ISSUE_TEMPLATE/${file} must hold a YAML mapping`)
+  return parsed
+}
+
 const baseGateway = forkLayer('@deepseek-ai/dsh-base')
 const minimalGateway = forkLayer('@deepseek-ai/dsh-sdk-minimal')
 const allPatches = Object.keys(FORK_PATCHES).flatMap(forkLayer)
@@ -266,6 +279,27 @@ describe('WASDEngine overlay', () => {
     const loaded: unknown = await import(source)
     const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => { contactFormUrl: string } }
     expect(ContactConfig(config).contactFormUrl).toBe(FEEDBACK_URL)
+  })
+
+  it('offers only the fork\'s issue forms and a blank issue on the Feedback page', () => {
+    // A template that an upstream merge adds joins the chooser until upstream-prune.txt lists it.
+    expect(readdirSync(ISSUE_TEMPLATE_DIR).filter(file => !file.startsWith('.')).sort()).toEqual([...ISSUE_TEMPLATES])
+    const config = issueTemplate('config.yml')
+    expect(config.blank_issues_enabled).toBe(true)
+    for (const link of rowsOf(config.contact_links)) {
+      expect(String(link.url)).toMatch(/^https:\/\/github\.com\/WASDEngine\/WASDEngine(?:[/#?]|$)/u)
+    }
+  })
+
+  it('requires a bug report to name what ran, the version and OS, the steps, and the expected and actual results', () => {
+    const bug = issueTemplate('bug-report.yml')
+    // Issue types that the WASDEngine organization defines.
+    expect([bug.type, issueTemplate('feature-request.yml').type]).toEqual(['Bug', 'Feature'])
+    const fields = rowsOf(bug.body)
+    const required = fields.filter(field => isRecord(field.validations) && field.validations.required === true)
+    expect(required.map(field => field.id)).toEqual(['surface', 'version', 'os', 'steps', 'expected', 'actual'])
+    const surface = fields.find(field => field.id === 'surface')?.attributes
+    expect(isRecord(surface) ? surface.options : undefined).toEqual(['Desktop app', 'Web UI (dsh web)', 'Other'])
   })
 })
 

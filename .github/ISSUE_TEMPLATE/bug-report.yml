@@ -1,0 +1,74 @@
+name: Bug report
+description: Report something in WASDEngine that does not work as expected.
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a problem. If an [open issue](https://github.com/WASDEngine/WASDEngine/issues)
+        already describes it, add your details there instead. Issues are public, so remove API tokens, keys,
+        and personal data from everything you paste or attach.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: What did you run?
+      description: Choose Other for `dsh acp`, `dsh sdk`, or a headless run, and name it in the steps.
+      options:
+        - Desktop app
+        - Web UI (dsh web)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: >-
+        In the Desktop app, the version in About WASDEngine. Otherwise, the output of `dsh --version`; when you
+        run from source, add the output of `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: The version and processor architecture, and for the Web UI also the browser.
+      placeholder: macOS 26.1 on Apple silicon
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        The shortest sequence of actions that shows the problem, including the prompts or commands you used. If
+        it involves a game project, name the engine and its version, such as Godot 4.5.
+      placeholder: |
+        1. Open a Godot project in the Desktop app.
+        2. Ask the agent to add a main menu scene.
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: What happened instead. Paste any error message, and attach screenshots if they help.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        The output of the terminal that runs `dsh web`, or the diagnostic report from the Desktop app's error
+        dialog, which the app also saves in `~/Library/Logs/WASDEngine` on macOS and `%APPDATA%\WASDEngine\logs`
+        on Windows.
+      render: text

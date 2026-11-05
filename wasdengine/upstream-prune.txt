@@ -28,3 +28,17 @@ scripts/preview-workflow.spec.ts
 scripts/tests/ci-master-platforms.spec.ts
 scripts/tests/ci-release-selfhosted.spec.ts
 scripts/windows-package-workflow.spec.ts
+
+# Issue templates, which the fork's .github/ISSUE_TEMPLATE/bug-report.yml and
+# feature-request.yml replace, and the issue-management scripts that the
+# deleted issue workflows ran against DeepSeek's organization and GitHub
+# Project; their tests read those workflows and templates. The Agent Note on
+# the workflows' review status commands links to the scripts' README pair, so
+# verify-translation-pairing rejects it once that pair is gone.
+.github/ISSUE_TEMPLATE/bug.md
+.github/ISSUE_TEMPLATE/feature.md
+.github/ISSUE_TEMPLATE/task.md
+.github/issue-management
+.agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.md
+.agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.zh.md
+.agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.i18n.yaml
