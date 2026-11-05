@@ -42,3 +42,10 @@ scripts/windows-package-workflow.spec.ts
 .agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.md
 .agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.zh.md
 .agents/notes/implemented/process/2026-08-10-event-directed-pr-review-status.i18n.yaml
+
+# The PR description skill, which asks for Chinese descriptions, the Issue
+# references that the deleted issue-management scripts validated, and an AI
+# declaration. The fork's AGENTS.md points to .github/pull_request_template.md
+# instead, and .claude/skills links to .agents/skills, so a kept copy would
+# still reach agents.
+.agents/skills/dsh-pr-description
