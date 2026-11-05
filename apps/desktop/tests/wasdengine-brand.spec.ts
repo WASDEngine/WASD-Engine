@@ -18,7 +18,7 @@ import {
   WASDENGINE_HOME_ATLAS, WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, renderWasdengineHomeAtlas,
 } from '../scripts/wasdengine-render-icons.ts'
 import { de, en, es, fr, ja, pt, resolveDesktopLocale, ru, zh } from '../src/locale.ts'
-import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
+import { WASDENGINE_DESKTOP_BRAND as BRAND, WASDENGINE_DESKTOP_COPY, brandDesktopDictionaries } from '../src/wasdengine-brand.ts'
 
 const UNSIGNED_MACOS: NodeJS.ProcessEnv = {
   ...localMacOSPackageEnvironment({}),
@@ -190,13 +190,26 @@ describe('WASDEngine Desktop shell copy', () => {
   })
 
   it('keeps sentence structure around the substituted name', () => {
-    expect(en.aboutMenu).toBe('About WASDEngine')
-    expect(en.quitTitle).toBe('Quit WASDEngine?')
-    expect(en.welcomeKeyDescription).toBe('Configure official DeepSeek models to start using WASDEngine')
-    expect(zh.aboutMenu).toBe('关于 WASDEngine')
-    expect(de.updateTitle).toBe('WASDEngine-Update')
-    expect(ja.hideApplication).toBe('WASDEngine を隠す')
-    expect(pt.welcomeKeyDescription).toBe('Configure modelos DeepSeek oficiais para começar a usar o WASDEngine')
+    expect(en.aboutMenu).toBe('About WASD Engine')
+    expect(en.quitTitle).toBe('Quit WASD Engine?')
+    expect(zh.aboutMenu).toBe('关于 WASD Engine')
+    expect(de.updateTitle).toBe('WASD Engine-Update')
+    expect(ja.hideApplication).toBe('WASD Engine を隠す')
+  })
+
+  it.each(Object.keys(dictionaries))('applies the WASD Engine welcome copy in %s', (id) => {
+    const messages = dictionaries[id as keyof typeof dictionaries]
+    const copy = WASDENGINE_DESKTOP_COPY[id]
+    expect(copy, id).toBeDefined()
+    expect(Object.keys(copy!).sort()).toEqual(['welcomeDescription', 'welcomeKeyDescription'])
+    for (const [key, message] of Object.entries(copy!)) expect(messages[key as keyof typeof messages], key).toBe(message)
+    expect(messages.welcomeKeyDescription).toContain(BRAND.productName)
+    expect(messages.welcomeKeyDescription).not.toContain('DeepSeek')
+  })
+
+  it('refuses copy for a message the dictionaries do not have', () => {
+    expect(() => brandDesktopDictionaries({ en: { welcomeTitle: 'DeepSeek Harness' } }))
+      .toThrow('WASD Engine desktop copy: en has no message welcomeDescription')
   })
 
   it('titles the macOS About panel with the upstream attribution', () => {

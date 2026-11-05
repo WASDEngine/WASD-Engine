@@ -1,6 +1,6 @@
 [
   {
-    "label": "About WASDEngine",
+    "label": "About WASD Engine",
     "role": "about"
   },
   {
@@ -24,7 +24,7 @@
   },
   {
     "role": "hide",
-    "label": "Hide WASDEngine"
+    "label": "Hide WASD Engine"
   },
   {
     "role": "hideOthers",
@@ -39,6 +39,6 @@
   },
   {
     "role": "quit",
-    "label": "Quit WASDEngine"
+    "label": "Quit WASD Engine"
   }
 ]

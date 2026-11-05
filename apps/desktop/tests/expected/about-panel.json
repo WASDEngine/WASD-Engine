@@ -1,11 +1,11 @@
 {
   "darwin:en-US": {
     "menu": [
-      { "label": "About WASDEngine", "role": "about" },
+      { "label": "About WASD Engine", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "WASDEngine (built on DeepSeek Harness)",
+      "applicationName": "WASD Engine (built on DeepSeek Harness)",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -14,11 +14,11 @@
   },
   "darwin:zh-CN": {
     "menu": [
-      { "label": "关于 WASDEngine", "role": "about" },
+      { "label": "关于 WASD Engine", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "WASDEngine (built on DeepSeek Harness)",
+      "applicationName": "WASD Engine (built on DeepSeek Harness)",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -27,11 +27,11 @@
   },
   "win32:zh-CN": {
     "menu": [
-      { "label": "关于 WASDEngine" },
+      { "label": "关于 WASD Engine" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "WASDEngine (built on DeepSeek Harness)",
+      "applicationName": "WASD Engine (built on DeepSeek Harness)",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -40,11 +40,11 @@
   },
   "win32:en-US": {
     "menu": [
-      { "label": "About WASDEngine" },
+      { "label": "About WASD Engine" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "WASDEngine (built on DeepSeek Harness)",
+      "applicationName": "WASD Engine (built on DeepSeek Harness)",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",

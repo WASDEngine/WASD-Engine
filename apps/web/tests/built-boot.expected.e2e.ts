@@ -69,7 +69,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   const buildVersion = version
     + (commit === undefined ? '' : `-${commit}`)
     + (clientBuildValue('DSH_CLIENT_GIT_DIRTY') === 'true' ? '-dirty' : '')
-  screen.getByText('DSH Local Build')
+  screen.getByText('WASD Engine')
   screen.getByText(buildVersion)
   // The compact layout dropped group session counts; the fixture workspace
   // group row renders immediately with its sessions beneath it.

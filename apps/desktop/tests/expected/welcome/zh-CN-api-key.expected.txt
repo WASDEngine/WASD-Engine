@@ -1,7 +1,7 @@
-WASDEngine
-WASDEngine
+WASD Engine
+WASD Engine
 添加一个 API Key 开始使用
-配置 DeepSeek 官方模型，即可开始使用
+粘贴 WASD Engine 账号页面中的 API 令牌，即可开始使用
 输入 API 密钥 [password]
 保存并继续 [disabled]
 稍后配置

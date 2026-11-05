@@ -13,5 +13,5 @@
 <rect x="122" y="21" width="15" height="15" rx="3.5" fill="var(--dsw-alias-label-primary)"/>
 <rect x="139" y="21" width="15" height="15" rx="3.5" fill="var(--dsw-alias-label-primary)"/>
 <rect x="156" y="21" width="15" height="15" rx="3.5" fill="var(--dsw-alias-label-primary)"/>
-<text x="183" y="30" fill="var(--dsw-alias-label-primary)" font-family="Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="27" font-weight="600" letter-spacing="0.4">WASDEngine</text>
+<text x="183" y="30" fill="var(--dsw-alias-label-primary)" font-family="Montserrat, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="27" font-weight="600" letter-spacing="0.4">WASD Engine</text>
 </svg>

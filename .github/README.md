@@ -10,9 +10,9 @@ WASDEngine is an independent project. It is not affiliated with, endorsed by, or
 - **Game development by default in the Web UI and the Desktop app.** New sessions there use the Game developer agent preset with bundled skills for Godot 4 (`godot-project`), Phaser (`phaser-game`), and design planning (`game-design-doc`), and the upstream presets, including Standard, remain available. The preset and its skills ship in the Web bundle `@deepseek-ai/dsh-web-app`, which no other shipped profile loads, so `dsh acp`, `dsh sdk`, `dsh --profile headless`, and `dsh --profile sdk-minimal` keep upstream's agent without them.
 - **No upstream CI.** The fork deletes upstream's GitHub Actions workflows, Dependabot configuration, and the specs that read them ([wasdengine/upstream-prune.txt](../wasdengine/upstream-prune.txt)), because they target DeepSeek's runners and release channels.
 - **No transcript or analytics uploads.** Model requests from every profile carry no copy of the Session log (`dsh_session_log`) unless a user turns the Session log option on in Settings, and the Session OpenTelemetry export and Desktop product analytics, which report to DeepSeek's collector, are switched off.
-- **Its own identity and data.** The Web UI and the Desktop app show the WASD keycap mark instead of DeepSeek's whale in the sidebar, beside the home headline, in the home's click animation, and as the browser tab icon, and the Web UI installs from the browser as an app named WASDEngine with the keycap icon. The Desktop app has its own name, icon, bundle identifier (`com.wasdengine.desktop`), deep link (`wasdengine://open`), and application data folder. WASDEngine keeps sessions, settings, and credentials in `~/.wasdengine`, so it can be installed next to DeepSeek Harness (`~/.dsh`) without either reading the other's data; only the optional LiveShare plugin keeps its files in `~/.dsh/liveshare/` (see the [known limitations](../wasdengine/FORK.md#known-limitations)). WASDEngine builds never update themselves from DeepSeek's download server.
+- **Its own identity and data.** The Web UI and the Desktop app show the WASD keycap mark instead of DeepSeek's whale in the sidebar, beside the home headline, in the home's click animation, and as the browser tab icon, and the Web UI installs from the browser as an app named WASDEngine with the keycap icon. The Desktop app is called WASD Engine and has its own icon, bundle identifier (`com.wasdengine.desktop`), deep link (`wasdengine://open`), and application data folder; its first-run welcome and onboarding introduce WASD Engine for game development, and the sign-in and account text names WASD Engine accounts. WASDEngine keeps sessions, settings, and credentials in `~/.wasdengine`, so it can be installed next to DeepSeek Harness (`~/.dsh`) without either reading the other's data; only the optional LiveShare plugin keeps its files in `~/.dsh/liveshare/` (see the [known limitations](../wasdengine/FORK.md#known-limitations)). WASDEngine builds never update themselves from DeepSeek's download server.
 
-The service and agent changes are configuration, and the identity is a Desktop brand module and a brand-mark occupant for the Web UI; [wasdengine/FORK.md](../wasdengine/FORK.md) lists every file the fork adds or modifies and how upstream releases are merged.
+The service and agent changes are configuration, and the identity is a Desktop brand module, a brand-mark occupant for the Web UI, and copy rewrites of two client dictionaries; [wasdengine/FORK.md](../wasdengine/FORK.md) lists every file the fork adds or modifies and how upstream releases are merged.
 
 ## Run from source
 
@@ -26,7 +26,7 @@ pnpm run build
 pnpm dsh web
 ```
 
-`pnpm dsh web` serves the Web UI at `http://127.0.0.1:3080` and opens it in the default browser; pass `--no-open` to skip the browser. `pnpm run dev:desktop` builds and starts the Desktop app from the same checkout. `pnpm run package:desktop:mac:arm64:unsigned` builds an unsigned `WASDEngine.app` and disk image for Apple silicon Macs; add `--dir` to stop at the app.
+`pnpm dsh web` serves the Web UI at `http://127.0.0.1:3080` and opens it in the default browser; pass `--no-open` to skip the browser. `pnpm run dev:desktop` builds and starts the Desktop app from the same checkout. `pnpm run package:desktop:mac:arm64:unsigned` builds an unsigned `WASD Engine.app` and disk image for Apple silicon Macs; add `--dir` to stop at the app.
 
 Data lives in `~/.wasdengine` unless `DSH_HOME` names another directory. To keep your Sessions from a DeepSeek Harness install, copy the `sessions` and `attachments` directories of `~/.dsh` into `~/.wasdengine`, and `storages` too if you want its workspace list and scheduled tasks. Do not copy its `profiles` directory, `cordis.patch.yml`, `settings.yaml`, or `.credentials.yaml`, and do not set `DSH_HOME` to `~/.dsh`: the configuration files replace the WASDEngine service settings with DeepSeek's, `.credentials.yaml` holds DeepSeek Harness's keys and sign-in, and in a shared home each product deletes the other's sign-in at startup.
 
@@ -51,13 +51,12 @@ Profiles that use the same harness home share the stored sign-in and API token. 
 
 Some interface text inherited from DeepSeek Harness still names DeepSeek, although sign-in, model, and search requests go to the WASDEngine service:
 
-- The sign-in prompt and the account pages, for example "Sign in to your DeepSeek account", "Signed in to DeepSeek", and "Back to DeepSeek Harness", and the onboarding credit page.
 - The first-run Preview Notice about DeepSeek Harness 0.2.
 - The Models page and the model menu, which call the provider DeepSeek and the sign-in route DeepSeek Account.
 - The web search providers DeepSeek Search API, DeepSeek Fetch API, and DeepSeek (legacy), the Session log option "Help improve DeepSeek models and products", the plugin installation warning, and chat errors about the account sign-in.
 - The `dsh` command help and the Windows installer messages.
 
-The browser tab and the sidebar show "DSH Local Build", the DSH abbreviation that the brand guidelines recommend. The chat's running indicator still animates a small whale tail, and the optional LiveShare viewer page shows DeepSeek's whale as its sidebar mark.
+The chat's running indicator still animates a small whale tail, and the optional LiveShare viewer page shows DeepSeek's whale as its sidebar mark.
 
 ## Project skills
 

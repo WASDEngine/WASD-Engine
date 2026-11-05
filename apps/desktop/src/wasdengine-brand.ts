@@ -13,7 +13,7 @@
 /** The WASDEngine Desktop identity; icon paths are relative to `apps/desktop`. */
 export const WASDENGINE_DESKTOP_BRAND = {
   /** Application, bundle, and executable name; Electron derives its data and log directories from it. */
-  productName: 'WASDEngine',
+  productName: 'WASD Engine',
   /** Bundle identifier of unsigned local builds; release builds name theirs in `DSH_DESKTOP_APP_ID`. */
   appId: 'com.wasdengine.desktop',
   /** Deep-link scheme; `wasdengine://open` brings the application to the foreground. */
@@ -21,9 +21,9 @@ export const WASDENGINE_DESKTOP_BRAND = {
   /** Packaged manifest author, which Windows reports as the publisher. */
   publisher: 'WASDEngine',
   /** Title of the macOS About panel. */
-  aboutName: 'WASDEngine (built on DeepSeek Harness)',
+  aboutName: 'WASD Engine (built on DeepSeek Harness)',
   /** Text of the macOS microphone permission prompt. */
-  microphoneUsage: 'WASDEngine uses your microphone to transcribe speech into message drafts.',
+  microphoneUsage: 'WASD Engine uses your microphone to transcribe speech into message drafts.',
   /**
    * HTTPS origin of the WASDEngine update feed. Unset, a build may not carry an update feed:
    * unsigned builds have none, and packaging refuses a signed build because the release
@@ -42,16 +42,61 @@ export const WASDENGINE_DESKTOP_BRAND = {
 const UPSTREAM_PRODUCT_NAME = /(?:DeepSeek )?\bHarness\b/gu
 
 /**
- * Replace the upstream product name with WASDEngine in every message, in place. The
- * dictionaries are the objects `locale.ts` exports, so a direct import and a resolved locale
- * read the same copy. "DSH" and references to DeepSeek models stay unchanged.
+ * WASD Engine's own welcome-window copy, by language: the tagline under the welcome title,
+ * and the API-key prompt, which takes a WASD Engine API token rather than a DeepSeek key.
+ */
+export const WASDENGINE_DESKTOP_COPY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  en: {
+    welcomeDescription: 'Build games with an agent at the keys.',
+    welcomeKeyDescription: 'Paste an API token from your WASD Engine account page to start.',
+  },
+  zh: {
+    welcomeDescription: '与智能体并肩，打造你的游戏',
+    welcomeKeyDescription: '粘贴 WASD Engine 账号页面中的 API 令牌，即可开始使用',
+  },
+  ja: {
+    welcomeDescription: 'エージェントと一緒にゲームを作ろう。',
+    welcomeKeyDescription: 'WASD Engine のアカウントページで作成した API トークンを貼り付けて開始します',
+  },
+  es: {
+    welcomeDescription: 'Crea juegos con un agente a los mandos.',
+    welcomeKeyDescription: 'Pega un token de API de la página de tu cuenta de WASD Engine para empezar',
+  },
+  fr: {
+    welcomeDescription: 'Créez des jeux avec un agent aux commandes.',
+    welcomeKeyDescription: "Collez un jeton d'API depuis la page de votre compte WASD Engine pour commencer",
+  },
+  de: {
+    welcomeDescription: 'Spiele bauen, mit einem Agenten an den Tasten.',
+    welcomeKeyDescription: 'Fügen Sie ein API-Token von Ihrer WASD Engine-Kontoseite ein, um loszulegen',
+  },
+  ru: {
+    welcomeDescription: 'Создавайте игры вместе с агентом.',
+    welcomeKeyDescription: 'Вставьте API-токен со страницы вашей учётной записи WASD Engine, чтобы начать',
+  },
+  pt: {
+    welcomeDescription: 'Crie jogos com um agente no controle.',
+    welcomeKeyDescription: 'Cole um token de API da página da sua conta WASD Engine para começar',
+  },
+}
+
+/**
+ * Replace the upstream product name with WASD Engine in every message, then apply
+ * {@link WASDENGINE_DESKTOP_COPY}, in place. The dictionaries are the objects `locale.ts`
+ * exports, so a direct import and a resolved locale read the same copy. "DSH" and
+ * references to DeepSeek models stay unchanged.
  * @param dictionaries - Every shipped Desktop dictionary, keyed by language.
  * @returns The same dictionaries.
+ * @throws when the copy names a message key that a dictionary lacks.
  */
 export function brandDesktopDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  for (const messages of Object.values<Record<string, string>>(dictionaries)) {
+  for (const [language, messages] of Object.entries<Record<string, string>>(dictionaries)) {
     for (const [key, message] of Object.entries(messages)) {
       messages[key] = message.replaceAll(UPSTREAM_PRODUCT_NAME, WASDENGINE_DESKTOP_BRAND.productName)
+    }
+    for (const [key, message] of Object.entries(WASDENGINE_DESKTOP_COPY[language] ?? {})) {
+      if (!(key in messages)) throw new Error(`WASD Engine desktop copy: ${language} has no message ${key}`)
+      messages[key] = message
     }
   }
   return dictionaries

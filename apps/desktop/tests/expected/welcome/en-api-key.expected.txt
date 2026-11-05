@@ -1,7 +1,7 @@
-WASDEngine
-WASDEngine
+WASD Engine
+WASD Engine
 Add an API key to get started
-Configure official DeepSeek models to start using WASDEngine
+Paste an API token from your WASD Engine account page to start.
 Enter API key [password]
 Save and continue [disabled]
 Set up later

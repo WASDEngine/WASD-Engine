@@ -1,6 +1,6 @@
-WASDEngine
-WASDEngine
-Welcome to WASDEngine
-Build potential. Explore intelligence.
+WASD Engine
+WASD Engine
+Welcome to WASD Engine
+Build games with an agent at the keys.
 Sign in
 Add API Key
