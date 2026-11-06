@@ -78,7 +78,7 @@ describe('ui-settings-models apply', () => {
       await host.await()
       const rows: IndexInjection[] = []
       ctx.emit('webserver/index-inject', rows, PAGE_PEER)
-      expect(rows).toEqual([{ kind: 'global', name: ONBOARDING_CONFIG_GLOBAL, value: { credentialOnboarding: false, welcomeNotice: true } }])
+      expect(rows).toEqual([{ kind: 'global', name: ONBOARDING_CONFIG_GLOBAL, value: { credentialOnboarding: false, nativeCredentialOnboarding: true, apiKeyEntry: true, welcomeNotice: true } }])
       for (const row of rows) if (row.kind === 'global') vi.stubGlobal(row.name, row.value)
       const plugin = ctx.plugin({ inject: [...inject], apply })
       await plugin.await()
@@ -104,7 +104,7 @@ describe('ui-settings-models apply', () => {
       await ctx.plugin(hostPlugin, { welcomeNotice: false }).await()
       const rows: IndexInjection[] = []
       ctx.emit('webserver/index-inject', rows, PAGE_PEER)
-      expect(rows).toEqual([{ kind: 'global', name: ONBOARDING_CONFIG_GLOBAL, value: { credentialOnboarding: true, welcomeNotice: false } }])
+      expect(rows).toEqual([{ kind: 'global', name: ONBOARDING_CONFIG_GLOBAL, value: { credentialOnboarding: true, nativeCredentialOnboarding: true, apiKeyEntry: true, welcomeNotice: false } }])
       for (const row of rows) if (row.kind === 'global') vi.stubGlobal(row.name, row.value)
       await ctx.plugin({ inject: [...inject], apply }).await()
       expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['deepseek-official'])
@@ -113,8 +113,38 @@ describe('ui-settings-models apply', () => {
     }
   })
 
+  it.each([true, false])('offers automatic credential onboarding in the Desktop app only without native onboarding (native: %s)', async (native) => {
+    const { ctx, slots } = await bench()
+    declare(slots)
+    try {
+      vi.stubGlobal('dshDesktop', {})
+      vi.stubGlobal(ONBOARDING_CONFIG_GLOBAL, { nativeCredentialOnboarding: native })
+      await ctx.plugin({ inject: [...inject], apply }).await()
+      const onboarding = slots.entries('settings.onboarding').find(entry => entry.options.id === 'deepseek-official')!
+      expect((onboarding.inject as () => { automatic: boolean })().automatic).toBe(!native)
+      expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['deepseek-official'])
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
+  it('registers no Models section and offers no API key step without API key entry', async () => {
+    const { ctx, slots } = await bench()
+    declare(slots)
+    try {
+      vi.stubGlobal(ONBOARDING_CONFIG_GLOBAL, { apiKeyEntry: false })
+      await ctx.plugin({ inject: [...inject], apply }).await()
+      expect(slots.entries('settings.section')).toEqual([])
+      const onboarding = slots.entries('settings.onboarding').find(entry => entry.options.id === 'deepseek-official')!
+      expect((onboarding.inject as () => { apiKeyEntry?: boolean })().apiKeyEntry).toBe(false)
+    } finally {
+      await ctx.fiber.dispose()
+    }
+  })
+
   it('defaults to browser onboarding and rejects malformed bootstrap options', async () => {
-    expect(hostPlugin.Config({})).toEqual({ credentialOnboarding: true, welcomeNotice: true })
+    expect(hostPlugin.Config({}))
+      .toEqual({ credentialOnboarding: true, nativeCredentialOnboarding: true, apiKeyEntry: true, welcomeNotice: true })
     expect(hostPlugin.Config['~standard'].validate({ credentialOnboarding: 'false' })).toHaveProperty('issues')
     const { ctx } = await bench()
     try {

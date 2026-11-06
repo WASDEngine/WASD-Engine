@@ -25,13 +25,13 @@ afterEach(cleanup)
 const ROSTER_READY: AgentPresetSettingsState = {
   status: 'ready',
   error: null,
-  options: [{ id: 'standard' }, { id: 'mine' }],
+  options: [{ id: 'gamedev' }, { id: 'mine' }],
 }
 
 const SEAT_READY: AgentPresetSeatState = {
-  current: 'standard',
+  current: 'gamedev',
   options: [
-    { id: 'standard' },
+    { id: 'gamedev' },
     { id: 'mine' },
   ],
   busy: false,
@@ -100,52 +100,15 @@ function renderLabel(
 }
 
 describe('the new-session chip', () => {
-  it.each([false, true])('offers Standard, Creator and custom presets with Developer tools %s', (enabled) => {
-    const actions = renderSeat({ options: [
-      { id: 'standard' }, { id: 'ptc' }, { id: 'minimal' }, { id: 'cordis' }, { id: 'mine' },
-    ] }, undefined, undefined, enabled)
+  it.each([false, true])('offers Game developer, Customize mode, and custom presets with Developer tools %s', (enabled) => {
+    const actions = renderSeat({ options: [{ id: 'gamedev' }, { id: 'cordis' }, { id: 'mine' }] }, undefined, undefined, enabled)
 
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getAllByRole('menuitem')).toHaveLength(enabled ? 5 : 3)
-    expect(screen.getByRole('menuitem', { name: /^Standard mode/ })).toBeTruthy()
+    expect(screen.getAllByRole('menuitem')).toHaveLength(3)
+    expect(screen.getByRole('menuitem', { name: /^Game developer/ })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: /^mine/ })).toBeTruthy()
-    expect(screen.queryByRole('menuitem', { name: /^PTC mode/ }) !== null).toBe(enabled)
-    expect(screen.queryByRole('menuitem', { name: /^Minimal mode/ }) !== null).toBe(enabled)
-    fireEvent.click(screen.getByRole('menuitem', { name: /^Creator mode/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /^Customize mode/ }))
     expect(actions.select).toHaveBeenCalledWith('cordis')
-  })
-
-  it('keeps a named custom preset that overrides a development preset id', () => {
-    renderSeat({ options: [{ id: 'ptc', name: 'My workflow' }] }, undefined, undefined, false)
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByRole('menuitem', { name: /^My workflow/ })).toBeTruthy()
-  })
-
-  it('keeps the current mode visible without opening a picker when all options are hidden', () => {
-    const actions = renderSeat({ current: 'minimal', options: [{ id: 'ptc' }, { id: 'minimal' }] }, undefined, undefined, false)
-    const trigger = screen.getByRole<HTMLButtonElement>('button', { name: en.presetMinimalName })
-    expect(trigger.disabled).toBe(true)
-    fireEvent.click(trigger)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(actions.select).not.toHaveBeenCalled()
-  })
-
-  it('closes a picker when its last visible option disappears and keeps it closed when options return', () => {
-    const options = [{ id: 'minimal' }, { id: 'mine' }]
-    const actions = renderSeat({ current: 'minimal', options }, undefined, undefined, false)
-    const trigger = screen.getByRole<HTMLButtonElement>('button', { name: en.presetMinimalName })
-    fireEvent.click(trigger)
-    expect(screen.getByRole('menuitem', { name: /^mine/ })).toBeTruthy()
-    act(() => { actions.store.set({ ...actions.store.getSnapshot(), options: [{ id: 'ptc' }, { id: 'minimal' }] }) })
-    expect(trigger.disabled).toBe(true)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
-    act(() => { actions.store.set({ ...actions.store.getSnapshot(), options }) })
-    expect(trigger.disabled).toBe(false)
-    expect(trigger.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('menu')).toBeNull()
-    expect(actions.select).not.toHaveBeenCalled()
   })
 
   it('renders only for a Session retained by the main view', () => {
@@ -163,7 +126,7 @@ describe('the new-session chip', () => {
     const actions = renderSeat()
 
     await waitFor(() => { expect(actions.load).toHaveBeenCalledTimes(1) })
-    expect(screen.getByRole('button').textContent).toContain(en.presetStandardName)
+    expect(screen.getByRole('button').textContent).toContain(en.presetGamedevName)
     expect(screen.getByRole('button').getAttribute('title')).toBe(en.seatHint)
   })
 
@@ -174,7 +137,7 @@ describe('the new-session chip', () => {
 
     // The id alone never said what a preset does; the description is the
     // whole reason a preset can publish metadata at all.
-    expect(screen.getByText(en.presetStandardDescription)).toBeTruthy()
+    expect(screen.getByText(en.presetGamedevDescription)).toBeTruthy()
     // A preset that published none still reads as a row, with its id standing
     // in for the name.
     expect(screen.getByText(en.noDescription)).toBeTruthy()
@@ -184,14 +147,14 @@ describe('the new-session chip', () => {
   it('closes the picker immediately when developer tools turn off without changing the staged preset', () => {
     const actions = renderSeat()
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByText(en.presetStandardDescription)).toBeTruthy()
+    expect(screen.getByText(en.presetGamedevDescription)).toBeTruthy()
     act(() => { actions.developerTools.set(false) })
     expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByText(en.presetStandardDescription)).toBeNull()
+    expect(screen.queryByText(en.presetGamedevDescription)).toBeNull()
     expect(actions.select).not.toHaveBeenCalled()
     act(() => { actions.developerTools.set(true) })
     expect(screen.getByRole('button').getAttribute('aria-expanded')).toBe('false')
-    expect(screen.getByRole('button').textContent).toContain(en.presetStandardName)
+    expect(screen.getByRole('button').textContent).toContain(en.presetGamedevName)
   })
 
   it('falls back to the id when the staged preset published no name', () => {
@@ -385,13 +348,13 @@ describe('the session-header label', () => {
   it('names the preset the session runs, and never offers a switch', async () => {
     const { load } = renderLabel({
       blank: false,
-      projectionValues: { agentPreset: 'standard' },
+      projectionValues: { agentPreset: 'gamedev' },
     })
 
     await waitFor(() => { expect(load).toHaveBeenCalledTimes(1) })
     // A control here would promise a switch the host refuses outright.
     expect(screen.queryByRole('button')).toBeNull()
-    expect(screen.getByTitle(en.presetStandardDescription).textContent).toBe(en.presetStandardName)
+    expect(screen.getByTitle(en.presetGamedevDescription).textContent).toBe(en.presetGamedevName)
   })
 
   it('falls back to the id, and to the generic hint, when metadata is absent', () => {

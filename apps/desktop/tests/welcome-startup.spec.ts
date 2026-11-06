@@ -41,7 +41,14 @@ const state = vi.hoisted(() => ({
   menu: vi.fn(),
   operations: undefined as WelcomeOperations | undefined,
   nativeTheme: { themeSource: 'system', shouldUseDarkColors: false },
+  welcomeWindow: true,
 }))
+
+// WASD Engine: the brand turns the welcome window off; these tests read the switch from `state`.
+vi.mock('../src/wasdengine-brand.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/wasdengine-brand.ts')>()
+  return { ...actual, WASDENGINE_DESKTOP_BRAND: { ...actual.WASDENGINE_DESKTOP_BRAND, get welcomeWindow() { return state.welcomeWindow } } }
+})
 
 vi.mock('../src/crash-report.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/crash-report.ts')>(),
@@ -301,4 +308,42 @@ it.each([false, true])('starts welcome onboarding without carrying update focus 
   expect(state.showWorkspace).toHaveBeenCalledOnce()
   expect(state.focusWorkspace).toHaveBeenCalledOnce()
 
+})
+
+it('opens the main window at once, and never the welcome window, while the WASD Engine brand turns it off', async () => {
+  vi.resetModules()
+  vi.clearAllMocks()
+  state.welcomeWindow = false
+  try {
+    state.preference = 'en'
+    state.hasApiKey = false
+    state.operations = undefined
+    state.accountState.mockResolvedValue({ status: 'signed-out', attempt: null, links: { usageUrl: '', topUpUrl: '' } })
+    vi.useFakeTimers()
+    vi.stubEnv('DSH_CLIENT_VERSION', '1.2.3')
+    vi.stubEnv('DSH_DESKTOP_DEV_PROJECT_DIR', '/development-profile')
+    vi.stubEnv('DSH_DESKTOP_NODE_BINARY', '/runtime/node')
+    vi.stubEnv('DSH_DESKTOP_PNPM_ENTRY', '/runtime/pnpm')
+    vi.stubEnv('DSH_DESKTOP_DSH_DIR', '/runtime/dsh')
+    vi.stubEnv('DSH_DESKTOP_PRIMARY_RUNTIME_DIR', '/runtime/primary-runtime')
+    vi.stubEnv('DSH_DESKTOP_HOST_INSPECT_PORT', undefined)
+    vi.stubEnv('DSH_DESKTOP_OPEN_DEVTOOLS', '0')
+    vi.stubEnv('DSH_DESKTOP_MANDATORY_UPDATE_CONFIG', undefined)
+    vi.stubEnv('DSH_DESKTOP_UPDATE_JOURNAL_DIR', undefined)
+    await import('../src/main.ts')
+    await vi.waitFor(() => { expect(state.showWorkspace).toHaveBeenCalledOnce() })
+    expect(state.loadWorkspace).toHaveBeenCalledExactlyOnceWith('dsh-app://app/')
+    expect(state.beforeWelcome).not.toHaveBeenCalled()
+    const account: AccountView = { status: 'signed-out', links: { usageUrl: '', topUpUrl: '' }, attempt: null }
+    state.accountListener!({ ...account, status: 'credential-stored' })
+    state.accountListener!(account)
+    state.expiryListener!()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(state.beforeWelcome).not.toHaveBeenCalled()
+    expect(state.operations).toBeUndefined()
+    state.appListeners.get('open-url')!({ preventDefault: vi.fn() }, 'wasdengine://open')
+    expect(state.showWorkspace).toHaveBeenCalledTimes(2)
+  } finally {
+    state.welcomeWindow = true
+  }
 })

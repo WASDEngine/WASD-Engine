@@ -10,15 +10,13 @@ import { analyticsMode } from '../src/client/analytics.ts'
 describe('analyticsMode', () => {
   it.each([
     ['cordis', 'creator'],
-    ['ptc', 'ptc'],
-    ['minimal', 'minimal'],
-    ['standard', 'standard'],
   ] as const)('maps the built-in %s preset id to %s', (id, category) => {
     expect(analyticsMode(id)).toBe(category)
   })
 
   it('treats any other preset id as other', () => {
     expect(analyticsMode('mine')).toBe('other')
+    expect(analyticsMode('gamedev')).toBe('other')
     expect(analyticsMode('private-id')).toBe('other')
   })
 

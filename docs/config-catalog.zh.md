@@ -624,7 +624,7 @@ export interface Config extends ContactConfig {
   developerTools: Volatile<boolean>
 }
 
-/** Questionnaire destination and bonus notice timings shared by Host and Client. */
+/** Questionnaire destination, bonus notice timings, and the sign-in choice shared by Host and Client. */
 export interface ContactConfig {
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
@@ -634,6 +634,8 @@ export interface ContactConfig {
   bonusAckRetryDelayMs: number
   /** Ceiling for the acknowledgement retry backoff. */
   bonusAckRetryMaxDelayMs: number
+  /** Offer Add API Key beside Sign in in the sign-in dialog; false leaves account sign-in as the only way in. */
+  apiKeyEntry: boolean
 }
 
 /** Persisted steps; a native top-up page leaves the durable step at credit. */
@@ -659,6 +661,10 @@ export type OnboardingProcess = 'compact' | 'standard' | 'detailed'
 export interface Config {
   /** Offer the browser API-key step when no native shell owns credential onboarding. */
   credentialOnboarding: boolean
+  /** Leave credential onboarding to the Desktop app's welcome window; false offers the browser step in the Desktop app too. */
+  nativeCredentialOnboarding: boolean
+  /** Offer API key entry: the Models settings section and the API key step; false leaves account sign-in as the only way in. */
+  apiKeyEntry: boolean
   /** Show the versioned preview notice in browsers; the Desktop app never shows it. */
   welcomeNotice: boolean
 }

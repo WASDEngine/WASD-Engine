@@ -54,6 +54,8 @@ export interface AccountSectionInjected {
   subscribeModelSignInRequired?: (listener: () => void) => () => void
   /** Desktop-only: show one page in the account feature's shared native host; absent in ordinary browsers. */
   openPlatformPage?: PlatformPages['open']
+  /** Whether the sign-in dialog offers Add API Key beside Sign in; absent offers it. */
+  apiKeyEntry?: boolean
 
   /** Account stream owned by the Host and theme snapshots published by the renderer, observed through framework hooks. */
   hooks: {

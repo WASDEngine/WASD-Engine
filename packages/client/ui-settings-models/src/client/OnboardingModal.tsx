@@ -3,7 +3,9 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import css from './OnboardingModal.module.css'
+// WASD Engine: the fork's sheet styles every class below in the look of the sign-in dialog.
+import css from './wasdengine-onboarding.module.css'
+import { WasdengineLockup } from './wasdengine-onboarding.tsx'
 
 const ignoreImplicitDismiss = (): void => {}
 
@@ -44,6 +46,7 @@ export function OnboardingModal({
       className={css.dialog as string}
     >
       <div className={css.content}>
+        <WasdengineLockup className={css.lockup} />
         <h2 ref={titleRef} className={css.title} tabIndex={focusTitle ? -1 : undefined}>{title}</h2>
         <div className={css.body}>{children}</div>
       </div>

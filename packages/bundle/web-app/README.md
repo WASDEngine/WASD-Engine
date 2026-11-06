@@ -42,13 +42,11 @@ dsh --profile web --no-open --port 8080
 
 After startup you see a `dsh web:` line whose root URL carries a fresh process token. Unless `--no-open` or an SSH session suppresses it, the default browser opens that URL, receives a signed cookie, and redirects to the same directory without the token. You know it worked when the page loads and you can chat with the agent. Two failures to expect: if the frontend is not built, startup stops with a build hint (`pnpm run build` in a checkout); if the browser cannot be opened, a credential-free diagnostic prints to stderr while the server keeps running — open the printed startup URL yourself.
 
-**Settings → Models** displays **DeepSeek**, using `DEEPSEEK_API_KEY`. The default is `deepseek-official` / `deepseek-flash` (DeepSeek-V4.1-Flash). The [DeepSeek plugin](../../llm/llm-deepseek/README.md#endpoint-and-wire-format) uses the Messages API.
+The WASDEngine overlay `wasdengine/first-run.cordis.patch.yml` removes **Settings → Models** and the API key step (`apiKeyEntry: false`), so account sign-in is the only credential the Web UI asks for; the API key route reads `WASDENGINE_API_KEY` from the launching environment. The default is `deepseek-official` / `deepseek-flash` (DeepSeek-V4.1-Flash). The [DeepSeek plugin](../../llm/llm-deepseek/README.md#endpoint-and-wire-format) uses the Messages API.
 
-Saved model selections override the composition default. The settings card accepts a Messages-compatible API address and a credential reference.
+Saved model selections override the composition default. With API key entry on, **Settings → Models** displays **DeepSeek**, and its settings card accepts a Messages-compatible API address and a credential reference.
 
 ### Configuration
-
-The `minimal` agent preset uses a persistent shell, the `read_image` tool, and a fixed persona, with automatic history compaction and the idle-session `/compact` command. It shares the Host token meter and owns an isolated compaction backend. [Compaction configuration and retention](../../compaction/compaction-basic/README.md#use-this-package) follow the existing backend. Image reads reuse the Host filesystem and attachment store and require an image-capable model; text read, write, and edit tools remain excluded.
 
 `--host` and `--port` configure the listener; `--tls-cert` and `--tls-key` make it serve HTTPS; `--public-url` names the advertised public HTTP(S) root the GUI is reached at behind a prefix-stripping proxy, and `--trusted-host` adds further accepted authorities. All are described under [Listening, trust, and public deployments](#public-deployments), and the `tls` field those flags set is documented with the [carrier's config](../../../docs/subsystems/web-server.md#config):
 
@@ -59,7 +57,7 @@ The `minimal` agent preset uses a persistent shell, the `read_image` tool, and a
 | `surfaceContext` | `true` | Expose `DSH_WEB_URL` to the agent's shell commands |
 | `publicUrl` | Unset | Advertised HTTP(S) application root; otherwise announce the bind-address URL |
 
-The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) lists this runtime plugin's accepted fields and their JSDoc. The shipped composition inserts the `schedule` service row and the `ui-schedule` task page row, while the clock reading and the four reminder tools belong to the `standard`, `cordis`, and `ptc` presets. The `tool-subagent` and `tool-subagent-fork` rows in those presets deny the four tools, so a delegated child's scope never lists them.
+The generated [configuration catalog](../../../docs/config-catalog.md#deepseek-aidsh-web-app) lists this runtime plugin's accepted fields and their JSDoc. The shipped composition inserts the `schedule` service row and the `ui-schedule` task page row, while the clock reading and the four reminder tools belong to the `cordis` preset and the WASDEngine `gamedev` preset. The `tool-subagent` and `tool-subagent-fork` rows in those presets deny the four tools, so a delegated child's scope never lists them.
 
 <a id="public-deployments"></a>
 ### Listening, trust, and public deployments
@@ -90,7 +88,7 @@ When you launch `dsh --profile web` over SSH, the URL line still prints but the 
 
 ### Per-session agent setup
 
-Each browser session selects a shipped preset (`standard` by default). The Agent presets settings page changes the default and edits preset child plugins; saves persist in `$DSH_HOME/profiles/web/cordis.patch.yml`. Standard and Creator enable the plugin-management tool only when the Host provides an editable profile.
+Each browser session selects a shipped preset (`gamedev`, Game developer, by default). The Agent presets settings page changes the default and edits preset child plugins; saves persist in `$DSH_HOME/profiles/web/cordis.patch.yml`. Game developer and Customize mode enable the plugin-management tool only when the Host provides an editable profile.
 
 -----
 
@@ -122,7 +120,7 @@ The URL line and browser handoff are readiness signals: supervisors RPC as soon 
 | [`src/public-url.ts`](src/public-url.ts) | Advertised-root validation and trailing-slash normalization; a leaf module for local imports, not package API |
 | [`src/startup.ts`](src/startup.ts) | The `web-startup` provider: `--host`, `--port`, `--tls-cert`, `--tls-key`, `--public-url`, `--trusted-host`, `--no-open`, `--help` |
 | [`cordis.patch.yml`](cordis.patch.yml) | The web patch: restated base values, web host rows, browser roster, preset registry |
-| [`presets/`](presets) | One `@deepseek-ai/dsh-agent-preset` declaration per shipped preset (`standard`, `ptc`, `minimal`, `cordis`), each its own patch file |
+| [`presets/`](presets) | The `@deepseek-ai/dsh-agent-preset` declaration of the shipped `cordis` preset; the WASDEngine `gamedev` preset is in [`wasdengine/`](wasdengine) |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | Dist index anchoring, advertised-URL publication and warnings, bash variable, readiness publication |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | Command-line parsing over a real Loader tree |
 | [`tests/public-url.spec.ts`](tests/public-url.spec.ts) | Advertised-root parsing and normalization |

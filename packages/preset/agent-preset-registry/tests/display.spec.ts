@@ -10,9 +10,9 @@ const t = (key: BuiltInPresetCopyKey): string => `t:${key}`
 
 describe('presetDisplayText', () => {
   it('resolves a shipped preset through its dictionary keys', () => {
-    expect(presetDisplayText({ id: 'standard' }, t)).toEqual({
-      name: 't:presetStandardName',
-      description: 't:presetStandardDescription',
+    expect(presetDisplayText({ id: 'gamedev' }, t)).toEqual({
+      name: 't:presetGamedevName',
+      description: 't:presetGamedevDescription',
     })
   })
 

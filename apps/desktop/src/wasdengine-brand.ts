@@ -30,6 +30,12 @@ export const WASDENGINE_DESKTOP_BRAND = {
    * pipeline always embeds one.
    */
   updateOrigin: undefined as string | undefined,
+  /**
+   * Whether the shell opens its standalone welcome window to ask for an account or an API key. False opens the main
+   * window at once, where the Get started dialog of ui-settings-models asks instead; `first-run.cordis.patch.yml` of
+   * dsh-web-app turns that dialog on in the Desktop app with `nativeCredentialOnboarding: false`.
+   */
+  welcomeWindow: false as boolean,
   /** Icon files rendered by `scripts/wasdengine-render-icons.ts`. */
   icons: {
     macOS: 'wasdengine/icon-macos.png',

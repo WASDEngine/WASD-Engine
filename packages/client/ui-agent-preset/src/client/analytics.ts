@@ -9,9 +9,6 @@ export function analyticsMode(id: string): AnalyticsPreset | 'other' | undefined
   if (id === '') return undefined
   switch (id) {
     case 'cordis': return 'creator'
-    case 'ptc': return 'ptc'
-    case 'minimal': return 'minimal'
-    case 'standard': return 'standard'
     default: return 'other'
   }
 }

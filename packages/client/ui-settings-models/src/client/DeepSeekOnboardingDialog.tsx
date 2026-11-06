@@ -18,7 +18,8 @@ import { ProviderEditor } from './ProviderEditor.tsx'
 import type {} from './slot-contract.ts'
 import type { en } from './locales.ts'
 import { OnboardingModal } from './OnboardingModal.tsx'
-import styles from './DeepSeekOnboardingDialog.module.css'
+// WASD Engine: the fork's sheet also styles the key field and buttons of the editor below.
+import styles from './wasdengine-onboarding.module.css'
 
 /** Registration-side dependencies of {@link DeepSeekOnboardingDialog}. */
 export interface DeepSeekOnboardingInjected {
@@ -26,6 +27,8 @@ export interface DeepSeekOnboardingInjected {
   track?: TrackProductEvent
   /** Whether first-run setup should show automatically. Explicit requests remain available. */
   automatic: boolean
+  /** Whether the step offers API key entry; false shows only the sign-in occupant, and absent offers it. */
+  apiKeyEntry?: boolean
   hooks: {
     /** Shared Models-page join state, bound by the slot renderer. */
     models: SnapshotStore<ModelsSettingsState>
@@ -56,8 +59,8 @@ function assertNever(_value: never): never {
  * @returns the onboarding modal or null when onboarding needs no intervention.
  */
 export function DeepSeekOnboardingDialog(props: DeepSeekOnboardingDialogProps): ReactNode {
-  const { complete, controller, useModels, operations, schema, t, renderSlot, automatic, explicit = false } = props
-  const [apiKey, setApiKey] = useState(explicit)
+  const { complete, controller, useModels, operations, schema, t, renderSlot, automatic, explicit = false, apiKeyEntry = true } = props
+  const [apiKey, setApiKey] = useState(explicit && apiKeyEntry)
   const state = useModels(snapshot => snapshot)
   const readiness = onboardingReadiness(state)
 
@@ -133,5 +136,5 @@ export function DeepSeekOnboardingDialog(props: DeepSeekOnboardingDialogProps): 
       </div>
     </OnboardingModal>
   )
-  return apiKey ? editor : renderSlot('settings.models.sign-in', { complete, useApiKey: () => { setApiKey(true) } }, { fallback: editor })
+  return apiKey ? editor : renderSlot('settings.models.sign-in', { complete, useApiKey: () => { setApiKey(apiKeyEntry) } }, { fallback: apiKeyEntry ? editor : null })
 }

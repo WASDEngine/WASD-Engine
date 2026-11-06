@@ -50,7 +50,7 @@ import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashRep
 import { OperationJournal } from './operation-journal.ts'
 import { runOperationReportJob, type OperationReportJobResult } from './operation-report-job.ts'
 import { openWelcomeWindow } from './welcome-window.ts'
-import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
+import { WELCOME_IPC, needsWelcome as needsWelcomeWindow, type WelcomeAuthentication, type WelcomeNotice } from './welcome-api.ts'
 import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
 import { DesktopUpdateJournal } from './update-journal.ts'
 import { DesktopUpdatePreparationError } from './update-error.ts'
@@ -72,6 +72,10 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+
+/** WASD Engine: with the welcome window off, no account state sends sign-in away from the main window. */
+const needsWelcome = (authentication: WelcomeAuthentication): boolean =>
+  WASDENGINE_DESKTOP_BRAND.welcomeWindow && needsWelcomeWindow(authentication)
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -1366,6 +1370,8 @@ async function main(): Promise<void> {
   let openingWelcome: Promise<void> | undefined
   const showWelcome = (): Promise<void> => {
     if (quitting) return Promise.resolve()
+    // WASD Engine: the main window and its Get started dialog take the welcome window's place.
+    if (!WASDENGINE_DESKTOP_BRAND.welcomeWindow) return enterWorkspace()
     if (welcomeWindow !== undefined && !welcomeWindow.isDestroyed()) {
       if (!welcomeWindow.isVisible()) void track('auth_page_view', {})
       welcomeWindow.show()

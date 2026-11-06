@@ -37,7 +37,7 @@ kind: "package-reference"
 
 应用设置并关闭编辑器后，当前提供商、settings 与凭据快照就绪时才显示保存状态。打开任一行的编辑器、添加提供商和打开移除确认都会等待该刷新。新打开的 Models 区域或页面加载失败后的重试会等到 ready 快照后才挂载编辑器。后台刷新期间，只要编辑器仍挂载，已打开的草稿就会保留用户的修改；页面加载失败或提供商被移除可能关闭编辑器。
 
-Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会抑制自动凭证引导和 Web 欢迎须知；模型设置页与显式 API Key 编辑仍然可用。[账号插件](../ui-settings-account/README.zh.md#desktop-onboarding)负责 Desktop 引导。其他原生壳可以通过 `credentialOnboarding: false` 仅禁用凭证步骤，`welcomeNotice: false`（默认 `true`）则移除 Web 欢迎须知。Host 通过 `webserver/index-inject` 发布这些公开的布尔值，Client 在注册弹窗前校验它们。它是页面初始化数据，不是持久化的完成标记。
+Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会抑制 Web 欢迎须知；当 `nativeCredentialOnboarding`（默认 `true`）把凭证步骤交给 Desktop 欢迎窗口时，它也会抑制自动凭证引导，`nativeCredentialOnboarding: false` 则在 Desktop 应用中同样提供该步骤。`apiKeyEntry: false`（默认 `true`）使账号登录成为唯一入口：不注册模型设置分区，引导步骤只显示登录入口，不提供 API Key 编辑器。模型设置页与显式 API Key 编辑仍然可用。[账号插件](../ui-settings-account/README.zh.md#desktop-onboarding)负责 Desktop 引导。其他原生壳可以通过 `credentialOnboarding: false` 仅禁用凭证步骤，`welcomeNotice: false`（默认 `true`）则移除 Web 欢迎须知。Host 通过 `webserver/index-inject` 发布这些公开的布尔值，Client 在注册弹窗前校验它们。它是页面初始化数据，不是持久化的完成标记。
 
 ### API 密钥
 

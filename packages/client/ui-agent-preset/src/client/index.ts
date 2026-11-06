@@ -3,7 +3,7 @@
  * a chip on the new-session screen for the session about to start, a
  * read-only label in the session header, and a settings section that lists
  * the roster (selection, the new-task default, a read-only view of each
- * declared composition, and the way into Creator mode).
+ * declared composition, and the way into Customize mode).
  *
  * A running session keeps the composition it began with (the host switches a
  * session's preset only before its first turn). That is what splits
@@ -72,10 +72,6 @@ export const inject = [
  */
 export function apply(ctx: ClientContext): void {
   const toolsSettings = ctx.configForms.get<{ enabled: boolean }>('ui-settings')
-  const presetSettings = ctx.configForms.get(AGENT_PRESET_SETTINGS_NS)
-  let active = true
-  // Host preferences start at false before their first accepted document.
-  const codingToolsDisabled = (): boolean => active && toolsSettings.getSnapshot().value?.enabled === false
   const controller = new AgentPresetSettingsController(ctx)
   const staged: AgentPresetStage = { id: undefined, introduce: false }
   const seats = new WeakMapWithValues<SessionBinding, AgentPresetSeatController>()
@@ -131,22 +127,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register('settings.agentPreset', { zh, en, ja, es, fr, de, ru, pt }), 'ui-agent-preset: settings row dictionaries')
 
   ctx.effect(() => {
-    let requested = 0
-    let pending: Promise<void> | undefined
-    // Settings invalidations may land while a correction is waiting on a
-    // person's selection. Recheck once that work settles using the latest values.
-    const reconcile = (): void => {
-      requested++
-      pending ??= Promise.resolve().then(async () => {
-        try {
-          for (;;) {
-            const revision = requested
-            await section.reconcileCodingTools(codingToolsDisabled)
-            if (!active || requested === revision) return
-          }
-        } finally { pending = undefined }
-      })
-    }
     // The roster reflects live declarations and the default is a settings field, so
     // both an external settings edit and a reconnect can move this row.
     const refresh = (): void => {
@@ -156,22 +136,16 @@ export function apply(ctx: ClientContext): void {
       if (section.store.getSnapshot().status !== 'idle') void section.load()
       void unboundSeat.load()
       for (const seat of seats.values) void seat.load()
-      reconcile()
     }
     const disposers = [
-      toolsSettings.subscribe(reconcile),
-      presetSettings.subscribe(reconcile),
       ctx.remote.$on('settings/document-updated', (ns) => {
         if (ns !== AGENT_PRESET_SETTINGS_NS) return
         refresh()
       }),
       ctx.on('connection/reset', refresh),
     ]
-    reconcile()
-    return async () => {
-      active = false
+    return () => {
       for (const dispose of disposers) dispose()
-      await pending
     }
   }, 'ui-agent-preset: settings refresh')
 
@@ -270,7 +244,7 @@ export function apply(ctx: ClientContext): void {
   }
 
   const sectionInjected = (): AgentPresetSectionInjected => ({
-    hooks: { agentPresetSection: section.store, developerTools: ctx.configForms.developerTools.enabled },
+    hooks: { agentPresetSection: section.store },
     load: () => section.load(),
     view: (id: string) => section.view(id),
     closeView: () => { section.closeView() },

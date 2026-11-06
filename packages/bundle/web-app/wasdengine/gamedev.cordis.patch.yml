@@ -1,16 +1,15 @@
 # WASDEngine game-development preset (fork-owned; wasdengine/FORK.md lists the
-# fork changes). The `gamedev` declaration repeats every row of
-# presets/standard.patch.yml and differs only in its display fields, the persona
-# prefix, and the bundled skill root on skill-filesystem;
-# tests/wasdengine-overlay.spec.ts fails when the two drift apart, so port
-# upstream changes to `standard` here when merging.
+# fork changes). The fork ships `gamedev` and upstream's `cordis` preset only;
+# upstream-prune.txt deletes the standard, ptc, and minimal presets. `gamedev`
+# is upstream's presets/standard.patch.yml with the persona prefix and the
+# bundled skill root on skill-filesystem, so port upstream changes to `standard`
+# here when merging. Like every shipped preset it publishes no name or
+# description: the built-in copy in ui-agent-preset names it in each language.
 - insert:
     - id: preset-gamedev
       name: '@deepseek-ai/dsh-agent-preset'
       config:
         id: gamedev
-        name: Game developer
-        description: Designs, builds, runs, and debugs games with bundled Godot, Phaser, and game-design skills.
         order: 0
         plugins:
           - id: persona

@@ -218,4 +218,13 @@ describe('WASDEngine Desktop shell copy', () => {
   it('titles the macOS About panel with the upstream attribution', () => {
     expect(BRAND.aboutName).toBe(`${BRAND.productName} (built on DeepSeek Harness)`)
   })
+
+  it('opens the main window instead of the welcome window, whose Get started dialog asks for credentials', () => {
+    expect(BRAND.welcomeWindow).toBe(false)
+    const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8')
+    expect(main).toContain('  WASDENGINE_DESKTOP_BRAND.welcomeWindow && needsWelcomeWindow(authentication)\n')
+    expect(main).toContain('    if (!WASDENGINE_DESKTOP_BRAND.welcomeWindow) return enterWorkspace()\n')
+    const overlay = readFileSync(new URL('../../../packages/bundle/web-app/wasdengine/first-run.cordis.patch.yml', import.meta.url), 'utf8')
+    expect(overlay).toContain('    nativeCredentialOnboarding: false\n')
+  })
 })

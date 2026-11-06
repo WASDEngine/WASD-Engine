@@ -27,6 +27,7 @@ import { ModelsSettingsStore } from './store.ts'
 import { createModelsOperations } from './operations.ts'
 import { createSettingsSchemaOperations } from './schema-operations.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type ModelsKey } from './locales.ts'
+import { brandModelsDictionaries } from './wasdengine-copy.ts'
 import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '../onboarding-copy.ts'
 import { Config, ONBOARDING_CONFIG_GLOBAL } from '../onboarding-config.ts'
 
@@ -79,8 +80,8 @@ export function apply(ctx: ClientContext): void {
   const page = globalThis as Partial<Record<typeof ONBOARDING_CONFIG_GLOBAL, unknown>>
   const payload = page[ONBOARDING_CONFIG_GLOBAL]
   const configured = Config(payload === undefined ? {} : payload)
-  const credentialOnboarding = configured.credentialOnboarding && !('dshDesktop' in globalThis)
-  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-models: copy dictionaries')
+  const credentialOnboarding = configured.credentialOnboarding && !(configured.nativeCredentialOnboarding && 'dshDesktop' in globalThis)
+  ctx.effect(() => ctx.locale.register(NS, brandModelsDictionaries({ zh, en, ja, es, fr, de, ru, pt })), 'ui-settings-models: copy dictionaries')
 
   const schema = createSettingsSchemaOperations(ctx.settingsSchema)
   // Bound once here, where the Remote namespaces are declared in this plugin's
@@ -99,6 +100,7 @@ export function apply(ctx: ClientContext): void {
   })
   const deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
     automatic: credentialOnboarding,
+    apiKeyEntry: configured.apiKeyEntry,
     track: (name, attributes) => ctx.get('productAnalytics')?.track(name, attributes),
     controller,
     hooks: { models: controller.store },
@@ -133,7 +135,7 @@ export function apply(ctx: ClientContext): void {
     }
   }, 'ui-settings-models: pushed invalidations')
 
-  ctx.slots.inject('settings.section', () => ctx.slots.register({
+  if (configured.apiKeyEntry) ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'models',
     order: 10,

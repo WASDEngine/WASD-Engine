@@ -35,9 +35,6 @@
     "lib/index.js",
     "lib/startup.js",
     "cordis.patch.yml",
-    "presets/standard.patch.yml",
-    "presets/ptc.patch.yml",
-    "presets/minimal.patch.yml",
     "presets/cordis.patch.yml",
     "wasdengine/telemetry.cordis.patch.yml",
     "wasdengine/gamedev.cordis.patch.yml",
@@ -51,9 +48,6 @@
     "bundle": {
       "patch": [
         "./cordis.patch.yml",
-        "./presets/standard.patch.yml",
-        "./presets/ptc.patch.yml",
-        "./presets/minimal.patch.yml",
         "./presets/cordis.patch.yml",
         "./wasdengine/telemetry.cordis.patch.yml",
         "./wasdengine/gamedev.cordis.patch.yml",

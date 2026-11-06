@@ -5,8 +5,8 @@
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
  * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
- * for one, and the `gamedev` preset must stay a copy of upstream `standard` apart from its display fields, persona,
- * and bundled skill root.
+ * for one, and the `gamedev` preset must be the default and, beside `cordis`, the only shipped preset, named by the
+ * built-in copy, with its persona and bundled skill root.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -101,7 +101,7 @@ const REPLACED_KEYS: Readonly<Record<string, readonly string[]>> = {
   'llm-deepseek': ['apiKeyEnv'],
 }
 
-/** Rows of the `gamedev` preset whose config differs from `standard`, with the sources declaring the keys it sets. */
+/** Rows of the `gamedev` preset that carry fork config, with the sources declaring the keys it sets. */
 const PRESET_OWN_ROWS: Readonly<Record<string, readonly string[]>> = {
   persona: ['packages/preset/persona/src/index.ts'],
   'skill-filesystem': ['packages/skill/skill-filesystem/src/index.ts'],
@@ -283,19 +283,21 @@ describe('WASDEngine overlay', () => {
     }
   })
 
-  it('opens a Feedback page that the account settings schema accepts', async () => {
+  it('opens a Feedback page that the account settings schema accepts, and offers no API key at sign-in', async () => {
     const config = patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-account')
-    expect(config).toEqual({ contactFormUrl: FEEDBACK_URL })
+    expect(config).toEqual({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false })
     // A URL the schema rejects fails the row's config validation, so the account settings plugin would not start.
     const source = pathToFileURL(join(repoRoot, 'packages/client/ui-settings-account/src/contact-config.ts')).href
     const loaded: unknown = await import(source)
-    const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => { contactFormUrl: string } }
-    expect(ContactConfig(config).contactFormUrl).toBe(FEEDBACK_URL)
+    type Contact = { contactFormUrl: string; apiKeyEntry: boolean }
+    const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => Contact }
+    expect(ContactConfig(config)).toMatchObject({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false })
   })
 
-  it('shows no DeepSeek Harness preview notice on first use', () => {
-    expect(patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-models')).toEqual({ welcomeNotice: false })
-    expect(configOf(row(profile('web').fork.rows, 'ui-settings-models'))).toEqual({ welcomeNotice: false })
+  it('shows no DeepSeek Harness preview notice on first use, asks for sign-in in the Desktop main window, and offers no API key entry', () => {
+    const expected = { apiKeyEntry: false, nativeCredentialOnboarding: false, welcomeNotice: false }
+    expect(patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-models')).toEqual(expected)
+    expect(configOf(row(profile('web').fork.rows, 'ui-settings-models'))).toEqual(expected)
   })
 
   it('creates no first-use default Workspace, so the Create game project dialog asks for a game project', () => {
@@ -448,41 +450,31 @@ describe('WASDEngine origin', () => {
 
 describe('gamedev preset', () => {
   const { fork } = profile('web')
-  const standard = configOf(row(fork.rows, 'preset-standard'))
   const game = configOf(row(fork.rows, 'preset-gamedev'))
-  const standardRows = rowsOf(standard.plugins)
+  const cordis = configOf(row(fork.rows, 'preset-cordis'))
   const gameRows = rowsOf(game.plugins)
   const gameRow = (id: string): Record<string, unknown> => gameRows.find(entry => entry.id === id) ?? {}
-  const standardRow = (id: string): Record<string, unknown> => standardRows.find(entry => entry.id === id) ?? {}
 
-  it('is the deployment default while standard stays available', () => {
+  it('is the deployment default and, beside cordis, the only shipped preset', () => {
     expect(configOf(row(fork.rows, 'agent-preset-registry'))).toEqual({ default: 'gamedev' })
-    expect(row(fork.rows, 'preset-standard')?.name).toBe('@deepseek-ai/dsh-agent-preset')
-    expect(row(fork.rows, 'preset-gamedev')?.name).toBe('@deepseek-ai/dsh-agent-preset')
+    expect(fork.rows.filter(entry => entry.name === '@deepseek-ai/dsh-agent-preset').map(entry => entry.id).sort())
+      .toEqual(['preset-cordis', 'preset-gamedev'])
     expect(game.id).toBe('gamedev')
     expect(game.order).toBeTypeOf('number')
-    expect(Number(game.order)).toBeLessThan(Number(standard.order))
-    for (const key of ['id', 'name', 'description', 'order', 'plugins']) {
+    expect(Number(game.order)).toBeLessThan(Number(cordis.order))
+    for (const key of ['id', 'order', 'plugins']) {
       expect(declaresKey(['packages/preset/agent-preset-registry/src/definition.ts'], key), `preset field ${key}`).toBe(true)
     }
   })
 
-  it('repeats every standard row and differs only in its display fields, persona, and skill root', () => {
-    expect(Object.keys(game).sort()).toEqual([...Object.keys(standard), 'name', 'description'].sort())
-    const shared = (rows: readonly Record<string, unknown>[]) => rows.map((entry) => {
-      if (typeof entry.id !== 'string' || !(entry.id in PRESET_OWN_ROWS)) return entry
-      const { config: _own, ...rest } = entry
-      return rest
-    })
-    expect(shared(gameRows)).toEqual(shared(standardRows))
-    // Own rows keep every key standard sets on them.
+  it('publishes no display fields, so the built-in copy names it, and sets only keys upstream declares', () => {
+    expect(Object.keys(game).sort()).toEqual(['id', 'order', 'plugins'])
+    const display = readFileSync(join(repoRoot, 'packages/preset/agent-preset-registry/src/display.ts'), 'utf8')
+    expect(display).toContain("gamedev: { name: 'presetGamedevName', description: 'presetGamedevDescription' },")
     for (const [id, sources] of Object.entries(PRESET_OWN_ROWS)) {
       const own = configOf(gameRow(id))
+      expect(Object.keys(own).length, `${id} carries fork config`).toBeGreaterThan(0)
       expect(Object.keys(own).every(key => declaresKey(sources, key)), `${id} keys are declared upstream`).toBe(true)
-      for (const [key, value] of Object.entries(configOf(standardRow(id)))) {
-        if (id === 'persona' && key === 'prefix') continue
-        expect(own[key], `${id}.${key} restated`).toEqual(value)
-      }
     }
   })
 
@@ -502,7 +494,7 @@ describe('gamedev preset', () => {
       const file = join(String(root), skill, 'SKILL.md')
       expect(existsSync(file), file).toBe(true)
       const text = readFileSync(file, 'utf8')
-      // The standard preset's tool-result pruner trims longer skill bodies.
+      // The preset's tool-result pruner trims longer skill bodies.
       expect(text.length, `${skill} length`).toBeLessThan(8192)
       expect(text, skill).not.toMatch(/\{\{|\}\}/u)
       const frontmatter = /^---\n([\s\S]*?)\n---\n/u.exec(text)?.[1] ?? ''

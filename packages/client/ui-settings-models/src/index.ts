@@ -16,7 +16,12 @@ export function apply(ctx: Context, config: Config): void {
     table.push({
       kind: 'global',
       name: ONBOARDING_CONFIG_GLOBAL,
-      value: { credentialOnboarding: config.credentialOnboarding, welcomeNotice: config.welcomeNotice },
+      value: {
+        credentialOnboarding: config.credentialOnboarding,
+        nativeCredentialOnboarding: config.nativeCredentialOnboarding,
+        apiKeyEntry: config.apiKeyEntry,
+        welcomeNotice: config.welcomeNotice,
+      },
     })
   })
 }

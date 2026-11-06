@@ -49,3 +49,10 @@ scripts/windows-package-workflow.spec.ts
 # instead, and .claude/skills links to .agents/skills, so a kept copy would
 # still reach agents.
 .agents/skills/dsh-pr-description
+
+# Agent presets the fork does not ship: Game developer (wasdengine/gamedev.cordis.patch.yml)
+# takes the place of Standard, and PTC and Minimal are gone. Port upstream changes to
+# presets/standard.patch.yml into the gamedev preset when merging.
+packages/bundle/web-app/presets/standard.patch.yml
+packages/bundle/web-app/presets/ptc.patch.yml
+packages/bundle/web-app/presets/minimal.patch.yml

@@ -1,7 +1,7 @@
-/** Public contact and bonus notice options shared by Host and Client. */
+/** Public contact, bonus notice, and sign-in options shared by Host and Client. */
 import z from '@deepseek-ai/schemastery'
 
-/** Questionnaire destination and bonus notice timings shared by Host and Client. */
+/** Questionnaire destination, bonus notice timings, and the sign-in choice shared by Host and Client. */
 export interface ContactConfig {
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
@@ -11,6 +11,8 @@ export interface ContactConfig {
   bonusAckRetryDelayMs: number
   /** Ceiling for the acknowledgement retry backoff. */
   bonusAckRetryMaxDelayMs: number
+  /** Offer Add API Key beside Sign in in the sign-in dialog; false leaves account sign-in as the only way in. */
+  apiKeyEntry: boolean
 }
 /** Validate public questionnaire options. */
 export const ContactConfigFields = {
@@ -18,6 +20,7 @@ export const ContactConfigFields = {
   contactSource: z.string().default(''),
   bonusAckRetryDelayMs: z.number().min(1).default(1_000),
   bonusAckRetryMaxDelayMs: z.number().min(1).default(60_000),
+  apiKeyEntry: z.boolean().default(true),
 }
 /** Validate public questionnaire options. */
 export const ContactConfig: z<Partial<ContactConfig>, ContactConfig> = z.object(ContactConfigFields)

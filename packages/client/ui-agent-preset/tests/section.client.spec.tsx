@@ -13,10 +13,9 @@ const translations: ReadonlyMap<string, string> = new Map(Object.entries(en))
 function unusedHook(): never {
   throw new Error('This section does not read global slot sources')
 }
-function view(partial: Partial<AgentPresetSectionState> = {}, startCreatorDraft?: () => void, outerClose?: () => void, enabled = true) {
-  const developerTools = createSnapshotStore(enabled)
+function view(partial: Partial<AgentPresetSectionState> = {}, startCreatorDraft?: () => void, outerClose?: () => void) {
   const store = createSnapshotStore<AgentPresetSectionState>({ status: 'ready', error: null,
-    saving: false, rows: [{ id: 'standard', isDefault: true }, { id: 'mine', name: 'Mine', isDefault: false }],
+    saving: false, rows: [{ id: 'cordis', isDefault: true }, { id: 'mine', name: 'Mine', isDefault: false }],
     view: null, ...partial })
   const actions = { load: vi.fn(async () => {}), view: vi.fn(async () => {}), closeView: vi.fn(), makeDefault: vi.fn(async () => {}),
     close: vi.fn() }
@@ -27,54 +26,31 @@ function view(partial: Partial<AgentPresetSectionState> = {}, startCreatorDraft?
     ...allowAllAccess,
     useContextMenu: contextMenuHook(),
     useAgentPresetSection: bindSnapshotSelector(store),
-    useDeveloperTools: bindSnapshotSelector(developerTools),
     t: key => translations.get(key) ?? key }
   render(outerClose === undefined ? <AgentPresetSection {...props} />
     : <Modal open onClose={outerClose} title="Settings" closeLabel="Close"><AgentPresetSection {...props} /></Modal>)
-  return { ...actions, store, developerTools }
+  return { ...actions, store }
 }
 function rowFor(id: string): HTMLElement {
   const row = document.querySelector<HTMLElement>(`[data-agent-preset-id="${id}"]`)
   if (row === null) throw new Error(`no card for ${id}`)
   return row
 }
-it.each([false, true])('offers Standard, Creator and custom defaults with Coding Tools %s', (enabled) => {
+it('offers Game developer as a built-in preset beside Customize mode and custom defaults', () => {
   const actions = view({ rows: [
-    { id: 'standard', isDefault: false }, { id: 'ptc', isDefault: false },
-    { id: 'minimal', isDefault: true }, { id: 'cordis', isDefault: false },
+    { id: 'gamedev', isDefault: false }, { id: 'cordis', isDefault: true },
     { id: 'mine', name: 'Mine', isDefault: false },
-  ] }, vi.fn(), undefined, enabled)
-  expect(screen.queryByRole('button', { name: `${en.setDefault}: ${en.presetPtcName}` }) !== null).toBe(enabled)
-  expect(screen.queryByRole('button', { name: `${en.inUse}: ${en.presetMinimalName}` }) !== null).toBe(enabled)
-  for (const [id, name] of [['standard', en.presetStandardName], ['cordis', en.presetCordisName], ['mine', 'Mine']]) {
+  ] }, vi.fn())
+  expect(within(rowFor('gamedev')).getByText(en.builtInGroup)).toBeTruthy()
+  expect(within(rowFor('gamedev')).getByText(en.presetGamedevDescription)).toBeTruthy()
+  expect(screen.getByRole('button', { name: `${en.inUse}: ${en.presetCordisName}` })).toBeTruthy()
+  for (const [id, name] of [['gamedev', en.presetGamedevName], ['mine', 'Mine']]) {
     const button = screen.getByRole<HTMLButtonElement>('button', { name: `${en.setDefault}: ${name}` })
     expect(button.disabled).toBe(false)
     fireEvent.click(button)
     expect(actions.makeDefault).toHaveBeenLastCalledWith(id)
   }
   expect(screen.getByRole<HTMLButtonElement>('button', { name: en.creatorDraft }).disabled).toBe(false)
-})
-it('updates visible settings choices without writing defaults from the renderer', () => {
-  const actions = view({ rows: [
-    { id: 'standard', isDefault: false }, { id: 'ptc', isDefault: false },
-    { id: 'minimal', isDefault: true }, { id: 'cordis', isDefault: false },
-  ] })
-  const rows = actions.store.getSnapshot().rows
-  act(() => { actions.developerTools.set(false) })
-  expect(document.querySelector('[data-agent-preset-id="ptc"]')).toBeNull()
-  expect(document.querySelector('[data-agent-preset-id="minimal"]')).toBeNull()
-  expect(rowFor('standard')).toBeTruthy()
-  expect(rowFor('cordis')).toBeTruthy()
-  expect(actions.makeDefault).not.toHaveBeenCalled()
-  expect(actions.store.getSnapshot().rows).toBe(rows)
-  act(() => { actions.developerTools.set(true) })
-  expect(screen.getByRole('button', { name: `${en.inUse}: ${en.presetMinimalName}` })).toBeTruthy()
-  expect(rowFor('ptc')).toBeTruthy()
-})
-it.each(['ptc', 'minimal'])('keeps a named custom %s override selectable with Coding Tools off', (id) => {
-  const actions = view({ rows: [{ id, name: 'My mode', isDefault: false }] }, undefined, undefined, false)
-  fireEvent.click(screen.getByRole('button', { name: `${en.setDefault}: My mode` }))
-  expect(actions.makeDefault).toHaveBeenCalledWith(id)
 })
 it('reads the roster once and sets a default from the card body', async () => {
   const actions = view()
@@ -86,14 +62,14 @@ it('reads the roster once and sets a default from the card body', async () => {
 })
 it('replaces the default preset group tag with its new-task default status', () => {
   view()
-  const standard = rowFor('standard')
-  expect(within(standard).queryByText(en.builtInGroup)).toBeNull()
-  expect(within(standard).getByText(en.inUse)).toBeTruthy()
-  expect(within(standard).queryByText(en.setDefault)).toBeNull()
+  const builtIn = rowFor('cordis')
+  expect(within(builtIn).queryByText(en.builtInGroup)).toBeNull()
+  expect(within(builtIn).getByText(en.inUse)).toBeTruthy()
+  expect(within(builtIn).queryByText(en.setDefault)).toBeNull()
   expect(within(rowFor('mine')).getByText(en.customGroup)).toBeTruthy()
 })
 it('omits an empty group instead of leaving a heading behind', () => {
-  view({ rows: [{ id: 'standard', isDefault: true }] })
+  view({ rows: [{ id: 'cordis', isDefault: true }] })
   expect(screen.getByRole('heading', { name: en.builtInGroup })).toBeTruthy()
   expect(screen.queryByRole('heading', { name: en.customGroup })).toBeNull()
 })
@@ -115,7 +91,7 @@ it('offers no Creator entry without the conversation flow or the cordis preset',
   view({ rows: [{ id: 'cordis', isDefault: true }] })
   expect(screen.queryByRole('button', { name: en.creatorDraft })).toBeNull()
   cleanup()
-  view({}, vi.fn())
+  view({ rows: [{ id: 'gamedev', isDefault: true }] }, vi.fn())
   expect(screen.queryByRole('button', { name: en.creatorDraft })).toBeNull()
 })
 it('disables the Creator entry while a default is being saved', () => {
@@ -127,17 +103,17 @@ it('disables the Creator entry while a default is being saved', () => {
   expect(launch).not.toHaveBeenCalled()
 })
 it('reads a declared composition read-only from every card, broken ones included', () => {
-  const actions = view({ rows: [{ id: 'standard', isDefault: true }, { id: 'broken', isDefault: false, broken: 'Missing plugin' }] })
+  const actions = view({ rows: [{ id: 'cordis', isDefault: true }, { id: 'broken', isDefault: false, broken: 'Missing plugin' }] })
   expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.click(within(rowFor('standard')).getByRole('button', { name: `${en.view}: ${en.presetStandardName}` }))
-  expect(actions.view).toHaveBeenCalledWith('standard')
+  fireEvent.click(within(rowFor('cordis')).getByRole('button', { name: `${en.view}: ${en.presetCordisName}` }))
+  expect(actions.view).toHaveBeenCalledWith('cordis')
   fireEvent.click(within(rowFor('broken')).getByRole('button', { name: `${en.view}: broken` }))
   expect(actions.view).toHaveBeenLastCalledWith('broken')
   expect(actions.makeDefault).not.toHaveBeenCalled()
 })
 it('shows the open composition under the preset display name, without copy, and closes it from the footer', () => {
-  const actions = view({ view: { id: 'standard', title: 'standard', content: '- id: tool-fs\n  name: fs\n' } })
-  const dialog = screen.getByRole('dialog', { name: `${en.view} · ${en.presetStandardName}` })
+  const actions = view({ view: { id: 'cordis', title: 'cordis', content: '- id: tool-fs\n  name: fs\n' } })
+  const dialog = screen.getByRole('dialog', { name: `${en.view} · ${en.presetCordisName}` })
   expect(dialog.querySelector('pre')?.textContent).toBe('- id: tool-fs\n  name: fs\n')
   expect(within(dialog).queryByRole('textbox')).toBeNull()
   expect(dialog.querySelectorAll('p')).toHaveLength(0)
@@ -150,11 +126,11 @@ it('shows the open composition under the preset display name, without copy, and 
 it('keeps Escape inside the composition viewer when Settings is also open', () => {
   const closeSettings = vi.fn()
   const actions = view({}, undefined, closeSettings)
-  const trigger = within(rowFor('standard')).getByRole('button', { name: `${en.view}: ${en.presetStandardName}` })
+  const trigger = within(rowFor('cordis')).getByRole('button', { name: `${en.view}: ${en.presetCordisName}` })
   trigger.focus()
   fireEvent.click(trigger)
-  act(() => { actions.store.set({ ...actions.store.getSnapshot(), view: { id: 'standard', title: 'standard', content: '[]\n' } }) })
-  const dialog = screen.getByRole('dialog', { name: `${en.view} · ${en.presetStandardName}` })
+  act(() => { actions.store.set({ ...actions.store.getSnapshot(), view: { id: 'cordis', title: 'cordis', content: '[]\n' } }) })
+  const dialog = screen.getByRole('dialog', { name: `${en.view} · ${en.presetCordisName}` })
   const [header, footer] = within(dialog).getAllByRole('button', { name: en.close })
   expect(document.activeElement).toBe(footer)
   fireEvent.keyDown(footer!, { key: 'Tab' })
@@ -168,7 +144,7 @@ it('keeps Escape inside the composition viewer when Settings is also open', () =
   expect(document.activeElement).toBe(trigger)
 })
 it('clears an open viewer when the settings section unmounts', () => {
-  const actions = view({ view: { id: 'standard', title: 'standard', content: '[]\n' } })
+  const actions = view({ view: { id: 'cordis', title: 'cordis', content: '[]\n' } })
   cleanup()
   expect(actions.closeView).toHaveBeenCalledOnce()
 })
@@ -190,9 +166,6 @@ it('keeps a broken card focusable for diagnostics and refuses to select it', () 
   expect(actions.makeDefault).not.toHaveBeenCalled()
 })
 it.each([
-  ['standard', en.presetStandardName, 'How it works', 'Fix a bug'],
-  ['ptc', en.presetPtcName, 'How tools are called', 'Check a set of configuration files'],
-  ['minimal', en.presetMinimalName, 'What is included', 'Compare performance on a small bug fix'],
   ['cordis', en.presetCordisName, 'What you can create', 'Add a UI'],
 ])('opens both help sections for %s without changing the default', (id, name, heading, exampleTitle) => {
   const actions = view({ rows: [{ id, isDefault: false }] })
@@ -217,10 +190,10 @@ it.each([
 it('keeps keyboard focus in help and dismisses only the reader on Escape', () => {
   const closeSettings = vi.fn()
   const actions = view({}, undefined, closeSettings)
-  const trigger = within(rowFor('standard')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetStandardName}` })
+  const trigger = within(rowFor('cordis')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetCordisName}` })
   trigger.focus()
   fireEvent.click(trigger)
-  const dialog = screen.getByRole('dialog', { name: en.presetStandardName })
+  const dialog = screen.getByRole('dialog', { name: en.presetCordisName })
   const details = within(dialog).getByRole('tab', { name: en.modeExplanation })
   const panel = within(dialog).getByRole('tabpanel', { name: en.modeExplanation })
   const close = within(dialog).getByRole('button', { name: en.close })
@@ -232,7 +205,7 @@ it('keeps keyboard focus in help and dismisses only the reader on Escape', () =>
   fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })
   expect(document.activeElement).toBe(panel)
   fireEvent.keyDown(panel, { key: 'Escape' })
-  expect(screen.queryByRole('dialog', { name: en.presetStandardName })).toBeNull()
+  expect(screen.queryByRole('dialog', { name: en.presetCordisName })).toBeNull()
   expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy()
   expect(document.activeElement).toBe(trigger)
   expect(closeSettings).not.toHaveBeenCalled()
@@ -240,7 +213,7 @@ it('keeps keyboard focus in help and dismisses only the reader on Escape', () =>
 })
 it('connects keyboard selection to the visible guide panel', () => {
   view()
-  fireEvent.click(within(rowFor('standard')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetStandardName}` }))
+  fireEvent.click(within(rowFor('cordis')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetCordisName}` }))
   const dialog = screen.getByRole('dialog')
   const details = within(dialog).getByRole('tab', { name: en.modeExplanation })
   const usage = within(dialog).getByRole('tab', { name: en.howToUse })
@@ -256,14 +229,14 @@ it('connects keyboard selection to the visible guide panel', () => {
   expect(within(dialog).queryByRole('tabpanel', { name: en.modeExplanation })).toBeNull()
 })
 it('does not attach built-in claims to named or unknown presets', () => {
-  view({ rows: [{ id: 'ptc', name: 'My PTC', isDefault: false }, { id: 'third-party', isDefault: false }] })
+  view({ rows: [{ id: 'gamedev', name: 'My game preset', isDefault: false }, { id: 'third-party', isDefault: false }] })
   expect(screen.queryByRole('button', { name: new RegExp(en.modeExplanation) })).toBeNull()
   expect(screen.queryByRole('button', { name: new RegExp(en.howToUse) })).toBeNull()
 })
 it('leaves help usable while a default is being saved', () => {
   const actions = view({ saving: true })
-  fireEvent.click(within(rowFor('standard')).getByRole('button', { name: `${en.howToUse}: ${en.presetStandardName}` }))
-  expect(screen.getByRole('dialog', { name: en.presetStandardName })).toBeTruthy()
+  fireEvent.click(within(rowFor('cordis')).getByRole('button', { name: `${en.howToUse}: ${en.presetCordisName}` }))
+  expect(screen.getByRole('dialog', { name: en.presetCordisName })).toBeTruthy()
   expect(actions.makeDefault).not.toHaveBeenCalled()
 })
 it('closes help even when the browser reports no previously focused element', () => {
@@ -276,7 +249,7 @@ it('closes help even when the browser reports no previously focused element', ()
   })
   try {
     view()
-    fireEvent.click(within(rowFor('standard')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetStandardName}` }))
+    fireEvent.click(within(rowFor('cordis')).getByRole('button', { name: `${en.modeExplanation}: ${en.presetCordisName}` }))
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.close }))
     expect(screen.queryByRole('dialog')).toBeNull()
   } finally {

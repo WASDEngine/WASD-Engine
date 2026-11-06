@@ -22,7 +22,7 @@ export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'
 export function AccountMenu({
   subscribeSessionExpired, subscribeModelSignInRequired, wide, settingsShortcut, openSettings, openOnboarding, settingsOpen,
   useAccount, useTheme, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
-  contactUs, showLogin, start, cancel, avatarFailed, t,
+  contactUs, showLogin, start, cancel, avatarFailed, apiKeyEntry, t,
 }: AccountMenuProps) {
   const anchor = useRef<HTMLDivElement>(null)
   // The launcher outlives the panel, so a false-to-true edge is one Settings entry:
@@ -87,7 +87,8 @@ export function AccountMenu({
       }} />
     {account.loginVisible && !account.onboarding && <SignInDialog account={account} colorScheme={colorScheme}
       start={start} cancel={cancel} t={t}
-      close={() => { showLogin(false) }} useApiKey={() => { showLogin(false); openOnboarding('deepseek-official') }} />}
+      close={() => { showLogin(false) }}
+      useApiKey={apiKeyEntry === false ? undefined : () => { showLogin(false); openOnboarding('deepseek-official') }} />}
     {signedIn && signOutImpact !== undefined && <SignOutDialog running={signOutImpact} signOut={signOut}
       close={() => { setSignOutImpact(undefined) }} t={t} />}
   </div>

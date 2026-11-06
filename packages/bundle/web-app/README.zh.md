@@ -42,13 +42,11 @@ dsh --profile web --no-open --port 8080
 
 启动后你会看到 `dsh web:` 行，其根 URL 携带新的进程 token。除非 `--no-open` 或 SSH 会话抑制，否则默认浏览器会打开该 URL、取得签名 cookie，再重定向到不含认证参数的同一目录。页面加载且你可以与 agent 对话，就说明成功了。两种可预期的失败：前端未构建时，启动会以构建提示停止（checkout 中运行 `pnpm run build`）；浏览器无法打开时，stderr 会打印不含凭据的诊断，但服务器会继续运行——请自行打开已打印的启动 URL。
 
-**设置 → 模型**显示 **DeepSeek**，使用 `DEEPSEEK_API_KEY`。默认模型为 `deepseek-official` / `deepseek-flash`（DeepSeek-V4.1-Flash）。[DeepSeek 插件](../../llm/llm-deepseek/README.zh.md#endpoint-and-wire-format)使用 Messages API。
+WASDEngine 覆盖层 `wasdengine/first-run.cordis.patch.yml` 移除**设置 → 模型**与 API Key 步骤（`apiKeyEntry: false`），因此账号登录是 Web UI 唯一要求的凭据；API Key 路由从启动环境读取 `WASDENGINE_API_KEY`。默认模型为 `deepseek-official` / `deepseek-flash`（DeepSeek-V4.1-Flash）。[DeepSeek 插件](../../llm/llm-deepseek/README.zh.md#endpoint-and-wire-format)使用 Messages API。
 
-已保存的模型选择覆盖组合默认值。设置卡接受兼容 Messages 的 API 地址与凭据引用。
+已保存的模型选择覆盖组合默认值。开启 API Key 输入时，**设置 → 模型**显示 **DeepSeek**，其设置卡接受兼容 Messages 的 API 地址与凭据引用。
 
 ### 配置
-
-`minimal` agent preset 使用持久 Shell、`read_image` 工具和固定 persona，支持自动历史压缩以及会话空闲时的 `/compact` 命令。它复用 Host token meter，并拥有隔离的压缩后端。[压缩配置与保留策略](../../compaction/compaction-basic/README.zh.md#use-this-package) 沿用现有后端。图片读取复用 Host 文件系统和附件存储，要求模型支持图片输入；不加载文本读取、写入和编辑工具。
 
 `--host` 与 `--port` 配置监听器；`--tls-cert` 与 `--tls-key` 让它直接提供 HTTPS；`--public-url` 指定 GUI 在剥离前缀的代理之后对外公告的公开 HTTP(S) 根，`--trusted-host` 则添加更多被接受的 authority。这些都在[监听、信任与公开部署](#public-deployments)中说明，而这些 flag 设置的 `tls` 字段记录在[载体的配置](../../../docs/subsystems/web-server.zh.md#config)中：
 
@@ -59,7 +57,7 @@ dsh --profile web --no-open --port 8080
 | `surfaceContext` | `true` | 把 `DSH_WEB_URL` 暴露给 agent 的 shell 命令 |
 | `publicUrl` | 未设置 | 对外公告的 HTTP(S) 应用根；否则公告绑定地址 URL |
 
-生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)列出了本运行时插件接受的字段及其 JSDoc。随发行版交付的组合插入 `schedule` 服务行与 `ui-schedule` 任务页面行，时钟读数与四个提醒工具则属于 `standard`、`cordis` 与 `ptc` 三个 preset。这三个 preset 的 `tool-subagent` 与 `tool-subagent-fork` 两行都 deny 这四个工具，因此被委派子 agent 的作用域不会列出它们。
+生成的[配置目录](../../../docs/config-catalog.zh.md#deepseek-aidsh-web-app)列出了本运行时插件接受的字段及其 JSDoc。随发行版交付的组合插入 `schedule` 服务行与 `ui-schedule` 任务页面行，时钟读数与四个提醒工具则属于 `cordis` preset 与 WASDEngine 的 `gamedev` preset。这两个 preset 的 `tool-subagent` 与 `tool-subagent-fork` 两行都 deny 这四个工具，因此被委派子 agent 的作用域不会列出它们。
 
 <a id="public-deployments"></a>
 ### 监听、信任与公开部署
@@ -90,7 +88,7 @@ dsh --profile web --no-open --host "$(hostname -i | awk '{print $1}')" --public-
 
 ### 按会话的 agent 设置
 
-每个浏览器会话选择一个随发行版交付的 preset（默认 `standard`）。Agent 预设设置页可更改默认项并编辑预设的子插件；保存结果持久化到 `$DSH_HOME/profiles/web/cordis.patch.yml`。只有 Host 提供可编辑的 profile 时，标准模式和 Creator 才会启用插件管理工具。
+每个浏览器会话选择一个随发行版交付的 preset（默认 `gamedev`，即「游戏开发者」）。Agent 预设设置页可更改默认项并编辑预设的子插件；保存结果持久化到 `$DSH_HOME/profiles/web/cordis.patch.yml`。只有 Host 提供可编辑的 profile 时，「游戏开发者」和自定义模式才会启用插件管理工具。
 
 -----
 
@@ -122,7 +120,7 @@ URL 行与浏览器交接都是就绪信号：监督方一观察到该行就发�
 | [`src/public-url.ts`](src/public-url.ts) | 公告根的校验与尾斜杠归一化；供本地导入的叶子模块，不属于包 API |
 | [`src/startup.ts`](src/startup.ts) | `web-startup` 提供方：`--host`、`--port`、`--tls-cert`、`--tls-key`、`--public-url`、`--trusted-host`、`--no-open`、`--help` |
 | [`cordis.patch.yml`](cordis.patch.yml) | Web patch：重述的基础值、Web 宿主行、浏览器名录、preset 注册表 |
-| [`presets/`](presets) | 每个随发行版交付的 preset（`standard`、`ptc`、`minimal`、`cordis`）各一条 `@deepseek-ai/dsh-agent-preset` 声明，各自一个补丁文件 |
+| [`presets/`](presets) | 随发行版交付的 `cordis` preset 的 `@deepseek-ai/dsh-agent-preset` 声明；WASDEngine 的 `gamedev` preset 位于 [`wasdengine/`](wasdengine) |
 | [`tests/web-app.spec.ts`](tests/web-app.spec.ts) | dist index 锚定、公告 URL 发布与警告、bash 变量、就绪宣告发布 |
 | [`tests/startup.spec.ts`](tests/startup.spec.ts) | 在真实 Loader 树上的命令行解析 |
 | [`tests/public-url.spec.ts`](tests/public-url.spec.ts) | 公告根的解析与归一化 |

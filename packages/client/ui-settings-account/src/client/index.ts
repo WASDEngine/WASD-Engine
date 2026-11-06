@@ -197,6 +197,7 @@ export function apply(ctx: Context): void {
     })
   const operations: AccountSectionInjected = {
     avatarFailed: (value) => { avatar.failed(value) },
+    apiKeyEntry: config.apiKeyEntry,
     subscribeSessionExpired: listener => ctx.remote.$on('deepseek-account/session-expired', listener),
     subscribeModelSignInRequired: listener => ctx.remote.$on('deepseek-account/model-sign-in-required', listener),
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },

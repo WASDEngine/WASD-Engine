@@ -12,7 +12,7 @@
  * Picking stages; the choice reaches a session when one becomes current.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import {
@@ -22,7 +22,6 @@ import {
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { AgentPresetSeatState } from './seat-store.ts'
 import { presetDisplayText } from './locales.ts'
-import { requiresCodingTools } from './settings-store.ts'
 import css from './AgentPresetSeat.module.css'
 
 /** Registration-side business face for the hero chip. */
@@ -102,10 +101,7 @@ export function AgentPresetSeat({
     void load()
   }, [load])
 
-  const options = useMemo(
-    () => state.options.filter(option => developerTools || !requiresCodingTools(option)),
-    [state.options, developerTools],
-  )
+  const options = state.options
 
   useEffect(() => {
     setOpen(false)

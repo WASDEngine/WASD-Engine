@@ -41,18 +41,15 @@ WASDENGINE_ORIGIN=http://127.0.0.1:8000 pnpm dsh web
 
 The Desktop app reads `WASDENGINE_ORIGIN` from its launch environment first and from the `.env` file of the harness home (`~/.wasdengine/.env` unless `DSH_HOME` points elsewhere) second. On macOS that launch environment includes the variables your login shell exports, for example from `~/.zshrc` or `~/.zprofile`, even when the app starts from the Finder; on Windows, an app started from the Start menu sees your user and system environment variables but not variables set in a terminal. To point the Desktop app at another deployment, put the line `WASDENGINE_ORIGIN=http://127.0.0.1:8000` in that `.env` file, and remove any `WASDENGINE_ORIGIN` export from your shell startup files or your Windows environment variables, because those take precedence over the file. A `.env` file in a project directory cannot set it, so a cloned repository cannot redirect your WASDEngine credentials. Origins other than `localhost`, `127.0.0.1`, and `[::1]` must use HTTPS.
 
-Sign in with either credential:
+The Web UI and the Desktop app sign in with a WASDEngine account and ask for no other credential: choose **Sign in** in the Get started dialog or in the account menu at the bottom of the sidebar. The harness opens the WASDEngine sign-in page in your browser and stores the resulting token locally. Profiles that use the same harness home share the stored sign-in.
 
-- **WASDEngine account.** Choose **Sign in** in Settings → Account, or on the first-run screen. The harness opens the WASDEngine sign-in page in your browser and stores the resulting token locally.
-- **WASDEngine API token.** Paste the token as the API key of the DeepSeek provider on the Settings → Models page, or export it as `WASDENGINE_API_KEY`.
-
-Profiles that use the same harness home share the stored sign-in and API token. `dsh acp` sends model requests with the API token. An SDK client selects the route in its `initialize` request: provider `deepseek-account` uses the sign-in, and `deepseek-official` uses the API token. `dsh --profile headless` and `dsh --profile sdk-minimal` keep no credential store, so they read the token from the `WASDENGINE_API_KEY` environment variable.
+Scripts and SDK clients can use a WASDEngine API token instead: create one on the account page and export it as `WASDENGINE_API_KEY` in the environment that starts the harness. `dsh acp` sends model requests with the API token. An SDK client selects the route in its `initialize` request: provider `deepseek-account` uses the sign-in, and `deepseek-official` uses the API token. `dsh --profile headless` and `dsh --profile sdk-minimal` keep no credential store, so they read the token from the `WASDENGINE_API_KEY` environment variable.
 
 ## Interface text that names DeepSeek
 
 Some interface text inherited from DeepSeek Harness still names DeepSeek, although sign-in, model, and search requests go to the WASDEngine service:
 
-- The Models page and the model menu, which call the provider DeepSeek and the sign-in route DeepSeek Account.
+- The model menu, which calls the provider DeepSeek and the sign-in route DeepSeek Account.
 - The web search providers DeepSeek Search API, DeepSeek Fetch API, and DeepSeek (legacy), the Session log option "Help improve DeepSeek models and products", the plugin installation warning, and chat errors about the account sign-in.
 - The `dsh` command help and the Windows installer messages.
 

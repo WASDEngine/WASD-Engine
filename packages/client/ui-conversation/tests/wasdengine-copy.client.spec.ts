@@ -1,7 +1,7 @@
 /**
  * WASDEngine fork guard for the `conversation` copy: the hero shows WASD Engine's headline and its
- * Workspace picker names a game project in every language, and the upstream dictionaries stay as
- * upstream ships them.
+ * Workspace picker names a game project in every language, no message names DSH, and the upstream
+ * dictionaries stay as upstream ships them.
  */
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
@@ -36,6 +36,16 @@ it.each(Object.keys(dictionaries))('shows the WASD Engine headline and names gam
   }
   expect(branded['hero.headline']).toBe(WASDENGINE_CONVERSATION_COPY[language]!['hero.headline'])
   expect(branded['hero.headline']).not.toBe(dictionaries[language]['hero.headline'])
+})
+
+it.each(Object.keys(dictionaries))('names WASD Engine instead of DSH in %s', (id) => {
+  const language = id as keyof typeof dictionaries
+  const branded = brandConversationDictionaries(dictionaries)[language]
+  for (const [key, message] of Object.entries(branded)) expect(message, key).not.toMatch(/\bDSH\b/u)
+  // The session-in-use error replaces upstream's DSH product name and keeps the `dsh web` command.
+  expect(dictionaries[language]['error.sessionInUse']).toMatch(/\bDSH\b/u)
+  expect(branded['error.sessionInUse']).toContain('WASD Engine')
+  expect(branded['error.sessionInUse']).toContain('dsh')
 })
 
 it('leaves the upstream dictionaries unchanged and refuses copy that no longer matches them', () => {

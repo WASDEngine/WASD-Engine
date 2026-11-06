@@ -1,0 +1,150 @@
+/* WASD Engine onboarding steps (fork-owned; wasdengine/FORK.md lists the fork changes). OnboardingModal and
+   DeepSeekOnboardingDialog import this sheet in place of their own, so it styles every class they use, in the look
+   of the sign-in dialog (wasdengine-sign-in.module.css of ui-settings-account): a glass card over the blurred app,
+   the brand kit logo, Montserrat copy, a roomy key field, and full-width buttons with the main action first. */
+.dialog {
+  --onboarding-glass: rgba(255, 255, 255, 0.7);
+  --onboarding-glow: rgba(124, 77, 255, 0.1);
+  --onboarding-highlight: rgba(255, 255, 255, 0.8);
+  --onboarding-edge: rgba(15, 17, 21, 0.08);
+  --onboarding-field: rgba(255, 255, 255, 0.6);
+  --onboarding-secondary: rgba(15, 17, 21, 0.04);
+  --onboarding-secondary-hover: rgba(15, 17, 21, 0.08);
+  --onboarding-focus: #7c4dff;
+  --onboarding-shadow: rgba(15, 17, 21, 0.18);
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 100%;
+  border: 1px solid var(--onboarding-edge);
+  border-radius: 24px;
+  /* Frosted glass with a soft glow of the keycap purple, lit along its top edge. */
+  background:
+    radial-gradient(120% 70% at 50% 0%, var(--onboarding-glow), transparent 70%),
+    var(--onboarding-glass);
+  backdrop-filter: blur(32px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--onboarding-highlight), 0 24px 64px var(--onboarding-shadow);
+  user-select: none;
+}
+
+:global(body[data-ds-dark-theme]) .dialog {
+  --onboarding-glass: rgba(30, 31, 35, 0.6);
+  --onboarding-glow: rgba(124, 77, 255, 0.2);
+  --onboarding-highlight: rgba(255, 255, 255, 0.1);
+  --onboarding-edge: rgba(255, 255, 255, 0.1);
+  --onboarding-field: rgba(0, 0, 0, 0.22);
+  --onboarding-secondary: rgba(255, 255, 255, 0.06);
+  --onboarding-secondary-hover: rgba(255, 255, 255, 0.1);
+  --onboarding-focus: #a585ff;
+  --onboarding-shadow: rgba(0, 0, 0, 0.45);
+}
+
+/* The card's own column: the Modal primitive's card adds bottom padding of its own. */
+[role='dialog'].dialog {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+}
+
+.content {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 0;
+  padding: 44px 36px 36px;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.lockup {
+  display: block;
+  flex: none;
+  width: 224px;
+  height: auto;
+  color: var(--dsw-alias-label-primary);
+}
+
+.title {
+  margin: 22px 0 0;
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-family-brand);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 32px;
+  outline: none;
+}
+
+.body {
+  align-self: stretch;
+  margin-top: 8px;
+}
+
+.description {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-family-brand);
+  font-size: 15px;
+  font-weight: 300;
+  line-height: 24px;
+}
+
+/* ProviderEditor in credential-only mode: its field label, the key input, and EditorFooter, the last element of its
+   block, whose first button cancels and whose second saves. */
+.editor {
+  margin-top: 24px;
+  text-align: left;
+}
+
+.editor input {
+  height: 44px;
+  padding-left: 14px;
+  border: 1px solid var(--onboarding-edge);
+  border-radius: 12px;
+  background: var(--onboarding-field);
+}
+
+.editor input:focus { border-color: var(--onboarding-focus); }
+
+.editor > div > :last-child {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.editor > div > :last-child > button {
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  border: 0;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.editor > div > :last-child > button:last-child {
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.editor > div > :last-child > button:first-child {
+  background: var(--onboarding-secondary);
+  box-shadow: inset 0 0 0 1px var(--onboarding-edge);
+  color: var(--dsw-alias-label-primary);
+}
+
+@media (hover: hover) {
+  .editor > div > :last-child > button:last-child:hover:not(:disabled) { background: var(--dsw-alias-button-primary-hover); }
+
+  .editor > div > :last-child > button:first-child:hover:not(:disabled) { background: var(--onboarding-secondary-hover); }
+}
+
+.editor > div > :last-child > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

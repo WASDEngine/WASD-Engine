@@ -16,6 +16,10 @@
 
 # The Feedback item opens this page with the account id, harness version, and
 # device description as URL parameters; the upstream row sets no other config.
+# A patch replaces the row's whole config, so the row also carries the sign-in
+# choice of first-run.cordis.patch.yml: account sign-in is the only way in, and
+# the sign-in dialog offers no Add API Key.
 - id: ui-settings-account
   config:
     contactFormUrl: https://github.com/WASDEngine/WASDEngine/issues/new
+    apiKeyEntry: false

@@ -5,7 +5,9 @@ import type { AccountSnapshot } from './AccountSection.tsx'
 import type { SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { AccountKey } from './locales.ts'
 import { authorizeUrlWithTheme } from './authorize-url.ts'
-import css from './SignInDialog.module.css'
+// WASD Engine: the fork's sheet styles every class below in the look of the welcome window.
+import css from './wasdengine-sign-in.module.css'
+import { WasdengineSignInBrand } from './wasdengine-sign-in.tsx'
 
 /** @param props - safe account state, localized copy, and user actions. @returns login dialog. */
 export function SignInDialog({ account, colorScheme, start, cancel, close, useApiKey, t }: {
@@ -15,7 +17,8 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
   start: () => Promise<void>
   cancel: (id: SignInAttemptId) => Promise<void>
   close: () => void
-  useApiKey: () => void
+  /** Switch to API key entry; absent, the dialog offers sign-in only. */
+  useApiKey?: (() => void) | undefined
   t: (key: AccountKey) => string
 }) {
   const [busy, setBusy] = useState(false)
@@ -37,6 +40,7 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
   const failureKey = !localFailure
     && phase === 'failed' && attempt?.errorCode === 'no-response' ? 'noResponse' : 'failed'
   const waiting = active && !error
+  const welcome = !active && !error && !expired
   const committing = phase === 'committing'
   useEffect(() => { if (account.view?.status === 'credential-stored') close() }, [account.view?.status, close])
   const run = async (action: () => Promise<void>) => {
@@ -61,7 +65,8 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
   }
   const title = error ? t('failureTitle') : active ? t('browserTitle') : expired ? t('timeoutTitle') : t('loginTitle')
   return <Modal open headless title={title} onClose={dismiss} className={css.dialog as string}>
-    <div className={css.content}>
+    <div className={css.content} data-welcome={welcome || undefined}>
+      <WasdengineSignInBrand welcome={welcome} t={t} />
       <div className={css.header}>
         <h2 className={css.title}>{title}</h2>
         <button type="button" className={css.close} aria-label={t('close')} onClick={dismiss}>
@@ -78,8 +83,8 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
       </p>}
     </div>
     <div className={css.actions}>
-      <Button variant="outline" className={css.secondaryButton} disabled={committing || busy}
-        onClick={active ? dismiss : useApiKey}>{t(active ? 'cancel' : 'addApiKey')}</Button>
+      {active || useApiKey !== undefined ? <Button variant="outline" className={css.secondaryButton} disabled={committing || busy}
+        onClick={active ? dismiss : useApiKey}>{t(active ? 'cancel' : 'addApiKey')}</Button> : null}
       <Button variant="primary" className={css.primaryButton} disabled={busy || committing || waiting || account.view === undefined}
         aria-label={waiting ? t('waiting') : undefined} onClick={() => { void run(retry) }}>
         {waiting ? <IconLoadingOutlineRegular className={css.spinner} /> : t(expired || error ? 'retry' : 'signIn')}

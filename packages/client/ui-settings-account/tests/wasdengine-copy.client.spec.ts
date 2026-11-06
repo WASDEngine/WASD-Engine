@@ -39,7 +39,7 @@ describe('WASD Engine account copy', () => {
 
   it('refuses copy for a message the dictionaries do not have', () => {
     expect(() => brandAccountDictionaries({ en: { onboardingBrand: 'DeepSeek Harness' } }))
-      .toThrow('WASD Engine account copy: en has no message onboardingIntroduction')
+      .toThrow('WASD Engine account copy: en has no message loginDescription')
   })
 
   it('registers the branded dictionaries for the account namespace', () => {
