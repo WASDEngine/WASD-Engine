@@ -174,3 +174,41 @@ export type WorkspaceFollowIncrement =
 export type WorkspaceFollowFrame =
   | { readonly type: 'baseline'; readonly value: WorkspaceBaseline }
   | WorkspaceFollowIncrement
+
+// WASD Engine game projects (fork-owned block; `wasdengine/FORK.md` lists the fork changes).
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** The game project name is not one folder name every desktop system accepts. */
+    'gameProject/invalid-name': { readonly name: string }
+    /** The location is not a fully qualified directory path. */
+    'gameProject/invalid-directory': { readonly path: string }
+    /** A file or folder already uses the project's path. */
+    'gameProject/exists': { readonly path: string }
+    /** The Host could not create the folder or register it. */
+    'gameProject/create-failed': { readonly path: string }
+  }
+}
+
+/** Where the Create game project dialog starts, and whether first use waits for a game project. */
+export interface GameProjectDefaults {
+  /** Suggested parent folder, `<Documents>/WASD Engine`, or null when the Host cannot find Documents. */
+  readonly directory: string | null
+  /** Whether the Host skips the first-use default Workspace, so the Client asks for a game project. */
+  readonly required: boolean
+}
+
+/** A new game project folder to create and register. */
+export interface GameProjectCreateRequest {
+  /** Folder name and Workspace title. */
+  readonly name: string
+  /** Fully qualified parent folder; created when missing. */
+  readonly directory: string
+}
+
+/** The registered game project. */
+export interface GameProjectCreateValue {
+  readonly workspace: WorkspaceView
+  /** Whether the folder holds a Git repository with one commit, which worktrees need. */
+  readonly git: boolean
+}

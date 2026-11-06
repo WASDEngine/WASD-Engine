@@ -9,6 +9,7 @@ import { WorkspaceCommands } from './commands.ts'
 import { DirectoryPickerController } from './directory-picker.ts'
 import { WorkspaceFeed, workspaceView } from './feed.ts'
 import { defaultWorkspaceDirectory, validateDocumentsDirectory } from './default-directory.ts'
+import { GameProjectController } from './wasdengine-game-project.ts'
 import type {
   WorkspaceArchiveSessionRequest,
   WorkspaceArchiveValue,
@@ -32,6 +33,7 @@ import type {
 
 export type * from './types.ts'
 export { DirectoryPickerController } from './directory-picker.ts'
+export { GameProjectController } from './wasdengine-game-project.ts'
 
 /** First-use directory policy for the Host account. */
 export interface Config {
@@ -39,10 +41,12 @@ export interface Config {
   documentsDirectory?: string
   /** Maximum duration of the operating system's Documents lookup. */
   documentsLookupTimeoutMs?: number
+  /** Create the first-use default Workspace; false leaves first use to the Client. */
+  defaultWorkspace?: boolean
 }
 
 /** Directory policy after schema defaults have been applied. */
-type ResolvedConfig = Config & { documentsLookupTimeoutMs: number }
+type ResolvedConfig = Config & { documentsLookupTimeoutMs: number; defaultWorkspace: boolean }
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -58,6 +62,7 @@ export class WorkspaceController extends TypertRemoteService {
   static Config: z<Config, ResolvedConfig> = z.object({
     documentsDirectory: z.string(),
     documentsLookupTimeoutMs: z.natural().min(1).default(10_000),
+    defaultWorkspace: z.boolean().default(true),
   })
 
   private readonly config: ResolvedConfig
@@ -80,6 +85,11 @@ export class WorkspaceController extends TypertRemoteService {
     // stays pending until a picking backend is composed, so a host without one
     // registers no picking namespace instead of answering an unservable verb.
     ctx.plugin(DirectoryPickerController)
+    ctx.plugin(GameProjectController, {
+      documentsDirectory: this.config.documentsDirectory,
+      documentsLookupTimeoutMs: this.config.documentsLookupTimeoutMs,
+      required: !this.config.defaultWorkspace,
+    })
   }
 
   /**
@@ -98,10 +108,12 @@ export class WorkspaceController extends TypertRemoteService {
    * existing default; its initial title is that same name, which browser
    * consumers label in the reader's language.
    * @param signal - caller lifetime; cancels native directory lookup.
-   * @returns the durable Workspace, or undefined when first-use initialization is ineligible; creates no Session or message.
+   * @returns the durable Workspace, or undefined when first-use initialization is ineligible
+   * or `defaultWorkspace` is false; creates no Session or message.
    */
   @Remote('initializeDefault')
   async initializeDefault(signal: AbortSignal): Promise<WorkspaceValue | undefined> {
+    if (!this.config.defaultWorkspace) return undefined
     const workspace = await this.ctx.workspaceRegistry.initializeDefault(async () => {
       const timeout = AbortSignal.timeout(this.config.documentsLookupTimeoutMs)
       return await defaultWorkspaceDirectory(

@@ -148,8 +148,13 @@
   white-space: nowrap;
 }
 
+/* WASD Engine: the active game project's folder takes the purple of the keycap mark. */
 .folderActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: #7C4DFF;
+}
+
+:global(body[data-ds-dark-theme]) .folderActive {
+  color: #A585FF;
 }
 
 

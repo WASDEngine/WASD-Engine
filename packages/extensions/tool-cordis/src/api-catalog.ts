@@ -1583,6 +1583,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gameProjectController',
+    summary: 'Host service backing the generated `ctx.remote.gameProject` namespace.',
+    description: 'Host service backing the generated `ctx.remote.gameProject` namespace.',
+    methods: [
+      {
+        signature: '@Remote(\'defaults\') async defaults(signal: AbortSignal): Promise<GameProjectDefaults>',
+        description: 'Read where the Create game project dialog starts.',
+        parameters: [{ name: 'signal', description: 'caller lifetime; cancels the Documents lookup.' }],
+        returns: 'the suggested parent folder, null when the Documents lookup fails, and whether first use waits for a game project.',
+      },
+      {
+        signature: '@Remote(\'create\') async create(request: GameProjectCreateRequest, signal: AbortSignal): Promise<GameProjectCreateValue>',
+        description: 'Create a game project folder, give it a Git repository with one empty commit when Git is available, and register it as a Workspace titled with the folder name. A Git failure leaves the folder without a repository instead of failing the creation. Cancellation stops a running Git command; a created folder is still registered.',
+        parameters: [{ name: 'request', description: 'folder name and fully qualified parent folder.' }, { name: 'signal', description: 'caller lifetime.' }],
+        returns: 'the registered Workspace and whether it holds a repository.',
+        throws: ['`gameProject/invalid-name` for a name that is not one portable folder name; `gameProject/invalid-directory` for a parent that is not fully qualified; `gameProject/exists` when the path is taken; `gameProject/create-failed` when the Host cannot create the parent or the folder, or cannot register it.'],
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -4519,7 +4539,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote(\'initializeDefault\') async initializeDefault(signal: AbortSignal): Promise<WorkspaceValue | undefined>',
         description: 'Initialize or reuse the default Workspace during first-use startup. The directory name is fixed, so the Host never renames or relocates an existing default; its initial title is that same name, which browser consumers label in the reader\'s language.',
         parameters: [{ name: 'signal', description: 'caller lifetime; cancels native directory lookup.' }],
-        returns: 'the durable Workspace, or undefined when first-use initialization is ineligible; creates no Session or message.',
+        returns: 'the durable Workspace, or undefined when first-use initialization is ineligible or `defaultWorkspace` is false; creates no Session or message.',
       },
       {
         signature: '@Remote(\'rename\') rename(request: WorkspaceRenameRequest): Promise<WorkspaceValue>',
@@ -6618,6 +6638,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'GameProjectCreateRequest',
+    declaration: 'export interface GameProjectCreateRequest {\n    readonly name: string;\n    readonly directory: string;\n}',
+  },
+  {
+    name: 'GameProjectCreateValue',
+    declaration: 'export interface GameProjectCreateValue {\n    readonly workspace: WorkspaceView;\n    readonly git: boolean;\n}',
+  },
+  {
+    name: 'GameProjectDefaults',
+    declaration: 'export interface GameProjectDefaults {\n    readonly directory: string | null;\n    readonly required: boolean;\n}',
   },
   {
     name: 'GenerateOptions',

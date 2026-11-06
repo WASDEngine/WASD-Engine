@@ -21,11 +21,11 @@ async function difference(left: Buffer, right: Buffer): Promise<number> {
 }
 
 describe('WASDEngine web install icons', () => {
-  it('fills the install tile edge to edge with the Desktop tile gradient and keeps the keycap glyph', async () => {
+  it('fills the install tile edge to edge with the Desktop tile color and keeps the keycap glyph', async () => {
     const source = await readFile(WASDENGINE_TILE_SOURCE, 'utf8')
     const tile = wasdengineTileDocument(source)
     expect(tile).toMatch(/^<svg width="1024" height="1024" viewBox="40 32 1024 1024" /u)
-    expect(tile).toContain('<rect x="40" y="32" width="1024" height="1024" fill="url(#tile)"/>')
+    expect(tile).toContain('<rect x="40" y="32" width="1024" height="1024" fill="#FFFFFF"/>')
     expect(tile).not.toContain('url(#tile-shadow)')
     expect(tile).not.toMatch(/translate\(-40 -32\)/u)
     expect(tile).toContain(source.match(/<defs>[\s\S]*<\/defs>/u)![0])
@@ -40,6 +40,8 @@ describe('WASDEngine web install icons', () => {
     expect(() => wasdengineTileDocument('<svg><g transform="translate(-40 -32)"></g></svg>')).toThrow(/no shadowed tile group/u)
     expect(() => wasdengineMaskableDocument('<svg><g transform="translate(-40 -32)"><g filter="url(#tile-shadow)"></g></g></svg>'))
       .toThrow(/no tray-glyph group/u)
+    expect(() => wasdengineTileDocument('<svg><g transform="translate(-40 -32)"><g filter="url(#tile-shadow)"><rect/></g><g id="tray-glyph"></g></g></svg>'))
+      .toThrow(/tile has no fill/u)
   })
 
   it('ships every upstream install variant as a current render of the keycap tile', async () => {

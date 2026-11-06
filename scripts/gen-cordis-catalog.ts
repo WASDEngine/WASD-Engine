@@ -159,6 +159,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   workspaceChanges: 'deliverables.md',
   terminalController: 'workspace.md',
   directoryPickerController: 'workspace.md',
+  gameProjectController: 'workspace.md',
 }
 
 /**
@@ -1093,6 +1094,9 @@ export const TYPE_LINK_EXEMPTIONS: Readonly<Record<string, string>> = {
   WorkflowAgentEndInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowAgentInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
   WorkflowResultInfo: 'event-local snapshot is owned by packages/workflow/workflow/src/index.ts',
+  GameProjectDefaults: 'WASD Engine game project Remote contract is owned by wasdengine/FORK.md',
+  GameProjectCreateRequest: 'WASD Engine game project Remote contract is owned by wasdengine/FORK.md',
+  GameProjectCreateValue: 'WASD Engine game project Remote contract is owned by wasdengine/FORK.md',
   WorkspaceFileScope: 'Host workspace file lookup contract is owned by packages/api/workspace-files/README.md',
   WorkspaceByteReadOptions: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',
   WorkspaceByteRange: 'Host workspace file endpoint contract is owned by packages/api/workspace-files/README.md',

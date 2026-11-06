@@ -12,7 +12,8 @@
     "src/default-workspace.ts",
     "src/directory-picker.ts",
     "src/feed.ts",
-    "src/default-directory.ts"
+    "src/default-directory.ts",
+    "src/wasdengine-game-project.ts"
   ],
   "references": [
     { "path": "../../../vendor/cordis" },

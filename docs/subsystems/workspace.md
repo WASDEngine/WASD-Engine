@@ -228,6 +228,38 @@ Host service backing the generated `ctx.remote.directoryPicker` namespace. The s
 
 Source: [`packages/api/workspace-controller/src/directory-picker.ts`](../../packages/api/workspace-controller/src/directory-picker.ts)
 
+<a id="ctxgameprojectcontroller--gameprojectcontroller"></a>
+
+### `ctx.gameProjectController` — `GameProjectController`
+
+Host service backing the generated `ctx.remote.gameProject` namespace.
+
+```ts cordis-catalog
+/**
+ * Read where the Create game project dialog starts.
+ * @param signal - caller lifetime; cancels the Documents lookup.
+ * @returns the suggested parent folder, null when the Documents lookup fails, and whether first use waits for a game project.
+ */
+@Remote('defaults') async defaults(signal: AbortSignal): Promise<GameProjectDefaults>
+
+/**
+ * Create a game project folder, give it a Git repository with one empty commit when Git
+ * is available, and register it as a Workspace titled with the folder name. A Git failure
+ * leaves the folder without a repository instead of failing the creation. Cancellation
+ * stops a running Git command; a created folder is still registered.
+ * @param request - folder name and fully qualified parent folder.
+ * @param signal - caller lifetime.
+ * @returns the registered Workspace and whether it holds a repository.
+ * @throws `gameProject/invalid-name` for a name that is not one portable folder name;
+ * `gameProject/invalid-directory` for a parent that is not fully qualified;
+ * `gameProject/exists` when the path is taken; `gameProject/create-failed` when the Host
+ * cannot create the parent or the folder, or cannot register it.
+ */
+@Remote('create') async create(request: GameProjectCreateRequest, signal: AbortSignal): Promise<GameProjectCreateValue>
+```
+
+Source: [`packages/api/workspace-controller/src/wasdengine-game-project.ts`](../../packages/api/workspace-controller/src/wasdengine-game-project.ts)
+
 <a id="ctxterminalcontroller--terminalcontroller"></a>
 
 ### `ctx.terminalController` — `TerminalController`
@@ -326,7 +358,8 @@ Host service backing the generated `ctx.remote.workspace` namespace.
  * existing default; its initial title is that same name, which browser
  * consumers label in the reader's language.
  * @param signal - caller lifetime; cancels native directory lookup.
- * @returns the durable Workspace, or undefined when first-use initialization is ineligible; creates no Session or message.
+ * @returns the durable Workspace, or undefined when first-use initialization is ineligible
+ * or `defaultWorkspace` is false; creates no Session or message.
  */
 @Remote('initializeDefault') async initializeDefault(signal: AbortSignal): Promise<WorkspaceValue | undefined>
 

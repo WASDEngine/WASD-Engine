@@ -141,9 +141,12 @@ describe('WASDEngine Desktop packaging identity', () => {
       expect(pngSize(readFileSync(wasdengineBrandFile(icon)))).toEqual([WASDENGINE_ICON_EDGE, WASDENGINE_ICON_EDGE])
     }
     expect(unpackIco(readFileSync(wasdengineBrandFile(BRAND.icons.tray))).map(entry => entry.size)).toEqual([...TRAY_ICON_SIZES])
+    // The welcome page reserves 472 x 40 for the WASD Engine logo; its wordmark follows the color scheme.
     const wordmark = readFileSync(new URL('../renderer/assets/welcome-brand.svg', import.meta.url), 'utf8')
-    expect(wordmark).toContain(`>${BRAND.productName}</text>`)
+    expect(wordmark).toContain(`<title>${BRAND.productName}</title>`)
     expect(wordmark).toContain('viewBox="0 0 472 40"')
+    expect(wordmark).toContain('fill="var(--wasdengine-wordmark)"')
+    expect(wordmark).toMatch(/@media \(prefers-color-scheme: dark\)/u)
   })
 
   it('renders the home atlas at the frame geometry of the ui-brand-official renderer', async () => {

@@ -404,7 +404,10 @@
   border: none;
   border-radius: 999px;
   corner-shape: round;
-  background: var(--dsw-alias-button-info-fill);
+  /* WASD Engine: the purple pair of the keycap mark instead of the info blue pair. */
+  --wasdengine-send-fill: #7C4DFF;
+  --wasdengine-send-hover: #A585FF;
+  background: var(--wasdengine-send-fill);
   /* Static white, not the foreground token: the arrow stays white on the blue
      fill in both themes (design 34:10465). */
   color: #fff;
@@ -416,6 +419,11 @@
   transform: translateY(-2px);
 }
 
+:global(body[data-ds-dark-theme]) .primary {
+  --wasdengine-send-fill: #A585FF;
+  --wasdengine-send-hover: #7C4DFF;
+}
+
 /* Solid artwork uses a smaller footprint than the thin send arrow. */
 .continueIcon {
   transform: scale(1.5);
@@ -423,7 +431,7 @@
 
 @media (hover: hover) {
   .primary:hover:not(:disabled) {
-    background: var(--dsw-alias-button-info-hover);
+    background: var(--wasdengine-send-hover);
   }
 }
 

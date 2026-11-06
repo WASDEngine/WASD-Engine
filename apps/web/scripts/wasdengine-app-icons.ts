@@ -3,7 +3,7 @@
  * `wasdengine/FORK.md` lists the fork changes).
  *
  * The icons draw the keycap glyph of the Desktop icon source
- * (`apps/desktop/wasdengine/icon-windows.svg`) on that source's tile gradient.
+ * (`apps/desktop/wasdengine/icon-windows.svg`) on that source's tile color.
  * Every variant fills its whole square with the tile, without the Desktop
  * icon's rounded corners, rim, and drop shadow, because a launcher masks the
  * icon itself; the maskable variant also scales the glyph about the tile centre
@@ -24,7 +24,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { APP_ICON_VARIANTS, ICON_OUTPUT_DIRECTORY, MASKABLE_ARTWORK_SCALE } from './render-app-icons.ts'
 import type { AppIconVariant } from './render-app-icons.ts'
 
-/** Desktop icon source whose tile gradient and keycap glyph the install icons draw. */
+/** Desktop icon source whose tile color and keycap glyph the install icons draw. */
 export const WASDENGINE_TILE_SOURCE = fileURLToPath(new URL('../../desktop/wasdengine/icon-windows.svg', import.meta.url))
 
 /** The source's tile frame: a 1024-unit square at (40, 32), which a placement group maps onto the Desktop canvas. */
@@ -36,8 +36,11 @@ const SOURCE_ROOT = /^<svg[^>]*>/u
 /** The group placing the tile frame on the Desktop canvas; an install icon is the frame itself. */
 const TILE_PLACEMENT = /<g transform="[^"]*translate\(-40 -32\)">/u
 
-/** The Desktop tile with its rounded corners, rim, and drop shadow. */
+/** The Desktop tile with its rounded corners and drop shadow. */
 const DESKTOP_TILE = /<g filter="url\(#tile-shadow\)">[\s\S]*?<\/g>/u
+
+/** The paint of the Desktop tile's rounded square, which the install tile fills edge to edge with. */
+const TILE_FILL = /<g filter="url\(#tile-shadow\)">\s*<rect [^>]*fill="([^"]+)"/u
 
 /** The keycap glyph group; the only element a maskable icon scales. */
 const GLYPH_GROUP = '<g id="tray-glyph"'
@@ -48,7 +51,7 @@ const RENDER_SCALE = 4
 /** Density at which the source's own 1:1 scale renders. */
 const SOURCE_DENSITY = 72
 
-/** Rewrite the source so the icon canvas is exactly the tile frame, filled edge to edge by the tile gradient. */
+/** Rewrite the source so the icon canvas is exactly the tile frame, filled edge to edge by the tile paint. */
 function reframe(source: string): string {
   const trimmed = source.trim()
   const root = SOURCE_ROOT.exec(trimmed)
@@ -56,7 +59,9 @@ function reframe(source: string): string {
   if (!TILE_PLACEMENT.test(trimmed)) throw new Error('wasdengine app icons: the icon source has no tile placement group')
   if (!DESKTOP_TILE.test(trimmed)) throw new Error('wasdengine app icons: the icon source has no shadowed tile group')
   if (!trimmed.includes(GLYPH_GROUP)) throw new Error('wasdengine app icons: the icon source has no tray-glyph group')
-  const square = `<rect x="${String(TILE.x)}" y="${String(TILE.y)}" width="${String(TILE.edge)}" height="${String(TILE.edge)}" fill="url(#tile)"/>`
+  const fill = TILE_FILL.exec(trimmed)?.[1]
+  if (fill === undefined) throw new Error('wasdengine app icons: the icon source tile has no fill')
+  const square = `<rect x="${String(TILE.x)}" y="${String(TILE.y)}" width="${String(TILE.edge)}" height="${String(TILE.edge)}" fill="${fill}"/>`
   return `<svg width="${String(TILE.edge)}" height="${String(TILE.edge)}"`
     + ` viewBox="${String(TILE.x)} ${String(TILE.y)} ${String(TILE.edge)} ${String(TILE.edge)}" fill="none" xmlns="http://www.w3.org/2000/svg">`
     + trimmed.slice(root[0].length).replace(TILE_PLACEMENT, '<g>').replace(DESKTOP_TILE, square)
@@ -65,7 +70,7 @@ function reframe(source: string): string {
 /**
  * Rewrite the icon source into the install tile.
  * @param source - complete `icon-windows.svg` document.
- * @returns an SVG document whose 1024-unit square is the tile gradient with the keycap glyph.
+ * @returns an SVG document whose 1024-unit square is the tile paint with the keycap glyph.
  */
 export function wasdengineTileDocument(source: string): string {
   return reframe(source)

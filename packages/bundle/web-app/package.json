@@ -41,6 +41,7 @@
     "presets/cordis.patch.yml",
     "wasdengine/telemetry.cordis.patch.yml",
     "wasdengine/gamedev.cordis.patch.yml",
+    "wasdengine/first-run.cordis.patch.yml",
     "lib/public-url-*.js",
     "wasdengine/skills",
     "lib/types/**/*.d.ts"
@@ -55,7 +56,8 @@
         "./presets/minimal.patch.yml",
         "./presets/cordis.patch.yml",
         "./wasdengine/telemetry.cordis.patch.yml",
-        "./wasdengine/gamedev.cordis.patch.yml"
+        "./wasdengine/gamedev.cordis.patch.yml",
+        "./wasdengine/first-run.cordis.patch.yml"
       ]
     }
   },

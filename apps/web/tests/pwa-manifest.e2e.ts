@@ -28,8 +28,8 @@ async function pixels(page: Page, url: string, size: number) {
     for (let y = 0; y < size; y += 1) {
       for (let x = 0; x < size; x += 1) {
         const at = (y * size + x) * 4
-        // Ink is the light keycap artwork on the dark tile.
-        if (data[at + 3] === 0 || data[at]! + data[at + 1]! + data[at + 2]! < 384) continue
+        // Ink is the dark keycap artwork on the white tile.
+        if (data[at + 3] === 0 || data[at]! + data[at + 1]! + data[at + 2]! >= 384) continue
         ink += 1
         radius = Math.max(radius, Math.hypot(x - (size - 1) / 2, y - (size - 1) / 2))
       }
@@ -118,10 +118,12 @@ it('ships fixed-color favicons selected by document media queries', async () => 
   expect(index).toContain('<link rel="icon" type="image/svg+xml" href="./favicon.svg" media="(prefers-color-scheme: light)" />')
   const light = await readFile(join(DIST_ROOT, 'favicon.svg'), 'utf8')
   const dark = await readFile(join(DIST_ROOT, 'favicon-dark.svg'), 'utf8')
+  // The WASDEngine favicons draw the colored keycaps; only the light one adds their drop shadow.
+  const shadow = /<path d="[^"]+" fill="#2B3A55" fill-opacity="0\.16"\/>\n/gu
   expect(light).not.toContain('<style>')
-  expect(light).toContain('fill="#000"')
-  expect(dark).toContain('fill="#fff"')
-  expect(dark.replace('fill="#fff"', 'fill="#000"')).toBe(light)
+  expect(light.match(shadow)).toHaveLength(4)
+  expect(dark).not.toContain('fill="#2B3A55"')
+  expect(light.replace(shadow, '')).toBe(dark)
 })
 
 it('preserves fractional coverage along the Apple icon curves', async () => {

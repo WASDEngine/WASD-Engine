@@ -1,37 +1,51 @@
 /**
- * WASDEngine brand occupants (fork-owned; `wasdengine/FORK.md` lists the fork changes): the WASD
- * keycap mark in the sidebar and blank-home hero brand-mark slots, in every build profile.
+ * WASDEngine brand occupants (fork-owned; `wasdengine/FORK.md` lists the fork changes): the WASD Engine
+ * keycap symbol in the sidebar and blank-home hero brand-mark slots, in every build profile.
  */
-import { useId } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { HeroBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 
+/** Brand colors of the keycap parts: the raised W key, the A, S, and D keys, and the ink outlines. */
+export const WASDENGINE_KEY_TONES = {
+  highlight: { top: '#A585FF', side: '#8E63FF', front: '#6338D9', ink: '#17181D' },
+  plain: { top: '#FFFFFF', side: '#EDEFF2', front: '#D2D6DD', ink: '#17181D' },
+} as const
+
 /**
- * Keycaps in the mark's user space, W first: each is a 250-unit rounded square at the origin
- * the Desktop icon sources (`apps/desktop/wasdengine/icon-*.svg`) give its key group, and its
- * letter is that source's `glyph-<key>` stroke in a 100-unit glyph box.
+ * One keycap of the brand symbol in its own 225-unit frame, back to front. The Desktop icon
+ * sources (`apps/desktop/wasdengine/icon-*.svg`) and the Web favicons draw the same paths and
+ * colors; on a light ground they add a drop shadow beneath each keycap, which the mark omits.
  */
-const KEYS = [
-  { key: 'w', x: 427, y: 280, letter: 'M8 18 L28 84 L50 34 L72 84 L92 18' },
-  { key: 'a', x: 149, y: 558, letter: 'M14 86 L50 14 L86 86 M29 58 L71 58' },
-  { key: 's', x: 427, y: 558, letter: 'M80 26 C76 16 64 12 50 12 C34 12 22 20 22 32 C22 46 36 50 50 52 C66 54 80 58 80 72 C80 84 68 90 50 90 C34 90 22 84 18 74' },
-  { key: 'd', x: 705, y: 558, letter: 'M22 14 L22 86 L44 86 C70 86 84 70 84 50 C84 30 70 14 44 14 Z' },
+export const WASDENGINE_KEYCAP = [
+  { part: 'body', tone: 'side', d: 'M36 0H189A36 36 0 0 1 225 36V189A36 36 0 0 1 189 225H36A36 36 0 0 1 0 189V36A36 36 0 0 1 36 0Z' },
+  { part: 'topEdge', tone: 'ink', d: 'M10.5525 10.5525A36 36 0 0 1 36 0H189A36 36 0 0 1 214.4475 10.5525L184.6575 17.8425L40.3425 17.8425Z' },
+  { part: 'leftSide', tone: 'side', d: 'M10.5525 214.4475A36 36 0 0 1 0 189V36A36 36 0 0 1 10.5525 10.5525L40.3425 17.8425L40.3425 157.6575Z' },
+  { part: 'rightSide', tone: 'side', d: 'M214.4475 10.5525A36 36 0 0 1 225 36V189A36 36 0 0 1 214.4475 214.4475L184.6575 157.6575L184.6575 17.8425Z' },
+  { part: 'front', tone: 'front', d: 'M214.4475 214.4475A36 36 0 0 1 189 225H36A36 36 0 0 1 10.5525 214.4475L40.3425 157.6575L184.6575 157.6575Z' },
+  { part: 'top', tone: 'top', d: 'M56.25 11.25H168.75A22.5 22.5 0 0 1 191.25 33.75V141.75A22.5 22.5 0 0 1 168.75 164.25H56.25A22.5 22.5 0 0 1 33.75 141.75V33.75A22.5 22.5 0 0 1 56.25 11.25Z' },
+  { part: 'outline', tone: 'ink', d: 'M36 -7.875H189A43.875 43.875 0 0 1 232.875 36V189A43.875 43.875 0 0 1 189 232.875H36A43.875 43.875 0 0 1 -7.875 189V36A43.875 43.875 0 0 1 36 -7.875ZM36 7.875A28.125 28.125 0 0 0 7.875 36V189A28.125 28.125 0 0 0 36 217.125H189A28.125 28.125 0 0 0 217.125 189V36A28.125 28.125 0 0 0 189 7.875ZM56.25 3.375H168.75A30.375 30.375 0 0 1 199.125 33.75V141.75A30.375 30.375 0 0 1 168.75 172.125H56.25A30.375 30.375 0 0 1 25.875 141.75V33.75A30.375 30.375 0 0 1 56.25 3.375ZM56.25 19.125A14.625 14.625 0 0 0 41.625 33.75V141.75A14.625 14.625 0 0 0 56.25 156.375H168.75A14.625 14.625 0 0 0 183.375 141.75V33.75A14.625 14.625 0 0 0 168.75 19.125ZM3.5775 210.8025L33.3675 154.0125L47.3175 161.325L17.5275 218.115ZM207.4725 218.115L177.6825 161.325L191.6325 154.0125L221.4225 210.8025ZM12.42 2.9025L42.21 10.1925L38.475 25.4925L8.6625 18.2025ZM216.3375 18.2025L186.525 25.4925L182.79 10.1925L212.58 2.9025Z' },
 ] as const
 
-/** The keycap cluster's bounds in user units; the rendered height keeps this aspect ratio. */
-const BOUNDS = { x: 149, y: 280, width: 806, height: 528 } as const
+/** Keycap origins in the 1024-unit frame of the Desktop icon sources, W first. */
+export const WASDENGINE_KEYS = [
+  { key: 'w', x: 445, y: 292, tone: 'highlight' },
+  { key: 'a', x: 184, y: 553, tone: 'plain' },
+  { key: 's', x: 445, y: 553, tone: 'plain' },
+  { key: 'd', x: 706, y: 553, tone: 'plain' },
+] as const
+
+/** The keycaps' bounds with their outlines, in icon-frame units; the rendered height keeps this aspect ratio. */
+const BOUNDS = { x: 176.125, y: 284.125, width: 762.75, height: 501.75 } as const
 
 /**
- * Render the WASD keycap mark in the host's current ink, letters cut out of the keycaps.
+ * Render the WASD Engine keycap symbol in its brand colors.
  * @param props.size - rendered width in pixels.
  * @param props.className - host class that keeps the surrounding mark geometry.
  * @returns the decorative mark svg.
  */
 export function WasdengineMark({ size, className }: HeroBrandMarkOwnerProps) {
-  // One mask per instance: the sidebar and the hero can mount several marks at once.
-  const mask = `wasdengine-mark-${useId().replaceAll(':', '')}`
   return (
     <svg
       width={size}
@@ -41,17 +55,11 @@ export function WasdengineMark({ size, className }: HeroBrandMarkOwnerProps) {
       fill="none"
       aria-hidden="true"
     >
-      <mask id={mask} maskUnits="userSpaceOnUse" x={BOUNDS.x} y={BOUNDS.y} width={BOUNDS.width} height={BOUNDS.height}>
-        <rect x={BOUNDS.x} y={BOUNDS.y} width={BOUNDS.width} height={BOUNDS.height} fill="white" />
-        <g stroke="black" strokeWidth={16} strokeLinecap="round" strokeLinejoin="round">
-          {KEYS.map(({ key, x, y, letter }) => (
-            <path key={key} transform={`translate(${x + 60} ${y + 47}) scale(1.3)`} d={letter} />
-          ))}
+      {WASDENGINE_KEYS.map(({ key, x, y, tone }) => (
+        <g key={key} transform={`translate(${x} ${y})`}>
+          {WASDENGINE_KEYCAP.map(({ part, tone: paint, d }) => <path key={part} d={d} fill={WASDENGINE_KEY_TONES[tone][paint]} />)}
         </g>
-      </mask>
-      <g mask={`url(#${mask})`} fill="currentColor">
-        {KEYS.map(({ key, x, y }) => <rect key={key} x={x} y={y} width={250} height={250} rx={48} />)}
-      </g>
+      ))}
     </svg>
   )
 }

@@ -48,6 +48,8 @@ export interface WorkspacePickFlowProps {
   onBusyChange?: (busy: boolean) => void
   /** Only offer the add action, hide existing workspaces. */
   addOnly?: boolean
+  /** WASD Engine: take the add action instead of the directory flow; false keeps the flow. */
+  onAddRequest?: (() => boolean) | undefined
   /** Menu opening direction relative to the anchor. */
   side?: 'bottom' | 'top' | 'right'
   /** Currently active workspace (trailing check in the picker list). */
@@ -70,6 +72,7 @@ export function WorkspacePickFlow({
   onPick,
   onClose,
   addOnly = false,
+  onAddRequest,
   onBusyChange,
   side = 'bottom',
   selectedId,
@@ -166,6 +169,10 @@ export function WorkspacePickFlow({
     setModalError(null)
     setFlowOpen(true)
   }, [onClose])
+  const startAdd = useCallback((): void => {
+    if (onAddRequest?.() === true) onClose()
+    else openDirectoryFlow()
+  }, [onAddRequest, onClose, openDirectoryFlow])
 
   // A menu exists to disambiguate between targets. With no workspaces listed
   // and the add action the only entry left, the anchor gesture IS that action:
@@ -180,8 +187,8 @@ export function WorkspacePickFlow({
   // `flowBusy` gates this exactly as it disables the equivalent menu entry: a
   // pick still being adopted owns the surface until it settles.
   useEffect(() => {
-    if (open && addIsTheOnlyEntry && !flowBusy) openDirectoryFlow()
-  }, [open, addIsTheOnlyEntry, flowBusy, openDirectoryFlow])
+    if (open && addIsTheOnlyEntry && !flowBusy) startAdd()
+  }, [open, addIsTheOnlyEntry, flowBusy, startAdd])
 
   /** Owner side of the flow conversation: adopt keeps the flow open (busy) until the Host answers. */
   const flowOwner: DirectoryFlowOwnerProps = {
@@ -201,7 +208,7 @@ export function WorkspacePickFlow({
 
   const handleSelect = (id: string): void => {
     if (id === ADD_WORKSPACE) {
-      openDirectoryFlow()
+      startAdd()
       return
     }
     onPick(id as WorkspaceId)
@@ -257,6 +264,7 @@ export function WorkspacePicker({
   onPick,
   onClose,
   createWorkspace,
+  requestAddWorkspace,
   useDirectoryFlow,
   renderSlot,
   t,
@@ -271,6 +279,7 @@ export function WorkspacePicker({
       useDirectoryFlow={useDirectoryFlow}
       renderDirectoryFlow={owner => renderSlot('conversation.hero.workspace.directoryFlow', owner)}
       selectedId={selectedId}
+      onAddRequest={requestAddWorkspace}
       onPick={onPick}
       onClose={onClose}
     />

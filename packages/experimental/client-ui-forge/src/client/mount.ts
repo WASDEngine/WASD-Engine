@@ -35,6 +35,7 @@ import {
 import { numberOf } from './status.ts'
 import { WorktreeProgress, type WorktreeProgressInjected } from './WorktreeProgress.tsx'
 import { WorktreeToggle, type WorktreeToggleInjected } from './WorktreeToggle.tsx'
+import { registerWorktreeDefault } from './wasdengine-worktree-default.tsx'
 
 /** Services required before the Remote contribution mounts. */
 export const inject = ['remote', 'slots', 'locale', 'sidebarRightTabs', 'sidebarRight', 'sessions']
@@ -307,6 +308,8 @@ function registerUi(ctx: Context): void {
   ctx.slots.inject('conversation.hero.options', () => ctx.slots.register({
     name: 'conversation.hero.options', id: 'forge-panel.worktree', locale: NS, inject: worktreeFace,
   }, WorktreeToggle))
+  // WASD Engine: a new Session in a game project that has other Sessions starts in its own worktree.
+  registerWorktreeDefault(ctx, worktreeFace)
   ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock', id: 'forge-panel.worktree', order: 5, locale: NS, inject: progressFace,
   }, WorktreeProgress))

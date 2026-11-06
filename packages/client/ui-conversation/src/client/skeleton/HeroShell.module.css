@@ -60,6 +60,8 @@
 }
 
 .previewBadge {
+  /* WASD Engine: the headline shows no Preview badge. */
+  display: none;
   align-self: flex-start;
   margin-top: 2px;
   padding: 1px 7px 0;

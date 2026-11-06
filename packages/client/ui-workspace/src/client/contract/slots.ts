@@ -515,6 +515,8 @@ export type WorkspaceBrowserProps =
 export type WorkspacePickerInjected = DirectoryPickingInjected & {
   /** Adopt a picked host directory as a real Workspace before targeting a Session. */
   createWorkspace: (input: { path: string }) => Promise<WorkspaceView>
+  /** WASD Engine: open the Create game project dialog instead of the directory flow; false keeps the flow. */
+  requestAddWorkspace?: () => boolean
 }
 
 /**

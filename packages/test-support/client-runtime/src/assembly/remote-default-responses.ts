@@ -15,6 +15,9 @@ export const remoteDefaultResponses: RemoteTable = {
     'session/list': ok({ items: [] }),
     // ui-workspace startup with no entries; first-use initialization is ineligible.
     'workspace/initializeDefault': ok(undefined),
+    // ui-workspace Create game project dialog (WASD Engine) at apply and on `connection/reset`:
+    // a Host that keeps the first-use default Workspace, so the dialog stays closed.
+    'gameProject/defaults': ok({ directory: null, required: false }),
     // ui-settings `mirror.ensure()` at apply and again on `connection/reset`.
     'settings/describe': ok({ writable: true, hasDocument: false, namespaces: [] }),
     // ui-model-selection `ModelDirectoryResolver` constructor.

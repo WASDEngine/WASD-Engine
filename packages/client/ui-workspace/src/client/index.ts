@@ -58,6 +58,8 @@ import { RowActionToast } from './session-actions/RowActionToast.tsx'
 import { registerToasts } from './toast/register.ts'
 import { WorkspacePicker } from './WorkspacePicker.tsx'
 import { en, ja, es, fr, de, ru, pt, zh, type WorkspaceKey } from './locales.ts'
+import { brandWorkspaceDictionaries } from './wasdengine/copy.ts'
+import { applyGameProjects } from './wasdengine/game-project.tsx'
 
 export type { StartSessionOptions, UiWorkspace } from './navigation.ts'
 export type {
@@ -133,7 +135,7 @@ export function apply(ctx: Context): void {
         : ctx.remoteAccess.source('workspace', workspaceId, action),
     },
   })
-  ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-workspace: dictionaries')
+  ctx.effect(() => ctx.locale.register(NS, brandWorkspaceDictionaries({ zh, en, ja, es, fr, de, ru, pt })), 'ui-workspace: dictionaries')
   const shortcutControls = createWorkspaceShortcutControls()
 
   const searchSessions: WorkspaceBrowserInjected['searchSessions'] = async (query, signal) => {
@@ -154,6 +156,16 @@ export function apply(ctx: Context): void {
     subscribe: listener => ctx.on('connection/reset', listener),
   }
   const pickerFlowSource = flowSource('conversation.hero.workspace.directoryFlow')
+  // WASD Engine: New game project opens the Create game project dialog while the Host serves game projects.
+  const gameProjects = applyGameProjects(ctx, {
+    workspaces,
+    startSession: (workspaceId, options) => { uiWorkspace.startSession(workspaceId, options) },
+    shortcuts: { state: shortcutControls.state, add: shortcutControls.add },
+    directoryFlow: browserFlowSource,
+  })
+  const requestAddWorkspace = (): void => {
+    if (!gameProjects.request()) shortcutControls.add()
+  }
   const openSession: WorkspaceBrowserInjected['open'] = (sessionId) => {
     uiWorkspace.openSession(sessionId)
   }
@@ -212,7 +224,7 @@ export function apply(ctx: Context): void {
     },
     unarchiveSession,
   })
-  installWorkspaceShortcuts(ctx, uiWorkspace, shortcutControls, archiveInjected().archiveSession,
+  installWorkspaceShortcuts(ctx, uiWorkspace, { ...shortcutControls, add: requestAddWorkspace }, archiveInjected().archiveSession,
     (reason) => { notify({ kind: 'shortcutForkFailed', reason }) })
   const archiveConfirmInjected = (): SessionArchiveConfirmInjected => ({
     hooks: { archiveRequest },
@@ -305,7 +317,7 @@ export function apply(ctx: Context): void {
     unarchiveSession: async (sessionId) => { await uiWorkspace.unarchiveSession(sessionId) },
     createWorkspace: input => workspaces.create(input),
     requestSearch: shortcutControls.search,
-    requestAddWorkspace: shortcutControls.add,
+    requestAddWorkspace,
     closeAddWorkspace: shortcutControls.closeAdd,
     setDirectoryBusy: shortcutControls.directoryBusy,
     hooks: { workspaceActionRequest, contextMenuTarget: ctx.contextMenus.active, directoryFlow: browserFlowSource, hostInfo,
@@ -313,6 +325,7 @@ export function apply(ctx: Context): void {
   })
   const pickerInjected = (): WorkspacePickerInjected => ({
     createWorkspace: input => workspaces.create(input),
+    requestAddWorkspace: gameProjects.request,
     hooks: { directoryFlow: pickerFlowSource },
   })
   // Each registration declares its owned children in the same call; slot

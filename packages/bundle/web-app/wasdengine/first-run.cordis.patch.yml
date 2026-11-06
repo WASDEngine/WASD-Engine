@@ -1,0 +1,13 @@
+# WASDEngine first-run overlay (fork-owned; wasdengine/FORK.md lists the fork
+# changes). It is a dsh-web-app patch layer, so the Web and Desktop profiles load
+# it. First use shows no DeepSeek Harness preview notice, and creates no default
+# Workspace: the Create game project dialog of ui-workspace asks for the first
+# game project instead, through the gameProject Remote that the Workspace
+# controller serves.
+- id: ui-settings-models
+  config:
+    welcomeNotice: false
+
+- id: workspace-controller
+  config:
+    defaultWorkspace: false

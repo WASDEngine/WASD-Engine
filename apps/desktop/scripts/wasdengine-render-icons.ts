@@ -30,9 +30,12 @@ export const WASDENGINE_HOME_ATLAS = { width: 192, height: 108, columns: 12, fra
 export const WASDENGINE_HOME_ATLAS_FILE = fileURLToPath(
   new URL('../../../packages/client/ui-brand-official/src/client/assets/breach-atlas.webp', import.meta.url))
 
-/** Atlas cells per icon-source unit, and the source point drawn at the frame centre (the keycap cluster centre). */
+/** Atlas cells per icon-source unit, and the source point drawn at the frame centre (the outlined keycap cluster centre). */
 const HOME_SCALE = 0.13
-const HOME_CENTER = { x: 552, y: 544 } as const
+const HOME_CENTER = { x: 557.5, y: 535 } as const
+
+/** Edge of one keycap body in icon-source units; its outline reaches a little beyond. */
+const HOME_KEY_EDGE = 225
 
 /**
  * Keyframes in atlas frames, per keycap in W, A, S, D order; offsets are atlas cells downwards.
@@ -46,7 +49,7 @@ const HOME_ENTRY = [-1, 1, 1, 1] as const
 /** Keycap luminance below the floor is empty; the remaining range maps onto the dot opacity up to the ceiling. */
 const HOME_INK = { floor: 0.12, range: 0.6, ceiling: 0.68 } as const
 
-/** One keycap group of the icon source: its origin and its base, face, and letter markup. */
+/** One keycap group of the icon source: its origin and its shadow, body, and outline markup. */
 interface HomeKey {
   readonly x: number
   readonly y: number
@@ -89,12 +92,12 @@ function homeParticles(keys: readonly HomeKey[]): readonly HomeParticle[] {
   }
   const burst = (frame: number, key: HomeKey, count: number): HomeParticle[] => {
     const left = WASDENGINE_HOME_ATLAS.width / 2 + (key.x - HOME_CENTER.x) * HOME_SCALE
-    const bottom = WASDENGINE_HOME_ATLAS.height / 2 + (key.y + 250 - HOME_CENTER.y) * HOME_SCALE - 1
+    const bottom = WASDENGINE_HOME_ATLAS.height / 2 + (key.y + HOME_KEY_EDGE - HOME_CENTER.y) * HOME_SCALE - 1
     return Array.from({ length: count }, (_, index) => {
       const side = index % 2 === 0 ? -1 : 1
       return {
         frame,
-        x: side < 0 ? left + 1 : left + 250 * HOME_SCALE - 1,
+        x: side < 0 ? left + 1 : left + HOME_KEY_EDGE * HOME_SCALE - 1,
         y: bottom,
         dx: side * random(0.4, 1.3),
         dy: -random(0.2, 0.9),
@@ -147,8 +150,8 @@ function homeFrameDocument(defs: string, keys: readonly HomeKey[], particles: re
 /**
  * Render the home animation atlas from the keycaps of an icon source. Each atlas cell stores the
  * dot radius in red and the dot opacity in green, both at 32 levels, as the `ui-brand-official`
- * renderer reads them; the keycap luminance sets the opacity, so the dark letters of A, S, and D
- * stay empty and the white letter of W draws darkest.
+ * renderer reads them; the keycap luminance sets the opacity, so the ink outlines and the faint
+ * shadows stay empty, the white A, S, and D keys draw brightest, and the purple W draws dimmer.
  * @param svg - Icon source with a `tray-glyph` group of four keycap groups, W first.
  * @returns Lossless WebP bytes: {@link WASDENGINE_HOME_ATLAS} frames in rows of `columns`.
  */

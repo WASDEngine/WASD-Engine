@@ -3,8 +3,10 @@
  * dsh-sdk-minimal, and dsh-web-app: every shipped profile template must compose the WASDEngine service rows
  * without warnings, every row the files patch must still exist upstream with the same package and config keys,
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
- * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, and the `gamedev`
- * preset must stay a copy of upstream `standard` apart from its display fields, persona, and bundled skill root.
+ * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
+ * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
+ * for one, and the `gamedev` preset must stay a copy of upstream `standard` apart from its display fields, persona,
+ * and bundled skill root.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -27,7 +29,9 @@ const bundleRoot = join(repoRoot, 'packages/bundle')
 const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-base': ['./wasdengine/gateway.cordis.patch.yml'],
   '@deepseek-ai/dsh-sdk-minimal': ['./wasdengine/gateway.cordis.patch.yml'],
-  '@deepseek-ai/dsh-web-app': ['./wasdengine/telemetry.cordis.patch.yml', './wasdengine/gamedev.cordis.patch.yml'],
+  '@deepseek-ai/dsh-web-app': [
+    './wasdengine/telemetry.cordis.patch.yml', './wasdengine/gamedev.cordis.patch.yml', './wasdengine/first-run.cordis.patch.yml',
+  ],
 }
 
 /** Bundled skills shipped under `wasdengine/skills`. */
@@ -79,6 +83,14 @@ const TARGETS: Readonly<Record<string, { name: string; schema: readonly string[]
   'agent-preset-registry': {
     name: '@deepseek-ai/dsh-agent-preset-registry',
     schema: ['packages/preset/agent-preset-registry/src/preset.ts'],
+  },
+  'workspace-controller': {
+    name: '@deepseek-ai/dsh-api-workspace-controller',
+    schema: ['packages/api/workspace-controller/src/index.ts'],
+  },
+  'ui-settings-models': {
+    name: '@deepseek-ai/dsh-client-ui-settings-models',
+    schema: ['packages/client/ui-settings-models/src/onboarding-config.ts'],
   },
 }
 
@@ -279,6 +291,16 @@ describe('WASDEngine overlay', () => {
     const loaded: unknown = await import(source)
     const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => { contactFormUrl: string } }
     expect(ContactConfig(config).contactFormUrl).toBe(FEEDBACK_URL)
+  })
+
+  it('shows no DeepSeek Harness preview notice on first use', () => {
+    expect(patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-models')).toEqual({ welcomeNotice: false })
+    expect(configOf(row(profile('web').fork.rows, 'ui-settings-models'))).toEqual({ welcomeNotice: false })
+  })
+
+  it('creates no first-use default Workspace, so the Create game project dialog asks for a game project', () => {
+    expect(patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'workspace-controller')).toEqual({ defaultWorkspace: false })
+    expect(configOf(row(profile('web').fork.rows, 'workspace-controller'))).toEqual({ defaultWorkspace: false })
   })
 
   it('offers only the fork\'s issue forms and a blank issue on the Feedback page', () => {

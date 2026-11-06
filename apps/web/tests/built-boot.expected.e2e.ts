@@ -62,7 +62,7 @@ it('boots the built plugin graph and renders a fixture session end to end', asyn
   // The sidebar renders from the boot graph: every inject layer activated.
   const tree = await screen.findByRole('tree', { name: 'Sessions' }, { timeout: 10_000 })
   // The WASDEngine fork draws its keycap mark in every build profile and keeps the local-build name.
-  expect(document.querySelector('svg[viewBox="149 280 806 528"]')).not.toBeNull()
+  expect(document.querySelector('svg[viewBox="176.125 284.125 762.75 501.75"]')).not.toBeNull()
   const version = clientBuildValue('DSH_CLIENT_VERSION')
   if (version === undefined) throw new Error('default client build record must carry DSH_CLIENT_VERSION')
   const commit = clientBuildValue('DSH_CLIENT_COMMIT_HASH')
