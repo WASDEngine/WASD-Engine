@@ -165,7 +165,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 
 `WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` 拥有一个服务器进程的工作进程，`call(method, params, { timeoutMs, signal })` 通过它执行一个工作进程方法：
 
-- 调用按调用顺序逐个执行；没有工作进程在运行时，调用通过 `start(signal)` 启动一个工作进程。`timeoutMs` 默认为 `requestTimeoutMs`。
+- 调用按调用顺序逐个执行；没有工作进程在运行时，调用通过 `start(signal)` 启动一个工作进程。`timeoutMs` 默认为 `requestTimeoutMs`，并像 MCP 客户端的工具调用预算一样从调用时开始计算：等待过先前调用的调用只得到剩余的时间；等待耗尽全部预算的调用以 `WORKER_TIMEOUT` 拒绝且不执行，工作进程及其状态保持不变。
 - `WORKER_REMOTE` 原样传出，工作进程保留其状态。
 - 正在运行的调用遇到其他任何 `WorkerError` 时，会等到工作进程完全退出，再以相同的 code 拒绝，其消息以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker` 结尾。
 - 当工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行：它以同样结尾的 `WORKER_EXITED` 消息失败，再下一次调用才启动新的工作进程。

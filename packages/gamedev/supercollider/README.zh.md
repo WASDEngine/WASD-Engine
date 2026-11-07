@@ -110,7 +110,7 @@ sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器�
 
 `render_audio` 求值 `code`，并以非实时模式用 scsynth 渲染其值：
 
-- UGen 图函数会成为从头开始播放的 SynthDef。返回音频速率信号的函数会把这些信号写入文件；`channels` 要求更多声道时，单声道信号会在每个声道中播放。自己写入 `Out.ar` 的函数默认渲染 2 个声道，除非 `channels` 另有指定。返回控制速率或标量值且不写入任何 `Out` 的函数会使调用失败。
+- UGen 图函数会成为从头开始播放的 SynthDef。返回音频速率信号的函数会把这些信号写入文件；`channels` 要求更多声道时，单声道信号会在每个声道中播放。自己用 `Out.ar`、`ReplaceOut.ar`、`OffsetOut.ar` 或 `XOut.ar` 向总线写入音频的函数默认渲染 2 个声道，除非 `channels` 另有指定。`LocalOut` 与 `Out.kr` 不向总线写入音频，因此只用到它们的函数仍会播放其返回值。返回控制速率或标量值且不向总线写入音频的函数会使调用失败，不写入音频的 SynthDef 也是如此。
 - SynthDef 以其默认参数播放；没有 `Out` UGen 的 SynthDef 会使调用失败。
 - 模式（pattern）通过 `asScore(duration)` 渲染，Score 或乐谱事件列表按原样渲染。两者都按名称播放 SynthDef，因此 `SynthDescLib.global` 中的每个 SynthDef（例如用 `.add` 添加的，以及 `\default`）都会在第一个事件之前发送给 scsynth；`duration` 之后的事件会被丢弃。除非 `channels` 另有指定，它们渲染 2 个声道。
 

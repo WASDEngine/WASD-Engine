@@ -110,7 +110,7 @@ The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path a
 
 `render_audio` evaluates `code` and renders its value with scsynth in non-real-time mode:
 
-- A UGen graph function becomes a SynthDef that plays from the start. A function that returns audio-rate signals writes them to the file, and one channel plays in every channel when `channels` asks for more; a function that writes to `Out.ar` itself renders 2 channels unless `channels` says otherwise. A function that returns control-rate or scalar values and writes no `Out` fails the call.
+- A UGen graph function becomes a SynthDef that plays from the start. A function that returns audio-rate signals writes them to the file, and one channel plays in every channel when `channels` asks for more; a function that writes audio to a bus itself, with `Out.ar`, `ReplaceOut.ar`, `OffsetOut.ar`, or `XOut.ar`, renders 2 channels unless `channels` says otherwise. `LocalOut` and `Out.kr` write no audio to a bus, so the value of a function that uses only them still plays. A function that returns control-rate or scalar values and writes no audio to a bus fails the call, and so does a SynthDef that writes none.
 - A SynthDef plays with its default arguments; one without an `Out` UGen fails the call.
 - A pattern renders through `asScore(duration)`, and a Score or a list of score events renders as it is. Both play SynthDefs by name, so every SynthDef that `SynthDescLib.global` holds, such as those added with `.add` and `\default`, is sent to scsynth before the first event; events after `duration` are dropped. They render 2 channels unless `channels` says otherwise.
 

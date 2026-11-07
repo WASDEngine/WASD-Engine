@@ -19,7 +19,8 @@ export const PROTECTED_PLUGINS: ReadonlySet<string> = new Set([
 
 /**
  * Built-in profile bundles, persistent terminals, and the standalone worktree tool, which have no plugin manager page.
- * Their Host availability and activation stay intact.
+ * Their Host availability and activation stay intact. WASD Engine also hides computer use: its tool joins only the
+ * `ptc` agent preset, which WASD Engine does not ship.
  */
 export const HIDDEN_BUNDLES: ReadonlySet<string> = new Set([
   '@deepseek-ai/dsh-base',
@@ -30,6 +31,7 @@ export const HIDDEN_BUNDLES: ReadonlySet<string> = new Set([
   '@deepseek-ai/dsh-sdk-minimal',
   '@deepseek-ai/dsh-experimental-terminal-bundle',
   '@deepseek-ai/dsh-experimental-tool-worktree',
+  '@deepseek-ai/dsh-cua-bundle',
 ])
 
 /**

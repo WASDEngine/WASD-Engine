@@ -3,7 +3,7 @@
  *
  * WASDEngine is built on DeepSeek Harness and must not present itself as a DeepSeek Harness
  * installation or share operating-system state with one: the bundle identifier, deep-link
- * scheme, Electron data directory, and executable all differ. Packaging applies these values
+ * scheme, Electron data directory, executable, and packaged npm name all differ. Packaging applies these values
  * through `scripts/wasdengine-builder-config.mjs`; the shell reads them for the macOS About
  * panel, the deep-link scheme, and the product name in its locale dictionaries. This module
  * has no imports, so the sandboxed preloads that read the dictionaries can bundle it.
@@ -14,6 +14,12 @@
 export const WASDENGINE_DESKTOP_BRAND = {
   /** Application, bundle, and executable name; Electron derives its data and log directories from it. */
   productName: 'WASD Engine',
+  /**
+   * npm name of the packaged manifest. electron-builder derives the updater cache folder from it, and the Windows
+   * uninstaller deletes that folder and `%APPDATA%\<name>`; upstream's `@deepseek-ai/dsh-desktop` would make both a
+   * stock DeepSeek Harness install's.
+   */
+  packageName: 'wasdengine-desktop',
   /** Bundle identifier of unsigned local builds; release builds name theirs in `DSH_DESKTOP_APP_ID`. */
   appId: 'com.wasdengine.desktop',
   /** Deep-link scheme; `wasdengine://open` brings the application to the foreground. */

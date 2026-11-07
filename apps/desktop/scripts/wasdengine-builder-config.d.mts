@@ -6,6 +6,7 @@ export type WasdengineElectronBuilderConfig = Omit<DesktopElectronBuilderConfig,
   readonly productName: string
   readonly protocols: readonly [{ readonly name: string; readonly schemes: readonly [string] }]
   readonly extraMetadata: DesktopElectronBuilderConfig['extraMetadata'] & {
+    readonly name: string
     readonly productName: string
     readonly author: { readonly name: string }
   }
@@ -51,7 +52,7 @@ export function applyWasdengineSuperCollider<T extends { readonly asarUnpack: re
 
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
- * names, the packaged manifest `productName` and `author`, the deep-link scheme, the icons, and
+ * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons, and
  * the microphone prompt.
  * @param config - Configuration from `createElectronBuilderConfig`.
  * @returns A new configuration that keeps every hook and packaging rule of `config`.

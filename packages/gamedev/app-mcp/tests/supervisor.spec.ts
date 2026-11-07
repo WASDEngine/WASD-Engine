@@ -125,6 +125,30 @@ describe('WorkerSupervisor', () => {
     expect(workers).toHaveLength(1)
   })
 
+  it('counts the wait for earlier calls against a queued call, which fails without running once its budget is spent', async () => {
+    const { supervisor, workers } = supervise()
+    const running = supervisor.call('sleep', { ms: 400 })
+    const queued = workerError(supervisor.call('echo', {}, { timeoutMs: 200 }))
+    expect(await running).toEqual({ slept: 400 })
+    const error = await queued
+    expect(error.code).toBe('WORKER_TIMEOUT')
+    expect(error.message).toMatch(/^call "echo" waited \d+ ms for earlier calls to finish, which spent its 200 ms budget; /u)
+    expect(error.message).toMatch(/; it did not run, and the worker kept its state$/u)
+    expect(await supervisor.call('echo', { same: 'worker' })).toEqual({ same: 'worker' })
+    expect(workers).toHaveLength(1)
+  })
+
+  it('gives a queued call what is left of its budget', async () => {
+    const { supervisor } = supervise()
+    const running = supervisor.call('sleep', { ms: 300 })
+    const queued = workerError(supervisor.call('sleep', { ms: 60_000 }, { timeoutMs: 1_000 }))
+    expect(await running).toEqual({ slept: 300 })
+    const error = await queued
+    expect(error.code).toBe('WORKER_TIMEOUT')
+    const [, granted] = /within (\d+) ms/u.exec(error.message) ?? []
+    expect(Number(granted)).toBeLessThanOrEqual(700)
+  })
+
   it('rejects an already cancelled call without starting a worker', async () => {
     const { supervisor, workers } = supervise()
     await expect(supervisor.call('echo', {}, { signal: AbortSignal.abort() })).rejects.toMatchObject({ name: 'AbortError' })

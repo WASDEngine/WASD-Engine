@@ -901,24 +901,23 @@ describe('PluginManagerPage', () => {
     expect(screen.getByText(`${en.reasonLabel}: native preparation unavailable`)).toBeTruthy()
   })
 
-  it('shows Computer Use permission guidance on the experimental plugins page', () => {
+  it('shows an experimental bundle\'s guidance on the More page', () => {
     const description = 'Review application access before use.'
     const { actions } = renderTab({ packages: [pkg({
-      name: '@deepseek-ai/dsh-cua-bundle', enabled: false, optional: true, installed: false,
+      name: '@deepseek-ai/dsh-experimental-ralph-bundle', enabled: false, optional: true, installed: false,
       meta: { title: 'Computer Use', description },
     })] })
     fireEvent.click(screen.getByRole('button', { name: en.moreAction }))
     expect(screen.getByText(en.statusBeta)).toBeTruthy()
     expect(screen.getByText(description)).toBeTruthy()
     fireEvent.click(screen.getByRole('switch', { name: en.enableToggle.replace('{name}', 'Computer Use') }))
-    expect(actions.setEnabled).toHaveBeenCalledExactlyOnceWith('@deepseek-ai/dsh-cua-bundle', true)
+    expect(actions.setEnabled).toHaveBeenCalledExactlyOnceWith('@deepseek-ai/dsh-experimental-ralph-bundle', true)
   })
 
   it.each([
     ['@deepseek-ai/dsh-experimental-voice-input-bundle', true],
     ['@deepseek-ai/dsh-experimental-auto-review', true],
     ['@deepseek-ai/dsh-experimental-fixture-input', false],
-    ['@deepseek-ai/dsh-cua-bundle', true],
     ['@acme/dsh-local-tools', false],
   ] as const)('localizes Host metadata for %s across cards, details, switches, and uninstall confirmation', (name, experimental) => {
     const meta = {
@@ -1300,8 +1299,8 @@ describe('PluginManagerPage', () => {
       expect(card()).not.toBeNull()
     })
 
-    it.each([en, zh])('hides unsupported CUA by default and retains installed or selected entries for management', (dict) => {
-      const name = '@deepseek-ai/dsh-cua-bundle'
+    it.each([en, zh])('hides an unsupported bundle by default and retains installed or selected entries for management', (dict) => {
+      const name = '@deepseek-ai/dsh-experimental-ralph-bundle'
       const entry = pkg({ name, installed: false, enabled: false, optional: true, listedByDefault: false,
         error: { code: 'unsupported-platform' } })
       const other = pkg({ name: '@deepseek-ai/dsh-experimental-session-titles-bundle', installed: false, optional: true, enabled: false })
@@ -1327,8 +1326,8 @@ describe('PluginManagerPage', () => {
       expect(actions.setEnabled).toHaveBeenCalledExactlyOnceWith(name, false)
     })
 
-    it.each([en, zh])('keeps disabled CUA on the secondary page with experimental labels', (dict) => {
-      const name = '@deepseek-ai/dsh-cua-bundle'
+    it.each([en, zh])('keeps a disabled More-list bundle on the secondary page with experimental labels', (dict) => {
+      const name = '@deepseek-ai/dsh-experimental-ralph-bundle'
       const entry = (enabled: boolean) => pkg({ name, official: true, enabled, meta: { title: 'Computer Use' } })
       const b = renderTab({ packages: [entry(false)] })
       b.setLanguage(dict)

@@ -8,7 +8,7 @@ import { z } from 'zod'
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_MAX_EDGE, WorkerReplyError } from '@deepseek-ai/dsh-app-mcp'
 import type { AppToolDependencies, JsonObject } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { OBJECT_LIST_LIMIT, RENDER_MAX_EDGE, blenderTools } from '../src/tools.ts'
+import { OBJECT_LIST_LIMIT, RENDER_MAX_EDGE, blenderTools, renderSamplingSeconds } from '../src/tools.ts'
 
 type Reply = JsonValue | ((params: JsonObject) => JsonValue | Promise<JsonValue>)
 
@@ -223,11 +223,12 @@ describe('scene file tools', () => {
 })
 
 describe('export tools', () => {
-  it('exports glTF with explicit defaults chosen from the extension', async () => {
+  it('exports glTF with explicit defaults chosen from the extension, leaving apply_modifiers to the worker', async () => {
     const { calls, run } = harness({
       export_gltf: params => ({
         path: params.path ?? '', format: params.format ?? 'GLB', bytes: 4096, objects: 3,
         files: params.format === 'GLB' ? [params.path ?? ''] : ['/g/a.gltf', '/g/a.bin'],
+        applied_modifiers: params.apply_modifiers ?? false, shape_keys_dropped: [],
       }),
     })
     await expect(run('export_gltf', { path: '/g/a.GLB' })).resolves.toEqual({ text: 'Exported 3 objects to /g/a.GLB (GLB, 4.0 KiB).' })
@@ -235,10 +236,20 @@ describe('export tools', () => {
       .resolves.toEqual({ text: 'Exported 3 objects to /g/a.gltf (GLTF_SEPARATE, 4.0 KiB). Files: /g/a.gltf, /g/a.bin.' })
     await run('export_gltf', { path: '/g/b.glb', format: 'GLTF_SEPARATE' })
     expect(calls.map(call => call.params)).toEqual([
-      { path: '/g/a.GLB', apply_modifiers: true, animations: true, format: 'GLB' },
+      { path: '/g/a.GLB', animations: true, format: 'GLB' },
       { path: '/g/a.gltf', apply_modifiers: false, animations: false, format: 'GLTF_SEPARATE', selection: ['Hero'] },
-      { path: '/g/b.glb', apply_modifiers: true, animations: true, format: 'GLTF_SEPARATE' },
+      { path: '/g/b.glb', animations: true, format: 'GLTF_SEPARATE' },
     ])
+  })
+
+  it('says which meshes lost their shape keys to applied modifiers', async () => {
+    const { run } = harness({
+      export_gltf: { path: '/g/hero.glb', format: 'GLB', bytes: 2048, objects: 2, files: ['/g/hero.glb'], applied_modifiers: true, shape_keys_dropped: ['Face'] },
+    })
+    await expect(run('export_gltf', { path: '/g/hero.glb' })).resolves.toEqual({
+      text: 'Exported 2 objects to /g/hero.glb (GLB, 2.0 KiB). Applying modifiers dropped the shape keys of Face; '
+        + 'export with apply_modifiers false to keep them.',
+    })
   })
 
   it('exports other formats with an optional selection', async () => {
@@ -325,8 +336,26 @@ describe('render', () => {
     expect(written).toMatch(new RegExp(`^${join(dataRoot, 'renders')}/\\d{4}-\\d\\d-\\d\\dT\\d\\d-\\d\\d-\\d\\d-\\d{3}Z-[0-9a-f]{8}\\.png$`))
     expect(result.text).toBe(`Rendered 1920x1080 with BLENDER_EEVEE from camera "Camera" in 1.5 s and saved ${written}.`)
     expect(result.images).toHaveLength(1)
-    expect(Object.keys(calls[0]!.params).sort()).toEqual(['agent_image', 'path'])
+    expect(Object.keys(calls[0]!.params).sort()).toEqual(['agent_image', 'path', 'time_limit'])
+    // The default budget, with a Cycles time limit that leaves 60 s of it for synchronization, denoising, and saving.
+    expect(calls[0]!.options.timeoutMs).toBe(600_000)
+    expect(calls[0]!.params.time_limit).toBe(540)
     expect(existsSync(written)).toBe(true)
+  })
+
+  it('gives a render the budget it asks for and keeps Cycles sampling within it', async () => {
+    const { calls, run, schema } = harness({
+      render: async (params) => {
+        await writeImage(text(params.path))
+        return { path: text(params.path), width: 64, height: 64, engine: 'CYCLES', camera: 'Camera', seconds: 1, image: image(text(params.path), 'image/png', 64, 64) }
+      },
+    })
+    await run('render', { timeout_seconds: 860 })
+    expect(calls[0]!.options.timeoutMs).toBe(860_000)
+    expect(calls[0]!.params.time_limit).toBe(800)
+    expect(schema('render').safeParse({ timeout_seconds: 900 }).success).toBe(true)
+    expect(schema('render').safeParse({ timeout_seconds: 901 }).success).toBe(false)
+    expect([renderSamplingSeconds(40_000), renderSamplingSeconds(1_000), renderSamplingSeconds(100)]).toEqual([30, 1, 1])
   })
 
   it('passes render overrides and shows a downscaled copy that it then deletes', async () => {

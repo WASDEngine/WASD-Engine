@@ -181,6 +181,12 @@ WasdWorker {
 		)
 	}
 
+	// Whether one of the UGens writes audio to a bus (Out, ReplaceOut, OffsetOut, or XOut at audio rate), which is what
+	// the render records. LocalOut stays inside its synth and Out.kr writes a control bus, so neither records anything.
+	*prWritesAudio { |ugens|
+		^ugens.any { |ugen| (ugen.isKindOf(Out) or: { ugen.isKindOf(XOut) }) and: { ugen.rate == \audio } }
+	}
+
 	// A Score of the value, the channel count to record, and what the value was.
 	*prScore { |value, duration, channels|
 		var events, recorded, source, defs;
@@ -191,7 +197,7 @@ WasdWorker {
 			if(value.isKindOf(Function)) {
 				def = SynthDef(("wasd_render_" ++ (count + 1)).asSymbol, {
 					var signal = SynthDef.wrap(value);
-					var writes = UGen.buildSynthDef.children.any { |ugen| ugen.isKindOf(AbstractOut) };
+					var writes = this.prWritesAudio(UGen.buildSynthDef.children);
 					if(writes.not) {
 						signal = signal.asArray.flat;
 						rates = signal.collect { |item| if(item.respondsTo(\rate)) { item.rate } { item.class.name } }.asSet;
@@ -209,8 +215,8 @@ WasdWorker {
 				});
 			} {
 				def = value;
-				if(def.children.any { |ugen| ugen.isKindOf(AbstractOut) }.not) {
-					Error("The SynthDef % writes to no Out UGen, so it renders silence.".format(def.name)).throw
+				if(this.prWritesAudio(def.children).not) {
+					Error("The SynthDef % writes no audio to a bus with Out.ar, so it renders silence.".format(def.name)).throw
 				};
 			};
 			if(channels.notNil and: { outputs.notNil } and: { channels != outputs }) {

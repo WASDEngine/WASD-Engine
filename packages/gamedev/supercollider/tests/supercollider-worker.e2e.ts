@@ -126,6 +126,16 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     for (const file of [aiff, flac]) expect((await stat(file)).size).toBeGreaterThan(1000)
     await expect(run('render_audio', { code: '{ SinOsc.kr(3) }', path: join(dataRoot, 'bad.wav'), duration: 1 }))
       .rejects.toMatchObject({ code: 'WORKER_REMOTE', message: expect.stringContaining('control-rate signals') as string })
+    // LocalOut feeds back inside the synth and Out.kr writes a control bus: the returned signal is still what plays.
+    const feedback = await run('render_audio', {
+      code: '{ var source = Decay.ar(Impulse.ar(4), 0.1) * WhiteNoise.ar(0.2); var local = LocalIn.ar(2) + [source, 0]; '
+        + 'local = DelayN.ar(local, 0.2, 0.2); LocalOut.ar(local.reverse * 0.8); Out.kr(0, SinOsc.kr(1)); local }',
+      path: join(dataRoot, 'game', 'feedback.wav'), duration: 0.5,
+    })
+    expect(feedback.text).toContain('of stereo audio at 44100 Hz from the function')
+    expect(feedback.text).not.toContain('Silence: the audio is completely silent.')
+    await expect(run('render_audio', { code: 'SynthDef(\\inside, { LocalOut.ar(SinOsc.ar(440)) })', path: join(dataRoot, 'inside.wav'), duration: 0.25 }))
+      .rejects.toMatchObject({ code: 'WORKER_REMOTE', message: expect.stringContaining('writes no audio to a bus with Out.ar') as string })
 
     const info = await run('class_info', { names: ['SinOsc', 'NoSuchClass'] })
     expect(info.text).toContain('SinOsc : PureUGen : UGen')

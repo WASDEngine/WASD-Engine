@@ -165,7 +165,7 @@ Worker failures are `WorkerError`s with a `code`, and only `WORKER_REMOTE` leave
 
 `WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` owns the worker of one server process, and `call(method, params, { timeoutMs, signal })` runs one worker method through it:
 
-- Calls run one at a time in call order, and a call starts a worker through `start(signal)` when none is running. `timeoutMs` defaults to `requestTimeoutMs`.
+- Calls run one at a time in call order, and a call starts a worker through `start(signal)` when none is running. `timeoutMs` defaults to `requestTimeoutMs` and counts from the call, like the MCP client's tool-call budget: a call that waited for earlier calls gets what is left, and one whose wait spent it all rejects with `WORKER_TIMEOUT` without running and leaves the worker and its state alone.
 - `WORKER_REMOTE` passes through, and the worker keeps its state.
 - Any other `WorkerError` of a running call waits until the worker process is gone, then rejects with the same code and a message that ends with `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker`.
 - When the worker exits between calls, or a running call is cancelled, the next call does not run: it fails with a `WORKER_EXITED` message that ends the same way, and the call after it starts a fresh worker.

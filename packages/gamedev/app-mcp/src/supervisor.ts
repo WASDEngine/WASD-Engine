@@ -23,7 +23,10 @@ export interface WorkerSupervisorOptions {
 
 /** Budget and cancellation of one supervised call. */
 export interface WorkerCallOptions {
-  /** Milliseconds the worker has to answer; defaults to the supervisor's `requestTimeoutMs`. */
+  /**
+   * Milliseconds the call may take, counted from the call like the MCP client's own tool-call budget, so time spent
+   * waiting for earlier calls is spent; defaults to the supervisor's `requestTimeoutMs`.
+   */
   readonly timeoutMs?: number | undefined
   /** Cancels the call; once the worker runs it, cancelling stops the worker. */
   readonly signal?: AbortSignal | undefined
@@ -62,6 +65,8 @@ export class WorkerSupervisor {
   private notice: WorkerError | undefined
   /** Settles when every call issued so far has settled; it never rejects. */
   private tail: Promise<void> = Promise.resolve()
+  /** Calls issued and not yet settled; a call that finds one waits for its turn. */
+  private unsettled = 0
   private closing: Promise<void> | undefined
 
   /**
@@ -93,21 +98,32 @@ export class WorkerSupervisor {
    * @throws WorkerError `WORKER_REMOTE` for an exception the worker reported;
    *   `WORKER_START_FAILED` when the worker could not start; `WORKER_TIMEOUT`,
    *   `WORKER_PROTOCOL`, or `WORKER_EXITED` when the worker stopped, with a
-   *   message saying its state was lost; `WORKER_EXITED` after
-   *   {@link WorkerSupervisor.close}. A cancellation rejects with the abort reason.
+   *   message saying its state was lost; `WORKER_TIMEOUT` without running, the
+   *   worker untouched, when waiting for earlier calls spent the whole budget;
+   *   `WORKER_EXITED` after {@link WorkerSupervisor.close}. A cancellation
+   *   rejects with the abort reason.
    * @throws RangeError when `timeoutMs` is out of range.
    */
   async call(method: string, params: JsonObject, options: WorkerCallOptions = {}): Promise<JsonValue> {
     const timeoutMs = options.timeoutMs ?? this.requestTimeoutMs
     assertDelay('timeoutMs', timeoutMs)
+    const called = performance.now()
+    const queued = this.unsettled > 0
+    this.unsettled++
     const signal = options.signal === undefined ? this.lifetime.signal : AbortSignal.any([this.lifetime.signal, options.signal])
     const previous = this.tail
     const turn = Promise.withResolvers<void>()
     this.tail = previous.then(() => turn.promise)
     try {
       await untilTurn(previous, signal)
-      return await this.run(method, params, timeoutMs, signal)
+      const waited = queued ? Math.round(performance.now() - called) : 0
+      if (waited >= timeoutMs) {
+        throw new WorkerError('WORKER_TIMEOUT', `call "${method}" waited ${waited} ms for earlier calls to finish, which spent `
+          + `its ${timeoutMs} ms budget; it did not run, and the worker kept its state`)
+      }
+      return await this.run(method, params, timeoutMs - waited, signal)
     } finally {
+      this.unsettled--
       turn.resolve()
     }
   }

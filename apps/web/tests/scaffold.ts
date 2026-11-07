@@ -200,6 +200,8 @@ export function recordedSessionFixturePath(path: string, version: number): strin
 /** The shipped composition under test: the dsh-base and dsh-web-app bundle patches over the empty profile root. */
 const BASE_PATCH_PATH = join(REPO_ROOT, 'packages/bundle/base/cordis.patch.yml')
 const WEB_BUNDLE_DIR = join(REPO_ROOT, 'packages/bundle/web-app')
+/** The preset a scenario selects by default: WASD Engine's `gamedev`, since it ships no `standard`. */
+const DEFAULT_PRESET = 'gamedev'
 const WEB_BUNDLE_PATCH = (JSON.parse(readFileSync(join(WEB_BUNDLE_DIR, 'package.json'), 'utf8')) as { dsh: { bundle: { patch: string[] } } }).dsh.bundle
 /** The installation anchor whose dependency surface the runtime resolution mirrors. */
 const INSTALL_ANCHOR = join(REPO_ROOT, 'apps/cli/package.json')
@@ -592,7 +594,7 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
       ? []
       : [{ id: 'agent-default-model', config: { provider: 'deepseek-official', model: 'deepseek-v4-flash' } }],
     ...extraOverlayPatches,
-    { id: 'agent-preset-registry', config: { default: 'standard' } },
+    { id: 'agent-preset-registry', config: { default: DEFAULT_PRESET } },
     { id: 'session-persistence-jsonl', config: { root: persistenceRoot } },
     // Content search is enabled here although the shipped bundles default it
     // off (`openAt: never`, pinned by apps/cli/tests/lazy-search-startup):
@@ -708,11 +710,14 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     { id: 'llm-deepseek', disabled: mode !== 'record' && !maskDeepSeekCredential },
   ]
 
-  // Recorded standard sessions pin the optional patch tool in their request headers.
-  if (options.replayFixture !== undefined || options.compareReplaySession === true) {
-    const config = composedRows.find(row => row.id === 'preset-standard')!.config as PresetDefinition
+  // Recorded sessions pin the optional patch tool in their request headers. A preset the scenario defines itself
+  // is not among the shipped rows and keeps its own tool configuration.
+  const replayPreset = `preset-${options.agentPresets?.default ?? DEFAULT_PRESET}`
+  const shippedPreset = composedRows.find(row => row.id === replayPreset)
+  if ((options.replayFixture !== undefined || options.compareReplaySession === true) && shippedPreset !== undefined) {
+    const config = shippedPreset.config as PresetDefinition
     overlayPatches.push({
-      id: 'preset-standard',
+      id: replayPreset,
       config: {
         ...config,
         plugins: config.plugins.map(plugin => plugin.id === 'tool-fs'

@@ -70,7 +70,19 @@ const ImportReply = z.object({ objects: z.array(z.string()), count: z.int(), omi
 
 const ExportGltfReply = z.object({
   path: z.string(), format: z.enum(['GLB', 'GLTF_SEPARATE']), bytes: z.int(), objects: z.int(), files: z.array(z.string()),
+  applied_modifiers: z.boolean(), shape_keys_dropped: z.array(z.string()),
 })
+
+/**
+ * Seconds of a render budget that Cycles may spend sampling. The rest covers scene synchronization, denoising, and
+ * saving the images, which the time limit does not count.
+ * @param budgetMs - the render request's budget.
+ * @returns whole seconds, at least 1.
+ */
+export function renderSamplingSeconds(budgetMs: number): number {
+  const budget = budgetMs / 1000
+  return Math.max(1, Math.floor(budget - Math.min(60, budget / 4)))
+}
 
 const ExportFileReply = z.object({ path: z.string(), format: z.string(), bytes: z.int() })
 
@@ -123,8 +135,11 @@ function renderStamp(): string {
  * @returns the tools in the order the server lists them.
  */
 export function blenderTools(dependencies: AppToolDependencies): readonly AppTool<z.ZodRawShape>[] {
-  const { call, dataRoot } = dependencies
+  const { call, dataRoot, requestTimeoutMs } = dependencies
   const previews = join(dataRoot, 'previews')
+  // The same bounds as execute_python's timeout_seconds.
+  const defaultTimeoutSeconds = Math.round(requestTimeoutMs / 1000)
+  const maxTimeoutSeconds = Math.max(1, Math.floor(dependencies.maxTimeoutMs / 1000))
   return [
     defineAppTool({
       name: 'scene_info',
@@ -215,28 +230,32 @@ export function blenderTools(dependencies: AppToolDependencies): readonly AppToo
     defineAppTool({
       name: 'export_gltf',
       title: 'Export glTF',
-      description: 'Export glTF 2.0 for a game engine: .glb (one file) or .gltf (with .bin and texture files). Exports the whole '
+      description: 'Export glTF 2.0 for a game engine: .glb (one file) or .gltf (with .bin and texture files). Exports the current '
         + 'scene, or only the selection objects and their children, hidden ones included. Output is +Y up and never Draco-compressed; '
         + 'missing folders are created, and a file already at path is deleted first, so a failed export leaves none.',
       input: {
         path: absolutePath('Absolute output path ending in .glb or .gltf.'),
         selection: objectNames('Objects to export with their children; omit to export the whole scene.').optional(),
-        apply_modifiers: z.boolean().optional().describe('Apply modifiers to exported meshes (default true).'),
+        apply_modifiers: z.boolean().optional().describe('Apply modifiers to exported meshes. Default: true when an exported '
+          + 'object has a modifier other than Armature. Applying drops the shape keys of every mesh that has a modifier, '
+          + 'Armature included.'),
         animations: z.boolean().optional().describe('Export animations (default true).'),
         format: z.enum(['GLB', 'GLTF_SEPARATE']).optional().describe('GLB for .glb paths (default), GLTF_SEPARATE for .gltf paths.'),
       },
       async run(args, signal) {
         const params: JsonObject = {
           path: args.path,
-          apply_modifiers: args.apply_modifiers ?? true,
           animations: args.animations ?? true,
           format: args.format ?? (args.path.toLowerCase().endsWith('.glb') ? 'GLB' : 'GLTF_SEPARATE'),
         }
+        if (args.apply_modifiers !== undefined) params.apply_modifiers = args.apply_modifiers
         if (args.selection !== undefined) params.selection = args.selection
         const reply = parseReply(ExportGltfReply, 'export_gltf', await call('export_gltf', params, { signal }))
         const files = reply.files.length > 1 ? ` Files: ${reply.files.join(', ')}.` : ''
+        const dropped = reply.shape_keys_dropped.length === 0 ? '' : ' Applying modifiers dropped the shape keys of '
+          + `${listNames(reply.shape_keys_dropped, reply.shape_keys_dropped.length)}; export with apply_modifiers false to keep them.`
         return withSetupNotes(dependencies, {
-          text: `Exported ${String(reply.objects)} objects to ${reply.path} (${reply.format}, ${formatBytes(reply.bytes)}).${files}`,
+          text: `Exported ${String(reply.objects)} objects to ${reply.path} (${reply.format}, ${formatBytes(reply.bytes)}).${files}${dropped}`,
         })
       },
     }),
@@ -312,17 +331,24 @@ export function blenderTools(dependencies: AppToolDependencies): readonly AppToo
         engine: z.enum(['EEVEE', 'CYCLES', 'WORKBENCH']).optional().describe('Render engine.'),
         samples: z.int().min(1).max(4096).optional().describe('Samples for EEVEE or CYCLES.'),
         camera: z.string().min(1).max(NAME_MAX).optional().describe('Camera object to render from instead of the scene camera.'),
+        timeout_seconds: z.int().min(1).max(maxTimeoutSeconds).optional().describe('Seconds before Blender is stopped and '
+          + `restarted, losing unsaved changes (default ${String(defaultTimeoutSeconds)}). CYCLES stops sampling early to finish in time.`),
       },
       async run(args, signal) {
         const stem = join(previews, `${randomUUID()}-agent`)
         const path = args.path ?? join(dataRoot, 'renders', `${renderStamp()}.png`)
-        const params: JsonObject = { path, agent_image: { stem, max_edge: AGENT_IMAGE_MAX_EDGE, max_bytes: AGENT_IMAGE_MAX_BYTES } }
+        const budgetMs = args.timeout_seconds === undefined ? requestTimeoutMs : args.timeout_seconds * 1000
+        const params: JsonObject = {
+          path,
+          time_limit: renderSamplingSeconds(budgetMs),
+          agent_image: { stem, max_edge: AGENT_IMAGE_MAX_EDGE, max_bytes: AGENT_IMAGE_MAX_BYTES },
+        }
         for (const key of ['width', 'height', 'engine', 'samples', 'camera'] as const) {
           const value = args[key]
           if (value !== undefined) params[key] = value
         }
         try {
-          const reply = parseReply(RenderReply, 'render', await call('render', params, { signal }))
+          const reply = parseReply(RenderReply, 'render', await call('render', params, { signal, timeoutMs: budgetMs }))
           const image = await readAgentImage(reply.image, [path, ...agentImagePaths(stem)])
           const seconds = reply.seconds === null ? '' : ` in ${String(reply.seconds)} s`
           const scaled = reply.image.path === path ? '' : ` The image shown is a ${String(reply.image.width)}x${String(reply.image.height)} copy.`

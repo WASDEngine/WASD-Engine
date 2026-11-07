@@ -81,7 +81,7 @@ export function applyWasdengineBrand(config) {
     ...config,
     productName: BRAND.productName,
     protocols: [{ name: BRAND.productName, schemes: [BRAND.urlScheme] }],
-    extraMetadata: { ...config.extraMetadata, productName: BRAND.productName, author: { name: BRAND.publisher } },
+    extraMetadata: { ...config.extraMetadata, name: BRAND.packageName, productName: BRAND.productName, author: { name: BRAND.publisher } },
     extraResources: config.extraResources.map(resource => Object.hasOwn(resourceIcons, resource.to)
       ? { ...resource, from: resourceIcons[resource.to] }
       : resource),

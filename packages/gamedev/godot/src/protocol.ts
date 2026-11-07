@@ -28,6 +28,25 @@ export class HarnessProtocolError extends Error {
   override name = 'HarnessProtocolError'
 }
 
+/**
+ * Godot's `JSON.stringify` escapes only `\b`, `\f`, `\n`, `\r` and `\t` among the C0 control characters: it writes
+ * the others unescaped, and U+000B as `\v`, which JSON does not define. `print_rich` ends every line with an ESC.
+ */
+const GODOT_JSON_REPAIRS = /\\[\s\S]|[\x00-\x1f]/gu
+
+/**
+ * Parse JSON written by Godot's `JSON.stringify`, escaping the control characters it leaves unescaped.
+ * @param text - one JSON document from the harness or a check script.
+ * @returns the parsed value.
+ * @throws {SyntaxError} when the text is not JSON even with those characters escaped.
+ */
+export function parseGodotJson(text: string): unknown {
+  return JSON.parse(text.replace(GODOT_JSON_REPAIRS, (match) => {
+    if (match.length === 2) return match === '\\v' ? '\\u000b' : match
+    return `\\u${match.charCodeAt(0).toString(16).padStart(4, '0')}`
+  }))
+}
+
 const LogLevel = z.enum(['stdout', 'stderr', 'warning', 'error', 'script_error', 'shader_error'])
 
 const BacktraceFrame = z.object({ function: z.string(), file: z.string(), line: z.number().int() })
@@ -140,7 +159,7 @@ function decodeBody(body: Buffer): HarnessMessage {
     case KIND_JSON: {
       let value: unknown
       try {
-        value = JSON.parse(payload.toString('utf8'))
+        value = parseGodotJson(payload.toString('utf8'))
       } catch (error) {
         throw new HarnessProtocolError('Harness sent a JSON message that does not parse', { cause: error })
       }

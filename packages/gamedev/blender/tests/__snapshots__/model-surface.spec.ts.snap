@@ -167,7 +167,7 @@ exports[`pins the tool declarations > tool declarations 1`] = `
     "title": "Import file",
   },
   {
-    "description": "Export glTF 2.0 for a game engine: .glb (one file) or .gltf (with .bin and texture files). Exports the whole scene, or only the selection objects and their children, hidden ones included. Output is +Y up and never Draco-compressed; missing folders are created, and a file already at path is deleted first, so a failed export leaves none.",
+    "description": "Export glTF 2.0 for a game engine: .glb (one file) or .gltf (with .bin and texture files). Exports the current scene, or only the selection objects and their children, hidden ones included. Output is +Y up and never Draco-compressed; missing folders are created, and a file already at path is deleted first, so a failed export leaves none.",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -177,7 +177,7 @@ exports[`pins the tool declarations > tool declarations 1`] = `
           "type": "boolean",
         },
         "apply_modifiers": {
-          "description": "Apply modifiers to exported meshes (default true).",
+          "description": "Apply modifiers to exported meshes. Default: true when an exported object has a modifier other than Armature. Applying drops the shape keys of every mesh that has a modifier, Armature included.",
           "type": "boolean",
         },
         "format": {
@@ -348,6 +348,12 @@ exports[`pins the tool declarations > tool declarations 1`] = `
         "samples": {
           "description": "Samples for EEVEE or CYCLES.",
           "maximum": 4096,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "timeout_seconds": {
+          "description": "Seconds before Blender is stopped and restarted, losing unsaved changes (default 600). CYCLES stops sampling early to finish in time.",
+          "maximum": 870,
           "minimum": 1,
           "type": "integer",
         },

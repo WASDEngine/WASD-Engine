@@ -1269,6 +1269,11 @@ EXPORT_FORMATS = {
 GLTF_SKIPPED_TYPES = frozenset(('CAMERA', 'LIGHT'))
 
 
+def _has_shape_keys(obj):
+    """Whether a mesh object has shape keys besides its basis, which glTF exports as morph targets."""
+    return obj.type == 'MESH' and obj.data.shape_keys is not None and len(obj.data.shape_keys.key_blocks) > 1
+
+
 def _reveal(overrides, obj, selectable=False):
     """Show ``obj`` in the viewport, and with ``selectable`` let it be selected, until ``overrides``
     is restored: Blender leaves hidden and unselectable objects out of the selection and out of the
@@ -1670,7 +1675,7 @@ class Worker:
         args = Args('export_gltf', params, ('path', 'selection', 'apply_modifiers', 'animations', 'format'))
         path = args.path('path', extensions=('.glb', '.gltf'))
         names = args.names('selection')
-        apply_modifiers = args.flag('apply_modifiers', True)
+        apply_modifiers = args.flag('apply_modifiers', None)
         animations = args.flag('animations', True)
         extension = os.path.splitext(path)[1].lower()
         export_format = args.choice('format', ('GLB', 'GLTF_SEPARATE'), 'GLB' if extension == '.glb' else 'GLTF_SEPARATE')
@@ -1682,18 +1687,29 @@ class Worker:
         buffer = os.path.splitext(path)[0] + '.bin'
         _remove_previous([path, buffer] if export_format == 'GLTF_SEPARATE' else [path])
         with _selected('export_gltf', names) as selected:
+            exported = list(selected) if selected is not None else list(bpy.context.scene.objects)
+            if apply_modifiers is None:
+                # Skins export what Armature modifiers do, so an Armature-only stack gains nothing from
+                # applying, while applying any stack drops that mesh's shape keys.
+                apply_modifiers = any(
+                    modifier.type != 'ARMATURE' and modifier.show_viewport for obj in exported for modifier in obj.modifiers
+                )
+            # The exporter writes every mesh that has any modifier from its evaluated copy, which has no shape keys.
+            dropped = [obj.name for obj in exported if apply_modifiers and len(obj.modifiers) > 0 and _has_shape_keys(obj)]
             result = bpy.ops.export_scene.gltf(
-                filepath=path, export_format=export_format, use_selection=selected is not None,
+                filepath=path, export_format=export_format, use_selection=selected is not None, use_active_scene=True,
                 export_apply=apply_modifiers, export_animations=animations,
                 export_draco_mesh_compression_enable=False, export_yup=True,
             )
-            exported = selected if selected is not None else bpy.context.scene.objects
             count = sum(1 for obj in exported if obj.type not in GLTF_SKIPPED_TYPES)
         _require_export('export_gltf', result, path)
         files = [path]
         if export_format == 'GLTF_SEPARATE' and os.path.isfile(buffer):
             files.append(buffer)
-        return {'path': path, 'format': export_format, 'bytes': os.path.getsize(path), 'objects': count, 'files': files}
+        return {
+            'path': path, 'format': export_format, 'bytes': os.path.getsize(path), 'objects': count, 'files': files,
+            'applied_modifiers': apply_modifiers, 'shape_keys_dropped': dropped,
+        }
 
     def export_file(self, params):
         args = Args('export_file', params, ('path', 'format', 'selection'))
@@ -1810,12 +1826,13 @@ class Worker:
         return reply
 
     def render(self, params):
-        args = Args('render', params, ('path', 'width', 'height', 'engine', 'samples', 'camera', 'agent_image'))
+        args = Args('render', params, ('path', 'width', 'height', 'engine', 'samples', 'camera', 'time_limit', 'agent_image'))
         path = args.path('path', extensions=('.png',))
         width = args.integer('width', None, 16, 16384)
         height = args.integer('height', None, 16, 16384)
         engine = args.choice('engine', tuple(ENGINE_IDS), None)
         samples = args.integer('samples', None, 1, 65536)
+        time_limit = args.integer('time_limit', None, 1, 86400)
         camera_name = args.text('camera')
         agent_image = args.image_target('agent_image')
         scene = bpy.context.scene
@@ -1845,6 +1862,9 @@ class Worker:
                     overrides.set(scene.cycles, 'samples', samples)
                 else:
                     overrides.set(scene.eevee, 'taa_render_samples', samples)
+            # Cycles stops sampling at its time limit and still writes the image; a scene's own stricter limit stays.
+            if time_limit is not None and engine_id == 'CYCLES' and not 0 < scene.cycles.time_limit <= time_limit:
+                overrides.set(scene.cycles, 'time_limit', time_limit)
             out_width = render.resolution_x * render.resolution_percentage // 100
             out_height = render.resolution_y * render.resolution_percentage // 100
             _use_png_output(overrides, render, rgba=render.film_transparent)

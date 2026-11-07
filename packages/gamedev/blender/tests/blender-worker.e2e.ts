@@ -53,6 +53,16 @@ function glbNodeNames(bytes: Uint8Array): string[] {
   return z.object({ nodes: z.array(z.object({ name: z.string() })) }).parse(JSON.parse(json)).nodes.map(node => node.name)
 }
 
+/** Morph targets in a GLB file, summed over every mesh primitive. */
+function glbMorphTargets(bytes: Uint8Array): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  const json = new TextDecoder().decode(bytes.subarray(20, 20 + view.getUint32(12, true)))
+  const Primitive = z.object({ targets: z.array(z.unknown()).optional() })
+  const Gltf = z.object({ meshes: z.array(z.object({ primitives: z.array(Primitive) })).optional() })
+  const primitives = (Gltf.parse(JSON.parse(json)).meshes ?? []).flatMap(mesh => mesh.primitives)
+  return primitives.reduce((sum, primitive) => sum + (primitive.targets?.length ?? 0), 0)
+}
+
 /** Whether any process of the process group `pgid` is left. */
 function groupAlive(pgid: number): boolean {
   try {
@@ -317,6 +327,45 @@ bpy.context.view_layer.update()
         const collider = join(dataRoot, 'exports', 'collider.obj')
         await expect(call('export_file', { path: collider, format: 'obj', selection: ['Hero-col'] })).resolves.toMatchObject({ path: collider })
         expect((await readFile(collider, 'utf8')).split('\n').filter(line => line.startsWith('o '))).toEqual(['o Hero-col'])
+      } finally {
+        await worker.close(3000)
+      }
+    }, 240_000)
+
+    it('keeps the shape keys of an Armature-only mesh, names the meshes that applying modifiers strips, and exports only the current scene', async () => {
+      const { worker, call, python } = await open()
+      try {
+        await call('new_scene', { empty: true })
+        await python(`${TETRA}
+face = tetra('Face')
+face.shape_key_add(name='Basis')
+face.shape_key_add(name='Smile').data[3].co.z = 1.5
+rig = bpy.data.objects.new('Rig', bpy.data.armatures.new('Rig'))
+bpy.context.scene.collection.objects.link(rig)
+face.modifiers.new('Rig', 'ARMATURE').object = rig
+bpy.data.scenes.new('Elsewhere').collection.objects.link(bpy.data.objects.new('Other scene empty', None))
+camera = bpy.data.objects.new('Camera', bpy.data.cameras.new('Camera'))
+bpy.context.scene.collection.objects.link(camera)
+camera.location = (4, -4, 3)
+camera.rotation_euler = (1.1, 0, 0.8)
+bpy.context.scene.camera = camera
+`)
+        const glb = join(dataRoot, 'exports', 'face.glb')
+        await expect(call('export_gltf', { path: glb, format: 'GLB' })).resolves.toMatchObject({ applied_modifiers: false, shape_keys_dropped: [] })
+        let bytes = await readFile(glb)
+        expect(glbMorphTargets(bytes)).toBe(1)
+        expect(glbNodeNames(bytes)).not.toContain('Other scene empty')
+
+        await python("bpy.data.objects['Face'].modifiers.new('Bevel', 'BEVEL')")
+        await expect(call('export_gltf', { path: glb, format: 'GLB' })).resolves.toMatchObject({ applied_modifiers: true, shape_keys_dropped: ['Face'] })
+        bytes = await readFile(glb)
+        expect(glbMorphTargets(bytes)).toBe(0)
+        await expect(call('export_gltf', { path: glb, format: 'GLB', apply_modifiers: false })).resolves.toMatchObject({ applied_modifiers: false, shape_keys_dropped: [] })
+        expect(glbMorphTargets(await readFile(glb))).toBe(1)
+
+        const shot = join(dataRoot, 'renders', 'limited.png')
+        await expect(call('render', { path: shot, width: 32, height: 32, engine: 'CYCLES', samples: 2, time_limit: 30 })).resolves.toMatchObject({ engine: 'CYCLES' })
+        await expect(python('result = bpy.context.scene.cycles.time_limit')).resolves.toBe(0)
       } finally {
         await worker.close(3000)
       }

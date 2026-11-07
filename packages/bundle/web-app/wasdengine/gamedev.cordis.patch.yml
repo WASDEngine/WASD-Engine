@@ -148,7 +148,7 @@
             disabled: true
 
 # Deployment default for new sessions. A Settings choice (`selectedDefault`)
-# still wins, and `standard` stays available. A patch replaces the row's whole
+# still wins, and `cordis` stays available. A patch replaces the row's whole
 # `config`, so this restates every key it keeps.
 - id: agent-preset-registry
   config:

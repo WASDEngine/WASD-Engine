@@ -83,6 +83,8 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(config.protocols).toEqual([{ name: BRAND.productName, schemes: [BRAND.urlScheme] }])
     // The packaged productName names Electron's data directory, so it never shares DeepSeek Harness's.
     expect(config.extraMetadata).toMatchObject({ productName: BRAND.productName, author: { name: BRAND.publisher } })
+    // The packaged npm name names the updater cache and the second folder the Windows uninstaller deletes.
+    expect(config.extraMetadata.name).toBe(BRAND.packageName)
     expect(config.mac.extendInfo.NSMicrophoneUsageDescription).toBe(BRAND.microphoneUsage)
     expect(config.mac.icon).toBe(wasdengineBrandFile(BRAND.icons.macOS))
     expect(config.win.icon).toBe(wasdengineBrandFile(BRAND.icons.windows))
@@ -100,6 +102,11 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(appInfo.companyName).toBe(BRAND.publisher)
     expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} ${BRAND.productName}`)
     expect(appInfo.macBundleIdentifier).toBe(BRAND.appId)
+    // Upstream's name would make both folders a stock DeepSeek Harness install's.
+    expect(appInfo.name).toBe('wasdengine-desktop')
+    expect(appInfo.updaterCacheDirName).toBe('wasdengine-desktop-updater')
+    const upstream = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { name: string }
+    expect(appInfo.name).not.toBe(upstream.name)
   })
 
   it('replaces the Windows tray icon', () => {

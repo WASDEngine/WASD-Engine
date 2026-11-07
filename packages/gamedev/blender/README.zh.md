@@ -102,19 +102,19 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `open_blend` | `path` | 文件、其中的场景、对象数量和名称，以及它清除的、`execute_python` 此前定义的名称；文件中存储的脚本不会运行，加载失败的文件会保留当前打开的场景和这些名称 |
 | `save_blend` | `path` | 保存的路径和大小；省略 `path` 时保存当前文件，场景从未保存过则调用失败 |
 | `import_file` | `path` | 新对象的名称；扩展名决定使用 glTF、FBX、OBJ、STL、PLY、USD、Alembic、SVG 还是 `.blend` 导入器 |
-| `export_gltf` | `path`、`selection`、`apply_modifiers`、`animations`、`format` | 导出的对象数量（不含 glTF 导出所忽略的相机和灯光）、路径、格式和大小；`.gltf` 还会给出旁边的 `.bin` 文件 |
+| `export_gltf` | `path`、`selection`、`apply_modifiers`、`animations`、`format` | 导出的对象数量（不含 glTF 导出所忽略的相机和灯光）、路径、格式和大小；`.gltf` 还会给出旁边的 `.bin` 文件；以及因应用修改器而失去形态键的网格 |
 | `export_file` | `path`、`format`、`selection` | FBX、OBJ、STL 或 USD 文件的格式、路径和大小 |
 | `render_preview` | `width`、`height`、`view`、`objects`、`shading` | 一张预览图像，以及它的尺寸、视角、对象数量和世界范围，另有一条说明列出预览无法显示的已列出对象 |
-| `render` | `path`、`width`、`height`、`engine`、`samples`、`camera` | 一张渲染图像，以及它的尺寸、引擎、相机、渲染耗时和保存的 PNG 路径 |
+| `render` | `path`、`width`、`height`、`engine`、`samples`、`camera`、`timeout_seconds` | 一张渲染图像，以及它的尺寸、引擎、相机、渲染耗时和保存的 PNG 路径 |
 | `python_api` | `identifier` | 从正在运行的 Blender 读取的某个 Blender Python API 名称的文档，最多 12,000 个字符 |
 | `checkpoint` | 无 | 新检查点的编号 |
 | `undo` | 无 | 场景恢复到的检查点；已在保留的最早检查点时，错误会写明该检查点 |
 
 `execute_python` 在同一个命名空间中运行代码；该命名空间在调用之间保留已定义的名称，直到 `new_scene` 或 `open_blend` 清除它们，并已导入 `bpy`、`bmesh`、`mathutils`、`math` 与 `json`。工具把打印输出截断为 20,000 个字符（保留开头和结尾），代码运行期间工作进程只保存输出的开头和结尾，少于 60,000 个字符，无论代码打印多少。JSON 超过 50,000 个字符的 `result` 会变成截断预览，其中超出 ±(2^53 − 1) 的整数以其十进制数字字符串返回，超出 Python 转换上限时返回 `<integer of about N digits>`，异常消息截断为 20,000 个字符。`timeout_seconds` 默认为 `requestTimeoutMs`，最大为 `toolCallTimeoutMs` 减去 30 s，两者均以秒计。
 
-`export_gltf` 写出 +Y 朝上的 glTF 2.0，从不使用 Godot 无法导入的 Draco 压缩。`selection` 包含每个指定对象的子对象，隐藏的和不可选的子对象也包括在内，例如在视口中隐藏的 `-col` 碰撞子对象：导出时会显示并选中它们，之后恢复它们的可见性和原来的选择。某个指定对象因所在集合禁用了选择或视口显示而无法选中时，调用失败并说明这一原因。`export_gltf` 与 `export_file` 会先删除 `path` 处已有的文件，Blender 没有写出文件时调用失败（例如只导出相机的 OBJ），因此调用成功后 `path` 处的文件总是这次导出的结果。
+`export_gltf` 写出当前场景的 +Y 朝上的 glTF 2.0，从不使用 Godot 无法导入的 Draco 压缩。未提供 `apply_modifiers` 时，只有导出对象带有骨架（Armature）以外的修改器才会应用修改器：蒙皮已经包含骨架修改器的形变，而应用网格的修改器会丢弃它的形态键，结果会列出这些网格。`selection` 包含每个指定对象的子对象，隐藏的和不可选的子对象也包括在内，例如在视口中隐藏的 `-col` 碰撞子对象：导出时会显示并选中它们，之后恢复它们的可见性和原来的选择。某个指定对象因所在集合禁用了选择或视口显示而无法选中时，调用失败并说明这一原因。`export_gltf` 与 `export_file` 会先删除 `path` 处已有的文件，Blender 没有写出文件时调用失败（例如只导出相机的 OBJ），因此调用成功后 `path` 处的文件总是这次导出的结果。
 
-`render` 默认从场景相机渲染，`camera` 可以指定另一个相机对象。`width`、`height`、`engine` 与 `samples` 只作用于本次渲染；未提供 `path` 的调用会在 `dataRoot` 的 `renders/` 下写入一个新文件。
+`render` 默认从场景相机渲染，`camera` 可以指定另一个相机对象。`width`、`height`、`engine` 与 `samples` 只作用于本次渲染；未提供 `path` 的调用会在 `dataRoot` 的 `renders/` 下写入一个新文件。`timeout_seconds` 的范围与 `execute_python` 相同：超时后 Blender 会被停止并重启，未保存的更改随之丢失，因此 CYCLES 渲染会提前结束采样以按时完成，除非场景自己设置了更严格的时间限制。
 
 <a id="one-blender-session"></a>
 ### 所有对话共用一个 Blender 会话

@@ -1,7 +1,7 @@
 /** Harness framing decodes partial and batched messages one at a time and rejects malformed ones. */
 import { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
-import { encodeJsonMessage, HarnessDecoder, HarnessProtocolError, MAX_MESSAGE_BYTES, type HarnessMessage } from '../src/protocol.ts'
+import { encodeJsonMessage, HarnessDecoder, HarnessProtocolError, MAX_MESSAGE_BYTES, parseGodotJson, type HarnessMessage } from '../src/protocol.ts'
 
 function message(kind: number, payload: Buffer): Buffer {
   const header = Buffer.alloc(5)
@@ -73,6 +73,19 @@ describe('HarnessDecoder', () => {
     const decoded = decode(decoder, Buffer.concat([status, logs, result].map(value => message(1, Buffer.from(JSON.stringify(value))))))
     expect(decoded.map(entry => entry.kind === 'json' && entry.message.type)).toEqual(['status', 'logs', 'result'])
     expect(decoded[2]).toMatchObject({ message: { value: 3 } })
+  })
+
+  it('decodes JSON with the control characters Godot leaves unescaped', () => {
+    // As Godot writes a print_rich line: a raw ESC, a raw BEL, `\v` for U+000B, and an escaped backslash before `v`.
+    const godot = '{"type":"logs","entries":[{"level":"stdout","message":"Score: 10\u001b[0m\u0007 \\v \\\\v","time_ms":1}]}'
+    expect(() => { JSON.parse(godot) }).toThrow(SyntaxError)
+    const [decoded] = decode(new HarnessDecoder(MAX_MESSAGE_BYTES), message(1, Buffer.from(godot)))
+    expect(decoded).toMatchObject({ message: { type: 'logs', entries: [{ message: 'Score: 10\u001b[0m\u0007 \u000b \\v' }] } })
+  })
+
+  it('leaves valid JSON from Godot unchanged', () => {
+    expect(parseGodotJson('{"a":"\\n\\t\\"\\\\","b":[1,"\\u001b"]}')).toEqual({ a: '\n\t"\\', b: [1, '\u001b'] })
+    expect(() => parseGodotJson('{"a":')).toThrow(SyntaxError)
   })
 
   it.each([

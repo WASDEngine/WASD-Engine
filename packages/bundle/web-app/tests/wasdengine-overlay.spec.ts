@@ -20,7 +20,7 @@ import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { bundlePatchPaths, composeEntries, loadOverlayPatches, readPluginMeta } from '@deepseek-ai/dsh-app-boot'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } from '@deepseek-ai/dsh-launch-environment'
-import { PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
+import { HIDDEN_BUNDLES, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = resolve(webAppDir, '../../..')
@@ -543,6 +543,16 @@ describe('gamedev preset', () => {
     for (const key of ['id', 'order', 'plugins']) {
       expect(declaresKey(['packages/preset/agent-preset-registry/src/definition.ts'], key), `preset field ${key}`).toBe(true)
     }
+  })
+
+  it('leaves computer use hidden on the Plugins page while its tool joins only a preset WASD Engine does not ship', () => {
+    const cua = loadOverlayPatches('wasdengine-overlay', join(repoRoot, 'packages/experimental/cua-bundle/cordis.patch.yml'))
+    const preset = configOf(cua.flatMap(patch => patch.insert ?? []).find(entry => entry.id === 'cua')).agentPreset
+    const shipped = fork.rows.filter(entry => entry.name === '@deepseek-ai/dsh-agent-preset').map(entry => configOf(entry).id)
+    expect(preset, 'the computer use bundle row').toBe('ptc')
+    expect(shipped).not.toContain(preset)
+    // Its "Set to PTC" action would make every new Session fail with agent-preset/not-found.
+    expect(HIDDEN_BUNDLES.has('@deepseek-ai/dsh-cua-bundle')).toBe(true)
   })
 
   it('publishes no display fields, so the built-in copy names it, and sets only keys upstream declares', () => {

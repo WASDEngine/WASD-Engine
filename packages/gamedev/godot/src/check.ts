@@ -8,6 +8,7 @@ import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh
 import { z } from 'zod'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
 import { listProjectFiles, resolveProjectPath, toResPath } from './project.ts'
+import { parseGodotJson } from './protocol.ts'
 import { FAILURE_OUTPUT_LINES, launcherArgv } from './run.ts'
 import type { ResolvedGodotRuntime } from './runtime.ts'
 
@@ -169,7 +170,7 @@ function issuesOf(path: string, errors: CheckLine['errors']): CheckIssue[] {
 function parseLine(text: string): CheckLine | undefined {
   let value: unknown
   try {
-    value = JSON.parse(text)
+    value = parseGodotJson(text)
   } catch {
     // Output cut by a crash or by the collection limit cannot be a complete report line; its script counts as unchecked.
     return undefined

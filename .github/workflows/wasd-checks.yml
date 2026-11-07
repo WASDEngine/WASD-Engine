@@ -1,0 +1,93 @@
+# The fork's checks on every push to main and every pull request: the build, the vitest runs that steps 3 to 7 of
+# the merge checklist name (wasdengine/FORK.md), and the runtime script tests.
+# Upstream's CI targets DeepSeek's runners and secrets, so the fork deletes it; this workflow runs the part the fork
+# relies on, on macOS, where the fork is developed.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: WASD checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: wasd-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Test runs never report to the telemetry endpoint the CLI profile names.
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  checks:
+    name: Build and fork checks
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the pnpm release that package.json's packageManager names.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Fork specs and the upstream specs the fork edits
+        run: >-
+          pnpm exec vitest run
+          packages/bundle
+          packages/client/ui-settings-account/tests
+          apps/desktop/tests
+          packages/util/home-paths/tests
+          packages/shell/shell-env/tests
+          packages/context/agent-instructions/tests
+          scripts/verify-dsh-package-licenses.spec.ts
+          packages/client/ui-brand-official
+          packages/client/ui-chat
+          apps/web/tests/app-icons.spec.ts
+          apps/web/tests/wasdengine-app-icons.spec.ts
+          packages/client/locale/tests/wasdengine-copy.client.spec.ts
+          packages/client/web/tests/boot-page.client.spec.ts
+          packages/client/ui-plugin-manager/tests/wasdengine-copy.client.spec.ts
+          packages/client/ui-sidebar-documentpreview/tests/wasdengine-copy.client.spec.ts
+          packages/experimental/cua/tests/wasdengine-copy.client.spec.ts
+          packages/api/workspace-controller
+          packages/client/ui-workspace
+          packages/client/ui-conversation
+          packages/client/ui-model-selection
+          packages/client/ui-settings-models
+          packages/experimental/client-ui-forge
+          packages/experimental/liveshare/tests/endpoint-classification.client.spec.ts
+          packages/client/ui-agent-preset
+          packages/preset/agent-preset-registry
+          packages/client/ui-settings-plugin-inventory
+          packages/client/ui-settings-general
+          packages/client/ui-entry-customization
+          packages/gamedev
+          packages/client/ui-plugin-manager/tests/components.client.spec.tsx
+          packages/util/official-bundles
+          scripts/optional-bundles.spec.ts
+
+      - name: Runtime script tests
+        run: |
+          python3 -B -m unittest discover --start-directory wasdengine/libgodot --pattern 'test_*.py'
+          python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
