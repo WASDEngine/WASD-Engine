@@ -143,7 +143,7 @@ scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以
 <a id="plugin-icon"></a>
 ### 插件图标
 
-「设置 › 内置插件」与「插件」页面的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，由 `package.json` 的 `icon` 指定。该文件把 Batuhan Bozkurt（2012）绘制的 SuperCollider IDE 图标原样嵌入 36 × 36 的画布，并加入 `viewBox` 以便缩放：即 [SuperCollider 仓库](https://github.com/supercollider/supercollider)中 SuperCollider 3.14.1 的 `icons/sc_ide.svg`。SuperCollider（包括其美术作品）采用 [GNU 通用公共许可证第 3 版](https://www.gnu.org/licenses/gpl-3.0.html)，不受本仓库的许可证约束，`icon.svg` 也以相同许可证共享。该图标仅指代 SuperCollider 集成。WASD Engine 与 SuperCollider 项目没有关联，也未获其认可。
+「设置 › 内置插件」与「插件」页面的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，由 `package.json` 的 `icon` 指定。该文件把 Nathan Ho（2015）绘制的 SuperCollider 立方体标志原样嵌入 36 × 36 的画布：即 [SuperCollider 仓库](https://github.com/supercollider/supercollider)中 SuperCollider 3.14.1 的 `icons/sc_logo.svg`。SuperCollider（包括其美术作品）采用 [GNU 通用公共许可证第 3 版](https://www.gnu.org/licenses/gpl-3.0.html)，不受本仓库的许可证约束，`icon.svg` 也以相同许可证共享。该图标仅指代 SuperCollider 集成。WASD Engine 与 SuperCollider 项目没有关联，也未获其认可。
 
 -----
 
