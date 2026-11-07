@@ -7,6 +7,7 @@ import type { DesktopOnboardingProps } from './onboarding-contract.ts'
 import officeIcon from './assets/onboarding-office.svg'
 import codeIcon from './assets/onboarding-code.svg'
 import css from './DesktopOnboarding.module.css'
+import { WasdengineHeadingBrand, WasdengineToolIcons } from './wasdengine-onboarding.tsx'
 
 /** @param props - selected purposes, localized copy and persistence callbacks. @returns the purpose step. */
 export function OnboardingPurposeStep({ t, heading, busy, purpose, onSelect, onContinue }: Pick<DesktopOnboardingProps, 't'> & {
@@ -25,7 +26,7 @@ export function OnboardingPurposeStep({ t, heading, busy, purpose, onSelect, onC
   }
   return <div className={`${css.content} ${css.purpose}`}>
     <div className={css.copy}>
-      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingPurposePrefix')} <em className={css.brand}>{t('onboardingBrand')}</em> {t('onboardingPurposeSuffix')}</h1>
+      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingPurposePrefix')} <WasdengineHeadingBrand label={t('onboardingBrand')} /> {t('onboardingPurposeSuffix')}</h1>
       <p className={css.subtitle}>{t('onboardingPurposeDescription')}</p>
     </div>
     <div className={css.purposeCards}>
@@ -51,8 +52,9 @@ function PurposeCard({ purpose, checked, t, onToggle }: {
   return <div className={`${css.card} ${checked ? css.selected : ''} ${purpose === 'office' ? css.officeCard : ''}`}>
     <div className={css.cardTop}>
       {checked ? <span className={`${css.fileIcons} ${entering ? css.iconsEntering : ''}`} aria-hidden="true">
-        {(purpose === 'office' ? ['word', 'ppt', 'excel', 'pdf', 'image'] as const : ['typescript', 'javascript', 'sql', 'python', 'cpp'] as const)
-          .map(kind => <FileTypeIcon key={kind} kind={kind} size={28} />)}
+        {purpose === 'office'
+          ? (['word', 'ppt', 'excel', 'pdf', 'image'] as const).map(kind => <FileTypeIcon key={kind} kind={kind} size={28} />)
+          : <WasdengineToolIcons size={28} />}
       </span> : <img src={purpose === 'office' ? officeIcon : codeIcon} width={40} height={40} alt="" />}
       <label className={css.cardCheckbox}>
         <input type="checkbox" aria-label={t(titleKey)} checked={checked} onChange={onToggle} />

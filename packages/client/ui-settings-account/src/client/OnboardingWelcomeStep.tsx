@@ -8,6 +8,7 @@ import artDark from './assets/onboarding-welcome-dark.webp'
 import artZh from './assets/onboarding-welcome-zh.webp'
 import artZhDark from './assets/onboarding-welcome-zh-dark.webp'
 import css from './DesktopOnboarding.module.css'
+import { emphasizeWasdengine, WasdengineHeadingBrand } from './wasdengine-onboarding.tsx'
 
 /** @param props - localized content, focus target and navigation. @returns the welcome step. */
 export function OnboardingWelcomeStep({ t, locale, heading, busy, onStart }: Pick<DesktopOnboardingProps, 't' | 'locale'> & {
@@ -17,8 +18,8 @@ export function OnboardingWelcomeStep({ t, locale, heading, busy, onStart }: Pic
 }) {
   return <div className={`${css.content} ${css.welcome}`}>
     <div className={css.copy}>
-      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingWelcome')} <em className={css.brand}>{t('onboardingBrand')}</em></h1>
-      <p className={css.heroDescription}>{t('onboardingIntroduction')}</p>
+      <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingWelcome')} <WasdengineHeadingBrand label={t('onboardingBrand')} /></h1>
+      <p className={css.heroDescription}>{emphasizeWasdengine(t('onboardingIntroduction'))}</p>
       <Button variant="primary" className={`${css.action} ${css.start}`} disabled={busy} onClick={onStart}>{t('onboardingStart')}</Button>
     </div>
     <div className={css.welcomeIllustration} aria-hidden="true">
