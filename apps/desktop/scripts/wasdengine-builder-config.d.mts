@@ -27,6 +27,17 @@ export function wasdengineBrandFile(path: string): string
  */
 export function brandInstallerLocales(locales: InstallerLocale[]): InstallerLocale[]
 
+/** `asarUnpack` pattern of the LibGodot runtime that `wasdengine-libgodot.ts` ships in the Godot plugin package. */
+export const LIBGODOT_ASAR_UNPACK: string
+
+/**
+ * Keep the shipped LibGodot runtime on disk, outside `app.asar`: its runner starts as a process and loads the
+ * library by path, which neither can do inside the archive.
+ * @param config - Configuration from `createElectronBuilderConfig` or `applyWasdengineBrand`.
+ * @returns A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineLibGodot<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
+
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `productName` and `author`, the deep-link scheme, the icons, and

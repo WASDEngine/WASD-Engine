@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type RuntimeHost, type RuntimeSettings } from '../src/runtime.ts'
+import {
+  bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE,
+  type RuntimeHost, type RuntimeSettings,
+} from '../src/runtime.ts'
 import type { GodotRuntimeView } from '../src/types.ts'
 import { subprocessFixture, type SubprocessFixture } from './helpers.ts'
 
@@ -32,7 +35,7 @@ afterEach(async () => {
 
 function settings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
-    dataRoot: join(root, 'data'), runtimeVersion: '1.0-test', runtimeManifestUrl: 'http://127.0.0.1:1/manifest.json',
+    dataRoot: join(root, 'data'), bundledRoot: join(root, 'bundled'), runtimeVersion: '1.0-test', runtimeManifestUrl: 'http://127.0.0.1:1/manifest.json',
     libgodotPath: '', runnerPath: '', godotExecutable: '', embedded: true, ...overrides,
   }
 }
@@ -105,6 +108,33 @@ posix('runtime resolution', () => {
     await rm(join(directory, 'runtime.json'))
     await mkdir(join(directory, 'runtime.json'))
     await expect(manager.resolve(signal)).rejects.toMatchObject({ code: 'EISDIR' })
+  })
+
+  it('uses the runtime the application ships before the managed one, under the same runtime.json rules', async () => {
+    const bundled = join(root, 'bundled', 'linux-x64')
+    await file(join(bundled, 'godot_runner'))
+    await file(join(bundled, 'libgodot.so'), 0o644)
+    const record = { format: 1, version: '1.0-test', godot: '4.7.3', platform: 'linux', arch: 'x64', runner: 'godot_runner', library: 'libgodot.so' }
+    await writeFile(join(bundled, 'runtime.json'), JSON.stringify(record))
+    const managed = await managedRecord()
+    const manager = new GodotRuntimeManager(settings(), fakeHost(), () => {})
+    expect(manager.bundledDirectory()).toBe(bundled)
+    expect(await manager.resolve(signal)).toEqual({ kind: 'libgodot', runner: join(bundled, 'godot_runner'), library: join(bundled, 'libgodot.so'), version: '4.7.3' })
+    // A shipped runtime of another version yields to the managed runtime of the configured one.
+    await writeFile(join(bundled, 'runtime.json'), JSON.stringify({ ...record, version: '0.9-test' }))
+    expect(await manager.resolve(signal)).toEqual({ kind: 'libgodot', runner: join(managed, 'godot_runner'), library: join(managed, 'libgodot.so'), version: '4.7.2' })
+    await writeFile(join(bundled, 'runtime.json'), JSON.stringify(record))
+    const configured = await file(join(root, 'bin', 'godot_runner'))
+    const library = await file(join(root, 'bin', 'libgodot.so'), 0o644)
+    const override = new GodotRuntimeManager(settings({ runnerPath: configured, libgodotPath: library }), fakeHost(), () => {})
+    expect(await override.resolve(signal)).toEqual({ kind: 'libgodot', runner: configured, library })
+  })
+
+  it('reads the runtimes shipped beside an Electron app.asar archive from app.asar.unpacked', () => {
+    expect(bundledRuntimeRoot('/A/WASD Engine.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-godot'))
+      .toBe('/A/WASD Engine.app/Contents/Resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-godot/libgodot')
+    expect(bundledRuntimeRoot('/repo/packages/gamedev/godot')).toBe('/repo/packages/gamedev/godot/libgodot')
+    expect(bundledRuntimeRoot('/x/app.asarx/godot')).toBe('/x/app.asarx/godot/libgodot')
   })
 
   it('falls back to a configured executable, then PATH, then macOS applications', async () => {

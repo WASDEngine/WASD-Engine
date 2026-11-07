@@ -91,12 +91,13 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 Each run and each `godot_check` resolves the runtime again and takes the first match:
 
 1. `runnerPath` and `libgodotPath`: a LibGodot runner and library that you built or installed yourself.
-2. The managed runtime in `<dataRoot>/runtime/<runtimeVersion>/`, used only when its `runtime.json` names this version, platform, and architecture and its runner and library exist.
-3. `godotExecutable`: an installed Godot editor executable.
-4. `godot`, then `godot4`, on `PATH`.
-5. On macOS, `Contents/MacOS/Godot` of a `Godot*.app` bundle in `/Applications`, trying the bundle names in reverse alphabetical order.
+2. The runtime that the Desktop app ships in this package's `libgodot/<platform>-<arch>/` folder, which a packaged app reads from `app.asar.unpacked`, used only when its `runtime.json` names this version, platform, and architecture and its runner and library exist.
+3. The managed runtime in `<dataRoot>/runtime/<runtimeVersion>/`, under the same conditions.
+4. `godotExecutable`: an installed Godot editor executable.
+5. `godot`, then `godot4`, on `PATH`.
+6. On macOS, `Contents/MacOS/Godot` of a `Godot*.app` bundle in `/Applications`, trying the bundle names in reverse alphabetical order.
 
-A configured path that is not a usable file fails the call with a message that names the field, and the search does not continue. Because the managed runtime comes second, it takes precedence over `godotExecutable` once it is installed. When nothing resolves, `godot_run` and `godot_check` fail and ask for the runtime to be installed from the Game tab or configured.
+A configured path that is not a usable file fails the call with a message that names the field, and the search does not continue. Because the shipped and the managed runtime come before `godotExecutable`, either one takes precedence over it. Desktop packaging puts the shipped runtime in place ([LibGodot in the Desktop app](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)); a source checkout and an npm install ship none and use the managed runtime. When nothing resolves, `godot_run` and `godot_check` fail and ask for the runtime to be installed from the Game tab or configured.
 
 A LibGodot run on macOS with `embedded: true` passes `--embedded`, and the [patched LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) renders the game with Metal into a layer that no window shows: no game window opens, and the Game tab and screenshots are the only views of the game. Every other run opens a normal game window on the Host's desktop: LibGodot on Linux and Windows, LibGodot on macOS with `embedded: false`, and every run of an editor executable. The Game tab streams those runs as well.
 

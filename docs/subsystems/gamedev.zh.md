@@ -69,12 +69,13 @@ fd 3   failure  {"id": <integer>, "ok": false, "error": {"type": "<exception cla
 运行会启动第一个能够解析的运行时：
 
 1. 已配置的 `runnerPath` 与 `libgodotPath`。
-2. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，前提是其 `runtime.json` 的格式为 1，所写的版本、平台与架构与当前一致，且其中指定的 runner 与库文件都存在。
-3. 已配置的 `godotExecutable`。
-4. `PATH` 上的 `godot`，然后是 `godot4`。
-5. 在 macOS 上，名称排序最后的 `/Applications/Godot*.app` 包中的 `Contents/MacOS/Godot`。
+2. Desktop 应用在该包 `libgodot/<platform>-<arch>/` 目录中附带的运行时（打包后的应用从 `app.asar.unpacked` 读取），前提是其 `runtime.json` 的格式为 1，所写的版本、平台与架构与当前一致，且其中指定的 runner 与库文件都存在。
+3. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，前提相同。
+4. 已配置的 `godotExecutable`。
+5. `PATH` 上的 `godot`，然后是 `godot4`。
+6. 在 macOS 上，名称排序最后的 `/Applications/Godot*.app` 包中的 `Contents/MacOS/Godot`。
 
-已配置但不是可用文件的路径属于配置错误，绝不会被跳过。没有任何运行时可以解析时，`godot_run` 与 `godot.run` 会失败，其消息会指出 Game 标签页的安装操作以及上述设置。
+Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibGodot](../../wasdengine/FORK.md#libgodot-in-the-desktop-app)；源码检出和 npm 安装中没有该目录。已配置但不是可用文件的路径属于配置错误，绝不会被跳过。没有任何运行时可以解析时，`godot_run` 与 `godot.run` 会失败，其消息会指出 Game 标签页的安装操作以及上述设置。
 
 LibGodot 运行以 `godot_runner --libgodot <library> --parent-pid <Host process id> -- <Godot arguments>` 启动：runner 承载其进程可以持有的唯一一个 Godot 实例，并在 Host 进程退出时退出。编辑器可执行文件直接接受 Godot 参数。只有在 macOS 上使用 LibGodot 且 `embedded: true` 时，运行才会通过 `--embedded` 无窗口渲染；其他所有运行时都会打开游戏窗口。
 

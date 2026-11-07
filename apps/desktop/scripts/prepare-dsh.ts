@@ -24,6 +24,7 @@ import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-patches.ts'
 import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
+import { stageLibGodotRuntime } from './wasdengine-libgodot.ts'
 import {
   resolveDesktopAppId,
   resolveMacOSSigningEnvironment,
@@ -163,6 +164,7 @@ async function main(): Promise<void> {
     if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', '@deepseek-ai', `libreoffice-kit-${officeEngine}`, 'prebuilds.json'))) {
       throw new Error(`desktop runtime: missing required LibreOffice engine ${officeEngine}`)
     }
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:libgodot', () => stageLibGodotRuntime(DSH_OUTPUT_ROOT, target))
     if (process.platform === 'darwin' && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       const cacheDirectory = resolveMacOSSignatureCacheDirectory(process.env, BUILD_PATHS.root)
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, cacheDirectory))

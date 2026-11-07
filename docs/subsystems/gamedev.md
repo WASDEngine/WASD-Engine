@@ -69,12 +69,13 @@ fd 3   failure  {"id": <integer>, "ok": false, "error": {"type": "<exception cla
 A run launches the first runtime that resolves:
 
 1. `runnerPath` and `libgodotPath`, when configured.
-2. The managed runtime in `<dataRoot>/runtime/<runtimeVersion>/`, when its `runtime.json` has format 1, names this version, platform, and architecture, and the runner and library that it names exist.
-3. `godotExecutable`, when configured.
-4. `godot`, then `godot4`, on `PATH`.
-5. On macOS, `Contents/MacOS/Godot` in the `/Applications/Godot*.app` bundle whose name sorts last.
+2. The runtime that the Desktop app ships in the package's `libgodot/<platform>-<arch>/` folder, which a packaged app reads from `app.asar.unpacked`, when its `runtime.json` has format 1, names this version, platform, and architecture, and the runner and library that it names exist.
+3. The managed runtime in `<dataRoot>/runtime/<runtimeVersion>/`, under the same conditions.
+4. `godotExecutable`, when configured.
+5. `godot`, then `godot4`, on `PATH`.
+6. On macOS, `Contents/MacOS/Godot` in the `/Applications/Godot*.app` bundle whose name sorts last.
 
-A configured path that is not a usable file is a configuration failure and is never skipped. When nothing resolves, `godot_run` and `godot.run` fail with a message that names the Game tab's install action and these settings.
+Desktop packaging fills the `libgodot` folder, as [LibGodot in the Desktop app](../../wasdengine/FORK.md#libgodot-in-the-desktop-app) describes; a source checkout and an npm install have none. A configured path that is not a usable file is a configuration failure and is never skipped. When nothing resolves, `godot_run` and `godot.run` fail with a message that names the Game tab's install action and these settings.
 
 LibGodot runs start `godot_runner --libgodot <library> --parent-pid <Host process id> -- <Godot arguments>`: the runner hosts the one Godot instance that its process may hold, and it exits when the Host process exits. An editor executable takes the Godot arguments directly. Only LibGodot on macOS with `embedded: true` renders without a window, through `--embedded`; every other runtime opens a game window.
 

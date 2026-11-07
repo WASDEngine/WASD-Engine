@@ -91,12 +91,13 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 每次运行和每次 `godot_check` 都会重新解析运行时，并采用第一个匹配项：
 
 1. `runnerPath` 与 `libgodotPath`：你自行构建或安装的 LibGodot runner 与库。
-2. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，仅当其 `runtime.json` 写明当前版本、平台和架构，且 runner 与库都存在时使用。
-3. `godotExecutable`：已安装的 Godot 编辑器可执行文件。
-4. `PATH` 上的 `godot`，然后是 `godot4`。
-5. 在 macOS 上，`/Applications` 中某个 `Godot*.app` 包内的 `Contents/MacOS/Godot`，按包名逆序依次尝试。
+2. Desktop 应用在本包 `libgodot/<platform>-<arch>/` 目录中附带的运行时（打包后的应用从 `app.asar.unpacked` 读取），仅当其 `runtime.json` 写明当前版本、平台和架构，且 runner 与库都存在时使用。
+3. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，条件相同。
+4. `godotExecutable`：已安装的 Godot 编辑器可执行文件。
+5. `PATH` 上的 `godot`，然后是 `godot4`。
+6. 在 macOS 上，`/Applications` 中某个 `Godot*.app` 包内的 `Contents/MacOS/Godot`，按包名逆序依次尝试。
 
-配置的路径不是可用文件时，调用会失败，消息中写明该字段，搜索不再继续。由于托管运行时排在第二位，一旦安装，它就优先于 `godotExecutable`。没有任何运行时可用时，`godot_run` 与 `godot_check` 会失败，并要求从“游戏”标签页安装运行时或在配置中设置。
+配置的路径不是可用文件时，调用会失败，消息中写明该字段，搜索不再继续。由于附带的运行时和托管运行时都排在 `godotExecutable` 之前，二者中任何一个都优先于它。Desktop 打包时会放入附带的运行时（[Desktop 应用中的 LibGodot](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)）；源码检出和 npm 安装不附带运行时，使用托管运行时。没有任何运行时可用时，`godot_run` 与 `godot_check` 会失败，并要求从“游戏”标签页安装运行时或在配置中设置。
 
 在 macOS 上以 `embedded: true` 运行 LibGodot 时会传入 `--embedded`，[打过补丁的 LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) 用 Metal 把游戏渲染到一个不显示在任何窗口中的图层：不会打开游戏窗口，“游戏”标签页和截图是查看游戏的唯一途径。其他所有运行都会在宿主的桌面上打开普通的游戏窗口：Linux 与 Windows 上的 LibGodot、macOS 上 `embedded: false` 的 LibGodot，以及编辑器可执行文件的每次运行。“游戏”标签页同样会为这些运行推流。
 

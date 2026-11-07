@@ -1,10 +1,11 @@
 /**
  * Godot runtime resolution and the managed LibGodot install.
  *
- * Resolution order: the configured LibGodot runner and library, the managed runtime under
- * `<dataRoot>/runtime/<runtimeVersion>/` (valid only with a matching `runtime.json`), a Godot editor executable
- * (the configured one, `godot` or `godot4` on PATH, then `/Applications/Godot*.app` on macOS), else nothing. A
- * configured path that is not a usable file is a configuration failure, never skipped.
+ * Resolution order: the configured LibGodot runner and library, the runtime a packaged application ships under
+ * `<bundledRoot>/<platform>-<arch>/`, the managed runtime under `<dataRoot>/runtime/<runtimeVersion>/` (each valid
+ * only with a `runtime.json` that names `runtimeVersion` and this Host's platform and architecture), a Godot editor
+ * executable (the configured one, `godot` or `godot4` on PATH, then `/Applications/Godot*.app` on macOS), else
+ * nothing. A configured path that is not a usable file is a configuration failure, never skipped.
  *
  * The install downloads the release manifest, picks the `<platform>-<arch>` artifact, verifies its size and
  * SHA-256 while streaming, extracts it with `tar` into a staging folder, writes `runtime.json`, and renames the
@@ -28,6 +29,8 @@ import type { GodotRuntimeInstallProgress, GodotRuntimeView } from './types.ts'
 export interface RuntimeSettings {
   /** Absolute plugin data folder; the managed runtime lives in its `runtime/` folder. */
   readonly dataRoot: string
+  /** Folder of the runtimes a packaged application ships, one `<platform>-<arch>` folder each; a source checkout has none. */
+  readonly bundledRoot: string
   /** Managed runtime version, the folder name under `runtime/`. */
   readonly runtimeVersion: string
   /** Release manifest URL for {@link GodotRuntimeManager.install}. */
@@ -105,6 +108,16 @@ export class GodotRuntimeError extends Error {
   constructor(readonly code: GodotRuntimeErrorCode, message: string, options?: ErrorOptions) {
     super(message, options)
   }
+}
+
+/**
+ * Locate the runtimes a packaged application ships inside this package. A package inside an Electron `app.asar`
+ * archive reads them from the sibling `app.asar.unpacked`, where the application keeps native files on disk.
+ * @param packageRoot - folder holding the package manifest.
+ * @returns the package's `libgodot` folder.
+ */
+export function bundledRuntimeRoot(packageRoot: string): string {
+  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'libgodot')
 }
 
 /** Message for a Host where nothing resolves. */
@@ -209,6 +222,14 @@ export class GodotRuntimeManager {
   }
 
   /**
+   * Locate the runtime a packaged application ships for this Host.
+   * @returns the `<platform>-<arch>` folder under `bundledRoot`.
+   */
+  bundledDirectory(): string {
+    return join(this.settings.bundledRoot, this.platformKey())
+  }
+
+  /**
    * Resolve the runtime a new run would use.
    * @param signal - cancellation.
    * @returns the runtime, or undefined when nothing resolves.
@@ -221,6 +242,8 @@ export class GodotRuntimeManager {
       await this.requireFile(libgodotPath, 'libgodotPath', false)
       return { kind: 'libgodot', runner: runnerPath, library: libgodotPath }
     }
+    const bundled = await this.recorded(this.bundledDirectory())
+    if (bundled !== undefined) return bundled
     const managed = await this.managed()
     if (managed !== undefined) return managed
     if (godotExecutable !== '') {
@@ -335,15 +358,19 @@ export class GodotRuntimeManager {
     throw new GodotRuntimeError('RUNTIME_CONFIG', `The Godot plugin's ${field} ${path} is not ${executable ? 'an executable file' : 'a file'}; fix or clear it in the plugin configuration.`)
   }
 
-  private async managed(): Promise<ResolvedGodotRuntime | undefined> {
-    const directory = this.managedDirectory()
+  private managed(): Promise<ResolvedGodotRuntime | undefined> {
+    return this.recorded(this.managedDirectory())
+  }
+
+  /** The runtime a folder holds when its `runtime.json` names the configured version and this Host, else undefined. */
+  private async recorded(directory: string): Promise<ResolvedGodotRuntime | undefined> {
     let record: RuntimeRecord
     try {
       const parsed = RuntimeRecord.safeParse(JSON.parse(await readFile(join(directory, 'runtime.json'), 'utf8')))
       if (!parsed.success) return undefined
       record = parsed.data
     } catch (error) {
-      // A missing or unreadable record means the managed runtime is not installed; install replaces the folder.
+      // A missing or unreadable record means the folder holds no runtime; install replaces the managed folder.
       if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
       throw error
     }

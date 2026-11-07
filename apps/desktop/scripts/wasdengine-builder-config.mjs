@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, and the unpacked LibGodot runtime, to the ordinary Desktop release configuration. */
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
@@ -21,6 +21,20 @@ export function brandInstallerLocales(locales) {
   const rename = (/** @type {Record<string, string>} */ messages) => Object.fromEntries(Object.entries(messages)
     .map(([key, text]) => [key, text.replaceAll('DeepSeek Harness', BRAND.productName)]))
   return locales.map(locale => ({ ...locale, strings: rename(locale.strings), uninstaller: rename(locale.uninstaller) }))
+}
+
+/** `asarUnpack` pattern of the LibGodot runtime that `wasdengine-libgodot.ts` ships in the Godot plugin package. */
+export const LIBGODOT_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-godot/libgodot/**/*'
+
+/**
+ * Keep the shipped LibGodot runtime on disk, outside `app.asar`: its runner starts as a process and loads the
+ * library by path, which neither can do inside the archive.
+ * @template {{ readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or `applyWasdengineBrand`.
+ * @returns {T} A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineLibGodot(config) {
+  return { ...config, asarUnpack: [...config.asarUnpack, LIBGODOT_ASAR_UNPACK] }
 }
 
 /**

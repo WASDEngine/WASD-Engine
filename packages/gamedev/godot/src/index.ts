@@ -4,7 +4,8 @@
  * @module @deepseek-ai/dsh-godot
  */
 import { randomUUID } from 'node:crypto'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -29,7 +30,9 @@ import { LogSequence } from './logs.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
 import { GodotRequestError, GodotRun, GodotRunStateError, MAX_INPUT_EVENTS } from './run.ts'
 import { GodotSessionError, GodotSessions, TooManyRunsError } from './runs.ts'
-import { createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime } from './runtime.ts'
+import {
+  bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
+} from './runtime.ts'
 import { registerGodotTools } from './tools.ts'
 import type {
   GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
@@ -174,7 +177,9 @@ export default class GodotController extends TypertRemoteService {
     validateConfig(config)
     this.sessions = new GodotSessions(ctx, config.maxRuns)
     const host = createRuntimeHost(ctx.subprocess, { outputBytes: config.processOutputBytes, graceMs: config.stopGraceMs })
-    this.runtime = new GodotRuntimeManager(config, host, () => {
+    // The desktop app's packaging puts the runtime it ships in this package's `libgodot` folder.
+    const bundledRoot = bundledRuntimeRoot(resolve(fileURLToPath(new URL('..', import.meta.url))))
+    this.runtime = new GodotRuntimeManager({ ...config, bundledRoot }, host, () => {
       for (const watcher of [...this.runtimeWatchers]) watcher()
     })
     ctx.effect(() => async () => {
