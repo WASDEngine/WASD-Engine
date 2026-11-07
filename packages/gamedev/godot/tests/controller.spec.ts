@@ -3,7 +3,7 @@
  * game; the plugin's contributions end with its fiber.
  */
 import { Buffer } from 'node:buffer'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -285,6 +285,31 @@ posix('frames route', () => {
   it('is not registered without a connection service', async () => {
     const c = await setup({ connection: false })
     expect(c.routes.size).toBe(0)
+  })
+})
+
+/** The fenced `# Godot games` block that a README quotes as the section text. */
+function quotedSection(readme: string): string | undefined {
+  const fence = '```markdown\n'
+  const start = readme.indexOf(`${fence}# Godot games\n`)
+  if (start < 0) return undefined
+  const body = readme.slice(start + fence.length)
+  return body.slice(0, body.indexOf('\n```'))
+}
+
+posix('system prompt', () => {
+  it('tells the agent that Godot is built in, in the text and size that both READMEs document', async () => {
+    const c = await setup()
+    const text = (await c.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'godot')?.text
+    const lead = '# Godot games\n\nGodot is built in: the godot_* tools run it, so making, checking, and running a game need '
+      + 'no Godot editor or godot command. Do not look for one or download one.'
+    expect(text?.slice(0, lead.length)).toBe(lead)
+    const english = await readFile(new URL('../README.md', import.meta.url), 'utf8')
+    const chinese = await readFile(new URL('../README.zh.md', import.meta.url), 'utf8')
+    expect(quotedSection(english)).toBe(text)
+    expect(quotedSection(chinese)).toBe(text)
+    expect(english).toContain(`The section adds ${String(text?.length)} characters`)
+    expect(chinese).toContain(`该部分为每个系统提示词增加 ${String(text?.length)} 个字符`)
   })
 })
 

@@ -7,7 +7,11 @@ description: Create, edit, run, test, or export a Godot 4 game (project.godot, .
 
 ## Find the engine
 
-When the `godot_run` tool is available, it runs the project in the Session's working directory with the built-in Godot runtime; you need no editor executable. If it reports that no runtime is installed, ask the user to install it from the Game tab, or to name a Godot editor executable. Otherwise run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one. Write code for the detected 4.x release. A project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
+When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only an export needs an editor (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools; `godot_run` reports the Godot version. If a tool reports that no Godot runtime is installed, pass its message on to the user instead of searching for Godot.
+
+Without the `godot_*` tools, run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one.
+
+Write code for the Godot 4 release in use. The built-in runtime runs GDScript, not C#: a project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
 
 ## Project layout
 
@@ -46,7 +50,9 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 4. Read state instead of guessing: `godot_eval` evaluates an expression such as `scene.get_node("Player").position`, and `godot_scene_tree` lists the running nodes. `godot_control` pauses, steps a number of frames, and resumes.
 5. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
 
-## Verify every change without the tools
+## Verify every change without the Godot tools
+
+Only when the `godot_*` tools are not available, check with the editor executable you found, written `godot` below:
 
 1. After adding, moving, or renaming files, refresh imports, `.uid` files, and the global class cache:
    `godot --headless --path <project-dir> --import`
@@ -64,7 +70,7 @@ With the `mcp__wasd_blender__` tools, build or edit 3D models headless, look at 
 
 ## Export
 
-Export only when the user asks:
+Export only when the user asks. The `godot_*` tools cannot export: exporting needs a Godot editor executable of the same version and its export templates. Find the editor as Find the engine describes for sessions without the tools, ask the user for it if none exists, then run:
 
 ```sh
 godot --headless --path <project-dir> --export-release "<preset name>" <output-path>

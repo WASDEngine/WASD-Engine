@@ -584,4 +584,13 @@ describe('gamedev preset', () => {
       expect(description, `${skill} description`).not.toMatch(/: | #/u)
     }
   })
+
+  it('has godot-project name the built-in Godot before any godot command, which it keeps for sessions without the tools', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    const builtIn = text.indexOf('When the `godot_*` tools are available, Godot is built in')
+    const fallback = 'Without the `godot_*` tools, run `'
+    expect(builtIn).toBeGreaterThan(0)
+    expect(text.indexOf(fallback)).toBeGreaterThan(builtIn)
+    expect(text.indexOf('godot --')).toBe(text.indexOf(fallback) + fallback.length)
+  })
 })

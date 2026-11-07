@@ -98,7 +98,9 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 const PROMPT = `# Godot games
 
-When the working directory holds a Godot project, test it with the godot_* tools:
+Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+
+Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.

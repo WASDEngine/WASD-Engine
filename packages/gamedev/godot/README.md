@@ -331,7 +331,9 @@ The plugin registers a global system prompt section named `godot` at the order o
 ```markdown
 # Godot games
 
-When the working directory holds a Godot project, test it with the godot_* tools:
+Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+
+Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.
@@ -341,7 +343,7 @@ The user can watch and play the running game in the Game panel.
 
 #### Token effect
 
-The section adds 704 characters to every system prompt while the plugin is loaded.
+The section adds 903 characters to every system prompt while the plugin is loaded.
 
 #### KV Cache effect
 
@@ -384,6 +386,7 @@ These limits describe current gaps of the Godot runs, the Game tab, and the runt
 - **Game tab input waits behind the agent's input** — the game runs one input sequence at a time, so while an agent sequence runs, for example `{ "wait": 30 }`, keys and clicks from the Game tab reach the game only after that sequence ends, at the latest when its real-time limit ends.
 - **Application shortcuts pause in the game view on Windows Desktop** — while the view has focus, no application shortcut or menu accelerator runs until Shift+Esc or a click elsewhere releases it.
 - **No C# scripts on the managed runtime** — LibGodot is built without .NET, so C# scripts do not load. An installed managed runtime also takes precedence over `godotExecutable`, so a .NET editor set there runs games only while no managed runtime is installed.
+- **No exports** — the tools run and check games but do not export them. An export needs a Godot editor executable of the same version with its export templates, which the agent runs from the shell.
 - **Editor executables are not version-checked** — the harness and the check script extend Godot's `Logger` class and read `ScriptBacktrace` frames; an editor without those classes cannot start a run.
 - **The harness replaces a custom main loop** — runs pass the harness with `--script`, so a project whose `application/run/main_loop_type` names its own `SceneTree` or `MainLoop` class runs under the harness instead.
 - **The Game tab can show an outdated runtime state** — the tab resolves the runtime when it starts following a Session and after an install, so a Godot editor installed while the tab is open appears after the tab follows a Session again, for example after a page reload.

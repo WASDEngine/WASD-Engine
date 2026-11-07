@@ -331,7 +331,9 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 ```markdown
 # Godot games
 
-When the working directory holds a Godot project, test it with the godot_* tools:
+Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+
+Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.
@@ -341,7 +343,7 @@ The user can watch and play the running game in the Game panel.
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 704 个字符。
+插件加载期间，该部分为每个系统提示词增加 903 个字符。
 
 #### KV Cache 影响
 
@@ -384,6 +386,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **托管运行时不支持 C# 脚本** — LibGodot 构建时不含 .NET，因此 C# 脚本无法加载。已安装的托管运行时还优先于 `godotExecutable`，因此在那里设置的 .NET 编辑器只有在未安装托管运行时时才会运行游戏。
+- **不支持导出** — 这些工具可以运行和检查游戏，但不会导出游戏。导出需要同一版本的 Godot 编辑器可执行文件及其导出模板，由 Agent 在 shell 中运行。
 - **不检查编辑器可执行文件的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类并读取 `ScriptBacktrace` 帧；没有这些类的编辑器无法启动运行。
 - **harness 会替换自定义主循环** — 运行通过 `--script` 传入 harness，因此 `application/run/main_loop_type` 指定了自有 `SceneTree` 或 `MainLoop` 类的项目会改由 harness 运行。
 - **“游戏”标签页可能显示过时的运行时状态** — 标签页在开始跟随某个 Session 时以及安装之后解析运行时，因此在标签页打开期间安装的 Godot 编辑器，要等标签页再次跟随某个 Session 后才会显示，例如刷新页面后。

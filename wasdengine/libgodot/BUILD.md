@@ -44,7 +44,7 @@ wasdengine/libgodot/build.sh --source ~/src/godot --out /tmp/libgodot --install 
 
 `build.sh --help` lists every option. With `--source`, the script builds the checkout as it is: it applies the patches that the checkout lacks, skips those already applied, and never re-clones or resets it. Without `--source`, it clones the `--godot-ref` tag or branch into `<out>/godot-<ref>` once and reuses that clone. SCons rebuilds only what changed, and `--scons-cache <dir>` keeps compiled objects across clones. A first build takes several minutes on a recent Mac and can take over an hour on a four-core CI runner.
 
-The Desktop app's Godot plugin keeps its data in `~/.wasdengine/godot`, or in `$DSH_HOME/godot` when `DSH_HOME` is set. `--install` with that directory puts the runtime where the plugin installs the one it downloads, so the plugin uses the local build instead.
+The Desktop app's Godot plugin keeps its data in `~/.wasdengine/godot`, or in `$DSH_HOME/godot` when `DSH_HOME` is set. `--install` with that directory puts the runtime where the plugin installs the one it downloads, so the plugin uses the local build instead. The development app that `pnpm run dev:desktop` and `start:desktop` launch sets `DSH_HOME` to `apps/desktop/.desktop-build/development/home` in its checkout unless `DSH_HOME` is already set, so install a local build for it into `apps/desktop/.desktop-build/development/home/godot`; a source checkout ships no runtime.
 
 ## Output
 
