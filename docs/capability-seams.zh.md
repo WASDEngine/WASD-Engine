@@ -124,6 +124,8 @@ flowchart LR
   svc_gameProjectController["ctx.gameProjectController<br/>Host game project Remote controller"]
   pkg_godot["godot"]
   svc_godot["ctx.godot<br/>Godot game runs, tools, and Game tab Remote"]
+  pkg_game_mcp["game-mcp"]
+  svc_gameMcp["ctx.gameMcp<br/>MCP server of the game tools for other agents"]
   pkg_typert_registry["typert-registry"]
   svc_typert["ctx.typert<br/>Runtime type registry"]
   pkg_typert_loader["typert-loader"]
@@ -390,6 +392,7 @@ flowchart LR
   pkg_fs_local --> svc_fs
   pkg_fs_sandbox --> svc_fs
   pkg_fs_ssh --> svc_fs
+  pkg_game_mcp --> svc_gameMcp
   pkg_goal --> svc_goals
   pkg_godot --> svc_godot
   pkg_headless --> svc_headlessStartup
@@ -699,6 +702,7 @@ flowchart LR
 | `ctx.directoryPickerController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | 把选目录 seam 送上线：能力门禁、取消传播，以及浏览器目录流程用于分支判断的 seam 错误码。 |
 | `ctx.gameProjectController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | 创建带有 Git 仓库的游戏项目文件夹，并报告首次使用时是否必须要求创建一个。 |
 | `ctx.godot` | `service` | [`godot`](../packages/gamedev/godot) | - | - | - | 通过 LibGodot 运行会话的 Godot 游戏，提供 godot_* 工具、Game 标签页的 Remote 与画面路由，并解析或安装 Godot 运行时。 |
+| `ctx.gameMcp` | `service` | [`game-mcp`](../packages/gamedev/game-mcp) | - | - | - | 通过带令牌的回环 Streamable HTTP 端点，把插件提供的游戏工具提供给这台电脑上的其他 agent，并在它们各自的会话中运行它们的游戏。 |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | 插件直接或通过 dsh-typert-loader 注册实时 zod 贡献；API 网关消费调用描述符和提供方，其他运行时消费方则在各自边界查询 schema 与反射元数据。 |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | 将生成的 Remote 描述符与实时 Cordis 服务关联，解析已注册的身份，并通过共享的 Connection RPC 载体提供一元调用。 |
 | `ctx.remoteAccess` | `core` | [`api-remote-access`](../packages/api/remote-access) | - | [`api-gateway`](../packages/api/gateway), [`api-session-controller`](../packages/api/session-controller), [`api-workspace-controller`](../packages/api/workspace-controller) | - | 通过业务方注册的基于 role 的 policy 判定非 owner Peer 可调用哪些 Remote 方法，过滤列表结果，并为每个 Peer 推送访问快照。 |

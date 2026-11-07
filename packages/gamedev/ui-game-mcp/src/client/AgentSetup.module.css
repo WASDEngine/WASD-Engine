@@ -1,0 +1,62 @@
+/* The setup panel inside the sign-in dialog, which supplies the card, the logo, and the copy and button classes.
+   The dialog's copy column above it already holds the top padding. */
+.panel.panel {
+  padding-top: 0;
+}
+
+.prompt {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 18px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: 12px;
+  background: var(--dsw-alias-settings-card-fill);
+  color: var(--dsw-alias-label-primary);
+  font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  resize: none;
+  user-select: text;
+}
+
+.prompt:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 20px;
+  margin: 12px 0 0;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--dsw-font-family-brand);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.status[data-connected] {
+  color: var(--dsw-alias-state-success-primary);
+}
+
+.status[data-failed] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.spinner {
+  flex: none;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+}

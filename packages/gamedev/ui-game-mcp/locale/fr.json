@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Panneau de configuration d'agent",
+    "description": "Propose Configurer avec un autre agent dans la boîte de dialogue de connexion, avec l'instruction qui connecte Claude Code, Codex ou un autre agent, et ouvre la session dont un agent connecté lance le jeu."
+  }
+}

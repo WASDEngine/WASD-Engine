@@ -97,7 +97,7 @@ GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。
+模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `gimp_<name>` 调用同样的工具，作用于同一个 GIMP 会话。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|

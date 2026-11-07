@@ -330,7 +330,9 @@ flowchart TD
   subgraph group_gamedev["packages/gamedev"]
     pkg_app_mcp["app-mcp"]
     pkg_blender["blender"]
+    pkg_client_ui_game_mcp["client-ui-game-mcp"]
     pkg_client_ui_game_tools["client-ui-game-tools"]
+    pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
   end
@@ -1656,7 +1658,9 @@ flowchart TD
 | [`personalized-recommendations`](../packages/experimental/personalized-recommendations) | `experimental` | — |
 | [`client-ui-cordis`](../packages/extensions/ui-cordis) | `extensions` | — |
 | [`cordis-client-runner`](../packages/extensions/cordis-client-runner) | `extensions` | — |
+| [`client-ui-game-mcp`](../packages/gamedev/ui-game-mcp) | `gamedev` | — |
 | [`client-ui-game-tools`](../packages/gamedev/ui-game-tools) | `gamedev` | — |
+| [`game-mcp`](../packages/gamedev/game-mcp) | `gamedev` | — |
 | [`host-directory-picker`](../packages/host/directory-picker) | `host` | — |
 | [`host-directory-picker-browse`](../packages/host/directory-picker-browse) | `host` | — |
 | [`host-directory-picker-native`](../packages/host/directory-picker-native) | `host` | — |

@@ -9,6 +9,8 @@
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote-events'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-deepseek-account/types'
+// WASDEngine fork: the game MCP server's request to show a Session (wasdengine/FORK.md).
+import type {} from '@deepseek-ai/dsh-game-mcp/types'
 import type {} from '@deepseek-ai/dsh-permission-presets/types'
 import type {} from '@deepseek-ai/dsh-plugin-manager/types'
 import type {} from '@deepseek-ai/dsh-plugin-market/types'
@@ -35,6 +37,7 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'commands/change', mode: 'emit' },
   { event: 'deepseek-account/session-expired', mode: 'emit' },
   { event: 'deepseek-account/model-sign-in-required', mode: 'emit' },
+  { event: 'game-mcp/reveal', mode: 'emit', resources: { session: (sessionId): SessionId => sessionId } },
   { event: 'credentials/record-updated', mode: 'emit' },
   { event: 'credentials/reference-updated', mode: 'emit' },
   { event: 'goal/activation-changed', mode: 'emit' },

@@ -182,6 +182,7 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'godot/installRuntime': 'owner-only', // owner installs the Godot runtime (WASD Engine)
   'godot/run': 'owner-only', // owner starts a game (WASD Engine)
   'godot/stop': 'owner-only', // owner stops a game (WASD Engine)
+  'gameMcp/watch': 'owner-only', // owner sets up other agents, whose setup prompt carries a token (WASD Engine)
   'cuaAccess/applicationIcons': 'owner-only', // owner computer-use permissions
   'cuaAccess/applications': 'owner-only', // owner computer-use permissions
   'cuaAccess/enablePersistentPtc': 'owner-only', // owner computer-use permissions

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Подключение агентов",
+    "description": "Позволяет Claude Code, Codex и другим агентам на этом компьютере использовать инструменты Godot, Blender и GIMP, а их игры идут в WASD Engine."
+  }
+}

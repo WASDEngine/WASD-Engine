@@ -91,7 +91,7 @@ A `uvPath`, `blenderPath`, or `BLENDER_PATH` value that does not name an executa
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause.
+The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, against the same Blender session.
 
 | Tool | Arguments | Result |
 |---|---|---|

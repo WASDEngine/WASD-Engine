@@ -16,6 +16,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-system-prompt'
@@ -27,13 +28,14 @@ import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { GodotInputError, parseInputEvents, parseWindowSize } from './input.ts'
 import { LogSequence } from './logs.ts'
+import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
 import { GodotRequestError, GodotRun, GodotRunStateError, MAX_INPUT_EVENTS } from './run.ts'
 import { GodotSessionError, GodotSessions, TooManyRunsError } from './runs.ts'
 import {
   bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
 } from './runtime.ts'
-import { registerGodotTools } from './tools.ts'
+import { registerGodotTools, type GodotToolHost } from './tools.ts'
 import type {
   GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
 } from './types.ts'
@@ -186,7 +188,7 @@ export default class GodotController extends TypertRemoteService {
       this.runtime.dispose()
       await this.sessions.dispose()
     }, 'godot.runs')
-    registerGodotTools(ctx, {
+    const toolHost: GodotToolHost = {
       sessions: this.sessions,
       agentRunsMuted: config.agentRunsMuted,
       run: async (agent, request, signal) => {
@@ -195,6 +197,11 @@ export default class GodotController extends TypertRemoteService {
         return run
       },
       check: (agent, request, signal) => this.check(agent, request, signal),
+    }
+    registerGodotTools(ctx, toolHost)
+    // Agents connected through WASD Engine's MCP server get the same tools, for Sessions of their own.
+    ctx.inject(['gameMcp'], (inner) => {
+      inner.effect(() => inner.gameMcp.provide(godotMcpProvider(toolHost, signal => this.runtime.view(signal))), 'godot: game MCP tools')
     })
     ctx.systemPrompt.section({ name: 'godot', order: ctx.systemPrompt.getSectionOrder('TOOL_COMPUTER_USE'), text: PROMPT })
     ctx.inject(['connection'], (inner) => {

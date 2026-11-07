@@ -53,6 +53,7 @@ Blender 与 GIMP 包依赖本库构建各自的 MCP 服务器；[Blender 的插�
 - 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
 - 当 `plugin.module`（插件的 `import.meta.url`）以 `.ts` 结尾时，服务器入口是它旁边的 `worker.ts`，否则是它旁边的 `worker.js`。
 - 注册通过 `registerAppMcpServer` 完成，使用 `plugin.serverName` 以及 Config 中的 `toolCallTimeoutMs` 与 `startupTimeoutMs`。
+- 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
 
 编译器会对照插件的 Config 检查这些字段名，并且只有字符串字段能放入 `plugin.paths`。
 

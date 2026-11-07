@@ -170,6 +170,17 @@ A run keeps its newest `maxLogEntries` log entries. Each entry carries a sequenc
 
 Result text stays within 6,000 characters and ends with `… (output shortened)` when cut, and quoted log messages stay within 500 characters. `godot_logs` ends its page before the text budget, and its next cursor follows the last listed entry.
 
+<a id="connected-agents"></a>
+### Tools for connected agents
+
+Agents on the computer that connect through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), get the same ten tools from the plugin's provider in [`src/mcp.ts`](src/mcp.ts), built by the same `godotToolDefinitions` with three differences:
+
+- Every tool takes `project`, the absolute path of the folder that holds `project.godot`, of a folder up to three levels above it, or of the `project.godot` file; without it, a call uses the agent's previous project and fails with `Pass project: the absolute path of the folder that holds project.godot.` before the agent's first. The call runs for the agent's own Session in that game project, which the MCP server creates on first use, so the run, its logs, and the Game tab are that Session's.
+- The `godot_run` description says that the game plays in the WASD Engine window, `godot_check` takes absolute paths where the Session's tool takes paths relative to the working directory, and `godot_logs` reads after the entries the agent last read.
+- Screenshots return as PNG bytes in the result instead of attachments for a model route, with no model check; each is requested at a width that keeps its longest edge at most 1,568 pixels and its area at most 1,150,000 pixels, the sizes agents take without resizing.
+
+`godot_run` also asks the WASD Engine window to show the Session, whose Game tab then opens for the run. The provider reports the runtime's readiness to `search_game_tools`: `ready`, `starting` while the managed runtime installs, or `unavailable` with the runtime message.
+
 <a id="game-tab"></a>
 ### Game tab
 

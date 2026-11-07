@@ -28,8 +28,9 @@ export const EXCLUDED_SHARE_NAMESPACES: ReadonlySet<string> = new Set([
   'pluginManager', 'pluginMarket', 'pluginRegistryProbe', 'directoryPicker', 'fileUploads',
   'skills', 'toolResults', 'remoteAccess', 'sessionFeedback', 'sessionReferenceResolver',
   'agentPresets', 'liveshareShares',
-  // WASDEngine fork: game runs start processes and inject input (wasdengine/FORK.md).
-  'godot',
+  // WASDEngine fork: game runs start processes and inject input, and the game MCP server's view carries its
+  // access token (wasdengine/FORK.md).
+  'godot', 'gameMcp',
 ])
 
 /** Languages the owner-facing dialog can display. */

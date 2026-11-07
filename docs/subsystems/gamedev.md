@@ -2,11 +2,11 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender and GIMP and run, test, and play the Session's Godot game. Blender and GIMP run without a window behind MCP servers; each server owns one long-lived application worker and serves its tools to every Session. Godot runs each Session's game as its own process through LibGodot or an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender and GIMP and run, test, and play the Session's Godot game. Blender and GIMP run without a window behind MCP servers; each server owns one long-lived application worker and serves its tools to every Session. Godot runs each Session's game as its own process through LibGodot or an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the three tool rows below, and `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration. Each tool row sets only `dataRoot`, to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the three tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each tool row sets only `dataRoot`, to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
@@ -256,6 +256,25 @@ On the Plugins page, each tool that the profile mounts has a switch while the Ho
 
 Each tool package names `icon.svg` in the `icon` field of its `package.json`, so the Host's package metadata carries the file as a `data:image/svg+xml` URL. Each file embeds the product's official logo unaltered in the 36 × 36 canvas of package icons; the [Blender](../../packages/gamedev/blender/README.md#plugin-icon), [GIMP](../../packages/gamedev/gimp/README.md#plugin-icon), and [Godot](../../packages/gamedev/godot/README.md#plugin-icon) READMEs credit each logo and state its license and trademark terms.
 
+<a id="mcp-server-for-other-agents"></a>
+## MCP server for other agents
+
+The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/game-mcp/README.md), through which other agents on the computer, such as Claude Code or Codex, use the game tools. Its Host plugin listens on `127.0.0.1` at `/mcp`, port 9273 by default, and serves the Streamable HTTP transport of the 2026-07-28 MCP revision and, statelessly, of the 2025 revisions. Every request must pass the MCP SDK's localhost Host and Origin checks and carry `Authorization: Bearer <token>`, the token in `<dataRoot>/token`.
+
+| Tools | Provider | How calls run |
+|---|---|---|
+| `search_game_tools`, `call_game_tool` | `game-mcp` | The server searches the providers' tools and their readiness, or calls one by name |
+| `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
+| `blender_*`, `gimp_*` | `blender`, `gimp`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*` and `mcp__wasd_gimp__*` definitions, whose results pass on with their images |
+
+A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
+
+**Sessions.** Each Godot call names its project by absolute path, or reuses the agent's previous one. The server registers the folder as a game project unless a registered one contains it, and resolves the agent's Session in that project, creating it on first use: one Session per agent and game project, remembered in `<dataRoot>/sessions.json`. The Session runs the game, so its run, logs, and Game tab are those of an ordinary Session, and the user can watch, pause, and play it there.
+
+**The window.** `godot_run` emits the Host event `game-mcp/reveal` with the Session id. The Remote events allowlist forwards it to every window that may read the Session, and the `ui-game-mcp` row's browser plugin, [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.md), opens the Session there; the Game tab then opens for the run, as for any run an agent starts.
+
+**Setup.** The same browser plugin fills the sign-in dialog's alternative slots, `settings.account.onboarding.alternative` and `settings.account.menu.alternative`, with Set up with another agent. Its panel follows the `gameMcp.watch` stream while it shows: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
+
 ## Remote types
 
 The `godot` Remote methods, listed in the generated Cordis API section, take the Session first as a plain `SessionId`, which needs no live Agent: `follow`, `stop`, `control`, and `input` act on the Session's current run, and `godot.run` resumes a Session without a live Agent through `ctx.sessionController.resolveAgent`, as a prompt does, and passes on its refusals, such as `session/not-found` and `session/writer-held`; `installRuntime` takes no Session. Their types live in the browser-safe [`src/types.ts`](../../packages/gamedev/godot/src/types.ts). [LiveShare](liveshare.md) classifies every `godot/*` endpoint as owner-only and never offers the `godot` namespace to share viewers.
@@ -329,6 +348,31 @@ Invalid input events, window sizes, and step frame counts fail with `gateway/bad
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxgamemcp--gamemcpserver"></a>
+
+### `ctx.gameMcp` — `GameMcpServer`
+
+Owner of the MCP endpoint, its game tool providers, and the connected agents' Sessions.
+
+```ts cordis-catalog
+/**
+ * Offer a plugin's game tools to connected agents for the calling plugin's lifetime.
+ * @param provider - the plugin's identity, readiness, and tools; its tool names start with its id and an underscore.
+ * @returns an idempotent disposer that withdraws the tools.
+ * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.
+ */
+provide(provider: GameMcpProvider): () => void
+
+/**
+ * Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.
+ * @param signal - stream cancellation.
+ * @returns the current view, then the view after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) async* watch(signal: AbortSignal): AsyncIterable<GameMcpView>
+```
+
+Source: [`packages/gamedev/game-mcp/src/index.ts`](../../packages/gamedev/game-mcp/src/index.ts)
+
 <a id="ctxgodot--godotcontroller"></a>
 
 ### `ctx.godot` — `GodotController`
@@ -392,4 +436,28 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 Types: [SessionId](core.md)
 
 Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src/index.ts)
+
+<a id="game-mcp-events"></a>
+
+### `game-mcp/*` events
+
+<a id="game-mcpreveal--emit"></a>
+
+#### `game-mcp/reveal` — emit
+
+A connected agent's call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.
+
+```ts cordis-catalog
+/**
+ * A connected agent's call asked the WASD Engine window to show a Session, such as the one whose game it
+ * started; the Host forwards it to the windows that may read the Session.
+ * @mode emit
+ * @param sessionId - Session to show.
+ */
+'game-mcp/reveal'(sessionId: SessionId): void
+```
+
+Types: [SessionId](core.md)
+
+Source: [`packages/gamedev/game-mcp/src/types.ts`](../../packages/gamedev/game-mcp/src/types.ts)
 <!-- END GENERATED cordis-surface -->

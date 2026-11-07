@@ -161,6 +161,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   directoryPickerController: 'workspace.md',
   gameProjectController: 'workspace.md',
   godot: 'gamedev.md',
+  gameMcp: 'gamedev.md',
 }
 
 /**
@@ -272,6 +273,8 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'webserver': 'web-server.md',
   'workflow': 'workflow.md',
   'workspace': 'workspace.md',
+  // WASDEngine fork: the game MCP server's request to show a Session (wasdengine/FORK.md).
+  'game-mcp': 'gamedev.md',
 }
 
 /**
@@ -811,6 +814,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotRunRequest: 'gamedev.md',
   GodotRunView: 'gamedev.md',
   GodotRuntimeView: 'gamedev.md',
+  GameMcpView: 'gamedev.md',
+  GameMcpProvider: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

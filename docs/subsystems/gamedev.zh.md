@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender 与 GIMP 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender 与 GIMP 在 MCP 服务器之后无窗口运行；每个服务器拥有一个长期运行的应用工作进程，并把自己的工具提供给每个 Session。Godot 通过 LibGodot 或已安装的 Godot 编辑器，把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender 与 GIMP 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender 与 GIMP 在 MCP 服务器之后无窗口运行；每个服务器拥有一个长期运行的应用工作进程，并把自己的工具提供给每个 Session。Godot 通过 LibGodot 或已安装的 Godot 编辑器，把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的三个工具行，以及挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`。每个工具行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的三个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个工具行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -256,6 +256,25 @@ record    u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE seq, JPEG byte
 
 每个工具包都在 `package.json` 的 `icon` 字段中指向 `icon.svg`，因此 Host 的包元信息以 `data:image/svg+xml` URL 携带该文件。每个文件把对应产品的官方标志原样嵌入包图标所用的 36 × 36 画布；[Blender](../../packages/gamedev/blender/README.zh.md#plugin-icon)、[GIMP](../../packages/gamedev/gimp/README.zh.md#plugin-icon) 与 [Godot](../../packages/gamedev/godot/README.zh.md#plugin-icon) 的 README 为各标志署名，并说明其许可与商标条款。
 
+<a id="mcp-server-for-other-agents"></a>
+## 供其他 agent 使用的 MCP 服务器
+
+`game-mcp` 行挂载 [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/game-mcp/README.zh.md)，这台电脑上的其他 agent（例如 Claude Code 或 Codex）通过它使用游戏工具。它的 Host 插件在 `127.0.0.1` 的 `/mcp` 上监听，默认端口为 9273，并提供 2026-07-28 MCP 修订版的 Streamable HTTP 传输，同时以无状态方式提供 2025 年各修订版的传输。每个请求都必须通过 MCP SDK 的 localhost Host 与 Origin 检查，并携带 `Authorization: Bearer <token>`，即 `<dataRoot>/token` 中的令牌。
+
+| 工具 | provider | 调用如何执行 |
+|---|---|---|
+| `search_game_tools`、`call_game_tool` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态，或按名调用其中一个 |
+| `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
+| `blender_*`、`gimp_*` | `blender`、`gimp`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*` 与 `mcp__wasd_gimp__*` 定义，其结果连同图像一起转交 |
+
+插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
+
+**Session。** 每次 Godot 调用都以绝对路径指定项目，或沿用该 agent 上一次的项目。除非已有注册的游戏项目包含该文件夹，服务器会把该文件夹注册为游戏项目，并在该项目中解析该 agent 的 Session，首次使用时创建：每个 agent 与游戏项目对应一个 Session，记录在 `<dataRoot>/sessions.json` 中。游戏在这个 Session 中运行，因此它的运行、日志与 Game 标签页都与普通 Session 相同，用户可以在其中观看、暂停和游玩。
+
+**窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
+
+**设置。** 同一个浏览器插件用「使用其他智能体设置」填充登录对话框的替代方案 slot，即 `settings.account.onboarding.alternative` 与 `settings.account.menu.alternative`。面板显示期间，它跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+
 ## Remote 类型
 
 `godot` Remote 方法列在生成的 Cordis API 一节中；它们的第一个参数是普通的 `SessionId`，不需要存活的 Agent：`follow`、`stop`、`control` 与 `input` 作用于该 Session 的当前运行，`godot.run` 则像提示词那样，通过 `ctx.sessionController.resolveAgent` 恢复没有存活 Agent 的 Session，并传递其拒绝，例如 `session/not-found` 与 `session/writer-held`；`installRuntime` 不接受 Session。这些方法的类型位于浏览器安全的 [`src/types.ts`](../../packages/gamedev/godot/src/types.ts)。[LiveShare](liveshare.zh.md) 把每个 `godot/*` 端点归类为仅限所有者（`owner-only`），并且从不向共享查看者提供 `godot` 命名空间。
@@ -329,6 +348,31 @@ record    u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE seq, JPEG byte
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxgamemcp--gamemcpserver"></a>
+
+### `ctx.gameMcp` — `GameMcpServer`
+
+Owner of the MCP endpoint, its game tool providers, and the connected agents' Sessions.
+
+```ts cordis-catalog
+/**
+ * Offer a plugin's game tools to connected agents for the calling plugin's lifetime.
+ * @param provider - the plugin's identity, readiness, and tools; its tool names start with its id and an underscore.
+ * @returns an idempotent disposer that withdraws the tools.
+ * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.
+ */
+provide(provider: GameMcpProvider): () => void
+
+/**
+ * Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.
+ * @param signal - stream cancellation.
+ * @returns the current view, then the view after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) async* watch(signal: AbortSignal): AsyncIterable<GameMcpView>
+```
+
+Source: [`packages/gamedev/game-mcp/src/index.ts`](../../packages/gamedev/game-mcp/src/index.ts)
+
 <a id="ctxgodot--godotcontroller"></a>
 
 ### `ctx.godot` — `GodotController`
@@ -392,4 +436,28 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 Types: [SessionId](core.zh.md)
 
 Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src/index.ts)
+
+<a id="game-mcp-events"></a>
+
+### `game-mcp/*` events
+
+<a id="game-mcpreveal--emit"></a>
+
+#### `game-mcp/reveal` — emit
+
+A connected agent's call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.
+
+```ts cordis-catalog
+/**
+ * A connected agent's call asked the WASD Engine window to show a Session, such as the one whose game it
+ * started; the Host forwards it to the windows that may read the Session.
+ * @mode emit
+ * @param sessionId - Session to show.
+ */
+'game-mcp/reveal'(sessionId: SessionId): void
+```
+
+Types: [SessionId](core.zh.md)
+
+Source: [`packages/gamedev/game-mcp/src/types.ts`](../../packages/gamedev/game-mcp/src/types.ts)
 <!-- END GENERATED cordis-surface -->

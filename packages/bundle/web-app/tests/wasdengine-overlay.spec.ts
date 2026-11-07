@@ -46,6 +46,12 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
 const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
 
+/** The row the fork inserts after the tabs: the MCP server through which other agents on the computer use the game tools. */
+const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
+
+/** The row the fork inserts last: the browser half of the MCP server, the sign-in dialog's setup panel. */
+const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-mcp' } as const
+
 /** Bundled skills shipped under `wasdengine/skills`. */
 const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
 
@@ -270,10 +276,27 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/skills')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, and their tabs', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, and their MCP server', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_MCP.id, GAME_MCP_UI.id])
+  })
+
+  it('mounts the game tools\' MCP server from a web-app dependency with its own directory under the harness home', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_MCP.id)
+    expect(entry?.name).toBe(GAME_MCP.name)
+    expect(entry?.disabled).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['dataRoot'])
+    expect(expression(configOf(entry).dataRoot, 'game-mcp.dataRoot')).toBe(`dshHomePath('${GAME_MCP.id}')`)
+    expect(manifest(webAppDir).dependencies?.[GAME_MCP.name]).toBe('workspace:*')
+  })
+
+  it('mounts the MCP server\'s setup panel from a web-app dependency by its bare package name, without config', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_MCP_UI.id)
+    expect(entry?.name).toBe(GAME_MCP_UI.name)
+    expect(entry?.config).toBeUndefined()
+    expect(entry?.disabled).toBeUndefined()
+    expect(manifest(webAppDir).dependencies?.[GAME_MCP_UI.name]).toBe('workspace:*')
   })
 
   it('mounts each game tool from a web-app dependency with its own directory under the harness home', () => {

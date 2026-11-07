@@ -10,7 +10,7 @@ import z from '@deepseek-ai/schemastery'
 import { AppMcpConfig, registerAppMcpPlugin } from '@deepseek-ai/dsh-app-mcp'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-mcp-manager'
-import { GIMP_SERVER_NAME } from './instructions.ts'
+import { GIMP_INSTRUCTIONS, GIMP_SERVER_NAME } from './instructions.ts'
 
 export type { GimpServerOptions } from './types.ts'
 
@@ -55,5 +55,11 @@ export function apply(ctx: Context, config: Config): void {
     module: import.meta.url,
     paths: ['gimpConsolePath'],
     options: ['gimpConsolePath', 'readyTimeoutMs'],
+    gameMcp: {
+      id: 'gimp',
+      title: 'GIMP',
+      description: 'Create and edit images in a headless GIMP 3: textures, sprites, and sprite sheets.',
+      instructions: GIMP_INSTRUCTIONS,
+    },
   })
 }

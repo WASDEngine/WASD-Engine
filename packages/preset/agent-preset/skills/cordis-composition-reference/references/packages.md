@@ -267,7 +267,9 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-blender` | yes | Headless Blender for the agent: an MCP server backed by the bpy module |
+| `@deepseek-ai/dsh-client-ui-game-mcp` | no | Set up with another agent in the sign-in dialog, with the prompt that connects an agent to WASD Engine's MCP server, and the window opening the Sessions of connected agents' games |
 | `@deepseek-ai/dsh-client-ui-game-tools` | no | Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, and Godot with their logos, Loader state, and profile switches |
+| `@deepseek-ai/dsh-game-mcp` | yes | Serve WASD Engine's game tools to other agents on this computer over a local MCP server |
 | `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |
 | `@deepseek-ai/dsh-godot` | yes | Run, test, and play Godot games through LibGodot with a live Game tab |
 

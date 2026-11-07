@@ -2,15 +2,17 @@
  * The model-facing Godot tools. Every tool runs against the calling Session's game. Each result reports the
  * error-level entries the run logged since the Session's previous Godot tool call (up to
  * {@link DIGEST_ENTRIES}, then a count), and its text stays within {@link TEXT_BUDGET} characters; complete
- * values remain available to programs.
+ * values remain available to programs. One set of definitions serves one {@link GodotToolSurface}: the Session's
+ * own agent, whose screenshots become attachments for its model, or agents that reach the tools over WASD Engine's
+ * MCP server, whose screenshots travel as image bytes.
  * @module @deepseek-ai/dsh-godot/src/tools
  */
 import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, ModelSelection } from '@deepseek-ai/dsh-agent'
-import type { AttachmentId, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { ContentBlock, LlmRuntime } from '@deepseek-ai/dsh-llm'
-import { defineTool, type InferValue, type ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
@@ -35,7 +37,7 @@ export const STARTUP_LOG_WINDOW_MS = 1000
 const MESSAGE_CHARS = 500
 
 /** Default `max_width` of `godot_screenshot`, and the largest width of the screenshot `godot_input` and `godot_wait` take. */
-const SCREENSHOT_WIDTH = 1280
+export const SCREENSHOT_WIDTH = 1280
 
 const LEVELS = ['stdout', 'stderr', 'warning', 'error', 'script_error', 'shader_error'] as const
 
@@ -124,8 +126,53 @@ const SCREENSHOT_PROPERTIES = {
 
 const SCREENSHOT_SCHEMA = { type: 'object', additionalProperties: false, properties: SCREENSHOT_PROPERTIES } as const
 
-/** A screenshot as a result value holds it. */
-type ScreenshotValue = InferValue<typeof SCREENSHOT_SCHEMA>
+/** A screenshot as a result value holds it: its size, the game window it shows, and the stored image. */
+export type ScreenshotValue = InferValue<typeof SCREENSHOT_SCHEMA>
+
+/** Captures the screenshots of one tool call for the callers of a {@link GodotToolSurface}. */
+export interface ScreenshotTaker {
+  /**
+   * Capture the running game's window and store the image where the surface's callers receive it.
+   * @param run - running game.
+   * @param maxWidth - largest image width the call asked for.
+   * @param signal - cancellation.
+   * @returns the screenshot as a result value holds it; input coordinates in screenshot pixels refer to its
+   * `width` and `height`.
+   */
+  capture(run: GodotRun, maxWidth: number, signal: AbortSignal): Promise<ScreenshotValue>
+}
+
+/** Tool description text that depends on how a surface's callers name projects and files. */
+export interface GodotToolWording {
+  /** First sentence of the `godot_run` description, with its trailing space. */
+  readonly run: string
+  /** How the `godot_check` description names the paths it accepts. */
+  readonly checkPaths: string
+  /** The `godot_logs` description's sentence about reading without `since`. */
+  readonly logsDefault: string
+}
+
+/** The callers that one set of Godot tool definitions serves. */
+export interface GodotToolSurface {
+  /**
+   * Resolve what a call's screenshots need. A tool that acts on the game and then takes a screenshot resolves this
+   * before it acts, so a caller that cannot receive images fails before anything happens in the game.
+   * @param exec - the tool call.
+   * @param agent - calling Session.
+   * @returns the call's screenshot taker.
+   * @throws when the caller cannot receive screenshots.
+   */
+  screenshots(exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker>
+  /** Description text for these callers. */
+  readonly wording: GodotToolWording
+}
+
+/** Wording of the Session's own tools, which name projects and files relative to the working directory. */
+export const SESSION_WORDING: GodotToolWording = {
+  run: 'Start the Godot project in the working directory, or restart it if it is running, and wait until the game runs. ',
+  checkPaths: 'files or folders, as res:// paths or relative to the working directory',
+  logsDefault: 'Without since, returns the entries after the ones this Session last read.',
+}
 
 /** A log entry as tools report it. */
 export interface ToolLogEntry {
@@ -292,39 +339,47 @@ async function invoke<T extends object>(
   return { ...value, ...takeDigest(session) }
 }
 
-/** Where a screenshot is stored, and the model route that receives it. */
-interface ScreenshotTarget {
-  readonly attachments: AttachmentStore
-  readonly llm: LlmRuntime
-  readonly route: Readonly<ModelSelection>
-}
-
 /**
- * Resolve what a screenshot needs. A tool that acts on the game and then takes a screenshot resolves this before
- * it acts, so a Session whose model cannot see images fails before anything happens in the game.
+ * The screenshots of the Session's own tools: each image becomes an attachment that the Session's model receives,
+ * measured as that model sees it.
  * @param ctx - plugin context with the optional attachment and model services.
- * @param agent - calling Session.
- * @param signal - cancellation.
- * @returns the attachment store, the model service, and the Session's model route, which accepts images.
- * @throws when a service or the model route is missing, or the route does not accept images.
+ * @returns the screenshot resolution of {@link GodotToolSurface}.
  */
-async function screenshotTarget(ctx: Context, agent: Agent, signal: AbortSignal): Promise<ScreenshotTarget> {
-  const attachments = ctx.get('attachments')
-  const llm = ctx.get('llm')
-  const route = agent.model.current()
-  if (attachments === undefined || llm === undefined || route === undefined) {
-    throw new Error('Screenshots need an attachment store and a resolved model route, and this Session has neither.')
+export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'] {
+  return async (exec, agent) => {
+    const attachments = ctx.get('attachments')
+    const llm = ctx.get('llm')
+    const route = agent.model.current()
+    if (attachments === undefined || llm === undefined || route === undefined) {
+      throw new Error('Screenshots need an attachment store and a resolved model route, and this Session has neither.')
+    }
+    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
+    if (info.inputModalities?.includes('image') !== true) {
+      throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`)
+    }
+    return {
+      async capture(run, maxWidth, signal) {
+        const shot = await run.screenshot(maxWidth, signal)
+        const [image] = await attachments.saveImages([{ data: shot.png, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
+        signal.throwIfAborted()
+        const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
+        return {
+          width: seen.width,
+          height: seen.height,
+          windowWidth: shot.meta.windowWidth,
+          windowHeight: shot.meta.windowHeight,
+          frame: shot.meta.frame,
+          paused: shot.meta.paused,
+          image,
+        }
+      },
+    }
   }
-  const info = await llm.resolveModelInfo(route.provider, route.model, signal)
-  if (info.inputModalities?.includes('image') !== true) {
-    throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`)
-  }
-  return { attachments, llm, route }
 }
 
 /**
- * Capture, store, and measure a screenshot; afterwards input coordinates in screenshot pixels refer to it.
- * @param target - store and model route from {@link screenshotTarget}.
+ * Capture a screenshot; afterwards input coordinates in screenshot pixels refer to it.
+ * @param taker - the call's screenshot taker.
  * @param session - the calling Session's Godot state.
  * @param run - running game.
  * @param maxWidth - largest captured width.
@@ -332,48 +387,35 @@ async function screenshotTarget(ctx: Context, agent: Agent, signal: AbortSignal)
  * @returns the screenshot as a result value holds it.
  */
 async function captureScreenshot(
-  target: ScreenshotTarget,
+  taker: ScreenshotTaker,
   session: GodotSession,
   run: GodotRun,
   maxWidth: number,
   signal: AbortSignal,
 ): Promise<ScreenshotValue> {
-  const { attachments, llm, route } = target
-  const shot = await run.screenshot(maxWidth, signal)
-  const [image] = await attachments.saveImages([{ data: shot.png, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
-  signal.throwIfAborted()
-  const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
-  session.screenshot = {
-    runId: run.id, width: seen.width, height: seen.height, windowWidth: shot.meta.windowWidth, windowHeight: shot.meta.windowHeight,
-  }
-  return {
-    width: seen.width,
-    height: seen.height,
-    windowWidth: shot.meta.windowWidth,
-    windowHeight: shot.meta.windowHeight,
-    frame: shot.meta.frame,
-    paused: shot.meta.paused,
-    image,
-  }
+  const shot = await taker.capture(run, maxWidth, signal)
+  const { width, height, windowWidth, windowHeight } = shot
+  session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight }
+  return shot
 }
 
 /**
  * Take the screenshot that ends an action on the game. The action already happened, so a failed capture becomes
  * part of the result instead of failing the call; cancellation still fails it.
- * @param target - store and model route, resolved before the action.
+ * @param taker - the call's screenshot taker, resolved before the action.
  * @param session - the calling Session's Godot state.
  * @param run - running game.
  * @param signal - cancellation.
  * @returns the screenshot, or why it failed.
  */
 async function screenshotAfter(
-  target: ScreenshotTarget,
+  taker: ScreenshotTaker,
   session: GodotSession,
   run: GodotRun,
   signal: AbortSignal,
 ): Promise<ScreenshotOutcome> {
   try {
-    return { screenshot: await captureScreenshot(target, session, run, SCREENSHOT_WIDTH, signal) }
+    return { screenshot: await captureScreenshot(taker, session, run, SCREENSHOT_WIDTH, signal) }
   } catch (error) {
     signal.throwIfAborted()
     return { screenshotError: (error as Error).message }
@@ -419,14 +461,28 @@ function boundedInteger(value: number | undefined, name: string, fallback: numbe
 }
 
 /**
- * Register the Godot tools.
+ * Register the Session's own Godot tools.
  * @param ctx - plugin context; registrations end with it.
  * @param host - plugin operations the tools call.
  */
 export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
-  ctx.tools.register(defineTool({
+  for (const definition of godotToolDefinitions(host, { screenshots: sessionScreenshots(ctx), wording: SESSION_WORDING })) {
+    ctx.tools.register(definition)
+  }
+}
+
+/**
+ * Build the Godot tool definitions for one surface. The definitions are not registered; each call runs against
+ * the Agent its execution names.
+ * @param host - plugin operations the tools call.
+ * @param surface - how the callers receive screenshots, and their wording.
+ * @returns the definitions, in catalog order.
+ */
+export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurface): ToolDefinition[] {
+  const { wording } = surface
+  return [defineTool({
     name: 'godot_run',
-    description: 'Start the Godot project in the working directory, or restart it if it is running, and wait until the game runs. '
+    description: wording.run
       + 'Reports the window size, the renderer, and the errors and warnings logged while importing and starting. Then look with godot_screenshot and play with godot_input.',
     parameters: {
       project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the nearest project.godot.' },
@@ -510,9 +566,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_stop',
     description: 'Stop the running game.',
     parameters: {},
@@ -527,9 +581,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         return { stopped: running }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_screenshot',
     description: 'Capture the running game\'s window as an image. Mouse coordinates for godot_input refer to the pixels of the latest screenshot.',
     parameters: {
@@ -543,12 +595,10 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
       const maxWidth = boundedInteger(args.max_width, 'max_width', SCREENSHOT_WIDTH, 64, 4096)
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
-        return captureScreenshot(await screenshotTarget(ctx, agent, exec.signal), session, run, maxWidth, exec.signal)
+        return captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal)
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_input',
     description: 'Send input events to the running game, in order: keys, typed text, mouse buttons and motion, input map actions, and joypad events. '
       + 'An event { "wait": seconds } pauses the sequence. A press stays down until its release event or until its hold time ends. '
@@ -590,7 +640,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
           }
           delivered = screenshotToWindow(events, frame)
         }
-        const target = args.screenshot === true ? await screenshotTarget(ctx, agent, exec.signal) : undefined
+        const target = args.screenshot === true ? await surface.screenshots(exec, agent) : undefined
         const reply = await run.input(delivered, exec.signal)
         return {
           events: reply.events,
@@ -602,9 +652,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_wait',
     description: 'Let the running game advance: seconds of unpaused game time, or a number of frames. Optionally capture a screenshot afterwards.',
     parameters: {
@@ -647,7 +695,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         if (frames === undefined && run.view().phase === 'paused') {
           throw new Error('The game is paused, so game time does not advance; resume it with godot_control, or wait frames instead.')
         }
-        const target = args.screenshot === true ? await screenshotTarget(ctx, agent, exec.signal) : undefined
+        const target = args.screenshot === true ? await surface.screenshots(exec, agent) : undefined
         const reply = await run.wait(frames === undefined ? { seconds: args.seconds as number } : { frames }, exec.signal)
         return {
           frames: reply.frames,
@@ -659,9 +707,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_control',
     description: 'Pause or resume the running game, or step it: step runs a number of frames and pauses again.',
     parameters: {
@@ -697,9 +743,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         return run.setPaused(args.action === 'pause', exec.signal)
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_eval',
     description: 'Evaluate a Godot Expression in the running game and return its value, for example scene.get_node("Player").position. '
       + 'The names scene (the current scene), root, and tree are defined; method calls without a base run on node, or on the current scene.',
@@ -722,9 +766,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         return { value: reply.value, valueType: reply.valueType }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_scene_tree',
     description: 'Describe the running game\'s scene tree: node names, classes, scripts, positions, sizes, visibility, and label text.',
     parameters: {
@@ -752,12 +794,10 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         return { tree: reply.tree, truncated: reply.truncated }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_logs',
     description: 'Read the game\'s log: printed output, errors, and warnings from the game, the engine, and the import step. '
-      + 'Without since, returns the entries after the ones this Session last read.',
+      + wording.logsDefault,
     parameters: {
       since: { type: 'integer', description: 'Return entries after this cursor, the next value of an earlier result. 0 reads from the start.' },
       levels: { type: 'array', items: { type: 'string', enum: LEVELS }, description: 'Only these levels.' },
@@ -807,11 +847,9 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         return { entries, next, missed: page.missed }
       })
     },
-  }))
-
-  ctx.tools.register(defineTool({
+  }), defineTool({
     name: 'godot_check',
-    description: 'Check GDScript files for parse and load errors without running the game. Checks paths (files or folders, as res:// paths or relative to the working directory), or every .gd file of the project, at most 400.',
+    description: `Check GDScript files for parse and load errors without running the game. Checks paths (${wording.checkPaths}), or every .gd file of the project, at most 400.`,
     parameters: {
       paths: { type: 'array', items: { type: 'string' }, description: 'Scripts or folders to check. Default: the whole project.' },
       project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the running game\'s project, else the nearest one.' },
@@ -875,7 +913,7 @@ export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
         }
       })
     },
-  }))
+  })]
 }
 
 /** A scene tree node as the harness describes it. */

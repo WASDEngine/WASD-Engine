@@ -8,6 +8,7 @@
 
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
+import { offerAppTools, type AppGameMcpIdentity } from './game-mcp.ts'
 import { TOOL_CALL_RESERVE_MS, type AppServerOptions } from './options.ts'
 import { registerAppMcpServer } from './register.ts'
 import type { JsonObject, JsonValue } from './types.ts'
@@ -37,6 +38,8 @@ export interface AppMcpPlugin<C> {
   readonly paths: readonly StringField<C>[]
   /** Config fields the server receives as options of the same name, besides `dataRoot` and the {@link AppServerOptions} budgets. */
   readonly options: readonly (keyof C & string)[]
+  /** How agents connected through WASD Engine's MCP server find the server's tools; absent, they are not offered there. */
+  readonly gameMcp?: AppGameMcpIdentity
 }
 
 /**
@@ -45,7 +48,8 @@ export interface AppMcpPlugin<C> {
  * `toolCallTimeoutMs`, so a request that runs out of time fails before the MCP client gives up on
  * its tool call. The server options are `dataRoot`, `requestTimeoutMs`,
  * `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, and the `options` fields, each under its Config
- * name; the MCP client gets `toolCallTimeoutMs` and `startupTimeoutMs` as its budgets.
+ * name; the MCP client gets `toolCallTimeoutMs` and `startupTimeoutMs` as its budgets. With `gameMcp`, the
+ * server's tools are also offered to agents connected through WASD Engine's MCP server.
  * @param ctx - plugin context that injects `mcpManager`.
  * @param config - the plugin's validated Config.
  * @param plugin - application name, server name, plugin module, and the path and option fields.
@@ -80,4 +84,5 @@ export function registerAppMcpPlugin<C extends AppMcpPluginConfig & { readonly [
     toolCallTimeoutMs: config.toolCallTimeoutMs,
     startupTimeoutMs: config.startupTimeoutMs,
   })
+  if (plugin.gameMcp !== undefined) offerAppTools(ctx, plugin.serverName, plugin.gameMcp)
 }

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent connection",
+    "description": "Let Claude Code, Codex, and other agents on this computer use the Godot, Blender, and GIMP tools, with their games playing in WASD Engine."
+  }
+}

@@ -97,7 +97,7 @@ GIMP runs with the `GIMP3_DIRECTORY` environment variable set to `<dataRoot>/pro
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call.
+The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `gimp_<name>`, against the same GIMP session.
 
 | Tool | Arguments | Result |
 |---|---|---|

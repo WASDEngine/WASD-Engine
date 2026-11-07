@@ -440,6 +440,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Runs a Session\'s Godot game through LibGodot, serves the godot_* tools, the Game tab Remote, and the frame route, and resolves or installs the Godot runtime.',
   },
   {
+    key: 'gameMcp',
+    pkg: 'game-mcp',
+    title: 'MCP server of the game tools for other agents',
+    mode: 'service',
+    note: 'Serves the game tools that plugins provide to other agents on the computer over a loopback Streamable HTTP endpoint with a token, and runs their games in Sessions of their own.',
+  },
+  {
     key: 'typert',
     pkg: 'typert-registry',
     title: 'Runtime type registry',

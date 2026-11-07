@@ -1583,6 +1583,26 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gameMcp',
+    summary: 'Owner of the MCP endpoint, its game tool providers, and the connected agents\' Sessions.',
+    description: 'Owner of the MCP endpoint, its game tool providers, and the connected agents\' Sessions.',
+    methods: [
+      {
+        signature: 'provide(provider: GameMcpProvider): () => void',
+        description: 'Offer a plugin\'s game tools to connected agents for the calling plugin\'s lifetime.',
+        parameters: [{ name: 'provider', description: 'the plugin\'s identity, readiness, and tools; its tool names start with its id and an underscore.' }],
+        returns: 'an idempotent disposer that withdraws the tools.',
+        throws: ['when the id is not lowercase letters and digits starting with a letter, or another provider has it.'],
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) async* watch(signal: AbortSignal): AsyncIterable<GameMcpView>',
+        description: 'Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.',
+        parameters: [{ name: 'signal', description: 'stream cancellation.' }],
+        returns: 'the current view, then the view after each change, until cancelled or the plugin is disposed.',
+      },
+    ],
+  },
+  {
     key: 'gameProjectController',
     summary: 'Host service backing the generated `ctx.remote.gameProject` namespace.',
     description: 'Host service backing the generated `ctx.remote.gameProject` namespace.',
@@ -5110,6 +5130,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
   },
   {
+    name: 'game-mcp/reveal',
+    mode: 'emit',
+    signature: '\'game-mcp/reveal\'(sessionId: SessionId): void',
+    summary: 'A connected agent\'s call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.',
+    description: 'A connected agent\'s call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.',
+    parameters: [{ name: 'sessionId', description: 'Session to show.' }],
+  },
+  {
     name: 'goal/activation-changed',
     mode: 'emit',
     signature: '\'goal/activation-changed\'(payload: GoalActivationChanged): void',
@@ -6676,6 +6704,50 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'FsWriteOutcome',
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
+  },
+  {
+    name: 'GameMcpCall',
+    declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
+  },
+  {
+    name: 'GameMcpClient',
+    declaration: 'export interface GameMcpClient {\n    readonly id: string;\n    readonly title: string;\n}',
+  },
+  {
+    name: 'GameMcpClientView',
+    declaration: 'export interface GameMcpClientView {\n    readonly id: string;\n    readonly title: string;\n    readonly lastSeen: number;\n}',
+  },
+  {
+    name: 'GameMcpContent',
+    declaration: 'export type GameMcpContent = {\n    readonly type: \'text\';\n    readonly text: string;\n} | {\n    readonly type: \'image\';\n    readonly data: string;\n    readonly mimeType: string;\n};',
+  },
+  {
+    name: 'GameMcpContentResult',
+    declaration: 'export type GameMcpContentResult = Promise<readonly GameMcpContent[]> | readonly GameMcpContent[];',
+  },
+  {
+    name: 'GameMcpPreparedCall',
+    declaration: 'export interface GameMcpPreparedCall {\n    readonly args: JsonObject;\n    readonly agent?: Agent;\n}',
+  },
+  {
+    name: 'GameMcpProvider',
+    declaration: 'export interface GameMcpProvider {\n    readonly id: string;\n    readonly title: string;\n    readonly description: string;\n    readonly instructions?: string;\n    tools(): readonly GameMcpTool[];\n    status(signal: AbortSignal): Promise<GameMcpProviderStatus>;\n}',
+  },
+  {
+    name: 'GameMcpProviderStatus',
+    declaration: 'export interface GameMcpProviderStatus {\n    readonly state: \'ready\' | \'starting\' | \'unavailable\';\n    readonly message?: string;\n}',
+  },
+  {
+    name: 'GameMcpServerState',
+    declaration: 'export type GameMcpServerState = \'starting\' | \'listening\' | \'failed\';',
+  },
+  {
+    name: 'GameMcpTool',
+    declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n}',
+  },
+  {
+    name: 'GameMcpView',
+    declaration: 'export interface GameMcpView {\n    readonly state: GameMcpServerState;\n    readonly url?: string;\n    readonly prompt?: string;\n    readonly message?: string;\n    readonly clients: readonly GameMcpClientView[];\n}',
   },
   {
     name: 'GameProjectCreateRequest',

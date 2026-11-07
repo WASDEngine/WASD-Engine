@@ -53,6 +53,7 @@ The plugin declares and documents `dataRoot`, the absolute directory it owns, an
 - The server receives `dataRoot`, `requestTimeoutMs`, `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, and the Config fields that `plugin.options` names, each under its Config name.
 - The server entry is `worker.ts` beside `plugin.module`, the plugin's `import.meta.url`, when that URL ends in `.ts`, and `worker.js` beside it otherwise.
 - The registration is `registerAppMcpServer` with `plugin.serverName` and the Config's `toolCallTimeoutMs` and `startupTimeoutMs`.
+- With `plugin.gameMcp`, an `AppGameMcpIdentity` of `id`, `title`, `description`, and `instructions`, the server's tools also reach agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), while that server and the tool registry exist: each tool that the MCP client registered as `mcp__<serverName>__<name>` is offered as `<id>_<name>`, runs the same registered definition, and returns the server's text and images; other content blocks become `[<type> content omitted]`. The provider reports `ready` while the server is connected, `starting` before it connected and while it reconnects, and `unavailable` with the last error after it failed or while it is off.
 
 The compiler checks the field names against the plugin's Config, and only string fields fit `plugin.paths`.
 

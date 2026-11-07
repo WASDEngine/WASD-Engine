@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "智能体连接",
+    "description": "让这台电脑上的 Claude Code、Codex 和其他智能体使用 Godot、Blender 和 GIMP 工具，它们运行的游戏会在 WASD Engine 中播放。"
+  }
+}
