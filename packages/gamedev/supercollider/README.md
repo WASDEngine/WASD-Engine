@@ -143,7 +143,7 @@ The image is a 1,024-pixel-wide PNG: the waveform of each channel (of the channe
 <a id="plugin-icon"></a>
 ### Plugin icon
 
-The Game tools tabs of Settings › Built-in plugins and the Plugins page ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`. The file embeds the SuperCollider IDE icon by Batuhan Bozkurt (2012) unaltered in a 36 × 36 canvas, with a `viewBox` added so that it scales: `icons/sc_ide.svg` of SuperCollider 3.14.1 in the [SuperCollider repository](https://github.com/supercollider/supercollider). SuperCollider, including its artwork, is licensed under the [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.html), not under this repository's license, and `icon.svg` is shared under the same license. The icon refers to the SuperCollider integration only. WASD Engine is not affiliated with or endorsed by the SuperCollider project.
+The Game tools tabs of Settings › Built-in plugins and the Plugins page ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`. The file embeds the SuperCollider cube logo by Nathan Ho (2015) unaltered in a 36 × 36 canvas: `icons/sc_logo.svg` of SuperCollider 3.14.1 in the [SuperCollider repository](https://github.com/supercollider/supercollider). SuperCollider, including its artwork, is licensed under the [GNU General Public License version 3](https://www.gnu.org/licenses/gpl-3.0.html), not under this repository's license, and `icon.svg` is shared under the same license. The icon refers to the SuperCollider integration only. WASD Engine is not affiliated with or endorsed by the SuperCollider project.
 
 -----
 

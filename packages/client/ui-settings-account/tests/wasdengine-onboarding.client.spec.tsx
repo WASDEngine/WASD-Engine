@@ -94,7 +94,7 @@ it('shows the game tools on the selected Game programming card and keeps the doc
   purpose('both')
   const tiles = [...document.querySelectorAll('[data-wasdengine-tool]')]
   expect(tiles.map(tile => tile.getAttribute('data-wasdengine-tool'))).toEqual(['godot', 'blender', 'gimp', 'supercollider'])
-  const credits = ['the Godot Engine logo', 'the Blender logo mark', 'Wilber, the GIMP logo', 'SuperCollider Icon SVG, Batuhan Bozkurt 2012']
+  const credits = ['the Godot Engine logo', 'the Blender logo mark', 'Wilber, the GIMP logo', 'SuperCollider Cube SVG, Nathan Ho 2015']
   tiles.forEach((tile, index) => {
     expect(tileSource(tile.querySelector('image')?.getAttribute('href'))).toContain(credits[index])
   })
