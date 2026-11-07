@@ -154,10 +154,11 @@ Every tool works on the calling Session's game; a call outside a Session fails.
 | `godot_control` | `action` (`pause`, `resume`, or `step`), `frames` | Pauses or resumes the game, or runs `frames` frames (default 1, at most 100000) and pauses again; a step ends early when the game is paused, resumed, or stepped again meanwhile, for example from the Game tab, and once its frames at 10 frames per second plus `requestTimeoutMs` of real time have passed, and the result says which; reports the pause state and the frame |
 | `godot_eval` | `expression`, `node` | Evaluates a Godot `Expression` in the running game with `scene`, `root`, and `tree` defined and the node at `node`, or the current scene, as the base; returns the value as JSON and its Godot type |
 | `godot_scene_tree` | `node`, `depth` (default 6, at most 64), `max_nodes` (default 400, at most 5000) | An indented outline of node names, classes, scripts, positions, sizes, hidden nodes, Label and Button text, and disabled processing |
+| `godot_performance` | `seconds` (default 2, 0.25 to 20) | Samples the game for that much real time and reports the frame rate, frame time percentiles and spikes, the mean and largest milliseconds per frame of each phase, GPU and render CPU time when the renderer measures them, drawn objects, primitives, and draw calls, memory and video memory, object counts and their change, physics bodies, pipeline compilations, navigation, audio latency, a census of the scene tree, the custom `Performance` monitors, and the frame rate limits |
 | `godot_logs` | `since`, `levels`, `limit` (default 200, at most 1000) | Log entries after the cursor `since`, or after this Session's previous read, and the next cursor |
 | `godot_check` | `paths`, `project` | Loads GDScript files in a headless Godot without running the game and lists the problems per file |
 
-`godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, and `godot_scene_tree` need a connected game. Before the Session's first run they fail with `No game is running in this Session; call godot_run first.`, while the game starts or stops with `The game is starting or stopping; call godot_run to wait for it.`, and after the game ended they name its phase and quote the crash or failure message.
+`godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, and `godot_performance` need a connected game. Before the Session's first run they fail with `No game is running in this Session; call godot_run first.`, while the game starts or stops with `The game is starting or stopping; call godot_run to wait for it.`, and after the game ended they name its phase and quote the crash or failure message.
 
 With `screenshot: true`, `godot_input` and `godot_wait` check that the model route can see images before they send anything to the game, and fail without acting when it cannot. A screenshot that fails after the events or the wait does not fail the call, because the game already acted: the result text says `The screenshot after the events failed: <reason>` or `The screenshot after the wait failed: <reason>`.
 
@@ -169,12 +170,14 @@ A run keeps its newest `maxLogEntries` log entries. Each entry carries a sequenc
 
 `godot_check` starts one headless Godot that loads each script through `runtime/wasd_check.gd`, bypassing the resource cache. It creates no autoload and opens no scene, so the only project code that it runs is what loading runs: the static initializers of the loaded scripts and the custom resource loaders and savers that the project declares as global classes. It checks the files and folders that `paths` names, as `res://` paths or paths relative to the working directory, or every `.gd` file of the project, at most 400. Without `project`, it uses the project of the Session's current or last run, else the nearest one. It lists the errors and warnings that Godot logged in `res://` files while a script loaded, so an error in a preloaded script names that script; a script without such entries gets the first engine error, if any. The check fails when Godot ends, or exceeds `importTimeoutMs`, before it reported every script. Scripts that name a singleton autoload check as in a game, except that a scene autoload is typed as `Node`, so the check does not report type errors in uses of a scene autoload's members.
 
+`godot_performance` sends the game one `performance` request and summarizes the answer on the Host. The harness times each frame from the start of one main-loop iteration to the next, and its phases with engine signals: physics from the iteration's first `physics_frame` to the harness's `_process`, the harness's own work from there to `process_frame`, scripts and nodes from `process_frame` to `RenderingServer.frame_pre_draw`, and drawing from there to `frame_post_draw`; other is the rest of the frame, such as waiting for the frame limit. GPU and render CPU times come from the root viewport's render time measurement, which the sample turns on and then off; the result says when the renderer reports no GPU time, as the Metal renderer of the shipped macOS runtime does. Every built-in `Performance` monitor is read at the start and the end, so object counts show their change and pipeline compilations count those during the sample. The census walks the scene tree from the root without internal children, up to 200,000 nodes, and counts a node as processing when it can process and its processing is on. A sample records at most 20,000 frames and counts the frames after them. The game runs on while it is measured: the result counts paused frames, the harness time includes capturing the frames that the Game tab streams, and a windowless run does not wait for VSync. Percentiles are nearest-rank, and a spike is a frame longer than twice the median. The game ends a sample early at its seconds plus `requestTimeoutMs` of real time, and a cancelled call ends it.
+
 Result text stays within 6,000 characters and ends with `… (output shortened)` when cut, and quoted log messages stay within 500 characters. `godot_logs` ends its page before the text budget, and its next cursor follows the last listed entry.
 
 <a id="connected-agents"></a>
 ### Tools for connected agents
 
-Agents on the computer that connect through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), get the same ten tools from the plugin's provider in [`src/mcp.ts`](src/mcp.ts), built by the same `godotToolDefinitions` with three differences:
+Agents on the computer that connect through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), get the same eleven tools from the plugin's provider in [`src/mcp.ts`](src/mcp.ts), built by the same `godotToolDefinitions` with three differences:
 
 - Every tool takes `project`, the absolute path of the folder that holds `project.godot`, of a folder up to three levels above it, or of the `project.godot` file; without it, a call uses the agent's previous project and fails with `Pass project: the absolute path of the folder that holds project.godot.` before the agent's first. The call runs for the agent's own Session in that game project, which the MCP server creates on first use, so the run, its logs, and the Game tab are that Session's.
 - The `godot_run` description says that the game plays in the WASD Engine window, `godot_check` takes absolute paths where the Session's tool takes paths relative to the working directory, and `godot_logs` reads after the entries the agent last read.
@@ -311,15 +314,15 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### What the model sees
 
-The plugin registers 10 tools in the global tool layer when it loads, so they reach every Agent whose tool set does not exclude them, whether or not a Godot runtime or project exists: `godot_run`, `godot_stop`, `godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, `godot_logs`, and `godot_check`, with the names, descriptions, and parameter schemas that [`src/tools.ts`](src/tools.ts) declares. The only configured text is the `muted` description of `godot_run`, `Run without audio. Default: <agentRunsMuted>.`
+The plugin registers 11 tools in the global tool layer when it loads, so they reach every Agent whose tool set does not exclude them, whether or not a Godot runtime or project exists: `godot_run`, `godot_stop`, `godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, `godot_performance`, `godot_logs`, and `godot_check`, with the names, descriptions, and parameter schemas that [`src/tools.ts`](src/tools.ts) declares. The only configured text is the `muted` description of `godot_run`, `Run without audio. Default: <agentRunsMuted>.`
 
 #### Token effect
 
-The 10 declarations come to about 6,700 characters of JSON with the default configuration, names included, and enter every request that offers them; `godot_input` is the largest at about 2,500 characters.
+The 11 declarations come to about 7,200 characters of JSON with the default configuration, names included, and enter every request that offers them; `godot_input` is the largest at about 2,500 characters.
 
 #### KV Cache effect
 
-One configuration always yields identical declarations, registered before the first request, so the tool-definition prefix stays stable. A change of `agentRunsMuted` changes the `godot_run` declaration, and disabling the row removes all 10 declarations; either change can invalidate reuse from the first changed definition onward.
+One configuration always yields identical declarations, registered before the first request, so the tool-definition prefix stays stable. A change of `agentRunsMuted` changes the `godot_run` declaration, and disabling the row removes all 11 declarations; either change can invalidate reuse from the first changed definition onward.
 
 ### Godot section in the system prompt
 
@@ -337,14 +340,14 @@ Godot is built in: the godot_* tools run it, so making, checking, and running a 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.
 ```
 
 #### Token effect
 
-The section adds 903 characters to every system prompt while the plugin is loaded.
+The section adds 966 characters to every system prompt while the plugin is loaded.
 
 #### KV Cache effect
 

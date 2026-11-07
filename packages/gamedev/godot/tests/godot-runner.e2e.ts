@@ -1,9 +1,10 @@
 /**
  * The Godot tools against the real LibGodot runner: import, windowless run, screenshot, input, logs with a
- * script error, scene inspection, frame-exact steps, a step that the Game tab ends, lossless PNG frames of a simple
- * scene, input and frames while game time stands still, a bounded game-time wait, a cancelled input sequence, a
- * queued input sequence that its real-time limit ends, a static check that runs no autoload, a letterboxed stretch
- * mode, and JPEG frames of a scene that PNG encoding cannot keep up with.
+ * script error, scene inspection, a performance sample and a cancelled one, frame-exact steps, a step that the
+ * Game tab ends, lossless PNG frames of a simple scene, input and frames while game time stands still, a bounded
+ * game-time wait, a cancelled input sequence, a queued input sequence that its real-time limit ends, a static
+ * check that runs no autoload, a letterboxed stretch mode, and JPEG frames of a scene that PNG encoding cannot
+ * keep up with.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -220,6 +221,45 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(tree)).toContain('Player (ColorRect) res://player.gd position (300, 200)')
     const position = await callTool(c, 'godot_eval', { expression: 'scene.get_node("Player").position.x' })
     expect(text(position)).toBe('float: 300')
+  }, 60_000)
+
+  it('measures frame times, drawing, memory, and the scene census over real time', async () => {
+    const measured = await callTool(c, 'godot_performance', { seconds: 1 })
+    expect(measured.isError, text(measured)).toBe(false)
+    expect(measured.value).toMatchObject({
+      timedOut: false,
+      frames: expect.any(Number) as number,
+      context: { width: 640, height: 360, paused: false },
+      sceneTree: {
+        scripts: [
+          { path: 'res://counter.gd', nodes: 1, processing: 1, physicsProcessing: 0 },
+          { path: 'res://game_state.gd', nodes: 1, processing: 0, physicsProcessing: 0 },
+          { path: 'res://keys.gd', nodes: 1, processing: 0, physicsProcessing: 0 },
+          { path: 'res://player.gd', nodes: 1, processing: 1, physicsProcessing: 0 },
+        ],
+      },
+    })
+    const value = measured.value as {
+      frames: number
+      fps: number
+      seconds: number
+      sceneTree: { nodes: number }
+      drawn: { drawCalls: { max: number } }
+    }
+    expect(value.frames).toBeGreaterThan(10)
+    expect(value.fps).toBeGreaterThan(10)
+    expect(value.seconds).toBeGreaterThanOrEqual(1)
+    expect(value.sceneTree.nodes).toBeGreaterThanOrEqual(8)
+    expect(value.drawn.drawCalls.max).toBeGreaterThan(0)
+    expect(text(measured)).toMatch(/^Measured 1\.\d\d s of real time: \d+ frames at [\d.]+ FPS; the forward_plus renderer on /u)
+    expect(text(measured)).not.toContain('New errors since your last Godot call')
+    // A cancelled call ends the game's sample, so the next one can start at once.
+    const controller = new AbortController()
+    const abandoned = callTool(c, 'godot_performance', { seconds: 10 }, controller.signal)
+    setTimeout(() => { controller.abort() }, 300)
+    expect((await abandoned).isError).toBe(true)
+    const next = await callTool(c, 'godot_performance', { seconds: 0.25 })
+    expect(next.isError, text(next)).toBe(false)
   }, 60_000)
 
   it('moves the player with an input action and reports the script error a key causes', async () => {

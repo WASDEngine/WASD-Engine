@@ -154,10 +154,11 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `godot_control` | `action`（`pause`、`resume` 或 `step`）、`frames` | 暂停或继续游戏，或运行 `frames` 帧（默认 1，最多 100000）后再次暂停；单步期间游戏被暂停、继续或再次单步时（例如在“游戏”标签页中），以及按每秒 10 帧计的帧数加上 `requestTimeoutMs` 的实际时间过去后，单步提前结束，结果会写明原因；报告暂停状态和帧号 |
 | `godot_eval` | `expression`、`node` | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root` 和 `tree`，以 `node` 处的节点或当前场景为基对象；返回 JSON 形式的值及其 Godot 类型 |
 | `godot_scene_tree` | `node`、`depth`（默认 6，最多 64）、`max_nodes`（默认 400，最多 5000） | 缩进的大纲，列出节点名称、类、脚本、位置、大小、隐藏节点、Label 与 Button 文本，以及被禁用的处理 |
+| `godot_performance` | `seconds`（默认 2，0.25 到 20） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制 |
 | `godot_logs` | `since`、`levels`、`limit`（默认 200，最多 1000） | 游标 `since` 之后、或本 Session 上次读取之后的日志条目，以及下一个游标 |
 | `godot_check` | `paths`、`project` | 在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
 
-`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval` 和 `godot_scene_tree` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
+`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree` 和 `godot_performance` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
 
 使用 `screenshot: true` 时，`godot_input` 和 `godot_wait` 会在向游戏发送任何内容之前检查模型路由能否查看图像，不能时直接失败，不对游戏执行任何操作。事件或等待之后的截图失败不会让调用失败，因为游戏已经执行了操作：结果文本写明 `The screenshot after the events failed: <reason>` 或 `The screenshot after the wait failed: <reason>`。
 
@@ -169,12 +170,14 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 `godot_check` 启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
 
+`godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含捕获 Game 标签页流式传输的帧，无窗口运行不等待 VSync。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
+
 结果文本不超过 6,000 个字符，被截断时以 `… (output shortened)` 结尾；引用的日志消息不超过 500 个字符。`godot_logs` 在达到文本上限之前结束本页，其下一个游标紧跟在最后一个列出的条目之后。
 
 <a id="connected-agents"></a>
 ### 供已连接 agent 使用的工具
 
-通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十个工具，它们由同一个 `godotToolDefinitions` 构建，区别有三点：
+通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十一个工具，它们由同一个 `godotToolDefinitions` 构建，区别有三点：
 
 - 每个工具都接受 `project`：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身的绝对路径；省略时，调用沿用该 agent 上一次的项目，而在 agent 第一次调用之前会以 `Pass project: the absolute path of the folder that holds project.godot.` 失败。调用为该 agent 在这个游戏项目中自己的 Session 执行，MCP 服务器在首次使用时创建该 Session，因此运行、其日志与“游戏”标签页都属于这个 Session。
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
@@ -311,15 +314,15 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### 模型可见内容
 
-插件加载时在全局工具层注册 10 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_logs` 和 `godot_check`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
+插件加载时在全局工具层注册 11 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance`、`godot_logs` 和 `godot_check`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
 
 #### Token 影响
 
-默认配置下，10 个声明合计约 6,700 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
+默认配置下，11 个声明合计约 7,200 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
 
 #### KV Cache 影响
 
-同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 10 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
+同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 11 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
 
 ### 系统提示词中的 Godot 部分
 
@@ -337,14 +340,14 @@ Godot is built in: the godot_* tools run it, so making, checking, and running a 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.
 ```
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 903 个字符。
+插件加载期间，该部分为每个系统提示词增加 966 个字符。
 
 #### KV Cache 影响
 

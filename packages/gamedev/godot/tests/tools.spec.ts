@@ -165,6 +165,17 @@ posix('observing the game', () => {
     expect(formatTree({ class: 7 })).toBe('? (7)')
   })
 
+  it('measures performance for the requested real seconds, within their bounds', async () => {
+    const c = await started()
+    const measured = await callTool(c, 'godot_performance', { seconds: 0.5 })
+    expect(text(measured).split('\n')[0]).toBe('Measured 0.50 s of real time: 0 frames at 0.0 FPS; the forward_plus renderer on fake draws a 640x360 window.')
+    expect(value(measured)).toMatchObject({ seconds: 0.5, frames: 0, windowless: false, sceneTree: { nodes: 1, classes: [{ name: 'Window', nodes: 1 }] } })
+    // The game's own limit is the sample's seconds plus requestTimeoutMs.
+    expect((await fakeRequests(c.project)).find(request => request.type === 'performance')).toMatchObject({ seconds: 0.5, timeoutMs: 5500 })
+    expect(text(await callTool(c, 'godot_performance', { seconds: 30 }))).toContain('seconds must be from 0.25 to 20.')
+    expect(text(await callTool(c, 'godot_performance', { seconds: 0.1 }))).toContain('seconds must be from 0.25 to 20.')
+  })
+
   it('reads the log after the Session cursor, by level, within the text budget', async () => {
     const logs = [
       { level: 'stdout', message: 'one', time_ms: 1 },

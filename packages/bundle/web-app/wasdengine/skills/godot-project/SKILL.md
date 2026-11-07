@@ -48,7 +48,8 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 2. `godot_run` imports the assets and starts the game; its result lists the errors and warnings logged while it started. Every later Godot tool result lists new errors, and `godot_logs` returns the full log.
 3. Look before you claim it works: `godot_screenshot` shows the game. Play it with `godot_input`, using Input Map actions (`{"kind": "action", "action": "jump", "pressed": true, "hold": 0.3}`) or keys and clicks at screenshot coordinates, then take another screenshot or pass `screenshot: true`.
 4. Read state instead of guessing: `godot_eval` evaluates an expression such as `scene.get_node("Player").position`, and `godot_scene_tree` lists the running nodes. `godot_control` pauses, steps a number of frames, and resumes.
-5. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
+5. Measure speed instead of guessing: when the game stutters or slows, or a change adds many nodes, effects, or bodies, call `godot_performance` before and after it and compare frame time percentiles, the slowest phase, draw calls, and node and orphan node counts.
+6. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
 
 ## Verify every change without the Godot tools
 
@@ -66,7 +67,7 @@ Fix the first reported error at its file and line, then repeat until the run is 
 
 ## Models, textures, and audio
 
-With the `mcp__wasd_blender__` tools, build or edit 3D models headless, look at them with `mcp__wasd_blender__render_preview`, and write them into the project with `mcp__wasd_blender__export_gltf` as `.glb` files (no Draco compression); keep the `.blend` source beside the export. With the `mcp__wasd_gimp__` tools, make or edit textures and sprites, look at them with `mcp__wasd_gimp__snapshot`, and export PNG files into the project; keep the `.xcf` source beside the export. With the `mcp__wasd_supercollider__` tools, design sound effects and music in SuperCollider code and render them into the project with `mcp__wasd_supercollider__render_audio`, as `.wav` files for effects and `.ogg` files for music and loops; read its levels and look at its waveform and spectrogram image, since nothing plays aloud, and keep the `.scd` source beside the sound. Record the source and license of every third-party asset.
+With the `mcp__wasd_blender__` tools, build or edit 3D models headless, paint image textures for each model as the Blender instructions describe, look at them with `mcp__wasd_blender__render_preview`, and write them into the project with `mcp__wasd_blender__export_gltf` as `.glb` files (no Draco compression); keep the `.blend` source beside the export. For hand-drawn detail, edit a model's texture PNG with the `mcp__wasd_gimp__` tools, then reload it in Blender with `image.reload()` and export again. With the `mcp__wasd_gimp__` tools, make or edit textures and sprites, look at them with `mcp__wasd_gimp__snapshot`, and export PNG files into the project; keep the `.xcf` source beside the export. With the `mcp__wasd_supercollider__` tools, design sound effects and music in SuperCollider code and render them into the project with `mcp__wasd_supercollider__render_audio`, as `.wav` files for effects and `.ogg` files for music and loops; read its levels and look at its waveform and spectrogram image, since nothing plays aloud, and keep the `.scd` source beside the sound. Record the source and license of every third-party asset.
 
 ## Export
 

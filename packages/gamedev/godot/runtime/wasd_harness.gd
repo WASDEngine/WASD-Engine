@@ -35,7 +35,17 @@ extends SceneTree
 ## times out or is cancelled pauses the game, and one that `resume` or a newer step ends leaves it running. An
 ## input sequence that ends early answers `events` as the number of its events that ran; one that ends early or
 ## fails releases the keys, buttons, and actions it pressed and did not release. `cancel` answers `cancelled`:
-## whether a `wait`, `step`, or `input` request with that id was pending.
+## whether a `wait`, `step`, `input`, or `performance` request with that id was pending.
+##
+## A `performance` request samples the game for `seconds` of real time, one sample at a time, and answers with a
+## series per measured frame: its milliseconds from start to start (`frame`), in physics steps, in this harness's
+## own `_process`, in node processing (`process`, from `process_frame` to `frame_pre_draw`), and in drawing
+## (`draw`, from `frame_pre_draw` to `frame_post_draw`); the GPU and render CPU milliseconds that the root
+## viewport measured, 0 until a measurement arrives; and the objects, primitives, and draw calls drawn. It adds the
+## built-in `Performance` monitors at its start and end, the custom monitors at its end, a census of the scene tree
+## from the root, and the settings that limit the frame rate. Like a `wait`, it ends early at its `timeoutMs` or on
+## `cancel`, which answer `timedOut` or `cancelled`. While it runs, the root viewport measures its render time;
+## afterwards the measurement is off.
 
 const PROTOCOL_VERSION := 1
 const KIND_JSON := 1
@@ -46,6 +56,11 @@ const MAX_MESSAGE_BYTES := 64 * 1024 * 1024
 const USEC_PER_SECOND := 1000000.0
 const LOSSLESS_TEST_DELAY := 1.0  # seconds from a failed or slow PNG test, or a slow PNG frame, to the next test
 const LOSSLESS_TEST_MAX_DELAY := 8.0
+const PERFORMANCE_SERIES := ["frame", "physics", "harness", "process", "draw", "gpu", "renderCpu", "objects", "primitives", "drawCalls"]
+const PERFORMANCE_MAX_FRAMES := 20000  # frames a sample records; later frames count in droppedFrames
+const PERFORMANCE_MAX_NODES := 200000  # nodes the census visits
+const PERFORMANCE_TOP := 8  # node classes and scripts the census lists
+const PERFORMANCE_MAX_CUSTOM := 40  # custom monitors a sample reports
 
 ## Encodes one streamed frame on a WorkerThreadPool thread. The main thread reads `bytes` and `usec` only after the
 ## task completed, and no thread writes `image`.
@@ -153,6 +168,10 @@ var _holds: Array[Dictionary] = []
 var _last_status_ms := 0
 var _last_mouse_mode := -1
 var _last_scene := ""
+# The running performance sample, or empty: {id, started, end, deadline (real seconds), frames, droppedFrames,
+# pausedFrames, physicsSteps, streamedFrames, series: {name: values}, monitorsStart, marks}. `marks` holds the tick
+# microseconds at which the phases of the current frame began, 0 until they do, and its physics microseconds.
+var _sample := {}
 
 
 func _init() -> void:
@@ -189,6 +208,8 @@ func _finalize() -> void:
 
 
 func _process(delta: float) -> bool:
+	if not _sample.is_empty():
+		_sample_frame(Time.get_ticks_usec())
 	_frame += 1
 	if _poll_connection():
 		var now := Time.get_ticks_usec() / USEC_PER_SECOND
@@ -196,11 +217,14 @@ func _process(delta: float) -> bool:
 		_release_holds(now)
 		_advance_actions(now)
 		_advance_waits(now)
+		_advance_sample(now)
 		_flush_logs()
 		_send_status_if_changed()
 		_stream_frame(now)
 	# The main loop processes before the nodes do, so the nodes run this frame with the pause state set above.
 	_frame_seconds = 0.0 if paused else delta
+	if not _sample.is_empty():
+		_sample["marks"]["paused"] = paused
 	return false
 
 
@@ -328,6 +352,8 @@ func _handle(message: Dictionary, now: float) -> void:
 			_eval(id, message)
 		"tree":
 			_tree(id, message)
+		"performance":
+			_start_sample(id, message, now)
 		"quit":
 			_reply(id, {"quitting": true})
 			quit(int(message.get("exitCode", 0)))
@@ -392,8 +418,11 @@ func _end_steps(pause_step: bool) -> void:
 	_waits = remaining
 
 
-## Ends the pending wait, step, or input request whose id is `request`; returns whether one was pending.
+## Ends the pending wait, step, input, or performance request whose id is `request`; returns whether one was pending.
 func _cancel(request, now: float) -> bool:
+	if not _sample.is_empty() and _sample["id"] == request:
+		_finish_sample(now, false, true)
+		return true
 	for i in _waits.size():
 		if _waits[i]["id"] == request:
 			var wait: Dictionary = _waits[i]
@@ -737,6 +766,8 @@ func _finish_encoding(now: float) -> void:
 	payload.encode_u16(6, done.image.get_height())
 	payload.append_array(done.bytes)
 	_send(KIND_FRAME, payload)
+	if not _sample.is_empty():
+		_sample["streamedFrames"] += 1
 
 
 ## Applies a finished test PNG encode: frames become PNG when it took at most the frame interval.
@@ -833,6 +864,207 @@ func _describe(node: Node, depth: int, limit: Dictionary) -> Dictionary:
 				children.append(_describe(child, depth - 1, limit))
 			entry["children"] = children
 	return entry
+
+
+func _start_sample(id, message: Dictionary, now: float) -> void:
+	if not _sample.is_empty():
+		_reply_error(id, "a performance sample is already running")
+		return
+	var deadline := _deadline(id, message, now)
+	if deadline < 0.0:
+		return
+	var series := {}
+	for name in PERFORMANCE_SERIES:
+		series[name] = []
+	_sample = {
+		"id": id, "started": now, "end": now + clampf(float(message.get("seconds", 2.0)), 0.1, 60.0), "deadline": deadline,
+		"frames": 0, "droppedFrames": 0, "pausedFrames": 0, "physicsSteps": 0, "streamedFrames": 0,
+		"series": series, "monitorsStart": _monitors(),
+		"marks": {"process": 0, "physicsFirst": 0, "physicsUsec": 0, "nodes": 0, "draw": 0, "drawn": 0, "paused": paused},
+	}
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
+	physics_frame.connect(_on_sample_physics_frame)
+	process_frame.connect(_on_sample_process_frame)
+	RenderingServer.frame_pre_draw.connect(_on_sample_pre_draw)
+	RenderingServer.frame_post_draw.connect(_on_sample_post_draw)
+
+
+## Records the frame that ended at `now_usec`, the start of this `_process`, and starts the marks of the next one.
+## A frame's physics steps run before its `_process`, so their time is known when the frame starts.
+func _sample_frame(now_usec: int) -> void:
+	var marks: Dictionary = _sample["marks"]
+	var begun: int = marks["process"]
+	if begun > 0:
+		_sample["frames"] += 1
+		if marks["paused"]:
+			_sample["pausedFrames"] += 1
+		var series: Dictionary = _sample["series"]
+		if (series["frame"] as Array).size() >= PERFORMANCE_MAX_FRAMES:
+			_sample["droppedFrames"] += 1
+		else:
+			var nodes: int = marks["nodes"]
+			var draw: int = marks["draw"]
+			var drawn: int = marks["drawn"]
+			var viewport := root.get_viewport_rid()
+			series["frame"].append(_ms(now_usec - begun))
+			series["physics"].append(_ms(marks["physicsUsec"]))
+			series["harness"].append(_ms(nodes - begun) if nodes >= begun else 0.0)
+			series["process"].append(_ms(draw - nodes) if nodes >= begun and draw >= nodes else 0.0)
+			series["draw"].append(_ms(drawn - draw) if draw >= begun and drawn >= draw else 0.0)
+			series["gpu"].append(snappedf(RenderingServer.viewport_get_measured_render_time_gpu(viewport), 0.001))
+			series["renderCpu"].append(snappedf(RenderingServer.viewport_get_measured_render_time_cpu(viewport) + RenderingServer.get_frame_setup_time_cpu(), 0.001))
+			series["objects"].append(int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)))
+			series["primitives"].append(int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
+			series["drawCalls"].append(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
+	var physics_first: int = marks["physicsFirst"]
+	marks["physicsUsec"] = now_usec - physics_first if physics_first > 0 else 0
+	marks["physicsFirst"] = 0
+	marks["process"] = now_usec
+	marks["nodes"] = 0
+	marks["draw"] = 0
+	marks["drawn"] = 0
+
+
+func _ms(usec: int) -> float:
+	return snappedf(usec / 1000.0, 0.001)
+
+
+func _on_sample_physics_frame() -> void:
+	_sample["physicsSteps"] += 1
+	if _sample["marks"]["physicsFirst"] == 0:
+		_sample["marks"]["physicsFirst"] = Time.get_ticks_usec()
+
+
+func _on_sample_process_frame() -> void:
+	_sample["marks"]["nodes"] = Time.get_ticks_usec()
+
+
+func _on_sample_pre_draw() -> void:
+	_sample["marks"]["draw"] = Time.get_ticks_usec()
+
+
+func _on_sample_post_draw() -> void:
+	_sample["marks"]["drawn"] = Time.get_ticks_usec()
+
+
+## Ends the running performance sample once its window has passed, or at its `timeoutMs` with `timedOut`.
+func _advance_sample(now: float) -> void:
+	if _sample.is_empty():
+		return
+	if now >= float(_sample["end"]):
+		_finish_sample(now, false, false)
+	elif float(_sample["deadline"]) > 0.0 and now >= float(_sample["deadline"]):
+		_finish_sample(now, true, false)
+
+
+func _finish_sample(now: float, timed_out: bool, cancelled: bool) -> void:
+	var sample := _sample
+	_sample = {}
+	physics_frame.disconnect(_on_sample_physics_frame)
+	process_frame.disconnect(_on_sample_process_frame)
+	RenderingServer.frame_pre_draw.disconnect(_on_sample_pre_draw)
+	RenderingServer.frame_post_draw.disconnect(_on_sample_post_draw)
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), false)
+	_reply(sample["id"], {
+		"seconds": now - float(sample["started"]),
+		"frames": sample["frames"],
+		"droppedFrames": sample["droppedFrames"],
+		"pausedFrames": sample["pausedFrames"],
+		"physicsSteps": sample["physicsSteps"],
+		"streamedFrames": sample["streamedFrames"],
+		"series": sample["series"],
+		"monitorsStart": sample["monitorsStart"],
+		"monitorsEnd": _monitors(),
+		"custom": _custom_monitors(),
+		"nodes": _node_census(),
+		"context": _performance_context(),
+		"timedOut": timed_out,
+		"cancelled": cancelled,
+	})
+
+
+## Returns every built-in `Performance` monitor by its constant name, so other Godot 4 versions report theirs.
+func _monitors() -> Dictionary:
+	var values := {}
+	for name in ClassDB.class_get_enum_constants("Performance", "Monitor", true):
+		if name != "MONITOR_MAX":
+			var value := Performance.get_monitor(ClassDB.class_get_integer_constant("Performance", name))
+			values[name] = value if is_finite(value) else 0.0
+	return values
+
+
+func _custom_monitors() -> Dictionary:
+	var values := {}
+	for name in Performance.get_custom_monitor_names():
+		if values.size() >= PERFORMANCE_MAX_CUSTOM:
+			break
+		var value = Performance.get_custom_monitor(name)
+		if (value is int or value is float) and is_finite(float(value)):
+			values[str(name)] = value
+	return values
+
+
+## Counts the nodes below the root, those processing and physics processing this frame, and the most common
+## classes and scripts, as [class, nodes] and [script path, nodes, processing, physics processing].
+func _node_census() -> Dictionary:
+	var classes := {}
+	var scripts := {}
+	var total := 0
+	var processing := 0
+	var physics := 0
+	var stack: Array[Node] = [root]
+	while not stack.is_empty() and total < PERFORMANCE_MAX_NODES:
+		var node: Node = stack.pop_back()
+		total += 1
+		var name := node.get_class()
+		classes[name] = int(classes.get(name, 0)) + 1
+		var runs := node.can_process()
+		var processes := runs and node.is_processing()
+		var steps := runs and node.is_physics_processing()
+		processing += 1 if processes else 0
+		physics += 1 if steps else 0
+		var script: Script = node.get_script()
+		if script != null:
+			var path := script.resource_path if not script.resource_path.is_empty() else "(built-in script)"
+			var counts: Array = scripts.get(path, [0, 0, 0])
+			counts[0] += 1
+			counts[1] += 1 if processes else 0
+			counts[2] += 1 if steps else 0
+			scripts[path] = counts
+		stack.append_array(node.get_children())
+	return {
+		"total": total, "processing": processing, "physicsProcessing": physics, "truncated": not stack.is_empty(),
+		"classes": _top(classes), "scripts": _top(scripts),
+	}
+
+
+## Returns the PERFORMANCE_TOP entries of {key: count or [count, ...]} with the highest count, as [key, count, ...].
+func _top(counts: Dictionary) -> Array:
+	var entries := []
+	for key in counts:
+		var value = counts[key]
+		entries.append([key] + (value if value is Array else [value]))
+	entries.sort_custom(func(a, b): return a[1] > b[1] or (a[1] == b[1] and str(a[0]) < str(b[0])))
+	return entries.slice(0, PERFORMANCE_TOP)
+
+
+func _performance_context() -> Dictionary:
+	var size := _window_size()
+	return {
+		"paused": paused,
+		"timeScale": Engine.time_scale,
+		"maxFps": Engine.max_fps,
+		"physicsTicksPerSecond": Engine.physics_ticks_per_second,
+		"vsyncMode": int(ProjectSettings.get_setting("display/window/vsync/vsync_mode", 1)),
+		"lowProcessorMode": OS.low_processor_usage_mode,
+		"renderingMethod": RenderingServer.get_current_rendering_method(),
+		"renderingDriver": RenderingServer.get_current_rendering_driver_name(),
+		"adapter": RenderingServer.get_video_adapter_name(),
+		"adapterVendor": RenderingServer.get_video_adapter_vendor(),
+		"width": size.x,
+		"height": size.y,
+		"streamFps": _stream_fps,
+	}
 
 
 func _to_json(value, depth: int):

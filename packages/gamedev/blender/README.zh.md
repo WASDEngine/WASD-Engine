@@ -128,6 +128,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 Blender 在没有窗口的情况下运行，因此这些工具不提供视口、界面，也不提供窗口或区域截图。部分操作符需要窗口，在后台 Blender 中会失败，因此服务器指令要求 agent 优先直接编辑 `bpy.data`，而不是使用 `bpy.ops` 操作符。
 
+服务器指令还要求 agent 为它制作的每个模型绘制图像纹理（除非用户要求纯色），因为 glTF 导出保留图像纹理，却会丢弃程序化着色器节点。agent 用 `bpy.ops.uv.smart_project` 展开 UV，用程序化节点构建外观，用 CPU 上的 Cycles 把颜色烘焙到图像中（材质在粗糙度和起伏上有变化时，也烘焙粗糙度和法线），用 numpy 在像素上绘制更多细节，并在导出前把这些图像连接到 Principled BSDF。物体处于活动并被选中的状态时，这些操作符和烘焙可以在后台 Blender 中运行。
+
 agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染，相机对准所有可渲染对象，或对准列出的对象及其子对象并隐藏其他几何体，视角为 `iso`、`front`、`back`、`left`、`right` 或 `top`。取景依据渲染所显示的内容：包括仅在视口中隐藏的对象和集合，不包括从视图层中排除或在渲染中隐藏的集合；对于此类集合中的已列出对象，结果会写明预览无法显示它们。默认的 `solid` 是快速的 Workbench 着色，带轮廓并使用材质基础色；`material` 用 EEVEE 以 16 个采样渲染节点材质和纹理，光照来自场景灯光，场景没有灯光时使用一个临时太阳光。
 
 渲染后，`render_preview` 会恢复场景的相机、世界环境、渲染设置、色彩管理的视图变换与外观（look）以及可见性；无法恢复某个值时，调用失败。`render` 生成最终图像，需要相机。
@@ -244,18 +246,25 @@ Inspect, change, look:
 
 Game assets:
 - Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.
-- Use Principled BSDF materials. Image textures should be files saved next to the model or packed into the .blend so export can embed or copy them.
+- Use Principled BSDF materials, and paint image textures for every model you make, as Textures below describes, unless the user asks for flat colors: glTF export, and with it the game, keeps image textures but drops procedural shader nodes. Keep the images next to the model or packed into the .blend so export can embed or copy them.
 - Keep triangle counts suited to real-time rendering; scene_info reports them per mesh.
 - Name objects, meshes, and materials meaningfully: glTF keeps the names. In Godot, an object name ending in -col adds a collision shape, -convcol a convex one, and -colonly keeps only the collision shape.
 - export_gltf to a .glb inside the game project. It applies modifiers, exports animations, and never uses Draco compression, which Godot cannot import. Export the whole scene or name the objects in selection.
 - Save the editable .blend next to the exported file with save_blend so the asset can be changed later.
+
+Textures:
+1. Unwrap UVs: with the object active and selected, run bpy.ops.object.mode_set(mode='EDIT'), bpy.ops.mesh.select_all(action='SELECT'), and bpy.ops.uv.smart_project(island_margin=0.02), then return to mode='OBJECT'.
+2. Build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
+3. Bake it into images with Cycles: set scene.render.engine = 'CYCLES', scene.cycles.device = 'CPU', and scene.cycles.samples to about 8. Bake one object at a time, selected alone and active. Add an Image Texture node holding a new image, 512 pixels square for small props and 1024 or 2048 for large or close-up models, and make it the active node of each of the object's materials, then run bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=8). Where the material varies in roughness or relief, also bake type='ROUGHNESS' and type='NORMAL' into images whose colorspace_settings.name is 'Non-Color'. Set the render engine back afterwards.
+4. Paint what nodes cannot make, such as stripes, markings, or chipped paint, into the pixels with numpy: image.pixels.foreach_get into an array, change it, foreach_set, then image.update(). To paint on a particular face, read where it lies from its loop UVs in mesh.uv_layers.active.uv: u and v from 0 to 1 span the image's width and height, with pixel row 0 at the bottom.
+5. Connect each image to its Principled BSDF input in place of the procedural nodes, a normal image through a Normal Map node, save each as a PNG next to the model (set image.filepath_raw, then image.save()), and look at render_preview in material mode before export_gltf, which embeds the images in the .glb.
 
 Use checkpoint before risky edits and undo to return to it. new_scene and open_blend remove every name that execute_python defined, and after undo, Python references held in variables can be invalid, so look objects up by name again.
 ```
 
 #### Token 影响
 
-服务器保持连接期间，该部分为每个请求增加约 2,800 个字符。
+服务器保持连接期间，该部分为每个请求增加约 4,900 个字符。
 
 #### KV Cache 影响
 

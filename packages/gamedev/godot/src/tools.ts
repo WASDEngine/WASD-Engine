@@ -17,6 +17,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
+import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
 import { MAX_INPUT_EVENTS, type GodotRun } from './run.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
 import type { GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
@@ -38,6 +39,9 @@ const MESSAGE_CHARS = 500
 
 /** Default `max_width` of `godot_screenshot`, and the largest width of the screenshot `godot_input` and `godot_wait` take. */
 export const SCREENSHOT_WIDTH = 1280
+
+/** Default, shortest, and longest real seconds that `godot_performance` measures. */
+const PERFORMANCE_SECONDS = { default: 2, min: 0.25, max: 20 } as const
 
 const LEVELS = ['stdout', 'stderr', 'warning', 'error', 'script_error', 'shader_error'] as const
 
@@ -792,6 +796,31 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       return invoke(host, exec, async (_agent, session) => {
         const reply = await requireRunning(session).tree(args.node, depth, maxNodes, exec.signal)
         return { tree: reply.tree, truncated: reply.truncated }
+      })
+    },
+  }), defineTool({
+    name: 'godot_performance',
+    description: 'Measure the running game\'s performance over seconds of real time: frame rate and frame time percentiles, '
+      + 'milliseconds per frame in physics, scripts, and drawing, GPU time, draw calls, memory, object and orphan node counts, '
+      + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors.',
+    parameters: {
+      seconds: {
+        type: 'number',
+        description: `Real seconds to measure, from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}. Default: ${PERFORMANCE_SECONDS.default}.`,
+      },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ...PERFORMANCE_PROPERTIES, ...DIGEST_SCHEMA } },
+      render: (_args, value) => textResult(formatPerformance(value), formatDigest(value)),
+    },
+    async execute(args, exec) {
+      const seconds = args.seconds ?? PERFORMANCE_SECONDS.default
+      if (!(seconds >= PERFORMANCE_SECONDS.min && seconds <= PERFORMANCE_SECONDS.max)) {
+        throw new Error(`seconds must be from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}.`)
+      }
+      return invoke(host, exec, async (_agent, session) => {
+        const run = requireRunning(session)
+        return summarizePerformance(await run.performance(seconds, exec.signal), run.view().windowless)
       })
     },
   }), defineTool({
