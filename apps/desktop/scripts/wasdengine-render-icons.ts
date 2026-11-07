@@ -30,9 +30,14 @@ export const WASDENGINE_HOME_ATLAS = { width: 192, height: 108, columns: 12, fra
 export const WASDENGINE_HOME_ATLAS_FILE = fileURLToPath(
   new URL('../../../packages/client/ui-brand-official/src/client/assets/breach-atlas.webp', import.meta.url))
 
-/** Atlas cells per icon-source unit, and the source point drawn at the frame centre (the outlined keycap cluster centre). */
-const HOME_SCALE = 0.13
+/**
+ * Atlas cells per icon-source unit, the source point drawn at the frame anchor (the outlined keycap cluster centre), and
+ * that anchor as fractions of the frame. The renderer scales each frame to cover the whole home, so the keycaps keep
+ * about the size and height of upstream's capped scene and enter at the window's edges.
+ */
+const HOME_SCALE = 0.1
 const HOME_CENTER = { x: 557.5, y: 535 } as const
+const HOME_ANCHOR = { x: 0.5, y: 0.43 } as const
 
 /** Edge of one keycap body in icon-source units; its outline reaches a little beyond. */
 const HOME_KEY_EDGE = 225
@@ -91,8 +96,8 @@ function homeParticles(keys: readonly HomeKey[]): readonly HomeParticle[] {
     return from + (to - from) * seed / 0x1_0000_0000
   }
   const burst = (frame: number, key: HomeKey, count: number): HomeParticle[] => {
-    const left = WASDENGINE_HOME_ATLAS.width / 2 + (key.x - HOME_CENTER.x) * HOME_SCALE
-    const bottom = WASDENGINE_HOME_ATLAS.height / 2 + (key.y + HOME_KEY_EDGE - HOME_CENTER.y) * HOME_SCALE - 1
+    const left = WASDENGINE_HOME_ATLAS.width * HOME_ANCHOR.x + (key.x - HOME_CENTER.x) * HOME_SCALE
+    const bottom = WASDENGINE_HOME_ATLAS.height * HOME_ANCHOR.y + (key.y + HOME_KEY_EDGE - HOME_CENTER.y) * HOME_SCALE - 1
     return Array.from({ length: count }, (_, index) => {
       const side = index % 2 === 0 ? -1 : 1
       return {
@@ -143,7 +148,7 @@ function homeFrameDocument(defs: string, keys: readonly HomeKey[], particles: re
       + ` r="${particle.radius.toFixed(2)}" fill="#fff" fill-opacity="${(0.6 * (1 - age / particle.life)).toFixed(3)}"/>`]
   })
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${String(width)}" height="${String(height)}" viewBox="0 0 ${String(width)} ${String(height)}" fill="none">`
-    + `${defs}<g transform="translate(${String(width / 2)} ${String(height / 2)}) scale(${String(HOME_SCALE)}) translate(${String(-HOME_CENTER.x)} ${String(-HOME_CENTER.y)})">`
+    + `${defs}<g transform="translate(${String(width * HOME_ANCHOR.x)} ${String(height * HOME_ANCHOR.y)}) scale(${String(HOME_SCALE)}) translate(${String(-HOME_CENTER.x)} ${String(-HOME_CENTER.y)})">`
     + `${keycaps.join('')}</g>${dust.join('')}</svg>`
 }
 
