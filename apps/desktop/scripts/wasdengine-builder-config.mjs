@@ -13,6 +13,17 @@ export function wasdengineBrandFile(path) {
 }
 
 /**
+ * Name the brand product in the Windows installer text, where upstream names DeepSeek Harness.
+ * @param {import('./installer-locales.mjs').InstallerLocale[]} locales - Resources from `readInstallerLocales`.
+ * @returns {import('./installer-locales.mjs').InstallerLocale[]} Copies whose installer and uninstaller text name `WASDENGINE_DESKTOP_BRAND.productName`.
+ */
+export function brandInstallerLocales(locales) {
+  const rename = (/** @type {Record<string, string>} */ messages) => Object.fromEntries(Object.entries(messages)
+    .map(([key, text]) => [key, text.replaceAll('DeepSeek Harness', BRAND.productName)]))
+  return locales.map(locale => ({ ...locale, strings: rename(locale.strings), uninstaller: rename(locale.uninstaller) }))
+}
+
+/**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `productName` and `author`, which move Electron's data directory
  * and set the Windows publisher, the deep-link scheme, the icons, and the microphone prompt. The

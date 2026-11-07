@@ -13,7 +13,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 import { localMacOSPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { unpackIco, TRAY_ICON_SIZES } from '../scripts/render-tray-icon.ts'
-import { applyWasdengineBrand, wasdengineBrandFile } from '../scripts/wasdengine-builder-config.mjs'
+import { readInstallerLocales } from '../scripts/installer-locales.mjs'
+import { applyWasdengineBrand, brandInstallerLocales, wasdengineBrandFile } from '../scripts/wasdengine-builder-config.mjs'
 import {
   WASDENGINE_HOME_ATLAS, WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, renderWasdengineHomeAtlas,
 } from '../scripts/wasdengine-render-icons.ts'
@@ -166,6 +167,14 @@ describe('WASDEngine Desktop packaging identity', () => {
     for (let index = 0; index < fresh.length; index += 1) drift += Math.abs(fresh[index]! - committed[index]!)
     // One level of mean drift allows rasterizer differences between platforms.
     expect(drift / fresh.length).toBeLessThan(1)
+  })
+
+  it('names WASD Engine in the Windows installer text of every language', () => {
+    const locales = brandInstallerLocales(readInstallerLocales())
+    for (const locale of locales) expect(JSON.stringify(locale)).not.toContain('DeepSeek Harness')
+    expect(locales.find(locale => locale.id === 'en_US')?.strings.INSTALLER_RUNNING).toBe(`${BRAND.productName} is running. Quit it from the system tray and try again.`)
+    const builder = readFileSync(new URL('../scripts/electron-builder-config.mjs', import.meta.url), 'utf8')
+    expect(builder).toContain('renderInstallerStrings(brandInstallerLocales(readInstallerLocales()))')
   })
 
   it('accepts only an HTTPS update origin outside DeepSeek', () => {

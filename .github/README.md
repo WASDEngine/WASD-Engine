@@ -50,8 +50,7 @@ Scripts and SDK clients can use a WASDEngine API token instead: create one on th
 Some interface text inherited from DeepSeek Harness still names DeepSeek, although sign-in, model, and search requests go to the WASDEngine service:
 
 - The model menu, which calls the provider DeepSeek and the sign-in route DeepSeek Account.
-- The web search providers DeepSeek Search API, DeepSeek Fetch API, and DeepSeek (legacy), the Session log option "Help improve DeepSeek models and products", the plugin installation warning, and chat errors about the account sign-in.
-- The `dsh` command help and the Windows installer messages.
+- The web search providers DeepSeek Search API, DeepSeek Fetch API, and DeepSeek (legacy), the Session log option "Help improve DeepSeek models and products", and chat errors about the account sign-in.
 
 The chat's running indicator still animates a small whale tail, and the optional LiveShare viewer page shows DeepSeek's whale as its sidebar mark.
 

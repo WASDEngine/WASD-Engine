@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/context/harness-dev-context/README.md
 /:
-  en: 8fed567b18e9dfa2
-  zh: 2ab54db218cc0197
+  en: d0f03194a3cefeab
+  zh: 084772805bcb7364
 /deepseek-ai-dsh-harness-dev-context:
   en: b47701c093269adb
   zh: e147a06ec0d6047f
 /deepseek-ai-dsh-harness-dev-context/summary:
-  en: daf618174270461e
-  zh: 4c5b56fe4380c91f
+  en: e9992bb15a6ab138
+  zh: 30c52e882d5b25c5
 /deepseek-ai-dsh-harness-dev-context/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
