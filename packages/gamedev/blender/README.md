@@ -128,6 +128,8 @@ The worker starts on the first tool call with Blender's default scene. A crash, 
 
 Blender runs without a window, so the tools offer no viewport, no interface, and no window or area screenshot. Some operators need a window and fail in background Blender, so the server instructions tell the agent to prefer `bpy.data` edits over `bpy.ops` operators.
 
+The instructions also have the agent paint image textures for every model it makes, unless the user asks for flat colors, because glTF export keeps image textures but drops procedural shader nodes. The agent unwraps UVs with `bpy.ops.uv.smart_project`, builds the look from procedural nodes, bakes the color, and where the material varies the roughness and normal, into images with Cycles on the CPU, paints further details into the pixels with numpy, and connects the images to the Principled BSDF before export. These operators and the bake run in background Blender while the object is active and selected.
+
 The agent looks at the scene with `render_preview`. It renders from a temporary orthographic camera framed on every renderable object, or on the listed objects and their children with other geometry hidden, from the `iso`, `front`, `back`, `left`, `right`, or `top` view. The framing follows what a render shows: it includes objects and collections hidden only in the viewport and leaves out collections that are excluded from the view layer or hidden from renders; the result names listed objects that such a collection holds, since the preview cannot show them. `solid`, the default, is fast Workbench shading with outlines in material base colors; `material` renders node materials and textures with EEVEE at 16 samples, lit by the scene lights or by a temporary sun when the scene has none.
 
 After rendering, `render_preview` restores the scene's camera, world, render settings, color management view and look, and visibility, and a value that it cannot restore fails the call. `render` makes final images and needs a camera.
@@ -244,18 +246,25 @@ Inspect, change, look:
 
 Game assets:
 - Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.
-- Use Principled BSDF materials. Image textures should be files saved next to the model or packed into the .blend so export can embed or copy them.
+- Use Principled BSDF materials, and paint image textures for every model you make, as Textures below describes, unless the user asks for flat colors: glTF export, and with it the game, keeps image textures but drops procedural shader nodes. Keep the images next to the model or packed into the .blend so export can embed or copy them.
 - Keep triangle counts suited to real-time rendering; scene_info reports them per mesh.
 - Name objects, meshes, and materials meaningfully: glTF keeps the names. In Godot, an object name ending in -col adds a collision shape, -convcol a convex one, and -colonly keeps only the collision shape.
 - export_gltf to a .glb inside the game project. It applies modifiers, exports animations, and never uses Draco compression, which Godot cannot import. Export the whole scene or name the objects in selection.
 - Save the editable .blend next to the exported file with save_blend so the asset can be changed later.
+
+Textures:
+1. Unwrap UVs: with the object active and selected, run bpy.ops.object.mode_set(mode='EDIT'), bpy.ops.mesh.select_all(action='SELECT'), and bpy.ops.uv.smart_project(island_margin=0.02), then return to mode='OBJECT'.
+2. Build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
+3. Bake it into images with Cycles: set scene.render.engine = 'CYCLES', scene.cycles.device = 'CPU', and scene.cycles.samples to about 8. Bake one object at a time, selected alone and active. Add an Image Texture node holding a new image, 512 pixels square for small props and 1024 or 2048 for large or close-up models, and make it the active node of each of the object's materials, then run bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=8). Where the material varies in roughness or relief, also bake type='ROUGHNESS' and type='NORMAL' into images whose colorspace_settings.name is 'Non-Color'. Set the render engine back afterwards.
+4. Paint what nodes cannot make, such as stripes, markings, or chipped paint, into the pixels with numpy: image.pixels.foreach_get into an array, change it, foreach_set, then image.update(). To paint on a particular face, read where it lies from its loop UVs in mesh.uv_layers.active.uv: u and v from 0 to 1 span the image's width and height, with pixel row 0 at the bottom.
+5. Connect each image to its Principled BSDF input in place of the procedural nodes, a normal image through a Normal Map node, save each as a PNG next to the model (set image.filepath_raw, then image.save()), and look at render_preview in material mode before export_gltf, which embeds the images in the .glb.
 
 Use checkpoint before risky edits and undo to return to it. new_scene and open_blend remove every name that execute_python defined, and after undo, Python references held in variables can be invalid, so look objects up by name again.
 ```
 
 #### Token effect
 
-The section adds about 2,800 characters to every request while the server is connected.
+The section adds about 4,900 characters to every request while the server is connected.
 
 #### KV Cache effect
 
