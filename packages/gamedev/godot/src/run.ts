@@ -17,6 +17,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { isErrorEntry, LogRing, type LogSequence } from './logs.ts'
 import { crashSummary, describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
+import { PerformanceReply } from './performance.ts'
 import type { GodotProject } from './project.ts'
 import {
   encodeJsonMessage, HarnessDecoder, HARNESS_PROTOCOL_VERSION, MAX_MESSAGE_BYTES,
@@ -591,6 +592,18 @@ export class GodotRun {
    */
   async tree(node: string | undefined, depth: number, maxNodes: number, signal: AbortSignal): Promise<TreeReply> {
     return TreeReply.parse((await this.send('tree', { ...node === undefined ? {} : { node }, depth, maxNodes }, { signal, bounded: true })).result)
+  }
+
+  /**
+   * Sample the game's performance for `seconds` of real time. The sample ends early, with `timedOut`, once those
+   * seconds plus `requestTimeoutMs` of real time have passed since the game received it.
+   * @param seconds - real seconds to sample.
+   * @param signal - cancellation; the game also ends the sample.
+   * @returns the per-frame series, monitors, scene census, and conditions that the game reported.
+   */
+  async performance(seconds: number, signal: AbortSignal): Promise<PerformanceReply> {
+    const timeoutMs = this.limitMs(seconds, 0)
+    return PerformanceReply.parse((await this.send('performance', { seconds, timeoutMs }, { signal, bounded: false })).result)
   }
 
   /**

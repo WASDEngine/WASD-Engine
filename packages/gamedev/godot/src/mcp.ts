@@ -34,7 +34,7 @@ export const MCP_WORDING: GodotToolWording = {
 export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* tools. Pass project, the absolute path of the folder that holds project.godot, to your first Godot call; later calls default to it.
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.`
 
 const PROJECT_PARAMETER = {
@@ -135,7 +135,7 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       properties: { project: PROJECT_PARAMETER, ...others },
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
-    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_check'].includes(definition.name),
+    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_performance', 'godot_check'].includes(definition.name),
     async prepare(args, call) {
       const { project, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')

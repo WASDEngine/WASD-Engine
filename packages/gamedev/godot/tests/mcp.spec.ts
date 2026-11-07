@@ -81,7 +81,8 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     const { tools } = await client.listTools()
     const godot = tools.filter(tool => tool.name.startsWith('godot_'))
     expect(godot.map(tool => tool.name)).toEqual([
-      'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_control', 'godot_eval', 'godot_scene_tree', 'godot_logs', 'godot_check',
+      'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_control', 'godot_eval', 'godot_scene_tree',
+      'godot_performance', 'godot_logs', 'godot_check',
     ])
     for (const tool of godot) {
       expect(tool.inputSchema.properties?.project).toMatchObject({ type: 'string' })
@@ -90,7 +91,8 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_input')?.inputSchema.required).toEqual(['events'])
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBe(true)
-    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 10 tools)')
+    expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 11 tools)')
   }, TIMEOUT)
 
   it('runs the game for the agent\'s own Session, shows it in the window, and returns screenshots as PNG bytes', async () => {
@@ -115,6 +117,9 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(images(input)).toHaveLength(1)
     const mouse = await client.callTool({ name: 'godot_input', arguments: { events: [{ kind: 'mouse_button', button: 'left', pressed: true, x: 10, y: 10 }] } })
     expect(mouse.isError).toBeFalsy()
+    const measured = await client.callTool({ name: 'godot_performance', arguments: { seconds: 0.25 } })
+    expect(measured.isError).toBeFalsy()
+    expect(text(measured)).toMatch(/^Measured 0\.25 s of real time: 0 frames at 0\.0 FPS; the forward_plus renderer on fake draws/u)
     expect(text(await client.callTool({ name: 'godot_stop', arguments: { project } }))).toBe('Stopped the game.')
     expect(text(await client.callTool({ name: 'godot_screenshot', arguments: {} }))).toContain('call godot_run to start it again')
     // The agent keeps its Session.

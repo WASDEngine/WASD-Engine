@@ -48,7 +48,8 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 2. `godot_run` imports the assets and starts the game; its result lists the errors and warnings logged while it started. Every later Godot tool result lists new errors, and `godot_logs` returns the full log.
 3. Look before you claim it works: `godot_screenshot` shows the game. Play it with `godot_input`, using Input Map actions (`{"kind": "action", "action": "jump", "pressed": true, "hold": 0.3}`) or keys and clicks at screenshot coordinates, then take another screenshot or pass `screenshot: true`.
 4. Read state instead of guessing: `godot_eval` evaluates an expression such as `scene.get_node("Player").position`, and `godot_scene_tree` lists the running nodes. `godot_control` pauses, steps a number of frames, and resumes.
-5. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
+5. Measure speed instead of guessing: when the game stutters or slows, or a change adds many nodes, effects, or bodies, call `godot_performance` before and after it and compare frame time percentiles, the slowest phase, draw calls, and node and orphan node counts.
+6. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
 
 ## Verify every change without the Godot tools
 

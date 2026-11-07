@@ -275,6 +275,19 @@ async function runGame(section) {
         return reply(message.id, { value: section.evalValue ?? message.expression, valueType: 'String' })
       case 'tree':
         return reply(message.id, { tree: section.tree ?? { name: 'Main', class: 'Node2D', path: '/root/Main' }, truncated: section.treeTruncated ?? false })
+      case 'performance': {
+        const series = ['frame', 'physics', 'harness', 'process', 'draw', 'gpu', 'renderCpu', 'objects', 'primitives', 'drawCalls']
+        return reply(message.id, section.performance ?? {
+          seconds: message.seconds, frames: 0, droppedFrames: 0, pausedFrames: 0, physicsSteps: 0, streamedFrames: 0,
+          series: Object.fromEntries(series.map(name => [name, []])), monitorsStart: {}, monitorsEnd: {}, custom: {},
+          nodes: { total: 1, processing: 0, physicsProcessing: 0, truncated: false, classes: [['Window', 1]], scripts: [] },
+          context: {
+            paused: state.paused, timeScale: 1, maxFps: 0, physicsTicksPerSecond: 60, vsyncMode: 1, lowProcessorMode: false,
+            renderingMethod: 'forward_plus', renderingDriver: 'fake', adapter: '', adapterVendor: '', width: state.width, height: state.height, streamFps: 0,
+          },
+          timedOut: false, cancelled: false,
+        })
+      }
       case 'quit':
         reply(message.id, { quitting: true })
         return quit()
