@@ -3,7 +3,7 @@ import { memo, useEffect, useState } from 'react'
 import { TextShimmer } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { formatRunDuration, LIVE_RUN_CLOCK_INTERVAL_MS } from './message-chrome.ts'
-import { RunningWhaleTail } from './RunningWhaleTail.tsx'
+import { WasdengineRunningKeys } from './wasdengine-running-keys.tsx'
 import a11yCss from './accessibility.module.css'
 import css from './ChatView.module.css'
 
@@ -40,7 +40,7 @@ export const RunningStatus = memo(function RunningStatus({ startTime, paused, ho
       )}
       <span className={css.runningDivider} aria-hidden="true" />
       <span className={css.runningContent}>
-        <RunningWhaleTail />
+        <WasdengineRunningKeys />
         <TextShimmer active={!holding} className={css.runningText}>{label}</TextShimmer>
       </span>
     </div>
