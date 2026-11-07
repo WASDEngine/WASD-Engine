@@ -285,15 +285,23 @@
   background: transparent;
 }
 
-/* Selected tab is blue, not ink: brand-primary resolves to neutral black in
-   this token sheet, so the selected state rides the business blue — the
-   nearest semantic token that stays blue in both themes. */
+/* WASD Engine: the selected view takes the purple of the keycap mark, and the
+   lighter purple in the dark theme, instead of the business blue; ink would
+   not do, because brand-primary resolves to neutral black in this token sheet. */
+.tabs {
+  --wasdengine-view-selected: #7C4DFF;
+}
+
+:global(body[data-ds-dark-theme]) .tabs {
+  --wasdengine-view-selected: #A585FF;
+}
+
 .tabActive {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--wasdengine-view-selected);
 }
 
 .tabActive::after {
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--wasdengine-view-selected);
 }
 
 /* The More launcher centers its 22px box on the tab's 16px text line. */
@@ -309,7 +317,7 @@
   color: var(--dsw-alias-label-secondary);
 }
 
-.viewsMoreActive { color: var(--dsw-alias-state-business-primary); }
+.viewsMoreActive { color: var(--wasdengine-view-selected); }
 
 .tabLabel { display: block; max-width: 88px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
