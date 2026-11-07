@@ -5,6 +5,8 @@
   --wasdengine-key-side: #8E63FF;
   --wasdengine-key-front: #6338D9;
   --wasdengine-key-ink: #3A1E8C;
+  /* A pressed key's top face, which shows the press at the icon's small size. */
+  --wasdengine-key-lit: #FFFFFF;
   position: relative;
   display: inline-flex;
   flex: none;
@@ -61,12 +63,18 @@
 }
 
 .layer,
-.cap {
+.cap,
+.light {
   position: absolute;
   inset: 0;
   display: block;
   width: 100%;
   height: 100%;
+}
+
+/* The white copy of the cap, which a press fades in over the purple one. */
+.light {
+  opacity: 0;
 }
 
 .top {
@@ -85,7 +93,12 @@
   fill: var(--wasdengine-key-ink);
 }
 
-/* W, A, S, and D press in turn, then rest until the 2.2s cycle repeats. */
+.lit {
+  fill: var(--wasdengine-key-lit);
+}
+
+/* W, A, S, and D press in turn, each top turning white while its key is down, then rest until the 2.2s cycle
+   repeats. */
 @media (prefers-reduced-motion: no-preference) {
   .cap {
     animation: wasdengine-key-press 2.2s infinite both;
@@ -93,15 +106,24 @@
     will-change: translate;
   }
 
-  .a .cap {
+  .light {
+    animation: wasdengine-key-light 2.2s infinite both;
+    /* The white copy fades on its own composited layer too. */
+    will-change: opacity;
+  }
+
+  .a .cap,
+  .a .light {
     animation-delay: 0.26s;
   }
 
-  .s .cap {
+  .s .cap,
+  .s .light {
     animation-delay: 0.52s;
   }
 
-  .d .cap {
+  .d .cap,
+  .d .light {
     animation-delay: 0.78s;
   }
 }
@@ -125,12 +147,32 @@
   }
 }
 
+/* The white copy shows while the cap is down, with the press's timing. */
+@keyframes wasdengine-key-light {
+  0% {
+    opacity: 0;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1);
+  }
+
+  4%,
+  8% {
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  15%,
+  100% {
+    opacity: 0;
+  }
+}
+
 @media (forced-colors: active) {
   .keys {
     --wasdengine-key-top: Canvas;
     --wasdengine-key-side: Canvas;
     --wasdengine-key-front: Canvas;
     --wasdengine-key-ink: CanvasText;
+    --wasdengine-key-lit: CanvasText;
     forced-color-adjust: none;
   }
 }

@@ -2,7 +2,8 @@
 /**
  * WASDEngine fork guard for the running icon: the running status shows the keycaps of the WASD Engine mark instead
  * of the whale tail, each key drawn with the mark's paths where the mark places it and colored with the purple tones
- * of its W key, the press moves only each cap's `translate`, outside reduced motion, and the status text is purple.
+ * of its W key, the press moves only each cap's `translate` and fades in a white-topped copy of the cap through its
+ * `opacity`, outside reduced motion, and the status text is purple.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 import { readFileSync } from 'node:fs'
@@ -34,7 +35,7 @@ const block = (selector: string, from = sheet): string =>
 const declaration = (rules: string, property: string): string => new RegExp(`${property}: ([^;]+);`, 'u').exec(rules)![1]!
 
 function drawn(svg: Element): { tone: string | undefined; d: string }[] {
-  const tones = new Map(['top', 'side', 'front', 'ink'].map(tone => [css[tone], tone]))
+  const tones = new Map(['top', 'side', 'front', 'ink', 'lit'].map(tone => [css[tone], tone]))
   return [...svg.querySelectorAll('path')].map(path => ({ tone: tones.get(path.getAttribute('class') ?? ''), d: path.getAttribute('d')! }))
 }
 
@@ -51,9 +52,12 @@ describe('WasdengineRunningKeys', () => {
       expect(base?.tagName).toBe('svg')
       expect(cap?.className).toBe(css.cap)
       const [rim, diagonals] = drawn(base!).slice(5)
-      const [top, topRing] = drawn(cap!.firstElementChild!)
+      const [capParts, light] = [...cap!.children]
+      const [top, topRing] = drawn(capParts!)
       expect(drawn(base!).slice(0, 5)).toEqual(['body', 'topEdge', 'leftSide', 'rightSide', 'front'].map(part => brandParts.get(part)))
       expect(top).toEqual(brandParts.get('top'))
+      expect(light?.className).toBe(css.light)
+      expect(drawn(light!.firstElementChild!)).toEqual([{ tone: 'lit', d: top!.d }, topRing])
       expect([rim, topRing, diagonals].map(part => part?.tone)).toEqual(['ink', 'ink', 'ink'])
       expect(rim!.d + topRing!.d + diagonals!.d).toBe(outline.d)
       expect(outline.tone).toBe('ink')
@@ -81,6 +85,8 @@ describe('WasdengineRunningKeys', () => {
     const keys = block('.keys')
     expect(['top', 'side', 'front'].map(tone => declaration(keys, `--wasdengine-key-${tone}`))).toEqual(highlight)
     expect(declaration(keys, '--wasdengine-key-ink')).toBe('#3A1E8C')
+    expect(declaration(keys, '--wasdengine-key-lit')).toBe('#FFFFFF')
+    expect(declaration(block('.lit'), 'fill')).toBe('var(--wasdengine-key-lit)')
     expect(declaration(block(':global(body[data-ds-dark-theme]) .keys'), '--wasdengine-key-ink')).toBe('#2A1566')
   })
 
@@ -92,6 +98,22 @@ describe('WasdengineRunningKeys', () => {
     const frames = /@keyframes wasdengine-key-press \{([\s\S]*?)\n\}/u.exec(sheet)![1]!
     const properties = new Set([...frames.matchAll(/([\w-]+):/gu)].map(([, property]) => property))
     expect([...properties].sort()).toEqual(['animation-timing-function', 'translate'])
+  })
+
+  it('shows a pressed key\'s white top through the copy\'s opacity alone, in step with the press', () => {
+    const [still, moving] = sheet.split('@media (prefers-reduced-motion: no-preference) {')
+    expect(still).toMatch(/\n\.light \{\n {2}opacity: 0;\n\}/u)
+    expect(moving).toMatch(/\n {2}\.light \{\n {4}animation: wasdengine-key-light 2\.2s infinite both;/u)
+    expect(moving).toMatch(/\n {2}\.cap \{\n {4}animation: wasdengine-key-press 2\.2s infinite both;/u)
+    for (const key of ['a', 's', 'd']) expect(moving).toMatch(new RegExp(`\\n {2}\\.${key} \\.cap,\\n {2}\\.${key} \\.light \\{\\n {4}animation-delay: `, 'u'))
+    const keyframes = (name: string): string => new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`, 'u').exec(sheet)![1]!
+    const light = keyframes('wasdengine-key-light')
+    const properties = new Set([...light.matchAll(/([\w-]+):/gu)].map(([, property]) => property))
+    expect([...properties].sort()).toEqual(['animation-timing-function', 'opacity'])
+    const timing = (frames: string): string[] => [...frames.matchAll(/(\d+%(?:,\n {2}\d+%)?) \{|animation-timing-function: ([^;]+);/gu)]
+      .map(([, stop, ease]) => stop ?? ease!)
+    expect(timing(light)).toEqual(timing(keyframes('wasdengine-key-press')))
+    expect([...light.matchAll(/opacity: (\d);/gu)].map(([, value]) => value)).toEqual(['0', '1', '0'])
   })
 })
 
