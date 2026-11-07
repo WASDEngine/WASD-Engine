@@ -1,5 +1,5 @@
 ---
-description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the Godot, Blender, and GIMP plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote and the game-mcp/reveal event, and the setup prompt that the sign-in dialog shows."
+description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the Godot, Blender, GIMP, and SuperCollider plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote and the game-mcp/reveal event, and the setup prompt that the sign-in dialog shows."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder, and offers the `godot_*`, `blender_*`, and `gimp_*` tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own in the game project, so it plays in the WASD Engine window's Game tab, which opens when the agent starts the game. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) adds Set up with another agent to the sign-in dialog, which shows the setup prompt.
+Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder, and offers the `godot_*`, `blender_*`, `gimp_*`, and `supercollider_*` tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own in the game project, so it plays in the WASD Engine window's Game tab, which opens when the agent starts the game. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) adds Set up with another agent to the sign-in dialog, which shows the setup prompt.
 
 ## Table of Contents
 
@@ -70,8 +70,9 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 | `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's ten Godot tools, each with an absolute `project` parameter |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_blender` server's tools, renamed from `mcp__wasd_blender__<tool>` |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |
+| `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_supercollider` server's tools, renamed from `mcp__wasd_supercollider__<tool>` |
 
-The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents and the Session's own agent share one Blender and one GIMP worker, as all Sessions do.
+The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents and the Session's own agent share one Blender, one GIMP, and one SuperCollider worker, as all Sessions do.
 
 ### Games in the WASD Engine window
 
@@ -115,7 +116,7 @@ These pages cover the tools the server offers, the setup panel and the sign-in d
 
 - [Game tools subsystem page](../../../docs/subsystems/gamedev.md#mcp-server-for-other-agents) — how the server connects the game tools, the Sessions, and the window.
 - [Godot package](../godot/README.md) — the Godot tools and the Game tab.
-- [app-mcp](../app-mcp/README.md) — the Blender and GIMP servers whose tools the server forwards.
+- [app-mcp](../app-mcp/README.md) — the Blender, GIMP, and SuperCollider servers whose tools the server forwards.
 - [ui-game-mcp](../ui-game-mcp/README.md) — the setup panel and the window's opening of connected agents' Sessions.
 - [ui-settings-account](../../client/ui-settings-account/README.md) — the sign-in dialog and its alternative slots.
 - [Model Context Protocol](https://modelcontextprotocol.io) — the protocol and its Streamable HTTP transport.
@@ -147,7 +148,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With the three game tools, the instructions come to about 7,500 characters and the 47 tool declarations to about 39,500 characters of JSON; the agent's harness decides how much of them enters its requests.
+With the four game tools, the instructions come to about 10,500 characters and the 51 tool declarations to about 43,800 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -157,7 +158,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots and the images that the Blender and GIMP servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text.
+A provider tool's result is its rendered text and, for Godot screenshots and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text.
 
 #### Token effect
 
@@ -174,7 +175,7 @@ Append-only in the agent's conversation.
 These limits define what the server serves and to whom; they are current package constraints.
 
 - **Local agents only** — the endpoint binds loopback, so an agent on another computer cannot reach it, and agents in sandboxes without loopback network access cannot either.
-- **Full trust** — a holder of the token can run Python in Blender and GIMP, evaluate expressions in games, and run games, with the user's permissions and without approval in WASD Engine; agents ask for approval under their own rules. The prompt carries the token, so the user should paste it only into agents on this computer.
+- **Full trust** — a holder of the token can run Python in Blender and GIMP and sclang code in SuperCollider, evaluate expressions in games, and run games, with the user's permissions and without approval in WASD Engine; agents ask for approval under their own rules. The prompt carries the token, so the user should paste it only into agents on this computer.
 - **One port** — a second Host, such as `dsh web` beside the Desktop app, finds the port taken and listens on a free one, whose URL only the setup panel of that Host shows.
 - **Blank Sessions** — a connected agent's Session has no turns, so the Session list names it New Session, New Session in its game project opens it, and while no provider is signed in, the Get started dialog opens over it when the window shows it.
 - **No transcript** — the connected agent's tool calls appear in its own harness, not in the Session; the Session shows its game in the Game tab.

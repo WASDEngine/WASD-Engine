@@ -337,6 +337,7 @@ flowchart TD
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
+    pkg_supercollider["supercollider"]
   end
   subgraph group_guard["packages/guard"]
     pkg_repeat_tool_reminder["repeat-tool-reminder"]
@@ -1436,6 +1437,7 @@ flowchart TD
   pkg_app_mcp --> pkg_mcp_manager
   pkg_blender --> pkg_mcp_manager
   pkg_gimp --> pkg_mcp_manager
+  pkg_supercollider --> pkg_mcp_manager
   pkg_sdk_protocol --> pkg_commands
   pkg_sdk_protocol --> pkg_llm
   pkg_sdk_protocol --> pkg_session
@@ -1897,6 +1899,7 @@ flowchart TD
 | [`app-mcp`](../packages/gamedev/app-mcp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`blender`](../packages/gamedev/blender) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`gimp`](../packages/gamedev/gimp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
+| [`supercollider`](../packages/gamedev/supercollider) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`sdk-protocol`](../packages/sdk/protocol) | `sdk` | [`commands`](../packages/interaction/commands), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`user-questions`](../packages/interaction/user-questions) |
 | [`agent-team`](../packages/team/agent-team) | `team` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`session-projection`](../packages/session/session-projection), [`subagent`](../packages/subagent/subagent), [`typert-protocol`](../packages/typert/protocol) |
 | [`workflow-ptc`](../packages/workflow/workflow-ptc) | `workflow` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`ptc-runtime`](../packages/ptc-runtime/ptc-runtime), [`sandbox`](../packages/sandbox/sandbox), [`sandbox-policy`](../packages/sandbox/sandbox-policy), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow), [`working-directory`](../packages/session/working-directory) |

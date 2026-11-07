@@ -41,6 +41,7 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   blender: '@deepseek-ai/dsh-blender',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
+  supercollider: '@deepseek-ai/dsh-supercollider',
 }
 
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */

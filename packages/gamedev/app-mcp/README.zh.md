@@ -1,5 +1,5 @@
 ---
-description: "构建以无界面方式运行桌面应用程序的 MCP 服务器，供 Blender、GIMP 等应用程序包使用：共享的插件 Config 字段、向 MCP 管理器注册以及通过 tsx 的源码启动、服务器进程主体、工具辅助函数与 execute_python 工具、JSON 行工作进程协议与重启、工具结果上限，以及把随包文件复制到 app.asar 之外。"
+description: "构建以无界面方式运行桌面应用程序的 MCP 服务器，供 Blender、GIMP、SuperCollider 等应用程序包使用：共享的插件 Config 字段、向 MCP 管理器注册以及通过 tsx 的源码启动、服务器进程主体、工具辅助函数与 execute_python 工具、JSON 行工作进程协议与重启、工具结果上限，以及把随包文件复制到 app.asar 之外。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-把 Blender、GIMP 等桌面应用程序放在 MCP 工具之后，以无窗口方式运行。宿主插件把共享的 `AppMcpConfig` 字段展开到自己的 Config 中并调用 `registerAppMcpPlugin`；其服务器入口以该应用程序的工具调用 `runAppMcpServer`。第一次工具调用会启动一个长期运行的工作进程，调用逐个执行。超时、崩溃或协议违规会停止工作进程：失败的调用会报告状态已丢失，之后的调用会启动新的工作进程。共用的安装与工具辅助函数、`execute_python`，以及把随包脚本复制到 `app.asar` 之外的 `materializePayload` 构成本包的其余部分。
+把 Blender、GIMP、SuperCollider 等桌面应用程序放在 MCP 工具之后，以无窗口方式运行。宿主插件把共享的 `AppMcpConfig` 字段展开到自己的 Config 中并调用 `registerAppMcpPlugin`；其服务器入口以该应用程序的工具调用 `runAppMcpServer`。第一次工具调用会启动一个长期运行的工作进程，调用逐个执行。超时、崩溃或协议违规会停止工作进程：失败的调用会报告状态已丢失，之后的调用会启动新的工作进程。共用的安装与工具辅助函数、`execute_python`，以及把随包脚本复制到 `app.asar` 之外的 `materializePayload` 构成本包的其余部分。
 
 ## 目录
 
@@ -29,7 +29,7 @@ kind: "package-reference"
 
 ### 何时使用
 
-Blender 与 GIMP 包依赖本库构建各自的 MCP 服务器；[Blender 的插件](../blender/src/index.ts)与[服务器入口](../blender/src/worker.ts)展示了一个完整的消费方。Godot 包只使用 `materializePayload` 复制其 harness 脚本。当外部应用程序必须在 agent（智能体）调用的工具之后以无界面方式运行，并且应用程序内的脚本能够响应下文所述的 JSON 行请求时，使用本库。
+Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；[Blender 的插件](../blender/src/index.ts)与[服务器入口](../blender/src/worker.ts)展示了一个完整的消费方。SuperCollider 的语言自身无法响应 JSON 行请求，因此它的[工作进程](../supercollider/README.zh.md#understand-the-implementation)是一个驱动 sclang 的桥接进程。Godot 包只使用 `materializePayload` 复制其 harness 脚本。当外部应用程序必须在 agent（智能体）调用的工具之后以无界面方式运行，并且应用程序内的脚本或其旁边的桥接进程能够响应下文所述的 JSON 行请求时，使用本库。
 
 ### 配置插件
 
@@ -131,6 +131,7 @@ Blender 与 GIMP 包依赖本库构建各自的 MCP 服务器；[Blender 的插�
 
 服务器通过 `SetupHost`（setup host，安装环境宿主）查找其应用程序：服务器进程的平台、环境与主目录，判断用户可执行的普通文件的 `isExecutable`，把缺失或不可访问的目录列为空的 `listDirectory`，以及 `makeDirectory`。`nodeSetupHost()` 把它绑定到本机；测试传入假的 host。`firstExecutable(candidates, host)` 返回第一个通过 `isExecutable` 的候选路径；`newestFirst` 按名称中的数字从新到旧排序，因此 `Blender 4.10` 排在 `Blender 4.2` 之前，`GIMP 3.0.1` 排在 `GIMP 3.0` 之前。`CommandArgv` 表示一个绝对路径的可执行程序及其参数。
 
+<a id="run-the-worker"></a>
 ### 运行工作进程
 
 `JsonLineWorker.start(spec, signal)` 依据 `spec.argv` spawn 一个工作进程（其第一个元素是可执行程序的绝对路径），工作目录为 `spec.cwd`，完整环境为 `spec.env`；希望工作进程继承 `process.env` 的调用方需自行将其合并进去。工作进程与客户端交换 UTF-8 JSON 行：
@@ -142,6 +143,7 @@ fd 3   success   {"id": 1, "ok": true, "result": <JSON value>}
 fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "message": "<text>", "traceback": "<text>"}}
 ```
 
+- `python` 写明 Python 工作进程的 Python 版本；不运行 Python 的工作进程省略该字段。
 - 工作进程在 fd 3 上的第一行必须是就绪行，并且须在 `spec.readyTimeoutMs` 内写出。否则客户端会终止工作进程及其进程组，排空其输出，并以 `WORKER_START_FAILED` 拒绝启动；被取消的启动在同样的清理之后以中止原因拒绝。
 - 请求按调用顺序逐个执行，每条回复都携带待处理请求的 id；`traceback` 可选。请求的 `timeoutMs` 从请求写入 stdin 时开始计时。
 - 回复使用 fd 3，因此应用程序自身在 stdout 与 stderr 上的输出不会与回复混杂。客户端把这些输出的最后 `spec.logTailBytes` 字节保留为日志尾部，用于诊断。
@@ -173,7 +175,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 
 ### 把随包文件复制到真实路径
 
-打包后的 Desktop 应用把包文件保存在其 `app.asar` 归档中，只有 Electron 的 `fs` 能够读取；Blender、GIMP 与 Godot 需要普通文件。`materializePayload(source, dataRoot)` 通过 `file:` URL `source` 的路径读取文件（Electron 的 `app.asar` 支持会解析该路径），并返回位于 `<dataRoot>/payload/<first 16 hex digits of the content's SHA-256>/<file name>` 的副本的真实路径。
+打包后的 Desktop 应用把包文件保存在其 `app.asar` 归档中，只有 Electron 的 `fs` 能够读取；Blender、GIMP、Godot 与 SuperCollider 需要普通文件。`materializePayload(source, dataRoot)` 通过 `file:` URL `source` 的路径读取文件（Electron 的 `app.asar` 支持会解析该路径），并返回位于 `<dataRoot>/payload/<first 16 hex digits of the content's SHA-256>/<file name>` 的副本的真实路径。
 
 - 字节完全相同的副本会被直接复用，不再写入；字节不同的副本会被替换。
 - 字节先写入同一目录中的临时文件，再重命名到目标位置，因此读取方永远不会看到不完整的文件。副本的权限模式为 `0o644`（应用 umask 之前）。

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Conexión de agentes",
-    "description": "Permite que Claude Code, Codex y otros agentes de este ordenador usen las herramientas de Godot, Blender y GIMP, con sus juegos en WASD Engine."
+    "description": "Permite que Claude Code, Codex y otros agentes de este ordenador usen las herramientas de Godot, Blender, GIMP y SuperCollider, con sus juegos en WASD Engine."
   }
 }

@@ -10,7 +10,7 @@ import { createClientTest, webApp } from '@deepseek-ai/dsh-client-test-runtime/s
 import { ok } from '@deepseek-ai/dsh-remote-mock'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { expect, onTestFinished, vi } from 'vitest'
-import { BLENDER, BLENDER_ICON, GIMP, GIMP_ICON, GODOT, OTHER } from './fixtures.client.ts'
+import { BLENDER, BLENDER_ICON, GIMP, GIMP_ICON, GODOT, OTHER, SUPERCOLLIDER } from './fixtures.client.ts'
 
 usePinnedBrowserLanguages('en-US')
 
@@ -18,7 +18,7 @@ const PACKAGE = '@deepseek-ai/dsh-client-ui-game-tools'
 
 const it = createClientTest({ roster: webApp.without(['@deepseek-ai/dsh-client-ui-settings-models']) }, { mount: true })
 
-const SNAPSHOT: PluginInventorySnapshot = { managementAvailable: true, entries: [OTHER, BLENDER, GIMP, GODOT] }
+const SNAPSHOT: PluginInventorySnapshot = { managementAvailable: true, entries: [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER] }
 
 it('opens Built-in plugins on the Game tools tab with each tool and its logo', async ({ mock, remote, start }) => {
   expect(webApp.rows.map(row => row.name)).toContain(PACKAGE)
@@ -46,8 +46,8 @@ it('opens Built-in plugins on the Game tools tab with each tool and its logo', a
     .toEqual([['Game tools', 'true'], ['Plugin list', 'false']])
   const list = await screen.findByRole('list', { name: 'Game tools' })
   const cards = within(list).getAllByRole('listitem')
-  expect(cards.map(card => card.getAttribute('data-game-tool'))).toEqual([BLENDER.moduleName, GIMP.moduleName, GODOT.moduleName])
-  expect(cards.map(card => card.querySelector('img')?.getAttribute('src'))).toEqual([BLENDER_ICON, GIMP_ICON, undefined])
+  expect(cards.map(card => card.getAttribute('data-game-tool'))).toEqual([BLENDER.moduleName, GIMP.moduleName, GODOT.moduleName, SUPERCOLLIDER.moduleName])
+  expect(cards.map(card => card.querySelector('img')?.getAttribute('src'))).toEqual([BLENDER_ICON, GIMP_ICON, undefined, undefined])
   expect(within(cards[1]!).getByText('Off')).toBeTruthy()
   expect(within(list).queryByRole('switch')).toBeNull()
   expect(mock.log.calls('pluginInventory/list')).toHaveLength(1)
@@ -56,7 +56,7 @@ it('opens Built-in plugins on the Game tools tab with each tool and its logo', a
 it('switches a tool from the Plugins page Game tools tab, and its toast stays when the tab closes', async ({ mock, remote, start }) => {
   remote.pluginInventory.list.mockResolvedValue(ok(SNAPSHOT))
   remote.pluginManager.listBundles.mockResolvedValue(ok([]))
-  remote.pluginManager.listPlugins.mockResolvedValue(ok([OTHER, BLENDER, GIMP, GODOT]))
+  remote.pluginManager.listPlugins.mockResolvedValue(ok([OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER]))
   remote.pluginManager.setPluginEnabled.mockResolvedValue(ok({
     changed: true, application: 'restart-required', restartReason: 'no-hmr', stage: 'enable', target: GIMP.entryId, enabled: true,
   }))

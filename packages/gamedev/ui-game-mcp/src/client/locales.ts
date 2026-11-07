@@ -8,7 +8,7 @@ export const NS = 'gameMcp'
 export const en = {
   'offer': 'Set up with another agent',
   'title': 'Set up with another agent',
-  'description': 'Paste this prompt into Claude Code, Codex, or another agent on this computer. It connects the agent to the Godot, Blender, and GIMP tools of WASD Engine, and the games it runs play here.',
+  'description': 'Paste this prompt into Claude Code, Codex, or another agent on this computer. It connects the agent to the Godot, Blender, GIMP, and SuperCollider tools of WASD Engine, and the games it runs play here.',
   'prompt.label': 'Setup prompt',
   'copy': 'Copy prompt',
   'copied': 'Copied',
@@ -36,7 +36,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 export const zh = {
   'offer': '使用其他智能体设置',
   'title': '使用其他智能体设置',
-  'description': '将这段提示词粘贴到这台电脑上的 Claude Code、Codex 或其他智能体中。它会让该智能体连接 WASD Engine 的 Godot、Blender 和 GIMP 工具，智能体运行的游戏会在这里播放。',
+  'description': '将这段提示词粘贴到这台电脑上的 Claude Code、Codex 或其他智能体中。它会让该智能体连接 WASD Engine 的 Godot、Blender、GIMP 和 SuperCollider 工具，智能体运行的游戏会在这里播放。',
   'prompt.label': '设置提示词',
   'copy': '复制提示词',
   'copied': '已复制',
@@ -54,7 +54,7 @@ export const zh = {
 export const ja = {
   'offer': '別のエージェントでセットアップ',
   'title': '別のエージェントでセットアップ',
-  'description': 'このプロンプトを、このコンピューター上の Claude Code、Codex、または別のエージェントに貼り付けてください。エージェントが WASD Engine の Godot、Blender、GIMP ツールに接続し、実行したゲームはここでプレイされます。',
+  'description': 'このプロンプトを、このコンピューター上の Claude Code、Codex、または別のエージェントに貼り付けてください。エージェントが WASD Engine の Godot、Blender、GIMP、SuperCollider ツールに接続し、実行したゲームはここでプレイされます。',
   'prompt.label': 'セットアッププロンプト',
   'copy': 'プロンプトをコピー',
   'copied': 'コピーしました',
@@ -72,7 +72,7 @@ export const ja = {
 export const es = {
   'offer': 'Configurar con otro agente',
   'title': 'Configurar con otro agente',
-  'description': 'Pega este prompt en Claude Code, Codex u otro agente de este ordenador. Conecta el agente con las herramientas de Godot, Blender y GIMP de WASD Engine, y los juegos que ejecute se juegan aquí.',
+  'description': 'Pega este prompt en Claude Code, Codex u otro agente de este ordenador. Conecta el agente con las herramientas de Godot, Blender, GIMP y SuperCollider de WASD Engine, y los juegos que ejecute se juegan aquí.',
   'prompt.label': 'Prompt de configuración',
   'copy': 'Copiar prompt',
   'copied': 'Copiado',
@@ -90,7 +90,7 @@ export const es = {
 export const fr = {
   'offer': 'Configurer avec un autre agent',
   'title': 'Configurer avec un autre agent',
-  'description': 'Collez ce prompt dans Claude Code, Codex ou un autre agent de cet ordinateur. Il connecte l’agent aux outils Godot, Blender et GIMP de WASD Engine, et les jeux qu’il lance se jouent ici.',
+  'description': 'Collez ce prompt dans Claude Code, Codex ou un autre agent de cet ordinateur. Il connecte l’agent aux outils Godot, Blender, GIMP et SuperCollider de WASD Engine, et les jeux qu’il lance se jouent ici.',
   'prompt.label': 'Prompt de configuration',
   'copy': 'Copier le prompt',
   'copied': 'Copié',
@@ -108,7 +108,7 @@ export const fr = {
 export const de = {
   'offer': 'Mit einem anderen Agenten einrichten',
   'title': 'Mit einem anderen Agenten einrichten',
-  'description': 'Füge diesen Prompt in Claude Code, Codex oder einen anderen Agenten auf diesem Computer ein. Er verbindet den Agenten mit den Godot-, Blender- und GIMP-Werkzeugen von WASD Engine, und die Spiele, die er startet, laufen hier.',
+  'description': 'Füge diesen Prompt in Claude Code, Codex oder einen anderen Agenten auf diesem Computer ein. Er verbindet den Agenten mit den Godot-, Blender-, GIMP- und SuperCollider-Werkzeugen von WASD Engine, und die Spiele, die er startet, laufen hier.',
   'prompt.label': 'Einrichtungs-Prompt',
   'copy': 'Prompt kopieren',
   'copied': 'Kopiert',
@@ -126,7 +126,7 @@ export const de = {
 export const ru = {
   'offer': 'Настроить с другим агентом',
   'title': 'Настроить с другим агентом',
-  'description': 'Вставьте этот промпт в Claude Code, Codex или другого агента на этом компьютере. Он подключит агента к инструментам Godot, Blender и GIMP в WASD Engine, а запущенные им игры будут идти здесь.',
+  'description': 'Вставьте этот промпт в Claude Code, Codex или другого агента на этом компьютере. Он подключит агента к инструментам Godot, Blender, GIMP и SuperCollider в WASD Engine, а запущенные им игры будут идти здесь.',
   'prompt.label': 'Промпт настройки',
   'copy': 'Скопировать промпт',
   'copied': 'Скопировано',
@@ -144,7 +144,7 @@ export const ru = {
 export const pt = {
   'offer': 'Configurar com outro agente',
   'title': 'Configurar com outro agente',
-  'description': 'Cole este prompt no Claude Code, no Codex ou em outro agente deste computador. Ele conecta o agente às ferramentas de Godot, Blender e GIMP do WASD Engine, e os jogos que ele executar rodam aqui.',
+  'description': 'Cole este prompt no Claude Code, no Codex ou em outro agente deste computador. Ele conecta o agente às ferramentas de Godot, Blender, GIMP e SuperCollider do WASD Engine, e os jogos que ele executar rodam aqui.',
   'prompt.label': 'Prompt de configuração',
   'copy': 'Copiar prompt',
   'copied': 'Copiado',

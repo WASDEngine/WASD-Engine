@@ -8,7 +8,9 @@ import type { LocalizedText } from '@deepseek-ai/dsh-package-manifest'
 export type GameToolEntry = PluginInventorySnapshot['entries'][number]
 
 /** Packages the game tool rows mount, in the order both tabs list them. */
-export const GAME_TOOL_MODULES: readonly string[] = ['@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-gimp', '@deepseek-ai/dsh-godot']
+export const GAME_TOOL_MODULES: readonly string[] = [
+  '@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-gimp', '@deepseek-ai/dsh-godot', '@deepseek-ai/dsh-supercollider',
+]
 
 /** One game tool: the package its row mounts and the Loader entry mounting it in this profile. */
 export interface GameToolSlot<Entry extends GameToolEntry = GameToolEntry> {

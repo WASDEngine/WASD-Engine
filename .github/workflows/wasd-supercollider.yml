@@ -1,0 +1,196 @@
+# Build the WASD Engine SuperCollider runtime (wasdengine/supercollider/BUILD.md)
+# for macOS arm64 and Linux x64, smoke-test each build, and, when run on the
+# default branch, publish the archives and their merged manifest.json as the
+# GitHub release supercollider-<version>, whose manifest.json Desktop packaging
+# reads. A run on another branch builds and uploads workflow artifacts only.
+# Runs on manual dispatch only.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: SuperCollider runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Runtime version; the release is tagged supercollider-<version>
+        required: true
+        default: 3.14.1-wasd.1
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-supercollider-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the build scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/supercollider
+
+      - name: Lint build.sh
+        run: |
+          bash -n wasdengine/supercollider/build.sh
+          shellcheck wasdengine/supercollider/build.sh
+
+      - name: Test runtime.py
+        run: python3 -B -I -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py' --verbose
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: darwin-arm64
+            os: macos-14
+          - artifact: linux-x64
+            os: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      # Holds the installed runtime and the smoke test's files; its name has characters outside ASCII, as many
+      # user names do, which sclang and scsynth must handle in paths.
+      SMOKE_NAME: supercollider-smoke-ü-游戏
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/supercollider
+
+      # ALSA backs the PortAudio that scsynth builds in, which keeps JACK out of the runtime; vcpkg needs the rest.
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libasound2-dev zip unzip
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      # The key holds the build script and the triplets, which pin the vcpkg commit and the port options.
+      - name: Restore the vcpkg binary cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/supercollider-out/vcpkg-cache
+          key: supercollider-vcpkg-${{ matrix.artifact }}-${{ hashFiles('wasdengine/supercollider/build.sh', 'wasdengine/supercollider/triplets/*') }}
+
+      - name: Build and install the runtime
+        id: build
+        run: >-
+          wasdengine/supercollider/build.sh
+          --version "$VERSION" --repository "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/supercollider-out" --install "$RUNNER_TEMP/$SMOKE_NAME/runtime"
+
+      - name: Save the vcpkg binary cache
+        if: always() && steps.build.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/supercollider-out/vcpkg-cache
+          key: supercollider-vcpkg-${{ matrix.artifact }}-${{ hashFiles('wasdengine/supercollider/build.sh', 'wasdengine/supercollider/triplets/*') }}
+
+      # build.sh smoke-tests the staged files before it packs them; this runs the same test on the unpacked archive.
+      - name: Smoke-test the installed runtime
+        timeout-minutes: 5
+        run: >-
+          python3 -I wasdengine/supercollider/smoke.py
+          --runtime "$RUNNER_TEMP/$SMOKE_NAME/runtime/${{ matrix.artifact }}" --work "$RUNNER_TEMP/$SMOKE_NAME/work"
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: supercollider-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/supercollider-out/supercollider-*.tar.gz
+            ${{ runner.temp }}/supercollider-out/manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    name: Publish supercollider-${{ inputs.version }}
+    needs: build
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/supercollider
+
+      - name: Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: supercollider-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Merge the manifests and check the archives
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          cp "$RUNNER_TEMP"/artifacts/supercollider-*/supercollider-*.tar.gz "$release_dir/"
+          python3 -I wasdengine/supercollider/runtime.py merge --output "$release_dir/manifest.json" "$RUNNER_TEMP"/artifacts/supercollider-*/manifest.json
+          python3 -I wasdengine/supercollider/runtime.py verify --manifest "$release_dir/manifest.json" --dir "$release_dir" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/supercollider-$VERSION/"
+          cat "$release_dir/manifest.json"
+
+      # The release starts as a draft, which stays hidden until its assets are
+      # attached; publishing it creates the tag at this run's commit. A draft
+      # that an earlier failed run left is moved to this run's commit and its
+      # assets are replaced. A published release is never changed, because
+      # replacing an asset deletes it first and packaging verifies the digests
+      # that manifest.json lists. The archives go up before manifest.json.
+      - name: Create and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          tag="supercollider-$VERSION"
+          supercollider=$(jq -j .supercollider "$release_dir/manifest.json")
+          title="SuperCollider runtime $VERSION"
+          notes="WASD Engine SuperCollider runtime $VERSION: sclang without Qt, scsynth, and the UGen plugins of SuperCollider $supercollider, with the class library and the class help files, which the Desktop app ships for its SuperCollider plugin. SuperCollider is licensed under GPL-3.0-or-later; each archive's SOURCE.txt names the corresponding source, and wasdengine/supercollider/BUILD.md describes the build. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::The release $tag is already published and must not change; dispatch a new runtime version."
+              exit 1
+            fi
+            gh release edit "$tag" --target "$GITHUB_SHA"
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi
+          gh release upload "$tag" "$release_dir"/supercollider-*.tar.gz --clobber
+          gh release upload "$tag" "$release_dir/manifest.json" --clobber
+          gh release edit "$tag" --draft=false --latest=false --title "$title" --notes "$notes"

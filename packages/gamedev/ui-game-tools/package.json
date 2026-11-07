@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-game-tools",
-  "description": "Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, and Godot with their logos, Loader state, and profile switches",
+  "description": "Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos, Loader state, and profile switches",
   "version": "0.2.2-rc.1",
   "publishConfig": {
     "access": "public"
@@ -42,7 +42,7 @@
     "bundle": "tsdown",
     "watch": "tsdown --watch"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
   },

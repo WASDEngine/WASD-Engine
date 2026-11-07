@@ -17,7 +17,7 @@ export function setupPrompt(url: string, token: string): string {
   const claude = JSON.stringify({ type: 'http', url, headers: { Authorization: `Bearer ${token}` } })
   return [
     'Set up the WASD Engine MCP server, so you can use the game tools of WASD Engine, the game development app open on this computer: '
-    + 'Godot to run, test, and play my game, Blender for 3D models, and GIMP for textures and sprites.',
+    + 'Godot to run, test, and play my game, Blender for 3D models, GIMP for textures and sprites, and SuperCollider for sound effects and music.',
     '',
     `Server name: ${SERVER_KEY}`,
     'Transport: Streamable HTTP',

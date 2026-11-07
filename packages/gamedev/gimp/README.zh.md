@@ -175,7 +175,7 @@ GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，
 <a id="plugin-icon"></a>
 ### 插件图标
 
-「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 GIMP 标志 Wilber（作者 Aryeom Han，2024 年）原样嵌入 36 × 36 画布，只去掉了源文件中的 Inkscape 编辑器元数据与未使用的 id：源文件是 [gimp-data 仓库](https://gitlab.gnome.org/GNOME/gimp-data)中的 `images/logo/gimp-logo.svg`，取自文件注释写明的提交。Wilber 以[知识共享署名-相同方式共享 4.0 国际许可协议（CC BY-SA 4.0）](https://creativecommons.org/licenses/by-sa/4.0/)授权，不受本仓库的 MIT 许可证覆盖，`icon.svg` 也以同一 CC BY-SA 4.0 许可协议共享。GIMP 名称与 Wilber 代表 GIMP 项目；该图标仅指代 GIMP 集成。WASD Engine 与 GIMP 项目没有关联，也未获其认可。
+「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 GIMP 标志 Wilber（作者 Aryeom Han，2024 年）原样嵌入 36 × 36 画布，只去掉了源文件中的 Inkscape 编辑器元数据与未使用的 id：源文件是 [gimp-data 仓库](https://gitlab.gnome.org/GNOME/gimp-data)中的 `images/logo/gimp-logo.svg`，取自文件注释写明的提交。Wilber 以[知识共享署名-相同方式共享 4.0 国际许可协议（CC BY-SA 4.0）](https://creativecommons.org/licenses/by-sa/4.0/)授权，不受本仓库的许可证覆盖，`icon.svg` 也以同一 CC BY-SA 4.0 许可协议共享。GIMP 名称与 Wilber 代表 GIMP 项目；该图标仅指代 GIMP 集成。WASD Engine 与 GIMP 项目没有关联，也未获其认可。
 
 -----
 

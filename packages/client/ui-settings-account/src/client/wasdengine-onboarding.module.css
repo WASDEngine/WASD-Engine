@@ -1,0 +1,33 @@
+/* The brand kit lockup in the welcome heading, and the product name in the introduction (wasdengine-onboarding.tsx). */
+
+.brand {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/*
+ * At 1em high the wordmark's capitals are as tall as the heading's (75 of the lockup's 105.88 units), and lowering the
+ * lockup by its 17.11 units below the wordmark puts the wordmark on the text baseline.
+ */
+.lockup {
+  display: inline-block;
+  width: auto;
+  height: 1em;
+  vertical-align: -0.1616em;
+}
+
+/* The product name beside the lockup, for assistive technology and copied text only. */
+.label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The brand font ships 300, 400, and 500; 500 sets the name apart from the 300 introduction without a synthesized bold. */
+.name {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 500;
+}

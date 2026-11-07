@@ -3979,6 +3979,32 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-spawn-in-process -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-supercollider -->
+<a id="deepseek-aidsh-supercollider"></a>
+
+## `@deepseek-ai/dsh-supercollider`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/supercollider/src/index.ts:24`](../packages/gamedev/supercollider/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the SuperCollider tools. */
+export interface Config extends AppMcpConfig {
+  /** Absolute directory for the interpreter's user folders, render scratch files, and the worker class copy. */
+  dataRoot: string
+  /** Absolute sclang executable; empty uses the runtime that the Desktop app ships, then an installed SuperCollider. */
+  sclangPath: string
+  /** Absolute scsynth executable; empty uses the scsynth of the runtime or installation that provides sclang. */
+  scsynthPath: string
+  /** Budget for the MCP server to start and list its tools. */
+  startupTimeoutMs: number
+  /** Budget for sclang to compile its class library and report ready; the first start after an install takes longer. */
+  readyTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-supercollider -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-prompt -->
 <a id="deepseek-aidsh-system-prompt"></a>
 

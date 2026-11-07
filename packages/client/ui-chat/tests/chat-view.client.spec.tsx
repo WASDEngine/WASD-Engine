@@ -4710,10 +4710,10 @@ describe('ChatView', () => {
     expect([...column.children].filter(child => !child.hasAttribute('data-text-interaction-surface')).at(-1)).toBe(status)
     expect(within(status as HTMLElement).getByRole('status').textContent).toBe('深度求索中')
     expect(status?.lastElementChild?.textContent).toBe('深度求索中')
-    const icon = status?.querySelector('svg')?.parentElement
+    // WASD Engine: the keycaps of the brand mark replace the whale tail (wasdengine/FORK.md).
+    const icon = status?.querySelector('[data-wasdengine-running-keys]')
     expect(icon?.getAttribute('aria-hidden')).toBe('true')
-    expect(icon?.firstElementChild?.tagName).toBe('SPAN')
-    expect(icon?.querySelectorAll('path')).toHaveLength(1)
+    expect(icon?.querySelectorAll('[data-key]')).toHaveLength(4)
     expect(icon?.getAttribute('style')).toBeNull()
     expect(status?.querySelector('animate')).toBeNull()
     // The running bit clears before the Turn closes: the status keeps its slot unseen and unannounced.

@@ -91,6 +91,6 @@ pnpm dsh web
 
 ## 许可证
 
-[MIT](LICENSE)
+WASD Engine Harness 是 DeepSeek Harness 的分支，依照 [GPL-3.0-only](LICENSE) 授权。DeepSeek Harness 依照 [MIT 许可证](wasdengine/deepseek-harness-MIT.txt) 授权，本分支保留其版权声明。
 
 第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

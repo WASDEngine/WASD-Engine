@@ -1,5 +1,5 @@
 /**
- * Protocol fixture standing in for a Python application worker. It writes its
+ * Protocol fixture standing in for an application worker. It writes its
  * ready line and replies to fd 3, logs to stdout and stderr, and reads JSON
  * request lines from stdin, handling one request at a time like a
  * single-threaded worker. argv[2] selects a start or shutdown behavior;
@@ -24,6 +24,12 @@ switch (mode) {
   case 'wrong-protocol':
     send({ ...READY, protocol: 2 })
     break
+  case 'no-python': {
+    // A worker that runs no Python leaves python out of its ready line.
+    const { python: _python, ...ready } = READY
+    send(ready)
+    break
+  }
   case 'silent':
     process.stderr.write('loading forever\n')
     setInterval(() => {}, 1000)

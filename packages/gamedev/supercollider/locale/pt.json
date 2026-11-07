@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SuperCollider",
+    "description": "Permite que o agente crie efeitos sonoros e música com o SuperCollider, que é executado sem janela, e os renderize em arquivos de áudio."
+  }
+}

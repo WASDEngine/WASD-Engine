@@ -1,0 +1,136 @@
+/* WASD Engine running icon (fork-owned; wasdengine/FORK.md lists the fork changes). The keycaps take the purple
+   tones of the brand mark's W key, with a deep purple ink in place of the mark's near-black outline. */
+.keys {
+  --wasdengine-key-top: #A585FF;
+  --wasdengine-key-side: #8E63FF;
+  --wasdengine-key-front: #6338D9;
+  --wasdengine-key-ink: #3A1E8C;
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  /* The keycap cluster of the brand mark measures 762.75 by 501.75 units, outlines included. */
+  width: calc((12px + var(--dsh-content-font-delta, 0px)) * 1.520179);
+  height: calc(12px + var(--dsh-content-font-delta, 0px));
+  /* The fixed footprint contains the keys' layout and paint. */
+  contain: strict;
+}
+
+:global(body[data-ds-dark-theme]) .keys {
+  --wasdengine-key-ink: #2A1566;
+}
+
+/* The running status's text is purple too: the status element that holds the keys redefines the two deep-diving
+   tokens that upstream's `.running` rule draws the text and its sweep with. The text takes the fork's purple text
+   pair, and the sweep is as much darker, or in the dark theme lighter, in OKLCH lightness as upstream's blue sweep. */
+:global([data-chat-running]):has(> * > .keys) {
+  --dsw-alias-label-deep-diving: #7C4DFF;
+  --dsw-alias-label-deep-diving-shimmer: #5838B7;
+}
+
+:global(body[data-ds-dark-theme] [data-chat-running]):has(> * > .keys) {
+  --dsw-alias-label-deep-diving: #A585FF;
+  --dsw-alias-label-deep-diving-shimmer: #BFADFF;
+}
+
+/* One 240.75-unit keycap frame, placed where `WASDENGINE_KEYS` puts W (445, 292), A (184, 553), S (445, 553),
+   and D (706, 553) within the cluster's origin (176.125, 284.125). */
+.key {
+  position: absolute;
+  width: 31.5634%;
+  height: 47.9821%;
+}
+
+.w {
+  top: 0;
+  left: 34.2183%;
+}
+
+.a {
+  top: 52.0179%;
+  left: 0;
+}
+
+.s {
+  top: 52.0179%;
+  left: 34.2183%;
+}
+
+.d {
+  top: 52.0179%;
+  left: 68.4366%;
+}
+
+.layer,
+.cap {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.top {
+  fill: var(--wasdengine-key-top);
+}
+
+.side {
+  fill: var(--wasdengine-key-side);
+}
+
+.front {
+  fill: var(--wasdengine-key-front);
+}
+
+.ink {
+  fill: var(--wasdengine-key-ink);
+}
+
+/* W, A, S, and D press in turn, then rest until the 2.2s cycle repeats. */
+@media (prefers-reduced-motion: no-preference) {
+  .cap {
+    animation: wasdengine-key-press 2.2s infinite both;
+    /* Each cap moves on its own composited layer, so a press repaints nothing. */
+    will-change: translate;
+  }
+
+  .a .cap {
+    animation-delay: 0.26s;
+  }
+
+  .s .cap {
+    animation-delay: 0.52s;
+  }
+
+  .d .cap {
+    animation-delay: 0.78s;
+  }
+}
+
+/* A press lowers the cap 42 of its frame's 240.75 units, over most of the key's front. */
+@keyframes wasdengine-key-press {
+  0% {
+    translate: 0 0;
+    animation-timing-function: cubic-bezier(0.3, 0, 0.2, 1);
+  }
+
+  4%,
+  8% {
+    translate: 0 17.445%;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  15%,
+  100% {
+    translate: 0 0;
+  }
+}
+
+@media (forced-colors: active) {
+  .keys {
+    --wasdengine-key-top: Canvas;
+    --wasdengine-key-side: Canvas;
+    --wasdengine-key-front: Canvas;
+    --wasdengine-key-ink: CanvasText;
+    forced-color-adjust: none;
+  }
+}

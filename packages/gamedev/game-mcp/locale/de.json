@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Agentenverbindung",
-    "description": "Lässt Claude Code, Codex und andere Agenten auf diesem Computer die Godot-, Blender- und GIMP-Werkzeuge nutzen, wobei ihre Spiele in WASD Engine laufen."
+    "description": "Lässt Claude Code, Codex und andere Agenten auf diesem Computer die Godot-, Blender-, GIMP- und SuperCollider-Werkzeuge nutzen, wobei ihre Spiele in WASD Engine laufen."
   }
 }

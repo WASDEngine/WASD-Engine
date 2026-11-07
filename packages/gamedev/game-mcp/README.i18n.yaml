@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-mcp/README.md
 /:
-  en: 08c115adfd5e97c9
-  zh: 42028198125ed654
+  en: 638956ff8e767baf
+  zh: 69324424ed60322b
 /deepseek-ai-dsh-game-mcp:
   en: 4a67c43c872058b4
   zh: 38f22a58909bf07b
 /deepseek-ai-dsh-game-mcp/summary:
-  en: 1216ac3cbe429706
-  zh: 974dee8af4281b65
+  en: 627169f0e7063abf
+  zh: f89598e84c668d65
 /deepseek-ai-dsh-game-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -24,8 +24,8 @@
   en: d733802bf98af222
   zh: cd470a201aaf246b
 /deepseek-ai-dsh-game-mcp/use-this-package/what-connected-agents-get:
-  en: c67bddb00fb5bd26
-  zh: 3b50702660c5c4e0
+  en: 351e00b91390a38a
+  zh: 2ad7a4c1ea1a137a
 /deepseek-ai-dsh-game-mcp/use-this-package/games-in-the-wasd-engine-window:
   en: 49471e4ba27b5dc0
   zh: de543f7380919a58
@@ -36,8 +36,8 @@
   en: ed8b6772a73c425e
   zh: f92ab9d731f94142
 /deepseek-ai-dsh-game-mcp/further-exploration:
-  en: 5fbb95cbe593770f
-  zh: 29dd49f6b430d5db
+  en: d4839bc9198615ba
+  zh: c4d8125e9159bccb
 /deepseek-ai-dsh-game-mcp/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -60,8 +60,8 @@
   en: f339bc5c503e2f5e
   zh: c79388a0a2e1a9e8
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/token-effect:
-  en: 4dc8dc9eb15c3183
-  zh: 5010341ae528a165
+  en: 091a6a6b6e2ed57b
+  zh: 7560bfd9ff744f46
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/kv-cache-effect:
   en: 62a407f89661a467
   zh: e4db0109d5d3e152
@@ -69,8 +69,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: f17b0ca0ec15c265
-  zh: 3774755c852c93b7
+  en: 3ddfb7bb93edebce
+  zh: ac486833bef996a5
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
@@ -78,8 +78,8 @@
   en: 7d053967b4d79221
   zh: 8cace89f19a37967
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work:
-  en: 6b28fdf7432a6d76
-  zh: 53ea38bfbcfc4cbc
+  en: 160adee3c72d980d
+  zh: 337e4eb6d09740b4
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: 4e818dd6d00e4020
   zh: d442e9314c4b27e6

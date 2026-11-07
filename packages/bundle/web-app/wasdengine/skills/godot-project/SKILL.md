@@ -58,9 +58,9 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 
 Fix the first reported error at its file and line, then repeat until the run is clean.
 
-## Models and textures
+## Models, textures, and audio
 
-With the `mcp__wasd_blender__` tools, build or edit 3D models headless, look at them with `mcp__wasd_blender__render_preview`, and write them into the project with `mcp__wasd_blender__export_gltf` as `.glb` files (no Draco compression); keep the `.blend` source beside the export. With the `mcp__wasd_gimp__` tools, make or edit textures and sprites, look at them with `mcp__wasd_gimp__snapshot`, and export PNG files into the project; keep the `.xcf` source beside the export. Record the source and license of every third-party asset.
+With the `mcp__wasd_blender__` tools, build or edit 3D models headless, look at them with `mcp__wasd_blender__render_preview`, and write them into the project with `mcp__wasd_blender__export_gltf` as `.glb` files (no Draco compression); keep the `.blend` source beside the export. With the `mcp__wasd_gimp__` tools, make or edit textures and sprites, look at them with `mcp__wasd_gimp__snapshot`, and export PNG files into the project; keep the `.xcf` source beside the export. With the `mcp__wasd_supercollider__` tools, design sound effects and music in SuperCollider code and render them into the project with `mcp__wasd_supercollider__render_audio`, as `.wav` files for effects and `.ogg` files for music and loops; read its levels and look at its waveform and spectrogram image, since nothing plays aloud, and keep the `.scd` source beside the sound. Record the source and license of every third-party asset.
 
 ## Export
 

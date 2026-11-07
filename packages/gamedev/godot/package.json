@@ -55,7 +55,7 @@
     "bundle": "tsdown",
     "watch": "tsdown --watch"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "dependencies": {
     "@deepseek-ai/dsh-app-mcp": "workspace:*",
     "@deepseek-ai/dsh-atomic-write": "workspace:*",

@@ -150,11 +150,12 @@ export class GameToolCatalog {
   listing(): McpToolListing[] {
     const all = this.providers()
     const providers = all.map(provider => provider.id)
+    const titles = all.length === 0 ? '' : ` (${all.map(provider => provider.title).join(', ')})`
     return [
       {
         name: SEARCH_TOOL,
         title: 'Search game tools',
-        description: 'Search WASD Engine\'s game development tools (Godot, Blender, GIMP) by keyword. Lists the matching tools with their plugin, '
+        description: `Search WASD Engine's game development tools${titles} by keyword. Lists the matching tools with their plugin, `
           + 'description, and parameters, and whether each plugin is ready. Without a query, lists every tool.',
         inputSchema: {
           type: 'object',

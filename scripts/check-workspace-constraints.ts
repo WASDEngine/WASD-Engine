@@ -270,6 +270,7 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-blender': ['py/**/*.py'],
   '@deepseek-ai/dsh-gimp': ['py/**/*.py'],
   '@deepseek-ai/dsh-godot': ['runtime/*.gd'],
+  '@deepseek-ai/dsh-supercollider': ['sc/*.sc'],
   // The headless entry and its startup row share the JSON projection code
   // through a hashed tsdown chunk; both import it by relative path.
   '@deepseek-ai/dsh-headless': ['lib/json-stream-*.js'],

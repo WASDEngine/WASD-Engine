@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/app-mcp/README.md
 /:
-  en: b410ce0abe7de656
-  zh: 2ef9c161f939e9a4
+  en: ffb7ced9dd18d870
+  zh: 7990f567580e0275
 /deepseek-ai-dsh-app-mcp:
   en: 9062a8c8df470dc5
   zh: 7da1a45bc0e7db26
 /deepseek-ai-dsh-app-mcp/summary:
-  en: a0949820bfdf440f
-  zh: 9f65bb7582f9359a
+  en: 579691a6f6b10bad
+  zh: c910439f6290131c
 /deepseek-ai-dsh-app-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,8 +18,8 @@
   en: a17d212e505998ac
   zh: c3773e6885294175
 /deepseek-ai-dsh-app-mcp/use-this-package/when-to-use-it:
-  en: b8a1528efac454f2
-  zh: e9498d29ec0244de
+  en: da8c7069522909ea
+  zh: c936ab87fad3ba5d
 /deepseek-ai-dsh-app-mcp/use-this-package/configure-the-plugin:
   en: 8504c7f3a1b60185
   zh: 46f77e50601c1a74
@@ -36,17 +36,17 @@
   en: 27f046186b7c0e03
   zh: 8550a458c559417f
 /deepseek-ai-dsh-app-mcp/use-this-package/find-the-application:
-  en: 5d7c432194c53e1b
-  zh: a7c6e6375cbc9a4c
+  en: cf808bc23d085212
+  zh: cf9705f2e995f7ed
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-worker:
-  en: 296105502c4644cf
-  zh: 3d42cc4232fdb457
+  en: b2f7a6fb754538eb
+  zh: 49d5588df8127499
 /deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
   en: f09c7d225a248dc9
   zh: 9a34c93ae9fdae9f
 /deepseek-ai-dsh-app-mcp/use-this-package/copy-shipped-files-to-real-paths:
-  en: 7705c4a62c5c447e
-  zh: d9b5973b0f71993f
+  en: 97ae7e1c41f94bdf
+  zh: 0c3387495709f95e
 /deepseek-ai-dsh-app-mcp/understand-the-implementation:
   en: d36ff23128fe2104
   zh: e4512247ddb77d1d

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "エージェント接続",
-    "description": "このコンピューター上の Claude Code、Codex などのエージェントが Godot、Blender、GIMP のツールを使えるようにし、そのゲームを WASD Engine でプレイします。"
+    "description": "このコンピューター上の Claude Code、Codex などのエージェントが Godot、Blender、GIMP、SuperCollider のツールを使えるようにし、そのゲームを WASD Engine でプレイします。"
   }
 }

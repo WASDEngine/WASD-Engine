@@ -243,7 +243,7 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 <a id="plugin-icon"></a>
 ### 插件图标
 
-「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 Godot Engine 标志（版权所有 © 2017 Andrea Calabró）原样嵌入 36 × 36 画布，只添加了 `viewBox` 以便缩放：源文件是 [Godot 仓库](https://github.com/godotengine/godot)中 Godot 4.7.2 的 `misc/logo/icon.svg`，也见于 [Godot 媒体资料包](https://godotengine.org/press/)。该标志以[知识共享署名 4.0 国际许可协议（CC BY 4.0）](https://creativecommons.org/licenses/by/4.0/)授权，不受本仓库的 MIT 许可证覆盖。Godot 与 Godot 标志是 Godot Foundation 的商标，此处依其[商标政策](https://godot.foundation/policies-and-procedures/trademark-policy)用于标识 Godot 集成。WASD Engine 与 Godot Foundation 没有关联，也未获其认可。“游戏”标签页、它的引导条目与 Godot 工具卡片仍使用本包自己的游戏手柄图形。
+「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 Godot Engine 标志（版权所有 © 2017 Andrea Calabró）原样嵌入 36 × 36 画布，只添加了 `viewBox` 以便缩放：源文件是 [Godot 仓库](https://github.com/godotengine/godot)中 Godot 4.7.2 的 `misc/logo/icon.svg`，也见于 [Godot 媒体资料包](https://godotengine.org/press/)。该标志以[知识共享署名 4.0 国际许可协议（CC BY 4.0）](https://creativecommons.org/licenses/by/4.0/)授权，不受本仓库的许可证覆盖。Godot 与 Godot 标志是 Godot Foundation 的商标，此处依其[商标政策](https://godot.foundation/policies-and-procedures/trademark-policy)用于标识 Godot 集成。WASD Engine 与 Godot Foundation 没有关联，也未获其认可。“游戏”标签页、它的引导条目与 Godot 工具卡片仍使用本包自己的游戏手柄图形。
 
 -----
 

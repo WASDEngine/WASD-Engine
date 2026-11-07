@@ -42,7 +42,7 @@
     "bundle": "tsdown",
     "watch": "tsdown --watch"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~"
   },
