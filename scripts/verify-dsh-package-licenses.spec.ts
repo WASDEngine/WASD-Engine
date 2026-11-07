@@ -56,4 +56,16 @@ describe('DSH package license gate', () => {
       'packages/core/agent/package.json: @deepseek-ai/dsh-agent must declare "license": "MIT"; found undefined.',
     ])
   })
+
+  it('expects GPL-3.0-only from the WASD Engine Desktop app and game tool packages and MIT from the others', () => {
+    const root = createWorkspace()
+    writeManifest(root, 'apps/desktop/package.json', { name: '@deepseek-ai/dsh-desktop', license: 'GPL-3.0-only' })
+    writeManifest(root, 'packages/gamedev/blender/package.json', { name: '@deepseek-ai/dsh-blender', license: 'MIT' })
+    writeManifest(root, 'packages/core/agent/package.json', { name: '@deepseek-ai/dsh-agent', license: 'GPL-3.0-only' })
+
+    expect(inspectDshPackageLicenses(root).failures).toEqual([
+      'packages/core/agent/package.json: @deepseek-ai/dsh-agent must declare "license": "MIT"; found "GPL-3.0-only".',
+      'packages/gamedev/blender/package.json: @deepseek-ai/dsh-blender must declare "license": "GPL-3.0-only"; found "MIT".',
+    ])
+  })
 })

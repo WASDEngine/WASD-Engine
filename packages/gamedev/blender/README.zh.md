@@ -155,7 +155,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 <a id="plugin-icon"></a>
 ### 插件图标
 
-「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 Blender 标志图形原样嵌入 36 × 36 画布：它是 Blender 的应用图标，即 [Blender 源码仓库](https://projects.blender.org/blender/blender)中的 `release/freedesktop/icons/scalable/apps/blender.svg`，取自文件注释写明的提交。Blender 与 Blender 标志是 Blender Foundation 的商标，标志归该基金会所有；它不受任何开放许可证覆盖，也不受本仓库的 MIT 许可证覆盖。该图标仅用于标识 Blender 集成，并遵循 Blender 的[标志使用指南](https://www.blender.org/about/logo/)与[商标政策](https://www.blender.org/about/trademark-policy/)。WASD Engine 与 Blender Foundation 没有关联，也未获其赞助或认可。
+「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，`package.json` 以 `icon` 字段指向该文件。该文件把 Blender 标志图形原样嵌入 36 × 36 画布：它是 Blender 的应用图标，即 [Blender 源码仓库](https://projects.blender.org/blender/blender)中的 `release/freedesktop/icons/scalable/apps/blender.svg`，取自文件注释写明的提交。Blender 与 Blender 标志是 Blender Foundation 的商标，标志归该基金会所有；它不受任何开放许可证覆盖，也不受本仓库的许可证覆盖。该图标仅用于标识 Blender 集成，并遵循 Blender 的[标志使用指南](https://www.blender.org/about/logo/)与[商标政策](https://www.blender.org/about/trademark-policy/)。WASD Engine 与 Blender Foundation 没有关联，也未获其赞助或认可。
 
 -----
 

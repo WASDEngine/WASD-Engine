@@ -6,7 +6,7 @@
     https://github.com/supercollider/supercollider at commit 0c5a96d701be992627b40367f9540b67624120f0, the
     icon of the SuperCollider application. SuperCollider, including this icon, is licensed under the GNU
     General Public License version 3 (COPYING in that repository), https://www.gnu.org/licenses/gpl-3.0.html.
-    This artwork is not covered by this repository's MIT license; this file is shared under GPL-3.0.
+    This artwork is not covered by this repository's license; this file is shared under GPL-3.0.
     WASD Engine is not affiliated with or endorsed by the SuperCollider project.
   -->
   <rect x="1" y="1" width="18" height="18" rx="4" fill="#F2F4F7" stroke="#D5DBE5" stroke-width=".5"/>
