@@ -1,16 +1,16 @@
 /**
  * The `GET /api/godot.frames?session=<SessionId>&run=<runId>` response: a sequence of frame records for as long
- * as the run lives. Each record is a u32 little-endian JPEG length, u16 little-endian width, u16 little-endian
- * height, u32 little-endian frame sequence number, then the JPEG bytes. Frames that arrive while the consumer has
- * not read the previous record replace one another, so a slow consumer always receives the newest frame. The
- * body ends when the run ends or the request is aborted.
+ * as the run lives. Each record is a u32 little-endian image length, u16 little-endian width, u16 little-endian
+ * height, u32 little-endian frame sequence number, then the bytes of a PNG or JPEG file. Frames that arrive while
+ * the consumer has not read the previous record replace one another, so a slow consumer always receives the
+ * newest frame. The body ends when the run ends or the request is aborted.
  * @module @deepseek-ai/dsh-godot/src/frames
  */
 import { Buffer } from 'node:buffer'
 import type { HarnessFrame } from './protocol.ts'
 import type { FrameSink } from './run.ts'
 
-/** Bytes before the JPEG in one record. */
+/** Bytes before the image in one record. */
 export const FRAME_RECORD_HEADER_BYTES = 12
 
 const COMMON_HEADERS = { 'Cache-Control': 'no-store, no-transform', 'X-Content-Type-Options': 'nosniff' }
@@ -33,12 +33,12 @@ export interface FrameSource {
  * @returns the record bytes.
  */
 export function encodeFrameRecord(frame: HarnessFrame): Uint8Array {
-  const record = Buffer.allocUnsafe(FRAME_RECORD_HEADER_BYTES + frame.jpeg.length)
-  record.writeUInt32LE(frame.jpeg.length, 0)
+  const record = Buffer.allocUnsafe(FRAME_RECORD_HEADER_BYTES + frame.image.length)
+  record.writeUInt32LE(frame.image.length, 0)
   record.writeUInt16LE(frame.width, 4)
   record.writeUInt16LE(frame.height, 6)
   record.writeUInt32LE(frame.seq, 8)
-  frame.jpeg.copy(record, FRAME_RECORD_HEADER_BYTES)
+  frame.image.copy(record, FRAME_RECORD_HEADER_BYTES)
   return record
 }
 

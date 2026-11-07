@@ -140,9 +140,9 @@ A start through `godot_run` or `godot.run` takes these steps; `godot.run` first 
 
 ```text
 message   u32 LE length N (1 to 64 MiB), then N bytes: u8 kind, payload
-kind 1    UTF-8 JSON object                                     both directions
-kind 2    u32 LE seq, u16 LE width, u16 LE height, JPEG bytes   harness to Host: a streamed frame
-kind 3    u32 LE request id, PNG or JPEG bytes                  harness to Host: a screenshot image
+kind 1    UTF-8 JSON object                                            both directions
+kind 2    u32 LE seq, u16 LE width, u16 LE height, PNG or JPEG bytes   harness to Host: a streamed frame
+kind 3    u32 LE request id, PNG or JPEG bytes                         harness to Host: a screenshot image
 ```
 
 - The harness connects to `127.0.0.1` on the `--wasd-port` port and sends `hello` first. Until a connection presents the run's token, `ctx.godot` accepts messages of at most 64 KiB on it and destroys it on anything but a `hello` whose `token` matches in a constant-time comparison; it measures each message against the limit in force when it reads that message, so messages after the `hello` in the same read may use the 64 MiB limit. A `hello` with another `protocol` fails the start.
@@ -162,7 +162,7 @@ The harness logger keeps at most 4,000 unsent entries, drops the oldest beyond t
 
 | `type` | Parameters | Result fields | Deadline in `ctx.godot` |
 |---|---|---|---|
-| `stream` | `fps` (0 stops; at most 60), `quality` (0.1 to 1), `maxWidth` (64 to 4,096) | `fps`, `quality`, `maxWidth` | `requestTimeoutMs` |
+| `stream` | `fps` (0 stops; at most 60), `quality` (JPEG quality, 0.1 to 1), `maxWidth` (64 to 4,096), `lossless` (PNG frames while PNG encoding keeps up with `fps`) | `fps`, `quality`, `maxWidth`, `lossless` | `requestTimeoutMs` |
 | `screenshot` | `format` (`png` or `jpeg`), `maxWidth`, `quality` | `format`, `width`, `height`, `windowWidth`, `windowHeight`, `frame`, `paused`, and a kind 3 image with the request id | `requestTimeoutMs` |
 | `input` | `events`, as [input events](#input-events) describes; optional `timeoutMs` | `events`, `frames`, `seconds` (real time), `frame`, `timedOut`, `cancelled` | None; an agent's sequence carries `timeoutMs` of its waits, one frame per wait and one to start at 10 frames per second, plus `requestTimeoutMs`, and Game tab input carries none |
 | `pause`, `resume` | None | `paused`, `frame` | `requestTimeoutMs` |
@@ -238,12 +238,13 @@ The check is a `SceneTree` script that creates no autoload: before Godot creates
 `GET /api/godot.frames?session=<SessionId>&run=<runId>` streams a run's frames. `ctx.godot` registers it as an exact `ctx.connection.fetch` route while the Connection service exists, and the Connection answers 403 to a Peer that is not the owner. The route answers 400 when `session` or `run` is missing or empty, 404 unless the run is the Session's current run and has not ended, and otherwise 200 with `application/octet-stream`. Every answer carries `Cache-Control: no-store, no-transform` and `X-Content-Type-Options: nosniff`. The body is a sequence of records:
 
 ```text
-record    u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE seq, JPEG bytes
+record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or JPEG bytes
 ```
 
 The record header puts the length first and the sequence last, unlike the harness's kind 2 payload.
 
-- The run asks the harness to stream, with `streamFps`, `streamQuality`, and `streamMaxWidth`, while at least one frame response is open, and sends `stream` with `fps` 0 when the last one closes.
+- The run asks the harness to stream, with `streamFps`, `streamQuality`, `streamMaxWidth`, and `streamLossless`, while at least one frame response is open, and sends `stream` with `fps` 0 when the last one closes.
+- The harness encodes each frame on a worker thread: as a PNG file while `lossless` is on and PNG encoding of a frame takes at most 1/`fps` seconds, and as a JPEG file at `quality` otherwise. The [package README](../../packages/gamedev/godot/README.md#remote-and-frames) describes when a stream switches between the two.
 - The body produces a record only when the reader asks for one: a frame that arrives before the reader took the previous record replaces it, so a slow reader always receives the newest frame.
 - The body ends when the run ends or the request is aborted.
 
@@ -264,7 +265,7 @@ The package's `./client` export, a Web platform plugin, mounts the generated `go
 
 - **Follow stream.** `godot.follow` follows a Session id and needs no live Agent. `ctx.godot` first sends a `snapshot`: the Session's current or last run view, or null while the Session has no live Agent or no run; the runtime view; that run's last 200 log entries; and the cursor. It then sends coalesced changes: `run` with the latest view, and `run: null` when the Session's Agent ends; `logs` with up to the newest 200 entries after the stream's cursor; and `runtime` with the latest runtime view. A run that a later Agent starts arrives in the same stream, which ends when its signal aborts or the plugin unloads. The browser keeps up to 500 entries of the current run, drops the entries of other runs when a `run` item names a new run, and skips entries that it already holds. The Gateway's logical stream reopens the follow stream after a lost connection, starting with a new snapshot. After another end or failure, the browser follows again at once when the stream had delivered its snapshot, and otherwise after 1 s, doubling up to 30 s, or at once when the user presses Retry; until a snapshot arrives it shows a reconnect notice.
 - **Opening the tab.** For the Session whose right sidebar is mounted, a run that the agent started (`startedBy: 'agent'`) and that has not ended opens the Game tab once per run id while the client plugin is loaded, also after the Session's scope was released and retained again.
-- **Frames.** The reader parses records as bytes arrive, treating a record that announces no bytes, a zero width or height, or more than 32 MiB as corrupt. It reopens a failed, refused, corrupt, or ended response after 250 ms, doubling the delay up to 4 s while attempts deliver no record. One JPEG decodes at a time with `createImageBitmap`, a newer record replaces one that waits, and the newest decoded frame is drawn on the next animation frame onto a canvas that keeps the frame's aspect ratio.
+- **Frames.** The reader parses records as bytes arrive, treating a record that announces no bytes, a zero width or height, or more than 32 MiB as corrupt. It reopens a failed, refused, corrupt, or ended response after 250 ms, doubling the delay up to 4 s while attempts deliver no record. One image decodes at a time with `createImageBitmap`, as a PNG when it starts with the PNG file signature and as a JPEG otherwise, a newer record replaces one that waits, and the newest decoded frame is drawn on the next animation frame onto a canvas that keeps the frame's aspect ratio.
 - **Input.** The tab sends keyboard events while the game view has focus, which a click on the view gives it, and mouse events over the canvas. It maps `KeyboardEvent.code` to Godot key names as Godot's web platform does, sending Alt and Meta as keycodes, and leaves key presses combined with Meta to the browser. Shift+Escape never reaches the game: it removes focus from the view. A one-character key carries its text as `unicode` unless Ctrl is held without Alt, so AltGr characters keep their text. On Windows Desktop the view holds the shortcut service's recording state while it has focus. Pointer positions map from the drawn frame, excluding the bars around it, to window pixels; a wheel step becomes a wheel button press and release; and while the game's mouse mode is captured (2), a press locks the pointer and motion sends deltas. Events go out once per animation frame, in batches of at most 256 with consecutive motions merged, one batch at a time. Losing focus releases every held key and button. When a batch fails other than for an ended run, its key and mouse button releases go first in the next batch, which a new event or the release on focus loss sends.
 - **Actions.** Play calls `godot.run` with the last run's project, or with no project before the first run so that `ctx.godot` searches for the nearest one; Restart, which replaces Play while a run is active, also passes the run's `launch` scene and window size. Stop, Pause, Resume, Step one frame, and Install Godot, which shows while the runtime is missing or failed, call the matching methods. A refused action shows the copy for its Remote error code, `session/writer-held` included.
 

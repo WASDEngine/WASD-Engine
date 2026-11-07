@@ -2,7 +2,7 @@
 /** Frame records parse across any chunk split; the reader reconnects with backoff; the presenter draws the newest decoded frame. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  decodeJpeg, drawFrame, FRAME_HEADER_BYTES, FramePresenter, FrameRecordParser, FrameStreamError, MAX_FRAME_BYTES, nextFrame,
+  decodeFrame, drawFrame, FRAME_HEADER_BYTES, FramePresenter, FrameRecordParser, FrameStreamError, MAX_FRAME_BYTES, nextFrame,
   readFrames, RECONNECT_INITIAL_MS, RECONNECT_MAX_MS, type FrameRecord,
 } from '../src/client/frames.ts'
 
@@ -13,14 +13,14 @@ afterEach(() => {
 })
 
 /** Encode one record the way the Host's frame route writes it. */
-function encode(seq: number, width: number, height: number, jpeg: readonly number[]): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(FRAME_HEADER_BYTES + jpeg.length)
+function encode(seq: number, width: number, height: number, image: readonly number[]): Uint8Array<ArrayBuffer> {
+  const bytes = new Uint8Array(FRAME_HEADER_BYTES + image.length)
   const view = new DataView(bytes.buffer)
-  view.setUint32(0, jpeg.length, true)
+  view.setUint32(0, image.length, true)
   view.setUint16(4, width, true)
   view.setUint16(6, height, true)
   view.setUint32(8, seq, true)
-  bytes.set(jpeg, FRAME_HEADER_BYTES)
+  bytes.set(image, FRAME_HEADER_BYTES)
   return bytes
 }
 
@@ -35,15 +35,15 @@ function concat(...parts: readonly Uint8Array[]): Uint8Array<ArrayBuffer> {
 }
 
 function plain(records: readonly FrameRecord[]) {
-  return records.map(record => ({ seq: record.seq, width: record.width, height: record.height, jpeg: [...record.jpeg] }))
+  return records.map(record => ({ seq: record.seq, width: record.width, height: record.height, image: [...record.image] }))
 }
 
 const EXPECTED = [
-  { seq: 1, width: 640, height: 360, jpeg: [0xff, 0xd8, 1, 2, 3, 0xff, 0xd9] },
-  { seq: 2, width: 1280, height: 720, jpeg: [9] },
-  { seq: 4_000_000_000, width: 65535, height: 1, jpeg: Array.from({ length: 40 }, (_, index) => index) },
+  { seq: 1, width: 640, height: 360, image: [0xff, 0xd8, 1, 2, 3, 0xff, 0xd9] },
+  { seq: 2, width: 1280, height: 720, image: [9] },
+  { seq: 4_000_000_000, width: 65535, height: 1, image: Array.from({ length: 40 }, (_, index) => index) },
 ]
-const STREAM = concat(...EXPECTED.map(entry => encode(entry.seq, entry.width, entry.height, entry.jpeg)))
+const STREAM = concat(...EXPECTED.map(entry => encode(entry.seq, entry.width, entry.height, entry.image)))
 
 /** Deterministic pseudo-random split points. */
 function* randomSplits(length: number, seed: number): Generator<number[]> {
@@ -88,19 +88,19 @@ describe('FrameRecordParser', () => {
     expect(parser.push(first.slice(0, 5))).toEqual([])
     expect(parser.push(first.slice(5, FRAME_HEADER_BYTES + 1))).toEqual([])
     expect(plain(parser.push(concat(first.slice(FRAME_HEADER_BYTES + 1), encode(6, 1, 1, [7]).slice(0, 3))))).toEqual([
-      { seq: 5, width: 2, height: 2, jpeg: [1, 2, 3] },
+      { seq: 5, width: 2, height: 2, image: [1, 2, 3] },
     ])
   })
 
   it.each([
-    ['an empty JPEG', encode(1, 2, 2, []).slice(0, FRAME_HEADER_BYTES)],
+    ['an empty image', encode(1, 2, 2, []).slice(0, FRAME_HEADER_BYTES)],
     ['a zero width', encode(1, 0, 2, [1])],
     ['a zero height', encode(1, 2, 0, [1])],
   ])('rejects a header with %s', (_label, bytes) => {
     expect(() => new FrameRecordParser().push(bytes)).toThrow(FrameStreamError)
   })
 
-  it('rejects a JPEG longer than the record limit before buffering it', () => {
+  it('rejects an image longer than the record limit before buffering it', () => {
     const header = encode(1, 2, 2, []).slice(0, FRAME_HEADER_BYTES)
     new DataView(header.buffer).setUint32(0, MAX_FRAME_BYTES + 1, true)
     expect(() => new FrameRecordParser().push(header)).toThrow(FrameStreamError)
@@ -212,7 +212,7 @@ class FakeBitmap implements ImageBitmap {
 }
 
 function record(seq: number): FrameRecord {
-  return { seq, width: 4, height: 3, jpeg: new Uint8Array([seq]) }
+  return { seq, width: 4, height: 3, image: new Uint8Array([seq]) }
 }
 
 function presenter() {
@@ -261,7 +261,7 @@ describe('FramePresenter', () => {
     const p = presenter()
     p.instance.push(record(1))
     p.instance.push(record(2))
-    p.decodes[0]!.reject(new Error('corrupt JPEG'))
+    p.decodes[0]!.reject(new Error('corrupt image'))
     await vi.waitFor(() => { expect(p.decodes).toHaveLength(2) })
     p.decodes[1]!.resolve(new FakeBitmap(4, 3))
     await vi.waitFor(() => { expect(p.paints).toHaveLength(1) })
@@ -289,14 +289,18 @@ describe('FramePresenter', () => {
 })
 
 describe('browser helpers', () => {
-  it('decodes JPEG bytes through createImageBitmap', async () => {
+  it.each([
+    ['a JPEG', [0xff, 0xd8, 0xff, 0xe0], 'image/jpeg'],
+    ['a PNG', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0], 'image/png'],
+    ['bytes that only begin like a PNG', [0x89, 0x50, 0x4e, 0x47], 'image/jpeg'],
+  ])('decodes %s through createImageBitmap with its media type', async (_name, image, type) => {
     const bitmap = new FakeBitmap(4, 3)
     const create = vi.fn(async (_blob: Blob) => bitmap)
     vi.stubGlobal('createImageBitmap', create)
-    await expect(decodeJpeg(record(9))).resolves.toBe(bitmap)
+    await expect(decodeFrame({ seq: 9, width: 4, height: 3, image: new Uint8Array(image) })).resolves.toBe(bitmap)
     const blob = create.mock.calls[0]![0]
-    expect(blob.type).toBe('image/jpeg')
-    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual([9])
+    expect(blob.type).toBe(type)
+    expect([...new Uint8Array(await blob.arrayBuffer())]).toEqual(image)
   })
 
   it('resizes the canvas to the frame and draws it at the origin', () => {

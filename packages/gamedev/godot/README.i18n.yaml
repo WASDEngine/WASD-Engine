@@ -24,8 +24,8 @@
   en: cc31369797b3b01a
   zh: 2bdd59780bc3df73
 /deepseek-ai-dsh-godot/use-this-package/configuration:
-  en: 47fd769f3e7e0d41
-  zh: 878a54eec3935ea6
+  en: 3ad7dc72bb72de63
+  zh: ad116292d2258e78
 /deepseek-ai-dsh-godot/use-this-package/godot-runtime:
   en: b324ca99f1e36a8b
   zh: 75de5f7df3391f1d
@@ -48,8 +48,8 @@
   en: 81143822d2893407
   zh: 378ef9b59adc7f38
 /deepseek-ai-dsh-godot/use-this-package/remote-methods-and-the-frame-route:
-  en: b4996eb33b5abe48
-  zh: 057fd908a8ebb8de
+  en: f669c0250a377f19
+  zh: 37f647d3cb38fbed
 /deepseek-ai-dsh-godot/use-this-package/files-under-the-data-directory:
   en: 12cb5a27fccebe33
   zh: 1b1c8cbcd789cff6
@@ -57,8 +57,8 @@
   en: 6ed9f9b1dac1df20
   zh: e4cb319cf1d360f9
 /deepseek-ai-dsh-godot/understand-the-implementation:
-  en: 540c43464cb6b18b
-  zh: 1b3f30c511df5e1f
+  en: 431fafcefcb8b091
+  zh: 74fe90bca7454f01
 /deepseek-ai-dsh-godot/understand-the-implementation/verify-against-a-real-runtime:
   en: 1b9a769ce3e9f554
   zh: eb950f63f6480b31
@@ -111,8 +111,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work:
-  en: 09a2930135bd516f
-  zh: 38d63537a915b018
+  en: b6886f1ebca979db
+  zh: cc381b5bed6cc00e
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

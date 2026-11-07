@@ -73,7 +73,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `godotExecutable` | `''` | Godot 编辑器可执行文件的绝对路径，在没有可用的 LibGodot 运行时时使用；为空时搜索 `PATH`，在 macOS 上还搜索 `/Applications` |
 | `embedded` | `true` | 在 macOS 上以无窗口方式渲染 LibGodot 运行 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
-| `streamQuality` | `0.7` | 推流帧的 JPEG 质量，0.1 到 1 |
+| `streamQuality` | `0.9` | 推流的 JPEG 帧的 JPEG 质量，0.1 到 1 |
+| `streamLossless` | `true` | PNG 编码跟得上 `streamFps` 时推流无损 PNG 帧，否则推流 JPEG 帧；`false` 只推流 JPEG 帧 |
 | `streamMaxWidth` | `1280` | 推流帧的最大宽度（像素），64 到 4096 |
 | `importBeforeRun` | `true` | 每次运行前导入项目资源 |
 | `importTimeoutMs` | `180000` | 导入步骤及单次 `godot_check` 的时限 |
@@ -221,13 +222,13 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 | 偏移 | 字节数 | 字段 |
 |---|---|---|
-| 0 | 4 | JPEG 长度 `N`，无符号小端序 |
+| 0 | 4 | 图像长度 `N`，无符号小端序 |
 | 4 | 2 | 帧宽度（像素），无符号小端序 |
 | 6 | 2 | 帧高度（像素），无符号小端序 |
 | 8 | 4 | 运行内的帧序号，无符号小端序 |
-| 12 | `N` | JPEG 字节 |
+| 12 | `N` | PNG 或 JPEG 文件的字节 |
 
-harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，JPEG 质量为 `streamQuality`，宽度最多缩小到 `streamMaxWidth` 像素。读取方尚未取走上一条记录时到达的帧会相互替换，因此读取较慢的一方总能收到最新的帧。帧响应失败或结束时，“游戏”标签页在 250 ms 后重新打开它；在尝试未送达任何帧期间，延迟逐次加倍，最长 4 s。
+harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，宽度最多缩小到 `streamMaxWidth` 像素，并在工作线程上编码每一帧，因此编码不会拖慢游戏。帧是质量为 `streamQuality` 的 JPEG 文件。开启 `streamLossless` 时，只要编码一帧最多用一个帧间隔（1/`streamFps` 秒），帧就是无损 PNG 文件：每次推流先发送 JPEG 帧，对一帧的试编码跟得上后切换为 PNG，简单的 2D 场景和像素画通常如此；某个 PNG 帧用时更长时回到 JPEG 帧，大多数 3D 场景如此。试编码或 PNG 帧较慢后，下一次试编码在 1 s 后进行，延迟逐次加倍，最长 8 s。Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色，因此 PNG 帧保留文字和像素画清晰的彩色边缘，而 JPEG 帧会把它们模糊。读取方尚未取走上一条记录时到达的帧会相互替换，因此读取较慢的一方总能收到最新的帧。帧响应失败或结束时，“游戏”标签页在 250 ms 后重新打开它；在尝试未送达任何帧期间，延迟逐次加倍，最长 4 s。
 
 <a id="data-directory"></a>
 ### 数据目录中的文件
@@ -257,7 +258,7 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 一次运行拥有它的导入进程、回环监听器、游戏进程和计时器，并在结束时全部释放。[harness 协议](../../../docs/subsystems/gamedev.zh.md#harness-protocol)定义了运行与 harness 交换的消息：令牌握手、请求及其应答、状态、日志、帧和截图图像。
 
-Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI，再撤 Remote。每个 Session 有一个跟随源，在有读取方期间把跟随流折叠为标签页的状态。游戏画面用 `fetch` 读取帧路由，用 `createImageBitmap` 解码最新的 JPEG 记录，并在下一次重绘时绘制它。
+Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI，再撤 Remote。每个 Session 有一个跟随源，在有读取方期间把跟随流折叠为标签页的状态。游戏画面用 `fetch` 读取帧路由，用 `createImageBitmap` 解码最新的记录：图像以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码，并在下一次重绘时绘制它。
 
 | 文件 | 作用 |
 |---|---|
@@ -380,6 +381,8 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过本地 LibGodot 构建或已安装的编辑器运行。
 - **macOS 以外会打开窗口** — 只有 macOS 上的 LibGodot 能在没有窗口的情况下运行游戏。在 Linux 与 Windows 上，以及在任何平台上使用编辑器可执行文件时，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。
+- **JPEG 帧会模糊彩色边缘** — 当编码一个 PNG 帧用时超过 1/`streamFps` 秒，或 `streamLossless` 关闭时，场景推流 JPEG 帧，“游戏”标签页中彩色文字等细小的饱和色细节会比游戏中更柔和：Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色。
+- **帧为游戏窗口的像素尺寸** — “游戏”标签页把窗口的像素（宽度最多 `streamMaxWidth`）适配到标签页中。在高密度显示器上，标签页覆盖的屏幕像素多于窗口的像素时，帧会被放大，看起来比按显示器密度渲染的游戏窗口更柔和。
 - **音频只在宿主上播放** — “游戏”标签页推流的帧不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏。

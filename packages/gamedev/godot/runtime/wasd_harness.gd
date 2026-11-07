@@ -6,14 +6,22 @@ extends SceneTree
 ## game is paused, and serves one loopback TCP connection to the Host. Autoloads load as usual.
 ##
 ## Wire format, both directions: a 4-byte little-endian length N, then N bytes holding a 1-byte kind and its payload.
-## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed JPEG frame: u32 sequence, u16 width,
-## u16 height, then the JPEG bytes. Kind 3 (harness to Host) answers a screenshot request: u32 request id,
-## then the PNG or JPEG bytes. The first message on the connection is the harness's `hello` JSON, which carries the token.
+## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width,
+## u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
+## u32 request id, then the PNG or JPEG bytes. The first message on the connection is the harness's `hello`
+## JSON, which carries the token.
 ##
 ## Screenshots and streamed frames show the game window at its pixel size, scaled down to `maxWidth`: the root
 ## viewport where the project's stretch settings place it, and black where the window shows bars around it. At
 ## full size, image pixel (x, y) is window pixel (x, y), the unit of input event coordinates. Frames stream at
 ## most `fps` times per second of real time, also while the game is paused or Engine.time_scale is 0.
+##
+## A worker thread encodes one streamed frame at a time, so encoding does not hold up the game. Frames are JPEG
+## at `quality`. With `lossless`, frames are PNG while PNG encoding keeps up with `fps`: the stream starts with
+## JPEG frames and a test PNG encode of its first frame, switches to PNG frames once a test encode takes at most
+## 1/`fps` seconds, and returns to JPEG frames after a PNG frame takes longer. A slow PNG frame and a failed or
+## slow test schedule the next test after a delay that starts at 1 second and doubles each time, up to 8 seconds,
+## until the next `stream` request.
 ##
 ## `wait` and `step` frames count frames that the game ran after the request arrived; `wait` seconds count game
 ## time while the tree is not paused, which Engine.time_scale scales. Input sequences run one at a time in
@@ -36,6 +44,27 @@ const KIND_IMAGE := 3
 const MAX_PENDING_LOGS := 4000
 const MAX_MESSAGE_BYTES := 64 * 1024 * 1024
 const USEC_PER_SECOND := 1000000.0
+const LOSSLESS_TEST_DELAY := 1.0  # seconds from a failed or slow PNG test, or a slow PNG frame, to the next test
+const LOSSLESS_TEST_MAX_DELAY := 8.0
+
+## Encodes one streamed frame on a WorkerThreadPool thread. The main thread reads `bytes` and `usec` only after the
+## task completed, and no thread writes `image`.
+class FrameEncoding extends RefCounted:
+	var image: Image
+	var png: bool
+	var quality: float
+	var bytes := PackedByteArray()  # the PNG or JPEG file; empty when encoding failed
+	var usec := 0  # encoding time
+
+	func _init(frame: Image, as_png: bool, jpeg_quality: float) -> void:
+		image = frame
+		png = as_png
+		quality = jpeg_quality
+
+	func run() -> void:
+		var start := Time.get_ticks_usec()
+		bytes = image.save_png_to_buffer() if png else image.save_jpg_to_buffer(quality)
+		usec = Time.get_ticks_usec() - start
 
 class HarnessLogger extends Logger:
 	var _mutex := Mutex.new()
@@ -98,10 +127,18 @@ var _scene_override := ""
 var _rx := PackedByteArray()
 
 var _stream_fps := 0.0
-var _stream_quality := 0.75
+var _stream_quality := 0.9
 var _stream_max_width := 1280
+var _stream_lossless := false
 var _next_frame_time := 0.0  # real time in seconds when the next streamed frame is due
 var _frame_sequence := 0
+var _encoding: FrameEncoding = null  # the frame being encoded for sending
+var _encoding_task := -1
+var _lossless_test: FrameEncoding = null  # a test PNG encode of a frame sent as JPEG; never sent
+var _lossless_test_task := -1
+var _lossless_frames := false  # whether streamed frames are PNG
+var _lossless_test_at := 0.0  # real time in seconds from which the next test may start
+var _lossless_test_delay := LOSSLESS_TEST_DELAY
 
 var _frame := 0
 var _frame_seconds := 0.0  # game time that the nodes ran in the frame of the latest _process
@@ -144,6 +181,7 @@ func _initialize() -> void:
 
 
 func _finalize() -> void:
+	_wait_for_encodings()
 	_flush_logs()
 	OS.remove_logger(_logger)
 	if _connected:
@@ -237,8 +275,12 @@ func _handle(message: Dictionary, now: float) -> void:
 			_stream_fps = clampf(float(message.get("fps", 0)), 0.0, 60.0)
 			_stream_quality = clampf(float(message.get("quality", _stream_quality)), 0.1, 1.0)
 			_stream_max_width = clampi(int(message.get("maxWidth", _stream_max_width)), 64, 4096)
+			_stream_lossless = message.get("lossless", false) == true
 			_next_frame_time = 0.0
-			_reply(id, {"fps": _stream_fps, "quality": _stream_quality, "maxWidth": _stream_max_width})
+			_lossless_frames = false
+			_lossless_test_at = 0.0
+			_lossless_test_delay = LOSSLESS_TEST_DELAY
+			_reply(id, {"fps": _stream_fps, "quality": _stream_quality, "maxWidth": _stream_max_width, "lossless": _stream_lossless})
 		"screenshot":
 			_screenshot(id, message)
 		"input":
@@ -656,7 +698,10 @@ func _screenshot(id, message: Dictionary) -> void:
 
 
 func _stream_frame(now: float) -> void:
-	if _stream_fps <= 0.0 or now < _next_frame_time:
+	_finish_lossless_test(now)
+	_finish_encoding(now)
+	# A frame waits for the previous one's encoding, which keeps a slow encoder from piling up frames.
+	if _stream_fps <= 0.0 or now < _next_frame_time or _encoding != null:
 		return
 	var interval := 1.0 / _stream_fps
 	# Keep the cadence while the loop keeps up; after a stall, restart it instead of sending a burst.
@@ -664,15 +709,64 @@ func _stream_frame(now: float) -> void:
 	var image := _capture(_stream_max_width)
 	if image == null:
 		return
-	var jpeg := image.save_jpg_to_buffer(_stream_quality)
+	_encoding = FrameEncoding.new(image, _stream_lossless and _lossless_frames, _stream_quality)
+	_encoding_task = WorkerThreadPool.add_task(_encoding.run, false, "WASD Engine frame encoding")
+	if _stream_lossless and not _lossless_frames and _lossless_test == null and now >= _lossless_test_at:
+		_lossless_test = FrameEncoding.new(image, true, _stream_quality)
+		_lossless_test_task = WorkerThreadPool.add_task(_lossless_test.run, false, "WASD Engine lossless frame test")
+
+
+## Sends the frame whose encoding finished. A PNG frame that took longer than the frame interval to encode
+## returns the stream to JPEG frames.
+func _finish_encoding(now: float) -> void:
+	if _encoding == null or not WorkerThreadPool.is_task_completed(_encoding_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_encoding_task)
+	var done := _encoding
+	_encoding = null
+	if _stream_fps <= 0.0 or done.bytes.is_empty():
+		return
+	if done.png and done.usec > USEC_PER_SECOND / _stream_fps:
+		_lossless_frames = false
+		_schedule_lossless_test(now)
 	_frame_sequence += 1
 	var payload := PackedByteArray()
 	payload.resize(8)
 	payload.encode_u32(0, _frame_sequence)
-	payload.encode_u16(4, image.get_width())
-	payload.encode_u16(6, image.get_height())
-	payload.append_array(jpeg)
+	payload.encode_u16(4, done.image.get_width())
+	payload.encode_u16(6, done.image.get_height())
+	payload.append_array(done.bytes)
 	_send(KIND_FRAME, payload)
+
+
+## Applies a finished test PNG encode: frames become PNG when it took at most the frame interval.
+func _finish_lossless_test(now: float) -> void:
+	if _lossless_test == null or not WorkerThreadPool.is_task_completed(_lossless_test_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_lossless_test_task)
+	var done := _lossless_test
+	_lossless_test = null
+	if _stream_fps <= 0.0 or not _stream_lossless:
+		return
+	if not done.bytes.is_empty() and done.usec <= USEC_PER_SECOND / _stream_fps:
+		_lossless_frames = true
+	else:
+		_schedule_lossless_test(now)
+
+
+func _schedule_lossless_test(now: float) -> void:
+	_lossless_test_at = now + _lossless_test_delay
+	_lossless_test_delay = minf(_lossless_test_delay * 2.0, LOSSLESS_TEST_MAX_DELAY)
+
+
+## Waits for the encodings in progress; every WorkerThreadPool task must be waited for.
+func _wait_for_encodings() -> void:
+	if _encoding != null:
+		WorkerThreadPool.wait_for_task_completion(_encoding_task)
+		_encoding = null
+	if _lossless_test != null:
+		WorkerThreadPool.wait_for_task_completion(_lossless_test_task)
+		_lossless_test = null
 
 
 func _eval(id, message: Dictionary) -> void:

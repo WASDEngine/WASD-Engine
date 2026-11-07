@@ -50,7 +50,7 @@ describe('HarnessDecoder', () => {
     const rest = decode(decoder, bytes.subarray(bytes.length - 3))
     expect(rest).toHaveLength(1)
     expect(rest[0]).toMatchObject({ kind: 'frame', frame: { seq: 10 } })
-    expect(rest[0]?.kind === 'frame' && rest[0].frame.jpeg.toString('latin1')).toBe('jpg')
+    expect(rest[0]?.kind === 'frame' && rest[0].frame.image.toString('latin1')).toBe('jpg')
   })
 
   it('reassembles a message split inside its length prefix and byte by byte', () => {

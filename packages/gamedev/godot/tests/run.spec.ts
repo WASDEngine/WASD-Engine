@@ -384,7 +384,7 @@ posix('frames', () => {
     first()
     second()
     await until(async () => (await fakeRequests(project)).filter(request => request.type === 'stream').length === 2)
-    expect((await fakeRequests(project)).filter(request => request.type === 'stream')).toMatchObject([{ fps: 50, quality: 0.5, maxWidth: 320 }, { fps: 0 }])
+    expect((await fakeRequests(project)).filter(request => request.type === 'stream')).toEqual([{ type: 'stream', id: expect.any(Number) as number, fps: 50, quality: 0.5, maxWidth: 320, lossless: true }, { type: 'stream', id: expect.any(Number) as number, fps: 0 }])
     expect(frames[0]).toMatchObject({ seq: 1, width: 320, height: 360 })
   })
 

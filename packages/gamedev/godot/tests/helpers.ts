@@ -132,7 +132,7 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
     stopGraceMs: 1000,
     outputBytes: 64 * 1024,
     maxLogEntries: 100,
-    stream: { fps: 50, quality: 0.5, maxWidth: 320 },
+    stream: { fps: 50, quality: 0.5, maxWidth: 320, lossless: true },
     ...overrides,
   }
 }

@@ -140,9 +140,9 @@ LibGodot 运行以 `godot_runner --libgodot <library> --parent-pid <Host process
 
 ```text
 message   u32 LE length N (1 to 64 MiB), then N bytes: u8 kind, payload
-kind 1    UTF-8 JSON object                                     both directions
-kind 2    u32 LE seq, u16 LE width, u16 LE height, JPEG bytes   harness to Host: a streamed frame
-kind 3    u32 LE request id, PNG or JPEG bytes                  harness to Host: a screenshot image
+kind 1    UTF-8 JSON object                                            both directions
+kind 2    u32 LE seq, u16 LE width, u16 LE height, PNG or JPEG bytes   harness to Host: a streamed frame
+kind 3    u32 LE request id, PNG or JPEG bytes                         harness to Host: a screenshot image
 ```
 
 - harness 连接 `127.0.0.1` 上由 `--wasd-port` 指定的端口，并首先发送 `hello`。在连接出示本次运行的令牌之前，`ctx.godot` 在该连接上只接受至多 64 KiB 的消息；收到 `token` 经恒定时间比较相符的 `hello` 以外的任何内容，都会销毁该连接；它按读取每条消息时生效的上限衡量该消息，因此同一次读取中 `hello` 之后的消息可以使用 64 MiB 的上限。`protocol` 不同的 `hello` 会使启动失败。
@@ -162,7 +162,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
-| `stream` | `fps`（0 表示停止；至多 60）、`quality`（0.1 到 1）、`maxWidth`（64 到 4,096） | `fps`、`quality`、`maxWidth` | `requestTimeoutMs` |
+| `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（PNG 编码跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -238,12 +238,13 @@ WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<le
 `GET /api/godot.frames?session=<SessionId>&run=<runId>` 以流的形式发送一次运行的帧。存在 Connection 服务时，`ctx.godot` 把它注册为精确的 `ctx.connection.fetch` 路由，Connection 对非所有者的 Peer 回答 403。缺少 `session` 或 `run`，或其为空时，该路由回答 400；除非该运行是 Session 的当前运行且尚未结束，否则回答 404；其余情况以 `application/octet-stream` 回答 200。每个回答都带有 `Cache-Control: no-store, no-transform` 与 `X-Content-Type-Options: nosniff`。响应体是一串记录：
 
 ```text
-record    u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE seq, JPEG bytes
+record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or JPEG bytes
 ```
 
 记录头把长度放在最前、序号放在最后，与 harness 的 kind 2 载荷不同。
 
-- 至少有一个帧响应处于打开状态时，运行会请求 harness 以 `streamFps`、`streamQuality` 与 `streamMaxWidth` 推送帧；最后一个响应关闭时，运行发送 `fps` 为 0 的 `stream`。
+- 至少有一个帧响应处于打开状态时，运行会请求 harness 以 `streamFps`、`streamQuality`、`streamMaxWidth` 与 `streamLossless` 推送帧；最后一个响应关闭时，运行发送 `fps` 为 0 的 `stream`。
+- harness 在工作线程上编码每一帧：`lossless` 开启且编码一帧 PNG 最多用 1/`fps` 秒时编码为 PNG 文件，否则编码为质量为 `quality` 的 JPEG 文件。[包 README](../../packages/gamedev/godot/README.zh.md#remote-and-frames) 说明推流何时在两者之间切换。
 - 响应体只在读取方请求时才产生记录：读取方取走上一条记录之前到达的帧会替换它，因此读取较慢的一方总能收到最新的帧。
 - 运行结束或请求被中止时，响应体结束。
 
@@ -264,7 +265,7 @@ record    u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE seq, JPEG byte
 
 - **follow 流。** `godot.follow` 跟随一个 Session id，不需要存活的 Agent。`ctx.godot` 首先发送 `snapshot`：该 Session 当前或最近一次运行的视图（Session 没有存活的 Agent 或没有运行时为 null）、运行时视图、该运行最后 200 条日志条目，以及游标。随后它发送合并后的变化：带最新视图的 `run`，以及 Session 的 Agent 结束时的 `run: null`；带流游标之后至多最新 200 条条目的 `logs`；以及带最新运行时视图的 `runtime`。之后的 Agent 启动的运行会出现在同一个流中，流在其信号中止或插件卸载时结束。浏览器至多保留当前运行的 500 条条目；`run` 项指向新的运行时，丢弃其他运行的条目；已持有的条目会被跳过。连接断开后，Gateway 的逻辑流会重新打开 follow 流，并从新的快照开始。流再次结束或失败后，若它已送达快照，浏览器立即重新跟随，否则在 1 s 后重新跟随，延迟逐次加倍，至多 30 s，用户按下「重试」时则立即重新跟随；在快照到达之前，界面显示重新连接提示。
 - **打开标签页。** 对于右侧 Sidebar 已挂载的 Session，由 agent 启动（`startedBy: 'agent'`）且尚未结束的运行，会按运行 id 打开一次 Game 标签页；只要客户端插件保持加载，即使该 Session 的 scope 被释放后又重新保留，也是如此。
-- **帧。** 读取方在字节到达时解析记录，并把声明零字节、宽度或高度为零，或超过 32 MiB 的记录视为损坏。响应失败、被拒绝、损坏或结束后，它在 250 ms 后重新打开；尝试一直没有交付记录时，延迟逐次加倍，至多 4 s。同一时间只用 `createImageBitmap` 解码一张 JPEG，较新的记录会替换正在等待的记录，最新解码的帧在下一个动画帧绘制到保持帧宽高比的 canvas 上。
+- **帧。** 读取方在字节到达时解析记录，并把声明零字节、宽度或高度为零，或超过 32 MiB 的记录视为损坏。响应失败、被拒绝、损坏或结束后，它在 250 ms 后重新打开；尝试一直没有交付记录时，延迟逐次加倍，至多 4 s。同一时间只用 `createImageBitmap` 解码一张图像：以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码；较新的记录会替换正在等待的记录，最新解码的帧在下一个动画帧绘制到保持帧宽高比的 canvas 上。
 - **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件；鼠标位于 canvas 上方时，发送鼠标事件。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
 - **操作。** 「运行」以最近一次运行的项目调用 `godot.run`；首次运行之前不带项目，由 `ctx.godot` 查找最近的项目。运行进行中时代替「运行」显示的「重新运行」还会传入该运行 `launch` 中的场景与窗口尺寸。「停止」、「暂停」、「继续」、「前进一帧」与「安装 Godot」（运行时缺失或失败时显示）调用对应的方法。被拒绝的操作会显示其 Remote 错误码对应的文案，包括 `session/writer-held`。
 

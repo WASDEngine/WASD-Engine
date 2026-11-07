@@ -1,14 +1,14 @@
 /**
  * Frame view of a running game: the record parser of the Host's
  * `api/godot.frames` response body, a reader that reconnects while its owner
- * keeps it open, and a latest-wins presenter that decodes JPEG records and
- * draws the newest one on the next repaint.
+ * keeps it open, and a latest-wins presenter that decodes PNG and JPEG records
+ * and draws the newest one on the next repaint.
  */
 
-/** Bytes of one record header: u32 LE JPEG length, u16 LE width, u16 LE height, u32 LE sequence number. */
+/** Bytes of one record header: u32 LE image length, u16 LE width, u16 LE height, u32 LE sequence number. */
 export const FRAME_HEADER_BYTES = 12
 
-/** Largest JPEG one record may announce; a larger length means the stream is corrupt. */
+/** Largest image one record may announce; a larger length means the stream is corrupt. */
 export const MAX_FRAME_BYTES = 32 * 1024 * 1024
 
 /** Delay before the first reconnect after a frame response fails or ends. */
@@ -21,12 +21,12 @@ export const RECONNECT_MAX_MS = 4000
 export interface FrameRecord {
   /** Harness frame sequence number. */
   readonly seq: number
-  /** JPEG width in pixels. */
+  /** Image width in pixels. */
   readonly width: number
-  /** JPEG height in pixels. */
+  /** Image height in pixels. */
   readonly height: number
-  /** Encoded JPEG bytes. */
-  readonly jpeg: Uint8Array<ArrayBuffer>
+  /** Bytes of a PNG or JPEG file. */
+  readonly image: Uint8Array<ArrayBuffer>
 }
 
 /** The frame response carried bytes that do not form a record, or the Host refused the request. */
@@ -54,7 +54,7 @@ export class FrameRecordParser {
    * Append one body chunk.
    * @param chunk - the next bytes of the response body.
    * @returns the records this chunk completed, in stream order.
-   * @throws {FrameStreamError} when a header announces an empty image or an oversized JPEG.
+   * @throws {FrameStreamError} when a header announces an empty or oversized image.
    */
   push(chunk: Uint8Array<ArrayBuffer>): FrameRecord[] {
     if (chunk.byteLength > 0) {
@@ -69,7 +69,7 @@ export class FrameRecordParser {
       }
       const header = this.header
       if (this.buffered < header.length) return records
-      records.push({ seq: header.seq, width: header.width, height: header.height, jpeg: this.take(header.length) })
+      records.push({ seq: header.seq, width: header.width, height: header.height, image: this.take(header.length) })
       this.header = undefined
     }
   }
@@ -256,7 +256,7 @@ export class FramePresenter {
       this.cancelPaint ??= this.options.schedule(() => { this.paint() })
       this.pump()
     }, (undecodable: unknown) => {
-      void undecodable // A corrupt JPEG is skipped; the next record replaces it.
+      void undecodable // A corrupt image is skipped; the next record replaces it.
       this.decoding = false
       this.pump()
     })
@@ -272,13 +272,16 @@ export class FramePresenter {
   }
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
 /**
- * Decode a record's JPEG bytes.
+ * Decode a record's PNG or JPEG image; the PNG file signature selects `image/png`, and anything else is read as `image/jpeg`.
  * @param record - the record to decode.
  * @returns the decoded bitmap.
  */
-export function decodeJpeg(record: FrameRecord): Promise<ImageBitmap> {
-  return createImageBitmap(new Blob([record.jpeg], { type: 'image/jpeg' }))
+export function decodeFrame(record: FrameRecord): Promise<ImageBitmap> {
+  const png = PNG_SIGNATURE.every((byte, index) => record.image[index] === byte)
+  return createImageBitmap(new Blob([record.image], { type: png ? 'image/png' : 'image/jpeg' }))
 }
 
 /**

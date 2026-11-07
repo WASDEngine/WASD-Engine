@@ -2,9 +2,9 @@
  * Framing and message validation for the loopback connection between the Host and `runtime/wasd_harness.gd`.
  *
  * Every message, in both directions, is a 4-byte little-endian length N followed by N bytes: a 1-byte kind and
- * its payload. Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed JPEG frame: u32 sequence,
- * u16 width, u16 height, JPEG bytes. Kind 3 (harness to Host) answers a screenshot request: u32 request id, then
- * the image bytes. The constants match the harness script; changing one requires changing both.
+ * its payload. Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16
+ * width, u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
+ * u32 request id, then the image bytes. The constants match the harness script; changing one requires changing both.
  * @module @deepseek-ai/dsh-godot/src/protocol
  */
 import { Buffer } from 'node:buffer'
@@ -100,12 +100,12 @@ export type HarnessJsonMessage = z.infer<typeof HarnessJson>
 export interface HarnessFrame {
   /** Harness frame sequence number, increasing within one run. */
   readonly seq: number
-  /** JPEG width in pixels. */
+  /** Image width in pixels. */
   readonly width: number
-  /** JPEG height in pixels. */
+  /** Image height in pixels. */
   readonly height: number
-  /** Encoded JPEG bytes. */
-  readonly jpeg: Buffer
+  /** Bytes of a PNG or JPEG file. */
+  readonly image: Buffer
 }
 
 /** One decoded harness message. */
@@ -156,7 +156,7 @@ function decodeBody(body: Buffer): HarnessMessage {
           seq: payload.readUInt32LE(0),
           width: payload.readUInt16LE(4),
           height: payload.readUInt16LE(6),
-          jpeg: payload.subarray(FRAME_HEADER_BYTES),
+          image: payload.subarray(FRAME_HEADER_BYTES),
         },
       }
     case KIND_IMAGE:

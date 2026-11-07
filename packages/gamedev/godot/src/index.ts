@@ -60,8 +60,13 @@ export interface Config {
   embedded: boolean
   /** Frames per second streamed to the Game tab. */
   streamFps: number
-  /** JPEG quality of streamed frames, 0.1 to 1. */
+  /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
   streamQuality: number
+  /**
+   * Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
+   * only JPEG frames.
+   */
+  streamLossless: boolean
   /** Largest streamed frame width in pixels. */
   streamMaxWidth: number
   /** Import the project's assets before each run. */
@@ -153,7 +158,8 @@ export default class GodotController extends TypertRemoteService {
     godotExecutable: z.string().default(''),
     embedded: z.boolean().default(true),
     streamFps: z.number().min(1).max(60).default(30),
-    streamQuality: z.number().min(0.1).max(1).default(0.7),
+    streamQuality: z.number().min(0.1).max(1).default(0.9),
+    streamLossless: z.boolean().default(true),
     streamMaxWidth: z.number().step(1).min(64).max(4096).default(1280),
     importBeforeRun: z.boolean().default(true),
     importTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(180_000),
@@ -392,7 +398,7 @@ export default class GodotController extends TypertRemoteService {
       stopGraceMs: config.stopGraceMs,
       outputBytes: config.processOutputBytes,
       maxLogEntries: config.maxLogEntries,
-      stream: { fps: config.streamFps, quality: config.streamQuality, maxWidth: config.streamMaxWidth },
+      stream: { fps: config.streamFps, quality: config.streamQuality, maxWidth: config.streamMaxWidth, lossless: config.streamLossless },
     }, {
       subprocess: this.ctx.subprocess,
       sequence: this.sequence,

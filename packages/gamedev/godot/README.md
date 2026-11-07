@@ -73,7 +73,8 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `godotExecutable` | `''` | Absolute Godot editor executable, used when no LibGodot runtime resolves; empty searches `PATH` and, on macOS, `/Applications` |
 | `embedded` | `true` | Render LibGodot runs on macOS without a window |
 | `streamFps` | `30` | Frames per second streamed to the Game tab, 1 to 60 |
-| `streamQuality` | `0.7` | JPEG quality of streamed frames, 0.1 to 1 |
+| `streamQuality` | `0.9` | JPEG quality of streamed JPEG frames, 0.1 to 1 |
+| `streamLossless` | `true` | Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams only JPEG frames |
 | `streamMaxWidth` | `1280` | Largest streamed frame width in pixels, 64 to 4096 |
 | `importBeforeRun` | `true` | Import the project's assets before each run |
 | `importTimeoutMs` | `180000` | Deadline of the import step and of one `godot_check` |
@@ -221,13 +222,13 @@ The game view reads `GET /api/godot.frames?session=<SessionId>&run=<runId>`, an 
 
 | Offset | Bytes | Field |
 |---|---|---|
-| 0 | 4 | JPEG length `N`, unsigned little-endian |
+| 0 | 4 | Image length `N`, unsigned little-endian |
 | 4 | 2 | Frame width in pixels, unsigned little-endian |
 | 6 | 2 | Frame height in pixels, unsigned little-endian |
 | 8 | 4 | Frame sequence number within the run, unsigned little-endian |
-| 12 | `N` | JPEG bytes |
+| 12 | `N` | Bytes of a PNG or JPEG file |
 
-The harness streams frames only while at least one frame response is open, at `streamFps` frames per second and JPEG quality `streamQuality`, scaled down to at most `streamMaxWidth` pixels wide. Frames that arrive while the reader has not taken the previous record replace one another, so a slow reader receives the newest frame. The Game tab reopens a frame response that fails or ends after 250 ms, doubling the delay up to 4 s while attempts deliver no frame.
+The harness streams frames only while at least one frame response is open, at `streamFps` frames per second, scaled down to at most `streamMaxWidth` pixels wide, and encodes each frame on a worker thread, so encoding does not slow the game. Frames are JPEG files at quality `streamQuality`. With `streamLossless`, frames are lossless PNG files while encoding one takes at most a frame interval, 1/`streamFps` seconds: each stream starts with JPEG frames and switches to PNG once a test encode of a frame keeps up, which simple 2D scenes and pixel art usually do, and returns to JPEG frames when a PNG frame takes longer, as most 3D scenes do. After a slow test or PNG frame, the next test follows after 1 s, doubling up to 8 s. Godot's JPEG encoder stores color at half resolution at every quality, so PNG frames keep the sharp colored edges of text and pixel art that JPEG frames blur. Frames that arrive while the reader has not taken the previous record replace one another, so a slow reader receives the newest frame. The Game tab reopens a frame response that fails or ends after 250 ms, doubling the delay up to 4 s while attempts deliver no frame.
 
 <a id="data-directory"></a>
 ### Files under the data directory
@@ -257,7 +258,7 @@ The package has a Host face and a Client face. The Host face is the `godot` serv
 
 A run owns its import process, its loopback listener, its game process, and its timers, and releases all of them when it ends. The [harness protocol](../../../docs/subsystems/gamedev.md#harness-protocol) defines the messages that the run and the harness exchange: the token handshake, requests and their answers, status, logs, frames, and screenshot images.
 
-The Client face mounts the generated `godot` Remote first and the UI after it, and withdraws the UI before the Remote. One follow source per Session folds the follow stream into the tab's state while anything reads it. The game view reads the frame route with `fetch`, decodes the newest JPEG record with `createImageBitmap`, and draws it on the next repaint.
+The Client face mounts the generated `godot` Remote first and the UI after it, and withdraws the UI before the Remote. One follow source per Session folds the follow stream into the tab's state while anything reads it. The game view reads the frame route with `fetch`, decodes the newest record with `createImageBitmap` as a PNG when the image starts with the PNG file signature and as a JPEG otherwise, and draws it on the next repaint.
 
 | File | Role |
 |---|---|
@@ -380,6 +381,8 @@ These limits describe current gaps of the Godot runs, the Game tab, and the runt
 - **Three platforms** — the release workflow builds macOS arm64, Linux x64, and Windows x64. On another platform, such as an Intel Mac, the install fails because the manifest has no build for it, and games run only through a local LibGodot build or an installed editor.
 - **A window outside macOS** — only LibGodot on macOS runs a game without a window. On Linux and Windows, and with an editor executable on every platform, each run, including each agent run, opens a game window on the Host's desktop.
 - **No gamepads in the Game tab** — the tab forwards keyboard and mouse input only, so a gamepad connected to the browser's computer does not reach the game; the agent can send joypad button and axis events with `godot_input`.
+- **JPEG frames blur colored edges** — a scene that streams JPEG frames, because encoding a PNG frame takes longer than 1/`streamFps` seconds or `streamLossless` is off, shows thin saturated details such as colored text softer in the Game tab than in the game: Godot's JPEG encoder stores color at half resolution at every quality.
+- **Frames at the game window's pixel size** — the Game tab fits the window's pixels, at most `streamMaxWidth` wide, into the tab. On a high-density display, a tab that covers more screen pixels than the window has enlarges the frame, which looks softer than a game window that renders at the display's density.
 - **Audio only on the Host** — the Game tab streams frames without sound. Game audio plays through the Host machine's audio output, so a browser on another computer hears nothing, and agent runs are muted by default.
 - **LiveShare viewers cannot see the game** — LiveShare classifies every `godot` method as owner-only and excludes the namespace from shares, and the frame route answers 403 to non-owner Peers, so a viewer can neither watch nor play.
 - **One game per Session** — **Play** in the Game tab and `godot_run` replace each other's run, and the Host runs at most `maxRuns` games across all Sessions.

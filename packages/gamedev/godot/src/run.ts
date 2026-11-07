@@ -55,6 +55,8 @@ export interface StreamSettings {
   readonly quality: number
   /** Largest frame width; wider frames are scaled down. */
   readonly maxWidth: number
+  /** Send PNG frames while PNG encoding keeps up with `fps`, and JPEG frames otherwise. */
+  readonly lossless: boolean
 }
 
 /** Fully resolved launch parameters of one run. */
@@ -965,7 +967,8 @@ export class GodotRun {
   }
 
   private setStreaming(on: boolean): void {
-    const params = on ? { fps: this.spec.stream.fps, quality: this.spec.stream.quality, maxWidth: this.spec.stream.maxWidth } : { fps: 0 }
+    const { fps, quality, maxWidth, lossless } = this.spec.stream
+    const params = on ? { fps, quality, maxWidth, lossless } : { fps: 0 }
     this.send('stream', params, { signal: this.lifetime.signal, bounded: true }).catch((error: unknown) => {
       // A closing connection or ending run also rejects the request; only a refusal or timeout is news.
       if (error instanceof GodotRequestError) this.deps.warn(`Godot frame streaming request failed: ${error.message}`)

@@ -12,7 +12,7 @@ import type {
   GodotControlRequest, GodotInputEvent, GodotLogEntry, GodotRunPhase, GodotRunRequest, GodotRunView, GodotRuntimeView,
 } from '../types.ts'
 import type { GameFailure } from './actions.ts'
-import { decodeJpeg, drawFrame, FramePresenter, nextFrame, readFrames } from './frames.ts'
+import { decodeFrame, drawFrame, FramePresenter, nextFrame, readFrames } from './frames.ts'
 import { GameControllerIcon } from './icon.tsx'
 import { bindGameInput, MOUSE_MODE_CAPTURED, type GameInputTarget, type PixelSize } from './input.ts'
 import type { GodotUiKey, NS } from './locales.ts'
@@ -348,7 +348,7 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
     const node = canvas.current!
     const lifetime = new AbortController()
     const presenter = new FramePresenter({
-      decode: decodeJpeg,
+      decode: decodeFrame,
       schedule: nextFrame,
       draw: (bitmap) => {
         drawFrame(node, bitmap)

@@ -1,8 +1,9 @@
 /**
  * The Godot tools against the real LibGodot runner: import, windowless run, screenshot, input, logs with a
- * script error, scene inspection, frame-exact steps, a step that the Game tab ends, frames, input and frames while
- * game time stands still, a bounded game-time wait, a cancelled input sequence, a queued input sequence that its
- * real-time limit ends, a static check that runs no autoload, and a letterboxed stretch mode.
+ * script error, scene inspection, frame-exact steps, a step that the Game tab ends, lossless PNG frames of a simple
+ * scene, input and frames while game time stands still, a bounded game-time wait, a cancelled input sequence, a
+ * queued input sequence that its real-time limit ends, a static check that runs no autoload, a letterboxed stretch
+ * mode, and JPEG frames of a scene that PNG encoding cannot keep up with.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -81,6 +82,26 @@ const STRETCH_PROJECT = {
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
+// A 1280x720 window of per-pixel value noise: a PNG encode of one frame takes far longer than the 33 ms between
+// frames at the default 30 frames per second, so the stream keeps sending JPEG frames.
+const NOISE_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="NoiseTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'func _ready():', '\tvar noise := FastNoiseLite.new()', '\tnoise.noise_type = FastNoiseLite.TYPE_VALUE', '\tnoise.frequency = 1.0',
+    '\tvar rect := TextureRect.new()', '\trect.texture = ImageTexture.create_from_image(noise.get_image(1280, 720))', '\tadd_child(rect)', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** The file format of a frame record's image. */
+function recordFormat(record: Buffer): 'png' | 'jpeg' | 'other' {
+  const image = record.subarray(12)
+  if (image.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) return 'png'
+  return image[0] === 0xff && image[1] === 0xd8 ? 'jpeg' : 'other'
+}
+
 /** Pixels of a decoded PNG. */
 interface DecodedPng {
   readonly width: number
@@ -126,8 +147,10 @@ function decodePng(png: Buffer): DecodedPng {
   return { width, height, pixel: (x, y) => [...pixels.subarray((y * width + x) * channels, (y * width + x) * channels + 3)] }
 }
 
-/** Read up to `count` frame records from a run's frame route, for at most `timeoutMs`. */
-async function readFrames(route: ConnectionFetchRoute, runId: string, count: number, timeoutMs: number): Promise<Buffer[]> {
+/** Read frame records from a run's frame route until `enough` holds for the records read, for at most `timeoutMs`. */
+async function readFrames(
+  route: ConnectionFetchRoute, runId: string, enough: (records: readonly Buffer[]) => boolean, timeoutMs: number,
+): Promise<Buffer[]> {
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, timeoutMs)
   const records: Buffer[] = []
@@ -135,11 +158,11 @@ async function readFrames(route: ConnectionFetchRoute, runId: string, count: num
     const response = await route.fetch(new Request(`http://127.0.0.1/api/godot.frames?session=owner&run=${runId}`, { signal: controller.signal }))
     const reader = (response.body as ReadableStream<Uint8Array>).getReader()
     let buffered = Buffer.alloc(0)
-    while (records.length < count) {
+    while (!enough(records)) {
       const { value, done } = await reader.read()
       if (done) break
       buffered = Buffer.concat([buffered, value])
-      while (buffered.length >= 12 && buffered.length >= 12 + buffered.readUInt32LE(0)) {
+      while (buffered.length >= 12 && buffered.length >= 12 + buffered.readUInt32LE(0) && !enough(records)) {
         const length = 12 + buffered.readUInt32LE(0)
         records.push(buffered.subarray(0, length))
         buffered = buffered.subarray(length)
@@ -233,7 +256,7 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(await callTool(c, 'godot_eval', { expression: 'tree.paused' }))).toBe('bool: false')
   }, 60_000)
 
-  it('streams JPEG frames to the Game tab', async () => {
+  it('streams frames to the Game tab, lossless PNG ones that match the screenshot once PNG encoding keeps up', async () => {
     const controller = new AbortController()
     const response = await frameRoute().fetch(new Request(`http://127.0.0.1/api/godot.frames?session=owner&run=${runId}`, { signal: controller.signal }))
     expect(response.status).toBe(200)
@@ -241,10 +264,27 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const record = Buffer.from((await reader.read()).value as Uint8Array)
     expect(record.readUInt32LE(0)).toBe(record.length - 12)
     expect([record.readUInt16LE(4), record.readUInt16LE(6)]).toEqual([640, 360])
-    expect(record.subarray(12, 14)).toEqual(Buffer.from([0xff, 0xd8]))
+    expect(recordFormat(record)).toBe('jpeg')
     controller.abort()
     expect(await reader.read()).toMatchObject({ done: true })
-  }, 30_000)
+
+    const shot = await callTool(c, 'godot_screenshot')
+    expect(shot.isError, text(shot)).toBe(false)
+    const screenshot = decodePng(Buffer.from(c.saved.at(-1)?.data as Uint8Array))
+    const records = await readFrames(frameRoute(), runId, read => read.some(entry => recordFormat(entry) === 'png'), 10_000)
+    expect(records.map(recordFormat).filter(format => format === 'other')).toEqual([])
+    const png = records.find(entry => recordFormat(entry) === 'png')
+    expect(png, `formats ${records.map(recordFormat).join(', ')}`).toBeDefined()
+    const frame = decodePng((png as Buffer).subarray(12))
+    expect([frame.width, frame.height]).toEqual([screenshot.width, screenshot.height])
+    const differing: number[][] = []
+    for (let y = 0; y < frame.height; y += 1) {
+      for (let x = 0; x < frame.width; x += 1) {
+        if (frame.pixel(x, y).join() !== screenshot.pixel(x, y).join()) differing.push([x, y])
+      }
+    }
+    expect(differing.slice(0, 5)).toEqual([])
+  }, 60_000)
 
   it('runs input waits, holds, and frames in real time while game time stands still', async () => {
     const toggleTimeScale = [{ kind: 'key', key: 'T', pressed: true }, { kind: 'key', key: 'T', pressed: false }]
@@ -256,7 +296,7 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const logs = text(await callTool(c, 'godot_logs', { since: 0 }))
     expect(logs).toMatch(/time scale 0/u)
     expect(logs).toContain('W up')
-    expect(await readFrames(frameRoute(), runId, 3, 5000)).toHaveLength(3)
+    expect(await readFrames(frameRoute(), runId, read => read.length >= 3, 5000)).toHaveLength(3)
     await callTool(c, 'godot_input', { events: toggleTimeScale })
   }, 60_000)
 
@@ -328,6 +368,20 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const click = { kind: 'mouse_button', button: 'left', x: (red.left + red.right + 1) / 2, y: (red.top + red.bottom + 1) / 2 }
     await callTool(c, 'godot_input', { coordinate_space: 'window', events: [{ ...click, pressed: true }, { ...click, pressed: false }, { wait: 0.1 }] })
     expect(text(await callTool(c, 'godot_logs', { since: 0 }))).toContain('click hit=true')
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
+  it('keeps streaming JPEG frames of a scene whose PNG encoding cannot keep up with the frame rate', async () => {
+    const dir = join(c.dir.root, 'work', 'noise')
+    await mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(NOISE_PROJECT)) await writeFile(join(dir, name), content)
+    const started = await callTool(c, 'godot_run', { project: 'noise', width: 1280, height: 720 })
+    expect(started.isError, text(started)).toBe(false)
+    // Two seconds of frames span the test encode of the first frame and the next one a second later.
+    const records = await readFrames(frameRoute(), (started.value as { runId: string }).runId, read => read.length >= 60, 15_000)
+    expect(records).toHaveLength(60)
+    expect([records[0]?.readUInt16LE(4), records[0]?.readUInt16LE(6)]).toEqual([1280, 720])
+    expect(records.map(recordFormat).filter(format => format !== 'jpeg')).toEqual([])
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 })

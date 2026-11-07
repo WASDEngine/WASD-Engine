@@ -1724,8 +1724,13 @@ export interface Config {
   embedded: boolean
   /** Frames per second streamed to the Game tab. */
   streamFps: number
-  /** JPEG quality of streamed frames, 0.1 to 1. */
+  /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
   streamQuality: number
+  /**
+   * Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
+   * only JPEG frames.
+   */
+  streamLossless: boolean
   /** Largest streamed frame width in pixels. */
   streamMaxWidth: number
   /** Import the project's assets before each run. */

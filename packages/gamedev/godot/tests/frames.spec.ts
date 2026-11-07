@@ -29,20 +29,20 @@ class Source implements FrameSource {
 }
 
 function frame(seq: number): HarnessFrame {
-  return { seq, width: 64, height: 32, jpeg: Buffer.from(`jpeg-${seq}`) }
+  return { seq, width: 64, height: 32, image: Buffer.from(`image-${seq}`) }
 }
 
-function decode(record: Uint8Array): { length: number; width: number; height: number; seq: number; jpeg: string } {
+function decode(record: Uint8Array): { length: number; width: number; height: number; seq: number; image: string } {
   const bytes = Buffer.from(record)
   return {
     length: bytes.readUInt32LE(0), width: bytes.readUInt16LE(4), height: bytes.readUInt16LE(6), seq: bytes.readUInt32LE(8),
-    jpeg: bytes.subarray(FRAME_RECORD_HEADER_BYTES).toString('latin1'),
+    image: bytes.subarray(FRAME_RECORD_HEADER_BYTES).toString('latin1'),
   }
 }
 
 describe('frame records', () => {
-  it('encodes length, size, and sequence before the JPEG', () => {
-    expect(decode(encodeFrameRecord(frame(7)))).toEqual({ length: 6, width: 64, height: 32, seq: 7, jpeg: 'jpeg-7' })
+  it('encodes length, size, and sequence before the image', () => {
+    expect(decode(encodeFrameRecord(frame(7)))).toEqual({ length: 7, width: 64, height: 32, seq: 7, image: 'image-7' })
   })
 })
 
