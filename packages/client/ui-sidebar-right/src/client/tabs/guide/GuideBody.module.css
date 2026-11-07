@@ -87,6 +87,29 @@
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* WASD Engine: a tab type's glyph takes the purple of the keycap mark, and the
+   lighter purple in the dark theme, instead of the gray ink, and the strokes and
+   fills of fixed-palette artwork, such as the terminal's and the browser's blue,
+   follow it. The fixed Files capsule keeps its folder artwork, the placeholder
+   cube its own ink, and the More card, outside `.entryCell`, its gray. The
+   terminal's own capsule (ui-sidebar-terminal TerminalGuide.module.css) carries
+   the same rule. */
+.entryCell :not([data-sidebar-right-guide-entry='files']) > .entryIcon {
+  color: #7C4DFF;
+}
+
+:global(body[data-ds-dark-theme]) .entryCell :not([data-sidebar-right-guide-entry='files']) > .entryIcon {
+  color: #A585FF;
+}
+
+.entryCell :not([data-sidebar-right-guide-entry='files']) > .entryIcon [stroke]:not([stroke='none']) {
+  stroke: currentColor;
+}
+
+.entryCell :not([data-sidebar-right-guide-entry='files']) > .entryIcon [fill]:not([fill='none']) {
+  fill: currentColor;
+}
+
 /* The capsule's words in one column beside the glyph: the title, and the
    description while the guide shows one. */
 .entryText {

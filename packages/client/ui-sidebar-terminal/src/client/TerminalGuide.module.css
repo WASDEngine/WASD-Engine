@@ -10,3 +10,8 @@
 .trigger svg { width: 14px; height: 14px; color: var(--dsw-alias-label-tertiary); }
 .menu { display: flex; flex: none; pointer-events: auto; }
 .shortcut { position: relative; pointer-events: none; }
+/* WASD Engine: the glyph takes the keycap purple, lighter in the dark theme, instead of the artwork's blue, like the guide's other tab glyphs in ui-sidebar-right's GuideBody.module.css. */
+.icon { color: #7C4DFF; }
+:global(body[data-ds-dark-theme]) .icon { color: #A585FF; }
+.icon [stroke]:not([stroke='none']) { stroke: currentColor; }
+.icon [fill]:not([fill='none']) { fill: currentColor; }
