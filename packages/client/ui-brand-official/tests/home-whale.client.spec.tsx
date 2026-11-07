@@ -184,6 +184,21 @@ describe('official home pixel whale', () => {
     expect(s.canvas.width).toBe(780)
   })
 
+  // WASDEngine fork: the keycap scene covers the whole home, so the keycaps enter and leave at its edges.
+  it.each([600, 2400])('covers a %i px wide home with the scene', (width) => {
+    const s = scene()
+    s.width(width)
+    s.step(16)
+    s.click(); s.load(); s.step(1500)
+    s.step(5800); s.click(); s.step(7300)
+    const call = s.contexts[0]!.drawImage.mock.calls.at(-1)!
+    const [left, top, sceneWidth, sceneHeight] = [Number(call[1]), Number(call[2]), Number(call[3]), Number(call[4])]
+    expect(left).toBeLessThanOrEqual(0)
+    expect(top).toBeLessThanOrEqual(0)
+    expect(left + sceneWidth).toBeGreaterThanOrEqual(width)
+    expect(top + sceneHeight).toBeGreaterThanOrEqual(900)
+  })
+
   it('stops hidden work, expires elapsed animations, and clears when reduced motion is enabled', () => {
     const s = scene()
     s.click(); s.load(); s.step(100)

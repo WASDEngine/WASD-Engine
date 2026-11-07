@@ -130,10 +130,11 @@ export function attachPixelWhale(canvas: HTMLCanvasElement, options: WhaleArtwor
     canvas.height = Math.round(height * dpr)
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.fillStyle = getComputedStyle(canvas).color
-    sceneWidth = Math.min(Math.max(width * 0.94, 720), height * 1.6, 1120) * 1.12
+    // WASDEngine fork: the scene covers the canvas, so the home keycaps enter and leave at its edges.
+    sceneWidth = Math.max(width, height * ATLAS.width / ATLAS.height)
     const sceneHeight = sceneWidth * ATLAS.height / ATLAS.width
     left = (width - sceneWidth) / 2
-    top = height * 0.43 - sceneHeight / 2
+    top = (height - sceneHeight) / 2
     if (code !== undefined && sceneWidth > 0) code.resize(canvas, sceneWidth)
     resume()
   }
