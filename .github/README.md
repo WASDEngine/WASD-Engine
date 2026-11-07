@@ -60,4 +60,4 @@ The bundled skills load in the Game developer preset. A skill directory with the
 
 ## License
 
-WASDEngine is distributed under the MIT License in [LICENSE](../LICENSE), which keeps the DeepSeek Harness copyright notice. Third-party dependencies and their licenses are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+WASDEngine is distributed under the GNU General Public License, version 3 only (`GPL-3.0-only`), in [LICENSE](../LICENSE). It is a fork of DeepSeek Harness, whose MIT License and copyright notice the fork keeps in [wasdengine/deepseek-harness-MIT.txt](../wasdengine/deepseek-harness-MIT.txt). Third-party dependencies and their licenses are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).

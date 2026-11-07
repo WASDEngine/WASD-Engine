@@ -72,6 +72,6 @@ For agents, follow [AGENTS.md](AGENTS.md).
 
 ## License
 
-[MIT](LICENSE)
+WASD Engine Harness, this fork of DeepSeek Harness, is licensed under [GPL-3.0-only](LICENSE). DeepSeek Harness is licensed under the [MIT License](wasdengine/deepseek-harness-MIT.txt), whose copyright notice the fork keeps.
 
 Third-party dependencies and their licenses are disclosed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
