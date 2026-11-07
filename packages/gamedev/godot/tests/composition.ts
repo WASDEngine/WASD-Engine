@@ -19,7 +19,9 @@ import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import { vi } from 'vitest'
 import GodotController, { type Config } from '../src/index.ts'
+import { GodotRuntimeManager } from '../src/runtime.ts'
 import { fakeAgent, type FakeAgent } from './agents.ts'
 import { scratch, writeProject, type FakeGodotConfig, type Scratch } from './helpers.ts'
 
@@ -70,12 +72,15 @@ export interface CompositionOptions {
 }
 
 /**
- * Compose the services and the Godot plugin around a fake Godot executable.
+ * Compose the services and the Godot plugin around a fake Godot executable and an empty shipped-runtime folder.
  * @param options - fake behavior, plugin config, and optional services.
  * @returns the composition; call cleanup in teardown.
  */
 export async function compose(options: CompositionOptions = {}): Promise<Composition> {
   const dir = await scratch('compose')
+  // A source checkout may hold a runtime in the package's `libgodot` folder, which the plugin prefers to
+  // `godotExecutable`; an empty folder in the scratch directory keeps every run on the fake executable.
+  const shipped = vi.spyOn(GodotRuntimeManager.prototype, 'bundledDirectory').mockReturnValue(join(dir.root, 'bundled'))
   const project = await writeProject(join(dir.root, 'work', 'game'), options.game ?? { game: {} }, options.unnamed === true ? {} : undefined)
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, join(dir.root, 'work'))
@@ -145,6 +150,7 @@ export async function compose(options: CompositionOptions = {}): Promise<Composi
     unload: () => fiber.dispose(),
     async cleanup() {
       await ctx.fiber.dispose()
+      shipped.mockRestore()
       await dir.cleanup()
     },
   }

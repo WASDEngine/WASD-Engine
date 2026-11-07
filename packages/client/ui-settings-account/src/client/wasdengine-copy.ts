@@ -23,7 +23,7 @@ const UPSTREAM_NAME = /DeepSeek Harness|\bHarness\b|DeepSeek(?!-V\d)/gu
 export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   en: {
     loginDescription: 'Build games with an agent at the keys.',
-    onboardingIntroduction: 'WASD Engine works in a local project folder and uses tools to read and write files on your computer. It can help you design and prototype games, write and debug game code, set up Godot and Phaser projects, draft design documents, and more.',
+    onboardingIntroduction: 'WASD Engine works in a local project folder and uses tools to read and write files on your computer. It can help you create game logic, 2D and 3D game assets, music, SFX, and more.',
     onboardingOffice: 'Game design & writing',
     onboardingOfficeDescription: 'Write design docs, plan levels, draft story and dialogue, and more',
     onboardingDevelopment: 'Game programming',
@@ -31,7 +31,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   zh: {
     loginDescription: '与智能体并肩，打造你的游戏',
-    onboardingIntroduction: 'WASD Engine 以本地项目文件夹作为工作区，通过调用各种工具读写本机文件，帮你完成游戏策划与原型制作、编写和调试游戏代码、搭建 Godot 与 Phaser 项目、撰写设计文档等各种任务。',
+    onboardingIntroduction: 'WASD Engine 以本地项目文件夹作为工作区，通过调用各种工具读写本机文件，帮你制作游戏逻辑、2D 与 3D 游戏素材、音乐、音效等。',
     onboardingOffice: '游戏策划与写作',
     onboardingOfficeDescription: '撰写设计文档、规划关卡、编写剧情和对白等',
     onboardingDevelopment: '游戏开发',
@@ -39,7 +39,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   ja: {
     loginDescription: 'エージェントと一緒にゲームを作ろう。',
-    onboardingIntroduction: 'WASD Engine はローカルのプロジェクトフォルダーで動作し、ツールを使ってコンピューター上のファイルを読み書きします。ゲームの企画やプロトタイプ作成、ゲームコードの作成とデバッグ、Godot や Phaser のプロジェクト設定、設計ドキュメントの作成などを手伝います。',
+    onboardingIntroduction: 'WASD Engine はローカルのプロジェクトフォルダーで動作し、ツールを使ってコンピューター上のファイルを読み書きします。ゲームロジック、2D・3D のゲームアセット、音楽、効果音などの制作を手伝います。',
     onboardingOffice: 'ゲームデザインと執筆',
     onboardingOfficeDescription: '設計ドキュメントの作成、レベルの計画、ストーリーやセリフの執筆など',
     onboardingDevelopment: 'ゲームプログラミング',
@@ -47,7 +47,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   es: {
     loginDescription: 'Crea juegos con un agente a los mandos.',
-    onboardingIntroduction: 'WASD Engine trabaja en una carpeta de proyecto local y usa herramientas para leer y escribir archivos en tu equipo. Puede ayudarte a diseñar y prototipar juegos, escribir y depurar código de juego, configurar proyectos de Godot y Phaser, redactar documentos de diseño y más.',
+    onboardingIntroduction: 'WASD Engine trabaja en una carpeta de proyecto local y usa herramientas para leer y escribir archivos en tu equipo. Puede ayudarte a crear la lógica del juego, recursos de juego 2D y 3D, música, efectos de sonido y más.',
     onboardingOffice: 'Diseño de juegos y escritura',
     onboardingOfficeDescription: 'Escribe documentos de diseño, planifica niveles, redacta la historia y los diálogos, y más',
     onboardingDevelopment: 'Programación de juegos',
@@ -55,7 +55,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   fr: {
     loginDescription: 'Créez des jeux avec un agent aux commandes.',
-    onboardingIntroduction: 'WASD Engine travaille dans un dossier de projet local et utilise des outils pour lire et écrire des fichiers sur votre ordinateur. Il peut vous aider à concevoir et prototyper des jeux, écrire et déboguer du code de jeu, configurer des projets Godot et Phaser, rédiger des documents de conception, et plus encore.',
+    onboardingIntroduction: 'WASD Engine travaille dans un dossier de projet local et utilise des outils pour lire et écrire des fichiers sur votre ordinateur. Il peut vous aider à créer la logique de jeu, des ressources de jeu 2D et 3D, de la musique, des effets sonores, et plus encore.',
     onboardingOffice: 'Game design et écriture',
     onboardingOfficeDescription: "Rédigez des documents de conception, planifiez des niveaux, écrivez l'histoire et les dialogues, et plus encore",
     onboardingDevelopment: 'Programmation de jeux',
@@ -63,7 +63,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   de: {
     loginDescription: 'Spiele bauen, mit einem Agenten an den Tasten.',
-    onboardingIntroduction: 'WASD Engine arbeitet in einem lokalen Projektordner und nutzt Werkzeuge, um Dateien auf Ihrem Computer zu lesen und zu schreiben. Es hilft Ihnen, Spiele zu entwerfen und Prototypen zu bauen, Spielcode zu schreiben und zu debuggen, Godot- und Phaser-Projekte einzurichten, Designdokumente zu verfassen und mehr.',
+    onboardingIntroduction: 'WASD Engine arbeitet in einem lokalen Projektordner und nutzt Werkzeuge, um Dateien auf Ihrem Computer zu lesen und zu schreiben. Es hilft Ihnen bei Spiellogik, 2D- und 3D-Spielassets, Musik, Soundeffekten und mehr.',
     onboardingOffice: 'Spieldesign und Schreiben',
     onboardingOfficeDescription: 'Designdokumente schreiben, Level planen, Story und Dialoge entwerfen und mehr',
     onboardingDevelopment: 'Spieleprogrammierung',
@@ -71,7 +71,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   ru: {
     loginDescription: 'Создавайте игры вместе с агентом.',
-    onboardingIntroduction: 'WASD Engine работает в локальной папке проекта и с помощью инструментов читает и записывает файлы на вашем компьютере. Он поможет придумать и прототипировать игры, писать и отлаживать игровой код, настраивать проекты Godot и Phaser, составлять дизайн-документы и многое другое.',
+    onboardingIntroduction: 'WASD Engine работает в локальной папке проекта и с помощью инструментов читает и записывает файлы на вашем компьютере. Он поможет создать игровую логику, 2D- и 3D-ассеты для игр, музыку, звуковые эффекты и многое другое.',
     onboardingOffice: 'Геймдизайн и тексты',
     onboardingOfficeDescription: 'Пишите дизайн-документы, планируйте уровни, сочиняйте сюжет и диалоги и многое другое',
     onboardingDevelopment: 'Программирование игр',
@@ -79,7 +79,7 @@ export const WASDENGINE_ACCOUNT_COPY: Readonly<Record<string, Readonly<Record<st
   },
   pt: {
     loginDescription: 'Crie jogos com um agente no controle.',
-    onboardingIntroduction: 'O WASD Engine trabalha em uma pasta de projeto local e usa ferramentas para ler e gravar arquivos no seu computador. Ele pode ajudar você a projetar e prototipar jogos, escrever e depurar código de jogo, configurar projetos Godot e Phaser, redigir documentos de design e muito mais.',
+    onboardingIntroduction: 'O WASD Engine trabalha em uma pasta de projeto local e usa ferramentas para ler e gravar arquivos no seu computador. Ele pode ajudar você a criar a lógica do jogo, recursos de jogo 2D e 3D, música, efeitos sonoros e muito mais.',
     onboardingOffice: 'Design de jogos e escrita',
     onboardingOfficeDescription: 'Escreva documentos de design, planeje fases, crie a história e os diálogos e muito mais',
     onboardingDevelopment: 'Programação de jogos',
