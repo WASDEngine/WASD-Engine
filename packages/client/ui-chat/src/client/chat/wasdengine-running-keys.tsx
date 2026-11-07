@@ -1,11 +1,11 @@
 /**
  * WASDEngine running icon (fork-owned; `wasdengine/FORK.md` lists the fork changes): the four keycaps of the
- * WASD Engine mark in purple, pressed W, A, S, and D in turn, which `RunningStatus` shows instead of the whale tail.
- * Its stylesheet also turns the running status's text purple.
+ * WASD Engine mark in purple, pressed W, A, S, and D in turn, each with its top face white while it is down, which
+ * `RunningStatus` shows instead of the whale tail. Its stylesheet also turns the running status's text purple.
  */
 import css from './wasdengine-running-keys.module.css'
 
-type Tone = 'top' | 'side' | 'front' | 'ink'
+type Tone = 'top' | 'side' | 'front' | 'ink' | 'lit'
 
 /**
  * The parts of one keycap of the brand mark (`WASDENGINE_KEYCAP` in `ui-brand-official`) in its 225-unit frame,
@@ -27,6 +27,9 @@ const CAP: readonly (readonly [Tone, string])[] = [
   ['ink', 'M56.25 3.375H168.75A30.375 30.375 0 0 1 199.125 33.75V141.75A30.375 30.375 0 0 1 168.75 172.125H56.25A30.375 30.375 0 0 1 25.875 141.75V33.75A30.375 30.375 0 0 1 56.25 3.375ZM56.25 19.125A14.625 14.625 0 0 0 41.625 33.75V141.75A14.625 14.625 0 0 0 56.25 156.375H168.75A14.625 14.625 0 0 0 183.375 141.75V33.75A14.625 14.625 0 0 0 168.75 19.125Z'],
 ]
 
+/** The cap of a pressed key: its top face white, under the same ring. */
+const LIT_CAP: readonly (readonly [Tone, string])[] = CAP.map(([tone, d]) => [tone === 'top' ? 'lit' : tone, d])
+
 /** One keycap frame, including the outline that reaches 7.875 units beyond the 225-unit body. */
 const KEY_FRAME = '-7.875 -7.875 240.75 240.75'
 
@@ -43,7 +46,8 @@ function KeyParts({ parts }: { readonly parts: readonly (readonly [Tone, string]
 
 /**
  * Render the decorative running icon. Each key's cap is its own element, so the press is a transform animation
- * that the browser's compositor can run without repainting; reduced motion leaves the keys at rest.
+ * that the browser's compositor can run without repainting, and the white top of a pressed key is a copy of the cap
+ * whose opacity the compositor animates; reduced motion leaves the keys at rest.
  * @returns the four keycaps, hidden from assistive technology.
  */
 export function WasdengineRunningKeys() {
@@ -54,6 +58,9 @@ export function WasdengineRunningKeys() {
           <KeyParts parts={BASE} />
           <span className={css.cap}>
             <KeyParts parts={CAP} />
+            <span className={css.light}>
+              <KeyParts parts={LIT_CAP} />
+            </span>
           </span>
         </span>
       ))}
