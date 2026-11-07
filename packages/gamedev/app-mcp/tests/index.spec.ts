@@ -1,0 +1,47 @@
+/** The package's runtime exports: a library with no plugin protocol slots. */
+import { expect, it } from 'vitest'
+import * as AppMcp from '../src/index.ts'
+
+it('exports the library runtime and no plugin', () => {
+  expect(Object.keys(AppMcp).toSorted()).toEqual([
+    'AGENT_IMAGE_MAX_BYTES',
+    'AGENT_IMAGE_MAX_EDGE',
+    'AppMcpConfig',
+    'AppServerOptionFields',
+    'JsonLineWorker',
+    'TOOL_CALL_RESERVE_MS',
+    'WorkerError',
+    'WorkerReplyError',
+    'WorkerSupervisor',
+    'decodeServerOptions',
+    'defineAppTool',
+    'encodeServerOptions',
+    'executePythonTool',
+    'firstExecutable',
+    'formatBytes',
+    'materializePayload',
+    'newestFirst',
+    'nodeSetupHost',
+    'parseAppServerOptions',
+    'registerAppMcpPlugin',
+    'registerAppMcpServer',
+    'replyParser',
+    'runAppMcpServer',
+    'serveAppMcp',
+    'withSetupNotes',
+    'workerParams',
+  ])
+  expect('default' in AppMcp).toBe(false)
+  expect('apply' in AppMcp).toBe(false)
+  expect('Config' in AppMcp).toBe(false)
+})
+
+it('keeps 30 s of each tool call for a worker start and the result', () => {
+  expect(AppMcp.TOOL_CALL_RESERVE_MS).toBe(30_000)
+})
+
+it('sizes agent images to fit one image of a tool result', () => {
+  expect(AppMcp.AGENT_IMAGE_MAX_EDGE).toBe(1568)
+  expect(AppMcp.AGENT_IMAGE_MAX_BYTES).toBe(3 * 1024 * 1024)
+  expect(4 * Math.ceil(AppMcp.AGENT_IMAGE_MAX_BYTES / 3)).toBe(4 * 1024 * 1024)
+})

@@ -1,0 +1,112 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/app-mcp/README.md
+/:
+  en: b410ce0abe7de656
+  zh: 2ef9c161f939e9a4
+/deepseek-ai-dsh-app-mcp:
+  en: 9062a8c8df470dc5
+  zh: 7da1a45bc0e7db26
+/deepseek-ai-dsh-app-mcp/summary:
+  en: a0949820bfdf440f
+  zh: 9f65bb7582f9359a
+/deepseek-ai-dsh-app-mcp/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-app-mcp/use-this-package:
+  en: a17d212e505998ac
+  zh: c3773e6885294175
+/deepseek-ai-dsh-app-mcp/use-this-package/when-to-use-it:
+  en: b8a1528efac454f2
+  zh: e9498d29ec0244de
+/deepseek-ai-dsh-app-mcp/use-this-package/configure-the-plugin:
+  en: 8504c7f3a1b60185
+  zh: 46f77e50601c1a74
+/deepseek-ai-dsh-app-mcp/use-this-package/register-the-server:
+  en: a8b10ca441d7c382
+  zh: 9c2f6fea9c581a2a
+/deepseek-ai-dsh-app-mcp/use-this-package/run-the-server-process:
+  en: 05efeca29ca0e7fc
+  zh: 8f784eff72d77632
+/deepseek-ai-dsh-app-mcp/use-this-package/serve-the-tools:
+  en: 9249f8f037f346e2
+  zh: cab44a8922d80529
+/deepseek-ai-dsh-app-mcp/use-this-package/build-the-tools:
+  en: 27f046186b7c0e03
+  zh: 8550a458c559417f
+/deepseek-ai-dsh-app-mcp/use-this-package/find-the-application:
+  en: 5d7c432194c53e1b
+  zh: a7c6e6375cbc9a4c
+/deepseek-ai-dsh-app-mcp/use-this-package/run-the-worker:
+  en: 296105502c4644cf
+  zh: 3d42cc4232fdb457
+/deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
+  en: f09c7d225a248dc9
+  zh: 9a34c93ae9fdae9f
+/deepseek-ai-dsh-app-mcp/use-this-package/copy-shipped-files-to-real-paths:
+  en: 7705c4a62c5c447e
+  zh: d9b5973b0f71993f
+/deepseek-ai-dsh-app-mcp/understand-the-implementation:
+  en: d36ff23128fe2104
+  zh: e4512247ddb77d1d
+/deepseek-ai-dsh-app-mcp/further-exploration:
+  en: 85ecbc0d02201f9b
+  zh: f446fd63761ac5bd
+/deepseek-ai-dsh-app-mcp/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-app-mcp/model-experience/registered-server-tools-and-instructions:
+  en: 3fdbda2b780f952a
+  zh: 518894449a1caf1f
+/deepseek-ai-dsh-app-mcp/model-experience/registered-server-tools-and-instructions/what-the-model-sees:
+  en: 549f0e61d9323f1b
+  zh: 55e80b07f7461ef6
+/deepseek-ai-dsh-app-mcp/model-experience/registered-server-tools-and-instructions/token-effect:
+  en: 6c1b23153b61a919
+  zh: d9008a45c05d9eaf
+/deepseek-ai-dsh-app-mcp/model-experience/registered-server-tools-and-instructions/kv-cache-effect:
+  en: 4bc34ce88ec053f8
+  zh: a54a24e599a94ab8
+/deepseek-ai-dsh-app-mcp/model-experience/tool-result-text-and-images:
+  en: 7f02fc0a71cac8bd
+  zh: d91557c83a20b016
+/deepseek-ai-dsh-app-mcp/model-experience/tool-result-text-and-images/what-the-model-sees:
+  en: 96be76ce552158d7
+  zh: 6d8d8514aef094ea
+/deepseek-ai-dsh-app-mcp/model-experience/tool-result-text-and-images/token-effect:
+  en: 57db8437f2cf38bc
+  zh: 47fa3fda3c9191e7
+/deepseek-ai-dsh-app-mcp/model-experience/tool-result-text-and-images/kv-cache-effect:
+  en: 3dad052dc5c5b372
+  zh: 5223e0caf1351913
+/deepseek-ai-dsh-app-mcp/model-experience/the-execute-python-tool:
+  en: fbcb451c4db8051d
+  zh: eb26dff12c731558
+/deepseek-ai-dsh-app-mcp/model-experience/the-execute-python-tool/what-the-model-sees:
+  en: b75b545963613506
+  zh: 439b4420392c276e
+/deepseek-ai-dsh-app-mcp/model-experience/the-execute-python-tool/token-effect:
+  en: 090ffa4467f088c1
+  zh: edf4e9379613d259
+/deepseek-ai-dsh-app-mcp/model-experience/the-execute-python-tool/kv-cache-effect:
+  en: 3eeba0eb532cdb01
+  zh: b5359fa644e93292
+/deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results:
+  en: 8d7c066c86220247
+  zh: 36d2e1f5a741d0cb
+/deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results/what-the-model-sees:
+  en: af82dad03ac5255d
+  zh: 42c170e16f3121d9
+/deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results/token-effect:
+  en: a07c8f5dbc8c8856
+  zh: bc15cb660c34058f
+/deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results/kv-cache-effect:
+  en: c9ff5f25eab76338
+  zh: e5ba6dc4b21859da
+/deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work:
+  en: b69cd1c6a98c89db
+  zh: c584b49a91dc01ca
+/deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

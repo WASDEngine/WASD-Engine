@@ -176,6 +176,12 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'claudeCodeMods/watchBand': 'owner-only', // owner Claude Code mods UI
   'cotTranslation/limits': 'owner-only', // owner chain-of-thought translation UI
   'cotTranslation/translate': 'owner-only', // owner chain-of-thought translation UI
+  'godot/control': 'owner-only', // owner pauses, resumes, or steps a game (WASD Engine)
+  'godot/follow': 'owner-only', // owner follows a game run and its logs (WASD Engine)
+  'godot/input': 'owner-only', // owner plays a game (WASD Engine)
+  'godot/installRuntime': 'owner-only', // owner installs the Godot runtime (WASD Engine)
+  'godot/run': 'owner-only', // owner starts a game (WASD Engine)
+  'godot/stop': 'owner-only', // owner stops a game (WASD Engine)
   'cuaAccess/applicationIcons': 'owner-only', // owner computer-use permissions
   'cuaAccess/applications': 'owner-only', // owner computer-use permissions
   'cuaAccess/enablePersistentPtc': 'owner-only', // owner computer-use permissions

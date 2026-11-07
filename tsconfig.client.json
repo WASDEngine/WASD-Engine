@@ -93,6 +93,8 @@
     { "path": "./packages/experimental/liveshare/tsconfig.client.json" },
     { "path": "./packages/experimental/session-inspector" },
     { "path": "./packages/experimental/client-ui-forge/tsconfig.client.json" },
+    { "path": "./packages/gamedev/godot/tsconfig.client.json" },
+    { "path": "./packages/gamedev/ui-game-tools" },
     { "path": "./packages/client/hmr" },
     { "path": "./packages/client/connection/tsconfig.client.json" },
     { "path": "./packages/client/file-upload/tsconfig.client.json" },

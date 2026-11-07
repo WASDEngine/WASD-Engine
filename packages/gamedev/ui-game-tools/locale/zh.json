@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "游戏工具标签页",
+    "description": "在设置和插件页面中显示 Blender、GIMP 和 Godot 及其标志，并可在插件页面开启或关闭它们。"
+  }
+}

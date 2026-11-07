@@ -7,7 +7,7 @@ description: Create, edit, run, test, or export a Godot 4 game (project.godot, .
 
 ## Find the engine
 
-Run `godot --version`; also try `godot4`, and on macOS `/Applications/Godot.app/Contents/MacOS/Godot`. If none exists, ask the user for the editor executable instead of downloading one. Note the version (for example `4.7.stable`) and write code for that 4.x release; run `godot --help` when a flag below is missing. A project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
+When the `godot_run` tool is available, it runs the project in the Session's working directory with the built-in Godot runtime; you need no editor executable. If it reports that no runtime is installed, ask the user to install it from the Game tab, or to name a Godot editor executable. Otherwise run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one. Write code for the detected 4.x release. A project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
 
 ## Project layout
 
@@ -38,7 +38,15 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 - Never invent `uid://` values. A new `[ext_resource]` may omit `uid`: Godot falls back to `path` and records the UID on the next save.
 - Input actions live in `project.godot` under `[input]` as serialized events. Copy the format of an existing action, or create actions in code with `InputMap.add_action()` and `InputMap.action_add_event()`.
 
-## Verify every change
+## Verify every change with the Godot tools
+
+1. `godot_check` parses every script and reports each error at its file and line. Fix the first one and check again until it is clean.
+2. `godot_run` imports the assets and starts the game; its result lists the errors and warnings logged while it started. Every later Godot tool result lists new errors, and `godot_logs` returns the full log.
+3. Look before you claim it works: `godot_screenshot` shows the game. Play it with `godot_input`, using Input Map actions (`{"kind": "action", "action": "jump", "pressed": true, "hold": 0.3}`) or keys and clicks at screenshot coordinates, then take another screenshot or pass `screenshot: true`.
+4. Read state instead of guessing: `godot_eval` evaluates an expression such as `scene.get_node("Player").position`, and `godot_scene_tree` lists the running nodes. `godot_control` pauses, steps a number of frames, and resumes.
+5. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
+
+## Verify every change without the tools
 
 1. After adding, moving, or renaming files, refresh imports, `.uid` files, and the global class cache:
    `godot --headless --path <project-dir> --import`
@@ -48,7 +56,11 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
    `godot --headless --path <project-dir> --quit-after 120`
 4. If the project has a test addon such as `addons/gut` or `addons/gdUnit4`, run its command-line runner as its README describes.
 
-Fix the first reported error at its file and line, then repeat until the run is clean. To watch gameplay, start the project without `--headless` as a background job and stop the job when done.
+Fix the first reported error at its file and line, then repeat until the run is clean.
+
+## Models and textures
+
+With the `mcp__wasd_blender__` tools, build or edit 3D models headless, look at them with `mcp__wasd_blender__render_preview`, and write them into the project with `mcp__wasd_blender__export_gltf` as `.glb` files (no Draco compression); keep the `.blend` source beside the export. With the `mcp__wasd_gimp__` tools, make or edit textures and sprites, look at them with `mcp__wasd_gimp__snapshot`, and export PNG files into the project; keep the `.xcf` source beside the export. Record the source and license of every third-party asset.
 
 ## Export
 

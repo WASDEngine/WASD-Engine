@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for gamedev.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
+/game-tools:
+  en: b1a22dbd8cccbb31
+  zh: 52dd3ba90b7b9578
+/game-tools/composition:
+  en: 99b1e6c44fc310f3
+  zh: 8b276118fd295ee7
+/game-tools/application-mcp-servers:
+  en: 9f65d48b9f3fe7c9
+  zh: 47f8d127006f27ad
+/game-tools/application-mcp-servers/worker-protocol:
+  en: f8fc73347527d944
+  zh: f7c4977b135df5fc
+/game-tools/godot-runs:
+  en: 6cdbbbd8b9876c3d
+  zh: 823821e50ecfdeed
+/game-tools/godot-runs/runtime-resolution:
+  en: 17c3deb498c912f7
+  zh: 623afdc0f52db112
+/game-tools/godot-runs/run-lifecycle:
+  en: e6b2d74b3a1b1e20
+  zh: 7d60d6051acc491f
+/game-tools/godot-runs/harness-protocol:
+  en: f3c671ded037758f
+  zh: 9a8f913c78746055
+/game-tools/godot-runs/input-events:
+  en: 19e632b59a04e600
+  zh: 1380b209cd31903a
+/game-tools/godot-runs/logs:
+  en: 1a336d4ce8c60b66
+  zh: 5e72dc88ae95aedc
+/game-tools/godot-runs/script-check:
+  en: 8efc4d95807f5dcd
+  zh: 132aa0aa71312fea
+/game-tools/frame-stream:
+  en: cee39af6b369a8ce
+  zh: 56f405bac0a70197
+/game-tools/game-tab:
+  en: d91b3987403a91bb
+  zh: e2a42894723534b2
+/game-tools/game-tools-tabs:
+  en: 3abcc43aade75bd4
+  zh: 2446eed806432d5c
+/game-tools/remote-types:
+  en: 0f75cf2979b80cf8
+  zh: d01df32d1ece3e9d

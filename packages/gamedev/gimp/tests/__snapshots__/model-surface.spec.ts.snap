@@ -1,0 +1,964 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`keeps the instructions within 6000 characters and names only tools the server provides > instructions 1`] = `
+"GIMP 3 runs headless behind these tools: there is no window. One GIMP session serves every conversation, and open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
+
+Paths are absolute. Resolve relative names against your working directory. Write game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
+
+Look, change, look again:
+- snapshot shows an image as it would export: the visible layers composited, transparent areas as a gray checkerboard, and small images enlarged without smoothing. Look after significant changes and fix what looks wrong before exporting. Snapshots and exports never change the image.
+- image_info gives sizes, the layer tree, text layer contents, and the selection.
+- layer adds, duplicates, deletes, renames, restacks, and merges layers, and sets opacity, visibility, blend mode, and offset.
+- select builds a selection (rectangle, ellipse, by color, grow, shrink, feather, invert). Fill, clear, gradients, and filters then act only inside it; select mode none to act on whole layers again.
+- draw fills, clears, paints linear gradients, and adds text layers. Colors are #rrggbb, #rrggbbaa (with alpha), or CSS color names.
+- transform scales the image or a layer, resizes the canvas, crops, rotates, and flips. Scale pixel art with interpolation none.
+- filters lists GEGL filter operations (blur, noise, distort, light, color, artistic, ...), filter_info shows their properties, ranges, and defaults, and apply_filter applies one to a layer.
+- pdb_search, pdb_describe, and pdb_run reach any other GIMP procedure, such as converting to indexed colors, with images and layers passed by id.
+- execute_python runs Python with Gimp, Gegl, Gio, and GLib imported and images mapping ids to Gimp.Image objects, for anything the other tools do not cover. Assign result to return data.
+
+Game assets:
+- Work at the final pixel size, and keep sizes the engine handles well, such as powers of two for tiling textures.
+- export_image writes the composited visible layers by extension (.png, .webp, .jpg, .tga, .bmp, .ico) and creates folders. Use .png or .webp to keep transparency; .jpg and .bmp have none, so transparent areas become white.
+- Keep the editable source: save_xcf next to the exported asset, for example art/hero.xcf beside art/hero.png, so layers and text stay editable later.
+- make_sprite_sheet packs frame files into one grid sheet and reports each frame's rectangle; make_seamless makes a texture tile without seams by cross-fading it with copies of itself shifted by half its size, which can fade and double distinct shapes, so use it on noise-like textures.
+
+close_image discards unsaved changes, so save first when they matter."
+`;
+
+exports[`pins the tool declarations > tool declarations 1`] = `
+[
+  {
+    "description": "List the open images as JSON: id, name, file, size, color mode, precision, layer count, and whether they have unsaved changes.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "list_images",
+    "title": "Open images",
+  },
+  {
+    "description": "Open an image file in any format GIMP reads (.xcf with all layers, .png, .jpg, .webp, .psd, .tga, ...) and return its id with the image details as JSON.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Absolute path of the image file.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "open_image",
+    "title": "Open image",
+  },
+  {
+    "description": "Create an RGB image with one layer named Background, filled with a color or transparent, and return its id.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "fill": {
+          "description": "transparent (default), white, black, or a color such as #336699, #33669980 (with alpha), or a CSS color name.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "height": {
+          "description": "Height in pixels.",
+          "maximum": 8192,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "name": {
+          "description": "Name that list_images and image_info show for the image until save_xcf saves it; they then show the .xcf file name.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "width": {
+          "description": "Width in pixels.",
+          "maximum": 8192,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "width",
+        "height",
+      ],
+      "type": "object",
+    },
+    "name": "new_image",
+    "title": "New image",
+  },
+  {
+    "description": "Describe an image as JSON: file, size, color mode, unsaved changes, the layer tree from the top (id, name, kind, type, visibility, opacity, blend mode, offset, size, alpha, and text, font, and color of text layers), the selected layers, and the selection bounds.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "image",
+      ],
+      "type": "object",
+    },
+    "name": "image_info",
+    "title": "Image details",
+  },
+  {
+    "description": "Look at an image: show its visible layers composited as an image, scaled to fit max_size. Transparent areas show as a gray checkerboard, and images smaller than 256 pixels are enlarged by a whole factor without smoothing so pixels stay sharp. The image is not changed.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "max_size": {
+          "description": "Longest edge of the shown image in pixels (default 1024).",
+          "maximum": 1568,
+          "minimum": 16,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "image",
+      ],
+      "type": "object",
+    },
+    "name": "snapshot",
+    "title": "Snapshot",
+  },
+  {
+    "description": "Write the visible layers of an image, composited, to a file chosen by extension: .png, .webp, .jpg or .jpeg, .tga, .bmp, .ico, or .xcf (all layers). .jpg and .bmp have no transparency, so transparent areas become white. Missing folders are created and the file is replaced in one step. The image itself is not changed.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "path": {
+          "description": "Absolute output path; its extension selects the format.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "quality": {
+          "description": "Quality 0-100 for .jpg, .jpeg, and .webp; without it, GIMP exports at 90.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number",
+        },
+      },
+      "required": [
+        "image",
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "export_image",
+    "title": "Export image",
+  },
+  {
+    "description": "Save an image with all its layers as a GIMP .xcf file. With path, save under that name (creating missing folders) and keep using it; without path, save to the .xcf file the image was opened from or last saved to.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "path": {
+          "description": "Absolute path ending in .xcf; omit to save to the image's current .xcf file.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "image",
+      ],
+      "type": "object",
+    },
+    "name": "save_xcf",
+    "title": "Save .xcf file",
+  },
+  {
+    "description": "Close an image without saving; unsaved changes are discarded.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "image",
+      ],
+      "type": "object",
+    },
+    "name": "close_image",
+    "title": "Close image",
+  },
+  {
+    "description": "Change the layers of an image and return its layer tree (top first) as JSON. add: new transparent layer of the image size (name, position, and the set properties). duplicate: copy above the source. delete, rename, set (opacity, visible, mode, offset_x, offset_y, name), move (to position). merge_down: merge into the layer below. merge_visible: merge all visible layers. flatten: merge everything onto one opaque layer.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "What to do.",
+          "enum": [
+            "add",
+            "duplicate",
+            "delete",
+            "rename",
+            "set",
+            "move",
+            "merge_down",
+            "merge_visible",
+            "flatten",
+          ],
+          "type": "string",
+        },
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer id or exact name; default: the selected layer. Required for delete, rename, set, and move.",
+        },
+        "mode": {
+          "description": "Blend mode for add and set, such as normal, multiply, screen, overlay, addition, subtract, darken-only, lighten-only, or erase.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "name": {
+          "description": "Layer name for add, duplicate, rename, and set.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "offset_x": {
+          "description": "Left edge of the layer in image pixels, for add and set.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "integer",
+        },
+        "offset_y": {
+          "description": "Top edge of the layer in image pixels, for add and set.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "integer",
+        },
+        "opacity": {
+          "description": "Opacity 0-100 for add and set.",
+          "maximum": 100,
+          "minimum": 0,
+          "type": "number",
+        },
+        "position": {
+          "description": "Stack position among sibling layers, 0 being the top; for add and move.",
+          "maximum": 10000,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "visible": {
+          "description": "Visibility for add and set.",
+          "type": "boolean",
+        },
+      },
+      "required": [
+        "image",
+        "action",
+      ],
+      "type": "object",
+    },
+    "name": "layer",
+    "title": "Edit layers",
+  },
+  {
+    "description": "Change the selection of an image. Fill, clear, gradients, and filters then act only inside it; select none to act on whole layers again. rect and ellipse take x, y, width, and height; color selects pixels within threshold of color on a layer; grow, shrink, and feather take amount in pixels; all, none, and invert take nothing else.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "amount": {
+          "description": "Pixels for grow, shrink, and feather.",
+          "maximum": 8192,
+          "minimum": 0,
+          "type": "number",
+        },
+        "color": {
+          "description": "Color to select for color mode, such as #ff0000.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "height": {
+          "description": "Height for rect and ellipse.",
+          "maximum": 65536,
+          "minimum": 1,
+          "type": "number",
+        },
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer to sample in color mode; default: the selected layer.",
+        },
+        "mode": {
+          "description": "Selection operation.",
+          "enum": [
+            "all",
+            "none",
+            "invert",
+            "rect",
+            "ellipse",
+            "color",
+            "grow",
+            "shrink",
+            "feather",
+          ],
+          "type": "string",
+        },
+        "operation": {
+          "description": "How rect, ellipse, and color combine with the current selection (default replace).",
+          "enum": [
+            "replace",
+            "add",
+            "subtract",
+            "intersect",
+          ],
+          "type": "string",
+        },
+        "threshold": {
+          "description": "Color difference 0-255 still selected in color mode (default 15).",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "number",
+        },
+        "width": {
+          "description": "Width for rect and ellipse.",
+          "maximum": 65536,
+          "minimum": 1,
+          "type": "number",
+        },
+        "x": {
+          "description": "Left edge for rect and ellipse (default 0).",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+        "y": {
+          "description": "Top edge for rect and ellipse (default 0).",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+      },
+      "required": [
+        "image",
+        "mode",
+      ],
+      "type": "object",
+    },
+    "name": "select",
+    "title": "Select",
+  },
+  {
+    "description": "Change image or layer geometry. scale_image: resample the whole image to width and/or height (the missing one keeps the aspect ratio). resize_canvas: change the canvas to width x height, moving the content by x, y; then each layer that is neither a text layer nor a group, including the layers inside groups, takes the canvas size, and text layers keep theirs. crop: keep the width x height rectangle at x, y. rotate: the whole image by 90, 180, or 270 degrees clockwise, or with layer one layer by any angle. flip: horizontal or vertical axis, the image or one layer. scale_layer: resample one layer to width and/or height, optionally placing it at x, y.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "Transformation.",
+          "enum": [
+            "scale_image",
+            "resize_canvas",
+            "crop",
+            "rotate",
+            "flip",
+            "scale_layer",
+          ],
+          "type": "string",
+        },
+        "angle": {
+          "description": "Clockwise degrees for rotate.",
+          "maximum": 360,
+          "minimum": -360,
+          "type": "number",
+        },
+        "axis": {
+          "description": "Mirror axis for flip: horizontal swaps left and right.",
+          "enum": [
+            "horizontal",
+            "vertical",
+          ],
+          "type": "string",
+        },
+        "height": {
+          "description": "New height in pixels for scale_image, resize_canvas, crop, and scale_layer.",
+          "maximum": 8192,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "interpolation": {
+          "description": "Resampling for scaling and rotation (default cubic); none keeps pixel art sharp.",
+          "enum": [
+            "none",
+            "linear",
+            "cubic",
+            "nohalo",
+            "lohalo",
+          ],
+          "type": "string",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer for rotate and flip (omit to rotate or flip the whole image) and for scale_layer (default: the selected layer).",
+        },
+        "width": {
+          "description": "New width in pixels for scale_image, resize_canvas, crop, and scale_layer.",
+          "maximum": 8192,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "x": {
+          "description": "Content offset for resize_canvas, crop origin for crop, or new left edge for scale_layer.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "integer",
+        },
+        "y": {
+          "description": "Content offset for resize_canvas, crop origin for crop, or new top edge for scale_layer.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "image",
+        "action",
+      ],
+      "type": "object",
+    },
+    "name": "transform",
+    "title": "Transform",
+  },
+  {
+    "description": "Paint on a layer. fill: fill the selection, or the whole layer, with color (its alpha sets the opacity). clear: make the selection, or the whole layer, transparent. gradient: linear gradient from color at x, y to color2 at x2, y2 (default: across the layer from left to right), within the selection. text: new text layer with text in font at size pixels, top-left corner at x, y, above layer or at the top.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "What to paint.",
+          "enum": [
+            "fill",
+            "gradient",
+            "text",
+            "clear",
+          ],
+          "type": "string",
+        },
+        "color": {
+          "description": "Fill color, gradient start color, or text color (#rrggbb, #rrggbbaa, or a CSS color name).",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "color2": {
+          "description": "Gradient end color.",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+        "font": {
+          "description": "Font name such as "Sans-serif" (default), "Serif Bold", or "Monospace".",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer to paint on (default: the selected layer); for text, the layer to put the text above.",
+        },
+        "size": {
+          "description": "Font size in pixels (default 32).",
+          "maximum": 2000,
+          "minimum": 1,
+          "type": "number",
+        },
+        "text": {
+          "description": "Text for the text action.",
+          "maxLength": 10000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "x": {
+          "description": "Gradient start or text left edge, in image pixels.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+        "x2": {
+          "description": "Gradient end, in image pixels.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+        "y": {
+          "description": "Gradient start or text top edge, in image pixels.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+        "y2": {
+          "description": "Gradient end, in image pixels.",
+          "maximum": 65536,
+          "minimum": -65536,
+          "type": "number",
+        },
+      },
+      "required": [
+        "image",
+        "action",
+      ],
+      "type": "object",
+    },
+    "name": "draw",
+    "title": "Draw",
+  },
+  {
+    "description": "List the filter operations apply_filter can use (blur, noise, distort, light, color, artistic, edge, and more) whose name, title, or category contains query, with titles and categories.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "description": "Case-insensitive text to look for, such as blur, noise, or outline.",
+          "maxLength": 200,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "filters",
+    "title": "Filter list",
+  },
+  {
+    "description": "Describe a filter operation as JSON: title, description, and each property with its type, range, default, and choices, which apply_filter accepts by name.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "operation": {
+          "description": "Operation name from filters, such as gegl:gaussian-blur.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "operation",
+      ],
+      "type": "object",
+    },
+    "name": "filter_info",
+    "title": "Filter details",
+  },
+  {
+    "description": "Apply a filter operation to a layer, within the selection when there is one, and keep the result. Properties not given keep their defaults; filter_info lists them.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer id or exact name; default: the selected layer.",
+        },
+        "operation": {
+          "description": "Operation name, such as gegl:gaussian-blur or gegl:pixelize.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+        "properties": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "number",
+              },
+              {
+                "type": "boolean",
+              },
+              {
+                "type": "null",
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                    },
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "boolean",
+                    },
+                  ],
+                },
+                "type": "array",
+              },
+            ],
+          },
+          "description": "Property values by name, such as {"std-dev-x": 3, "std-dev-y": 3}; colors as "#rrggbb".",
+          "propertyNames": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string",
+          },
+          "type": "object",
+        },
+      },
+      "required": [
+        "image",
+        "operation",
+      ],
+      "type": "object",
+    },
+    "name": "apply_filter",
+    "title": "Apply filter",
+  },
+  {
+    "description": "Search GIMP's procedure database, the operations pdb_run can call, by name or summary. Procedure names use hyphens, such as gimp-image-convert-indexed. Image effects are mostly filters: use the filters tool for those.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "description": "Case-insensitive text, such as indexed, guide, or layer-mask.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "query",
+      ],
+      "type": "object",
+    },
+    "name": "pdb_search",
+    "title": "Find GIMP procedures",
+  },
+  {
+    "description": "Describe a procedure as JSON: summary, help, and its arguments and return values with types, ranges, defaults, and choices.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "procedure": {
+          "description": "Procedure name, such as gimp-image-convert-indexed.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "procedure",
+      ],
+      "type": "object",
+    },
+    "name": "pdb_describe",
+    "title": "Describe GIMP procedure",
+  },
+  {
+    "description": "Run a procedure without dialogs and return its return values as JSON. Give arguments by name: images and layers as ids, files as absolute paths, colors as "#rrggbb", choices and enums by name, units as pixel, inch, or mm, and arrays as JSON arrays. Arguments not given keep the defaults pdb_describe lists; give a value for each one whose default is null, such as an empty string for an unused name. run-mode is always non-interactive.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "arguments": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+              },
+              {
+                "type": "number",
+              },
+              {
+                "type": "boolean",
+              },
+              {
+                "type": "null",
+              },
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                    },
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "boolean",
+                    },
+                  ],
+                },
+                "type": "array",
+              },
+            ],
+          },
+          "description": "Arguments by name, such as {"image": 1, "new-width": 64, "new-height": 64}.",
+          "propertyNames": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string",
+          },
+          "type": "object",
+        },
+        "procedure": {
+          "description": "Procedure name from pdb_search.",
+          "maxLength": 200,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "procedure",
+      ],
+      "type": "object",
+    },
+    "name": "pdb_run",
+    "title": "Run GIMP procedure",
+  },
+  {
+    "description": "Run Python in the GIMP session. Gimp, Gegl, Gio, GLib, and GObject are imported, images maps each open image id to its Gimp.Image, and names you define persist between calls. Assign \`result\` to return a value as JSON (images become {image}, layers {item, name}, colors hex strings, other objects their repr). Printed output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout expires, GIMP restarts and open images and unsaved changes are lost.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Python source to run.",
+          "maxLength": 200000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeout_seconds": {
+          "description": "Seconds before GIMP is stopped and restarted (default 600).",
+          "maximum": 870,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "code",
+      ],
+      "type": "object",
+    },
+    "name": "execute_python",
+    "title": "Run GIMP Python",
+  },
+  {
+    "description": "Pack image files into one sprite sheet: frames fill a grid row by row, each centered in a cell of the largest frame size plus padding on every side. The sheet is exported to output by extension, stays open as a new image, and the result lists each frame's rectangle for the game engine.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "description": "Frames per row.",
+          "maximum": 256,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "output": {
+          "description": "Absolute output path, such as .png or .webp.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "padding": {
+          "description": "Transparent pixels around each frame (default 0).",
+          "maximum": 1024,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "paths": {
+          "description": "Frame files in order.",
+          "items": {
+            "description": "Absolute path of a frame image.",
+            "maxLength": 4096,
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "paths",
+        "columns",
+        "output",
+      ],
+      "type": "object",
+    },
+    "name": "make_sprite_sheet",
+    "title": "Make sprite sheet",
+  },
+  {
+    "description": "Make a layer tile seamlessly, for repeating textures: cross-fade it with a copy of itself shifted by half its width, then with a copy shifted by half its height, so that each edge continues the opposite one. The middle keeps the original pixels and the edges show the shifted copy, so a distinct shape can appear twice, faded; noise-like textures such as grass, stone, or sand suit it best. Acts on the whole layer regardless of the selection.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "image": {
+          "description": "Image id from new_image, open_image, or list_images.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maximum": 9007199254740991,
+              "minimum": 1,
+              "type": "integer",
+            },
+            {
+              "maxLength": 200,
+              "minLength": 1,
+              "type": "string",
+            },
+          ],
+          "description": "Layer id or exact name; default: the selected layer.",
+        },
+      },
+      "required": [
+        "image",
+      ],
+      "type": "object",
+    },
+    "name": "make_seamless",
+    "title": "Make seamless texture",
+  },
+]
+`;

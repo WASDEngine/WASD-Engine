@@ -473,6 +473,39 @@ export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-bash-sandbox -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-blender -->
+<a id="deepseek-aidsh-blender"></a>
+
+## `@deepseek-ai/dsh-blender`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/blender/src/index.ts:26`](../packages/gamedev/blender/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the Blender tools. */
+export interface Config extends AppMcpConfig {
+  /** Absolute directory for the bpy environment, managed Python, previews, renders, and the worker script copy. */
+  dataRoot: string
+  /** `auto` uses the bpy module when uv is available and an installed Blender otherwise; `bpy` and `app` force one. */
+  backend: BlenderBackend
+  /** bpy package version installed into the managed environment. */
+  bpyVersion: string
+  /** Python minor version of the managed environment; it must match the bpy release. */
+  pythonVersion: string
+  /** Absolute uv executable; empty searches PATH and the uv installers' default locations. */
+  uvPath: string
+  /** Absolute Blender executable; empty uses BLENDER_PATH, then the standard install locations. */
+  blenderPath: string
+  /** Budget for the MCP server and for each Blender worker start to become ready. */
+  startupTimeoutMs: number
+}
+
+/** Which Blender runs the tools: `bpy` (the Python module, installed with uv), `app` (an installed Blender), or `auto`. */
+export type BlenderBackend = 'auto' | 'bpy' | 'app'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-blender -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-connection -->
 <a id="deepseek-aidsh-client-connection"></a>
 
@@ -1602,6 +1635,30 @@ export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-fs-sandbox -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-gimp -->
+<a id="deepseek-aidsh-gimp"></a>
+
+## `@deepseek-ai/dsh-gimp`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/gimp/src/index.ts:24`](../packages/gamedev/gimp/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the GIMP tools. */
+export interface Config extends AppMcpConfig {
+  /** Absolute directory for the GIMP profile, snapshots, and the worker script copy. */
+  dataRoot: string
+  /** Absolute gimp-console executable of GIMP 3; empty uses GIMP_CONSOLE, then the standard install locations. */
+  gimpConsolePath: string
+  /** Budget for the MCP server to start and list its tools. */
+  startupTimeoutMs: number
+  /** Budget for a GIMP worker to become ready; the first start with a new profile takes about 15 s. */
+  readyTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-gimp -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-goal -->
 <a id="deepseek-aidsh-goal"></a>
 
@@ -1618,6 +1675,62 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-goal -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-godot -->
+<a id="deepseek-aidsh-godot"></a>
+
+## `@deepseek-ai/dsh-godot`
+
+- `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
+- `source`: [`packages/gamedev/godot/src/index.ts:41`](../packages/gamedev/godot/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute folder for the managed runtime and copies of the harness scripts. */
+  dataRoot: string
+  /** Managed LibGodot runtime version. */
+  runtimeVersion: string
+  /** Release manifest of the managed runtime. */
+  runtimeManifestUrl: string
+  /** Absolute LibGodot library; set together with `runnerPath`. Empty uses the managed runtime. */
+  libgodotPath: string
+  /** Absolute `godot_runner`; set together with `libgodotPath`. */
+  runnerPath: string
+  /** Absolute Godot editor executable used when no LibGodot runtime resolves; empty searches PATH and `/Applications`. */
+  godotExecutable: string
+  /** Render macOS LibGodot runs without a window. */
+  embedded: boolean
+  /** Frames per second streamed to the Game tab. */
+  streamFps: number
+  /** JPEG quality of streamed frames, 0.1 to 1. */
+  streamQuality: number
+  /** Largest streamed frame width in pixels. */
+  streamMaxWidth: number
+  /** Import the project's assets before each run. */
+  importBeforeRun: boolean
+  /** Deadline of the import step and of `godot_check`, in milliseconds. */
+  importTimeoutMs: number
+  /** Deadline from launch until the game connects, in milliseconds. */
+  startTimeoutMs: number
+  /**
+   * Deadline of instantaneous game requests, the longest silence of a running game while a request waits, and the
+   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds.
+   */
+  requestTimeoutMs: number
+  /** Grace between asking a game to quit and terminating it, in milliseconds. */
+  stopGraceMs: number
+  /** Bytes of process output kept per stream for diagnostics. */
+  processOutputBytes: number
+  /** Log entries kept per run. */
+  maxLogEntries: number
+  /** Games that may run at once across Sessions, each counted until its process ended. */
+  maxRuns: number
+  /** Whether games the agent starts run without audio unless the call says otherwise. */
+  agentRunsMuted: boolean
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-headless -->
 <a id="deepseek-aidsh-headless"></a>
@@ -4931,6 +5044,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-entry-customization` | — | [`packages/client/ui-entry-customization/src/index.ts`](../packages/client/ui-entry-customization/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-tools` | — | [`packages/gamedev/ui-game-tools/src/index.ts`](../packages/gamedev/ui-game-tools/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-input-trigger` | — | [`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
@@ -5058,6 +5172,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-agent-loop-testkit` | — | [`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-anonymous-user-id` | — | [`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts) |
 | `@deepseek-ai/dsh-app-boot` | — | [`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts) |
+| `@deepseek-ai/dsh-app-mcp` | — | [`packages/gamedev/app-mcp/src/index.ts`](../packages/gamedev/app-mcp/src/index.ts) |
 | `@deepseek-ai/dsh-atomic-write` | — | [`packages/util/atomic-write/src/index.ts`](../packages/util/atomic-write/src/index.ts) |
 | `@deepseek-ai/dsh-base` | — | [`packages/bundle/base/src/index.ts`](../packages/bundle/base/src/index.ts) |
 | `@deepseek-ai/dsh-brand` | — | [`packages/util/brand/src/index.ts`](../packages/util/brand/src/index.ts) |

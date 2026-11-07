@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Onglets des outils de jeu",
+    "description": "Affiche Blender, GIMP et Godot avec leurs logos dans les paramètres et sur la page Plugins, où vous pouvez activer ou désactiver chacun d’eux."
+  }
+}

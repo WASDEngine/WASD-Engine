@@ -1,0 +1,109 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/gimp/README.md
+/:
+  en: 4a5c6e6b489cf601
+  zh: 945c6176f9336ecf
+/deepseek-ai-dsh-gimp:
+  en: bd37034fc8c39aae
+  zh: 50ff9d462fa9cda9
+/deepseek-ai-dsh-gimp/summary:
+  en: 4f9d2de22fcc3eea
+  zh: 55142398e2b34225
+/deepseek-ai-dsh-gimp/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 725b47765ee8f30b
+/deepseek-ai-dsh-gimp/use-this-package:
+  en: e57725fc932f85e7
+  zh: acf37f8bf8ad1e63
+/deepseek-ai-dsh-gimp/use-this-package/default-composition:
+  en: f39035e9d3fb3af9
+  zh: ca17208bf1c9f5cf
+/deepseek-ai-dsh-gimp/use-this-package/turn-the-tools-off-or-change-their-settings:
+  en: f86a474920d683ea
+  zh: 81f59388556dc269
+/deepseek-ai-dsh-gimp/use-this-package/configuration:
+  en: 9863e09a64702ad1
+  zh: 7790a8f11eb80336
+/deepseek-ai-dsh-gimp/use-this-package/find-and-install-gimp-3:
+  en: 5d52a51475cee05d
+  zh: c7186de37e024ce8
+/deepseek-ai-dsh-gimp/use-this-package/the-gimp-profile-and-the-first-start:
+  en: 6b44c5ea6f1bae3d
+  zh: 30620e80cac86956
+/deepseek-ai-dsh-gimp/use-this-package/tools:
+  en: 98d42445cb056725
+  zh: 1a45c384a593e534
+/deepseek-ai-dsh-gimp/use-this-package/image-and-layer-ids:
+  en: e6f79801e053b676
+  zh: 9faa91b0de9a1d90
+/deepseek-ai-dsh-gimp/use-this-package/one-gimp-session-for-every-conversation:
+  en: 98c05c65f7366e97
+  zh: d1c5afdb0426d2d6
+/deepseek-ai-dsh-gimp/use-this-package/files-under-the-data-directory:
+  en: 8dd05bfd4a1a9c80
+  zh: b41c63469fa97d68
+/deepseek-ai-dsh-gimp/use-this-package/plugin-icon:
+  en: 19e27b11ab433e40
+  zh: dec3172fbf4e4c6d
+/deepseek-ai-dsh-gimp/understand-the-implementation:
+  en: 1872b2483d4030c8
+  zh: d25cf1abffe3ae33
+/deepseek-ai-dsh-gimp/understand-the-implementation/verify-against-real-gimp:
+  en: c647810fcbbbd305
+  zh: a52c18df157a0ae8
+/deepseek-ai-dsh-gimp/further-exploration:
+  en: 235991c684f2bd6a
+  zh: a7e0fb032da904c7
+/deepseek-ai-dsh-gimp/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-gimp/model-experience/gimp-tool-declarations:
+  en: a42c03874a7d4791
+  zh: 146ddead54e3757c
+/deepseek-ai-dsh-gimp/model-experience/gimp-tool-declarations/what-the-model-sees:
+  en: 8ef6e0c15218c320
+  zh: 4ca9b5aec2c04cdd
+/deepseek-ai-dsh-gimp/model-experience/gimp-tool-declarations/token-effect:
+  en: b2d200f16fc36d5c
+  zh: f282d1de901591b8
+/deepseek-ai-dsh-gimp/model-experience/gimp-tool-declarations/kv-cache-effect:
+  en: 7d25bb5a3db0f60b
+  zh: 918e8b5dc77d77ab
+/deepseek-ai-dsh-gimp/model-experience/server-instructions-in-the-system-prompt:
+  en: 8643a279f586bfd3
+  zh: 208bccd112725bde
+/deepseek-ai-dsh-gimp/model-experience/server-instructions-in-the-system-prompt/what-the-model-sees:
+  en: cbc0a24f3c88297d
+  zh: 69d650bb8ff6682c
+/deepseek-ai-dsh-gimp/model-experience/server-instructions-in-the-system-prompt/what-the-model-sees/gimp-server-instructions:
+  en: 38cdd51279bb3319
+  zh: 8d08bee94bbe0dab
+/deepseek-ai-dsh-gimp/model-experience/server-instructions-in-the-system-prompt/token-effect:
+  en: 8eb53c5c70c594fa
+  zh: b75af03bfb828ab0
+/deepseek-ai-dsh-gimp/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
+  en: 457158b3658aae47
+  zh: b6a061d2499c0716
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images:
+  en: 5120649c8c29354d
+  zh: 445a2b087d242747
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees:
+  en: d36d219cefe5cbad
+  zh: 3efdbe4067e38dd6
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees/gimp-installation-message-on-macos:
+  en: c844116985f71eed
+  zh: a8ef30b2c1b84a45
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/token-effect:
+  en: 877f75727e3c9f8e
+  zh: 60a178afe841849f
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/kv-cache-effect:
+  en: 00af0e13a5a63f94
+  zh: d47c97c3223c19f5
+/deepseek-ai-dsh-gimp/known-limitations-and-deferred-work:
+  en: 997082672606e067
+  zh: b6b78cddb5920a9f
+/deepseek-ai-dsh-gimp/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

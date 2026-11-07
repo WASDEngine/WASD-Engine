@@ -1,0 +1,19 @@
+# WASDEngine fork: the Blender, GIMP, and Godot game tools, on in every Web and Desktop profile, and the Game tools
+# tabs of Settings and the Plugins page that list them (wasdengine/FORK.md). Each tool row starts without its
+# application installed and reports setup steps through its tools; a profile patch turns one off with `- id: <row>`
+# and `disabled: true`, which the Plugins page's Game tools tab writes. `ui-game-tools` mounts the tabs' browser half.
+- insert:
+    - id: blender
+      name: '@deepseek-ai/dsh-blender'
+      config:
+        dataRoot: !!js dshHomePath('blender')
+    - id: gimp
+      name: '@deepseek-ai/dsh-gimp'
+      config:
+        dataRoot: !!js dshHomePath('gimp')
+    - id: godot
+      name: '@deepseek-ai/dsh-godot'
+      config:
+        dataRoot: !!js dshHomePath('godot')
+    - id: ui-game-tools
+      name: '@deepseek-ai/dsh-client-ui-game-tools'

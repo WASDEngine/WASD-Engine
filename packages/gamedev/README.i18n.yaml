@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/README.md
+/:
+  en: 3785710d68e0878b
+  zh: 12173484efcfe6d2
+/game-development-tools:
+  en: 9fb1ccab0f774fde
+  zh: 8d89440760003efc
+/game-development-tools/summary:
+  en: 2cc7f34f7a39dddf
+  zh: 44affe040066e7e5
+/game-development-tools/table-of-contents:
+  en: 1eb35b015a6c423f
+  zh: a8a3dceee2c9e943
+/game-development-tools/packages:
+  en: 193dc98712dfa506
+  zh: 4249d498fefefa66
+/game-development-tools/related-documentation:
+  en: fc9d21559ca90922
+  zh: d175cf0189c23763
+/game-development-tools/dev-note:
+  en: 5de1d6304e00c58f
+  zh: 8d8225361cfa29e5

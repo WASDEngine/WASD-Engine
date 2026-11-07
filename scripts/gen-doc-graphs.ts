@@ -424,6 +424,21 @@ const SERVICE_ROLES: ServiceRole[] = [
     mode: 'core',
     note: 'Carries the picking seam onto the wire: capability gating, cancellation, and the seam-coded failures a browser directory flow discriminates on.',
   },
+  // WASDEngine fork: the game project and game tool Remotes (wasdengine/FORK.md).
+  {
+    key: 'gameProjectController',
+    pkg: 'api-workspace-controller',
+    title: 'Host game project Remote controller',
+    mode: 'core',
+    note: 'Creates a game project folder with a Git repository and reports whether first use must ask for one.',
+  },
+  {
+    key: 'godot',
+    pkg: 'godot',
+    title: 'Godot game runs, tools, and Game tab Remote',
+    mode: 'service',
+    note: 'Runs a Session\'s Godot game through LibGodot, serves the godot_* tools, the Game tab Remote, and the frame route, and resolves or installs the Godot runtime.',
+  },
   {
     key: 'typert',
     pkg: 'typert-registry',

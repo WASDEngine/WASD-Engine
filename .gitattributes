@@ -16,3 +16,6 @@ docs/persistence-changes/historical-formats/*.schema.json linguist-generated=tru
 
 # Unified patch blank context lines require their leading space.
 patches/*.patch whitespace=-blank-at-eol
+
+# WASDEngine fork: Godot source patches keep Godot's tab-indented context lines (wasdengine/FORK.md).
+wasdengine/libgodot/patches/*.patch whitespace=-blank-at-eol,-space-before-tab

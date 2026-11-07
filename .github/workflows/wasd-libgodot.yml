@@ -1,0 +1,228 @@
+# Build the WASD Engine LibGodot runtime (wasdengine/libgodot/BUILD.md) for
+# macOS arm64, Linux x64, and Windows x64, smoke-test each build, and, when run
+# on the default branch, publish the archives and their merged manifest.json as
+# the GitHub release libgodot-<version>, whose manifest.json the Godot plugin
+# downloads. A run on another branch builds and uploads workflow artifacts only.
+# Runs on manual dispatch only.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: LibGodot runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Runtime version; the release is tagged libgodot-<version>
+        required: true
+        default: 4.7.2-wasd.1
+        type: string
+      godot_ref:
+        description: Godot tag or branch to build
+        required: true
+        default: 4.7.2-stable
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-libgodot-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the build scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/libgodot
+
+      - name: Lint build.sh
+        run: |
+          bash -n wasdengine/libgodot/build.sh
+          shellcheck wasdengine/libgodot/build.sh
+
+      - name: Test runtime.py and godot_runner
+        run: python3 -B -I -m unittest discover --start-directory wasdengine/libgodot --pattern 'test_*.py' --verbose
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: darwin-arm64
+            os: macos-14
+          - artifact: linux-x64
+            os: ubuntu-24.04
+          - artifact: win32-x64
+            os: windows-2022
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      GODOT_REF: ${{ inputs.godot_ref }}
+      # SCons output includes characters that the Windows console code page cannot encode.
+      PYTHONIOENCODING: utf-8
+      # Holds the data root and the smoke-test project. Its name needs characters outside
+      # the Windows runner's ANSI code page, as many user names do, which the runner must
+      # pass to Godot as UTF-8.
+      SMOKE_NAME: libgodot-smoke-ü-游戏
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/libgodot
+
+      # wayland-scanner generates Godot's Wayland protocol code; without it the
+      # build drops Wayland support. use_sowrap, Godot's default, loads the other
+      # system libraries at run time, so their development packages are not needed.
+      - name: Install Linux build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libwayland-bin
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      # The key holds the Godot ref, so the cache keeps objects of one Godot
+      # version; each run saves a new entry that the next run restores.
+      - name: Restore the SCons cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scons-cache
+          key: libgodot-scons-${{ matrix.artifact }}-${{ inputs.godot_ref }}-${{ github.run_id }}
+          restore-keys: libgodot-scons-${{ matrix.artifact }}-${{ inputs.godot_ref }}-
+
+      - name: Build and install the runtime
+        id: build
+        run: >-
+          wasdengine/libgodot/build.sh
+          --godot-ref "$GODOT_REF" --version "$VERSION" --repository "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/libgodot-out" --scons-cache "$RUNNER_TEMP/scons-cache"
+          --install "$RUNNER_TEMP/$SMOKE_NAME/data"
+
+      # Saved after a failed build too, so a rerun resumes from the objects built so far.
+      - name: Save the SCons cache
+        if: always() && steps.build.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scons-cache
+          key: libgodot-scons-${{ matrix.artifact }}-${{ inputs.godot_ref }}-${{ github.run_id }}
+
+      # Loads the installed library through the installed runner, with
+      # --parent-pid naming this shell, and runs a headless SceneTree script
+      # that prints a line and quits; the runtime, the project, and the script
+      # lie under $SMOKE_NAME.
+      - name: Smoke-test the installed runtime
+        timeout-minutes: 5
+        run: |
+          native() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s\n' "$1"; fi; }
+          runtime="$RUNNER_TEMP/$SMOKE_NAME/data/runtime/$VERSION"
+          # jq -j ends its output without the line end that Windows text mode turns into CRLF.
+          runner=$(jq -j .runner <"$runtime/runtime.json")
+          library=$(jq -j .library <"$runtime/runtime.json")
+          # On macOS and Linux this shell is the runner's parent; Windows needs the shell's Windows process id.
+          if [ -r "/proc/$$/winpid" ]; then parent=$(cat "/proc/$$/winpid"); else parent=$$; fi
+          project="$RUNNER_TEMP/$SMOKE_NAME/project"
+          mkdir -p "$project"
+          printf 'config_version=5\n\n[application]\n\nconfig/name="LibGodot smoke test"\n' >"$project/project.godot"
+          printf 'extends SceneTree\n\n\nfunc _initialize() -> void:\n\tprint("libgodot smoke test: ", Engine.get_version_info().string)\n\tquit()\n' >"$project/smoke.gd"
+          "$runtime/$runner" --libgodot "$(native "$runtime/$library")" --parent-pid "$parent" -- \
+            --headless --path "$(native "$project")" --script "$(native "$project/smoke.gd")" | tee "$RUNNER_TEMP/smoke.log"
+          grep -q '^libgodot smoke test: ' "$RUNNER_TEMP/smoke.log"
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: libgodot-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/libgodot-out/libgodot-*.tar.gz
+            ${{ runner.temp }}/libgodot-out/manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    name: Publish libgodot-${{ inputs.version }}
+    needs: build
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/libgodot
+
+      - name: Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: libgodot-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Merge the manifests and check the archives
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          cp "$RUNNER_TEMP"/artifacts/libgodot-*/libgodot-*.tar.gz "$release_dir/"
+          python3 -I wasdengine/libgodot/runtime.py merge --output "$release_dir/manifest.json" "$RUNNER_TEMP"/artifacts/libgodot-*/manifest.json
+          python3 -I wasdengine/libgodot/runtime.py verify --manifest "$release_dir/manifest.json" --dir "$release_dir" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/libgodot-$VERSION/"
+          cat "$release_dir/manifest.json"
+
+      # The release starts as a draft, which stays hidden until its assets are
+      # attached; publishing it creates the tag at this run's commit. A draft
+      # that an earlier failed run left is moved to this run's commit and its
+      # assets are replaced. A published release is never changed, because
+      # replacing an asset deletes it first and installs verify the digests
+      # that manifest.json lists. The archives go up before manifest.json.
+      - name: Create and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          tag="libgodot-$VERSION"
+          godot=$(jq -j .godot "$release_dir/manifest.json")
+          title="LibGodot runtime $VERSION"
+          notes="WASD Engine LibGodot runtime $VERSION: Godot $godot built as a shared library with the patches in wasdengine/libgodot/patches, and godot_runner, which hosts it. The Godot plugin installs it through manifest.json; wasdengine/libgodot/BUILD.md describes the files. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::The release $tag is already published and must not change; dispatch a new runtime version."
+              exit 1
+            fi
+            gh release edit "$tag" --target "$GITHUB_SHA"
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi
+          gh release upload "$tag" "$release_dir"/libgodot-*.tar.gz --clobber
+          gh release upload "$tag" "$release_dir/manifest.json" --clobber
+          gh release edit "$tag" --draft=false --latest=false --title "$title" --notes "$notes"

@@ -160,6 +160,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   terminalController: 'workspace.md',
   directoryPickerController: 'workspace.md',
   gameProjectController: 'workspace.md',
+  godot: 'gamedev.md',
 }
 
 /**
@@ -803,6 +804,13 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   TranslationSpec: 'translation.md',
   CotTranslationPreferences: 'translation.md',
   CotTranslationSnapshot: 'translation.md',
+  // WASDEngine fork: the Game tab's Remote types (wasdengine/FORK.md).
+  GodotControlRequest: 'gamedev.md',
+  GodotFollowItem: 'gamedev.md',
+  GodotInputEvent: 'gamedev.md',
+  GodotRunRequest: 'gamedev.md',
+  GodotRunView: 'gamedev.md',
+  GodotRuntimeView: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

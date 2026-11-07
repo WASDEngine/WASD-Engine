@@ -1,0 +1,403 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`keeps the instructions within 6000 characters and names only tools the server provides > instructions 1`] = `
+"Blender runs headless behind these tools: there is no window, viewport, or screenshot. One Blender session and one open scene serve every conversation and persist between calls until new_scene or open_blend replaces them, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
+
+Paths are absolute. Resolve relative names against your working directory. Put game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
+
+Inspect, change, look:
+- scene_info gives the overview and object_info the details of one object (transforms, bounds, mesh statistics, modifiers, materials).
+- execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
+- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
+- render makes final images from a scene camera.
+
+Game assets:
+- Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.
+- Use Principled BSDF materials. Image textures should be files saved next to the model or packed into the .blend so export can embed or copy them.
+- Keep triangle counts suited to real-time rendering; scene_info reports them per mesh.
+- Name objects, meshes, and materials meaningfully: glTF keeps the names. In Godot, an object name ending in -col adds a collision shape, -convcol a convex one, and -colonly keeps only the collision shape.
+- export_gltf to a .glb inside the game project. It applies modifiers, exports animations, and never uses Draco compression, which Godot cannot import. Export the whole scene or name the objects in selection.
+- Save the editable .blend next to the exported file with save_blend so the asset can be changed later.
+
+Use checkpoint before risky edits and undo to return to it. new_scene and open_blend remove every name that execute_python defined, and after undo, Python references held in variables can be invalid, so look objects up by name again."
+`;
+
+exports[`pins the tool declarations > tool declarations 1`] = `
+[
+  {
+    "description": "Summarize the open Blender scene as JSON: file path and unsaved changes, frame range, render settings, units, the collection tree, and up to 300 objects with location, rotation (radians), scale, dimensions, data, materials, modifiers, visibility, and evaluated triangle counts for meshes.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "scene_info",
+    "title": "Scene summary",
+  },
+  {
+    "description": "Describe one object as JSON: local and world transforms, world bounding box, mesh statistics (vertices, faces, triangles before and after modifiers, UV maps, vertex groups, shape keys), modifiers with their settings, materials with node types, Principled BSDF inputs, and image textures, constraints, custom properties, and animation.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Exact object name.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "name",
+      ],
+      "type": "object",
+    },
+    "name": "object_info",
+    "title": "Object details",
+  },
+  {
+    "description": "Run Python in the Blender session. bpy, bmesh, mathutils, math, and json are imported, and names you define persist between calls until new_scene or open_blend replaces the scene. Assign \`result\` to return a value as JSON (vectors become lists, datablocks become {type, name}, integers beyond ±(2^53 − 1) strings of digits, other objects their repr). Printed output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout expires, Blender restarts and unsaved changes are lost.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "Python source to run.",
+          "maxLength": 200000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeout_seconds": {
+          "description": "Seconds before Blender is stopped and restarted (default 600).",
+          "maximum": 870,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "code",
+      ],
+      "type": "object",
+    },
+    "name": "execute_python",
+    "title": "Run Blender Python",
+  },
+  {
+    "description": "Replace the open scene with a new one, discarding unsaved changes, checkpoints, and the names that execute_python defined.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "empty": {
+          "description": "true (default) starts with no objects; false starts with Blender's default cube, camera, and light.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "new_scene",
+    "title": "New scene",
+  },
+  {
+    "description": "Open a .blend file, replacing the open scene and discarding unsaved changes, checkpoints, and the names that execute_python defined. Scripts stored in the file do not run.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Absolute path of the .blend file.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "open_blend",
+    "title": "Open .blend file",
+  },
+  {
+    "description": "Save the scene as a .blend file. With path, save under that name (creating missing folders) and keep using it; without path, save the current file.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Absolute path ending in .blend; omit to save the current file.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "save_blend",
+    "title": "Save .blend file",
+  },
+  {
+    "description": "Import a file into the open scene by its extension: .glb or .gltf, .fbx, .obj, .stl, .ply, .usd, .usda, .usdc, .usdz, .abc, .svg, or .blend (appends every object). Returns the names of the new objects.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Absolute path of the file to import.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "import_file",
+    "title": "Import file",
+  },
+  {
+    "description": "Export glTF 2.0 for a game engine: .glb (one file) or .gltf (with .bin and texture files). Exports the whole scene, or only the selection objects and their children, hidden ones included. Output is +Y up and never Draco-compressed; missing folders are created, and a file already at path is deleted first, so a failed export leaves none.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "animations": {
+          "description": "Export animations (default true).",
+          "type": "boolean",
+        },
+        "apply_modifiers": {
+          "description": "Apply modifiers to exported meshes (default true).",
+          "type": "boolean",
+        },
+        "format": {
+          "description": "GLB for .glb paths (default), GLTF_SEPARATE for .gltf paths.",
+          "enum": [
+            "GLB",
+            "GLTF_SEPARATE",
+          ],
+          "type": "string",
+        },
+        "path": {
+          "description": "Absolute output path ending in .glb or .gltf.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "selection": {
+          "description": "Objects to export with their children; omit to export the whole scene.",
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 300,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "export_gltf",
+    "title": "Export glTF",
+  },
+  {
+    "description": "Export the scene, or only the selection objects and their children, hidden ones included, as FBX (.fbx), OBJ (.obj), STL (.stl), or USD (.usd, .usda, .usdc, .usdz). Missing folders are created, and a file already at path is deleted first, so a failed export leaves none. Use export_gltf for game-engine assets.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "Output format.",
+          "enum": [
+            "fbx",
+            "obj",
+            "stl",
+            "usd",
+          ],
+          "type": "string",
+        },
+        "path": {
+          "description": "Absolute output path with the extension of the format.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "selection": {
+          "description": "Objects to export with their children; omit to export the whole scene.",
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 300,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "path",
+        "format",
+      ],
+      "type": "object",
+    },
+    "name": "export_file",
+    "title": "Export file",
+  },
+  {
+    "description": "Look at the scene: render an image from an orthographic camera framed on every renderable object, or on the listed objects and their children with other geometry hidden. solid (default) is fast flat shading with outlines in material base colors; material renders node materials and textures with EEVEE, lit by the scene lights (or a temporary sun when there are none). The scene, its camera, and its render settings are left unchanged.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "height": {
+          "description": "Image height in pixels (default 768).",
+          "maximum": 1568,
+          "minimum": 64,
+          "type": "integer",
+        },
+        "objects": {
+          "description": "Objects to frame and show with their children; omit for the whole scene.",
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string",
+          },
+          "maxItems": 300,
+          "minItems": 1,
+          "type": "array",
+        },
+        "shading": {
+          "description": "solid (default) or material.",
+          "enum": [
+            "solid",
+            "material",
+          ],
+          "type": "string",
+        },
+        "view": {
+          "description": "Viewing direction (default iso, from front-right-above). front looks along +Y; top looks down -Z.",
+          "enum": [
+            "iso",
+            "front",
+            "back",
+            "left",
+            "right",
+            "top",
+          ],
+          "type": "string",
+        },
+        "width": {
+          "description": "Image width in pixels (default 768).",
+          "maximum": 1568,
+          "minimum": 64,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "render_preview",
+    "title": "Preview render",
+  },
+  {
+    "description": "Render the scene from its camera, or from the named camera object, to a PNG file and show the image. Width, height, engine, and samples apply to this render only; omitted ones use the scene settings. Fails when the scene has no camera; use render_preview to look at a scene without one.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "camera": {
+          "description": "Camera object to render from instead of the scene camera.",
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string",
+        },
+        "engine": {
+          "description": "Render engine.",
+          "enum": [
+            "EEVEE",
+            "CYCLES",
+            "WORKBENCH",
+          ],
+          "type": "string",
+        },
+        "height": {
+          "description": "Output height in pixels.",
+          "maximum": 2048,
+          "minimum": 16,
+          "type": "integer",
+        },
+        "path": {
+          "description": "Absolute output path ending in .png; default: a new file under the Blender data folder.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "samples": {
+          "description": "Samples for EEVEE or CYCLES.",
+          "maximum": 4096,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "width": {
+          "description": "Output width in pixels.",
+          "maximum": 2048,
+          "minimum": 16,
+          "type": "integer",
+        },
+      },
+      "type": "object",
+    },
+    "name": "render",
+    "title": "Render",
+  },
+  {
+    "description": "Read Blender Python API documentation from the running Blender: a type (bpy.types.Object), a property or function (bpy.types.Object.location), an operator (bpy.ops.mesh.primitive_cube_add) or operator module (bpy.ops.mesh), bpy.data and bpy.context members, or mathutils, bmesh, and bpy_extras names. Shows types, defaults, ranges, enum items, parameters, and descriptions for this Blender version.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "identifier": {
+          "description": "Dotted API name, for example bpy.types.Mesh.from_pydata.",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "required": [
+        "identifier",
+      ],
+      "type": "object",
+    },
+    "name": "python_api",
+    "title": "Blender Python API",
+  },
+  {
+    "description": "Remember the current scene state so undo can return to it. new_scene and open_blend clear checkpoints.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "checkpoint",
+    "title": "Checkpoint",
+  },
+  {
+    "description": "Return the scene to the latest checkpoint, discarding changes made since. Calling undo again right away goes back one more checkpoint, down to the scene as it was opened or created; Blender keeps only its 32 most recent undo steps, so older checkpoints expire.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object",
+    },
+    "name": "undo",
+    "title": "Undo",
+  },
+]
+`;

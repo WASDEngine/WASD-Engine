@@ -262,6 +262,15 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-tool-fs-search` | yes | Model-facing filesystem discovery tools (glob, grep) backed by the packaged ripgrep binary (@vscode/ripgrep) |
 | `@deepseek-ai/dsh-tool-str-replace-editor` | yes | Model-facing view, create, literal replace, and line insert tool over the Harness filesystem service |
 
+## gamedev
+
+| Package | Config | Description |
+|---|---|---|
+| `@deepseek-ai/dsh-blender` | yes | Headless Blender for the agent: an MCP server backed by the bpy module |
+| `@deepseek-ai/dsh-client-ui-game-tools` | no | Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, and Godot with their logos, Loader state, and profile switches |
+| `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |
+| `@deepseek-ai/dsh-godot` | yes | Run, test, and play Godot games through LibGodot with a live Game tab |
+
 ## goal
 
 | Package | Config | Description |

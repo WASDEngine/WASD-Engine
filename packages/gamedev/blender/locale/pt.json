@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Blender",
+    "description": "Permite que o agente crie, renderize e exporte modelos 3D com o Blender, que é executado sem janela."
+  }
+}

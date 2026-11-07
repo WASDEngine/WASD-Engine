@@ -13,6 +13,8 @@ import type {} from '@deepseek-ai/dsh-cua/remote'
 import type {} from '@deepseek-ai/dsh-experimental-api-speech-to-text/remote'
 import type {} from '@deepseek-ai/dsh-experimental-claude-code-mods/remote'
 import type {} from '@deepseek-ai/dsh-experimental-client-ui-cot-translation/remote'
+// WASDEngine fork: the Game tab's owner-only Remote (wasdengine/FORK.md).
+import type {} from '@deepseek-ai/dsh-godot/remote'
 import { VIEWER_ENDPOINT_CLASSES, type ViewerEndpointClass } from '../endpoint-classification.ts'
 
 /**

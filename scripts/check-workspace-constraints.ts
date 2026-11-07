@@ -266,6 +266,10 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-experimental-webworker-packer': ['bin.js', 'lib/repository-*.js'],
   // Startup and runtime share the advertised URL parser.
   '@deepseek-ai/dsh-web-app': ['lib/public-url-*.js', 'wasdengine/skills'], // WASDEngine fork: bundled agent skills (wasdengine/FORK.md)
+  // WASDEngine fork: headless worker scripts and the Godot harness run outside Node (wasdengine/FORK.md).
+  '@deepseek-ai/dsh-blender': ['py/**/*.py'],
+  '@deepseek-ai/dsh-gimp': ['py/**/*.py'],
+  '@deepseek-ai/dsh-godot': ['runtime/*.gd'],
   // The headless entry and its startup row share the JSON projection code
   // through a hashed tsdown chunk; both import it by relative path.
   '@deepseek-ai/dsh-headless': ['lib/json-stream-*.js'],

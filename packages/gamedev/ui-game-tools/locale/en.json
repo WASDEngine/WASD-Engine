@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Game tools tabs",
+    "description": "Show Blender, GIMP, and Godot with their logos in Settings and on the Plugins page, where you can turn each one on or off."
+  }
+}

@@ -1671,6 +1671,48 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'godot',
+    summary: 'Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and the frame stream.',
+    description: 'Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and the frame stream.',
+    methods: [
+      {
+        signature: '@Remote({ mode: \'stream\' }) follow(sessionId: SessionId, signal: AbortSignal): AsyncIterable<GodotFollowItem>',
+        description: 'Follow the Session\'s game for the Game tab, without resuming the Session: a Session without a live Agent reports no run until its Agent starts one.',
+        parameters: [{ name: 'sessionId', description: 'followed Session.' }, { name: 'signal', description: 'stream cancellation.' }],
+        returns: 'a snapshot, then run, log, and runtime changes until cancelled or the plugin is disposed.',
+      },
+      {
+        signature: '@Remote async run(sessionId: SessionId, request: GodotRunRequest, signal: AbortSignal): Promise<GodotRunView>',
+        description: 'Start or restart the Session\'s game from the Game tab; audio plays unless `muted` is set. A Session without a live Agent is resumed first, as a prompt resumes it.',
+        parameters: [{ name: 'sessionId', description: 'Session whose game starts.' }, { name: 'request', description: 'project, scene, window size, and audio.' }, { name: 'signal', description: 'cancellation before launch; a resume or a launched run continues for the Session.' }],
+        returns: 'the new run, launched; the follow stream reports its progress.',
+      },
+      {
+        signature: '@Remote async stop(sessionId: SessionId, signal: AbortSignal): Promise<void>',
+        description: 'Stop the Session\'s game.',
+        parameters: [{ name: 'sessionId', description: 'Session whose run stops.' }, { name: 'signal', description: 'cancellation of the wait; stopping continues.' }],
+        returns: 'after the game ended; `godot/not-running` when the Session has no run.',
+      },
+      {
+        signature: '@Remote async control(sessionId: SessionId, request: GodotControlRequest, signal: AbortSignal): Promise<GodotRunView>',
+        description: 'Pause, resume, or step the Session\'s game.',
+        parameters: [{ name: 'sessionId', description: 'Session whose run changes.' }, { name: 'request', description: 'action and step frames.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the run after the change.',
+      },
+      {
+        signature: '@Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void',
+        description: 'Send user input to the Session\'s game without waiting for the game to apply it.',
+        parameters: [{ name: 'sessionId', description: 'Session whose run receives the input.' }, { name: 'runId', description: 'run the input was meant for.' }, { name: 'events', description: 'at most 256 events in game window pixels.' }, { name: 'signal', description: 'cancellation.' }],
+      },
+      {
+        signature: '@Remote async installRuntime(signal: AbortSignal): Promise<GodotRuntimeView>',
+        description: 'Install the managed LibGodot runtime, or join the install already running.',
+        parameters: [{ name: 'signal', description: 'stops this wait; the install continues.' }],
+        returns: 'the runtime view after the install settled.',
+      },
+    ],
+  },
+  {
     key: 'headlessStartup',
     summary: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
     description: 'What the runner row reads from HEADLESS_STARTUP_SERVICE.',
@@ -5920,10 +5962,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CommandInvocation {\n    readonly commandId: CommandId;\n    readonly agent: Agent;\n    readonly rawInput: string;\n    readonly attachments: readonly (ImageBlock | FileBlock)[];\n    readonly signal: AbortSignal;\n}',
   },
   {
-    name: 'CommandResult',
-    declaration: 'export type CommandResult = {\n    readonly kind: \'success\';\n    readonly text?: string;\n    readonly sourceEventSeq?: SessionSeq;\n} | {\n    readonly kind: \'error\';\n    readonly text: string;\n};',
-  },
-  {
     name: 'CommandRunInput',
     declaration: 'export interface CommandRunInput {\n    command: string;\n    args: string;\n    origin: PromptOrigin;\n}',
   },
@@ -6702,6 +6740,70 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GoalView',
     declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
+  },
+  {
+    name: 'GodotBacktraceFrame',
+    declaration: 'export interface GodotBacktraceFrame {\n    readonly function: string;\n    readonly file: string;\n    readonly line: number;\n}',
+  },
+  {
+    name: 'GodotControlRequest',
+    declaration: 'export interface GodotControlRequest {\n    readonly action: \'pause\' | \'resume\' | \'step\';\n    readonly frames?: number;\n}',
+  },
+  {
+    name: 'GodotFollowItem',
+    declaration: 'export type GodotFollowItem = {\n    readonly type: \'snapshot\';\n    readonly run: GodotRunView | null;\n    readonly runtime: GodotRuntimeView;\n    readonly logs: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'run\';\n    readonly run: GodotRunView | null;\n} | {\n    readonly type: \'logs\';\n    readonly entries: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'runtime\';\n    readonly runtime: GodotRuntimeView;\n};',
+  },
+  {
+    name: 'GodotInputEvent',
+    declaration: 'export type GodotInputEvent = ({\n    readonly kind: \'key\';\n    readonly key?: string;\n    readonly keycode?: number;\n    readonly pressed: boolean;\n    readonly echo?: boolean;\n    readonly unicode?: number;\n    readonly hold?: number;\n} & GodotInputModifiers) | {\n    readonly kind: \'text\';\n    readonly text: string;\n} | ({\n    readonly kind: \'mouse_button\';\n    readonly button: GodotMouseButton;\n    readonly pressed: boolean;\n    readonly x: number;\n    readonly y: number;\n    readonly double?: boolean;\n    readonly factor?: number;\n    readonly hold?: number;\n} & GodotInputModifiers) | ({\n    readonly kind: \'mouse_motion\';\n    readonly x: number;\n    readonly y: number;\n    readonly dx?: number;\n    readonly dy?: number;\n} & GodotInputModifiers) | {\n    readonly kind: \'action\';\n    readonly action: string;\n    readonly pressed: boolean;\n    readonly strength?: number;\n    readonly hold?: number;\n} | {\n    readonly kind: \'joy_button\';\n    readonly device?: number;\n    readonly button: number;\n    readonly pressed: boolean;\n} | {\n    readonly kind: \'joy_axis\';\n    readonly device?: number;\n    readonly axis: number;\n    readonly value: number;\n} | {\n    readonly kind: \'focus\';\n    readonly focused: boolean;\n} | {\n    readonly wait: number;\n};',
+  },
+  {
+    name: 'GodotInputModifiers',
+    declaration: 'export interface GodotInputModifiers {\n    readonly shift?: boolean;\n    readonly ctrl?: boolean;\n    readonly alt?: boolean;\n    readonly meta?: boolean;\n}',
+  },
+  {
+    name: 'GodotLogEntry',
+    declaration: 'export interface GodotLogEntry {\n    readonly seq: number;\n    readonly runId: string;\n    readonly source: \'game\' | \'process\' | \'import\' | \'check\';\n    readonly level: GodotLogLevel;\n    readonly message: string;\n    readonly file?: string;\n    readonly line?: number;\n    readonly function?: string;\n    readonly backtrace?: readonly GodotBacktraceFrame[];\n    readonly time: number;\n}',
+  },
+  {
+    name: 'GodotLogLevel',
+    declaration: 'export type GodotLogLevel = \'stdout\' | \'stderr\' | \'warning\' | \'error\' | \'script_error\' | \'shader_error\';',
+  },
+  {
+    name: 'GodotMouseButton',
+    declaration: 'export type GodotMouseButton = \'left\' | \'right\' | \'middle\' | \'wheel_up\' | \'wheel_down\' | \'wheel_left\' | \'wheel_right\';',
+  },
+  {
+    name: 'GodotRunLaunch',
+    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n}',
+  },
+  {
+    name: 'GodotRunPhase',
+    declaration: 'export type GodotRunPhase = \'preparing\' | \'importing\' | \'starting\' | \'running\' | \'paused\' | \'exited\' | \'crashed\' | \'failed\';',
+  },
+  {
+    name: 'GodotRunRequest',
+    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n}',
+  },
+  {
+    name: 'GodotRunStarter',
+    declaration: 'export type GodotRunStarter = \'agent\' | \'user\';',
+  },
+  {
+    name: 'GodotRuntimeInstallProgress',
+    declaration: 'export interface GodotRuntimeInstallProgress {\n    readonly phase: \'downloading\' | \'verifying\' | \'extracting\';\n    readonly completedBytes: number;\n    readonly totalBytes: number;\n}',
+  },
+  {
+    name: 'GodotRuntimeKind',
+    declaration: 'export type GodotRuntimeKind = \'libgodot\' | \'executable\';',
+  },
+  {
+    name: 'GodotRuntimeView',
+    declaration: 'export interface GodotRuntimeView {\n    readonly state: \'ready\' | \'missing\' | \'installing\' | \'failed\';\n    readonly kind?: GodotRuntimeKind;\n    readonly version?: string;\n    readonly windowless?: boolean;\n    readonly progress?: GodotRuntimeInstallProgress;\n    readonly message?: string;\n}',
+  },
+  {
+    name: 'GodotRunView',
+    declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
   },
   {
     name: 'GrantRecord',

@@ -5,8 +5,9 @@
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
  * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
- * for one, and the `gamedev` preset must be the default and, beside `cordis`, the only shipped preset, named by the
- * built-in copy, with its persona and bundled skill root.
+ * for one, the game tool rows and the row of their Game tools tabs must mount from web-app dependencies, each tool
+ * package must resolve the title, description, and logo the tabs show, and the `gamedev` preset must be the default
+ * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -17,7 +18,7 @@ import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
-import { bundlePatchPaths, composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { bundlePatchPaths, composeEntries, loadOverlayPatches, readPluginMeta } from '@deepseek-ai/dsh-app-boot'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } from '@deepseek-ai/dsh-launch-environment'
 import { PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
 
@@ -31,8 +32,19 @@ const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-sdk-minimal': ['./wasdengine/gateway.cordis.patch.yml'],
   '@deepseek-ai/dsh-web-app': [
     './wasdengine/telemetry.cordis.patch.yml', './wasdengine/gamedev.cordis.patch.yml', './wasdengine/first-run.cordis.patch.yml',
+    './wasdengine/game-tools.cordis.patch.yml',
   ],
 }
+
+/** The game tool rows the fork inserts into every Web and Desktop profile, by row id, with the package each mounts. */
+const GAME_TOOLS: Readonly<Record<string, string>> = {
+  blender: '@deepseek-ai/dsh-blender',
+  gimp: '@deepseek-ai/dsh-gimp',
+  godot: '@deepseek-ai/dsh-godot',
+}
+
+/** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
+const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
 const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
@@ -110,6 +122,7 @@ const PRESET_OWN_ROWS: Readonly<Record<string, readonly string[]>> = {
 interface BundleManifest {
   name: string
   files: string[]
+  dependencies?: Record<string, string>
   dsh: { bundle: { patch: string | string[] } }
 }
 
@@ -257,9 +270,50 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/skills')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, and their tabs', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
-    expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id)).toEqual(['preset-gamedev'])
+    expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id])
+  })
+
+  it('mounts each game tool from a web-app dependency with its own directory under the harness home', () => {
+    const inserted = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? [])
+      .filter(entry => Object.hasOwn(GAME_TOOLS, entry.id))
+    expect(inserted.map(entry => entry.id)).toEqual(Object.keys(GAME_TOOLS))
+    const dependencies = manifest(webAppDir).dependencies ?? {}
+    for (const entry of inserted) {
+      const id = entry.id
+      expect(entry.name, `${id} package`).toBe(GAME_TOOLS[id])
+      expect(dependencies[entry.name], `${id} is a web-app dependency`).toBe('workspace:*')
+      expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
+      expect(expression(configOf(entry).dataRoot, `${id}.dataRoot`), `${id}.dataRoot`).toBe(`dshHomePath('${id}')`)
+    }
+  })
+
+  it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_TOOLS_UI.id)
+    expect(entry?.name).toBe(GAME_TOOLS_UI.name)
+    expect(entry?.config).toBeUndefined()
+    expect(entry?.disabled).toBeUndefined()
+    expect(manifest(webAppDir).dependencies?.[GAME_TOOLS_UI.name]).toBe('workspace:*')
+  })
+
+  it('resolves the title, description, and SVG logo the Game tools tabs show for each game tool', () => {
+    const parent = pathToFileURL(join(webAppDir, 'package.json')).href
+    for (const name of Object.values(GAME_TOOLS)) {
+      const meta = readPluginMeta(name, parent)
+      expect(meta?.error, `${name} metadata error`).toBeUndefined()
+      expect(meta?.title, `${name} title`).toBeDefined()
+      expect(meta?.description, `${name} description`).toBeDefined()
+      expect(meta?.icon, `${name} icon`).toMatch(/^data:image\/svg\+xml;base64,/u)
+    }
+  })
+
+  it('lists the game tools in the Game tools tabs in the order the overlay mounts them', async () => {
+    // A computed file URL keeps this browser module and its Client Context merges out of the Host type check of this spec.
+    const tools = pathToFileURL(join(repoRoot, 'packages/gamedev/ui-game-tools/src/client/tools.ts')).href
+    const loaded: unknown = await import(tools)
+    expect(isRecord(loaded) ? loaded.GAME_TOOL_MODULES : undefined).toEqual(Object.values(GAME_TOOLS))
   })
 
   it('sets only config keys that upstream still declares', () => {

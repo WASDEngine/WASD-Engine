@@ -39,6 +39,7 @@
     "wasdengine/telemetry.cordis.patch.yml",
     "wasdengine/gamedev.cordis.patch.yml",
     "wasdengine/first-run.cordis.patch.yml",
+    "wasdengine/game-tools.cordis.patch.yml",
     "lib/public-url-*.js",
     "wasdengine/skills",
     "lib/types/**/*.d.ts"
@@ -51,7 +52,8 @@
         "./presets/cordis.patch.yml",
         "./wasdengine/telemetry.cordis.patch.yml",
         "./wasdengine/gamedev.cordis.patch.yml",
-        "./wasdengine/first-run.cordis.patch.yml"
+        "./wasdengine/first-run.cordis.patch.yml",
+        "./wasdengine/game-tools.cordis.patch.yml"
       ]
     }
   },
@@ -205,7 +207,11 @@
     "@deepseek-ai/dsh-deliverable-file-references": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-drag": "workspace:*",
     "@deepseek-ai/dsh-client-ui-context-menu": "workspace:*",
-    "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*"
+    "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
+    "@deepseek-ai/dsh-blender": "workspace:*",
+    "@deepseek-ai/dsh-gimp": "workspace:*",
+    "@deepseek-ai/dsh-godot": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-game-tools": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

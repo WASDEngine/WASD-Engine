@@ -1,0 +1,166 @@
+diff --git a/platform/macos/display_server_macos_embedded.h b/platform/macos/display_server_macos_embedded.h
+index b2d2f62..5c97c06 100644
+--- a/platform/macos/display_server_macos_embedded.h
++++ b/platform/macos/display_server_macos_embedded.h
+@@ -97,6 +97,9 @@ class DisplayServerMacOSEmbedded : public DisplayServerMacOSBase {
+ 	const HDROutput &_get_hdr_output(DisplayServerEnums::WindowID p_window) const override;
+ 
+ 	Point2i ime_last_position;
++	// Without an editor debugger, the host injects input; report its pointer instead of the OS cursor.
++	mutable Point2i last_event_mouse_position;
++	mutable BitField<MouseButtonMask> last_event_mouse_buttons = MouseButtonMask::NONE;
+ 
+ 	// Convert source pixel size to render pixel size, accounting for the
+ 	// difference between display scale and render scale when hiDPI is disabled.
+diff --git a/platform/macos/display_server_macos_embedded.mm b/platform/macos/display_server_macos_embedded.mm
+index fd990ec..aeddbd7 100644
+--- a/platform/macos/display_server_macos_embedded.mm
++++ b/platform/macos/display_server_macos_embedded.mm
+@@ -216,7 +216,7 @@
+ 	ca_context = [CAContext contextWithCGSConnection:connection_id options:@{ kCAContextCIFilterBehavior : @"ignore" }];
+ 	ca_context.layer = layer;
+ 
+-	{
++	if (EngineDebugger::get_singleton()) {
+ 		Array arr = { ca_context.contextId };
+ 		EngineDebugger::get_singleton()->send_message("game_view:set_context_id", arr);
+ 	}
+@@ -277,7 +277,9 @@
+ // MARK: - Mouse
+ 
+ void DisplayServerMacOSEmbedded::_mouse_apply_mode(DisplayServerEnums::MouseMode p_prev_mode, DisplayServerEnums::MouseMode p_new_mode) {
+-	EngineDebugger::get_singleton()->send_message("game_view:mouse_set_mode", { p_new_mode });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:mouse_set_mode", { p_new_mode });
++	}
+ }
+ 
+ void DisplayServerMacOSEmbedded::warp_mouse(const Point2i &p_position) {
+@@ -285,12 +287,18 @@
+ 	Input::get_singleton()->set_mouse_position(p_position);
+ 	// Convert from game pixels to points for the editor.
+ 	float inv_scale = 1.0f / screen_get_max_scale();
+-	EngineDebugger::get_singleton()->send_message("game_view:warp_mouse", { Point2i(Vector2(p_position) * inv_scale) });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:warp_mouse", { Point2i(Vector2(p_position) * inv_scale) });
++	}
+ }
+ 
+ Point2i DisplayServerMacOSEmbedded::mouse_get_position() const {
+ 	_THREAD_SAFE_METHOD_
+ 
++	if (!EngineDebugger::get_singleton()) {
++		return last_event_mouse_position;
++	}
++
+ 	const NSPoint mouse_pos = [NSEvent mouseLocation];
+ 	const float scale = screen_get_max_scale();
+ 
+@@ -309,6 +317,10 @@
+ }
+ 
+ BitField<MouseButtonMask> DisplayServerMacOSEmbedded::mouse_get_button_state() const {
++	if (!EngineDebugger::get_singleton()) {
++		return last_event_mouse_buttons;
++	}
++
+ 	BitField<MouseButtonMask> last_button_state = MouseButtonMask::NONE;
+ 
+ 	NSUInteger buttons = [NSEvent pressedMouseButtons];
+@@ -367,6 +379,13 @@
+ }
+ 
+ void DisplayServerMacOSEmbedded::send_input_event(const Ref<InputEvent> &p_event, DisplayServerEnums::WindowID p_id) const {
++	Ref<InputEventMouse> mouse_event = p_event;
++	if (mouse_event.is_valid()) {
++		_THREAD_SAFE_LOCK_
++		last_event_mouse_position = mouse_event->get_position();
++		last_event_mouse_buttons = mouse_event->get_button_mask();
++		_THREAD_SAFE_UNLOCK_
++	}
+ 	if (p_id != DisplayServerEnums::INVALID_WINDOW_ID) {
+ 		const Callable *cb = input_event_callbacks.getptr(p_id);
+ 		if (cb) {
+@@ -689,14 +708,18 @@
+ }
+ 
+ void DisplayServerMacOSEmbedded::window_set_ime_active(const bool p_active, DisplayServerEnums::WindowID p_window) {
+-	EngineDebugger::get_singleton()->send_message("game_view:window_set_ime_active", { p_active });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:window_set_ime_active", { p_active });
++	}
+ }
+ 
+ void DisplayServerMacOSEmbedded::window_set_ime_position(const Point2i &p_pos, DisplayServerEnums::WindowID p_window) {
+ 	if (p_pos == ime_last_position) {
+ 		return;
+ 	}
+-	EngineDebugger::get_singleton()->send_message("game_view:window_set_ime_position", { p_pos });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:window_set_ime_position", { p_pos });
++	}
+ 	ime_last_position = p_pos;
+ }
+ 
+@@ -792,7 +815,9 @@
+ 
+ void DisplayServerMacOSEmbedded::cursor_set_shape(DisplayServerEnums::CursorShape p_shape) {
+ 	cursor_shape = p_shape;
+-	EngineDebugger::get_singleton()->send_message("game_view:cursor_set_shape", { p_shape });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:cursor_set_shape", { p_shape });
++	}
+ }
+ 
+ void DisplayServerMacOSEmbedded::cursor_set_custom_image(const Ref<Resource> &p_cursor, DisplayServerEnums::CursorShape p_shape, const Vector2 &p_hotspot) {
+@@ -803,7 +828,9 @@
+ 			data = image->save_png_to_buffer();
+ 		}
+ 	}
+-	EngineDebugger::get_singleton()->send_message("game_view:cursor_set_custom_image", { data, p_shape, p_hotspot });
++	if (EngineDebugger::get_singleton()) {
++		EngineDebugger::get_singleton()->send_message("game_view:cursor_set_custom_image", { data, p_shape, p_hotspot });
++	}
+ }
+ 
+ void DisplayServerMacOSEmbedded::swap_buffers() {
+diff --git a/platform/macos/libgodot_macos.mm b/platform/macos/libgodot_macos.mm
+index 280f337..1c565e5 100644
+--- a/platform/macos/libgodot_macos.mm
++++ b/platform/macos/libgodot_macos.mm
+@@ -41,8 +41,34 @@
+ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], GDExtensionInitializationFunction p_init_func) {
+ 	ERR_FAIL_COND_V_MSG(instance != nullptr, nullptr, "Only one Godot Instance may be created.");
+ 
++	bool is_embedded = false;
++	bool is_headless = false;
++	for (int i = 1; i < p_argc; i++) {
++		if (strcmp("--embedded", p_argv[i]) == 0) {
++			is_embedded = true;
++		}
++		for (size_t j = 0; j < std::size(OS_MacOS::headless_args); j++) {
++			if (strcmp(OS_MacOS::headless_args[j], p_argv[i]) == 0) {
++				is_headless = true;
++				break;
++			}
++		}
++		if (i < p_argc - 1 && strcmp("--display-driver", p_argv[i]) == 0 && strcmp("headless", p_argv[i + 1]) == 0) {
++			is_headless = true;
++		}
++	}
++
+ 	uint32_t remaining_args = p_argc - 1;
+-	os = new OS_MacOS_NSApp(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr);
++#ifdef TOOLS_ENABLED
++	if (is_embedded) {
++		os = new OS_MacOS_Embedded(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr);
++	} else
++#endif
++			if (is_headless) {
++		os = new OS_MacOS_Headless(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr);
++	} else {
++		os = new OS_MacOS_NSApp(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr);
++	}
+ 
+ 	@autoreleasepool {
+ 		Error err = Main::setup(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr, false);

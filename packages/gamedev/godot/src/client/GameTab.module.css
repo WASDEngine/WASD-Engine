@@ -1,0 +1,349 @@
+/* Game tab: run toolbar, notices, the letterboxed game view, and the log drawer, stacked in the pane. */
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+.centered {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  padding: 24px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  text-align: center;
+}
+
+.toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 5px 6px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.tool {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .tool:hover:not(:disabled) {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  .drawerHeader:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.tool:disabled {
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.status {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 0 4px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+}
+
+.statusItem {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusItem:not(:first-child)::before {
+  margin-right: 6px;
+  content: '·';
+}
+
+.notice {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px 5px 12px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.notice[role='alert'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.noticeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.viewport {
+  position: absolute;
+  inset: 0;
+  outline: none;
+  user-select: none;
+  touch-action: none;
+}
+
+/* An outline paints above the canvas that fills the view, so the ring stays visible on every edge the frame reaches. */
+.viewport[data-focused] {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-alias-state-business-primary);
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.hint {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 4px 10px;
+  color: var(--dsw-alias-toast-label);
+  font: var(--dsw-font-xxs-12);
+  text-align: center;
+  background: var(--dsw-alias-toast-bg);
+  border-radius: var(--dsw-radius-sm);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+/* The release hint shows when the view takes focus, then fades so that it does not cover the game. */
+.hint[data-transient] {
+  animation: release-hint 4s forwards;
+}
+
+@keyframes release-hint {
+  0%,
+  85% {
+    opacity: 1;
+  }
+
+  100% {
+    visibility: hidden;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint[data-transient] {
+    animation-timing-function: step-end;
+  }
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px;
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  max-width: 320px;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  text-align: center;
+}
+
+.message p {
+  margin: 0;
+}
+
+.messageTitle {
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-s-14);
+}
+
+.messageDetail {
+  box-sizing: border-box;
+  max-width: 100%;
+  max-height: 160px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  color: var(--dsw-alias-label-secondary);
+  font: 11px/16px var(--ds-font-family-code);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--dsw-alias-bg-layer-2);
+  border-radius: var(--dsw-radius-sm);
+  user-select: text;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}
+
+.drawer {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 45%;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.drawerHeader {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.drawerTitle {
+  flex: 1 1 auto;
+}
+
+.count {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.count[data-active][data-tone='error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.count[data-active][data-tone='warning'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.logList {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0 6px;
+  overflow: auto;
+  font: 11px/16px var(--ds-font-family-code);
+  list-style: none;
+  user-select: text;
+}
+
+.logRow {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 12px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.logRow[data-level='stderr'] {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.logRow[data-level='warning'] {
+  color: var(--dsw-alias-state-warn-primary);
+}
+
+.logRow[data-level='error'],
+.logRow[data-level='script_error'],
+.logRow[data-level='shader_error'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.logMessage {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.logLocation {
+  flex: 0 1 auto;
+  max-width: 45%;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.logEmpty {
+  margin: 0;
+  padding: 4px 12px 10px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

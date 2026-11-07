@@ -1,0 +1,191 @@
+/* Both tabs: the introduction, then the read state or the tool cards, as wide as the page column that holds them. */
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  color: var(--dsw-alias-label-primary);
+}
+
+.intro {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The Plugins page's card row without its hover surface, because a game tool opens no page:
+   the 48px logo frame, the text column, then the end control. */
+.card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 8px 0;
+}
+
+.logoFrame {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  color: var(--dsw-alias-label-secondary);
+}
+
+.logo {
+  object-fit: contain;
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* StateDot is aria-hidden, so this wrapper carries the phase's accessible name. */
+.phase {
+  display: inline-flex;
+  flex: none;
+}
+
+/* Wraps in full: a card opens no page that could show a clipped rest. */
+.description {
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.problem {
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.control {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+/* The switch keeps its place while a write runs: the dot's room beside it is always reserved. */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+}
+
+.status,
+.failure {
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.failureText {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* Loading placeholders keep a card's logo frame and its title and description lines. */
+.placeholder {
+  border-color: transparent;
+  background: var(--dsw-alias-bg-skeleton);
+}
+
+.placeholderTitle,
+.placeholderLine {
+  height: 12px;
+  border-radius: var(--dsw-radius-xs);
+}
+
+.placeholderTitle {
+  width: min(144px, 60%);
+  margin: 4px 0;
+}
+
+.placeholderLine {
+  width: min(280px, 85%);
+  margin: 3px 0;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .placeholder {
+    animation: game-tools-placeholder 2s cubic-bezier(0.36, 0, 0.64, 1) infinite;
+  }
+}
+
+@keyframes game-tools-placeholder {
+  0% { opacity: 1; }
+  40% { opacity: 0.6; }
+  80%, 100% { opacity: 1; }
+}

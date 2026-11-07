@@ -1,0 +1,49 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-tools/README.md
+/:
+  en: 46a912c2a9d8f38b
+  zh: 58ffe77bdac5ccf6
+/deepseek-ai-dsh-client-ui-game-tools:
+  en: c6f2b42c20fe9654
+  zh: b5aa1546b3fc517e
+/deepseek-ai-dsh-client-ui-game-tools/summary:
+  en: b87d2dffba9f4c30
+  zh: ecac9dc3ec7852f0
+/deepseek-ai-dsh-client-ui-game-tools/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-client-ui-game-tools/use-this-package:
+  en: f7b515d860cc1155
+  zh: 1f7ac1fe2dde3958
+/deepseek-ai-dsh-client-ui-game-tools/use-this-package/default-composition:
+  en: 959b8421dcb538a6
+  zh: 551b7768a8a1a8c4
+/deepseek-ai-dsh-client-ui-game-tools/use-this-package/reading-a-card:
+  en: 209a6a193a84bd21
+  zh: 52de43b7ebc0fa07
+/deepseek-ai-dsh-client-ui-game-tools/use-this-package/the-switch:
+  en: 54d6d45ac594779d
+  zh: b9b89960f547aa29
+/deepseek-ai-dsh-client-ui-game-tools/use-this-package/reading-again-and-failures:
+  en: 98b2331d2c18f062
+  zh: 4c6da42a643517ab
+/deepseek-ai-dsh-client-ui-game-tools/understand-the-implementation:
+  en: 95ea4f808cc52780
+  zh: 929f756e1b9c9af3
+/deepseek-ai-dsh-client-ui-game-tools/further-exploration:
+  en: 43354b74a4ff78eb
+  zh: cbf2af0d7d218812
+/deepseek-ai-dsh-client-ui-game-tools/model-experience:
+  en: 1cc0014a04f86887
+  zh: 6400876c4d3ec684
+/deepseek-ai-dsh-client-ui-game-tools/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: de54f3467ef3b9be
+/deepseek-ai-dsh-client-ui-game-tools/known-limitations-and-deferred-work:
+  en: b67f5e3874962b71
+  zh: 3d0589aab12b2131
+/deepseek-ai-dsh-client-ui-game-tools/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98
