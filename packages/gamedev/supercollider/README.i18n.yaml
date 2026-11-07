@@ -1,0 +1,103 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/supercollider/README.md
+/:
+  en: e0334d9736836a7b
+  zh: 3b23d7a618f36147
+/deepseek-ai-dsh-supercollider:
+  en: f32fd43a52119d78
+  zh: 02f1e630390b6752
+/deepseek-ai-dsh-supercollider/summary:
+  en: f0bb9da1d5c33550
+  zh: af620f5eeefce631
+/deepseek-ai-dsh-supercollider/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 725b47765ee8f30b
+/deepseek-ai-dsh-supercollider/use-this-package:
+  en: 23167369c86285cf
+  zh: 496cad5fd8560865
+/deepseek-ai-dsh-supercollider/use-this-package/default-composition:
+  en: dbdacb8bae48c79d
+  zh: e7df8d7b9d254d16
+/deepseek-ai-dsh-supercollider/use-this-package/turn-the-tools-off-or-change-their-settings:
+  en: d36d33eafbd7da94
+  zh: 119df85f7711fcf3
+/deepseek-ai-dsh-supercollider/use-this-package/configuration:
+  en: 3068a7d4ad31294c
+  zh: df96da26cca265be
+/deepseek-ai-dsh-supercollider/use-this-package/find-supercollider:
+  en: daf4ab0d179e45f2
+  zh: da552ea6692f3b9e
+/deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-for-every-conversation:
+  en: 34fa8d1d56f8c0d7
+  zh: de8d78f66155ac65
+/deepseek-ai-dsh-supercollider/use-this-package/tools:
+  en: bcad317a0ea27425
+  zh: 9a1ec911a86ff165
+/deepseek-ai-dsh-supercollider/use-this-package/files-under-the-data-directory:
+  en: 6fe91459117dbec4
+  zh: af4fc5d0642bd17e
+/deepseek-ai-dsh-supercollider/use-this-package/plugin-icon:
+  en: 97871d22afeb1fd5
+  zh: d63f8075ebfd4a08
+/deepseek-ai-dsh-supercollider/understand-the-implementation:
+  en: 9154b3b51314be79
+  zh: ef265d1adcdd4948
+/deepseek-ai-dsh-supercollider/understand-the-implementation/verify-against-real-supercollider:
+  en: 76596ca9985ed30e
+  zh: 6411b8c4acbbbe72
+/deepseek-ai-dsh-supercollider/further-exploration:
+  en: 41a9f99a591d801b
+  zh: ca9ad04fa9a3985b
+/deepseek-ai-dsh-supercollider/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations:
+  en: 2e82889385e588c7
+  zh: bc71b5dcd4d98420
+/deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations/what-the-model-sees:
+  en: d084f50d5f99fa54
+  zh: d4167587889b7905
+/deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations/token-effect:
+  en: 45395a3f77577923
+  zh: 2cb2680911ed4943
+/deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations/kv-cache-effect:
+  en: d59ee37c5ea6d7f8
+  zh: 7b759614ca04d9aa
+/deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt:
+  en: 8643a279f586bfd3
+  zh: 208bccd112725bde
+/deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/what-the-model-sees:
+  en: bf7d5cb45008dbb9
+  zh: d9f89240950255ae
+/deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/what-the-model-sees/supercollider-server-instructions:
+  en: 613bbca94bb8e6ea
+  zh: 87bfbb3163379d76
+/deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/token-effect:
+  en: 2fbd2b78184951ef
+  zh: f5e9ba821b4c8749
+/deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
+  en: 457158b3658aae47
+  zh: c47906e0ef5d401d
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images:
+  en: 5120649c8c29354d
+  zh: 445a2b087d242747
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees:
+  en: 60d34b7e2cb12793
+  zh: 3052ae04c118c884
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees/supercollider-installation-message-on-macos:
+  en: 8716e627cc0866d5
+  zh: 5a623565a25ad6ef
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/token-effect:
+  en: 0fa9a3f943b92456
+  zh: 25fa89c868cb4060
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/kv-cache-effect:
+  en: 00af0e13a5a63f94
+  zh: 21a0433bbdc9d3c0
+/deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
+  en: bcb73a2d7e17e438
+  zh: 3bb0e12cdd957065
+/deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 8ec3e73528ddb1a6

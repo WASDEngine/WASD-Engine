@@ -1,5 +1,5 @@
 ---
-description: "Build an MCP server that runs a desktop application headless, for application packages such as Blender and GIMP: the shared plugin Config fields, registration with the MCP manager and the source launch through tsx, the server process body, tool helpers and the execute_python tool, the JSON-lines worker protocol and restarts, tool result bounds, and copies of shipped files outside app.asar."
+description: "Build an MCP server that runs a desktop application headless, for application packages such as Blender, GIMP, and SuperCollider: the shared plugin Config fields, registration with the MCP manager and the source launch through tsx, the server process body, tool helpers and the execute_python tool, the JSON-lines worker protocol and restarts, tool result bounds, and copies of shipped files outside app.asar."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Put a desktop application such as Blender or GIMP behind MCP tools that run it without a window. A Host plugin spreads the shared `AppMcpConfig` fields into its Config and calls `registerAppMcpPlugin`; its server entry calls `runAppMcpServer` with the application's tools. The first tool call starts one long-lived worker, and calls run one at a time. A timeout, crash, or protocol violation stops the worker: the failed call reports the lost state, and a later call starts a fresh one. Shared setup and tool helpers, `execute_python`, and `materializePayload`, which copies shipped scripts out of `app.asar`, complete the package.
+Put a desktop application such as Blender, GIMP, or SuperCollider behind MCP tools that run it without a window. A Host plugin spreads the shared `AppMcpConfig` fields into its Config and calls `registerAppMcpPlugin`; its server entry calls `runAppMcpServer` with the application's tools. The first tool call starts one long-lived worker, and calls run one at a time. A timeout, crash, or protocol violation stops the worker: the failed call reports the lost state, and a later call starts a fresh one. Shared setup and tool helpers, `execute_python`, and `materializePayload`, which copies shipped scripts out of `app.asar`, complete the package.
 
 ## Table of Contents
 
@@ -29,7 +29,7 @@ This library is a dependency of application plugin packages: it has no plugin en
 
 ### When to use it
 
-The Blender and GIMP packages depend on the library for their MCP servers; [Blender's plugin](../blender/src/index.ts) and [server entry](../blender/src/worker.ts) show a complete consumer. The Godot package uses only `materializePayload`, to copy its harness scripts. Use the library when an external application must run headless behind tools that the agent calls, and a script inside the application can answer the JSON-lines requests described below.
+The Blender, GIMP, and SuperCollider packages depend on the library for their MCP servers; [Blender's plugin](../blender/src/index.ts) and [server entry](../blender/src/worker.ts) show a complete consumer. SuperCollider's language cannot answer the JSON-lines requests itself, so its [worker](../supercollider/README.md#understand-the-implementation) is a bridge process that drives sclang. The Godot package uses only `materializePayload`, to copy its harness scripts. Use the library when an external application must run headless behind tools that the agent calls, and a script inside the application, or a bridge process beside it, can answer the JSON-lines requests described below.
 
 ### Configure the plugin
 
@@ -130,6 +130,7 @@ These helpers carry what the application tool sets share:
 
 A server finds its application through a `SetupHost`: the platform, environment, and home directory of the server process, `isExecutable` for regular files the user may execute, `listDirectory`, which lists a missing or inaccessible directory as empty, and `makeDirectory`. `nodeSetupHost()` binds it to this machine; tests pass a fake host. `firstExecutable(candidates, host)` returns the first candidate that passes `isExecutable`, and `newestFirst` sorts names by the numbers in them, newest first, so `Blender 4.10` precedes `Blender 4.2` and `GIMP 3.0.1` precedes `GIMP 3.0`. `CommandArgv` types an absolute executable followed by its arguments.
 
+<a id="run-the-worker"></a>
 ### Run the worker
 
 `JsonLineWorker.start(spec, signal)` spawns one worker from `spec.argv`, whose first element is the absolute executable path, in `spec.cwd` with the complete environment `spec.env`; a caller that wants the worker to inherit `process.env` merges it there. The worker and the client exchange UTF-8 JSON lines:
@@ -141,6 +142,7 @@ fd 3   success   {"id": 1, "ok": true, "result": <JSON value>}
 fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "message": "<text>", "traceback": "<text>"}}
 ```
 
+- `python` names the Python version of a Python worker; a worker that runs no Python leaves it out.
 - The worker's first line on fd 3 must be the ready line, written within `spec.readyTimeoutMs`. Otherwise the client kills the worker and its process group, drains their output, and rejects the start with `WORKER_START_FAILED`; a cancelled start rejects with the abort reason after the same cleanup.
 - Requests run one at a time in call order, and each reply carries the id of the pending request; `traceback` is optional. A request's `timeoutMs` starts when the request is written to stdin.
 - Replies use fd 3, so the application's own output on stdout and stderr cannot mix with them. The client keeps the last `spec.logTailBytes` bytes of that output as the log tail for diagnostics.
@@ -172,7 +174,7 @@ Worker failures are `WorkerError`s with a `code`, and only `WORKER_REMOTE` leave
 
 ### Copy shipped files to real paths
 
-A packaged Desktop app keeps package files inside its `app.asar` archive, which only Electron's `fs` can read; Blender, GIMP, and Godot need an ordinary file. `materializePayload(source, dataRoot)` reads the `file:` URL `source` through its path, which Electron's `app.asar` support resolves, and returns the real path of a copy at `<dataRoot>/payload/<first 16 hex digits of the content's SHA-256>/<file name>`.
+A packaged Desktop app keeps package files inside its `app.asar` archive, which only Electron's `fs` can read; Blender, GIMP, Godot, and SuperCollider need an ordinary file. `materializePayload(source, dataRoot)` reads the `file:` URL `source` through its path, which Electron's `app.asar` support resolves, and returns the real path of a copy at `<dataRoot>/payload/<first 16 hex digits of the content's SHA-256>/<file name>`.
 
 - A copy with identical bytes is reused without a write; a copy with other bytes is replaced.
 - The bytes go to a temporary file in the same directory, which is then renamed into place, so readers never see a partial file. The copy has mode `0o644` before the umask.

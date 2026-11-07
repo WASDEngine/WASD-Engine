@@ -199,7 +199,8 @@ export class GimpWorkers<W extends { readonly ready: WorkerReady }> {
       argv: gimpWorkerArgv(gimpConsole, script), cwd: this.options.dataRoot, env: workerEnvironment(host.env, profile),
       readyTimeoutMs: this.options.readyTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
-    this.notes.push(`GIMP ${worker.ready.version} started (Python ${worker.ready.python}) with no images open.`)
+    const python = worker.ready.python === undefined ? '' : ` (Python ${worker.ready.python})`
+    this.notes.push(`GIMP ${worker.ready.version} started${python} with no images open.`)
     return worker
   }
 

@@ -437,7 +437,8 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
       readyTimeoutMs: this.options.startupTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
     const runtime = launch.backend === 'bpy' ? 'bpy module' : 'Blender app'
-    this.notes.push(...launch.notes, `Blender ${worker.ready.version} started (${runtime}, Python ${worker.ready.python}) with its default scene.`)
+    const python = worker.ready.python === undefined ? '' : `, Python ${worker.ready.python}`
+    this.notes.push(...launch.notes, `Blender ${worker.ready.version} started (${runtime}${python}) with its default scene.`)
     return worker
   }
 

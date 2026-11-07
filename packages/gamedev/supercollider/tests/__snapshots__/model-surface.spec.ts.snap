@@ -1,0 +1,179 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`keeps the instructions within 6000 characters and names only tools the server provides > instructions 1`] = `
+"SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. One interpreter serves every conversation, and environment variables such as ~kick and SynthDefs added with .add persist until SuperCollider restarts after a crash or a timeout. The first result after a start names the version.
+
+Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
+
+Make, look, adjust:
+- render_audio evaluates code and renders its value for exactly duration seconds: a UGen graph function such as { Pan2.ar(SinOsc.ar(440), 0) * Env.perc(0.01, 0.5).kr(2) }, a SynthDef, a pattern such as Pbind, or a Score. A function's output channels set the file's channels unless channels is given. Patterns play SynthDefs added with .add, or \\default. Sound that is still playing at the end is cut off.
+- Read its report: peak and RMS levels, loudness in LUFS, clipping, silence at the start and end, and the dominant frequency. Look at the image: the waveform of each channel above, the spectrogram below. Fix clipping, unintended silence, clicks (thin vertical lines in the spectrogram at onsets or at the end), and harsh highs before calling a sound done.
+- analyze_audio reports on any audio file the same way, optionally on a time window.
+- execute_sclang runs code to define SynthDefs, build patterns and data, and inspect state. Its result is the value of the last expression as code, and posted text (postln) returns as output. The code runs in a Routine, so .wait works.
+- class_info shows classes with their methods, argument names, and defaults, and their help text; check UGen arguments there instead of guessing. Its search finds classes by name.
+
+Game audio:
+- Short effects: mono .wav at 44100 Hz with int16 samples, a peak near -1 dBFS (normalize_db: -1), no silence before the onset, and an envelope that ends at zero within the duration, such as Env.perc(...).kr(2).
+- Music and ambience: stereo .ogg (Vorbis). For a loop, render a duration of whole bars at the tempo and make the end flow into the start: let releases and effect tails wrap or finish before the end. Godot imports .wav and .ogg; loop playback is an import setting.
+- Keep related sounds at a consistent loudness: compare LUFS, not peaks.
+- Keep the SuperCollider source next to the sound, such as sfx/jump.scd beside sfx/jump.wav, so it can be changed and rendered again."
+`;
+
+exports[`pins the tool declarations > tool declarations 1`] = `
+[
+  {
+    "description": "Evaluate SuperCollider code and render its value offline with scsynth into an audio file of exactly duration seconds, then report its levels, loudness, silence, and spectrum and return a waveform and spectrogram image. The value can be a UGen graph function, a SynthDef, a pattern such as Pbind, or a Score. Folders are created as needed and an existing file is replaced.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "description": "Channels of the file (default: the channels of a function's output, otherwise 2). A mono function plays in every channel.",
+          "maximum": 8,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "code": {
+          "description": "SuperCollider code whose last expression is the sound: a UGen graph function such as { SinOsc.ar(440) * Env.perc.kr(2) }, a SynthDef, a pattern, or a Score.",
+          "maxLength": 200000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "duration": {
+          "description": "Seconds of audio in the file; sound still playing at the end is cut off.",
+          "exclusiveMinimum": 0,
+          "maximum": 600,
+          "type": "number",
+        },
+        "normalize_db": {
+          "description": "Scale the sound so that its peak reaches this level in dBFS, such as -1.",
+          "maximum": 0,
+          "minimum": -60,
+          "type": "number",
+        },
+        "path": {
+          "description": "Absolute path of the audio file to write. The extension selects the format: .wav, .aif or .aiff, .flac, or .ogg (Ogg Vorbis).",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "sample_format": {
+          "description": "Sample format of .wav, .aiff, and .flac files (default int16; .flac stores no float). .ogg files are always Vorbis.",
+          "enum": [
+            "int16",
+            "int24",
+            "float",
+          ],
+          "type": "string",
+        },
+        "sample_rate": {
+          "description": "Samples per second (default 44100).",
+          "maximum": 192000,
+          "minimum": 8000,
+          "type": "integer",
+        },
+        "timeout_seconds": {
+          "description": "Seconds before the render is stopped and SuperCollider restarts (default 600).",
+          "maximum": 870,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "code",
+        "path",
+        "duration",
+      ],
+      "type": "object",
+    },
+    "name": "render_audio",
+    "title": "Render sound to a file",
+  },
+  {
+    "description": "Report the format, levels, loudness, silence, and spectrum of an audio file that SuperCollider can read (such as .wav, .aiff, .flac, or .ogg) and return a waveform and spectrogram image. A window between start and end, at most 600 s long, is analyzed.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "description": "Seconds from the beginning where the window ends (default: the end of the file).",
+          "exclusiveMinimum": 0,
+          "type": "number",
+        },
+        "path": {
+          "description": "Absolute path of the audio file.",
+          "maxLength": 4096,
+          "minLength": 1,
+          "type": "string",
+        },
+        "start": {
+          "description": "Seconds from the beginning where the window starts (default 0).",
+          "minimum": 0,
+          "type": "number",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "analyze_audio",
+    "title": "Analyze an audio file",
+  },
+  {
+    "description": "Run SuperCollider language code in the persistent interpreter, inside a Routine so that .wait works. Returns the value of the last expression as code and the text the code posted (postln). Use it to define SynthDefs with .add, build patterns and data, and inspect state.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "description": "SuperCollider code; declare var variables at its start.",
+          "maxLength": 200000,
+          "minLength": 1,
+          "type": "string",
+        },
+        "timeout_seconds": {
+          "description": "Seconds before the code is stopped and SuperCollider restarts (default 600).",
+          "maximum": 870,
+          "minimum": 1,
+          "type": "integer",
+        },
+      },
+      "required": [
+        "code",
+      ],
+      "type": "object",
+    },
+    "name": "execute_sclang",
+    "title": "Run SuperCollider code",
+  },
+  {
+    "description": "Describe SuperCollider classes, such as UGens, patterns, and Env: their superclasses, the methods each class defines with argument names and defaults, and their help text. With search instead of names, list the classes whose name or help summary contains the text.",
+    "input": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "description": "Class names to describe, such as ["SinOsc", "Pbind"].",
+          "items": {
+            "pattern": "^[A-Z]\\w*$",
+            "type": "string",
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "type": "array",
+        },
+        "search": {
+          "description": "Text to find in class names and help summaries, such as "reverb".",
+          "maxLength": 100,
+          "minLength": 1,
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "class_info",
+    "title": "Look up SuperCollider classes",
+  },
+]
+`;

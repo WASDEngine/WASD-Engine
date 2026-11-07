@@ -267,9 +267,10 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | Package | Config | Description |
 |---|---|---|
 | `@deepseek-ai/dsh-blender` | yes | Headless Blender for the agent: an MCP server backed by the bpy module |
-| `@deepseek-ai/dsh-client-ui-game-tools` | no | Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, and Godot with their logos, Loader state, and profile switches |
+| `@deepseek-ai/dsh-client-ui-game-tools` | no | Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos, Loader state, and profile switches |
 | `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |
 | `@deepseek-ai/dsh-godot` | yes | Run, test, and play Godot games through LibGodot with a live Game tab |
+| `@deepseek-ai/dsh-supercollider` | yes | Headless SuperCollider for the agent: an MCP server that designs sounds with sclang and renders them offline with scsynth |
 
 ## goal
 

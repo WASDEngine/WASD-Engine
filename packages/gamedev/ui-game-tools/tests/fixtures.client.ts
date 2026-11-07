@@ -1,4 +1,4 @@
-/** Host answers the Game tools specs share: the three tool entries as the inventory and the plugin manager list them. */
+/** Host answers the Game tools specs share: the four tool entries as the inventory and the plugin manager list them. */
 import type {
   ChangeResult, PluginEntryId, PluginInfo, PluginInventorySnapshot, RemoteResult,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -50,6 +50,16 @@ export const GODOT: PluginInfo = {
   meta: { title: 'Godot', description: 'Run Godot games.' },
 }
 
+/** SuperCollider running, switchable through its patch row. */
+export const SUPERCOLLIDER: PluginInfo = {
+  entryId: entryId('supercollider'),
+  moduleName: '@deepseek-ai/dsh-supercollider',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'supercollider',
+  meta: { title: 'SuperCollider', description: 'Render game audio.' },
+}
+
 /** An unrelated Loader entry both tabs leave out. */
 export const OTHER: PluginInfo = {
   entryId: entryId('tool-web'),
@@ -66,7 +76,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -77,7 +87,7 @@ export function inventory(
  * @param entries - the Loader entries.
  * @returns the successful answer.
  */
-export function plugins(entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT]): RemoteResult<PluginInfo[]> {
+export function plugins(entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER]): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }
 

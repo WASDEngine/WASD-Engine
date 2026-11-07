@@ -38,6 +38,17 @@ export const LIBGODOT_ASAR_UNPACK: string
  */
 export function applyWasdengineLibGodot<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
 
+/** `asarUnpack` pattern of the SuperCollider runtime that `wasdengine-supercollider.ts` ships in the SuperCollider plugin package. */
+export const SUPERCOLLIDER_ASAR_UNPACK: string
+
+/**
+ * Keep the shipped SuperCollider runtime on disk, outside `app.asar`: sclang and scsynth start as processes and read
+ * their class library, UGen plugins, and help files by path, which none of them can do inside the archive.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineSuperCollider<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
+
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `productName` and `author`, the deep-link scheme, the icons, and

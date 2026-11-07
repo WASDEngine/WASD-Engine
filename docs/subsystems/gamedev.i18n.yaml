@@ -3,17 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: b1a22dbd8cccbb31
-  zh: 52dd3ba90b7b9578
+  en: c403c9f4ec9de9e2
+  zh: eca0f80ae501e7d9
 /game-tools/composition:
-  en: 99b1e6c44fc310f3
-  zh: 8b276118fd295ee7
+  en: e64438365e4b9e79
+  zh: 1dc643c51f902065
 /game-tools/application-mcp-servers:
-  en: 9f65d48b9f3fe7c9
-  zh: 47f8d127006f27ad
+  en: 0187387bd993339b
+  zh: ff34c422aaff3974
 /game-tools/application-mcp-servers/worker-protocol:
-  en: f8fc73347527d944
-  zh: f7c4977b135df5fc
+  en: f018afdf46b05114
+  zh: 9f3b8958ccdb97c0
+/game-tools/application-mcp-servers/supercollider-bridge:
+  en: 16c4c209db98bfd9
+  zh: bf8e6daad28cf9eb
 /game-tools/godot-runs:
   en: 6cdbbbd8b9876c3d
   zh: 823821e50ecfdeed
@@ -42,8 +45,8 @@
   en: d91b3987403a91bb
   zh: e2a42894723534b2
 /game-tools/game-tools-tabs:
-  en: 3abcc43aade75bd4
-  zh: 2446eed806432d5c
+  en: 559c0b429c0341b6
+  zh: e90d4d037058c0b3
 /game-tools/remote-types:
   en: 0f75cf2979b80cf8
   zh: d01df32d1ece3e9d

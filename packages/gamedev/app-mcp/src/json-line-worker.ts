@@ -33,7 +33,7 @@ const ReadyLine = z.object({
   protocol: z.literal(PROTOCOL),
   app: z.string().min(1),
   version: z.string(),
-  python: z.string(),
+  python: z.string().optional(),
 })
 
 const ReplyLine = z.discriminatedUnion('ok', [
@@ -65,8 +65,8 @@ export interface WorkerReady {
   readonly app: string
   /** Application version. */
   readonly version: string
-  /** Version of the Python interpreter running the worker. */
-  readonly python: string
+  /** Version of the Python interpreter running the worker; absent for a worker that runs no Python. */
+  readonly python?: string | undefined
 }
 
 /** How a worker process ended. */
@@ -564,7 +564,7 @@ export class JsonLineWorker {
     const ready = parseLine(line, ReadyLine)
     if (ready === undefined) {
       this.failStart(() => new WorkerError('WORKER_START_FAILED',
-        `${this.label}: wrote ${quote(line)} instead of a ready line {"ready": true, "protocol": ${PROTOCOL}, "app", "version", "python"}`,
+        `${this.label}: wrote ${quote(line)} instead of a ready line {"ready": true, "protocol": ${PROTOCOL}, "app", "version"}`,
         { logTail: this.tail.text() }))
       return
     }

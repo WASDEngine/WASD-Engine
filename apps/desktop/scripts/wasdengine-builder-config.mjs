@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity, and the unpacked LibGodot runtime, to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, and the unpacked LibGodot and SuperCollider runtimes, to the ordinary Desktop release configuration. */
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
@@ -35,6 +35,20 @@ export const LIBGODOT_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-godot/libg
  */
 export function applyWasdengineLibGodot(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, LIBGODOT_ASAR_UNPACK] }
+}
+
+/** `asarUnpack` pattern of the SuperCollider runtime that `wasdengine-supercollider.ts` ships in the SuperCollider plugin package. */
+export const SUPERCOLLIDER_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-supercollider/runtime/**/*'
+
+/**
+ * Keep the shipped SuperCollider runtime on disk, outside `app.asar`: sclang and scsynth start as processes and read
+ * their class library, UGen plugins, and help files by path, which none of them can do inside the archive.
+ * @template {{ readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineSuperCollider(config) {
+  return { ...config, asarUnpack: [...config.asarUnpack, SUPERCOLLIDER_ASAR_UNPACK] }
 }
 
 /**

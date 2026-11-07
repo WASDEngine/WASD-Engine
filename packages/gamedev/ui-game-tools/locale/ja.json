@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "ゲームツールタブ",
-    "description": "設定とプラグインページで Blender、GIMP、Godot をロゴ付きで表示し、プラグインページでそれぞれのオン・オフを切り替えます。"
+    "description": "設定とプラグインページで Blender、GIMP、Godot、SuperCollider をロゴ付きで表示し、プラグインページでそれぞれのオン・オフを切り替えます。"
   }
 }

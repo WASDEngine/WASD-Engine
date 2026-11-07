@@ -20,6 +20,11 @@ describe('starting a worker', () => {
     expect(worker.ready).toEqual({ app: 'fake', version: '1.2.3', python: '3.13.1' })
   })
 
+  it('accepts a ready line without python from a worker that runs no Python', async () => {
+    const worker = await startWorker('no-python')
+    expect(worker.ready).toEqual({ app: 'fake', version: '1.2.3', python: undefined })
+  })
+
   it.each([
     ['writes something other than a ready line', 'garbage-ready', { }, /wrote "not a ready line" instead of a ready line/u],
     ['announces another protocol revision', 'wrong-protocol', {}, /instead of a ready line/u],

@@ -37,7 +37,7 @@ describe('SettingsGameToolsTab', () => {
     answer(READY)
     const list = await screen.findByRole('list', { name: en.tab })
     expect([...list.querySelectorAll('li')].map(item => item.getAttribute('data-game-tool')))
-      .toEqual(['@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-gimp', '@deepseek-ai/dsh-godot'])
+      .toEqual(['@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-gimp', '@deepseek-ai/dsh-godot', '@deepseek-ai/dsh-supercollider'])
     expect(screen.queryByRole('switch')).toBeNull()
     expect(view.container.firstElementChild?.getAttribute('aria-busy')).toBe('false')
     expect(read).toHaveBeenCalledOnce()

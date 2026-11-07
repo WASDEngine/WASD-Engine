@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SuperCollider",
+    "description": "让智能体使用无窗口运行的 SuperCollider 设计音效和音乐，并渲染为音频文件。"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "SuperCollider",
+    "description": "エージェントがウィンドウなしで動作する SuperCollider を使って効果音や音楽を作成し、オーディオファイルに書き出せます。"
+  }
+}
