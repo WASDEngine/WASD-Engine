@@ -1,4 +1,4 @@
-You are an AI agent powered by DeepSeek Harness.
+You are an AI agent powered by WASD Engine Harness.
 
 You are a concise snapshot agent.
 

@@ -13,6 +13,7 @@ import { ApplicationApproval, selectApplicationApproval } from './ApplicationApp
 import { PermissionController } from './controller.ts'
 import { PermissionPanel, PermissionSetup, PermissionToast } from './PermissionPanel.tsx'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type CuaPermissionLocaleKey } from './locales.ts'
+import { brandCuaDictionaries } from './wasdengine-copy.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -33,7 +34,7 @@ export const inject = ['remote', 'slots', 'locale', 'configForms']
 export async function mountCuaPermissions(ctx: Context, contribution: TypertRemoteContribution): Promise<() => Promise<void>> {
   const transport = ctx.plugin(async (owner) => { await owner.remote.$mount(contribution) })
   const ui = ctx.inject(['remote.cuaAccess', 'slots', 'locale'], (ctx) => {
-    ctx.effect(() => ctx.locale.register(NS, { en, zh, ja, es, fr, de, ru, pt }))
+    ctx.effect(() => ctx.locale.register(NS, brandCuaDictionaries({ en, zh, ja, es, fr, de, ru, pt })))
     const controller = new PermissionController(ctx.remote.cuaAccess, () => ctx.locale.getSnapshot().active)
     const face = controller.face()
     ctx.slots.inject('conversation.composer', () => ctx.slots.register({

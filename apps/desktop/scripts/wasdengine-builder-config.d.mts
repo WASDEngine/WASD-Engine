@@ -1,4 +1,5 @@
 import type { DesktopElectronBuilderConfig } from '../electron-builder.config.mjs'
+import type { InstallerLocale } from './installer-locales.mjs'
 
 /** An ordinary release configuration with the WASDEngine product identity applied. */
 export type WasdengineElectronBuilderConfig = Omit<DesktopElectronBuilderConfig, 'protocols' | 'extraMetadata' | 'mac' | 'win'> & {
@@ -18,6 +19,13 @@ export type WasdengineElectronBuilderConfig = Omit<DesktopElectronBuilderConfig,
  * @returns Absolute path.
  */
 export function wasdengineBrandFile(path: string): string
+
+/**
+ * Name the brand product in the Windows installer text, where upstream names DeepSeek Harness.
+ * @param locales - Resources from `readInstallerLocales`.
+ * @returns Copies whose installer and uninstaller text name `WASDENGINE_DESKTOP_BRAND.productName`.
+ */
+export function brandInstallerLocales(locales: InstallerLocale[]): InstallerLocale[]
 
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
