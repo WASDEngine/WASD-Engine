@@ -173,7 +173,8 @@ git push origin main
 
 | Path | Purpose |
 |---|---|
-| `.github/README.md` | Repository front page; GitHub shows `.github/README.md` before the upstream root `README.md`, which the fork changes only in its License section. |
+| `.github/README.md` | Repository front page; GitHub shows `.github/README.md` before the upstream root `README.md`, which the fork changes only in its License section. It introduces WASD Engine in the website's words and keeps the build, sign-in, fork, and license details below. |
+| `.github/readme/` | The front page's images: the WASD Engine logo for light and dark themes, the hero render, and the two showcase screenshots, the same pictures as the website's, with the Blender screenshot cropped to 16:10 as the website shows it. |
 | `.github/ISSUE_TEMPLATE/bug-report.yml`, `feature-request.yml` | The issue forms on the new-issue page that the Feedback item opens; they set the organization's Bug and Feature issue types. |
 | `wasdengine/FORK.md` | This file. |
 | `wasdengine/upstream-prune.txt` | The upstream paths the fork deletes on every merge, one literal path or directory per line. |
