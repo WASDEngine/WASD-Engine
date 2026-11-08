@@ -71,9 +71,19 @@ const appHost = (options: FakeHostOptions = {}): FakeHost => new FakeHost({
   executables: [`${APP}/MacOS/sclang`, `${APP}/Resources/scsynth`, ...options.executables ?? []],
 })
 
-const installed = (sclang: string, scsynth: string): SuperColliderRuntime => ({
-  source: 'installed', sclang, scsynth, classLibrary: undefined, plugins: undefined, helpSource: undefined,
+const configured = (sclang: string, scsynth: string): SuperColliderRuntime => ({
+  source: 'configured', sclang, scsynth, classLibrary: undefined, plugins: undefined, helpSource: undefined,
 })
+
+/** A machine with SuperCollider installed every way the tools must ignore: app bundles, PATH, and Program Files. */
+const INSTALLED_EVERYWHERE: FakeHostOptions = {
+  env: { PATH: '/usr/local/bin:/usr/bin' },
+  directories: { '/Applications': ['SuperCollider.app'], '/Users/dev/Applications': ['SuperCollider 3.15.app'] },
+  executables: [
+    `${APP}/MacOS/sclang`, `${APP}/Resources/scsynth`, '/Users/dev/Applications/SuperCollider 3.15.app/Contents/MacOS/sclang',
+    '/Users/dev/Applications/SuperCollider 3.15.app/Contents/Resources/scsynth', '/usr/local/bin/sclang', '/usr/local/bin/scsynth',
+  ],
+}
 
 const signal = new AbortController().signal
 
@@ -133,49 +143,36 @@ describe('findSuperCollider', () => {
       .resolves.toMatchObject({ source: 'configured', scsynth: '/other/scsynth' })
   })
 
-  it('finds the scsynth of a configured sclang inside a macOS application bundle', async () => {
-    const host = appHost({ directories: { '/Applications': [] } })
-    await expect(findSuperCollider({ sclangPath: `${APP}/MacOS/sclang`, scsynthPath: '' }, BUNDLED, host))
-      .resolves.toMatchObject({ scsynth: `${APP}/Resources/scsynth` })
+  it('refuses a configured sclang inside a macOS application bundle, which opens as an app', async () => {
+    const failure = findSuperCollider({ sclangPath: `${APP}/MacOS/sclang`, scsynthPath: '' }, BUNDLED, appHost())
+    await expect(failure).rejects.toMatchObject({ code: 'SUPERCOLLIDER_NOT_HEADLESS' })
+    await expect(failure).rejects.toThrow(`sclangPath (${APP}/MacOS/sclang) names the sclang of a SuperCollider application`)
+    // Outside macOS a `.app` folder is an ordinary folder.
+    const linux = new FakeHost({ platform: 'linux', executables: ['/opt/sc.app/Contents/sclang', '/opt/sc.app/Contents/scsynth'] })
+    await expect(findSuperCollider({ sclangPath: '/opt/sc.app/Contents/sclang', scsynthPath: '' }, BUNDLED, linux))
+      .resolves.toEqual(configured('/opt/sc.app/Contents/sclang', '/opt/sc.app/Contents/scsynth'))
   })
 
   it('refuses configured paths that are not executable, and a configured sclang without scsynth', async () => {
     const host = new FakeHost({ executables: ['/opt/sc/sclang'] })
     await expect(findSuperCollider({ sclangPath: '/nope', scsynthPath: '' }, BUNDLED, host)).rejects.toThrow('sclangPath (/nope) is not an executable file')
     await expect(findSuperCollider({ sclangPath: '/opt/sc/sclang', scsynthPath: '' }, BUNDLED, host)).rejects.toThrow('No scsynth was found beside')
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '/nope' }, BUNDLED, appHost())).rejects.toThrow('scsynthPath (/nope) is not an executable file')
+    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '/nope' }, BUNDLED, bundledHost())).rejects.toThrow('scsynthPath (/nope) is not an executable file')
   })
 
-  it('uses the shipped runtime, then the newest application bundle, then PATH', async () => {
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, bundledHost(RECORD, { executables: [`${APP}/MacOS/sclang`] })))
+  it('uses the shipped runtime and never an installed SuperCollider', async () => {
+    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, bundledHost(RECORD, INSTALLED_EVERYWHERE)))
       .resolves.toMatchObject({ source: 'bundled' })
-    const bundles = new FakeHost({
-      directories: { '/Applications': ['SuperCollider.app'], '/Users/dev/Applications': ['SuperCollider 3.15.app', 'SuperCollider 3.16.app'] },
-      executables: [
-        `${APP}/MacOS/sclang`, `${APP}/Resources/scsynth`, '/Users/dev/Applications/SuperCollider 3.15.app/Contents/MacOS/sclang',
-        '/Users/dev/Applications/SuperCollider 3.15.app/Contents/Resources/scsynth', '/Users/dev/Applications/SuperCollider 3.16.app/Contents/MacOS/sclang',
-      ],
-    })
-    // 3.16 has no scsynth, so the next newest bundle wins.
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, bundles)).resolves.toEqual(installed(
-      '/Users/dev/Applications/SuperCollider 3.15.app/Contents/MacOS/sclang', '/Users/dev/Applications/SuperCollider 3.15.app/Contents/Resources/scsynth',
-    ))
-    const path = new FakeHost({ platform: 'linux', env: { PATH: 'relative:/usr/local/bin:/usr/bin' }, executables: ['/usr/local/bin/sclang', '/usr/bin/sclang', '/usr/bin/scsynth'] })
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, path)).resolves.toEqual(installed('/usr/bin/sclang', '/usr/bin/scsynth'))
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, new FakeHost({ env: {} }))).resolves.toBeUndefined()
-  })
-
-  it('searches Program Files on Windows, newest first', async () => {
-    const host = new FakeHost({
+    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, new FakeHost(INSTALLED_EVERYWHERE))).resolves.toBeUndefined()
+    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, BUNDLED, new FakeHost({ ...INSTALLED_EVERYWHERE, platform: 'linux' })))
+      .resolves.toBeUndefined()
+    const windows = new FakeHost({
       platform: 'win32',
       env: { Path: 'C:\\Windows', ProgramFiles: 'D:\\Programs' },
-      directories: { 'D:\\Programs': ['SuperCollider-3.13.0', 'SuperCollider-3.14.1', 'Other'] },
+      directories: { 'D:\\Programs': ['SuperCollider-3.14.1'] },
       executables: ['D:\\Programs\\SuperCollider-3.14.1\\sclang.exe', 'D:\\Programs\\SuperCollider-3.14.1\\scsynth.exe'],
     })
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, 'C:\\app\\runtime', host))
-      .resolves.toEqual(installed('D:\\Programs\\SuperCollider-3.14.1\\sclang.exe', 'D:\\Programs\\SuperCollider-3.14.1\\scsynth.exe'))
-    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, 'C:\\app\\runtime', new FakeHost({ platform: 'win32', env: {} })))
-      .resolves.toBeUndefined()
+    await expect(findSuperCollider({ sclangPath: '', scsynthPath: '' }, 'C:\\app\\runtime', windows)).resolves.toBeUndefined()
   })
 })
 
@@ -192,26 +189,29 @@ describe('worker folders, class library configuration, and bridge plan', () => {
     expect(superColliderFolders('C:\\data', 'win32').scratch).toBe('C:\\data\\scratch')
   })
 
-  it('replaces the default paths with a shipped class library and keeps them for an installation', () => {
+  it('replaces the default paths with a shipped class library and keeps them for a configured sclang', () => {
     expect(classLibraryConfig(bundled, '/data/sc/payload/abc')).toBe([
       'includePaths:', `  - "${RUNTIME}/SCClassLibrary"`, '  - "/data/sc/payload/abc"', 'excludePaths: []', 'postInlineWarnings: false',
       'excludeDefaultPaths: true', '',
     ].join('\n'))
-    expect(classLibraryConfig(installed('/a/sclang', '/a/scsynth'), 'C:\\payload "x"'))
+    expect(classLibraryConfig(configured('/a/sclang', '/a/scsynth'), 'C:\\payload "x"'))
       .toContain('includePaths:\n  - "C:\\\\payload \\"x\\""\nexcludePaths: []\npostInlineWarnings: false\nexcludeDefaultPaths: false')
   })
 
-  it('plans sclang in its IDE mode with the user folders under the data directory', () => {
+  it('plans sclang in its IDE mode, off screen, with the user folders under the data directory', () => {
     const folders = superColliderFolders('/data/sc', 'darwin')
     expect(sclangBridgePlan(bundled, folders, { dataRoot: '/data/sc', graceMs: 3000 })).toEqual({
       sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/sc/sclang_conf.yaml'],
-      env: { set: { XDG_CONFIG_HOME: '/data/sc/home/config', XDG_DATA_HOME: '/data/sc/home/data' }, unset: ['ELECTRON_RUN_AS_NODE'] },
+      env: {
+        set: { XDG_CONFIG_HOME: '/data/sc/home/config', XDG_DATA_HOME: '/data/sc/home/data', QT_QPA_PLATFORM: 'offscreen' },
+        unset: ['ELECTRON_RUN_AS_NODE'],
+      },
       cwd: '/data/sc',
       requestDirectory: '/data/sc/scratch',
       boot: { scsynth: `${RUNTIME}/scsynth`, plugins: `${RUNTIME}/plugins`, scratch: '/data/sc/scratch', helpSource: `${RUNTIME}/HelpSource` },
       graceMs: 3000,
     })
-    expect(sclangBridgePlan(installed('/a/sclang', '/a/scsynth'), folders, { dataRoot: '/data/sc', graceMs: 1 }).boot)
+    expect(sclangBridgePlan(configured('/a/sclang', '/a/scsynth'), folders, { dataRoot: '/data/sc', graceMs: 1 }).boot)
       .toEqual({ scsynth: '/a/scsynth', plugins: null, scratch: '/data/sc/scratch', helpSource: null })
   })
 })
@@ -237,29 +237,27 @@ describe('SuperColliderWorkers', () => {
     expect(workers.takeNotes()).toEqual([])
   })
 
-  it('names configured and installed SuperCollider in its note', async () => {
+  it('names a configured sclang in its note', async () => {
     const start = async (): Promise<{ ready: { app: string; version: string } }> => ({ ready: { app: 'supercollider', version: '3.14.1' } })
-    const dependencies = { bundledRoot: BUNDLED, bridge: ['/node', '/worker.js'] as const, start, workerScript: async () => '/p/WasdWorker.sc' }
-    const configured = new SuperColliderWorkers({ ...OPTIONS, sclangPath: `${APP}/MacOS/sclang` }, { ...dependencies, host: appHost() })
-    await configured.start(signal)
-    expect(configured.takeNotes()[0]).toContain(`(sclang at ${APP}/MacOS/sclang)`)
-    const found = new SuperColliderWorkers(OPTIONS, { ...dependencies, host: appHost() })
-    await found.start(signal)
-    expect(found.takeNotes()[0]).toContain(`(installed at ${APP}/MacOS/sclang)`)
+    const host = new FakeHost({ executables: ['/opt/sc/sclang', '/opt/sc/scsynth'] })
+    const workers = new SuperColliderWorkers({ ...OPTIONS, sclangPath: '/opt/sc/sclang' }, {
+      host, bundledRoot: BUNDLED, bridge: ['/node', '/worker.js'], start, workerScript: async () => '/p/WasdWorker.sc',
+    })
+    await workers.start(signal)
+    expect(workers.takeNotes()[0]).toContain('(sclang at /opt/sc/sclang)')
   })
 
-  it('explains how to install SuperCollider when none is found', async () => {
+  it('explains how to get the headless runtime, and starts no installed SuperCollider, when none is shipped', async () => {
+    const start = vi.fn()
     const workers = new SuperColliderWorkers(OPTIONS, {
-      host: new FakeHost({ env: {} }), bundledRoot: BUNDLED, bridge: ['/node'], start: vi.fn(), workerScript: async () => '/p/WasdWorker.sc',
+      host: new FakeHost(INSTALLED_EVERYWHERE), bundledRoot: BUNDLED, bridge: ['/node'], start, workerScript: async () => '/p/WasdWorker.sc',
     })
     const failure = workers.start(signal)
     await expect(failure).rejects.toMatchObject({ code: 'SUPERCOLLIDER_NOT_FOUND' })
-    await expect(failure).rejects.toThrow('brew install --cask supercollider')
-    const linux = new SuperColliderWorkers(OPTIONS, {
-      host: new FakeHost({ platform: 'linux', env: {} }), bundledRoot: BUNDLED, bridge: ['/node'], start: vi.fn(), workerScript: async () => '/p/WasdWorker.sc',
-    })
-    await expect(linux.start(signal)).rejects.toThrow('SuperCollider was not found. The WASD Engine desktop app ships it; elsewhere, install '
-      + 'SuperCollider 3.13 or newer from https://supercollider.github.io/downloads, then')
+    await expect(failure).rejects.toThrow('WASD Engine\'s headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on '
+      + 'Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '
+      + 'packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app.')
+    expect(start).not.toHaveBeenCalled()
   })
 })
 

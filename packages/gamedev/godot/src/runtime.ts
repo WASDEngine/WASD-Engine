@@ -3,9 +3,9 @@
  *
  * Resolution order: the configured LibGodot runner and library, the runtime a packaged application ships under
  * `<bundledRoot>/<platform>-<arch>/`, the managed runtime under `<dataRoot>/runtime/<runtimeVersion>/` (each valid
- * only with a `runtime.json` that names `runtimeVersion` and this Host's platform and architecture), a Godot editor
- * executable (the configured one, `godot` or `godot4` on PATH, then `/Applications/Godot*.app` on macOS), else
- * nothing. A configured path that is not a usable file is a configuration failure, never skipped.
+ * only with a `runtime.json` that names `runtimeVersion` and this Host's platform and architecture), else nothing. An
+ * installed Godot editor is never used, because it would run the game in a window. A configured path that is not a
+ * usable file is a configuration failure, never skipped.
  *
  * The install downloads the release manifest, picks the `<platform>-<arch>` artifact, verifies its size and
  * SHA-256 while streaming, extracts it with `tar` into a staging folder, writes `runtime.json`, and renames the
@@ -14,7 +14,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, createWriteStream } from 'node:fs'
-import { access, chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -39,28 +39,18 @@ export interface RuntimeSettings {
   readonly libgodotPath: string
   /** Configured runner executable; empty when unset. */
   readonly runnerPath: string
-  /** Configured Godot editor executable; empty when unset. */
-  readonly godotExecutable: string
-  /** Whether macOS LibGodot runs render without a window. */
-  readonly embedded: boolean
 }
 
-/** A Godot runtime a run can launch. */
-export type ResolvedGodotRuntime =
-  | {
-    readonly kind: 'libgodot'
-    /** Absolute `godot_runner` executable. */
-    readonly runner: string
-    /** Absolute LibGodot shared library. */
-    readonly library: string
-    /** Godot version from `runtime.json`; unknown for configured paths. */
-    readonly version?: string
-  }
-  | {
-    readonly kind: 'executable'
-    /** Absolute Godot editor executable. */
-    readonly executable: string
-  }
+/** A Godot runtime a run can launch: the patched LibGodot runner and its library. */
+export interface ResolvedGodotRuntime {
+  readonly kind: 'libgodot'
+  /** Absolute `godot_runner` executable. */
+  readonly runner: string
+  /** Absolute LibGodot shared library. */
+  readonly library: string
+  /** Godot version from `runtime.json`; unknown for configured paths. */
+  readonly version?: string
+}
 
 /** Platform facts and effects the runtime manager uses. */
 export interface RuntimeHost {
@@ -68,15 +58,6 @@ export interface RuntimeHost {
   readonly platform: NodeJS.Platform
   /** Node architecture name. */
   readonly arch: string
-  /** Folder searched for `Godot*.app` bundles on macOS. */
-  readonly applicationsDirectory: string
-  /**
-   * Find a bare executable name on PATH.
-   * @param name - executable name.
-   * @param signal - cancellation.
-   * @returns the absolute path, or undefined when PATH has none.
-   */
-  findOnPath(name: string, signal: AbortSignal): Promise<string | undefined>
   /**
    * Fetch one URL.
    * @param url - absolute URL.
@@ -121,7 +102,7 @@ export function bundledRuntimeRoot(packageRoot: string): string {
 }
 
 /** Message for a Host where nothing resolves. */
-export const RUNTIME_MISSING_MESSAGE = 'No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath, or godotExecutable, in the Godot plugin configuration.'
+export const RUNTIME_MISSING_MESSAGE = 'No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath in the Godot plugin configuration.'
 
 const FileName = z.string().regex(/^[^/\\]+$/u).refine(name => name !== '.' && name !== '..')
 
@@ -236,35 +217,23 @@ export class GodotRuntimeManager {
    * @throws {GodotRuntimeError} `RUNTIME_CONFIG` when a configured path is not a usable file.
    */
   async resolve(signal: AbortSignal): Promise<ResolvedGodotRuntime | undefined> {
-    const { runnerPath, libgodotPath, godotExecutable } = this.settings
+    const { runnerPath, libgodotPath } = this.settings
     if (runnerPath !== '') {
       await this.requireFile(runnerPath, 'runnerPath', true)
       await this.requireFile(libgodotPath, 'libgodotPath', false)
       return { kind: 'libgodot', runner: runnerPath, library: libgodotPath }
     }
-    const bundled = await this.recorded(this.bundledDirectory())
-    if (bundled !== undefined) return bundled
-    const managed = await this.managed()
-    if (managed !== undefined) return managed
-    if (godotExecutable !== '') {
-      await this.requireFile(godotExecutable, 'godotExecutable', true)
-      return { kind: 'executable', executable: godotExecutable }
-    }
-    for (const name of ['godot', 'godot4']) {
-      const found = await this.host.findOnPath(name, signal)
-      if (found !== undefined) return { kind: 'executable', executable: found }
-    }
+    const runtime = await this.recorded(this.bundledDirectory()) ?? await this.managed()
     signal.throwIfAborted()
-    return this.host.platform === 'darwin' ? this.application() : undefined
+    return runtime
   }
 
   /**
-   * Whether runs of a runtime render without a window.
-   * @param runtime - resolved runtime.
-   * @returns true for LibGodot on macOS with `embedded` configured.
+   * Whether runs render without a window: LibGodot runs embedded on macOS, the one platform the fork's patch covers.
+   * @returns true on macOS.
    */
-  windowless(runtime: ResolvedGodotRuntime): boolean {
-    return runtime.kind === 'libgodot' && this.host.platform === 'darwin' && this.settings.embedded
+  windowless(): boolean {
+    return this.host.platform === 'darwin'
   }
 
   /**
@@ -334,8 +303,8 @@ export class GodotRuntimeManager {
     return {
       state: 'ready',
       kind: runtime.kind,
-      ...runtime.kind === 'libgodot' && runtime.version !== undefined ? { version: runtime.version } : {},
-      windowless: this.windowless(runtime),
+      ...runtime.version !== undefined ? { version: runtime.version } : {},
+      windowless: this.windowless(),
     }
   }
 
@@ -383,22 +352,6 @@ export class GodotRuntimeManager {
     return { kind: 'libgodot', runner, library, version: record.godot }
   }
 
-  private async application(): Promise<ResolvedGodotRuntime | undefined> {
-    let names: string[]
-    try {
-      names = await readdir(this.host.applicationsDirectory)
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-      throw error
-    }
-    const bundles = names.filter(name => /^Godot.*\.app$/u.test(name)).sort().reverse()
-    for (const bundle of bundles) {
-      const executable = join(this.host.applicationsDirectory, bundle, 'Contents', 'MacOS', 'Godot')
-      if (await isExecutableFile(executable, this.host.platform)) return { kind: 'executable', executable }
-    }
-    return undefined
-  }
-
   private async runInstall(signal: AbortSignal): Promise<void> {
     const root = join(this.settings.dataRoot, 'runtime')
     await mkdir(root, { recursive: true })
@@ -406,7 +359,7 @@ export class GodotRuntimeManager {
     const manifest = await this.fetchManifest(signal)
     const artifact = manifest.artifacts[this.platformKey()]
     if (artifact === undefined) {
-      throw new GodotRuntimeError('RUNTIME_PLATFORM', `The Godot runtime ${manifest.version} has no build for ${this.platformKey()}; set godotExecutable to an installed Godot editor instead.`)
+      throw new GodotRuntimeError('RUNTIME_PLATFORM', `The Godot runtime ${manifest.version} has no build for ${this.platformKey()}; set libgodotPath and runnerPath to a LibGodot build for this platform.`)
     }
     const id = randomUUID()
     const archive = join(root, `.download-${id}.tar.gz`)
@@ -504,7 +457,7 @@ export class GodotRuntimeManager {
 }
 
 /**
- * Build the runtime host of a Host process: PATH lookup and `tar` extraction through the subprocess service.
+ * Build the runtime host of a Host process: `tar` extraction through the subprocess service.
  * @param subprocess - Host subprocess service.
  * @param options - collected output cap and termination grace for `tar`.
  * @returns the runtime host.
@@ -516,17 +469,6 @@ export function createRuntimeHost(
   return {
     platform: process.platform,
     arch: process.arch,
-    applicationsDirectory: '/Applications',
-    async findOnPath(name, signal) {
-      try {
-        return await subprocess.resolveExecutable(name, undefined, signal)
-      } catch (error) {
-        // An absent executable means "try the next location"; every other lookup failure is reported. The error
-        // name, unlike its class, is the same in every installed copy of the subprocess package.
-        if (error instanceof Error && error.name === 'SubprocessExecutableNotFoundError') return undefined
-        throw error
-      }
-    },
     fetch: (url, init) => fetch(url, { signal: init.signal }),
     async extract(archive, destination, signal) {
       const tar = await subprocess.resolveExecutable('tar', undefined, signal)

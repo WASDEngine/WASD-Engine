@@ -8,7 +8,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
 import {
-  AppServerOptionFields, encodeServerOptions, firstExecutable, newestFirst, nodeSetupHost, parseAppServerOptions,
+  AppServerOptionFields, encodeServerOptions, nodeSetupHost, parseAppServerOptions,
 } from '@deepseek-ai/dsh-app-mcp'
 import type { AppWorkerDependencies, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import type { SclangBridgePlan, SuperColliderRuntime, SuperColliderServerOptions } from './types.ts'
@@ -42,10 +42,11 @@ export class SuperColliderSetupError extends Error {
 
   /**
    * @param code - `SUPERCOLLIDER_NOT_FOUND` for a missing or misconfigured sclang or scsynth, `SUPERCOLLIDER_RUNTIME_INVALID`
-   *   for a shipped runtime that its `runtime.json` does not describe.
+   *   for a shipped runtime that its `runtime.json` does not describe, `SUPERCOLLIDER_NOT_HEADLESS` for a configured sclang
+   *   that macOS would show as an open application.
    * @param message - actionable description for the agent and the user.
    */
-  constructor(readonly code: 'SUPERCOLLIDER_NOT_FOUND' | 'SUPERCOLLIDER_RUNTIME_INVALID', message: string) {
+  constructor(readonly code: 'SUPERCOLLIDER_NOT_FOUND' | 'SUPERCOLLIDER_RUNTIME_INVALID' | 'SUPERCOLLIDER_NOT_HEADLESS', message: string) {
     super(message)
   }
 }
@@ -164,75 +165,29 @@ export async function findBundledRuntime(bundledRoot: string, host: SuperCollide
   return runtime
 }
 
-/** The scsynth of the installation that holds `sclang`: beside it, or in the Resources folder of a macOS application bundle. */
+/** The scsynth in the folder that holds `sclang`. */
 async function scsynthBeside(sclang: string, host: SetupHost): Promise<string | undefined> {
   const paths = pathsOf(host.platform)
-  const directory = paths.dirname(sclang)
-  const name = executableName('scsynth', host.platform)
-  return await firstExecutable([paths.join(directory, name), paths.join(directory, '..', 'Resources', name)], host)
-}
-
-/** An installation found from its sclang, or undefined without a scsynth beside it. */
-async function installation(sclang: string, host: SetupHost): Promise<SuperColliderRuntime | undefined> {
-  const scsynth = await scsynthBeside(sclang, host)
-  return scsynth === undefined ? undefined : { source: 'installed', sclang, scsynth, classLibrary: undefined, plugins: undefined, helpSource: undefined }
-}
-
-/** The newest SuperCollider application bundle in `/Applications` and `~/Applications` that holds sclang and scsynth. */
-async function newestBundle(host: SetupHost): Promise<SuperColliderRuntime | undefined> {
-  const paths = pathsOf(host.platform)
-  const bundles: string[] = []
-  for (const root of ['/Applications', paths.join(host.homeDirectory, 'Applications')]) {
-    for (const name of await host.listDirectory(root)) if (/^supercollider.*\.app$/iu.test(name)) bundles.push(paths.join(root, name))
-  }
-  // Stable sort: equal versions keep /Applications before ~/Applications.
-  bundles.sort((left, right) => newestFirst(paths.basename(left), paths.basename(right)))
-  for (const bundle of bundles) {
-    const sclang = paths.join(bundle, 'Contents', 'MacOS', 'sclang')
-    if (await host.isExecutable(sclang)) {
-      const found = await installation(sclang, host)
-      if (found !== undefined) return found
-    }
-  }
-  return undefined
-}
-
-/** The first `PATH` directory, then on Windows the newest `SuperCollider*` folder under Program Files, that holds sclang and scsynth. */
-async function installedOnPathOrProgramFiles(host: SetupHost): Promise<SuperColliderRuntime | undefined> {
-  const paths = pathsOf(host.platform)
-  const directories = (host.env.PATH ?? host.env.Path ?? '').split(paths.delimiter).filter(directory => paths.isAbsolute(directory))
-  if (host.platform === 'win32') {
-    const programFiles = host.env.ProgramFiles ?? 'C:\\Program Files'
-    const installs = (await host.listDirectory(programFiles)).filter(name => /^supercollider/iu.test(name)).sort(newestFirst)
-    directories.push(...installs.map(name => paths.join(programFiles, name)))
-  }
-  const sclangName = executableName('sclang', host.platform)
-  for (const directory of directories) {
-    const sclang = paths.join(directory, sclangName)
-    if (!await host.isExecutable(sclang)) continue
-    const found = await installation(sclang, host)
-    if (found !== undefined) return found
-  }
-  return undefined
+  const scsynth = paths.join(paths.dirname(sclang), executableName('scsynth', host.platform))
+  return await host.isExecutable(scsynth) ? scsynth : undefined
 }
 
 /**
- * Locate sclang and scsynth: `sclangPath` (with `scsynthPath`, or the scsynth beside it), the runtime that the Desktop
- * app ships, then an installed SuperCollider: on macOS the newest `SuperCollider*.app` in `/Applications` or
- * `~/Applications`, then the first `PATH` directory that holds both programs, then on Windows the newest
- * `SuperCollider*` folder under Program Files. A non-empty `scsynthPath` replaces the scsynth that resolution found.
- * @param options - `sclangPath` and `scsynthPath`, empty to search.
+ * Locate sclang and scsynth: `sclangPath` (with `scsynthPath`, or the scsynth beside it), then the runtime that the
+ * Desktop app ships. An installed SuperCollider is never used: its macOS application links sclang against Qt and opens
+ * as an app, and the tools run SuperCollider headless only. A non-empty `scsynthPath` replaces the scsynth that
+ * resolution found.
+ * @param options - `sclangPath` and `scsynthPath`, empty to use the shipped runtime.
  * @param bundledRoot - the package's `runtime` folder.
  * @param host - environment and file checks.
- * @returns the runtime, or undefined when SuperCollider is neither shipped nor installed.
+ * @returns the runtime, or undefined when sclangPath is empty and no runtime is shipped for this platform.
  * @throws SuperColliderSetupError when a configured path is not an executable file, when sclangPath has no scsynth beside
- *   it and scsynthPath is empty, or when the shipped runtime is broken.
+ *   it and scsynthPath is empty, when sclangPath is inside a macOS application bundle, or when the shipped runtime is broken.
  */
 export async function findSuperCollider(
   options: Pick<SuperColliderServerOptions, 'sclangPath' | 'scsynthPath'>, bundledRoot: string, host: SuperColliderSetupHost,
 ): Promise<SuperColliderRuntime | undefined> {
   const runtime = await configuredRuntime(options, host) ?? await findBundledRuntime(bundledRoot, host)
-    ?? (host.platform === 'darwin' ? await newestBundle(host) : undefined) ?? await installedOnPathOrProgramFiles(host)
   if (runtime === undefined || options.scsynthPath === '') return runtime
   if (!await host.isExecutable(options.scsynthPath)) {
     throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', `The SuperCollider plugin setting scsynthPath (${options.scsynthPath}) is not an executable file. Correct it, or clear it to use the scsynth that comes with sclang.`)
@@ -245,7 +200,10 @@ async function configuredRuntime(
 ): Promise<SuperColliderRuntime | undefined> {
   if (options.sclangPath === '') return undefined
   if (!await host.isExecutable(options.sclangPath)) {
-    throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', `The SuperCollider plugin setting sclangPath (${options.sclangPath}) is not an executable file. Correct it, or clear it to use the SuperCollider that WASD Engine ships or an installed one.`)
+    throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', `The SuperCollider plugin setting sclangPath (${options.sclangPath}) is not an executable file. Correct it, or clear it to use the SuperCollider that WASD Engine ships.`)
+  }
+  if (host.platform === 'darwin' && /\.app\/Contents\//iu.test(options.sclangPath)) {
+    throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_HEADLESS', `The SuperCollider plugin setting sclangPath (${options.sclangPath}) names the sclang of a SuperCollider application, which macOS shows as an open app; WASD Engine runs SuperCollider headless only. Clear it to use the SuperCollider that WASD Engine ships, or name a headless sclang.`)
   }
   const scsynth = options.scsynthPath === '' ? await scsynthBeside(options.sclangPath, host) : options.scsynthPath
   if (scsynth === undefined) {
@@ -284,8 +242,8 @@ export function superColliderFolders(dataRoot: string, platform: NodeJS.Platform
 
 /**
  * The class library configuration: the worker class's folder, and for a shipped runtime its class library in place of
- * the default paths. An installed SuperCollider keeps its default paths, which hold its class library and the
- * system-wide extensions; the user's own extensions stay out, because `XDG_DATA_HOME` moves the user extension folder.
+ * the default paths. A configured sclang keeps its default paths, which hold its class library and the system-wide
+ * extensions; the user's own extensions stay out, because `XDG_DATA_HOME` moves the user extension folder.
  * @param runtime - the resolved runtime.
  * @param workerClassDirectory - the folder that holds the copy of `WasdWorker.sc`.
  * @returns YAML text for `sclang -l`.
@@ -304,7 +262,9 @@ export function classLibraryConfig(runtime: SuperColliderRuntime, workerClassDir
 
 /**
  * The bridge's plan: sclang in its IDE mode with the class library configuration, user folders under the data
- * directory, the data directory as working directory, and the boot parameters of the worker class.
+ * directory, Qt's offscreen platform, the data directory as working directory, and the boot parameters of the worker
+ * class. The shipped runtime has no Qt and ignores the platform; a configured sclang built with Qt either runs off
+ * screen or fails to start, so no build opens a window or an application.
  * @param runtime - the resolved runtime.
  * @param folders - the worker's folders.
  * @param options - the data directory and the shutdown grace.
@@ -316,7 +276,7 @@ export function sclangBridgePlan(
   return {
     sclang: [runtime.sclang, '-i', IDE_NAME, '-l', folders.classLibraryConfig],
     // The bridge needs ELECTRON_RUN_AS_NODE to run under the Desktop app's executable; sclang and its shells do not.
-    env: { set: { XDG_CONFIG_HOME: folders.configHome, XDG_DATA_HOME: folders.dataHome }, unset: ['ELECTRON_RUN_AS_NODE'] },
+    env: { set: { XDG_CONFIG_HOME: folders.configHome, XDG_DATA_HOME: folders.dataHome, QT_QPA_PLATFORM: 'offscreen' }, unset: ['ELECTRON_RUN_AS_NODE'] },
     cwd: options.dataRoot,
     requestDirectory: folders.scratch,
     boot: { scsynth: runtime.scsynth, plugins: runtime.plugins ?? null, scratch: folders.scratch, helpSource: runtime.helpSource ?? null },
@@ -328,15 +288,14 @@ function describeRuntime(runtime: SuperColliderRuntime): string {
   switch (runtime.source) {
     case 'bundled': return 'the runtime that WASD Engine ships'
     case 'configured': return `sclang at ${runtime.sclang}`
-    case 'installed': return `installed at ${runtime.sclang}`
   }
 }
 
-function installHelp(platform: NodeJS.Platform): string {
-  const brew = platform === 'darwin' ? ' (on macOS, `brew install --cask supercollider` also works)' : ''
-  return `SuperCollider was not found. The WASD Engine desktop app ships it; elsewhere, install SuperCollider 3.13 or newer from https://supercollider.github.io/downloads${brew}, then call the tool again. `
-    + 'The SuperCollider plugin settings sclangPath and scsynthPath select specific executables.'
-}
+/** Why no SuperCollider is available, and how the user gets the headless runtime. */
+const RUNTIME_MISSING = 'WASD Engine\'s headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on Apple silicon '
+  + 'and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '
+  + 'packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens '
+  + 'as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.'
 
 /** Dependencies of {@link SuperColliderWorkers}: the server's worker class copy and worker start, the setup host, and the bridge. */
 export interface SuperColliderWorkerDependencies<W extends { readonly ready: WorkerReady }> extends AppWorkerDependencies<W> {
@@ -364,12 +323,12 @@ export class SuperColliderWorkers<W extends { readonly ready: WorkerReady }> {
    * Find SuperCollider, prepare the worker's folders and class library configuration, and start one bridge.
    * @param signal - cancels the ready wait.
    * @returns the ready worker.
-   * @throws SuperColliderSetupError with installation instructions when SuperCollider is missing or misconfigured.
+   * @throws SuperColliderSetupError with instructions when the headless runtime is missing or a setting is wrong.
    */
   async start(signal: AbortSignal): Promise<W> {
     const { host } = this.dependencies
     const runtime = await findSuperCollider(this.options, this.dependencies.bundledRoot, host)
-    if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', installHelp(host.platform))
+    if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', RUNTIME_MISSING)
     const folders = superColliderFolders(this.options.dataRoot, host.platform)
     for (const directory of [folders.configHome, folders.dataHome, folders.scratch]) await host.makeDirectory(directory)
     const workerClass = await this.dependencies.workerScript()

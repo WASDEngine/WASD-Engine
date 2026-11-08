@@ -19,7 +19,7 @@ const posix = process.platform === 'win32' ? describe.skip : describe
 const signal = new AbortController().signal
 /** The composition's live Session. */
 const OWNER = SessionId('owner')
-const READY = { state: 'ready', kind: 'executable', windowless: false } as const
+const READY = { state: 'ready', kind: 'libgodot', windowless: process.platform === 'darwin' } as const
 
 let composition: Composition | undefined
 afterEach(async () => {
@@ -56,7 +56,7 @@ describe('configuration', () => {
   it.each([
     [{ dataRoot: 'relative' }, 'dataRoot must be an absolute path'],
     [{ dataRoot: '/data', libgodotPath: '/lib.so' }, 'set libgodotPath and runnerPath together'],
-    [{ dataRoot: '/data', godotExecutable: 'godot' }, 'godotExecutable must be an absolute path'],
+    [{ dataRoot: '/data', runnerPath: 'godot_runner', libgodotPath: '/lib.so' }, 'runnerPath must be an absolute path'],
     [{ dataRoot: '/data', runtimeManifestUrl: 'not a url' }, 'runtimeManifestUrl must be an http or https URL'],
     [{ dataRoot: '/data', runtimeManifestUrl: 'file:///manifest.json' }, 'runtimeManifestUrl must be an http or https URL'],
   ])('fails loud for %j', (config, message) => {
@@ -67,7 +67,7 @@ describe('configuration', () => {
     expect(GodotController.Config({ dataRoot: '/data' })).toEqual({
       dataRoot: '/data', runtimeVersion: '4.7.2-wasd.1',
       runtimeManifestUrl: 'https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json',
-      libgodotPath: '', runnerPath: '', godotExecutable: '', embedded: true, streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
+      libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, agentRunsMuted: true,
     })
@@ -82,7 +82,7 @@ posix('Remote', () => {
     const first = await stream.next()
     expect(first.value).toEqual({ type: 'snapshot', run: null, runtime: READY, logs: [], cursor: 0 })
     const view = await c.godot.run(OWNER, {}, signal)
-    expect(view).toMatchObject({ startedBy: 'user', muted: false, runtime: 'executable', launch: {} })
+    expect(view).toMatchObject({ startedBy: 'user', muted: false, runtime: 'libgodot', launch: {} })
     expect(c.sessionController.resumed).toEqual([])
     const items: GodotFollowItem[] = []
     while (!items.some(item => item.type === 'logs')) items.push((await stream.next()).value as GodotFollowItem)
@@ -246,7 +246,7 @@ posix('Remote', () => {
 
   it('waits for an install and lets the caller stop waiting for a stop', async () => {
     const c = await setup({ config: { runtimeManifestUrl: 'http://127.0.0.1:1/manifest.json' } })
-    expect(await c.godot.installRuntime(signal)).toMatchObject({ state: 'ready', kind: 'executable' })
+    expect(await c.godot.installRuntime(signal)).toMatchObject({ state: 'ready', kind: 'libgodot' })
     await callTool(c, 'godot_run')
     const leaving = new AbortController()
     leaving.abort(new Error('closed tab'))

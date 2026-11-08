@@ -21,8 +21,10 @@ export interface FakeGodotConfig {
 /** A temporary folder owned by one spec. */
 export interface Scratch {
   readonly root: string
-  /** Executable that runs the fake Godot with this process's Node. */
+  /** Executable that runs the fake Godot runner with this process's Node. */
   readonly fakeGodot: string
+  /** Empty file that stands in for the LibGodot library the runner loads. */
+  readonly fakeLibrary: string
   cleanup(): Promise<void>
 }
 
@@ -32,8 +34,8 @@ function shellWord(value: string): string {
 }
 
 /**
- * Create a scratch folder holding an executable that runs the fake Godot. The fixture is a module without a
- * shebang, so a shell script starts it with the Node that runs the spec.
+ * Create a scratch folder holding an executable that runs the fake Godot runner and the library file it names. The
+ * fixture is a module without a shebang, so a shell script starts it with the Node that runs the spec.
  * @param prefix - folder name prefix.
  * @returns the folder.
  */
@@ -42,7 +44,9 @@ export async function scratch(prefix: string): Promise<Scratch> {
   const fakeGodot = join(root, 'fake-godot')
   await writeFile(fakeGodot, `#!/bin/sh\nexec ${shellWord(process.execPath)} ${shellWord(FIXTURE)} "$@"\n`)
   await chmod(fakeGodot, 0o755)
-  return { root, fakeGodot, cleanup: () => rm(root, { recursive: true, force: true }) }
+  const fakeLibrary = join(root, 'fake-libgodot')
+  await writeFile(fakeLibrary, '')
+  return { root, fakeGodot, fakeLibrary, cleanup: () => rm(root, { recursive: true, force: true }) }
 }
 
 /**
@@ -109,8 +113,8 @@ export async function subprocessFixture(): Promise<SubprocessFixture> {
 }
 
 /**
- * Build a run spec that launches the fake as a Godot executable.
- * @param fakeGodot - executable path.
+ * Build a run spec that launches the fake as the LibGodot runner.
+ * @param fakeGodot - runner path.
  * @param project - project folder.
  * @param overrides - fields to replace.
  * @returns the spec.
@@ -121,7 +125,7 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
     startedBy: 'agent',
     project: { dir: project, name: 'Fake game', mainScene: 'res://main.tscn' },
     muted: true,
-    runtime: { kind: 'executable', executable: fakeGodot },
+    runtime: { kind: 'libgodot', runner: fakeGodot, library: `${fakeGodot}-libgodot` },
     windowless: false,
     harnessPath: join(project, 'harness.gd'),
     hostPid: process.pid,

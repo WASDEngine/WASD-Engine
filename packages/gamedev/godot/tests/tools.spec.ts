@@ -1,5 +1,4 @@
 /** The godot_* tools run, observe, and drive the Session's game through the real tool pipeline. */
-import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -11,7 +10,6 @@ import { callTool, compose, text, type Composition, type CompositionOptions } fr
 import { configureFake, fakeLog, fakeRequests, until } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
-const godotInstalled = existsSync('/Applications') && readdirSync('/Applications').some(name => /^Godot.*\.app$/u.test(name))
 
 let composition: Composition | undefined
 afterEach(async () => {
@@ -101,10 +99,12 @@ posix('godot_run and godot_stop', () => {
     expect(text(result)).toContain('Godot tools run only inside a Session.')
   })
 
-  it.skipIf(godotInstalled)('explains how to get a runtime when none is installed', async () => {
-    const c = await setup({ config: { godotExecutable: '' } })
+  it('explains how to get a runtime when none is installed, even with a Godot editor on PATH', async () => {
+    const c = await setup({ config: { runnerPath: '', libgodotPath: '' } })
     const path = process.env.PATH
-    process.env.PATH = c.dir.root
+    // A `godot` command on PATH is an installed editor, which would run the game in a window.
+    process.env.PATH = `${c.dir.root}:${path ?? ''}`
+    await writeFile(join(c.dir.root, 'godot'), '#!/bin/sh\nexit 0\n', { mode: 0o755 })
     try {
       const result = await callTool(c, 'godot_run')
       expect(text(result)).toContain('No Godot runtime is installed.')

@@ -28,7 +28,7 @@ async function check(config: FakeGodotConfig, paths: readonly string[], override
   hosts.push(host)
   const project = await writeProject(join(dir.root, 'game'), config)
   return checkScripts({
-    subprocess: host.subprocess, runtime: { kind: 'executable', executable: dir.fakeGodot }, projectDir: project, checkScript: '/check.gd',
+    subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project, checkScript: '/check.gd',
     paths, hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, ...overrides,
   })
 }

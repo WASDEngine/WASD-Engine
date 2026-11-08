@@ -1,7 +1,7 @@
 /** Browser-safe Remote types of the Godot plugin: run views, logs, input events, and the follow stream. */
 
-/** Where a run's Godot comes from: the patched LibGodot runner, or an installed Godot editor executable. */
-export type GodotRuntimeKind = 'libgodot' | 'executable'
+/** Where a run's Godot comes from: the patched LibGodot runner, the only runtime the plugin starts. */
+export type GodotRuntimeKind = 'libgodot'
 
 /** Install or download progress of the managed LibGodot runtime. */
 export interface GodotRuntimeInstallProgress {

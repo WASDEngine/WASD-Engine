@@ -9,17 +9,17 @@ export interface SuperColliderServerOptions extends AppServerOptions {
 }
 
 /** Where the sclang and scsynth that a worker runs come from. */
-export type SuperColliderSource = 'configured' | 'bundled' | 'installed'
+export type SuperColliderSource = 'configured' | 'bundled'
 
 /** The SuperCollider programs and folders that one worker uses. */
 export interface SuperColliderRuntime {
-  /** `configured` for `sclangPath`, `bundled` for the runtime that the Desktop app ships, `installed` for one found on this machine. */
+  /** `configured` for `sclangPath`, `bundled` for the runtime that the Desktop app ships. */
   readonly source: SuperColliderSource
   /** Absolute sclang executable. */
   readonly sclang: string
   /** Absolute scsynth executable that renders offline. */
   readonly scsynth: string
-  /** Class library folder that replaces sclang's default paths; undefined keeps the defaults of the installation. */
+  /** Class library folder that replaces sclang's default paths; undefined keeps the default paths of the configured sclang. */
   readonly classLibrary: string | undefined
   /** UGen plugin folder that scsynth loads exclusively; undefined keeps scsynth's default plugin folders. */
   readonly plugins: string | undefined

@@ -1,8 +1,8 @@
 /**
- * The SuperCollider tools against real SuperCollider: the runtime that the Desktop app ships, when this checkout holds
- * one in the package's `runtime/` folder, and an installed SuperCollider. Each available one runs the bridge from
- * source through tsx, behind a real worker supervisor, and the tools as the agent calls them. The suite skips a
- * runtime that is not there, and it owns a temporary data directory and every process it starts.
+ * The SuperCollider tools against real SuperCollider: the headless runtime that the Desktop app ships, when this
+ * checkout holds one in the package's `runtime/` folder, through the bridge from source under tsx, behind a real worker
+ * supervisor, and the tools as the agent calls them. The tools never start an installed SuperCollider, so the suite
+ * skips without the runtime; it owns a temporary data directory and every process it starts.
  */
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { JsonLineWorker, WorkerSupervisor, materializePayload } from '@deepseek-ai/dsh-app-mcp'
 import type { AppToolDependencies, AppToolResult } from '@deepseek-ai/dsh-app-mcp'
-import { bundledRuntimeRoot, findBundledRuntime, findSuperCollider, nodeSuperColliderSetupHost, SuperColliderWorkers } from '../src/environment.ts'
+import { bundledRuntimeRoot, findBundledRuntime, nodeSuperColliderSetupHost, SuperColliderWorkers } from '../src/environment.ts'
 import { superColliderTools } from '../src/tools.ts'
 import type { SuperColliderServerOptions } from '../src/types.ts'
 
@@ -21,13 +21,10 @@ const WORKER_ENTRY = fileURLToPath(new URL('../src/worker.ts', import.meta.url))
 const WORKER_CLASS = new URL('../sc/WasdWorker.sc', import.meta.url)
 const TSCONFIG = fileURLToPath(new URL('../../../../tsconfig.base.json', import.meta.url))
 const host = { ...nodeSuperColliderSetupHost(), env: { ...process.env, TSX_TSCONFIG_PATH: TSCONFIG } }
-const NO_RUNTIME = join(tmpdir(), 'dsh-supercollider-no-runtime')
 
 const bundled = await findBundledRuntime(bundledRuntimeRoot(PACKAGE), host)
-const installed = await findSuperCollider({ sclangPath: '', scsynthPath: '' }, NO_RUNTIME, host)
 const runtimes = [
   { name: 'shipped runtime', bundledRoot: bundledRuntimeRoot(PACKAGE), sclangPath: '', available: bundled !== undefined },
-  { name: 'installed SuperCollider', bundledRoot: NO_RUNTIME, sclangPath: installed?.sclang ?? '', available: installed !== undefined },
 ]
 
 /** Resolve whether no process of group `pgid` is left within `ms`. */

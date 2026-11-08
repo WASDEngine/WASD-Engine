@@ -263,9 +263,7 @@ function sequenceNeeds(events: readonly GodotInputEvent[]): { readonly seconds: 
  * @returns the complete argv.
  */
 export function launcherArgv(runtime: ResolvedGodotRuntime, hostPid: number, godotArgs: readonly string[]): string[] {
-  return runtime.kind === 'libgodot'
-    ? [runtime.runner, '--libgodot', runtime.library, '--parent-pid', String(hostPid), '--', ...godotArgs]
-    : [runtime.executable, ...godotArgs]
+  return [runtime.runner, '--libgodot', runtime.library, '--parent-pid', String(hostPid), '--', ...godotArgs]
 }
 
 /**

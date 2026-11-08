@@ -228,10 +228,10 @@ posix('followSession', () => {
     expect(await next(stream)).toMatchObject({ type: 'run', run: { runId: run.id } })
     await run.started()
     await until(() => run.logs.lastSeq > 0)
-    runtime.publish({ state: 'ready', kind: 'executable', windowless: false })
+    runtime.publish({ state: 'ready', kind: 'libgodot', windowless: false })
     const items: GodotFollowItem[] = []
     while (!items.some(item => item.type === 'logs') || !items.some(item => item.type === 'runtime')) items.push(await next(stream))
-    expect(items.find(item => item.type === 'runtime')).toEqual({ type: 'runtime', runtime: { state: 'ready', kind: 'executable', windowless: false } })
+    expect(items.find(item => item.type === 'runtime')).toEqual({ type: 'runtime', runtime: { state: 'ready', kind: 'libgodot', windowless: false } })
     expect(items.find(item => item.type === 'logs')).toMatchObject({ type: 'logs', entries: [{ message: 'hello' }] })
 
     const late = followSession(runtime.value, controller.signal)[Symbol.asyncIterator]()

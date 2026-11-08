@@ -36,14 +36,13 @@ afterEach(async () => {
 function settings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
     dataRoot: join(root, 'data'), bundledRoot: join(root, 'bundled'), runtimeVersion: '1.0-test', runtimeManifestUrl: 'http://127.0.0.1:1/manifest.json',
-    libgodotPath: '', runnerPath: '', godotExecutable: '', embedded: true, ...overrides,
+    libgodotPath: '', runnerPath: '', ...overrides,
   }
 }
 
 function fakeHost(overrides: Partial<RuntimeHost> = {}): RuntimeHost {
   return {
-    platform: 'linux', arch: 'x64', applicationsDirectory: join(root, 'Applications'),
-    findOnPath: async () => undefined,
+    platform: 'linux', arch: 'x64',
     fetch: (url, init) => fetch(url, { signal: init.signal }),
     extract: async () => { throw new Error('unexpected extract') },
     ...overrides,
@@ -137,46 +136,34 @@ posix('runtime resolution', () => {
     expect(bundledRuntimeRoot('/x/app.asarx/godot')).toBe('/x/app.asarx/godot/libgodot')
   })
 
-  it('falls back to a configured executable, then PATH, then macOS applications', async () => {
-    const executable = await file(join(root, 'bin', 'godot'))
-    expect(await new GodotRuntimeManager(settings({ godotExecutable: executable }), fakeHost(), () => {}).resolve(signal)).toEqual({ kind: 'executable', executable })
-    await expect(new GodotRuntimeManager(settings({ godotExecutable: join(root, 'none') }), fakeHost(), () => {}).resolve(signal)).rejects.toThrow('godotExecutable')
-    const asked: string[] = []
-    const onPath = fakeHost({ findOnPath: async (name) => { asked.push(name); return name === 'godot4' ? '/usr/bin/godot4' : undefined } })
-    expect(await new GodotRuntimeManager(settings(), onPath, () => {}).resolve(signal)).toEqual({ kind: 'executable', executable: '/usr/bin/godot4' })
-    expect(asked).toEqual(['godot', 'godot4'])
-
-    const mac = fakeHost({ platform: 'darwin' })
-    const manager = new GodotRuntimeManager(settings(), mac, () => {})
-    expect(await manager.resolve(signal)).toBeUndefined()
-    await mkdir(join(root, 'Applications', 'Other.app'), { recursive: true })
-    await file(join(root, 'Applications', 'Godot_v4.7.app', 'Contents', 'MacOS', 'Godot'), 0o644)
-    expect(await manager.resolve(signal)).toBeUndefined()
-    await file(join(root, 'Applications', 'Godot.app', 'Contents', 'MacOS', 'Godot'))
-    expect(await manager.resolve(signal)).toEqual({ kind: 'executable', executable: join(root, 'Applications', 'Godot.app', 'Contents', 'MacOS', 'Godot') })
-    expect(manager.windowless({ kind: 'executable', executable: '/x' })).toBe(false)
-    await expect(new GodotRuntimeManager(settings(), fakeHost({ platform: 'darwin', applicationsDirectory: executable }), () => {}).resolve(signal)).rejects.toMatchObject({ code: 'ENOTDIR' })
+  it('renders without a window on macOS, the platform whose LibGodot runs embedded', () => {
+    expect(new GodotRuntimeManager(settings(), fakeHost({ platform: 'darwin' }), () => {}).windowless()).toBe(true)
+    expect(new GodotRuntimeManager(settings(), fakeHost({ platform: 'linux' }), () => {}).windowless()).toBe(false)
+    expect(new GodotRuntimeManager(settings(), fakeHost({ platform: 'win32' }), () => {}).windowless()).toBe(false)
   })
 
-  it('reports missing runtimes and propagates unexpected lookup failures', async () => {
+  it('reports a missing runtime without starting an installed Godot editor', async () => {
     const published: GodotRuntimeView[] = []
-    const manager = new GodotRuntimeManager(settings(), fakeHost(), (view) => { published.push(view) })
+    // An editor beside the data folder, where a PATH or /Applications search would have found one, changes nothing.
+    await file(join(root, 'bin', 'godot'))
+    const manager = new GodotRuntimeManager(settings(), fakeHost({ platform: 'darwin' }), (view) => { published.push(view) })
     expect(manager.latest()).toEqual({ state: 'missing', message: RUNTIME_MISSING_MESSAGE })
     expect(await manager.view(signal)).toEqual({ state: 'missing', message: RUNTIME_MISSING_MESSAGE })
     expect(published).toEqual([])
-    const broken = new GodotRuntimeManager(settings(), fakeHost({ findOnPath: async () => { throw new Error('lookup broke') } }), () => {})
-    await expect(broken.view(signal)).rejects.toThrow('lookup broke')
     const aborted = new AbortController()
     aborted.abort(new Error('stop'))
     await expect(new GodotRuntimeManager(settings(), fakeHost({ platform: 'darwin' }), () => {}).resolve(aborted.signal)).rejects.toThrow('stop')
   })
 
   it('treats any regular file as launchable on Windows and reports file system loops', async () => {
-    const plain = await file(join(root, 'bin', 'godot.exe'), 0o644)
-    expect(await new GodotRuntimeManager(settings({ godotExecutable: plain }), fakeHost({ platform: 'win32' }), () => {}).resolve(signal)).toEqual({ kind: 'executable', executable: plain })
+    const plain = await file(join(root, 'bin', 'godot_runner.exe'), 0o644)
+    const library = await file(join(root, 'bin', 'libgodot.dll'), 0o644)
+    expect(await new GodotRuntimeManager(settings({ runnerPath: plain, libgodotPath: library }), fakeHost({ platform: 'win32' }), () => {}).resolve(signal))
+      .toEqual({ kind: 'libgodot', runner: plain, library })
     await symlink(join(root, 'loop-b'), join(root, 'loop-a'))
     await symlink(join(root, 'loop-a'), join(root, 'loop-b'))
-    await expect(new GodotRuntimeManager(settings({ godotExecutable: join(root, 'loop-a') }), fakeHost(), () => {}).resolve(signal)).rejects.toMatchObject({ code: 'ELOOP' })
+    await expect(new GodotRuntimeManager(settings({ runnerPath: join(root, 'loop-a'), libgodotPath: library }), fakeHost(), () => {}).resolve(signal))
+      .rejects.toMatchObject({ code: 'ELOOP' })
   })
 })
 
@@ -231,7 +218,7 @@ async function release(options: ReleaseOptions = {}): Promise<Release> {
 async function installer(manifestUrl: string, published: GodotRuntimeView[] = []): Promise<GodotRuntimeManager> {
   host = await subprocessFixture()
   const real = createRuntimeHost(host.subprocess, { outputBytes: 4096, graceMs: 1000 })
-  return new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...real, platform: 'linux', arch: 'x64', findOnPath: async () => undefined }, (view) => { published.push(view) })
+  return new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...real, platform: 'linux', arch: 'x64' }, (view) => { published.push(view) })
 }
 
 posix('managed install', () => {
@@ -322,7 +309,7 @@ posix('managed install', () => {
     })
     host = await subprocessFixture()
     const real = createRuntimeHost(host.subprocess, { outputBytes: 4096, graceMs: 1000 })
-    const manager = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...real, platform: 'win32', arch: 'x64', findOnPath: async () => undefined }, () => {})
+    const manager = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...real, platform: 'win32', arch: 'x64' }, () => {})
     expect(await manager.install(signal)).toMatchObject({ state: 'ready', kind: 'libgodot' })
     expect((await stat(join(manager.managedDirectory(), 'godot_runner'))).mode & 0o111).toBe(0)
   })
@@ -330,7 +317,7 @@ posix('managed install', () => {
   it('publishes nothing when another Host completed the runtime first', async () => {
     const { manifestUrl } = await release()
     const manager = await installer(manifestUrl)
-    const other = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...createRuntimeHost((host as SubprocessFixture).subprocess, { outputBytes: 4096, graceMs: 1000 }), platform: 'linux', arch: 'x64', findOnPath: async () => undefined }, () => {})
+    const other = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...createRuntimeHost((host as SubprocessFixture).subprocess, { outputBytes: 4096, graceMs: 1000 }), platform: 'linux', arch: 'x64' }, () => {})
     const [one, two] = await Promise.all([manager.install(signal), other.install(signal)])
     expect(one).toMatchObject({ state: 'ready' })
     expect(two).toMatchObject({ state: 'ready' })
@@ -338,13 +325,12 @@ posix('managed install', () => {
 })
 
 posix('createRuntimeHost', () => {
-  it('finds executables on PATH and reports other lookup failures', async () => {
+  it('describes this process and searches for no Godot executable', async () => {
     host = await subprocessFixture()
     const real = createRuntimeHost(host.subprocess, { outputBytes: 4096, graceMs: 1000 })
     expect(real.platform).toBe(process.platform)
-    expect(await real.findOnPath('sh', signal)).toMatch(/\/sh$/u)
-    expect(await real.findOnPath('dsh-godot-no-such-command', signal)).toBeUndefined()
-    await expect(real.findOnPath('relative/godot', signal)).rejects.toThrow('relative path')
+    expect(real.arch).toBe(process.arch)
+    expect(Object.keys(real).sort()).toEqual(['arch', 'extract', 'fetch', 'platform'])
     expect(GodotRuntimeError.name).toBe('GodotRuntimeError')
   })
 })

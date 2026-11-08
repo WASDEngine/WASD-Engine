@@ -1716,10 +1716,6 @@ export interface Config {
   libgodotPath: string
   /** Absolute `godot_runner`; set together with `libgodotPath`. */
   runnerPath: string
-  /** Absolute Godot editor executable used when no LibGodot runtime resolves; empty searches PATH and `/Applications`. */
-  godotExecutable: string
-  /** Render macOS LibGodot runs without a window. */
-  embedded: boolean
   /** Frames per second streamed to the Game tab. */
   streamFps: number
   /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
@@ -3998,9 +3994,9 @@ export interface Config {
 export interface Config extends AppMcpConfig {
   /** Absolute directory for the interpreter's user folders, render scratch files, and the worker class copy. */
   dataRoot: string
-  /** Absolute sclang executable; empty uses the runtime that the Desktop app ships, then an installed SuperCollider. */
+  /** Absolute sclang executable of a headless SuperCollider build; empty uses the runtime that the Desktop app ships. */
   sclangPath: string
-  /** Absolute scsynth executable; empty uses the scsynth of the runtime or installation that provides sclang. */
+  /** Absolute scsynth executable; empty uses the scsynth beside sclangPath, or that of the shipped runtime. */
   scsynthPath: string
   /** Budget for the MCP server to start and list its tools. */
   startupTimeoutMs: number

@@ -83,7 +83,6 @@ describe('command lines', () => {
 
   it('prefixes LibGodot arguments with the runner and its parent watch', () => {
     expect(launcherArgv(libgodot, 42, ['--path', '/p'])).toEqual(['/rt/godot_runner', '--libgodot', '/rt/libgodot.dylib', '--parent-pid', '42', '--', '--path', '/p'])
-    expect(launcherArgv({ kind: 'executable', executable: '/bin/godot' }, 42, ['--path', '/p'])).toEqual(['/bin/godot', '--path', '/p'])
   })
 
   it('builds the import and game command lines', () => {
@@ -93,8 +92,9 @@ describe('command lines', () => {
       ...launcherArgv(libgodot, process.pid, []), '--path', '/p', '--embedded', '--script', '/h.gd', '--audio-driver', 'Dummy',
       '--resolution', '800x600', '--', '--wasd-port=1234', '--wasd-token=abc', '--wasd-scene=res://level.tscn',
     ])
-    expect(gameArgv(runSpec('/bin/godot', '/p', { muted: false, harnessPath: '/h.gd' }), 1, 't'))
-      .toEqual(['/bin/godot', '--path', '/p', '--script', '/h.gd', '--', '--wasd-port=1', '--wasd-token=t'])
+    const windowed = runSpec('/bin/godot_runner', '/p', { muted: false, harnessPath: '/h.gd' })
+    expect(gameArgv(windowed, 1, 't'))
+      .toEqual([...launcherArgv(windowed.runtime, process.pid, []), '--path', '/p', '--script', '/h.gd', '--', '--wasd-port=1', '--wasd-token=t'])
   })
 })
 
@@ -113,7 +113,9 @@ posix('starting', () => {
       { source: 'import', level: 'error', message: 'bad import', file: 'res://a.png', line: 1, function: 'load' },
       { source: 'import', level: 'warning', message: 'careful' },
     ])
-    const expected = importArgv(runSpec(dir?.fakeGodot as string, project, { importBeforeRun: true })).slice(1)
+    // The runner passes Godot the command line after its own `--libgodot ... --` options, which the fake records.
+    const spec = runSpec(dir?.fakeGodot as string, project, { importBeforeRun: true })
+    const expected = importArgv(spec).slice(launcherArgv(spec.runtime, spec.hostPid, []).length)
     expect((await fakeLog(project))[0]).toEqual({ argv: expected })
   })
 
@@ -134,7 +136,7 @@ posix('starting', () => {
     expect(slow.run.view()).toMatchObject({ phase: 'failed', message: 'The Godot import step did not finish within 0.2 s.' })
     expect(slow.run.outputTail(5)).toBe('')
     await slow.run.stop()
-    const missing = await start({}, { importBeforeRun: true, runtime: { kind: 'executable', executable: join(dir?.root as string, 'no-godot') } })
+    const missing = await start({}, { importBeforeRun: true, runtime: { kind: 'libgodot', runner: join(dir?.root as string, 'no-godot'), library: '/no-libgodot' } })
     await missing.run.started()
     expect(missing.run.view()).toMatchObject({ phase: 'failed', message: expect.stringContaining('The Godot import step could not start') as string })
   })
@@ -158,7 +160,7 @@ posix('starting', () => {
   })
 
   it('fails when the game cannot be spawned or the spawn throws', async () => {
-    const missing = await start({}, { runtime: { kind: 'executable', executable: join('/nonexistent', 'godot') } })
+    const missing = await start({}, { runtime: { kind: 'libgodot', runner: join('/nonexistent', 'godot_runner'), library: '/no-libgodot' } })
     await missing.run.started()
     expect(missing.run.view()).toMatchObject({ phase: 'failed', message: expect.stringContaining('The game could not start: spawn') as string })
     const thrown = await start({}, {}, {

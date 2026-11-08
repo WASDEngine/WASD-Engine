@@ -1,6 +1,7 @@
-// Stand-in for a Godot executable in tests; tests/helpers.ts starts it through a shell script that runs Node. It
-// reads its behavior from `fake-godot.json` in the `--path` project folder and appends what it received to
-// `fake-godot.log` there. Modes follow the Host's command lines: `--import` runs the import step,
+// Stand-in for the LibGodot runner in tests; tests/helpers.ts starts it through a shell script that runs Node. Like
+// `godot_runner`, it takes `--libgodot <library> --parent-pid <pid> --` before Godot's own command line, which it
+// keeps. It reads its behavior from `fake-godot.json` in the `--path` project folder and appends the Godot command
+// line it received to `fake-godot.log` there. Modes follow the Host's command lines: `--import` runs the import step,
 // `--headless ... --script` runs the static check, anything else runs a game that speaks the wasd_harness.gd
 // protocol on the loopback port the Host passes.
 import { spawn } from 'node:child_process'
@@ -9,7 +10,8 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import net from 'node:net'
 import { join } from 'node:path'
 
-const args = process.argv.slice(2)
+const raw = process.argv.slice(2)
+const args = raw[0] === '--libgodot' ? raw.slice(raw.indexOf('--') + 1) : raw
 const project = args[args.indexOf('--path') + 1]
 const configFile = join(project, 'fake-godot.json')
 const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : {}

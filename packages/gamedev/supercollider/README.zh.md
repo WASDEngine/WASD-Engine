@@ -55,7 +55,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 - id: supercollider
   config:
     dataRoot: !!js dshHomePath('supercollider')
-    sclangPath: /Applications/SuperCollider.app/Contents/MacOS/sclang
+    sclangPath: /opt/supercollider-headless/sclang
 ```
 
 ### 配置
@@ -65,8 +65,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放解释器用户目录、渲染临时文件、类库配置和工作类副本的绝对目录 |
-| `sclangPath` | `''` | sclang 可执行文件的绝对路径；为空时先使用 Desktop 应用自带的运行时，再使用已安装的 SuperCollider（见[查找 SuperCollider](#find-supercollider)） |
-| `scsynthPath` | `''` | 用于离线渲染的 scsynth 可执行文件的绝对路径；为空时使用提供 sclang 的运行时或安装中的 scsynth |
+| `sclangPath` | `''` | 无界面 SuperCollider 构建中 sclang 可执行文件的绝对路径；为空时使用 Desktop 应用自带的运行时（见[查找 SuperCollider](#find-supercollider)） |
+| `scsynthPath` | `''` | 用于离线渲染的 scsynth 可执行文件的绝对路径；为空时使用 `sclangPath` 旁边的 scsynth，或自带运行时的 scsynth |
 | `toolCallTimeoutMs` | `900,000` | 一次工具调用的时限，包括启动解释器；一次请求（包括 `render_audio` 或 `execute_sclang` 的 `timeout_seconds`）最多可用到其中除最后 30 s 以外的全部时间，这 30 s 留给工作进程启动和返回结果 |
 | `startupTimeoutMs` | `30,000` | MCP 服务器连接并列出工具的时限；列出工具不会启动 SuperCollider |
 | `readyTimeoutMs` | `60,000` | sclang 编译类库并报告就绪的时限 |
@@ -77,22 +77,21 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 <a id="find-supercollider"></a>
 ### 查找 SuperCollider
 
-服务器在每次启动工作进程时查找 sclang 与 scsynth：即首次工具调用时，以及停止之后的那次调用时。它按以下顺序采用第一个匹配项：
+这些工具只以无界面方式运行 SuperCollider。服务器在每次启动工作进程时查找 sclang 与 scsynth，即首次工具调用时，以及停止之后的那次调用时，并按以下顺序采用第一个匹配项：
 
-1. 非空的 `sclangPath`，配合 `scsynthPath` 或它旁边的 scsynth：位于同一目录，或位于 macOS 应用程序包的 `../Resources` 中。
+1. 非空的 `sclangPath`，配合 `scsynthPath` 或同一目录中的 scsynth。
 2. Desktop 应用自带的运行时，位于本包的 `runtime/<platform>-<arch>/` 目录中，打包后的应用从 `app.asar.unpacked` 读取；其 `runtime.json` 指明其中的程序与目录。
-3. 在 macOS 上，`/Applications` 或 `~/Applications` 中版本最新、`Contents/MacOS/sclang` 与 `Contents/Resources/scsynth` 都存在的 `SuperCollider*.app`（不区分大小写）；版本相同时 `/Applications` 优先。
-4. 第一个同时包含 `sclang` 与 `scsynth` 的绝对 `PATH` 目录，即 Linux 软件包的安装方式。
-5. 在 Windows 上，`%ProgramFiles%`（未设置时为 `C:\Program Files`）下版本最新、包含 `sclang.exe` 与 `scsynth.exe` 的 `SuperCollider*` 目录。
 
-非空的 `scsynthPath` 会替换搜索找到的 scsynth。配置的路径不是可执行文件时，调用失败，消息会指出该设置；自带运行时的 `runtime.json` 无法读取、描述的是其他平台或指向缺失的程序时也同样失败；这两种情况下搜索都不会继续。没有任何匹配项时，调用在接触 `dataRoot` 之前失败，消息会说明从 <https://supercollider.github.io/downloads> 安装 SuperCollider 3.13 或更新版本，在 macOS 上也可使用 `brew install --cask supercollider`，并写明两个设置。每次启动工作进程都会重新搜索，因此安装后无需重启宿主。
+服务器从不启动已安装的 SuperCollider：macOS 应用程序的 sclang 链接了 Qt，即使没有窗口，macOS 也会把它显示为一个已打开的应用；而且该应用程序只附带 Qt 的 Cocoa 平台，也无法在屏幕外运行。在 macOS 上，位于应用程序包（`*.app/Contents/`）内的 `sclangPath` 会让调用失败，消息会说明原因。每个 sclang 都以 `QT_QPA_PLATFORM=offscreen` 启动：自带运行时会忽略它；配置的 Qt 构建版 sclang 会因此留在屏幕外，若其 Qt 没有 offscreen 平台则无法启动。
 
-Desktop 应用的运行时是从源码构建、不含 Qt、IDE 和 supernova 的 SuperCollider，因此其中包含 sclang、scsynth、UGen 插件、不含 GUI 类的类库以及类的帮助文件；[BUILD.md](../../../wasdengine/supercollider/BUILD.md) 说明它如何构建与发布，[Desktop 应用中的 SuperCollider](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) 说明打包如何附带它。源码检出与 npm 安装不含自带运行时，会使用已安装的 SuperCollider。官方的 macOS SuperCollider.app 同样可以无界面运行；它的 sclang 会加载 Qt，因此解释器启动较慢。
+非空的 `scsynthPath` 会替换搜索找到的 scsynth。配置的路径不是可执行文件时，调用失败，消息会指出该设置；自带运行时的 `runtime.json` 无法读取、描述的是其他平台或指向缺失的程序时也同样失败；这两种情况下搜索都不会继续。两者都不匹配时，调用在接触 `dataRoot` 之前失败，并返回[模型体验](#model-experience)中引用的缺少运行时消息。每次启动工作进程都会重新搜索，因此安装运行时后无需重启宿主。
+
+Desktop 应用的运行时是从源码构建、不含 Qt、IDE 和 supernova 的 SuperCollider，因此其中包含 sclang、scsynth、UGen 插件、不含 GUI 类的类库以及类的帮助文件；[BUILD.md](../../../wasdengine/supercollider/BUILD.md) 说明它如何构建与发布，[Desktop 应用中的 SuperCollider](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) 说明打包如何附带它。源码检出可通过 `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime` 获得它，或把 `supercollider-<version>` 发布版归档解压到该目录；npm 安装不含该运行时，需要设置 `sclangPath`。
 
 <a id="interpreter"></a>
 ### 所有对话共用一个解释器
 
-sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入 `<dataRoot>/sclang_conf.yaml` 的类库配置。对于自带运行时，该配置用运行时的类库替换默认的类库路径；已安装的 SuperCollider 则保留默认路径，因此会加载系统范围的扩展。无论哪种情况，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向 `<dataRoot>/home/`，因此用户自己的启动文件、扩展、quark 与 synthdef 都不会被加载。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
+sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入 `<dataRoot>/sclang_conf.yaml` 的类库配置。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向 `<dataRoot>/home/`，因此用户自己的启动文件、扩展、quark 与 synthdef 都不会被加载。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
 
 解释器状态在所有对话的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。新的解释器启动时这些都不存在。
 
@@ -183,7 +182,7 @@ IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以
 
 ### 用真实 SuperCollider 验证
 
-在仓库根目录运行端到端测试套件。当本包的 `runtime/<platform>-<arch>/` 目录中有自带运行时（`wasdengine/supercollider/build.sh --install` 会将其放在这里）时，它针对该运行时运行；当搜索找到已安装的 SuperCollider 时，也针对它运行；缺失的一方会被跳过。
+在仓库根目录运行端到端测试套件。当本包的 `runtime/<platform>-<arch>/` 目录中有自带运行时（`wasdengine/supercollider/build.sh --install` 会将其放在这里）时，它针对该运行时运行，没有时则跳过。
 
 ```sh
 pnpm run test:e2e packages/gamedev/supercollider/tests/supercollider-worker.e2e.ts
@@ -261,12 +260,12 @@ Game audio:
 
 #### 模型可见内容
 
-每个结果有一个文本块，`render_audio` 与 `analyze_audio` 另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships`、`sclang at <path>` 或 `installed at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少 SuperCollider 时返回下面的安装消息，工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
+每个结果有一个文本块，`render_audio` 与 `analyze_audio` 另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships` 或 `sclang at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少运行时时返回下面的消息，工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
 
-##### macOS 上的 SuperCollider 安装消息
+##### 缺少运行时消息
 
 ```markdown
-SuperCollider was not found. The WASD Engine desktop app ships it; elsewhere, install SuperCollider 3.13 or newer from https://supercollider.github.io/downloads (on macOS, `brew install --cask supercollider` also works), then call the tool again. The SuperCollider plugin settings sclangPath and scsynthPath select specific executables.
+WASD Engine's headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.
 ```
 
 #### Token 影响
@@ -286,7 +285,7 @@ SuperCollider was not found. The WASD Engine desktop app ships it; elsewhere, in
 - **不会发出声音** — 工具在没有音频设备的情况下运行，并拒绝启动实时服务器，因此 agent 和用户都无法通过工具听到声音；用户在游戏中或其他地方收听渲染出的文件。
 - **所有 Session 共用一个解释器** — 所有 Session 共用解释器的变量与 SynthDef，一次耗时的渲染会推迟其他所有 SuperCollider 调用。
 - **重启会丢失解释器状态** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期、取消正在运行的调用，或调用 `0.exit` 的代码都会停止 sclang；变量与 SynthDef 随之消失，新的解释器启动时一个都没有。
-- **自带运行时覆盖 macOS arm64 与 Linux x64** — Windows 与 Intel Mac 没有自带运行时，需要已安装的 SuperCollider；在 Windows 上，sclang 忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会读取用户自己的 SuperCollider 目录。
+- **SuperCollider 只在 macOS arm64 与 Linux x64 上运行** — Windows 与 Intel Mac 没有自带运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在这些平台上报告缺少运行时；在 Windows 上，这样的 sclang 会忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会读取用户自己的 SuperCollider 目录。
 - **插件仅为核心 UGen** — 自带运行时只包含 SuperCollider 自身的 UGen，不含 sc3-plugins 或其他扩展，其类库也不含 GUI 类。
 - **响度对每个声道同等加权** — 不应用 BS.1770 的环绕声道权重，因此超过两个声道的文件读数会比标准测量值更响。
 - **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到诊断文本，而不是波形与声谱图。

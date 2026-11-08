@@ -54,10 +54,6 @@ export interface Config {
   libgodotPath: string
   /** Absolute `godot_runner`; set together with `libgodotPath`. */
   runnerPath: string
-  /** Absolute Godot editor executable used when no LibGodot runtime resolves; empty searches PATH and `/Applications`. */
-  godotExecutable: string
-  /** Render macOS LibGodot runs without a window. */
-  embedded: boolean
   /** Frames per second streamed to the Game tab. */
   streamFps: number
   /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
@@ -120,7 +116,7 @@ class GodotUnavailableError extends Error {
 function validateConfig(config: Config): void {
   if (!isAbsolute(config.dataRoot)) throw new Error(`Godot plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
   if ((config.libgodotPath === '') !== (config.runnerPath === '')) throw new Error('Godot plugin: set libgodotPath and runnerPath together.')
-  for (const [field, value] of [['libgodotPath', config.libgodotPath], ['runnerPath', config.runnerPath], ['godotExecutable', config.godotExecutable]] as const) {
+  for (const [field, value] of [['libgodotPath', config.libgodotPath], ['runnerPath', config.runnerPath]] as const) {
     if (value !== '' && !isAbsolute(value)) throw new Error(`Godot plugin: ${field} must be an absolute path, got ${JSON.stringify(value)}.`)
   }
   if (!URL.canParse(config.runtimeManifestUrl) || !/^https?:$/u.test(new URL(config.runtimeManifestUrl).protocol)) {
@@ -155,8 +151,6 @@ export default class GodotController extends TypertRemoteService {
     runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
-    godotExecutable: z.string().default(''),
-    embedded: z.boolean().default(true),
     streamFps: z.number().min(1).max(60).default(30),
     streamQuality: z.number().min(0.1).max(1).default(0.9),
     streamLossless: z.boolean().default(true),
@@ -388,7 +382,7 @@ export default class GodotController extends TypertRemoteService {
       ...size === undefined ? {} : { size },
       muted: request.muted,
       runtime,
-      windowless: this.runtime.windowless(runtime),
+      windowless: this.runtime.windowless(),
       harnessPath: harness,
       hostPid: process.pid,
       importBeforeRun: config.importBeforeRun,

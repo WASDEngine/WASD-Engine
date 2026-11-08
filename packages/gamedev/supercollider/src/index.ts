@@ -24,9 +24,9 @@ export const inject = ['mcpManager']
 export interface Config extends AppMcpConfig {
   /** Absolute directory for the interpreter's user folders, render scratch files, and the worker class copy. */
   dataRoot: string
-  /** Absolute sclang executable; empty uses the runtime that the Desktop app ships, then an installed SuperCollider. */
+  /** Absolute sclang executable of a headless SuperCollider build; empty uses the runtime that the Desktop app ships. */
   sclangPath: string
-  /** Absolute scsynth executable; empty uses the scsynth of the runtime or installation that provides sclang. */
+  /** Absolute scsynth executable; empty uses the scsynth beside sclangPath, or that of the shipped runtime. */
   scsynthPath: string
   /** Budget for the MCP server to start and list its tools. */
   startupTimeoutMs: number

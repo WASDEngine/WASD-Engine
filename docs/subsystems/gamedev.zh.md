@@ -2,7 +2,7 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器拥有一个长期运行的应用工作进程，并把自己的工具提供给每个 Session。Godot 通过 LibGodot 或已安装的 Godot 编辑器，把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器拥有一个长期运行的应用工作进程，并把自己的工具提供给每个 Session。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
@@ -12,7 +12,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 一个 Python 工作进程：托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
 | `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程 |
-| `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner`，或已安装的 Godot 编辑器 |
+| `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
 
 激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 工具存在时引导 agent 使用它们。
@@ -92,13 +92,10 @@ stdout of sclang  <token> END <id> {"ok": false, "error": {"type": "<error class
 1. 已配置的 `runnerPath` 与 `libgodotPath`。
 2. Desktop 应用在该包 `libgodot/<platform>-<arch>/` 目录中附带的运行时（打包后的应用从 `app.asar.unpacked` 读取），前提是其 `runtime.json` 的格式为 1，所写的版本、平台与架构与当前一致，且其中指定的 runner 与库文件都存在。
 3. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，前提相同。
-4. 已配置的 `godotExecutable`。
-5. `PATH` 上的 `godot`，然后是 `godot4`。
-6. 在 macOS 上，名称排序最后的 `/Applications/Godot*.app` 包中的 `Contents/MacOS/Godot`。
 
-Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibGodot](../../wasdengine/FORK.md#libgodot-in-the-desktop-app)；源码检出和 npm 安装中没有该目录。已配置但不是可用文件的路径属于配置错误，绝不会被跳过。没有任何运行时可以解析时，`godot_run` 与 `godot.run` 会失败，其消息会指出 Game 标签页的安装操作以及上述设置。
+Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibGodot](../../wasdengine/FORK.md#libgodot-in-the-desktop-app)；源码检出和 npm 安装中没有该目录。已配置但不是可用文件的路径属于配置错误，绝不会被跳过。插件从不启动 Godot 编辑器，因为编辑器会在窗口中运行游戏。没有任何运行时可以解析时，`godot_run` 与 `godot.run` 会失败，其消息会指出 Game 标签页的安装操作以及上述设置。
 
-LibGodot 运行以 `godot_runner --libgodot <library> --parent-pid <Host process id> -- <Godot arguments>` 启动：runner 承载其进程可以持有的唯一一个 Godot 实例，并在 Host 进程退出时退出。编辑器可执行文件直接接受 Godot 参数。只有在 macOS 上使用 LibGodot 且 `embedded: true` 时，运行才会通过 `--embedded` 无窗口渲染；其他所有运行时都会打开游戏窗口。
+每个 Godot 进程都以 `godot_runner --libgodot <library> --parent-pid <Host process id> -- <Godot arguments>` 启动：runner 承载其进程可以持有的唯一一个 Godot 实例，并在 Host 进程退出时退出。在 macOS 上，游戏的参数包含 `--embedded`，使其无窗口渲染；在 Linux 与 Windows 上，游戏会打开窗口。
 
 `godot.installRuntime` 安装托管运行时。它从 `runtimeManifestUrl` 获取发布 manifest（元数据清单），其 `version` 必须等于 `runtimeVersion`；按 Node 的命名取 `<platform>-<arch>` 对应的产物（例如 `darwin-arm64`），下载时校验其大小与 SHA-256，用 `tar` 解压到暂存文件夹，写入 `runtime.json`，再在文件锁下把该文件夹重命名到位。并发调用方会加入同一次安装，运行时视图会报告安装进度。[BUILD.md](../../wasdengine/libgodot/BUILD.md) 说明 runner、LibGodot 补丁，以及运行时如何构建和发布。
 

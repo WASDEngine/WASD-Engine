@@ -78,8 +78,8 @@ export interface CompositionOptions {
  */
 export async function compose(options: CompositionOptions = {}): Promise<Composition> {
   const dir = await scratch('compose')
-  // A source checkout may hold a runtime in the package's `libgodot` folder, which the plugin prefers to
-  // `godotExecutable`; an empty folder in the scratch directory keeps every run on the fake executable.
+  // A source checkout may hold a runtime in the package's `libgodot` folder; an empty folder in the scratch directory
+  // keeps a composition that clears runnerPath from finding it.
   const shipped = vi.spyOn(GodotRuntimeManager.prototype, 'bundledDirectory').mockReturnValue(join(dir.root, 'bundled'))
   const project = await writeProject(join(dir.root, 'work', 'game'), options.game ?? { game: {} }, options.unnamed === true ? {} : undefined)
   const ctx = new Context()
@@ -135,7 +135,8 @@ export async function compose(options: CompositionOptions = {}): Promise<Composi
   } as never)
   const fiber = ctx.plugin(GodotController, GodotController.Config({
     dataRoot: join(dir.root, 'data'),
-    godotExecutable: dir.fakeGodot,
+    runnerPath: dir.fakeGodot,
+    libgodotPath: dir.fakeLibrary,
     importBeforeRun: false,
     startTimeoutMs: 10_000,
     requestTimeoutMs: 5000,

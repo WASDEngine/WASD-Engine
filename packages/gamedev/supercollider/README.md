@@ -55,7 +55,7 @@ A disabled row withdraws the tools and the server instructions from the model an
 - id: supercollider
   config:
     dataRoot: !!js dshHomePath('supercollider')
-    sclangPath: /Applications/SuperCollider.app/Contents/MacOS/sclang
+    sclangPath: /opt/supercollider-headless/sclang
 ```
 
 ### Configuration
@@ -65,8 +65,8 @@ A disabled row withdraws the tools and the server instructions from the model an
 | Field | Default | Meaning |
 |---|---|---|
 | `dataRoot` | required | Absolute directory for the interpreter's user folders, render scratch files, the class library configuration, and the worker class copy |
-| `sclangPath` | `''` | Absolute sclang executable; empty uses the runtime that the Desktop app ships, then an installed SuperCollider (see [Find SuperCollider](#find-supercollider)) |
-| `scsynthPath` | `''` | Absolute scsynth executable for the offline renders; empty uses the scsynth of the runtime or installation that provides sclang |
+| `sclangPath` | `''` | Absolute sclang executable of a headless SuperCollider build; empty uses the runtime that the Desktop app ships (see [Find SuperCollider](#find-supercollider)) |
+| `scsynthPath` | `''` | Absolute scsynth executable for the offline renders; empty uses the scsynth beside `sclangPath`, or that of the shipped runtime |
 | `toolCallTimeoutMs` | `900,000` | Budget of one tool call, including an interpreter start; a request, including a `timeout_seconds` of `render_audio` or `execute_sclang`, may use all of it but the last 30 s, which a worker start and the result keep |
 | `startupTimeoutMs` | `30,000` | Budget for the MCP server to connect and list its tools; listing the tools starts no SuperCollider |
 | `readyTimeoutMs` | `60,000` | Budget for sclang to compile its class library and report ready |
@@ -77,22 +77,21 @@ A disabled row withdraws the tools and the server instructions from the model an
 <a id="find-supercollider"></a>
 ### Find SuperCollider
 
-The server looks for sclang and scsynth each time a worker starts: on the first tool call and on the call after a stop. It takes the first match in this order:
+The tools run SuperCollider headless only. The server looks for sclang and scsynth each time a worker starts, on the first tool call and on the call after a stop, and takes the first match in this order:
 
-1. `sclangPath`, when it is not empty, with `scsynthPath` or the scsynth beside it: in the same folder, or in `../Resources` of a macOS application bundle.
+1. `sclangPath`, when it is not empty, with `scsynthPath` or the scsynth in the same folder.
 2. The runtime that the Desktop app ships, in the package's `runtime/<platform>-<arch>/` folder, which a packaged app reads from `app.asar.unpacked`; its `runtime.json` names the programs and folders inside it.
-3. On macOS, the newest `SuperCollider*.app` (in any case) in `/Applications` or `~/Applications` whose `Contents/MacOS/sclang` and `Contents/Resources/scsynth` exist; at equal versions, `/Applications` wins.
-4. The first absolute `PATH` directory that holds both `sclang` and `scsynth`, as a Linux package installs them.
-5. On Windows, the newest `SuperCollider*` folder under `%ProgramFiles%` (`C:\Program Files` when unset) that holds `sclang.exe` and `scsynth.exe`.
 
-A non-empty `scsynthPath` replaces the scsynth that the search found. A configured path that does not name an executable file fails the call with a message that names the setting, and so does a shipped runtime whose `runtime.json` is unreadable, describes another platform, or names a missing program; the search does not continue past either. When nothing matches, the call fails before it touches `dataRoot`, and its message says to install SuperCollider 3.13 or newer from <https://supercollider.github.io/downloads>, on macOS also with `brew install --cask supercollider`, and names both settings. The search runs at every worker start, so the Host needs no restart after an install.
+The server never starts an installed SuperCollider: the macOS application links sclang against Qt, so even without a window macOS shows it as an open app, and the application ships only Qt's Cocoa platform, so it cannot run off screen either. On macOS, a `sclangPath` inside an application bundle (`*.app/Contents/`) fails the call with a message that says so. Every sclang starts with `QT_QPA_PLATFORM=offscreen`, which the shipped runtime ignores and which keeps a configured Qt build of sclang off the screen, or stops it from starting where Qt has no offscreen platform.
 
-The Desktop app's runtime is SuperCollider built from source without Qt, its IDE, and supernova, so it holds sclang, scsynth, the UGen plugins, the class library without its GUI classes, and the class help files; [BUILD.md](../../../wasdengine/supercollider/BUILD.md) describes how it is built and published, and [SuperCollider in the Desktop app](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) how packaging ships it. A source checkout and an npm install have no shipped runtime and use an installed SuperCollider. The official macOS SuperCollider.app runs headless as well; its sclang loads Qt, which starts the interpreter more slowly.
+A non-empty `scsynthPath` replaces the scsynth that the search found. A configured path that does not name an executable file fails the call with a message that names the setting, and so does a shipped runtime whose `runtime.json` is unreadable, describes another platform, or names a missing program; the search does not continue past either. When neither matches, the call fails before it touches `dataRoot` with the missing runtime message that [Model Experience](#model-experience) quotes. The search runs at every worker start, so the Host needs no restart after the runtime is installed.
+
+The Desktop app's runtime is SuperCollider built from source without Qt, its IDE, and supernova, so it holds sclang, scsynth, the UGen plugins, the class library without its GUI classes, and the class help files; [BUILD.md](../../../wasdengine/supercollider/BUILD.md) describes how it is built and published, and [SuperCollider in the Desktop app](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) how packaging ships it. A source checkout gets it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`, or by unpacking a `supercollider-<version>` release archive into that folder; an npm install has none and needs `sclangPath`.
 
 <a id="interpreter"></a>
 ### One interpreter for every conversation
 
-sclang starts in its IDE mode, which reads commands from its standard input, with a class library configuration that the server writes to `<dataRoot>/sclang_conf.yaml`. For the shipped runtime, the configuration replaces the default class library paths with the runtime's class library; an installed SuperCollider keeps its default paths, so system-wide extensions load. Either way, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point sclang's user configuration and user data folders into `<dataRoot>/home/`, so the user's own startup file, extensions, quarks, and synthdefs stay out. The configuration adds the folder of `WasdWorker.sc`, the worker class, which also makes `Server:boot` throw: there is no audio device, so code that boots a real-time server fails with a message that points to `render_audio`.
+sclang starts in its IDE mode, which reads commands from its standard input, with a class library configuration that the server writes to `<dataRoot>/sclang_conf.yaml`. For the shipped runtime, the configuration replaces the default class library paths with the runtime's class library; a configured sclang keeps its default paths, so its system-wide extensions load. Either way, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point sclang's user configuration and user data folders into `<dataRoot>/home/`, so the user's own startup file, extensions, quarks, and synthdefs stay out. The configuration adds the folder of `WasdWorker.sc`, the worker class, which also makes `Server:boot` throw: there is no audio device, so code that boots a real-time server fails with a message that points to `render_audio`.
 
 Interpreter state persists between calls of every conversation: environment variables such as `~kick`, interpreter variables `a` to `z`, SynthDefs added with `.add`, and anything else that code defines. A fresh interpreter starts with none of them.
 
@@ -183,7 +182,7 @@ The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config 
 
 ### Verify against real SuperCollider
 
-From the repository root, run the end-to-end suite. It runs against the shipped runtime when the package's `runtime/<platform>-<arch>/` folder holds one, as `wasdengine/supercollider/build.sh --install` leaves it, and against an installed SuperCollider when the search finds one; it skips each one that is missing.
+From the repository root, run the end-to-end suite. It runs against the shipped runtime when the package's `runtime/<platform>-<arch>/` folder holds one, as `wasdengine/supercollider/build.sh --install` leaves it, and skips without it.
 
 ```sh
 pnpm run test:e2e packages/gamedev/supercollider/tests/supercollider-worker.e2e.ts
@@ -261,12 +260,12 @@ The text is constant, so a reconnect renders an identical section. The section a
 
 #### What the model sees
 
-Each result has one text block, and `render_audio` and `analyze_audio` add one PNG image, 1,024 pixels wide and 418 or 536 pixels high. After each worker start, the next result begins with `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` and a blank line, where the source is `the runtime that WASD Engine ships`, `sclang at <path>`, or `installed at <path>`. The rest of the text reports what the call did, with the analysis report and the image description for audio; posted text follows `output:` at the end. Error results carry the failure: a missing SuperCollider returns the installation message below, an error that the worker class reports returns its class and message with `Error code: WORKER_REMOTE`, an `execute_sclang` error returns its class, message, and details, and a stopped worker returns its error code, recent interpreter output, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
+Each result has one text block, and `render_audio` and `analyze_audio` add one PNG image, 1,024 pixels wide and 418 or 536 pixels high. After each worker start, the next result begins with `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` and a blank line, where the source is `the runtime that WASD Engine ships` or `sclang at <path>`. The rest of the text reports what the call did, with the analysis report and the image description for audio; posted text follows `output:` at the end. Error results carry the failure: a missing runtime returns the message below, an error that the worker class reports returns its class and message with `Error code: WORKER_REMOTE`, an `execute_sclang` error returns its class, message, and details, and a stopped worker returns its error code, recent interpreter output, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
 
-##### SuperCollider installation message on macOS
+##### Missing runtime message
 
 ```markdown
-SuperCollider was not found. The WASD Engine desktop app ships it; elsewhere, install SuperCollider 3.13 or newer from https://supercollider.github.io/downloads (on macOS, `brew install --cask supercollider` also works), then call the tool again. The SuperCollider plugin settings sclangPath and scsynthPath select specific executables.
+WASD Engine's headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.
 ```
 
 #### Token effect
@@ -286,7 +285,7 @@ These limits describe current gaps in the SuperCollider tools.
 - **Nothing plays aloud** — the tools run without an audio device and refuse to boot a real-time server, so neither the agent nor the user hears a sound through the tools; the user listens to the rendered files, in the game or elsewhere.
 - **One interpreter for every Session** — all Sessions share the interpreter's variables and SynthDefs, and a long render delays every other SuperCollider call.
 - **Restarts lose interpreter state** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, a cancelled running call, or code that calls `0.exit` stops sclang; the variables and SynthDefs are gone, and the fresh interpreter starts with none.
-- **The shipped runtime covers macOS arm64 and Linux x64** — Windows and Intel Macs have no shipped runtime and need an installed SuperCollider; on Windows, sclang ignores `XDG_CONFIG_HOME` and `XDG_DATA_HOME`, so it reads the user's own SuperCollider folders.
+- **SuperCollider runs on macOS arm64 and Linux x64 only** — Windows and Intel Macs have no shipped runtime, and the tools start no installed SuperCollider, so they report the missing runtime there unless `sclangPath` names a headless build; on Windows, such an sclang ignores `XDG_CONFIG_HOME` and `XDG_DATA_HOME`, so it reads the user's own SuperCollider folders.
 - **Plugins are the core UGens** — the shipped runtime holds the UGens of SuperCollider itself, not sc3-plugins or other extensions, and its class library has no GUI classes.
 - **Loudness weighs every channel equally** — the BS.1770 surround weights do not apply, so files with more than two channels read louder than the standard measures them.
 - **Images need an image-capable route** — on a model route without image input, the model receives diagnostic text instead of the waveform and spectrogram.

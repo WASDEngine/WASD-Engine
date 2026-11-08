@@ -24,14 +24,14 @@
   en: d36d33eafbd7da94
   zh: 119df85f7711fcf3
 /deepseek-ai-dsh-supercollider/use-this-package/configuration:
-  en: 3068a7d4ad31294c
-  zh: df96da26cca265be
+  en: 56d00de9f052bc2d
+  zh: 16768aa6d448849f
 /deepseek-ai-dsh-supercollider/use-this-package/find-supercollider:
-  en: daf4ab0d179e45f2
-  zh: da552ea6692f3b9e
+  en: 9df1e2089b63a3a0
+  zh: 90a4222a46509bd1
 /deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-for-every-conversation:
-  en: 34fa8d1d56f8c0d7
-  zh: de8d78f66155ac65
+  en: 452b129db2a067be
+  zh: 4ddf4c2aa2209e2a
 /deepseek-ai-dsh-supercollider/use-this-package/tools:
   en: 63141f73063cc0d1
   zh: 30fbf57525dafaef
@@ -45,8 +45,8 @@
   en: 9154b3b51314be79
   zh: ef265d1adcdd4948
 /deepseek-ai-dsh-supercollider/understand-the-implementation/verify-against-real-supercollider:
-  en: 76596ca9985ed30e
-  zh: 6411b8c4acbbbe72
+  en: 9d282332fc26a718
+  zh: 1276de4184994268
 /deepseek-ai-dsh-supercollider/further-exploration:
   en: 41a9f99a591d801b
   zh: ca9ad04fa9a3985b
@@ -84,11 +84,11 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees:
-  en: 60d34b7e2cb12793
-  zh: 3052ae04c118c884
-/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees/supercollider-installation-message-on-macos:
-  en: 8716e627cc0866d5
-  zh: 5a623565a25ad6ef
+  en: 20c0ce0106c074ce
+  zh: 83b26fef9fb8bc7e
+/deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees/missing-runtime-message:
+  en: 859d90af1f75cfb3
+  zh: ec2b54aeeae58a07
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/token-effect:
   en: 0fa9a3f943b92456
   zh: 25fa89c868cb4060
@@ -96,8 +96,8 @@
   en: 00af0e13a5a63f94
   zh: 21a0433bbdc9d3c0
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
-  en: bcb73a2d7e17e438
-  zh: 3bb0e12cdd957065
+  en: d06a9dc118aaad0f
+  zh: 94133a9699b15f5c
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

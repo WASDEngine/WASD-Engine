@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: a48bbd456544c666
-  zh: cbe5ad7a950fdd6d
+  en: be3553f5d8b052c4
+  zh: 1dfbf72824e97a2d
 /game-tools/composition:
-  en: f6f9edfdb890e570
-  zh: 4f25834067fb2430
+  en: 81c1de08c69a5d4c
+  zh: 72009f30115b7cf9
 /game-tools/application-mcp-servers:
   en: 0187387bd993339b
   zh: ff34c422aaff3974
@@ -21,8 +21,8 @@
   en: 6cdbbbd8b9876c3d
   zh: 823821e50ecfdeed
 /game-tools/godot-runs/runtime-resolution:
-  en: ba36245c30a9ba22
-  zh: bdbd9f3417fac335
+  en: d6979e6ce4574993
+  zh: 86c94652b18e443a
 /game-tools/godot-runs/run-lifecycle:
   en: e6b2d74b3a1b1e20
   zh: 7d60d6051acc491f

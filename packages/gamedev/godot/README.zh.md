@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）运行 Session 的 Godot 游戏、通过截图查看它、用按键、鼠标和输入动作游玩它、读取日志与错误，并在不运行游戏的情况下检查 GDScript。你可以在右侧栏的“游戏”标签页中观看并游玩同一个游戏。WASD Engine 的 Web 与 Desktop 默认启用本插件。游戏通过 LibGodot 运行（只需在“游戏”标签页中安装一次），或通过已安装的 Godot 编辑器运行；只有 macOS 上的 LibGodot 能在没有窗口的情况下运行游戏。每个 Session 同时只运行一个游戏；游戏音频只在宿主上播放。
+让 agent（智能体）运行 Session 的 Godot 游戏、通过截图查看它、用按键、鼠标和输入动作游玩它、读取日志与错误，并在不运行游戏的情况下检查 GDScript。你可以在右侧栏的“游戏”标签页中观看并游玩同一个游戏。WASD Engine 的 Web 与 Desktop 默认启用本插件。游戏只通过 LibGodot 运行（只需在“游戏”标签页中安装一次），从不通过已安装的 Godot 编辑器运行；在 macOS 上，游戏在没有窗口的情况下运行。每个 Session 同时只运行一个游戏；游戏音频只在宿主上播放。
 
 ## 目录
 
@@ -61,7 +61,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath` 或 `godotExecutable` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 不是 http 或 https URL 时，加载失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath` 或 `runnerPath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 不是 http 或 https URL 时，加载失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -70,8 +70,6 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
-| `godotExecutable` | `''` | Godot 编辑器可执行文件的绝对路径，在没有可用的 LibGodot 运行时时使用；为空时搜索 `PATH`，在 macOS 上还搜索 `/Applications` |
-| `embedded` | `true` | 在 macOS 上以无窗口方式渲染 LibGodot 运行 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
 | `streamQuality` | `0.9` | 推流的 JPEG 帧的 JPEG 质量，0.1 到 1 |
 | `streamLossless` | `true` | PNG 编码跟得上 `streamFps` 时推流无损 PNG 帧，否则推流 JPEG 帧；`false` 只推流 JPEG 帧 |
@@ -94,13 +92,10 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 1. `runnerPath` 与 `libgodotPath`：你自行构建或安装的 LibGodot runner 与库。
 2. Desktop 应用在本包 `libgodot/<platform>-<arch>/` 目录中附带的运行时（打包后的应用从 `app.asar.unpacked` 读取），仅当其 `runtime.json` 写明当前版本、平台和架构，且 runner 与库都存在时使用。
 3. `<dataRoot>/runtime/<runtimeVersion>/` 中的托管运行时，条件相同。
-4. `godotExecutable`：已安装的 Godot 编辑器可执行文件。
-5. `PATH` 上的 `godot`，然后是 `godot4`。
-6. 在 macOS 上，`/Applications` 中某个 `Godot*.app` 包内的 `Contents/MacOS/Godot`，按包名逆序依次尝试。
 
-配置的路径不是可用文件时，调用会失败，消息中写明该字段，搜索不再继续。由于附带的运行时和托管运行时都排在 `godotExecutable` 之前，二者中任何一个都优先于它。Desktop 打包时会放入附带的运行时（[Desktop 应用中的 LibGodot](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)）；源码检出和 npm 安装不附带运行时，使用托管运行时。没有任何运行时可用时，`godot_run` 与 `godot_check` 会失败，并要求从“游戏”标签页安装运行时或在配置中设置。
+配置的路径不是可用文件时，调用会失败，消息中写明该字段，搜索不再继续。Desktop 打包时会放入附带的运行时（[Desktop 应用中的 LibGodot](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)）；源码检出和 npm 安装不附带运行时，使用托管运行时。插件从不启动 Godot 编辑器，无论它位于 `PATH`、`/Applications` 还是其他位置，因为编辑器会在窗口中运行游戏。没有任何运行时可用时，`godot_run` 与 `godot_check` 会失败，并要求从“游戏”标签页安装运行时或在配置中设置。
 
-在 macOS 上以 `embedded: true` 运行 LibGodot 时会传入 `--embedded`，[打过补丁的 LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) 用 Metal 把游戏渲染到一个不显示在任何窗口中的图层：不会打开游戏窗口，“游戏”标签页和截图是查看游戏的唯一途径。其他所有运行都会在宿主的桌面上打开普通的游戏窗口：Linux 与 Windows 上的 LibGodot、macOS 上 `embedded: false` 的 LibGodot，以及编辑器可执行文件的每次运行。“游戏”标签页同样会为这些运行推流。
+在 macOS 上，每次运行都会传入 `--embedded`，[打过补丁的 LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) 用 Metal 把游戏渲染到一个不显示在任何窗口中的图层：不会打开游戏窗口，“游戏”标签页和截图是查看游戏的唯一途径。在补丁未覆盖的 Linux 与 Windows 上，运行会在宿主的桌面上打开普通的游戏窗口，“游戏”标签页同样会为其推流。
 
 <a id="managed-runtime"></a>
 ### 安装托管运行时
@@ -362,7 +357,7 @@ The user can watch and play the running game in the Game panel.
 ##### 缺少运行时的消息
 
 ```markdown
-No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath, or godotExecutable, in the Godot plugin configuration.
+No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath in the Godot plugin configuration.
 ```
 
 #### Token 影响
@@ -380,9 +375,9 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 以下限制描述 Godot 运行、“游戏”标签页和运行时当前的不足。
 
 - **游戏以宿主用户的全部权限运行** — 游戏、导入步骤和 `godot_check` 作为宿主的普通子进程运行。Session 权限模式（例如 `read-only` 或 `workspace-write`）的[沙箱](../../sandbox/sandbox-policy/README.zh.md)不约束它们，它们也从不像 `bash` 命令那样请求[批准](../../interaction/user-approval/README.zh.md)。`godot_run` 启动的游戏代码、`godot_check` 加载的脚本，以及 `godot_eval` 求值的表达式（它可以运行包括 `OS.execute` 在内的任意 GDScript），都能读写宿主用户可访问的所有文件并启动其他程序。`project` 接受绝对路径或工作目录之外的路径，因此 `godot_run` 和 `godot_check` 会运行宿主用户可读取的任何项目。
-- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASDEngine` 的 `libgodot-4.7.2-wasd.1`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`，或使用已安装的编辑器。
-- **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过本地 LibGodot 构建或已安装的编辑器运行。
-- **macOS 以外会打开窗口** — 只有 macOS 上的 LibGodot 能在没有窗口的情况下运行游戏。在 Linux 与 Windows 上，以及在任何平台上使用编辑器可执行文件时，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
+- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASDEngine` 的 `libgodot-4.7.2-wasd.1`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
+- **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过 `runnerPath` 与 `libgodotPath` 指定的本地 LibGodot 构建运行。
+- **macOS 以外会打开窗口** — LibGodot 补丁只在 macOS 上实现无窗口渲染。在 Linux 与 Windows 上，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。
 - **JPEG 帧会模糊彩色边缘** — 当编码一个 PNG 帧用时超过 1/`streamFps` 秒，或 `streamLossless` 关闭时，场景推流 JPEG 帧，“游戏”标签页中彩色文字等细小的饱和色细节会比游戏中更柔和：Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色。
 - **帧为游戏窗口的像素尺寸** — “游戏”标签页把窗口的像素（宽度最多 `streamMaxWidth`）适配到标签页中。在高密度显示器上，标签页覆盖的屏幕像素多于窗口的像素时，帧会被放大，看起来比按显示器密度渲染的游戏窗口更柔和。
@@ -391,11 +386,11 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏。
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
-- **托管运行时不支持 C# 脚本** — LibGodot 构建时不含 .NET，因此 C# 脚本无法加载。已安装的托管运行时还优先于 `godotExecutable`，因此在那里设置的 .NET 编辑器只有在未安装托管运行时时才会运行游戏。
+- **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。
 - **不支持导出** — 这些工具可以运行和检查游戏，但不会导出游戏。导出需要同一版本的 Godot 编辑器可执行文件及其导出模板，由 Agent 在 shell 中运行。
-- **不检查编辑器可执行文件的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类并读取 `ScriptBacktrace` 帧；没有这些类的编辑器无法启动运行。
+- **不检查配置的运行时的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类并读取 `ScriptBacktrace` 帧；`runnerPath` 与 `libgodotPath` 指定的 LibGodot 构建若缺少这些类，则无法启动运行。
 - **harness 会替换自定义主循环** — 运行通过 `--script` 传入 harness，因此 `application/run/main_loop_type` 指定了自有 `SceneTree` 或 `MainLoop` 类的项目会改由 harness 运行。
-- **“游戏”标签页可能显示过时的运行时状态** — 标签页在开始跟随某个 Session 时以及安装之后解析运行时，因此在标签页打开期间安装的 Godot 编辑器，要等标签页再次跟随某个 Session 后才会显示，例如刷新页面后。
+- **“游戏”标签页可能显示过时的运行时状态** — 标签页在开始跟随某个 Session 时以及安装之后解析运行时，因此标签页打开期间手动添加或删除的运行时目录，要等标签页再次跟随某个 Session 后才会反映出来，例如刷新页面后。
 - **截图需要支持图像的路由** — 在不支持图像输入或没有附件存储的模型路由上，`godot_screenshot` 和 `screenshot` 选项会失败，agent 在那里无法看到游戏；`godot_input` 和 `godot_wait` 会在执行操作之前失败。
 
 <a id="dev-note"></a>

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent run the Session's Godot game, see it in screenshots, play it with keys, mouse, and input actions, read its logs and errors, and check GDScript without running it. You watch and play the same game in the Game tab of the right sidebar. WASD Engine Web and Desktop turn the plugin on by default. Games run through LibGodot, which you install once from the Game tab, or through an installed Godot editor; only LibGodot on macOS runs them without a window. Each Session runs one game at a time; game audio plays only on the Host.
+Let the agent run the Session's Godot game, see it in screenshots, play it with keys, mouse, and input actions, read its logs and errors, and check GDScript without running it. You watch and play the same game in the Game tab of the right sidebar. WASD Engine Web and Desktop turn the plugin on by default. Games run only through LibGodot, which you install once from the Game tab, and never through an installed Godot editor; on macOS they run without a window. Each Session runs one game at a time; game audio plays only on the Host.
 
 ## Table of Contents
 
@@ -61,7 +61,7 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 
 ### Configuration
 
-[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, or `godotExecutable` holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl` is not an http or https URL.
+[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, or `runnerPath` holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl` is not an http or https URL.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -70,8 +70,6 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | Release manifest that the install downloads |
 | `libgodotPath` | `''` | Absolute LibGodot library; set together with `runnerPath` |
 | `runnerPath` | `''` | Absolute `godot_runner` executable; set together with `libgodotPath` |
-| `godotExecutable` | `''` | Absolute Godot editor executable, used when no LibGodot runtime resolves; empty searches `PATH` and, on macOS, `/Applications` |
-| `embedded` | `true` | Render LibGodot runs on macOS without a window |
 | `streamFps` | `30` | Frames per second streamed to the Game tab, 1 to 60 |
 | `streamQuality` | `0.9` | JPEG quality of streamed JPEG frames, 0.1 to 1 |
 | `streamLossless` | `true` | Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams only JPEG frames |
@@ -94,13 +92,10 @@ Each run and each `godot_check` resolves the runtime again and takes the first m
 1. `runnerPath` and `libgodotPath`: a LibGodot runner and library that you built or installed yourself.
 2. The runtime that the Desktop app ships in this package's `libgodot/<platform>-<arch>/` folder, which a packaged app reads from `app.asar.unpacked`, used only when its `runtime.json` names this version, platform, and architecture and its runner and library exist.
 3. The managed runtime in `<dataRoot>/runtime/<runtimeVersion>/`, under the same conditions.
-4. `godotExecutable`: an installed Godot editor executable.
-5. `godot`, then `godot4`, on `PATH`.
-6. On macOS, `Contents/MacOS/Godot` of a `Godot*.app` bundle in `/Applications`, trying the bundle names in reverse alphabetical order.
 
-A configured path that is not a usable file fails the call with a message that names the field, and the search does not continue. Because the shipped and the managed runtime come before `godotExecutable`, either one takes precedence over it. Desktop packaging puts the shipped runtime in place ([LibGodot in the Desktop app](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)); a source checkout and an npm install ship none and use the managed runtime. When nothing resolves, `godot_run` and `godot_check` fail and ask for the runtime to be installed from the Game tab or configured.
+A configured path that is not a usable file fails the call with a message that names the field, and the search does not continue. Desktop packaging puts the shipped runtime in place ([LibGodot in the Desktop app](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)); a source checkout and an npm install ship none and use the managed runtime. The plugin never starts a Godot editor, from `PATH`, `/Applications`, or anywhere else, because an editor runs the game in a window. When nothing resolves, `godot_run` and `godot_check` fail and ask for the runtime to be installed from the Game tab or configured.
 
-A LibGodot run on macOS with `embedded: true` passes `--embedded`, and the [patched LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) renders the game with Metal into a layer that no window shows: no game window opens, and the Game tab and screenshots are the only views of the game. Every other run opens a normal game window on the Host's desktop: LibGodot on Linux and Windows, LibGodot on macOS with `embedded: false`, and every run of an editor executable. The Game tab streams those runs as well.
+On macOS every run passes `--embedded`, and the [patched LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) renders the game with Metal into a layer that no window shows: no game window opens, and the Game tab and screenshots are the only views of the game. On Linux and Windows, which the patch does not cover, a run opens a normal game window on the Host's desktop, and the Game tab streams it as well.
 
 <a id="managed-runtime"></a>
 ### Install the managed runtime
@@ -362,7 +357,7 @@ Each result carries one text block of at most 6,000 characters; `godot_screensho
 ##### Missing runtime message
 
 ```markdown
-No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath, or godotExecutable, in the Godot plugin configuration.
+No Godot runtime is installed. Install the WASD Engine Godot runtime from the Game panel, or set libgodotPath and runnerPath in the Godot plugin configuration.
 ```
 
 #### Token effect
@@ -380,9 +375,9 @@ Append-only: calls and their results follow the existing request prefix and do n
 These limits describe current gaps of the Godot runs, the Game tab, and the runtime.
 
 - **Games run with the Host user's full access** — the game, the import step, and `godot_check` run as ordinary child processes of the Host. The [sandbox](../../sandbox/sandbox-policy/README.md) of the Session's permission mode, such as `read-only` or `workspace-write`, does not confine them, and they never ask for [approval](../../interaction/user-approval/README.md) the way that `bash` commands can. Game code that `godot_run` starts, the scripts that `godot_check` loads, and the expressions that `godot_eval` evaluates, which can run any GDScript including `OS.execute`, can read and write every file that the Host user can and start other programs. `project` accepts an absolute path or a path outside the working directory, so `godot_run` and `godot_check` run any project that the Host user can read.
-- **The managed runtime needs a published release** — **Install Godot** downloads the manifest and the archive from the GitHub release that `runtimeManifestUrl` names, `libgodot-4.7.2-wasd.1` of `WASDEngine/WASDEngine` by default. The [LibGodot runtime workflow](../../../wasdengine/libgodot/BUILD.md#release) must publish that release first; until then the install fails with the manifest's HTTP status, and a Host without access to GitHub needs `runnerPath` and `libgodotPath`, or an installed editor.
-- **Three platforms** — the release workflow builds macOS arm64, Linux x64, and Windows x64. On another platform, such as an Intel Mac, the install fails because the manifest has no build for it, and games run only through a local LibGodot build or an installed editor.
-- **A window outside macOS** — only LibGodot on macOS runs a game without a window. On Linux and Windows, and with an editor executable on every platform, each run, including each agent run, opens a game window on the Host's desktop.
+- **The managed runtime needs a published release** — **Install Godot** downloads the manifest and the archive from the GitHub release that `runtimeManifestUrl` names, `libgodot-4.7.2-wasd.1` of `WASDEngine/WASDEngine` by default. The [LibGodot runtime workflow](../../../wasdengine/libgodot/BUILD.md#release) must publish that release first; until then the install fails with the manifest's HTTP status, and a Host without access to GitHub needs `runnerPath` and `libgodotPath`.
+- **Three platforms** — the release workflow builds macOS arm64, Linux x64, and Windows x64. On another platform, such as an Intel Mac, the install fails because the manifest has no build for it, and games run only through a local LibGodot build that `runnerPath` and `libgodotPath` name.
+- **A window outside macOS** — the LibGodot patch renders without a window only on macOS. On Linux and Windows, each run, including each agent run, opens a game window on the Host's desktop.
 - **No gamepads in the Game tab** — the tab forwards keyboard and mouse input only, so a gamepad connected to the browser's computer does not reach the game; the agent can send joypad button and axis events with `godot_input`.
 - **JPEG frames blur colored edges** — a scene that streams JPEG frames, because encoding a PNG frame takes longer than 1/`streamFps` seconds or `streamLossless` is off, shows thin saturated details such as colored text softer in the Game tab than in the game: Godot's JPEG encoder stores color at half resolution at every quality.
 - **Frames at the game window's pixel size** — the Game tab fits the window's pixels, at most `streamMaxWidth` wide, into the tab. On a high-density display, a tab that covers more screen pixels than the window has enlarges the frame, which looks softer than a game window that renders at the display's density.
@@ -391,11 +386,11 @@ These limits describe current gaps of the Godot runs, the Game tab, and the runt
 - **One game per Session** — **Play** in the Game tab and `godot_run` replace each other's run, and the Host runs at most `maxRuns` games across all Sessions.
 - **Game tab input waits behind the agent's input** — the game runs one input sequence at a time, so while an agent sequence runs, for example `{ "wait": 30 }`, keys and clicks from the Game tab reach the game only after that sequence ends, at the latest when its real-time limit ends.
 - **Application shortcuts pause in the game view on Windows Desktop** — while the view has focus, no application shortcut or menu accelerator runs until Shift+Esc or a click elsewhere releases it.
-- **No C# scripts on the managed runtime** — LibGodot is built without .NET, so C# scripts do not load. An installed managed runtime also takes precedence over `godotExecutable`, so a .NET editor set there runs games only while no managed runtime is installed.
+- **No C# scripts** — the WASD Engine LibGodot is built without .NET, so C# scripts do not load, and the plugin never falls back to a .NET Godot editor.
 - **No exports** — the tools run and check games but do not export them. An export needs a Godot editor executable of the same version with its export templates, which the agent runs from the shell.
-- **Editor executables are not version-checked** — the harness and the check script extend Godot's `Logger` class and read `ScriptBacktrace` frames; an editor without those classes cannot start a run.
+- **A configured runtime is not version-checked** — the harness and the check script extend Godot's `Logger` class and read `ScriptBacktrace` frames; a LibGodot build that `runnerPath` and `libgodotPath` name and that lacks those classes cannot start a run.
 - **The harness replaces a custom main loop** — runs pass the harness with `--script`, so a project whose `application/run/main_loop_type` names its own `SceneTree` or `MainLoop` class runs under the harness instead.
-- **The Game tab can show an outdated runtime state** — the tab resolves the runtime when it starts following a Session and after an install, so a Godot editor installed while the tab is open appears after the tab follows a Session again, for example after a page reload.
+- **The Game tab can show an outdated runtime state** — the tab resolves the runtime when it starts following a Session and after an install, so the tab shows a runtime folder added or removed by hand while it is open only after it follows a Session again, for example after a page reload.
 - **Screenshots need an image-capable route** — `godot_screenshot` and the `screenshot` option fail on a model route without image input or without an attachment store, so the agent cannot see the game there; `godot_input` and `godot_wait` fail before they act.
 
 <a id="dev-note"></a>
