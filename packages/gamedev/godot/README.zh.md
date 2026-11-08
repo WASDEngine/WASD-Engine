@@ -66,7 +66,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
-| `runtimeVersion` | `4.7.2-wasd.1` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本 |
+| `runtimeVersion` | `4.7.2-wasd.1` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
@@ -178,7 +178,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
 - 截图以 PNG 字节形式直接放在结果中返回，而不是为模型路由保存附件，也不检查模型；每张截图请求的宽度使其最长边至多 1,568 像素、面积至多 1,150,000 像素，即 agent 无需缩放即可接收的尺寸。
 
-`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。
+`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。
 
 <a id="game-tab"></a>
 ### “游戏”标签页
@@ -323,14 +323,14 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### 模型可见内容
 
-插件在 `TOOL_COMPUTER_USE` 位置对应的顺序上注册一个名为 `godot` 的全局系统提示词部分，文本固定如下；该部分是静态的，因此即使 Agent 的工具集排除了 Godot 工具，它也仍在该 Agent 的提示词中。
+插件在 `TOOL_COMPUTER_USE` 位置对应的顺序上注册一个名为 `godot` 的全局系统提示词部分，文本如下；该部分是静态的，因此即使 Agent 的工具集排除了 Godot 工具，它也仍在该 Agent 的提示词中。第一段写明 `runtimeVersion` 开头的 Godot 版本（默认为 `4.7`），自带运行时与托管运行时都必须与之一致。设置了 `libgodotPath` 与 `runnerPath`，或 `runtimeVersion` 不以 `major.minor` 版本开头时，该段不写明版本，改为 `Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.`。
 
 ##### Godot 部分文本
 
 ```markdown
 # Godot games
 
-Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+Godot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.
 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
@@ -342,7 +342,7 @@ The user can watch and play the running game in the Game panel.
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 966 个字符。
+插件加载期间，该部分为每个系统提示词增加 1037 个字符；不写明 Godot 版本时为 966 个字符。
 
 #### KV Cache 影响
 

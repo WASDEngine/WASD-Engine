@@ -10,7 +10,8 @@ import GameMcpServer, { type GameMcpView } from '@deepseek-ai/dsh-game-mcp'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { agentScreenshotWidth, MCP_WORDING } from '../src/mcp.ts'
+import type { Config } from '../src/index.ts'
+import { agentScreenshotWidth, MCP_INSTRUCTIONS, MCP_WORDING } from '../src/mcp.ts'
 import { SESSION_WORDING } from '../src/tools.ts'
 import { fakeAgent } from './agents.ts'
 import { compose, type Composition } from './composition.ts'
@@ -25,8 +26,8 @@ afterEach(async () => {
 })
 
 /** The composition with the game MCP server, a Workspace registry, and a Session controller that creates fake Agents. */
-async function connected(game: Record<string, unknown> = {}) {
-  const current = composition = await compose({ game: { game } })
+async function connected(game: Record<string, unknown> = {}, config: Partial<Config> = {}) {
+  const current = composition = await compose({ game: { game }, config })
   const { ctx, dir } = current
   const workspaces: Array<{ id: string; path: string; sessionIds: SessionId[] }> = []
   ctx.provide('workspaceRegistry', {
@@ -76,6 +77,18 @@ function images(result: CallResult): Array<{ data: string; mimeType: string }> {
 }
 
 describe('the Godot tools over WASD Engine\'s MCP server', () => {
+  it('names the Godot release of the shipped or installed runtime in the instructions', async () => {
+    const { client } = await connected({}, { runnerPath: '', libgodotPath: '' })
+    expect(client.getInstructions()).toContain(
+      `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".`)
+  }, TIMEOUT)
+
+  it('names no Godot release in the instructions for configured runtime paths', async () => {
+    const { client } = await connected()
+    expect(client.getInstructions()).toContain(MCP_INSTRUCTIONS)
+    expect(client.getInstructions()).not.toContain('The godot_* tools run Godot')
+  }, TIMEOUT)
+
   it('lists every Godot tool with an absolute project parameter and the wording for connected agents', async () => {
     const { client } = await connected()
     const { tools } = await client.listTools()

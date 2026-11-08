@@ -297,12 +297,23 @@ function quotedSection(readme: string): string | undefined {
   return body.slice(0, body.indexOf('\n```'))
 }
 
+/** The `godot` system prompt section of a composition. */
+async function godotSection(c: Composition): Promise<string | undefined> {
+  return (await c.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'godot')?.text
+}
+
+/** The section's first paragraph when it names no Godot release. */
+const UNVERSIONED = 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
+  + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+
 posix('system prompt', () => {
-  it('tells the agent that Godot is built in, in the text and size that both READMEs document', async () => {
-    const c = await setup()
-    const text = (await c.ctx.systemPrompt.assemble()).sections.find(section => section.name === 'godot')?.text
-    const lead = '# Godot games\n\nGodot is built in: the godot_* tools run it, so making, checking, and running a game need '
-      + 'no Godot editor or godot command. Do not look for one or download one.'
+  it('tells the agent which Godot is built in, in the text and size that both READMEs document', async () => {
+    // No runtime paths: the shipped or installed runtime of the default runtimeVersion runs the games.
+    const c = await setup({ config: { runnerPath: '', libgodotPath: '' } })
+    const text = await godotSection(c)
+    const lead = '# Godot games\n\nGodot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need '
+      + 'no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first '
+      + 'write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.\n\n'
     expect(text?.slice(0, lead.length)).toBe(lead)
     const english = await readFile(new URL('../README.md', import.meta.url), 'utf8')
     const chinese = await readFile(new URL('../README.zh.md', import.meta.url), 'utf8')
@@ -310,6 +321,16 @@ posix('system prompt', () => {
     expect(quotedSection(chinese)).toBe(text)
     expect(english).toContain(`The section adds ${String(text?.length)} characters`)
     expect(chinese).toContain(`该部分为每个系统提示词增加 ${String(text?.length)} 个字符`)
+  })
+
+  it('names no Godot release for configured runtime paths', async () => {
+    const c = await setup()
+    expect(await godotSection(c)).toContain(`# Godot games\n\n${UNVERSIONED}\n\nTest a Godot project`)
+  })
+
+  it('names no Godot release for a runtime version that does not start with one', async () => {
+    const c = await setup({ config: { runnerPath: '', libgodotPath: '', runtimeVersion: 'nightly-2026-11-08' } })
+    expect(await godotSection(c)).toContain(`# Godot games\n\n${UNVERSIONED}\n\nTest a Godot project`)
   })
 })
 

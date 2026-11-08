@@ -24,8 +24,8 @@
   en: cc31369797b3b01a
   zh: 2bdd59780bc3df73
 /deepseek-ai-dsh-godot/use-this-package/configuration:
-  en: f00235e656e592bb
-  zh: 56f275da6a69e8ad
+  en: f869156244d7c47a
+  zh: f187205eac5b70b0
 /deepseek-ai-dsh-godot/use-this-package/godot-runtime:
   en: 054f8cdf262cb88a
   zh: 67ba5e3f63816080
@@ -42,8 +42,8 @@
   en: e49ab156c21ee1ae
   zh: 9c485f5cb6f430ab
 /deepseek-ai-dsh-godot/use-this-package/tools-for-connected-agents:
-  en: 1b305fa9f4183876
-  zh: b7b9377a17bae7b5
+  en: b6b4ae1e07c8f279
+  zh: e794a1dfb1be0733
 /deepseek-ai-dsh-godot/use-this-package/game-tab:
   en: 81143822d2893407
   zh: 378ef9b59adc7f38
@@ -84,14 +84,14 @@
   en: 9a2a0228ccac0457
   zh: 9a9f0c1b1e0c17c9
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/what-the-model-sees:
-  en: 22583baa2c8195f9
-  zh: 447e7d9195a2d2ae
+  en: 1f0389fa83754c29
+  zh: 1f8a80df1bd4e59a
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/what-the-model-sees/godot-section-text:
   en: 5b7faaeb50336f4b
   zh: f1087c241f6734d3
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/token-effect:
-  en: 2e4a375a5e7f697e
-  zh: d2797a97ce34073a
+  en: a350431fb50402c9
+  zh: ecf794fde1bee173
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/kv-cache-effect:
   en: 7055ccc0a0c30685
   zh: fe72ad236b48d482

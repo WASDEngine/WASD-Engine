@@ -66,7 +66,7 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | Field | Default | Meaning |
 |---|---|---|
 | `dataRoot` | required | Absolute directory for the managed runtime and the copies of the harness scripts |
-| `runtimeVersion` | `4.7.2-wasd.1` | Version of the managed runtime: its folder name under `runtime/` and the version its manifest must describe |
+| `runtimeVersion` | `4.7.2-wasd.1` | Version of the managed runtime: its folder name under `runtime/` and the version its manifest must describe; the system prompt names the Godot release it starts with, such as `4.7` |
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | Release manifest that the install downloads |
 | `libgodotPath` | `''` | Absolute LibGodot library; set together with `runnerPath` |
 | `runnerPath` | `''` | Absolute `godot_runner` executable; set together with `libgodotPath` |
@@ -178,7 +178,7 @@ Agents on the computer that connect through WASD Engine's MCP server, [`@deepsee
 - The `godot_run` description says that the game plays in the WASD Engine window, `godot_check` takes absolute paths where the Session's tool takes paths relative to the working directory, and `godot_logs` reads after the entries the agent last read.
 - Screenshots return as PNG bytes in the result instead of attachments for a model route, with no model check; each is requested at a width that keeps its longest edge at most 1,568 pixels and its area at most 1,150,000 pixels, the sizes agents take without resizing.
 
-`godot_run` also asks the WASD Engine window to show the Session, whose Game tab then opens for the run. The provider reports the runtime's readiness to `search_game_tools`: `ready`, `starting` while the managed runtime installs, or `unavailable` with the runtime message.
+`godot_run` also asks the WASD Engine window to show the Session, whose Game tab then opens for the run. The provider reports the runtime's readiness to `search_game_tools`: `ready`, `starting` while the managed runtime installs, or `unavailable` with the runtime message. Its instructions end with `The godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".`, naming the release that the system prompt section names, and leave the sentence out when that section names none.
 
 <a id="game-tab"></a>
 ### Game tab
@@ -323,14 +323,14 @@ One configuration always yields identical declarations, registered before the fi
 
 #### What the model sees
 
-The plugin registers a global system prompt section named `godot` at the order of the `TOOL_COMPUTER_USE` position, with this constant text; the section is static, so it stays in the prompt of an Agent whose tool set excludes the Godot tools.
+The plugin registers a global system prompt section named `godot` at the order of the `TOOL_COMPUTER_USE` position, with the text below; the section is static, so it stays in the prompt of an Agent whose tool set excludes the Godot tools. Its first paragraph names the Godot release that starts `runtimeVersion`, `4.7` by default, which the shipped and managed runtimes must match. With `libgodotPath` and `runnerPath` set, or a `runtimeVersion` that does not start with a `major.minor` release, the paragraph names no release and reads `Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.` instead.
 
 ##### Godot section text
 
 ```markdown
 # Godot games
 
-Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+Godot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.
 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
@@ -342,7 +342,7 @@ The user can watch and play the running game in the Game panel.
 
 #### Token effect
 
-The section adds 966 characters to every system prompt while the plugin is loaded.
+The section adds 1037 characters to every system prompt while the plugin is loaded, or 966 when it names no Godot release.
 
 #### KV Cache effect
 

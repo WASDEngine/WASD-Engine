@@ -30,7 +30,7 @@ export const MCP_WORDING: GodotToolWording = {
   logsDefault: 'Without since, returns the entries after the ones you last read.',
 }
 
-/** How connected agents use the Godot tools. */
+/** How connected agents use the Godot tools, before the sentence that names the Godot release. */
 export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* tools. Pass project, the absolute path of the folder that holds project.godot, to your first Godot call; later calls default to it.
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
@@ -166,9 +166,12 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
  * The Godot provider of WASD Engine's MCP server.
  * @param host - plugin operations the tools call.
  * @param runtime - resolves the runtime view.
+ * @param release - the Godot release that the tools run, which the instructions name; omission names none.
  * @returns the provider.
  */
-export function godotMcpProvider(host: GodotToolHost, runtime: (signal: AbortSignal) => Promise<GodotRuntimeView>): GameMcpProvider {
+export function godotMcpProvider(
+  host: GodotToolHost, runtime: (signal: AbortSignal) => Promise<GodotRuntimeView>, release?: string,
+): GameMcpProvider {
   const images: CapturedImages = new WeakMap()
   const projects = new Map<string, string>()
   const tools = godotToolDefinitions(host, { screenshots: mcpScreenshots(images), wording: MCP_WORDING })
@@ -177,7 +180,9 @@ export function godotMcpProvider(host: GodotToolHost, runtime: (signal: AbortSig
     id: 'godot',
     title: 'Godot',
     description: 'Run, test, and play the user\'s Godot game inside the WASD Engine window.',
-    instructions: MCP_INSTRUCTIONS,
+    instructions: release === undefined
+      ? MCP_INSTRUCTIONS
+      : `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot ${release}: write code for it, and start config/features in a new project.godot with "${release}".`,
     tools: () => tools,
     status: async signal => statusOf(await runtime(signal)),
   }

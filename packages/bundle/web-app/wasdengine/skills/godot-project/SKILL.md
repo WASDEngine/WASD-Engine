@@ -7,11 +7,11 @@ description: Create, edit, run, test, or export a Godot 4 game (project.godot, .
 
 ## Find the engine
 
-When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only an export needs an editor (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools; `godot_run` reports the Godot version. If a tool reports that no Godot runtime is installed, pass its message on to the user instead of searching for Godot.
+When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only an export needs an editor (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools. The Godot games section of the system prompt names the built-in Godot release, and `godot_run` reports its full version. If a tool reports that no Godot runtime is installed, pass its message on to the user instead of searching for Godot.
 
 Without the `godot_*` tools, run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one.
 
-Write code for the Godot 4 release in use. The built-in runtime runs GDScript, not C#: a project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
+Write code for the Godot 4 release in use, and name that release first in `config/features` of `project.godot`, as in `config/features=PackedStringArray("4.7", "Forward Plus")` for Godot 4.7; when an existing project names an older release there, change it to the release in use. The built-in runtime runs GDScript, not C#: a project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
 
 ## Project layout
 

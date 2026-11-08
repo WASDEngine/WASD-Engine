@@ -97,9 +97,32 @@ declare module '@deepseek-ai/cordis' {
 
 const MAX_TIMER_MS = 2 ** 31 - 1
 
-const PROMPT = `# Godot games
+/**
+ * The Godot release, `major.minor`, of the runtime that the plugin ships or installs: the start of `runtimeVersion`,
+ * such as `4.7` for `4.7.2-wasd.1`, which the shipped and managed runtimes must match.
+ * @param config - the plugin configuration.
+ * @returns the release, or undefined when `libgodotPath` and `runnerPath` name another runtime or `runtimeVersion` does not start with one.
+ */
+function godotRelease(config: Pick<Config, 'runtimeVersion' | 'libgodotPath'>): string | undefined {
+  if (config.libgodotPath !== '') return undefined
+  return /^(\d+\.\d+)(?=[.+-]|$)/u.exec(config.runtimeVersion)?.[1]
+}
 
-Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.
+/**
+ * The `godot` system prompt section.
+ * @param release - the Godot release that the tools run, when known.
+ * @returns the section text.
+ */
+function godotPrompt(release: string | undefined): string {
+  const builtIn = release === undefined
+    ? 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
+      + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+    : `Godot ${release} is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. `
+      + `Do not look for one or download one. Write code for Godot ${release}. For a new game, first write project.godot, whose `
+      + `config/features starts with "${release}", a main scene, and its scripts.`
+  return `# Godot games
+
+${builtIn}
 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
@@ -107,6 +130,7 @@ Test a Godot project with the godot_* tools:
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.`
+}
 
 /** A Godot runtime does not resolve. */
 class GodotUnavailableError extends Error {
@@ -201,11 +225,12 @@ export default class GodotController extends TypertRemoteService {
       check: (agent, request, signal) => this.check(agent, request, signal),
     }
     registerGodotTools(ctx, toolHost)
+    const release = godotRelease(config)
     // Agents connected through WASD Engine's MCP server get the same tools, for Sessions of their own.
     ctx.inject(['gameMcp'], (inner) => {
-      inner.effect(() => inner.gameMcp.provide(godotMcpProvider(toolHost, signal => this.runtime.view(signal))), 'godot: game MCP tools')
+      inner.effect(() => inner.gameMcp.provide(godotMcpProvider(toolHost, signal => this.runtime.view(signal), release)), 'godot: game MCP tools')
     })
-    ctx.systemPrompt.section({ name: 'godot', order: ctx.systemPrompt.getSectionOrder('TOOL_COMPUTER_USE'), text: PROMPT })
+    ctx.systemPrompt.section({ name: 'godot', order: ctx.systemPrompt.getSectionOrder('TOOL_COMPUTER_USE'), text: godotPrompt(release) })
     ctx.inject(['connection'], (inner) => {
       inner.effect(() => inner.connection.fetch.register({
         path: '/api/godot.frames',
