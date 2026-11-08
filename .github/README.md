@@ -102,8 +102,8 @@ To connect one, open the sign-in dialog in WASD Engine, choose **Set up with ano
 
 | Free · $0/month | Pro · $10/month | Max · $40/month |
 |---|---|---|
-| Open source | Generous weekly usage limits | Everything in Pro |
-| Bring your own AI | Deep integration with WASD Engine | Highest weekly usage limits |
+| Open source | Built-in game dev AI | Everything in Pro |
+| Bring your own AI | Generous weekly usage limits | Highest weekly usage limits |
 | 2D & 3D assets, music, SFX, and more | Create AAA-quality games | For the most ambitious creators |
 
 See the [website](https://app.wasdengine.com) for current plans.
