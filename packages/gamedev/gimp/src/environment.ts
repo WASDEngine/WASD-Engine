@@ -7,7 +7,7 @@
 import path from 'node:path'
 import { z } from 'zod'
 import { AppServerOptionFields, firstExecutable, newestFirst, parseAppServerOptions } from '@deepseek-ai/dsh-app-mcp'
-import type { AppWorkerDependencies, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import type { GimpServerOptions } from './types.ts'
 
 const ServerOptions = z.strictObject({
@@ -122,7 +122,8 @@ export async function findGimpConsole(options: Pick<GimpServerOptions, 'gimpCons
 }
 
 /**
- * The GIMP profile the worker uses, kept apart from the user's own GIMP settings.
+ * The GIMP profile every worker uses, kept apart from the user's own GIMP settings. Workers share it, because GIMP takes
+ * about 15 s to fill a new profile; worker starts never overlap, so the first start fills it alone.
  * @param dataRoot - the plugin's data directory.
  * @param platform - selects the path syntax.
  * @returns `<dataRoot>/profile`.
@@ -185,10 +186,11 @@ export class GimpWorkers<W extends { readonly ready: WorkerReady }> {
   /**
    * Find GIMP and start one worker with the plugin's own GIMP profile.
    * @param signal - cancels the ready wait.
+   * @param scope - the Session whose worker this is, and its own directory, which is GIMP's working directory.
    * @returns the ready worker.
    * @throws GimpSetupError with installation instructions when GIMP 3 is not installed.
    */
-  async start(signal: AbortSignal): Promise<W> {
+  async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
     const gimpConsole = await findGimpConsole(this.options, host)
     if (gimpConsole === undefined) throw new GimpSetupError('GIMP_NOT_FOUND', installHelp(host.platform))
@@ -196,7 +198,7 @@ export class GimpWorkers<W extends { readonly ready: WorkerReady }> {
     await host.makeDirectory(profile)
     const script = await this.dependencies.workerScript()
     const worker = await this.dependencies.start({
-      argv: gimpWorkerArgv(gimpConsole, script), cwd: this.options.dataRoot, env: workerEnvironment(host.env, profile),
+      argv: gimpWorkerArgv(gimpConsole, script), cwd: scope.directory, env: workerEnvironment(host.env, profile),
       readyTimeoutMs: this.options.readyTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
     const python = worker.ready.python === undefined ? '' : ` (Python ${worker.ready.python})`

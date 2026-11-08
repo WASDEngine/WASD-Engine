@@ -24,6 +24,7 @@ import { assertSupportedJsonSchema } from '@deepseek-ai/dsh-tools'
 import type { JsonSchemaNode } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { describeError, McpLocalError } from './diagnostic.ts'
+import { SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY } from './session-scope.ts'
 
 /** Resolved options relevant to tool bridging. */
 export interface ToolBridgeOptions {
@@ -135,6 +136,8 @@ export async function syncTools(
   const response = client.getServerCapabilities()?.tools === undefined
     ? { tools: [] }
     : await client.listTools(undefined, { cacheMode: 'refresh', signal: opts.signal })
+  // WASD Engine: a server that asks for it learns which Session each call comes from.
+  const scoped = client.getServerCapabilities()?.experimental?.[SESSION_SCOPE_CAPABILITY] !== undefined
   for (const tool of response.tools) {
     const publicName = publicToolName(opts.serverName, tool.name)
     if (definitions.has(publicName)) {
@@ -151,8 +154,9 @@ export async function syncTools(
       taskRequired: tool.execution?.taskSupport === 'required',
       call: async (args, execution) => {
         try {
+          const session = scoped ? execution.agent?.id : undefined
           const result = await client.callTool(
-            { name: tool.name, arguments: args },
+            { name: tool.name, arguments: args, ...session === undefined ? {} : { _meta: { [SESSION_SCOPE_META_KEY]: session } } },
             { signal: AbortSignal.any([execution.signal, opts.signal]),
               timeout: opts.toolCallTimeoutMs, toolDefinition: tool },
           )

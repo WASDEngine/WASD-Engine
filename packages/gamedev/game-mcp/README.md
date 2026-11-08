@@ -72,7 +72,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_supercollider` server's tools, renamed from `mcp__wasd_supercollider__<tool>` |
 
-The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents and the Session's own agent share one Blender, one GIMP, and one SuperCollider worker, as all Sessions do.
+The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents share one Blender, one GIMP, and one SuperCollider worker among themselves, apart from the workers of WASD Engine's own Sessions ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), and the instructions of those plugins say so.
 
 ### Games in the WASD Engine window
 

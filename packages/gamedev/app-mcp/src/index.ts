@@ -7,7 +7,8 @@
  * `runAppMcpServer`, which decodes the options (`decodeServerOptions`) and
  * serves the tools (`serveAppMcp`); the tools run methods of one long-lived
  * application worker through a `WorkerSupervisor`, which starts the worker as
- * a `JsonLineWorker` on the first call. The setup host and tool helpers carry
+ * a `JsonLineWorker` on the first call. A `WorkerPool` keeps one such worker
+ * per calling Session, which the Host's MCP client names in each call. The setup host and tool helpers carry
  * what the application servers share. `materializePayload` copies a shipped
  * file, possibly inside `app.asar`, to a real path. This is a library: it
  * exports no plugin.
@@ -38,6 +39,13 @@ export interface AppMcpConfig {
   graceMs: number
   /** Most bytes of recent worker output, and of setup command output, kept for error messages. */
   maxLogBytes: number
+  /**
+   * Most application workers that run at once. Each calling Session gets its own worker; when this many run, a new
+   * Session stops the least recently used one that runs no call.
+   */
+  maxWorkers: number
+  /** Milliseconds without a call after which a Session's worker stops and its state is lost. */
+  workerIdleTimeoutMs: number
 }
 
 /** Validates the shared fields when the plugin loads. */
@@ -46,6 +54,8 @@ export const AppMcpConfig: z<Partial<AppMcpConfig>, AppMcpConfig> = z.object({
   requestTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(600_000),
   graceMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(3000),
   maxLogBytes: z.natural().min(1).default(64 * 1024),
+  maxWorkers: z.natural().min(1).max(16).default(4),
+  workerIdleTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(600_000),
 })
 
 export { materializePayload } from './materialize.ts'
@@ -54,6 +64,9 @@ export type {
   JsonLineWorkerSpec, WorkerErrorCode, WorkerErrorDetails, WorkerExit, WorkerReady, WorkerRequestOptions,
 } from './json-line-worker.ts'
 export { WorkerSupervisor } from './supervisor.ts'
+export { SHARED_SCOPE, WorkerPool } from './pool.ts'
+export type { AppWorkerScope, WorkerPoolFiles, WorkerPoolOptions } from './pool.ts'
+export { SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY, sessionOf } from './session-scope.ts'
 export type { WorkerCallOptions, WorkerSupervisorOptions } from './supervisor.ts'
 export { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_MAX_EDGE, serveAppMcp } from './mcp-server.ts'
 export type { AppMcpProcess, AppMcpServerOptions, AppTool, AppToolImage, AppToolResult } from './mcp-server.ts'

@@ -8,7 +8,7 @@ import type { McpManagedServerView } from '@deepseek-ai/dsh-mcp-manager'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it } from 'vitest'
-import { appToolContent, appToolStatus, offerAppTools } from '../src/game-mcp.ts'
+import { appToolContent, appToolStatus, offerAppTools, sharedSessionNote } from '../src/game-mcp.ts'
 
 function mcpTool(name: string): ToolDefinition {
   return {
@@ -53,7 +53,9 @@ describe('offerAppTools', () => {
     await plugin
     await expect.poll(() => provided.length).toBe(1)
     const provider = provided[0] as GameMcpProvider
-    expect(provider).toMatchObject({ id: 'fake', title: 'Fake', description: 'Fake tools.', instructions: 'Use scene_info.' })
+    expect(provider).toMatchObject({ id: 'fake', title: 'Fake', description: 'Fake tools.', instructions: `Use scene_info.\n\n${sharedSessionNote('Fake')}` })
+    expect(sharedSessionNote('Fake')).toBe('Agents connected through WASD Engine\'s MCP server, such as you, share one Fake session among themselves, '
+      + 'apart from the sessions of WASD Engine\'s own conversations, so another connected agent can change its state between your calls.')
     expect(provider.tools().map(tool => tool.name)).toEqual(['fake_scene_info'])
     root.effect(() => root.tools.register(mcpTool('mcp__wasd_fake__render')))
     expect(provider.tools().map(tool => tool.name)).toEqual(['fake_scene_info', 'fake_render'])

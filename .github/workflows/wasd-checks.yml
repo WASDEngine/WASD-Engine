@@ -83,6 +83,7 @@ jobs:
           packages/client/ui-settings-general
           packages/client/ui-entry-customization
           packages/gamedev
+          packages/mcp/mcp-client
           packages/client/ui-plugin-manager/tests/components.client.spec.tsx
           packages/util/official-bundles
           scripts/optional-bundles.spec.ts

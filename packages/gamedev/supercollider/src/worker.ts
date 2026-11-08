@@ -17,6 +17,7 @@ async function main(): Promise<void> {
   try {
     await runAppMcpServer({
       name: SUPERCOLLIDER_SERVER_NAME,
+      app: 'SuperCollider',
       version: '1.0.0',
       instructions: SUPERCOLLIDER_INSTRUCTIONS,
       workerScript: new URL('../sc/WasdWorker.sc', import.meta.url),

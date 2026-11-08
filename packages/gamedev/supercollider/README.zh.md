@@ -73,6 +73,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `requestTimeoutMs` | `600,000` | 一次请求的默认时限，至少比 `toolCallTimeoutMs` 少 30 s；超时后解释器停止，其状态丢失 |
 | `graceMs` | `3,000` | 工作进程收到 `shutdown` 请求后以及收到 SIGTERM 后各自可用于退出的时间，超时后发送 SIGKILL；桥接进程在 sclang 的输入关闭后也给它这么长的时间退出 |
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近解释器输出字节数 |
+| `maxWorkers` | `4` | 同时运行的解释器上限，每个调用的 Session 一个，取值 1 到 16 |
+| `workerIdleTimeoutMs` | `600,000` | Session 的解释器在没有调用多长时间后停止，其变量与 SynthDef 随之丢失 |
 
 <a id="find-supercollider"></a>
 ### 查找 SuperCollider
@@ -89,16 +91,16 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 Desktop 应用的运行时是从源码构建、不含 Qt、IDE 和 supernova 的 SuperCollider，因此其中包含 sclang、scsynth、UGen 插件、不含 GUI 类的类库以及类的帮助文件；[BUILD.md](../../../wasdengine/supercollider/BUILD.md) 说明它如何构建与发布，[Desktop 应用中的 SuperCollider](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) 说明打包如何附带它。源码检出可通过 `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime` 获得它，或把 `supercollider-<version>` 发布版归档解压到该目录；npm 安装不含该运行时，需要设置 `sclangPath`。
 
 <a id="interpreter"></a>
-### 所有对话共用一个解释器
+### 每个对话一个解释器
 
-sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入 `<dataRoot>/sclang_conf.yaml` 的类库配置。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向 `<dataRoot>/home/`，因此用户自己的启动文件、扩展、quark 与 synthdef 都不会被加载。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
+sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入工作进程自己的文件夹 `<dataRoot>/workers/<pid>/<n>/` 中 `sclang_conf.yaml` 的类库配置。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向该文件夹中的 `home/`，因此用户自己的启动文件、扩展、quark 与 synthdef 都不会被加载。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
 
-解释器状态在所有对话的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。新的解释器启动时这些都不存在。
+每个调用工具的 Session 都有自己的解释器（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），其状态在该 Session 的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个解释器。解释器在 `workerIdleTimeoutMs` 内没有调用时停止，新的解释器启动时上述状态都不存在。
 
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_supercollider__<name>` 调用每个工具，所有路径参数都是绝对路径。调用失败时返回错误结果，其文本指出原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `supercollider_<name>` 调用同样的工具，作用于同一个解释器。
+模型以 `mcp__wasd_supercollider__<name>` 调用每个工具，所有路径参数都是绝对路径。调用失败时返回错误结果，其文本指出原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `supercollider_<name>` 调用同样的工具，并彼此共享一个解释器。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -135,9 +137,10 @@ scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以
 | 路径 | 内容 |
 |---|---|
 | `payload/<digest>/WasdWorker.sc` | 从包中复制出的工作类，每个内容版本各一份；早期版本保留 |
-| `sclang_conf.yaml` | 最近一次启动工作进程时的类库配置 |
-| `home/config/`、`home/data/` | sclang 的用户配置目录与数据目录，例如 `SuperCollider/synthdefs/` |
-| `scratch/` | 请求参数文件（工作类读取后删除），以及渲染与分析的乐谱、日志和浮点音频文件（工作类与服务器用后删除） |
+| `workers/<pid>/<n>/` | 一个解释器的文件夹，位于其服务器进程的文件夹中，解释器停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
+| `workers/<pid>/<n>/sclang_conf.yaml` | 该解释器的类库配置 |
+| `workers/<pid>/<n>/home/config/`、`workers/<pid>/<n>/home/data/` | sclang 的用户配置目录与数据目录，例如 `SuperCollider/synthdefs/` |
+| `workers/<pid>/<n>/scratch/` | 请求参数文件（工作类读取后删除），以及渲染与分析的乐谱、日志和浮点音频文件（工作类与服务器用后删除） |
 
 <a id="plugin-icon"></a>
 ### 插件图标
@@ -157,7 +160,7 @@ scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以
 sclang 无法读取工作进程协议的 JSON 请求行，其中运行的代码也无法捕获自己输出的文本，因此工作进程是一个桥接进程：即同一个服务器入口，以 `argv[2]` 中的桥接计划和 `argv[3]` 中的 `--sclang-bridge` 再次运行，并带上服务器自身的加载器参数（例如源码启动时 tsx 的参数）。桥接进程实现[工作进程协议](../app-mcp/README.zh.md#run-the-worker)，并把 sclang 作为子进程运行：
 
 ```text
-<sclang> -i wasd -l <dataRoot>/sclang_conf.yaml
+<sclang> -i wasd -l <dataRoot>/workers/<pid>/<n>/sclang_conf.yaml
 ```
 
 IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以 ESC（0x1b）结尾的块解释标准输入。桥接进程先发送 `WasdWorker.boot("<token>", "<file>")`，其 JSON 文件指明 scsynth、插件目录、临时目录和帮助目录；工作类设置 `Score.program` 并输出 `<token> READY {"version": …}`，桥接进程随后写出协议的就绪行。对于每个请求，桥接进程把参数写入一个 JSON 文件（因为 sclang 字符串字面量最多容纳 8,191 字节），并发送 `WasdWorker.dispatch(<id>, "<method>", "<file>")`。工作类读取并删除该文件，在 Routine 中运行同名的处理方法，并在一个换行之后输出 `<token> END <id> <JSON reply>`。桥接进程把 sclang 自上一个回复以来输出的文本（最多 20,000 个字符，保留前后各一半）加入回复的 `output`，失败时加入回溯信息，并丢弃创建 Server 对象时输出的 `<name> : setting clientID to <n>.` 行。token 是每个桥接进程 32 位随机的十六进制数字，因此输出的文本无法冒充回复。
@@ -230,7 +233,7 @@ pnpm run test:e2e packages/gamedev/supercollider/tests/supercollider-worker.e2e.
 ##### SuperCollider 服务器指令
 
 ```markdown
-SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. One interpreter serves every conversation, and environment variables such as ~kick and SynthDefs added with .add persist until SuperCollider restarts after a crash or a timeout. The first result after a start names the version.
+SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -283,7 +286,8 @@ WASD Engine's headless SuperCollider is not installed. The WASD Engine desktop a
 以下限制描述 SuperCollider 工具当前的不足。
 
 - **不会发出声音** — 工具在没有音频设备的情况下运行，并拒绝启动实时服务器，因此 agent 和用户都无法通过工具听到声音；用户在游戏中或其他地方收听渲染出的文件。
-- **所有 Session 共用一个解释器** — 所有 Session 共用解释器的变量与 SynthDef，一次耗时的渲染会推迟其他所有 SuperCollider 调用。
+- **连接的 agent 共享一个解释器** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用其变量与 SynthDef，一次耗时的渲染会推迟其他 agent 的调用。
+- **空闲的 Session 会丢失解释器状态** — Session 的解释器在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止。
 - **重启会丢失解释器状态** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期、取消正在运行的调用，或调用 `0.exit` 的代码都会停止 sclang；变量与 SynthDef 随之消失，新的解释器启动时一个都没有。
 - **SuperCollider 只在 macOS arm64 与 Linux x64 上运行** — Windows 与 Intel Mac 没有自带运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在这些平台上报告缺少运行时；在 Windows 上，这样的 sclang 会忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会读取用户自己的 SuperCollider 目录。
 - **插件仅为核心 UGen** — 自带运行时只包含 SuperCollider 自身的 UGen，不含 sc3-plugins 或其他扩展，其类库也不含 GUI 类。

@@ -86,7 +86,7 @@ export interface WorkerRequestOptions {
 }
 
 /** Failure classes of a {@link WorkerError}. */
-export type WorkerErrorCode = 'WORKER_START_FAILED' | 'WORKER_EXITED' | 'WORKER_TIMEOUT' | 'WORKER_PROTOCOL' | 'WORKER_REMOTE'
+export type WorkerErrorCode = 'WORKER_START_FAILED' | 'WORKER_EXITED' | 'WORKER_TIMEOUT' | 'WORKER_PROTOCOL' | 'WORKER_REMOTE' | 'WORKERS_BUSY'
 
 /** Details a {@link WorkerError} carries besides its code and message. */
 export interface WorkerErrorDetails {

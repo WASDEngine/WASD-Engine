@@ -10,7 +10,7 @@ import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
 import { AppServerOptionFields, WorkerError, firstExecutable, newestFirst, nodeSetupHost, parseAppServerOptions } from '@deepseek-ai/dsh-app-mcp'
-import type { AppWorkerDependencies, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import type { BlenderServerOptions } from './types.ts'
 
 /** A `bpy` package version such as `5.2.3`. */
@@ -408,16 +408,17 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
    * from a damaged environment, the `auto` backend starts an installed Blender instead and a note
    * quotes the failure; otherwise the start failure says how to reinstall the environment.
    * @param signal - cancels preparation and the ready wait.
+   * @param scope - the Session whose worker this is, and its own directory, which is the worker's working directory.
    * @returns the ready worker.
    * @throws WorkerError `WORKER_START_FAILED` when the worker does not start; the errors of {@link resolveWorkerLaunch}.
    */
-  async start(signal: AbortSignal): Promise<W> {
+  async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
     await host.makeDirectory(this.options.dataRoot)
     const script = await this.dependencies.workerScript()
     const launch = await resolveWorkerLaunch(this.options, script, host, signal)
     try {
-      return await this.startWorker(launch, signal)
+      return await this.startWorker(launch, scope, signal)
     } catch (error) {
       if (launch.backend === 'app' || !(error instanceof WorkerError) || error.code !== 'WORKER_START_FAILED') throw error
       const environment = bpyEnvironment(this.options, host.platform).directory
@@ -427,13 +428,13 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
       return await this.startWorker(appLaunch(blender, script, launch.env, [
         ...launch.notes,
         `The bpy module did not start (${error.message}${lastOutputLine(error.logTail)}), so Blender at ${blender} runs the tools instead. ${reinstall}`,
-      ]), signal)
+      ]), scope, signal)
     }
   }
 
-  private async startWorker(launch: WorkerLaunch, signal: AbortSignal): Promise<W> {
+  private async startWorker(launch: WorkerLaunch, scope: AppWorkerScope, signal: AbortSignal): Promise<W> {
     const worker = await this.dependencies.start({
-      argv: launch.argv, cwd: this.options.dataRoot, env: launch.env,
+      argv: launch.argv, cwd: scope.directory, env: launch.env,
       readyTimeoutMs: this.options.startupTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
     const runtime = launch.backend === 'bpy' ? 'bpy module' : 'Blender app'

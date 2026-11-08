@@ -1,7 +1,7 @@
 /**
  * The SuperCollider tools against real SuperCollider: the headless runtime that the Desktop app ships, when this
  * checkout holds one in the package's `runtime/` folder, through the bridge from source under tsx, behind a real worker
- * supervisor, and the tools as the agent calls them. The tools never start an installed SuperCollider, so the suite
+ * pool, and the tools as the agent calls them. The tools never start an installed SuperCollider, so the suite
  * skips without the runtime; it owns a temporary data directory and every process it starts.
  */
 import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises'
@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { JsonLineWorker, WorkerSupervisor, materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
 import type { AppToolDependencies, AppToolResult } from '@deepseek-ai/dsh-app-mcp'
 import { bundledRuntimeRoot, findBundledRuntime, nodeSuperColliderSetupHost, SuperColliderWorkers } from '../src/environment.ts'
 import { superColliderTools } from '../src/tools.ts'
@@ -19,6 +19,8 @@ import type { SuperColliderServerOptions } from '../src/types.ts'
 const PACKAGE = fileURLToPath(new URL('..', import.meta.url))
 const WORKER_ENTRY = fileURLToPath(new URL('../src/worker.ts', import.meta.url))
 const WORKER_CLASS = new URL('../sc/WasdWorker.sc', import.meta.url)
+/** Scope of the tool calls, as a Session's calls reach the server. */
+const SESSION = 'session:e2e'
 const TSCONFIG = fileURLToPath(new URL('../../../../tsconfig.base.json', import.meta.url))
 const host = { ...nodeSuperColliderSetupHost(), env: { ...process.env, TSX_TSCONFIG_PATH: TSCONFIG } }
 
@@ -49,7 +51,7 @@ function wavFrames(bytes: Buffer): number {
 
 describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sclangPath, available }) => {
   let dataRoot = ''
-  let supervisor: WorkerSupervisor | undefined
+  let pool: WorkerPool | undefined
   let run: (name: string, args: Record<string, unknown>) => Promise<AppToolResult> = async () => { throw new Error('not started') }
 
   beforeAll(async () => {
@@ -57,20 +59,22 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     dataRoot = await mkdtemp(join(tmpdir(), 'dsh-supercollider-e2e-'))
     const options: SuperColliderServerOptions = {
       dataRoot, sclangPath, scsynthPath: '', readyTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 150_000, graceMs: 3000,
-      maxLogBytes: 65_536,
+      maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
     }
     const started = new SuperColliderWorkers<JsonLineWorker>(options, {
       host, bundledRoot, bridge: [process.execPath, '--import', import.meta.resolve('tsx/esm'), WORKER_ENTRY],
       workerScript: async () => await materializePayload(WORKER_CLASS, dataRoot),
       start: async (spec, signal) => await JsonLineWorker.start(spec, signal),
     })
-    supervisor = new WorkerSupervisor(async signal => await started.start(signal), {
+    pool = new WorkerPool({
+      app: 'SuperCollider', root: join(dataRoot, 'workers'), start: async (signal, scope) => await started.start(signal, scope),
+      takeNotes: () => started.takeNotes(), maxWorkers: options.maxWorkers, idleTimeoutMs: options.workerIdleTimeoutMs,
       requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
     })
-    const active = supervisor
+    const active = pool
     const dependencies: AppToolDependencies = {
-      call: async (method, params, callOptions) => await active.call(method, params, callOptions),
-      takeNotes: () => started.takeNotes(),
+      call: async (method, params, callOptions) => await active.call(SESSION, method, params, callOptions),
+      takeNotes: () => active.takeNotes(SESSION),
       dataRoot,
       requestTimeoutMs: options.requestTimeoutMs,
       maxTimeoutMs: options.toolCallTimeoutMs - 30_000,
@@ -84,7 +88,7 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
   }, 180_000)
 
   afterAll(async () => {
-    await supervisor?.close()
+    await pool?.close()
     if (dataRoot !== '') await rm(dataRoot, { recursive: true, force: true })
   })
 
@@ -140,8 +144,8 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     expect(info.text).toContain('Summary: Interpolating sine wavetable oscillator.')
     expect(info.text).toContain('NoSuchClass: no such class.')
     await expect(run('class_info', { search: 'reverb' })).resolves.toMatchObject({ text: expect.stringContaining('GVerb: A two-channel reverb') as string })
-    // Every render and analysis deleted its files, so the scratch folder is empty.
-    expect(await readdir(join(dataRoot, 'scratch'))).toEqual([])
+    // Every render and analysis deleted its files, so the scratch folder of the Session's worker is empty.
+    expect(await readdir(join(dataRoot, 'workers', String(process.pid), '1', 'scratch'))).toEqual([])
   }, 180_000)
 
   it.skipIf(!available)('reports a stopped interpreter once, starts a fresh one, and leaves no process behind on close', async () => {
@@ -158,7 +162,7 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     expect(fresh.text).toMatch(/started .* with no SynthDefs or variables defined\.\n\nDone\. The code returned nil and posted nothing\.$/u)
     const next = await run('execute_sclang', { code: '("ps -o pgid= -p " ++ thisProcess.pid).unixCmdGetStdOut.stripWhiteSpace' })
     const nextGroup = Number(/"(\d+)"/u.exec(next.text)?.[1])
-    await supervisor?.close()
+    await pool?.close()
     expect(await groupEnds(nextGroup, 10_000)).toBe(true)
   }, 180_000)
 })

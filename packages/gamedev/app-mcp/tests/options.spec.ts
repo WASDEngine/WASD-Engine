@@ -6,7 +6,10 @@ import type { JsonObject } from '../src/types.ts'
 
 describe('parseAppServerOptions', () => {
   const Options = z.strictObject({ ...AppServerOptionFields, consolePath: z.string() })
-  const valid = { dataRoot: '/data/paint', requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, consolePath: '' }
+  const valid = {
+    dataRoot: '/data/paint', requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
+    maxWorkers: 4, workerIdleTimeoutMs: 600_000, consolePath: '',
+  }
 
   it('returns the shared and the server-specific fields', () => {
     expect(parseAppServerOptions('Paint', Options, { ...valid })).toEqual(valid)

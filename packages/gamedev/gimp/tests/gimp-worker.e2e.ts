@@ -11,7 +11,7 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerSupervisor, materializePayload, nodeSetupHost } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, nodeSetupHost } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GimpWorkers, findGimpConsole, gimpProfileDirectory, gimpWorkerArgv, workerEnvironment } from '../src/environment.ts'
 import { gimpTools } from '../src/tools.ts'
@@ -243,19 +243,25 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
   it('serves the tools through a supervised worker and restarts GIMP after its Python process dies', async () => {
     const options: GimpServerOptions = {
       dataRoot, gimpConsolePath: '', readyTimeoutMs: READY_TIMEOUT_MS, requestTimeoutMs: REQUEST_TIMEOUT_MS, toolCallTimeoutMs: 300_000,
-      graceMs: 3000, maxLogBytes: 64 * 1024,
+      graceMs: 3000, maxLogBytes: 64 * 1024, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
     }
     const workers = new GimpWorkers(options, {
       host,
       workerScript: async () => await materializePayload(new URL('../py/wasd_gimp_worker.py', import.meta.url), dataRoot),
       start: async (spec, signal) => await JsonLineWorker.start(spec, signal),
     })
-    const supervisor = new WorkerSupervisor(async signal => await workers.start(signal), {
+    const session = 'session:e2e'
+    const pool = new WorkerPool({
+      app: 'GIMP', root: join(dataRoot, 'workers'), start: async (signal, scope) => await workers.start(signal, scope),
+      takeNotes: () => workers.takeNotes(), maxWorkers: options.maxWorkers, idleTimeoutMs: options.workerIdleTimeoutMs,
       requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
     })
     const tools = new Map(gimpTools({
-      call: async (method, params, callOptions) => await supervisor.call(method, params, callOptions),
-      takeNotes: () => workers.takeNotes(), dataRoot, requestTimeoutMs: options.requestTimeoutMs, maxTimeoutMs: options.toolCallTimeoutMs,
+      call: async (method, params, callOptions) => await pool.call(session, method, params, callOptions),
+      takeNotes: () => pool.takeNotes(session),
+      dataRoot,
+      requestTimeoutMs: options.requestTimeoutMs,
+      maxTimeoutMs: options.toolCallTimeoutMs,
     }).map(tool => [tool.name, tool]))
     const run = async (tool: string, args: Record<string, unknown> = {}) => await tools.get(tool)!.run(args, new AbortController().signal)
     try {
@@ -285,7 +291,7 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
       expect(fresh.text).toMatch(started)
       expect(fresh.text.replace(started, '')).toBe('{"images":[],"count":0}')
     } finally {
-      await supervisor.close()
+      await pool.close()
     }
   }, 300_000)
 

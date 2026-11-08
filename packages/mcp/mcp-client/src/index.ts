@@ -68,6 +68,8 @@ export function connectionStatusOf(fiber: Fiber): McpConnectionStatusHandle | un
   return connectionStatusIn(fiber)
 }
 
+export { SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY } from './session-scope.ts'
+
 // ---- Config ----
 
 /** Config for connecting to an MCP server via a spawned child process over stdio. */

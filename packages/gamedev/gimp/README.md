@@ -72,6 +72,8 @@ A disabled row withdraws the tools and the server instructions from the model an
 | `requestTimeoutMs` | `600,000` | Default budget of one GIMP request, at least 30 s less than `toolCallTimeoutMs`; when it expires, GIMP stops and the open images and unsaved changes are lost |
 | `graceMs` | `3,000` | Time the worker gets to exit after the `shutdown` request, and again after SIGTERM, before SIGKILL |
 | `maxLogBytes` | `65,536` | Bytes of recent GIMP output kept for error messages |
+| `maxWorkers` | `4` | Most GIMP workers that run at once, one for each calling Session, from 1 to 16 |
+| `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's GIMP worker stops and its open images are lost |
 
 <a id="find-gimp"></a>
 ### Find and install GIMP 3
@@ -92,12 +94,12 @@ When nothing matches, the call fails before it touches `dataRoot`, and its messa
 <a id="gimp-profile"></a>
 ### The GIMP profile and the first start
 
-GIMP runs with the `GIMP3_DIRECTORY` environment variable set to `<dataRoot>/profile`, so it keeps its configuration in that directory, apart from the user's own GIMP settings. The server creates the directory before the first start and never removes it. GIMP fills a new profile on its first start: with GIMP 3.2 on macOS arm64, that start takes about 15 s and later starts about 2 s. `readyTimeoutMs` bounds each start, and the tool call that triggers it waits for it.
+GIMP runs with the `GIMP3_DIRECTORY` environment variable set to `<dataRoot>/profile`, so it keeps its configuration in that directory, apart from the user's own GIMP settings. The server creates the directory before the first start and never removes it. Every worker uses this profile; worker starts never overlap, so the first one fills it alone. GIMP fills a new profile on its first start: with GIMP 3.2 on macOS arm64, that start takes about 15 s and later starts about 2 s. `readyTimeoutMs` bounds each start, and the tool call that triggers it waits for it.
 
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `gimp_<name>`, against the same GIMP session.
+The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `gimp_<name>`, and share one GIMP session among themselves.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -153,22 +155,23 @@ Tools name an image by its GIMP image id, a positive integer that `new_image`, `
 Tools name a layer by its id or its exact name, both of which `image_info` lists. A name that several layers share fails the call and lists their ids. The `layer` actions `delete`, `rename`, `set`, and `move` require `layer`; elsewhere, an omitted `layer` means the selected layer of the image, or its top layer when none is selected.
 
 <a id="one-gimp-session"></a>
-### One GIMP session for every conversation
+### One GIMP session per conversation
 
-The Host runs one GIMP MCP server, and the server runs one GIMP worker. Every Session and conversation therefore shares the open images, their selections, and one `execute_python` namespace, and calls run one at a time in arrival order. Open images persist between calls until `close_image` closes them or GIMP stops.
+The Host runs one GIMP MCP server, and the server runs one GIMP worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open images, their selections, and `execute_python` namespace, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside; agents connected through WASD Engine's MCP server share one worker among themselves. Open images persist between calls until `close_image` closes them or the worker stops, as it does after `workerIdleTimeoutMs` without calls.
 
-The worker starts on the first tool call with no images open. A crash, an expired request budget, or a cancelled running call stops GIMP and loses the open images and unsaved changes. When GIMP stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When GIMP stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. On macOS and Linux, a watchdog stops GIMP as soon as GIMP's Python process dies, so the running call fails without waiting for its budget. Save `.xcf` files at milestones.
+A Session's worker starts on its first tool call with no images open. A crash, an expired request budget, or a cancelled running call stops GIMP and loses the open images and unsaved changes. When GIMP stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When GIMP stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. On macOS and Linux, a watchdog stops GIMP as soon as GIMP's Python process dies, so the running call fails without waiting for its budget. Save `.xcf` files at milestones.
 
 <a id="data-directory"></a>
 ### Files under the data directory
 
-The first tool call that finds GIMP creates `dataRoot`, and GIMP runs with it as its working directory.
+The first tool call that finds GIMP creates `dataRoot`. Each worker runs in its own numbered folder in `workers/<pid>/`, the folder of the server process.
 
 | Path | Contents | Lifetime |
 |---|---|---|
 | `profile/` | The GIMP profile that `GIMP3_DIRECTORY` names | Kept; the plugin never removes it |
 | `payload/<hash>/wasd_gimp_worker.py` | Copy of the worker script as a real file outside the Desktop application archive; `<hash>` is the first 16 hex digits of its SHA-256 | Reused while the script is unchanged; earlier versions stay |
 | `snapshots/<uuid>.png` or `snapshots/<uuid>.jpg` | `snapshot` images | Deleted when the call returns |
+| `workers/<pid>/<n>/` | A worker's working directory | Deleted after the worker stops; a starting server deletes the folders of server processes that have exited |
 
 Other files go where the agent's absolute paths point; `export_image`, `save_xcf`, and `make_sprite_sheet` create missing parent folders.
 
@@ -258,7 +261,7 @@ After the server connects, the MCP client adds the instructions from [`src/instr
 ##### GIMP server instructions
 
 ```markdown
-GIMP 3 runs headless behind these tools: there is no window. One GIMP session serves every conversation, and open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
+GIMP 3 runs headless behind these tools: there is no window. GIMP keeps one session for each conversation: its open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, or stops after a long pause in the calls, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -316,7 +319,8 @@ Append-only: calls and their results follow the existing request prefix and do n
 
 These limits describe current gaps in the GIMP tools.
 
-- **One GIMP for every Session** — all Sessions share the open images, their ids, and one Python namespace, so one Session can change or close the images of another, and a long filter or script delays every other GIMP call.
+- **Connected agents share one GIMP** — agents connected through WASD Engine's MCP server share the open images, their ids, and one Python namespace, so one can change or close another's images, and a long filter or script delays the others' calls.
+- **An idle Session loses its images** — a Session's worker stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`, and its open images and unsaved changes go with it.
 - **No window** — the tools offer no canvas, interface, or screenshot of GIMP, and `pdb_run` runs every procedure non-interactively, without its dialog; `snapshot` is the only way to look at an image.
 - **Restarts lose open images** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops GIMP; the open images, unsaved changes, selections, and the Python namespace are gone, and the fresh worker starts with no images open.
 - **Slow first start** — the first start with a new profile takes about 15 s, and the tool call that triggers it waits.

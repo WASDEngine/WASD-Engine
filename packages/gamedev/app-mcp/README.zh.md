@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-把 Blender、GIMP、SuperCollider 等桌面应用程序放在 MCP 工具之后，以无窗口方式运行。宿主插件把共享的 `AppMcpConfig` 字段展开到自己的 Config 中并调用 `registerAppMcpPlugin`；其服务器入口以该应用程序的工具调用 `runAppMcpServer`。第一次工具调用会启动一个长期运行的工作进程，调用逐个执行。超时、崩溃或协议违规会停止工作进程：失败的调用会报告状态已丢失，之后的调用会启动新的工作进程。共用的安装与工具辅助函数、`execute_python`，以及把随包脚本复制到 `app.asar` 之外的 `materializePayload` 构成本包的其余部分。
+把 Blender、GIMP、SuperCollider 等桌面应用程序放在 MCP 工具之后，以无窗口方式运行。宿主插件把共享的 `AppMcpConfig` 字段展开到自己的 Config 中并调用 `registerAppMcpPlugin`；其服务器入口以该应用程序的工具调用 `runAppMcpServer`。每个调用工具的 Session 都有自己的长期运行的工作进程，逐个执行该 Session 的调用。超时、崩溃或协议违规会停止工作进程：失败的调用会报告状态已丢失，之后的调用会启动新的工作进程。共用的安装与工具辅助函数、`execute_python`，以及把随包脚本复制到 `app.asar` 之外的 `materializePayload` 构成本包的其余部分。
 
 ## 目录
 
@@ -41,6 +41,8 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 | `requestTimeoutMs` | `600,000` | 一次工作进程请求的默认预算，至少比 `toolCallTimeoutMs` 少 30 s；到期时工作进程停止，其状态丢失 |
 | `graceMs` | `3,000` | 工作进程在收到 `shutdown` 请求后、以及收到 SIGTERM 后各有的退出时间，之后发送 SIGKILL |
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近工作进程输出及安装命令输出的字节数；取正整数 |
+| `maxWorkers` | `4` | 同时运行的工作进程上限，每个调用的 Session 一个，取值 1 到 16；达到上限时，新的 Session 会停止最久未使用且没有运行调用的工作进程 |
+| `workerIdleTimeoutMs` | `600,000` | Session 的工作进程在没有调用多长时间后停止，其状态随之丢失 |
 
 插件自行声明并说明 `dataRoot`（它拥有的绝对目录）与 `startupTimeoutMs`，因为它们的含义因应用程序而异。
 
@@ -50,10 +52,10 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 - `dataRoot` 以及 `plugin.paths` 所列的 Config 字段必须是绝对路径或为空；否则它抛出以 `<plugin.app> plugin:` 开头并指明字段的错误。
 - `requestTimeoutMs` 最多为 `toolCallTimeoutMs` 减去 30 s；否则它抛出以 `<plugin.app> plugin:` 开头并指明两个预算的错误。这 30 s 留给工作进程启动和结果的返回，因此用完时间的请求会以它自己的错误失败，而不会等到 MCP 客户端放弃该调用并以笼统的超时取消它。
-- 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
+- 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`、`maxWorkers`、`workerIdleTimeoutMs`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
 - 当 `plugin.module`（插件的 `import.meta.url`）以 `.ts` 结尾时，服务器入口是它旁边的 `worker.ts`，否则是它旁边的 `worker.js`。
 - 注册通过 `registerAppMcpServer` 完成，使用 `plugin.serverName` 以及 Config 中的 `toolCallTimeoutMs` 与 `startupTimeoutMs`。
-- 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
+- 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。provider 的指令是服务器的指令，后面附有一条说明：连接的 agent 彼此共享一个应用程序会话，因为它们的调用不指明 Session（[每个 Session 一个工作进程](#one-worker-per-session)）。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
 
 编译器会对照插件的 Config 检查这些字段名，并且只有字符串字段能放入 `plugin.paths`。
 
@@ -93,14 +95,17 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 `runAppMcpServer(definition, process.argv)` 是服务器入口的全部主体。`definition` 给出服务器的 `name`、`version` 与 `instructions`、随包 `workerScript` 的 `file:` URL，以及三个函数：
 
 - `parseOptions(value)` 校验解码后的选项。服务器用 `AppServerOptionFields`（每个服务器都会收到的 `AppServerOptions` 字段）与自身的字段构建其严格 schema，并调用 `parseAppServerOptions(app, schema, value)`。该函数抛出以 `<app> MCP server options are invalid:` 开头、指明每个缺失、无效或未知字段的错误。
-- `workers(options, dependencies)` 创建应用程序的 `AppWorkers`。其 `start(signal)` 准备应用程序，并通过 `dependencies.start`（即 `JsonLineWorker.start`）启动一个工作进程；`dependencies.workerScript()` 返回工作进程脚本在 `dataRoot` 下的 `materializePayload` 副本的真实路径。其 `takeNotes()` 交出自上次调用以来收集的安装说明，例如已启动工作进程的版本。
-- `tools(dependencies)` 以 `AppToolDependencies` 构建工具：`call` 通过一个 `WorkerSupervisor` 执行工作进程方法，其预算是 `requestTimeoutMs` 与 `graceMs`；`takeNotes` 读取应用程序的说明；`dataRoot`、`requestTimeoutMs` 与 `maxTimeoutMs`（即 `toolCallTimeoutMs` 减去 30 s）携带路径与预算。
+- `workers(options, dependencies)` 创建应用程序的 `AppWorkers`。其 `start(signal, scope)` 准备应用程序，并通过 `dependencies.start`（即 `JsonLineWorker.start`）为一个 Session 启动一个工作进程；`scope.directory` 是该工作进程自己的文件夹，用于应用程序配置文件等文件，且各次启动从不重叠，因此所有工作进程共用的安装步骤一次只运行一个。`dependencies.workerScript()` 返回工作进程脚本在 `dataRoot` 下的 `materializePayload` 副本的真实路径。其 `takeNotes()` 交出自上次调用以来收集的安装说明，例如已启动工作进程的版本。
+- `tools(dependencies)` 以 `AppToolDependencies` 构建工具。服务器为每次调用按调用方的 Session 构建它们：`call` 在该 Session 的工作进程上执行工作进程方法，其预算是 `requestTimeoutMs` 与 `graceMs`；`takeNotes` 读取该 Session 的工作进程启动时的说明；`dataRoot`、`requestTimeoutMs` 与 `maxTimeoutMs`（即 `toolCallTimeoutMs` 减去 30 s）携带路径与预算。
 
-服务器开始提供服务后它即返回；服务器关闭时会关闭 supervisor（监管器），后者停止工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
+定义中的 `app`（例如 `Blender`）在[每个 Session 一个工作进程](#one-worker-per-session)的消息中指称该应用程序。服务器开始提供服务后它即返回；服务器关闭时会关闭工作进程池，后者停止每个工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
 
+<a id="serve-the-tools"></a>
 ### 提供工具
 
-`runAppMcpServer` 通过 `serveAppMcp({ name, version, instructions, tools, onClose })` 提供工具，服务器入口也可以直接调用该函数。它首先把全局 `console` 指向 stderr，使 stdout 只承载 MCP 帧，并在关闭时恢复 console。服务器立即响应工具发现，不启动任何其他内容；只有客户端调用某个工具时，该工具才会运行。工具名称重复时，`serveAppMcp` 在开始提供服务之前即拒绝。
+`runAppMcpServer` 通过 `serveAppMcp({ name, version, instructions, tools, scopedTools, onClose })` 提供工具，服务器入口也可以直接调用该函数。它首先把全局 `console` 指向 stderr，使 stdout 只承载 MCP 帧，并在关闭时恢复 console。服务器立即响应工具发现，不启动任何其他内容；只有客户端调用某个工具时，该工具才会运行。工具名称重复时，`serveAppMcp` 在开始提供服务之前即拒绝。
+
+提供 `scopedTools` 时，服务器列出实验性能力 `io.github.wasdengine/session-scope`，宿主的 MCP 客户端（[`@deepseek-ai/dsh-mcp-client`](../../mcp/mcp-client/README.zh.md)）随后会把发起调用的 agent 的 Session id 以 `io.github.wasdengine/session` 键加入每次工具调用的 `_meta`；不经 agent 发起的调用不带该键。每次调用运行 `scopedTools(sessionId)` 中同名的工具；调用未指明 Session，或其值不是不超过 200 个字符的非空字符串时，运行 `scopedTools(undefined)` 中的工具；此时 `tools` 只决定服务器列出的内容。`SESSION_SCOPE_CAPABILITY`、`SESSION_SCOPE_META_KEY` 与 `sessionOf(meta)` 导出这些名称与读取方式。
 
 每个 `AppTool` 都有 `name`、可选的 `title`、`description`，以及 Zod raw shape 形式的 `input`，SDK 据此校验参数。它的 `run(args, signal)` 返回 `AppToolResult`。服务器关闭时，以及客户端取消调用时，该中止信号都会触发；MCP 客户端在其 `toolCallTimeoutMs` 到期时也会取消调用。
 
@@ -160,10 +165,23 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | `WORKER_PROTOCOL` | 某行不是有效回复、回复了不在等待中的 id，或某行超过 32 MiB | 被终止；状态丢失 |
 | `WORKER_EXITED` | 工作进程已退出、已关闭，或在已派发的请求被取消后被停止 | 已不存在；状态丢失 |
 | `WORKER_START_FAILED` | 工作进程无法 spawn，或其在 fd 3 上的第一行不是按时写出的有效就绪行 | 被终止 |
+| `WORKERS_BUSY` | 某个 Session 的第一次调用发现 `maxWorkers` 个工作进程都在运行调用（[每个 Session 一个工作进程](#one-worker-per-session)） | 未启动工作进程 |
+
+<a id="one-worker-per-session"></a>
+### 每个 Session 一个工作进程
+
+`WorkerPool({ app, root, start, takeNotes, maxWorkers, idleTimeoutMs, requestTimeoutMs, closeGraceMs })` 为每个作用域保留一个 `WorkerSupervisor`，`call(scope, method, params, options)` 在该作用域的工作进程上执行一个工作进程方法。对于指明其 Session 的调用（[提供工具](#serve-the-tools)），`runAppMcpServer` 把作用域命名为 `session:<id>`，对于未指明的调用命名为 `shared`，并把 `<dataRoot>/workers/` 作为池的 `root`。
+
+- 同一作用域的调用按顺序执行；不同作用域的调用同时执行。
+- 作用域的第一次调用会创建其 supervisor，后者启动时先在池所在进程的文件夹中建立编号文件夹 `<root>/<pid>/<n>`，再调用 `start(signal, { key, directory })`。各作用域的启动一次只运行一个，启动结束后 `takeNotes` 立即交出的说明属于该作用域；`takeNotes(scope)` 把它们交给该作用域的下一个结果。
+- 已有 `idleTimeoutMs` 没有运行调用的工作进程会停止，其文件夹在它退出后删除。
+- 已有 `maxWorkers` 个作用域拥有工作进程时，新的作用域会停止最久未使用且没有运行调用的工作进程；每个工作进程都在运行调用时，新作用域的调用以 `WORKERS_BUSY` 失败，不启动任何进程。
+- 工作进程因上述任一原因停止后，该作用域的下一次调用以 `WORKER_EXITED` 失败，消息说明原因并以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker.` 结尾；之后的调用会启动新的工作进程。池为最近 256 个这样的作用域记住这一点。
+- `prepare()` 删除 `root` 中已退出的服务器进程的文件夹，以及以本进程 id 命名、由使用过同一 id 的先前进程留下的文件夹；它保留仍在运行的进程的文件夹（例如仍在关闭的旧服务器），以及不是进程 id 的名称。`close()` 以 `WORKER_EXITED` 拒绝后续调用，关闭每个 supervisor，并删除本进程的文件夹。
 
 ### 停止后重启
 
-`WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` 拥有一个服务器进程的工作进程，`call(method, params, { timeoutMs, signal })` 通过它执行一个工作进程方法：
+`WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` 拥有一个作用域的工作进程，`call(method, params, { timeoutMs, signal })` 通过它执行一个工作进程方法：
 
 - 调用按调用顺序逐个执行；没有工作进程在运行时，调用通过 `start(signal)` 启动一个工作进程。`timeoutMs` 默认为 `requestTimeoutMs`，并像 MCP 客户端的工具调用预算一样从调用时开始计算：等待过先前调用的调用只得到剩余的时间；等待耗尽全部预算的调用以 `WORKER_TIMEOUT` 拒绝且不执行，工作进程及其状态保持不变。
 - `WORKER_REMOTE` 原样传出，工作进程保留其状态。
@@ -198,7 +216,9 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/plugin.ts`](src/plugin.ts) | `registerAppMcpPlugin`：路径检查、取自 Config 的服务器选项，以及插件模块旁的入口 |
 | [`src/register.ts`](src/register.ts) | 宿主注册、通过 tsx 的源码启动，以及固定的管理器条目字段 |
 | [`src/options.ts`](src/options.ts) | `argv[2]` 选项编解码、共享的选项字段及其校验 |
-| [`src/app-server.ts`](src/app-server.ts) | 服务器进程主体：选项、工作进程脚本副本、supervisor 与工具 |
+| [`src/app-server.ts`](src/app-server.ts) | 服务器进程主体：选项、工作进程脚本副本、工作进程池，以及每个调用方 Session 的工具 |
+| [`src/pool.ts`](src/pool.ts) | 每个 Session 作用域一个 supervisor、工作进程文件夹、串行启动、空闲停止、腾出位置与状态丢失通知 |
+| [`src/session-scope.ts`](src/session-scope.ts) | Session 作用域能力与 `_meta` 键，以及从调用中读取发起调用的 Session |
 | [`src/mcp-server.ts`](src/mcp-server.ts) | console 重定向、工具注册、结果映射与上限、失败文本以及关闭 |
 | [`src/tools.ts`](src/tools.ts) | 工具辅助函数与 `execute_python` 工具 |
 | [`src/setup-host.ts`](src/setup-host.ts) | setup host 以及可执行文件与版本的辅助函数 |
@@ -287,7 +307,10 @@ traceback 部分最多增加 4,000 个字符，工作进程输出部分最多增
 
 以下约束适用于基于本库构建的每个服务器。
 
-- **每个服务器一个工作进程**：服务器的所有调用方共享其工作进程及其中的应用程序状态，调用在正在运行的调用之后排队，因此一次耗时较长的调用会延迟其余调用。
+- **连接的 agent 共享一个工作进程**：通过 WASD Engine 的 MCP 服务器连接的 agent 发起的调用不指明 Session，因此所有连接的 agent 使用 `shared` 工作进程及其应用程序状态，其调用在正在运行的调用之后排队。它们的指令说明了这一点。
+- **每个 Session 的工作进程都是一个进程**：最多同时运行 `maxWorkers` 个应用程序进程，各自占用内存；多个 Session 中的渲染等 CPU 密集型工作会彼此拖慢。
+- **子 agent 有自己的工作进程**：子 agent 的 Session 有自己的 id，因此它看不到启动它的 Session 的场景或图像；两者之间通过已保存的文件传递工作。
+- **空闲停止与腾出位置会丢失状态**：因 `workerIdleTimeoutMs` 内没有调用而停止，或为其他 Session 腾出位置而停止的工作进程，会丢失尚未写入磁盘的内容。
 - **停止会丢失应用程序状态**：超时、崩溃、协议违规或取消正在运行的调用都会停止工作进程。本库不保存也不恢复任何内容，因此应用程序尚未写入磁盘的工作会丢失。
 - **只重定向 console**：`serveAppMcp` 在启动时重定向全局 `console`。在该调用之前写出的输出，或直接写入 `process.stdout` 的输出，会进入只应承载 MCP 帧的 MCP 流。
 - **固定的结果上限**：文本在 1 MiB JSON 处截断，图像仅限 PNG 与 JPEG，每张不超过 4 MiB、每个结果不超过 6 MiB 的 base64。本库不会缩小图像，因此工作进程必须在这些上限内生成图像。超过 32 MiB 的回复行会停止工作进程。

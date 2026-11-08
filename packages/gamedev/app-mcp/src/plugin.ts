@@ -75,6 +75,8 @@ export function registerAppMcpPlugin<C extends AppMcpPluginConfig & { readonly [
     toolCallTimeoutMs: config.toolCallTimeoutMs,
     graceMs: config.graceMs,
     maxLogBytes: config.maxLogBytes,
+    maxWorkers: config.maxWorkers,
+    workerIdleTimeoutMs: config.workerIdleTimeoutMs,
   }
   for (const field of plugin.options) options[field] = config[field]
   registerAppMcpServer(ctx, {

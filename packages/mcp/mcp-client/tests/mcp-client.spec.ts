@@ -14,7 +14,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { PostToolDecision } from '@deepseek-ai/dsh-tools'
 import { McpToolRegistrationError, publicToolName, syncTools, type ToolBridgeOptions } from '@deepseek-ai/dsh-mcp-client/src/tools.ts'
 import { createTransport } from '@deepseek-ai/dsh-mcp-client/src/transport.ts'
-import { Config } from '@deepseek-ai/dsh-mcp-client'
+import { Config, SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY } from '@deepseek-ai/dsh-mcp-client'
 
 const testToolSignal = new AbortController().signal
 
@@ -389,6 +389,25 @@ describe('tool execution', () => {
       { name: 'echo', arguments: { msg: 'hi' } },
       expect.objectContaining({ timeout: 60_000 }),
     )
+  })
+
+  it('names the calling Session in _meta only to a server that asks for it', async () => {
+    const scoped = createMockClient([{ name: 'echo', inputSchema: { type: 'object' } }])
+    scoped.getServerCapabilities = (): object => ({ tools: {}, experimental: { [SESSION_SCOPE_CAPABILITY]: {} } })
+    const plain = createMockClient([{ name: 'echo', inputSchema: { type: 'object' } }])
+    await syncTools(scoped as never, ctx, { ...defaultOpts, serverName: 'scoped' }, new Map())
+    await syncTools(plain as never, ctx, { ...defaultOpts, serverName: 'plain' }, new Map())
+    const agent = { ...agentOn(), id: 'session-7' } as never
+
+    await executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId('c1'), name: 'mcp__scoped__echo', arguments: {}, agent })
+    await executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId('c2'), name: 'mcp__scoped__echo', arguments: {} })
+    await executeToolFixture(ctx, { signal: testToolSignal, callId: ToolCallId('c3'), name: 'mcp__plain__echo', arguments: {}, agent })
+
+    expect(scoped.callTool.mock.calls.map(call => call[0])).toEqual([
+      { name: 'echo', arguments: {}, _meta: { [SESSION_SCOPE_META_KEY]: 'session-7' } },
+      { name: 'echo', arguments: {} },
+    ])
+    expect(plain.callTool.mock.calls.map(call => call[0])).toEqual([{ name: 'echo', arguments: {} }])
   })
 
   it('sends the raw name for normalized public names', async () => {

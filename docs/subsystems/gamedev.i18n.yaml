@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: be3553f5d8b052c4
-  zh: 1dfbf72824e97a2d
+  en: 0da1c464c3b28a2f
+  zh: c311d3931f8cf20d
 /game-tools/composition:
-  en: 81c1de08c69a5d4c
-  zh: 72009f30115b7cf9
+  en: 6708ef36329e2247
+  zh: 1a92cda0392f2913
 /game-tools/application-mcp-servers:
-  en: 0187387bd993339b
-  zh: ff34c422aaff3974
+  en: c6ef1cd2468cd0b8
+  zh: da0b06cc9ba6f93b
 /game-tools/application-mcp-servers/worker-protocol:
   en: f018afdf46b05114
   zh: 9f3b8958ccdb97c0

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Put a desktop application such as Blender, GIMP, or SuperCollider behind MCP tools that run it without a window. A Host plugin spreads the shared `AppMcpConfig` fields into its Config and calls `registerAppMcpPlugin`; its server entry calls `runAppMcpServer` with the application's tools. The first tool call starts one long-lived worker, and calls run one at a time. A timeout, crash, or protocol violation stops the worker: the failed call reports the lost state, and a later call starts a fresh one. Shared setup and tool helpers, `execute_python`, and `materializePayload`, which copies shipped scripts out of `app.asar`, complete the package.
+Put a desktop application such as Blender, GIMP, or SuperCollider behind MCP tools that run it without a window. A Host plugin spreads the shared `AppMcpConfig` fields into its Config and calls `registerAppMcpPlugin`; its server entry calls `runAppMcpServer` with the application's tools. Each calling Session gets its own long-lived worker, which runs its calls one at a time. A timeout, crash, or protocol violation stops a worker: the failed call reports the lost state, and a later call starts a fresh one. Shared setup and tool helpers, `execute_python`, and `materializePayload`, which copies shipped scripts out of `app.asar`, complete the package.
 
 ## Table of Contents
 
@@ -41,6 +41,8 @@ A plugin's `Config` interface extends `AppMcpConfig`, and its schema spreads `Ap
 | `requestTimeoutMs` | `600,000` | Default budget of one worker request, at least 30 s less than `toolCallTimeoutMs`; when it expires, the worker stops and its state is lost |
 | `graceMs` | `3,000` | Time the worker gets to exit after the `shutdown` request, and again after SIGTERM, before SIGKILL |
 | `maxLogBytes` | `65,536` | Bytes of recent worker output, and of setup command output, kept for error messages; a positive whole number |
+| `maxWorkers` | `4` | Most workers that run at once, one for each calling Session, from 1 to 16; when this many run, a new Session stops the least recently used worker that runs no call |
+| `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's worker stops and its state is lost |
 
 The plugin declares and documents `dataRoot`, the absolute directory it owns, and `startupTimeoutMs` itself, because their meaning differs between applications.
 
@@ -50,10 +52,10 @@ The plugin declares and documents `dataRoot`, the absolute directory it owns, an
 
 - `dataRoot` and the Config fields that `plugin.paths` names must be absolute paths or empty; otherwise it throws an error that starts with `<plugin.app> plugin:` and names the field.
 - `requestTimeoutMs` must be at most `toolCallTimeoutMs` less 30 s; otherwise it throws an error that starts with `<plugin.app> plugin:` and names both budgets. The 30 s cover a worker start and the return of the result, so a request that runs out of time fails with its own error before the MCP client gives up on the call and cancels it with a generic timeout.
-- The server receives `dataRoot`, `requestTimeoutMs`, `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, and the Config fields that `plugin.options` names, each under its Config name.
+- The server receives `dataRoot`, `requestTimeoutMs`, `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, `maxWorkers`, `workerIdleTimeoutMs`, and the Config fields that `plugin.options` names, each under its Config name.
 - The server entry is `worker.ts` beside `plugin.module`, the plugin's `import.meta.url`, when that URL ends in `.ts`, and `worker.js` beside it otherwise.
 - The registration is `registerAppMcpServer` with `plugin.serverName` and the Config's `toolCallTimeoutMs` and `startupTimeoutMs`.
-- With `plugin.gameMcp`, an `AppGameMcpIdentity` of `id`, `title`, `description`, and `instructions`, the server's tools also reach agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), while that server and the tool registry exist: each tool that the MCP client registered as `mcp__<serverName>__<name>` is offered as `<id>_<name>`, runs the same registered definition, and returns the server's text and images; other content blocks become `[<type> content omitted]`. The provider reports `ready` while the server is connected, `starting` before it connected and while it reconnects, and `unavailable` with the last error after it failed or while it is off.
+- With `plugin.gameMcp`, an `AppGameMcpIdentity` of `id`, `title`, `description`, and `instructions`, the server's tools also reach agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), while that server and the tool registry exist: each tool that the MCP client registered as `mcp__<serverName>__<name>` is offered as `<id>_<name>`, runs the same registered definition, and returns the server's text and images; other content blocks become `[<type> content omitted]`. The provider's instructions are the server's, followed by a note that connected agents share one application session among themselves, because their calls name no Session ([one worker per Session](#one-worker-per-session)). The provider reports `ready` while the server is connected, `starting` before it connected and while it reconnects, and `unavailable` with the last error after it failed or while it is off.
 
 The compiler checks the field names against the plugin's Config, and only string fields fit `plugin.paths`.
 
@@ -93,14 +95,17 @@ A `.ts` entry is what a source launch of the harness registers, such as `pnpm ds
 `runAppMcpServer(definition, process.argv)` is the whole body of a server entry. `definition` gives the server's `name`, `version`, and `instructions`, the `file:` URL of the shipped `workerScript`, and three functions:
 
 - `parseOptions(value)` validates the decoded options. A server builds its strict schema from `AppServerOptionFields`, which hold the `AppServerOptions` fields that every server receives, and its own fields, and calls `parseAppServerOptions(app, schema, value)`. That throws an error that starts with `<app> MCP server options are invalid:` and names each missing, invalid, or unknown field.
-- `workers(options, dependencies)` creates the application's `AppWorkers`. Its `start(signal)` prepares the application and starts one worker with `dependencies.start`, which is `JsonLineWorker.start`; `dependencies.workerScript()` returns the real path of a `materializePayload` copy of the worker script under `dataRoot`. Its `takeNotes()` hands over the setup notes gathered since the previous call, such as the version of a worker that started.
-- `tools(dependencies)` builds the tools with `AppToolDependencies`: `call` runs a worker method through one `WorkerSupervisor`, whose budgets are `requestTimeoutMs` and `graceMs`; `takeNotes` reads the application's notes; and `dataRoot`, `requestTimeoutMs`, and `maxTimeoutMs`, which is `toolCallTimeoutMs` less 30 s, carry the paths and budgets.
+- `workers(options, dependencies)` creates the application's `AppWorkers`. Its `start(signal, scope)` prepares the application and starts one worker for one Session with `dependencies.start`, which is `JsonLineWorker.start`; `scope.directory` is the worker's own folder, for files such as an application profile, and starts never overlap, so setup that every worker shares runs once at a time. `dependencies.workerScript()` returns the real path of a `materializePayload` copy of the worker script under `dataRoot`. Its `takeNotes()` hands over the setup notes gathered since the previous call, such as the version of a worker that started.
+- `tools(dependencies)` builds the tools with `AppToolDependencies`. The server builds them for each call, for the calling Session: `call` runs a worker method on that Session's worker, whose budgets are `requestTimeoutMs` and `graceMs`; `takeNotes` reads the notes of that Session's worker starts; and `dataRoot`, `requestTimeoutMs`, and `maxTimeoutMs`, which is `toolCallTimeoutMs` less 30 s, carry the paths and budgets.
 
-It returns once the server is serving, and the server's shutdown closes the supervisor, which stops the worker. An `argv[2]` that holds no options, or options that `parseOptions` refuses, rejects before anything is served.
+The definition's `app`, such as `Blender`, names the application in the messages of [one worker per Session](#one-worker-per-session). It returns once the server is serving, and the server's shutdown closes the worker pool, which stops every worker. An `argv[2]` that holds no options, or options that `parseOptions` refuses, rejects before anything is served.
 
+<a id="serve-the-tools"></a>
 ### Serve the tools
 
-`runAppMcpServer` serves the tools with `serveAppMcp({ name, version, instructions, tools, onClose })`, which a server entry can also call directly. It first points the global `console` at stderr, so stdout carries only MCP frames, and it restores the console at shutdown. The server answers tool discovery at once and starts nothing else; a tool runs only when the client calls it. Duplicate tool names make `serveAppMcp` reject before it serves.
+`runAppMcpServer` serves the tools with `serveAppMcp({ name, version, instructions, tools, scopedTools, onClose })`, which a server entry can also call directly. It first points the global `console` at stderr, so stdout carries only MCP frames, and it restores the console at shutdown. The server answers tool discovery at once and starts nothing else; a tool runs only when the client calls it. Duplicate tool names make `serveAppMcp` reject before it serves.
+
+With `scopedTools`, the server lists the experimental capability `io.github.wasdengine/session-scope`, and the Host's MCP client ([`@deepseek-ai/dsh-mcp-client`](../../mcp/mcp-client/README.md)) then adds the calling agent's Session id to each tool call's `_meta` under `io.github.wasdengine/session`; a call made without an agent carries none. Each call runs the tool of its name from `scopedTools(sessionId)`, or from `scopedTools(undefined)` when the call names no Session or the value is not a non-empty string of at most 200 characters; `tools` then only sets what the server lists. `SESSION_SCOPE_CAPABILITY`, `SESSION_SCOPE_META_KEY`, and `sessionOf(meta)` export these names and the reading.
 
 Each `AppTool` has a `name`, an optional `title`, a `description`, and an `input` Zod raw shape, against which the SDK validates the arguments. Its `run(args, signal)` returns an `AppToolResult`. The signal aborts when the server shuts down and when the client cancels the call, which the MCP client also does when its `toolCallTimeoutMs` expires.
 
@@ -160,10 +165,23 @@ Worker failures are `WorkerError`s with a `code`, and only `WORKER_REMOTE` leave
 | `WORKER_PROTOCOL` | A line that is not a valid reply, a reply to an id that is not pending, or a line over 32 MiB | Killed; state lost |
 | `WORKER_EXITED` | The worker exited, was shut down, or was stopped after a dispatched request was cancelled | Gone; state lost |
 | `WORKER_START_FAILED` | The worker could not be spawned, or its first line on fd 3 was not a valid ready line in time | Killed |
+| `WORKERS_BUSY` | A Session's first call found `maxWorkers` workers each running a call ([one worker per Session](#one-worker-per-session)) | No worker started |
+
+<a id="one-worker-per-session"></a>
+### One worker per Session
+
+`WorkerPool({ app, root, start, takeNotes, maxWorkers, idleTimeoutMs, requestTimeoutMs, closeGraceMs })` keeps one `WorkerSupervisor` per scope, and `call(scope, method, params, options)` runs one worker method on the scope's worker. `runAppMcpServer` names the scope `session:<id>` for a call that names its Session ([Serve the tools](#serve-the-tools)) and `shared` for one that does not, and gives the pool `<dataRoot>/workers/` as its `root`.
+
+- Calls of one scope run in order; calls of different scopes run at the same time.
+- A scope's first call creates its supervisor, whose start makes a numbered folder `<root>/<pid>/<n>` in the folder of the pool's process and calls `start(signal, { key, directory })`. Starts run one at a time across scopes, and the notes that `takeNotes` hands over right after a start belong to that scope; `takeNotes(scope)` hands them to the scope's next result.
+- A worker that has run no call for `idleTimeoutMs` stops, and its folder is deleted after it exits.
+- When `maxWorkers` scopes have a worker, a new scope stops the least recently used worker that runs no call; when each one runs a call, the new scope's call fails with `WORKERS_BUSY` and starts nothing.
+- The next call of a scope whose worker stopped for either reason fails with `WORKER_EXITED` and a message that says why and ends `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker.`; the call after it starts a fresh worker. The pool remembers this for the 256 most recent such scopes.
+- `prepare()` deletes the folders in `root` of server processes that have exited, and a folder of its own process id, which a former process with that id left behind; it keeps the folders of running processes, such as an old server that is still shutting down, and names that are not process ids. `close()` refuses further calls with `WORKER_EXITED`, closes every supervisor, and deletes the folder of its process.
 
 ### Restart after a stop
 
-`WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` owns the worker of one server process, and `call(method, params, { timeoutMs, signal })` runs one worker method through it:
+`WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` owns the worker of one scope, and `call(method, params, { timeoutMs, signal })` runs one worker method through it:
 
 - Calls run one at a time in call order, and a call starts a worker through `start(signal)` when none is running. `timeoutMs` defaults to `requestTimeoutMs` and counts from the call, like the MCP client's tool-call budget: a call that waited for earlier calls gets what is left, and one whose wait spent it all rejects with `WORKER_TIMEOUT` without running and leaves the worker and its state alone.
 - `WORKER_REMOTE` passes through, and the worker keeps its state.
@@ -198,7 +216,9 @@ Three processes take part: the Host, the server process that the MCP client star
 | [`src/plugin.ts`](src/plugin.ts) | `registerAppMcpPlugin`: path checks, server options from the Config, and the entry beside the plugin module |
 | [`src/register.ts`](src/register.ts) | Host registration, the source launch through tsx, and the fixed manager entry fields |
 | [`src/options.ts`](src/options.ts) | The `argv[2]` options codec, the shared option fields, and their validation |
-| [`src/app-server.ts`](src/app-server.ts) | The server process body: options, worker script copy, supervisor, and tools |
+| [`src/app-server.ts`](src/app-server.ts) | The server process body: options, worker script copy, worker pool, and the tools of each calling Session |
+| [`src/pool.ts`](src/pool.ts) | One supervisor per Session scope, worker folders, serialized starts, the idle stop, making room, and lost-state notices |
+| [`src/session-scope.ts`](src/session-scope.ts) | The Session scope capability and `_meta` key, and reading the calling Session from a call |
 | [`src/mcp-server.ts`](src/mcp-server.ts) | Console routing, tool registration, result mapping and bounds, failure text, and shutdown |
 | [`src/tools.ts`](src/tools.ts) | Tool helpers and the `execute_python` tool |
 | [`src/setup-host.ts`](src/setup-host.ts) | The setup host and the executable and version helpers |
@@ -287,7 +307,10 @@ Append-only, like other tool results; a failure changes no earlier request text.
 
 These constraints apply to every server built on the library.
 
-- **One worker per server** — every caller of a server shares its worker and the application state in it, and calls queue behind the running one, so one long call delays the rest.
+- **Connected agents share one worker** — a call from an agent connected through WASD Engine's MCP server names no Session, so every connected agent uses the `shared` worker and its application state, and their calls queue behind the running one. Their instructions say so.
+- **Each Session's worker is a process** — up to `maxWorkers` application processes run at once, each with its own memory, and CPU-heavy work such as renders in several Sessions slows each of them.
+- **A subagent has its own worker** — a subagent's Session has its own id, so it does not see the scene or images of the Session that started it; work passes between them through saved files.
+- **The idle stop and making room lose state** — a worker stopped after `workerIdleTimeoutMs` without calls, or to make room for another Session, loses what it had not written to disk.
 - **A stop loses the application state** — a timeout, a crash, a protocol violation, or the cancellation of a running call stops the worker. The library saves and restores nothing, so work that the application has not written to disk is lost.
 - **Console routing only** — `serveAppMcp` reroutes the global `console` when it starts. Output written before that call, or written to `process.stdout` directly, enters the MCP stream, which must carry only MCP frames.
 - **Fixed result bounds** — text is cut at 1 MiB of JSON, and images are limited to PNG and JPEG within 4 MiB of base64 each and 6 MiB per result. The library does not downscale images, so the worker must produce them within these bounds. A reply line over 32 MiB stops the worker.

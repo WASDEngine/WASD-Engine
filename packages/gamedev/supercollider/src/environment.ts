@@ -10,7 +10,7 @@ import { z } from 'zod'
 import {
   AppServerOptionFields, encodeServerOptions, nodeSetupHost, parseAppServerOptions,
 } from '@deepseek-ai/dsh-app-mcp'
-import type { AppWorkerDependencies, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import type { SclangBridgePlan, SuperColliderRuntime, SuperColliderServerOptions } from './types.ts'
 
 /** The argument after the plan that makes the server entry run the bridge process instead of the MCP server. */
@@ -214,6 +214,8 @@ async function configuredRuntime(
 
 /** The folders and files a worker uses under the plugin's data directory. */
 export interface SuperColliderFolders {
+  /** The worker's own directory, which holds the other folders and is the working directory of the bridge and sclang. */
+  readonly directory: string
   /** `XDG_CONFIG_HOME` of sclang: its user configuration folder lives inside, apart from the user's own SuperCollider. */
   readonly configHome: string
   /** `XDG_DATA_HOME` of sclang: its user extensions, synthdefs, and quarks folders live inside. */
@@ -225,18 +227,19 @@ export interface SuperColliderFolders {
 }
 
 /**
- * The worker's folders under the data directory.
- * @param dataRoot - the plugin's data directory.
+ * The folders of one worker, inside the directory that the worker pool gives it.
+ * @param directory - the worker's own directory.
  * @param platform - selects the path syntax.
- * @returns `home/config`, `home/data`, `scratch`, and `sclang_conf.yaml` under `dataRoot`.
+ * @returns the directory itself, and `home/config`, `home/data`, `scratch`, and `sclang_conf.yaml` under it.
  */
-export function superColliderFolders(dataRoot: string, platform: NodeJS.Platform): SuperColliderFolders {
+export function superColliderFolders(directory: string, platform: NodeJS.Platform): SuperColliderFolders {
   const paths = pathsOf(platform)
   return {
-    configHome: paths.join(dataRoot, 'home', 'config'),
-    dataHome: paths.join(dataRoot, 'home', 'data'),
-    scratch: paths.join(dataRoot, 'scratch'),
-    classLibraryConfig: paths.join(dataRoot, 'sclang_conf.yaml'),
+    directory,
+    configHome: paths.join(directory, 'home', 'config'),
+    dataHome: paths.join(directory, 'home', 'data'),
+    scratch: paths.join(directory, 'scratch'),
+    classLibraryConfig: paths.join(directory, 'sclang_conf.yaml'),
   }
 }
 
@@ -261,23 +264,23 @@ export function classLibraryConfig(runtime: SuperColliderRuntime, workerClassDir
 }
 
 /**
- * The bridge's plan: sclang in its IDE mode with the class library configuration, user folders under the data
- * directory, Qt's offscreen platform, the data directory as working directory, and the boot parameters of the worker
+ * The bridge's plan: sclang in its IDE mode with the class library configuration, user folders in the worker's
+ * directory, Qt's offscreen platform, the worker's directory as working directory, and the boot parameters of the worker
  * class. The shipped runtime has no Qt and ignores the platform; a configured sclang built with Qt either runs off
  * screen or fails to start, so no build opens a window or an application.
  * @param runtime - the resolved runtime.
  * @param folders - the worker's folders.
- * @param options - the data directory and the shutdown grace.
+ * @param options - the shutdown grace.
  * @returns the plan.
  */
 export function sclangBridgePlan(
-  runtime: SuperColliderRuntime, folders: SuperColliderFolders, options: Pick<SuperColliderServerOptions, 'dataRoot' | 'graceMs'>,
+  runtime: SuperColliderRuntime, folders: SuperColliderFolders, options: Pick<SuperColliderServerOptions, 'graceMs'>,
 ): SclangBridgePlan {
   return {
     sclang: [runtime.sclang, '-i', IDE_NAME, '-l', folders.classLibraryConfig],
     // The bridge needs ELECTRON_RUN_AS_NODE to run under the Desktop app's executable; sclang and its shells do not.
     env: { set: { XDG_CONFIG_HOME: folders.configHome, XDG_DATA_HOME: folders.dataHome, QT_QPA_PLATFORM: 'offscreen' }, unset: ['ELECTRON_RUN_AS_NODE'] },
-    cwd: options.dataRoot,
+    cwd: folders.directory,
     requestDirectory: folders.scratch,
     boot: { scsynth: runtime.scsynth, plugins: runtime.plugins ?? null, scratch: folders.scratch, helpSource: runtime.helpSource ?? null },
     graceMs: options.graceMs,
@@ -322,20 +325,21 @@ export class SuperColliderWorkers<W extends { readonly ready: WorkerReady }> {
   /**
    * Find SuperCollider, prepare the worker's folders and class library configuration, and start one bridge.
    * @param signal - cancels the ready wait.
+   * @param scope - the Session whose worker this is, and its own directory.
    * @returns the ready worker.
    * @throws SuperColliderSetupError with instructions when the headless runtime is missing or a setting is wrong.
    */
-  async start(signal: AbortSignal): Promise<W> {
+  async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
     const runtime = await findSuperCollider(this.options, this.dependencies.bundledRoot, host)
     if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', RUNTIME_MISSING)
-    const folders = superColliderFolders(this.options.dataRoot, host.platform)
+    const folders = superColliderFolders(scope.directory, host.platform)
     for (const directory of [folders.configHome, folders.dataHome, folders.scratch]) await host.makeDirectory(directory)
     const workerClass = await this.dependencies.workerScript()
     await host.writeTextFile(folders.classLibraryConfig, classLibraryConfig(runtime, pathsOf(host.platform).dirname(workerClass)))
     const plan = sclangBridgePlan(runtime, folders, this.options)
     const worker = await this.dependencies.start({
-      argv: [...this.dependencies.bridge, encodeServerOptions(plan), SCLANG_BRIDGE_ARGUMENT], cwd: this.options.dataRoot, env: host.env,
+      argv: [...this.dependencies.bridge, encodeServerOptions(plan), SCLANG_BRIDGE_ARGUMENT], cwd: folders.directory, env: host.env,
       readyTimeoutMs: this.options.readyTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
     this.notes.push(`SuperCollider ${worker.ready.version} started (${describeRuntime(runtime)}) with no SynthDefs or variables defined.`)

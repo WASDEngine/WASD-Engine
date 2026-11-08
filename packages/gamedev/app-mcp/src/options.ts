@@ -26,6 +26,10 @@ export interface AppServerOptions {
   readonly graceMs: number
   /** Bytes of recent worker output kept for diagnostics. */
   readonly maxLogBytes: number
+  /** Most application workers that run at once: one per calling Session. */
+  readonly maxWorkers: number
+  /** Milliseconds without a call after which a Session's worker stops. */
+  readonly workerIdleTimeoutMs: number
 }
 
 /**
@@ -42,6 +46,8 @@ export const AppServerOptionFields = {
   toolCallTimeoutMs: z.int().min(1),
   graceMs: z.int().min(1),
   maxLogBytes: z.int().min(1),
+  maxWorkers: z.int().min(1),
+  workerIdleTimeoutMs: z.int().min(1),
 } as const
 
 /**

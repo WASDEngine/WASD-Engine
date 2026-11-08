@@ -73,6 +73,8 @@ A disabled row withdraws the tools and the server instructions from the model an
 | `requestTimeoutMs` | `600,000` | Default budget of one request, at least 30 s less than `toolCallTimeoutMs`; when it expires, the interpreter stops and its state is lost |
 | `graceMs` | `3,000` | Time the worker gets to exit after the `shutdown` request, and again after SIGTERM, before SIGKILL; the bridge also gives sclang this long to quit after its input closes |
 | `maxLogBytes` | `65,536` | Bytes of recent interpreter output kept for error messages |
+| `maxWorkers` | `4` | Most interpreters that run at once, one for each calling Session, from 1 to 16 |
+| `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's interpreter stops and its variables and SynthDefs are lost |
 
 <a id="find-supercollider"></a>
 ### Find SuperCollider
@@ -89,16 +91,16 @@ A non-empty `scsynthPath` replaces the scsynth that the search found. A configur
 The Desktop app's runtime is SuperCollider built from source without Qt, its IDE, and supernova, so it holds sclang, scsynth, the UGen plugins, the class library without its GUI classes, and the class help files; [BUILD.md](../../../wasdengine/supercollider/BUILD.md) describes how it is built and published, and [SuperCollider in the Desktop app](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) how packaging ships it. A source checkout gets it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`, or by unpacking a `supercollider-<version>` release archive into that folder; an npm install has none and needs `sclangPath`.
 
 <a id="interpreter"></a>
-### One interpreter for every conversation
+### One interpreter per conversation
 
-sclang starts in its IDE mode, which reads commands from its standard input, with a class library configuration that the server writes to `<dataRoot>/sclang_conf.yaml`. For the shipped runtime, the configuration replaces the default class library paths with the runtime's class library; a configured sclang keeps its default paths, so its system-wide extensions load. Either way, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point sclang's user configuration and user data folders into `<dataRoot>/home/`, so the user's own startup file, extensions, quarks, and synthdefs stay out. The configuration adds the folder of `WasdWorker.sc`, the worker class, which also makes `Server:boot` throw: there is no audio device, so code that boots a real-time server fails with a message that points to `render_audio`.
+sclang starts in its IDE mode, which reads commands from its standard input, with a class library configuration that the server writes to `sclang_conf.yaml` in the worker's own folder, `<dataRoot>/workers/<pid>/<n>/`. For the shipped runtime, the configuration replaces the default class library paths with the runtime's class library; a configured sclang keeps its default paths, so its system-wide extensions load. Either way, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point sclang's user configuration and user data folders into `home/` in that folder, so the user's own startup file, extensions, quarks, and synthdefs stay out. The configuration adds the folder of `WasdWorker.sc`, the worker class, which also makes `Server:boot` throw: there is no audio device, so code that boots a real-time server fails with a message that points to `render_audio`.
 
-Interpreter state persists between calls of every conversation: environment variables such as `~kick`, interpreter variables `a` to `z`, SynthDefs added with `.add`, and anything else that code defines. A fresh interpreter starts with none of them.
+Each Session that calls the tools gets its own interpreter ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), and its state persists between that Session's calls: environment variables such as `~kick`, interpreter variables `a` to `z`, SynthDefs added with `.add`, and anything else that code defines. Agents connected through WASD Engine's MCP server share one interpreter among themselves. An interpreter stops after `workerIdleTimeoutMs` without calls, and a fresh interpreter starts with none of that state.
 
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path argument is absolute. A failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `supercollider_<name>`, against the same interpreter.
+The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path argument is absolute. A failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `supercollider_<name>`, and share one interpreter among themselves.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -135,9 +137,10 @@ The image is a 1,024-pixel-wide PNG: the waveform of each channel (of the channe
 | Path | Contents |
 |---|---|
 | `payload/<digest>/WasdWorker.sc` | The worker class, copied out of the package for each content version; earlier versions stay |
-| `sclang_conf.yaml` | The class library configuration of the last worker start |
-| `home/config/`, `home/data/` | sclang's user configuration and data folders, such as `SuperCollider/synthdefs/` |
-| `scratch/` | Request parameter files, which the worker class deletes after reading, and the score, log, and float audio files of renders and analyses, which the worker and the server delete after use |
+| `workers/<pid>/<n>/` | One interpreter's folder in the folder of its server process, deleted after the interpreter stops; a starting server deletes the folders of server processes that have exited |
+| `workers/<pid>/<n>/sclang_conf.yaml` | The class library configuration of that interpreter |
+| `workers/<pid>/<n>/home/config/`, `workers/<pid>/<n>/home/data/` | sclang's user configuration and data folders, such as `SuperCollider/synthdefs/` |
+| `workers/<pid>/<n>/scratch/` | Request parameter files, which the worker class deletes after reading, and the score, log, and float audio files of renders and analyses, which the worker and the server delete after use |
 
 <a id="plugin-icon"></a>
 ### Plugin icon
@@ -157,7 +160,7 @@ The plugin spans four processes. The Host plugin registers a stdio MCP server, `
 sclang cannot read the worker protocol's JSON request lines, and code running inside it cannot capture the text it posts, so the worker is a bridge: the same server entry, run again with the bridge plan in `argv[2]` and `--sclang-bridge` in `argv[3]`, and with the server's own loader flags, such as tsx's in a source launch. The bridge speaks the [worker protocol](../app-mcp/README.md#run-the-worker) and runs sclang as its child:
 
 ```text
-<sclang> -i wasd -l <dataRoot>/sclang_conf.yaml
+<sclang> -i wasd -l <dataRoot>/workers/<pid>/<n>/sclang_conf.yaml
 ```
 
 An IDE name other than `none` turns off sclang's readline input, so sclang interprets its standard input in chunks that end with ESC (0x1b). The bridge first sends `WasdWorker.boot("<token>", "<file>")`, whose JSON file names scsynth, the plugin folder, the scratch folder, and the help folder; the worker class sets `Score.program` and posts `<token> READY {"version": …}`, and the bridge then writes the protocol's ready line. For each request, the bridge writes the parameters to a JSON file, because sclang string literals hold at most 8,191 bytes, and sends `WasdWorker.dispatch(<id>, "<method>", "<file>")`. The worker class reads and deletes the file, runs the handler of the same name in a Routine, and posts `<token> END <id> <JSON reply>` after a newline. The bridge adds the text that sclang posted since the previous reply, at most 20,000 characters kept as its first and last halves, to the reply's `output`, or to the traceback of a failure, and drops the `<name> : setting clientID to <n>.` lines that creating a Server object posts. The token is 32 random hexadecimal digits per bridge, so posted text cannot pose as a reply.
@@ -230,7 +233,7 @@ After the server connects, the MCP client adds the instructions from [`src/instr
 ##### SuperCollider server instructions
 
 ```markdown
-SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. One interpreter serves every conversation, and environment variables such as ~kick and SynthDefs added with .add persist until SuperCollider restarts after a crash or a timeout. The first result after a start names the version.
+SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -283,7 +286,8 @@ Append-only: calls and their results follow the existing request prefix and do n
 These limits describe current gaps in the SuperCollider tools.
 
 - **Nothing plays aloud** — the tools run without an audio device and refuse to boot a real-time server, so neither the agent nor the user hears a sound through the tools; the user listens to the rendered files, in the game or elsewhere.
-- **One interpreter for every Session** — all Sessions share the interpreter's variables and SynthDefs, and a long render delays every other SuperCollider call.
+- **Connected agents share one interpreter** — agents connected through WASD Engine's MCP server share its variables and SynthDefs, and a long render delays the others' calls.
+- **An idle Session loses its interpreter state** — a Session's interpreter stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`.
 - **Restarts lose interpreter state** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, a cancelled running call, or code that calls `0.exit` stops sclang; the variables and SynthDefs are gone, and the fresh interpreter starts with none.
 - **SuperCollider runs on macOS arm64 and Linux x64 only** — Windows and Intel Macs have no shipped runtime, and the tools start no installed SuperCollider, so they report the missing runtime there unless `sclangPath` names a headless build; on Windows, such an sclang ignores `XDG_CONFIG_HOME` and `XDG_DATA_HOME`, so it reads the user's own SuperCollider folders.
 - **Plugins are the core UGens** — the shipped runtime holds the UGens of SuperCollider itself, not sc3-plugins or other extensions, and its class library has no GUI classes.

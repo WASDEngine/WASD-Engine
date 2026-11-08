@@ -11,7 +11,7 @@ import { abortError, assertDelay, describeExit, WorkerError, type JsonLineWorker
 import type { JsonObject, JsonValue } from './types.ts'
 
 /** What a caller is told when a worker stopped: the state it held is gone. */
-const STATE_LOST = 'its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker'
+export const STATE_LOST = 'its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker'
 
 /** Budgets of a {@link WorkerSupervisor}. */
 export interface WorkerSupervisorOptions {
@@ -32,8 +32,13 @@ export interface WorkerCallOptions {
   readonly signal?: AbortSignal | undefined
 }
 
-/** Wait for `turn`, or reject as soon as `signal` aborts. */
-function untilTurn(turn: Promise<void>, signal: AbortSignal): Promise<void> {
+/**
+ * Wait for `turn`, or reject as soon as `signal` aborts.
+ * @param turn - settles when the caller's turn comes; it never rejects.
+ * @param signal - cancels the wait.
+ * @returns once the turn came.
+ */
+export function untilTurn(turn: Promise<void>, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.reject(abortError(signal))
   return new Promise((resolve, reject) => {
     const onAbort = (): void => { reject(abortError(signal)) }

@@ -13,6 +13,7 @@ async function main(): Promise<void> {
   try {
     await runAppMcpServer({
       name: GIMP_SERVER_NAME,
+      app: 'GIMP',
       version: '1.0.0',
       instructions: GIMP_INSTRUCTIONS,
       workerScript: new URL('../py/wasd_gimp_worker.py', import.meta.url),

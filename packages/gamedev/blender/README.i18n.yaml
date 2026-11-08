@@ -24,17 +24,17 @@
   en: b7315842930901ed
   zh: b174e87ae23c0616
 /deepseek-ai-dsh-blender/use-this-package/configuration:
-  en: 84b30063c9bbd5ba
-  zh: 18fe5a8f7fe31d0a
+  en: f271d72be6ccf6d2
+  zh: 5082ce5678143bae
 /deepseek-ai-dsh-blender/use-this-package/backends:
   en: b5c7314f3bd3d998
   zh: f3145cca7acc21c8
 /deepseek-ai-dsh-blender/use-this-package/tools:
-  en: 0ab327f9f2857a5c
-  zh: c89223038758ebc0
-/deepseek-ai-dsh-blender/use-this-package/one-blender-session-for-every-conversation:
-  en: 6442c4c62e6974c7
-  zh: c4c6442f1b817719
+  en: bf1e194c9cbd2108
+  zh: eb8e3c9479b98835
+/deepseek-ai-dsh-blender/use-this-package/one-blender-session-per-conversation:
+  en: 683360ca765acaf1
+  zh: d1feaee1742e83b7
 /deepseek-ai-dsh-blender/use-this-package/headless-operation:
   en: 4f11dfa39b922f55
   zh: b3d1ed5ee2e340ae
@@ -42,8 +42,8 @@
   en: 2871e274b1ce960d
   zh: 796b377399acf2a7
 /deepseek-ai-dsh-blender/use-this-package/files-under-the-data-directory:
-  en: 003e9765fab954c6
-  zh: 8ba698eaea689ca2
+  en: 6246d32f967d8bf8
+  zh: 3a0d967e6e742547
 /deepseek-ai-dsh-blender/use-this-package/plugin-icon:
   en: 2b694dbcc59f8d0e
   zh: e4db8412ad1dc139
@@ -99,8 +99,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-blender/known-limitations-and-deferred-work:
-  en: f44c58c36e0e9d93
-  zh: 91b1be0fe4f2a2eb
+  en: 98594b761dc93b38
+  zh: dd869840be609c4c
 /deepseek-ai-dsh-blender/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

@@ -24,26 +24,26 @@
   en: f86a474920d683ea
   zh: 81f59388556dc269
 /deepseek-ai-dsh-gimp/use-this-package/configuration:
-  en: 9863e09a64702ad1
-  zh: 7790a8f11eb80336
+  en: 9e3d5ac660e32a96
+  zh: 014731b7a0ff858e
 /deepseek-ai-dsh-gimp/use-this-package/find-and-install-gimp-3:
   en: 5d52a51475cee05d
   zh: c7186de37e024ce8
 /deepseek-ai-dsh-gimp/use-this-package/the-gimp-profile-and-the-first-start:
-  en: 6b44c5ea6f1bae3d
-  zh: 30620e80cac86956
+  en: bbafb968309c667f
+  zh: 9af6c7a5fbc2c5c9
 /deepseek-ai-dsh-gimp/use-this-package/tools:
-  en: 721b3ab3c3fb0a5a
-  zh: 15e889ecf995169d
+  en: b1ab6614ff99a7a2
+  zh: 1ecbf4029917ab0e
 /deepseek-ai-dsh-gimp/use-this-package/image-and-layer-ids:
   en: e6f79801e053b676
   zh: 9faa91b0de9a1d90
-/deepseek-ai-dsh-gimp/use-this-package/one-gimp-session-for-every-conversation:
-  en: 98c05c65f7366e97
-  zh: d1c5afdb0426d2d6
+/deepseek-ai-dsh-gimp/use-this-package/one-gimp-session-per-conversation:
+  en: a00b7b7ea0e3a7fe
+  zh: f148eff7ebbc743f
 /deepseek-ai-dsh-gimp/use-this-package/files-under-the-data-directory:
-  en: 8dd05bfd4a1a9c80
-  zh: b41c63469fa97d68
+  en: 1a73a26a3204efd2
+  zh: 3a2def154e073fbe
 /deepseek-ai-dsh-gimp/use-this-package/plugin-icon:
   en: 3c989a5cc434eac8
   zh: ecb401d5ae88b0c6
@@ -102,8 +102,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work:
-  en: 997082672606e067
-  zh: b6b78cddb5920a9f
+  en: 00342a2fc0eed3c7
+  zh: 65dc365cd0b19fde
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

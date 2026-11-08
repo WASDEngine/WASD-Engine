@@ -7,7 +7,7 @@
 export const BLENDER_SERVER_NAME = 'wasd_blender'
 
 /** How to use the Blender tools, at most 6000 characters. */
-export const BLENDER_INSTRUCTIONS = `Blender runs headless behind these tools: there is no window, viewport, or screenshot. One Blender session and one open scene serve every conversation and persist between calls until new_scene or open_blend replaces them, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
+export const BLENDER_INSTRUCTIONS = `Blender runs headless behind these tools: there is no window, viewport, or screenshot. Blender keeps one session for each conversation: its open scene persists between calls until new_scene or open_blend replaces it, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, or stops after a long pause in the calls, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
 
 Paths are absolute. Resolve relative names against your working directory. Put game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 

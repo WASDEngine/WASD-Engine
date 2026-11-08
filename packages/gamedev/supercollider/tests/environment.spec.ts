@@ -16,7 +16,7 @@ import type { SuperColliderRuntime, SuperColliderServerOptions } from '../src/ty
 
 const OPTIONS: SuperColliderServerOptions = {
   dataRoot: '/data/supercollider', sclangPath: '', scsynthPath: '', readyTimeoutMs: 60_000, requestTimeoutMs: 600_000,
-  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
+  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
 }
 const BUNDLED = '/app/node_modules/@deepseek-ai/dsh-supercollider/runtime'
 const RUNTIME = `${BUNDLED}/darwin-arm64`
@@ -86,6 +86,9 @@ const INSTALLED_EVERYWHERE: FakeHostOptions = {
 }
 
 const signal = new AbortController().signal
+
+/** The worker scope the pool would pass: a Session and its numbered folder. */
+const SCOPE = { key: 'session:spec', directory: '/data/supercollider/workers/1' }
 
 describe('parseServerOptions', () => {
   it('accepts the options the plugin sends and names invalid fields', () => {
@@ -182,9 +185,9 @@ describe('worker folders, class library configuration, and bridge plan', () => {
     plugins: `${RUNTIME}/plugins`, helpSource: `${RUNTIME}/HelpSource`,
   }
 
-  it('keeps every folder under the data directory', () => {
+  it('keeps every folder in the worker\'s own directory', () => {
     expect(superColliderFolders('/data/sc', 'darwin')).toEqual({
-      configHome: '/data/sc/home/config', dataHome: '/data/sc/home/data', scratch: '/data/sc/scratch', classLibraryConfig: '/data/sc/sclang_conf.yaml',
+      directory: '/data/sc', configHome: '/data/sc/home/config', dataHome: '/data/sc/home/data', scratch: '/data/sc/scratch', classLibraryConfig: '/data/sc/sclang_conf.yaml',
     })
     expect(superColliderFolders('C:\\data', 'win32').scratch).toBe('C:\\data\\scratch')
   })
@@ -200,7 +203,7 @@ describe('worker folders, class library configuration, and bridge plan', () => {
 
   it('plans sclang in its IDE mode, off screen, with the user folders under the data directory', () => {
     const folders = superColliderFolders('/data/sc', 'darwin')
-    expect(sclangBridgePlan(bundled, folders, { dataRoot: '/data/sc', graceMs: 3000 })).toEqual({
+    expect(sclangBridgePlan(bundled, folders, { graceMs: 3000 })).toEqual({
       sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/sc/sclang_conf.yaml'],
       env: {
         set: { XDG_CONFIG_HOME: '/data/sc/home/config', XDG_DATA_HOME: '/data/sc/home/data', QT_QPA_PLATFORM: 'offscreen' },
@@ -211,7 +214,7 @@ describe('worker folders, class library configuration, and bridge plan', () => {
       boot: { scsynth: `${RUNTIME}/scsynth`, plugins: `${RUNTIME}/plugins`, scratch: '/data/sc/scratch', helpSource: `${RUNTIME}/HelpSource` },
       graceMs: 3000,
     })
-    expect(sclangBridgePlan(configured('/a/sclang', '/a/scsynth'), folders, { dataRoot: '/data/sc', graceMs: 1 }).boot)
+    expect(sclangBridgePlan(configured('/a/sclang', '/a/scsynth'), folders, { graceMs: 1 }).boot)
       .toEqual({ scsynth: '/a/scsynth', plugins: null, scratch: '/data/sc/scratch', helpSource: null })
   })
 })
@@ -224,15 +227,15 @@ describe('SuperColliderWorkers', () => {
       host, bundledRoot: BUNDLED, bridge: ['/node', '--import', 'tsx', '/pkg/src/worker.ts'], start,
       workerScript: async () => '/data/supercollider/payload/abc/WasdWorker.sc',
     })
-    await expect(workers.start(signal)).resolves.toEqual({ ready: { app: 'supercollider', version: '3.14.1' } })
-    expect(host.made).toEqual(['/data/supercollider/home/config', '/data/supercollider/home/data', '/data/supercollider/scratch'])
-    expect(host.written.get('/data/supercollider/sclang_conf.yaml')).toContain('  - "/data/supercollider/payload/abc"')
+    await expect(workers.start(signal, SCOPE)).resolves.toEqual({ ready: { app: 'supercollider', version: '3.14.1' } })
+    expect(host.made).toEqual(['/data/supercollider/workers/1/home/config', '/data/supercollider/workers/1/home/data', '/data/supercollider/workers/1/scratch'])
+    expect(host.written.get('/data/supercollider/workers/1/sclang_conf.yaml')).toContain('  - "/data/supercollider/payload/abc"')
     const [spec, startSignal] = start.mock.calls[0] ?? []
     expect(startSignal).toBe(signal)
-    expect(spec).toMatchObject({ cwd: '/data/supercollider', env: host.env, readyTimeoutMs: 60_000, logTailBytes: 65_536 })
+    expect(spec).toMatchObject({ cwd: '/data/supercollider/workers/1', env: host.env, readyTimeoutMs: 60_000, logTailBytes: 65_536 })
     expect(spec?.argv.slice(0, 4)).toEqual(['/node', '--import', 'tsx', '/pkg/src/worker.ts'])
     expect(spec?.argv[5]).toBe(SCLANG_BRIDGE_ARGUMENT)
-    expect(decodeServerOptions(['', '', spec?.argv[4] ?? ''])).toMatchObject({ sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/supercollider/sclang_conf.yaml'] })
+    expect(decodeServerOptions(['', '', spec?.argv[4] ?? ''])).toMatchObject({ sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/supercollider/workers/1/sclang_conf.yaml'] })
     expect(workers.takeNotes()).toEqual(['SuperCollider 3.14.1 started (the runtime that WASD Engine ships) with no SynthDefs or variables defined.'])
     expect(workers.takeNotes()).toEqual([])
   })
@@ -243,7 +246,7 @@ describe('SuperColliderWorkers', () => {
     const workers = new SuperColliderWorkers({ ...OPTIONS, sclangPath: '/opt/sc/sclang' }, {
       host, bundledRoot: BUNDLED, bridge: ['/node', '/worker.js'], start, workerScript: async () => '/p/WasdWorker.sc',
     })
-    await workers.start(signal)
+    await workers.start(signal, SCOPE)
     expect(workers.takeNotes()[0]).toContain('(sclang at /opt/sc/sclang)')
   })
 
@@ -252,7 +255,7 @@ describe('SuperColliderWorkers', () => {
     const workers = new SuperColliderWorkers(OPTIONS, {
       host: new FakeHost(INSTALLED_EVERYWHERE), bundledRoot: BUNDLED, bridge: ['/node'], start, workerScript: async () => '/p/WasdWorker.sc',
     })
-    const failure = workers.start(signal)
+    const failure = workers.start(signal, SCOPE)
     await expect(failure).rejects.toMatchObject({ code: 'SUPERCOLLIDER_NOT_FOUND' })
     await expect(failure).rejects.toThrow('WASD Engine\'s headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on '
       + 'Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '

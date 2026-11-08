@@ -76,6 +76,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `requestTimeoutMs` | `600,000` | 单个 Blender 请求的默认时限，至少比 `toolCallTimeoutMs` 少 30 s；到期时工作进程停止，未保存的更改丢失 |
 | `graceMs` | `3,000` | 工作进程在收到 `shutdown` 请求后、再在收到 SIGTERM 后各有这么长时间退出，之后收到 SIGKILL |
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近工作进程与 uv 输出的字节数 |
+| `maxWorkers` | `4` | 同时运行的 Blender 工作进程上限，每个调用的 Session 一个，取值 1 到 16 |
+| `workerIdleTimeoutMs` | `600,000` | Session 的 Blender 工作进程在没有调用多长时间后停止，其未保存的场景随之丢失 |
 
 <a id="backends"></a>
 ### 后端
@@ -91,7 +93,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，作用于同一个 Blender 会话。
+模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，并彼此共享一个 Blender 会话。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -117,11 +119,11 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 `render` 默认从场景相机渲染，`camera` 可以指定另一个相机对象。`width`、`height`、`engine` 与 `samples` 只作用于本次渲染；未提供 `path` 的调用会在 `dataRoot` 的 `renders/` 下写入一个新文件。`timeout_seconds` 的范围与 `execute_python` 相同：超时后 Blender 会被停止并重启，未保存的更改随之丢失，因此 CYCLES 渲染会提前结束采样以按时完成，除非场景自己设置了更严格的时间限制。
 
 <a id="one-blender-session"></a>
-### 所有对话共用一个 Blender 会话
+### 每个对话一个 Blender 会话
 
-宿主只运行一个 Blender MCP 服务器，该服务器只运行一个 Blender 工作进程。因此所有 Session 和对话共用一个打开的场景、一个 `execute_python` 命名空间和一组检查点，调用按到达顺序逐个执行。这些状态在调用之间保留，直到 `new_scene` 或 `open_blend` 替换场景。替换场景时也会清除 `execute_python` 的名称，因为保存旧场景某一部分的名称（例如 `scene.render` 或 `mesh.vertices`）会指向已释放的内存：读取它会得到垃圾数据，通过它写入会使 Blender 崩溃。
+宿主只运行一个 Blender MCP 服务器，该服务器为每个调用它的 Session 运行一个 Blender 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己的打开场景、`execute_python` 命名空间和一组检查点；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行；通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程。这些状态在调用之间保留，直到 `new_scene` 或 `open_blend` 替换场景，或工作进程在 `workerIdleTimeoutMs` 内没有调用而停止。替换场景时也会清除 `execute_python` 的名称，因为保存旧场景某一部分的名称（例如 `scene.render` 或 `mesh.vertices`）会指向已释放的内存：读取它会得到垃圾数据，通过它写入会使 Blender 崩溃。
 
-工作进程在首次工具调用时启动，带有 Blender 的默认场景。崩溃、请求时限到期或正在运行的调用被取消，都会使工作进程停止并丢失未保存的更改。工作进程在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。工作进程在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。MCP 服务器本身终止时，Blender 会在大约一秒内结束，即使正处于某次调用之中也是如此，执行的代码所启动的进程也随之结束。请在关键节点保存 `.blend` 文件。
+Session 的工作进程在其首次工具调用时启动，带有 Blender 的默认场景。崩溃、请求时限到期或正在运行的调用被取消，都会使工作进程停止并丢失未保存的更改。工作进程在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。工作进程在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。MCP 服务器本身终止时，Blender 会在大约一秒内结束，即使正处于某次调用之中也是如此，执行的代码所启动的进程也随之结束。请在关键节点保存 `.blend` 文件。
 
 <a id="headless-operation"></a>
 ### 无界面运行
@@ -142,13 +144,14 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 <a id="data-directory"></a>
 ### 数据目录中的文件
 
-首次工具调用会创建 `dataRoot`，工作进程以它为工作目录运行。
+首次工具调用会创建 `dataRoot`。每个工作进程在服务器进程的文件夹 `workers/<pid>/` 中自己的编号文件夹里运行。
 
 | 路径 | 内容 | 生命周期 |
 |---|---|---|
 | `payload/<hash>/wasd_blender_worker.py` | 工作脚本的副本，是 Desktop 应用归档之外的普通文件；`<hash>` 是其 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；早期版本保留 |
 | `uv-python/` | uv 为 `bpy` 后端安装的 Python | 保留 |
 | `venv-py<pythonVersion>-bpy<bpyVersion>/` | `bpy` 环境，先在同级的 `.partial-<uuid>` 目录中构建，再重命名到位；该位置上 Python 不可执行的目录会先被移到同级的 `.stale-<uuid>` 目录 | 保留；插件只删除被移开的目录 |
+| `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
 | `previews/` | `render_preview` 图像和 `render` 图像的缩小副本 | 调用返回时删除 |
 | `renders/<time>-<id>.png` | 未提供 `path` 的 `render` 调用的输出 | 保留 |
 
@@ -234,7 +237,7 @@ pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
 ##### Blender 服务器指令
 
 ```markdown
-Blender runs headless behind these tools: there is no window, viewport, or screenshot. One Blender session and one open scene serve every conversation and persist between calls until new_scene or open_blend replaces them, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
+Blender runs headless behind these tools: there is no window, viewport, or screenshot. Blender keeps one session for each conversation: its open scene persists between calls until new_scene or open_blend replaces it, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, or stops after a long pause in the calls, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
 
 Paths are absolute. Resolve relative names against your working directory. Put game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -290,7 +293,8 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 以下限制描述 Blender 工具当前的不足。
 
-- **所有 Session 共用一个 Blender** — 所有 Session 共用一个打开的场景、一个 Python 命名空间和一组检查点，因此一个 Session 可能修改或替换另一个 Session 的场景，一次耗时的渲染也会推迟其他所有 Blender 调用。
+- **连接的 agent 共享一个 Blender** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用一个打开的场景、Python 命名空间和一组检查点，因此其中一个可能修改或替换另一个的场景，一次耗时的渲染也会推迟其他 agent 的调用。
+- **空闲的 Session 会丢失场景** — Session 的工作进程在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止，未保存的场景随之丢失。
 - **没有窗口** — 工具不提供视口、界面，也不提供窗口或区域截图，需要窗口的操作符会失败；`render_preview` 是查看场景的唯一方式，`render` 需要相机。
 - **重启会丢失未保存的工作** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使工作进程停止；场景、Python 命名空间和检查点随之丢失，新的工作进程以 Blender 默认场景启动。
 - **首次使用耗时且占用空间大** — `bpy` 后端在首次工具调用期间安装，该调用会等待安装完成；调用超过 `toolCallTimeoutMs` 时，uv 停止，未完成的环境被删除，下一次调用重新开始安装。新的 `bpyVersion` 或 `pythonVersion` 会安装另一个环境，插件不删除任何可用的环境。

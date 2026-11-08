@@ -72,7 +72,7 @@ http_headers = { "Authorization" = "Bearer <token>" }
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_gimp` 服务器的工具，由 `mcp__wasd_gimp__<tool>` 重命名而来 |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_supercollider` 服务器的工具，由 `mcp__wasd_supercollider__<tool>` 重命名而来 |
 
-服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 与 Session 自身的 agent 共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与所有 Session 一样。
+服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 彼此共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与 WASD Engine 自身各 Session 的 worker 分开（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），这些插件的指令也说明了这一点。
 
 ### WASD Engine 窗口中的游戏
 

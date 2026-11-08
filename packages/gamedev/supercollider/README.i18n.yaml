@@ -24,20 +24,20 @@
   en: d36d33eafbd7da94
   zh: 119df85f7711fcf3
 /deepseek-ai-dsh-supercollider/use-this-package/configuration:
-  en: 56d00de9f052bc2d
-  zh: 16768aa6d448849f
+  en: 9d134a1a3744c15b
+  zh: 10bbdfa4ee3e3d24
 /deepseek-ai-dsh-supercollider/use-this-package/find-supercollider:
   en: 9df1e2089b63a3a0
   zh: 90a4222a46509bd1
-/deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-for-every-conversation:
-  en: 452b129db2a067be
-  zh: 4ddf4c2aa2209e2a
+/deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-per-conversation:
+  en: 1b8a3f6e2d1b55f5
+  zh: 2528c85665b55469
 /deepseek-ai-dsh-supercollider/use-this-package/tools:
-  en: 63141f73063cc0d1
-  zh: 30fbf57525dafaef
+  en: 6a5e83240731811d
+  zh: 5572917eeb7341f6
 /deepseek-ai-dsh-supercollider/use-this-package/files-under-the-data-directory:
-  en: 6fe91459117dbec4
-  zh: af4fc5d0642bd17e
+  en: 3ce79a8d9c44b07b
+  zh: 5e4587c131085170
 /deepseek-ai-dsh-supercollider/use-this-package/plugin-icon:
   en: 1f60aacd73da07d5
   zh: 68b4eb8f4e33a67f
@@ -96,8 +96,8 @@
   en: 00af0e13a5a63f94
   zh: 21a0433bbdc9d3c0
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
-  en: d06a9dc118aaad0f
-  zh: 94133a9699b15f5c
+  en: ead1787eacd99fcb
+  zh: 39fac78f33fe2b7b
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

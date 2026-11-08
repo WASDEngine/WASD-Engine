@@ -72,6 +72,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `requestTimeoutMs` | `600,000` | 单个 GIMP 请求的默认时限，至少比 `toolCallTimeoutMs` 少 30 s；到期时 GIMP 停止，打开的图像和未保存的更改丢失 |
 | `graceMs` | `3,000` | 工作进程在收到 `shutdown` 请求后、再在收到 SIGTERM 后各有这么长时间退出，之后收到 SIGKILL |
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近 GIMP 输出的字节数 |
+| `maxWorkers` | `4` | 同时运行的 GIMP 工作进程上限，每个调用的 Session 一个，取值 1 到 16 |
+| `workerIdleTimeoutMs` | `600,000` | Session 的 GIMP 工作进程在没有调用多长时间后停止，其打开的图像随之丢失 |
 
 <a id="find-gimp"></a>
 ### 查找并安装 GIMP 3
@@ -92,12 +94,12 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 <a id="gimp-profile"></a>
 ### GIMP 配置目录与首次启动
 
-GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，因此 GIMP 把配置保存在该目录中，与用户自己的 GIMP 设置互不影响。服务器在首次启动前创建该目录，且从不删除。GIMP 在首次启动时填充新的配置目录：在 macOS arm64 上使用 GIMP 3.2 时，这次启动约需 15 秒，之后的启动约需 2 秒。`readyTimeoutMs` 限制每次启动，触发启动的工具调用会等待启动完成。
+GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，因此 GIMP 把配置保存在该目录中，与用户自己的 GIMP 设置互不影响。服务器在首次启动前创建该目录，且从不删除。所有工作进程都使用这个配置目录；工作进程的启动从不重叠，因此由第一次启动单独填充它。GIMP 在首次启动时填充新的配置目录：在 macOS arm64 上使用 GIMP 3.2 时，这次启动约需 15 秒，之后的启动约需 2 秒。`readyTimeoutMs` 限制每次启动，触发启动的工具调用会等待启动完成。
 
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `gimp_<name>` 调用同样的工具，作用于同一个 GIMP 会话。
+模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `gimp_<name>` 调用同样的工具，并彼此共享一个 GIMP 会话。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -153,22 +155,23 @@ GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，
 工具以 id 或精确名称指代图层，`image_info` 会列出这两者。多个图层共用的名称会使调用失败，并列出它们的 id。`layer` 的 `delete`、`rename`、`set` 与 `move` 操作必须提供 `layer`；其他情况下省略 `layer` 表示图像中选中的图层，没有选中图层时表示顶层图层。
 
 <a id="one-gimp-session"></a>
-### 所有对话共用一个 GIMP 会话
+### 每个对话一个 GIMP 会话
 
-宿主只运行一个 GIMP MCP 服务器，该服务器只运行一个 GIMP 工作进程。因此所有 Session 和对话共用打开的图像、它们的选区和一个 `execute_python` 命名空间，调用按到达顺序逐个执行。打开的图像在调用之间保留，直到 `close_image` 将其关闭或 GIMP 停止。
+宿主只运行一个 GIMP MCP 服务器，该服务器为每个调用它的 Session 运行一个 GIMP 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己打开的图像、它们的选区和 `execute_python` 命名空间；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行；通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程。打开的图像在调用之间保留，直到 `close_image` 将其关闭或工作进程停止；工作进程在 `workerIdleTimeoutMs` 内没有调用时会停止。
 
-工作进程在首次工具调用时启动，此时没有打开的图像。崩溃、请求时限到期或正在运行的调用被取消，都会使 GIMP 停止并丢失打开的图像和未保存的更改。GIMP 在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。GIMP 在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。在 macOS 和 Linux 上，GIMP 的 Python 进程一旦终止，看门狗就会停止 GIMP，因此正在运行的调用无需等到时限到期就会失败。请在关键节点保存 `.xcf` 文件。
+Session 的工作进程在其首次工具调用时启动，此时没有打开的图像。崩溃、请求时限到期或正在运行的调用被取消，都会使 GIMP 停止并丢失打开的图像和未保存的更改。GIMP 在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。GIMP 在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。在 macOS 和 Linux 上，GIMP 的 Python 进程一旦终止，看门狗就会停止 GIMP，因此正在运行的调用无需等到时限到期就会失败。请在关键节点保存 `.xcf` 文件。
 
 <a id="data-directory"></a>
 ### 数据目录中的文件
 
-首次找到 GIMP 的工具调用会创建 `dataRoot`，GIMP 以它为工作目录运行。
+首次找到 GIMP 的工具调用会创建 `dataRoot`。每个工作进程在服务器进程的文件夹 `workers/<pid>/` 中自己的编号文件夹里运行。
 
 | 路径 | 内容 | 生命周期 |
 |---|---|---|
 | `profile/` | `GIMP3_DIRECTORY` 指向的 GIMP 配置目录 | 保留；插件从不删除 |
 | `payload/<hash>/wasd_gimp_worker.py` | 工作脚本的副本，是 Desktop 应用归档之外的普通文件；`<hash>` 是其 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；早期版本保留 |
 | `snapshots/<uuid>.png` 或 `snapshots/<uuid>.jpg` | `snapshot` 图像 | 调用返回时删除 |
+| `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
 
 其他文件写到 agent 给出的绝对路径；`export_image`、`save_xcf` 与 `make_sprite_sheet` 会创建缺失的父文件夹。
 
@@ -258,7 +261,7 @@ pnpm run test:e2e packages/gamedev/gimp/tests/gimp-worker.e2e.ts
 ##### GIMP 服务器指令
 
 ```markdown
-GIMP 3 runs headless behind these tools: there is no window. One GIMP session serves every conversation, and open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
+GIMP 3 runs headless behind these tools: there is no window. GIMP keeps one session for each conversation: its open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, or stops after a long pause in the calls, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -316,7 +319,8 @@ GIMP 3 was not found. Install GIMP 3 from https://www.gimp.org/downloads/ (on ma
 
 以下限制描述 GIMP 工具当前的不足。
 
-- **所有 Session 共用一个 GIMP** — 所有 Session 共用打开的图像、它们的 id 和一个 Python 命名空间，因此一个 Session 可能修改或关闭另一个 Session 的图像，一个耗时的滤镜或脚本也会推迟其他所有 GIMP 调用。
+- **连接的 agent 共享一个 GIMP** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用打开的图像、它们的 id 和一个 Python 命名空间，因此其中一个可能修改或关闭另一个的图像，一个耗时的滤镜或脚本也会推迟其他 agent 的调用。
+- **空闲的 Session 会丢失图像** — Session 的工作进程在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止，打开的图像和未保存的更改随之丢失。
 - **没有窗口** — 工具不提供画布、界面或 GIMP 截图，`pdb_run` 以非交互方式运行每个过程，不显示其对话框；`snapshot` 是查看图像的唯一方式。
 - **重启会丢失打开的图像** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使 GIMP 停止；打开的图像、未保存的更改、选区和 Python 命名空间随之丢失，新的工作进程启动时没有打开的图像。
 - **首次启动较慢** — 使用新配置目录的首次启动约需 15 秒，触发它的工具调用会一直等待。

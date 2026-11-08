@@ -1,7 +1,8 @@
 /**
  * The tools of an app MCP server for agents connected through WASD Engine's MCP server: the tools that the MCP
  * client registered for the server, under the plugin's prefix, with the server's own results, images included.
- * Connected agents and the Session's agent share the one application worker the server runs.
+ * A connected agent's call names no Session, so connected agents share one application worker among themselves,
+ * apart from the worker of each WASD Engine Session; their instructions say so.
  *
  * @module
  */
@@ -73,6 +74,16 @@ export function appToolStatus(title: string, status: McpManagedServerStatus | un
 }
 
 /**
+ * What connected agents learn about the application session they share.
+ * @param title - the application's display name, such as Blender.
+ * @returns the note that follows the server's instructions.
+ */
+export function sharedSessionNote(title: string): string {
+  return `Agents connected through WASD Engine's MCP server, such as you, share one ${title} session among themselves, `
+    + 'apart from the sessions of WASD Engine\'s own conversations, so another connected agent can change its state between your calls.'
+}
+
+/**
  * Offer an app MCP server's tools to connected agents while WASD Engine's MCP server exists.
  * @param ctx - plugin context that injects `mcpManager`.
  * @param serverName - the server's MCP manager name.
@@ -90,6 +101,7 @@ export function offerAppTools(ctx: Context, serverName: string, identity: AppGam
       }))
     inner.effect(() => inner.gameMcp.provide({
       ...identity,
+      instructions: `${identity.instructions}\n\n${sharedSessionNote(identity.title)}`,
       tools,
       status: () => {
         const server = ctx.mcpManager.list().find(candidate => candidate.name === serverName)

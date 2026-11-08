@@ -15,6 +15,7 @@ import type { BlenderServerOptions } from '../src/types.ts'
 const OPTIONS: BlenderServerOptions = {
   dataRoot: '/data/blender', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 30_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
+  maxWorkers: 4, workerIdleTimeoutMs: 600_000,
 }
 const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`
@@ -64,6 +65,9 @@ class FakeHost implements BlenderSetupHost {
 }
 
 const signal = new AbortController().signal
+
+/** The worker scope the pool would pass: a Session and its numbered folder. */
+const SCOPE = { key: 'session:spec', directory: '/data/blender/workers/1' }
 
 describe('parseServerOptions', () => {
   it('accepts the options the plugin sends and names invalid fields', () => {
@@ -339,7 +343,7 @@ describe('BlenderWorkers', () => {
       return { ready }
     })
     const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
-    await expect(workers.start(signal)).resolves.toEqual({ ready })
+    await expect(workers.start(signal, SCOPE)).resolves.toEqual({ ready })
     expect(start.mock.calls.map(([spec]) => spec.argv[0])).toEqual([VENV_PYTHON, APP])
     expect(workers.takeNotes()).toEqual([
       'The bpy module did not start (worker python: exited with code 1 before it reported ready; its last output line was: '
@@ -355,7 +359,7 @@ describe('BlenderWorkers', () => {
         return { ready }
       })
       const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
-      await workers.start(signal)
+      await workers.start(signal, SCOPE)
       expect(workers.takeNotes()[0]).toBe(`The bpy module did not start (worker python: exited with code 1 before it reported ready${quoted}), so Blender at ${APP} runs the tools instead. ${reinstall}`)
     }
   })
@@ -364,7 +368,7 @@ describe('BlenderWorkers', () => {
     for (const [backend, app] of [['auto', false], ['bpy', true]] as const) {
       const start = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw exitedBeforeReady('ImportError: no module\n') })
       const workers = new BlenderWorkers({ ...OPTIONS, backend }, { host: installedHost(app), workerScript: async () => SCRIPT, start })
-      const failure = workers.start(signal)
+      const failure = workers.start(signal, SCOPE)
       await expect(failure).rejects.toBeInstanceOf(WorkerError)
       await expect(failure).rejects.toMatchObject({
         code: 'WORKER_START_FAILED', logTail: 'ImportError: no module\n',
@@ -383,12 +387,12 @@ describe('BlenderWorkers', () => {
     for (const failure of failures) {
       const start = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw failure })
       const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
-      await expect(workers.start(signal)).rejects.toBe(failure)
+      await expect(workers.start(signal, SCOPE)).rejects.toBe(failure)
       expect(start).toHaveBeenCalledOnce()
     }
     const appFailure = exitedBeforeReady()
     const app = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw appFailure })
-    await expect(new BlenderWorkers({ ...OPTIONS, backend: 'app' }, { host: installedHost(), workerScript: async () => SCRIPT, start: app }).start(signal))
+    await expect(new BlenderWorkers({ ...OPTIONS, backend: 'app' }, { host: installedHost(), workerScript: async () => SCRIPT, start: app }).start(signal, SCOPE))
       .rejects.toBe(appFailure)
   })
 
@@ -396,10 +400,10 @@ describe('BlenderWorkers', () => {
     const host = new FakeHost({ executables: ['/usr/bin/uv'] })
     const start = vi.fn(async () => ({ ready: { app: 'blender', version: '5.2.3', python: '3.13.16' } }))
     const workers = new BlenderWorkers(OPTIONS, { host, workerScript: async () => SCRIPT, start })
-    const worker = await workers.start(signal)
+    const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('5.2.3')
     expect(start).toHaveBeenCalledWith({
-      argv: [VENV_PYTHON, '-I', '-u', SCRIPT], cwd: '/data/blender', env: { PATH: '/usr/bin:/bin' }, readyTimeoutMs: 30_000, logTailBytes: 65_536,
+      argv: [VENV_PYTHON, '-I', '-u', SCRIPT], cwd: '/data/blender/workers/1', env: { PATH: '/usr/bin:/bin' }, readyTimeoutMs: 30_000, logTailBytes: 65_536,
     }, signal)
     expect(host.made[0]).toBe('/data/blender')
     expect(workers.takeNotes()).toEqual([
@@ -412,7 +416,7 @@ describe('BlenderWorkers', () => {
   it('names the Blender app runtime', async () => {
     const start = async (): Promise<{ ready: { app: string; version: string; python: string } }> => ({ ready: { app: 'blender', version: '4.2.0', python: '3.11.9' } })
     const workers = new BlenderWorkers({ ...OPTIONS, backend: 'app' }, { host: new FakeHost({ executables: [APP] }), workerScript: async () => SCRIPT, start })
-    await workers.start(signal)
+    await workers.start(signal, SCOPE)
     expect(workers.takeNotes()).toEqual(['Blender 4.2.0 started (Blender app, Python 3.11.9) with its default scene.'])
   })
 })

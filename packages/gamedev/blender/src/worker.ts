@@ -13,6 +13,7 @@ async function main(): Promise<void> {
   try {
     await runAppMcpServer({
       name: BLENDER_SERVER_NAME,
+      app: 'Blender',
       version: '1.0.0',
       instructions: BLENDER_INSTRUCTIONS,
       workerScript: new URL('../py/wasd_blender_worker.py', import.meta.url),

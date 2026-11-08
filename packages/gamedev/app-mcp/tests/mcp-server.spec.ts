@@ -12,6 +12,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
 import { WorkerError } from '../src/json-line-worker.ts'
 import { serveAppMcp, type AppMcpServerOptions, type AppTool } from '../src/mcp-server.ts'
+import { SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY } from '../src/session-scope.ts'
 import { PipeClientTransport, temporaryDirectory, textOf as firstText } from './harness.ts'
 
 const MiB = 1024 * 1024
@@ -138,6 +139,30 @@ describe('listing and calling tools', () => {
       },
     })).rejects.toThrow(/already registered/u)
     expect(globalThis.console).toBe(original)
+  })
+})
+
+describe('Session scopes', () => {
+  /** Tools whose echo answers with the Session it was built for. */
+  function sessionTools(session: string | undefined): ReadonlyMap<string, AppTool<z.ZodRawShape>> {
+    return new Map([['echo', { ...echo, run: async () => ({ text: session ?? 'none' }) } as AppTool<z.ZodRawShape>]])
+  }
+
+  it('lists no Session scope capability without scoped tools', async () => {
+    const { client } = await serve([echo])
+    expect(client.getServerCapabilities()?.experimental?.[SESSION_SCOPE_CAPABILITY]).toBeUndefined()
+  })
+
+  it('runs each call with the tools of the Session that its _meta names', async () => {
+    const { client } = await serve([echo], { scopedTools: sessionTools })
+    expect(client.getServerCapabilities()?.experimental?.[SESSION_SCOPE_CAPABILITY]).toEqual({})
+    const call = async (meta?: Record<string, unknown>): Promise<string> =>
+      firstText(await client.callTool({ name: 'echo', arguments: { text: 'x' }, ...meta === undefined ? {} : { _meta: meta } }))
+    expect(await call({ [SESSION_SCOPE_META_KEY]: 'session-3' })).toBe('session-3')
+    expect(await call()).toBe('none')
+    // A value that is not a non-empty string of at most 200 characters names no Session.
+    for (const value of [42, '', 'x'.repeat(201)]) expect(await call({ [SESSION_SCOPE_META_KEY]: value })).toBe('none')
+    expect(await call({ [SESSION_SCOPE_META_KEY]: 'y'.repeat(200) })).toBe('y'.repeat(200))
   })
 })
 

@@ -8,7 +8,7 @@ import type { GimpServerOptions } from '../src/types.ts'
 
 const OPTIONS: GimpServerOptions = {
   dataRoot: '/data/gimp', gimpConsolePath: '', readyTimeoutMs: 120_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000,
-  graceMs: 3000, maxLogBytes: 65_536,
+  graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
 }
 const MACOS = '/Applications/GIMP.app/Contents/MacOS'
 const CONSOLE = `${MACOS}/gimp-console-3.2`
@@ -50,6 +50,9 @@ function macHost(consoles: readonly string[], options: FakeHostOptions = {}): Fa
 }
 
 const signal = new AbortController().signal
+
+/** The worker scope the pool would pass: a Session and its numbered folder. */
+const SCOPE = { key: 'session:spec', directory: '/data/gimp/workers/1' }
 
 describe('parseServerOptions', () => {
   it('accepts the options the plugin sends and names invalid fields', () => {
@@ -179,10 +182,10 @@ describe('GimpWorkers', () => {
     const start = vi.fn(async () => ({ ready: { app: 'gimp', version: '3.2.8', python: '3.14.10' } }))
     const workerScript = vi.fn(async () => SCRIPT)
     const workers = new GimpWorkers(OPTIONS, { host, workerScript, start })
-    const worker = await workers.start(signal)
+    const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('3.2.8')
     expect(start).toHaveBeenCalledWith({
-      argv: gimpWorkerArgv(CONSOLE, SCRIPT), cwd: '/data/gimp', env: { PATH: '/bin', GIMP3_DIRECTORY: '/data/gimp/profile' },
+      argv: gimpWorkerArgv(CONSOLE, SCRIPT), cwd: '/data/gimp/workers/1', env: { PATH: '/bin', GIMP3_DIRECTORY: '/data/gimp/profile' },
       readyTimeoutMs: 120_000, logTailBytes: 65_536,
     }, signal)
     expect(host.made).toEqual(['/data/gimp/profile'])
@@ -194,7 +197,7 @@ describe('GimpWorkers', () => {
     const workerScript = vi.fn(async () => SCRIPT)
     const start = vi.fn(async () => ({ ready: { app: 'gimp', version: '3.2.8', python: '3.14.10' } }))
     const mac = new FakeHost()
-    const failure = new GimpWorkers(OPTIONS, { host: mac, workerScript, start }).start(signal)
+    const failure = new GimpWorkers(OPTIONS, { host: mac, workerScript, start }).start(signal, SCOPE)
     await expect(failure).rejects.toBeInstanceOf(GimpSetupError)
     await expect(failure).rejects.toMatchObject({
       code: 'GIMP_NOT_FOUND',
@@ -202,7 +205,7 @@ describe('GimpWorkers', () => {
         + 'then call the tool again. The GIMP plugin setting gimpConsolePath or the GIMP_CONSOLE environment variable selects a specific '
         + 'gimp-console executable.',
     })
-    const linux = new GimpWorkers(OPTIONS, { host: new FakeHost({ platform: 'linux', env: {} }), workerScript, start }).start(signal)
+    const linux = new GimpWorkers(OPTIONS, { host: new FakeHost({ platform: 'linux', env: {} }), workerScript, start }).start(signal, SCOPE)
     await expect(linux).rejects.toMatchObject({ message: expect.not.stringContaining('brew') as string })
     expect(mac.made).toEqual([])
     expect(workerScript).not.toHaveBeenCalled()

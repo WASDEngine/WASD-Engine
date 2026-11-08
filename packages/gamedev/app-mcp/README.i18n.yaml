@@ -9,8 +9,8 @@
   en: 9062a8c8df470dc5
   zh: 7da1a45bc0e7db26
 /deepseek-ai-dsh-app-mcp/summary:
-  en: 579691a6f6b10bad
-  zh: c910439f6290131c
+  en: 28e1f873d79ef4f3
+  zh: 5838cfd414724a62
 /deepseek-ai-dsh-app-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -21,17 +21,17 @@
   en: da8c7069522909ea
   zh: c936ab87fad3ba5d
 /deepseek-ai-dsh-app-mcp/use-this-package/configure-the-plugin:
-  en: 8504c7f3a1b60185
-  zh: 46f77e50601c1a74
+  en: 51923dfdd955f492
+  zh: ac6ad5345f6cebe8
 /deepseek-ai-dsh-app-mcp/use-this-package/register-the-server:
-  en: daf40611c98539b5
-  zh: 325ce98b7ac7430f
+  en: 7417b1135536563f
+  zh: 05b19b6a4ae187eb
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-server-process:
-  en: 05efeca29ca0e7fc
-  zh: 8f784eff72d77632
+  en: de7d7ecdac5e31a8
+  zh: 4d891a15c5cafc45
 /deepseek-ai-dsh-app-mcp/use-this-package/serve-the-tools:
-  en: 9249f8f037f346e2
-  zh: cab44a8922d80529
+  en: 7e8f26a2bdcfd727
+  zh: f5575df81865b69d
 /deepseek-ai-dsh-app-mcp/use-this-package/build-the-tools:
   en: 27f046186b7c0e03
   zh: 8550a458c559417f
@@ -39,17 +39,20 @@
   en: cf808bc23d085212
   zh: cf9705f2e995f7ed
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-worker:
-  en: b2f7a6fb754538eb
-  zh: 49d5588df8127499
+  en: 5f9144f5287df9fe
+  zh: a0bbc3f775da99bf
+/deepseek-ai-dsh-app-mcp/use-this-package/one-worker-per-session:
+  en: 0514d4f838fa12f3
+  zh: 4c9955733dcb2fa4
 /deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
-  en: 4ece9af5d07025d4
-  zh: f28d08a8cdfb3415
+  en: d861d4c6e3de143c
+  zh: d0654b3832f0ba31
 /deepseek-ai-dsh-app-mcp/use-this-package/copy-shipped-files-to-real-paths:
   en: 97ae7e1c41f94bdf
   zh: 0c3387495709f95e
 /deepseek-ai-dsh-app-mcp/understand-the-implementation:
-  en: d36ff23128fe2104
-  zh: e4512247ddb77d1d
+  en: 1884923ad3992732
+  zh: afe4ae89888a5814
 /deepseek-ai-dsh-app-mcp/further-exploration:
   en: 85ecbc0d02201f9b
   zh: f446fd63761ac5bd
@@ -105,8 +108,8 @@
   en: c9ff5f25eab76338
   zh: e5ba6dc4b21859da
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work:
-  en: b69cd1c6a98c89db
-  zh: c584b49a91dc01ca
+  en: 289bd479a5b1f01a
+  zh: aa4783992e719f01
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

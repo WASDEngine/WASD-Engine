@@ -19,6 +19,7 @@ import type { CallToolResult, ImageContent, McpServer, TextContent } from '@mode
 import type { StdioServerHandle, StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import { z } from 'zod'
 import { WorkerError } from './json-line-worker.ts'
+import { SESSION_SCOPE_CAPABILITY, sessionOf } from './session-scope.ts'
 
 const MiB = 1024 * 1024
 
@@ -124,6 +125,13 @@ export interface AppMcpServerOptions {
   readonly instructions: string
   /** The tools; their names must be unique. */
   readonly tools: readonly AppTool<z.ZodRawShape>[]
+  /**
+   * The tools of one calling Session. When given, the server lists the Session scope capability, so the Host's MCP
+   * client names the calling Session in each tool call, and each call runs the tool of its name that this function
+   * returns for that Session's id, or for `undefined` when the call names no Session; `tools` then only sets what the
+   * server lists.
+   */
+  readonly scopedTools?: ((session: string | undefined) => ReadonlyMap<string, AppTool<z.ZodRawShape>>) | undefined
   /** Runs once at shutdown, before the process exits, to stop the worker; awaited at most 10 s. */
   readonly onClose?: (() => Promise<void>) | undefined
   /** Process resources to serve on; omission binds the current process. */
@@ -191,8 +199,9 @@ function routeConsole(stderr: Writable): () => void {
 }
 
 function createServer(Server: typeof McpServer, options: AppMcpServerOptions): McpServer {
+  const { scopedTools } = options
   const server = new Server({ name: options.name, version: options.version }, {
-    capabilities: { tools: {} },
+    capabilities: { tools: {}, ...scopedTools === undefined ? {} : { experimental: { [SESSION_SCOPE_CAPABILITY]: {} } } },
     instructions: options.instructions,
   })
   for (const tool of options.tools) {
@@ -200,7 +209,10 @@ function createServer(Server: typeof McpServer, options: AppMcpServerOptions): M
       ...tool.title === undefined ? {} : { title: tool.title },
       description: tool.description,
       inputSchema: z.object(tool.input),
-    }, (args, context) => respond(tool, args, context.mcpReq.signal))
+    }, (args, context) => {
+      const scoped = scopedTools === undefined ? tool : scopedTools(sessionOf(context.mcpReq._meta)).get(tool.name) ?? tool
+      return respond(scoped, args, context.mcpReq.signal)
+    })
   }
   return server
 }

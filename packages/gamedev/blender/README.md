@@ -76,6 +76,8 @@ A disabled row withdraws the tools and the server instructions from the model an
 | `requestTimeoutMs` | `600,000` | Default budget of one Blender request, at least 30 s less than `toolCallTimeoutMs`; when it expires, the worker stops and unsaved changes are lost |
 | `graceMs` | `3,000` | Time the worker gets to exit after the `shutdown` request, and again after SIGTERM, before SIGKILL |
 | `maxLogBytes` | `65,536` | Bytes of recent worker and uv output kept for error messages |
+| `maxWorkers` | `4` | Most Blender workers that run at once, one for each calling Session, from 1 to 16 |
+| `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's Blender worker stops and its unsaved scene is lost |
 
 <a id="backends"></a>
 ### Backends
@@ -91,7 +93,7 @@ A `uvPath`, `blenderPath`, or `BLENDER_PATH` value that does not name an executa
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, against the same Blender session.
+The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, and share one Blender session among themselves.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -117,11 +119,11 @@ The model calls each tool as `mcp__wasd_blender__<name>`, and every path argumen
 `render` renders from the scene camera unless `camera` names another camera object. `width`, `height`, `engine`, and `samples` apply to that render only, and a call without `path` writes a new file under `renders/` in `dataRoot`. `timeout_seconds` takes the bounds of `execute_python`'s: past it Blender is stopped and restarted and unsaved changes are lost, so a CYCLES render stops sampling early enough to finish in time, unless the scene sets a stricter time limit of its own.
 
 <a id="one-blender-session"></a>
-### One Blender session for every conversation
+### One Blender session per conversation
 
-The Host runs one Blender MCP server, and the server runs one Blender worker. Every Session and conversation therefore shares one open scene, one `execute_python` namespace, and one set of checkpoints, and calls run one at a time in arrival order. This state persists between calls until `new_scene` or `open_blend` replaces the scene. The replacement also clears the `execute_python` names, because a name that holds part of the old scene, such as `scene.render` or `mesh.vertices`, would point at freed memory: reading it returned garbage, and writing through it crashed Blender.
+The Host runs one Blender MCP server, and the server runs one Blender worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open scene, `execute_python` namespace, and set of checkpoints, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside; agents connected through WASD Engine's MCP server share one worker among themselves. This state persists between calls until `new_scene` or `open_blend` replaces the scene, or until the worker stops after `workerIdleTimeoutMs` without calls. The replacement also clears the `execute_python` names, because a name that holds part of the old scene, such as `scene.render` or `mesh.vertices`, would point at freed memory: reading it returned garbage, and writing through it crashed Blender.
 
-The worker starts on the first tool call with Blender's default scene. A crash, an expired request budget, or a cancelled running call stops the worker and loses unsaved changes. When the worker stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When the worker stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. When the MCP server itself dies, Blender ends within about a second, also in the middle of a call, and so do the processes that executed code started. Save `.blend` files at milestones.
+A Session's worker starts on its first tool call with Blender's default scene. A crash, an expired request budget, or a cancelled running call stops the worker and loses unsaved changes. When the worker stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When the worker stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. When the MCP server itself dies, Blender ends within about a second, also in the middle of a call, and so do the processes that executed code started. Save `.blend` files at milestones.
 
 <a id="headless-operation"></a>
 ### Headless operation
@@ -142,13 +144,14 @@ After rendering, `render_preview` restores the scene's camera, world, render set
 <a id="data-directory"></a>
 ### Files under the data directory
 
-The first tool call creates `dataRoot`, and the worker runs with it as its working directory.
+The first tool call creates `dataRoot`. Each worker runs in its own numbered folder in `workers/<pid>/`, the folder of the server process.
 
 | Path | Contents | Lifetime |
 |---|---|---|
 | `payload/<hash>/wasd_blender_worker.py` | Copy of the worker script as a real file outside the Desktop application archive; `<hash>` is the first 16 hex digits of its SHA-256 | Reused while the script is unchanged; earlier versions stay |
 | `uv-python/` | The Python that uv installs for the `bpy` backend | Kept |
 | `venv-py<pythonVersion>-bpy<bpyVersion>/` | The `bpy` environment, built in a `.partial-<uuid>` sibling and renamed into place; a directory there whose Python is not executable moves to a `.stale-<uuid>` sibling first | Kept; the plugin deletes only a moved-aside directory |
+| `workers/<pid>/<n>/` | A worker's working directory | Deleted after the worker stops; a starting server deletes the folders of server processes that have exited |
 | `previews/` | `render_preview` images and the downscaled copies of `render` images | Deleted when the call returns |
 | `renders/<time>-<id>.png` | `render` output for a call without `path` | Kept |
 
@@ -234,7 +237,7 @@ After the server connects, the MCP client adds the instructions from [`src/instr
 ##### Blender server instructions
 
 ```markdown
-Blender runs headless behind these tools: there is no window, viewport, or screenshot. One Blender session and one open scene serve every conversation and persist between calls until new_scene or open_blend replaces them, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
+Blender runs headless behind these tools: there is no window, viewport, or screenshot. Blender keeps one session for each conversation: its open scene persists between calls until new_scene or open_blend replaces it, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, or stops after a long pause in the calls, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
 
 Paths are absolute. Resolve relative names against your working directory. Put game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
@@ -290,7 +293,8 @@ Append-only: calls and their results follow the existing request prefix and do n
 
 These limits describe current gaps in the Blender tools.
 
-- **One Blender for every Session** — all Sessions share one open scene, one Python namespace, and one set of checkpoints, so one Session can change or replace another Session's scene, and a long render delays every other Blender call.
+- **Connected agents share one Blender** — agents connected through WASD Engine's MCP server share one open scene, Python namespace, and set of checkpoints, so one can change or replace another's scene, and a long render delays the others' calls.
+- **An idle Session loses its scene** — a Session's worker stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`, and the unsaved scene goes with it.
 - **No window** — the tools offer no viewport, interface, or window or area screenshot, and operators that need a window fail; `render_preview` is the only way to look at the scene, and `render` needs a camera.
 - **Restarts lose unsaved work** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops the worker; the scene, the Python namespace, and the checkpoints are gone, and the fresh worker starts with Blender's default scene.
 - **First use is slow and large** — the `bpy` backend installs during the first tool call, which waits for it; when the call exceeds `toolCallTimeoutMs`, uv stops, the partial environment is removed, and the next call starts the installation again. A new `bpyVersion` or `pythonVersion` installs another environment, and the plugin removes none that works.

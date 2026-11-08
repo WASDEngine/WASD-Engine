@@ -12,8 +12,8 @@ import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerSupervisor, materializePayload } from '@deepseek-ai/dsh-app-mcp'
-import type { JsonLineWorkerSpec } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import type { AppWorkerScope, JsonLineWorkerSpec } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { BlenderWorkers, childEnvironment, findBlender, findUv, nodeBlenderSetupHost, resolveWorkerLaunch } from '../src/environment.ts'
 import { blenderTools } from '../src/tools.ts'
@@ -30,7 +30,11 @@ const blender = await findBlender({ blenderPath: '' }, host)
 const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
   backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 300_000, graceMs: 3000, maxLogBytes: 64 * 1024,
+  maxWorkers: 4, workerIdleTimeoutMs: 600_000,
 }
+
+/** Scope of the tool calls, as a Session's calls reach the server. */
+const SESSION = 'session:e2e'
 
 function pngSize(bytes: Uint8Array): { width: number; height: number } {
   expect([...bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -218,12 +222,18 @@ function suite(name: string, { argv, serverWiring, leadsGroup }: Launcher): void
         start: async (startSpec, signal) => await JsonLineWorker.start(startSpec, signal),
       })
       const start = serverWiring
-        ? async (signal: AbortSignal) => await workers.start(signal)
+        ? async (signal: AbortSignal, scope: AppWorkerScope) => await workers.start(signal, scope)
         : async (signal: AbortSignal) => await JsonLineWorker.start(workerSpec, signal)
-      const supervisor = new WorkerSupervisor(start, { requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs })
+      const pool = new WorkerPool({
+        app: 'Blender', root: join(dataRoot, 'workers'), start, takeNotes: () => workers.takeNotes(), maxWorkers: options.maxWorkers,
+        idleTimeoutMs: options.workerIdleTimeoutMs, requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
+      })
       const tools = new Map(blenderTools({
-        call: async (method, params, callOptions) => await supervisor.call(method, params, callOptions),
-        takeNotes: () => workers.takeNotes(), dataRoot, requestTimeoutMs: options.requestTimeoutMs, maxTimeoutMs: options.toolCallTimeoutMs,
+        call: async (method, params, callOptions) => await pool.call(SESSION, method, params, callOptions),
+        takeNotes: () => pool.takeNotes(SESSION),
+        dataRoot,
+        requestTimeoutMs: options.requestTimeoutMs,
+        maxTimeoutMs: options.toolCallTimeoutMs,
       }).map(tool => [tool.name, tool]))
       const run = async (tool: string, args: Record<string, unknown> = {}) => await tools.get(tool)!.run(args, new AbortController().signal)
       try {
@@ -238,7 +248,7 @@ function suite(name: string, { argv, serverWiring, leadsGroup }: Launcher): void
         const glb = join(dataRoot, 'tool-export', 'scene.glb')
         await expect(run('export_gltf', { path: glb })).resolves.toMatchObject({ text: expect.stringContaining(`to ${glb} (GLB, `) as string })
       } finally {
-        await supervisor.close()
+        await pool.close()
       }
     }, 240_000)
 
