@@ -1,6 +1,6 @@
 /**
  * Ship a native runtime inside a plugin package of the Desktop app (fork-owned; `wasdengine/FORK.md` lists the fork
- * changes). `wasdengine-libgodot.ts` and `wasdengine-supercollider.ts` describe their runtimes with a
+ * changes). `wasdengine-libgodot.ts`, `wasdengine-supercollider.ts`, and `wasdengine-gimp.ts` describe their runtimes with a
  * {@link ShippedRuntimeKind}; `stageRuntimeArchive` reads the kind's release manifest, from a URL or from a local
  * `build.sh --out` folder, checks the archive of the packaged platform against the manifest's size and SHA-256,
  * unpacks it with `tar`, lets the kind check the unpacked files, and moves them into
@@ -12,7 +12,7 @@
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { chmod, mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -119,6 +119,44 @@ export async function fileSha256(path: string): Promise<string> {
   const digest = createHash('sha256')
   for await (const chunk of createReadStream(path)) digest.update(chunk as Buffer)
   return digest.digest('hex')
+}
+
+/** Every file below `directory`, as `/`-separated relative paths; anything but a file or a folder fails. */
+async function filesBelow(directory: string, label: string, prefix = ''): Promise<string[]> {
+  const files: string[] = []
+  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
+    const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`
+    if (entry.isDirectory()) files.push(...await filesBelow(directory, label, path))
+    else if (entry.isFile()) files.push(path)
+    else throw new Error(`desktop runtime: the ${label} archive holds ${path}, which is not a file or a folder`)
+  }
+  return files
+}
+
+/**
+ * Check that an unpacked archive holds exactly the files that the `sha256` field of its `runtime.json` lists, each with
+ * the listed SHA-256.
+ * @param directory - folder holding the unpacked archive.
+ * @param digests - `runtime.json`'s map from `/`-separated relative path to SHA-256.
+ * @param label - runtime name in messages, such as `SuperCollider`.
+ * @returns the files, sorted, without `runtime.json`.
+ * @throws When a file is unlisted, missing, not a file or a folder, or does not match its SHA-256.
+ */
+export async function verifyListedFiles(directory: string, digests: Readonly<Record<string, unknown>>, label: string): Promise<string[]> {
+  const files = (await filesBelow(directory, label)).filter(file => file !== 'runtime.json').sort()
+  const listed = Object.keys(digests).sort()
+  const unlisted = files.filter(file => !Object.hasOwn(digests, file))
+  const missing = listed.filter(file => !files.includes(file))
+  if (unlisted.length > 0 || missing.length > 0) {
+    throw new Error(`desktop runtime: the ${label} archive does not hold exactly the files its runtime.json lists `
+      + `(unlisted: ${unlisted.slice(0, 5).join(', ') || 'none'}; missing: ${missing.slice(0, 5).join(', ') || 'none'})`)
+  }
+  for (const file of files) {
+    if (digests[file] !== await fileSha256(join(directory, ...file.split('/')))) {
+      throw new Error(`desktop runtime: ${label} ${file} does not match the SHA-256 its runtime.json lists`)
+    }
+  }
+  return files
 }
 
 async function isFile(path: string): Promise<boolean> {

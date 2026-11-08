@@ -9,8 +9,8 @@
   en: bd37034fc8c39aae
   zh: 50ff9d462fa9cda9
 /deepseek-ai-dsh-gimp/summary:
-  en: 4f9d2de22fcc3eea
-  zh: 55142398e2b34225
+  en: 7c3a20f69b5c018a
+  zh: d0eb375eaa336d77
 /deepseek-ai-dsh-gimp/table-of-contents:
   en: d152484eb41ac6b4
   zh: 725b47765ee8f30b
@@ -24,11 +24,14 @@
   en: f86a474920d683ea
   zh: 81f59388556dc269
 /deepseek-ai-dsh-gimp/use-this-package/configuration:
-  en: 9e3d5ac660e32a96
-  zh: 014731b7a0ff858e
+  en: 50efcd30b314a3f6
+  zh: 7c623edd1bdc5cbf
 /deepseek-ai-dsh-gimp/use-this-package/find-and-install-gimp-3:
-  en: 5d52a51475cee05d
-  zh: c7186de37e024ce8
+  en: 5416c7517f4abadd
+  zh: 1261e3a8cc1e9d6c
+/deepseek-ai-dsh-gimp/use-this-package/gimp-in-the-desktop-app:
+  en: c068cf6e48530b32
+  zh: 0e9b7c19246e8df4
 /deepseek-ai-dsh-gimp/use-this-package/the-gimp-profile-and-the-first-start:
   en: bbafb968309c667f
   zh: 9af6c7a5fbc2c5c9
@@ -51,8 +54,8 @@
   en: 1872b2483d4030c8
   zh: d25cf1abffe3ae33
 /deepseek-ai-dsh-gimp/understand-the-implementation/verify-against-real-gimp:
-  en: c647810fcbbbd305
-  zh: a52c18df157a0ae8
+  en: 4b352fab29241d5b
+  zh: e9459c9f4d569b03
 /deepseek-ai-dsh-gimp/further-exploration:
   en: 235991c684f2bd6a
   zh: a7e0fb032da904c7
@@ -90,8 +93,8 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees:
-  en: d36d219cefe5cbad
-  zh: 3efdbe4067e38dd6
+  en: c707ed73fd9fbb9b
+  zh: 03d9f8338dec24c1
 /deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees/gimp-installation-message-on-macos:
   en: c844116985f71eed
   zh: a8ef30b2c1b84a45
@@ -102,8 +105,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work:
-  en: 00342a2fc0eed3c7
-  zh: 65dc365cd0b19fde
+  en: a9e9f88e116956ba
+  zh: 5768e17947830fce
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

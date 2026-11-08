@@ -50,6 +50,17 @@ export const SUPERCOLLIDER_ASAR_UNPACK: string
  */
 export function applyWasdengineSuperCollider<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
 
+/** `asarUnpack` pattern of the GIMP runtime that `wasdengine-gimp.ts` ships in the GIMP plugin package. */
+export const GIMP_ASAR_UNPACK: string
+
+/**
+ * Keep the shipped GIMP runtime on disk, outside `app.asar`: gimp-console, its plug-ins, and its Python start as
+ * processes and read GIMP's libraries, data, and configuration by path, which none of them can do inside the archive.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineGimp<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
+
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons, and

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent inspect, model, render, and export 3D assets with Blender, which runs without a window: the agent looks at its work through rendered previews and exports glTF files for the game. WASD Engine Web and Desktop turn the tools on by default. The first tool call starts Blender, either the `bpy` Python module that uv installs on first use or an installed Blender in background mode, and the tool results report setup problems. One Blender session and one open scene serve every conversation; a crash or timeout loses unsaved changes.
+Let the agent inspect, model, render, and export 3D assets with Blender, which runs without a window: the agent looks at its work through rendered previews and exports glTF files for the game. WASD Engine Web and Desktop turn the tools on by default. The first tool call starts Blender, either the `bpy` Python module that uv installs on first use or an installed Blender in background mode, and the tool results report setup problems. Each conversation gets its own Blender session and open scene; a crash, a timeout, or a long pause loses unsaved changes.
 
 ## Table of Contents
 

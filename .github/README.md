@@ -51,7 +51,7 @@ WASD Engine bundles everything you need to build high-polish games in a single a
   </tr>
 </table>
 
-Godot is built into the Desktop app, and so is SuperCollider on macOS. Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3.
+Godot is built into the Desktop app, and so are SuperCollider and GIMP on macOS. Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and elsewhere the GIMP tools use your GIMP 3.
 
 ## Agents fill every game dev role
 

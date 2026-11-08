@@ -1,7 +1,9 @@
 /**
- * The GIMP worker and tools against a real GIMP 3 (`gimp-console`). The suite skips when GIMP 3
- * is not installed on this machine. It owns a temporary data directory, whose fresh GIMP profile
- * makes the first start take about 15 s, and every GIMP process it starts.
+ * The GIMP worker and tools against a real GIMP 3 (`gimp-console`): the runtime in the package's
+ * `runtime/` folder, which `wasdengine/gimp/build.sh --install` puts there, or else an installed
+ * GIMP 3, which `GIMP_CONSOLE` can name. The suite skips when neither exists on this machine. It
+ * owns a temporary data directory, whose fresh GIMP profile makes the first start take about 15 s,
+ * and every GIMP process it starts.
  */
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -11,15 +13,18 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, nodeSetupHost } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { GimpWorkers, findGimpConsole, gimpProfileDirectory, gimpWorkerArgv, workerEnvironment } from '../src/environment.ts'
+import {
+  bundledRuntimeRoot, findGimp, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, workerEnvironment,
+} from '../src/environment.ts'
 import { gimpTools } from '../src/tools.ts'
 import type { GimpServerOptions } from '../src/types.ts'
 
 const WORKER = fileURLToPath(new URL('../py/wasd_gimp_worker.py', import.meta.url))
-const host = nodeSetupHost()
-const gimpConsole = await findGimpConsole({ gimpConsolePath: '' }, host)
+const host = nodeGimpSetupHost()
+const BUNDLED_ROOT = bundledRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
+const installation = await findGimp({ gimpConsolePath: '' }, BUNDLED_ROOT, host)
 
 const READY_TIMEOUT_MS = 120_000
 const REQUEST_TIMEOUT_MS = 120_000
@@ -72,7 +77,7 @@ async function groupEnds(pgid: number, ms: number): Promise<boolean> {
   return false
 }
 
-describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
+describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
   let dataRoot = ''
   beforeAll(async () => { dataRoot = await mkdtemp(join(tmpdir(), 'dsh-gimp-e2e-')) })
   afterAll(async () => { await rm(dataRoot, { recursive: true, force: true }) })
@@ -80,7 +85,9 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
   it('speaks the worker protocol for every kind of method and leaves images unchanged by snapshots and exports', async () => {
     const profile = gimpProfileDirectory(dataRoot, process.platform)
     const worker = await JsonLineWorker.start({
-      argv: gimpWorkerArgv(gimpConsole!, WORKER), cwd: dataRoot, env: workerEnvironment(process.env, profile),
+      argv: gimpWorkerArgv(installation!.console, WORKER),
+      cwd: dataRoot,
+      env: workerEnvironment(process.env, profile, installation!.environment),
       readyTimeoutMs: READY_TIMEOUT_MS, logTailBytes: 64 * 1024,
     })
     const call = async (method: string, params: { [key: string]: JsonValue } = {}): Promise<JsonValue> =>
@@ -247,6 +254,7 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
     }
     const workers = new GimpWorkers(options, {
       host,
+      bundledRoot: BUNDLED_ROOT,
       workerScript: async () => await materializePayload(new URL('../py/wasd_gimp_worker.py', import.meta.url), dataRoot),
       start: async (spec, signal) => await JsonLineWorker.start(spec, signal),
     })
@@ -266,7 +274,8 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
     const run = async (tool: string, args: Record<string, unknown> = {}) => await tools.get(tool)!.run(args, new AbortController().signal)
     try {
       const created = await run('new_image', { width: 20, height: 10, fill: '#336699' })
-      const started = /^GIMP 3\.\d+\.\d+ started \(Python 3\.\d+\.\d+\) with no images open\.\n\n/
+      const shipped = installation!.shipped ? 'the runtime that WASD Engine ships, ' : ''
+      const started = new RegExp(`^GIMP 3\\.\\d+\\.\\d+ started \\(${shipped}Python 3\\.\\d+\\.\\d+\\) with no images open\\.\\n\\n`, 'u')
       expect(created.text).toMatch(started)
       expect(created.text.replace(started, '')).toMatch(/^Created image \d+, 20x10 with layer "Background" \(id \d+\), filled #336699\.$/)
       const image = Number(/Created image (\d+)/.exec(created.text)![1])
@@ -296,9 +305,9 @@ describe.skipIf(gimpConsole === undefined)('GIMP 3 worker', () => {
   }, 300_000)
 
   it.skipIf(process.platform === 'win32')('stops GIMP when the server dies during a request', async () => {
-    const [command, ...args] = gimpWorkerArgv(gimpConsole!, WORKER)
+    const [command, ...args] = gimpWorkerArgv(installation!.console, WORKER)
     const gimp = spawn(command, args, {
-      cwd: dataRoot, env: workerEnvironment(process.env, gimpProfileDirectory(dataRoot, process.platform)),
+      cwd: dataRoot, env: workerEnvironment(process.env, gimpProfileDirectory(dataRoot, process.platform), installation!.environment),
       stdio: ['pipe', 'pipe', 'pipe', 'pipe'], detached: true,
     })
     const pid = gimp.pid!

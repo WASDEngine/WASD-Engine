@@ -1,0 +1,167 @@
+# Build the WASD Engine GIMP runtime (wasdengine/gimp/BUILD.md) for macOS arm64
+# from GIMP's official macOS application, smoke-test it, and, when run on the
+# default branch, publish the archive and its manifest.json as the GitHub
+# release gimp-<version>, whose manifest.json Desktop packaging reads. A run on
+# another branch builds and uploads workflow artifacts only. Runs on manual
+# dispatch only.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: GIMP runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Runtime version; the release is tagged gimp-<version>
+        required: true
+        default: 3.2.8-wasd.1
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-gimp-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the build scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/gimp
+
+      - name: Lint build.sh
+        run: |
+          bash -n wasdengine/gimp/build.sh
+          shellcheck wasdengine/gimp/build.sh
+
+      - name: Test runtime.py and smoke.py
+        run: python3 -B -I -m unittest discover --start-directory wasdengine/gimp --pattern 'test_*.py' --verbose
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: darwin-arm64
+            os: macos-14
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      # Holds the installed runtime and the smoke test's files; its name has characters outside ASCII, as many
+      # user names do, which GIMP must handle in paths.
+      SMOKE_NAME: gimp-smoke-ü-游戏
+    steps:
+      # The sparse checkout keeps the root files, among them LICENSE, which build.sh ships as the runtime's COPYING.
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/gimp
+
+      - name: Build and install the runtime
+        run: >-
+          wasdengine/gimp/build.sh
+          --version "$VERSION" --repository "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/gimp-out" --install "$RUNNER_TEMP/$SMOKE_NAME/runtime"
+
+      # build.sh smoke-tests the staged files before it packs them; this runs the same test on the unpacked archive.
+      - name: Smoke-test the installed runtime
+        timeout-minutes: 10
+        run: >-
+          python3 -I wasdengine/gimp/smoke.py
+          --runtime "$RUNNER_TEMP/$SMOKE_NAME/runtime/${{ matrix.artifact }}" --work "$RUNNER_TEMP/$SMOKE_NAME/work"
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gimp-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/gimp-out/gimp-*.tar.gz
+            ${{ runner.temp }}/gimp-out/manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    name: Publish gimp-${{ inputs.version }}
+    needs: build
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/gimp
+
+      - name: Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: gimp-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Merge the manifests and check the archives
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          cp "$RUNNER_TEMP"/artifacts/gimp-*/gimp-*.tar.gz "$release_dir/"
+          python3 -I wasdengine/gimp/runtime.py merge --output "$release_dir/manifest.json" "$RUNNER_TEMP"/artifacts/gimp-*/manifest.json
+          python3 -I wasdengine/gimp/runtime.py verify --manifest "$release_dir/manifest.json" --dir "$release_dir" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/gimp-$VERSION/"
+          cat "$release_dir/manifest.json"
+
+      # The release starts as a draft, which stays hidden until its assets are
+      # attached; publishing it creates the tag at this run's commit. A draft
+      # that an earlier failed run left is moved to this run's commit and its
+      # assets are replaced. A published release is never changed, because
+      # replacing an asset deletes it first and packaging verifies the digests
+      # that manifest.json lists. The archives go up before manifest.json.
+      - name: Create and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          tag="gimp-$VERSION"
+          gimp=$(jq -j .gimp "$release_dir/manifest.json")
+          title="GIMP runtime $VERSION"
+          notes="WASD Engine GIMP runtime $VERSION: gimp-console with the libraries, plug-ins, data, and Python of GIMP $gimp's official macOS build, without its GUI program, debug symbols, headers, translations, and build tools, which the Desktop app ships for its GIMP plugin. GIMP is licensed under GPL-3.0-or-later; each archive's SOURCE.txt names the corresponding source, and wasdengine/gimp/BUILD.md describes the build. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::The release $tag is already published and must not change; dispatch a new runtime version."
+              exit 1
+            fi
+            gh release edit "$tag" --target "$GITHUB_SHA"
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi
+          gh release upload "$tag" "$release_dir"/gimp-*.tar.gz --clobber
+          gh release upload "$tag" "$release_dir/manifest.json" --clobber
+          gh release edit "$tag" --draft=false --latest=false --title "$title" --notes "$notes"

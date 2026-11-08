@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity, and the unpacked LibGodot and SuperCollider runtimes, to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, and the unpacked LibGodot, SuperCollider, and GIMP runtimes, to the ordinary Desktop release configuration. */
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
@@ -49,6 +49,20 @@ export const SUPERCOLLIDER_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-super
  */
 export function applyWasdengineSuperCollider(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, SUPERCOLLIDER_ASAR_UNPACK] }
+}
+
+/** `asarUnpack` pattern of the GIMP runtime that `wasdengine-gimp.ts` ships in the GIMP plugin package. */
+export const GIMP_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-gimp/runtime/**/*'
+
+/**
+ * Keep the shipped GIMP runtime on disk, outside `app.asar`: gimp-console, its plug-ins, and its Python start as
+ * processes and read GIMP's libraries, data, and configuration by path, which none of them can do inside the archive.
+ * @template {{ readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineGimp(config) {
+  return { ...config, asarUnpack: [...config.asarUnpack, GIMP_ASAR_UNPACK] }
 }
 
 /**

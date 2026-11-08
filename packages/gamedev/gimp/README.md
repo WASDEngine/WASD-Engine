@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent paint, filter, and transform layered images with GIMP 3, which runs without a window: the agent looks at its work through snapshots and exports textures, sprites, and sprite sheets into the game project. WASD Engine Web and Desktop turn the tools on by default. The first tool call starts GIMP with its own profile, which takes about 15 s the first time; without GIMP 3, the tool results say how to install it. One GIMP session serves every conversation; a crash or timeout closes every open image and loses unsaved changes.
+Let the agent paint, filter, and transform layered images with GIMP 3, which runs without a window: the agent looks at its work through snapshots and exports textures, sprites, and sprite sheets into the game project. WASD Engine Web and Desktop turn the tools on by default. The Desktop app ships GIMP for macOS; elsewhere the tools use an installed GIMP 3. GIMP's first start, with a new profile, takes about 15 s. Each conversation gets its own GIMP session; a crash, a timeout, or a long pause closes its open images and loses unsaved changes.
 
 ## Table of Contents
 
@@ -65,7 +65,7 @@ A disabled row withdraws the tools and the server instructions from the model an
 | Field | Default | Meaning |
 |---|---|---|
 | `dataRoot` | required | Absolute directory for the GIMP profile, snapshots, and the worker script copy |
-| `gimpConsolePath` | `''` | Absolute `gimp-console` executable of GIMP 3; empty uses the `GIMP_CONSOLE` environment variable, then the standard install locations (see [Find and install GIMP 3](#find-gimp)) |
+| `gimpConsolePath` | `''` | Absolute `gimp-console` executable of GIMP 3; empty uses the `GIMP_CONSOLE` environment variable, then the runtime that the Desktop app ships, then the standard install locations (see [Find and install GIMP 3](#find-gimp)) |
 | `toolCallTimeoutMs` | `900,000` | Budget of one tool call, including a GIMP start; a GIMP request, including an `execute_python` timeout, may use all of it but the last 30 s, which a worker start and the result keep |
 | `startupTimeoutMs` | `30,000` | Budget for the MCP server to connect and list its tools; listing the tools starts no GIMP |
 | `readyTimeoutMs` | `120,000` | Budget for a starting GIMP worker to report ready |
@@ -82,14 +82,20 @@ The server looks for the `gimp-console` executable of GIMP 3 each time a worker 
 
 1. `gimpConsolePath`, when it is not empty.
 2. The `GIMP_CONSOLE` environment variable, when it is set and not empty; the server reads it from the environment that started Web or Desktop.
-3. On macOS, the newest versioned console in `Contents/MacOS` of a GIMP application bundle (`gimp*.app`, in any case) in `/Applications` or `~/Applications`; at equal versions, `/Applications` wins.
-4. The newest versioned console in the first `PATH` directory that has one.
-5. `gimp-console` in the first `PATH` directory that has it.
-6. On Windows, the newest versioned console in the `bin` folder of a `GIMP 3*` installation, trying the installations under `%ProgramFiles%` (`C:\Program Files` when unset), then those under `%LOCALAPPDATA%\Programs`, each newest first.
+3. The runtime that the Desktop app ships for this platform and architecture ([GIMP in the Desktop app](#shipped-gimp)).
+4. On macOS, the newest versioned console in `Contents/MacOS` of a GIMP application bundle (`gimp*.app`, in any case) in `/Applications` or `~/Applications`; at equal versions, `/Applications` wins.
+5. The newest versioned console in the first `PATH` directory that has one.
+6. `gimp-console` in the first `PATH` directory that has it.
+7. On Windows, the newest versioned console in the `bin` folder of a `GIMP 3*` installation, trying the installations under `%ProgramFiles%` (`C:\Program Files` when unset), then those under `%LOCALAPPDATA%\Programs`, each newest first.
 
 Versioned consoles are named `gimp-console-3` or `gimp-console-3.<minor>`, optionally followed by more `.<number>` parts, and the newest has the highest version numbers; on Windows, these names and `gimp-console` end in `.exe`. Only absolute `PATH` directories count. A `gimpConsolePath` or `GIMP_CONSOLE` value that does not name an executable file fails the call with a message that names the setting; the search does not continue.
 
 When nothing matches, the call fails before it touches `dataRoot`, and its message says to install GIMP 3 from <https://www.gimp.org/downloads/>, on macOS also with `brew install --cask gimp`, and names both settings. Install GIMP 3, then call the tool again; the search runs at every worker start, so the Host does not need a restart.
+
+<a id="shipped-gimp"></a>
+### GIMP in the Desktop app
+
+The Desktop app for macOS on Apple silicon ships GIMP in this package's `runtime/darwin-arm64/` folder, outside `app.asar`; [`wasdengine/gimp/BUILD.md`](../../../wasdengine/gimp/BUILD.md) describes how the runtime is built from GIMP's official macOS build. The folder's `runtime.json` names the console and the data, translation, and configuration folders, and the server passes those folders to GIMP as `GIMP3_DATADIR`, `GIMP3_LOCALEDIR`, and `GIMP3_SYSCONFDIR`, because GIMP's Python plug-ins run from a nested `Python.app` and cannot find them from their own location. A `runtime.json` that is not JSON, describes another platform, or names a console that is not an executable file fails the call with `GIMP_RUNTIME_INVALID` and a message that says to reinstall WASD Engine or set `gimpConsolePath`. The runtime leaves out GIMP's translations, so GIMP and its plug-ins run in English. Its `COPYING` and `SOURCE.txt` carry GIMP's license and name the corresponding source. A source checkout installs the runtime with `wasdengine/gimp/build.sh --out <dir> --install packages/gamedev/gimp/runtime`, into a folder that git ignores.
 
 <a id="gimp-profile"></a>
 ### The GIMP profile and the first start
@@ -213,7 +219,7 @@ The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config 
 
 ### Verify against real GIMP
 
-From the repository root, run the end-to-end suite. It runs only when the GIMP search finds GIMP 3, which `GIMP_CONSOLE` can select, and it is skipped otherwise. Its temporary data directory gives GIMP a new profile, so its first GIMP start is the slow one.
+From the repository root, run the end-to-end suite. It runs only when the GIMP search finds GIMP 3: the runtime in this package's `runtime/` folder, or an installed GIMP 3, which `GIMP_CONSOLE` can select; it is skipped otherwise. Its temporary data directory gives GIMP a new profile, so its first GIMP start is the slow one.
 
 ```sh
 pnpm run test:e2e packages/gamedev/gimp/tests/gimp-worker.e2e.ts
@@ -297,7 +303,7 @@ The text is constant, so a reconnect renders an identical section. The section a
 
 #### What the model sees
 
-Each result has one text block, and `snapshot` adds one PNG or JPEG image whose longest edge is at most 1,568 pixels and whose file is at most 3 MiB. After each worker start, the next result begins with `GIMP <version> started (Python <python>) with no images open.` and a blank line. `list_images`, `image_info`, `filter_info`, and `pdb_describe` return compact JSON; the other tools return sentences that name the image, the layer, and sizes, some followed by JSON. Error results carry the failure: a missing GIMP 3 returns the installation message below, a rejected request or a GIMP failure returns the worker's exception type and message with `Error code: WORKER_REMOTE`, an `execute_python` exception returns its traceback, and a stopped worker returns its error code, recent GIMP output when there is any, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
+Each result has one text block, and `snapshot` adds one PNG or JPEG image whose longest edge is at most 1,568 pixels and whose file is at most 3 MiB. After each worker start, the next result begins with `GIMP <version> started (Python <python>) with no images open.`, or `GIMP <version> started (the runtime that WASD Engine ships, Python <python>) with no images open.` for the runtime of the Desktop app, and a blank line. `list_images`, `image_info`, `filter_info`, and `pdb_describe` return compact JSON; the other tools return sentences that name the image, the layer, and sizes, some followed by JSON. Error results carry the failure: a missing GIMP 3 returns the installation message below, a rejected request or a GIMP failure returns the worker's exception type and message with `Error code: WORKER_REMOTE`, an `execute_python` exception returns its traceback, and a stopped worker returns its error code, recent GIMP output when there is any, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
 
 ##### GIMP installation message on macOS
 
@@ -324,7 +330,8 @@ These limits describe current gaps in the GIMP tools.
 - **No window** — the tools offer no canvas, interface, or screenshot of GIMP, and `pdb_run` runs every procedure non-interactively, without its dialog; `snapshot` is the only way to look at an image.
 - **Restarts lose open images** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops GIMP; the open images, unsaved changes, selections, and the Python namespace are gone, and the fresh worker starts with no images open.
 - **Slow first start** — the first start with a new profile takes about 15 s, and the tool call that triggers it waits.
-- **Fixed GIMP search** — the search covers the two settings, macOS application bundles, `PATH`, and Windows installations under `%ProgramFiles%` and `%LOCALAPPDATA%\Programs`; GIMP installed elsewhere needs `gimpConsolePath` or `GIMP_CONSOLE`. A plain `gimp-console` on `PATH` is used without a version check, so a GIMP 2 found there cannot start the worker.
+- **Shipped for macOS on Apple silicon only** — the Desktop app ships GIMP only for macOS on Apple silicon, where it adds about 290 MB to the installed app and about 95 MB to its download; Web, Linux, and Windows use an installed GIMP 3.
+- **Fixed GIMP search** — the search covers the two settings, the shipped runtime, macOS application bundles, `PATH`, and Windows installations under `%ProgramFiles%` and `%LOCALAPPDATA%\Programs`; GIMP installed elsewhere needs `gimpConsolePath` or `GIMP_CONSOLE`. A plain `gimp-console` on `PATH` is used without a version check, so a GIMP 2 found there cannot start the worker.
 - **No crash watchdog on Windows** — the worker starts its watchdog only where `os.name` is `posix`; elsewhere, when GIMP's Python process dies, GIMP keeps running and holds the reply pipe open, so the running call fails only when its request budget expires.
 - **Some procedure values are out of reach** — `pdb_run` cannot set an argument whose type has no JSON form, and it returns integer and number arrays as a placeholder, because GIMP's Python bindings cannot read them.
 - **Images need an image-capable route** — on a model route without image input, the model receives diagnostic text instead of snapshots.

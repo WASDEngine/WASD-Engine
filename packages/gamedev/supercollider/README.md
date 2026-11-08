@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent design sound effects and music in SuperCollider code and render them offline into audio files in the game project. Nothing plays aloud, so every render and analysis returns levels, loudness, silence, and spectrum figures and a waveform and spectrogram image to judge the sound by. WASD Engine Web and Desktop turn the tools on by default; the Desktop app ships SuperCollider without its graphical interface, and elsewhere the tools use an installed one. One interpreter serves every conversation; a crash or timeout starts a fresh one without the SynthDefs and variables that code defined.
+Let the agent design sound effects and music in SuperCollider code and render them offline into audio files in the game project. Nothing plays aloud, so every render and analysis returns levels, loudness, silence, and spectrum figures and a waveform and spectrogram image to judge the sound by. WASD Engine Web and Desktop turn the tools on by default; the Desktop app ships SuperCollider without its graphical interface, and elsewhere the tools use an installed one. Each conversation gets its own interpreter; a crash, a timeout, or a long pause discards its SynthDefs and variables.
 
 ## Table of Contents
 

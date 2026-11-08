@@ -11,7 +11,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
-| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程 |
+| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 上自带的运行时，或已安装的 GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
 

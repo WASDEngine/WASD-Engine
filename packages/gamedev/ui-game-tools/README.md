@@ -107,7 +107,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define what the tabs show and when; they are current package constraints.
 
 - **Three fixed tools** — the tabs list the packages in `GAME_TOOL_MODULES`; a tool row added to the overlay appears in the tabs only after its package joins that list, and the overlay drift spec fails until both agree.
-- **Loader state only** — a card shows whether its row is enabled, loading, or failed, not whether the tool's application is set up, such as Blender's `bpy` environment, an installed GIMP 3, the LibGodot runtime, or SuperCollider; the tools' results and the Game tab report those.
+- **Loader state only** — a card shows whether its row is enabled, loading, or failed, not whether the tool's application is set up, such as Blender's `bpy` environment, GIMP 3, the LibGodot runtime, or SuperCollider; the tools' results and the Game tab report those.
 - **One Settings read per mount or retry** — the Settings tab does not follow later changes while it stays mounted; reopening Settings reads again.
 - **Unannounced profile edits** — the plugin manager announces no change for a hand edit of the profile patch, which HMR applies, so the Plugins page tab shows it only when the tab mounts again; the tab has no Refresh control, and the page hides its own while a contributed tab is open.
 - **No logos in the Plugin list** — the Plugin list tab of Built-in plugins still shows the three tools without logos, among the global plugins, which start folded.

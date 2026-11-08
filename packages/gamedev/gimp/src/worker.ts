@@ -3,8 +3,9 @@
  * plugin passed in argv; the GIMP worker starts on the first tool call and stops when the server
  * closes. Wiring only: the modules it connects carry the behavior and their tests.
  */
-import { nodeSetupHost, runAppMcpServer } from '@deepseek-ai/dsh-app-mcp'
-import { GimpWorkers, parseServerOptions } from './environment.ts'
+import { fileURLToPath } from 'node:url'
+import { runAppMcpServer } from '@deepseek-ai/dsh-app-mcp'
+import { bundledRuntimeRoot, GimpWorkers, nodeGimpSetupHost, parseServerOptions } from './environment.ts'
 import { GIMP_INSTRUCTIONS, GIMP_SERVER_NAME } from './instructions.ts'
 import { gimpTools } from './tools.ts'
 
@@ -18,7 +19,11 @@ async function main(): Promise<void> {
       instructions: GIMP_INSTRUCTIONS,
       workerScript: new URL('../py/wasd_gimp_worker.py', import.meta.url),
       parseOptions: parseServerOptions,
-      workers: (options, dependencies) => new GimpWorkers(options, { ...dependencies, host: nodeSetupHost() }),
+      workers: (options, dependencies) => new GimpWorkers(options, {
+        ...dependencies,
+        host: nodeGimpSetupHost(),
+        bundledRoot: bundledRuntimeRoot(fileURLToPath(new URL('..', import.meta.url))),
+      }),
       tools: gimpTools,
     }, process.argv)
   } catch (error) {

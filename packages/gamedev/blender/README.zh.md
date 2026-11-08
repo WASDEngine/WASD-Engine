@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender，要么是 uv 在首次使用时安装的 `bpy` Python 模块，要么是以后台模式运行的已安装 Blender；工具结果会报告安装问题。所有对话共用一个 Blender 会话和一个打开的场景；崩溃或超时会丢失未保存的更改。
+让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender，要么是 uv 在首次使用时安装的 `bpy` Python 模块，要么是以后台模式运行的已安装 Blender；工具结果会报告安装问题。每个对话都有自己的 Blender 会话和打开的场景；崩溃、超时或长时间没有调用都会丢失未保存的更改。
 
 ## 目录
 

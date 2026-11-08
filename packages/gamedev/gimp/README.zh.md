@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）在没有窗口的 GIMP 3 中绘制分层图像、为其应用滤镜并进行变换：agent 通过快照查看自己的成果，并把纹理、精灵图和精灵图集（sprite sheet）导出到游戏项目中。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会以独立的 GIMP 配置目录（profile）启动 GIMP，第一次约需 15 秒；未安装 GIMP 3 时，工具结果会说明如何安装。所有对话共用一个 GIMP 会话；崩溃或超时会关闭所有打开的图像，并丢失未保存的更改。
+让 agent（智能体）在没有窗口的 GIMP 3 中绘制分层图像、为其应用滤镜并进行变换：agent 通过快照查看自己的成果，并把纹理、精灵图和精灵图集（sprite sheet）导出到游戏项目中。WASD Engine 的 Web 与 Desktop 默认启用这些工具。Desktop 应用为 macOS 自带 GIMP；在其他环境中工具使用已安装的 GIMP 3。GIMP 使用新配置目录（profile）的首次启动约需 15 秒。每个对话都有自己的 GIMP 会话；崩溃、超时或长时间没有调用会关闭其打开的图像，并丢失未保存的更改。
 
 ## 目录
 
@@ -65,7 +65,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放 GIMP 配置目录、快照和工作脚本副本的绝对目录 |
-| `gimpConsolePath` | `''` | GIMP 3 的 `gimp-console` 可执行文件的绝对路径；为空时先使用 `GIMP_CONSOLE` 环境变量，再查找标准安装位置（见[查找并安装 GIMP 3](#find-gimp)） |
+| `gimpConsolePath` | `''` | GIMP 3 的 `gimp-console` 可执行文件的绝对路径；为空时先使用 `GIMP_CONSOLE` 环境变量，再使用 Desktop 应用自带的运行时，然后查找标准安装位置（见[查找并安装 GIMP 3](#find-gimp)） |
 | `toolCallTimeoutMs` | `900,000` | 单次工具调用的时限，包括启动 GIMP；一个 GIMP 请求（包括 `execute_python` 的超时）最多可用到其中除最后 30 s 以外的全部时间，这 30 s 留给工作进程启动和结果 |
 | `startupTimeoutMs` | `30,000` | MCP 服务器连接并列出工具的时限；列出工具不会启动 GIMP |
 | `readyTimeoutMs` | `120,000` | 正在启动的 GIMP 工作进程报告就绪的时限 |
@@ -82,14 +82,20 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 1. `gimpConsolePath`（非空时）。
 2. `GIMP_CONSOLE` 环境变量（已设置且非空时）；服务器从启动 Web 或 Desktop 的环境中读取它。
-3. 在 macOS 上，`/Applications` 或 `~/Applications` 中 GIMP 应用包（`gimp*.app`，不区分大小写）的 `Contents/MacOS` 里最新的带版本号控制台；版本相同时 `/Applications` 优先。
-4. 第一个含带版本号控制台的 `PATH` 目录中最新的那个。
-5. 第一个含 `gimp-console` 的 `PATH` 目录中的 `gimp-console`。
-6. 在 Windows 上，`GIMP 3*` 安装目录的 `bin` 文件夹中最新的带版本号控制台；先尝试 `%ProgramFiles%`（未设置时为 `C:\Program Files`）下的安装，再尝试 `%LOCALAPPDATA%\Programs` 下的安装，各自按从新到旧的顺序。
+3. Desktop 应用为当前平台与架构自带的运行时（[Desktop 应用中的 GIMP](#shipped-gimp)）。
+4. 在 macOS 上，`/Applications` 或 `~/Applications` 中 GIMP 应用包（`gimp*.app`，不区分大小写）的 `Contents/MacOS` 里最新的带版本号控制台；版本相同时 `/Applications` 优先。
+5. 第一个含带版本号控制台的 `PATH` 目录中最新的那个。
+6. 第一个含 `gimp-console` 的 `PATH` 目录中的 `gimp-console`。
+7. 在 Windows 上，`GIMP 3*` 安装目录的 `bin` 文件夹中最新的带版本号控制台；先尝试 `%ProgramFiles%`（未设置时为 `C:\Program Files`）下的安装，再尝试 `%LOCALAPPDATA%\Programs` 下的安装，各自按从新到旧的顺序。
 
 带版本号的控制台名为 `gimp-console-3` 或 `gimp-console-3.<minor>`，后面还可以跟更多 `.<number>` 部分，版本号最高者即为最新；在 Windows 上，这些名称和 `gimp-console` 都以 `.exe` 结尾。只有绝对路径的 `PATH` 目录才计入。`gimpConsolePath` 或 `GIMP_CONSOLE` 的值不是可执行文件时，调用失败，消息会指出是哪项设置；搜索不会继续。
 
 没有任何匹配时，调用在触及 `dataRoot` 之前失败，消息说明可从 <https://www.gimp.org/downloads/> 安装 GIMP 3，在 macOS 上也可以用 `brew install --cask gimp` 安装，并指出这两项设置。安装 GIMP 3 后再次调用工具即可；每次启动工作进程都会重新搜索，因此无需重启宿主。
+
+<a id="shipped-gimp"></a>
+### Desktop 应用中的 GIMP
+
+面向 Apple 芯片 macOS 的 Desktop 应用把 GIMP 放在本包的 `runtime/darwin-arm64/` 文件夹中，位于 `app.asar` 之外；[`wasdengine/gimp/BUILD.md`](../../../wasdengine/gimp/BUILD.md) 说明如何由 GIMP 官方的 macOS 构建制作该运行时。该文件夹的 `runtime.json` 写明控制台以及数据、翻译和配置文件夹，服务器以 `GIMP3_DATADIR`、`GIMP3_LOCALEDIR` 与 `GIMP3_SYSCONFDIR` 把这些文件夹传给 GIMP，因为 GIMP 的 Python 插件从嵌套的 `Python.app` 中运行，无法根据自身位置找到它们。`runtime.json` 不是 JSON、描述的是其他平台，或写明的控制台不是可执行文件时，调用以 `GIMP_RUNTIME_INVALID` 失败，消息说明应重新安装 WASD Engine 或设置 `gimpConsolePath`。该运行时不含 GIMP 的翻译，因此 GIMP 及其插件以英文运行。其中的 `COPYING` 与 `SOURCE.txt` 带有 GIMP 的许可证，并写明对应的源代码。源码检出可用 `wasdengine/gimp/build.sh --out <dir> --install packages/gamedev/gimp/runtime` 把运行时安装到 git 忽略的文件夹中。
 
 <a id="gimp-profile"></a>
 ### GIMP 配置目录与首次启动
@@ -213,7 +219,7 @@ GIMP3_DIRECTORY=<dataRoot>/profile <gimp-console> -n -s -c --batch-interpreter=p
 
 ### 用真实 GIMP 验证
 
-在仓库根目录运行端到端测试套件。只有 GIMP 搜索找到 GIMP 3 时（可用 `GIMP_CONSOLE` 指定）套件才会运行，否则跳过。它的临时数据目录为 GIMP 提供新的配置目录，因此其中第一次 GIMP 启动就是较慢的那次。
+在仓库根目录运行端到端测试套件。只有 GIMP 搜索找到 GIMP 3 时套件才会运行：本包 `runtime/` 文件夹中的运行时，或已安装的 GIMP 3（可用 `GIMP_CONSOLE` 指定）；否则跳过。它的临时数据目录为 GIMP 提供新的配置目录，因此其中第一次 GIMP 启动就是较慢的那次。
 
 ```sh
 pnpm run test:e2e packages/gamedev/gimp/tests/gimp-worker.e2e.ts
@@ -297,7 +303,7 @@ close_image discards unsaved changes, so save first when they matter.
 
 #### 模型可见内容
 
-每个结果包含一个文本块，`snapshot` 另附一张 PNG 或 JPEG 图像，其最长边不超过 1,568 像素，文件不超过 3 MiB。每次工作进程启动后，下一个结果以 `GIMP <version> started (Python <python>) with no images open.` 和一个空行开头。`list_images`、`image_info`、`filter_info` 与 `pdb_describe` 返回紧凑的 JSON；其他工具返回写明图像、图层和尺寸的句子，部分句子后面附有 JSON。错误结果携带失败信息：未找到 GIMP 3 时返回下面的安装消息，请求被拒绝或 GIMP 操作失败时返回工作进程的异常类型和消息以及 `Error code: WORKER_REMOTE`，`execute_python` 的异常返回其 traceback，工作进程停止时返回错误码、有内容时附上最近的 GIMP 输出，以及状态已丢失的通知。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
+每个结果包含一个文本块，`snapshot` 另附一张 PNG 或 JPEG 图像，其最长边不超过 1,568 像素，文件不超过 3 MiB。每次工作进程启动后，下一个结果以 `GIMP <version> started (Python <python>) with no images open.`（Desktop 应用自带的运行时则为 `GIMP <version> started (the runtime that WASD Engine ships, Python <python>) with no images open.`）和一个空行开头。`list_images`、`image_info`、`filter_info` 与 `pdb_describe` 返回紧凑的 JSON；其他工具返回写明图像、图层和尺寸的句子，部分句子后面附有 JSON。错误结果携带失败信息：未找到 GIMP 3 时返回下面的安装消息，请求被拒绝或 GIMP 操作失败时返回工作进程的异常类型和消息以及 `Error code: WORKER_REMOTE`，`execute_python` 的异常返回其 traceback，工作进程停止时返回错误码、有内容时附上最近的 GIMP 输出，以及状态已丢失的通知。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
 
 ##### macOS 上的 GIMP 安装消息
 
@@ -324,7 +330,8 @@ GIMP 3 was not found. Install GIMP 3 from https://www.gimp.org/downloads/ (on ma
 - **没有窗口** — 工具不提供画布、界面或 GIMP 截图，`pdb_run` 以非交互方式运行每个过程，不显示其对话框；`snapshot` 是查看图像的唯一方式。
 - **重启会丢失打开的图像** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使 GIMP 停止；打开的图像、未保存的更改、选区和 Python 命名空间随之丢失，新的工作进程启动时没有打开的图像。
 - **首次启动较慢** — 使用新配置目录的首次启动约需 15 秒，触发它的工具调用会一直等待。
-- **GIMP 搜索范围固定** — 搜索覆盖两项设置、macOS 应用包、`PATH`，以及 Windows 上 `%ProgramFiles%` 与 `%LOCALAPPDATA%\Programs` 下的安装；安装在其他位置的 GIMP 需要 `gimpConsolePath` 或 `GIMP_CONSOLE`。`PATH` 上不带版本号的 `gimp-console` 不经版本检查即被使用，因此若在那里找到的是 GIMP 2，工作进程无法启动。
+- **只为 Apple 芯片的 macOS 自带** — Desktop 应用只为 Apple 芯片的 macOS 自带 GIMP，使安装后的应用增加约 290 MB、下载增加约 95 MB；Web、Linux 与 Windows 使用已安装的 GIMP 3。
+- **GIMP 搜索范围固定** — 搜索覆盖两项设置、自带的运行时、macOS 应用包、`PATH`，以及 Windows 上 `%ProgramFiles%` 与 `%LOCALAPPDATA%\Programs` 下的安装；安装在其他位置的 GIMP 需要 `gimpConsolePath` 或 `GIMP_CONSOLE`。`PATH` 上不带版本号的 `gimp-console` 不经版本检查即被使用，因此若在那里找到的是 GIMP 2，工作进程无法启动。
 - **Windows 上没有崩溃看门狗** — 工作进程只在 `os.name` 为 `posix` 时启动看门狗；在其他系统上，GIMP 的 Python 进程终止后，GIMP 继续运行并保持回复管道打开，因此正在运行的调用要等请求时限到期才会失败。
 - **部分过程值无法访问** — `pdb_run` 无法设置类型没有 JSON 形式的参数，并把整数数组和数值数组作为占位文本返回，因为 GIMP 的 Python 绑定无法读取它们。
 - **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到的是诊断文本，而不是快照。

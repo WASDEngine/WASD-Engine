@@ -15,10 +15,10 @@
  * `WASD_SUPERCOLLIDER_MANIFEST_URL` replaces the default manifest; `WASD_SUPERCOLLIDER_BUNDLE=0` packages without
  * SuperCollider.
  */
-import { readdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  fileSha256, isRecord, parseRuntimeArchive, stageRuntimeArchive, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
+  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
   type ShippedRuntimeKind,
 } from './wasdengine-runtime-archive.ts'
 
@@ -34,18 +34,6 @@ interface Manifest {
 
 /** Fields of `runtime.json` that name the runtime's programs and folders. */
 const NAMED_ENTRIES = ['sclang', 'scsynth', 'plugins', 'classLibrary', 'helpSource'] as const
-
-/** Every file below `directory`, as `/`-separated relative paths; anything but a file or a folder fails. */
-async function runtimeFiles(directory: string, prefix = ''): Promise<string[]> {
-  const files: string[] = []
-  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
-    const path = prefix === '' ? entry.name : `${prefix}/${entry.name}`
-    if (entry.isDirectory()) files.push(...await runtimeFiles(directory, path))
-    else if (entry.isFile()) files.push(path)
-    else throw new Error(`desktop runtime: the SuperCollider archive holds ${path}, which is not a file or a folder`)
-  }
-  return files
-}
 
 const SUPERCOLLIDER: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
   label: 'SuperCollider',
@@ -81,20 +69,7 @@ const SUPERCOLLIDER: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
       || NAMED_ENTRIES.some(field => typeof record[field] !== 'string')) {
       throw new Error(`desktop runtime: the SuperCollider archive's runtime.json does not describe ${manifest.version} for ${key}`)
     }
-    const digests = record.sha256
-    const files = (await runtimeFiles(directory)).filter(file => file !== 'runtime.json').sort()
-    const listed = Object.keys(digests).sort()
-    const unlisted = files.filter(file => !Object.hasOwn(digests, file))
-    const missing = listed.filter(file => !files.includes(file))
-    if (unlisted.length > 0 || missing.length > 0) {
-      throw new Error('desktop runtime: the SuperCollider archive does not hold exactly the files its runtime.json lists '
-        + `(unlisted: ${unlisted.slice(0, 5).join(', ') || 'none'}; missing: ${missing.slice(0, 5).join(', ') || 'none'})`)
-    }
-    for (const file of files) {
-      if (digests[file] !== await fileSha256(join(directory, ...file.split('/')))) {
-        throw new Error(`desktop runtime: SuperCollider ${file} does not match the SHA-256 its runtime.json lists`)
-      }
-    }
+    const files = await verifyListedFiles(directory, record.sha256, 'SuperCollider')
     const programs = [record.sclang, record.scsynth]
     for (const program of programs) {
       if (typeof program !== 'string' || !files.includes(program)) {

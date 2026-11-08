@@ -11,7 +11,7 @@ The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.md) | `mcp__wasd_blender__<tool>`, from the MCP server `wasd_blender` | For each calling Session, one Python worker: the `bpy` module in a managed virtual environment, or an installed Blender in background mode |
-| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.md) | `mcp__wasd_gimp__<tool>`, from the MCP server `wasd_gimp` | For each calling Session, one GIMP 3 `gimp-console` process that runs the worker as a Python batch command |
+| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.md) | `mcp__wasd_gimp__<tool>`, from the MCP server `wasd_gimp` | For each calling Session, one GIMP 3 `gimp-console` process that runs the worker as a Python batch command: the runtime that the Desktop app ships on macOS, or an installed GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.md) | Native `godot_*` tools and a `godot` system-prompt section | One game process per Session: `godot_runner` hosting LibGodot |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.md) | `mcp__wasd_supercollider__<tool>`, from the MCP server `wasd_supercollider` | For each calling Session, one bridge process with one sclang, which runs scsynth offline for each render: the runtime that the Desktop app ships, or an installed SuperCollider |
 

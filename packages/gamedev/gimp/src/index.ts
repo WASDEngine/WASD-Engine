@@ -24,7 +24,10 @@ export const inject = ['mcpManager']
 export interface Config extends AppMcpConfig {
   /** Absolute directory for the GIMP profile, snapshots, and the worker script copy. */
   dataRoot: string
-  /** Absolute gimp-console executable of GIMP 3; empty uses GIMP_CONSOLE, then the standard install locations. */
+  /**
+   * Absolute gimp-console executable of GIMP 3; empty uses GIMP_CONSOLE, then the runtime that the Desktop app ships,
+   * then the standard install locations.
+   */
   gimpConsolePath: string
   /** Budget for the MCP server to start and list its tools. */
   startupTimeoutMs: number
