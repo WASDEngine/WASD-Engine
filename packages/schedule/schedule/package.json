@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-schedule",
   "description": "Host-wide durable reminders with shared management and delivery to existing or new Sessions",
-  "version": "0.1.0-rc",
+  "version": "0.1.0-rc.2",
   "publishConfig": {
     "access": "public"
   },

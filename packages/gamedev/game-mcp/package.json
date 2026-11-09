@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-game-mcp",
   "description": "Serve WASD Engine's game tools to other agents on this computer over a local MCP server",
-  "version": "0.1.0-rc",
+  "version": "0.1.0-rc.2",
   "publishConfig": {
     "access": "public"
   },

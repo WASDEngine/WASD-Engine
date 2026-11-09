@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-tool-executor-ptc",
   "description": "PTC program execution, tool bindings, and generated SDK prompts",
-  "version": "0.1.0-rc",
+  "version": "0.1.0-rc.2",
   "publishConfig": {
     "access": "public"
   },
