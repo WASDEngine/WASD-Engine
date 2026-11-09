@@ -80,7 +80,7 @@ In `runtime.json`, `format` is the file format that the plugin and Desktop packa
   "gimp": "3.2.8",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASDEngine/releases/download/gimp-3.2.8-wasd.1/gimp-3.2.8-wasd.1-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-3.2.8-wasd.1/gimp-3.2.8-wasd.1-darwin-arm64.tar.gz",
       "bytes": 95737486,
       "sha256": "<SHA-256 digest of the archive>"
     }
@@ -88,7 +88,7 @@ In `runtime.json`, `format` is the file format that the plugin and Desktop packa
 }
 ```
 
-`url` is the archive's download URL in the GitHub release `gimp-<version>` of the repository that `--repository` names (default `WASDEngine/WASDEngine`), `bytes` is the archive size, and `sha256` is the archive's digest. Building the other architecture into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or GIMP version.
+`url` is the archive's download URL in the GitHub release `gimp-<version>` of the repository that `--repository` names (default `WASDEngine/WASD-Engine`), `bytes` is the archive size, and `sha256` is the archive's digest. Building the other architecture into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or GIMP version.
 
 The macOS arm64 runtime holds 4,413 files: about 290 MB unpacked and 96 MB as an archive.
 

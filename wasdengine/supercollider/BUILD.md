@@ -84,7 +84,7 @@ In `runtime.json`, `format` is the file format that the plugin and Desktop packa
   "supercollider": "3.14.1",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASDEngine/releases/download/supercollider-3.14.1-wasd.1/supercollider-3.14.1-wasd.1-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-3.14.1-wasd.1/supercollider-3.14.1-wasd.1-darwin-arm64.tar.gz",
       "bytes": 5303349,
       "sha256": "<SHA-256 digest of the archive>"
     }
@@ -92,7 +92,7 @@ In `runtime.json`, `format` is the file format that the plugin and Desktop packa
 }
 ```
 
-`url` is the archive's download URL in the GitHub release `supercollider-<version>` of the repository that `--repository` names (default `WASDEngine/WASDEngine`), `bytes` is the archive size, and `sha256` is the archive's digest. Building another platform into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or SuperCollider version.
+`url` is the archive's download URL in the GitHub release `supercollider-<version>` of the repository that `--repository` names (default `WASDEngine/WASD-Engine`), `bytes` is the archive size, and `sha256` is the archive's digest. Building another platform into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or SuperCollider version.
 
 The macOS arm64 runtime is about 18 MB unpacked and 5.3 MB as an archive; the Linux arm64 runtime, which also holds FFTW, is about 26 MB unpacked and 8.6 MB as an archive.
 

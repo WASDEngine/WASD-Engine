@@ -21,7 +21,7 @@
 #   --jobs <n>                  parallel compile jobs (default: the CPU count)
 #   --vcpkg <dir>               use this vcpkg checkout instead of cloning the pinned commit into <out>/vcpkg
 #   --repository <owner/name>   GitHub repository whose release supercollider-<version> hosts
-#                               the archive in manifest.json (default WASDEngine/WASDEngine)
+#                               the archive in manifest.json (default WASDEngine/WASD-Engine)
 #   -h, --help                  print this help
 set -euo pipefail
 
@@ -67,7 +67,7 @@ version=3.14.1-wasd.1
 install_root=
 jobs=
 vcpkg_dir=
-repository=WASDEngine/WASDEngine
+repository=WASDEngine/WASD-Engine
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --out) out_dir=$(option_value "$@") ;;

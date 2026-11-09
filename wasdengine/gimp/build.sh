@@ -17,7 +17,7 @@
 #   --install <root>            install the archive into <root>/darwin-<arch>/, such as
 #                               packages/gamedev/gimp/runtime
 #   --repository <owner/name>   GitHub repository whose release gimp-<version> hosts
-#                               the archive in manifest.json (default WASDEngine/WASDEngine)
+#                               the archive in manifest.json (default WASDEngine/WASD-Engine)
 #   -h, --help                  print this help
 set -euo pipefail
 
@@ -65,7 +65,7 @@ out_dir=
 dmg=
 version=3.2.8-wasd.1
 install_root=
-repository=WASDEngine/WASDEngine
+repository=WASDEngine/WASD-Engine
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --out) out_dir=$(option_value "$@") ;;

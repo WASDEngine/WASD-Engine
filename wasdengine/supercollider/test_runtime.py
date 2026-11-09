@@ -26,7 +26,7 @@ SPEC.loader.exec_module(runtime)
 VERSION = "3.14.1-wasd.1"
 SUPERCOLLIDER = "3.14.1"
 EPOCH = 1_700_000_000
-BASE_URL = f"https://github.com/WASDEngine/WASDEngine/releases/download/supercollider-{VERSION}/"
+BASE_URL = f"https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-{VERSION}/"
 # A runtime tree in miniature: the two programs, one plugin, one class file, one help file, and the license.
 FILES: Dict[str, Tuple[bytes, int]] = {
     "sclang": (b"sclang bytes", 0o755),
@@ -78,7 +78,7 @@ class RuntimeToolTest(unittest.TestCase):
         return [
             "package", "--stage", stage, "--out", out or self.out, "--version", version, "--supercollider", supercollider,
             "--platform", platform, "--arch", "arm64" if platform == "darwin" else "x64", "--sclang", "sclang", "--scsynth", "scsynth",
-            "--repository", "WASDEngine/WASDEngine",
+            "--repository", "WASDEngine/WASD-Engine",
         ]
 
     def package(self, platform: str = "darwin", files: Dict[str, Tuple[bytes, int]] = FILES, **options: str) -> Tuple[int, str, str]:

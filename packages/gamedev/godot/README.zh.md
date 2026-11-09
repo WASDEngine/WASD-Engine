@@ -67,7 +67,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
 | `runtimeVersion` | `4.7.2-wasd.1` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
-| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | 安装时下载的发布 manifest |
+| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
@@ -375,7 +375,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 以下限制描述 Godot 运行、“游戏”标签页和运行时当前的不足。
 
 - **游戏以宿主用户的全部权限运行** — 游戏、导入步骤和 `godot_check` 作为宿主的普通子进程运行。Session 权限模式（例如 `read-only` 或 `workspace-write`）的[沙箱](../../sandbox/sandbox-policy/README.zh.md)不约束它们，它们也从不像 `bash` 命令那样请求[批准](../../interaction/user-approval/README.zh.md)。`godot_run` 启动的游戏代码、`godot_check` 加载的脚本，以及 `godot_eval` 求值的表达式（它可以运行包括 `OS.execute` 在内的任意 GDScript），都能读写宿主用户可访问的所有文件并启动其他程序。`project` 接受绝对路径或工作目录之外的路径，因此 `godot_run` 和 `godot_check` 会运行宿主用户可读取的任何项目。
-- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASDEngine` 的 `libgodot-4.7.2-wasd.1`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
+- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.1`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
 - **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过 `runnerPath` 与 `libgodotPath` 指定的本地 LibGodot 构建运行。
 - **macOS 以外会打开窗口** — LibGodot 补丁只在 macOS 上实现无窗口渲染。在 Linux 与 Windows 上，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。

@@ -66,7 +66,7 @@ const API_ORIGIN = 'https://api.wasdengine.com'
 const COLLECTOR_ROWS = ['session-telemetry-otel', 'desktop-product-telemetry', 'product-analytics'] as const
 
 /** Page the account menu's Feedback item opens, in place of the upstream default, DeepSeek's Feishu form. */
-const FEEDBACK_URL = 'https://github.com/WASDEngine/WASDEngine/issues/new'
+const FEEDBACK_URL = 'https://github.com/WASDEngine/WASD-Engine/issues/new'
 
 /** Directory whose files GitHub's new-issue page reads. */
 const ISSUE_TEMPLATE_DIR = join(repoRoot, '.github/ISSUE_TEMPLATE')
@@ -389,7 +389,7 @@ describe('WASDEngine overlay', () => {
     const config = issueTemplate('config.yml')
     expect(config.blank_issues_enabled).toBe(true)
     for (const link of rowsOf(config.contact_links)) {
-      expect(String(link.url)).toMatch(/^https:\/\/github\.com\/WASDEngine\/WASDEngine(?:[/#?]|$)/u)
+      expect(String(link.url)).toMatch(/^https:\/\/github\.com\/WASDEngine\/WASD-Engine(?:[/#?]|$)/u)
     }
   })
 

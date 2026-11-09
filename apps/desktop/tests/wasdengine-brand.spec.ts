@@ -80,6 +80,7 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(config.appId).toBe(BRAND.appId)
     expect(config.extraMetadata.dshDesktopAppId).toBe(BRAND.appId)
     expect(config.productName).toBe(BRAND.productName)
+    expect(config.artifactName).toBe(`${BRAND.artifactBase}-\${version}-\${os}-\${arch}-unsigned.\${ext}`)
     expect(config.protocols).toEqual([{ name: BRAND.productName, schemes: [BRAND.urlScheme] }])
     // The packaged productName names Electron's data directory, so it never shares DeepSeek Harness's.
     expect(config.extraMetadata).toMatchObject({ productName: BRAND.productName, author: { name: BRAND.publisher } })
@@ -114,6 +115,11 @@ describe('WASDEngine Desktop packaging identity', () => {
     const config = applyWasdengineBrand(createElectronBuilderConfig({ ...UNSIGNED_MACOS, ...TEST_POLICY,
       DSH_DESKTOP_TARGET_PLATFORM: 'win32', DSH_DESKTOP_TARGET_ARCH: 'x64' }, 'win32', 'x64'))
     expect(config.extraResources.find(resource => resource.to === 'tray.ico')?.from).toBe(wasdengineBrandFile(BRAND.icons.tray))
+  })
+
+  it('refuses an upstream file name that no longer starts with deepseek-harness-', () => {
+    const config = createElectronBuilderConfig(UNSIGNED_MACOS, 'darwin', 'arm64')
+    expect(() => applyWasdengineBrand({ ...config, artifactName: 'harness.dmg' })).toThrow('update applyWasdengineBrand')
   })
 
   it('refuses a DeepSeek application identifier', () => {

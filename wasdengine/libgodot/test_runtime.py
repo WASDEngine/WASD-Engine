@@ -28,7 +28,7 @@ SPEC.loader.exec_module(runtime)
 VERSION = "4.7.2-wasd.1"
 GODOT = "4.7.2-stable"
 EPOCH = 1_700_000_000
-BASE_URL = f"https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-{VERSION}/"
+BASE_URL = f"https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-{VERSION}/"
 LIBRARIES = {"darwin": "libgodot.macos.editor.arm64.dylib", "linux": "libgodot.linuxbsd.editor.x86_64.so"}
 
 
@@ -71,7 +71,7 @@ class RuntimeToolTest(unittest.TestCase):
         return [
             "package", "--stage", stage, "--out", out or self.out, "--version", version, "--godot", godot,
             "--platform", platform, "--arch", arch, "--runner", "godot_runner", "--library", LIBRARIES[platform],
-            "--repository", "WASDEngine/WASDEngine",
+            "--repository", "WASDEngine/WASD-Engine",
         ]
 
     def package(self, platform: str = "darwin", version: str = VERSION, library_bytes: bytes = b"library bytes", out: str = "", godot: str = GODOT) -> Tuple[int, str, str]:

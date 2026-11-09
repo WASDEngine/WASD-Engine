@@ -23,7 +23,7 @@ import {
 } from './wasdengine-runtime-archive.ts'
 
 /** Manifest of the SuperCollider runtime release that `wasdengine/supercollider/build.sh` builds by default. */
-export const SUPERCOLLIDER_MANIFEST_URL = 'https://github.com/WASDEngine/WASDEngine/releases/download/supercollider-3.14.1-wasd.1/manifest.json'
+export const SUPERCOLLIDER_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-3.14.1-wasd.1/manifest.json'
 
 /** A format 1 SuperCollider runtime manifest, as `wasdengine/supercollider/runtime.py` writes it. */
 interface Manifest {

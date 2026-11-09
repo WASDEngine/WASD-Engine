@@ -172,7 +172,7 @@ export default class GodotController extends TypertRemoteService {
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
     dataRoot: z.string().required(),
     runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.1'),
-    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/manifest.json'),
+    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),

@@ -20,7 +20,7 @@
 #   --jobs <n>                  parallel SCons jobs (default: Godot's choice from the CPU count)
 #   --scons-cache <dir>         SCons cache directory (Godot's cache_path option)
 #   --repository <owner/name>   GitHub repository whose release libgodot-<version> hosts
-#                               the archive in manifest.json (default WASDEngine/WASDEngine)
+#                               the archive in manifest.json (default WASDEngine/WASD-Engine)
 #   -h, --help                  print this help
 set -euo pipefail
 
@@ -63,7 +63,7 @@ version=4.7.2-wasd.1
 install_root=
 jobs=
 scons_cache=
-repository=WASDEngine/WASDEngine
+repository=WASDEngine/WASD-Engine
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --out) out_dir=$(option_value "$@") ;;

@@ -64,7 +64,7 @@ async function release(change: {
     format: 1, version: '9.9-test', gimp: '3.2.8',
     artifacts: {
       'darwin-arm64': {
-        url: `https://github.com/WASDEngine/WASDEngine/releases/download/gimp-9.9-test/${ARCHIVE}`,
+        url: `https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-9.9-test/${ARCHIVE}`,
         bytes: archive.length, sha256: sha256(archive), ...change.artifact,
       },
     },
@@ -157,6 +157,6 @@ describe('GIMP packaging hooks', () => {
     expect(/export function bundledRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(environment)).toBe(true)
     const build = await readFile(new URL('../../../wasdengine/gimp/build.sh', import.meta.url), 'utf8')
     const version = /^version=(\S+)$/mu.exec(build)?.[1]
-    expect(GIMP_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASDEngine/releases/download/gimp-${String(version)}/manifest.json`)
+    expect(GIMP_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-${String(version)}/manifest.json`)
   })
 })

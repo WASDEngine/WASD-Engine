@@ -22,7 +22,7 @@ import {
 } from './wasdengine-runtime-archive.ts'
 
 /** Manifest of the GIMP runtime release that `wasdengine/gimp/build.sh` builds by default. */
-export const GIMP_MANIFEST_URL = 'https://github.com/WASDEngine/WASDEngine/releases/download/gimp-3.2.8-wasd.1/manifest.json'
+export const GIMP_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-3.2.8-wasd.1/manifest.json'
 
 /** A format 1 GIMP runtime manifest, as `wasdengine/gimp/runtime.py` writes it. */
 interface Manifest {

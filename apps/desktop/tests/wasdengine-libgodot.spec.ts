@@ -53,7 +53,7 @@ async function release(change: { readonly record?: object; readonly artifact?: o
     format: 1, version: '9.9-test', godot: '4.7.2-stable',
     artifacts: {
       'linux-x64': {
-        url: `https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-9.9-test/${ARCHIVE}`,
+        url: `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-9.9-test/${ARCHIVE}`,
         bytes: archive.length, sha256: sha256(archive), runner: 'godot_runner', library: 'libgodot.so', ...change.artifact,
       },
     },

@@ -68,7 +68,7 @@ async function release(change: {
     format: 1, version: '9.9-test', supercollider: '3.14.1',
     artifacts: {
       'linux-x64': {
-        url: `https://github.com/WASDEngine/WASDEngine/releases/download/supercollider-9.9-test/${ARCHIVE}`,
+        url: `https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-9.9-test/${ARCHIVE}`,
         bytes: archive.length, sha256: sha256(archive), ...change.artifact,
       },
     },
@@ -186,6 +186,6 @@ describe('SuperCollider packaging hooks', () => {
     expect(/export function bundledRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(environment)).toBe(true)
     const build = await readFile(new URL('../../../wasdengine/supercollider/build.sh', import.meta.url), 'utf8')
     const version = /^version=(\S+)$/mu.exec(build)?.[1]
-    expect(SUPERCOLLIDER_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASDEngine/releases/download/supercollider-${String(version)}/manifest.json`)
+    expect(SUPERCOLLIDER_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-${String(version)}/manifest.json`)
   })
 })

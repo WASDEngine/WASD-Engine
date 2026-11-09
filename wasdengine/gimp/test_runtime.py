@@ -27,7 +27,7 @@ SPEC.loader.exec_module(runtime)
 VERSION = "3.2.8-wasd.1"
 GIMP = "3.2.8"
 EPOCH = 1_700_000_000
-BASE_URL = f"https://github.com/WASDEngine/WASDEngine/releases/download/gimp-{VERSION}/"
+BASE_URL = f"https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-{VERSION}/"
 CONSOLE = "Contents/MacOS/gimp-console-3.2"
 # A runtime tree in miniature: the console, one library, data, a translation-free locale folder, configuration, and the license.
 FILES: Dict[str, Tuple[bytes, int]] = {
@@ -194,7 +194,7 @@ class RuntimeToolTest(unittest.TestCase):
     def package_arguments(self, stage: str, arch: str = "arm64", version: str = VERSION, out: str = "", gimp: str = GIMP) -> List[str]:
         return [
             "package", "--stage", stage, "--out", out or self.out, "--version", version, "--gimp", gimp,
-            "--platform", "darwin", "--arch", arch, "--console", CONSOLE, "--repository", "WASDEngine/WASDEngine",
+            "--platform", "darwin", "--arch", arch, "--console", CONSOLE, "--repository", "WASDEngine/WASD-Engine",
         ]
 
     def package(self, arch: str = "arm64", files: Dict[str, Tuple[bytes, int]] = FILES, **options: str) -> Tuple[int, str, str]:

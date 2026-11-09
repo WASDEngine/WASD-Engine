@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/WASDEngine/WASDEngine/releases/latest"><b>Download for macOS or Windows</b></a>
+  <a href="https://github.com/WASDEngine/WASD-Engine/releases/latest"><b>Download for macOS or Windows</b></a>
   &nbsp;·&nbsp;
   <a href="https://app.wasdengine.com">Website</a>
   &nbsp;·&nbsp;
@@ -123,7 +123,7 @@ See the [website](https://app.wasdengine.com) for current plans.
 Install Node.js 24.9 or later and pnpm 11.28.5. Node.js 25 and later ship without Corepack, so install pnpm with `npm install -g pnpm@11.28.5`. Then run:
 
 ```sh
-git clone https://github.com/WASDEngine/WASDEngine.git
+git clone https://github.com/WASDEngine/WASD-Engine.git
 cd WASDEngine
 pnpm install
 pnpm run build

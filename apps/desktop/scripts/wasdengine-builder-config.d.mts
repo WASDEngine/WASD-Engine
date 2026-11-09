@@ -63,12 +63,12 @@ export function applyWasdengineGimp<T extends { readonly asarUnpack: readonly st
 
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
- * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons, and
- * the microphone prompt.
+ * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons,
+ * the microphone prompt, and the start of the packaged file names.
  * @param config - Configuration from `createElectronBuilderConfig`.
  * @returns A new configuration that keeps every hook and packaging rule of `config`.
  * @throws When the application identifier is DeepSeek's, when the configuration embeds an update
  * feed outside `WASDENGINE_DESKTOP_BRAND.updateOrigin`, or when upstream no longer ships the About
- * panel icon this function replaces.
+ * panel icon or the file name start that this function replaces.
  */
 export function applyWasdengineBrand(config: DesktopElectronBuilderConfig): WasdengineElectronBuilderConfig

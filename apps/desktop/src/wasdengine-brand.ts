@@ -20,6 +20,8 @@ export const WASDENGINE_DESKTOP_BRAND = {
    * stock DeepSeek Harness install's.
    */
   packageName: 'wasdengine-desktop',
+  /** Start of every packaged file name, such as `WASD-Engine-0.1.0-rc-mac-arm64.dmg`, in place of upstream's `deepseek-harness`. */
+  artifactBase: 'WASD-Engine',
   /** Bundle identifier of unsigned local builds; release builds name theirs in `DSH_DESKTOP_APP_ID`. */
   appId: 'com.wasdengine.desktop',
   /** Deep-link scheme; `wasdengine://open` brings the application to the foreground. */

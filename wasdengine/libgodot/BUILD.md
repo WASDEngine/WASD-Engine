@@ -87,7 +87,7 @@ In `runtime.json`, `format` is the file format the Godot plugin reads (1), `vers
   "godot": "4.7.2-stable",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASDEngine/releases/download/libgodot-4.7.2-wasd.1/libgodot-4.7.2-wasd.1-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/libgodot-4.7.2-wasd.1-darwin-arm64.tar.gz",
       "bytes": 70598887,
       "sha256": "<SHA-256 digest of the archive>",
       "runner": "godot_runner",
@@ -97,7 +97,7 @@ In `runtime.json`, `format` is the file format the Godot plugin reads (1), `vers
 }
 ```
 
-`url` is the archive's download URL in the GitHub release `libgodot-<version>` of the repository that `--repository` names (default `WASDEngine/WASDEngine`), `bytes` is the archive size, `sha256` is the archive's digest, and `runner` and `library` name the two binaries at the archive's root. Building another platform into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or Godot version.
+`url` is the archive's download URL in the GitHub release `libgodot-<version>` of the repository that `--repository` names (default `WASDEngine/WASD-Engine`), `bytes` is the archive size, `sha256` is the archive's digest, and `runner` and `library` name the two binaries at the archive's root. Building another platform into the same output directory adds its entry. `build.sh` stops when the existing manifest lists another runtime or Godot version.
 
 ## Test
 
