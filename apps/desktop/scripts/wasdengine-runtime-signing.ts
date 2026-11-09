@@ -2,7 +2,7 @@
 
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
@@ -21,11 +21,13 @@ export type WasdengineRuntimeSigningStep =
 
 /**
  * List what upstream's per-file pass leaves unfinished in a prepared runtime tree. The LibGodot runner needs
- * `disable-library-validation` to load a game's GDExtensions, which other developers sign. GIMP's `Python.app` and each
- * `Python.framework` version are bundles, and signing their files one by one breaks the seals that notarization checks.
+ * `disable-library-validation` to load a game's GDExtensions, which other developers sign. GIMP's `Python.app` is an
+ * application bundle, and signing its executable alone breaks the seal that notarization checks. The runtime's
+ * `Python.framework` keeps no symbolic links, so `codesign` does not recognize it as a bundle, and the per-file pass
+ * already signs each of its Mach-O files.
  * @param root - Prepared `dsh` output root.
  * @param arch - Target architecture.
- * @returns Steps in signing order, each bundle after the bundles inside it; a runtime the tree lacks contributes none.
+ * @returns Steps in signing order; a runtime the tree lacks contributes none.
  */
 export function wasdengineRuntimeSigningPlan(root: string, arch: 'arm64' | 'x64'): WasdengineRuntimeSigningStep[] {
   const steps: WasdengineRuntimeSigningStep[] = []
@@ -34,11 +36,8 @@ export function wasdengineRuntimeSigningPlan(root: string, arch: 'arm64' | 'x64'
   const versions = `node_modules/@deepseek-ai/dsh-gimp/runtime/darwin-${arch}/Contents/lib/Python.framework/Versions`
   if (!existsSync(join(root, versions))) return steps
   for (const version of readdirSync(join(root, versions)).sort()) {
-    const framework = `${versions}/${version}`
-    if (!statSync(join(root, framework)).isDirectory()) continue
-    const app = `${framework}/Resources/Python.app`
+    const app = `${versions}/${version}/Resources/Python.app`
     if (existsSync(join(root, app))) steps.push({ kind: 'bundle', path: app })
-    steps.push({ kind: 'bundle', path: framework })
   }
   return steps
 }
@@ -46,7 +45,7 @@ export function wasdengineRuntimeSigningPlan(root: string, arch: 'arm64' | 'x64'
 /**
  * Sign the steps of {@link wasdengineRuntimeSigningPlan} with the release identity in the packaging keychain, after
  * upstream's per-file pass and before the runtime manifests record the tree. The runner keeps the identifier that the
- * per-file pass gave it; a bundle takes the identifier its `Info.plist` declares.
+ * per-file pass gave it; a bundle takes the identifier that `codesign` derives for it.
  * @param root - Prepared `dsh` output root.
  * @param appId - Release application identifier.
  * @param expected - Public release identity.

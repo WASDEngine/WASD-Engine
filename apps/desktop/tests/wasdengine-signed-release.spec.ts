@@ -114,7 +114,7 @@ describe('WASDEngine notarized macOS releases', () => {
     }
   })
 
-  it('signs the LibGodot runner with its entitlements and seals GIMP\'s Python bundles innermost first', async () => {
+  it('signs the LibGodot runner with its entitlements and seals GIMP\'s Python.app', async () => {
     const root = await mkdtemp(join(tmpdir(), 'wasdengine-runtime-signing-'))
     try {
       const runner = 'node_modules/@deepseek-ai/dsh-godot/libgodot/darwin-arm64/godot_runner'
@@ -125,7 +125,6 @@ describe('WASDEngine notarized macOS releases', () => {
       expect(wasdengineRuntimeSigningPlan(root, 'arm64')).toEqual([
         { kind: 'file', path: runner, entitlements: GODOT_RUNNER_ENTITLEMENTS },
         { kind: 'bundle', path: `${framework}/Resources/Python.app` },
-        { kind: 'bundle', path: framework },
       ])
       expect(wasdengineRuntimeSigningPlan(root, 'x64')).toEqual([])
     } finally {
