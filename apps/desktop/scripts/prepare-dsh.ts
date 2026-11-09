@@ -27,6 +27,7 @@ import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } f
 import { stageGimpRuntime } from './wasdengine-gimp.ts'
 import { stageLibGodotRuntime } from './wasdengine-libgodot.ts'
 import { stageSuperColliderRuntime } from './wasdengine-supercollider.ts'
+import { signWasdengineRuntimes } from './wasdengine-runtime-signing.ts'
 import {
   resolveDesktopAppId,
   resolveMacOSSigningEnvironment,
@@ -172,6 +173,7 @@ async function main(): Promise<void> {
     if (process.platform === 'darwin' && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       const cacheDirectory = resolveMacOSSignatureCacheDirectory(process.env, BUILD_PATHS.root)
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, cacheDirectory))
+      await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:wasdengine-runtimes', () => signWasdengineRuntimes(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch))
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:primary-native', () => signMacOSRuntime(join(RUNTIME_ROOT, 'primary-runtime'), resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, cacheDirectory, 'primary'))
     }
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:manifests', () => prepareRuntimeManifests(DSH_OUTPUT_ROOT))
