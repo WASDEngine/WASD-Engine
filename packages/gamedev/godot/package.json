@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-godot",
   "description": "Run, test, and play Godot games through LibGodot with a live Game tab",
-  "version": "0.2.2-rc.1",
+  "version": "0.1.0-rc",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

@@ -15,6 +15,7 @@ The Desktop app (`apps/desktop/package.json`) and the packages under `packages/g
 | `main` on `origin` (WASDEngine/WASDEngine) | The fork's default branch; every fork change lands here. |
 | `upstream/master` (deepseek-ai/deepseek-harness) | The upstream development branch. Pushing to `upstream` is disabled. |
 | `dsh-v<version>` tags | Upstream release tags, fetched with `git fetch upstream --tags`. |
+| `v<version>` tags on `origin` | WASD Engine releases, such as `v0.1.0-rc`: each names the commit that a GitHub Release's Desktop app was built from. Never tag a fork release `dsh-v`, which names upstream's releases. |
 
 `main` started from upstream `master` at the merge of release 0.2.2-rc.1; `git merge-base main upstream/master` prints the commit the fork last merged. A fresh clone adds the upstream remote with:
 
@@ -43,10 +44,15 @@ git commit
 git push origin main
 ```
 
+## Releases
+
+WASD Engine numbers its releases on its own, starting at `0.1.0-rc`, and the root `package.json` and every `@deepseek-ai/dsh` manifest carry that version, because `verify-version-sync` and `pnpm run constraints` require one shared version. To cut a release, run `pnpm exec tsx scripts/release/bump.ts --family dsh <version>` on `main` (it rewrites the manifests and the lockfile and commits), push `main`, package the Desktop app from that commit with `pnpm run package:desktop:mac:arm64:unsigned`, and publish its DMG and ZIP with a `SHA256SUMS` file as a GitHub Release tagged `v<version>` on that commit, marked as a pre-release for an `-rc` version. Until the LibGodot, SuperCollider, and GIMP runtime releases exist, packaging needs `WASD_LIBGODOT_DIR`, `WASD_SUPERCOLLIDER_DIR`, and `WASD_GIMP_DIR` naming the `--out` folders of their `build.sh` scripts. Without a Developer ID certificate the app is ad hoc signed and not notarized, so macOS asks users to approve it under System Settings, Privacy & Security; unsigned packages carry no `app-update.yml`, so the app never checks upstream's update server.
+
 ## Upstream files the fork modifies
 
 | File | Fork change | Diff | When it conflicts |
 |---|---|---|---|
+| `package.json` and the manifest of every `@deepseek-ai/dsh` package, `pnpm-lock.yaml` | `version` is WASD Engine's release version, `0.1.0-rc`, instead of upstream's; see [Releases](#releases). | 1 line per manifest | Take upstream's side, commit the merge, then run `pnpm exec tsx scripts/release/bump.ts --family dsh <the fork's version>`, which sets every manifest, including any that upstream adds, and the lockfile, and commits. |
 | `packages/bundle/base/package.json`, `packages/bundle/sdk-minimal/package.json` | `dsh.bundle.patch` becomes a list that appends `./wasdengine/gateway.cordis.patch.yml` after `./cordis.patch.yml`, and `files` lists the fork file. | +5 −1 each | Take upstream's side, then turn `dsh.bundle.patch` into the list again with the fork file last. Put the fork file in `files` in the order that `pnpm run constraints` prints in its error. |
 | `packages/bundle/base/tests/base.spec.ts`, `packages/bundle/sdk-minimal/tests/sdk-minimal.spec.ts` | The manifest test reads the first `dsh.bundle.patch` entry, because the fork's file follows it. | +3 −3 each | Take upstream's side and read `patch[0]` where the test reads `dsh.bundle.patch` again. |
 | `packages/bundle/web-app/package.json` | Appends `./wasdengine/telemetry.cordis.patch.yml`, `./wasdengine/gamedev.cordis.patch.yml`, `./wasdengine/first-run.cordis.patch.yml`, and `./wasdengine/game-tools.cordis.patch.yml` to the end of `dsh.bundle.patch`, and lists the four files plus `wasdengine/skills` in `files`; both lists drop `presets/standard.patch.yml`, `presets/ptc.patch.yml`, and `presets/minimal.patch.yml`, which the fork deletes. `dependencies` gains `@deepseek-ai/dsh-blender`, `@deepseek-ai/dsh-gimp`, `@deepseek-ai/dsh-godot`, `@deepseek-ai/dsh-supercollider`, `@deepseek-ai/dsh-client-ui-game-tools`, `@deepseek-ai/dsh-game-mcp`, and `@deepseek-ai/dsh-client-ui-game-mcp`, the packages the game-tools rows mount. | +18 −8 | Take upstream's side, then re-append the four fork patch files as the last `dsh.bundle.patch` entries, drop the three deleted presets from both lists, and add the seven game tool dependencies again. Put the same files in `files` in the order that `pnpm run constraints` prints in its error. |
