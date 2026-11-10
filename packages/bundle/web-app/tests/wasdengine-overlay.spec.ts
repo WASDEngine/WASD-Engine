@@ -295,7 +295,8 @@ describe('WASDEngine overlay', () => {
     expect(PROTECTED_PLUGINS.has(WASD_PLUGINS.name)).toBe(true)
     const meta = readPluginMeta(WASD_PLUGINS.name, pathToFileURL(join(webAppDir, 'package.json')).href)
     expect(meta?.error).toBeUndefined()
-    expect(meta?.title?.en).toBe('WASD Engine Plugins')
+    const title = meta?.title
+    expect(typeof title === 'object' ? title.en : title).toBe('WASD Engine Plugins')
     expect(meta?.icon).toMatch(/^data:image\/svg\+xml;base64,/u)
   })
 
