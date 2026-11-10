@@ -172,6 +172,10 @@ jobs:
       # assets are replaced. A published release is never changed, because
       # replacing an asset deletes it first and packaging verifies the digests
       # that manifest.json lists. The archives go up before manifest.json.
+      # The release is published as a pre-release so that it never becomes the
+      # repository's latest release, which serves the Desktop update feed and
+      # the front page's Download link: GitHub makes a full release the latest
+      # one while no other full release exists, even with --latest=false.
       - name: Create and publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -193,4 +197,4 @@ jobs:
           fi
           gh release upload "$tag" "$release_dir"/supercollider-*.tar.gz --clobber
           gh release upload "$tag" "$release_dir/manifest.json" --clobber
-          gh release edit "$tag" --draft=false --latest=false --title "$title" --notes "$notes"
+          gh release edit "$tag" --draft=false --prerelease --title "$title" --notes "$notes"
