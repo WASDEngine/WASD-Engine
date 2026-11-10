@@ -153,7 +153,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 - Requests run one at a time in call order, and each reply carries the id of the pending request; `traceback` is optional. A request's `timeoutMs` starts when the request is written to stdin.
 - Replies use fd 3, so the application's own output on stdout and stderr cannot mix with them. The client keeps the last `spec.logTailBytes` bytes of that output as the log tail for diagnostics.
 - Cancelling a queued request only removes it from the queue. Cancelling a dispatched request stops the worker, as a timeout does, because the worker's state is then unknown.
-- `close(graceMs)` sends a `shutdown` request and closes stdin. Without an exit after `graceMs` it sends SIGTERM to the worker's process group, and SIGKILL after another `graceMs`. A worker may answer the `shutdown` request before it exits.
+- `close(graceMs)` sends a `shutdown` request and closes stdin. Without an exit after `graceMs` it sends SIGTERM to the worker's process group, and SIGKILL after another `graceMs`. A worker may answer the `shutdown` request before it exits. A worker already stopped, for example by a timeout, was sent SIGKILL then, so `close` sends it no SIGTERM and waits for its exit.
 - On POSIX the worker leads its own process group. When the worker exits or is stopped, the client sends SIGKILL to every process left in that group.
 
 Worker failures are `WorkerError`s with a `code`, and only `WORKER_REMOTE` leaves the worker running. A stopped worker rejects later requests with its first failure; its owner starts a new one. Out-of-range budgets, such as a zero `timeoutMs`, throw a `RangeError`.
