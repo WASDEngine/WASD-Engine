@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WASD Engine プラグイン",
+    "description": "常に有効な WASD Engine 独自の機能です。Godot のゲームを Web 向けに書き出し、誰でも遊べる共有リンク付きでリリースし、みんながリリースしたゲームを探せます。"
+  }
+}

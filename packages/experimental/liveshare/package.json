@@ -142,6 +142,7 @@
     "@deepseek-ai/dsh-tool-fs": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-registry": "workspace:*",
+    "@deepseek-ai/dsh-wasd-plugins": "workspace:*",
     "@deepseek-ai/dsh-workspace": "workspace:*",
     "@types/ws": "^8.18.1",
     "react": "^18.2.0",

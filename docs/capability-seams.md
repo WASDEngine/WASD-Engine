@@ -124,6 +124,8 @@ flowchart LR
   svc_godot["ctx.godot<br/>Godot game runs, tools, and Game tab Remote"]
   pkg_game_mcp["game-mcp"]
   svc_gameMcp["ctx.gameMcp<br/>MCP server of the game tools for other agents"]
+  pkg_wasd_plugins["wasd-plugins"]
+  svc_wasdPlugins["ctx.wasdPlugins<br/>WASD Engine Plugins: Web export, releases, and site links"]
   pkg_typert_registry["typert-registry"]
   svc_typert["ctx.typert<br/>Runtime type registry"]
   pkg_typert_loader["typert-loader"]
@@ -478,6 +480,7 @@ flowchart LR
   pkg_typert_registry --> svc_typert
   pkg_user_approval --> svc_approval
   pkg_user_questions --> svc_userQuestions
+  pkg_wasd_plugins --> svc_wasdPlugins
   pkg_web --> svc_web
   pkg_web_app --> svc_webApp
   pkg_web_deepseek_api --> svc_web
@@ -701,6 +704,7 @@ flowchart LR
 | `ctx.gameProjectController` | `core` | [`api-workspace-controller`](../packages/api/workspace-controller) | - | - | - | Creates a game project folder with a Git repository and reports whether first use must ask for one. |
 | `ctx.godot` | `service` | [`godot`](../packages/gamedev/godot) | - | - | - | Runs a Session's Godot game through LibGodot, serves the godot_* tools, the Game tab Remote, and the frame route, and resolves or installs the Godot runtime. |
 | `ctx.gameMcp` | `service` | [`game-mcp`](../packages/gamedev/game-mcp) | - | - | - | Serves the game tools that plugins provide to other agents on the computer over a loopback Streamable HTTP endpoint with a token, and runs their games in Sessions of their own. |
+| `ctx.wasdPlugins` | `service` | [`wasd-plugins`](../packages/gamedev/wasd-plugins) | - | - | - | Exports Godot games for the Web and releases them to the WASD Engine site as numbered versions with share links, through tools of every Session and of the game MCP server, and tells the window what each project released. |
 | `ctx.typert` | `core` | [`typert-registry`](../packages/typert/registry) | - | [`typert-loader`](../packages/typert/loader), [`api-gateway`](../packages/api/gateway) | - | Plugins register live zod contributions directly or through dsh-typert-loader; the API gateway consumes invocation descriptors and providers, while other runtime consumers query schemas and reflection metadata at their own edges. |
 | `ctx.typertGateway` | `core` | [`api-gateway`](../packages/api/gateway) | - | - | - | Associates generated Remote descriptors with live Cordis services, resolves registered identities, and exposes unary calls through the shared Connection RPC carrier. |
 | `ctx.remoteAccess` | `core` | [`api-remote-access`](../packages/api/remote-access) | - | [`api-gateway`](../packages/api/gateway), [`api-session-controller`](../packages/api/session-controller), [`api-workspace-controller`](../packages/api/workspace-controller) | - | Decides which Remote methods a non-owner Peer may call through business-registered role-based policies, filters list results, and streams each Peer access snapshot. |

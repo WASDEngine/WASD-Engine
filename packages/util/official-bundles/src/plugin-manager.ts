@@ -1,11 +1,19 @@
 /** The package names the plugin manager protects, hides, orders, or marks experimental. */
 
 /**
- * Plugin packages the plugin manager refuses to disable or remove, because management itself needs them; a bundle that
- * contains one is read-only as well. Removing a name drops only this `management-required` refusal; the manager's own
- * entry, installation-carried bundles, and unaddressable rows stay protected by their own rules.
+ * WASDEngine fork: WASD Engine's own plugins, which stay on in every profile: WASD Engine Plugins, with the Web export
+ * and release tools, the Release button, and Explore Games (wasdengine/FORK.md). They join {@link PROTECTED_PLUGINS}.
+ */
+export const WASD_ENGINE_PLUGINS: ReadonlySet<string> = new Set(['@deepseek-ai/dsh-wasd-plugins'])
+
+/**
+ * Plugin packages the plugin manager refuses to disable or remove, because management itself needs them, or, for
+ * {@link WASD_ENGINE_PLUGINS}, because WASD Engine always runs them; a bundle that contains one is read-only as well.
+ * Removing a name drops only this `management-required` refusal; the manager's own entry, installation-carried
+ * bundles, and unaddressable rows stay protected by their own rules.
  */
 export const PROTECTED_PLUGINS: ReadonlySet<string> = new Set([
+  ...WASD_ENGINE_PLUGINS,
   '@deepseek-ai/dsh-plugin-manager', '@deepseek-ai/cordis-plugin-loader',
   '@deepseek-ai/cordis-plugin-include', '@deepseek-ai/dsh-api-gateway',
   '@deepseek-ai/dsh-host-webserver', '@deepseek-ai/dsh-client-modules',

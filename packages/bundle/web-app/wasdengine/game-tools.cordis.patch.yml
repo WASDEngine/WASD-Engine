@@ -4,7 +4,9 @@
 # setup steps through its tools; a profile patch turns one off with `- id: <row>` and `disabled: true`, which the
 # Plugins page's Game tools tab writes. `ui-game-tools` mounts the tabs' browser half. `game-mcp` listens on
 # 127.0.0.1:9273 and keeps its token and the connected agents' Sessions under `dataRoot`; `ui-game-mcp` mounts its
-# browser half, the sign-in dialog's setup panel.
+# browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
+# the Web export and release tools, the Release button, and Explore Games. The plugin manager refuses to switch it off
+# (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it.
 - insert:
     - id: blender
       name: '@deepseek-ai/dsh-blender'
@@ -30,3 +32,5 @@
         dataRoot: !!js dshHomePath('game-mcp')
     - id: ui-game-mcp
       name: '@deepseek-ai/dsh-client-ui-game-mcp'
+    - id: wasd-plugins
+      name: '@deepseek-ai/dsh-wasd-plugins'

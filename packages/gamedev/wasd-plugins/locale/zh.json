@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "WASD Engine 插件",
+    "description": "WASD Engine 自带的功能，始终开启：把 Godot 游戏导出为网页版，发布并生成任何人都能游玩的分享链接，以及探索大家发布的游戏。"
+  }
+}

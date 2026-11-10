@@ -1,0 +1,118 @@
+/* Session header Release button: a compact control after the agent preset label, in the WASD Engine purple. */
+
+.trigger {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsh-wasd-release-fill, rgb(142 99 255 / 16%));
+  color: var(--dsh-wasd-release-label, #8e63ff);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: var(--dsh-wasd-release-fill-hover, rgb(142 99 255 / 26%));
+}
+
+.trigger:focus-visible {
+  outline: 2px solid #8e63ff;
+  outline-offset: 1px;
+}
+
+.icon {
+  flex: none;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+
+.status a {
+  color: #8e63ff;
+}
+
+.warning {
+  margin: 0;
+  color: var(--dsw-alias-label-warning, #d97706);
+  font-size: 13px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.notes {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 30%));
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.notes:focus-visible {
+  outline: 2px solid #8e63ff;
+  outline-offset: 0;
+}
+
+.hint {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
