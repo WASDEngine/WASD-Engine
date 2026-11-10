@@ -1,8 +1,16 @@
 diff --git a/platform/macos/display_server_macos_embedded.h b/platform/macos/display_server_macos_embedded.h
-index b2d2f62..5c97c06 100644
+index b2d2f62..080287a 100644
 --- a/platform/macos/display_server_macos_embedded.h
 +++ b/platform/macos/display_server_macos_embedded.h
-@@ -97,6 +97,9 @@ class DisplayServerMacOSEmbedded : public DisplayServerMacOSBase {
+@@ -87,6 +87,7 @@ class DisplayServerMacOSEmbedded : public DisplayServerMacOSBase {
+ 	CALayer *layer = nullptr;
+ #ifdef GLES3_ENABLED
+ 	GLManagerEmbedded *gl_manager = nullptr;
++	bool gl_framebuffers_created = false;
+ #endif
+ 
+ 	String rendering_driver;
+@@ -97,6 +98,9 @@ class DisplayServerMacOSEmbedded : public DisplayServerMacOSBase {
  	const HDROutput &_get_hdr_output(DisplayServerEnums::WindowID p_window) const override;
  
  	Point2i ime_last_position;
@@ -13,19 +21,35 @@ index b2d2f62..5c97c06 100644
  	// Convert source pixel size to render pixel size, accounting for the
  	// difference between display scale and render scale when hiDPI is disabled.
 diff --git a/platform/macos/display_server_macos_embedded.mm b/platform/macos/display_server_macos_embedded.mm
-index fd990ec..aeddbd7 100644
+index fd990ec..e8a5c06 100644
 --- a/platform/macos/display_server_macos_embedded.mm
 +++ b/platform/macos/display_server_macos_embedded.mm
-@@ -216,7 +216,7 @@
+@@ -202,8 +202,10 @@
+ 	CGFloat display_scale = state.screen_max_scale;
+ 	CGFloat render_scale = screen_get_max_scale();
+ 	layer.contentsScale = render_scale;
+-	layer.magnificationFilter = kCAFilterNearest;
+-	layer.minificationFilter = kCAFilterNearest;
++	// The editor shows the layer at its pixel size; another host scales it to fit its view.
++	NSString *filter = EngineDebugger::get_singleton() ? kCAFilterNearest : kCAFilterLinear;
++	layer.magnificationFilter = filter;
++	layer.minificationFilter = filter;
+ 	transparent = ((p_flags & DisplayServerEnums::WINDOW_FLAG_TRANSPARENT_BIT) == DisplayServerEnums::WINDOW_FLAG_TRANSPARENT_BIT);
+ 	layer.opaque = !(OS::get_singleton()->is_layered_allowed() && transparent);
+ 	layer.actions = @{ @"contents" : [NSNull null] }; // Disable implicit animations for contents.
+@@ -215,8 +217,10 @@
+ 	CGSConnectionID connection_id = CGSMainConnectionID();
  	ca_context = [CAContext contextWithCGSConnection:connection_id options:@{ kCAContextCIFilterBehavior : @"ignore" }];
  	ca_context.layer = layer;
++	// A host other than the editor reads the context id that displays the layer from this metadata.
++	set_meta("wasd_layer_context_id", ca_context.contextId);
  
 -	{
 +	if (EngineDebugger::get_singleton()) {
  		Array arr = { ca_context.contextId };
  		EngineDebugger::get_singleton()->send_message("game_view:set_context_id", arr);
  	}
-@@ -277,7 +277,9 @@
+@@ -277,7 +281,9 @@
  // MARK: - Mouse
  
  void DisplayServerMacOSEmbedded::_mouse_apply_mode(DisplayServerEnums::MouseMode p_prev_mode, DisplayServerEnums::MouseMode p_new_mode) {
@@ -36,7 +60,7 @@ index fd990ec..aeddbd7 100644
  }
  
  void DisplayServerMacOSEmbedded::warp_mouse(const Point2i &p_position) {
-@@ -285,12 +287,18 @@
+@@ -285,12 +291,18 @@
  	Input::get_singleton()->set_mouse_position(p_position);
  	// Convert from game pixels to points for the editor.
  	float inv_scale = 1.0f / screen_get_max_scale();
@@ -56,7 +80,7 @@ index fd990ec..aeddbd7 100644
  	const NSPoint mouse_pos = [NSEvent mouseLocation];
  	const float scale = screen_get_max_scale();
  
-@@ -309,6 +317,10 @@
+@@ -309,6 +321,10 @@
  }
  
  BitField<MouseButtonMask> DisplayServerMacOSEmbedded::mouse_get_button_state() const {
@@ -67,7 +91,23 @@ index fd990ec..aeddbd7 100644
  	BitField<MouseButtonMask> last_button_state = MouseButtonMask::NONE;
  
  	NSUInteger buttons = [NSEvent pressedMouseButtons];
-@@ -367,6 +379,13 @@
+@@ -352,6 +368,15 @@
+ }
+ 
+ void DisplayServerMacOSEmbedded::process_events() {
++#if defined(GLES3_ENABLED)
++	if (gl_manager && !gl_framebuffers_created) {
++		// OpenGL's functions load after the display server starts, so the window's framebuffers wait for the first
++		// event pass, which comes before the first frame; without them the game draws into nothing, unpaced.
++		gl_framebuffers_created = true;
++		Size2i size = gl_manager->window_get_size(DisplayServerEnums::MAIN_WINDOW_ID);
++		gl_manager->window_resize(DisplayServerEnums::MAIN_WINDOW_ID, size.width, size.height);
++	}
++#endif
+ 	Input *input = Input::get_singleton();
+ 	input->flush_buffered_events();
+ }
+@@ -367,6 +392,13 @@
  }
  
  void DisplayServerMacOSEmbedded::send_input_event(const Ref<InputEvent> &p_event, DisplayServerEnums::WindowID p_id) const {
@@ -81,7 +121,7 @@ index fd990ec..aeddbd7 100644
  	if (p_id != DisplayServerEnums::INVALID_WINDOW_ID) {
  		const Callable *cb = input_event_callbacks.getptr(p_id);
  		if (cb) {
-@@ -689,14 +708,18 @@
+@@ -689,14 +721,18 @@
  }
  
  void DisplayServerMacOSEmbedded::window_set_ime_active(const bool p_active, DisplayServerEnums::WindowID p_window) {
@@ -102,7 +142,7 @@ index fd990ec..aeddbd7 100644
  	ime_last_position = p_pos;
  }
  
-@@ -792,7 +815,9 @@
+@@ -792,7 +828,9 @@
  
  void DisplayServerMacOSEmbedded::cursor_set_shape(DisplayServerEnums::CursorShape p_shape) {
  	cursor_shape = p_shape;
@@ -113,7 +153,7 @@ index fd990ec..aeddbd7 100644
  }
  
  void DisplayServerMacOSEmbedded::cursor_set_custom_image(const Ref<Resource> &p_cursor, DisplayServerEnums::CursorShape p_shape, const Vector2 &p_hotspot) {
-@@ -803,7 +828,9 @@
+@@ -803,7 +841,9 @@
  			data = image->save_png_to_buffer();
  		}
  	}
@@ -124,6 +164,31 @@ index fd990ec..aeddbd7 100644
  }
  
  void DisplayServerMacOSEmbedded::swap_buffers() {
+diff --git a/platform/macos/embedded_gl_manager.mm b/platform/macos/embedded_gl_manager.mm
+index 5030054..8247ab0 100644
+--- a/platform/macos/embedded_gl_manager.mm
++++ b/platform/macos/embedded_gl_manager.mm
+@@ -69,8 +69,9 @@
+ Error GLManagerEmbedded::window_create(DisplayServerEnums::WindowID p_window_id, CALayer *p_layer, int p_width, int p_height) {
+ 	GLWindow win;
+ 	win.layer = p_layer;
+-	win.width = 0;
+-	win.height = 0;
++	// The window has this size from the start; window_resize creates its framebuffers once OpenGL's functions load.
++	win.width = p_width;
++	win.height = p_height;
+ 
+ 	if (create_context(win) != OK) {
+ 		return FAILED;
+@@ -88,7 +89,7 @@
+ 
+ 	GLWindow &win = el->get();
+ 
+-	if (win.width == (uint32_t)p_width && win.height == (uint32_t)p_height) {
++	if (win.is_valid && win.width == (uint32_t)p_width && win.height == (uint32_t)p_height) {
+ 		return;
+ 	}
+ 
 diff --git a/platform/macos/libgodot_macos.mm b/platform/macos/libgodot_macos.mm
 index 280f337..1c565e5 100644
 --- a/platform/macos/libgodot_macos.mm

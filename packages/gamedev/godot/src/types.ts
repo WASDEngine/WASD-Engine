@@ -48,6 +48,17 @@ export interface GodotRunLaunch {
   readonly height?: number
 }
 
+/**
+ * The Core Animation layer that a windowless macOS run draws into. A process of the same login session displays it
+ * with a CALayerHost whose `contextId` is `context`; the layer is the game window's size divided by `scale`, in points.
+ */
+export interface GodotRunLayer {
+  /** CAContext id of the layer. */
+  readonly context: number
+  /** Game window pixels per layer point. */
+  readonly scale: number
+}
+
 /** One run of a Session's game, as tools and the Game tab see it. */
 export interface GodotRunView {
   /** Opaque run id, unique within the Host process. */
@@ -80,6 +91,8 @@ export interface GodotRunView {
   readonly muted: boolean
   /** Whether the run renders without a window. */
   readonly windowless: boolean
+  /** The layer a windowless macOS run draws into, once the game reports it, when the runtime publishes it. */
+  readonly layer?: GodotRunLayer
   /** Runtime kind used by this run. */
   readonly runtime: GodotRuntimeKind
   /** Process exit code after `exited` or `crashed`. */
@@ -184,6 +197,44 @@ export type GodotFollowItem =
   | { readonly type: 'run'; readonly run: GodotRunView | null }
   | { readonly type: 'logs'; readonly entries: readonly GodotLogEntry[]; readonly cursor: number }
   | { readonly type: 'runtime'; readonly runtime: GodotRuntimeView }
+
+/** Where a run's layer shows in the page: a rectangle with the layer's aspect ratio, in CSS pixels of the layout viewport. */
+export interface DesktopGameLayerPlacement {
+  /** CAContext id of the layer, {@link GodotRunLayer.context}. */
+  readonly context: number
+  /** Left edge from the viewport's left edge. */
+  readonly x: number
+  /** Top edge from the viewport's top edge. */
+  readonly y: number
+  /** Width of the rectangle. */
+  readonly width: number
+  /** Height of the rectangle. */
+  readonly height: number
+  /** Width of the layer in points: the game window's width divided by {@link GodotRunLayer.scale}. */
+  readonly layerWidth: number
+  /** Height of the layer in points. */
+  readonly layerHeight: number
+}
+
+/**
+ * The macOS Desktop shell's display of run layers, at `dshDesktop.gameLayer` of the application page. The shell shows
+ * each layer behind the page, which must leave the layer's rectangle transparent, and composites the game at the
+ * display's refresh rate with no copy through the page.
+ */
+export interface DesktopGameLayerBridge {
+  /**
+   * Show a layer, or move one already shown.
+   * @param id - the page's name for the layer, unique within the page, at most 128 characters.
+   * @param placement - the layer and its rectangle.
+   * @returns whether the shell shows the layer; false when it cannot host layers.
+   */
+  show(id: string, placement: DesktopGameLayerPlacement): Promise<boolean>
+  /**
+   * Stop showing a layer; an id the shell does not show is ignored.
+   * @param id - the name `show` received.
+   */
+  hide(id: string): void
+}
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {

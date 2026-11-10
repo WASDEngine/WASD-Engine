@@ -107,6 +107,7 @@ async function runGame(section) {
     type: 'hello', protocol: section.protocol ?? 1, token: section.token ?? token, pid: process.pid, godot: '4.7.2-stable (fake)',
     project: 'Fake', mainScene: 'res://main.tscn', displayServer: section.displayServer ?? 'headless',
     renderingDriver: 'fake', renderingMethod: 'forward_plus', width: state.width, height: state.height,
+    ...section.layer === undefined ? {} : { layer: section.layer },
   }
   switch (section.first ?? 'hello') {
     case 'frame': send(2, frame(1, 1, 1)); break

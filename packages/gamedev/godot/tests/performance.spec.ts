@@ -113,16 +113,16 @@ describe('performance summary', () => {
       'Most common classes: MeshInstance3D 400, Node3D 200.',
       'Scripts with the most nodes (nodes, processing, physics processing): res://enemy.gd 120, 120, 0; res://bullet.gd 60, 60, 60.',
       'Custom monitors: game/enemies 12, game/load 0.5, game/budget_ms 12,345.7.',
-      'The Game tab streamed 60 frames during the sample; the WASD Engine harness time includes reading each one back from the GPU and encoding it.',
+      'The Game tab streamed 60 frames during the sample; the WASD Engine harness time includes taking each one from the GPU, and worker threads encode them.',
     ].join('\n'))
   })
 
-  it('says when no frame finished, and that a windowless run is not limited by VSync', () => {
+  it('says when no frame finished, and that a windowless run still stops at the display\'s refresh rate', () => {
     const text = formatPerformance(summarizePerformance(reply({
       frames: 0, physicsSteps: 0, streamedFrames: 0, series: NO_SERIES, monitorsStart: {}, monitorsEnd: {}, custom: {},
     }), true))
     expect(text).toContain('Measured 2.00 s of real time: 0 frames at 0.0 FPS;')
-    expect(text).toContain('The game renders without a window, so VSync does not limit its frame rate.')
+    expect(text).toContain('The game renders without a window, which shows its frames at most at the display\'s refresh rate, also with VSync off.')
     expect(text).toContain('No frame finished during the sample, so the game may be stalled; godot_logs shows its errors.')
     expect(text).toContain('Frame time (ms): mean 0.00, median 0.00, p95 0.00, p99 0.00, max 0.00; 0 frames took more than twice the median.')
     expect(text).toContain('GPU time: this renderer reports none.')
@@ -160,7 +160,17 @@ describe('performance summary', () => {
     expect(text).not.toContain('Custom monitors')
     const disabled = formatPerformance(summarizePerformance(reply({ context: { ...reply().context, vsyncMode: 0 } }), true))
     expect(disabled).toContain('Frame rate limits: VSync disabled,')
-    expect(disabled).not.toContain('VSync does not limit')
+    expect(disabled).toContain('at most at the display\'s refresh rate, also with VSync off.')
+  })
+
+  it('says nothing about a window for a windowless run on OpenGL, which follows VSync as a window does, or for a windowed run', () => {
+    const opengl = (vsyncMode: number, windowless: boolean): string =>
+      formatPerformance(summarizePerformance(reply({ context: { ...reply().context, renderingDriver: 'opengl3', vsyncMode } }), windowless))
+    expect(opengl(1, true)).toContain('Frame rate limits: VSync enabled,')
+    expect(opengl(1, true)).not.toContain('renders without a window')
+    expect(opengl(0, true)).not.toContain('renders without a window')
+    expect(opengl(1, false)).not.toContain('renders without a window')
+    expect(formatPerformance(summarizePerformance(reply(), false))).not.toContain('renders without a window')
   })
 
   it('rejects a harness answer without its series', () => {

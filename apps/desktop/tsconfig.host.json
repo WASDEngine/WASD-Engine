@@ -27,6 +27,9 @@
       "path": "../../packages/client/ui-sidebar-browser/tsconfig.host.json"
     },
     {
+      "path": "../../packages/gamedev/godot/tsconfig.host.json"
+    },
+    {
       "path": "../../packages/client/shortcuts/tsconfig.host.json"
     },
     {

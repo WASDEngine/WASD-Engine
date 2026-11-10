@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Game tab body: connection states, runtime install states, the run toolbar,
- * run phases, action failures, the log drawer, the frame view, and input capture.
+ * run phases, action failures, the log drawer, the frame view, the layer that
+ * the Desktop shell shows instead, and input capture.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,6 +14,7 @@ import type { GameFailure } from '../src/client/actions.ts'
 import { FRAME_HEADER_BYTES } from '../src/client/frames.ts'
 import { GameTab, GameTabTitle, type GameTabProps } from '../src/client/GameTab.tsx'
 import { MOUSE_MODE_CAPTURED } from '../src/client/input.ts'
+import type { LayerPresentation } from '../src/client/layer.ts'
 import { en } from '../src/client/locales.ts'
 import type { GameSnapshot, GameState } from '../src/client/source.ts'
 import { entry, READY, run } from './client-fixtures.client.ts'
@@ -64,7 +66,7 @@ function state(overrides: Partial<GameState> = {}): GameState {
   return { run: null, runtime: READY, logs: [], cursor: 0, ...overrides }
 }
 
-function tab(initial: GameSnapshot, options: { visible?: boolean } = {}) {
+function tab(initial: GameSnapshot, options: { visible?: boolean; showLayer?: GameTabProps['showLayer'] } = {}) {
   const game = createSnapshotStore<GameSnapshot>(initial)
   const visibility = createSnapshotStore<boolean>(options.visible ?? true)
   const useVisibility = bindSnapshotSelector(visibility)
@@ -81,6 +83,7 @@ function tab(initial: GameSnapshot, options: { visible?: boolean } = {}) {
     useTabInfo: () => tabInfo(useVisibility(current => current)),
     useGame: bindSnapshotSelector(game),
     reconnect, play, stop, control, install, input, openFrames, captureKeyboard, t,
+    ...options.showLayer === undefined ? {} : { showLayer: options.showLayer },
   }
   const view = render(<GameTab {...props} />)
   const set = (next: GameSnapshot): void => { act(() => { game.set(next) }) }
@@ -443,6 +446,92 @@ describe('GameTab game view', () => {
     expect(exitPointerLock).toHaveBeenCalledOnce()
     h.set(live(state({ run: run('r1', { mouseMode: 1 }) })))
     expect(exitPointerLock).toHaveBeenCalledOnce()
+  })
+})
+
+/** A shell that shows layers: each presentation it receives, and the end of each. */
+function layerShell() {
+  const presentations: LayerPresentation[] = []
+  const ends: ReturnType<typeof vi.fn<() => void>>[] = []
+  const showLayer = vi.fn<NonNullable<GameTabProps['showLayer']>>((presentation) => {
+    presentations.push(presentation)
+    const end = vi.fn<() => void>()
+    ends.push(end)
+    return end
+  })
+  return { showLayer, presentations, ends }
+}
+
+function layerFrame(): HTMLElement | null {
+  return document.body.querySelector('[data-godot-layer-frame]')
+}
+
+describe('GameTab game layer', () => {
+  const layered = (runId: string, context: number, overrides: Parameters<typeof run>[1] = {}) =>
+    run(runId, { width: 1600, height: 900, layer: { context, scale: 2 }, ...overrides })
+
+  it('shows the run’s layer instead of its frames while visible and running, with the hints and focus ring above it', async () => {
+    const shell = layerShell()
+    const h = tab(live(state({ run: layered('r1', 7) })), { showLayer: shell.showLayer })
+    expect(shell.showLayer).toHaveBeenCalledOnce()
+    const [presentation] = shell.presentations
+    expect(presentation).toMatchObject({ view: viewport(), layer: { context: 7, scale: 2 }, window: { width: 1600, height: 900 } })
+    expect(presentation?.id).toEqual(expect.any(String))
+    await settle()
+    expect(h.openFrames).not.toHaveBeenCalled()
+    expect(layerFrame()).toBeNull()
+    act(() => { presentation?.onBox({ x: 10, y: 20, width: 300, height: 200 }) })
+    const frame = layerFrame()!
+    expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height]).toEqual(['10px', '20px', '300px', '200px'])
+    expect(frame.getAttribute('aria-hidden')).toBe('true')
+    expect(within(frame).getByText(en['viewport.hint'])).toBeTruthy()
+    const view = viewport()
+    expect(within(view).getByText(en['viewport.hint']).className).toContain('visuallyHidden')
+    act(() => { view.focus() })
+    expect(view.hasAttribute('data-focused')).toBe(false)
+    expect(frame.hasAttribute('data-focused')).toBe(true)
+    expect(within(frame).getByText(en['viewport.release']).hasAttribute('data-transient')).toBe(true)
+    expect(h.captureKeyboard).toHaveBeenCalledOnce()
+    // A status update keeps the layer; the window size maps pointer input, since no frame is drawn.
+    h.set(live(state({ run: layered('r1', 7, { fps: 120 }) })))
+    expect(shell.showLayer).toHaveBeenCalledOnce()
+    const canvas = view.querySelector('canvas')!
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 320, 180))
+    fireEvent.mouseMove(canvas, { clientX: 160, clientY: 90 })
+    await vi.waitFor(() => { expect(h.input).toHaveBeenCalledWith('r1', [{ kind: 'mouse_motion', x: 800, y: 450, dx: 800, dy: 450 }]) })
+    h.show(false)
+    expect(shell.ends[0]).toHaveBeenCalledOnce()
+    expect(layerFrame()).toBeNull()
+    h.show(true)
+    expect(shell.showLayer).toHaveBeenCalledTimes(2)
+    h.set(live(state({ run: layered('r2', 8) })))
+    expect(shell.ends[1]).toHaveBeenCalledOnce()
+    expect(shell.presentations[2]?.layer.context).toBe(8)
+    h.set(live(state({ run: layered('r2', 8, { phase: 'exited', exitCode: 0 }) })))
+    expect(shell.ends[2]).toHaveBeenCalledOnce()
+    expect(h.openFrames).not.toHaveBeenCalled()
+  })
+
+  it('streams the frames of a run whose layer the shell refused, and offers the next run’s layer again', async () => {
+    const shell = layerShell()
+    const h = tab(live(state({ run: layered('r1', 7) })), { showLayer: shell.showLayer })
+    act(() => { shell.presentations[0]?.onFailed() })
+    await vi.waitFor(() => { expect(h.openFrames).toHaveBeenCalledWith('r1', expect.any(AbortSignal)) })
+    h.show(false)
+    h.show(true)
+    expect(shell.showLayer).toHaveBeenCalledOnce()
+    h.set(live(state({ run: layered('r2', 9) })))
+    expect(shell.showLayer).toHaveBeenCalledTimes(2)
+    expect(shell.presentations[1]?.layer.context).toBe(9)
+  })
+
+  it('streams frames for a run without a layer, or before the game reports its window', async () => {
+    const shell = layerShell()
+    const h = tab(live(state({ run: run('r1', { layer: { context: 7, scale: 2 } }) })), { showLayer: shell.showLayer })
+    await vi.waitFor(() => { expect(h.openFrames).toHaveBeenCalledWith('r1', expect.any(AbortSignal)) })
+    h.set(live(state({ run: run('r2', { width: 640, height: 360 }) })))
+    await vi.waitFor(() => { expect(h.openFrames).toHaveBeenLastCalledWith('r2', expect.any(AbortSignal)) })
+    expect(shell.showLayer).not.toHaveBeenCalled()
   })
 })
 

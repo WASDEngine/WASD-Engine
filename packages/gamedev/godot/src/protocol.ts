@@ -75,6 +75,7 @@ const Hello = z.object({
   renderingMethod: z.string(),
   width: z.number().int(),
   height: z.number().int(),
+  layer: z.object({ context: z.number().int().min(1).max(0xffff_ffff), scale: z.number().positive() }).optional(),
 })
 
 const Status = z.object({
@@ -100,7 +101,10 @@ const Result = z.looseObject({
 
 const HarnessJson = z.discriminatedUnion('type', [Hello, Status, Logs, Result])
 
-/** The harness's first message: identity, token, and the game's rendering facts. */
+/**
+ * The harness's first message: identity, token, and the game's rendering facts. `layer` names the Core Animation
+ * layer that a windowless macOS game draws into, when the runtime publishes it.
+ */
 export type HarnessHello = z.infer<typeof Hello>
 
 /** Periodic game state, sent on change and at least every second. */

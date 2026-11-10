@@ -1,5 +1,6 @@
 /** Body and chip title of the Game tab: the run toolbar, the game view that takes keyboard and mouse input, and the log drawer. */
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Button, IconChevronDownOutlineRegular, IconChevronRightOutlineRegular, IconChevronUpOutlineRegular, IconCloseCircleFillRegular,
   IconCloseOutlineRegular, IconDownloadOutlineRegular, IconPauseOutlineRegular, IconPlayOutlineRegular, IconRefreshOutlineRegular,
@@ -15,6 +16,7 @@ import type { GameFailure } from './actions.ts'
 import { decodeFrame, drawFrame, FramePresenter, nextFrame, readFrames } from './frames.ts'
 import { GameControllerIcon } from './icon.tsx'
 import { bindGameInput, MOUSE_MODE_CAPTURED, type GameInputTarget, type PixelSize } from './input.ts'
+import type { Box, LayerPresentation } from './layer.ts'
 import type { GodotUiKey, NS } from './locales.ts'
 import { ACTIVE_PHASES, LIVE_PHASES, type GameSnapshot, type GameState } from './source.ts'
 import css from './GameTab.module.css'
@@ -62,6 +64,13 @@ export interface GameTabInjected {
    */
   readonly openFrames: (runId: string, signal: AbortSignal) => Promise<Response>
   /**
+   * Show a run's layer behind the page, fitted into the game view, instead of its frame stream; present only in the
+   * macOS Desktop app.
+   * @param presentation - the layer, the game view, and the callbacks.
+   * @returns the function that stops showing the layer.
+   */
+  readonly showLayer?: (presentation: LayerPresentation) => () => void
+  /**
    * Keep application shortcuts from taking keys while the game view has focus.
    * @returns the release.
    */
@@ -92,9 +101,12 @@ const PHASE_KEYS = {
 const EMPTY_SIZE: PixelSize = { width: 0, height: 0 }
 
 /**
- * Render the Game tab of one Session. The frame stream and input capture run
+ * Render the Game tab of one Session. The game's picture and input capture run
  * only while the follow stream delivers, the tab is visible, and the game is
  * running or paused; keys reach the game only while the game view has focus.
+ * The picture is the run's layer behind the page when the run reports one and
+ * the shell shows layers, and the frame stream otherwise or once the shell
+ * refuses the run's layer.
  * After the follow stream stops, the tab keeps the last state and offers Retry.
  * Restart starts the run's project with the scene and window size of its start
  * request; Play starts the main scene.
@@ -102,7 +114,7 @@ const EMPTY_SIZE: PixelSize = { width: 0, height: 0 }
  * @returns the tab body.
  */
 export function GameTab({
-  useTabInfo, useGame, reconnect, play, stop, control, install, input, openFrames, captureKeyboard, t,
+  useTabInfo, useGame, reconnect, play, stop, control, install, input, openFrames, showLayer, captureKeyboard, t,
 }: GameTabProps): ReactNode {
   const { tab } = useTabInfo()
   const snapshot = useGame(value => value)
@@ -171,7 +183,7 @@ export function GameTab({
       )}
       <div className={css.stage}>
         <Viewport run={run} visible={tab.visible} connected={!snapshot.disconnected} input={input} openFrames={openFrames}
-          captureKeyboard={captureKeyboard} t={t} />
+          showLayer={showLayer} captureKeyboard={captureKeyboard} t={t} />
         <StageMessage state={state} t={t} />
       </div>
       <LogDrawer run={run} logs={state.logs} open={logsOpen} onToggle={() => { setLogsOpen(open => !open) }} t={t} />
@@ -315,13 +327,14 @@ function inputTarget(run: GodotRunView | null, drawn: PixelSize | undefined): Ga
 }
 
 /* oxlint-disable typescript/no-non-null-assertion -- React sets the element refs before these effects run. */
-function Viewport({ run, visible, connected, input, openFrames, captureKeyboard, t }: {
+function Viewport({ run, visible, connected, input, openFrames, showLayer, captureKeyboard, t }: {
   readonly run: GodotRunView | null
   readonly visible: boolean
   /** Whether the follow stream delivers; a stopped stream leaves the run's last reported phase, which may be outdated. */
   readonly connected: boolean
   readonly input: GameTabInjected['input']
   readonly openFrames: GameTabInjected['openFrames']
+  readonly showLayer: GameTabInjected['showLayer']
   readonly captureKeyboard: GameTabInjected['captureKeyboard']
   readonly t: Translate
 }): ReactNode {
@@ -331,11 +344,22 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
   const latest = useRef(run)
   latest.current = run
   const releaseId = useId()
+  const layerId = useId()
   const [focused, setFocused] = useState(false)
+  // The run whose layer the shell refused, which streams frames instead; the box of the view while its layer shows.
+  const [refusedLayer, setRefusedLayer] = useState<string>()
+  const [layerBox, setLayerBox] = useState<Box>()
   const live = connected && run !== null && LIVE_PHASES.has(run.phase)
   const runId = run?.runId
   const streaming = live && visible ? runId : undefined
   const mouseMode = run?.mouseMode
+  const layerContext = run?.layer?.context
+  const layerScale = run?.layer?.scale
+  const windowWidth = run?.width
+  const windowHeight = run?.height
+  const layered = streaming !== undefined && showLayer !== undefined && layerContext !== undefined && layerScale !== undefined
+    && windowWidth !== undefined && windowHeight !== undefined && refusedLayer !== streaming
+  const framed = layered ? undefined : streaming
 
   useEffect(() => {
     const node = canvas.current!
@@ -344,7 +368,24 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
   }, [runId])
 
   useEffect(() => {
-    if (streaming === undefined) return
+    if (streaming === undefined || showLayer === undefined || layerContext === undefined || layerScale === undefined
+      || windowWidth === undefined || windowHeight === undefined || refusedLayer === streaming) return
+    const end = showLayer({
+      id: layerId,
+      view: host.current!,
+      layer: { context: layerContext, scale: layerScale },
+      window: { width: windowWidth, height: windowHeight },
+      onBox: setLayerBox,
+      onFailed: () => { setRefusedLayer(streaming) },
+    })
+    return () => {
+      end()
+      setLayerBox(undefined)
+    }
+  }, [streaming, showLayer, layerId, layerContext, layerScale, windowWidth, windowHeight, refusedLayer])
+
+  useEffect(() => {
+    if (framed === undefined) return
     const node = canvas.current!
     const lifetime = new AbortController()
     const presenter = new FramePresenter({
@@ -356,7 +397,7 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
       },
     })
     void readFrames({
-      open: signal => openFrames(streaming, signal),
+      open: signal => openFrames(framed, signal),
       onRecord: (record) => { presenter.push(record) },
       signal: lifetime.signal,
     })
@@ -364,7 +405,7 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
       lifetime.abort()
       presenter.dispose()
     }
-  }, [streaming, openFrames])
+  }, [framed, openFrames])
 
   useEffect(() => {
     if (streaming === undefined) return
@@ -382,14 +423,25 @@ function Viewport({ run, visible, connected, input, openFrames, captureKeyboard,
     if (mouseMode !== MOUSE_MODE_CAPTURED && document.pointerLockElement === canvas.current) document.exitPointerLock()
   }, [mouseMode])
 
+  // Above a layer, which shows through a hole in the application root, the focus ring and the hints draw in a frame
+  // portaled beside the root; the view keeps the hint as text for assistive technology.
   return (
     <div ref={host} className={css.viewport} tabIndex={0} role="application" aria-label={t('viewport.label')}
       aria-describedby={live ? releaseId : undefined}
-      data-focused={focused || undefined} onFocus={() => { setFocused(true) }} onBlur={() => { setFocused(false) }}>
+      data-focused={(focused && !layered) || undefined} onFocus={() => { setFocused(true) }} onBlur={() => { setFocused(false) }}>
       <canvas ref={canvas} className={css.canvas} />
       {live && <span id={releaseId} className={css.visuallyHidden}>{t('viewport.release')}</span>}
-      {live && !focused && <span className={css.hint}>{t('viewport.hint')}</span>}
-      {live && focused && <span className={css.hint} data-transient="" aria-hidden="true">{t('viewport.release')}</span>}
+      {live && !focused && <span className={layered ? css.visuallyHidden : css.hint}>{t('viewport.hint')}</span>}
+      {live && focused && !layered && <span className={css.hint} data-transient="" aria-hidden="true">{t('viewport.release')}</span>}
+      {layered && layerBox !== undefined && createPortal(
+        <div className={css.layerFrame} style={{ left: layerBox.x, top: layerBox.y, width: layerBox.width, height: layerBox.height }}
+          data-godot-layer-frame="" data-focused={focused || undefined} aria-hidden="true">
+          {focused
+            ? <span className={css.hint} data-transient="">{t('viewport.release')}</span>
+            : <span className={css.hint}>{t('viewport.hint')}</span>}
+        </div>,
+        document.body,
+      )}
     </div>
   )
 }

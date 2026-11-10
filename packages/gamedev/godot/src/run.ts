@@ -25,7 +25,7 @@ import {
   type HarnessResult, type HarnessStatus,
 } from './protocol.ts'
 import type { ResolvedGodotRuntime } from './runtime.ts'
-import type { GodotInputEvent, GodotLogEntry, GodotRunPhase, GodotRunStarter, GodotRunView } from './types.ts'
+import type { GodotInputEvent, GodotLogEntry, GodotRunLayer, GodotRunPhase, GodotRunStarter, GodotRunView } from './types.ts'
 
 /** Largest message accepted before a connection presents the run's token; `hello` is far smaller. */
 const PRE_AUTH_MESSAGE_BYTES = 64 * 1024
@@ -56,7 +56,7 @@ export interface StreamSettings {
   readonly quality: number
   /** Largest frame width; wider frames are scaled down. */
   readonly maxWidth: number
-  /** Send PNG frames while PNG encoding keeps up with `fps`, and JPEG frames otherwise. */
+  /** Send PNG frames while preparing a PNG frame keeps up with `fps`, and JPEG frames otherwise. */
   readonly lossless: boolean
 }
 
@@ -342,6 +342,7 @@ export class GodotRun {
   private renderer: string | undefined
   private godot: string | undefined
   private windowless: boolean
+  private layer: GodotRunLayer | undefined
   private connection: Socket | undefined
   private server: Server | undefined
   private process: SubprocessHandle | undefined
@@ -454,6 +455,7 @@ export class GodotRun {
       ...this.renderer === undefined ? {} : { renderer: this.renderer },
       muted: this.spec.muted,
       windowless: this.windowless,
+      ...this.layer === undefined ? {} : { layer: this.layer },
       runtime: this.spec.runtime.kind,
       ...this.exitCode === undefined ? {} : { exitCode: this.exitCode },
       ...this.exitSignal === undefined ? {} : { signal: this.exitSignal },
@@ -756,6 +758,7 @@ export class GodotRun {
     this.renderer = `${hello.renderingDriver} / ${hello.renderingMethod}`
     this.godot = hello.godot
     this.windowless = hello.displayServer === 'embedded'
+    this.layer = this.windowless ? hello.layer : undefined
     this.lastActivity = Date.now()
     socket.setNoDelay(true)
     ;(this.server as Server).close()

@@ -61,6 +61,17 @@ export const GIMP_ASAR_UNPACK: string
  */
 export function applyWasdengineGimp<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
 
+/** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */
+export const GAME_LAYER_FILE: string
+
+/**
+ * Ship the game layer module beside the main bundle, outside `app.asar`, where the main process loads it as a native
+ * module. The packaged files list it before the dsh trees that end the list.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `files` and `asarUnpack` also list the module.
+ */
+export function applyWasdengineGameLayer<T extends { readonly files: readonly (string | object)[]; readonly asarUnpack: readonly string[] }>(config: T): T
+
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons,

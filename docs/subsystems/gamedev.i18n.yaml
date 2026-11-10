@@ -27,8 +27,8 @@
   en: e6b2d74b3a1b1e20
   zh: 7d60d6051acc491f
 /game-tools/godot-runs/harness-protocol:
-  en: 5d5265165f74efa9
-  zh: 1ffc59062baf4c4e
+  en: b88e13c6bd27a3e3
+  zh: 22ce7a7181f78b8e
 /game-tools/godot-runs/input-events:
   en: 19e632b59a04e600
   zh: 1380b209cd31903a
@@ -39,11 +39,11 @@
   en: 8efc4d95807f5dcd
   zh: 132aa0aa71312fea
 /game-tools/frame-stream:
-  en: e280e393d60543d7
-  zh: eb24da9d5ec48627
+  en: 475c15c349002e4d
+  zh: d9c2759956ef57ed
 /game-tools/game-tab:
-  en: 6dcb4a0d47ffec22
-  zh: 699033caa47b0001
+  en: ad40a44977183156
+  zh: 05710e45aa77d63d
 /game-tools/game-tools-tabs:
   en: 1919d6398c699b75
   zh: 6a5ed32e5122e8e9
@@ -51,5 +51,5 @@
   en: b1799000b7f78616
   zh: 20f2df274e6f282e
 /game-tools/remote-types:
-  en: 0f75cf2979b80cf8
-  zh: d01df32d1ece3e9d
+  en: 329d863b81105932
+  zh: cd28a90e311942e1

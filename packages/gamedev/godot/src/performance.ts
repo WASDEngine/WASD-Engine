@@ -243,7 +243,7 @@ function navigationValues(values: Readonly<Record<string, number>>): NamedValue[
  * each phase, GPU and render CPU times over the frames that measured them, and the monitors, scene census, and
  * conditions the harness reported.
  * @param reply - validated harness answer.
- * @param windowless - whether the game renders without a window, so VSync does not limit it.
+ * @param windowless - whether the game renders without a window, which changes what limits its frame rate.
  * @returns the summary.
  */
 export function summarizePerformance(reply: PerformanceReply, windowless: boolean): PerformanceSummary {
@@ -374,11 +374,21 @@ function describeRun(summary: PerformanceSummary): string[] {
       + `${summary.timedOut ? ', ended by its real-time limit' : ''}; the ${context.renderingMethod} renderer on ${context.renderingDriver}${adapter}`
       + ` draws a ${context.width}x${context.height} window.`,
     `Frame rate limits: ${limits.join(', ')}.`,
-    ...summary.windowless && context.vsyncMode !== 0 ? ['The game renders without a window, so VSync does not limit its frame rate.'] : [],
+    ...windowlessLimit(summary),
     ...summary.frames === 0 ? ['No frame finished during the sample, so the game may be stalled; godot_logs shows its errors.'] : [],
     ...summary.pausedFrames > 0 ? [`The game was paused for ${count(summary.pausedFrames)} of the frames, which ran no node processing or physics.`] : [],
     ...summary.droppedFrames > 0 ? [`The frame statistics cover the first ${count(summary.frames - summary.droppedFrames)} frames.`] : [],
   ]
+}
+
+/**
+ * What limits the frame rate of a game without a window. The Metal layer of LibGodot's macOS embedded display server
+ * shows frames at the display's refresh rate whatever the VSync mode; its OpenGL path follows the VSync mode as a
+ * window does.
+ */
+function windowlessLimit(summary: PerformanceSummary): string[] {
+  if (!summary.windowless || summary.context.renderingDriver.startsWith('opengl')) return []
+  return ['The game renders without a window, which shows its frames at most at the display\'s refresh rate, also with VSync off.']
 }
 
 function describeRendering(summary: PerformanceSummary): string[] {
@@ -458,7 +468,7 @@ function describeTree(summary: PerformanceSummary): string[] {
       .map(entry => `${entry.path} ${count(entry.nodes)}, ${count(entry.processing)}, ${count(entry.physicsProcessing)}`).join('; ')}.`],
     ...summary.custom.length === 0 ? [] : [`Custom monitors: ${summary.custom.map(entry => `${entry.name} ${MONITOR_VALUE.format(entry.value)}`).join(', ')}.`],
     ...summary.streamedFrames === 0 ? [] : [`The Game tab streamed ${count(summary.streamedFrames)} frames during the sample; `
-      + 'the WASD Engine harness time includes reading each one back from the GPU and encoding it.'],
+      + 'the WASD Engine harness time includes taking each one from the GPU, and worker threads encode them.'],
   ]
 }
 

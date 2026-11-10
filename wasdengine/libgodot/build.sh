@@ -15,7 +15,7 @@
 #   --godot-ref <ref>           Godot tag or branch to clone (default 4.7.2-stable)
 #   --source <dir>              build this Godot checkout instead of cloning; patches
 #                               missing from it are applied, and it is never re-cloned or reset
-#   --version <version>         runtime version (default 4.7.2-wasd.1)
+#   --version <version>         runtime version (default 4.7.2-wasd.2)
 #   --install <dataRoot>        install the archive into <dataRoot>/runtime/<version>/
 #   --jobs <n>                  parallel SCons jobs (default: Godot's choice from the CPU count)
 #   --scons-cache <dir>         SCons cache directory (Godot's cache_path option)
@@ -59,7 +59,7 @@ out_dir=
 godot_ref=4.7.2-stable
 godot_ref_given=false
 source_dir=
-version=4.7.2-wasd.1
+version=4.7.2-wasd.2
 install_root=
 jobs=
 scons_cache=

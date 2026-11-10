@@ -67,6 +67,7 @@ import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
+import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
@@ -838,6 +839,7 @@ async function main(): Promise<void> {
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
   })
+  registerWasdengineGameLayers(ipcMain, assertProductSender)
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*', 'wss://127.0.0.1/*'] }, (details, callback) => {
     if (hostUrl === undefined || hostCookie === undefined || details.webContentsId !== mainWindow?.webContents.id) {

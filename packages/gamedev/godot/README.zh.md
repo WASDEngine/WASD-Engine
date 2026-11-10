@@ -66,13 +66,13 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
-| `runtimeVersion` | `4.7.2-wasd.1` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
-| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/manifest.json` | 安装时下载的发布 manifest |
+| `runtimeVersion` | `4.7.2-wasd.2` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
+| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
 | `streamQuality` | `0.9` | 推流的 JPEG 帧的 JPEG 质量，0.1 到 1 |
-| `streamLossless` | `true` | PNG 编码跟得上 `streamFps` 时推流无损 PNG 帧，否则推流 JPEG 帧；`false` 只推流 JPEG 帧 |
+| `streamLossless` | `true` | 准备 PNG 帧跟得上 `streamFps` 时推流无损 PNG 帧，否则推流 JPEG 帧；`false` 只推流 JPEG 帧 |
 | `streamMaxWidth` | `1280` | 推流帧的最大宽度（像素），64 到 4096 |
 | `importBeforeRun` | `true` | 每次运行前导入项目资源 |
 | `importTimeoutMs` | `180000` | 导入步骤及单次 `godot_check` 的时限 |
@@ -165,7 +165,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 `godot_check` 启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
 
-`godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含捕获 Game 标签页流式传输的帧，无窗口运行不等待 VSync。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
+`godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
 
 结果文本不超过 6,000 个字符，被截断时以 `… (output shortened)` 结尾；引用的日志消息不超过 500 个字符。`godot_logs` 在达到文本上限之前结束本页，其下一个游标紧跟在最后一个列出的条目之后。
 
@@ -183,7 +183,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 <a id="game-tab"></a>
 ### “游戏”标签页
 
-浏览器半侧在右侧栏中添加“游戏”标签页。从侧栏[引导页](../../client/ui-sidebar-right/README.zh.md#the-guide)的“游戏”卡片打开它。屏幕上的 Session 中有 agent 启动的运行正在进行时，只要页面未重新加载，标签页会自动打开，每次运行一次；用户之后切换到该 Session 时也会打开；用户关闭的标签页在该次运行中保持关闭。标签页跟随 Session 的游戏，无论由谁启动；没有活动 Agent 的 Session（例如宿主重启后）也是如此，在运行开始前它显示没有运行。
+浏览器半侧在右侧栏中添加“游戏”标签页。从侧栏[引导页](../../client/ui-sidebar-right/README.zh.md#the-guide)的“游戏”卡片打开它。屏幕上的 Session 中有 agent 启动的运行正在进行时，只要页面未重新加载，标签页会自动打开，每次运行一次；用户之后切换到该 Session 时也会打开。关闭标签页会像 **停止** 一样停止 Session 的游戏，无论游戏由谁启动；折叠侧栏或切换到其他 Session 时，游戏继续运行。标签页跟随 Session 的游戏，无论由谁启动；没有活动 Agent 的 Session（例如宿主重启后）也是如此，在运行开始前它显示没有运行。
 
 - **运行** 运行 Session 上一次运行所用项目的主场景，Session 还没有运行时则运行最近项目的主场景；Session 没有活动 Agent 时，它会像发送消息那样先恢复该 Session。有运行正在进行时，它显示为 **重新运行**，并以该运行启动时的场景和窗口大小再次运行项目。在有可用运行时之前，它处于禁用状态。
 - **停止** 停止正在进行的运行。
@@ -192,7 +192,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 状态区显示安装进度、运行的阶段、帧率、场景文件（悬停提示显示其 `res://` 路径）以及渲染器。宿主拒绝的操作会显示一条可关闭的消息，每个控件在其自身的请求进行期间保持禁用。另一个正在运行的 Web 或桌面端应用写入该 Session 时，**运行** 显示“此会话已在另一个正在运行的 Web 或桌面端应用中打开，请退出该应用后重试”。
 
-游戏画面绘制最新推流的帧，按比例适配标签页并在两侧留出边条；只有在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时才推流。点击游戏即可让画面获得焦点。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Shift+Esc 从不送达游戏：它把键盘交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放键盘”。图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效。游戏捕获鼠标时，下一次按下会把指针锁定在画面上，移动以相对位移送达游戏；游戏释放鼠标或浏览器结束锁定时，锁定结束。失去焦点时，会释放画面按住的所有按键和按钮。
+游戏画面按比例适配标签页并在两侧留出边条，只在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时显示游戏。在 macOS 桌面应用中，画面显示游戏自身的画面：应用把无窗口游戏的图层放在页面之后，页面让游戏所在的矩形保持透明，因此游戏以完整分辨率和显示器的刷新率显示，不捕获、编码或解码任何帧。在 Web 应用、Windows 与 Linux 桌面应用中，以及桌面应用不显示其图层的运行，画面改为绘制最新推流的帧。点击游戏即可让画面获得焦点。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Shift+Esc 从不送达游戏：它把键盘交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放键盘”。图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效。游戏捕获鼠标时，下一次按下会把指针锁定在画面上，移动以相对位移送达游戏；游戏释放鼠标或浏览器结束锁定时，锁定结束。失去焦点时，会释放画面按住的所有按键和按钮。
 
 输入按批发送，每批最多 256 个事件，每次重绘一批，连续的鼠标移动会合并；下一批要等宿主接受上一批后才发送。宿主每次向游戏转发一批，排队超过 256 个时丢弃最早的事件。发给已结束运行的输入会被丢弃。一批输入因其他原因失败时，标签页记录一次失败，直到某一批再次成功，并在下一批中、或在画面失去焦点时，再次发送失败那一批中的按键和鼠标按钮释放，使游戏不会一直按住某个键或按钮。
 
@@ -226,7 +226,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | 8 | 4 | 运行内的帧序号，无符号小端序 |
 | 12 | `N` | PNG 或 JPEG 文件的字节 |
 
-harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，宽度最多缩小到 `streamMaxWidth` 像素，并在工作线程上编码每一帧，因此编码不会拖慢游戏。帧是质量为 `streamQuality` 的 JPEG 文件。开启 `streamLossless` 时，只要编码一帧最多用一个帧间隔（1/`streamFps` 秒），帧就是无损 PNG 文件：每次推流先发送 JPEG 帧，对一帧的试编码跟得上后切换为 PNG，简单的 2D 场景和像素画通常如此；某个 PNG 帧用时更长时回到 JPEG 帧，大多数 3D 场景如此。试编码或 PNG 帧较慢后，下一次试编码在 1 s 后进行，延迟逐次加倍，最长 8 s。Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色，因此 PNG 帧保留文字和像素画清晰的彩色边缘，而 JPEG 帧会把它们模糊。读取方尚未取走上一条记录时到达的帧会相互替换，因此读取较慢的一方总能收到最新的帧。帧响应失败或结束时，“游戏”标签页在 250 ms 后重新打开它；在尝试未送达任何帧期间，延迟逐次加倍，最长 4 s。
+harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，宽度最多缩小到 `streamMaxWidth` 像素，推流的一帧只占用游戏主线程不到一毫秒。有 RenderingDevice 时（Forward+ 与 Mobile 渲染器都有），harness 请 GPU 复制一帧但不等待，复制结果在几帧后送达；兼容性渲染器，以及 8 位 RGBA 以外格式的帧（例如以高动态范围渲染的帧），改为同步读取。工作线程负责转换、缩放、加边条并编码各帧，下一帧的复制与上一帧的编码同时进行。发往 Host 的消息按顺序排队，并以连接能接收的速度发出，因此读取缓慢的一方不会拖住游戏；仍有较早的消息排队时，harness 不捕获新帧。帧是质量为 `streamQuality` 的 JPEG 文件。开启 `streamLossless` 时，只要准备一帧最多用一个帧间隔（1/`streamFps` 秒），帧就是无损 PNG 文件：每次推流先发送 JPEG 帧，对一帧的 PNG 测试跟得上后切换为 PNG，简单的 2D 场景和像素画通常如此；某个 PNG 帧用时更长时回到 JPEG 帧，大多数 3D 场景如此。试编码或 PNG 帧较慢后，下一次试编码在 1 s 后进行，延迟逐次加倍，最长 8 s。Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色，因此 PNG 帧保留文字和像素画清晰的彩色边缘，而 JPEG 帧会把它们模糊。读取方尚未取走上一条记录时到达的帧会相互替换，因此读取较慢的一方总能收到最新的帧。帧响应失败或结束时，“游戏”标签页在 250 ms 后重新打开它；在尝试未送达任何帧期间，延迟逐次加倍，最长 4 s。
 
 <a id="data-directory"></a>
 ### 数据目录中的文件
@@ -258,6 +258,8 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI，再撤 Remote。每个 Session 有一个跟随源，在有读取方期间把跟随流折叠为标签页的状态。游戏画面用 `fetch` 读取帧路由，用 `createImageBitmap` 解码最新的记录：图像以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码，并在下一次重绘时绘制它。
 
+在 macOS 桌面应用中，页面具有 `dshDesktop.gameLayer`；harness 通过 LibGodot 的 macOS 嵌入式显示服务器启动的运行会报告其绘制所用的图层，即 `GodotRunView` 的 `layer`：一个 CAContext id，以及每个图层点对应的游戏窗口像素数。此类运行处于活动状态且标签页可见时，游戏画面不打开帧响应，而是请桌面应用显示该图层，适配到画面中且边缘对齐设备像素；应用显示图层后，画面用遮罩从应用根元素 `#root` 中挖去同一矩形，使页面在那里透明；与裁剪路径不同，遮罩不影响命中测试，因此挖空区域下的画面仍能接收指针。在根元素旁边 portal 到 `document.body` 的浮层，例如菜单、提示、通知和对话框，绘制在游戏之上；画面的焦点环和提示也由 portal 到那里的一个框绘制在画面上方。画面会跟踪自己的边框：画面或窗口尺寸改变、或页面任意位置发生指针拖动时，画面在每次重绘时放置图层与挖空区域，直到边框连续 10 次重绘保持不变；每 500 ms 一次的检查会发现其他移动。桌面应用回复无法显示图层时，画面改为推流该运行的帧。[桌面应用中的游戏图层](../../../wasdengine/FORK.md#game-layer-in-the-desktop-app)介绍桌面侧的实现。
+
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 宿主插件：配置、提示词部分、Remote 方法和帧路由 |
@@ -273,6 +275,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/client/index.ts`](src/client/index.ts) | 浏览器入口：Remote、“游戏”标签页、工具卡片和自动打开 |
 | [`src/client/GameTab.tsx`](src/client/GameTab.tsx) | “游戏”标签页正文：工具栏、游戏画面和日志抽屉 |
 | [`src/client/input.ts`](src/client/input.ts)、[`src/client/frames.ts`](src/client/frames.ts) | 键盘与鼠标捕获；帧的读取与绘制 |
+| [`src/client/layer.ts`](src/client/layer.ts) | macOS 桌面应用显示的图层：其适配矩形、应用根元素的挖空区域，以及对画面边框的跟踪 |
 | [`runtime/wasd_harness.gd`](runtime/wasd_harness.gd) | 游戏内 harness |
 | [`runtime/wasd_check.gd`](runtime/wasd_check.gd) | `godot_check` 的脚本加载器 |
 
@@ -281,7 +284,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、控制、检查和停止工具，读取帧路由，并运行第二个项目，其拉伸模式会给游戏加上黑边；未设置该变量时，测试套件会被跳过。
 
 ```sh
-WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.1" \
+WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.2" \
 pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 ```
 
@@ -375,13 +378,15 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 以下限制描述 Godot 运行、“游戏”标签页和运行时当前的不足。
 
 - **游戏以宿主用户的全部权限运行** — 游戏、导入步骤和 `godot_check` 作为宿主的普通子进程运行。Session 权限模式（例如 `read-only` 或 `workspace-write`）的[沙箱](../../sandbox/sandbox-policy/README.zh.md)不约束它们，它们也从不像 `bash` 命令那样请求[批准](../../interaction/user-approval/README.zh.md)。`godot_run` 启动的游戏代码、`godot_check` 加载的脚本，以及 `godot_eval` 求值的表达式（它可以运行包括 `OS.execute` 在内的任意 GDScript），都能读写宿主用户可访问的所有文件并启动其他程序。`project` 接受绝对路径或工作目录之外的路径，因此 `godot_run` 和 `godot_check` 会运行宿主用户可读取的任何项目。
-- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.1`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
+- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.2`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
 - **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过 `runnerPath` 与 `libgodotPath` 指定的本地 LibGodot 构建运行。
 - **macOS 以外会打开窗口** — LibGodot 补丁只在 macOS 上实现无窗口渲染。在 Linux 与 Windows 上，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。
-- **JPEG 帧会模糊彩色边缘** — 当编码一个 PNG 帧用时超过 1/`streamFps` 秒，或 `streamLossless` 关闭时，场景推流 JPEG 帧，“游戏”标签页中彩色文字等细小的饱和色细节会比游戏中更柔和：Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色。
-- **帧为游戏窗口的像素尺寸** — “游戏”标签页把窗口的像素（宽度最多 `streamMaxWidth`）适配到标签页中。在高密度显示器上，标签页覆盖的屏幕像素多于窗口的像素时，帧会被放大，看起来比按显示器密度渲染的游戏窗口更柔和。
-- **音频只在宿主上播放** — “游戏”标签页推流的帧不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
+- **JPEG 帧会模糊彩色边缘** — 当准备一个 PNG 帧用时超过 1/`streamFps` 秒，或 `streamLossless` 关闭时，场景推流 JPEG 帧，“游戏”标签页中彩色文字等细小的饱和色细节会比游戏中更柔和：Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色。
+- **帧为游戏窗口的像素尺寸** — “游戏”标签页把窗口的像素（宽度最多 `streamMaxWidth`）适配到标签页中。在高密度显示器上，标签页覆盖的屏幕像素多于窗口的像素时，帧会被放大，看起来比按显示器密度渲染的游戏窗口更柔和。macOS 桌面应用显示的图层同样具有窗口的像素，应用以相同方式缩放它。
+- **应用根元素内的页面内容会透出游戏** — 在 macOS 桌面应用中，根元素让游戏所在的矩形保持透明，因此应用在 `#root` 内绘制在游戏画面上方的内容，例如右侧栏的浮动窗格，或拖动标签页时的放置提示，在覆盖该矩形的部分会透出游戏。portal 到 `document.body` 的浮层绘制在游戏之上。
+- **图层可能比布局变化晚一次重绘** — 画面通过桌面应用的主进程放置图层，而页面自行移动挖空区域，因此在侧栏或窗口改变尺寸时，游戏可能比页面边缘晚一次重绘，图层后的黑色会在其边缘露出。
+- **音频只在宿主上播放** — “游戏”标签页不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏。
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。

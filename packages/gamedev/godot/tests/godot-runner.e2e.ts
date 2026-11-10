@@ -3,8 +3,8 @@
  * script error, scene inspection, a performance sample and a cancelled one, frame-exact steps, a step that the
  * Game tab ends, lossless PNG frames of a simple scene, input and frames while game time stands still, a bounded
  * game-time wait, a cancelled input sequence, a queued input sequence that its real-time limit ends, a static
- * check that runs no autoload, a letterboxed stretch mode, and JPEG frames of a scene that PNG encoding cannot
- * keep up with.
+ * check that runs no autoload, a letterboxed stretch mode, a game on the Compatibility renderer, and JPEG frames of a
+ * scene that PNG encoding cannot keep up with.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -80,6 +80,16 @@ const STRETCH_PROJECT = {
     '\tdraw_rect(TARGET, Color(1, 0, 0))', 'func _input(event):', '\tif event is InputEventMouseButton and event.pressed:',
     '\t\tprint("click hit=", TARGET.has_point(event.position))', '',
   ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// A game on the Compatibility renderer, which the macOS embedded display server runs on OpenGL.
+const COMPATIBILITY_PROJECT = {
+  'project.godot': [
+    'config_version=5', '', '[application]', '', 'config/name="CompatibilityTest"', 'run/main_scene="res://main.tscn"',
+    'config/features=PackedStringArray("4.7", "GL Compatibility")', '', '[rendering]', '', 'renderer/rendering_method="gl_compatibility"', '',
+  ].join('\n'),
+  'main.gd': ['extends Node2D', 'func _draw():', '\tdraw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 1))', '\tdraw_rect(Rect2(500, 40, 60, 60), Color(1, 0, 0))', ''].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
@@ -209,7 +219,13 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(result)).toContain('The game is running: RunnerTest')
     expect(result.value).toMatchObject({ phase: 'running', width: 640, height: 360 })
     runId = (result.value as { runId: string }).runId
-    if (process.platform === 'darwin') expect(result.value).toMatchObject({ windowless: true, renderer: expect.stringContaining('metal') as string })
+    if (process.platform === 'darwin') {
+      expect(result.value).toMatchObject({ windowless: true, renderer: expect.stringContaining('metal') as string })
+      // The patched LibGodot publishes the layer that the macOS Desktop app shows in the Game tab.
+      const view = await c.godot.control(c.owner.agent.id, { action: 'resume' }, new AbortController().signal)
+      expect(view.layer?.context).toBeGreaterThan(0)
+      expect(view.layer?.scale).toBe(2)
+    }
   }, 240_000)
 
   it('captures a PNG screenshot and inspects the scene', async () => {
@@ -296,7 +312,7 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(await callTool(c, 'godot_eval', { expression: 'tree.paused' }))).toBe('bool: false')
   }, 60_000)
 
-  it('streams frames to the Game tab, lossless PNG ones that match the screenshot once PNG encoding keeps up', async () => {
+  it('streams frames to the Game tab, lossless PNG ones that match the screenshot once preparing a PNG frame keeps up', async () => {
     const controller = new AbortController()
     const response = await frameRoute().fetch(new Request(`http://127.0.0.1/api/godot.frames?session=owner&run=${runId}`, { signal: controller.signal }))
     expect(response.status).toBe(200)
@@ -408,6 +424,26 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const click = { kind: 'mouse_button', button: 'left', x: (red.left + red.right + 1) / 2, y: (red.top + red.bottom + 1) / 2 }
     await callTool(c, 'godot_input', { coordinate_space: 'window', events: [{ ...click, pressed: true }, { ...click, pressed: false }, { wait: 0.1 }] })
     expect(text(await callTool(c, 'godot_logs', { since: 0 }))).toContain('click hit=true')
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
+  it('runs a Compatibility renderer game at its window size, paced by the display, with full-size frames', async () => {
+    const dir = join(c.dir.root, 'work', 'compatibility')
+    await mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(COMPATIBILITY_PROJECT)) await writeFile(join(dir, name), content)
+    const started = await callTool(c, 'godot_run', { project: 'compatibility', width: 640, height: 360 })
+    expect(started.isError, text(started)).toBe(false)
+    expect(started.value).toMatchObject({ width: 640, height: 360, renderer: expect.stringContaining('gl_compatibility') as string })
+    await callTool(c, 'godot_wait', { frames: 5 })
+    await callTool(c, 'godot_screenshot')
+    const image = decodePng(Buffer.from(c.saved.at(-1)?.data as Uint8Array))
+    expect([image.width, image.height]).toEqual([640, 360])
+    expect([image.pixel(530, 70), image.pixel(100, 300)]).toEqual([[255, 0, 0], [0, 0, 255]])
+    const records = await readFrames(frameRoute(), (started.value as { runId: string }).runId, read => read.length >= 5, 15_000)
+    expect([records[0]?.readUInt16LE(4), records[0]?.readUInt16LE(6)]).toEqual([640, 360])
+    // VSync is on, as in a new project, so the display paces the frames.
+    const measured = await callTool(c, 'godot_performance', { seconds: 1 })
+    expect((measured.value as { fps: number }).fps).toBeLessThan(500)
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 

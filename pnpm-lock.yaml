@@ -761,6 +761,9 @@ importers:
       '@deepseek-ai/dsh-deepseek-account':
         specifier: workspace:*
         version: link:../../packages/credentials/deepseek-account
+      '@deepseek-ai/dsh-godot':
+        specifier: workspace:*
+        version: link:../../packages/gamedev/godot
       '@deepseek-ai/dsh-home-paths':
         specifier: workspace:*
         version: link:../../packages/util/home-paths
