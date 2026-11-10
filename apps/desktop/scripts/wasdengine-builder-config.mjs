@@ -2,6 +2,7 @@
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
+import { githubUpdateFeedUrl } from './wasdengine-update-service.mjs'
 
 /** Start of upstream's packaged file names, which `applyWasdengineBrand` replaces with `WASDENGINE_DESKTOP_BRAND.artifactBase`. */
 const UPSTREAM_ARTIFACT_PREFIX = 'deepseek-harness-'
@@ -97,19 +98,17 @@ export function applyWasdengineGameLayer(config) {
  * @param {object} config - Configuration from `createElectronBuilderConfig`.
  * @returns {object} A new configuration that keeps every hook and packaging rule of `config`.
  * @throws {Error} When the application identifier is DeepSeek's, when the configuration embeds an
- * update feed outside `WASDENGINE_DESKTOP_BRAND.updateOrigin`, or when upstream no longer ships the
- * About panel icon or the file name start that this function replaces.
+ * update feed other than the GitHub releases feed of `WASDENGINE_DESKTOP_BRAND.releaseRepository`, or
+ * when upstream no longer ships the About panel icon or the file name start that this function replaces.
  */
 export function applyWasdengineBrand(config) {
   if (/^com\.deepseek(?:\.|$)/iu.test(config.appId)) {
     throw new Error(`WASDEngine desktop: application identifier ${config.appId} belongs to DeepSeek; set DSH_DESKTOP_APP_ID to a WASDEngine identifier such as ${BRAND.appId}`)
   }
   for (const provider of config.publish ?? []) {
-    const origin = new URL(provider.url).origin
-    if (origin === BRAND.updateOrigin) continue
-    throw new Error(BRAND.updateOrigin === undefined
-      ? `WASDEngine desktop: this build would embed the update feed ${origin}; WASDEngine has no update service, so package with --unsigned or set updateOrigin in apps/desktop/src/wasdengine-brand.ts`
-      : `WASDEngine desktop: this build would embed the update feed ${origin} instead of the WASDEngine update origin ${BRAND.updateOrigin}`)
+    if (provider.provider === 'generic' && provider.url === githubUpdateFeedUrl()) continue
+    throw new Error(`WASDEngine desktop: this build would embed the update feed ${provider.url}; WASDEngine publishes updates `
+      + `only through ${githubUpdateFeedUrl()}, so set DSH_DESKTOP_AUTO_UPDATE_ENV to github or none`)
   }
   if (!config.extraResources.some(resource => resource.to === 'icon.png')) {
     throw new Error('WASDEngine desktop: the upstream configuration no longer ships icon.png; update applyWasdengineBrand')

@@ -127,11 +127,10 @@ describe('WASDEngine Desktop packaging identity', () => {
       .toThrow('belongs to DeepSeek')
   })
 
-  it.each(['production', 'test'] as const)('refuses the %s update feed while WASDEngine has no update origin', (deployment) => {
-    expect(BRAND.updateOrigin).toBeUndefined()
+  it.each(['production', 'test'] as const)('refuses the %s update feed, which is not the GitHub releases feed', (deployment) => {
     const config = createElectronBuilderConfig({ ...SIGNED_MACOS, ...DEPLOYMENTS[deployment] }, 'darwin', 'arm64')
     expect(config.publish).not.toBeNull()
-    expect(() => applyWasdengineBrand(config)).toThrow('WASDEngine has no update service')
+    expect(() => applyWasdengineBrand(config)).toThrow('WASDEngine publishes updates only through https://github.com/WASDEngine/WASD-Engine/releases/latest/download/')
   })
 
   it('applies the brand in the ordinary release entry', async () => {
@@ -190,13 +189,8 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(builder).toContain('renderInstallerStrings(brandInstallerLocales(readInstallerLocales()))')
   })
 
-  it('accepts only an HTTPS update origin outside DeepSeek', () => {
-    const origin = BRAND.updateOrigin
-    if (origin === undefined) return
-    const url = new URL(origin)
-    expect(url.protocol).toBe('https:')
-    expect(url.origin).toBe(origin)
-    expect(url.hostname).not.toMatch(/(?:^|\.)deepseek(?:svc)?\.com$/u)
+  it('publishes updates from a WASDEngine repository on GitHub', () => {
+    expect(BRAND.releaseRepository).toMatch(/^WASDEngine\/[\w.-]+$/u)
   })
 })
 

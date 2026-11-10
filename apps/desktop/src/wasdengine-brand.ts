@@ -33,11 +33,11 @@ export const WASDENGINE_DESKTOP_BRAND = {
   /** Text of the macOS microphone permission prompt. */
   microphoneUsage: 'WASD Engine uses your microphone to transcribe speech into message drafts.',
   /**
-   * HTTPS origin of the WASDEngine update feed. Unset, a build may not carry an update feed:
-   * unsigned builds have none, and packaging refuses a signed build because the release
-   * pipeline always embeds one.
+   * GitHub repository whose releases carry the update feed. A build packaged with `DSH_DESKTOP_AUTO_UPDATE_ENV=github`
+   * checks `https://github.com/<repository>/releases/latest/download/`, which GitHub serves from the newest release
+   * that is neither a draft nor a pre-release, and `applyWasdengineBrand` refuses every other feed.
    */
-  updateOrigin: undefined as string | undefined,
+  releaseRepository: 'WASDEngine/WASD-Engine',
   /**
    * Whether the shell opens its standalone welcome window to ask for an account or an API key. False opens the main
    * window at once, where the Get started dialog of ui-settings-models asks instead; `first-run.cordis.patch.yml` of
