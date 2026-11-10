@@ -1,7 +1,7 @@
 /**
- * Explore Games at the foot of the left sidebar, above Settings: it opens the WASD Engine site's Explore page of
- * released games in the browser (the system browser in the Desktop app, a new tab in the Web UI). On the narrow rail
- * it shows its globe alone, with the label as a tooltip.
+ * Explore Games, the first link at the foot of the left sidebar, above Settings: it opens the WASD Engine site's Explore
+ * page of released games in the browser (the system browser in the Desktop app, a new tab in the Web UI). On the narrow
+ * rail it shows its globe alone, with the label as a tooltip.
  */
 import { IconGlobeOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -26,13 +26,11 @@ export type ExploreLinkProps = PropsRuntime<'sidebar.footer.action'> & PropsLoca
 export function ExploreLink({ wide, t, openExplore }: ExploreLinkProps) {
   const label = t('explore.label')
   return (
-    <div className={css.entry}>
-      <Tooltip label={wide ? t('explore.tooltip') : label} delayMs={500}>
-        <button type="button" className={wide ? `${css.row} ${css.wide}` : css.row} aria-label={label} onClick={openExplore}>
-          <span className={css.glyph} aria-hidden="true"><IconGlobeOutlineRegular size={wide ? 16 : 18} /></span>
-          {wide && <span className={css.title}>{label}</span>}
-        </button>
-      </Tooltip>
-    </div>
+    <Tooltip label={wide ? t('explore.tooltip') : label} delayMs={500}>
+      <button type="button" className={css.row} data-collapsed={!wide} aria-label={label} onClick={openExplore}>
+        <span className={css.glyph} aria-hidden="true"><IconGlobeOutlineRegular size={wide ? 16 : 18} /></span>
+        {wide && <span className={css.title}>{label}</span>}
+      </button>
+    </Tooltip>
   )
 }

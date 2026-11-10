@@ -68,6 +68,8 @@ function registerUi(ctx: Context): void {
     yield ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
       name: 'sidebar.footer.action',
       id: 'wasd-explore',
+      // Above the Join Discord row, which keeps its place next to the account row.
+      order: -1,
       locale: NS,
       inject: injected,
     }, ExploreLink))

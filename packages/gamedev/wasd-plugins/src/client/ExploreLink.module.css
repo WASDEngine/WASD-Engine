@@ -1,44 +1,50 @@
-/* Explore Games at the sidebar foot; it follows the sidebar's own row metrics, which the sidebar root defines. */
-
-.entry {
-  display: flex;
-  border-inline: var(--dsh-sidebar-paint-inset, 0) solid transparent;
-  border-radius: var(--dsw-radius-md);
-  background-clip: padding-box;
-}
-
+/* Explore Games at the sidebar foot, with the geometry of the Join Discord row below it: in the wide column the global
+   panel rows' 32px height, the sidebar's row padding inside its paint inset, and the 12px rounding; in the rail the
+   36x36 box of the other rail controls. The sidebar root defines the --dsh-sidebar-* properties. */
 .row {
-  display: flex;
   flex: 1;
-  align-items: center;
-  justify-content: center;
-  gap: var(--dsh-sidebar-label-gap, 8px);
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-sidebar-label-gap);
   min-height: 32px;
   margin: 0;
-  padding: 5px calc(var(--dsh-sidebar-row-padding, 10px) - var(--dsh-sidebar-paint-inset, 0px));
+  padding: 5px calc(var(--dsh-sidebar-row-padding) - var(--dsh-sidebar-paint-inset));
   box-sizing: border-box;
   border: none;
+  border-inline: var(--dsh-sidebar-paint-inset) solid transparent;
   border-radius: var(--dsw-radius-md);
   background: transparent;
+  background-clip: padding-box;
   color: var(--dsw-alias-label-primary);
   font: inherit;
+  font-size: 14px;
   line-height: 22px;
   text-align: left;
   cursor: pointer;
 }
 
-.wide {
-  justify-content: flex-start;
-}
-
-.row:hover {
-  background: var(--dsw-alias-fill-tsp-secondary);
+@media (hover: hover) {
+  .row:hover {
+    background-color: var(--dsw-alias-interactive-bg-hover);
+  }
 }
 
 .row:focus-visible {
-  outline: 2px solid #8e63ff;
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
+}
+
+.row[data-collapsed='true'] {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  min-height: 0;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+  border-inline: 0;
+  background-clip: border-box;
 }
 
 .glyph {
