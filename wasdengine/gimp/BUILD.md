@@ -110,7 +110,7 @@ The GIMP plugin's end-to-end suite, `packages/gamedev/gimp/tests/gimp-worker.e2e
 
 The GIMP runtime workflow, [wasd-gimp.yml](../../.github/workflows/wasd-gimp.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-gimp.yml -f version=3.2.8-wasd.1`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
 
-The `build` job runs `build.sh` on macOS 14 (arm64), installs the runtime into a directory whose name holds characters outside ASCII, smoke-tests the installed runtime, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
+The `build` job runs `build.sh` on macOS 26 (arm64), installs the runtime into a directory whose name holds characters outside ASCII, smoke-tests the installed runtime, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
 
 When the workflow runs on the default branch, the `release` job merges the manifests and checks every archive against the merged manifest: URL, size, digest, and the files and platform inside. It then creates the release `gimp-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archives and then `manifest.json`, and publishes the release without marking it the latest. A published release is never changed; the job fails instead.
 
