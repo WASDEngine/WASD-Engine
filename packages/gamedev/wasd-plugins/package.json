@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-wasd-plugins",
   "description": "WASD Engine's own features, always on: export games for the Web, release them to WASD Engine with share links, the Release button, and Explore Games",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

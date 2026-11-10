@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-app-mcp",
   "description": "Run a desktop application headless behind an MCP stdio server that supervises a JSON-lines worker",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0",
   "publishConfig": {
     "access": "public"
   },

@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-supercollider",
   "description": "Headless SuperCollider for the agent: an MCP server that designs sounds with sclang and renders them offline with scsynth",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
