@@ -558,6 +558,8 @@ function SessionTree({
           useRemoteAccess={useRemoteAccess}
           useWorkspaceAccess={useWorkspaceAccess}
           containsCurrentDescendant={currentAncestors.has(group.key)}
+          empty={workspaceId !== undefined && list.phase === 'ready' && workspaceReady
+            && group.sessionCount === 0 && children.length === 0}
           home={home}
           t={t}
           onToggle={() => {

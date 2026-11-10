@@ -222,6 +222,8 @@ type ProjectRowItemProps = {
   group: GroupNode
   newShortcut?: ShortcutCatalogEntry | undefined
   containsCurrentDescendant?: boolean
+  /** WASD Engine: a real Workspace that shows no Session or child Workspace, so a click calls `onCreate`. */
+  empty?: boolean | undefined
   onToggle: () => void
   onCreate: () => void
   /** Present only for real Workspace rows in the grouped view. */
@@ -246,6 +248,7 @@ interface ProjectRowAccess {
  * their access checks; the ungrouped bucket has no Workspace menu.
  * @param props.group - derived group node.
  * @param props.containsCurrentDescendant - highlight an ancestor even when its subtree is collapsed.
+ * @param props.empty - a click starts a Session instead of folding, given create access.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside this Workspace.
  * @param props.drag - optional workspace-row drag wiring.
@@ -277,10 +280,11 @@ function WorkspaceProjectRow({ workspaceId, ...props }: ProjectRowItemProps & { 
 }
 
 function ProjectRow({
-  group, containsCurrentDescendant = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
+  group, containsCurrentDescendant = false, empty = false, onToggle, onCreate, drag: offeredDrag, home, newShortcut, t, access,
   renderFactorySlot, useContextMenuTarget, useContextMenu,
 }: ProjectRowItemProps & { access: ProjectRowAccess }) {
   const { getTriggerProps } = useContextMenu()
+  const clickStartedSession = useRef(false)
   const drag = access.reorder ? offeredDrag : undefined
   const row = group
   // The ungrouped bucket has no workspace title: its label is dictionary copy.
@@ -296,7 +300,13 @@ function ProjectRow({
       data-row-key={`workspace:${group.key}`}
       role="treeitem"
       aria-expanded={row.expanded}
-      onClick={onToggle}
+      onClick={(e) => {
+        // WASD Engine: an empty game project opens a Session; the rest of that double-click leaves it unfolded.
+        if (e.detail > 1 && clickStartedSession.current) return
+        clickStartedSession.current = empty && access.create
+        if (clickStartedSession.current) onCreate()
+        else onToggle()
+      }}
       {...getTriggerProps(workspaceMenuTarget === undefined ? undefined : { kind: 'workspace', value: { ...workspaceMenuTarget, displayTitle: label } })}
       draggable={drag !== undefined}
       onDragStart={drag === undefined
