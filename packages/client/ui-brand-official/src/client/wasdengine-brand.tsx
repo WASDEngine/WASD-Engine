@@ -1,11 +1,13 @@
 /**
  * WASDEngine brand occupants (fork-owned; `wasdengine/FORK.md` lists the fork changes): the WASD Engine
- * keycap symbol in the sidebar and blank-home hero brand-mark slots, in every build profile.
+ * keycap symbol in the sidebar and blank-home hero brand-mark slots, and the Join Discord row at the
+ * sidebar foot, in every build profile.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { HeroBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import { applyWasdengineDiscord } from './wasdengine/discord.tsx'
 
 /** Brand colors of the keycap parts: the raised W key, the A, S, and D keys, and the ink outlines. */
 export const WASDENGINE_KEY_TONES = {
@@ -65,12 +67,14 @@ export function WasdengineMark({ size, className }: HeroBrandMarkOwnerProps) {
 }
 
 /**
- * Fill the sidebar brand mark and the hero brand mark with {@link WasdengineMark}. Each
- * registration waits for its slot's declaration and leaves with the caller's fiber.
+ * Fill the sidebar brand mark and the hero brand mark with {@link WasdengineMark}, and, once the
+ * locale service is available, put the Join Discord row at the sidebar foot. Each registration
+ * waits for its slot's declaration and leaves with the caller's fiber.
  * @param ctx - Client root context.
  */
 export function applyWasdengineBrand(ctx: ClientContext): void {
   ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, WasdengineMark))
   ctx.slots.inject('conversation.hero.brand.mark', () =>
     ctx.slots.register({ name: 'conversation.hero.brand.mark' }, WasdengineMark))
+  ctx.inject(['slots', 'locale'], applyWasdengineDiscord)
 }
