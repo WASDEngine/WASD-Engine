@@ -1,7 +1,8 @@
 /**
  * WASDEngine fork guard for the account copy: the registered dictionaries name WASD Engine
- * in every language, the onboarding introduces game development, and the upstream
- * dictionaries stay as upstream ships them.
+ * in every language, the onboarding introduces game development, the balance and top-up copy
+ * speak of the plan's monthly AI usage and its upgrade, and the upstream dictionaries stay as
+ * upstream ships them.
  */
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
@@ -27,6 +28,18 @@ describe('WASD Engine account copy', () => {
       expect(branded[id as keyof typeof branded][key as keyof typeof en], key).toBe(message)
     }
     expect(copy!.onboardingIntroduction).toContain(WASDENGINE_PRODUCT_NAME)
+  })
+
+  it.each(Object.keys(dictionaries))('turns topping up into upgrading the plan in %s', (id) => {
+    const upstream = dictionaries[id as keyof typeof dictionaries]
+    const messages = branded[id as keyof typeof branded]
+    // Settings › Account's balance and Top up, and the notice the gateway's usage limit raises.
+    for (const key of ['balance', 'topUp', 'quotaTitle', 'quotaDescription', 'quotaTopUp'] as const) {
+      expect(WASDENGINE_ACCOUNT_COPY[id]?.[key], key).toBeDefined()
+      expect(messages[key], key).not.toBe(upstream[key])
+    }
+    expect(messages.quotaDescription).toContain(WASDENGINE_PRODUCT_NAME)
+    expect(messages.quotaDescription).toContain('MCP')
   })
 
   it('keeps model names and leaves the upstream dictionaries unchanged', () => {
