@@ -1,4 +1,4 @@
-/** Brand occupants: the WASDEngine brand marks and the home animation frame layer. */
+/** Brand occupants: the WASDEngine brand marks, the Join Discord row, and the home animation frame layer. */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -10,7 +10,7 @@ import { applyWasdengineBrand } from './wasdengine-brand.tsx'
 export const inject = ['slots']
 
 /**
- * Fill the WASDEngine brand marks and frame the blank home with the animation decoration.
+ * Fill the WASDEngine brand marks and the Join Discord row, and frame the blank home with the animation decoration.
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {

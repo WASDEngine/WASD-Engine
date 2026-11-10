@@ -4,7 +4,7 @@
  * protocol violations, the bounded log tail, and escalating shutdown.
  */
 import { join } from 'node:path'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import {
   abortError, assertDelay, describeExit, JsonLineWorker, LineBuffer, MAX_REPLY_BYTES,
 } from '../src/json-line-worker.ts'
@@ -356,10 +356,28 @@ describe('closing', () => {
     expect(await worker.exited).toEqual({ code: null, signal: 'SIGKILL' })
   })
 
-  it('closes a worker that is already stopped', async () => {
+  it('closes a worker that is already stopped without sending it SIGTERM', async () => {
     const worker = await startWorker()
+    // Each SIGKILL arrives 50 ms late, so close runs while the stopped worker is still alive.
+    const kill = process.kill.bind(process)
+    const signals: (string | number | undefined)[] = []
+    const spy = vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+      signals.push(signal)
+      const send = (): void => {
+        try {
+          kill(pid, signal)
+        } catch {
+          // ESRCH: the process group already exited.
+        }
+      }
+      if (signal === 'SIGKILL') setTimeout(send, 50)
+      else send()
+      return true
+    })
+    onTestFinished(() => { spy.mockRestore() })
     await workerError(worker.request('sleep', { ms: 60_000 }, { timeoutMs: 100 }))
     await worker.close(0)
+    expect(signals).not.toContain('SIGTERM')
     expect(await worker.exited).toEqual({ code: null, signal: 'SIGKILL' })
   })
 

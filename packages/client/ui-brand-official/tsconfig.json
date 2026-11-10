@@ -25,6 +25,9 @@
     },
     {
       "path": "../ui-conversation/tsconfig.client.json"
+    },
+    {
+      "path": "../locale/tsconfig.client.json"
     }
   ]
 }

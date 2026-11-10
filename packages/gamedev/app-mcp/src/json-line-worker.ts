@@ -477,9 +477,10 @@ export class JsonLineWorker {
   /**
    * Shut the worker down: send `shutdown` and close its stdin, then after
    * `graceMs` without an exit send SIGTERM to its process group, and SIGKILL
-   * after another `graceMs`. Queued requests reject with `WORKER_EXITED`; the
-   * request being handled may still complete. Later calls join the first
-   * shutdown.
+   * after another `graceMs`. A worker already stopped, for example by a
+   * timeout, was sent SIGKILL then and gets no SIGTERM. Queued requests reject
+   * with `WORKER_EXITED`; the request being handled may still complete. Later
+   * calls join the first shutdown.
    * @param graceMs - milliseconds each step waits for the process to exit.
    * @returns once the worker process has exited.
    * @throws RangeError when `graceMs` is out of range.
@@ -499,7 +500,9 @@ export class JsonLineWorker {
       this.stdin.end()
     }
     if (await exitsWithin(this.exited, graceMs)) return
-    this.signalGroup('SIGTERM')
+    // stop() and failStart() send SIGKILL as they stop the worker. On macOS a SIGTERM that
+    // follows SIGKILL can still end the process first and become its exit signal.
+    if (this.phase !== 'stopped') this.signalGroup('SIGTERM')
     if (await exitsWithin(this.exited, graceMs)) return
     this.signalGroup('SIGKILL')
     await this.exited

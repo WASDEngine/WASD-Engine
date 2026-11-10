@@ -153,7 +153,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 - 请求按调用顺序逐个执行，每条回复都携带待处理请求的 id；`traceback` 可选。请求的 `timeoutMs` 从请求写入 stdin 时开始计时。
 - 回复使用 fd 3，因此应用程序自身在 stdout 与 stderr 上的输出不会与回复混杂。客户端把这些输出的最后 `spec.logTailBytes` 字节保留为日志尾部，用于诊断。
 - 取消排队中的请求只会把它移出队列。取消已派发的请求会停止工作进程，与超时相同，因为此时工作进程的状态未知。
-- `close(graceMs)` 发送 `shutdown` 请求并关闭 stdin。若 `graceMs` 后仍未退出，它向工作进程的进程组发送 SIGTERM，再过 `graceMs` 后发送 SIGKILL。工作进程可以在退出前回复 `shutdown` 请求。
+- `close(graceMs)` 发送 `shutdown` 请求并关闭 stdin。若 `graceMs` 后仍未退出，它向工作进程的进程组发送 SIGTERM，再过 `graceMs` 后发送 SIGKILL。工作进程可以在退出前回复 `shutdown` 请求。已被停止（例如因超时）的工作进程在停止时已收到 SIGKILL，因此 `close` 不再向它发送 SIGTERM，只等待它退出。
 - 在 POSIX 上，工作进程是其自身进程组的组长。工作进程退出或被停止时，客户端向该进程组中剩余的每个进程发送 SIGKILL。
 
 工作进程的失败是带有 `code` 的 `WorkerError`，只有 `WORKER_REMOTE` 会让工作进程继续运行。已停止的工作进程以其第一次失败拒绝后续请求；由其所有者启动新的工作进程。超出范围的预算（例如为零的 `timeoutMs`）会抛出 `RangeError`。

@@ -2,6 +2,8 @@
 export interface MacOSAppUpdateFeed {
   readonly publicUrl: string
   readonly channel?: 'nightly' | 'stable'
+  /** False for a feed whose server refuses requests for several byte ranges; absent keeps electron-updater's default. */
+  readonly useMultipleRangeRequest?: boolean
 }
 
 /** Packaged electron-updater configuration for macOS. */
@@ -10,6 +12,7 @@ export interface MacOSAppUpdateConfig {
   readonly url: string
   readonly channel: 'nightly' | 'stable'
   readonly updaterCacheDirName: string
+  readonly useMultipleRangeRequest?: boolean
 }
 
 /** Resolve the one generic macOS feed from the final electron-builder configuration. */
