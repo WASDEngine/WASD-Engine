@@ -455,11 +455,49 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @returns the runtime view after the install settled.
  */
 @Remote async installRuntime(signal: AbortSignal): Promise<GodotRuntimeView>
+
+/**
+ * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
+ * static web server can serve and any page can frame. The first export downloads the Web template. For other
+ * plugins on the Host; the Game tab does not call it.
+ * @param request - absolute project folder and output folder.
+ * @param signal - cancellation; it stops the export process.
+ * @returns the exported files.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotTemplateError} when the Web template cannot be downloaded.
+ * @throws {GodotExportError} when the export writes no playable build.
+ */
+async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 ```
 
 Types: [SessionId](core.zh.md)
 
 Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src/index.ts)
+
+<a id="ctxwasdplugins--wasdplugins"></a>
+
+### `ctx.wasdPlugins` — `WasdPlugins`
+
+Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+
+```ts cordis-catalog
+/**
+ * What a project folder released, for the Release button.
+ * @param projectDir - absolute folder of a game project.
+ * @param signal - cancellation.
+ * @returns whether it is a Godot project, and its game on the site the app is signed in to.
+ */
+@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>
+
+/**
+ * Pages of the WASD Engine site the app is signed in to, or would sign in to.
+ * @param signal - cancellation.
+ * @returns the Explore page.
+ */
+@Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+```
+
+Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
 
 <a id="game-mcp-events"></a>
 

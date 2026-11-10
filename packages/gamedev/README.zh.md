@@ -22,7 +22,7 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。游戏工具标签页包在设置与「插件」页面中展示这四个工具，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。
+共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。游戏工具标签页包在设置与「插件」页面中展示这四个工具，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。始终开启的 WASD Engine 插件把 Godot 游戏导出为网页版，并带着分享链接发布到 WASD Engine 网站。
 
 | 包 | 提供的能力 |
 |---|---|
@@ -34,6 +34,7 @@ kind: "package-group"
 | [`supercollider/`](supercollider/README.zh.md) | 通过 MCP 提供的 SuperCollider 工具：用 scsynth 离线渲染由 sclang 代码描述的声音与音乐，并为智能体提供电平、响度以及波形与声谱图图像；Desktop 应用自带不含 GUI 的 SuperCollider |
 | [`ui-game-mcp/`](ui-game-mcp/README.zh.md) | MCP 服务器的浏览器部分：登录后的「使用其他智能体设置」，作为桌面引导的最后一步与设置中的「其他智能体」分区，包含智能体标志、设置提示词与是否已有智能体连接，以及窗口打开已连接智能体启动游戏所在的会话 |
 | [`ui-game-tools/`](ui-game-tools/README.zh.md) | 「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：列出 Blender、GIMP、Godot 与 SuperCollider 及其标志与 Loader 状态，并在「插件」页面为每个工具提供开关，在 profile patch 中关闭或开启其所在行 |
+| [`wasd-plugins/`](wasd-plugins/README.zh.md) | WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 MCP 服务器都提供的 Web 导出与发布工具，它们把 Godot 游戏作为带分享链接的编号版本发布到 WASD Engine 网站；会话标题栏中的“发布”按钮；以及侧边栏中的“探索游戏” |
 
 -----
 

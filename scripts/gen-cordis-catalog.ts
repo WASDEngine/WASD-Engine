@@ -162,6 +162,7 @@ export const SERVICE_PAGE: Record<string, string> = {
   gameProjectController: 'workspace.md',
   godot: 'gamedev.md',
   gameMcp: 'gamedev.md',
+  wasdPlugins: 'gamedev.md',
 }
 
 /**
@@ -816,6 +817,10 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotRuntimeView: 'gamedev.md',
   GameMcpView: 'gamedev.md',
   GameMcpProvider: 'gamedev.md',
+  GodotWebExport: 'gamedev.md',
+  GodotWebExportRequest: 'gamedev.md',
+  WasdProjectView: 'gamedev.md',
+  WasdSiteLinks: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

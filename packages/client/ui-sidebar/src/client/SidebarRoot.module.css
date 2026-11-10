@@ -793,6 +793,8 @@
 
 .footerActions {
   display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .collapsed .footArea {
@@ -804,6 +806,11 @@
   display: flex;
   justify-content: center;
   width: auto;
+}
+
+.collapsed .footerActions {
+  align-items: center;
+  gap: 12px;
 }
 
 @media (prefers-reduced-motion: reduce) {

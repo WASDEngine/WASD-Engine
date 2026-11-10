@@ -61,7 +61,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath` 或 `runnerPath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 不是 http 或 https URL 时，加载失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath` 或 `webTemplatePath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 或 `webTemplateArchiveUrl` 不是 http 或 https URL 时，加载失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -83,6 +83,11 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `maxLogEntries` | `5000` | 每次运行保留的日志条目数 |
 | `maxRuns` | `4` | 所有 Session 合计可同时运行的游戏数，每个游戏在其进程结束前一直计入 |
 | `agentRunsMuted` | `true` | agent 启动的运行是否默认无音频，除非 `godot_run` 另行指定 |
+| `webTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；[Web 导出](#web-export)只从中下载 Web 模板；须为 http 或 https URL |
+| `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
+| `webTemplateSha256` | `d3ee2f08…4032a0` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
+| `exportTimeoutMs` | `600000` | 一次 Web 导出（包括它启动的资源导入）的截止时间 |
 
 <a id="runtime"></a>
 ### Godot 运行时
@@ -228,6 +233,13 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，宽度最多缩小到 `streamMaxWidth` 像素，推流的一帧只占用游戏主线程不到一毫秒。有 RenderingDevice 时（Forward+ 与 Mobile 渲染器都有），harness 请 GPU 复制一帧但不等待，复制结果在几帧后送达；兼容性渲染器，以及 8 位 RGBA 以外格式的帧（例如以高动态范围渲染的帧），改为同步读取。工作线程负责转换、缩放、加边条并编码各帧，下一帧的复制与上一帧的编码同时进行。发往 Host 的消息按顺序排队，并以连接能接收的速度发出，因此读取缓慢的一方不会拖住游戏；仍有较早的消息排队时，harness 不捕获新帧。帧是质量为 `streamQuality` 的 JPEG 文件。开启 `streamLossless` 时，只要准备一帧最多用一个帧间隔（1/`streamFps` 秒），帧就是无损 PNG 文件：每次推流先发送 JPEG 帧，对一帧的 PNG 测试跟得上后切换为 PNG，简单的 2D 场景和像素画通常如此；某个 PNG 帧用时更长时回到 JPEG 帧，大多数 3D 场景如此。试编码或 PNG 帧较慢后，下一次试编码在 1 s 后进行，延迟逐次加倍，最长 8 s。Godot 的 JPEG 编码器在任何质量下都以一半分辨率存储颜色，因此 PNG 帧保留文字和像素画清晰的彩色边缘，而 JPEG 帧会把它们模糊。读取方尚未取走上一条记录时到达的帧会相互替换，因此读取较慢的一方总能收到最新的帧。帧响应失败或结束时，“游戏”标签页在 250 ms 后重新打开它；在尝试未送达任何帧期间，延迟逐次加倍，最长 4 s。
 
+<a id="web-export"></a>
+### Web 导出
+
+`ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：Forward+ 或 Mobile 项目在网页上使用兼容性渲染器，以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
+
+Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+
 <a id="data-directory"></a>
 ### 数据目录中的文件
 
@@ -236,8 +248,10 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 | `payload/<hash>/wasd_harness.gd`、`payload/<hash>/wasd_check.gd` | harness 与检查脚本在 Desktop 应用归档之外的副本；`<hash>` 是脚本 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；旧版本保留 |
 | `runtime/<runtimeVersion>/` | 托管运行时：runner、LibGodot 库和 `runtime.json` | 保留；新的 `runtimeVersion` 会安装在它旁边 |
 | `runtime/.download-<id>.tar.gz`、`runtime/.staging-<id>/`、`runtime/<runtimeVersion>.lock` | 进行中安装的归档、解压出的文件和写入锁 | 安装结束时删除 |
+| `templates/<sha256>.zip` | 下载的 Web 导出模板，以其固定的 SHA-256 命名 | 保留；新的 `webTemplateSha256` 会在旁边另行下载 |
+| `templates/.download-<id>.zip`、`templates/<sha256>.zip.lock` | 进行中的模板下载及其写入锁 | 下载结束时删除 |
 
-插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储。
+插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储，Web 导出写入调用方指定的文件夹。
 
 <a id="plugin-icon"></a>
 ### 插件图标
@@ -392,7 +406,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。
-- **不支持导出** — 这些工具可以运行和检查游戏，但不会导出游戏。导出需要同一版本的 Godot 编辑器可执行文件及其导出模板，由 Agent 在 shell 中运行。
+- **仅支持 Web 导出** — [`exportWeb`](#web-export) 通过 WASD Engine 插件的工具导出网页版；`godot_*` 工具不导出任何内容，桌面与移动端导出需要同一版本的 Godot 编辑器及其导出模板，由 Agent 在 shell 中运行。
 - **不检查配置的运行时的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类并读取 `ScriptBacktrace` 帧；`runnerPath` 与 `libgodotPath` 指定的 LibGodot 构建若缺少这些类，则无法启动运行。
 - **harness 会替换自定义主循环** — 运行通过 `--script` 传入 harness，因此 `application/run/main_loop_type` 指定了自有 `SceneTree` 或 `MainLoop` 类的项目会改由 harness 运行。
 - **“游戏”标签页可能显示过时的运行时状态** — 标签页在开始跟随某个 Session 时以及安装之后解析运行时，因此标签页打开期间手动添加或删除的运行时目录，要等标签页再次跟随某个 Session 后才会反映出来，例如刷新页面后。

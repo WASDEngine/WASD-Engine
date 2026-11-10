@@ -1730,6 +1730,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'signal', description: 'stops this wait; the install continues.' }],
         returns: 'the runtime view after the install settled.',
       },
+      {
+        signature: 'async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>',
+        description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The first export downloads the Web template. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
+        returns: 'the exported files.',
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.'],
+      },
     ],
   },
   {
@@ -4379,6 +4386,25 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'wasdPlugins',
+    summary: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
+    description: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
+    methods: [
+      {
+        signature: '@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>',
+        description: 'What a project folder released, for the Release button.',
+        parameters: [{ name: 'projectDir', description: 'absolute folder of a game project.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether it is a Godot project, and its game on the site the app is signed in to.',
+      },
+      {
+        signature: '@Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>',
+        description: 'Pages of the WASD Engine site the app is signed in to, or would sign in to.',
+        parameters: [{ name: 'signal', description: 'cancellation.' }],
+        returns: 'the Explore page.',
+      },
+    ],
+  },
+  {
     key: 'web',
     summary: 'The web access service.',
     description: 'The web access service. Registered as `ctx.web` (one instance per context) and exposed to Clients as the `web` Remote namespace (`listProviders`).\n\nSelection semantics (resolved at execution time, never order-dependent):\n\n- A configured id that is registered and `available()` → that provider.\n- A configured id not registered → `WEB_PROVIDER_CONFIGURED_MISSING`.\n- A configured id registered but unavailable → `WEB_PROVIDER_CONFIGURED_UNAVAILABLE`.\n- No id configured, exactly one registered usable provider → that provider.\n- No id configured, multiple usable providers → `WEB_PROVIDER_AMBIGUOUS`.\n- No id configured, no usable provider → `WEB_PROVIDER_UNAVAILABLE`.',
@@ -6880,6 +6906,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotRunView',
     declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly layer?: GodotRunLayer;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
+  },
+  {
+    name: 'GodotWebExport',
+    declaration: 'export interface GodotWebExport {\n    readonly projectDir: string;\n    readonly outputDir: string;\n    readonly entry: string;\n    readonly files: readonly GodotWebExportFile[];\n    readonly totalBytes: number;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GodotWebExportFile',
+    declaration: 'export interface GodotWebExportFile {\n    readonly path: string;\n    readonly bytes: number;\n}',
+  },
+  {
+    name: 'GodotWebExportRequest',
+    declaration: 'export interface GodotWebExportRequest {\n    readonly projectDir: string;\n    readonly outputDir: string;\n}',
   },
   {
     name: 'GrantRecord',
@@ -10180,6 +10218,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ViewerPluginPolicy',
     declaration: 'export interface ViewerPluginPolicy {\n    readonly plugin: string;\n    readonly mode: \'all\' | \'none\' | \'selected\';\n    readonly endpoints?: readonly string[];\n}',
+  },
+  {
+    name: 'WasdProjectView',
+    declaration: 'export interface WasdProjectView {\n    readonly godot: boolean;\n    readonly game?: WasdReleasedGame;\n}',
+  },
+  {
+    name: 'WasdReleasedGame',
+    declaration: 'export interface WasdReleasedGame {\n    readonly title: string;\n    readonly url: string;\n    readonly version: number;\n}',
+  },
+  {
+    name: 'WasdSiteLinks',
+    declaration: 'export interface WasdSiteLinks {\n    readonly explore: string;\n}',
   },
   {
     name: 'WebBootBatch',

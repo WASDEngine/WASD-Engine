@@ -41,6 +41,7 @@ export interface DesktopElectronBuilderConfig {
   }
   readonly win: {
     readonly forceCodeSigning: boolean
+    readonly verifyUpdateCodeSignature: boolean
     readonly signtoolOptions: {
       readonly publisherName: string | undefined
       readonly sign: ((configuration: { path: string, hash: string, isNest: boolean }) => Promise<void>) | undefined
@@ -61,7 +62,12 @@ export interface DesktopElectronBuilderConfig {
   readonly afterPack: (context: AfterPackContext) => Promise<void>
   readonly afterSign: (context: AfterPackContext) => Promise<void>
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
-  readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null
+  readonly publish: readonly [{
+    readonly provider: 'generic'
+    readonly url: string
+    readonly channel: 'nightly' | 'stable'
+    readonly useMultipleRangeRequest?: boolean
+  }] | null
 }
 
 /**

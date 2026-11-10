@@ -14,6 +14,7 @@ const FIXTURE = fileURLToPath(new URL('./fixtures/fake-godot.mjs', import.meta.u
 /** Behavior of the fake Godot executable; see tests/fixtures/fake-godot.mjs. */
 export interface FakeGodotConfig {
   readonly import?: Record<string, unknown>
+  readonly export?: Record<string, unknown>
   readonly check?: Record<string, unknown>
   readonly game?: Record<string, unknown>
 }

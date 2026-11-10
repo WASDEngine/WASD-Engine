@@ -252,3 +252,35 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'godot/request-failed': { readonly message: string }
   }
 }
+
+/** What a Web export reads and writes. */
+export interface GodotWebExportRequest {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** Absolute folder the export empties and fills with the Web build. */
+  readonly outputDir: string
+}
+
+/** One file of a Web export. */
+export interface GodotWebExportFile {
+  /** Name inside the output folder. */
+  readonly path: string
+  /** Size in bytes. */
+  readonly bytes: number
+}
+
+/** A finished Web export: a folder a static web server can serve, with `entry` as its page. */
+export interface GodotWebExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** Absolute folder holding the exported files. */
+  readonly outputDir: string
+  /** The page that starts the game, `index.html`. */
+  readonly entry: string
+  /** Every exported file, by name. */
+  readonly files: readonly GodotWebExportFile[]
+  /** Sum of the files' sizes in bytes. */
+  readonly totalBytes: number
+  /** How the Web build differs from desktop runs, then Godot's export warnings; at most 10. */
+  readonly warnings: readonly string[]
+}

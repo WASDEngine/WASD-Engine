@@ -12,12 +12,11 @@ import {
 } from './desktop-release-environment.mjs'
 import {
   desktopUpdateMetadataFilename,
-  resolveDesktopAutoUpdateConfig,
 } from './desktop-auto-update-environment.mjs'
 import { verifyMacOSAppUpdateConfig } from './macos-app-update-config.mjs'
 import { verifyMacOSNotarizedApplication, verifyMacOSSignature } from './verify-macos-signature.mjs'
 import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
-import { desktopUpdatesDisabled, verifyNoMacOSAppUpdateConfig } from './wasdengine-update-service.mjs'
+import { resolveWasdengineUpdateConfig, verifyNoMacOSAppUpdateConfig } from './wasdengine-update-service.mjs'
 
 const execute = promisify(execFile)
 
@@ -79,7 +78,7 @@ export async function packageMacOSArtifacts(
   const secrets = Object.entries(environment).filter(([name]) => /KEY|SECRET|TOKEN|PASSWORD|APPLE_ID/iu.test(name)).map(([, value]) => value ?? '')
   const expected = resolveMacOSSigningEnvironment(environment)
   const credentials = resolveMacOSNotarizationEnvironment(environment)
-  const update = desktopUpdatesDisabled(environment) ? undefined : resolveDesktopAutoUpdateConfig(environment, 'darwin', arch)
+  const update = resolveWasdengineUpdateConfig(environment, 'darwin', arch)
   const verifyUpdateConfig = (app: string): Promise<void> => update === undefined
     ? Promise.resolve(verifyNoMacOSAppUpdateConfig(app))
     : verifyMacOSAppUpdateConfig(app, update)

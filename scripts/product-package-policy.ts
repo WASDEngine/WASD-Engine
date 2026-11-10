@@ -38,6 +38,7 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   'packages/host/product-telemetry-otel': { category: 'optional', reason: 'WASDEngine fork: the shipped Desktop composition disables this DeepSeek product-analytics exporter (wasdengine/FORK.md).' },
   'packages/session/session-telemetry': { category: 'optional', reason: 'WASDEngine fork: Service Definition of session-telemetry-otel, the only backend, which every shipped composition disables (wasdengine/FORK.md).' },
   'packages/session/session-telemetry-otel': { category: 'optional', reason: 'WASDEngine fork: every shipped composition disables this DeepSeek collector exporter (wasdengine/FORK.md).' },
+  'packages/core/tool-executor-ptc': { category: 'optional', reason: 'WASDEngine fork: upstream mounts this executor only in its PTC preset, which the fork deletes (wasdengine/FORK.md).' },
   'packages/sdk/client': { category: 'sdk', reason: 'Published TypeScript embedding client runs in the consumer process.' },
   'packages/typert/generator': { category: 'build', reason: 'Build-time generation of type metadata.' },
   'packages/test-support/agent-loop-testkit': { category: 'test', reason: 'Published agent-loop test harness.' },

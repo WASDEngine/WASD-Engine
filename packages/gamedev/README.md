@@ -22,7 +22,7 @@ The `gamedev/` group gives the agent the applications a game needs, without a wi
 <a id="packages"></a>
 ## Packages
 
-The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, and the game MCP package offers their tools to other agents of signed-in users, with its browser half's setup at the end of the Desktop introduction and in Settings.
+The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, and the game MCP package offers their tools to other agents of signed-in users, with its browser half's setup at the end of the Desktop introduction and in Settings. WASD Engine Plugins, which stays on, exports Godot games for the Web and releases them to the WASD Engine site with share links.
 
 | Package | What it provides |
 |---|---|
@@ -34,6 +34,7 @@ The shared MCP runtime starts and supervises one headless worker per application
 | [`supercollider/`](supercollider/README.md) | SuperCollider tools over MCP: sound and music rendered offline with scsynth from sclang code, with levels, loudness, and a waveform and spectrogram image for the agent; the Desktop app ships SuperCollider without its GUI |
 | [`ui-game-mcp/`](ui-game-mcp/README.md) | The MCP server's browser half: Set up with another agent after sign-in, as the Desktop introduction's last step and the Other agents section of Settings, with the agents' logos, the setup prompt, and whether an agent connected, and the window opening the Session whose game a connected agent starts |
 | [`ui-game-tools/`](ui-game-tools/README.md) | The Game tools tabs of Settings › Built-in plugins and the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos and Loader state, and on the Plugins page a switch for each that turns its row off or on in the profile patch |
+| [`wasd-plugins/`](wasd-plugins/README.md) | WASD Engine Plugins, WASD Engine's own always-on features: the Web export and release tools of every Session and of the MCP server, which publish Godot games to the WASD Engine site as numbered versions with share links, the Release button in the Session header, and Explore Games in the sidebar |
 
 -----
 

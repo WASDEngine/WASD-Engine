@@ -667,10 +667,15 @@ export interface ContactConfig {
   bonusAckRetryMaxDelayMs: number
   /** Offer Add API Key beside Sign in in the sign-in dialog; false leaves account sign-in as the only way in. */
   apiKeyEntry: boolean
+  /**
+   * Make every user sign in: the sign-in dialogs offer no way to close them, and losing the sign-in opens the Get
+   * started dialog again, in any view.
+   */
+  signInRequired: boolean
 }
 
-/** Persisted steps; a native top-up page leaves the durable step at credit. */
-export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'done'
+/** Persisted steps; a native top-up page leaves the durable step at credit. WASD Engine adds `agents`, its last step. */
+export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'agents' | 'done'
 
 /** Work scenarios offered by the desktop introduction. */
 export type OnboardingPurpose = 'office' | 'development' | 'both'
@@ -1641,7 +1646,7 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:32`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:35`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1704,7 +1709,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:46`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:53`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1751,6 +1756,19 @@ export interface Config {
   maxRuns: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
+  /**
+   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
+   * Web template with HTTP range requests.
+   */
+  webTemplateArchiveUrl: string
+  /** Path of the single-threaded Web release template inside that archive. */
+  webTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  webTemplateSha256: string
+  /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
+  webTemplatePath: string
+  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  exportTimeoutMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
@@ -4805,6 +4823,23 @@ export interface Config {
 export type ApprovalPolicy = 'ask' | 'never'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-user-approval -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->
+<a id="deepseek-aidsh-wasd-plugins"></a>
+
+## `@deepseek-ai/dsh-wasd-plugins`
+
+- `inject`: `tools` · `godot` · `workingDirectory` · `typert`
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:28`](../packages/gamedev/wasd-plugins/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Path of the Explore page on the WASD Engine site. */
+  explorePath: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-web -->
 <a id="deepseek-aidsh-web"></a>

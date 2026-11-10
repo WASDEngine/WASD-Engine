@@ -273,6 +273,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |
 | `@deepseek-ai/dsh-godot` | yes | Run, test, and play Godot games through LibGodot with a live Game tab |
 | `@deepseek-ai/dsh-supercollider` | yes | Headless SuperCollider for the agent: an MCP server that designs sounds with sclang and renders them offline with scsynth |
+| `@deepseek-ai/dsh-wasd-plugins` | yes | WASD Engine's own features, always on: export games for the Web, release them to WASD Engine with share links, the Release button, and Explore Games |
 
 ## goal
 

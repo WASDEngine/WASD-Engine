@@ -2,13 +2,14 @@
 // `godot_runner`, it takes `--libgodot <library> --parent-pid <pid> --` before Godot's own command line, which it
 // keeps. It reads its behavior from `fake-godot.json` in the `--path` project folder and appends the Godot command
 // line it received to `fake-godot.log` there. Modes follow the Host's command lines: `--import` runs the import step,
-// `--headless ... --script` runs the static check, anything else runs a game that speaks the wasd_harness.gd
+// `--export-release` writes the configured export files next to the requested page and records the export presets it
+// saw, `--headless ... --script` runs the static check, anything else runs a game that speaks the wasd_harness.gd
 // protocol on the loopback port the Host passes.
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const raw = process.argv.slice(2)
 const args = raw[0] === '--libgodot' ? raw.slice(raw.indexOf('--') + 1) : raw
@@ -315,6 +316,17 @@ async function runGame(section) {
   })
 }
 
+async function runExport(section) {
+  const page = args[args.indexOf('--export-release') + 2]
+  const presets = join(project, 'export_presets.cfg')
+  record({ preset: args[args.indexOf('--export-release') + 1], presets: existsSync(presets) ? readFileSync(presets, 'utf8') : null })
+  await emitOutput(section)
+  if (section.delayMs !== undefined) await sleep(section.delayMs)
+  for (const [name, text] of Object.entries(section.files ?? {})) writeFileSync(join(dirname(page), name), text)
+  await finish(section)
+}
+
 if (args.includes('--import')) await runImport(config.import ?? {})
+else if (args.includes('--export-release')) await runExport(config.export ?? {})
 else if (args.includes('--headless')) await runCheck(config.check ?? {})
 else await runGame(config.game ?? {})

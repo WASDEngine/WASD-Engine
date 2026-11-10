@@ -183,6 +183,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'godot/run': 'owner-only', // owner starts a game (WASD Engine)
   'godot/stop': 'owner-only', // owner stops a game (WASD Engine)
   'gameMcp/watch': 'owner-only', // owner sets up other agents, whose setup prompt carries a token (WASD Engine)
+  'wasdPlugins/links': 'owner-only', // owner opens the WASD Engine site's Explore page (WASD Engine)
+  'wasdPlugins/project': 'owner-only', // owner releases a game, which publishes it under the owner's account (WASD Engine)
   'cuaAccess/applicationIcons': 'owner-only', // owner computer-use permissions
   'cuaAccess/applications': 'owner-only', // owner computer-use permissions
   'cuaAccess/enablePersistentPtc': 'owner-only', // owner computer-use permissions

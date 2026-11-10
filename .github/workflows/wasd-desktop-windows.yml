@@ -1,0 +1,126 @@
+# Package the WASD Engine Desktop app for Windows x64 from a release tag and upload it to that tag's GitHub release
+# (wasdengine/FORK.md, Releases): the unsigned NSIS installer, its blockmap, and the stable.yml and nightly.yml feed
+# files that installed Windows apps read through releases/latest/download. The release is created as a draft when it
+# does not exist yet; wasdengine-github-release.ts publish makes it the latest release once the macOS files are in.
+# Every installer bundles LibGodot, so the job stops at its start until the LibGodot release that
+# apps/desktop/scripts/wasdengine-libgodot.ts names lists a win32-x64 build; publish it with wasd-libgodot.yml on main,
+# then re-run this workflow. Runs on every pushed v* tag and on manual dispatch.
+#
+# The job runs the build and the upload in one place, so the token that may write releases reaches only the upload
+# step; the installer it builds is what users run, so a build that could tamper with that step could equally tamper
+# with the installer.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: Desktop Windows release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to package, v<version>
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-desktop-windows-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Packaging runs never report to the telemetry endpoint the CLI profile names.
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  package:
+    name: Package and upload win-x64
+    runs-on: windows-2025
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      # The prepared dsh tree nests node_modules deeper than 260 characters, and pnpm links packages.
+      - name: Allow long paths and symbolic links
+        run: |
+          git config --system core.longpaths true
+          New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -PropertyType DWord -Force | Out-Null
+          reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
+
+      - name: Check out the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+
+      - name: Check the tag against the version
+        run: |
+          $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
+          if ($env:RELEASE_TAG -cne "v$version") { throw "The tag $env:RELEASE_TAG does not name version $version" }
+
+      # Installs the pnpm release that package.json's packageManager names.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      # Packaging would otherwise fail an hour in, or, for a manifest without a Windows build, ship without LibGodot.
+      - name: Require the LibGodot release
+        run: |
+          node --input-type=module --eval @'
+          const { LIBGODOT_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-libgodot.ts')
+          const response = await fetch(LIBGODOT_MANIFEST_URL)
+          const manifest = response.ok ? await response.json() : undefined
+          if (manifest?.artifacts?.['win32-x64'] === undefined) {
+            console.log(`::error::${LIBGODOT_MANIFEST_URL} ${response.ok ? 'lists no win32-x64 build' : `answered HTTP ${response.status}`}. Run the LibGodot runtime workflow (wasd-libgodot.yml) on main to publish it, then re-run this workflow.`)
+            process.exit(1)
+          }
+          '@
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Select the release settings and runtimes
+        run: |
+          Copy-Item apps/desktop/wasdengine/env.windows.example apps/desktop/.env.windows
+          # The GIMP and SuperCollider workflows build no Windows runtime, so the Windows app uses an installed GIMP 3 and SuperCollider.
+          "WASD_GIMP_BUNDLE=0" >> $env:GITHUB_ENV
+          "WASD_SUPERCOLLIDER_BUNDLE=0" >> $env:GITHUB_ENV
+
+      - name: Check the packaging settings and toolchain
+        run: pnpm run package:desktop:win:x64:unsigned -- --check
+
+      - name: Package the installer
+        run: pnpm run package:desktop:win:x64:unsigned
+
+      - name: Check that the installer bundles LibGodot
+        run: |
+          $runtime = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-godot/libgodot/win32-x64/runtime.json'
+          if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no LibGodot runtime at $runtime" }
+          Get-Content -Raw $runtime | ConvertFrom-Json | Select-Object version, godot, runner, library | Format-List
+
+      - name: Keep the packaging logs
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-packaging-runs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/packaging-runs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload the installer to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-github-release.ts upload win-x64 --unsigned

@@ -20,7 +20,7 @@ import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { bundlePatchPaths, composeEntries, loadOverlayPatches, readPluginMeta } from '@deepseek-ai/dsh-app-boot'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } from '@deepseek-ai/dsh-launch-environment'
-import { HIDDEN_BUNDLES, PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
+import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = resolve(webAppDir, '../../..')
@@ -50,8 +50,11 @@ const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-g
 /** The row the fork inserts after the tabs: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
 
-/** The row the fork inserts last: the browser half of the MCP server, the sign-in dialog's setup panel. */
+/** The row the fork inserts after the MCP server: the browser half of the MCP server, the setup for another agent. */
 const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-mcp' } as const
+
+/** The row the fork inserts last: WASD Engine Plugins, WASD Engine's own always-on features. */
+const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
 const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
@@ -277,10 +280,24 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/skills')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, and their MCP server', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_MCP.id, GAME_MCP_UI.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+  })
+
+  it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === WASD_PLUGINS.id)
+    expect(entry?.name).toBe(WASD_PLUGINS.name)
+    expect(entry?.config).toBeUndefined()
+    expect(entry?.disabled).toBeUndefined()
+    expect(manifest(webAppDir).dependencies?.[WASD_PLUGINS.name]).toBe('workspace:*')
+    expect(PROTECTED_PLUGINS.has(WASD_PLUGINS.name)).toBe(true)
+    const meta = readPluginMeta(WASD_PLUGINS.name, pathToFileURL(join(webAppDir, 'package.json')).href)
+    expect(meta?.error).toBeUndefined()
+    const title = meta?.title
+    expect(typeof title === 'object' ? title.en : title).toBe('WASD Engine Plugins')
+    expect(meta?.icon).toMatch(/^data:image\/svg\+xml;base64,/u)
   })
 
   it('mounts the game tools\' MCP server from a web-app dependency with its own directory under the harness home', () => {

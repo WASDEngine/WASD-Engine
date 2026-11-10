@@ -70,6 +70,10 @@ describe('configuration', () => {
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, agentRunsMuted: true,
+      webTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      webTemplateEntry: 'templates/web_nothreads_release.zip',
+      webTemplateSha256: 'd3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0',
+      webTemplatePath: '', exportTimeoutMs: 600_000,
     })
   })
 })

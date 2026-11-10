@@ -79,7 +79,7 @@ export function applyWasdengineGameLayer<T extends { readonly files: readonly (s
  * @param config - Configuration from `createElectronBuilderConfig`.
  * @returns A new configuration that keeps every hook and packaging rule of `config`.
  * @throws When the application identifier is DeepSeek's, when the configuration embeds an update
- * feed outside `WASDENGINE_DESKTOP_BRAND.updateOrigin`, or when upstream no longer ships the About
- * panel icon or the file name start that this function replaces.
+ * feed other than the GitHub releases feed of `WASDENGINE_DESKTOP_BRAND.releaseRepository`, or when
+ * upstream no longer ships the About panel icon or the file name start that this function replaces.
  */
 export function applyWasdengineBrand(config: DesktopElectronBuilderConfig): WasdengineElectronBuilderConfig

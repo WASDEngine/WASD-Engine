@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { untilAborted } from './abort.ts'
 import { checkScripts, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
+import { exportWeb } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { GodotInputError, parseInputEvents, parseWindowSize } from './input.ts'
@@ -38,9 +39,15 @@ import {
 import { registerGodotTools, type GodotToolHost } from './tools.ts'
 import type {
   GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
+  GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
+import { WebTemplateManager } from './web-template.ts'
 
 export type * from './types.ts'
+export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
+export { GodotProjectError, resolveGodotProject } from './project.ts'
+export type { GodotProject } from './project.ts'
+export { GodotTemplateError } from './web-template.ts'
 
 /** Plugin configuration. */
 export interface Config {
@@ -86,6 +93,19 @@ export interface Config {
   maxRuns: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
+  /**
+   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
+   * Web template with HTTP range requests.
+   */
+  webTemplateArchiveUrl: string
+  /** Path of the single-threaded Web release template inside that archive. */
+  webTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  webTemplateSha256: string
+  /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
+  webTemplatePath: string
+  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  exportTimeoutMs: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -146,6 +166,12 @@ function validateConfig(config: Config): void {
   if (!URL.canParse(config.runtimeManifestUrl) || !/^https?:$/u.test(new URL(config.runtimeManifestUrl).protocol)) {
     throw new Error(`Godot plugin: runtimeManifestUrl must be an http or https URL, got ${JSON.stringify(config.runtimeManifestUrl)}.`)
   }
+  if (!URL.canParse(config.webTemplateArchiveUrl) || !/^https?:$/u.test(new URL(config.webTemplateArchiveUrl).protocol)) {
+    throw new Error(`Godot plugin: webTemplateArchiveUrl must be an http or https URL, got ${JSON.stringify(config.webTemplateArchiveUrl)}.`)
+  }
+  if (config.webTemplatePath !== '' && !isAbsolute(config.webTemplatePath)) {
+    throw new Error(`Godot plugin: webTemplatePath must be an absolute path, got ${JSON.stringify(config.webTemplatePath)}.`)
+  }
 }
 
 /** @returns the refusal of a request for a run that the Session does not have, or that does not accept requests. */
@@ -188,11 +214,17 @@ export default class GodotController extends TypertRemoteService {
     maxLogEntries: z.number().step(1).min(1).default(5000),
     maxRuns: z.number().step(1).min(1).default(4),
     agentRunsMuted: z.boolean().default(true),
+    webTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
+    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0'),
+    webTemplatePath: z.string().default(''),
+    exportTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(600_000),
   })
 
   private readonly sequence = new LogSequence()
   private readonly sessions: GodotSessions
   private readonly runtime: GodotRuntimeManager
+  private readonly templates: WebTemplateManager
   private readonly runtimeWatchers = new Set<() => void>()
   private payload: Promise<{ readonly harness: string; readonly check: string }> | undefined
 
@@ -210,6 +242,7 @@ export default class GodotController extends TypertRemoteService {
     this.runtime = new GodotRuntimeManager({ ...config, bundledRoot }, host, () => {
       for (const watcher of [...this.runtimeWatchers]) watcher()
     })
+    this.templates = new WebTemplateManager(config, (url, init) => fetch(url, { headers: init.headers, signal: init.signal }))
     ctx.effect(() => async () => {
       this.runtime.dispose()
       await this.sessions.dispose()
@@ -348,6 +381,35 @@ export default class GodotController extends TypertRemoteService {
   @Remote
   async installRuntime(signal: AbortSignal): Promise<GodotRuntimeView> {
     return this.runtime.install(signal)
+  }
+
+  /**
+   * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
+   * static web server can serve and any page can frame. The first export downloads the Web template. For other
+   * plugins on the Host; the Game tab does not call it.
+   * @param request - absolute project folder and output folder.
+   * @param signal - cancellation; it stops the export process.
+   * @returns the exported files.
+   * @throws {GodotProjectError} without `project.godot` in the project folder.
+   * @throws {GodotTemplateError} when the Web template cannot be downloaded.
+   * @throws {GodotExportError} when the export writes no playable build.
+   */
+  async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport> {
+    const project = await resolveGodotProject(request.projectDir, '.', signal)
+    const runtime = await this.requireRuntime(signal)
+    const template = await this.templates.resolve(signal)
+    return await exportWeb({
+      subprocess: this.ctx.subprocess,
+      runtime,
+      projectDir: project.dir,
+      outputDir: request.outputDir,
+      template,
+      hostPid: process.pid,
+      timeoutMs: this.config.exportTimeoutMs,
+      graceMs: this.config.stopGraceMs,
+      outputBytes: this.config.processOutputBytes,
+      signal,
+    })
   }
 
   /**

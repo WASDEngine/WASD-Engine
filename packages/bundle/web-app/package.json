@@ -214,7 +214,8 @@
     "@deepseek-ai/dsh-supercollider": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-tools": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-mcp": "workspace:*",
-    "@deepseek-ai/dsh-game-mcp": "workspace:*"
+    "@deepseek-ai/dsh-game-mcp": "workspace:*",
+    "@deepseek-ai/dsh-wasd-plugins": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

@@ -447,6 +447,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Serves the game tools that plugins provide to other agents on the computer over a loopback Streamable HTTP endpoint with a token, and runs their games in Sessions of their own.',
   },
   {
+    key: 'wasdPlugins',
+    pkg: 'wasd-plugins',
+    title: 'WASD Engine Plugins: Web export, releases, and site links',
+    mode: 'service',
+    note: 'Exports Godot games for the Web and releases them to the WASD Engine site as numbered versions with share links, through tools of every Session and of the game MCP server, and tells the window what each project released.',
+  },
+  {
     key: 'typert',
     pkg: 'typert-registry',
     title: 'Runtime type registry',
