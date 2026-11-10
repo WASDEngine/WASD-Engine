@@ -21,7 +21,7 @@ import {
 } from './wasdengine-runtime-archive.ts'
 
 /** The Godot plugin's default `runtimeManifestUrl`; `wasdengine-libgodot.spec.ts` keeps the two equal. */
-export const LIBGODOT_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/manifest.json'
+export const LIBGODOT_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json'
 
 /** One platform's archive in a LibGodot runtime manifest. */
 interface Artifact extends RuntimeArchive {

@@ -148,7 +148,7 @@ kind 3    u32 LE request id, PNG or JPEG bytes                         harness t
 
 | `type` | 字段 | 发送时机 |
 |---|---|---|
-| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height` | 最先发送，仅一次 |
+| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale` | 最先发送，仅一次 |
 | `status` | `frame`、`fps`、`paused`、`scene`（当前场景的 `res://` 文件，或为空）、`mouseMode`、`width`、`height`、`droppedLogs` | 每秒一次，以及当前场景或鼠标模式发生变化的那一帧 |
 | `logs` | `entries`，每项含 `level`、`message`、`time_ms`，以及已知时的 `file`、`line`、`function`、`code`，和由 `function`、`file`、`line` 组成的 `backtrace` 帧 | 每个有新条目的帧；连接建立之前记录的条目在连接打开后发送 |
 | `result` | `id`、`ok`、`ok` 为 false 时的 `error`，以及该请求的结果字段 | 回答请求时 |
@@ -159,7 +159,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
-| `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（PNG 编码跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
+| `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（准备 PNG 帧跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -241,7 +241,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 记录头把长度放在最前、序号放在最后，与 harness 的 kind 2 载荷不同。
 
 - 至少有一个帧响应处于打开状态时，运行会请求 harness 以 `streamFps`、`streamQuality`、`streamMaxWidth` 与 `streamLossless` 推送帧；最后一个响应关闭时，运行发送 `fps` 为 0 的 `stream`。
-- harness 在工作线程上编码每一帧：`lossless` 开启且编码一帧 PNG 最多用 1/`fps` 秒时编码为 PNG 文件，否则编码为质量为 `quality` 的 JPEG 文件。[包 README](../../packages/gamedev/godot/README.zh.md#remote-and-frames) 说明推流何时在两者之间切换。
+- harness 从根视口的纹理取得每一帧。有 RenderingDevice 时，它在渲染线程上调用 `RenderingDevice.texture_get_data_async`，几帧后收到 8 位 RGBA 像素；在兼容性渲染器上，以及纹理为其他格式时，它在主线程上调用 `Texture2D.get_image()`。一个 `WorkerThreadPool` 任务负责转换、缩放该帧并加边条，然后编码：`lossless` 开启且准备一帧 PNG 最多用 1/`fps` 秒时编码为 PNG 文件，否则编码为质量为 `quality` 的 JPEG 文件。同一时间只有一次复制和一次编码，两者相互重叠。[包 README](../../packages/gamedev/godot/README.zh.md#remote-and-frames) 说明推流何时在 PNG 与 JPEG 之间切换。
+- 发往 Host 的每条消息都在队列中等待，并在连接能接收时通过 `StreamPeerTCP.put_partial_data` 发出，因此游戏主线程从不等待 Host；队列中仍有字节时 harness 不开始新的一帧，退出时则等待连接，发出剩余的消息。
 - 响应体只在读取方请求时才产生记录：读取方取走上一条记录之前到达的帧会替换它，因此读取较慢的一方总能收到最新的帧。
 - 运行结束或请求被中止时，响应体结束。
 
@@ -256,12 +257,15 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 数据 | 通道 | 时机 |
 |---|---|---|
 | 运行、运行时与日志 | 该 Session 的 `godot.follow` 流 | Game 标签页或下文所述的打开逻辑读取该 Session 的游戏状态时 |
-| 帧 | 对 `api/godot.frames?session=<SessionId>&run=<runId>` 的 `fetch`，相对于 `document.baseURI` 解析，并使用 `cache: 'no-store'` | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时 |
+| 图层 | macOS 桌面应用的 `dshDesktop.gameLayer.show` 与 `hide`，以及 `#root` 的遮罩 | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused` 并报告了 `layer` 与窗口尺寸，且页面具有 `dshDesktop.gameLayer` 时 |
+| 帧 | 对 `api/godot.frames?session=<SessionId>&run=<runId>` 的 `fetch`，相对于 `document.baseURI` 解析，并使用 `cache: 'no-store'` | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused`，且标签页未显示该运行的图层时 |
 | 输入 | 带运行 id 的 `godot.input` | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时 |
-| 操作 | `godot.run`、`godot.stop`、`godot.control` 与 `godot.installRuntime` | 用户按下工具栏按钮时 |
+| 操作 | `godot.run`、`godot.stop`、`godot.control` 与 `godot.installRuntime` | 用户按下工具栏按钮时；用户关闭标签页时也调用 `godot.stop` |
 
 - **follow 流。** `godot.follow` 跟随一个 Session id，不需要存活的 Agent。`ctx.godot` 首先发送 `snapshot`：该 Session 当前或最近一次运行的视图（Session 没有存活的 Agent 或没有运行时为 null）、运行时视图、该运行最后 200 条日志条目，以及游标。随后它发送合并后的变化：带最新视图的 `run`，以及 Session 的 Agent 结束时的 `run: null`；带流游标之后至多最新 200 条条目的 `logs`；以及带最新运行时视图的 `runtime`。之后的 Agent 启动的运行会出现在同一个流中，流在其信号中止或插件卸载时结束。浏览器至多保留当前运行的 500 条条目；`run` 项指向新的运行时，丢弃其他运行的条目；已持有的条目会被跳过。连接断开后，Gateway 的逻辑流会重新打开 follow 流，并从新的快照开始。流再次结束或失败后，若它已送达快照，浏览器立即重新跟随，否则在 1 s 后重新跟随，延迟逐次加倍，至多 30 s，用户按下「重试」时则立即重新跟随；在快照到达之前，界面显示重新连接提示。
 - **打开标签页。** 对于右侧 Sidebar 已挂载的 Session，由 agent 启动（`startedBy: 'agent'`）且尚未结束的运行，会按运行 id 打开一次 Game 标签页；只要客户端插件保持加载，即使该 Session 的 scope 被释放后又重新保留，也是如此。
+- **关闭标签页。** 插件为 `godot` 类型注册右侧 Sidebar 的关闭处理器：用户关闭标签页或新内容取代它时，处理器为该标签页的 Session 调用 `godot.stop`，不等待游戏结束。没有运行的 Session 收到的 `godot/not-running` 拒绝会被忽略；其他失败写入浏览器日志，游戏继续运行。折叠侧栏、切换 Session 和卸载插件不会运行关闭处理器。
+- **图层。** 画面调用 `dshDesktop.gameLayer.show` 显示运行的图层，传入 CAContext id、以点为单位的图层尺寸（窗口尺寸除以 `layer.scale`），以及在画面边框内居中、具有图层宽高比且边缘对齐设备像素的矩形，单位为布局视口的 CSS 像素。桌面应用回复 true 后，插件用遮罩从 `#root` 中挖去该矩形：一个覆盖根元素的遮罩层减去每个显示中图层的矩形对应的一层，使页面在那里透明，后面的图层得以显示，而其下的画面仍能接收指针（裁剪路径会使其收不到指针）；最后一个图层结束时以及插件卸载时，它恢复根元素原先的遮罩。焦点环与提示若在根元素内会随挖空区域一起被裁掉，因此由 portal 到 `document.body`、覆盖在画面上的一个框绘制。画面或窗口尺寸改变后，或指针拖动期间，画面在每个动画帧重新放置图层与挖空区域，直到其边框连续 10 帧保持不变；此外每 500 ms 检查一次边框。回复 false 或调用失败时，图层结束，并开始推流该运行的帧；下一次运行会再次尝试图层。[fork 的桌面说明](../../wasdengine/FORK.md#game-layer-in-the-desktop-app)介绍主进程一侧。
 - **帧。** 读取方在字节到达时解析记录，并把声明零字节、宽度或高度为零，或超过 32 MiB 的记录视为损坏。响应失败、被拒绝、损坏或结束后，它在 250 ms 后重新打开；尝试一直没有交付记录时，延迟逐次加倍，至多 4 s。同一时间只用 `createImageBitmap` 解码一张图像：以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码；较新的记录会替换正在等待的记录，最新解码的帧在下一个动画帧绘制到保持帧宽高比的 canvas 上。
 - **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件；鼠标位于 canvas 上方时，发送鼠标事件。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
 - **操作。** 「运行」以最近一次运行的项目调用 `godot.run`；首次运行之前不带项目，由 `ctx.godot` 查找最近的项目。运行进行中时代替「运行」显示的「重新运行」还会传入该运行 `launch` 中的场景与窗口尺寸。「停止」、「暂停」、「继续」、「前进一帧」与「安装 Godot」（运行时缺失或失败时显示）调用对应的方法。被拒绝的操作会显示其 Remote 错误码对应的文案，包括 `session/writer-held`。
@@ -323,6 +327,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `fps`、`frame`、`mouseMode` | 最新 `status` 消息中的值；`mouseMode` 是 Godot 的 `Input.MouseMode`：0 可见、1 隐藏、2 捕获、3 限制在窗口内、4 限制在窗口内且隐藏 |
 | `renderer` | 渲染驱动与渲染方法，例如 `metal / forward_plus` |
 | `muted`、`windowless`、`runtime` | 是否静音、是否无窗口渲染，以及运行时类型 `libgodot` 或 `executable` |
+| `layer` | 无窗口 macOS 运行的 `GodotRunLayer`，在游戏报告后、且 LibGodot 构建发布了它时提供：同一登录会话中的进程借以用 CALayerHost 显示游戏图层的 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale` |
 | `exitCode`、`signal` | 进程如何结束 |
 | `message` | 失败或崩溃的说明，附带进程输出的末尾 |
 | `errorCount`、`warningCount` | 该运行的错误级条目数与警告条目数 |

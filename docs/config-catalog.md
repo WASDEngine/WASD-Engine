@@ -1724,7 +1724,7 @@ export interface Config {
   /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
   streamQuality: number
   /**
-   * Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
+   * Stream lossless PNG frames while preparing a PNG frame keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
    * only JPEG frames.
    */
   streamLossless: boolean

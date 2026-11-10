@@ -59,7 +59,7 @@ export interface Config {
   /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
   streamQuality: number
   /**
-   * Stream lossless PNG frames while PNG encoding keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
+   * Stream lossless PNG frames while preparing a PNG frame keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
    * only JPEG frames.
    */
   streamLossless: boolean
@@ -99,7 +99,7 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
  * The Godot release, `major.minor`, of the runtime that the plugin ships or installs: the start of `runtimeVersion`,
- * such as `4.7` for `4.7.2-wasd.1`, which the shipped and managed runtimes must match.
+ * such as `4.7` for `4.7.2-wasd.2`, which the shipped and managed runtimes must match.
  * @param config - the plugin configuration.
  * @returns the release, or undefined when `libgodotPath` and `runnerPath` name another runtime or `runtimeVersion` does not start with one.
  */
@@ -171,8 +171,8 @@ export default class GodotController extends TypertRemoteService {
   static inject = ['tools', 'systemPrompt', 'workingDirectory', 'subprocess', 'agents', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
     dataRoot: z.string().required(),
-    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.1'),
-    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/manifest.json'),
+    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.2'),
+    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),

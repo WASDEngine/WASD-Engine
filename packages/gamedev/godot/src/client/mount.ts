@@ -1,4 +1,8 @@
-/** Remote contribution and registrations of the Godot browser plugin: the Game tab, its opening for Agent runs, and the tool cards. */
+/**
+ * Remote contribution and registrations of the Godot browser plugin: the Game tab, its opening for Agent runs, the stop of
+ * the Session's game when the tab closes, the tool cards, and, in the macOS Desktop app, the holes of the application
+ * root through which the shell's game layers show.
+ */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
@@ -10,11 +14,13 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-godot/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import type { GodotFollowItem } from '../types.ts'
+import type { DesktopGameLayerBridge, GodotFollowItem } from '../types.ts'
 import { failureOf, type GameFailure } from './actions.ts'
 import { GODOT_CARD_TOOLS, GodotToolCard } from './cards.tsx'
+import { nextFrame } from './frames.ts'
 import { GameTab, GameTabTitle, type GameTabInjected } from './GameTab.tsx'
 import { GameControllerIcon } from './icon.tsx'
+import { LayerHoles, presentLayer, type LayerPresentation } from './layer.ts'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { ACTIVE_PHASES, createGameSource, type GameSource } from './source.ts'
 
@@ -86,6 +92,15 @@ function registerUi(ctx: Context): void {
     games.set(sessionId, game)
     return game
   }
+  // The macOS Desktop shell shows a windowless game's layer behind the page, through holes in the application root.
+  const layers = (globalThis as typeof globalThis & { dshDesktop?: { readonly gameLayer?: DesktopGameLayerBridge } }).dshDesktop?.gameLayer
+  let showLayer: GameTabInjected['showLayer']
+  if (layers !== undefined) {
+    const holes = new LayerHoles(() => document.getElementById('root'))
+    ctx.effect(() => () => { holes.dispose() }, 'godot: application root holes for game layers')
+    const services = { bridge: layers, holes, schedule: nextFrame, pixelRatio: () => window.devicePixelRatio }
+    showLayer = (presentation: LayerPresentation) => presentLayer(services, presentation)
+  }
   // Windows Desktop intercepts bound chords such as Ctrl+W before the page sees them; the shortcut service's recording
   // state suspends that interception while the game view has focus. Web and Linux Desktop dispatch application
   // shortcuts after the view, which consumes the keys it maps. macOS Desktop keeps intercepting, because the recording
@@ -115,6 +130,7 @@ function registerUi(ctx: Context): void {
         throw result.error
       },
       openFrames: (runId, signal) => fetch(frameUrl(sessionId, runId), { signal, cache: 'no-store' }),
+      ...showLayer === undefined ? {} : { showLayer },
       captureKeyboard,
     }
   }
@@ -127,6 +143,12 @@ function registerUi(ctx: Context): void {
     title: () => t('tab.title'),
     guide: [{ id: 'play', order: 40, title: () => t('guide.title'), description: () => t('guide.description'), icon: GameControllerIcon }],
   }), 'godot: Game tab type')
+  // Closing the tab stops the Session's game, as Stop does; a game left running keeps rendering and using the CPU.
+  ctx.effect(() => ctx.sidebarRight.registerCloseHandler(TAB_KIND, (sessionId) => {
+    void remote.stop(sessionId).then((result) => {
+      if (!result.ok && result.error.code !== 'godot/not-running') ctx.logger.warn('godot: the game did not stop when its tab closed', result.error)
+    })
+  }), 'godot: stop the game when its tab closes')
   ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab', key: TAB_ID, locale: NS, inject: tabFace,
   }, GameTab))

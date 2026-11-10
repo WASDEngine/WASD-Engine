@@ -142,6 +142,19 @@
   object-fit: contain;
 }
 
+/* Over a game layer that the Desktop shell shows behind the page, a fixed box at the game view's place draws the
+   focus ring and the hints above the layer. */
+.layerFrame {
+  position: fixed;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.layerFrame[data-focused] {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-alias-state-business-primary);
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
+}
+
 .hint {
   position: absolute;
   bottom: 12px;

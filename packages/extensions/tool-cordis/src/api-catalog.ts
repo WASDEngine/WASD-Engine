@@ -6850,6 +6850,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n}',
   },
   {
+    name: 'GodotRunLayer',
+    declaration: 'export interface GodotRunLayer {\n    readonly context: number;\n    readonly scale: number;\n}',
+  },
+  {
     name: 'GodotRunPhase',
     declaration: 'export type GodotRunPhase = \'preparing\' | \'importing\' | \'starting\' | \'running\' | \'paused\' | \'exited\' | \'crashed\' | \'failed\';',
   },
@@ -6867,7 +6871,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRuntimeKind',
-    declaration: 'export type GodotRuntimeKind = \'libgodot\' | \'executable\';',
+    declaration: 'export type GodotRuntimeKind = \'libgodot\';',
   },
   {
     name: 'GodotRuntimeView',
@@ -6875,7 +6879,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunView',
-    declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
+    declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly layer?: GodotRunLayer;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
   },
   {
     name: 'GrantRecord',

@@ -9,19 +9,26 @@ extends SceneTree
 ## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width,
 ## u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
 ## u32 request id, then the PNG or JPEG bytes. The first message on the connection is the harness's `hello`
-## JSON, which carries the token.
+## JSON, which carries the token. When the game draws into the Core Animation layer of the macOS embedded display
+## server, `hello` also carries `layer`: the CAContext id through which another process of the login session can
+## display that layer with a CALayerHost, and the game window pixels per layer point (`scale`).
 ##
 ## Screenshots and streamed frames show the game window at its pixel size, scaled down to `maxWidth`: the root
 ## viewport where the project's stretch settings place it, and black where the window shows bars around it. At
 ## full size, image pixel (x, y) is window pixel (x, y), the unit of input event coordinates. Frames stream at
 ## most `fps` times per second of real time, also while the game is paused or Engine.time_scale is 0.
 ##
-## A worker thread encodes one streamed frame at a time, so encoding does not hold up the game. Frames are JPEG
-## at `quality`. With `lossless`, frames are PNG while PNG encoding keeps up with `fps`: the stream starts with
-## JPEG frames and a test PNG encode of its first frame, switches to PNG frames once a test encode takes at most
-## 1/`fps` seconds, and returns to JPEG frames after a PNG frame takes longer. A slow PNG frame and a failed or
-## slow test schedule the next test after a delay that starts at 1 second and doubles each time, up to 8 seconds,
-## until the next `stream` request.
+## A streamed frame costs the game's main thread little. With a RenderingDevice (the Forward+ and Mobile renderers),
+## the root viewport's picture is copied from the GPU without waiting for it, and the copy arrives some frames later;
+## the Compatibility renderer, and a picture in a format other than 8-bit RGBA, are read synchronously instead. A
+## worker thread converts, scales, frames, and encodes one streamed frame at a time. Frames are JPEG at `quality`.
+## With `lossless`, frames are PNG while preparing a PNG frame keeps up with `fps`: the stream starts with JPEG frames
+## and a test PNG of its first frame, switches to PNG frames once a test takes at most 1/`fps` seconds, and returns
+## to JPEG frames after a PNG frame takes longer. A slow PNG frame and a failed or slow test schedule the next test
+## after a delay that starts at 1 second and doubles each time, up to 8 seconds, until the next `stream` request.
+##
+## Messages to the Host wait in order and leave as fast as the connection takes them, so a slow reader never holds up
+## the game, and no frame is captured while earlier messages still wait. At exit the harness sends what is left.
 ##
 ## `wait` and `step` frames count frames that the game ran after the request arrived; `wait` seconds count game
 ## time while the tree is not paused, which Engine.time_scale scales. Input sequences run one at a time in
@@ -61,24 +68,103 @@ const PERFORMANCE_MAX_FRAMES := 20000  # frames a sample records; later frames c
 const PERFORMANCE_MAX_NODES := 200000  # nodes the census visits
 const PERFORMANCE_TOP := 8  # node classes and scripts the census lists
 const PERFORMANCE_MAX_CUSTOM := 40  # custom monitors a sample reports
+# DisplayServer metadata in which the WASD Engine LibGodot build publishes the CAContext id of the embedded display server's layer.
+const LAYER_CONTEXT_META := &"wasd_layer_context_id"
 
-## Encodes one streamed frame on a WorkerThreadPool thread. The main thread reads `bytes` and `usec` only after the
-## task completed, and no thread writes `image`.
+## Where the root viewport's picture shows in an image of the game window: the picture fills `target` of an image of
+## `size`, and black fills the rest. A zero `size` keeps the picture as it is. The main thread builds a layout when it
+## captures a frame; `apply` reads only the layout, so any thread may run it.
+class FrameLayout extends RefCounted:
+	var size := Vector2i.ZERO
+	var target := Rect2i()
+
+	## Converts `picture` to RGB8 and scales it in place; returns the image of the window.
+	func apply(picture: Image) -> Image:
+		if picture.get_format() != Image.FORMAT_RGB8:
+			picture.convert(Image.FORMAT_RGB8)
+		if size == Vector2i.ZERO:
+			return picture
+		if target.size != picture.get_size():
+			var interpolation := Image.INTERPOLATE_BILINEAR if target.size.x < picture.get_width() else Image.INTERPOLATE_NEAREST
+			picture.resize(target.size.x, target.size.y, interpolation)
+		if target == Rect2i(Vector2i.ZERO, size):
+			return picture
+		var framed := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGB8)
+		framed.blit_rect(picture, Rect2i(Vector2i.ZERO, picture.get_size()), target.position)
+		return framed
+
+## A streamed frame being copied from the GPU without waiting for it. `request` runs on the render thread, which is
+## the main thread unless the project renders on a thread of its own, and the RenderingDevice calls back there once
+## the copy is complete; the main thread polls `take`. The mutex guards the state, the pixels, and their size.
+class FrameReadback extends RefCounted:
+	enum { PENDING, RECEIVED, FAILED }
+	var layout: FrameLayout
+	var _mutex := Mutex.new()
+	var _state := PENDING
+	var _pixels := PackedByteArray()
+	var _size := Vector2i.ZERO
+
+	func _init(frame_layout: FrameLayout) -> void:
+		layout = frame_layout
+
+	## Requests the copy of `texture`, the root viewport's picture, as 8-bit RGBA. A static function makes a lambda that
+	## holds `readback` itself, so a callback that the RenderingDevice delivers while the engine shuts down, after the
+	## harness is freed, still has its object.
+	static func request(readback: FrameReadback, rd: RenderingDevice, texture: RID) -> void:
+		var format := rd.texture_get_format(texture)
+		if format == null or (format.format != RenderingDevice.DATA_FORMAT_R8G8B8A8_UNORM and format.format != RenderingDevice.DATA_FORMAT_R8G8B8A8_SRGB):
+			readback._finish(FAILED, PackedByteArray(), Vector2i.ZERO)
+			return
+		var size := Vector2i(format.width, format.height)
+		var received := func(pixels: PackedByteArray) -> void: readback._finish(RECEIVED, pixels, size)
+		if rd.texture_get_data_async(texture, 0, received) != OK:
+			readback._finish(FAILED, PackedByteArray(), Vector2i.ZERO)
+
+	func _finish(state: int, pixels: PackedByteArray, size: Vector2i) -> void:
+		_mutex.lock()
+		_state = state
+		_pixels = pixels
+		_size = size
+		_mutex.unlock()
+
+	## Returns [state, pixels, size]; pixels are tightly packed rows of `size` once the state is RECEIVED.
+	func take() -> Array:
+		_mutex.lock()
+		var taken := [_state, _pixels, _size]
+		_mutex.unlock()
+		return taken
+
+## Prepares one streamed frame on a WorkerThreadPool thread: converts, scales, and frames the picture with `layout`,
+## then encodes it. The source is `picture`, or `pixels`, 8-bit RGBA rows of `picture_size`; once the task starts,
+## no other thread touches them. The main thread reads `bytes`, `size`, and `usec` only after the task completed.
 class FrameEncoding extends RefCounted:
-	var image: Image
+	var picture: Image
+	var pixels: PackedByteArray
+	var picture_size: Vector2i
+	var layout: FrameLayout
 	var png: bool
 	var quality: float
 	var bytes := PackedByteArray()  # the PNG or JPEG file; empty when encoding failed
-	var usec := 0  # encoding time
+	var size := Vector2i.ZERO  # the encoded image's size
+	var usec := 0  # time to prepare and encode the frame
 
-	func _init(frame: Image, as_png: bool, jpeg_quality: float) -> void:
-		image = frame
+	func _init(source: Image, source_pixels: PackedByteArray, source_size: Vector2i, frame_layout: FrameLayout, as_png: bool, jpeg_quality: float) -> void:
+		picture = source
+		pixels = source_pixels
+		picture_size = source_size
+		layout = frame_layout
 		png = as_png
 		quality = jpeg_quality
 
 	func run() -> void:
 		var start := Time.get_ticks_usec()
-		bytes = image.save_png_to_buffer() if png else image.save_jpg_to_buffer(quality)
+		var source := picture
+		if source == null:
+			source = Image.create_from_data(picture_size.x, picture_size.y, false, Image.FORMAT_RGBA8, pixels)
+		if not source.is_empty():
+			var framed := layout.apply(source)
+			size = framed.get_size()
+			bytes = framed.save_png_to_buffer() if png else framed.save_jpg_to_buffer(quality)
 		usec = Time.get_ticks_usec() - start
 
 class HarnessLogger extends Logger:
@@ -135,6 +221,9 @@ class HarnessLogger extends Logger:
 var _logger := HarnessLogger.new()
 var _peer := StreamPeerTCP.new()
 var _connected := false
+var _outbox: Array[PackedByteArray] = []  # messages waiting for the connection, oldest first
+var _outbox_offset := 0  # bytes of the first waiting message already sent
+var _outbox_bytes := 0  # bytes still to send
 var _hello_sent := false
 var _port := 0
 var _token := ""
@@ -147,8 +236,11 @@ var _stream_max_width := 1280
 var _stream_lossless := false
 var _next_frame_time := 0.0  # real time in seconds when the next streamed frame is due
 var _frame_sequence := 0
-var _encoding: FrameEncoding = null  # the frame being encoded for sending
+var _readback: FrameReadback = null  # the frame being copied from the GPU
+var _readback_refused := false  # whether this run's picture cannot be copied asynchronously, so frames are read synchronously
+var _encoding: FrameEncoding = null  # the frame being prepared for sending
 var _encoding_task := -1
+var _queued: FrameEncoding = null  # a captured frame that waits for the worker to finish `_encoding`
 var _lossless_test: FrameEncoding = null  # a test PNG encode of a frame sent as JPEG; never sent
 var _lossless_test_task := -1
 var _lossless_frames := false  # whether streamed frames are PNG
@@ -204,6 +296,7 @@ func _finalize() -> void:
 	_flush_logs()
 	OS.remove_logger(_logger)
 	if _connected:
+		_drain_outbox()
 		_peer.disconnect_from_host()
 
 
@@ -240,7 +333,8 @@ func _poll_connection() -> bool:
 		if not _hello_sent:
 			_hello_sent = true
 			_send_json(_hello())
-		return true
+		_flush_outbox()
+		return _connected
 	if _connected and (status == StreamPeerTCP.STATUS_NONE or status == StreamPeerTCP.STATUS_ERROR):
 		# The Host closed the connection: nothing else can observe or stop this game.
 		quit()
@@ -249,7 +343,7 @@ func _poll_connection() -> bool:
 
 func _hello() -> Dictionary:
 	var size := _window_size()
-	return {
+	var hello := {
 		"type": "hello",
 		"protocol": PROTOCOL_VERSION,
 		"token": _token,
@@ -263,6 +357,10 @@ func _hello() -> Dictionary:
 		"width": size.x,
 		"height": size.y,
 	}
+	var layer_context := int(DisplayServer.get_meta(LAYER_CONTEXT_META, 0))
+	if layer_context > 0:
+		hello["layer"] = {"context": layer_context, "scale": DisplayServer.screen_get_max_scale()}
+	return hello
 
 
 func _window_size() -> Vector2i:
@@ -683,31 +781,29 @@ func _mouse_button(value) -> MouseButton:
 	return MOUSE_BUTTON_NONE
 
 
+## Returns where the root viewport's picture shows in an image of the game window scaled down to at most
+## `max_width` pixels wide (0 keeps the window size).
+func _frame_layout(max_width: int) -> FrameLayout:
+	var layout := FrameLayout.new()
+	var window := _window_size()
+	if window.x <= 0 or window.y <= 0:
+		return layout
+	var scale := minf(1.0, float(max_width) / window.x) if max_width > 0 else 1.0
+	layout.size = Vector2i(maxi(1, roundi(window.x * scale)), maxi(1, roundi(window.y * scale)))
+	# The window shows the root viewport's picture in its visible rect mapped through the window's letterbox and
+	# stretch transforms, which are the final transform without the global canvas transform; black fills the rest.
+	var shown := root.get_final_transform() * root.global_canvas_transform.affine_inverse() * root.get_visible_rect()
+	layout.target = Rect2i(Vector2i((shown.position * scale).round()), Vector2i((shown.size * scale).round()).maxi(1))
+	return layout
+
+
 ## Returns the picture the game window shows, scaled down to at most `max_width` pixels wide (0 keeps the window
-## size), or null before the root viewport has an image.
+## size), or null before the root viewport has an image. It reads the picture synchronously.
 func _capture(max_width: int) -> Image:
 	var picture := root.get_texture().get_image()
 	if picture == null or picture.is_empty():
 		return null
-	if picture.get_format() != Image.FORMAT_RGB8:
-		picture.convert(Image.FORMAT_RGB8)
-	var window := _window_size()
-	if window.x <= 0 or window.y <= 0:
-		return picture
-	var scale := minf(1.0, float(max_width) / window.x) if max_width > 0 else 1.0
-	var size := Vector2i(maxi(1, roundi(window.x * scale)), maxi(1, roundi(window.y * scale)))
-	# The window shows the root viewport's picture in its visible rect mapped through the window's letterbox and
-	# stretch transforms, which are the final transform without the global canvas transform; black fills the rest.
-	var shown :=root.get_final_transform() * root.global_canvas_transform.affine_inverse() * root.get_visible_rect()
-	var target := Rect2i(Vector2i((shown.position * scale).round()), Vector2i((shown.size * scale).round()).maxi(1))
-	if target.size != picture.get_size():
-		var interpolation := Image.INTERPOLATE_BILINEAR if target.size.x < picture.get_width() else Image.INTERPOLATE_NEAREST
-		picture.resize(target.size.x, target.size.y, interpolation)
-	if target == Rect2i(Vector2i.ZERO, size):
-		return picture
-	var framed := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGB8)
-	framed.blit_rect(picture, Rect2i(Vector2i.ZERO, picture.get_size()), target.position)
-	return framed
+	return _frame_layout(max_width).apply(picture)
 
 
 func _screenshot(id, message: Dictionary) -> void:
@@ -729,48 +825,97 @@ func _screenshot(id, message: Dictionary) -> void:
 func _stream_frame(now: float) -> void:
 	_finish_lossless_test(now)
 	_finish_encoding(now)
-	# A frame waits for the previous one's encoding, which keeps a slow encoder from piling up frames.
-	if _stream_fps <= 0.0 or now < _next_frame_time or _encoding != null:
+	_finish_readback(now)
+	# The next frame's copy overlaps the previous frame's preparation, and one frame at most waits between them, which
+	# keeps a slow stage from piling up frames; nothing is captured while messages still wait for the connection.
+	if _stream_fps <= 0.0 or now < _next_frame_time or _readback != null or _queued != null or _outbox_bytes > 0:
 		return
 	var interval := 1.0 / _stream_fps
 	# Keep the cadence while the loop keeps up; after a stall, restart it instead of sending a burst.
 	_next_frame_time = _next_frame_time + interval if now - _next_frame_time < interval else now + interval
-	var image := _capture(_stream_max_width)
-	if image == null:
+	var layout := _frame_layout(_stream_max_width)
+	var rd := RenderingServer.get_rendering_device()
+	if rd != null and not _readback_refused:
+		var texture := RenderingServer.texture_get_rd_texture(root.get_texture().get_rid())
+		if texture.is_valid():
+			_readback = FrameReadback.new(layout)
+			RenderingServer.call_on_render_thread(FrameReadback.request.bind(_readback, rd, texture))
+			return
+	var picture := root.get_texture().get_image()
+	if picture == null or picture.is_empty():
 		return
-	_encoding = FrameEncoding.new(image, _stream_lossless and _lossless_frames, _stream_quality)
+	_queue_frame(FrameEncoding.new(picture, PackedByteArray(), Vector2i.ZERO, layout, false, _stream_quality), now)
+
+
+## Prepares a captured frame now, or after the frame that the worker prepares.
+func _queue_frame(frame: FrameEncoding, now: float) -> void:
+	if _encoding == null:
+		_prepare_frame(frame, now)
+	else:
+		_queued = frame
+
+
+## Starts preparing a streamed frame, and a test PNG of it when one is due.
+func _prepare_frame(frame: FrameEncoding, now: float) -> void:
+	frame.png = _stream_lossless and _lossless_frames
+	frame.quality = _stream_quality
+	_encoding = frame
 	_encoding_task = WorkerThreadPool.add_task(_encoding.run, false, "WASD Engine frame encoding")
 	if _stream_lossless and not _lossless_frames and _lossless_test == null and now >= _lossless_test_at:
-		_lossless_test = FrameEncoding.new(image, true, _stream_quality)
+		# Preparing a frame changes its picture, so the test prepares a copy of its own.
+		var copy: Image = frame.picture.duplicate() if frame.picture != null else null
+		_lossless_test = FrameEncoding.new(copy, frame.pixels, frame.picture_size, frame.layout, true, _stream_quality)
 		_lossless_test_task = WorkerThreadPool.add_task(_lossless_test.run, false, "WASD Engine lossless frame test")
 
 
-## Sends the frame whose encoding finished. A PNG frame that took longer than the frame interval to encode
-## returns the stream to JPEG frames.
+## Hands the frame that the GPU copied to a worker. A run whose picture cannot be copied asynchronously, such as one
+## that renders in high dynamic range, reads its next frames synchronously.
+func _finish_readback(now: float) -> void:
+	if _readback == null:
+		return
+	var taken := _readback.take()
+	var state: int = taken[0]
+	if state == FrameReadback.PENDING:
+		return
+	var layout := _readback.layout
+	_readback = null
+	if state == FrameReadback.FAILED:
+		_readback_refused = true
+		return
+	if _stream_fps > 0.0:
+		_queue_frame(FrameEncoding.new(null, taken[1], taken[2], layout, false, _stream_quality), now)
+
+
+## Sends the frame whose preparation finished and starts preparing the queued one. A PNG frame that took longer than
+## the frame interval to prepare returns the stream to JPEG frames.
 func _finish_encoding(now: float) -> void:
 	if _encoding == null or not WorkerThreadPool.is_task_completed(_encoding_task):
 		return
 	WorkerThreadPool.wait_for_task_completion(_encoding_task)
 	var done := _encoding
 	_encoding = null
-	if _stream_fps <= 0.0 or done.bytes.is_empty():
-		return
-	if done.png and done.usec > USEC_PER_SECOND / _stream_fps:
-		_lossless_frames = false
-		_schedule_lossless_test(now)
-	_frame_sequence += 1
-	var payload := PackedByteArray()
-	payload.resize(8)
-	payload.encode_u32(0, _frame_sequence)
-	payload.encode_u16(4, done.image.get_width())
-	payload.encode_u16(6, done.image.get_height())
-	payload.append_array(done.bytes)
-	_send(KIND_FRAME, payload)
-	if not _sample.is_empty():
-		_sample["streamedFrames"] += 1
+	if _stream_fps > 0.0 and not done.bytes.is_empty():
+		if done.png and done.usec > USEC_PER_SECOND / _stream_fps:
+			_lossless_frames = false
+			_schedule_lossless_test(now)
+		_frame_sequence += 1
+		var payload := PackedByteArray()
+		payload.resize(8)
+		payload.encode_u32(0, _frame_sequence)
+		payload.encode_u16(4, done.size.x)
+		payload.encode_u16(6, done.size.y)
+		payload.append_array(done.bytes)
+		_send(KIND_FRAME, payload)
+		if not _sample.is_empty():
+			_sample["streamedFrames"] += 1
+	if _queued != null:
+		var next := _queued
+		_queued = null
+		if _stream_fps > 0.0:
+			_prepare_frame(next, now)
 
 
-## Applies a finished test PNG encode: frames become PNG when it took at most the frame interval.
+## Applies a finished test PNG: frames become PNG when preparing it took at most the frame interval.
 func _finish_lossless_test(now: float) -> void:
 	if _lossless_test == null or not WorkerThreadPool.is_task_completed(_lossless_test_task):
 		return
@@ -790,7 +935,8 @@ func _schedule_lossless_test(now: float) -> void:
 	_lossless_test_delay = minf(_lossless_test_delay * 2.0, LOSSLESS_TEST_MAX_DELAY)
 
 
-## Waits for the encodings in progress; every WorkerThreadPool task must be waited for.
+## Waits for the frames being prepared; every WorkerThreadPool task must be waited for. A copy from the GPU that is still
+## pending stays with its callback.
 func _wait_for_encodings() -> void:
 	if _encoding != null:
 		WorkerThreadPool.wait_for_task_completion(_encoding_task)
@@ -1151,15 +1297,45 @@ func _send_json(body: Dictionary) -> void:
 	_send(KIND_JSON, JSON.stringify(body).to_utf8_buffer())
 
 
+## Queues one message and sends as much as the connection takes now.
 func _send(kind: int, payload: PackedByteArray) -> void:
 	if not _connected:
 		return
-	var header := PackedByteArray()
-	header.resize(5)
-	header.encode_u32(0, payload.size() + 1)
-	header[4] = kind
-	header.append_array(payload)
-	var error := _peer.put_data(header)
-	if error != OK:
-		_connected = false
-		quit()
+	var message := PackedByteArray()
+	message.resize(5)
+	message.encode_u32(0, payload.size() + 1)
+	message[4] = kind
+	message.append_array(payload)
+	_outbox.append(message)
+	_outbox_bytes += message.size()
+	_flush_outbox()
+
+
+## Sends waiting messages, in order, as far as the connection takes them without waiting for it.
+func _flush_outbox() -> void:
+	while _connected and not _outbox.is_empty():
+		var message: PackedByteArray = _outbox[0]
+		var result := _peer.put_partial_data(message if _outbox_offset == 0 else message.slice(_outbox_offset))
+		if result[0] != OK:
+			_connected = false
+			quit()
+			return
+		var sent: int = result[1]
+		_outbox_offset += sent
+		_outbox_bytes -= sent
+		if _outbox_offset < message.size():
+			return
+		_outbox.pop_front()
+		_outbox_offset = 0
+
+
+## Sends every waiting message, waiting for the connection; the harness does this only as it exits.
+func _drain_outbox() -> void:
+	for message in _outbox:
+		if not _connected:
+			break
+		if _peer.put_data(message if _outbox_offset == 0 else message.slice(_outbox_offset)) != OK:
+			_connected = false
+		_outbox_offset = 0
+	_outbox.clear()
+	_outbox_bytes = 0

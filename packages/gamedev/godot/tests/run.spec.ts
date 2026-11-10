@@ -223,6 +223,16 @@ posix('starting', () => {
     expect(run.view()).toMatchObject({ phase: 'failed', message: 'The game harness speaks protocol 2; this Host speaks 1.' })
   })
 
+  it('reports the layer of a windowless game and ignores one that a windowed game names', async () => {
+    const layer = { context: 0x9000_0001, scale: 2 }
+    const embedded = await running({ game: { displayServer: 'embedded', layer } })
+    expect(embedded.run.view()).toMatchObject({ windowless: true, layer })
+    await embedded.run.stop()
+    const windowed = await running({ game: { displayServer: 'macos', layer } })
+    expect(windowed.run.view().windowless).toBe(false)
+    expect(windowed.run.view()).not.toHaveProperty('layer')
+  })
+
   it('accepts the real harness after an idle connection and closes the idle one', async () => {
     const { run, project } = await running({ game: { decoy: true, displayServer: 'embedded', scene: '' } }, { scene: 'res://level.tscn' })
     expect(run.view()).toMatchObject({ windowless: true, scene: 'res://level.tscn', projectName: 'Fake game', launch: { scene: 'res://level.tscn' } })

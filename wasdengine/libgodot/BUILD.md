@@ -24,7 +24,7 @@ The runner exits with 0 after the game quits or a stop request ends it, 2 on a u
 
 Upstream LibGodot on macOS always creates `OS_MacOS_NSApp`, the windowed OS layer: a game opens a window and a Dock icon even with `--headless`, and `--embedded` has no effect. [0001-libgodot-macos-embedded-and-headless.patch](patches/0001-libgodot-macos-embedded-and-headless.patch) makes `libgodot_create_godot_instance` choose `OS_MacOS_Embedded` when the arguments contain `--embedded`, and `OS_MacOS_Headless` for `--headless` or `--display-driver headless`.
 
-The embedded display server draws into a Core Animation layer that only the Godot editor displays, so a game runs without any window, and the plugin reads its frames through the harness script it injects. The patch lets that display server run without the editor's debugger connection, and makes it report the mouse position and buttons of injected input events, because no OS cursor is over the game. The patch changes only macOS files. It applies to Godot 4.7.2-stable; another Godot version needs a rebased patch and a new runtime version.
+The embedded display server draws into a Core Animation layer that it shares through a CAContext for the Godot editor to display, so a game runs without any window. The patch lets that display server run without the editor's debugger connection, and makes it report the mouse position and buttons of injected input events, because no OS cursor is over the game. On OpenGL, the driver of the Compatibility renderer, the window's framebuffers come from the size that the editor sends through the debugger; without the editor, the patch creates them at the window's starting size in the first event pass, after OpenGL's functions load, so the game draws at its window size and VSync paces it. It also publishes the layer's CAContext id as the display server's `wasd_layer_context_id` metadata, which the harness script reports, so that the macOS Desktop app can show the layer in the Game tab, and without the editor it scales the layer with linear filtering, because the Desktop app fits the layer into the tab. Screenshots, and the Game tab outside the macOS Desktop app, read frames through the harness script. The patch changes only macOS files. It applies to Godot 4.7.2-stable; another Godot version needs a rebased patch and a new runtime version.
 
 ## Build locally
 
@@ -61,7 +61,7 @@ On macOS, `build.sh` signs both binaries ad hoc (`codesign --sign -`); they are 
 ```json
 {
   "format": 1,
-  "version": "4.7.2-wasd.1",
+  "version": "4.7.2-wasd.2",
   "godot": "4.7.2-stable",
   "platform": "darwin",
   "arch": "arm64",
@@ -83,11 +83,11 @@ In `runtime.json`, `format` is the file format the Godot plugin reads (1), `vers
 ```json
 {
   "format": 1,
-  "version": "4.7.2-wasd.1",
+  "version": "4.7.2-wasd.2",
   "godot": "4.7.2-stable",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.1/libgodot-4.7.2-wasd.1-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/libgodot-4.7.2-wasd.2-darwin-arm64.tar.gz",
       "bytes": 70598887,
       "sha256": "<SHA-256 digest of the archive>",
       "runner": "godot_runner",
@@ -110,14 +110,14 @@ python3 -B -m unittest discover --start-directory wasdengine/libgodot --pattern 
 To try an installed runtime on macOS, import a Godot 4.7 project once, then run it without a window; stop it with Ctrl+C:
 
 ```sh
-runtime=~/.wasdengine/godot/runtime/4.7.2-wasd.1
+runtime=~/.wasdengine/godot/runtime/4.7.2-wasd.2
 "$runtime/godot_runner" --libgodot "$runtime/libgodot.macos.editor.arm64.dylib" -- --headless --path ~/games/my-game --import
 "$runtime/godot_runner" --libgodot "$runtime/libgodot.macos.editor.arm64.dylib" -- --path ~/games/my-game --embedded --resolution 640x360
 ```
 
 ## Release
 
-The LibGodot runtime workflow, [wasd-libgodot.yml](../../.github/workflows/wasd-libgodot.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-libgodot.yml -f version=4.7.2-wasd.1 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
+The LibGodot runtime workflow, [wasd-libgodot.yml](../../.github/workflows/wasd-libgodot.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-libgodot.yml -f version=4.7.2-wasd.2 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
 
 Three `build` jobs run `build.sh` on macOS 14 (arm64), Ubuntu 24.04 (x64), and Windows Server 2022 (x64). Each restores and saves an SCons cache keyed by platform and Godot ref, installs the runtime into a directory whose name holds characters outside the Windows runner's ANSI code page, runs a headless SceneTree script from there through it as a smoke test, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
 

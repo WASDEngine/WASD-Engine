@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity, and the unpacked LibGodot, SuperCollider, and GIMP runtimes, to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, and GIMP runtimes, and the game layer module, to the ordinary Desktop release configuration. */
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
@@ -66,6 +66,26 @@ export const GIMP_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-gimp/runtime/*
  */
 export function applyWasdengineGimp(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, GIMP_ASAR_UNPACK] }
+}
+
+/** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */
+export const GAME_LAYER_FILE = 'lib/wasdengine-game-layer.node'
+
+/**
+ * Ship the game layer module beside the main bundle, outside `app.asar`, where the main process loads it as a native
+ * module. The packaged files list it before the dsh trees that end the list.
+ * @template {{ readonly files: readonly (string | object)[], readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `files` and `asarUnpack` also list the module.
+ */
+export function applyWasdengineGameLayer(config) {
+  const trees = config.files.findIndex(entry => typeof entry !== 'string')
+  const at = trees < 0 ? config.files.length : trees
+  return {
+    ...config,
+    files: [...config.files.slice(0, at), GAME_LAYER_FILE, ...config.files.slice(at)],
+    asarUnpack: [...config.asarUnpack, GAME_LAYER_FILE],
+  }
 }
 
 /**

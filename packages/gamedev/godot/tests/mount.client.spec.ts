@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * Godot browser plugin registration: the Remote mount, the Game tab type and
- * seats, the tool cards, per-Session game state, the Game tab opening for
- * Agent runs, the keyboard capture, and unload.
+ * seats, the tool cards, per-Session game state, the stop of the game when its
+ * tab closes, the Desktop shell's game layers, the Game tab opening for Agent
+ * runs, the keyboard capture, and unload.
  */
 import assert from 'node:assert/strict'
 import { createElement } from 'react'
@@ -10,14 +11,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
 import { RemoteStream, RemoteStreamCarrierError, type RemoteStreamOptions } from '@deepseek-ai/dsh-api-gateway/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import { brandString } from '@deepseek-ai/dsh-brand'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
-import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { SidebarRightCloseHandler, SidebarRightTabDefinition, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunView, GodotRuntimeView } from '../src/types.ts'
+import type {
+  DesktopGameLayerBridge, GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunView, GodotRuntimeView,
+} from '../src/types.ts'
 import { GodotToolCard } from '../src/client/cards.tsx'
 import { GameTab, GameTabTitle, type GameTabInjected } from '../src/client/GameTab.tsx'
 import { en, NS, zh } from '../src/client/locales.ts'
@@ -94,7 +98,15 @@ async function base() {
     },
   })
   const mounted = createSnapshotStore<SessionId | undefined>(undefined)
-  const sidebarRight = { mounted, openTabIn: vi.fn() }
+  const closeHandlers = new Map<string, SidebarRightCloseHandler>()
+  const sidebarRight = {
+    mounted,
+    openTabIn: vi.fn(),
+    registerCloseHandler: (kind: string, handler: SidebarRightCloseHandler) => {
+      closeHandlers.set(kind, handler)
+      return () => { closeHandlers.delete(kind) }
+    },
+  }
   ctx.provide('sidebarRight', sidebarRight)
   // One scope fiber per retained generation, as the Session Controller materializes them.
   const scopes = new Map<SessionId, { fiber: Fiber }>()
@@ -124,7 +136,7 @@ async function base() {
       'tool.call.toolview': { kind: 'keyed', scope: 'session' },
     },
   } as never, () => null)
-  return { ctx, unmount, streams, logical, godot, kinds, mounted, sidebarRight, scopes, shortcuts }
+  return { ctx, unmount, streams, logical, godot, kinds, mounted, sidebarRight, closeHandlers, scopes, shortcuts }
 }
 
 async function fixture() {
@@ -284,6 +296,36 @@ describe('Game tab face', () => {
   })
 })
 
+describe('Desktop game layers', () => {
+  it('offers the layer display only where the Desktop shell provides it', async () => {
+    const f = await fixture()
+    expect(f.face(S1).showLayer).toBeUndefined()
+    await f.fiber.dispose()
+  })
+
+  it('shows layers through the shell behind holes in the application root, and closes the holes on unload', async () => {
+    const root = document.createElement('div')
+    root.id = 'root'
+    document.body.append(root)
+    const bridge = { show: vi.fn<DesktopGameLayerBridge['show']>(async () => true), hide: vi.fn<DesktopGameLayerBridge['hide']>() }
+    vi.stubGlobal('dshDesktop', { protocolVersion: 1, gameLayer: bridge })
+    vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} })
+    const f = await fixture()
+    const view = document.createElement('div')
+    vi.spyOn(view, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 640, 360))
+    const showLayer = f.face(S1).showLayer
+    assert(showLayer !== undefined)
+    const end = showLayer({ id: 'game', view, layer: { context: 5, scale: 2 }, window: { width: 1280, height: 720 }, onBox: () => {}, onFailed: () => {} })
+    expect(bridge.show).toHaveBeenCalledWith('game', expect.objectContaining({ context: 5, layerWidth: 640, layerHeight: 360 }))
+    await vi.waitFor(() => { expect(root.style.mask).toContain('0px 0px / 640px 360px') })
+    await f.fiber.dispose()
+    expect(root.style.mask).toBe('')
+    end()
+    expect(bridge.hide).toHaveBeenCalledWith('game')
+    root.remove()
+  })
+})
+
 describe('Game tab follow stream', () => {
   it('reopens the Host stream after a carrier loss and keeps the last state meanwhile', async () => {
     const f = await fixture()
@@ -327,6 +369,37 @@ describe('Game tab follow stream', () => {
     await vi.advanceTimersByTimeAsync(0)
     expect(game.getSnapshot()).toMatchObject({ disconnected: false, state: { run: { runId: 'r1' } } })
     expect(f.sidebarRight.openTabIn).toHaveBeenCalledExactlyOnceWith(S1, TAB_KIND)
+    await f.fiber.dispose()
+  })
+})
+
+describe('Game tab close', () => {
+  const TAB: TabRecord = { id: brandString<TabId>('tab1'), kind: TAB_KIND, contentId: 'sidebar://godot', title: 'Game' }
+
+  it('stops the Session’s game when its tab closes, until the plugin unloads', async () => {
+    const f = await fixture()
+    const close = f.closeHandlers.get(TAB_KIND)
+    assert(close !== undefined)
+    close(S1, TAB)
+    expect(f.godot.stop).toHaveBeenCalledExactlyOnceWith(S1)
+    await f.fiber.dispose()
+    expect(f.closeHandlers.has(TAB_KIND)).toBe(false)
+  })
+
+  it('stays quiet when the Session has no game and reports a stop that failed', async () => {
+    const f = await fixture()
+    const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => {})
+    const close = f.closeHandlers.get(TAB_KIND)
+    assert(close !== undefined)
+    f.godot.stop.mockResolvedValueOnce({ ok: false, error: new RemoteError('godot/not-running', 'The game is not running.', {}) })
+    close(S1, TAB)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(warn).not.toHaveBeenCalled()
+    const lost = new RemoteError('gateway/internal', 'carrier lost', {})
+    f.godot.stop.mockResolvedValueOnce({ ok: false, error: lost })
+    close(S2, TAB)
+    await vi.waitFor(() => { expect(warn).toHaveBeenCalledExactlyOnceWith('godot: the game did not stop when its tab closed', lost) })
+    expect(f.godot.stop.mock.calls).toEqual([[S1], [S2]])
     await f.fiber.dispose()
   })
 })
@@ -378,7 +451,7 @@ describe('Game tab opening for Agent runs', () => {
     f.mounted.set(S1)
     f.streamsOf(S1)[0]!.push(snapshot(run('r1', { startedBy: 'agent', phase: 'running' })))
     await vi.waitFor(() => { expect(f.sidebarRight.openTabIn).toHaveBeenCalledOnce() })
-    // The user closes the Game tab and switches away; nothing retains the first Session, so its scope retires.
+    // The user switches away; nothing retains the first Session, so its scope retires.
     f.mounted.set(S2)
     await f.scopes.get(S1)!.fiber.dispose()
     f.mounted.set(S1)

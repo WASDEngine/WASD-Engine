@@ -75,6 +75,16 @@ describe('HarnessDecoder', () => {
     expect(decoded[2]).toMatchObject({ message: { value: 3 } })
   })
 
+  it('accepts a hello that names a layer and refuses one with an impossible context or scale', () => {
+    const layered = { ...hello, layer: { context: 0xffff_ffff, scale: 2 } }
+    const decoded = decode(new HarnessDecoder(MAX_MESSAGE_BYTES), message(1, Buffer.from(JSON.stringify(layered))))
+    expect(decoded[0]).toMatchObject({ kind: 'json', message: { type: 'hello', layer: { context: 0xffff_ffff, scale: 2 } } })
+    for (const layer of [{ context: 0, scale: 2 }, { context: 2 ** 32, scale: 2 }, { context: 1.5, scale: 2 }, { context: 1, scale: 0 }]) {
+      const invalid = message(1, Buffer.from(JSON.stringify({ ...hello, layer })))
+      expect(() => decode(new HarnessDecoder(MAX_MESSAGE_BYTES), invalid)).toThrow(HarnessProtocolError)
+    }
+  })
+
   it('decodes JSON with the control characters Godot leaves unescaped', () => {
     // As Godot writes a print_rich line: a raw ESC, a raw BEL, `\v` for U+000B, and an escaped backslash before `v`.
     const godot = '{"type":"logs","entries":[{"level":"stdout","message":"Score: 10\u001b[0m\u0007 \\v \\\\v","time_ms":1}]}'
