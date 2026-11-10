@@ -1,5 +1,5 @@
 ---
-description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由 Godot、Blender、GIMP 与 SuperCollider 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote 与 game-mcp/reveal 事件，以及登录对话框显示的设置提示词。"
+description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由 Godot、Blender、GIMP 与 SuperCollider 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote 与 game-mcp/reveal 事件、桌面引导与设置显示的设置提示词，以及 WASD Engine 未登录时对工具调用的拒绝。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让这台电脑上的 Claude Code、Codex 和其他 agent 通过 MCP 使用 WASD Engine 的游戏工具。Host 插件监听 `http://127.0.0.1:9273/mcp`，要求提供其数据文件夹中的令牌，并提供游戏工具插件贡献的 `godot_*`、`blender_*`、`gimp_*` 与 `supercollider_*` 工具，外加 `search_game_tools` 与 `call_game_tool`。已连接 agent 的 Godot 游戏在游戏项目中属于它自己的 Session 里运行，因此会在 WASD Engine 窗口的「游戏」标签页中播放；agent 启动游戏时，这个标签页会打开。[`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 在登录对话框中加入「使用其他智能体设置」，显示设置提示词。
+让这台电脑上的 Claude Code、Codex 和其他 agent 通过 MCP 使用 WASD Engine 的游戏工具。Host 插件监听 `http://127.0.0.1:9273/mcp`，要求提供其数据文件夹中的令牌且 WASD Engine 已登录，并提供游戏工具插件贡献的 `godot_*`、`blender_*`、`gimp_*` 与 `supercollider_*` 工具，外加 `search_game_tools` 与 `call_game_tool`。已连接 agent 的 Godot 游戏在属于它自己的 Session 里运行，因此会在 WASD Engine 窗口的「游戏」标签页中播放。[`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 在登录后显示设置提示词。
 
 ## 目录
 
@@ -45,7 +45,7 @@ profile patch 用 `- id: game-mcp` 与 `disabled: true` 关闭服务器。
 
 ### 设置其他 agent
 
-登录对话框中的「使用其他智能体设置」面板由 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 加入，它显示服务器视图中的设置提示词，以及服务器状态和 Host 启动以来见过的 agent。
+「使用其他智能体设置」由 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 加入，作为桌面引导的最后一步和设置中的「其他智能体」分区，它显示服务器视图中的设置提示词，以及服务器状态和 Host 启动以来见过的 agent。
 
 [`src/prompt.ts`](src/prompt.ts) 写出的提示词给出服务器名称 `wasd-engine`、URL 与请求头 `Authorization: Bearer <token>`，并给出 Claude Code 与 Codex 的设置方法：
 
@@ -71,6 +71,8 @@ http_headers = { "Authorization" = "Bearer <token>" }
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_blender` 服务器的工具，由 `mcp__wasd_blender__<tool>` 重命名而来 |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_gimp` 服务器的工具，由 `mcp__wasd_gimp__<tool>` 重命名而来 |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_supercollider` 服务器的工具，由 `mcp__wasd_supercollider__<tool>` 重命名而来 |
+
+每位用户都要登录 WASD Engine：账号插件 `@deepseek-ai/dsh-deepseek-account` 报告没有已存储的登录，或无法读取登录时，服务器对每次工具调用（包括 `search_game_tools` 与 `call_game_tool`）都返回要求用户登录的错误结果，但仍会列出其工具。服务器在每次调用时读取登录状态，因此用户一登录，工具就能再次使用。没有账号插件的 Host 会执行每次调用。
 
 服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 彼此共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与 WASD Engine 自身各 Session 的 worker 分开（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），这些插件的指令也说明了这一点。
 
@@ -112,13 +114,13 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 <a id="further-exploration"></a>
 ## 进一步探索
 
-这些页面介绍服务器提供的工具、设置面板及承载它的登录对话框，以及协议本身。
+这些页面介绍服务器提供的工具、设置内容及承载它的账号功能，以及协议本身。
 
 - [游戏工具子系统页面](../../../docs/subsystems/gamedev.zh.md#mcp-server-for-other-agents)——服务器如何连接游戏工具、Session 与窗口。
 - [Godot 包](../godot/README.zh.md)——Godot 工具与「游戏」标签页。
 - [app-mcp](../app-mcp/README.zh.md)——服务器转发其工具的 Blender、GIMP 与 SuperCollider 服务器。
-- [ui-game-mcp](../ui-game-mcp/README.zh.md)——设置面板，以及窗口打开已连接 agent 会话的行为。
-- [ui-settings-account](../../client/ui-settings-account/README.zh.md)——登录对话框及其替代方案 slot。
+- [ui-game-mcp](../ui-game-mcp/README.zh.md)——「使用其他智能体设置」，以及窗口打开已连接 agent 会话的行为。
+- [ui-settings-account](../../client/ui-settings-account/README.zh.md)——必需的登录与桌面引导的最后一步。
 - [Model Context Protocol](https://modelcontextprotocol.io)——协议及其 Streamable HTTP 传输。
 
 -----
@@ -158,7 +160,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。
+provider 工具的结果是其渲染出的文本，Godot 截图以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 
@@ -176,7 +178,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图以及 Blender、
 
 - **仅限本机 agent**——端点绑定回环地址，因此其他电脑上的 agent 无法访问，没有回环网络访问权限的沙箱中的 agent 也无法访问。
 - **完全信任**——持有令牌者可以用用户的权限在 Blender 和 GIMP 中运行 Python、在 SuperCollider 中运行 sclang 代码、在游戏中求值表达式并运行游戏，WASD Engine 不会请求批准；agent 按其自身规则请求批准。提示词中包含令牌，因此用户只应把它粘贴到这台电脑上的 agent 中。
-- **单一端口**——第二个 Host（例如与 Desktop 应用同时运行的 `dsh web`）会发现端口已被占用并改用一个空闲端口，其 URL 只在该 Host 的设置面板中显示。
+- **单一端口**——第二个 Host（例如与 Desktop 应用同时运行的 `dsh web`）会发现端口已被占用并改用一个空闲端口，其 URL 只在该 Host 的设置内容中显示。
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
 - **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏。

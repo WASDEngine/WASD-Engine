@@ -292,7 +292,7 @@ A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, an
 
 **The window.** `godot_run` emits the Host event `game-mcp/reveal` with the Session id. The Remote events allowlist forwards it to every window that may read the Session, and the `ui-game-mcp` row's browser plugin, [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.md), opens the Session there; the Game tab then opens for the run, as for any run an agent starts.
 
-**Setup.** The same browser plugin fills the sign-in dialog's alternative slots, `settings.account.onboarding.alternative` and `settings.account.menu.alternative`, with Set up with another agent. Its panel follows the `gameMcp.watch` stream while it shows: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
+**Setup.** Every user signs in to WASD Engine first, and the server refuses tool calls while the account plugin reports no stored sign-in. The same browser plugin then offers Set up with another agent in two places: the Desktop introduction's last step, `settings.account.onboarding.agents`, and the Other agents section of Settings. Both show the AI agents' logos and follow the `gameMcp.watch` stream while they show: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
 
 ## Remote types
 

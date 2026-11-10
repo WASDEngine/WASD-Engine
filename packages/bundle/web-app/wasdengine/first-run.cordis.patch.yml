@@ -5,7 +5,7 @@
 # Desktop brand turns the standalone welcome window off), offers account sign-in
 # as the only way in (no Models settings section and no API key step; the
 # ui-settings-account row of telemetry.cordis.patch.yml drops Add API Key from the
-# sign-in dialog), and creates no default
+# sign-in dialog and makes every user sign in), and creates no default
 # Workspace: the Create game project dialog of ui-workspace asks for the first
 # game project instead, through the gameProject Remote that the Workspace
 # controller serves.

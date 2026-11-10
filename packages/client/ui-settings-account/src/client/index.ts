@@ -26,11 +26,12 @@ import { createBonusNoticeController } from './bonus-notices.ts'
 import { accountClientMetadata } from './client-metadata.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type AccountKey } from './locales.ts'
 import { brandAccountDictionaries } from './wasdengine-copy.ts'
-import type {} from './wasdengine-sign-in-alternative.ts'
+import {
+  AGENTS_STEP_SLOT, WasdengineDesktopOnboardingEntry, type WasdengineDesktopOnboardingInjected,
+} from './wasdengine-onboarding-agents.tsx'
 import { AccountQuotaNotice, type AccountQuotaNoticeInjected } from './AccountQuotaNotice.tsx'
 import { DESKTOP_ONBOARDING_NAMESPACE, type OnboardingSettings } from '../onboarding-settings.ts'
 import { DesktopOnboardingController } from './onboarding-state.ts'
-import { DesktopOnboardingEntry, type DesktopOnboardingInjected } from './DesktopOnboardingEntry.tsx'
 import { readOnboardingApiKeyPresence } from './onboarding-credentials.ts'
 import { refreshAfterReturn } from './account-refresh.ts'
 import { AccountAvatarLoader } from './account-avatar.ts'
@@ -38,7 +39,7 @@ export type { AccountSectionInjected, AccountSectionProps } from './AccountSecti
 export type { AccountMenuProps } from './AccountMenu.tsx'
 export type { AccountSnapshot } from './AccountSection.tsx'
 export type { AccountKey } from './locales.ts'
-export type { SignInAlternativeClassNames, SignInAlternativeOwner } from './wasdengine-sign-in-alternative.ts'
+export type { OnboardingAgentsClassNames, OnboardingAgentsOwner } from './wasdengine-onboarding-agents.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap { 'settings.account': AccountKey }
@@ -200,6 +201,7 @@ export function apply(ctx: Context): void {
   const operations: AccountSectionInjected = {
     avatarFailed: (value) => { avatar.failed(value) },
     apiKeyEntry: config.apiKeyEntry,
+    signInRequired: config.signInRequired,
     subscribeSessionExpired: listener => ctx.remote.$on('deepseek-account/session-expired', listener),
     subscribeModelSignInRequired: listener => ctx.remote.$on('deepseek-account/model-sign-in-required', listener),
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },
@@ -300,8 +302,11 @@ export function apply(ctx: Context): void {
     }, 'account: desktop credential readiness')
     ctx.slots.inject('shell.overlay', () => ctx.slots.register({
       name: 'shell.overlay', id: 'desktop-onboarding', locale: 'settings.account',
-      inject: (): DesktopOnboardingInjected => ({
+      // WASD Engine: another plugin's last step of the introduction, which the flow shows while one occupies the slot.
+      children: { 'settings.account.onboarding.agents': { kind: 'single', scope: 'root' } },
+      inject: (): WasdengineDesktopOnboardingInjected => ({
         hooks: { account: operations.hooks.account, onboarding: controller.state },
+        agentsStep: () => ctx.slots.entries(AGENTS_STEP_SLOT).length > 0,
         setVisible: (visible: boolean) => {
           if (snapshot.desktopOnboardingVisible !== visible) publish({ ...snapshot, desktopOnboardingVisible: visible })
         },
@@ -312,11 +317,10 @@ export function apply(ctx: Context): void {
         retry: () => controller.retry(),
         track: (name, attributes) => ctx.get('productAnalytics')?.track(name, attributes),
       }),
-    }, DesktopOnboardingEntry))
+    }, WasdengineDesktopOnboardingEntry))
   }
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.models.sign-in', () => ctx.slots.register({
     name: 'settings.models.sign-in', locale: 'settings.account', inject: () => operations,
-    children: { 'settings.account.onboarding.alternative': { kind: 'single', scope: 'root' } },
   }, AccountOnboarding)))
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('shell.quota-notice', () => ctx.slots.register({
     name: 'shell.quota-notice', locale: 'settings.account',
@@ -337,7 +341,6 @@ export function apply(ctx: Context): void {
   }
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({
     name: 'settings.launcher', locale: 'settings.account', inject: () => operations,
-    children: { 'settings.account.menu.alternative': { kind: 'single', scope: 'root' } },
   }, AccountMenu)))
   ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.section', () => {
     let unregister: (() => void) | undefined

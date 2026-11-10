@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Agent setup panel",
-    "description": "Offer Set up with another agent in the sign-in dialog, with the prompt that connects Claude Code, Codex, or another agent, and open the Session whose game a connected agent starts."
+    "description": "Set up Claude Code, Codex, or another agent after sign-in, as the Desktop introduction's last step and the Other agents section of Settings, with the agents' logos and the prompt that connects the agent, and open the Session whose game a connected agent starts."
   }
 }

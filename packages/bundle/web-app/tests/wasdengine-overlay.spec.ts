@@ -361,15 +361,15 @@ describe('WASDEngine overlay', () => {
     }
   })
 
-  it('opens a Feedback page that the account settings schema accepts, and offers no API key at sign-in', async () => {
+  it('opens a Feedback page that the account settings schema accepts, offers no API key at sign-in, and requires sign-in', async () => {
     const config = patchConfig(forkLayer('@deepseek-ai/dsh-web-app'), 'ui-settings-account')
-    expect(config).toEqual({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false })
+    expect(config).toEqual({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false, signInRequired: true })
     // A URL the schema rejects fails the row's config validation, so the account settings plugin would not start.
     const source = pathToFileURL(join(repoRoot, 'packages/client/ui-settings-account/src/contact-config.ts')).href
     const loaded: unknown = await import(source)
-    type Contact = { contactFormUrl: string; apiKeyEntry: boolean }
+    type Contact = { contactFormUrl: string; apiKeyEntry: boolean; signInRequired: boolean }
     const { ContactConfig } = loaded as { ContactConfig: (input: Record<string, unknown>) => Contact }
-    expect(ContactConfig(config)).toMatchObject({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false })
+    expect(ContactConfig(config)).toMatchObject({ contactFormUrl: FEEDBACK_URL, apiKeyEntry: false, signInRequired: true })
   })
 
   it('shows no DeepSeek Harness preview notice on first use, asks for sign-in in the Desktop main window, and offers no API key entry', () => {

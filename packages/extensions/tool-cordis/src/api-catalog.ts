@@ -6867,7 +6867,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRuntimeKind',
-    declaration: 'export type GodotRuntimeKind = \'libgodot\' | \'executable\';',
+    declaration: 'export type GodotRuntimeKind = \'libgodot\';',
   },
   {
     name: 'GodotRuntimeView',

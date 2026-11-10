@@ -24,6 +24,9 @@
       "path": "../../api/session-controller/tsconfig.host.json"
     },
     {
+      "path": "../../credentials/deepseek-account"
+    },
+    {
       "path": "../../llm/llm"
     },
     {

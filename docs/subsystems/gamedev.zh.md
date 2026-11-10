@@ -292,7 +292,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
-**设置。** 同一个浏览器插件用「使用其他智能体设置」填充登录对话框的替代方案 slot，即 `settings.account.onboarding.alternative` 与 `settings.account.menu.alternative`。面板显示期间，它跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+**设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
 
 ## Remote 类型
 

@@ -10,12 +10,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import type { AccountView, DeepSeekAccount } from '@deepseek-ai/dsh-deepseek-account'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import GameMcpServer, { type Config, type GameMcpProvider, type GameMcpView } from '../src/index.ts'
+import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpView } from '../src/index.ts'
 
 const TIMEOUT = 30_000
 
@@ -136,6 +137,35 @@ describe('GameMcpServer', () => {
     expect(text(unknown)).toContain('no game tool named "nope"')
     expect((await client.callTool({ name: 'call_game_tool', arguments: {} })).isError).toBe(true)
     expect((await client.callTool({ name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: 'x' } })).isError).toBe(true)
+  }, TIMEOUT)
+
+  it('refuses every tool call while WASD Engine is signed out, and runs them once someone signs in', async () => {
+    let status: AccountView['status'] | 'unreadable' = 'signed-out'
+    ctx.provide('deepseekAccount', {
+      getState: async () => {
+        if (status === 'unreadable') throw new Error('storage unavailable')
+        return { status, links: { usageUrl: '', topUpUrl: '' }, attempt: null }
+      },
+    } as unknown as DeepSeekAccount)
+    const { server, view } = await start()
+    ctx.effect(() => server.provide(alpha))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const client = await connect(view.url as string, token)
+    // The tools stay listed, so the agent learns what signing in gives it.
+    expect((await client.listTools()).tools).toHaveLength(4)
+    for (const call of [
+      { name: 'alpha_echo', arguments: { text: 'hi' } },
+      { name: 'search_game_tools', arguments: { query: 'echo' } },
+      { name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: { text: 'hi' } } },
+    ]) {
+      const refused = await client.callTool(call)
+      expect(refused.isError).toBe(true)
+      expect(text(refused)).toBe(SIGNED_OUT_MESSAGE)
+    }
+    status = 'credential-stored'
+    expect(text(await client.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe('echo: hi')
+    status = 'unreadable'
+    expect(text(await client.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe(SIGNED_OUT_MESSAGE)
   }, TIMEOUT)
 
   it('refuses requests without the token, from foreign hosts and origins, and outside its endpoint', async () => {

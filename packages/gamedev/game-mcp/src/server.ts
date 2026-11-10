@@ -2,7 +2,8 @@
  * The MCP protocol face of the server: a handler that serves the 2026-07-28 revision and, statelessly, the 2025
  * revisions, from one low-level MCP server per request whose tool list and instructions come from the catalog at
  * that moment. `tools/call` answers the search and call tools itself and runs every other name through the
- * catalog. The caller's identity reaches each request as its authentication information.
+ * catalog, once the service lets this call run: WASD Engine refuses every call while no one is signed in. The
+ * caller's identity reaches each request as its authentication information.
  * @module @deepseek-ai/dsh-game-mcp/src/server
  */
 import { createMcpHandler, Server, type AuthInfo, type CallToolResult, type McpHttpHandler, type Tool } from '@modelcontextprotocol/server'
@@ -22,6 +23,11 @@ export const SERVER_VERSION = '1.0.0'
 export interface GameMcpServing {
   /** The tools and instructions. */
   readonly catalog: GameToolCatalog
+  /**
+   * Decide whether a tool call may run now.
+   * @returns undefined to run it, or the text of the error result that refuses it.
+   */
+  refusal(): Promise<string | undefined>
   /**
    * Bind one call to its agent and cancellation.
    * @param client - calling agent.
@@ -100,10 +106,11 @@ export function createGameMcpHandler(serving: GameMcpServing, report: (error: Er
     // Every listed schema is an object schema: the catalog's own, `defineTool`'s, or one an MCP server listed.
     server.setRequestHandler('tools/list', () => ({ tools: catalog.listing().map(tool => ({ ...tool, inputSchema: tool.inputSchema as Tool['inputSchema'] })) }))
     server.setRequestHandler('tools/call', async (request, context): Promise<CallToolResult> => {
-      const call = serving.call(clientOf(context.http?.authInfo), context.mcpReq.signal)
+      const refused = await serving.refusal()
       // The SDK parsed the arguments from the request's JSON body.
       const args = (request.params.arguments ?? {}) as JsonObject
-      const result = await callTool(serving, request.params.name, args, call)
+      const result = refused !== undefined ? errorResult(refused)
+        : await callTool(serving, request.params.name, args, serving.call(clientOf(context.http?.authInfo), context.mcpReq.signal))
       return server.projectCallToolResult({ ...result, content: [...result.content] }, undefined)
     })
     return server

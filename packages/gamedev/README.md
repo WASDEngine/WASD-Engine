@@ -22,7 +22,7 @@ The `gamedev/` group gives the agent the applications a game needs, without a wi
 <a id="packages"></a>
 ## Packages
 
-The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, and the game MCP package offers their tools to other agents, with a setup panel in the sign-in dialog from its browser half.
+The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, and the game MCP package offers their tools to other agents of signed-in users, with its browser half's setup at the end of the Desktop introduction and in Settings.
 
 | Package | What it provides |
 |---|---|
@@ -32,7 +32,7 @@ The shared MCP runtime starts and supervises one headless worker per application
 | [`gimp/`](gimp/README.md) | GIMP 3 tools over MCP, backed by `gimp-console` |
 | [`godot/`](godot/README.md) | Godot game runs through LibGodot: `godot_*` tools, the `godot` Remote, the frame route, and the Game tab |
 | [`supercollider/`](supercollider/README.md) | SuperCollider tools over MCP: sound and music rendered offline with scsynth from sclang code, with levels, loudness, and a waveform and spectrogram image for the agent; the Desktop app ships SuperCollider without its GUI |
-| [`ui-game-mcp/`](ui-game-mcp/README.md) | The MCP server's browser half: Set up with another agent in the sign-in dialog, with the setup prompt and whether an agent connected, and the window opening the Session whose game a connected agent starts |
+| [`ui-game-mcp/`](ui-game-mcp/README.md) | The MCP server's browser half: Set up with another agent after sign-in, as the Desktop introduction's last step and the Other agents section of Settings, with the agents' logos, the setup prompt, and whether an agent connected, and the window opening the Session whose game a connected agent starts |
 | [`ui-game-tools/`](ui-game-tools/README.md) | The Game tools tabs of Settings › Built-in plugins and the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos and Loader state, and on the Plugins page a switch for each that turns its row off or on in the profile patch |
 
 -----

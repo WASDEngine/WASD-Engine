@@ -2,7 +2,9 @@
  * WASD Engine's MCP server for other agents on this computer, such as Claude Code or Codex: a Streamable HTTP
  * endpoint on `127.0.0.1` that requires the token in the server's data folder and offers the game tools that
  * plugins contribute through `ctx.gameMcp.provide()`, a search over them, and a call by name. Games that a connected
- * agent starts run in a Session of the WASD Engine window, which the server asks the window to show. The `gameMcp`
+ * agent starts run in a Session of the WASD Engine window, which the server asks the window to show. Every user signs
+ * in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool call with a
+ * message that asks the user to sign in; a Host without the account plugin runs every call. The `gameMcp`
  * Remote streams the endpoint, the setup prompt, and the agents seen to the window, and the `game-mcp/reveal`
  * event asks the window to show a Session.
  * @module @deepseek-ai/dsh-game-mcp
@@ -13,6 +15,7 @@ import z from '@deepseek-ai/schemastery'
 import { localhostAllowedHostnames, localhostAllowedOrigins, hostHeaderValidationResponse, originValidationResponse, type McpHttpHandler } from '@modelcontextprotocol/server'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GameToolCatalog, PROVIDER_ID_PATTERN } from './catalog.ts'
@@ -45,6 +48,9 @@ declare module '@deepseek-ai/cordis' {
 
 /** Path of the MCP endpoint. */
 export const MCP_PATH = '/mcp'
+
+/** The error result of a tool call while WASD Engine is signed out. */
+export const SIGNED_OUT_MESSAGE = 'WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.'
 
 function plainResponse(status: number, text: string, headers: Record<string, string> = {}): Response {
   return new Response(text, { status, headers: { 'content-type': 'text/plain; charset=utf-8', ...headers } })
@@ -92,6 +98,7 @@ export default class GameMcpServer extends TypertRemoteService {
     this.sessions = new ExternalSessions(ctx, join(config.dataRoot, 'sessions.json'))
     this.handler = createGameMcpHandler({
       catalog: this.catalog,
+      refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
     }, (error) => { ctx.logger.debug(`game-mcp: ${error.message}`) })
     ctx.on('tools/change', () => { this.toolsChanged() })
@@ -230,6 +237,22 @@ export default class GameMcpServer extends TypertRemoteService {
     const client = this.clients.identify(parsed, request.headers.get('user-agent') ?? '', Date.now())
     if (this.clients.list().map(seen => seen.id).join('\n') !== before) this.changed()
     return this.handler.fetch(request, { authInfo: authInfoFor(token, client), ...parsed === undefined ? {} : { parsedBody: parsed } })
+  }
+
+  /**
+   * Refuse tool calls while no one is signed in: the account plugin's stored sign-in, read at each call, lets them run.
+   * A sign-in that cannot be read refuses the call too; a Host without the account plugin runs every call.
+   * @returns undefined to run the call, or the refusal's text.
+   */
+  private async refusal(): Promise<string | undefined> {
+    const account = this.ctx.get('deepseekAccount')
+    if (account === undefined) return undefined
+    try {
+      return (await account.getState()).status === 'credential-stored' ? undefined : SIGNED_OUT_MESSAGE
+    } catch (error) {
+      this.ctx.logger.warn(`game-mcp: the sign-in could not be read: ${error instanceof Error ? error.message : String(error)}`)
+      return SIGNED_OUT_MESSAGE
+    }
   }
 
   private bindCall(client: GameMcpClient, signal: AbortSignal): GameMcpCall {

@@ -1,5 +1,5 @@
 /** Account authorization dialog; errors allow retry after cancelling any active attempt. */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Button, IconCloseOutlineRegular, IconLoadingOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AccountSnapshot } from './AccountSection.tsx'
 import type { SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
@@ -8,10 +8,9 @@ import { authorizeUrlWithTheme } from './authorize-url.ts'
 // WASD Engine: the fork's sheet styles every class below in the look of the welcome window.
 import css from './wasdengine-sign-in.module.css'
 import { WasdengineSignInBrand } from './wasdengine-sign-in.tsx'
-import type { SignInAlternativeOwner } from './wasdengine-sign-in-alternative.ts'
 
 /** @param props - safe account state, localized copy, and user actions. @returns login dialog. */
-export function SignInDialog({ account, colorScheme, start, cancel, close, useApiKey, renderAlternative, t }: {
+export function SignInDialog({ account, colorScheme, start, cancel, close, useApiKey, required = false, t }: {
   account: AccountSnapshot
   /** Resolved scheme of the active application theme; the copied link carries it. */
   colorScheme: 'light' | 'dark'
@@ -20,12 +19,14 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
   close: () => void
   /** Switch to API key entry; absent, the dialog offers sign-in only. */
   useApiKey?: (() => void) | undefined
-  /** WASD Engine: render the dialog's sign-in alternative slot; absent, the dialog offers no alternative. */
-  renderAlternative?: ((owner: SignInAlternativeOwner) => ReactNode) | undefined
+  /**
+   * WASD Engine: the user must sign in, so the dialog has no close button, and Escape, a click outside, and Cancel
+   * only end the browser attempt; it closes once the sign-in is stored.
+   */
+  required?: boolean | undefined
   t: (key: AccountKey) => string
 }) {
   const [busy, setBusy] = useState(false)
-  const [alternative, setAlternative] = useState(false)
   const [failed, setFailed] = useState(false)
   const [copyResult, setCopyResult] = useState<{ messageKey: 'copiedLink' | 'copyFailed' } | null>(null)
   const attempt = account.view?.attempt
@@ -54,8 +55,8 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
   }
   const dismiss = () => {
     if (committing || busy) return
-    if (active && attempt) void run(async () => { await cancel(attempt.id); close() })
-    else close()
+    if (active && attempt) void run(async () => { await cancel(attempt.id); if (!required) close() })
+    else if (!required) close()
   }
   const retry = async () => {
     if (active && attempt) await cancel(attempt.id)
@@ -68,32 +69,14 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
     } catch { setCopyResult({ messageKey: 'copyFailed' }) }
   }
   const title = error ? t('failureTitle') : active ? t('browserTitle') : expired ? t('timeoutTitle') : t('loginTitle')
-  const alternativeOwner = (view: SignInAlternativeOwner['view']): SignInAlternativeOwner => ({
-    view, open: () => { setAlternative(true) }, back: () => { setAlternative(false) }, close: dismiss,
-    classNames: {
-      content: css.content as string, title: css.title as string, description: css.description as string,
-      actions: css.actions as string, primaryButton: css.primaryButton as string, secondaryButton: css.secondaryButton as string,
-    },
-  })
-  if (alternative && welcome && renderAlternative !== undefined) {
-    return <Modal open headless title={title} onClose={dismiss} className={css.dialog as string}>
-      <div className={css.content}>
-        <WasdengineSignInBrand welcome={false} t={t} />
-        <button type="button" className={css.close} aria-label={t('close')} onClick={dismiss}>
-          <IconCloseOutlineRegular size={14} />
-        </button>
-      </div>
-      {renderAlternative(alternativeOwner('panel'))}
-    </Modal>
-  }
   return <Modal open headless title={title} onClose={dismiss} className={css.dialog as string}>
     <div className={css.content} data-welcome={welcome || undefined}>
       <WasdengineSignInBrand welcome={welcome} t={t} />
       <div className={css.header}>
         <h2 className={css.title}>{title}</h2>
-        <button type="button" className={css.close} aria-label={t('close')} onClick={dismiss}>
+        {required ? null : <button type="button" className={css.close} aria-label={t('close')} onClick={dismiss}>
           <IconCloseOutlineRegular size={14} />
-        </button>
+        </button>}
       </div>
       {waiting ? <p className={css.description}>
         {t('browserPrompt')}<button type="button" className={css.link} disabled={!authorizeUrl}
@@ -105,7 +88,6 @@ export function SignInDialog({ account, colorScheme, start, cancel, close, useAp
       </p>}
     </div>
     <div className={css.actions}>
-      {welcome && renderAlternative !== undefined ? renderAlternative(alternativeOwner('offer')) : null}
       {active || useApiKey !== undefined ? <Button variant="outline" className={css.secondaryButton} disabled={committing || busy}
         onClick={active ? dismiss : useApiKey}>{t(active ? 'cancel' : 'addApiKey')}</Button> : null}
       <Button variant="primary" className={css.primaryButton} disabled={busy || committing || waiting || account.view === undefined}

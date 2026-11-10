@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Toast, Menu, IconEllipsisOutlineMedium, IconPaperPlaneOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AccountSectionInjected } from './AccountSection.tsx'
 import { SignOutDialog } from './SignOutDialog.tsx'
 import { SignInDialog } from './SignInDialog.tsx'
@@ -11,11 +11,9 @@ import { LogoutIcon } from './LogoutIcon.tsx'
 import { AccountAvatar } from './AccountAvatar.tsx'
 import { AccountNoticeStack } from './AccountNotice.tsx'
 import css from './AccountMenu.module.css'
-import type {} from './wasdengine-sign-in-alternative.ts'
 
 /** Account launcher composed by the settings shell. */
 export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
-  & Partial<PropsRenderSlots<'settings.account.menu.alternative'>>
 
 /** The signed-in label stays empty while the profile loads.
  * @param props - sidebar geometry, settings navigation and account operations.
@@ -24,7 +22,7 @@ export type AccountMenuProps = PropsRuntime<'settings.launcher'> & PropsLocale<'
 export function AccountMenu({
   subscribeSessionExpired, subscribeModelSignInRequired, wide, settingsShortcut, openSettings, openOnboarding, settingsOpen,
   useAccount, useTheme, signOut, hasRunningAccountTasks, refreshAccount, bonusNoticeShown, bonusNoticeDismissed,
-  contactUs, showLogin, start, cancel, avatarFailed, apiKeyEntry, renderSlot, t,
+  contactUs, showLogin, start, cancel, avatarFailed, apiKeyEntry, signInRequired, t,
 }: AccountMenuProps) {
   const anchor = useRef<HTMLDivElement>(null)
   // The launcher outlives the panel, so a false-to-true edge is one Settings entry:
@@ -37,6 +35,17 @@ export function AccountMenu({
   const account = useAccount(state => state)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   const signedIn = account.view?.status === 'credential-stored'
+  // WASD Engine: every user signs in, so losing the sign-in in any view, by signing out or by the server ending the
+  // session, opens the Get started dialog again; a reconnection's empty account view between the two counts as lost.
+  const status = account.view?.status
+  const signInHeld = useRef(false)
+  useEffect(() => {
+    if (status === 'credential-stored') signInHeld.current = true
+    else if (status === 'signed-out' && signInHeld.current) {
+      signInHeld.current = false
+      if (signInRequired === true) openOnboarding('deepseek-official')
+    }
+  }, [status, signInRequired, openOnboarding])
   const [signInNotice, setSignInNotice] = useState(0)
   useEffect(() => subscribeModelSignInRequired?.(() => { setSignInNotice(value => value + 1) }), [subscribeModelSignInRequired])
   const [expiryNotice, setExpiryNotice] = useState(false)
@@ -91,7 +100,7 @@ export function AccountMenu({
       start={start} cancel={cancel} t={t}
       close={() => { showLogin(false) }}
       useApiKey={apiKeyEntry === false ? undefined : () => { showLogin(false); openOnboarding('deepseek-official') }}
-      renderAlternative={renderSlot && (owner => renderSlot('settings.account.menu.alternative', owner))} />}
+      required={signInRequired} />}
     {signedIn && signOutImpact !== undefined && <SignOutDialog running={signOutImpact} signOut={signOut}
       close={() => { setSignOutImpact(undefined) }} t={t} />}
   </div>

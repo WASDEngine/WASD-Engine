@@ -56,6 +56,8 @@ export interface AccountSectionInjected {
   openPlatformPage?: PlatformPages['open']
   /** Whether the sign-in dialog offers Add API Key beside Sign in; absent offers it. */
   apiKeyEntry?: boolean
+  /** WASD Engine: whether every user must sign in, so the sign-in dialogs cannot be closed; absent, they can. */
+  signInRequired?: boolean
 
   /** Account stream owned by the Host and theme snapshots published by the renderer, observed through framework hooks. */
   hooks: {

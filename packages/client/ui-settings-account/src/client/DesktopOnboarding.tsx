@@ -12,12 +12,15 @@ import { OnboardingProcessStep } from './OnboardingProcessStep.tsx'
 import { OnboardingConfirmation, type OnboardingConfirmationKind } from './OnboardingConfirmation.tsx'
 import backIcon from './assets/onboarding-back.svg'
 import css from './DesktopOnboarding.module.css'
+import fork from './wasdengine-onboarding.module.css'
 
 const onboardingPages = {
   welcome: 'onboarding_welcome',
   credit: 'onboarding_recharge',
   purpose: 'onboarding_use_case',
   process: 'onboarding_process',
+  // WASD Engine: the last step, which another plugin draws, reports no page.
+  agents: undefined,
   done: undefined,
 } as const
 
@@ -26,7 +29,7 @@ const onboardingPages = {
  * @returns the active first-run page.
  */
 export function DesktopOnboarding({
-  state, account, openPlatformPage, update, complete, retry, t, locale, track, exiting = false,
+  state, account, openPlatformPage, renderAgents, update, complete, retry, t, locale, track, exiting = false,
 }: DesktopOnboardingProps) {
   const [dialog, setDialog] = useState<OnboardingConfirmationKind | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -75,16 +78,25 @@ export function DesktopOnboarding({
   const popupClick = (button_name: ProductEventMap['onboarding_popup_click']['button_name']) => {
     track?.('onboarding_popup_click', { popup_name: dialog === 'skip' ? 'skip_setting' : 'skip_charge', button_name })
   }
+  // WASD Engine: a saved last step whose plugin is gone finishes the introduction.
+  const agentsGone = state.visible && state.status === 'ready' && step === 'agents' && renderAgents === undefined
+  useEffect(() => { if (agentsGone) void complete('completed') }, [agentsGone, complete])
   if (state.visible && state.status === 'loading') return <OnboardingSurface>
     <div className={css.loading} role="status">{t('onboardingLoading')}</div>
   </OnboardingSurface>
-  if (!state.visible || pageName === undefined) return null
+  if (!state.visible || step === 'done') return null
   const click = (button_name: ProductEventMap['onboarding_page_click']['button_name']) => {
+    if (pageName === undefined) return
     const selected_content = step === 'purpose' && progress.purpose !== null ? ({ office: 'office', development: 'code', both: 'code_office' } as const)[progress.purpose]
       : step === 'process' && progress.process !== null ? ({ compact: 'focus_result', standard: 'key_detail', detailed: 'full_process' } as const)[progress.process] : undefined
     track?.('onboarding_page_click', { page_name: pageName, button_name, ...selected_content === undefined ? {} : { selected_content } })
   }
-  const go = (next: 'welcome' | 'credit' | 'purpose' | 'process') => { void update({ step: next }) }
+  const go = (next: 'welcome' | 'credit' | 'purpose' | 'process' | 'agents') => { void update({ step: next }) }
+  // WASD Engine: the choices end on the last step while a plugin draws it.
+  const finishChoices = () => {
+    if (renderAgents !== undefined) go('agents')
+    else void complete('completed')
+  }
   const canRecharge = openPlatformPage !== undefined
   const recharge = () => {
     setDialog(null)
@@ -98,7 +110,7 @@ export function DesktopOnboarding({
     else go('purpose')
   }
   const purposeNext = () => {
-    if (progress.purpose === 'office') void complete('completed')
+    if (progress.purpose === 'office') finishChoices()
     else go('process')
   }
   return <>
@@ -110,11 +122,19 @@ export function DesktopOnboarding({
         {step === 'purpose' && <OnboardingPurposeStep t={t} heading={heading} busy={busy} purpose={progress.purpose}
           onSelect={(purpose) => { void update({ purpose }) }} onContinue={() => { click('next'); purposeNext() }} />}
         {step === 'process' && <OnboardingProcessStep t={t} heading={heading} busy={busy} process={progress.process}
-          onSelect={(process) => { void update({ process }) }} onComplete={() => { click('next'); void complete('completed') }} />}
+          onSelect={(process) => { void update({ process }) }} onComplete={() => { click('next'); finishChoices() }} />}
+        {step === 'agents' && renderAgents?.({
+          heading, headingId: 'desktop-onboarding-title', busy, next: () => { void complete('completed') },
+          classNames: {
+            content: `${css.content} ${css.process} ${fork.agents}`, copy: css.copy as string, subtitle: css.subtitle as string,
+            primaryAction: css.primaryAction as string, action: css.action as string,
+          },
+        })}
         {state.error !== null && <div className={css.status} role="alert">{t('onboardingSaveFailed')}<Button disabled={busy} onClick={() => { void retry() }}>{t('onboardingRetry')}</Button></div>}
         {step !== 'welcome' && <footer className={css.navigation}>
-          <button type="button" disabled={busy} onClick={() => { click('back'); go(step === 'credit' || step === 'purpose' ? 'welcome' : 'purpose') }}><span className={css.backIcon} style={{ maskImage: `url(${backIcon})` }} aria-hidden="true" />{t('onboardingBack')}</button>
-          <button type="button" disabled={busy} onClick={() => { click('skip'); setDialog(step === 'credit' ? 'credit-skip' : 'skip') }}>{t('onboardingSkip')}</button>
+          <button type="button" disabled={busy} onClick={() => { click('back'); go(step === 'credit' || step === 'purpose' ? 'welcome' : step === 'agents' && progress.purpose !== 'office' ? 'process' : 'purpose') }}><span className={css.backIcon} style={{ maskImage: `url(${backIcon})` }} aria-hidden="true" />{t('onboardingBack')}</button>
+          {/* WASD Engine: the last step's own action finishes the introduction, so it offers no Skip. */}
+          {step !== 'agents' && <button type="button" disabled={busy} onClick={() => { click('skip'); setDialog(step === 'credit' ? 'credit-skip' : 'skip') }}>{t('onboardingSkip')}</button>}
         </footer>}
       </section>
     </OnboardingSurface>

@@ -31,3 +31,13 @@
   color: var(--dsw-alias-label-primary);
   font-weight: 500;
 }
+
+/*
+ * The last step's column, which another plugin fills (wasdengine-onboarding-agents.ts): DesktopOnboarding gives it the
+ * process step's centered layout with this narrower width and tighter gap, which fits a heading, the agents' logos, and
+ * a prompt box. The doubled class outranks the process step's width whichever sheet loads last.
+ */
+.agents.agents {
+  gap: 32px;
+  max-width: 720px;
+}

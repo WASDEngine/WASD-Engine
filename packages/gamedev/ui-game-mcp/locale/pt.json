@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Painel de configuração de agente",
-    "description": "Oferece Configurar com outro agente na caixa de diálogo de login, com o prompt que conecta o Claude Code, o Codex ou outro agente, e abre a sessão cujo jogo um agente conectado inicia."
+    "description": "Configure o Claude Code, o Codex ou outro agente depois de entrar, como última etapa da introdução do app e na seção Outros agentes das configurações, com os logotipos dos agentes e o prompt que conecta o agente, e abra a sessão cujo jogo um agente conectado inicia."
   }
 }

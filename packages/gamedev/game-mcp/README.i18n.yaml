@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-mcp/README.md
 /:
-  en: 638956ff8e767baf
-  zh: 69324424ed60322b
+  en: 7144d9d38257c0ed
+  zh: d8b61f850196b146
 /deepseek-ai-dsh-game-mcp:
   en: 4a67c43c872058b4
   zh: 38f22a58909bf07b
 /deepseek-ai-dsh-game-mcp/summary:
-  en: 627169f0e7063abf
-  zh: f89598e84c668d65
+  en: 5c6e538d41e51909
+  zh: 4c115650517968ce
 /deepseek-ai-dsh-game-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -21,11 +21,11 @@
   en: ce600a3a417e1aa4
   zh: 1f8a43fa7169d1e4
 /deepseek-ai-dsh-game-mcp/use-this-package/set-up-another-agent:
-  en: d733802bf98af222
-  zh: cd470a201aaf246b
+  en: 7182d835c94f953f
+  zh: f85e3f6d9671bb74
 /deepseek-ai-dsh-game-mcp/use-this-package/what-connected-agents-get:
-  en: 2b848bbebedbbb9c
-  zh: f228a11fb0711dc8
+  en: d2747223c4058077
+  zh: aa1400017e418952
 /deepseek-ai-dsh-game-mcp/use-this-package/games-in-the-wasd-engine-window:
   en: 49471e4ba27b5dc0
   zh: de543f7380919a58
@@ -36,8 +36,8 @@
   en: ed8b6772a73c425e
   zh: f92ab9d731f94142
 /deepseek-ai-dsh-game-mcp/further-exploration:
-  en: d4839bc9198615ba
-  zh: c4d8125e9159bccb
+  en: 1a07bf592f9be374
+  zh: 51ba9e326a697e4f
 /deepseek-ai-dsh-game-mcp/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -69,8 +69,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: 3ddfb7bb93edebce
-  zh: ac486833bef996a5
+  en: ac568df04f8a1de9
+  zh: 84ac7abd785b1c46
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
@@ -78,8 +78,8 @@
   en: 7d053967b4d79221
   zh: 8cace89f19a37967
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work:
-  en: 160adee3c72d980d
-  zh: 337e4eb6d09740b4
+  en: 1369b635f9cc005c
+  zh: 3bd6ec47155459be
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: 4e818dd6d00e4020
   zh: d442e9314c4b27e6

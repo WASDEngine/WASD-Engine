@@ -4,8 +4,8 @@ import z from '@deepseek-ai/schemastery'
 /** Account feature's durable onboarding namespace. */
 export const DESKTOP_ONBOARDING_NAMESPACE = 'ui-settings-account'
 
-/** Persisted steps; a native top-up page leaves the durable step at credit. */
-export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'done'
+/** Persisted steps; a native top-up page leaves the durable step at credit. WASD Engine adds `agents`, its last step. */
+export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'agents' | 'done'
 /** Work scenarios offered by the desktop introduction. */
 export type OnboardingPurpose = 'office' | 'development' | 'both'
 /** Work-detail mode applied to Chat when onboarding completes. */
@@ -31,7 +31,7 @@ export interface OnboardingSettings extends Omit<OnboardingProgress, 'purpose' |
 /** Validated defaults for a fresh installation. */
 export const OnboardingSettingsFields = {
   version: z.const(1).default(1),
-  step: z.union(['welcome', 'credit', 'purpose', 'process', 'done']).default('welcome'),
+  step: z.union(['welcome', 'credit', 'purpose', 'process', 'agents', 'done']).default('welcome'),
   purpose: z.union(['office', 'development', 'both', z.const(null)]),
   process: z.union(['compact', 'standard', 'detailed', z.const(null)]),
   completion: z.union(['completed', 'skipped', 'api-key', z.const(null)]),

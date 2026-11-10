@@ -8,8 +8,9 @@ import { expect, onTestFinished } from 'vitest'
 
 usePinnedBrowserLanguages('en-US')
 
+// WASD Engine: ui-game-mcp's Other agents icon would outlive this file's icons, so the roster leaves it out.
 const it = createClientTest({
-  roster: webApp.without(['@deepseek-ai/dsh-client-ui-settings-models']),
+  roster: webApp.without(['@deepseek-ai/dsh-client-ui-settings-models', '@deepseek-ai/dsh-client-ui-game-mcp']),
 }, { mount: true })
 
 function Section() { return null }

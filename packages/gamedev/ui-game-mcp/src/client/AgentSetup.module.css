@@ -1,17 +1,93 @@
-/* The setup panel inside the sign-in dialog, which supplies the card, the logo, and the copy and button classes.
-   The dialog's copy column above it already holds the top padding. */
-.panel.panel {
-  padding-top: 0;
+/* The setup for another agent (AgentSetup.tsx): the Desktop introduction's last step and the Other agents section. */
+
+/* The step's logos and prompt under the introduction's heading, which supplies the column and the heading styles. */
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  width: 100%;
+}
+
+/* The section, in the column and heading styles of the other Settings sections. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 760px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.heading {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* The agents' logos, each on a small white tile as on the website, so dark logos read on dark themes too. */
+.logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step .logos {
+  justify-content: center;
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 0.5px rgb(0 0 0 / 0.1), 0 4px 12px -6px rgb(0 0 0 / 0.4);
+}
+
+.logo img {
+  display: block;
+  width: 20px;
+  height: 20px;
+  user-select: none;
+}
+
+/* OpenAI's file carries its required clear space, so it fills the tile to match the others' size. */
+.logo img[data-agent='chatgpt'] {
+  width: 36px;
+  height: 36px;
+}
+
+/* The prompt, with the server's status and the copy button under it. */
+.box {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  border: 1px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: 12px;
+  background: var(--dsw-alias-settings-card-fill);
+  overflow: hidden;
 }
 
 .prompt {
   box-sizing: border-box;
+  display: block;
   width: 100%;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 12px 14px;
-  border: 1px solid var(--dsw-alias-settings-card-stroke);
-  border-radius: 12px;
-  background: var(--dsw-alias-settings-card-fill);
+  border: 0;
+  background: transparent;
   color: var(--dsw-alias-label-primary);
   font-family: var(--dsw-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 12px;
@@ -26,20 +102,29 @@
 
 .prompt:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
-  outline-offset: 1px;
+  outline-offset: -2px;
+}
+
+.boxFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
 }
 
 .status {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
   min-height: 20px;
-  margin: 12px 0 0;
+  margin: 0;
   color: var(--dsw-alias-label-secondary);
   font-family: var(--dsw-font-family-brand);
   font-size: 13px;
   line-height: 20px;
+  text-align: left;
 }
 
 .status[data-connected] {
@@ -48,6 +133,10 @@
 
 .status[data-failed] {
   color: var(--dsw-alias-state-error-primary);
+}
+
+.copy {
+  flex: none;
 }
 
 .spinner {

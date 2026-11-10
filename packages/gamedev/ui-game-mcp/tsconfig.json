@@ -15,6 +15,7 @@
     { "path": "../../client/store" },
     { "path": "../../client/ui-primitives" },
     { "path": "../../client/ui-renderer" },
+    { "path": "../../client/ui-settings/tsconfig.client.json" },
     { "path": "../../client/ui-settings-account" },
     { "path": "../../client/ui-slots" },
     { "path": "../../client/ui-workspace" },

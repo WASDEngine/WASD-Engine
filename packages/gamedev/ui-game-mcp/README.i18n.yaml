@@ -3,53 +3,53 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-mcp/README.md
 /:
-  en: da6fe962c48a4e56
-  zh: 71d16d1d5515c46b
+  en: 95c2261d8cb4e9fa
+  zh: c6187bee36b1ede2
 /deepseek-ai-dsh-client-ui-game-mcp:
   en: 05fcf62d8f5568fc
   zh: 2daeeb0f76f67fbe
 /deepseek-ai-dsh-client-ui-game-mcp/summary:
-  en: 75bb285b4280df94
-  zh: 17d702c49cfcc704
+  en: 8d37962a2e39bad0
+  zh: 58d8b868539a4470
 /deepseek-ai-dsh-client-ui-game-mcp/table-of-contents:
   en: d152484eb41ac6b4
   zh: a134331a31395608
 /deepseek-ai-dsh-client-ui-game-mcp/use-this-package:
-  en: ce56e562c771f01f
-  zh: a78d774ae9469dc5
+  en: 1f50f3088689d2f9
+  zh: dc24de272ac77baf
 /deepseek-ai-dsh-client-ui-game-mcp/use-this-package/default-composition:
-  en: 3d5824dcce3d8a69
-  zh: 4c233827ffc1162e
-/deepseek-ai-dsh-client-ui-game-mcp/use-this-package/the-setup-panel:
-  en: 3867dd44a3c88c9b
-  zh: 7ce2e21a37500d68
+  en: 253309df0b7cd459
+  zh: b7554df595c5c38c
+/deepseek-ai-dsh-client-ui-game-mcp/use-this-package/the-setup:
+  en: d88d1eb2898baa68
+  zh: b02c174d43767b4e
 /deepseek-ai-dsh-client-ui-game-mcp/use-this-package/games-of-connected-agents:
   en: a50d4b121040e249
   zh: a154a785a13a3bef
 /deepseek-ai-dsh-client-ui-game-mcp/understand-the-implementation:
-  en: 1970fc3cc8a22a06
-  zh: faebc9374e67b5a8
+  en: 40398ac748a4cd90
+  zh: f7b32782d548cc90
 /deepseek-ai-dsh-client-ui-game-mcp/further-exploration:
-  en: c85990025e96e091
-  zh: 161c25a5edebabec
+  en: a073fd68eb947e19
+  zh: b5705fcf6dd8eb9d
 /deepseek-ai-dsh-client-ui-game-mcp/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
-/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-panel-and-the-window:
-  en: b9b29c134371b9e9
-  zh: a6034aeed4534b3b
-/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-panel-and-the-window/what-the-model-sees:
-  en: a049d37b93dc2696
-  zh: 7feec7b070fae427
-/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-panel-and-the-window/token-effect:
+/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-and-the-window:
+  en: fad0be184cc489aa
+  zh: 8439c4e7e81deff4
+/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-and-the-window/what-the-model-sees:
+  en: c0d8ce4bfe1ec736
+  zh: 27494ae770480ce9
+/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-and-the-window/token-effect:
   en: f7d1eb359afe1932
   zh: 5fc82f0403c52d19
-/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-panel-and-the-window/kv-cache-effect:
+/deepseek-ai-dsh-client-ui-game-mcp/model-experience/the-setup-and-the-window/kv-cache-effect:
   en: ca75c51c89c2c9b0
   zh: 2064958b0754647e
 /deepseek-ai-dsh-client-ui-game-mcp/known-limitations-and-deferred-work:
-  en: f3912aa840c80e88
-  zh: b53ec8e45a6fc148
+  en: c3d53e53d74d74a1
+  zh: f7809ea8f2c3f419
 /deepseek-ai-dsh-client-ui-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

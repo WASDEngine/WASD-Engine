@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Agenten-Einrichtungsbereich",
-    "description": "Bietet im Anmeldedialog „Mit einem anderen Agenten einrichten“ mit dem Prompt an, der Claude Code, Codex oder einen anderen Agenten verbindet, und öffnet die Sitzung, deren Spiel ein verbundener Agent startet."
+    "description": "Richte Claude Code, Codex oder einen anderen Agenten nach der Anmeldung ein, als letzten Schritt der Desktop-Einführung und im Bereich Andere Agenten der Einstellungen, mit den Logos der Agenten und dem Prompt, der den Agenten verbindet, und öffne die Sitzung, deren Spiel ein verbundener Agent startet."
   }
 }

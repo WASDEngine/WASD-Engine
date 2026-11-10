@@ -96,17 +96,18 @@ Every capability in WASD Engine is a plugin. Use it as a complete workbench, or 
 
 Connect your existing subscription to WASD Engine for free using MCP. WASD Engine runs an MCP server on your computer that gives Claude Code, Codex, or any other agent the same game tools, and the games it builds play in the WASD Engine window. Bring the agent you already pay for, whether it runs on ChatGPT, Claude, Gemini, Grok, MiniMax, DeepSeek, Kimi, or GLM.
 
-To connect one, open the sign-in dialog in WASD Engine, choose **Set up with another agent**, and paste the prompt it gives you into your agent.
+To connect one, sign in to WASD Engine: the introduction that follows ends with **Set up with another agent**, which **Settings → Other agents** keeps for later. Paste the prompt it gives you into your agent.
 
 ## Plans
 
-| Free · $0/month | Pro · $10/month | Max · $40/month |
+| Free · $0/month | Pro · $10/month · coming soon | Max · $40/month · coming soon |
 |---|---|---|
 | Open source | Built-in game dev AI | Everything in Pro |
-| Bring your own AI | Generous weekly usage limits | Highest weekly usage limits |
+| Free AI credits for experimentation | Generous weekly usage limits | Highest weekly usage limits |
 | 2D & 3D assets, music, SFX, and more | Create AAA-quality games | For the most ambitious creators |
+| Bring your own AI | Bring your own AI | Bring your own AI |
 
-See the [website](https://app.wasdengine.com) for current plans.
+New accounts start on a waitlist: [join it](https://app.wasdengine.com/signup), or see the [website](https://app.wasdengine.com) for current plans.
 
 ## Under the hood
 
