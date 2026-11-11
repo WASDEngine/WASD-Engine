@@ -186,6 +186,9 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'gameMcp/watch': 'owner-only', // owner sets up other agents, whose setup prompt carries a token (WASD Engine)
   'wasdPlugins/links': 'owner-only', // owner opens the WASD Engine site's Explore page (WASD Engine)
   'wasdPlugins/project': 'owner-only', // owner releases a game, which publishes it under the owner's account (WASD Engine)
+  'gameAddons/installAddon': 'owner-only', // owner installs third-party add-on code into a game project (WASD Engine)
+  'gameAddons/project': 'owner-only', // owner reads a game project's add-ons (WASD Engine)
+  'gameAddons/removeAddon': 'owner-only', // owner deletes an add-on from a game project (WASD Engine)
   'cuaAccess/applicationIcons': 'owner-only', // owner computer-use permissions
   'cuaAccess/applications': 'owner-only', // owner computer-use permissions
   'cuaAccess/enablePersistentPtc': 'owner-only', // owner computer-use permissions

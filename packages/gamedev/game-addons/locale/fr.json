@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Modules de jeu",
+    "description": "Des modules Godot et Blender choisis pour l'agent : il en installe un dans le projet du jeu quand le jeu en a besoin, et seules les sessions de ce projet voient son guide d'utilisation."
+  }
+}

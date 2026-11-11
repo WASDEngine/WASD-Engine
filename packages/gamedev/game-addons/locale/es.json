@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Extensiones de juego",
+    "description": "Extensiones seleccionadas de Godot y Blender para el agente: instala una en el proyecto del juego cuando el juego la necesita, y solo las sesiones de ese proyecto ven su guía de uso."
+  }
+}

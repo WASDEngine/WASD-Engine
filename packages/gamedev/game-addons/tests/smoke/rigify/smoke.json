@@ -1,0 +1,1 @@
+{ "run": "blender", "path": "smoke.py", "expect": ["SMOKE_PASS rigify"], "timeoutSeconds": 60 }

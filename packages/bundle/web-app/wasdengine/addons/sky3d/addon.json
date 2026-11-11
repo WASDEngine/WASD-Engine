@@ -1,0 +1,45 @@
+{
+  "id": "sky3d",
+  "title": "Sky3D",
+  "host": "godot",
+  "version": "2.1.0",
+  "summary": "Day/night cycle for 3D scenes: a sky shader with sun, moon, stars, clouds and fog, sun and moon lights driven by game time, and exposure controls.",
+  "useWhen": "A 3D game needs a sky that changes with the time of day, such as sunrise, noon, sunset and a starry night, with sunlight, shadows and ambient light that follow it, or a game clock with day and night.",
+  "avoidWhen": "A fixed sky is enough: Godot's ProceduralSkyMaterial or PhysicalSkyMaterial in a WorldEnvironment needs no add-on.",
+  "tags": [
+    "sky",
+    "3d",
+    "lighting",
+    "day-night",
+    "environment"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT AND CC-BY-4.0",
+  "copyright": "Copyright (c) 2023-2026 Cory Petkovsek and Contributors; Copyright (c) 2021 J. Cuéllar",
+  "credit": "The Milky Way panorama by ESO/S. Brunier, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), used in original and modified forms.",
+  "homepage": "https://github.com/TokisanGames/Sky3D",
+  "archive": {
+    "url": "https://github.com/TokisanGames/Sky3D/releases/download/v2.1.0/Sky3D_v2.1.0.zip",
+    "sha256": "3d7d9f989097efab3a2eb3b5d515c4024e86130eeff2c46fe408bbf54586e990",
+    "bytes": 11455928,
+    "root": "addons/sky_3d",
+    "license": "addons/sky_3d/LICENSE.txt"
+  },
+  "godot": {
+    "addonDir": "sky_3d",
+    "plugin": "plugin.cfg"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/TokisanGames/Sky3D/v2.1.0/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023-2025 Cory Petkovsek and Contributors, (c) 2021 J. Cuéllar"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

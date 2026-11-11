@@ -1,0 +1,1 @@
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS smartshape2d"], "timeoutSeconds": 60 }

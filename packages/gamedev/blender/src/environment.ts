@@ -22,6 +22,16 @@ import type { BlenderServerOptions } from './types.ts'
 /** A `bpy` package version such as `5.2.3`. */
 export const BPY_VERSION_PATTERN = /^\d+\.\d+\.\d+$/
 
+/** Environment variable that names the game add-on store to the worker. */
+export const ADDON_STORE_VARIABLE = 'WASD_ADDON_STORE'
+
+/**
+ * Folder in a worker's own directory that Blender uses as its user resources (`BLENDER_USER_RESOURCES`): the
+ * extension cache, the wheels of enabled extensions, extension user data, and what add-ons write to Blender's user
+ * folder stay there, apart from the user's own Blender and from other workers, and go when the worker's directory does.
+ */
+export const USER_RESOURCES_FOLDER = 'blender-user'
+
 /** A Python minor version such as `3.13`. */
 export const PYTHON_VERSION_PATTERN = /^3\.\d+$/
 
@@ -33,6 +43,7 @@ const ServerOptions = z.strictObject({
   uvPath: z.string(),
   blenderPath: z.string(),
   startupTimeoutMs: z.int().min(1),
+  addonStore: z.string(),
 })
 
 /**
@@ -515,7 +526,8 @@ function appLaunch(blender: string, workerScript: string, env: NodeJS.ProcessEnv
 export async function resolveWorkerLaunch(
   options: BlenderServerOptions, workerScript: string, bundledRoot: string, host: BlenderSetupHost, signal: AbortSignal,
 ): Promise<WorkerLaunch> {
-  const env = childEnvironment(host.env)
+  // The worker's `wasd_addons` module finds the game add-on store through this variable.
+  const env = { ...childEnvironment(host.env), ...options.addonStore === '' ? {} : { [ADDON_STORE_VARIABLE]: options.addonStore } }
   if (options.backend !== 'app') {
     const shipped = await findShippedBpy(bundledRoot, host)
     if (shipped !== undefined && shipped.bpy === options.bpyVersion) {
@@ -629,8 +641,11 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
   }
 
   private async startWorker(launch: WorkerLaunch, scope: AppWorkerScope, signal: AbortSignal): Promise<W> {
+    const { host } = this.dependencies
+    const userResources = pathsOf(host.platform).join(scope.directory, USER_RESOURCES_FOLDER)
+    await host.makeDirectory(userResources)
     const worker = await this.dependencies.start({
-      argv: launch.argv, cwd: scope.directory, env: launch.env,
+      argv: launch.argv, cwd: scope.directory, env: { ...launch.env, BLENDER_USER_RESOURCES: userResources },
       readyTimeoutMs: this.options.startupTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
     const runtime = launch.backend === 'app' ? 'Blender app' : launch.shipped ? 'the bpy module that WASD Engine ships' : 'bpy module'

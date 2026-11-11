@@ -157,6 +157,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `godot_performance` | `seconds`（默认 2，0.25 到 20） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制 |
 | `godot_logs` | `since`、`levels`、`limit`（默认 200，最多 1000） | 游标 `since` 之后、或本 Session 上次读取之后的日志条目，以及下一个游标 |
 | `godot_check` | `paths`、`project` | 在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
+| `godot_script` | `script`、`args`、`timeout_seconds`、`project` | 在无界面 Godot 中针对项目运行继承 `SceneTree` 或 `MainLoop` 的 GDScript 而不运行游戏，并报告其输出的结尾和引擎错误 |
 
 `godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree` 和 `godot_performance` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
 
@@ -174,10 +175,12 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 结果文本不超过 6,000 个字符，被截断时以 `… (output shortened)` 结尾；引用的日志消息不超过 500 个字符。`godot_logs` 在达到文本上限之前结束本页，其下一个游标紧跟在最后一个列出的条目之后。
 
+`godot_script` 在设置了 `importBeforeRun` 时会像运行游戏那样先导入项目，使上次导入后新增的类名和资源可用，然后用解析出的运行时执行 `--headless --path <project> --script <res path> -- <args>`，用于 GUT 的 `res://addons/gut/gut_cmdln.gd` 等测试扩展的命令行运行器，以及构建或生成脚本。`script` 是 `res://` 路径或相对于工作目录的路径，必须是项目内的 `.gd` 文件。`args` 放在 `--` 之后传给脚本，脚本用 `OS.get_cmdline_user_args()` 读取。脚本退出或达到 `timeout_seconds`（默认 120，最多 900）时运行结束。LibGodot 不暴露引擎的退出码，因此脚本退出后运行器总是以 0 退出，无论它向 `quit()` 传了什么；结果会说明这一点，测试运行器的通过与失败要从其打印的汇总中判断。其他退出码表示运行器本身失败。结果保留标准输出和标准错误的最后 6,000 个字符以及此前省略的行数，以便保留运行器的汇总，并列出最多 20 个引擎错误，导入的错误在前。未给出 `project` 时，它使用 Session 当前或上一次运行的项目，否则使用最近的项目。与游戏一样，脚本以 Host 用户的全部权限运行。
+
 <a id="connected-agents"></a>
 ### 供已连接 agent 使用的工具
 
-通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十一个工具，它们由同一个 `godotToolDefinitions` 构建，区别有三点：
+通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十二个工具，它们由同一个 `godotToolDefinitions` 构建，区别有三点：
 
 - 每个工具都接受 `project`：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身的绝对路径；省略时，调用沿用该 agent 上一次的项目，而在 agent 第一次调用之前会以 `Pass project: the absolute path of the folder that holds project.godot.` 失败。调用为该 agent 在这个游戏项目中自己的 Session 执行，MCP 服务器在首次使用时创建该 Session，因此运行、其日志与“游戏”标签页都属于这个 Session。
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
@@ -240,6 +243,14 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
 
+### 供其他插件使用的导入
+
+`ctx.godot.importProject(projectDir, signal)` 为其他 Host 插件执行一次导入步骤，例如在安装扩展后导入项目的[游戏扩展](../game-addons/README.zh.md)：在 `importTimeoutMs` 内用解析出的运行时执行一次无界面的 `--import`，这也会加载项目已启用的编辑器插件。它返回最多 20 个错误和警告，进程异常结束时附加一条警告；没有安装运行时则返回 undefined。“游戏”标签页和 `godot_*` 工具不会调用它。
+
+### 项目中的 Blender 文件
+
+Godot 的 Blender 场景导入器通过运行编辑器设置所指定的 Blender 可执行文件来转换 `.blend` 文件。在没有该可执行文件的无界面编辑器中，它的导入支持查询会失败，编辑器随即跳过项目中所有待处理的导入，而不只是 `.blend` 文件的导入。因此，在运行的导入步骤、`godot_script` 与 `ctx.godot.importProject` 之前，以及 Web 导出之前，只要编辑器的文件扫描会遇到 `.blend` 文件（即不在隐藏文件夹或含有 `.gdignore` 文件的文件夹中），插件就会在 `project.godot` 中关闭该导入器（`filesystem/import/blender/enabled=false`）。桌面编辑器在找不到 Blender 时也会提供同样的开关。这一更改会附带一条给智能体的说明：运行日志中来自导入步骤的一条警告、导入报告的第一条警告，以及 Web 导出的第一条警告。Godot 从不运行 Blender；模型以 [Blender 工具](../blender/README.zh.md)导出的 `.glb` 文件进入项目。
+
 <a id="data-directory"></a>
 ### 数据目录中的文件
 
@@ -283,7 +294,9 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/protocol.ts`](src/protocol.ts) | harness 连接上的消息分帧与校验 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、结果文本和新错误报告 |
 | [`src/check.ts`](src/check.ts) | 静态脚本检查 |
+| [`src/script.ts`](src/script.ts) | `godot_script` 运行与供其他插件使用的导入步骤 |
 | [`src/project.ts`](src/project.ts) | 项目搜索、`project.godot` 设置和 `res://` 路径 |
+| [`src/blender-import.ts`](src/blender-import.ts) | 在含有 `.blend` 文件的项目中关闭 Blender 导入器 |
 | [`src/input.ts`](src/input.ts)、[`src/logs.ts`](src/logs.ts) | 输入校验与截图坐标；日志环形缓冲区及其游标 |
 | [`src/follow.ts`](src/follow.ts)、[`src/frames.ts`](src/frames.ts) | 跟随流和帧路由 |
 | [`src/client/index.ts`](src/client/index.ts) | 浏览器入口：Remote、“游戏”标签页、工具卡片和自动打开 |
@@ -326,15 +339,15 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### 模型可见内容
 
-插件加载时在全局工具层注册 11 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance`、`godot_logs` 和 `godot_check`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
+插件加载时在全局工具层注册 12 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance`、`godot_logs`、`godot_check` 和 `godot_script`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
 
 #### Token 影响
 
-默认配置下，11 个声明合计约 7,200 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
+默认配置下，12 个声明合计约 8,100 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
 
 #### KV Cache 影响
 
-同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 11 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
+同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 12 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
 
 ### 系统提示词中的 Godot 部分
 

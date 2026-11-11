@@ -1589,6 +1589,32 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gameAddons',
+    summary: 'Owner of the add-on catalog, the `game_addons` tool, the add-on guides\' skill provider, and the `gameAddons` Remote.',
+    description: 'Owner of the add-on catalog, the `game_addons` tool, the add-on guides\' skill provider, and the `gameAddons` Remote.',
+    methods: [
+      {
+        signature: '@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>',
+        description: 'The catalog with each add-on\'s presence in the game project of a folder, for the Add-ons dialog.',
+        parameters: [{ name: 'directory', description: 'absolute folder: the project folder or a folder up to three levels above it.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the project folder and every catalog add-on.',
+        throws: ['GodotProjectError when the folder has no Godot project.'],
+      },
+      {
+        signature: '@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>',
+        description: 'Install an add-on that the user chose in the Add-ons dialog.',
+        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation; a cancelled installation leaves the project as it was.' }],
+        returns: 'the installation.',
+      },
+      {
+        signature: '@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>',
+        description: 'Remove an add-on that the user chose in the Add-ons dialog.',
+        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation before files are deleted.' }],
+        returns: 'the removal.',
+      },
+    ],
+  },
+  {
     key: 'gameMcp',
     summary: 'Owner of the MCP endpoint, its game tool providers, and the connected agents\' Sessions.',
     description: 'Owner of the MCP endpoint, its game tool providers, and the connected agents\' Sessions.',
@@ -1742,6 +1768,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
         returns: 'the exported files.',
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.'],
+      },
+      {
+        signature: 'async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>',
+        description: 'Import a project with the editor\'s headless import step, which also loads its enabled editor plugins, for other Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.',
+        parameters: [{ name: 'projectDir', description: 'absolute folder that holds `project.godot`.' }, { name: 'signal', description: 'cancellation; it stops the import process.' }],
+        returns: 'the errors and warnings it logged, or undefined when no Godot runtime is installed.',
+        throws: ['{GodotProjectError} without `project.godot` in the folder.', '{GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.'],
       },
     ],
   },
@@ -6490,6 +6523,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface EncodedImageAttachment {\n    mediaType: ImageMediaType;\n    data: string;\n    name?: string;\n}',
   },
   {
+    name: 'EngineIssue',
+    declaration: 'export interface EngineIssue {\n    readonly level: \'warning\' | \'error\' | \'script_error\' | \'shader_error\';\n    readonly message: string;\n    readonly file?: string;\n    readonly line?: number;\n}',
+  },
+  {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    tools?: ToolSchema[];\n    system?: never;\n}',
   },
@@ -6750,6 +6787,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GameAddonHost',
+    declaration: 'export type GameAddonHost = \'godot\' | \'blender\';',
+  },
+  {
+    name: 'GameAddonInstallResult',
+    declaration: 'export interface GameAddonInstallResult {\n    readonly addon: InstalledGameAddon;\n    readonly projectDir: string;\n    readonly unchanged: boolean;\n    readonly importIssues: readonly string[];\n    readonly notes: readonly string[];\n}',
+  },
+  {
+    name: 'GameAddonPresence',
+    declaration: 'export type GameAddonPresence = {\n    readonly state: \'installed\';\n    readonly version: string;\n} | {\n    readonly state: \'found\';\n    readonly version?: string;\n} | {\n    readonly state: \'absent\';\n};',
+  },
+  {
+    name: 'GameAddonRemoveResult',
+    declaration: 'export interface GameAddonRemoveResult {\n    readonly id: string;\n    readonly projectDir: string;\n    readonly removed: readonly string[];\n    readonly references: readonly string[];\n}',
+  },
+  {
+    name: 'GameAddonsProjectView',
+    declaration: 'export interface GameAddonsProjectView {\n    readonly projectDir: string;\n    readonly addons: readonly GameAddonView[];\n}',
+  },
+  {
+    name: 'GameAddonStage',
+    declaration: 'export type GameAddonStage = \'prototype\' | \'content\' | \'polish\' | \'ship\';',
+  },
+  {
+    name: 'GameAddonView',
+    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly conflicts: readonly string[];\n    readonly presence?: GameAddonPresence;\n}',
+  },
+  {
     name: 'GameMcpCall',
     declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
   },
@@ -6868,6 +6933,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotFollowItem',
     declaration: 'export type GodotFollowItem = {\n    readonly type: \'snapshot\';\n    readonly run: GodotRunView | null;\n    readonly runtime: GodotRuntimeView;\n    readonly logs: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'run\';\n    readonly run: GodotRunView | null;\n} | {\n    readonly type: \'logs\';\n    readonly entries: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'runtime\';\n    readonly runtime: GodotRuntimeView;\n};',
+  },
+  {
+    name: 'GodotImportReport',
+    declaration: 'export interface GodotImportReport {\n    readonly issues: readonly EngineIssue[];\n}',
   },
   {
     name: 'GodotInputEvent',
@@ -7036,6 +7105,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InstallBundleOptions',
     declaration: 'export interface InstallBundleOptions {\n    enabled?: boolean;\n    saveExact?: boolean;\n    requestId?: PluginInstallRequestId;\n    approvedBuilds?: string[];\n    registry?: Registry;\n}',
+  },
+  {
+    name: 'InstalledGameAddon',
+    declaration: 'export interface InstalledGameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly license: string;\n    readonly source?: string;\n    readonly sha256?: string;\n    readonly paths: readonly string[];\n    readonly installedAt: string;\n}',
   },
   {
     name: 'InstallSpecKind',

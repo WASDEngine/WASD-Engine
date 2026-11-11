@@ -1,0 +1,42 @@
+{
+  "id": "godot-state-charts",
+  "title": "Godot State Charts",
+  "host": "godot",
+  "version": "0.22.5",
+  "summary": "Hierarchical state machines built from nodes: compound, parallel and history states, event and timed transitions with guards, and enter/exit/process signals.",
+  "useWhen": "A player, enemy, menu or game flow has many modes with nested or parallel sub-states (grounded/airborne, armed/unarmed, pause) or needs delayed and guarded transitions that a flat enum state machine handles badly.",
+  "avoidWhen": "Two or three states with simple switches; an enum and a match statement in the script are enough.",
+  "tags": [
+    "state",
+    "ai",
+    "character",
+    "logic"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 Jan Thomä",
+  "homepage": "https://github.com/derkork/godot-statecharts",
+  "archive": {
+    "url": "https://github.com/derkork/godot-statecharts/archive/refs/tags/v0.22.5.zip",
+    "sha256": "8124286e61f000342d7d2cbe5e140ee5301a541ddffe5d28d657afc38f7f3692",
+    "bytes": 1026524,
+    "root": "godot-statecharts-0.22.5/addons/godot_state_charts"
+  },
+  "godot": {
+    "addonDir": "godot_state_charts",
+    "plugin": "plugin.cfg"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/derkork/godot-statecharts/v0.22.5/docs/assets/img/manual/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 Jan Thomä"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "id": "dialogue-manager",
+  "title": "Dialogue Manager",
+  "host": "godot",
+  "version": "4.2.0",
+  "summary": "Branching dialogue written as .dialogue text files with characters, choices, conditions, variables and function calls, plus a ready-made dialogue balloon UI.",
+  "useWhen": "The game has NPC conversations, branching choices, quests, shops or story scenes whose lines depend on game state, or more dialogue than fits comfortably in GDScript arrays.",
+  "avoidWhen": "Only a few fixed lines, signs or tooltips; a Label or a short array of strings in GDScript is simpler.",
+  "tags": [
+    "dialogue",
+    "story",
+    "npc",
+    "ui"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2022-present Nathan Hoad and Dialogue Manager contributors.",
+  "homepage": "https://github.com/nathanhoad/godot_dialogue_manager",
+  "archive": {
+    "url": "https://github.com/nathanhoad/godot_dialogue_manager/archive/refs/tags/v4.2.0.zip",
+    "sha256": "de456557a3d231f124c9b387a571e55ce2f8b390c8ae31a7b2681236874aa85a",
+    "bytes": 253918,
+    "root": "godot_dialogue_manager-4.2.0/addons/dialogue_manager"
+  },
+  "godot": {
+    "addonDir": "dialogue_manager",
+    "plugin": "plugin.cfg",
+    "autoloads": [
+      {
+        "name": "DialogueManager",
+        "path": "res://addons/dialogue_manager/dialogue_manager.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/nathanhoad/godot_dialogue_manager/v4.2.0/docs/media/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2022-present Nathan Hoad and Dialogue Manager contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

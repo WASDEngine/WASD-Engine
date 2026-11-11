@@ -1,0 +1,1 @@
+{ "run": "script", "path": "res://addons/gut/gut_cmdln.gd", "args": ["-gdir=res://wasd_smoke/tests", "-gexit"], "expect": ["---- All tests passed! ----", "SMOKE_PASS gut"], "exitCode": 0, "timeoutSeconds": 60 }

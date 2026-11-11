@@ -1,0 +1,39 @@
+{
+  "id": "gdunit4",
+  "title": "GdUnit4",
+  "host": "godot",
+  "version": "6.2.3",
+  "summary": "Unit testing: test suites that extend GdUnitTestSuite, with fluent asserts, signal asserts, a scene runner, mocks and spies, run headless from the command line.",
+  "useWhen": "The game has rules or systems worth checking automatically, including scenes driven frame by frame or with simulated input actions, and you want tests that run headless with godot_script after each change.",
+  "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead.",
+  "tags": [
+    "testing",
+    "tools"
+  ],
+  "stages": [
+    "prototype",
+    "polish",
+    "ship"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 Mike Schulze",
+  "homepage": "https://github.com/godot-gdunit-labs/gdUnit4",
+  "archive": {
+    "url": "https://github.com/godot-gdunit-labs/gdUnit4/archive/refs/tags/v6.2.3.zip",
+    "sha256": "8fb1a298af110be6d73067af66132bf036049deb6d5929d4a16756e18d2228bb",
+    "bytes": 474730,
+    "root": "gdUnit4-6.2.3/addons/gdUnit4",
+    "license": "gdUnit4-6.2.3/addons/gdUnit4/LICENSE"
+  },
+  "godot": {
+    "addonDir": "gdUnit4",
+    "plugin": "plugin.cfg"
+  },
+  "conflicts": [
+    "gut"
+  ],
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

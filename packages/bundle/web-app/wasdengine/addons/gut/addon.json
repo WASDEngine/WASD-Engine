@@ -1,0 +1,44 @@
+{
+  "id": "gut",
+  "title": "GUT",
+  "host": "godot",
+  "version": "9.7.1",
+  "summary": "Godot Unit Test: test scripts that extend GutTest, with asserts, signal watching, frame waits, doubles and stubs, run headless by a command-line runner.",
+  "useWhen": "The game has rules or systems worth checking automatically (damage, inventory, save data, state machines, level generation) and you want tests that run headless with godot_script after each change.",
+  "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead.",
+  "tags": [
+    "testing",
+    "tools"
+  ],
+  "stages": [
+    "prototype",
+    "polish",
+    "ship"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2018 Tom \"Butch\" Wesley",
+  "homepage": "https://github.com/bitwes/Gut",
+  "archive": {
+    "url": "https://github.com/bitwes/Gut/archive/refs/tags/v9.7.1.zip",
+    "sha256": "14969aa46adc84aa08cdd21b9f6d1a64addd92ae60b36f02d0521ed305aa4086",
+    "bytes": 1118303,
+    "root": "Gut-9.7.1/addons/gut",
+    "license": "Gut-9.7.1/addons/gut/LICENSE.md"
+  },
+  "godot": {
+    "addonDir": "gut"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/bitwes/Gut/v9.7.1/addons/gut/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2018 Tom \"Butch\" Wesley"
+  },
+  "conflicts": [
+    "gdunit4"
+  ],
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

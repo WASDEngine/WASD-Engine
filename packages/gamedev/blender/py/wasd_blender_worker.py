@@ -39,15 +39,18 @@ import linecache
 import math
 import os
 import platform
+import runpy
 import select
 import signal
 import sys
 import threading
 import time
 import traceback
+import types
 
 # The bpy wheel registers Blender's built-in modules when bpy loads, so bpy comes first.
 import bpy  # isort: skip
+import addon_utils
 import bmesh
 import idprop
 import mathutils
@@ -1362,11 +1365,152 @@ def _version():
     return '.'.join(str(part) for part in bpy.app.version)
 
 
+ADDON_STORE_VARIABLE = 'WASD_ADDON_STORE'
+"""Environment variable that names the game add-on store, from the Blender plugin's ``addonStore``."""
+
+ADDON_REPO_MODULE = 'wasd'
+"""Module name of the extensions repository that holds the store's extensions: they import as ``bl_ext.wasd.<id>``."""
+
+ADDON_STORE_INDEX = 'catalog.json'
+"""The store's index of the catalog's Blender add-ons, which the game add-ons plugin writes."""
+
+ADDON_STORE_MARKER = '.wasd-addon.json'
+"""The file the game add-ons plugin writes into an add-on or asset folder once it unpacked it completely."""
+
+
+class AddonError(RuntimeError):
+    """An add-on that ``wasd_addons.enable`` cannot enable, with what the agent should do."""
+
+
+class Addons:
+    """WASD Engine's catalog add-ons in this worker, behind the ``wasd_addons`` module. ``enable`` makes one usable:
+    an extension unpacked in the store through a ``wasd`` extensions repository whose folder is the store, a core
+    add-on as it ships inside Blender. An add-on whose catalog entry has a setup script, such as one that points the
+    add-on at its asset pack, gets it run after it is enabled. Factory settings, which a new scene and executed code may
+    load, drop the repository, disable every add-on, and reset their preferences, so a persistent handler enables the
+    ones this worker enabled again and runs their setup again."""
+
+    def __init__(self, store):
+        self.store = os.path.abspath(store) if store else ''
+        self.ids = []
+        self.prepared = set()
+        addons = self
+
+        @bpy.app.handlers.persistent
+        def wasd_addons_restore(*_args):
+            addons.restore()
+
+        bpy.app.handlers.load_factory_preferences_post.append(wasd_addons_restore)
+
+    def _entry(self, name):
+        if not self.store:
+            raise AddonError('This Blender has no game add-on store, so wasd_addons cannot enable add-ons.')
+        try:
+            with open(os.path.join(self.store, ADDON_STORE_INDEX), encoding='utf-8') as index:
+                addons = json.load(index)['addons']
+        except FileNotFoundError:
+            raise AddonError('No game add-ons are known yet: install one in the game project with game_addons first.') from None
+        if name in addons:
+            return name, addons[name]
+        for addon_id, entry in addons.items():
+            if entry.get('module') == name:
+                return addon_id, entry
+        raise AddonError(f'{name!r} is not a catalog Blender add-on; the catalog has {", ".join(sorted(addons))}.')
+
+    def _repository(self):
+        repos = bpy.context.preferences.extensions.repos
+        for repo in repos:
+            if repo.module == ADDON_REPO_MODULE:
+                if not repo.use_custom_directory or os.path.abspath(repo.custom_directory) != self.store:
+                    repo.use_custom_directory = True
+                    repo.custom_directory = self.store
+                repo.enabled = True
+                return
+        repos.new(name='WASD Engine add-ons', module=ADDON_REPO_MODULE, custom_directory=self.store, source='USER')
+
+    def enable(self, name):
+        """Enable a catalog Blender add-on by its id or module; returns the Python module name it runs as."""
+        addon_id, entry = self._entry(str(name))
+        module = entry['module']
+        if entry['kind'] == 'core':
+            full = module
+        else:
+            folder = os.path.join(self.store, module)
+            if not any(os.path.isfile(os.path.join(folder, marker)) for marker in ('blender_manifest.toml', '__init__.py')):
+                raise AddonError(f'{addon_id} is not downloaded yet: install it in the game project with game_addons first.')
+            self._repository()
+            full = f'bl_ext.{ADDON_REPO_MODULE}.{module}'
+        if addon_utils.check(full) != (True, True):
+            errors = []
+            loaded = addon_utils.enable(full, default_set=True, persistent=True, handle_error=errors.append)
+            if loaded is None or errors:
+                cause = f'{type(errors[0]).__name__}: {errors[0]}' if errors else 'it did not load'
+                raise AddonError(f'Enabling {addon_id} failed: {cause}')
+        if addon_id not in self.prepared:
+            self._setup(addon_id, entry, full)
+            self.prepared.add(addon_id)
+        if addon_id not in self.ids:
+            self.ids.append(addon_id)
+        return full
+
+    def _assets(self, addon_id, entry):
+        folder = entry.get('assets')
+        if folder is None:
+            return None
+        if not os.path.isfile(os.path.join(folder, ADDON_STORE_MARKER)):
+            raise AddonError(f'The asset pack of {addon_id} is not downloaded yet: install the add-on in the game project with game_addons again.')
+        return folder
+
+    def _setup(self, addon_id, entry, module):
+        script = entry.get('setup')
+        if script is None:
+            return
+        assets = self._assets(addon_id, entry)
+        try:
+            runpy.run_path(script, run_name='wasd_addon_setup')['setup'](module=module, assets=assets)
+        except Exception as error:
+            raise AddonError(f'Setting up {addon_id} failed: {type(error).__name__}: {error}') from error
+
+    def assets(self, name):
+        """The folder of a catalog add-on's asset pack, which the add-on's setup already points it at."""
+        addon_id, entry = self._entry(str(name))
+        if entry.get('assets') is None:
+            raise AddonError(f'{addon_id} has no asset pack.')
+        return self._assets(addon_id, entry)
+
+    def enabled(self):
+        """The ids that ``enable`` enabled in this worker, in order."""
+        return list(self.ids)
+
+    def restore(self):
+        """Enable again what the worker had enabled, and run its setup again, after factory settings disabled it and
+        reset its preferences; an add-on that fails stays out. Blender calls it from a file-loading handler, so it
+        never raises."""
+        self.prepared.clear()
+        for addon_id in list(self.ids):
+            try:
+                self.enable(addon_id)
+            except Exception as error:  # noqa: BLE001 - one failed add-on must not stop the scene from loading.
+                self.ids.remove(addon_id)
+                sys.stderr.write(f'wasd_addons: could not enable {addon_id} again: {error}\n')
+
+
+def _addons_module(addons):
+    """The ``wasd_addons`` module that executed code imports."""
+    module = types.ModuleType('wasd_addons', 'Enable WASD Engine\'s catalog add-ons in this Blender: enable(id), enabled(), and assets(id).')
+    module.enable = addons.enable
+    module.enabled = addons.enabled
+    module.assets = addons.assets
+    module.AddonError = AddonError
+    return module
+
+
 def _fresh_namespace():
     """The ``execute_python`` namespace before any code ran: the preloaded modules only."""
     return {
         '__name__': '__wasd__', '__builtins__': builtins,
         'bpy': bpy, 'bmesh': bmesh, 'mathutils': mathutils, 'json': json, 'math': math,
+        'wasd_addons': sys.modules['wasd_addons'],
     }
 
 
@@ -1376,6 +1520,8 @@ class Worker:
 
     def __init__(self, replies):
         self.replies = replies
+        self.addons = Addons(os.environ.get(ADDON_STORE_VARIABLE, ''))
+        sys.modules['wasd_addons'] = _addons_module(self.addons)
         self.namespace = _fresh_namespace()
         self.runs = 0
         self.undo_error = None

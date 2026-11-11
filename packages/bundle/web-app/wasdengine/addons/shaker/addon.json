@@ -1,0 +1,48 @@
+{
+  "id": "shaker",
+  "title": "Shaker",
+  "host": "godot",
+  "version": "1.0.7",
+  "summary": "Shake effects for 2D and 3D: shaker nodes and presets that shake a node's position, rotation, and scale or any numeric property, with fades, plus area emitters.",
+  "useWhen": "The game needs screen shake or object shake for juice: hits, explosions, landings, earthquakes, a trembling camera or UI element, or shake that grows near an explosion.",
+  "avoidWhen": "A single short camera jolt is enough: a Tween on Camera2D.offset does it without an add-on.",
+  "tags": [
+    "camera",
+    "effects",
+    "juice",
+    "2d",
+    "3d"
+  ],
+  "stages": [
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2024 Enes Kaplan",
+  "homepage": "https://github.com/Eneskp3441/Shaker",
+  "archive": {
+    "url": "https://github.com/Eneskp3441/Shaker/archive/refs/tags/v1.0.7.zip",
+    "sha256": "a7177357d6909ee6506c0fa1021ed39c98dbfaeb423c53cd1331ad0436b96180",
+    "bytes": 103539,
+    "root": "Shaker-1.0.7/addons/shaker"
+  },
+  "godot": {
+    "addonDir": "shaker",
+    "plugin": "plugin.cfg",
+    "autoloads": [
+      {
+        "name": "Shaker",
+        "path": "res://addons/shaker/src/Shaker.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/Eneskp3441/Shaker/v1.0.7/addons/shaker/assets/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2024 Enes Kaplan"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

@@ -1,0 +1,1 @@
+{ "run": "blender", "path": "smoke.py", "expect": ["SMOKE_PASS sapling-tree-gen"], "timeoutSeconds": 60 }

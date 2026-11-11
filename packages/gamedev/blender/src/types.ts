@@ -15,4 +15,6 @@ export interface BlenderServerOptions extends AppServerOptions {
   readonly uvPath: string
   readonly blenderPath: string
   readonly startupTimeoutMs: number
+  /** Absolute folder of the game add-on store, or empty. */
+  readonly addonStore: string
 }

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Complementos de jogo",
+    "description": "Complementos selecionados do Godot e do Blender para o agente: ele instala um no projeto do jogo quando o jogo precisa, e só as sessões desse projeto veem o guia de uso dele."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Spiel-Add-ons",
+    "description": "Ausgewählte Add-ons für Godot und Blender für den Agenten: Er installiert eines ins Spielprojekt, wenn das Spiel es braucht, und nur die Sitzungen dieses Projekts sehen seine Anleitung."
+  }
+}

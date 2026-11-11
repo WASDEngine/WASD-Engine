@@ -39,11 +39,11 @@
   en: 146cf9246db9fbc6
   zh: ec41650cb73df96c
 /deepseek-ai-dsh-godot/use-this-package/tools:
-  en: 2c76abc393c1987f
-  zh: f1e01d3ae51befc7
+  en: 4631c1605b1873c5
+  zh: 0151069813814d0c
 /deepseek-ai-dsh-godot/use-this-package/tools-for-connected-agents:
-  en: b6b4ae1e07c8f279
-  zh: e794a1dfb1be0733
+  en: b6179a01e16fb36f
+  zh: 1f2555963d15c0c2
 /deepseek-ai-dsh-godot/use-this-package/game-tab:
   en: 735afa26e6649130
   zh: c0d2954dafda2b9e
@@ -51,8 +51,14 @@
   en: bff279f042d72eec
   zh: d03be64351e2691a
 /deepseek-ai-dsh-godot/use-this-package/web-export:
-  en: bd58f31f14a67d21
-  zh: 4e7c94065efb8d58
+  en: 85904309633eb613
+  zh: 5533c3200d3d4d73
+/deepseek-ai-dsh-godot/use-this-package/import-for-other-plugins:
+  en: 9ca3e4c1e265d25b
+  zh: 4a1160f3c7cfdeea
+/deepseek-ai-dsh-godot/use-this-package/blender-files-in-a-project:
+  en: 0df0304aa7678134
+  zh: 7f0721791de3438c
 /deepseek-ai-dsh-godot/use-this-package/files-under-the-data-directory:
   en: 6a3e763b6583776f
   zh: 5a457a6600c88d1f
@@ -60,8 +66,8 @@
   en: 6ed9f9b1dac1df20
   zh: e4cb319cf1d360f9
 /deepseek-ai-dsh-godot/understand-the-implementation:
-  en: 1d349950be8db2f3
-  zh: f0328f6dd5549969
+  en: 8ca13cc3c1b26850
+  zh: 61806d93c5da0bbf
 /deepseek-ai-dsh-godot/understand-the-implementation/verify-against-a-real-runtime:
   en: 1b9a769ce3e9f554
   zh: eb950f63f6480b31
@@ -75,14 +81,14 @@
   en: 8cef82d4c83581ef
   zh: 9c723246bc91357d
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/what-the-model-sees:
-  en: d1fbd1033d6a510c
-  zh: 2de4747594b02964
+  en: 5c0c5bb0c711d749
+  zh: 065ee6fd7217f91e
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/token-effect:
-  en: d85a773a4c3f46ed
-  zh: 92fa5d8ee065885f
+  en: bad22fa4dfb86844
+  zh: 241c3c40722d821d
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/kv-cache-effect:
-  en: 1b100db752a74d00
-  zh: f92a7c2a26b941b7
+  en: 44124c6214857c47
+  zh: d4ca98b4dafc3f07
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt:
   en: 9a2a0228ccac0457
   zh: 9a9f0c1b1e0c17c9

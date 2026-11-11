@@ -1,0 +1,43 @@
+{
+  "id": "gaea",
+  "title": "Gaea",
+  "host": "godot",
+  "version": "2.0.0-beta6",
+  "summary": "Procedural generation graphs of noise, walkers, filters and mappers, run from a seed and drawn into TileMapLayer or GridMap; graphs are .tres resources.",
+  "useWhen": "A 2D or 3D grid game needs procedural maps such as islands, caves or dungeons, generated from a seed into TileMapLayer or GridMap, and a node pipeline written as a .tres graph fits the job.",
+  "avoidWhen": "One noise threshold or a simple random walk is enough: a short script with FastNoiseLite and TileMapLayer.set_cell() does it without a graph.",
+  "tags": [
+    "procedural",
+    "tilemap",
+    "gridmap",
+    "2d",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 BenjaTK",
+  "homepage": "https://github.com/gaea-godot/gaea",
+  "archive": {
+    "url": "https://github.com/gaea-godot/gaea/archive/refs/tags/v2.0.0-beta6.zip",
+    "sha256": "66167a3a5562b52712967f53337e336a2f268864734d86894834ede3d49f3007",
+    "bytes": 281189,
+    "root": "gaea-2.0.0-beta6/addons/gaea"
+  },
+  "godot": {
+    "addonDir": "gaea",
+    "plugin": "plugin.cfg"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/gaea-godot/gaea/v2.0.0-beta6/addons/gaea/assets/generator.svg",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 BenjaTK"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

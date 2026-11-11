@@ -1,0 +1,1 @@
+{ "run": "script", "path": "res://wasd_smoke/gdunit_cli.gd", "args": ["-a", "res://wasd_smoke/tests", "--ignoreHeadlessMode", "-c"], "expect": ["2 test cases | 0 errors | 0 failures", "Exit code: 0", "SMOKE_PASS gdunit4"], "exitCode": 0, "timeoutSeconds": 60 }

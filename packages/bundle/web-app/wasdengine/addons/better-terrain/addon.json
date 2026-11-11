@@ -1,0 +1,48 @@
+{
+  "id": "better-terrain",
+  "title": "Better Terrain",
+  "host": "godot",
+  "version": "1.1",
+  "summary": "Autotiling for TileMapLayer: terrain rules in TileSet metadata, defined from code or .tres text, and an API that paints cells and re-solves tiles at runtime.",
+  "useWhen": "A 2D tile game needs walls, paths, platforms or ground whose edge and corner tiles match automatically, especially when cells change at runtime through digging, building, destruction or procedural levels.",
+  "avoidWhen": "The map is drawn once by hand and never changes, or Godot's built-in TileSet terrains already pick the right tiles.",
+  "tags": [
+    "tilemap",
+    "terrain",
+    "autotile",
+    "2d",
+    "procedural"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "Unlicense",
+  "copyright": "This is free and unencumbered software released into the public domain.",
+  "homepage": "https://github.com/Portponky/better-terrain",
+  "archive": {
+    "url": "https://github.com/Portponky/better-terrain/archive/e93040e1cdd9dba0117c87f8f6b2883c83872d5d.zip",
+    "sha256": "b79efec73fc74090fffe3f225602f01a69c0b84e902dff640afc4ef1104fe427",
+    "bytes": 80587,
+    "root": "better-terrain-e93040e1cdd9dba0117c87f8f6b2883c83872d5d/addons/better-terrain"
+  },
+  "godot": {
+    "addonDir": "better-terrain",
+    "plugin": "plugin.cfg",
+    "autoloads": [
+      {
+        "name": "BetterTerrain",
+        "path": "res://addons/better-terrain/BetterTerrain.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/Portponky/better-terrain/e93040e1cdd9dba0117c87f8f6b2883c83872d5d/addons/better-terrain/icon.svg",
+    "license": "Unlicense"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

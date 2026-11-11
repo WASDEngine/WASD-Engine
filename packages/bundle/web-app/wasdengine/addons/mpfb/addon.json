@@ -1,0 +1,50 @@
+{
+  "id": "mpfb",
+  "title": "MPFB (MakeHuman)",
+  "host": "blender",
+  "version": "2.0.18",
+  "summary": "Rigged human characters from MakeHuman's CC0 base mesh and system assets: body sliders, skins, eyes, hair, clothes, low-poly proxies, a game-engine skeleton, .glb export.",
+  "useWhen": "The game needs realistic human characters (player, NPCs, crowds) with a standard humanoid skeleton, and modelling and rigging them by hand would take too long.",
+  "avoidWhen": "Stylized, low-poly or non-human characters: model those, or rig them with Rigify.",
+  "tags": [
+    "character",
+    "rigging",
+    "procedural",
+    "3d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "GPL-3.0-or-later",
+  "copyright": "Copyright (C) 2020 Data Collection AB, Joel Palmius, Jonas Hauquier",
+  "homepage": "https://static.makehumancommunity.org/mpfb.html",
+  "archive": {
+    "url": "https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip",
+    "sha256": "c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad",
+    "bytes": 45956992,
+    "root": ""
+  },
+  "assets": {
+    "url": "https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip",
+    "sha256": "b542127a8e25547c7c29c19f2d1d2adb9a664c80396ecd694095dbc8028a0107",
+    "bytes": 280737770,
+    "root": "",
+    "license": "CC0-1.0",
+    "homepage": "https://static.makehumancommunity.org/assets/assetpacks/makehuman_system_assets.html"
+  },
+  "blender": {
+    "module": "mpfb",
+    "kind": "extension",
+    "setup": "setup.py"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/makehumancommunity/makehuman/v1.3.0/makehuman/icons/makehuman.svg",
+    "license": "AGPL-3.0-or-later",
+    "copyright": "Copyright (C) 2001-2020 MakeHuman Team (www.makehumancommunity.org)"
+  },
+  "verified": {
+    "bpy": "5.2.3",
+    "date": "2026-11-10"
+  }
+}

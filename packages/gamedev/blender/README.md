@@ -61,7 +61,7 @@ A disabled row withdraws the tools and the server instructions from the model an
 
 ### Configuration
 
-[`src/index.ts`](src/index.ts) declares and validates these fields. Activation fails when `dataRoot`, `uvPath`, or `blenderPath` holds a relative path, and when `requestTimeoutMs` is not at least 30 s less than `toolCallTimeoutMs`.
+[`src/index.ts`](src/index.ts) declares and validates these fields. Activation fails when `dataRoot`, `uvPath`, `blenderPath`, or `addonStore` holds a relative path, and when `requestTimeoutMs` is not at least 30 s less than `toolCallTimeoutMs`.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -78,6 +78,7 @@ A disabled row withdraws the tools and the server instructions from the model an
 | `maxLogBytes` | `65,536` | Bytes of recent worker and uv output kept for error messages |
 | `maxWorkers` | `4` | Most Blender workers that run at once, one for each calling Session, from 1 to 16 |
 | `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's Blender worker stops and its unsaved scene is lost |
+| `addonStore` | `''` | Absolute folder of the [game add-on](../game-addons/README.md) store, which each worker receives as `WASD_ADDON_STORE`; empty leaves `wasd_addons` without add-ons. The WASDEngine overlay sets it to the `game-addons` row's `blenderStore` |
 
 <a id="backends"></a>
 ### Backends
@@ -132,6 +133,11 @@ The Host runs one Blender MCP server, and the server runs one Blender worker for
 
 A Session's worker starts on its first tool call with Blender's default scene. A crash, an expired request budget, or a cancelled running call stops the worker and loses unsaved changes. When the worker stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When the worker stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. When the MCP server itself dies, Blender ends within about a second, also in the middle of a call, and so do the processes that executed code started. Save `.blend` files at milestones.
 
+<a id="game-add-ons"></a>
+### Game add-ons
+
+Each worker's `execute_python` namespace holds the module `wasd_addons`, which executed code also imports. `wasd_addons.enable("<id>")` enables a catalog Blender add-on from the store that `addonStore` names: an extension through an extensions repository with the module name `wasd`, whose folder is the store, so it imports as `bl_ext.wasd.<module>`, or an add-on that ships inside Blender, such as Rigify. It takes the catalog id or the module, returns the Python module name, and raises `wasd_addons.AddonError` with what to do for an add-on that the store's `catalog.json` does not list or that is not downloaded yet. When the add-on's index entry names a setup script, `enable` then calls its `setup(module, assets)` with the add-on's module and the folder of its asset pack, which `wasd_addons.assets("<id>")` also returns. `wasd_addons.enabled()` lists the ids it enabled. Factory settings, which `new_scene` loads and executed code may load with `bpy.ops.wm.read_factory_settings`, drop the repository, disable every add-on, and reset add-on preferences, so a persistent `load_factory_preferences_post` handler enables the add-ons the worker had enabled again and runs their setup scripts again; an add-on that fails then stays out. A worker that starts after a lost state has none enabled.
+
 <a id="headless-operation"></a>
 ### Headless operation
 
@@ -182,7 +188,7 @@ The plugin spans three processes. The Host plugin registers a stdio MCP server, 
 
 On the first call, the server resolves the backend, prepares the bpy environment when needed, copies the worker script out of the package, and starts one Python worker. Server and worker speak the shared JSON-lines protocol: requests on the worker's standard input, replies on file descriptor 3, and logs on standard output and standard error. Each tool validates its arguments, sends one request to the worker method of the same name, validates the reply, and turns it into compact text and images. A supervisor runs the calls one at a time and starts a fresh worker after a stop.
 
-The same worker script runs under the bpy module (`<python> -I -B -u <script>` for the runtime inside the app, `<python> -I -u <script>` for the runtime that the Windows app unpacks and for uv's environment) and inside Blender (`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`). The server removes `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `VIRTUAL_ENV`, and `ELECTRON_RUN_AS_NODE` from the environment of uv and the worker, so the user's Python setup stays out of Blender. The worker exits with `os._exit(0)` after its `shutdown` reply, because Blender can crash in its own exit handlers after some exporters ran. Its standard input closing without a `shutdown` request, or its reply pipe losing its reader, means the server is gone. A worker thread checks the reply pipe every second, so the worker notices this also during a request; it then kills its process group, which the server gives it on POSIX, so the processes that executed code started end with it.
+The same worker script runs under the bpy module (`<python> -I -B -u <script>` for the runtime inside the app, `<python> -I -u <script>` for the runtime that the Windows app unpacks and for uv's environment) and inside Blender (`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`). The server removes `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `VIRTUAL_ENV`, and `ELECTRON_RUN_AS_NODE` from the environment of uv and the worker, so the user's Python setup stays out of Blender. It sets `BLENDER_USER_RESOURCES` to the `blender-user` folder of the worker's own directory, so Blender's extension cache, the wheels of enabled extensions, extension user data, and files that add-ons write to Blender's user folder stay apart from the user's Blender and from other workers, and go when the worker stops. The worker exits with `os._exit(0)` after its `shutdown` reply, because Blender can crash in its own exit handlers after some exporters ran. Its standard input closing without a `shutdown` request, or its reply pipe losing its reader, means the server is gone. A worker thread checks the reply pipe every second, so the worker notices this also during a request; it then kills its process group, which the server gives it on POSIX, so the processes that executed code started end with it.
 
 | File | Role |
 |---|---|

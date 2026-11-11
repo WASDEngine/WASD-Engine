@@ -2,21 +2,22 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的五个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的六个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：Desktop 应用随附的（Windows 应用在首次使用时解包）或托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
+| `game-addons` | [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md) | 原生 `game_addons`，以及以技能形式提供的项目扩展使用指南 | 无：由 Host 下载并解压扩展压缩包、编辑 `project.godot`，并通过 `godot` 行导入项目 |
 | `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 上自带的运行时，或已安装的 GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.zh.md) | 原生 `polyhaven_search`、`polyhaven_asset` 与 `polyhaven_download` | 无：由 Host 请求 Poly Haven API 并写入下载的文件 |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
 
-激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 行在第一次工具调用时才发出第一个请求；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*` 与 `polyhaven_*` 工具存在时引导 agent 使用它们。
+激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 行在第一次工具调用时才发出第一个请求，游戏扩展行只在安装扩展时才下载；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*`、`polyhaven_*`、`game_addons` 与 `godot_script` 工具存在时引导 agent 使用它们。
 
 | 进程 | 启动方 | 结束时机 | 通信对象 |
 |---|---|---|---|
@@ -32,7 +33,7 @@ Blender、GIMP 与 SuperCollider 采用相同的进程模型，由 `@deepseek-ai
 
 1. Host 插件调用 `registerAppMcpPlugin`，它检查插件的路径设置，并在插件生命周期内向 `ctx.mcpManager`（[MCP](mcp.zh.md)）注册一个 stdio 服务器条目。该条目用 Host 自身的可执行文件运行包的服务器入口（在 Desktop 应用中，`ELECTRON_RUN_AS_NODE=1` 使该可执行文件以 Node 运行；源码启动注册 TypeScript 入口时则通过 tsx 运行），并把插件配置作为一个 base64url JSON 参数传入。
 2. 服务器入口调用 `runAppMcpServer`。服务器进程响应 MCP 工具发现时不会启动应用，因此无论应用是否已安装，工具都会列出。MCP 客户端以 `mcp__<server>__<tool>` 公开这些工具，并把服务器的说明加入系统提示词。
-3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止；运行中的工作进程达到 `maxWorkers` 个时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败；被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
+3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，并把用户资源放在工作进程的文件夹中，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止；运行中的工作进程达到 `maxWorkers` 个时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败；被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
 4. 每个工具向同名的工作进程方法发送一个请求，并把回复转换为文本和图像。工作进程报告的异常不会影响工作进程及其状态。调用期间发生超时、协议违规或退出时，工作进程会被停止，该调用失败并说明工作进程的状态已丢失；工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行，而是以同样的消息失败。该 Session 之后第一次实际执行的调用会启动新的工作进程。
 5. stdin 关闭、MCP 传输因 stdout 写入失败或收到的消息超出读取缓冲区而自行关闭，或者收到 SIGTERM 或 SIGINT 时，服务器停止其所有工作进程并退出；重复的信号不会中断这一关闭过程。
 
@@ -274,11 +275,27 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="game-tools-tabs"></a>
 ## 「游戏工具」标签页
 
-`ui-game-tools` 行挂载 [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.zh.md)：一个 Host 半区为空的浏览器插件，在用户查找插件的地方列出这五个工具。「设置 › 内置插件」打开时先显示它的只读「游戏工具」标签页，排在清单的「插件列表」之前；「插件」页面在「已安装」之后显示一个「游戏工具」标签页。两个标签页都列出 Blender、GIMP、Godot、Poly Haven 与 SuperCollider，显示各包元信息中的标志、标题与描述，以及各行的 Loader 状态。两个标签页在首次渲染之前都不调用任何 Remote。
+`ui-game-tools` 行挂载 [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.zh.md)：一个 Host 半区为空的浏览器插件，在用户查找插件的地方列出这六个工具。「设置 › 内置插件」打开时先显示它的只读「游戏工具」标签页，排在清单的「插件列表」之前；「插件」页面在「已安装」之后显示一个「游戏工具」标签页。两个标签页都列出 Blender、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider，显示各包元信息中的标志、标题与描述，以及各行的 Loader 状态。两个标签页在首次渲染之前都不调用任何 Remote。
 
 在「插件」页面上，只要 Host 管理着 profile，profile 挂载的每个工具都有一个开关。开关以工具的 Loader 条目 id 调用 `pluginManager.setPluginEnabled`：关闭工具时把 `- id: <row>` 与 `disabled: true` 写入 profile patch，这也是用户可以手写的覆盖项；开启工具时删除不含其他内容的覆盖项。[插件管理器](../../packages/boot/plugin-manager/README.zh.md#use-this-package)随即应用更改，或报告更改需要重启后才生效，或报告更高优先级的 patch 覆盖了它。
 
 每个工具包都在 `package.json` 的 `icon` 字段中指向 `icon.svg`，因此 Host 的包元信息以 `data:image/svg+xml` URL 携带该文件。每个文件把对应产品的官方标志原样嵌入包图标所用的 36 × 36 画布；[Blender](../../packages/gamedev/blender/README.zh.md#plugin-icon)、[GIMP](../../packages/gamedev/gimp/README.zh.md#plugin-icon)、[Godot](../../packages/gamedev/godot/README.zh.md#plugin-icon)、[Poly Haven](../../packages/gamedev/polyhaven/README.zh.md#plugin-icon) 与 [SuperCollider](../../packages/gamedev/supercollider/README.zh.md#plugin-icon) 的 README 为各标志署名，并说明其许可与商标条款。
+
+<a id="game-add-ons"></a>
+## 游戏扩展
+
+`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons`，因此工具前缀保持缓存；指南只会以技能形式出现在使用该扩展的项目中。
+
+| 步骤 | 内容 |
+|---|---|
+| 发现 | `game_addons` 的 `search` 按游戏的需求对目录排序；`guide` 在安装前返回指南 |
+| 审批 | 在 Session 的 `ask` 审批策略下，一个 `tools/pre-execute` 监听器会在 `install` 与 `remove` 之前询问用户，写明扩展、其许可证、下载内容和项目 |
+| Godot 安装 | 压缩包只下载一次到 `<dataRoot>/archives/<sha256>.zip`，并须与固定值一致；其中一个文件夹经 `.wasdengine/staging/` 解压到 `res://addons/<folder>/`；`project.godot` 获得插件的 `_enable_plugin()` 本会添加的编辑器插件、自动加载与设置；`THIRD_PARTY_NOTICES.md` 获得许可证；`.wasdengine/addons.json` 记录该扩展；`ctx.godot.importProject` 导入项目 |
+| Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
+| 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
+| 移除 | 记录中的路径、该扩展的 `project.godot` 条目及其声明段落会被删除；另一个已安装扩展也设置的设置项会保留；结果会列出仍在使用该扩展的文件 |
+
+`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器：它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
@@ -290,6 +307,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `search_game_tools`、`call_game_tool` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态，或按名调用其中一个 |
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
+| `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
@@ -373,6 +391,43 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.zh.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxgameaddons--gameaddons"></a>
+
+### `ctx.gameAddons` — `GameAddons`
+
+Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+
+```ts cordis-catalog
+/**
+ * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
+ * @param directory - absolute folder: the project folder or a folder up to three levels above it.
+ * @param signal - cancellation.
+ * @returns the project folder and every catalog add-on.
+ * @throws GodotProjectError when the folder has no Godot project.
+ */
+@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
+
+/**
+ * Install an add-on that the user chose in the Add-ons dialog.
+ * @param directory - absolute folder of the game project, or up to three levels above it.
+ * @param id - catalog id.
+ * @param signal - cancellation; a cancelled installation leaves the project as it was.
+ * @returns the installation.
+ */
+@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>
+
+/**
+ * Remove an add-on that the user chose in the Add-ons dialog.
+ * @param directory - absolute folder of the game project, or up to three levels above it.
+ * @param id - catalog id.
+ * @param signal - cancellation before files are deleted.
+ * @returns the removal.
+ */
+@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>
+```
+
+Source: [`packages/gamedev/game-addons/src/index.ts`](../../packages/gamedev/game-addons/src/index.ts)
 
 <a id="ctxgamemcp--gamemcpserver"></a>
 
@@ -470,6 +525,17 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {GodotExportError} when the export writes no playable build.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
+
+/**
+ * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
+ * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.
+ * @param projectDir - absolute folder that holds `project.godot`.
+ * @param signal - cancellation; it stops the import process.
+ * @returns the errors and warnings it logged, or undefined when no Godot runtime is installed.
+ * @throws {GodotProjectError} without `project.godot` in the folder.
+ * @throws {GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.
+ */
+async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>
 ```
 
 Types: [SessionId](core.zh.md)

@@ -1,4 +1,6 @@
 /** A run launches Godot, authenticates the harness, serves requests, collects logs, streams frames, and ends cleanly. */
+import { writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -117,6 +119,16 @@ posix('starting', () => {
     const spec = runSpec(dir?.fakeGodot as string, project, { importBeforeRun: true })
     const expected = importArgv(spec).slice(launcherArgv(spec.runtime, spec.hostPid, []).length)
     expect((await fakeLog(project))[0]).toEqual({ argv: expected })
+  })
+
+  it('turns off the Blender importer before the import step of a project that holds a .blend file, and logs why', async () => {
+    const { run, project } = await start({ import: {}, game: {} }, (dir) => {
+      writeFileSync(join(dir, 'ship.blend'), 'blend')
+      return { importBeforeRun: true }
+    })
+    await run.started()
+    expect(run.logs.last(10)[0]).toMatchObject({ source: 'import', level: 'warning', message: expect.stringContaining('because of res://ship.blend') as string })
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
   })
 
   it.each([

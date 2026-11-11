@@ -19,7 +19,7 @@ import { NS } from '../src/client/locales.ts'
 import { PluginsGameToolsTab, type PluginsGameToolsTabInjected } from '../src/client/PluginsGameToolsTab.tsx'
 import { SettingsGameToolsTab, type SettingsGameToolsTabInjected } from '../src/client/SettingsGameToolsTab.tsx'
 import { apply as hostApply } from '../src/index.ts'
-import { BLENDER, change, failed, GIMP, GODOT, inventory, plugins, POLY_HAVEN, SUPERCOLLIDER } from './fixtures.client.ts'
+import { BLENDER, change, failed, GAME_ADDONS, GIMP, GODOT, inventory, plugins, POLY_HAVEN, SUPERCOLLIDER } from './fixtures.client.ts'
 
 usePinnedBrowserLanguages('en-US')
 
@@ -139,6 +139,7 @@ describe('ui-game-tools browser plugin', () => {
       ok: true,
       tools: [
         { moduleName: BLENDER.moduleName, entry: BLENDER },
+        { moduleName: GAME_ADDONS.moduleName, entry: GAME_ADDONS },
         { moduleName: GIMP.moduleName, entry: GIMP },
         { moduleName: GODOT.moduleName, entry: GODOT },
         { moduleName: POLY_HAVEN.moduleName, entry: POLY_HAVEN },

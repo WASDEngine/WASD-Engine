@@ -1,0 +1,42 @@
+{
+  "id": "ldtk-importer",
+  "title": "LDtk Importer",
+  "host": "godot",
+  "version": "2.0.1",
+  "summary": "Imports LDtk projects (.ldtk) as scenes: an LDTKWorld with LDTKLevel scenes, a TileMapLayer per tile or IntGrid layer, and entity data with typed fields.",
+  "useWhen": "The user designs levels in the LDtk level editor and wants the saved .ldtk project, with its PNG tilesets, to become Godot scenes with TileMapLayers and entity data that reimport whenever the project is saved.",
+  "avoidWhen": "Levels are painted with Godot's TileMapLayer editor or come from Tiled, or the LDtk project saves levels to separate files and uses tileset overrides, which 2.0.1 mishandles.",
+  "tags": [
+    "import",
+    "tilemap",
+    "2d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 Andrew Gleeson",
+  "homepage": "https://github.com/heygleeson/godot-ldtk-importer",
+  "archive": {
+    "url": "https://github.com/heygleeson/godot-ldtk-importer/archive/refs/tags/2.0.1.zip",
+    "sha256": "7810c148645089ee4d1b8010e4be8e15b70b5d03f7e2f04ee78296aea8ec5977",
+    "bytes": 294353,
+    "root": "godot-ldtk-importer-2.0.1/addons/ldtk-importer",
+    "license": "godot-ldtk-importer-2.0.1/LICENSE"
+  },
+  "godot": {
+    "addonDir": "ldtk-importer",
+    "plugin": "plugin.cfg",
+    "importTwice": false
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/heygleeson/godot-ldtk-importer/2.0.1/img/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 Andrew Gleeson"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

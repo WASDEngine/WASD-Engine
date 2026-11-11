@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-tools/README.md
 /:
-  en: 046f8f382834da53
-  zh: b9375657aaebe473
+  en: 1ad694ff021a758e
+  zh: c1322ed5a1825b62
 /deepseek-ai-dsh-client-ui-game-tools:
   en: c6f2b42c20fe9654
   zh: b5aa1546b3fc517e
 /deepseek-ai-dsh-client-ui-game-tools/summary:
-  en: bd4c7c78a43e500b
-  zh: c7c70dce05407488
+  en: 069ef4a87bad894e
+  zh: 83acf35d2cfa6ffb
 /deepseek-ai-dsh-client-ui-game-tools/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-ui-game-tools/use-this-package:
-  en: 4afb923f4b732c8e
-  zh: 591bf079b35df71a
+  en: b9078833b8bd4d5d
+  zh: 617e5bada8384d9e
 /deepseek-ai-dsh-client-ui-game-tools/use-this-package/default-composition:
   en: 959b8421dcb538a6
   zh: 551b7768a8a1a8c4

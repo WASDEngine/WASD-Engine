@@ -95,6 +95,13 @@ posix('exportWeb', () => {
     expect(argv[5]).toBe(join(outputDir, 'index.html'))
   })
 
+  it('turns off the Blender importer of a project that holds a .blend file and says so first', async () => {
+    const { project, run } = await prepare({ export: { files: BUILD } }, async (dir) => { await writeFile(join(dir, 'ship.blend'), 'blend') })
+    const exported = await run()
+    expect(exported.warnings[0]).toContain('because of res://ship.blend')
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
+  })
+
   it('removes the presets file it created and empties the output folder of an earlier build', async () => {
     const { project, outputDir, run } = await prepare({ export: { files: BUILD } })
     await run()

@@ -1,0 +1,46 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://wasd_smoke/smoke.gd" id="1_smoke"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/scatter.gd" id="2_scatter"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/stack/modifier_stack.gd" id="3_stack"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/modifiers/base_modifier.gd" id="4_base"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/modifiers/create_inside_random.gd" id="5_create"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/modifiers/randomize_transforms.gd" id="6_randomize"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/scatter_shape.gd" id="7_shape"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/shapes/box_shape.gd" id="8_box"]
+[ext_resource type="Script" path="res://addons/proton_scatter/src/scatter_item.gd" id="9_item"]
+
+[sub_resource type="Resource" id="Resource_create"]
+script = ExtResource("5_create")
+amount = 40
+restrict_height = true
+
+[sub_resource type="Resource" id="Resource_randomize"]
+script = ExtResource("6_randomize")
+rotation = Vector3(0, 180, 0)
+scale = Vector3(0.5, 0.5, 0.5)
+
+[sub_resource type="Resource" id="Resource_stack"]
+script = ExtResource("3_stack")
+stack = Array[ExtResource("4_base")]([SubResource("Resource_create"), SubResource("Resource_randomize")])
+
+[sub_resource type="Resource" id="Resource_box"]
+script = ExtResource("8_box")
+size = Vector3(20, 1, 20)
+
+[node name="Smoke" type="Node3D"]
+script = ExtResource("1_smoke")
+
+[node name="Scatter" type="Node3D" parent="."]
+script = ExtResource("2_scatter")
+global_seed = 7
+dbg_disable_thread = true
+modifier_stack = SubResource("Resource_stack")
+
+[node name="Area" type="Node3D" parent="Scatter"]
+script = ExtResource("7_shape")
+shape = SubResource("Resource_box")
+
+[node name="Rock" type="Node3D" parent="Scatter"]
+script = ExtResource("9_item")
+path = "res://wasd_smoke/rock_mesh.tres"

@@ -508,6 +508,11 @@ export interface Config extends AppMcpConfig {
   blenderPath: string
   /** Budget for the MCP server and for each Blender worker start to become ready. */
   startupTimeoutMs: number
+  /**
+   * Absolute folder of the game add-on store, whose catalog add-ons `wasd_addons.enable(id)` enables in a worker;
+   * empty leaves `wasd_addons` without add-ons.
+   */
+  addonStore: string
 }
 
 /**
@@ -1652,6 +1657,29 @@ export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-fs-sandbox -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
+<a id="deepseek-aidsh-game-addons"></a>
+
+## `@deepseek-ai/dsh-game-addons`
+
+- `inject`: `tools` · `workingDirectory` · `skills` · `typert`
+- `source`: [`packages/gamedev/game-addons/src/index.ts:37`](../packages/gamedev/game-addons/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute catalog folder: one folder per add-on with `addon.json` and `SKILL.md`. */
+  catalogDir: string
+  /** Absolute folder of the plugin's data: the archive cache under `archives/`. */
+  dataRoot: string
+  /** Absolute folder of the Blender add-on store, which the Blender plugin's `addonStore` names too. */
+  blenderStore: string
+  /** Time limit of one archive download, including its body. */
+  downloadTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
 <a id="deepseek-aidsh-game-mcp"></a>
 
@@ -1721,7 +1749,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:53`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:57`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */

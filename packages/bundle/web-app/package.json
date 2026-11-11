@@ -42,6 +42,7 @@
     "wasdengine/game-tools.cordis.patch.yml",
     "lib/public-url-*.js",
     "wasdengine/skills",
+    "wasdengine/addons",
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
@@ -211,6 +212,7 @@
     "@deepseek-ai/dsh-blender": "workspace:*",
     "@deepseek-ai/dsh-gimp": "workspace:*",
     "@deepseek-ai/dsh-godot": "workspace:*",
+    "@deepseek-ai/dsh-game-addons": "workspace:*",
     "@deepseek-ai/dsh-polyhaven": "workspace:*",
     "@deepseek-ai/dsh-supercollider": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-tools": "workspace:*",

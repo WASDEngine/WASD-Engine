@@ -67,7 +67,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 |---|---|---|
 | `search_game_tools` | This package | Lists the plugins with their readiness and tool counts, and the tools: every tool's first sentence without a query, or the best matches with their parameters for a query; `plugin` limits the search |
 | `call_game_tool` | This package | Calls a tool by `name` with `arguments`, for an agent whose tool list lacks it |
-| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's eleven Godot tools, each with an absolute `project` parameter |
+| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's twelve Godot tools, each with an absolute `project` parameter |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_blender` server's tools, renamed from `mcp__wasd_blender__<tool>` |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_supercollider` server's tools, renamed from `mcp__wasd_supercollider__<tool>` |

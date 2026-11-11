@@ -1,0 +1,35 @@
+{
+  "id": "yati",
+  "title": "YATI (Tiled importer)",
+  "host": "godot",
+  "version": "2.2.9",
+  "summary": "Imports Tiled maps (.tmx, .tmj) as scenes: a TileMapLayer per tile layer with a generated TileSet, and objects as Marker2D, Area2D, StaticBody2D, or Sprite2D.",
+  "useWhen": "The user designs levels in the Tiled map editor and wants the saved .tmx or .tmj maps, with their .tsx/.tsj tilesets and images, to become Godot scenes in the project that reimport whenever the map is saved.",
+  "avoidWhen": "Levels are painted with Godot's own TileMapLayer editor or generated in code; those need no importer.",
+  "tags": [
+    "import",
+    "tilemap",
+    "2d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023-2026 Roland Helmerichs",
+  "homepage": "https://github.com/Kiamo2/YATI",
+  "archive": {
+    "url": "https://github.com/Kiamo2/YATI/releases/download/v2.2.9/v2.2.9-gdscript.zip",
+    "sha256": "5bf345834941055a11fbf5ffdbaeaca56072f9e1942327b440c08f9a4405a789",
+    "bytes": 39015,
+    "root": "addons/YATI"
+  },
+  "godot": {
+    "addonDir": "YATI",
+    "plugin": "plugin.cfg",
+    "importTwice": false
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

@@ -2,21 +2,22 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the five tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets only `dataRoot`, to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the six tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.md) | `mcp__wasd_blender__<tool>`, from the MCP server `wasd_blender` | For each calling Session, one Python worker: the `bpy` module that the Desktop app ships, which the Windows app unpacks on first use, or that a managed virtual environment holds, or an installed Blender in background mode |
+| `game-addons` | [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md) | Native `game_addons`, and the usage guides of a project's add-ons as skills | None: the Host downloads and unpacks add-on archives, edits `project.godot`, and imports the project through the `godot` row |
 | `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.md) | `mcp__wasd_gimp__<tool>`, from the MCP server `wasd_gimp` | For each calling Session, one GIMP 3 `gimp-console` process that runs the worker as a Python batch command: the runtime that the Desktop app ships on macOS, or an installed GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.md) | Native `godot_*` tools and a `godot` system-prompt section | One game process per Session: `godot_runner` hosting LibGodot |
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.md) | Native `polyhaven_search`, `polyhaven_asset`, and `polyhaven_download` | None: the Host requests the Poly Haven API and writes the downloaded files |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.md) | `mcp__wasd_supercollider__<tool>`, from the MCP server `wasd_supercollider` | For each calling Session, one bridge process with one sclang, which runs scsynth offline for each render: the runtime that the Desktop app ships, or an installed SuperCollider |
 
-Activation installs, downloads, and starts no application. The Blender, GIMP, and SuperCollider rows start only their MCP server process, which starts the application at the first tool call, and the Godot row starts a game only when a tool or the Game tab asks for one, and the Poly Haven row makes its first request at its first tool call; a call that needs a missing application fails with installation steps. The three MCP servers are built on the library [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md). Its `materializePayload` copies each script that a package hands to an application to `<dataRoot>/payload/<digest>/<file name>`, where `<digest>` is the first 16 hexadecimal digits of the content's SHA-256. The copy is needed because a packaged Desktop app keeps package files inside `app.asar`, which only Electron's `fs` can read; the Godot package uses the function for its two GDScript files. The MCP server names carry a `wasd_` prefix so that they stay apart from `blender`, `gimp`, or `supercollider` servers that a user configures. The fork's bundled `godot-project` skill directs the agent to the `godot_*`, `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, `mcp__wasd_supercollider__*`, and `polyhaven_*` tools when they are present.
+Activation installs, downloads, and starts no application. The Blender, GIMP, and SuperCollider rows start only their MCP server process, which starts the application at the first tool call, and the Godot row starts a game only when a tool or the Game tab asks for one, and the Poly Haven row makes its first request at its first tool call, and the game add-ons row downloads an add-on only when one is installed; a call that needs a missing application fails with installation steps. The three MCP servers are built on the library [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md). Its `materializePayload` copies each script that a package hands to an application to `<dataRoot>/payload/<digest>/<file name>`, where `<digest>` is the first 16 hexadecimal digits of the content's SHA-256. The copy is needed because a packaged Desktop app keeps package files inside `app.asar`, which only Electron's `fs` can read; the Godot package uses the function for its two GDScript files. The MCP server names carry a `wasd_` prefix so that they stay apart from `blender`, `gimp`, or `supercollider` servers that a user configures. The fork's bundled `godot-project` skill directs the agent to the `godot_*`, `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, `mcp__wasd_supercollider__*`, `polyhaven_*`, `game_addons`, and `godot_script` tools when they are present.
 
 | Process | Started by | Ends | Talks to |
 |---|---|---|---|
@@ -32,7 +33,7 @@ Blender, GIMP, and SuperCollider use the same process model, which `@deepseek-ai
 
 1. The Host plugin calls `registerAppMcpPlugin`, which checks its path settings and registers a stdio server entry with `ctx.mcpManager` ([MCP](mcp.md)) for the plugin's lifetime. The entry runs the package's server entry with the Host's own executable, which `ELECTRON_RUN_AS_NODE=1` runs as Node in the Desktop app, through tsx when a source launch registers the TypeScript entry, and passes the plugin configuration as one base64url JSON argument.
 2. The server entry calls `runAppMcpServer`. The server process answers MCP tool discovery without starting the application, so the tools are listed whether or not the application is installed. The MCP client exposes them as `mcp__<server>__<tool>` and adds the server's instructions to the system prompt.
-3. The server lists an experimental capability that makes the Host's MCP client name the calling Session in each tool call; a subagent calls as its own Session, and calls that name none, such as those of the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), share one worker. A Session's first tool call prepares the application, copies the worker script out of the package, and starts a worker for that Session in a folder of its own under `<dataRoot>/workers/`; Blender may first install the `bpy` module with uv, GIMP gets a profile folder that all its workers share, and SuperCollider gets user folders and a class library configuration in the worker's folder. A `WorkerPool` gives each Session a `WorkerSupervisor`, which runs that Session's calls one at a time against its worker and application state, while the workers of different Sessions run at the same time. Workers start one at a time. A worker without calls for `workerIdleTimeoutMs` stops, and when `maxWorkers` workers run, a new Session's first call stops the least recently used worker that runs no call, or fails with `WORKERS_BUSY` when every worker runs one; the stopped worker's Session learns on its next call that the state was lost. Facts about a start, such as the application version or a first-use installation, precede the text of the Session's next tool result.
+3. The server lists an experimental capability that makes the Host's MCP client name the calling Session in each tool call; a subagent calls as its own Session, and calls that name none, such as those of the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), share one worker. A Session's first tool call prepares the application, copies the worker script out of the package, and starts a worker for that Session in a folder of its own under `<dataRoot>/workers/`; Blender may first install the `bpy` module with uv and keeps its user resources in the worker's folder, GIMP gets a profile folder that all its workers share, and SuperCollider gets user folders and a class library configuration in the worker's folder. A `WorkerPool` gives each Session a `WorkerSupervisor`, which runs that Session's calls one at a time against its worker and application state, while the workers of different Sessions run at the same time. Workers start one at a time. A worker without calls for `workerIdleTimeoutMs` stops, and when `maxWorkers` workers run, a new Session's first call stops the least recently used worker that runs no call, or fails with `WORKERS_BUSY` when every worker runs one; the stopped worker's Session learns on its next call that the state was lost. Facts about a start, such as the application version or a first-use installation, precede the text of the Session's next tool result.
 4. Each tool sends one request to the worker method of the same name and turns the reply into text and images. An exception that the worker reports leaves the worker and its state in place. A timeout, a protocol violation, or an exit during a call stops the worker, and that call fails saying that the worker's state was lost; when the worker exits between calls, or a running call is cancelled, the next call fails with that message without running. The Session's next call that runs starts a new worker.
 5. When its stdin closes, when its MCP transport closes itself after a failed stdout write or an incoming message that overflows its read buffer, or when SIGTERM or SIGINT arrives, the server stops its workers and exits; a repeated signal does not cut that shutdown short.
 
@@ -274,11 +275,27 @@ The package's `./client` export, a Web platform plugin, mounts the generated `go
 <a id="game-tools-tabs"></a>
 ## Game tools tabs
 
-The `ui-game-tools` row mounts [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.md), a browser plugin with an empty Host half that lists the five tools where users look for plugins. Settings › Built-in plugins opens on its read-only Game tools tab, ahead of the inventory's Plugin list, and the Plugins page shows a Game tools tab after Installed. Both tabs list Blender, GIMP, Godot, Poly Haven, and SuperCollider with the logo, title, and description from each package's metadata and the Loader state of each row. Neither tab calls a Remote before it first renders.
+The `ui-game-tools` row mounts [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.md), a browser plugin with an empty Host half that lists the six tools where users look for plugins. Settings › Built-in plugins opens on its read-only Game tools tab, ahead of the inventory's Plugin list, and the Plugins page shows a Game tools tab after Installed. Both tabs list Blender, the game add-ons, GIMP, Godot, Poly Haven, and SuperCollider with the logo, title, and description from each package's metadata and the Loader state of each row. Neither tab calls a Remote before it first renders.
 
 On the Plugins page, each tool that the profile mounts has a switch while the Host manages the profile. The switch calls `pluginManager.setPluginEnabled` with the tool's Loader entry id: turning a tool off writes `- id: <row>` with `disabled: true` into the profile patch, the override that a user can also write by hand, and turning it on removes an override that holds nothing else. The [plugin manager](../../packages/boot/plugin-manager/README.md#use-this-package) applies the change, or reports that it waits for a restart or that a higher-priority patch overrides it.
 
 Each tool package names `icon.svg` in the `icon` field of its `package.json`, so the Host's package metadata carries the file as a `data:image/svg+xml` URL. Each file embeds the product's official logo unaltered in the 36 × 36 canvas of package icons; the [Blender](../../packages/gamedev/blender/README.md#plugin-icon), [GIMP](../../packages/gamedev/gimp/README.md#plugin-icon), [Godot](../../packages/gamedev/godot/README.md#plugin-icon), [Poly Haven](../../packages/gamedev/polyhaven/README.md#plugin-icon), and [SuperCollider](../../packages/gamedev/supercollider/README.md#plugin-icon) READMEs credit each logo and state its license and trademark terms.
+
+<a id="game-add-ons"></a>
+## Game add-ons
+
+The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, whatever its project holds, so the tool prefix stays cached; the guides reach the model only as skills of the projects that use them.
+
+| Step | What happens |
+|---|---|
+| Discovery | `game_addons` `search` ranks the catalog for the game's need; `guide` returns a guide before installation |
+| Approval | Under the Session's `ask` approval policy a `tools/pre-execute` listener asks the user before `install` and `remove`, naming the add-on, its license, its download, and the project |
+| Godot installation | The archive downloads once into `<dataRoot>/archives/<sha256>.zip` and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
+| Blender installation | The extension unpacks once into `<blenderStore>/<module>/` and its asset pack, if any, into `<dataRoot>/blender-assets/<id>/`, the store's `catalog.json` lists every catalog Blender add-on with its setup script and asset folder, and the project's record lists it; a worker's `wasd_addons.enable("<id>")` enables it and runs its setup script, and does both again after factory settings load |
+| Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
+| Removal | The recorded paths, the add-on's `project.godot` entries, and its notice go; settings that another installed add-on also sets stay; the result names the files that still use the add-on |
+
+`godot_script` runs the command-line runners of the GUT and GdUnit4 add-ons: it imports the project first, then runs a SceneTree script with `--headless --script`. LibGodot hides the script's exit code, so a test run's result shows in what it prints. The Session header's Add-ons button opens a dialog that installs and removes add-ons through the `gameAddons` Remote at the user's click; LiveShare keeps the Remote for the owner. The catalog's smoke tests run end to end in `packages/gamedev/game-addons/tests/catalog.e2e.ts`.
 
 <a id="mcp-server-for-other-agents"></a>
 ## MCP server for other agents
@@ -290,6 +307,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `search_game_tools`, `call_game_tool` | `game-mcp` | The server searches the providers' tools and their readiness, or calls one by name |
 | `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
 | `polyhaven_*` | `polyhaven`, through `polyHavenMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) | The Session's own tool definitions, which need no Session; preview images return as JPEG bytes, and a download needs an absolute folder |
+| `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images |
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
@@ -373,6 +391,43 @@ Invalid input events, window sizes, and step frame counts fail with `gateway/bad
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — the language sides differ only in locale-specific paired document paths. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxgameaddons--gameaddons"></a>
+
+### `ctx.gameAddons` — `GameAddons`
+
+Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+
+```ts cordis-catalog
+/**
+ * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
+ * @param directory - absolute folder: the project folder or a folder up to three levels above it.
+ * @param signal - cancellation.
+ * @returns the project folder and every catalog add-on.
+ * @throws GodotProjectError when the folder has no Godot project.
+ */
+@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
+
+/**
+ * Install an add-on that the user chose in the Add-ons dialog.
+ * @param directory - absolute folder of the game project, or up to three levels above it.
+ * @param id - catalog id.
+ * @param signal - cancellation; a cancelled installation leaves the project as it was.
+ * @returns the installation.
+ */
+@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>
+
+/**
+ * Remove an add-on that the user chose in the Add-ons dialog.
+ * @param directory - absolute folder of the game project, or up to three levels above it.
+ * @param id - catalog id.
+ * @param signal - cancellation before files are deleted.
+ * @returns the removal.
+ */
+@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>
+```
+
+Source: [`packages/gamedev/game-addons/src/index.ts`](../../packages/gamedev/game-addons/src/index.ts)
 
 <a id="ctxgamemcp--gamemcpserver"></a>
 
@@ -470,6 +525,17 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {GodotExportError} when the export writes no playable build.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
+
+/**
+ * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
+ * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.
+ * @param projectDir - absolute folder that holds `project.godot`.
+ * @param signal - cancellation; it stops the import process.
+ * @returns the errors and warnings it logged, or undefined when no Godot runtime is installed.
+ * @throws {GodotProjectError} without `project.godot` in the folder.
+ * @throws {GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.
+ */
+async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>
 ```
 
 Types: [SessionId](core.md)

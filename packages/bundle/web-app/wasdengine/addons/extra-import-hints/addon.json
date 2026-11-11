@@ -1,0 +1,47 @@
+{
+  "id": "extra-import-hints",
+  "title": "Extra Import Hints",
+  "host": "godot",
+  "version": "1.0",
+  "summary": "Adds glTF/.glb import name hints: -rigidonly and -convrigidonly turn a mesh into a RigidBody3D collider, -trueconvcolonly into a bare convex CollisionShape3D.",
+  "useWhen": "Physics props are modeled in Blender and should import as RigidBody3D with their own convex colliders and a separate visual mesh, without building bodies and shapes by hand in Godot.",
+  "avoidWhen": "Godot's own hints (-col, -convcol, -colonly, -convcolonly, -rigid) already give the node setup you need.",
+  "tags": [
+    "import",
+    "physics",
+    "3d",
+    "blender"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2025 Riley Evans",
+  "homepage": "https://github.com/rllyy97/extra-import-hints",
+  "archive": {
+    "url": "https://github.com/rllyy97/extra-import-hints/archive/b438f5a874aac64b1538c54964e87b6e659b5ea4.zip",
+    "sha256": "81cfdcd3b658dcca1e28efee5f9d62eb4e8ba6f691d4f2acc514cff5f3d497b6",
+    "bytes": 217721,
+    "root": "extra-import-hints-b438f5a874aac64b1538c54964e87b6e659b5ea4/addons/extra_import_hints",
+    "license": "extra-import-hints-b438f5a874aac64b1538c54964e87b6e659b5ea4/addons/extra_import_hints/LICENSE"
+  },
+  "godot": {
+    "addonDir": "extra_import_hints",
+    "settings": [
+      {
+        "section": "importer_defaults",
+        "key": "scene",
+        "value": "{\"import_script/path\": \"res://addons/extra_import_hints/extra_import_hints.gd\"}"
+      },
+      {
+        "section": "filesystem",
+        "key": "import/blender/enabled",
+        "value": "false"
+      }
+    ]
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

@@ -3,8 +3,9 @@
 // keeps. It reads its behavior from `fake-godot.json` in the `--path` project folder and appends the Godot command
 // line it received to `fake-godot.log` there. Modes follow the Host's command lines: `--import` runs the import step,
 // `--export-release` writes the configured export files next to the requested page and records the export presets it
-// saw, `--headless ... --script` runs the static check, anything else runs a game that speaks the wasd_harness.gd
-// protocol on the loopback port the Host passes.
+// saw, `--headless ... --script` runs the `script` section like an import when the config has one and the static
+// check otherwise, and anything else runs a game that speaks the wasd_harness.gd protocol on the loopback port the
+// Host passes.
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -328,5 +329,6 @@ async function runExport(section) {
 
 if (args.includes('--import')) await runImport(config.import ?? {})
 else if (args.includes('--export-release')) await runExport(config.export ?? {})
+else if (args.includes('--headless') && config.script !== undefined) await runImport(config.script)
 else if (args.includes('--headless')) await runCheck(config.check ?? {})
 else await runGame(config.game ?? {})

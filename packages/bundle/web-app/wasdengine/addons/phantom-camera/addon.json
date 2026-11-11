@@ -1,0 +1,48 @@
+{
+  "id": "phantom-camera",
+  "title": "Phantom Camera",
+  "host": "godot",
+  "version": "0.11.0.4",
+  "summary": "Virtual 2D and 3D cameras that drive the real camera: follow modes, damping, level limits, look-at, third person, shake, and tweened switches by priority.",
+  "useWhen": "The game needs a camera that smoothly follows a player or a group, stays inside level bounds, shakes on impacts, orbits in third person, or cuts and blends between shots such as rooms, shops, cutscenes or boss intros.",
+  "avoidWhen": "One Camera2D or Camera3D on the player, with Godot's built-in limits and position smoothing, already frames the game well.",
+  "tags": [
+    "camera",
+    "2d",
+    "3d",
+    "cutscene"
+  ],
+  "stages": [
+    "prototype",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2022 Marcus Skov",
+  "homepage": "https://github.com/ramokz/phantom-camera",
+  "archive": {
+    "url": "https://github.com/ramokz/phantom-camera/archive/refs/tags/v0.11.0.4.zip",
+    "sha256": "5c95b858a9e96fcc475986f8e5ba0b865d296e4e7efe5dc915293d33854ccfea",
+    "bytes": 833480,
+    "root": "phantom-camera-0.11.0.4/addons/phantom_camera"
+  },
+  "godot": {
+    "addonDir": "phantom_camera",
+    "plugin": "plugin.cfg",
+    "autoloads": [
+      {
+        "name": "PhantomCameraManager",
+        "path": "res://addons/phantom_camera/scripts/managers/phantom_camera_manager.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/ramokz/phantom-camera/v0.11.0.4/.github/assets/icons/AssetLib-Icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2022 Marcus Skov"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

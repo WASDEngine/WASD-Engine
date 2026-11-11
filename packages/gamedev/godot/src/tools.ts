@@ -19,6 +19,7 @@ import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow
 import { isErrorEntry } from './logs.ts'
 import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
 import { MAX_INPUT_EVENTS, type GodotRun } from './run.ts'
+import { DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_SECONDS, type GodotScriptReport } from './script.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
 import type { GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
 
@@ -67,6 +68,26 @@ export interface GodotToolHost {
    * @returns the project folder, the checked scripts, and how many scripts the project selection holds.
    */
   check(agent: Agent, request: CheckRequest, signal: AbortSignal): Promise<CheckReport>
+  /**
+   * Run a GDScript that extends `SceneTree` or `MainLoop` against the project headless, without running the game.
+   * @param agent - calling Session.
+   * @param request - project, script, user arguments, and time limit as the model gave them.
+   * @param signal - cancellation.
+   * @returns the exit code, the end of the output, and the engine errors.
+   */
+  script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport>
+}
+
+/** A script run as the model asked for it. */
+export interface GodotScriptRequest {
+  /** Project folder relative to the working directory, or absolute; the running game's project or the nearest one when omitted. */
+  readonly project?: string
+  /** `res://` path of the script, or a path relative to the working directory. */
+  readonly script: string
+  /** User arguments after `--`. */
+  readonly args?: readonly string[]
+  /** Time limit in seconds. */
+  readonly timeoutSeconds?: number
 }
 
 /** A required string field. */
@@ -152,6 +173,8 @@ export interface GodotToolWording {
   readonly run: string
   /** How the `godot_check` description names the paths it accepts. */
   readonly checkPaths: string
+  /** How the `godot_script` description names the script path it accepts. */
+  readonly scriptPath: string
   /** The `godot_logs` description's sentence about reading without `since`. */
   readonly logsDefault: string
 }
@@ -175,6 +198,7 @@ export interface GodotToolSurface {
 export const SESSION_WORDING: GodotToolWording = {
   run: 'Start the Godot project in the working directory, or restart it if it is running, and wait until the game runs. ',
   checkPaths: 'files or folders, as res:// paths or relative to the working directory',
+  scriptPath: 'a res:// path or a path relative to the working directory',
   logsDefault: 'Without since, returns the entries after the ones this Session last read.',
 }
 
@@ -939,6 +963,75 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           files: report.scripts
             .filter(script => script.issues.length > 0)
             .map(script => ({ path: script.path, issues: [...script.issues] })),
+        }
+      })
+    },
+  }), defineTool({
+    name: 'godot_script',
+    description: `Run a GDScript that extends SceneTree or MainLoop against the project in a headless Godot, without running the game, and report the end of what it printed. Use it for command-line runners of test add-ons, such as GUT's or GdUnit4's, and for build or generator scripts. The script is ${wording.scriptPath}; args reach it after --, where OS.get_cmdline_user_args() reads them. It imports the project first, as godot_run does, so new class_name scripts and resources are known. The script must quit itself with quit(). The built-in Godot does not pass the script's exit code on, so judge the result by what it prints, such as a test runner's summary.`,
+    parameters: {
+      script: { type: 'string', required: true, description: 'The script to run, such as res://addons/gut/gut_cmdln.gd.' },
+      args: { type: 'array', items: { type: 'string' }, description: 'User arguments passed after --. Default: none.' },
+      timeout_seconds: { type: 'integer', description: `Time limit in seconds, from 1 to ${MAX_SCRIPT_SECONDS}. Default: ${DEFAULT_SCRIPT_SECONDS}.` },
+      project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the running game\'s project, else the nearest one.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectDir: STRING,
+          script: STRING,
+          exitCode: { type: 'integer', description: 'Exit code of the Godot runner: 0 once the script quit, another value when the runner itself failed; absent when a signal or the time limit ended it.' },
+          timedOut: { type: 'boolean', required: true },
+          durationMs: INTEGER,
+          output: STRING,
+          omittedLines: INTEGER,
+          issues: {
+            type: 'array',
+            required: true,
+            items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
+          },
+          totalIssues: INTEGER,
+          ...DIGEST_SCHEMA,
+        },
+      },
+      render: (_args, value) => {
+        const seconds = (value.durationMs / 1000).toFixed(1)
+        const ended = value.timedOut
+          ? `did not finish within its time limit and was stopped after ${seconds} s.`
+          : value.exitCode === undefined
+            ? 'was ended by a signal.'
+            : value.exitCode === 0
+              ? `finished after ${seconds} s. The built-in Godot does not report the script's own exit code; read the result from its output.`
+              : `could not run: the Godot runner failed with exit code ${value.exitCode} after ${seconds} s.`
+        const lines = [`${value.script} ${ended}`]
+        if (value.issues.length > 0) {
+          lines.push(`Engine errors (${value.totalIssues}):`, ...value.issues.map(issue => `[${issue.level}] ${issue.file === undefined ? '' : `${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: `}${clip(issue.message, MESSAGE_CHARS)}`))
+        }
+        lines.push(value.output === '' ? 'It printed nothing.' : `${value.omittedLines > 0 ? `Output (last lines; ${value.omittedLines} earlier lines left out):` : 'Output:'}\n${value.output}`)
+        return textResult(lines.join('\n'), formatDigest(value))
+      },
+    },
+    timeoutMs: (MAX_SCRIPT_SECONDS + 60) * 1000,
+    async execute(args, exec) {
+      return invoke(host, exec, async (agent) => {
+        const report = await host.script(agent, {
+          script: args.script,
+          ...args.project === undefined ? {} : { project: args.project },
+          ...args.args === undefined ? {} : { args: args.args },
+          ...args.timeout_seconds === undefined ? {} : { timeoutSeconds: args.timeout_seconds },
+        }, exec.signal)
+        return {
+          projectDir: report.projectDir,
+          script: report.script,
+          ...report.exitCode === null ? {} : { exitCode: report.exitCode },
+          timedOut: report.timedOut,
+          durationMs: report.durationMs,
+          output: report.output,
+          omittedLines: report.omittedLines,
+          issues: [...report.issues],
+          totalIssues: report.totalIssues,
         }
       })
     },

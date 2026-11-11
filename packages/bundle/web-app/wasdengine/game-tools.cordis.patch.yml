@@ -1,8 +1,10 @@
-# WASDEngine fork: the Blender, GIMP, Godot, Poly Haven, and SuperCollider game tools, on in every Web and Desktop
-# profile, the Game tools tabs of Settings and the Plugins page that list them, and the MCP server through which other
-# agents on this computer use them (wasdengine/FORK.md). Each application row starts without its application
-# installed and reports setup steps through its tools; `polyhaven` needs no installation and makes no request until
-# its first tool call. A profile patch turns a row off with `- id: <row>` and `disabled: true`, which the Plugins
+# WASDEngine fork: the Blender, GIMP, Godot, Poly Haven, and SuperCollider game tools and the game add-ons, on in
+# every Web and Desktop profile, the Game tools tabs of Settings and the Plugins page that list them, and the MCP server
+# through which other agents on this computer use them (wasdengine/FORK.md). Each application row starts without its
+# application installed and reports setup steps through its tools; `polyhaven` needs no installation and makes no
+# request until its first tool call. `game-addons` reads the add-on catalog shipped beside this file in `addons/`,
+# downloads an add-on only when one is installed, and keeps its archives under `dataRoot`; Blender add-ons unpack into
+# `blenderStore`, which the `blender` row's `addonStore` names for its workers. A profile patch turns a row off with `- id: <row>` and `disabled: true`, which the Plugins
 # page's Game tools tab writes. `ui-game-tools` mounts the tabs' browser half. `game-mcp` listens on
 # 127.0.0.1:9273 and keeps its token and the connected agents' Sessions under `dataRoot`; `ui-game-mcp` mounts its
 # browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
@@ -13,6 +15,13 @@
       name: '@deepseek-ai/dsh-blender'
       config:
         dataRoot: !!js dshHomePath('blender')
+        addonStore: !!js dshHomePath('game-addons', 'blender')
+    - id: game-addons
+      name: '@deepseek-ai/dsh-game-addons'
+      config:
+        catalogDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-web-app/package.json')), 'wasdengine', 'addons')
+        dataRoot: !!js dshHomePath('game-addons')
+        blenderStore: !!js dshHomePath('game-addons', 'blender')
     - id: gimp
       name: '@deepseek-ai/dsh-gimp'
       config:

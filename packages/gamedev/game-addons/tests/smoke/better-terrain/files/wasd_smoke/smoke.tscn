@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://wasd_smoke/smoke.gd" id="1_smoke"]
+[ext_resource type="TileSet" path="res://wasd_smoke/terrain_tiles.tres" id="2_tiles"]
+
+[node name="Smoke" type="Node2D"]
+script = ExtResource("1_smoke")
+
+[node name="Ground" type="TileMapLayer" parent="."]
+tile_set = ExtResource("2_tiles")

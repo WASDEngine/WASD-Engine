@@ -1,0 +1,51 @@
+{
+  "id": "smartshape2d",
+  "title": "SmartShape2D",
+  "host": "godot",
+  "version": "3.3.2",
+  "summary": "Textured 2D terrain from a list of points: a tiled fill, edge textures chosen by edge direction, corners and tapers, and a generated collision polygon.",
+  "useWhen": "A 2D game needs organic ground, hills, floating platforms, cliffs or walls with textured edges and fill, shaped by points in code or scene text instead of a tile grid.",
+  "avoidWhen": "Levels are tile-based, or a plain Polygon2D or Line2D with a texture looks good enough.",
+  "tags": [
+    "2d",
+    "terrain",
+    "polygon",
+    "platformer",
+    "level"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2018 Robert Morse",
+  "homepage": "https://github.com/SirRamEsq/SmartShape2D",
+  "archive": {
+    "url": "https://github.com/SirRamEsq/SmartShape2D/releases/download/3.3.2/SmartShape2D-3.3.2.zip",
+    "sha256": "3c50f6485253ea8ecb068b73c3d3c6c580b8e614316f7ef4237cc7d44ec26efd",
+    "bytes": 13409828,
+    "root": "addons/rmsmartshape",
+    "license": "addons/rmsmartshape/LICENSE"
+  },
+  "godot": {
+    "addonDir": "rmsmartshape",
+    "plugin": "plugin.cfg",
+    "settings": [
+      {
+        "section": "addons",
+        "key": "ss2d/version",
+        "value": "\"3.3.2\""
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/SirRamEsq/SmartShape2D/3.3.2/addons/rmsmartshape/assets/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2018 Robert Morse"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

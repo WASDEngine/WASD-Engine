@@ -1,4 +1,4 @@
-/** Host answers the Game tools specs share: the five tool entries as the inventory and the plugin manager list them. */
+/** Host answers the Game tools specs share: the six tool entries as the inventory and the plugin manager list them. */
 import type {
   ChangeResult, PluginEntryId, PluginInfo, PluginInventorySnapshot, RemoteResult,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -28,6 +28,16 @@ export const BLENDER: PluginInfo = {
     description: { en: 'Build 3D models.', zh: '构建 3D 模型。' },
     icon: BLENDER_ICON,
   },
+}
+
+/** The game add-ons running, switchable through their patch row. */
+export const GAME_ADDONS: PluginInfo = {
+  entryId: entryId('game-addons'),
+  moduleName: '@deepseek-ai/dsh-game-addons',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'game-addons',
+  meta: { title: 'Game add-ons', description: 'Install tested add-ons.' },
 }
 
 /** GIMP switched off in the profile patch. */
@@ -86,7 +96,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -98,7 +108,7 @@ export function inventory(
  * @returns the successful answer.
  */
 export function plugins(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
 ): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }

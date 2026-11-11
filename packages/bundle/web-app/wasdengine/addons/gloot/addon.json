@@ -1,0 +1,42 @@
+{
+  "id": "gloot",
+  "title": "GLoot",
+  "host": "godot",
+  "version": "3.0.2",
+  "summary": "Inventory system: Inventory nodes with grid, weight, and stack-count limits, stackable items defined in a JSON prototree, item slots, and basic inventory UI.",
+  "useWhen": "The game needs an inventory: picking up, stacking, splitting, and moving items between containers, a grid bag where items take several cells, a weight limit, equipment slots, or saving items to a file.",
+  "avoidWhen": "A few fixed counters such as coins, keys, or ammo are enough; plain variables or a Dictionary are simpler.",
+  "tags": [
+    "inventory",
+    "items",
+    "ui",
+    "rpg"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2022 Peter Kish",
+  "homepage": "https://github.com/peter-kish/gloot",
+  "archive": {
+    "url": "https://github.com/peter-kish/gloot/archive/refs/tags/v3.0.2.zip",
+    "sha256": "d4d08157860abbd0ccee9fc8657ebf79fdbe1ecb10f986343a3bfea417ff6937",
+    "bytes": 96950,
+    "root": "gloot-3.0.2/addons/gloot"
+  },
+  "godot": {
+    "addonDir": "gloot",
+    "plugin": "plugin.cfg"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/peter-kish/gloot/v3.0.2/images/gloot_logo_128x128.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2022 Peter Kish"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

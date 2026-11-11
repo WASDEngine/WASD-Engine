@@ -1,0 +1,51 @@
+{
+  "id": "protonscatter",
+  "title": "ProtonScatter",
+  "host": "godot",
+  "version": "4.2.0-dev+7198cc0",
+  "summary": "Rule-based 3D scattering: fills box, sphere or path areas with MultiMesh instances or scene copies through a modifier stack, built at runtime from a seed.",
+  "useWhen": "A 3D level needs many props placed procedurally, such as grass, rocks, trees, debris or fences over an area or along a path, reproducible from a seed and rebuilt from code.",
+  "avoidWhen": "A handful of props can be placed by hand, or a short script that fills one MultiMeshInstance3D is enough.",
+  "tags": [
+    "scatter",
+    "3d",
+    "procedural",
+    "foliage",
+    "level"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2019 HungryProton",
+  "homepage": "https://github.com/HungryProton/scatter",
+  "archive": {
+    "url": "https://github.com/HungryProton/scatter/archive/7198cc00078ebde61307578137c3f35223c6e438.zip",
+    "sha256": "485295fa4a97cb54bcd20d1b1304ed8a2fc0b28fe3215a07be62d26df9208d5f",
+    "bytes": 10172373,
+    "root": "scatter-7198cc00078ebde61307578137c3f35223c6e438/addons/proton_scatter",
+    "license": "scatter-7198cc00078ebde61307578137c3f35223c6e438/addons/proton_scatter/LICENSE"
+  },
+  "godot": {
+    "addonDir": "proton_scatter",
+    "plugin": "plugin.cfg",
+    "settings": [
+      {
+        "section": "filesystem",
+        "key": "import/blender/enabled",
+        "value": "false"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/HungryProton/scatter/7198cc00078ebde61307578137c3f35223c6e438/logo.svg",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2020-present HungryProton"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

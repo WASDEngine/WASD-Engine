@@ -67,7 +67,7 @@ http_headers = { "Authorization" = "Bearer <token>" }
 |---|---|---|
 | `search_game_tools` | 本包 | 列出各插件及其就绪状态与工具数量，以及工具：不带查询时列出每个工具的第一句说明，带查询时列出最匹配的工具及其参数；`plugin` 用于限定插件 |
 | `call_game_tool` | 本包 | 按 `name` 与 `arguments` 调用工具，供工具列表中缺少该工具的 agent 使用 |
-| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) | Session 自身的十一个 Godot 工具，每个都带有绝对路径参数 `project` |
+| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) | Session 自身的十二个 Godot 工具，每个都带有绝对路径参数 `project` |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_blender` 服务器的工具，由 `mcp__wasd_blender__<tool>` 重命名而来 |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_gimp` 服务器的工具，由 `mcp__wasd_gimp__<tool>` 重命名而来 |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_supercollider` 服务器的工具，由 `mcp__wasd_supercollider__<tool>` 重命名而来 |

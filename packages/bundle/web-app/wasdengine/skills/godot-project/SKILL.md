@@ -7,7 +7,7 @@ description: Create, edit, run, test, or export a Godot 4 game (project.godot, .
 
 ## Find the engine
 
-When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only an export needs an editor (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools. The Godot games section of the system prompt names the built-in Godot release, and `godot_run` reports its full version. If a tool reports that no Godot runtime is installed, pass its message on to the user instead of searching for Godot.
+When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only an export needs an editor (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools. Before building a camera rig, dialogue, behavior trees, state charts, an inventory, or tile terrain, search `game_addons` for a tested add-on. The Godot games section of the system prompt names the built-in Godot release, and `godot_run` reports its full version. If a tool reports that no Godot runtime is installed, pass its message on to the user instead of searching for Godot.
 
 Without the `godot_*` tools, run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one.
 
@@ -19,7 +19,7 @@ Write code for the Godot 4 release in use, and name that release first in `confi
 - Scenes are text `.tscn` files; scripts are `.gd` files, usually beside the scene that uses them.
 - `.godot/` is the generated import cache. Never edit it, and keep it out of version control.
 - Godot 4.4 and later write a `.uid` file beside each script and shader (`player.gd.uid`). Commit it, and move or rename it together with its file.
-- `export_presets.cfg` holds export presets. Exporting also needs export templates for the exact editor version.
+- `export_presets.cfg` holds export presets.
 
 ## Write Godot 4 code, not Godot 3
 
@@ -44,11 +44,11 @@ Use static types (`var health: int = 3`, `func hurt(amount: int) -> void:`), kee
 
 ## Verify every change with the Godot tools
 
-1. `godot_check` parses every script and reports each error at its file and line. Fix the first one and check again until it is clean.
+1. `godot_check` parses every script and reports each error at its file and line. Fix the first one and check again until it is clean. With GUT or GdUnit4 installed, `godot_script` runs the tests.
 2. `godot_run` imports the assets and starts the game; its result lists the errors and warnings logged while it started. Every later Godot tool result lists new errors, and `godot_logs` returns the full log.
 3. Look before you claim it works: `godot_screenshot` shows the game. Play it with `godot_input`, using Input Map actions (`{"kind": "action", "action": "jump", "pressed": true, "hold": 0.3}`) or keys and clicks at screenshot coordinates, then take another screenshot or pass `screenshot: true`.
 4. Read state instead of guessing: `godot_eval` evaluates an expression such as `scene.get_node("Player").position`, and `godot_scene_tree` lists the running nodes. `godot_control` pauses, steps a number of frames, and resumes.
-5. Measure speed instead of guessing: when the game stutters or slows, or a change adds many nodes, effects, or bodies, call `godot_performance` before and after it and compare frame time percentiles, the slowest phase, draw calls, and node and orphan node counts.
+5. Measure speed instead of guessing: when the game slows, or a change adds many nodes, effects, or bodies, compare `godot_performance` before and after it.
 6. Stop the game with `godot_stop` when you are done. The user sees every run live in the Game tab and can play it there.
 
 ## Verify every change without the Godot tools
@@ -71,7 +71,7 @@ With the `mcp__wasd_blender__` tools, build or edit 3D models headless, paint im
 
 ## Export
 
-Export only when the user asks. The `godot_*` tools cannot export: exporting needs a Godot editor executable of the same version and its export templates. Find the editor as Find the engine describes for sessions without the tools, ask the user for it if none exists, then run:
+Export only when the user asks. The `godot_*` tools cannot export: exporting needs a Godot editor executable of the same version and its export templates. Find the editor as Find the engine describes, ask the user for it if none exists, then run:
 
 ```sh
 godot --headless --path <project-dir> --export-release "<preset name>" <output-path>

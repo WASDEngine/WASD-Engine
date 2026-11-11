@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Game add-ons",
+    "description": "Curated Godot and Blender add-ons for the agent: it installs one into the game project when the game needs it, and only that project's Sessions see its usage guide."
+  }
+}

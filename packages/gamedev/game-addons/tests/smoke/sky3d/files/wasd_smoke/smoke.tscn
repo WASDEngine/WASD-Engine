@@ -1,0 +1,23 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://wasd_smoke/smoke.gd" id="1_smoke"]
+[ext_resource type="Script" path="res://addons/sky_3d/src/Sky3D.gd" id="2_sky3d"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ground"]
+size = Vector2(400, 400)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ground"]
+albedo_color = Color(0.35, 0.5, 0.3, 1)
+
+[node name="Smoke" type="Node3D"]
+script = ExtResource("1_smoke")
+
+[node name="Sky3D" type="WorldEnvironment" parent="."]
+script = ExtResource("2_sky3d")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.9848077, 0.17364818, 0, -0.17364818, 0.9848077, 0, 1.7, 0)
+
+[node name="Ground" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_ground")
+surface_material_override/0 = SubResource("StandardMaterial3D_ground")

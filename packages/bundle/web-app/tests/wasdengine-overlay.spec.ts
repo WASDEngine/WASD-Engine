@@ -44,6 +44,7 @@ const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
 /** The game tool rows the fork inserts into every Web and Desktop profile, by row id, with the package each mounts. */
 const GAME_TOOLS: Readonly<Record<string, string>> = {
   blender: '@deepseek-ai/dsh-blender',
+  'game-addons': '@deepseek-ai/dsh-game-addons',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
   polyhaven: '@deepseek-ai/dsh-polyhaven',
@@ -52,6 +53,9 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
 
 /** The game tool row that keeps no files under the harness home: Poly Haven, which runs with its default configuration. */
 const POLY_HAVEN = 'polyhaven'
+
+/** The game tool row that reads the shipped add-on catalog and keeps the Blender add-on store, which the `blender` row names too. */
+const GAME_ADDONS = 'game-addons'
 
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
 const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
@@ -296,6 +300,7 @@ describe('WASDEngine overlay', () => {
       for (const file of patches) expect(manifest(dir).files, name).toContain(file.slice(2))
     }
     expect(manifest(webAppDir).files).toContain('wasdengine/skills')
+    expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
   it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, their MCP server, and WASD Engine Plugins', () => {
@@ -349,10 +354,21 @@ describe('WASDEngine overlay', () => {
         expect(entry.config, `${id} config`).toBeUndefined()
         continue
       }
-      expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
+      const store = `dshHomePath('${GAME_ADDONS}', 'blender')`
+      if (id === GAME_ADDONS) {
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['catalogDir', 'dataRoot', 'blenderStore'])
+        expect(expression(configOf(entry).catalogDir, `${id}.catalogDir`), `${id}.catalogDir`).toMatch(/resolve\('@deepseek-ai\/dsh-web-app\/package\.json'\)\), 'wasdengine', 'addons'\)$/u)
+        expect(expression(configOf(entry).blenderStore, `${id}.blenderStore`), `${id}.blenderStore`).toBe(store)
+      } else if (id === 'blender') {
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'addonStore'])
+        expect(expression(configOf(entry).addonStore, `${id}.addonStore`), `${id}.addonStore`).toBe(store)
+      } else {
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
+      }
       expect(expression(configOf(entry).dataRoot, `${id}.dataRoot`), `${id}.dataRoot`).toBe(`dshHomePath('${id}')`)
     }
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[POLY_HAVEN] ?? ''), 'the Plugins page can switch Poly Haven off').toBe(false)
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[GAME_ADDONS] ?? ''), 'the Plugins page can switch the game add-ons off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {

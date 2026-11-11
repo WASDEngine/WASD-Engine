@@ -11,6 +11,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
+import { turnOffBlenderImport } from './blender-import.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
 import { FAILURE_OUTPUT_LINES, launcherArgv } from './run.ts'
 import type { ResolvedGodotRuntime } from './runtime.ts'
@@ -179,6 +180,8 @@ async function readOptional(path: string): Promise<Buffer | undefined> {
  * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
  */
 export async function exportWeb(options: WebExportOptions): Promise<GodotWebExport> {
+  // The export scans and imports the project like the import step.
+  const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
   const project = await readFile(join(options.projectDir, 'project.godot'), 'utf8')
   await mkdir(options.outputDir, { recursive: true })
   return await withFileLock(options.outputDir, async () => {
@@ -230,7 +233,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
       entry: WEB_EXPORT_ENTRY,
       files,
       totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
-      warnings: [...webNotes(project), ...warnings].slice(0, EXPORT_WARNINGS),
+      warnings: [...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...warnings].slice(0, EXPORT_WARNINGS),
     }
   }, { signal: options.signal, waitMs: options.timeoutMs })
 }

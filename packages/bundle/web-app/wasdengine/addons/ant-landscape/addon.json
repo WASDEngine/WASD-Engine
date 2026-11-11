@@ -1,0 +1,41 @@
+{
+  "id": "ant-landscape",
+  "title": "A.N.T. Landscape",
+  "host": "blender",
+  "version": "0.2.0",
+  "summary": "Noise-based terrain: grid or sphere meshes from 19 noise types with seeds, height clamps, edge falloff and erosion; bake heights to a heightmap for Godot.",
+  "useWhen": "A level needs hills, mountains, canyons, dunes or a small planet generated from noise, as a terrain mesh (.glb) or a heightmap image.",
+  "avoidWhen": "Flat ground or a hand-shaped blockout: a plane or a few primitives are enough.",
+  "tags": [
+    "terrain",
+    "procedural",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "GPL-2.0-or-later",
+  "copyright": "2024 Jimmy Hazevoet",
+  "homepage": "https://extensions.blender.org/add-ons/antlandscape/",
+  "archive": {
+    "url": "https://extensions.blender.org/download/sha256:230571bc14c50952f3af99b70fdb365cf0cee503382975dc38149407a5a4c8c0/add-on-antlandscape-v0.2.0.zip",
+    "sha256": "230571bc14c50952f3af99b70fdb365cf0cee503382975dc38149407a5a4c8c0",
+    "bytes": 60899,
+    "root": ""
+  },
+  "blender": {
+    "module": "antlandscape",
+    "kind": "extension"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/blender/blender/v5.2.3/release/datafiles/icons_svg/rndcurve.svg",
+    "license": "GPL-3.0-only",
+    "copyright": "Copyright (C) Blender Authors"
+  },
+  "verified": {
+    "bpy": "5.2.3",
+    "date": "2026-11-10"
+  }
+}

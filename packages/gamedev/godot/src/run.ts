@@ -15,6 +15,7 @@ import { createServer, type AddressInfo, type Server, type Socket } from 'node:n
 import type { SubprocessHandle, SubprocessOutputReader, SubprocessRuntime, SubprocessStdio } from '@deepseek-ai/dsh-subprocess'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
+import { turnOffBlenderImport } from './blender-import.ts'
 import { isErrorEntry, LogRing, type LogSequence } from './logs.ts'
 import { crashSummary, describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
 import { PerformanceReply } from './performance.ts'
@@ -636,6 +637,8 @@ export class GodotRun {
   }
 
   private async runImport(): Promise<void> {
+    const blenderNote = await turnOffBlenderImport(this.spec.project.dir, this.lifetime.signal)
+    if (blenderNote !== undefined) this.append('import', { level: 'warning', message: blenderNote })
     const timeout = AbortSignal.timeout(this.spec.importTimeoutMs)
     const handle = this.deps.subprocess.spawn({
       argv: importArgv(this.spec),

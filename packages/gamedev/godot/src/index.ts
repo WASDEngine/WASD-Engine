@@ -33,10 +33,11 @@ import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
 import { GodotRequestError, GodotRun, GodotRunStateError, MAX_INPUT_EVENTS } from './run.ts'
 import { GodotSessionError, GodotSessions, TooManyRunsError } from './runs.ts'
+import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importProject, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
 import {
   bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
 } from './runtime.ts'
-import { registerGodotTools, type GodotToolHost } from './tools.ts'
+import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
 import type {
   GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
   GodotWebExport, GodotWebExportRequest,
@@ -48,6 +49,9 @@ export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './web-template.ts'
+export { GodotScriptError } from './script.ts'
+export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
+export type { GodotScriptRequest } from './tools.ts'
 
 /** Plugin configuration. */
 export interface Config {
@@ -256,6 +260,7 @@ export default class GodotController extends TypertRemoteService {
         return run
       },
       check: (agent, request, signal) => this.check(agent, request, signal),
+      script: (agent, request, signal) => this.script(agent, request, signal),
     }
     registerGodotTools(ctx, toolHost)
     const release = godotRelease(config)
@@ -413,6 +418,30 @@ export default class GodotController extends TypertRemoteService {
   }
 
   /**
+   * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
+   * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.
+   * @param projectDir - absolute folder that holds `project.godot`.
+   * @param signal - cancellation; it stops the import process.
+   * @returns the errors and warnings it logged, or undefined when no Godot runtime is installed.
+   * @throws {GodotProjectError} without `project.godot` in the folder.
+   * @throws {GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.
+   */
+  async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined> {
+    const project = await resolveGodotProject(projectDir, '.', signal)
+    const runtime = await this.runtime.resolve(signal)
+    if (runtime === undefined) return undefined
+    return await importProject({
+      subprocess: this.ctx.subprocess,
+      runtime,
+      projectDir: project.dir,
+      hostPid: process.pid,
+      graceMs: this.config.stopGraceMs,
+      outputBytes: this.config.processOutputBytes,
+      signal,
+    }, this.config.importTimeoutMs)
+  }
+
+  /**
    * The Session's live Agent, resumed through the Session controller when the Session has none, as the GUI resumes
    * it for a prompt.
    * @throws the controller's Session failure, such as `session/not-found` or `session/writer-held`.
@@ -511,5 +540,40 @@ export default class GodotController extends TypertRemoteService {
       signal,
     })
     return { projectDir: project.dir, scripts, total: selection.total }
+  }
+
+  private async script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport> {
+    const session = this.sessions.session(agent)
+    const workingDirectory = await this.ctx.workingDirectory.ensure(agent, signal)
+    const current = session.run?.project
+    const project = request.project === undefined && current !== undefined
+      ? current
+      : await resolveGodotProject(workingDirectory, request.project, signal)
+    const script = await resolveScript(project.dir, workingDirectory, request.script)
+    const seconds = request.timeoutSeconds ?? DEFAULT_SCRIPT_SECONDS
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > MAX_SCRIPT_SECONDS) {
+      throw new GodotScriptError(`timeout_seconds must be an integer from 1 to ${MAX_SCRIPT_SECONDS}.`)
+    }
+    const runtime = await this.requireRuntime(signal)
+    const options = {
+      subprocess: this.ctx.subprocess,
+      runtime,
+      projectDir: project.dir,
+      hostPid: process.pid,
+      graceMs: this.config.stopGraceMs,
+      outputBytes: this.config.processOutputBytes,
+      signal,
+    }
+    // Like a run, a script sees the classes and resources added since the last import only after an import.
+    const imported = this.config.importBeforeRun
+      ? (await importProject(options, this.config.importTimeoutMs)).issues.filter(issue => issue.level !== 'warning')
+      : []
+    const report = await runScript(options, script, request.args ?? [], seconds * 1000)
+    if (imported.length === 0) return report
+    return {
+      ...report,
+      issues: [...imported, ...report.issues].slice(0, LISTED_ENGINE_ISSUES),
+      totalIssues: imported.length + report.totalIssues,
+    }
   }
 }

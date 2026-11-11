@@ -1,0 +1,1 @@
+{ "run": "scene", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS godot-state-charts"], "timeoutSeconds": 60 }

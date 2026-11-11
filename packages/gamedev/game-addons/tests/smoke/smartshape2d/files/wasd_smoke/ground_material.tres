@@ -1,0 +1,42 @@
+[gd_resource type="Resource" script_class="SS2D_Material_Shape" load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://addons/rmsmartshape/materials/shape_material.gd" id="1_shape"]
+[ext_resource type="Script" path="res://addons/rmsmartshape/materials/edge_material_metadata.gd" id="2_meta"]
+[ext_resource type="Script" path="res://addons/rmsmartshape/materials/edge_material.gd" id="3_edge"]
+[ext_resource type="Script" path="res://addons/rmsmartshape/normal_range.gd" id="4_range"]
+
+[sub_resource type="Gradient" id="Gradient_grass"]
+colors = PackedColorArray(0.2, 0.75, 0.2, 1, 0.1, 0.45, 0.1, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_grass"]
+gradient = SubResource("Gradient_grass")
+width = 32
+height = 16
+fill_to = Vector2(0, 1)
+
+[sub_resource type="Gradient" id="Gradient_dirt"]
+colors = PackedColorArray(0.55, 0.35, 0.15, 1, 0.5, 0.3, 0.12, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_dirt"]
+gradient = SubResource("Gradient_dirt")
+width = 64
+height = 64
+
+[sub_resource type="Resource" id="Resource_edge"]
+script = ExtResource("3_edge")
+textures = Array[Texture2D]([SubResource("GradientTexture2D_grass")])
+
+[sub_resource type="Resource" id="Resource_range"]
+script = ExtResource("4_range")
+begin = 0.0
+distance = 360.0
+
+[sub_resource type="Resource" id="Resource_meta"]
+script = ExtResource("2_meta")
+edge_material = SubResource("Resource_edge")
+normal_range = SubResource("Resource_range")
+
+[resource]
+script = ExtResource("1_shape")
+_edge_meta_materials = Array[ExtResource("2_meta")]([SubResource("Resource_meta")])
+fill_textures = Array[Texture2D]([SubResource("GradientTexture2D_dirt")])

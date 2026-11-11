@@ -16,6 +16,7 @@ export interface FakeGodotConfig {
   readonly import?: Record<string, unknown>
   readonly export?: Record<string, unknown>
   readonly check?: Record<string, unknown>
+  readonly script?: Record<string, unknown>
   readonly game?: Record<string, unknown>
 }
 

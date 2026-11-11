@@ -61,7 +61,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`uvPath` 或 `blenderPath` 为相对路径时，或 `requestTimeoutMs` 没有比 `toolCallTimeoutMs` 至少少 30 s 时，激活失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`uvPath`、`blenderPath` 或 `addonStore` 为相对路径时，或 `requestTimeoutMs` 没有比 `toolCallTimeoutMs` 至少少 30 s 时，激活失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -78,6 +78,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近工作进程与 uv 输出的字节数 |
 | `maxWorkers` | `4` | 同时运行的 Blender 工作进程上限，每个调用的 Session 一个，取值 1 到 16 |
 | `workerIdleTimeoutMs` | `600,000` | Session 的 Blender 工作进程在没有调用多长时间后停止，其未保存的场景随之丢失 |
+| `addonStore` | `''` | [游戏扩展](../game-addons/README.zh.md)存储目录的绝对路径，每个工作进程以 `WASD_ADDON_STORE` 接收它；为空时 `wasd_addons` 没有可用的扩展。WASDEngine 覆盖层把它设为 `game-addons` 行的 `blenderStore` |
 
 <a id="backends"></a>
 ### 后端
@@ -132,6 +133,11 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 
 Session 的工作进程在其首次工具调用时启动，带有 Blender 的默认场景。崩溃、请求时限到期或正在运行的调用被取消，都会使工作进程停止并丢失未保存的更改。工作进程在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。工作进程在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。MCP 服务器本身终止时，Blender 会在大约一秒内结束，即使正处于某次调用之中也是如此，执行的代码所启动的进程也随之结束。请在关键节点保存 `.blend` 文件。
 
+<a id="game-add-ons"></a>
+### 游戏扩展
+
+每个工作进程的 `execute_python` 命名空间中都有 `wasd_addons` 模块，执行的代码也可以导入它。`wasd_addons.enable("<id>")` 会从 `addonStore` 指定的存储目录启用目录中的 Blender 扩展：对于扩展，通过模块名为 `wasd`、文件夹为该存储目录的扩展仓库启用，因此它以 `bl_ext.wasd.<module>` 导入；对于 Blender 自带的扩展，例如 Rigify，则直接启用。它接受目录 id 或模块名，返回 Python 模块名；对于存储目录的 `catalog.json` 未列出或尚未下载的扩展，它会抛出 `wasd_addons.AddonError` 并说明该怎么做。当扩展的索引条目指定了设置脚本时，`enable` 随后会以扩展的模块和其资源包所在的文件夹调用脚本中的 `setup(module, assets)`，该文件夹也可由 `wasd_addons.assets("<id>")` 获得。`wasd_addons.enabled()` 列出它启用过的 id。出厂设置由 `new_scene` 加载，执行的代码也可能通过 `bpy.ops.wm.read_factory_settings` 加载；它会移除该仓库、停用所有扩展并重置扩展偏好设置，因此一个持久的 `load_factory_preferences_post` 处理程序会再次启用工作进程之前启用过的扩展并再次运行它们的设置脚本，此时启用失败的扩展不再保留。在状态丢失后启动的工作进程不启用任何扩展。
+
 <a id="headless-operation"></a>
 ### 无界面运行
 
@@ -182,7 +188,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 
 首次调用时，服务器确定后端，按需准备 bpy 环境，把工作脚本复制到包外，并启动一个 Python 工作进程。服务器与工作进程使用共享的 JSON 行协议：请求写入工作进程的标准输入，回复写到文件描述符 3，日志写到标准输出和标准错误。每个工具校验参数，向同名的工作进程方法发送一个请求，校验回复，并把它转换为简洁的文本和图像。监管器逐个执行调用，并在工作进程停止后启动新的工作进程。
 
-同一个工作脚本既在 bpy 模块下运行（应用内的运行时为 `<python> -I -B -u <script>`，Windows 应用解包的运行时与 uv 的环境为 `<python> -I -u <script>`），也在 Blender 内运行（`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`）。服务器从 uv 和工作进程的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 Blender。工作进程在回复 `shutdown` 后以 `os._exit(0)` 退出，因为某些导出器运行之后，Blender 可能在自己的退出处理程序中崩溃。标准输入在没有 `shutdown` 请求的情况下关闭，或回复管道失去读取方，都表示服务器已不存在。工作进程中的一个线程每秒检查一次回复管道，因此即使在请求期间工作进程也能察觉；随后它终止自己的进程组（服务器在 POSIX 上为它创建了独立的进程组），执行的代码所启动的进程也随之结束。
+同一个工作脚本既在 bpy 模块下运行（应用内的运行时为 `<python> -I -B -u <script>`，Windows 应用解包的运行时与 uv 的环境为 `<python> -I -u <script>`），也在 Blender 内运行（`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`）。服务器从 uv 和工作进程的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 Blender。它把 `BLENDER_USER_RESOURCES` 设为工作进程自身目录中的 `blender-user` 文件夹，使 Blender 的扩展缓存、已启用扩展的 wheel、扩展的用户数据以及扩展写入 Blender 用户文件夹的文件，与用户自己的 Blender 和其他工作进程分开，并在工作进程停止时一并删除。工作进程在回复 `shutdown` 后以 `os._exit(0)` 退出，因为某些导出器运行之后，Blender 可能在自己的退出处理程序中崩溃。标准输入在没有 `shutdown` 请求的情况下关闭，或回复管道失去读取方，都表示服务器已不存在。工作进程中的一个线程每秒检查一次回复管道，因此即使在请求期间工作进程也能察觉；随后它终止自己的进程组（服务器在 POSIX 上为它创建了独立的进程组），执行的代码所启动的进程也随之结束。
 
 | 文件 | 职责 |
 |---|---|

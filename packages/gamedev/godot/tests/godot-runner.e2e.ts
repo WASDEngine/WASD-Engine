@@ -11,7 +11,7 @@
  */
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
@@ -393,6 +393,40 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(existsSync(join(c.project, AUTOLOAD_MARKER))).toBe(false)
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 120_000)
+
+  it('runs a project script with user arguments after an import, and imports the project for other plugins', async () => {
+    await mkdir(join(c.project, 'tests'), { recursive: true })
+    await writeFile(join(c.project, 'tests', 'hello.gd'), [
+      'extends SceneTree',
+      '',
+      'func _init() -> void:',
+      '\tprint("SCRIPT_E2E ", OS.get_cmdline_user_args())',
+      '\tquit(3)',
+      '',
+    ].join('\n'))
+    const result = await callTool(c, 'godot_script', { script: 'res://tests/hello.gd', args: ['--alpha', 'beta'] })
+    expect(result.isError, text(result)).toBe(false)
+    expect(text(result)).toMatch(/^res:\/\/tests\/hello\.gd finished after \d+\.\d s\. /u)
+    expect(result.value).toMatchObject({ script: 'res://tests/hello.gd', timedOut: false, output: expect.stringContaining('SCRIPT_E2E ["--alpha", "beta"]') as string })
+    // The runner does not pass on the code the script gave quit().
+    expect(result.value).toMatchObject({ exitCode: 0 })
+    // A class added after the last import is known once importProject imported the project.
+    await writeFile(join(c.project, 'tests', 'probe.gd'), 'class_name ImportProbe\nextends Node\n')
+    const report = await c.godot.importProject(c.project, new AbortController().signal)
+    expect(report?.issues).toEqual(expect.any(Array))
+    expect(await readFile(join(c.project, '.godot', 'global_script_class_cache.cfg'), 'utf8')).toContain('ImportProbe')
+  }, 240_000)
+
+  it('imports the other files of a project that holds a .blend file, after turning off the Blender importer', async () => {
+    await mkdir(join(c.project, 'art'), { recursive: true })
+    await writeFile(join(c.project, 'art', 'ship.blend'), 'BLENDER-v502 placeholder')
+    await writeFile(join(c.project, 'art', 'flag.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><rect width="4" height="4" fill="red"/></svg>')
+    const report = await c.godot.importProject(c.project, new AbortController().signal)
+    expect(report?.issues[0]?.message).toContain('because of res://art/ship.blend')
+    expect(report?.issues.some(issue => issue.message.includes('Blender path is invalid'))).toBe(false)
+    expect(await readFile(join(c.project, 'project.godot'), 'utf8')).toContain('import/blender/enabled=false')
+    expect(existsSync(join(c.project, 'art', 'flag.svg.import'))).toBe(true)
+  }, 240_000)
 
   it('shows a letterboxed stretch mode where the window shows it, so a click at a screenshot pixel lands there', async () => {
     const dir = join(c.dir.root, 'work', 'stretch')

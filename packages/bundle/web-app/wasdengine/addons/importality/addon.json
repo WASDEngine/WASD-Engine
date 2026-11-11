@@ -1,0 +1,43 @@
+{
+  "id": "importality",
+  "title": "Importality",
+  "host": "godot",
+  "version": "0.4.0",
+  "summary": "Imports Pixelorama (.pxo) and Piskel (.piskel) animations as SpriteFrames, AnimatedSprite2D/3D, or Sprite2D/3D + AnimationPlayer scenes.",
+  "useWhen": "The user draws animated sprites in Pixelorama or Piskel and wants the saved .pxo or .piskel files in the project to become SpriteFrames or animated sprite scenes that update each time the user saves again.",
+  "avoidWhen": "The art arrives as PNG sprite sheets, which Godot slices itself, or from Aseprite, Krita, or Pencil2D, whose importers need that app's command line set in editor settings.",
+  "tags": [
+    "import",
+    "sprites",
+    "animation",
+    "2d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 nklbdev",
+  "homepage": "https://github.com/nklbdev/godot-4-importality",
+  "archive": {
+    "url": "https://github.com/nklbdev/godot-4-importality/archive/refs/tags/0.4.0.zip",
+    "sha256": "0edbdb833a24c35ae2202c42113eaf11086788fdc5b1319a4226849a987843ae",
+    "bytes": 93965,
+    "root": "godot-4-importality-0.4.0/addons/nklbdev.importality",
+    "license": "godot-4-importality-0.4.0/LICENSE"
+  },
+  "godot": {
+    "addonDir": "nklbdev.importality",
+    "plugin": "plugin.cfg",
+    "importTwice": false
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/nklbdev/godot-4-importality/0.4.0/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 nklbdev"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}

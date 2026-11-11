@@ -13,7 +13,9 @@ import type {} from '@deepseek-ai/dsh-cua/remote'
 import type {} from '@deepseek-ai/dsh-experimental-api-speech-to-text/remote'
 import type {} from '@deepseek-ai/dsh-experimental-claude-code-mods/remote'
 import type {} from '@deepseek-ai/dsh-experimental-client-ui-cot-translation/remote'
-// WASDEngine fork: the Game tab's, the game MCP server's, and WASD Engine Plugins' owner-only Remotes (wasdengine/FORK.md).
+// WASDEngine fork: the Game tab's, the game MCP server's, WASD Engine Plugins', and the game add-ons' owner-only Remotes
+// (wasdengine/FORK.md).
+import type {} from '@deepseek-ai/dsh-game-addons/remote'
 import type {} from '@deepseek-ai/dsh-game-mcp/remote'
 import type {} from '@deepseek-ai/dsh-godot/remote'
 import type {} from '@deepseek-ai/dsh-wasd-plugins/remote'

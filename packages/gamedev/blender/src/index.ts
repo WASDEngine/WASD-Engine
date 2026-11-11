@@ -47,6 +47,11 @@ export interface Config extends AppMcpConfig {
   blenderPath: string
   /** Budget for the MCP server and for each Blender worker start to become ready. */
   startupTimeoutMs: number
+  /**
+   * Absolute folder of the game add-on store, whose catalog add-ons `wasd_addons.enable(id)` enables in a worker;
+   * empty leaves `wasd_addons` without add-ons.
+   */
+  addonStore: string
 }
 
 /** Validates the configuration when the plugin loads. */
@@ -58,6 +63,7 @@ export const Config: z<Partial<Config>, Config> = z.object({
   uvPath: z.string().default(''),
   blenderPath: z.string().default(''),
   startupTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(30_000),
+  addonStore: z.string().default(''),
   // Schemastery erases object field types on dict; the shared Config declares their output types.
   ...AppMcpConfig.dict as { [Key in keyof AppMcpConfig]: z<unknown, AppMcpConfig[Key]> },
 })
@@ -66,15 +72,15 @@ export const Config: z<Partial<Config>, Config> = z.object({
  * Register the Blender MCP server for this plugin's lifetime.
  * @param ctx - plugin context with the MCP server manager.
  * @param config - validated configuration.
- * @throws Error when dataRoot, uvPath, or blenderPath is not absolute.
+ * @throws Error when dataRoot, uvPath, blenderPath, or addonStore is not absolute.
  */
 export function apply(ctx: Context, config: Config): void {
   registerAppMcpPlugin(ctx, config, {
     app: 'Blender',
     serverName: BLENDER_SERVER_NAME,
     module: import.meta.url,
-    paths: ['uvPath', 'blenderPath'],
-    options: ['backend', 'bpyVersion', 'pythonVersion', 'uvPath', 'blenderPath', 'startupTimeoutMs'],
+    paths: ['uvPath', 'blenderPath', 'addonStore'],
+    options: ['backend', 'bpyVersion', 'pythonVersion', 'uvPath', 'blenderPath', 'startupTimeoutMs', 'addonStore'],
     gameMcp: {
       id: 'blender',
       title: 'Blender',

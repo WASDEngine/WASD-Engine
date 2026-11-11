@@ -1,0 +1,25 @@
+{
+	"potion": {
+		"name": "Health Potion",
+		"stack_size": 5,
+		"max_stack_size": 10,
+		"weight": 0.5
+	},
+	"sword": {
+		"weapon_type": "melee",
+		"damage": 8,
+		"size": "Vector2i(1, 3)",
+		"weight": 3
+	},
+	"great_sword": {
+		"inherits": "sword",
+		"damage": 12
+	},
+	"shield": {
+		"size": "Vector2i(2, 2)",
+		"weight": 4
+	},
+	"anvil": {
+		"weight": 8
+	}
+}

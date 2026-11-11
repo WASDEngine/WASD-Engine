@@ -1,0 +1,66 @@
+[gd_resource type="Resource" script_class="GaeaGraph" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://addons/gaea/runtime/resources/graph.gd" id="1_graph"]
+[ext_resource type="Script" path="res://addons/gaea/runtime/resources/layer.gd" id="2_layer"]
+[ext_resource type="Script" path="res://addons/gaea/runtime/resources/materials/data/tilemap_material.gd" id="3_tile"]
+
+[sub_resource type="Resource" id="Resource_layer"]
+script = ExtResource("2_layer")
+
+[sub_resource type="Resource" id="Resource_land"]
+script = ExtResource("3_tile")
+atlas_coord = Vector2i(1, 0)
+
+[resource]
+script = ExtResource("1_graph")
+layers = Array[ExtResource("2_layer")]([SubResource("Resource_layer")])
+save_version = 5
+_connections = Array[StringName]([&"1-0-2-0", &"3-0-2-1", &"2-0-0-0"])
+_node_data = Dictionary[int, Dictionary]({
+0: {
+&"position": Vector2(0, 0),
+&"salt": 0,
+&"type": 0,
+&"uid": "res://addons/gaea/runtime/graph_nodes/special/output.gd"
+},
+1: {
+&"arguments": {
+&"frequency": 0.08
+},
+&"position": Vector2(-600, 0),
+&"salt": 0,
+&"type": 0,
+&"uid": "res://addons/gaea/runtime/graph_nodes/root/sampling/noise/noise_2d.gd"
+},
+2: {
+&"arguments": {
+&"range": {
+"max": 1.0,
+"min": 0.5
+}
+},
+&"position": Vector2(-300, 0),
+&"salt": 0,
+&"type": 0,
+&"uid": "res://addons/gaea/runtime/graph_nodes/root/map/mappers/threshold_mapper.gd"
+},
+3: {
+&"arguments": {
+&"name": "Land"
+},
+&"position": Vector2(-600, 200),
+&"salt": 0,
+&"type": 0,
+&"uid": "res://addons/gaea/runtime/graph_nodes/root/resources/variables/material_parameter.gd"
+}
+})
+_parameters = Dictionary[StringName, Variant]({
+&"Land": {
+"hint": 17,
+"hint_string": "GaeaMaterial",
+"name": "Land",
+"type": 24,
+"usage": 4,
+"value": SubResource("Resource_land")
+}
+})

@@ -157,6 +157,7 @@ Every tool works on the calling Session's game; a call outside a Session fails.
 | `godot_performance` | `seconds` (default 2, 0.25 to 20) | Samples the game for that much real time and reports the frame rate, frame time percentiles and spikes, the mean and largest milliseconds per frame of each phase, GPU and render CPU time when the renderer measures them, drawn objects, primitives, and draw calls, memory and video memory, object counts and their change, physics bodies, pipeline compilations, navigation, audio latency, a census of the scene tree, the custom `Performance` monitors, and the frame rate limits |
 | `godot_logs` | `since`, `levels`, `limit` (default 200, at most 1000) | Log entries after the cursor `since`, or after this Session's previous read, and the next cursor |
 | `godot_check` | `paths`, `project` | Loads GDScript files in a headless Godot without running the game and lists the problems per file |
+| `godot_script` | `script`, `args`, `timeout_seconds`, `project` | Runs a GDScript that extends `SceneTree` or `MainLoop` against the project in a headless Godot, without running the game, and reports the end of its output and the engine errors |
 
 `godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, and `godot_performance` need a connected game. Before the Session's first run they fail with `No game is running in this Session; call godot_run first.`, while the game starts or stops with `The game is starting or stopping; call godot_run to wait for it.`, and after the game ended they name its phase and quote the crash or failure message.
 
@@ -174,10 +175,12 @@ A run keeps its newest `maxLogEntries` log entries. Each entry carries a sequenc
 
 Result text stays within 6,000 characters and ends with `… (output shortened)` when cut, and quoted log messages stay within 500 characters. `godot_logs` ends its page before the text budget, and its next cursor follows the last listed entry.
 
+`godot_script` imports the project first when `importBeforeRun` is set, as a run does, so class names and resources added since the last import are known, then runs `--headless --path <project> --script <res path> -- <args>` with the resolved runtime, for the command-line runners of test add-ons such as GUT's `res://addons/gut/gut_cmdln.gd` and for build or generator scripts. `script` is a `res://` path or a path relative to the working directory; it must be a `.gd` file inside the project. `args` reach the script after `--`, where `OS.get_cmdline_user_args()` reads them. The run ends when the script quits or after `timeout_seconds`, 120 by default and at most 900. LibGodot does not expose the engine's exit code, so the runner exits 0 once the script quits, whatever code it passed to `quit()`; the result says so, and a test runner's pass or fail shows in its printed summary. Another exit code means the runner itself failed. The result keeps the last 6,000 characters of standard output and standard error and the number of lines left out before them, so a runner's summary survives, and lists up to 20 engine errors, the import's first. Without `project`, it uses the project of the Session's current or last run, else the nearest one. Like the game, the script runs with the Host user's full access.
+
 <a id="connected-agents"></a>
 ### Tools for connected agents
 
-Agents on the computer that connect through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), get the same eleven tools from the plugin's provider in [`src/mcp.ts`](src/mcp.ts), built by the same `godotToolDefinitions` with three differences:
+Agents on the computer that connect through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), get the same twelve tools from the plugin's provider in [`src/mcp.ts`](src/mcp.ts), built by the same `godotToolDefinitions` with three differences:
 
 - Every tool takes `project`, the absolute path of the folder that holds `project.godot`, of a folder up to three levels above it, or of the `project.godot` file; without it, a call uses the agent's previous project and fails with `Pass project: the absolute path of the folder that holds project.godot.` before the agent's first. The call runs for the agent's own Session in that game project, which the MCP server creates on first use, so the run, its logs, and the Game tab are that Session's.
 - The `godot_run` description says that the game plays in the WASD Engine window, `godot_check` takes absolute paths where the Session's tool takes paths relative to the working directory, and `godot_logs` reads after the entries the agent last read.
@@ -240,6 +243,14 @@ The harness streams frames only while at least one frame response is open, at `s
 
 Godot ships the Web template only inside its export templates archive, about 1.3 GB for every platform. The first export reads the archive's ZIP directory with HTTP range requests and downloads only `webTemplateEntry`, about 10 MB, checks its size, CRC-32, and `webTemplateSha256`, and publishes it as `templates/<sha256>.zip`; concurrent exports share the download. A server that does not answer range requests fails the export with a message that asks for `webTemplatePath`.
 
+### Import for other plugins
+
+`ctx.godot.importProject(projectDir, signal)` runs the import step once for other Host plugins, such as [the game add-ons](../game-addons/README.md), which import a project after they install an add-on: one headless `--import` of the resolved runtime, which also loads the project's enabled editor plugins, within `importTimeoutMs`. It returns up to 20 errors and warnings, with a warning when the process ended abnormally, or undefined when no runtime is installed. The Game tab and the `godot_*` tools do not call it.
+
+### Blender files in a project
+
+Godot's Blender scene importer converts a `.blend` file by running the Blender executable that the editor settings name. In a headless editor without one, its import support query fails, and the editor then skips every pending import of the project, not only the `.blend` file's. Before the import step of a run, `godot_script`, and `ctx.godot.importProject`, and before a Web export, the plugin therefore turns the importer off in `project.godot` (`filesystem/import/blender/enabled=false`) when the editor's file scan reaches a `.blend` file: one outside hidden folders and folders that hold a `.gdignore` file. The desktop editor offers the same switch when it finds no Blender. The change comes with a note for the agent: a warning from the import step in the run's log, the first warning of an import report, and the first warning of a Web export. Godot never runs Blender; models enter the project as `.glb` files that the [Blender tools](../blender/README.md) export.
+
 <a id="data-directory"></a>
 ### Files under the data directory
 
@@ -283,7 +294,9 @@ In the macOS Desktop app, the page has `dshDesktop.gameLayer`, and a run that th
 | [`src/protocol.ts`](src/protocol.ts) | Message framing and validation on the harness connection |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, result text, and new-error reports |
 | [`src/check.ts`](src/check.ts) | Static script check |
+| [`src/script.ts`](src/script.ts) | `godot_script` runs and the import step for other plugins |
 | [`src/project.ts`](src/project.ts) | Project search, `project.godot` settings, and `res://` paths |
+| [`src/blender-import.ts`](src/blender-import.ts) | Turning off the Blender importer in projects that hold `.blend` files |
 | [`src/input.ts`](src/input.ts), [`src/logs.ts`](src/logs.ts) | Input validation and screenshot coordinates; the log ring and its cursors |
 | [`src/follow.ts`](src/follow.ts), [`src/frames.ts`](src/frames.ts) | Follow stream and frame route |
 | [`src/client/index.ts`](src/client/index.ts) | Browser entry: the Remote, the Game tab, the tool cards, and the automatic opening |
@@ -326,15 +339,15 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### What the model sees
 
-The plugin registers 11 tools in the global tool layer when it loads, so they reach every Agent whose tool set does not exclude them, whether or not a Godot runtime or project exists: `godot_run`, `godot_stop`, `godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, `godot_performance`, `godot_logs`, and `godot_check`, with the names, descriptions, and parameter schemas that [`src/tools.ts`](src/tools.ts) declares. The only configured text is the `muted` description of `godot_run`, `Run without audio. Default: <agentRunsMuted>.`
+The plugin registers 12 tools in the global tool layer when it loads, so they reach every Agent whose tool set does not exclude them, whether or not a Godot runtime or project exists: `godot_run`, `godot_stop`, `godot_screenshot`, `godot_input`, `godot_wait`, `godot_control`, `godot_eval`, `godot_scene_tree`, `godot_performance`, `godot_logs`, `godot_check`, and `godot_script`, with the names, descriptions, and parameter schemas that [`src/tools.ts`](src/tools.ts) declares. The only configured text is the `muted` description of `godot_run`, `Run without audio. Default: <agentRunsMuted>.`
 
 #### Token effect
 
-The 11 declarations come to about 7,200 characters of JSON with the default configuration, names included, and enter every request that offers them; `godot_input` is the largest at about 2,500 characters.
+The 12 declarations come to about 8,100 characters of JSON with the default configuration, names included, and enter every request that offers them; `godot_input` is the largest at about 2,500 characters.
 
 #### KV Cache effect
 
-One configuration always yields identical declarations, registered before the first request, so the tool-definition prefix stays stable. A change of `agentRunsMuted` changes the `godot_run` declaration, and disabling the row removes all 11 declarations; either change can invalidate reuse from the first changed definition onward.
+One configuration always yields identical declarations, registered before the first request, so the tool-definition prefix stays stable. A change of `agentRunsMuted` changes the `godot_run` declaration, and disabling the row removes all 12 declarations; either change can invalidate reuse from the first changed definition onward.
 
 ### Godot section in the system prompt
 

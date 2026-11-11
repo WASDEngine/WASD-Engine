@@ -24,8 +24,8 @@
   en: b7315842930901ed
   zh: b174e87ae23c0616
 /deepseek-ai-dsh-blender/use-this-package/configuration:
-  en: 61d36fcf67296dcd
-  zh: 55cedb831b166e84
+  en: 2824a5ca542aa10e
+  zh: fc57049ef774263d
 /deepseek-ai-dsh-blender/use-this-package/backends:
   en: 74ed2ac1bd8838f6
   zh: 44d5482f1dfe28e0
@@ -36,8 +36,11 @@
   en: bf1e194c9cbd2108
   zh: eb8e3c9479b98835
 /deepseek-ai-dsh-blender/use-this-package/one-blender-session-per-conversation:
-  en: 683360ca765acaf1
-  zh: d1feaee1742e83b7
+  en: 82f0b3188ef7f7ca
+  zh: fe137706e77857c2
+/deepseek-ai-dsh-blender/use-this-package/game-add-ons:
+  en: 77022a40a3a1a06e
+  zh: a5b71bedd23057a6
 /deepseek-ai-dsh-blender/use-this-package/headless-operation:
   en: 4f11dfa39b922f55
   zh: b3d1ed5ee2e340ae
@@ -51,8 +54,8 @@
   en: 2b694dbcc59f8d0e
   zh: e4db8412ad1dc139
 /deepseek-ai-dsh-blender/understand-the-implementation:
-  en: 3e36e16c529661b1
-  zh: 963f208ed1a9ae66
+  en: e8b34f5583a62af0
+  zh: d31379af460b40a6
 /deepseek-ai-dsh-blender/understand-the-implementation/verify-against-real-blender:
   en: d4460549ad460b05
   zh: 42378ff037326128

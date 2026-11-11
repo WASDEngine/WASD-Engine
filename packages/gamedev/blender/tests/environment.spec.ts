@@ -15,7 +15,7 @@ import type { BlenderServerOptions } from '../src/types.ts'
 const OPTIONS: BlenderServerOptions = {
   dataRoot: '/data/blender', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 30_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-  maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  maxWorkers: 4, workerIdleTimeoutMs: 600_000, addonStore: '',
 }
 const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`
@@ -605,16 +605,21 @@ describe('BlenderWorkers', () => {
       .rejects.toBe(appFailure)
   })
 
-  it('starts a worker from the resolved launch and reports setup notes once', async () => {
+  it('starts a worker from the resolved launch with its own Blender user folder, and reports setup notes once', async () => {
     const host = new FakeHost({ executables: ['/usr/bin/uv'] })
     const start = vi.fn(async () => ({ ready: { app: 'blender', version: '5.2.3', python: '3.13.16' } }))
     const workers = new BlenderWorkers(OPTIONS, workerDependencies(host, start))
     const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('5.2.3')
     expect(start).toHaveBeenCalledWith({
-      argv: [VENV_PYTHON, '-I', '-u', SCRIPT], cwd: '/data/blender/workers/1', env: { PATH: '/usr/bin:/bin' }, readyTimeoutMs: 30_000, logTailBytes: 65_536,
+      argv: [VENV_PYTHON, '-I', '-u', SCRIPT],
+      cwd: '/data/blender/workers/1',
+      env: { PATH: '/usr/bin:/bin', BLENDER_USER_RESOURCES: '/data/blender/workers/1/blender-user' },
+      readyTimeoutMs: 30_000,
+      logTailBytes: 65_536,
     }, signal)
     expect(host.made[0]).toBe('/data/blender')
+    expect(host.made).toContain('/data/blender/workers/1/blender-user')
     expect(workers.takeNotes()).toEqual([
       `Installed Python 3.13 and bpy 5.2.3 into ${VENV} (first use).`,
       'Blender 5.2.3 started (bpy module, Python 3.13.16) with its default scene.',

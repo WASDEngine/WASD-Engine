@@ -222,6 +222,37 @@ export async function listProjectFiles(root: string, extension: string, limit: n
   return { files, total }
 }
 
+/** File whose folder, with everything below it, the editor does not scan for import. */
+const IGNORE_MARKER = '.gdignore'
+
+/**
+ * Find a file with one extension that the editor's file scan reaches: the first in path order, skipping hidden entries,
+ * folders that hold a `.gdignore` file, and the folders the project search skips.
+ * @param root - absolute project folder.
+ * @param extension - lower-case file name suffix such as `.blend`, matched without regard to case.
+ * @param signal - cancellation.
+ * @returns the absolute path, or undefined when the project has no such file.
+ */
+export async function findScannedFile(root: string, extension: string, signal: AbortSignal): Promise<string | undefined> {
+  const walk = async (directory: string): Promise<string | undefined> => {
+    signal.throwIfAborted()
+    const entries = await readDirectory(directory)
+    if (directory !== root && entries.some(entry => entry.name === IGNORE_MARKER)) return undefined
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue
+      const path = join(directory, entry.name)
+      if (entry.isDirectory()) {
+        const found = SKIPPED_DIRECTORIES.has(entry.name) ? undefined : await walk(path)
+        if (found !== undefined) return found
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(extension)) {
+        return path
+      }
+    }
+    return undefined
+  }
+  return await walk(root)
+}
+
 /**
  * Map a path inside a project to its `res://` form.
  * @param projectDir - absolute project folder.

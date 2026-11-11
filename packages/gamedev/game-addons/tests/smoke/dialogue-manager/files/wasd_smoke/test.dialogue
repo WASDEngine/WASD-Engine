@@ -1,0 +1,20 @@
+~ start
+Guide: Hello, {{player_name}}.
+set gold += 5
+if gold >= 10:
+	Guide: You have {{gold}} gold. You look rich.
+else:
+	Guide: You have {{gold}} gold. You look poor.
+Guide: Pick a door.
+- Left door => left
+- Right door [if has_key /] => right
+- Leave => END
+
+~ left
+Guide: You went left.
+=> END
+
+~ right
+set doors_opened += 1
+Guide: The key opens the right door.
+=> END

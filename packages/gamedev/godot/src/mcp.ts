@@ -27,6 +27,7 @@ export const MCP_WORDING: GodotToolWording = {
   run: 'Start the Godot project, or restart it if it is running, and wait until the game runs; the game plays inside the WASD Engine window, '
     + 'where the user watches and can play it. ',
   checkPaths: 'files or folders, as res:// paths or absolute paths',
+  scriptPath: 'a res:// path or an absolute path inside the project',
   logsDefault: 'Without since, returns the entries after the ones you last read.',
 }
 
@@ -35,7 +36,7 @@ export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* 
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
-4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.`
+4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.`
 
 const PROJECT_PARAMETER = {
   type: 'string',

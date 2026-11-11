@@ -34,7 +34,7 @@ const shipped = await findShippedBpy(BUNDLED_ROOT, host)
 const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
   backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 300_000, graceMs: 3000, maxLogBytes: 64 * 1024,
-  maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  maxWorkers: 4, workerIdleTimeoutMs: 600_000, addonStore: '',
 }
 
 /** Scope of the tool calls, as a Session's calls reach the server. */

@@ -1,0 +1,39 @@
+{
+  "id": "sapling-tree-gen",
+  "title": "Sapling Tree Gen",
+  "host": "blender",
+  "version": "1.0.0",
+  "summary": "Parametric trees and bushes (Weber-Penn method): 29 species presets, seeds, leaves, optional armature and wind, baked to meshes for .glb export.",
+  "useWhen": "A level needs trees, bushes or palms in several variations and modelling each by hand would be slow; generate them by preset and seed and keep them low-poly.",
+  "avoidWhen": "A few stylized blob trees built from cones and spheres are enough.",
+  "tags": [
+    "trees",
+    "procedural",
+    "3d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "GPL-3.0-or-later",
+  "copyright": "2024 Andrew Hale (TrumanBlending), 2024 Aaron Buchler, 2024 CansecoGPC, 2026 Brad Chamberlain",
+  "homepage": "https://extensions.blender.org/add-ons/sapling-tree-gen/",
+  "archive": {
+    "url": "https://extensions.blender.org/download/sha256:65a1ae7ab3a73a675a2de7370e27a6186e889f2e396fd27af0a44666bc3b9a9a/add-on-sapling-tree-gen-v1.0.0.zip",
+    "sha256": "65a1ae7ab3a73a675a2de7370e27a6186e889f2e396fd27af0a44666bc3b9a9a",
+    "bytes": 165121,
+    "root": ""
+  },
+  "blender": {
+    "module": "sapling_tree_gen",
+    "kind": "extension"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://projects.blender.org/api/v1/repos/extensions/add_curve_sapling/raw/docs/listing/icon.png?ref=v1.0.0",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "bpy": "5.2.3",
+    "date": "2026-11-10"
+  }
+}

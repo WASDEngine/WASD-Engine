@@ -1,0 +1,52 @@
+{
+  "id": "beehave",
+  "title": "Beehave",
+  "host": "godot",
+  "version": "2.9.3",
+  "summary": "Behavior trees for NPC and enemy AI, built from selector, sequence and decorator nodes with your own action and condition scripts and a shared blackboard.",
+  "useWhen": "Enemies or NPCs need layered decisions such as patrol, chase, attack, flee and cooldowns that would become a tangle of if-statements or one large state machine script.",
+  "avoidWhen": "An enemy has two or three simple behaviors; a short match statement in its script is easier to follow.",
+  "tags": [
+    "ai",
+    "npc",
+    "enemy",
+    "behavior"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 bitbrain",
+  "homepage": "https://github.com/bitbrain/beehave",
+  "archive": {
+    "url": "https://github.com/bitbrain/beehave/archive/refs/tags/v2.9.3.zip",
+    "sha256": "6299d8c42a29c2a44fabb2a43113067997fac5908c7748645da6958329c9951c",
+    "bytes": 118271,
+    "root": "beehave-2.9.3/addons/beehave"
+  },
+  "godot": {
+    "addonDir": "beehave",
+    "plugin": "plugin.cfg",
+    "autoloads": [
+      {
+        "name": "BeehaveGlobalMetrics",
+        "path": "res://addons/beehave/metrics/beehave_global_metrics.gd"
+      },
+      {
+        "name": "BeehaveGlobalDebugger",
+        "path": "res://addons/beehave/debug/global_debugger.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/bitbrain/beehave/v2.9.3/addons/beehave/icons/tree.svg",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023 bitbrain"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-10"
+  }
+}
