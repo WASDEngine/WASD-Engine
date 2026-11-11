@@ -216,7 +216,9 @@ log "copying GIMP from $dmg"
 hdiutil attach -quiet -nobrowse -readonly -noautoopen -noverify -mountpoint "$mount" "$dmg"
 mounts+=("$mount")
 apps=("$mount"/*.app)
-[ "${#apps[@]}" -eq 1 ] && [ -d "${apps[0]}/Contents/MacOS" ] || die "$dmg does not hold one application bundle"
+if [ "${#apps[@]}" -ne 1 ] || [ ! -d "${apps[0]}/Contents/MacOS" ]; then
+  die "$dmg does not hold one application bundle"
+fi
 ditto -- "${apps[0]}/Contents" "$stage/Contents"
 hdiutil detach -quiet "$mount"
 mounts=()

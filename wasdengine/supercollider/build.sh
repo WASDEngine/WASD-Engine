@@ -184,7 +184,9 @@ else
     mv -- "$partial/SuperCollider-3.14.1-Source" "$src"
   fi
 fi
-[ -f "$src/SCVersion.txt" ] && [ -d "$src/SCClassLibrary" ] || die "$src is not a SuperCollider source tree"
+if [ ! -f "$src/SCVersion.txt" ] || [ ! -d "$src/SCClassLibrary" ]; then
+  die "$src is not a SuperCollider source tree"
+fi
 # scsynth cuts each folder of its plugin path (-U and SC_PLUGIN_PATH) at SC_MAX_TOKEN_LENGTH - 1 bytes, 255 in
 # SuperCollider 3.14.1, which loses every UGen of a runtime inside a deeply nested folder; the plugin passes -U.
 string_parser=$src/common/SC_StringParser.h
