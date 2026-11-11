@@ -1,5 +1,5 @@
 ---
-description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由 Godot、Blender、GIMP 与 SuperCollider 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote 与 game-mcp/reveal 事件、桌面引导与设置显示的设置提示词，以及 WASD Engine 未登录时对工具调用的拒绝。"
+description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由游戏工具插件与 WASD Engine 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote 与 game-mcp/reveal 事件、桌面引导与设置显示的设置提示词，以及 WASD Engine 未登录时对工具调用的拒绝。"
 kind: "package-reference"
 ---
 
@@ -150,7 +150,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-提供四个游戏工具时，指令约 10,500 个字符，51 个工具声明约 43,800 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部八个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、游戏扩展与 WASD Engine 插件都提供工具时，指令约 17,700 个字符，65 个工具声明约 63,200 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -160,7 +160,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 

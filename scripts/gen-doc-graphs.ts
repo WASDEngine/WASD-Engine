@@ -454,6 +454,13 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Exports Godot games for the Web and releases them to the WASD Engine site as numbered versions with share links, through tools of every Session and of the game MCP server, and tells the window what each project released.',
   },
   {
+    key: 'gameAddons',
+    pkg: 'game-addons',
+    title: 'Game add-ons: catalog, installs, and project guides',
+    mode: 'service',
+    note: 'Installs curated Godot and Blender add-ons from the shipped catalog into a game project after the user approves, through the game_addons tool of every Session and of the game MCP server, lists the installed add-ons\' guides as skills of only that project\'s Sessions, and serves the Add-ons dialog\'s Remote.',
+  },
+  {
     key: 'typert',
     pkg: 'typert-registry',
     title: 'Runtime type registry',

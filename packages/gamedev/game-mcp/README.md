@@ -1,5 +1,5 @@
 ---
-description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the Godot, Blender, GIMP, and SuperCollider plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote and the game-mcp/reveal event, the setup prompt that the Desktop introduction and Settings show, and the refusal of tool calls while WASD Engine is signed out."
+description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the game tool plugins and WASD Engine Plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote and the game-mcp/reveal event, the setup prompt that the Desktop introduction and Settings show, and the refusal of tool calls while WASD Engine is signed out."
 kind: "package-reference"
 ---
 
@@ -150,7 +150,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With the four game tools, the instructions come to about 10,500 characters and the 51 tool declarations to about 43,800 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all eight providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the game add-ons, and WASD Engine Plugins, the instructions come to about 17,700 characters and the 65 tool declarations to about 63,200 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -160,7 +160,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token effect
 

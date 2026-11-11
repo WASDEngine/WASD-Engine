@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-mcp/README.md
 /:
-  en: 7144d9d38257c0ed
-  zh: d8b61f850196b146
+  en: 83ab33fc5364659f
+  zh: 63a9d46e0b59002f
 /deepseek-ai-dsh-game-mcp:
   en: 4a67c43c872058b4
   zh: 38f22a58909bf07b
@@ -60,8 +60,8 @@
   en: f339bc5c503e2f5e
   zh: c79388a0a2e1a9e8
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/token-effect:
-  en: 091a6a6b6e2ed57b
-  zh: 7560bfd9ff744f46
+  en: 4590603d695bdcea
+  zh: ac65e40478662bc6
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/kv-cache-effect:
   en: 62a407f89661a467
   zh: e4db0109d5d3e152
@@ -69,8 +69,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: ac568df04f8a1de9
-  zh: 84ac7abd785b1c46
+  en: ce140faad8d487ee
+  zh: ebccef1c4b1eac03
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
