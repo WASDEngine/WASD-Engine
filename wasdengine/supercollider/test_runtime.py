@@ -338,6 +338,36 @@ class RuntimeToolTest(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertIn("holds archives that", error)
 
+    def test_patch_source_changes_the_scsynth_path_lines_once(self) -> None:
+        source = self.directory("source")
+        os.makedirs(os.path.join(source, "server", "scsynth"))
+        lines: Dict[str, List[str]] = {}
+        for name, original, _ in runtime.SOURCE_PATCHES:
+            lines.setdefault(name, []).append(original)
+        for name, originals in lines.items():
+            with open(os.path.join(source, *name.split("/")), "w", encoding="utf-8", newline="") as stream:
+                stream.write("// before\n" + "// between\n".join(originals) + "// after\n")
+        self.assertEqual(self.run_tool("patch-source", "--source", source)[:2],
+                         (0, "server/scsynth/SC_Lib_Cintf.cpp\nserver/scsynth/SC_World.cpp"))
+        for name, original, changed in runtime.SOURCE_PATCHES:
+            with open(os.path.join(source, *name.split("/")), encoding="utf-8", newline="") as stream:
+                text = stream.read()
+            self.assertNotIn(original, text)
+            self.assertIn(changed, text)
+        # A tree it changed already stays as it is.
+        self.assertEqual(self.run_tool("patch-source", "--source", source)[:2], (0, ""))
+        # Another SuperCollider's source stops the build.
+        world = os.path.join(source, "server", "scsynth", "SC_World.cpp")
+        with open(world, "w", encoding="utf-8") as stream:
+            stream.write("// another version\n")
+        status, _, error = self.run_tool("patch-source", "--source", source)
+        self.assertEqual(status, 1)
+        self.assertIn("server/scsynth/SC_World.cpp does not hold the lines that build.sh changes", error)
+        os.remove(world)
+        status, _, error = self.run_tool("patch-source", "--source", source)
+        self.assertEqual(status, 1)
+        self.assertIn("the source has no server/scsynth/SC_World.cpp", error)
+
     def test_supercollider_version_reads_scversion_txt(self) -> None:
         source = self.directory("source")
         with open(os.path.join(source, "SCVersion.txt"), "w", encoding="utf-8") as stream:

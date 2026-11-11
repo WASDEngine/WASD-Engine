@@ -197,6 +197,13 @@ if grep -q '^#define SC_MAX_TOKEN_LENGTH 256$' "$string_parser"; then
 elif ! grep -q '^#define SC_MAX_TOKEN_LENGTH 4096$' "$string_parser"; then
   die "$string_parser defines no SC_MAX_TOKEN_LENGTH of 256 or 4096; the build expects SuperCollider 3.14.1"
 fi
+# scsynth hands the UTF-8 folders of its plugin path and the name of its score file to Windows through the ANSI code page,
+# so a runtime or work folder whose path holds other characters, such as a user folder named in Chinese, loads no UGens
+# or reads no score. runtime.py changes those lines (SOURCE_PATCHES) to convert through UTF-16, and stops the build
+# when they are not SuperCollider 3.14.1's.
+for patched in $(runtime_py patch-source --source "$(native "$src")"); do
+  log "changed $patched to convert paths from UTF-8 on Windows"
+done
 supercollider=$(runtime_py supercollider-version --source "$(native "$src")")
 log "building the $key runtime $version from SuperCollider $supercollider in $src"
 
@@ -317,6 +324,10 @@ https://github.com/microsoft/vcpkg/tree/$vcpkg_commit.
 
 WASD Engine modified the source on 2026-11-06: build.sh sets SC_MAX_TOKEN_LENGTH in common/SC_StringParser.h to 4096
 instead of 256, so scsynth reads plugin folders whose paths are longer than 255 bytes.
+
+WASD Engine modified the source on 2026-11-11: build.sh changes server/scsynth/SC_Lib_Cintf.cpp, so scsynth converts each
+folder of its plugin path from UTF-8 with SC_Codecvt::utf8_str_to_path, and server/scsynth/SC_World.cpp, so scsynth on
+Windows opens its non-real-time score file with _wfopen, so paths outside ASCII work on Windows.
 EOF
 
 case $node_platform in

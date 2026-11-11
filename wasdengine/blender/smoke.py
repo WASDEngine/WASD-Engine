@@ -25,6 +25,7 @@ Usage: smoke.py --runtime <dir> --work <dir> [--executable <path>] [--bpy <versi
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import re
@@ -270,6 +271,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     @param argv: arguments without the program name; None reads sys.argv.
     @returns: process exit status.
     """
+    # A Windows console writes in its code page, which cannot hold every character of a runtime's output or paths.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="smoke.py", description=__doc__.splitlines()[0])
     parser.add_argument("--runtime", required=True, help="runtime directory")
     parser.add_argument("--work", required=True, help="directory for the test's files; it is replaced")
@@ -287,7 +292,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     command = [os.path.join(runtime, *executable.split("/")), "-I", "-B", "-u", "-c", SCRIPT, worked, checked, result, cycles, eevee, glb, blend]
     # Python reads and writes UTF-8 whatever the locale, so the work folder's name may hold any character.
     process = subprocess.Popen(command, cwd=work, env=python_environment(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, errors="replace")
+                               encoding="utf-8", errors="replace")
     deadline = time.monotonic() + TIMEOUT_SECONDS
     app = Application("", None, False)
     while process.poll() is None and not os.path.exists(worked) and time.monotonic() < deadline:

@@ -69,7 +69,7 @@ WINDOWS_SYSTEM_LIBRARIES = frozenset(name.lower() for name in (
     "propsys.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shcore.dll", "shell32.dll", "shlwapi.dll",
     "ucrtbase.dll", "urlmon.dll", "user32.dll", "userenv.dll", "usp10.dll", "uxtheme.dll", "version.dll", "winhttp.dll",
     "wininet.dll", "winmm.dll", "winspool.drv", "wintrust.dll", "wldap32.dll", "ws2_32.dll", "wsock32.dll", "wtsapi32.dll",
-    "windowscodecs.dll",
+    "windowscodecs.dll", "xmllite.dll",
 ))
 
 Record = Dict[str, Any]
@@ -342,6 +342,62 @@ def check_same_release(base: Record, other: Record, where: str) -> None:
                 f"{where} has {field} {other[field]!r}, not {base[field]!r}; "
                 "one manifest holds the archives of one runtime version built from one SuperCollider version"
             )
+
+
+# The lines of SuperCollider 3.14.1 that build.sh changes, by file: scsynth passes the UTF-8 folders of its plugin path
+# (-U and SC_PLUGIN_PATH) and the name of its non-real-time score file to Windows through the ANSI code page, which holds
+# few characters outside ASCII, so a runtime or work folder whose path holds others loads no UGens or reads no score.
+# The changed lines convert through UTF-16 on Windows; on macOS and Linux, SC_Codecvt::utf8_str_to_path makes the same
+# path as before, and the fopen line is Windows only.
+SOURCE_PATCHES: Tuple[Tuple[str, str, str], ...] = (
+    ("server/scsynth/SC_Lib_Cintf.cpp",
+     "            PlugIn_LoadDir(const_cast<char*>(sp.NextToken()), true);\n",
+     "            PlugIn_LoadDir(SC_Codecvt::utf8_str_to_path(sp.NextToken()), true);\n"),
+    ("server/scsynth/SC_Lib_Cintf.cpp",
+     "            PlugIn_LoadDir(sp.NextToken(), true);\n",
+     "            PlugIn_LoadDir(SC_Codecvt::utf8_str_to_path(sp.NextToken()), true);\n"),
+    ("server/scsynth/SC_World.cpp",
+     '        cmdFile = fopen(inOptions->mNonRealTimeCmdFilename, "rb");\n',
+     '        cmdFile = _wfopen(SC_Codecvt::utf8_cstr_to_utf16_wstring(inOptions->mNonRealTimeCmdFilename).c_str(), L"rb");\n'),
+)
+
+
+def patch_source(source: str) -> List[str]:
+    """Change the lines of SOURCE_PATCHES in a SuperCollider source tree, once.
+
+    A file changes only when it holds every original line of its patches exactly once; a file that holds none of them
+    and every changed line already is left as it is.
+
+    @param source: SuperCollider source directory.
+    @returns: the files it changed, relative to the source directory.
+    @raises RuntimeToolError: for a missing file, or one that matches neither state, such as another SuperCollider.
+    """
+    by_file: Dict[str, List[Tuple[str, str]]] = {}
+    for name, original, changed_line in SOURCE_PATCHES:
+        by_file.setdefault(name, []).append((original, changed_line))
+    changed: List[str] = []
+    for name, edits in by_file.items():
+        path = os.path.join(source, *name.split("/"))
+        try:
+            with open(path, encoding="utf-8", newline="") as stream:
+                text = stream.read()
+        except OSError as error:
+            raise RuntimeToolError(f"the source has no {name}: {error.strerror}") from error
+        counts = [text.count(original) for original, _ in edits]
+        expected: Dict[str, int] = {}
+        for _, changed_line in edits:
+            expected[changed_line] = expected.get(changed_line, 0) + 1
+        if all(count == 1 for count in counts):
+            for original, changed_line in edits:
+                text = text.replace(original, changed_line, 1)
+            with open(path, "w", encoding="utf-8", newline="") as stream:
+                stream.write(text)
+            changed.append(name)
+        elif not any(counts) and all(text.count(line) == count for line, count in expected.items()):
+            continue
+        else:
+            raise RuntimeToolError(f"{name} does not hold the lines that build.sh changes in SuperCollider 3.14.1")
+    return changed
 
 
 def supercollider_version(source: str) -> str:
@@ -733,6 +789,15 @@ def command_supercollider_version(args: argparse.Namespace) -> None:
     print(supercollider_version(args.source))
 
 
+def command_patch_source(args: argparse.Namespace) -> None:
+    """Apply SOURCE_PATCHES and print each file it changed on its own line.
+
+    @param args: parsed arguments with source.
+    """
+    for name in patch_source(args.source):
+        print(name)
+
+
 def command_vc_runtime(args: argparse.Namespace) -> None:
     """Copy the Visual C++ runtime libraries that the runtime loads into its folder and name them on stderr.
 
@@ -896,6 +961,10 @@ def build_parser() -> argparse.ArgumentParser:
     version_command = commands.add_parser("supercollider-version", help="print the SuperCollider version of a source tree")
     version_command.add_argument("--source", required=True, help="SuperCollider source directory")
     version_command.set_defaults(run=command_supercollider_version)
+
+    patch = commands.add_parser("patch-source", help="change the scsynth lines that read paths through the ANSI code page on Windows")
+    patch.add_argument("--source", required=True, help="SuperCollider source directory")
+    patch.set_defaults(run=command_patch_source)
 
     vc_runtime = commands.add_parser("vc-runtime", help="copy the Visual C++ runtime libraries that the runtime loads into it")
     vc_runtime.add_argument("--stage", required=True, help="runtime folder")

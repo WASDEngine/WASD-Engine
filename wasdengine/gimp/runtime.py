@@ -121,7 +121,7 @@ WINDOWS_SYSTEM_LIBRARIES = frozenset(name.lower() for name in (
     "propsys.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shcore.dll", "shell32.dll", "shlwapi.dll",
     "ucrtbase.dll", "urlmon.dll", "user32.dll", "userenv.dll", "usp10.dll", "uxtheme.dll", "version.dll", "winhttp.dll",
     "wininet.dll", "winmm.dll", "winspool.drv", "wintrust.dll", "wldap32.dll", "ws2_32.dll", "wsock32.dll", "wtsapi32.dll",
-    "windowscodecs.dll",
+    "windowscodecs.dll", "xmllite.dll",
 ))
 
 Record = Dict[str, Any]

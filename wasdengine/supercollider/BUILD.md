@@ -18,6 +18,8 @@ SuperCollider's official macOS application links sclang against about 500 MB of 
 
 Before it compiles, `build.sh` changes one line of SuperCollider's source: `SC_MAX_TOKEN_LENGTH` in `common/SC_StringParser.h` becomes 4096 instead of 256. scsynth splits its plugin path, the `-U` option that the plugin passes and `SC_PLUGIN_PATH`, into folders and cuts each one to `SC_MAX_TOKEN_LENGTH` - 1 bytes, so an unchanged scsynth inside a deeply nested folder, such as a Desktop app packaged under a long build path, loads no UGens and renders silence. The script stops when the header defines neither value, and `SOURCE.txt` records the change.
 
+It also changes three lines of scsynth through `runtime.py patch-source` (`SOURCE_PATCHES`). scsynth hands the UTF-8 folders of its plugin path and the name of its non-real-time score file to Windows through the ANSI code page, so on Windows a runtime or work folder whose path holds characters outside that code page, such as a user folder named in Chinese, loads no UGens or reads no score. The changed lines convert through UTF-16 on Windows and make the same paths as before on macOS and Linux. `patch-source` stops the build when the lines are not SuperCollider 3.14.1's, and `SOURCE.txt` records the change.
+
 The runtime holds the class library without its Qt `GUI` folders and without the Ableton Link classes, which SuperCollider's own install rules leave out of builds without Qt or Link, and only the class reference files of the help, `HelpSource/Classes/*.schelp`, which the plugin's `class_info` tool reads. `COPYING` holds SuperCollider's license, and `SOURCE.txt` names the corresponding source, the build script, and the vcpkg commit, because the runtime distributes GPL-3.0 programs.
 
 <a id="windows"></a>
