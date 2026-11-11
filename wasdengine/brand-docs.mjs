@@ -43,8 +43,8 @@ const SKIP = [
   'docs/config-catalog.zh.md',
 ]
 
-/** Lines that name the upstream project on purpose; `基于 DeepSeek Harness` is the Chinese "built on DeepSeek Harness". */
-const KEEP = /built on DeepSeek Harness|fork of DeepSeek Harness|基于 DeepSeek Harness|trademark|developed by/iu
+/** Lines that name the upstream project on purpose. */
+const KEEP = /built on DeepSeek Harness|fork of DeepSeek Harness|trademark|developed by/iu
 
 const FENCE = /^\s*(`{3,}|~{3,})/u
 

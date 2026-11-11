@@ -62,7 +62,7 @@ $ErrorActionPreference = 'Stop'
 - 游戏项目保留在你创建时选择的位置，默认位于“文稿”（Windows 上为“文档”）文件夹下的 `WASD Engine` 文件夹中。
 - 内置的 Godot 使用 Godot 自己的文件夹，你另行安装的 Godot 编辑器也使用这些文件夹：macOS 上为 `~/Library/Application Support/Godot` 和 `~/Library/Caches/Godot`，Windows 上为 `%APPDATA%\Godot` 和 `%LOCALAPPDATA%\Godot`。其中 `app_userdata` 保存你的游戏数据（如存档和日志），其余为 Godot 编辑器的设置和缓存。如果你还单独使用 Godot，只删除 `app_userdata` 中你的游戏文件夹。
 - 在 Windows 上，SuperCollider 工具把用户文件夹放在 `%LOCALAPPDATA%\SuperCollider`，你另行安装的 SuperCollider 也使用该文件夹。
-- 如果开启过可选的 LiveShare 插件，它会把共享记录和中继凭据保存在 `~/.dsh/liveshare`（Windows 上为 `%USERPROFILE%\.dsh\liveshare`）：WASD Engine 基于 DeepSeek Harness 构建，该插件沿用 DeepSeek Harness 的文件夹。除非某个 DeepSeek Harness 安装仍在使用 LiveShare，否则请删除该文件夹。
+- 如果开启过可选的 LiveShare 插件，它会把共享记录和中继凭据保存在 WASD Engine 主目录之外的 `~/.dsh/liveshare`（Windows 上为 `%USERPROFILE%\.dsh\liveshare`）。把数据保存在 `~/.dsh` 的其他应用也可能使用该文件夹，因此只有在它们都不使用 LiveShare 时才删除它。
 - 如果为 Claude Code、Codex 等其他 agent（智能体）设置过 WASD Engine 的游戏工具，它们的配置中仍列有 `wasd-engine` MCP 服务器。对于 Claude Code，运行 `claude mcp remove wasd-engine --scope user` 移除；对于 Codex，删除 `~/.codex/config.toml` 中的 `[mcp_servers.wasd-engine]` 表。
 
 ## 3. 验证清理结果

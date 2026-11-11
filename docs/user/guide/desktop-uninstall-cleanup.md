@@ -62,7 +62,7 @@ The scripts leave your game projects and what WASD Engine shares with other prog
 - Game projects stay where you created them, by default in the `WASD Engine` folder of your Documents folder.
 - The built-in Godot uses Godot's own folders, which a Godot editor that you install also uses: `~/Library/Application Support/Godot` and `~/Library/Caches/Godot` on macOS, and `%APPDATA%\Godot` and `%LOCALAPPDATA%\Godot` on Windows. They hold your games' data, such as saves and logs, in `app_userdata`, and Godot's editor settings and caches. If you also use Godot on its own, delete only your games' folders in `app_userdata`.
 - On Windows, the SuperCollider tools keep their user folders in `%LOCALAPPDATA%\SuperCollider`, which an installed SuperCollider also uses.
-- If you turned on the optional LiveShare plugin, it keeps its share records and relay credential in `~/.dsh/liveshare` (`%USERPROFILE%\.dsh\liveshare` on Windows): WASD Engine is built on DeepSeek Harness, and the plugin keeps DeepSeek Harness's folder. Delete it unless a DeepSeek Harness installation still uses LiveShare.
+- If you turned on the optional LiveShare plugin, it keeps its share records and relay credential outside the WASD Engine home, in `~/.dsh/liveshare` (`%USERPROFILE%\.dsh\liveshare` on Windows). Other apps that keep their data in `~/.dsh` can use that folder too, so delete it only when none of them uses LiveShare.
 - If you set up another agent, such as Claude Code or Codex, with WASD Engine's game tools, its configuration still lists the `wasd-engine` MCP server. Remove it with `claude mcp remove wasd-engine --scope user` for Claude Code, or delete the `[mcp_servers.wasd-engine]` table from `~/.codex/config.toml` for Codex.
 
 ## 3. Verify cleanup
