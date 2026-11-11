@@ -60,6 +60,8 @@ export const EXISTING_PLUGIN_ENTRY_EXPORTS = {
     'CREDENTIALS_FILENAME', 'DOCUMENT_VERSION', 'parseCredentialsDocument', 'renderFlatLayoutMigration', 'resolveSpec',
   ],
   '@deepseek-ai/dsh-cua': ['CuaConfig', 'installCua'],
+  // WASDEngine fork (wasdengine/FORK.md): the fork's entries when the gate arrived with upstream 0.2.2-rc.2.
+  '@deepseek-ai/dsh-elevenlabs': ['CONSENT_STATEMENT', 'CONSENT_STATEMENT_VERSION'],
   '@deepseek-ai/dsh-experimental-claude-code-mods': [
     'DEFAULT_TOOL_ALIASES', 'KNOWN_EVENTS', 'MODS_API_VERSION', 'SERVED_EVENTS', 'defineMod',
   ],
@@ -77,11 +79,19 @@ export const EXISTING_PLUGIN_ENTRY_EXPORTS = {
     'DEFAULT_FILE_SEARCH_EXCLUDED_DIRECTORIES', 'DEFAULT_FILE_SEARCH_MAX_ENTRIES', 'DEFAULT_FILE_SEARCH_MAX_RESULTS',
     'FILE_REFERENCE_PROMPT', 'WorkspaceFileSearch', 'activeAtToken', 'formatFileMention',
   ],
+  // WASDEngine fork (wasdengine/FORK.md): the fork's entries when the gate arrived with upstream 0.2.2-rc.2.
+  '@deepseek-ai/dsh-game-addons': [
+    'ADDON_SKILL_RANK', 'GameAddonManager', 'NOTICES_FILE', 'ProjectFile', 'RECORD_FILE', 'SKILL_PROVIDER_NAME',
+    'STATE_DIR', 'STORE_INDEX', 'STORE_MARKER', 'TOOL_NAME', 'loadCatalog', 'parseGuide', 'readRecord', 'searchCatalog',
+  ],
+  '@deepseek-ai/dsh-game-mcp': ['MCP_PATH', 'SIGNED_OUT_MESSAGE'],
   '@deepseek-ai/dsh-goal': [
     'GOAL_CHANGE_VERSION', 'GoalId', 'applyGoalProjection', 'decodeGoalChange', 'foldGoal', 'goalChangeRef',
     'goalProjectionDefinition',
   ],
   '@deepseek-ai/dsh-goal-round-driver': ['renderGoalRoundPrompt'],
+  // WASDEngine fork (wasdengine/FORK.md): the fork's entry when the gate arrived with upstream 0.2.2-rc.2.
+  '@deepseek-ai/dsh-godot': ['WEB_EXPORT_ENTRY', 'WEB_EXPORT_PRESET', 'resolveGodotProject'],
   '@deepseek-ai/dsh-host-directory-picker-auto': [
     'BACKEND_PACKAGES', 'SURFACE_PACKAGES', 'canExecute', 'hasLinuxChooserBinary', 'resolveDirectoryPickerBackend',
   ],
@@ -126,6 +136,8 @@ export const EXISTING_PLUGIN_ENTRY_EXPORTS = {
   '@deepseek-ai/dsh-mcp-client': [
     'ReconnectSchema', 'SERVER_NAME_PATTERN', 'assertTemplateSyntax', 'connectionStatusOf', 'createMcpToolDefinition',
     'probeServer', 'resolveReconnectPolicy',
+    // WASDEngine fork (wasdengine/FORK.md): the Session scope of game tool calls.
+    'SESSION_SCOPE_CAPABILITY', 'SESSION_SCOPE_META_KEY',
   ],
   '@deepseek-ai/dsh-office-kit': ['Config', 'OfficeKitGeneration', 'OfficeKitKey', 'OfficeSourceKey'],
   '@deepseek-ai/dsh-permission-presets': ['AUTO_PRESET', 'CUSTOM_PRESET'],
