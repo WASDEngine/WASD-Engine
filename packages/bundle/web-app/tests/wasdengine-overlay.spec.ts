@@ -107,8 +107,8 @@ const ISSUE_TEMPLATES = ['bug-report.yml', 'config.yml', 'feature-request.yml'] 
 /** Each row the fork patches: the package upstream mounts there and the sources that declare its config keys. */
 const TARGETS: Readonly<Record<string, { name: string; schema: readonly string[] }>> = {
   'deepseek-account': {
-    name: '@deepseek-ai/dsh-deepseek-account-platform',
-    schema: ['packages/credentials/deepseek-account-platform/src/index.ts'],
+    name: '@deepseek-ai/dsh-deepseek-account',
+    schema: ['packages/credentials/deepseek-account/src/index.ts'],
   },
   'llm-deepseek-account': {
     name: '@deepseek-ai/dsh-llm-deepseek-account',
@@ -534,6 +534,8 @@ describe.each([...profiles.keys()])('%s profile', (name) => {
       const config = configOf(row(fork.rows, 'deepseek-account'))
       expect(expression(config.platformOrigin, 'deepseek-account.platformOrigin')).toBe(platform)
       expect(expression(config.inferenceOrigin, 'deepseek-account.inferenceOrigin')).toBe(api)
+      // Account notifications carry the sign-in token, so they stay on the Platform origin.
+      expect(expression(config.harnessOrigin, 'deepseek-account.harnessOrigin')).toBe(platform)
       expect(config.allowLoopbackHttp).toBe(true)
     }
     if (mounts('llm-deepseek-account')) {
