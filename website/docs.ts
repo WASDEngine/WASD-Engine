@@ -149,7 +149,7 @@ const homeAndGuide = pairedPages([
   {
     source: 'docs/user/guide/desktop-uninstall-cleanup.md',
     route: 'guide/desktop-uninstall-cleanup.md',
-    label: { root: '卸载 DSH 桌面端', en: 'Uninstall DSH Desktop' },
+    label: { root: '卸载 WASD Engine', en: 'Uninstall WASD Engine' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '入门', en: 'Guide' },
     order: 5,

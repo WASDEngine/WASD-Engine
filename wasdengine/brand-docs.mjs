@@ -36,10 +36,6 @@ const SKIP = [
   'docs/postmortem/',
   'docs/upgrade-guide/',
   'docs/i18n/style-samples.md',
-  // Upstream's Desktop uninstall guide, whose cleanup scripts delete DeepSeek Harness Desktop's own paths;
-  // WASD Engine's app uses other ones and has no uninstall guide yet (wasdengine/FORK.md, Known limitations).
-  'docs/user/guide/desktop-uninstall-cleanup.md',
-  'docs/user/guide/desktop-uninstall-cleanup.zh.md',
   // Generated from the CLI and the config schemas; their sources carry the name.
   'docs/cli-help.md',
   'docs/cli-help.zh.md',
@@ -47,8 +43,8 @@ const SKIP = [
   'docs/config-catalog.zh.md',
 ]
 
-/** Lines that name the upstream project on purpose. */
-const KEEP = /built on DeepSeek Harness|fork of DeepSeek Harness|trademark|developed by/iu
+/** Lines that name the upstream project on purpose; `基于 DeepSeek Harness` is the Chinese "built on DeepSeek Harness". */
+const KEEP = /built on DeepSeek Harness|fork of DeepSeek Harness|基于 DeepSeek Harness|trademark|developed by/iu
 
 const FENCE = /^\s*(`{3,}|~{3,})/u
 
