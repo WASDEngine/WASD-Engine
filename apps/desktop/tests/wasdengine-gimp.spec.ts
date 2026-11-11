@@ -95,10 +95,45 @@ posix('GIMP staging', () => {
     expect((await stat(join(directory, ...CONSOLE.split('/')))).mode & 0o111).not.toBe(0)
   })
 
+  it('ships the checked archive with its archive.json for Windows, whose plugin unpacks it on first use', async () => {
+    const out = join(root, 'win-out')
+    const stage = join(root, 'win-stage')
+    const archiveName = 'gimp-9.9-test-win32-x64.tar.gz'
+    const files: Readonly<Record<string, string>> = {
+      'bin/gimp-console-3.2.exe': 'MZ', 'share/gimp/3.0/brushes/arrow#1.myb': 'brush', 'share/locale/wasd-engine-folder.txt': 'keep',
+      'etc/gimp/3.0/gimprc': '# gimprc', 'COPYING': 'GPL',
+    }
+    await mkdir(out, { recursive: true })
+    for (const [name, data] of Object.entries(files)) {
+      await mkdir(dirname(join(stage, name)), { recursive: true })
+      await writeFile(join(stage, name), data)
+    }
+    const runtime = {
+      format: 1, version: '9.9-test', gimp: '3.2.8', platform: 'win32', arch: 'x64', console: 'bin/gimp-console-3.2.exe',
+      dataDir: 'share/gimp/3.0', localeDir: 'share/locale', sysconfDir: 'etc/gimp/3.0',
+    }
+    await writeFile(join(stage, 'runtime.json'), JSON.stringify({ ...runtime, sha256: Object.fromEntries(Object.entries(files).map(([name, data]) => [name, sha256(data)])) }))
+    execFileSync('tar', ['-czf', join(out, archiveName), '-C', stage, ...Object.keys(files), 'runtime.json'])
+    const archive = await readFile(join(out, archiveName))
+    await writeFile(join(out, 'manifest.json'), JSON.stringify({
+      format: 1, version: '9.9-test', gimp: '3.2.8',
+      artifacts: { 'win32-x64': { url: `https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-9.9-test/${archiveName}`, bytes: archive.length, sha256: sha256(archive) } },
+    }))
+    const dsh = await dshTree()
+    const directory = join(shipped(dsh), 'win32-x64')
+    expect(await stageGimpRuntime(dsh, { platform: 'win32', arch: 'x64' }, { WASD_GIMP_DIR: out })).toEqual({ version: '9.9-test', directory })
+    expect((await readdir(directory)).sort()).toEqual(['archive.json', archiveName])
+    expect(await readFile(join(directory, archiveName))).toEqual(archive)
+    expect(JSON.parse(await readFile(join(directory, 'archive.json'), 'utf8'))).toEqual({
+      format: 1, archive: archiveName, bytes: archive.length, sha256: sha256(archive), runtime,
+    })
+    expect(await readdir(shipped(dsh))).toEqual(['win32-x64'])
+  })
+
   it('ships nothing for a platform the manifest has no build for, or with WASD_GIMP_BUNDLE=0', async () => {
     const dsh = await dshTree()
     const out = await release()
-    expect(await stageGimpRuntime(dsh, { platform: 'linux', arch: 'x64' }, { WASD_GIMP_DIR: out })).toBeUndefined()
+    expect(await stageGimpRuntime(dsh, { platform: 'win32', arch: 'x64' }, { WASD_GIMP_DIR: out })).toBeUndefined()
     expect(await stageGimpRuntime(dsh, TARGET, { WASD_GIMP_DIR: out, WASD_GIMP_BUNDLE: '0' })).toBeUndefined()
     await expect(stat(shipped(dsh))).rejects.toMatchObject({ code: 'ENOENT' })
   })
@@ -153,8 +188,10 @@ describe('GIMP packaging hooks', () => {
   })
 
   it('stages into the folder the GIMP plugin reads, from the release that build.sh builds by default', async () => {
-    const environment = await readFile(new URL('../../../packages/gamedev/gimp/src/environment.ts', import.meta.url), 'utf8')
-    expect(/export function bundledRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(environment)).toBe(true)
+    const worker = await readFile(new URL('../../../packages/gamedev/gimp/src/worker.ts', import.meta.url), 'utf8')
+    expect(worker).toContain("bundledRoot: shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))")
+    const lookup = await readFile(new URL('../../../packages/gamedev/app-mcp/src/shipped-runtime.ts', import.meta.url), 'utf8')
+    expect(/export function shippedRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(lookup)).toBe(true)
     const build = await readFile(new URL('../../../wasdengine/gimp/build.sh', import.meta.url), 'utf8')
     const version = /^version=(\S+)$/mu.exec(build)?.[1]
     expect(GIMP_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-${String(version)}/manifest.json`)

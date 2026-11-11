@@ -236,6 +236,16 @@ export function runSclangBridge(io: BridgeProcess): void {
     if (!finished) parser.push(chunk)
   })
 
+  /**
+   * Ask sclang to quit, then end its input. sclang on macOS and Linux also quits at the end of its input, but sclang on
+   * Windows does not notice it and runs until it is killed.
+   */
+  const quit = (): void => {
+    if (child.stdin.writableEnded) return
+    child.stdin.write(`0.exit${INTERPRET}`)
+    child.stdin.end()
+  }
+
   const bootFile = join(plan.requestDirectory, `${token}-boot.json`)
   writeFileSync(bootFile, JSON.stringify(plan.boot))
   child.stdin.write(`WasdWorker.boot("${token}", ${sclangString(bootFile)})${INTERPRET}`)
@@ -252,7 +262,7 @@ export function runSclangBridge(io: BridgeProcess): void {
     if (method === 'shutdown') {
       reply({ id, ok: true, result: null })
       closing = true
-      child.stdin.end()
+      quit()
       return
     }
     if (!METHOD.test(method)) {
@@ -269,9 +279,9 @@ export function runSclangBridge(io: BridgeProcess): void {
     child.stdin.write(`WasdWorker.dispatch(${String(id)}, "${method}", ${sclangString(file)})${INTERPRET}`)
   })
   requests.on('close', () => {
-    // The server is gone or closing: sclang quits at the end of its input, and is killed when it does not.
+    // The server is gone or closing: sclang quits, and is killed when it does not.
     closing = true
-    child.stdin.end()
+    quit()
     setTimeout(() => { finish(0) }, plan.graceMs).unref()
   })
 }

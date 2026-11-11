@@ -5,11 +5,11 @@ The SuperCollider plugin (`@deepseek-ai/dsh-supercollider`) designs and renders 
 | Path | Role |
 |---|---|
 | [build.sh](build.sh) | Builds, smoke-tests, packages, and optionally installs the runtime of the current platform. |
-| [runtime.py](runtime.py) | Packages, installs, merges, and verifies runtime archives for `build.sh` and the release workflow. |
-| [smoke.py](smoke.py) | Renders a tone offline with a runtime, as the plugin runs it, and checks the WAV, Ogg Vorbis, and FLAC files. |
+| [runtime.py](runtime.py) | Packages, installs, merges, and verifies runtime archives for `build.sh` and the release workflow, and on Windows copies the Visual C++ runtime into the runtime and checks its libraries. |
+| [smoke.py](smoke.py) | Renders a tone offline with a runtime, as the plugin runs it, and checks the WAV, Ogg Vorbis, and FLAC files, and on Windows that no process of the run shows a window. |
 | [test_runtime.py](test_runtime.py) | Tests of `runtime.py`. |
 | [test_smoke.py](test_smoke.py) | Tests of the check that `smoke.py` applies to the rendered files. |
-| [triplets/](triplets) | vcpkg triplets that build the libraries statically, in release mode, for macOS 11.0 and later and for Linux. |
+| [triplets/](triplets) | vcpkg triplets that build the libraries in release mode: statically for macOS 11.0 and later and for Linux, and for Windows statically except libsndfile and FFTW. |
 | [wasd-supercollider.yml](../../.github/workflows/wasd-supercollider.yml) | Builds every platform and publishes the release. |
 
 ## The build
@@ -20,11 +20,16 @@ Before it compiles, `build.sh` changes one line of SuperCollider's source: `SC_M
 
 The runtime holds the class library without its Qt `GUI` folders and without the Ableton Link classes, which SuperCollider's own install rules leave out of builds without Qt or Link, and only the class reference files of the help, `HelpSource/Classes/*.schelp`, which the plugin's `class_info` tool reads. `COPYING` holds SuperCollider's license, and `SOURCE.txt` names the corresponding source, the build script, and the vcpkg commit, because the runtime distributes GPL-3.0 programs.
 
+<a id="windows"></a>
+On Windows, `build.sh` runs in Git Bash and builds with the newest Visual Studio that `vswhere` finds, through CMake's Visual Studio generator, because SuperCollider's documentation names Visual Studio as its only supported Windows toolchain. The triplet `wasd-x64-windows` builds libsndfile, with its codecs inside, and FFTW as DLLs and everything else statically, all against the dynamic Visual C++ runtime, as SuperCollider's own vcpkg triplets do, because SuperCollider's Windows build copies `sndfile.dll` and `fftw3f.dll` beside scsynth. The runtime holds `sclang.exe`, `scsynth.exe`, the two DLLs, the `*.scx` plugins, and the Visual C++ runtime DLLs that `runtime.py vc-runtime` copies from Visual Studio's redistributable folder because a file of the runtime loads them, so the runtime needs no Visual C++ Redistributable on the user's computer. `runtime.py check-imports` then reads the import and delay-load tables of every `.exe`, `.dll`, and `.scx` file and requires each to be x64 code whose libraries lie in the runtime's folder or in Windows itself. The runtime's deepest path is about 60 characters, so the Windows app ships its files below the install folder.
+
+sclang on Windows reads its arguments in the ANSI code page, which cannot hold every character of a user's folder name, so the plugin names its class library configuration relative to sclang's working directory, which holds it. It ignores `XDG_CONFIG_HOME` and `XDG_DATA_HOME` and uses the user's own `%LOCALAPPDATA%\SuperCollider` folder, whose startup file the plugin's worker class skips. It runs `unixCmd` through `cmd.exe`, so the worker class quotes paths with double quotes and runs scsynth without `exec` there. Node.js starts sclang without a console window, and the `cmd.exe` and scsynth processes that sclang starts share that hidden console, so no process of the SuperCollider tools shows a window or a taskbar entry.
+
 On macOS, `build.sh` strips the local symbols of sclang, scsynth, and the plugins and signs them ad hoc (`codesign --sign -`); they are not notarized. A signed Desktop build signs them again with its identity in the `sign:dsh-native` step, which signs every Mach-O file of the packaged tree. They target macOS 11.0, the deployment target of SuperCollider's own arm64 builds.
 
 ## Build locally
 
-Prerequisites: Git, curl, Python 3.8 or newer, and a C++ compiler: the Xcode Command Line Tools on macOS, or GCC with `libasound2-dev` (Debian and Ubuntu) on Linux. CMake, Ninja, and pkg-config come from `PATH`; when one is missing, `build.sh` installs all three from PyPI into `<out>/.tools` with [uv](https://docs.astral.sh/uv/). vcpkg also needs `zip`, `unzip`, and `tar`.
+Prerequisites: Git, curl, Python 3.8 or newer, and a C++ compiler: the Xcode Command Line Tools on macOS, GCC with `libasound2-dev` (Debian and Ubuntu) on Linux, or Visual Studio 2022 or newer with the C++ desktop workload on Windows x64. On macOS and Linux, CMake, Ninja, and pkg-config come from `PATH`; when one is missing, `build.sh` installs all three from PyPI into `<out>/.tools` with [uv](https://docs.astral.sh/uv/), and vcpkg also needs `zip`, `unzip`, and `tar`. On Windows, `build.sh` runs in Git Bash and needs CMake on `PATH`; vcpkg brings its own tools there.
 
 ```sh
 # Download and check SuperCollider 3.14.1, build it with its libraries, smoke-test it, and package it.
@@ -40,13 +45,14 @@ The plugin package's `runtime/` folder is ignored by Git. With a runtime install
 
 ## Output
 
-`build.sh` writes `<out>/supercollider-<version>-<platform>-<arch>.tar.gz`. Platform and architecture use Node.js names: `darwin` or `linux`, and `arm64` or `x64`. The archive holds only plain files at relative paths, which unpack into this layout:
+`build.sh` writes `<out>/supercollider-<version>-<platform>-<arch>.tar.gz`. Platform and architecture use Node.js names: `darwin`, `linux`, or `win32`, and `arm64` or `x64`. The archive holds only plain files at relative paths, which unpack into this layout, with the Windows names after the slash:
 
 | Path | Contents |
 |---|---|
-| `sclang` | The language interpreter, without Qt. |
-| `scsynth` | The synthesis server. |
-| `plugins/` | The UGen plugins: `*.scx` on macOS, `*.so` on Linux. |
+| `sclang` / `sclang.exe` | The language interpreter, without Qt. |
+| `scsynth` / `scsynth.exe` | The synthesis server. |
+| — / `sndfile.dll`, `fftw3f.dll`, `vcruntime140*.dll`, `msvcp140*.dll` | libsndfile, FFTW, and the Visual C++ runtime, on Windows only. |
+| `plugins/` | The UGen plugins: `*.scx` on macOS and Windows, `*.so` on Linux. |
 | `SCClassLibrary/` | The class library. |
 | `HelpSource/Classes/` | The class reference files. |
 | `COPYING`, `SOURCE.txt` | SuperCollider's license and the corresponding source. |
@@ -102,7 +108,7 @@ The macOS arm64 runtime is about 18 MB unpacked and 5.3 MB as an archive; the Li
 python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
 ```
 
-`build.sh` runs `smoke.py` on the staged runtime before it packs it. `smoke.py` gives scsynth the plugin folder through a symbolic link at a path longer than 255 bytes and checks the tone's peak, so it fails with an scsynth that lacks the source change. To smoke-test an installed runtime:
+`build.sh` runs `smoke.py` on the staged runtime before it packs it. `smoke.py` starts sclang as the plugin's bridge does, with the class library configuration named relative to its working directory, and on Windows without a console window. It gives scsynth a copy of the plugin folder in a folder whose path, made of characters outside ASCII, is longer than 255 bytes but shorter than Windows' 260-character limit, and checks the tone's peak, so it fails with an scsynth that lacks the source change; on Windows it also fails when any process that sclang started shows a visible window. To smoke-test an installed runtime:
 
 ```sh
 python3 -I wasdengine/supercollider/smoke.py --runtime packages/gamedev/supercollider/runtime/darwin-arm64 --work /tmp/supercollider-smoke
@@ -112,10 +118,10 @@ python3 -I wasdengine/supercollider/smoke.py --runtime packages/gamedev/supercol
 
 The SuperCollider runtime workflow, [wasd-supercollider.yml](../../.github/workflows/wasd-supercollider.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-supercollider.yml -f version=3.14.1-wasd.1`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
 
-Two `build` jobs run `build.sh` on macOS 26 (arm64) and Ubuntu 24.04 (x64). Each restores and saves the vcpkg binary cache keyed by platform, `build.sh`, and the triplets, installs the runtime into a directory whose name holds characters outside ASCII, smoke-tests the installed runtime, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
+Three `build` jobs run `build.sh` on macOS 26 (arm64), Ubuntu 24.04 (x64), and Windows Server 2025 (x64). Each restores and saves the vcpkg binary cache keyed by platform, `build.sh`, and the triplets, installs the runtime into a directory whose name holds characters outside ASCII, smoke-tests the installed runtime, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
 
 When the workflow runs on the default branch, the `release` job merges the manifests and checks every archive against the merged manifest: URL, size, digest, and the files and platform inside. It then creates the release `supercollider-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archives and then `manifest.json`, and publishes the release as a pre-release, so that it never becomes the repository's latest release, which the Desktop update feed and the front page's Download link reach through `releases/latest`; GitHub makes a full release the latest one while no other full release exists, even one published with `--latest=false`. The job fails when the release is already published. A run on another branch stops after the builds.
 
 Desktop packaging reads the release's `manifest.json` to ship the runtime inside the app; to package with a local build instead, set `WASD_SUPERCOLLIDER_DIR` to its `--out` folder. A published runtime version never changes, so publish a new one, such as `3.14.1-wasd.2`, whenever the build options, the pinned source, or the vcpkg commit change, and update the `version` default of `build.sh` and `SUPERCOLLIDER_MANIFEST_URL` in `apps/desktop/scripts/wasdengine-supercollider.ts` to match.
 
-No Windows runtime is built: SuperCollider's Windows build needs Visual Studio and a vcpkg setup that `build.sh` does not drive. The workflow builds no macOS x64 runtime either, although `build.sh` and its triplets support one. The Desktop apps for those platforms ship no runtime, and the plugin there uses an installed SuperCollider.
+The workflow builds no macOS x64 runtime, although `build.sh` and its triplets support one, and WASD Engine publishes no Linux Desktop app. Where no runtime is shipped, the plugin reports the missing runtime, because it starts no installed SuperCollider. The Windows runtime is smoke-tested only on the workflow's Windows runner.

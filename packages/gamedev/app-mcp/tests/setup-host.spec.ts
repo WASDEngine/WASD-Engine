@@ -1,9 +1,9 @@
-/** The setup host on the real file system, the first-executable search, and newest-first version order. */
+/** The setup host on the real file system, setup commands, the first-executable search, and newest-first version order. */
 import { chmod, mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { firstExecutable, newestFirst, nodeSetupHost, type SetupHost } from '../src/setup-host.ts'
+import { firstExecutable, newestFirst, nodeSetupHost, runCommand, type SetupHost } from '../src/setup-host.ts'
 import { temporaryDirectory } from './harness.ts'
 
 describe('nodeSetupHost', () => {
@@ -41,6 +41,27 @@ describe('nodeSetupHost', () => {
     await expect(host.listDirectory(join(root, 'a')).then(entries => [...entries].sort())).resolves.toEqual(['b', 'c'])
     await expect(host.listDirectory(join(root, 'nothing'))).resolves.toEqual([])
     await expect(host.listDirectory(`${root}/bad\0name`)).rejects.toMatchObject({ code: 'ERR_INVALID_ARG_VALUE' })
+  })
+})
+
+describe('runCommand', () => {
+  it('runs a command without a shell and keeps the tail of its interleaved output', async () => {
+    const root = await temporaryDirectory('dsh-app-mcp-command-')
+    const options = { cwd: root, env: process.env, signal: new AbortController().signal }
+    const result = await runCommand([process.execPath, '-e', 'process.stdout.write("0123456789"); process.stderr.write("ab"); process.exit(3)'], options, 8)
+    expect(result).toEqual({ exitCode: 3, signal: null, output: expect.stringMatching(/^.{8}$/u) as string })
+    expect(result.output.endsWith('89') || result.output.endsWith('ab')).toBe(true)
+    await expect(runCommand([process.execPath, '-e', 'process.stdout.write(process.cwd())'], options, 4096))
+      .resolves.toMatchObject({ exitCode: 0, output: expect.stringContaining('dsh-app-mcp-command-') as string })
+    await expect(runCommand([join(root, 'no-such-command')], options, 64)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it('kills a command when its signal aborts', async () => {
+    const root = await temporaryDirectory('dsh-app-mcp-command-')
+    const controller = new AbortController()
+    const running = runCommand([process.execPath, '-e', 'setInterval(() => {}, 1000)'], { cwd: root, env: process.env, signal: controller.signal }, 64)
+    controller.abort()
+    await expect(running).rejects.toMatchObject({ name: 'AbortError' })
   })
 })
 

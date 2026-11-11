@@ -2,10 +2,17 @@
 # (wasdengine/FORK.md, Releases): the unsigned NSIS installer, its blockmap, and the stable.yml and nightly.yml feed
 # files that installed Windows apps read through releases/latest/download. The release is created as a draft when it
 # does not exist yet; wasdengine-github-release.ts publish makes it the latest release once the macOS files are in.
-# Every installer bundles LibGodot and Blender's bpy runtime, so the job stops at its start until the LibGodot release
-# that apps/desktop/scripts/wasdengine-libgodot.ts names and the Blender release that
-# apps/desktop/scripts/wasdengine-blender.ts names list a win32-x64 build; publish them with wasd-libgodot.yml and
-# wasd-blender.yml on main, then re-run this workflow. Runs on every pushed v* tag and on manual dispatch.
+# Every installer bundles LibGodot, Blender's bpy runtime, GIMP, and SuperCollider, so the job stops at its start
+# until the LibGodot, Blender, GIMP, and SuperCollider releases that apps/desktop/scripts/wasdengine-libgodot.ts,
+# wasdengine-blender.ts, wasdengine-gimp.ts, and wasdengine-supercollider.ts name list a win32-x64 build; publish them
+# with wasd-libgodot.yml, wasd-blender.yml, wasd-gimp.yml, and wasd-supercollider.yml on main, then re-run this
+# workflow. After packaging, the job smoke-tests the packaged GIMP and SuperCollider runtimes the way their plugins run
+# them. Runs on every pushed v* tag and on manual dispatch.
+#
+# A manual dispatch without a tag packages the dispatched branch as a test and uploads the installer as a workflow
+# artifact instead of to a release. Its runtime_runs input names runs of the runtime workflows, such as
+# "gimp=123 supercollider=456", whose artifacts it packages in place of a runtime's release, which a run on another
+# branch than main never publishes; a runtime with neither a run nor a release is left out, with a warning.
 #
 # The job runs the build and the upload in one place, so the token that may write releases reaches only the upload
 # step; the installer it builds is what users run, so a build that could tamper with that step could equally tamper
@@ -20,8 +27,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to package, v<version>
-        required: true
+        description: Release tag to package, v<version>; empty packages the dispatched branch as a test, without uploading
+        required: false
+        type: string
+      runtime_runs:
+        description: For a test, runtime workflow runs whose artifacts to package, as "gimp=<run id> supercollider=<run id>"; also blender= and libgodot=
+        required: false
         type: string
 
 permissions: {}
@@ -40,12 +51,16 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 180
     permissions:
+      # actions: read lets a test download the artifacts of the runtime runs that runtime_runs names.
+      actions: read
       contents: write
     defaults:
       run:
         shell: pwsh
     env:
-      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      # Empty for a test of the dispatched branch.
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      RUNTIME_RUNS: ${{ inputs.runtime_runs }}
     steps:
       # The prepared dsh tree nests node_modules deeper than 260 characters, and pnpm links packages.
       - name: Allow long paths and symbolic links
@@ -54,13 +69,14 @@ jobs:
           New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -PropertyType DWord -Force | Out-Null
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
 
-      - name: Check out the release tag
+      - name: Check out the release tag, or the dispatched commit for a test
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: refs/tags/${{ env.RELEASE_TAG }}
+          ref: ${{ env.RELEASE_TAG != '' && format('refs/tags/{0}', env.RELEASE_TAG) || github.sha }}
 
       - name: Check the tag against the version
+        if: env.RELEASE_TAG != ''
         run: |
           $version = (Get-Content -Raw package.json | ConvertFrom-Json).version
           if ($env:RELEASE_TAG -cne "v$version") { throw "The tag $env:RELEASE_TAG does not name version $version" }
@@ -75,18 +91,61 @@ jobs:
           node-version: '24'
           cache: pnpm
 
+      # A test packages the runtimes of the runs that runtime_runs names from their artifacts: each artifact holds one
+      # platform's archive and manifest.json, which merge into a folder that WASD_<RUNTIME>_DIR names.
+      - name: Download the runtimes of the runs that runtime_runs names
+        if: env.RELEASE_TAG == '' && env.RUNTIME_RUNS != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          foreach ($pair in ($env:RUNTIME_RUNS -split '\s+' | Where-Object { $_ -ne '' })) {
+            $runtime, $run = $pair -split '=', 2
+            if ($runtime -notin 'libgodot', 'blender', 'gimp', 'supercollider' -or $run -notmatch '^[0-9]+$') {
+              throw "runtime_runs holds '$pair'; use <runtime>=<run id> with runtime libgodot, blender, gimp, or supercollider"
+            }
+            $downloads = Join-Path $env:RUNNER_TEMP "runs-$runtime"
+            $folder = Join-Path $env:RUNNER_TEMP "runtime-$runtime"
+            gh run download $run --pattern "$runtime-*" --dir $downloads
+            if ($LASTEXITCODE -ne 0) { throw "Could not download the $runtime artifacts of run $run" }
+            New-Item -ItemType Directory -Force -Path $folder | Out-Null
+            Get-ChildItem -Path $downloads -Recurse -Filter '*.tar.gz' | Copy-Item -Destination $folder
+            $manifests = (Get-ChildItem -Path $downloads -Recurse -Filter 'manifest.json').FullName
+            python -I "wasdengine/$runtime/runtime.py" merge --output (Join-Path $folder 'manifest.json') $manifests
+            if ($LASTEXITCODE -ne 0) { throw "Could not merge the $runtime manifests of run $run" }
+            "WASD_$($runtime.ToUpperInvariant())_DIR=$folder" >> $env:GITHUB_ENV
+            Write-Output "Packaging $runtime from run $run"
+          }
+
       # Packaging would otherwise fail an hour in, or, for a manifest without a Windows build, ship without the runtime.
-      - name: Require the LibGodot and Blender releases
+      # A test leaves out a runtime that neither a run nor a release provides.
+      - name: Require the runtime releases
         run: |
           node --input-type=module --eval @'
+          import { appendFileSync } from 'node:fs'
           const { LIBGODOT_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-libgodot.ts')
           const { BLENDER_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-blender.ts')
+          const { GIMP_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-gimp.ts')
+          const { SUPERCOLLIDER_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-supercollider.ts')
+          const test = process.env.RELEASE_TAG === ''
           let missing = false
-          for (const [url, runtime, workflow] of [[LIBGODOT_MANIFEST_URL, 'LibGodot', 'wasd-libgodot.yml'], [BLENDER_MANIFEST_URL, 'Blender', 'wasd-blender.yml']]) {
+          for (const [url, prefix, runtime, workflow] of [
+            [LIBGODOT_MANIFEST_URL, 'WASD_LIBGODOT', 'LibGodot', 'wasd-libgodot.yml'],
+            [BLENDER_MANIFEST_URL, 'WASD_BLENDER', 'Blender', 'wasd-blender.yml'],
+            [GIMP_MANIFEST_URL, 'WASD_GIMP', 'GIMP', 'wasd-gimp.yml'],
+            [SUPERCOLLIDER_MANIFEST_URL, 'WASD_SUPERCOLLIDER', 'SuperCollider', 'wasd-supercollider.yml'],
+          ]) {
+            if (test && (process.env[`${prefix}_DIR`] ?? '') !== '') continue
             const response = await fetch(url)
             const manifest = response.ok ? await response.json() : undefined
             if (manifest?.artifacts?.['win32-x64'] !== undefined) continue
-            console.log(`::error::${url} ${response.ok ? 'lists no win32-x64 build' : `answered HTTP ${response.status}`}. Run the ${runtime} runtime workflow (${workflow}) on main to publish it, then re-run this workflow.`)
+            const reason = `${url} ${response.ok ? 'lists no win32-x64 build' : `answered HTTP ${response.status}`}`
+            if (test) {
+              console.log(`::warning::${reason}, and runtime_runs names no ${runtime} run, so this test installer ships without ${runtime}.`)
+              appendFileSync(process.env.GITHUB_ENV, `${prefix}_BUNDLE=0\n`)
+              continue
+            }
+            console.log(`::error::${reason}. Run the ${runtime} runtime workflow (${workflow}) on main to publish it, then re-run this workflow.`)
             missing = true
           }
           if (missing) process.exit(1)
@@ -95,12 +154,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Select the release settings and runtimes
-        run: |
-          Copy-Item apps/desktop/wasdengine/env.windows.example apps/desktop/.env.windows
-          # The GIMP and SuperCollider workflows build no Windows runtime, so the Windows app uses an installed GIMP 3 and SuperCollider.
-          "WASD_GIMP_BUNDLE=0" >> $env:GITHUB_ENV
-          "WASD_SUPERCOLLIDER_BUNDLE=0" >> $env:GITHUB_ENV
+      - name: Select the release settings
+        run: Copy-Item apps/desktop/wasdengine/env.windows.example apps/desktop/.env.windows
 
       - name: Check the packaging settings and toolchain
         run: pnpm run package:desktop:win:x64:unsigned -- --check
@@ -109,14 +164,16 @@ jobs:
         run: pnpm run package:desktop:win:x64:unsigned
 
       - name: Check that the installer bundles LibGodot
+        if: env.WASD_LIBGODOT_BUNDLE != '0'
         run: |
           $runtime = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-godot/libgodot/win32-x64/runtime.json'
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no LibGodot runtime at $runtime" }
           Get-Content -Raw $runtime | ConvertFrom-Json | Select-Object version, godot, runner, library | Format-List
 
-      # The app ships Blender's runtime as its archive, which the Blender plugin unpacks under its data folder on first
-      # use, because the runtime's deepest files would pass Windows' path length limit below the install folder.
+      # The app ships Blender's and GIMP's runtimes as their archives, which their plugins unpack under their data folders
+      # on first use, because the runtimes' deepest files would pass Windows' path length limit below the install folder.
       - name: Check that the installer bundles Blender
+        if: env.WASD_BLENDER_BUNDLE != '0'
         run: |
           $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-blender/runtime/win32-x64'
           $record = Join-Path $folder 'archive.json'
@@ -125,6 +182,64 @@ jobs:
           $file = Join-Path $folder $archive.archive
           if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -ne $archive.bytes) { throw "The packaged app's Blender archive $file is missing or has the wrong size" }
           $archive.runtime | Select-Object version, bpy, python, executable | Format-List
+
+      # Unpacks the archive with Windows' own tar.exe into a data folder whose path holds characters outside ASCII, as
+      # the GIMP plugin does on first use, and runs gimp-console there as the plugin runs it.
+      - name: Check and smoke-test the GIMP runtime that the installer bundles
+        if: env.WASD_GIMP_BUNDLE != '0'
+        timeout-minutes: 15
+        run: |
+          $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-gimp/runtime/win32-x64'
+          $record = Join-Path $folder 'archive.json'
+          if (-not (Test-Path -LiteralPath $record -PathType Leaf)) { throw "The packaged app has no GIMP runtime archive at $folder" }
+          $archive = Get-Content -Raw $record | ConvertFrom-Json
+          $file = Join-Path $folder $archive.archive
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -ne $archive.bytes) { throw "The packaged app's GIMP archive $file is missing or has the wrong size" }
+          $archive.runtime | Select-Object version, gimp, console | Format-List
+          $data = Join-Path $env:RUNNER_TEMP 'gimp-ü-游戏'
+          $unpacked = Join-Path $data "runtime/$($archive.runtime.version)"
+          New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
+          & "$env:SystemRoot\System32\tar.exe" -xzf (Resolve-Path -LiteralPath $file) -C $unpacked
+          if ($LASTEXITCODE -ne 0) { throw "tar.exe could not unpack $file" }
+          python -I wasdengine/gimp/smoke.py --runtime $unpacked --work (Join-Path $data 'work')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Check and smoke-test the SuperCollider runtime that the installer bundles
+        if: env.WASD_SUPERCOLLIDER_BUNDLE != '0'
+        timeout-minutes: 10
+        run: |
+          $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-supercollider/runtime/win32-x64'
+          $runtime = Join-Path $folder 'runtime.json'
+          if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no SuperCollider runtime at $folder" }
+          Get-Content -Raw $runtime | ConvertFrom-Json | Select-Object version, supercollider, sclang, scsynth | Format-List
+          python -I wasdengine/supercollider/smoke.py --runtime (Resolve-Path -LiteralPath $folder) --work (Join-Path $env:RUNNER_TEMP 'supercollider-ü-游戏')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The end-to-end suites run the GIMP worker and the SuperCollider bridge and worker class through their tools,
+      # as the app's MCP servers do, against the runtimes that the installer holds, which they find in the checkout's
+      # plugin packages; the GIMP suite unpacks the archive under its data folder first, as the plugin does.
+      - name: Run the GIMP and SuperCollider tools against the bundled runtimes
+        if: env.WASD_GIMP_BUNDLE != '0' || env.WASD_SUPERCOLLIDER_BUNDLE != '0'
+        timeout-minutes: 30
+        run: |
+          $unpacked = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai'
+          $suites = @()
+          foreach ($tool in 'gimp', 'supercollider') {
+            $shipped = "$unpacked/dsh-$tool/runtime/win32-x64"
+            if (-not (Test-Path -LiteralPath $shipped)) { continue }
+            New-Item -ItemType Directory -Force -Path "packages/gamedev/$tool/runtime" | Out-Null
+            Copy-Item -Recurse -LiteralPath $shipped -Destination "packages/gamedev/$tool/runtime/win32-x64"
+            $suites += "packages/gamedev/$tool/tests/$tool-worker.e2e.ts"
+          }
+          $report = Join-Path $env:RUNNER_TEMP 'e2e-report.json'
+          pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --reporter=json --outputFile.json=$report @suites
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # A suite skips its tests when it finds no runtime, which would pass silently.
+          foreach ($result in (Get-Content -Raw $report | ConvertFrom-Json).testResults) {
+            $passed = @($result.assertionResults | Where-Object { $_.status -eq 'passed' }).Count
+            if ($passed -eq 0) { throw "$($result.name) ran no test: it found no runtime" }
+            Write-Output "$($result.name): $passed tests passed"
+          }
 
       - name: Keep the packaging logs
         if: always()
@@ -137,7 +252,18 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Keep the test installer
+        if: env.RELEASE_TAG == ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-test-installer-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
       - name: Upload the installer to the release
+        if: env.RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-github-release.ts upload win-x64 --unsigned

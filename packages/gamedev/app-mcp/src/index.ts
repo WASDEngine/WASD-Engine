@@ -11,8 +11,9 @@
  * per calling Session, which the Host's MCP client names in each call, as many as `processLimit` allows the
  * computer's memory and processors, and starts none while the computer has too little memory available
  * (`memoryShortage`). The setup host and tool helpers carry
- * what the application servers share, and `readShippedRuntime` reads a runtime that the Desktop app ships in a
- * plugin package. `materializePayload` copies a shipped
+ * what the application servers share; `readShippedRuntime` reads a runtime that the Desktop app ships in a
+ * plugin package, and `readPackedRuntime` with `unpackPackedRuntime` one that it ships as an archive, which a
+ * server unpacks under its data folder on first use. `materializePayload` copies a shipped
  * file, possibly inside `app.asar`, to a real path. This is a library: it
  * exports no plugin.
  *
@@ -102,12 +103,15 @@ export { registerAppMcpPlugin } from './plugin.ts'
 export type { AppMcpPlugin, AppMcpPluginConfig } from './plugin.ts'
 export { AppServerOptionFields, TOOL_CALL_RESERVE_MS, decodeServerOptions, encodeServerOptions, parseAppServerOptions } from './options.ts'
 export type { AppServerOptions } from './options.ts'
-export { firstExecutable, newestFirst, nodeSetupHost } from './setup-host.ts'
-export type { CommandArgv, SetupHost } from './setup-host.ts'
+export { firstExecutable, newestFirst, nodeSetupHost, runCommand } from './setup-host.ts'
+export type { CommandArgv, CommandOptions, CommandResult, SetupHost } from './setup-host.ts'
 export {
-  ShippedRuntimeFields, ShippedRuntimePath, nodeShippedRuntimeHost, readPackedRuntime, readShippedRuntime, shippedRuntimeRoot,
+  ShippedRuntimeFields, ShippedRuntimePath, findOnPath, findTar, moveIntoPlace, nodeRuntimeUnpackHost, nodeShippedRuntimeHost,
+  readPackedRuntime, readShippedRuntime, shippedRuntimeRoot, unpackPackedRuntime, unpackedRuntimeDirectory,
 } from './shipped-runtime.ts'
-export type { PackedRuntime, ShippedRuntime, ShippedRuntimeHost } from './shipped-runtime.ts'
+export type {
+  PackedRuntime, RuntimeUnpackFailures, RuntimeUnpackHost, ShippedRuntime, ShippedRuntimeHost, UnpackedRuntime,
+} from './shipped-runtime.ts'
 export {
   WorkerReplyError, defineAppTool, executePythonTool, formatBytes, replyParser, withSetupNotes, workerParams,
 } from './tools.ts'

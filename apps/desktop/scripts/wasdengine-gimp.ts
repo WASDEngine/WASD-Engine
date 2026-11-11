@@ -3,8 +3,10 @@
  * Before `prepare-dsh.ts` signs the prepared dsh tree and writes its runtime descriptor, `stageGimpRuntime` puts the
  * runtime of the packaged platform into `@deepseek-ai/dsh-gimp`'s `runtime/<platform>-<arch>/` folder, where the GIMP
  * plugin looks for it, and `applyWasdengineGimp` in `wasdengine-builder-config.mjs` keeps that folder outside
- * `app.asar`. The `sign:dsh-native` step then signs gimp-console, GIMP's libraries and plug-ins, and its Python with
- * the other Mach-O files of the tree.
+ * `app.asar`. On macOS, the `sign:dsh-native` step then signs gimp-console, GIMP's libraries and plug-ins, and its
+ * Python with the other Mach-O files of the tree. On Windows, whose path length limit the deepest runtime files would
+ * pass below the app's install folder, the folder holds the checked archive and its `archive.json`, and the plugin
+ * unpacks the archive under its data folder on first use.
  *
  * The runtime comes from the release manifest that `.github/workflows/wasd-gimp.yml` publishes, or from a
  * `wasdengine/gimp/build.sh --out` folder. The archive must match the manifest's size and SHA-256, and its
@@ -80,6 +82,7 @@ const GIMP: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
     return [record.console]
   },
   describe: manifest => `GIMP runtime ${manifest.version} (GIMP ${manifest.gimp})`,
+  shipsArchive: target => target.platform === 'win32',
 }
 
 /**
@@ -88,7 +91,8 @@ const GIMP: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
  * @param target - Packaged platform and architecture.
  * @param env - Environment that selects the runtime source.
  * @returns The shipped runtime, or undefined when `WASD_GIMP_BUNDLE=0` or the manifest has no build for the target, in
- * which case the plugin uses a GIMP 3 installed on the user's machine.
+ * which case the plugin uses a GIMP 3 installed on the user's machine. For Windows, its folder holds the archive and
+ * `archive.json`.
  * @throws When the manifest cannot be read, the tree has no GIMP plugin package, or the archive or its files fail
  * verification.
  */
