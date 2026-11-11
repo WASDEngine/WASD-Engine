@@ -116,7 +116,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 1. 下载 `runtimeManifestUrl`，并要求其 `version` 等于 `runtimeVersion`；
 2. 为宿主的 `<platform>-<arch>` 键（例如 `darwin-arm64`）选择产物；
 3. 从产物的 `url`（相对于 manifest URL 解析）下载归档，并在接收过程中校验其大小和 SHA-256；
-4. 用 `tar` 把归档解压到暂存文件夹，确认 runner 与库都在其中，并写入 `runtime.json`；
+4. 用 `tar` 把归档解压到暂存文件夹：`tar` 在该文件夹中运行，唯一的路径参数是 `../<归档名>`，因为 Windows 的 `tar.exe` 以 ANSI 代码页读取参数，而 ANSI 代码页无法容纳用户配置文件夹路径中的所有字符；确认 runner 与库都在其中；并写入 `runtime.json`；
 5. 在文件锁保护下把暂存文件夹重命名为 `<dataRoot>/runtime/<runtimeVersion>/`；如果另一个宿主进程在此期间已安装该运行时，则保留那一份。
 
 安装期间，每个“游戏”标签页都会显示带百分比的“正在下载 Godot”，随后显示“正在校验 Godot”和“正在解压 Godot”。第二个请求会加入正在进行的安装；关闭标签页只会停止它的等待，卸载插件则会取消安装。无论成功还是失败，下载文件和暂存文件都会被删除；失败时会显示原因：manifest 无法访问或其 HTTP 状态、manifest 无效或属于其他版本、没有对应平台的构建、下载出错、大小或 SHA-256 不匹配，或归档中缺少运行时文件。`wasdengine/libgodot/build.sh --install <dataRoot>` 会把本地构建安装到同一位置。
