@@ -7,7 +7,8 @@
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
  * for one, the game tool rows and the row of their Game tools tabs must mount from web-app dependencies, each tool
  * package must resolve the title, description, and logo the tabs show, and the `gamedev` preset must be the default
- * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root.
+ * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root,
+ * whose skills the `skill` tool returns within the tool-result pruner threshold.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -16,11 +17,15 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import * as yaml from 'js-yaml'
 import { describe, expect, it } from 'vitest'
+import { Context } from '@deepseek-ai/cordis'
 import type { PatchOptions } from '@deepseek-ai/cordis-plugin-include'
 import { evaluate, isJsExpr, type EntryOptions } from '@deepseek-ai/cordis-plugin-loader'
 import { bundlePatchPaths, composeEntries, loadOverlayPatches, readPluginMeta } from '@deepseek-ai/dsh-app-boot'
+import { codePointLength, DEFAULTS as PRUNER_DEFAULTS } from '@deepseek-ai/dsh-compaction-tool-result-pruner'
 import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } from '@deepseek-ai/dsh-launch-environment'
 import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
+import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
+import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = resolve(webAppDir, '../../..')
@@ -58,6 +63,12 @@ const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins'
 
 /** Bundled skills shipped under `wasdengine/skills`. */
 const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
+
+/**
+ * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's
+ * directory, so the length of this path counts toward the result that reaches the model.
+ */
+const INSTALLED_SKILL_ROOT = '/Applications/WASD Engine.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/wasdengine/skills'
 
 /** Production Platform origin when no trusted environment layer sets WASDENGINE_ORIGIN. */
 const PLATFORM_ORIGIN = 'https://app.wasdengine.com'
@@ -599,8 +610,6 @@ describe('gamedev preset', () => {
       const file = join(String(root), skill, 'SKILL.md')
       expect(existsSync(file), file).toBe(true)
       const text = readFileSync(file, 'utf8')
-      // The preset's tool-result pruner trims longer skill bodies.
-      expect(text.length, `${skill} length`).toBeLessThan(8192)
       expect(text, skill).not.toMatch(/\{\{|\}\}/u)
       const frontmatter = /^---\n([\s\S]*?)\n---\n/u.exec(text)?.[1] ?? ''
       expect(/^name: (.+)$/mu.exec(frontmatter)?.[1], `${skill} name`).toBe(skill)
@@ -609,6 +618,23 @@ describe('gamedev preset', () => {
       expect(description.length, `${skill} description`).toBeGreaterThan(0)
       expect(description.length, `${skill} description`).toBeLessThanOrEqual(500)
       expect(description, `${skill} description`).not.toMatch(/: | #/u)
+    }
+  })
+
+  it('returns each bundled skill from the installed macOS app within the tool-result pruner threshold', async (test) => {
+    const pruner = configOf(rowsOf(gameRow('compaction').config).find(entry => entry.id === 'tool-result-pruner'))
+    const threshold = typeof pruner.thresholdChars === 'number' ? pruner.thresholdChars : PRUNER_DEFAULTS.thresholdChars
+    const ctx = new Context()
+    test.onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(SkillRegistry)
+    await ctx.plugin(SkillFileSystem, { includeDefaultRoots: false, watch: false, bundledSkillDir: join(webAppDir, 'wasdengine', 'skills') })
+    for (const skill of SKILLS) {
+      const loaded = await ctx.skills.get(skill)
+      if (loaded === undefined) throw new Error(`${skill} did not load from the bundled skill root`)
+      expect(loaded.resourceBase?.kind, skill).toBe('directory')
+      const result = renderSkillContent({ ...loaded, resourceBase: { kind: 'directory', path: `${INSTALLED_SKILL_ROOT}/${skill}` } })
+      // The pruner trims only a result longer than the threshold.
+      expect(codePointLength(result), `${skill} skill tool result`).toBeLessThanOrEqual(threshold)
     }
   })
 
