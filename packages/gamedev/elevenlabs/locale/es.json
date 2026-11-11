@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ElevenLabs",
+    "description": "Permite que el agente cree voces de personajes, efectos de sonido y música con ElevenLabs y los guarde en el proyecto del juego, con el uso de IA de tu plan de WASD Engine."
+  }
+}

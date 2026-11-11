@@ -44,10 +44,14 @@ const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
 /** The game tool rows the fork inserts into every Web and Desktop profile, by row id, with the package each mounts. */
 const GAME_TOOLS: Readonly<Record<string, string>> = {
   blender: '@deepseek-ai/dsh-blender',
+  elevenlabs: '@deepseek-ai/dsh-elevenlabs',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
   supercollider: '@deepseek-ai/dsh-supercollider',
 }
+
+/** The game tool row that runs no application: ElevenLabs, whose audio the WASDEngine API makes and charges. */
+const ELEVENLABS = 'elevenlabs'
 
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
 const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
@@ -331,7 +335,7 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).dependencies?.[GAME_MCP_UI.name]).toBe('workspace:*')
   })
 
-  it('mounts each game tool from a web-app dependency with its own directory under the harness home', () => {
+  it('mounts each game tool from a web-app dependency, the application tools with their own directory under the harness home', () => {
     const inserted = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? [])
       .filter(entry => Object.hasOwn(GAME_TOOLS, entry.id))
     expect(inserted.map(entry => entry.id)).toEqual(Object.keys(GAME_TOOLS))
@@ -339,10 +343,18 @@ describe('WASDEngine overlay', () => {
     for (const entry of inserted) {
       const id = entry.id
       expect(entry.name, `${id} package`).toBe(GAME_TOOLS[id])
+      expect(entry.disabled, `${id} is on`).toBeUndefined()
       expect(dependencies[entry.name], `${id} is a web-app dependency`).toBe('workspace:*')
+      if (id === ELEVENLABS) {
+        // The account sign-in releases its token only to the inference origin, so the audio goes there.
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['apiOrigin'])
+        expect(expression(configOf(entry).apiOrigin, `${id}.apiOrigin`), `${id}.apiOrigin`).toBe(api)
+        continue
+      }
       expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
       expect(expression(configOf(entry).dataRoot, `${id}.dataRoot`), `${id}.dataRoot`).toBe(`dshHomePath('${id}')`)
     }
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[ELEVENLABS] ?? ''), 'the Plugins page can switch ElevenLabs off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {

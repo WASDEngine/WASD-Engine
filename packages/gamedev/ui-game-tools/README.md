@@ -1,5 +1,5 @@
 ---
-description: "Game tools tabs of the WASD Engine Web UI, in Settings › Built-in plugins and on the Plugins page, for maintainers changing how Blender, GIMP, Godot, and SuperCollider appear there with their logos and Loader state, or debugging the switch that turns a tool off or on in the profile patch."
+description: "Game tools tabs of the WASD Engine Web UI, in Settings › Built-in plugins and on the Plugins page, for maintainers changing how Blender, ElevenLabs, GIMP, Godot, and SuperCollider appear there with their logos and Loader state, or debugging the switch that turns a tool off or on in the profile patch."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, GIMP, Godot, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems.
+See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, ElevenLabs, GIMP, Godot, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ See and switch the agent's game tools where plugins are listed. Settings › Bui
 <a id="use-this-package"></a>
 ## Use this package
 
-Open **Settings** › **Built-in plugins** to see the game tools; the section starts on the **Game tools** tab. To turn a tool off or on, open **Plugins** in the sidebar and select **Game tools**. Both tabs list Blender, GIMP, Godot, and SuperCollider in that order and mark a tool that the profile does not mount.
+Open **Settings** › **Built-in plugins** to see the game tools; the section starts on the **Game tools** tab. To turn a tool off or on, open **Plugins** in the sidebar and select **Game tools**. Both tabs list Blender, ElevenLabs, GIMP, Godot, and SuperCollider in that order and mark a tool that the profile does not mount.
 
 ### Default composition
 
@@ -107,7 +107,7 @@ None; this package neither assembles nor sends a provider request.
 These limits define what the tabs show and when; they are current package constraints.
 
 - **Three fixed tools** — the tabs list the packages in `GAME_TOOL_MODULES`; a tool row added to the overlay appears in the tabs only after its package joins that list, and the overlay drift spec fails until both agree.
-- **Loader state only** — a card shows whether its row is enabled, loading, or failed, not whether the tool's application is set up, such as Blender's `bpy` environment, GIMP 3, the LibGodot runtime, or SuperCollider; the tools' results and the Game tab report those.
+- **Loader state only** — a card shows whether its row is enabled, loading, or failed, not whether the tool's application is set up, such as Blender's `bpy` environment, GIMP 3, the LibGodot runtime, SuperCollider, or the WASD Engine sign-in that ElevenLabs needs; the tools' results and the Game tab report those.
 - **One Settings read per mount or retry** — the Settings tab does not follow later changes while it stays mounted; reopening Settings reads again.
 - **Unannounced profile edits** — the plugin manager announces no change for a hand edit of the profile patch, which HMR applies, so the Plugins page tab shows it only when the tab mounts again; the tab has no Refresh control, and the page hides its own while a contributed tab is open.
 - **No logos in the Plugin list** — the Plugin list tab of Built-in plugins still shows the three tools without logos, among the global plugins, which start folded.

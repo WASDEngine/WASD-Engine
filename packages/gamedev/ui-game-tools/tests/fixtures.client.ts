@@ -1,4 +1,4 @@
-/** Host answers the Game tools specs share: the four tool entries as the inventory and the plugin manager list them. */
+/** Host answers the Game tools specs share: the five tool entries as the inventory and the plugin manager list them. */
 import type {
   ChangeResult, PluginEntryId, PluginInfo, PluginInventorySnapshot, RemoteResult,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -28,6 +28,16 @@ export const BLENDER: PluginInfo = {
     description: { en: 'Build 3D models.', zh: '构建 3D 模型。' },
     icon: BLENDER_ICON,
   },
+}
+
+/** ElevenLabs running, switchable through its patch row, with a package that declares no icon. */
+export const ELEVENLABS: PluginInfo = {
+  entryId: entryId('elevenlabs'),
+  moduleName: '@deepseek-ai/dsh-elevenlabs',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'elevenlabs',
+  meta: { title: 'ElevenLabs', description: 'Make voices, sound effects, and music.' },
 }
 
 /** GIMP switched off in the profile patch. */
@@ -76,7 +86,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GIMP, GODOT, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -87,7 +97,9 @@ export function inventory(
  * @param entries - the Loader entries.
  * @returns the successful answer.
  */
-export function plugins(entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER]): RemoteResult<PluginInfo[]> {
+export function plugins(
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GIMP, GODOT, SUPERCOLLIDER],
+): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }
 

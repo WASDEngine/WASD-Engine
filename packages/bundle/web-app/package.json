@@ -209,6 +209,7 @@
     "@deepseek-ai/dsh-client-ui-context-menu": "workspace:*",
     "@deepseek-ai/dsh-client-ui-file-actions": "workspace:*",
     "@deepseek-ai/dsh-blender": "workspace:*",
+    "@deepseek-ai/dsh-elevenlabs": "workspace:*",
     "@deepseek-ai/dsh-gimp": "workspace:*",
     "@deepseek-ai/dsh-godot": "workspace:*",
     "@deepseek-ai/dsh-supercollider": "workspace:*",

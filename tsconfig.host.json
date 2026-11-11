@@ -580,6 +580,7 @@
     { "path": "./packages/gamedev/godot/tsconfig.host.json" },
     { "path": "./packages/gamedev/supercollider" },
     { "path": "./packages/gamedev/game-mcp" },
+    { "path": "./packages/gamedev/elevenlabs" },
     { "path": "./packages/gamedev/wasd-plugins/tsconfig.host.json" },
     { "path": "./packages/mcp/mcp-resources" },
     { "path": "./packages/host/directory-picker" },

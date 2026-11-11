@@ -7,8 +7,8 @@ export const NS = 'gameTools'
 /** English dictionary; its keys define {@link GameToolsLocaleKey}. */
 export const en = {
   tab: 'Game tools',
-  settingsIntro: 'The agent’s Blender, GIMP, Godot, and SuperCollider tools in this profile. Turn them on or off on the Plugins page.',
-  pluginsIntro: 'Turn the agent’s Blender, GIMP, Godot, and SuperCollider tools on or off in this profile.',
+  settingsIntro: 'The agent’s Blender, ElevenLabs, GIMP, Godot, and SuperCollider tools in this profile. Turn them on or off on the Plugins page.',
+  pluginsIntro: 'Turn the agent’s Blender, ElevenLabs, GIMP, Godot, and SuperCollider tools on or off in this profile.',
   loading: 'Reading game tools…',
   error: 'Could not read the game tools.',
   denied: 'Only the owner can see the game tools.',
@@ -54,8 +54,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
 /** Simplified Chinese dictionary. */
 export const zh = {
   tab: '游戏工具',
-  settingsIntro: '智能体在当前 profile 中使用的 Blender、GIMP、Godot 和 SuperCollider 工具。可在“插件”页面开启或关闭它们。',
-  pluginsIntro: '开启或关闭智能体在当前 profile 中使用的 Blender、GIMP、Godot 和 SuperCollider 工具。',
+  settingsIntro: '智能体在当前 profile 中使用的 Blender、ElevenLabs、GIMP、Godot 和 SuperCollider 工具。可在“插件”页面开启或关闭它们。',
+  pluginsIntro: '开启或关闭智能体在当前 profile 中使用的 Blender、ElevenLabs、GIMP、Godot 和 SuperCollider 工具。',
   loading: '正在读取游戏工具…',
   error: '无法读取游戏工具',
   denied: '只有所有者可以查看游戏工具',
@@ -91,8 +91,8 @@ export const zh = {
 /** Japanese dictionary. */
 export const ja = {
   tab: 'ゲームツール',
-  settingsIntro: 'このプロファイルでエージェントが使う Blender、GIMP、Godot、SuperCollider のツールです。オン・オフはプラグインページで切り替えます。',
-  pluginsIntro: 'このプロファイルでエージェントが使う Blender、GIMP、Godot、SuperCollider のツールをオン・オフします。',
+  settingsIntro: 'このプロファイルでエージェントが使う Blender、ElevenLabs、GIMP、Godot、SuperCollider のツールです。オン・オフはプラグインページで切り替えます。',
+  pluginsIntro: 'このプロファイルでエージェントが使う Blender、ElevenLabs、GIMP、Godot、SuperCollider のツールをオン・オフします。',
   loading: 'ゲームツールを読み込み中…',
   error: 'ゲームツールを読み込めませんでした。',
   denied: 'ゲームツールはオーナーだけが表示できます。',
@@ -128,8 +128,8 @@ export const ja = {
 /** Spanish dictionary. */
 export const es = {
   tab: 'Herramientas de juego',
-  settingsIntro: 'Las herramientas de Blender, GIMP, Godot y SuperCollider que usa el agente en este perfil. Actívelas o desactívelas en la página Complementos.',
-  pluginsIntro: 'Active o desactive las herramientas de Blender, GIMP, Godot y SuperCollider que usa el agente en este perfil.',
+  settingsIntro: 'Las herramientas de Blender, ElevenLabs, GIMP, Godot y SuperCollider que usa el agente en este perfil. Actívelas o desactívelas en la página Complementos.',
+  pluginsIntro: 'Active o desactive las herramientas de Blender, ElevenLabs, GIMP, Godot y SuperCollider que usa el agente en este perfil.',
   loading: 'Leyendo las herramientas de juego…',
   error: 'No se pudieron leer las herramientas de juego.',
   denied: 'Solo el propietario puede ver las herramientas de juego.',
@@ -165,8 +165,8 @@ export const es = {
 /** French dictionary. */
 export const fr = {
   tab: 'Outils de jeu',
-  settingsIntro: 'Les outils Blender, GIMP, Godot et SuperCollider que l’agent utilise dans ce profil. Activez-les ou désactivez-les sur la page Plugins.',
-  pluginsIntro: 'Activez ou désactivez les outils Blender, GIMP, Godot et SuperCollider que l’agent utilise dans ce profil.',
+  settingsIntro: 'Les outils Blender, ElevenLabs, GIMP, Godot et SuperCollider que l’agent utilise dans ce profil. Activez-les ou désactivez-les sur la page Plugins.',
+  pluginsIntro: 'Activez ou désactivez les outils Blender, ElevenLabs, GIMP, Godot et SuperCollider que l’agent utilise dans ce profil.',
   loading: 'Lecture des outils de jeu…',
   error: 'Impossible de lire les outils de jeu.',
   denied: 'Seul le propriétaire peut voir les outils de jeu.',
@@ -202,8 +202,8 @@ export const fr = {
 /** German dictionary. */
 export const de = {
   tab: 'Spielwerkzeuge',
-  settingsIntro: 'Die Blender-, GIMP-, Godot- und SuperCollider-Werkzeuge, die der Agent in diesem Profil verwendet. Schalten Sie sie auf der Seite „Plugins“ ein oder aus.',
-  pluginsIntro: 'Schalten Sie die Blender-, GIMP-, Godot- und SuperCollider-Werkzeuge, die der Agent in diesem Profil verwendet, ein oder aus.',
+  settingsIntro: 'Die Blender-, ElevenLabs-, GIMP-, Godot- und SuperCollider-Werkzeuge, die der Agent in diesem Profil verwendet. Schalten Sie sie auf der Seite „Plugins“ ein oder aus.',
+  pluginsIntro: 'Schalten Sie die Blender-, ElevenLabs-, GIMP-, Godot- und SuperCollider-Werkzeuge, die der Agent in diesem Profil verwendet, ein oder aus.',
   loading: 'Spielwerkzeuge werden gelesen…',
   error: 'Die Spielwerkzeuge konnten nicht gelesen werden.',
   denied: 'Nur der Eigentümer kann die Spielwerkzeuge sehen.',
@@ -239,8 +239,8 @@ export const de = {
 /** Russian dictionary. */
 export const ru = {
   tab: 'Игровые инструменты',
-  settingsIntro: 'Инструменты Blender, GIMP, Godot и SuperCollider, которыми агент пользуется в этом профиле. Включайте и выключайте их на странице «Плагины».',
-  pluginsIntro: 'Включайте и выключайте инструменты Blender, GIMP, Godot и SuperCollider, которыми агент пользуется в этом профиле.',
+  settingsIntro: 'Инструменты Blender, ElevenLabs, GIMP, Godot и SuperCollider, которыми агент пользуется в этом профиле. Включайте и выключайте их на странице «Плагины».',
+  pluginsIntro: 'Включайте и выключайте инструменты Blender, ElevenLabs, GIMP, Godot и SuperCollider, которыми агент пользуется в этом профиле.',
   loading: 'Чтение игровых инструментов…',
   error: 'Не удалось прочитать игровые инструменты.',
   denied: 'Игровые инструменты может видеть только владелец.',
@@ -276,8 +276,8 @@ export const ru = {
 /** Portuguese dictionary. */
 export const pt = {
   tab: 'Ferramentas de jogo',
-  settingsIntro: 'As ferramentas Blender, GIMP, Godot e SuperCollider que o agente usa neste perfil. Ative ou desative-as na página Plug-ins.',
-  pluginsIntro: 'Ative ou desative as ferramentas Blender, GIMP, Godot e SuperCollider que o agente usa neste perfil.',
+  settingsIntro: 'As ferramentas Blender, ElevenLabs, GIMP, Godot e SuperCollider que o agente usa neste perfil. Ative ou desative-as na página Plug-ins.',
+  pluginsIntro: 'Ative ou desative as ferramentas Blender, ElevenLabs, GIMP, Godot e SuperCollider que o agente usa neste perfil.',
   loading: 'Lendo as ferramentas de jogo…',
   error: 'Não foi possível ler as ferramentas de jogo.',
   denied: 'Somente o proprietário pode ver as ferramentas de jogo.',

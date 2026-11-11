@@ -11,7 +11,7 @@ import type {
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { GameToolsController, type GameToolsState } from '../src/client/controller.ts'
-import { BLENDER, change, entryId, failed, GIMP, GODOT, inventory, OTHER, plugins, SUPERCOLLIDER } from './fixtures.client.ts'
+import { BLENDER, change, ELEVENLABS, entryId, failed, GIMP, GODOT, inventory, OTHER, plugins, SUPERCOLLIDER } from './fixtures.client.ts'
 
 function bench() {
   const ctx = new Context()
@@ -51,6 +51,7 @@ describe('GameToolsController reads', () => {
       managed: true,
       tools: [
         { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
+        { moduleName: ELEVENLABS.moduleName, entry: ELEVENLABS, control: { kind: 'switch' } },
         { moduleName: GIMP.moduleName, entry: GIMP, control: { kind: 'switch' } },
         { moduleName: GODOT.moduleName, entry: GODOT, control: { kind: 'switch' } },
         { moduleName: SUPERCOLLIDER.moduleName, entry: SUPERCOLLIDER, control: { kind: 'switch' } },
@@ -70,7 +71,8 @@ describe('GameToolsController reads', () => {
     b.listPlugins.mockResolvedValue(plugins([BLENDER, GIMP, { ...GODOT, enabled: false }]))
     b.face.load()
     expect(b.state().snapshot).toBe(shown)
-    await vi.waitFor(() => { expect(b.state().snapshot?.tools[2]?.entry?.enabled).toBe(false) })
+    const godot = () => b.state().snapshot?.tools.find(tool => tool.moduleName === GODOT.moduleName)
+    await vi.waitFor(() => { expect(godot()?.entry?.enabled).toBe(false) })
     expect(b.list).toHaveBeenCalledTimes(2)
   })
 
@@ -84,6 +86,7 @@ describe('GameToolsController reads', () => {
       managed: false,
       tools: [
         { moduleName: BLENDER.moduleName, entry: undefined },
+        { moduleName: ELEVENLABS.moduleName, entry: undefined },
         { moduleName: GIMP.moduleName, entry: undefined },
         { moduleName: GODOT.moduleName, entry: GODOT },
         { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
@@ -101,6 +104,7 @@ describe('GameToolsController reads', () => {
     await vi.waitFor(() => { expect(b.state().snapshot).not.toBeNull() })
     expect(b.state().snapshot?.tools).toEqual([
       { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
+      { moduleName: ELEVENLABS.moduleName, entry: undefined },
       { moduleName: GIMP.moduleName, entry: undefined },
       { moduleName: GODOT.moduleName, entry: locked, control: { kind: 'locked', reason: 'unaddressable' } },
       { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
@@ -222,7 +226,8 @@ describe('GameToolsController switch writes', () => {
       expect(notice).toBeNull()
       return
     }
-    expect(notice).toEqual({ ...outcome, tool: b.state().snapshot?.tools[1], enabled: true, seq: 1 })
+    const gimp = b.state().snapshot?.tools.find(tool => tool.moduleName === GIMP.moduleName)
+    expect(notice).toEqual({ ...outcome, tool: gimp, enabled: true, seq: 1 })
     b.notices.dismissNotice()
     expect(b.state().notice).toBeNull()
   })
