@@ -95,6 +95,7 @@
     { "path": "./packages/experimental/client-ui-forge/tsconfig.client.json" },
     { "path": "./packages/gamedev/godot/tsconfig.client.json" },
     { "path": "./packages/gamedev/ui-game-tools" },
+    { "path": "./packages/gamedev/ui-game-assets" },
     { "path": "./packages/gamedev/ui-game-mcp" },
     { "path": "./packages/gamedev/wasd-plugins/tsconfig.client.json" },
     { "path": "./packages/client/hmr" },

@@ -1,0 +1,50 @@
+/* The viewer's states inside the tab's stage, and the Blender export notice above its model. */
+.centered {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px;
+  color: var(--dsw-alias-label-secondary);
+  text-align: center;
+}
+
+.message {
+  max-width: 320px;
+  margin: 0;
+  font: var(--dsw-font-xxs-12);
+}
+
+.column {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.notice {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 6px 5px 12px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  background: var(--dsw-alias-bg-base);
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.noticeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The action keeps its label on one line; the sentence beside it wraps. */
+.noticeAction {
+  flex: none;
+  white-space: nowrap;
+}

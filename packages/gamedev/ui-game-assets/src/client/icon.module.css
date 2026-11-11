@@ -1,0 +1,5 @@
+/* The 3D model file glyph's body color; image rows use the shared image glyph's violet. */
+.model {
+  flex: none;
+  color: var(--dsw-static-blue-450);
+}

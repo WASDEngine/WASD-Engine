@@ -5,8 +5,9 @@
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
  * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
- * for one, the game tool rows and the row of their Game tools tabs must mount from web-app dependencies, each tool
- * package must resolve the title, description, and logo the tabs show, and the `gamedev` preset must be the default
+ * for one, the game tool rows, the row of their Game tools tabs, and the row of the Assets tab must mount from web-app
+ * dependencies, each tool package must resolve the title, description, and logo the tabs show, and the `gamedev`
+ * preset must be the default
  * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root,
  * whose skills the `skill` tool returns within the tool-result pruner threshold.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
@@ -52,7 +53,10 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
 const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
 
-/** The row the fork inserts after the tabs: the MCP server through which other agents on the computer use the game tools. */
+/** The row the fork inserts after the Game tools tabs: the right Sidebar's Assets tab, which shows the project's 2D and 3D art. */
+const GAME_ASSETS_UI = { id: 'ui-game-assets', name: '@deepseek-ai/dsh-client-ui-game-assets' } as const
+
+/** The row the fork inserts after the Assets tab: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
 
 /** The row the fork inserts after the MCP server: the browser half of the MCP server, the setup for another agent. */
@@ -294,10 +298,10 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/skills')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
   it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
@@ -351,6 +355,18 @@ describe('WASDEngine overlay', () => {
     expect(entry?.config).toBeUndefined()
     expect(entry?.disabled).toBeUndefined()
     expect(manifest(webAppDir).dependencies?.[GAME_TOOLS_UI.name]).toBe('workspace:*')
+  })
+
+  it('mounts the Assets tab from a web-app dependency by its bare package name, with its default caps', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_ASSETS_UI.id)
+    expect(entry?.name).toBe(GAME_ASSETS_UI.name)
+    expect(entry?.config).toBeUndefined()
+    expect(entry?.disabled).toBeUndefined()
+    expect(manifest(webAppDir).dependencies?.[GAME_ASSETS_UI.name]).toBe('workspace:*')
+    const meta = readPluginMeta(GAME_ASSETS_UI.name, pathToFileURL(join(webAppDir, 'package.json')).href)
+    expect(meta?.error).toBeUndefined()
+    const title = meta?.title
+    expect(typeof title === 'object' ? title.en : title).toBe('Assets tab')
   })
 
   it('resolves the title, description, and SVG logo the Game tools tabs show for each game tool', () => {

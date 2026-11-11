@@ -1,0 +1,58 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-assets/README.md
+/:
+  en: 1126be44dc7c6979
+  zh: be0d4d0469e2e7d9
+/deepseek-ai-dsh-client-ui-game-assets:
+  en: 7d66f29372891b8c
+  zh: 77f9c3bc78a3e805
+/deepseek-ai-dsh-client-ui-game-assets/summary:
+  en: 69f07dcd7507460f
+  zh: f1fd3ca509541c6b
+/deepseek-ai-dsh-client-ui-game-assets/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package:
+  en: 2eac94e3b6a31b91
+  zh: d89e3ba8d105b21e
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/default-composition:
+  en: 0b3e300dc547f6ec
+  zh: a1dc1c9daea67423
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/what-the-tab-lists:
+  en: eb9527d9b8c1d9be
+  zh: 7773eca1cf4f966e
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/picking-an-asset:
+  en: 64eb829aba840dcf
+  zh: 6f80046947951042
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/images:
+  en: f83d10e74c5149b3
+  zh: d921eabf0adb5929
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/models:
+  en: c09481def6f358e0
+  zh: 299be47028547c07
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/blender-files:
+  en: ce8c53c23c87db83
+  zh: 8a979276c7f54fee
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/failures:
+  en: b401148601c597ad
+  zh: 12d94ee0cc09a25e
+/deepseek-ai-dsh-client-ui-game-assets/understand-the-implementation:
+  en: ccfa5fd5bbfc7072
+  zh: 3672aff72b18edc4
+/deepseek-ai-dsh-client-ui-game-assets/further-exploration:
+  en: 38eb1526c3b23e34
+  zh: ef4ebdb3e1b0531d
+/deepseek-ai-dsh-client-ui-game-assets/model-experience:
+  en: 8479d6d6e6652825
+  zh: 379dc0899aa0f2ab
+/deepseek-ai-dsh-client-ui-game-assets/model-experience/kv-cache-effect:
+  en: ca75c51c89c2c9b0
+  zh: e6d410fef4af337e
+/deepseek-ai-dsh-client-ui-game-assets/known-limitations-and-deferred-work:
+  en: c34a9731156973f5
+  zh: 8ddfe3bca8487283
+/deepseek-ai-dsh-client-ui-game-assets/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

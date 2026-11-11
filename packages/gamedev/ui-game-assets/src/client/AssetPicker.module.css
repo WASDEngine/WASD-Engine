@@ -1,0 +1,307 @@
+/* The asset picker: the toolbar's trigger and the dropdown card portaled below it. */
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.trigger {
+  anchor-name: var(--dsh-asset-picker-anchor);
+  display: flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  outline: none;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .trigger:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  .row:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  .searchClear:hover,
+  .retry:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.trigger[aria-expanded='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.trigger:focus-visible {
+  box-shadow: 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+}
+
+.triggerName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.placeholder {
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* The folder gives way before the name loses a character. */
+.triggerFolder {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* The body portal escapes the pane's overflow; CSS anchors keep the card under its trigger, right edges aligned, at
+   least as wide as the trigger, and inside the window. */
+.menu {
+  box-sizing: border-box;
+  position: fixed;
+  position-anchor: var(--dsh-asset-picker-anchor);
+  top: calc(anchor(bottom) + 4px);
+  right: anchor(right);
+  bottom: 12px;
+  left: 12px;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  justify-self: end;
+  align-self: start;
+  width: max(anchor-size(width), min(320px, calc(100vw - 24px)));
+  max-width: calc(100vw - 24px);
+  height: fit-content;
+  max-height: 560px;
+  margin: 0;
+  padding: 4px;
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+}
+
+.searchRow {
+  position: relative;
+  flex-shrink: 0;
+  margin: 2px 0 4px;
+}
+
+.searchRow .search {
+  display: flex;
+  height: auto;
+  padding: 5px 7px;
+  background: transparent;
+  border: 0 solid transparent;
+  border-radius: var(--dsw-radius-md);
+}
+
+.searchRow .searchWithQuery {
+  padding-right: 34px;
+}
+
+.searchRow .search:focus-within {
+  border-color: transparent;
+}
+
+.searchRow .search input {
+  padding: 0;
+  font-size: 13px;
+  line-height: normal;
+}
+
+@media (pointer: coarse) {
+  .searchRow .search input {
+    font-size: 16px;
+  }
+}
+
+.searchRow .search input::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+.searchClear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  corner-shape: round;
+}
+
+.searchClear:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.filter {
+  flex-shrink: 0;
+  margin: 0 3px 4px;
+}
+
+.panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.rows:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* A folder row starts with its disclosure chevron; an asset row starts where its folder's name does. */
+.row {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  padding: 5px 7px 5px calc(7px + var(--dsh-asset-depth, 0) * 16px);
+  color: inherit;
+  font: var(--dsw-font-xs-13);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-md);
+  outline: none;
+  cursor: pointer;
+}
+
+.assetRow {
+  padding-left: calc(25px + var(--dsh-asset-depth, 0) * 16px);
+}
+
+.rowActive {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.rowCurrent,
+.rowCurrent.rowActive {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+.disclosure {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+  transition: transform 120ms ease;
+}
+
+.disclosureOpen {
+  transform: rotate(90deg);
+}
+
+.icon {
+  flex: 0 0 auto;
+}
+
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A search result's folder follows its name and gives way first. */
+.folder {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.note {
+  flex-shrink: 0;
+  padding: 6px 8px 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.failure {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 3px 0;
+  padding: 6px 7px;
+  color: var(--dsw-alias-state-error-primary);
+  font: var(--dsw-font-xxs-12);
+  background: var(--dsw-alias-interactive-bg-hover-danger);
+  border-radius: var(--dsw-radius-md);
+}
+
+.retry {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}

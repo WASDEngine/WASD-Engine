@@ -78,6 +78,8 @@
       "@deepseek-ai/dsh-godot/client": ["./packages/gamedev/godot/src/client/index.ts"],
       "@deepseek-ai/dsh-client-ui-game-tools": ["./packages/gamedev/ui-game-tools/src"],
       "@deepseek-ai/dsh-client-ui-game-tools/client": ["./packages/gamedev/ui-game-tools/src/client/index.ts"],
+      "@deepseek-ai/dsh-client-ui-game-assets": ["./packages/gamedev/ui-game-assets/src"],
+      "@deepseek-ai/dsh-client-ui-game-assets/client": ["./packages/gamedev/ui-game-assets/src/client/index.ts"],
       "@deepseek-ai/dsh-game-mcp/types": ["./packages/gamedev/game-mcp/src/types.ts"],
       "@deepseek-ai/dsh-client-ui-game-mcp": ["./packages/gamedev/ui-game-mcp/src"],
       "@deepseek-ai/dsh-client-ui-game-mcp/client": ["./packages/gamedev/ui-game-mcp/src/client/index.ts"],

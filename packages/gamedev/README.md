@@ -1,5 +1,5 @@
 ---
-description: "The game development package group: headless Blender, GIMP, and SuperCollider for the agent over MCP, Godot games run, tested, and played through LibGodot, the Game tools tabs that list them in Settings and on the Plugins page, and the MCP server that offers them to other agents on the computer."
+description: "The game development package group: headless Blender, GIMP, and SuperCollider for the agent over MCP, Godot games run, tested, and played through LibGodot, the Game tools tabs that list them in Settings and on the Plugins page, the Assets tab that shows the project's art, and the MCP server that offers them to other agents on the computer."
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The `gamedev/` group gives the agent the applications a game needs, without a window. Blender, GIMP, and SuperCollider each reach the agent as an MCP server whose worker runs the application headless; Godot runs the Session's game through LibGodot, returns screenshots, logs, and errors to the agent, takes its input, and streams the game to the Game tab, where the user plays it. Game tools tabs in Settings and on the Plugins page list the four; an MCP server offers them to other agents. The [game tools subsystem page](../../docs/subsystems/gamedev.md) describes how the pieces connect; package READMEs own configuration and limitations.
+The `gamedev/` group gives the agent the applications a game needs, without a window. Blender, GIMP, and SuperCollider each reach the agent as an MCP server whose worker runs the application headless; Godot runs the Session's game through LibGodot, returns screenshots, logs, and errors, takes the agent's input, and streams the game to the Game tab, where the user plays it. Game tools tabs list the four, an Assets tab shows the art they make, and an MCP server offers them to other agents. The [game tools subsystem page](../../docs/subsystems/gamedev.md) describes how the pieces connect; package READMEs own configuration and limitations.
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ The `gamedev/` group gives the agent the applications a game needs, without a wi
 <a id="packages"></a>
 ## Packages
 
-The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, and the game MCP package offers their tools to other agents of signed-in users, with its browser half's setup at the end of the Desktop introduction and in Settings. WASD Engine Plugins, which stays on, exports Godot games for the Web and releases them to the WASD Engine site with share links.
+The shared MCP runtime starts and supervises one headless worker per application; the Blender, GIMP, and SuperCollider packages build their tools on it, and the Godot package owns game runs, their tools, and the Game tab. The Game tools tabs package shows all four in Settings and on the Plugins page, the Assets tab package shows the project's 2D and 3D art beside the Game tab, and the game MCP package offers their tools to other agents of signed-in users, with its browser half's setup at the end of the Desktop introduction and in Settings. WASD Engine Plugins, which stays on, exports Godot games for the Web and releases them to the WASD Engine site with share links.
 
 | Package | What it provides |
 |---|---|
@@ -32,6 +32,7 @@ The shared MCP runtime starts and supervises one headless worker per application
 | [`gimp/`](gimp/README.md) | GIMP 3 tools over MCP, backed by `gimp-console` |
 | [`godot/`](godot/README.md) | Godot game runs through LibGodot: `godot_*` tools, the `godot` Remote, the frame route, and the Game tab |
 | [`supercollider/`](supercollider/README.md) | SuperCollider tools over MCP: sound and music rendered offline with scsynth from sclang code, with levels, loudness, and a waveform and spectrogram image for the agent; the Desktop app ships SuperCollider without its GUI |
+| [`ui-game-assets/`](ui-game-assets/README.md) | The right sidebar's Assets tab: the game project's images and models in a dropdown sorted into its folders, with search and an All / 2D / 3D filter, a zoomable image view, a three.js model view with animations, and Blender files shown through their exported models |
 | [`ui-game-mcp/`](ui-game-mcp/README.md) | The MCP server's browser half: Set up with another agent after sign-in, as the Desktop introduction's last step and the Other agents section of Settings, with the agents' logos, the setup prompt, and whether an agent connected, and the window opening the Session whose game a connected agent starts |
 | [`ui-game-tools/`](ui-game-tools/README.md) | The Game tools tabs of Settings › Built-in plugins and the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos and Loader state, and on the Plugins page a switch for each that turns its row off or on in the profile patch |
 | [`wasd-plugins/`](wasd-plugins/README.md) | WASD Engine Plugins, WASD Engine's own always-on features: the Web export and release tools of every Session and of the MCP server, which publish Godot games to the WASD Engine site as numbered versions with share links, the Release button in the Session header, and Explore Games in the sidebar |

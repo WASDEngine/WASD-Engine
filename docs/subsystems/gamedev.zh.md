@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的四个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个工具行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的四个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个工具行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -278,6 +278,19 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 在「插件」页面上，只要 Host 管理着 profile，profile 挂载的每个工具都有一个开关。开关以工具的 Loader 条目 id 调用 `pluginManager.setPluginEnabled`：关闭工具时把 `- id: <row>` 与 `disabled: true` 写入 profile patch，这也是用户可以手写的覆盖项；开启工具时删除不含其他内容的覆盖项。[插件管理器](../../packages/boot/plugin-manager/README.zh.md#use-this-package)随即应用更改，或报告更改需要重启后才生效，或报告更高优先级的 patch 覆盖了它。
 
 每个工具包都在 `package.json` 的 `icon` 字段中指向 `icon.svg`，因此 Host 的包元信息以 `data:image/svg+xml` URL 携带该文件。每个文件把对应产品的官方标志原样嵌入包图标所用的 36 × 36 画布；[Blender](../../packages/gamedev/blender/README.zh.md#plugin-icon)、[GIMP](../../packages/gamedev/gimp/README.zh.md#plugin-icon)、[Godot](../../packages/gamedev/godot/README.zh.md#plugin-icon) 与 [SuperCollider](../../packages/gamedev/supercollider/README.zh.md#plugin-icon) 的 README 为各标志署名，并说明其许可与商标条款。
+
+<a id="assets-tab"></a>
+## 「素材」标签页
+
+`ui-game-assets` 行挂载 [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `assets` 页面类型，其引导项顺序为 45，位于「游戏」标签页的引导项之后。它的主体显示 Session 所在游戏项目的 2D 与 3D 美术素材：一个按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表，下方是所选素材的视图。图片显示在可缩放的视图中；模型显示在 three.js 舞台上，可旋转、缩放、平移并播放其动画；Blender 文件显示项目中同名的模型，例如 Blender 工具导出的 GLB。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
+| 当前查看的文件 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
+| 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
+
+该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器

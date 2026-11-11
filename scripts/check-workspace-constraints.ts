@@ -271,6 +271,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-gimp': ['py/**/*.py'],
   '@deepseek-ai/dsh-godot': ['runtime/*.gd'],
   '@deepseek-ai/dsh-supercollider': ['sc/*.sc'],
+  // WASDEngine fork: the Assets tab loads three.js as a lazy client chunk (wasdengine/FORK.md).
+  '@deepseek-ai/dsh-client-ui-game-assets': ['lib/client.*.js'],
   // The headless entry and its startup row share the JSON projection code
   // through a hashed tsdown chunk; both import it by relative path.
   '@deepseek-ai/dsh-headless': ['lib/json-stream-*.js'],
