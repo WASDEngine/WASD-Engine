@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import type { AccountBonusNotification, AccountBonusOrderId, AccountDetails, AccountProfile, AccountUserId } from '@deepseek-ai/dsh-deepseek-account/types'
 import { AccountUnauthorizedError, PlatformAuthError, requestAccount, requestBonusNotified, requestUnnotifiedBonuses } from './protocol.ts'
+import { allowance, projectAllowance } from './wasdengine-allowance.ts'
 
 const user = z.object({
   id: z.string().nullish(),
@@ -14,7 +15,8 @@ const decimal = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
 const wallet = z.object({
   currency: z.enum(['CNY', 'USD']), balance: z.string().regex(decimal),
 })
-const summary = z.object({ normal_wallets: z.array(wallet), bonus_wallets: z.array(wallet) })
+// WASD Engine: the WASD Engine account service reports its allowance beside the wallets (wasdengine-allowance.ts).
+const summary = z.object({ normal_wallets: z.array(wallet), bonus_wallets: z.array(wallet), allowance })
 // Protocol responses are JSON-decoded; metadata keeps any JSON value without field validation.
 const bonusMetadata = z.custom<Exclude<AccountBonusNotification['campaign'], undefined>>().optional()
 const bonus = z.object({
@@ -63,7 +65,11 @@ const queries: { [K in keyof AccountDetails]: {
   }) },
   balance: { path: '/api/v0/users/get_user_summary', parse: (value) => {
     const parsed = accountPayload(summary, value, 'balance')
-    return { status: 'ready', value: parsed.normal_wallets, bonusWallets: parsed.bonus_wallets }
+    const { allowance: left } = parsed
+    return {
+      status: 'ready', value: parsed.normal_wallets, bonusWallets: parsed.bonus_wallets,
+      ...(left === undefined ? {} : { allowance: projectAllowance(left) }),
+    }
   } },
 }
 

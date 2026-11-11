@@ -52,7 +52,7 @@ The service defines account operations without maintaining a second credential i
 
 The [credentials subsystem](../../../docs/subsystems/credentials.md) owns storage APIs; the [architecture](../../../docs/architecture.md) explains application composition.
 
-A ready AccountDetails.balance keeps recharge wallets in value and bonus wallets in bonusWallets; both arrays preserve decimal strings and currency. Query failure supplies neither amount.
+A ready AccountDetails.balance keeps recharge wallets in value and bonus wallets in bonusWallets; both arrays preserve decimal strings and currency. Query failure supplies neither amount. On WASD Engine, a ready balance can also carry allowance, the AccountAllowance that the WASD Engine account service reports instead of a dollar balance: the whole percent of the plan's monthly AI usage left, rounded down, the exact share left, when it refreshes, the auto recharge credits left as the whole percent of what one recharge adds (creditsPercent, absent while none are left), and the auto recharge switch (autoRecharge: whether it is on, the whole US dollars each recharge charges, and why the last recharge failed), absent while the account cannot turn it on; on the Unlimited tier, which has no monthly limit, unlimited is true, everything counts as left, and neither credits nor the switch are reported. setAutoRecharge turns auto recharge on or off and returns an AccountAutoRechargeChange: whether it is on now, and, when turning it on needs a card, cardUrl, the account service's page that saves one, which the caller opens in the browser; it returns null while signed out or after the grant changed.
 
 <a id="model-experience"></a>
 ## Model Experience

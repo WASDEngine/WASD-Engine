@@ -3,7 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { isRunningAccountTask } from '@deepseek-ai/dsh-deepseek-account'
 import type {} from '@deepseek-ai/dsh-agent'
-import type { AccountBonusBatch, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountUserId } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { AccountAutoRechargeChange, AccountBonusBatch, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountUserId } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { AccountView, SignInAttemptId } from './types.ts'
 
 /** Account commands and reconnect-safe state stream. */
@@ -54,6 +54,16 @@ export class AccountController extends TypertRemoteService {
   @Remote
   ackBonusNotified(accountId: AccountUserId, orderId: AccountBonusOrderId, client: AccountClientMetadata): Promise<boolean> {
     return this.ctx.deepseekAccount.ackBonusNotified(accountId, orderId, client)
+  }
+  /**
+   * WASD Engine: turn the account's auto recharge on or off.
+   * @param enabled - whether auto recharge should be on.
+   * @param client - identity of the requesting UI; the Host derives Platform request headers from it.
+   * @returns the outcome, or null when the account grant is absent or changed.
+   */
+  @Remote
+  setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null> {
+    return this.ctx.deepseekAccount.setAutoRecharge(enabled, client)
   }
   /**
    * Begin browser sign-in.

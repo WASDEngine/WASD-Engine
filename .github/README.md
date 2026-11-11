@@ -100,7 +100,7 @@ To connect one, sign in to WASD Engine: the introduction that follows ends with 
 
 ## Plans
 
-| Free · $0/month | Pro · $10/month · coming soon | Max · $40/month · coming soon |
+| Free · $0/month | Pro · $10/month | Max · $40/month |
 |---|---|---|
 | Open source | Built-in game dev AI | 5x Pro AI usage |
 | Free AI credits for experimentation | Generous weekly usage limits | Highest weekly usage limits |

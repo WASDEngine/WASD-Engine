@@ -21,6 +21,7 @@ class Account extends DeepSeekAccount {
   override async getBalance() { return null }
   override async getUnnotifiedBonuses() { return null }
   override async ackBonusNotified() { return false }
+  override async setAutoRecharge() { return null }
   override async startSignIn() { return state }
   override async cancelSignIn() { return state }
   override async signOut() { return state }

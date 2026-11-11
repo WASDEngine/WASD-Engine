@@ -307,6 +307,15 @@ abstract getUnnotifiedBonuses(client: AccountClientMetadata): Promise<AccountBon
 abstract ackBonusNotified(accountId: AccountUserId, orderId: AccountBonusOrderId, client: AccountClientMetadata): Promise<boolean>
 
 /**
+ * WASD Engine: turn the account's auto recharge on or off, which the WASD Engine account service offers while a
+ * ready balance's allowance carries `autoRecharge`.
+ * @param enabled - whether auto recharge should be on.
+ * @param client - identity of the requesting UI for this call.
+ * @returns the outcome, or null if signed out or the grant changed during the request.
+ */
+abstract setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>
+
+/**
  * Join an active attempt or start browser authorization.
  * @param client - identity of the requesting UI; a new attempt captures it, and joining retains the original attempt's identity.
  * @param callbackOrigin - browser-accessible loopback HTTP origin, including any SSH local port.
@@ -488,6 +497,6 @@ Local grant removal has completed.
 Source: [`packages/credentials/deepseek-account/src/index.ts`](../../packages/credentials/deepseek-account/src/index.ts)
 <!-- END GENERATED cordis-surface -->
 
-The account Service Definition exposes getState, getProfile, getBalance, getUnnotifiedBonuses, ackBonusNotified, startSignIn, cancelSignIn, signOut, watch, and Host-only resolveToken and getPlatformSession. The platform provider implements it with an AuthorizationFlow and a private GrantRecord. AccountView distinguishes stored presence from server validation; attempt IDs bind cancellation to one local flow. See [the account package](../../packages/credentials/deepseek-account/README.md).
+The account Service Definition exposes getState, getProfile, getBalance, getUnnotifiedBonuses, ackBonusNotified, WASD Engine's setAutoRecharge, startSignIn, cancelSignIn, signOut, watch, and Host-only resolveToken and getPlatformSession. The platform provider implements it with an AuthorizationFlow and a private GrantRecord. AccountView distinguishes stored presence from server validation; attempt IDs bind cancellation to one local flow. See [the account package](../../packages/credentials/deepseek-account/README.md).
 
 `AccountClientMetadata` carries `version` from the caller’s `DSH_CLIENT_VERSION`, its active UI `locale`, and `timezoneOffsetSeconds` sampled when the operation begins. The offset is local time minus UTC in seconds: UTC+8 is `28800`. It contains no credentials. Login attempts retain their initiating metadata through exchange and cancellation; sign-out retains its metadata for revocation retries.
