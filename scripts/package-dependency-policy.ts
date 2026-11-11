@@ -51,8 +51,18 @@ const DUPLICATE_SAFE_PACKAGES: readonly string[] = [
  * prominent heading in the pull request description.
  */
 const SAFE_HOST_DEPENDENCY_EXPORTS = {
-  // Copies a packaged file into a caller-owned directory and keeps no module state.
-  '@deepseek-ai/dsh-app-mcp': ['materializePayload'],
+  '@deepseek-ai/dsh-app-mcp': [
+    // Copies a packaged file into a caller-owned directory and keeps no module state.
+    'materializePayload',
+    // Returns a new object that reads this computer's memory and processors when called; keeps no module state.
+    'nodeMachine',
+    // Computes a process limit from its arguments alone.
+    'processLimit',
+    // Compares the bytes a start needs with the caller's reading of available memory.
+    'memoryShortage',
+    // Formats model-facing text from its arguments alone.
+    'lowMemoryMessage',
+  ],
   '@deepseek-ai/dsh-atomic-write': ['withFileLock', 'writeFileAtomic'],
   '@deepseek-ai/dsh-computer-use/brand': ['ComputerUseProviderName'],
   '@deepseek-ai/dsh-credentials': ['credentialKey'],
