@@ -1,4 +1,4 @@
-/** Host answers the Game tools specs share: the four tool entries as the inventory and the plugin manager list them. */
+/** Host answers the Game tools specs share: the five tool entries as the inventory and the plugin manager list them. */
 import type {
   ChangeResult, PluginEntryId, PluginInfo, PluginInventorySnapshot, RemoteResult,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -50,6 +50,16 @@ export const GODOT: PluginInfo = {
   meta: { title: 'Godot', description: 'Run Godot games.' },
 }
 
+/** Poly Haven running, switchable through its patch row, with a package that declares no icon. */
+export const POLY_HAVEN: PluginInfo = {
+  entryId: entryId('polyhaven'),
+  moduleName: '@deepseek-ai/dsh-polyhaven',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'polyhaven',
+  meta: { title: 'Poly Haven', description: 'Find CC0 assets.' },
+}
+
 /** SuperCollider running, switchable through its patch row. */
 export const SUPERCOLLIDER: PluginInfo = {
   entryId: entryId('supercollider'),
@@ -76,7 +86,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -87,7 +97,9 @@ export function inventory(
  * @param entries - the Loader entries.
  * @returns the successful answer.
  */
-export function plugins(entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, SUPERCOLLIDER]): RemoteResult<PluginInfo[]> {
+export function plugins(
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }
 

@@ -1,5 +1,5 @@
 ---
-description: "Game tools tabs of the WASD Engine Web UI, in Settings › Built-in plugins and on the Plugins page, for maintainers changing how Blender, GIMP, Godot, and SuperCollider appear there with their logos and Loader state, or debugging the switch that turns a tool off or on in the profile patch."
+description: "Game tools tabs of the WASD Engine Web UI, in Settings › Built-in plugins and on the Plugins page, for maintainers changing how Blender, GIMP, Godot, Poly Haven, and SuperCollider appear there with their logos and Loader state, or debugging the switch that turns a tool off or on in the profile patch."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, GIMP, Godot, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems.
+See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, GIMP, Godot, Poly Haven, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems.
 
 ## Table of Contents
 
@@ -25,7 +25,7 @@ See and switch the agent's game tools where plugins are listed. Settings › Bui
 <a id="use-this-package"></a>
 ## Use this package
 
-Open **Settings** › **Built-in plugins** to see the game tools; the section starts on the **Game tools** tab. To turn a tool off or on, open **Plugins** in the sidebar and select **Game tools**. Both tabs list Blender, GIMP, Godot, and SuperCollider in that order and mark a tool that the profile does not mount.
+Open **Settings** › **Built-in plugins** to see the game tools; the section starts on the **Game tools** tab. To turn a tool off or on, open **Plugins** in the sidebar and select **Game tools**. Both tabs list Blender, GIMP, Godot, Poly Haven, and SuperCollider in that order and mark a tool that the profile does not mount.
 
 ### Default composition
 

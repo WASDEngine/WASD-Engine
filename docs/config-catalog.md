@@ -919,7 +919,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-deepseek-account-platform`
 
 - `inject`: `credentials` · `authorization`
-- `source`: [`packages/credentials/deepseek-account-platform/src/index.ts:23`](../packages/credentials/deepseek-account-platform/src/index.ts)
+- `source`: [`packages/credentials/deepseek-account-platform/src/index.ts:24`](../packages/credentials/deepseek-account-platform/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-specific platform and request deadlines. */
@@ -2951,6 +2951,33 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-plugin-package-inventory-deepseek -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-polyhaven -->
+<a id="deepseek-aidsh-polyhaven"></a>
+
+## `@deepseek-ai/dsh-polyhaven`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/polyhaven/src/index.ts:32`](../packages/gamedev/polyhaven/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the Poly Haven tools. */
+export interface Config {
+  /** Base URL of the Poly Haven API. */
+  apiUrl: string
+  /** `User-Agent` of every request; the API terms require it to name the software. */
+  userAgent: string
+  /** Time limit of one `polyhaven_search` or `polyhaven_asset` call. */
+  requestTimeoutMs: number
+  /** Time limit of one `polyhaven_download` call. */
+  downloadTimeoutMs: number
+  /** Largest total size of the files of one `polyhaven_download` call, in bytes. */
+  maxDownloadBytes: number
+  /** How long the asset list stays in memory before a search reads it again; 0 reads it for every search. */
+  catalogMaxAgeMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-polyhaven -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-ptc-runtime-node -->
 <a id="deepseek-aidsh-ptc-runtime-node"></a>

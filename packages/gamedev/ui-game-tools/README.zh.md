@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine Web 界面中「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：供维护者修改 Blender、GIMP、Godot 与 SuperCollider 在其中如何随标志与 Loader 状态显示，或排查在 profile patch 中关闭或开启某个工具的开关。"
+description: "WASD Engine Web 界面中「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：供维护者修改 Blender、GIMP、Godot、Poly Haven 与 SuperCollider 在其中如何随标志与 Loader 状态显示，或排查在 profile patch 中关闭或开启某个工具的开关。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、GIMP、Godot 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。
+在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、GIMP、Godot、Poly Haven 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-打开**设置** › **内置插件**即可查看游戏工具；该分区先显示**游戏工具**标签页。要关闭或开启某个工具，请打开侧栏中的**插件**并选择**游戏工具**。两个标签页都按 Blender、GIMP、Godot、SuperCollider 的顺序列出工具，并标出 profile 没有挂载的工具。
+打开**设置** › **内置插件**即可查看游戏工具；该分区先显示**游戏工具**标签页。要关闭或开启某个工具，请打开侧栏中的**插件**并选择**游戏工具**。两个标签页都按 Blender、GIMP、Godot、Poly Haven、SuperCollider 的顺序列出工具，并标出 profile 没有挂载的工具。
 
 ### 默认组合
 

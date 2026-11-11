@@ -2,20 +2,21 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的四个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个工具行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的五个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行只设置 `dataRoot`，值为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：Desktop 应用随附的（Windows 应用在首次使用时解包）或托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
 | `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 上自带的运行时，或已安装的 GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
+| `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.zh.md) | 原生 `polyhaven_search`、`polyhaven_asset` 与 `polyhaven_download` | 无：由 Host 请求 Poly Haven API 并写入下载的文件 |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
 
-激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 工具存在时引导 agent 使用它们。
+激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 行在第一次工具调用时才发出第一个请求；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*` 与 `polyhaven_*` 工具存在时引导 agent 使用它们。
 
 | 进程 | 启动方 | 结束时机 | 通信对象 |
 |---|---|---|---|
@@ -273,11 +274,11 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="game-tools-tabs"></a>
 ## 「游戏工具」标签页
 
-`ui-game-tools` 行挂载 [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.zh.md)：一个 Host 半区为空的浏览器插件，在用户查找插件的地方列出这四个工具。「设置 › 内置插件」打开时先显示它的只读「游戏工具」标签页，排在清单的「插件列表」之前；「插件」页面在「已安装」之后显示一个「游戏工具」标签页。两个标签页都列出 Blender、GIMP、Godot 与 SuperCollider，显示各包元信息中的标志、标题与描述，以及各行的 Loader 状态。两个标签页在首次渲染之前都不调用任何 Remote。
+`ui-game-tools` 行挂载 [`@deepseek-ai/dsh-client-ui-game-tools`](../../packages/gamedev/ui-game-tools/README.zh.md)：一个 Host 半区为空的浏览器插件，在用户查找插件的地方列出这五个工具。「设置 › 内置插件」打开时先显示它的只读「游戏工具」标签页，排在清单的「插件列表」之前；「插件」页面在「已安装」之后显示一个「游戏工具」标签页。两个标签页都列出 Blender、GIMP、Godot、Poly Haven 与 SuperCollider，显示各包元信息中的标志、标题与描述，以及各行的 Loader 状态。两个标签页在首次渲染之前都不调用任何 Remote。
 
 在「插件」页面上，只要 Host 管理着 profile，profile 挂载的每个工具都有一个开关。开关以工具的 Loader 条目 id 调用 `pluginManager.setPluginEnabled`：关闭工具时把 `- id: <row>` 与 `disabled: true` 写入 profile patch，这也是用户可以手写的覆盖项；开启工具时删除不含其他内容的覆盖项。[插件管理器](../../packages/boot/plugin-manager/README.zh.md#use-this-package)随即应用更改，或报告更改需要重启后才生效，或报告更高优先级的 patch 覆盖了它。
 
-每个工具包都在 `package.json` 的 `icon` 字段中指向 `icon.svg`，因此 Host 的包元信息以 `data:image/svg+xml` URL 携带该文件。每个文件把对应产品的官方标志原样嵌入包图标所用的 36 × 36 画布；[Blender](../../packages/gamedev/blender/README.zh.md#plugin-icon)、[GIMP](../../packages/gamedev/gimp/README.zh.md#plugin-icon)、[Godot](../../packages/gamedev/godot/README.zh.md#plugin-icon) 与 [SuperCollider](../../packages/gamedev/supercollider/README.zh.md#plugin-icon) 的 README 为各标志署名，并说明其许可与商标条款。
+每个工具包都在 `package.json` 的 `icon` 字段中指向 `icon.svg`，因此 Host 的包元信息以 `data:image/svg+xml` URL 携带该文件。每个文件把对应产品的官方标志原样嵌入包图标所用的 36 × 36 画布；[Blender](../../packages/gamedev/blender/README.zh.md#plugin-icon)、[GIMP](../../packages/gamedev/gimp/README.zh.md#plugin-icon)、[Godot](../../packages/gamedev/godot/README.zh.md#plugin-icon)、[Poly Haven](../../packages/gamedev/polyhaven/README.zh.md#plugin-icon) 与 [SuperCollider](../../packages/gamedev/supercollider/README.zh.md#plugin-icon) 的 README 为各标志署名，并说明其许可与商标条款。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
@@ -288,6 +289,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 |---|---|---|
 | `search_game_tools`、`call_game_tool` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态，或按名调用其中一个 |
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
+| `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
