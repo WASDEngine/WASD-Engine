@@ -49,9 +49,13 @@ WASD Engine bundles everything you need to build high-polish games in a single a
     <td align="center"><img src="../packages/gamedev/supercollider/icon.svg" width="40" height="40" alt="SuperCollider logo"></td>
     <td><b>SuperCollider</b><br>Audio synthesis and algorithmic composition for your game's music and sound effects. Your agent composes original scores and designs custom SFX.</td>
   </tr>
+  <tr>
+    <td align="center"><a href="https://polyhaven.com"><img src="../packages/gamedev/polyhaven/icon.svg" width="40" height="40" alt="Poly Haven logo"></a></td>
+    <td><b>Poly Haven</b><br>Thousands of free HDRI skies, PBR textures, and 3D models, all CC0. Your agent searches Poly Haven and drops the assets it picks straight into your game. Powered by <a href="https://polyhaven.com">Poly Haven</a>, which does not endorse WASD Engine.</td>
+  </tr>
 </table>
 
-Godot is built into the Desktop app, and so are SuperCollider and GIMP on macOS. Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and elsewhere the GIMP tools use your GIMP 3.
+Godot is built into the Desktop app, and so are SuperCollider and GIMP on macOS. Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and elsewhere the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks.
 
 ## Agents fill every game dev role
 
@@ -113,6 +117,7 @@ New accounts start on a waitlist: [join it](https://app.wasdengine.com/signup), 
 
 - **A real game engine in the loop.** The Desktop app ships a patched LibGodot runtime. The agent runs each Session's game as its own process, gets its screenshots, logs, and errors back, sends it input, and streams it to the Game tab, where you can play it too.
 - **Creative tools without the windows.** Blender, GIMP, and SuperCollider run headless behind MCP servers. The agent looks at its work through rendered previews, snapshots, and audio analysis with waveform and spectrogram images, and exports glTF models, textures, sprite sheets, and audio files into your project.
+- **Free assets on tap.** The `polyhaven_*` tools search Poly Haven's CC0 library by description in any language, show an asset's formats, sizes, and preview, and download one format and resolution into your project, with every file's checksum verified and nothing overwritten that you edited.
 - **Game projects with Git built in.** Each game project is a folder under `Documents/WASD Engine` with its own Git repository. Turn on Change requests & worktrees, and parallel Sessions each work on their own branch in a Git worktree, so they never overwrite each other.
 - **Game know-how out of the box.** New Sessions use the Game developer preset with skills for Godot 4 (`godot-project`) and design planning (`game-design-doc`). A skill directory with the same name under `.agents/skills/` or `.dsh/skills/` in your project replaces the bundled copy, so a team can pin its own engine conventions.
 - **Every piece is a plugin.** WASD Engine is built on the Cordis plugin architecture of DeepSeek Harness: every tool, panel, and provider is a plugin row in a profile, and the Plugins page switches the game tools on and off.

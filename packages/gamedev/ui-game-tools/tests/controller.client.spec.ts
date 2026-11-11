@@ -11,7 +11,7 @@ import type {
 import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { GameToolsController, type GameToolsState } from '../src/client/controller.ts'
-import { BLENDER, change, entryId, failed, GIMP, GODOT, inventory, OTHER, plugins, SUPERCOLLIDER } from './fixtures.client.ts'
+import { BLENDER, change, entryId, failed, GIMP, GODOT, inventory, OTHER, plugins, POLY_HAVEN, SUPERCOLLIDER } from './fixtures.client.ts'
 
 function bench() {
   const ctx = new Context()
@@ -53,6 +53,7 @@ describe('GameToolsController reads', () => {
         { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
         { moduleName: GIMP.moduleName, entry: GIMP, control: { kind: 'switch' } },
         { moduleName: GODOT.moduleName, entry: GODOT, control: { kind: 'switch' } },
+        { moduleName: POLY_HAVEN.moduleName, entry: POLY_HAVEN, control: { kind: 'switch' } },
         { moduleName: SUPERCOLLIDER.moduleName, entry: SUPERCOLLIDER, control: { kind: 'switch' } },
       ],
     })
@@ -86,6 +87,7 @@ describe('GameToolsController reads', () => {
         { moduleName: BLENDER.moduleName, entry: undefined },
         { moduleName: GIMP.moduleName, entry: undefined },
         { moduleName: GODOT.moduleName, entry: GODOT },
+        { moduleName: POLY_HAVEN.moduleName, entry: undefined },
         { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
       ],
     })
@@ -103,6 +105,7 @@ describe('GameToolsController reads', () => {
       { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
       { moduleName: GIMP.moduleName, entry: undefined },
       { moduleName: GODOT.moduleName, entry: locked, control: { kind: 'locked', reason: 'unaddressable' } },
+      { moduleName: POLY_HAVEN.moduleName, entry: undefined },
       { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
     ])
   })

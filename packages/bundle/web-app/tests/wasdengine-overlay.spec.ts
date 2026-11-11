@@ -47,8 +47,12 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   blender: '@deepseek-ai/dsh-blender',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
+  polyhaven: '@deepseek-ai/dsh-polyhaven',
   supercollider: '@deepseek-ai/dsh-supercollider',
 }
+
+/** The game tool row that keeps no files under the harness home: Poly Haven, which runs with its default configuration. */
+const POLY_HAVEN = 'polyhaven'
 
 /** The row the fork inserts after the game tools: the browser half of their Game tools tabs. */
 const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-game-tools' } as const
@@ -335,7 +339,7 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).dependencies?.[GAME_MCP_UI.name]).toBe('workspace:*')
   })
 
-  it('mounts each game tool from a web-app dependency with its own directory under the harness home', () => {
+  it('mounts each game tool from a web-app dependency, the application tools with their own directory under the harness home', () => {
     const inserted = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? [])
       .filter(entry => Object.hasOwn(GAME_TOOLS, entry.id))
     expect(inserted.map(entry => entry.id)).toEqual(Object.keys(GAME_TOOLS))
@@ -343,10 +347,16 @@ describe('WASDEngine overlay', () => {
     for (const entry of inserted) {
       const id = entry.id
       expect(entry.name, `${id} package`).toBe(GAME_TOOLS[id])
+      expect(entry.disabled, `${id} is on`).toBeUndefined()
       expect(dependencies[entry.name], `${id} is a web-app dependency`).toBe('workspace:*')
+      if (id === POLY_HAVEN) {
+        expect(entry.config, `${id} config`).toBeUndefined()
+        continue
+      }
       expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
       expect(expression(configOf(entry).dataRoot, `${id}.dataRoot`), `${id}.dataRoot`).toBe(`dshHomePath('${id}')`)
     }
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[POLY_HAVEN] ?? ''), 'the Plugins page can switch Poly Haven off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {
