@@ -1,16 +1,20 @@
 /**
  * Static GDScript check: one headless Godot process loads each script through `runtime/wasd_check.gd` and
- * reports the errors logged while it loaded, without running the game.
+ * reports the errors logged while it loaded, without running the game. Scripts resolve `class_name` classes,
+ * `uid://` paths, and imported assets through the project's import data, so a check first imports a project whose
+ * import data may be older than its files.
  * @module @deepseek-ai/dsh-godot/src/check
  */
 import { stat } from 'node:fs/promises'
-import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { z } from 'zod'
+import { runGodotCommand, type GodotCommandOutcome } from './command.ts'
+import { importFailure, type ProjectImports } from './imports.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
 import { listProjectFiles, resolveProjectPath, toResPath } from './project.ts'
 import { parseGodotJson } from './protocol.ts'
-import { FAILURE_OUTPUT_LINES, launcherArgv } from './run.ts'
-import type { ResolvedGodotRuntime } from './runtime.ts'
+import { FAILURE_OUTPUT_LINES } from './run.ts'
+import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 
 /** Most scripts one check loads. */
 export const CHECK_SCRIPT_LIMIT = 400
@@ -65,7 +69,7 @@ export interface CheckOptions {
   readonly paths: readonly string[]
   /** Host process id for the runner's parent watch. */
   readonly hostPid: number
-  /** Deadline of the whole check. */
+  /** Deadline of the check process, and of the import step that {@link checkProject} may run before it. */
   readonly timeoutMs: number
   /** Subprocess termination grace. */
   readonly graceMs: number
@@ -83,6 +87,23 @@ export interface CheckRequest {
   readonly paths?: readonly string[]
 }
 
+/** Parameters of a check of a project's scripts. */
+export interface ProjectCheckOptions extends CheckOptions {
+  /** The plugin's import steps. */
+  readonly imports: ProjectImports
+}
+
+/** The scripts that {@link checkProject} checked. */
+export interface ProjectCheck {
+  /** Checked scripts in request order. */
+  readonly scripts: readonly CheckedScript[]
+  /**
+   * Set when the import step before the check did not end normally, so that errors about `class_name` classes or
+   * imported assets may be false.
+   */
+  readonly importWarning?: string
+}
+
 /** A finished static check. */
 export interface CheckReport {
   /** Checked project folder. */
@@ -91,6 +112,8 @@ export interface CheckReport {
   readonly scripts: readonly CheckedScript[]
   /** Scripts the request named, including those beyond {@link CHECK_SCRIPT_LIMIT}. */
   readonly total: number
+  /** The import warning of {@link ProjectCheck}. */
+  readonly importWarning?: string
 }
 
 /** The `res://` scripts a check request selects. */
@@ -186,19 +209,12 @@ function parseLine(text: string): CheckLine | undefined {
  * @throws {GodotCheckError} when the process ends or times out before reporting a script.
  */
 export async function checkScripts(options: CheckOptions): Promise<CheckedScript[]> {
-  const timeout = AbortSignal.timeout(options.timeoutMs)
-  const handle = options.subprocess.spawn({
+  const { exit, timedOut, stdout, stderr } = await runGodotCommand({
+    ...options,
     argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--script', options.checkScript, '--', ...options.paths]),
     cwd: options.projectDir,
-    stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
-    graceMs: options.graceMs,
-    signal: AbortSignal.any([options.signal, timeout]),
-    env: { ELECTRON_RUN_AS_NODE: undefined },
   })
-  const outcome = await handle.done
   options.signal.throwIfAborted()
-  const stdout = (handle.collected.stdout as SubprocessOutputReader).readFrom(0).text
-  const stderr = (handle.collected.stderr as SubprocessOutputReader).readFrom(0).text
   const reported = new Map<string, CheckedScript>()
   for (const line of consoleLines(stdout)) {
     const parsed = line.startsWith(MARKER) ? parseLine(line.slice(MARKER.length)) : undefined
@@ -206,10 +222,44 @@ export async function checkScripts(options: CheckOptions): Promise<CheckedScript
   }
   const missing = options.paths.filter(path => !reported.has(path))
   if (missing.length > 0) {
-    const cause = timeout.aborted ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(outcome)})`
+    const cause = timedOut ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(exit)})`
     const others = missing.length > 1 ? ` and ${missing.length - 1} more scripts` : ''
     const tail = lastLines(stderr, FAILURE_OUTPUT_LINES) || lastLines(stdout, FAILURE_OUTPUT_LINES)
     throw new GodotCheckError(`The Godot check ${cause} before checking ${missing[0] as string}${others}.${tail === '' ? '' : `\nLast output:\n${tail}`}`)
   }
   return options.paths.map(path => reported.get(path) as CheckedScript)
+}
+
+/**
+ * Import a project before its check.
+ * @param options - check parameters.
+ * @returns the import warning, or undefined when the import exited with code 0 in time.
+ * @throws {GodotCheckError} when the import process cannot start.
+ */
+async function importBeforeCheck(options: ProjectCheckOptions): Promise<string | undefined> {
+  let outcome: GodotCommandOutcome
+  try {
+    outcome = await options.imports.import(options)
+  } catch (error) {
+    options.signal.throwIfAborted()
+    throw new GodotCheckError(`The Godot import step could not start: ${(error as Error).message}`, { cause: error })
+  }
+  options.signal.throwIfAborted()
+  const failure = importFailure(outcome, options.timeoutMs)
+  return failure === undefined ? undefined : `The Godot import step before the check ${failure}, so errors about class_name classes or imported assets may be false.`
+}
+
+/**
+ * Check scripts as they load in the game: import the project first when its import data may be older than its files,
+ * then load the scripts in one headless process. The project's import steps and checks run one at a time.
+ * @param options - process parameters, scripts, and the plugin's import steps.
+ * @returns every checked script in request order, and a warning when the import did not end normally.
+ * @throws {GodotCheckError} when the import cannot start, or when the check process ends or times out before reporting a script.
+ */
+export async function checkProject(options: ProjectCheckOptions): Promise<ProjectCheck> {
+  return await options.imports.exclusive(options.projectDir, async () => {
+    const importWarning = await options.imports.outdated(options.projectDir, options.signal) ? await importBeforeCheck(options) : undefined
+    const scripts = await checkScripts(options)
+    return { scripts, ...importWarning === undefined ? {} : { importWarning } }
+  }, options.signal)
 }

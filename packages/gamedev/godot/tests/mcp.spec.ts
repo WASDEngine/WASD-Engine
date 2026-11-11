@@ -105,6 +105,8 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
+    // A check may import the project first, which writes its import data.
+    expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 11 tools)')
   }, TIMEOUT)
 

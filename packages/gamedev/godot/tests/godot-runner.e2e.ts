@@ -1,17 +1,18 @@
 /**
- * The Godot tools against the real LibGodot runner: import, windowless run, screenshot, input, logs with a
- * script error, scene inspection, a performance sample and a cancelled one, frame-exact steps, a step that the
- * Game tab ends, lossless PNG frames of a simple scene, input and frames while game time stands still, a bounded
- * game-time wait, a cancelled input sequence, a queued input sequence that its real-time limit ends, a static
- * check that runs no autoload, a letterboxed stretch mode, a game on the Compatibility renderer, and JPEG frames of a
- * scene that PNG encoding cannot keep up with.
+ * The Godot tools against the real LibGodot runner: a static check of a project that was never imported, whose
+ * scripts use each other's `class_name` classes, import, windowless run, screenshot, input, logs with a script error,
+ * scene inspection, a performance sample and a cancelled one, frame-exact steps, a step that the Game tab ends,
+ * lossless PNG frames of a simple scene, input and frames while game time stands still, a bounded game-time wait, a
+ * cancelled input sequence, a queued input sequence that its real-time limit ends, a static check that runs no
+ * autoload, a letterboxed stretch mode, a game on the Compatibility renderer, and JPEG frames of a scene that PNG
+ * encoding cannot keep up with.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
  */
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
@@ -102,6 +103,14 @@ const NOISE_PROJECT = {
     '\tvar rect := TextureRect.new()', '\trect.texture = ImageTexture.create_from_image(noise.get_image(1280, 720))', '\tadd_child(rect)', '',
   ].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// Two scripts whose classes Godot finds only through the class cache that an import writes: player.gd extends Node2D
+// and uses art.gd's Art class.
+const CLASS_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="ClassTest"\nconfig/features=PackedStringArray("4.7")\n',
+  'art.gd': ['class_name Art', 'extends RefCounted', '', 'static func tint() -> Color:', '\treturn Color.RED', ''].join('\n'),
+  'player.gd': ['class_name Player', 'extends Node2D', '', 'var tint: Color = Art.tint()', ''].join('\n'),
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -212,6 +221,26 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
   }, 60_000)
 
   afterAll(async () => { await c?.cleanup() }, 30_000)
+
+  it('checks a project that was never imported, its class_name classes included, and imports again only after a change', async () => {
+    // The folder sorts after game/, so the calls without project that follow still find the main test project first.
+    const dir = join(c.dir.root, 'work', 'named-classes')
+    await mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(CLASS_PROJECT)) await writeFile(join(dir, name), content)
+    const cache = join(dir, '.godot', 'global_script_class_cache.cfg')
+    expect(existsSync(cache)).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    const checked = await callTool(c, 'godot_check', { project: 'named-classes' })
+    expect(text(checked)).toBe(`Checked 2 scripts in ${dir}: no errors.`)
+    expect(await readFile(cache, 'utf8')).toContain('"class": &"Player"')
+    const imported = (await stat(cache)).mtimeMs
+    expect(text(await callTool(c, 'godot_check', { project: 'named-classes' }))).toBe(`Checked 2 scripts in ${dir}: no errors.`)
+    expect((await stat(cache)).mtimeMs).toBe(imported)
+    await writeFile(join(dir, 'enemy.gd'), ['class_name Enemy', 'extends Player', '', 'func _ready() -> void:', '\tprint(Artt.tint())', ''].join('\n'))
+    const broken = await callTool(c, 'godot_check', { project: 'named-classes' })
+    expect(text(broken)).toBe(`Checked 3 scripts in ${dir}; 1 have problems:\n[script_error] res://enemy.gd:5: Parse Error: Identifier "Artt" not declared in the current scope.`)
+    expect(await readFile(cache, 'utf8')).toContain('"class": &"Enemy"')
+  }, 240_000)
 
   it('runs the game windowless and reports startup facts', async () => {
     const result = await callTool(c, 'godot_run', { width: 640, height: 360 })

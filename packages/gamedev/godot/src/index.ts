@@ -23,10 +23,11 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { untilAborted, untilSettledOrAborted } from './abort.ts'
-import { checkScripts, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
+import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
 import { exportWeb } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
+import { ProjectImports } from './imports.ts'
 import { GodotInputError, parseInputEvents, parseWindowSize } from './input.ts'
 import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
@@ -75,7 +76,7 @@ export interface Config {
   streamMaxWidth: number
   /** Import the project's assets before each run. */
   importBeforeRun: boolean
-  /** Deadline of the import step and of `godot_check`, in milliseconds. */
+  /** Deadline of one import step, before a run or a check, and of the script loading of one `godot_check`, in milliseconds. */
   importTimeoutMs: number
   /** Deadline from launch until the game connects, in milliseconds. */
   startTimeoutMs: number
@@ -255,6 +256,7 @@ export default class GodotController extends TypertRemoteService {
 
   private readonly sequence = new LogSequence()
   private readonly machine: MachineResources = nodeMachine()
+  private readonly imports = new ProjectImports()
   private readonly sessions: GodotSessions
   /** Slots of the Godot processes that run without a game: script checks and Web exports. */
   private readonly headless: ProcessSlots
@@ -446,7 +448,8 @@ export default class GodotController extends TypertRemoteService {
 
   /**
    * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
-   * static web server can serve and any page can frame. The first export downloads the Web template. For other
+   * static web server can serve and any page can frame. The first export downloads the Web template. The export,
+   * which imports the project, waits until the project's import steps and checks in this Host have ended. For other
    * plugins on the Host; the Game tab does not call it.
    * @param request - absolute project folder and output folder.
    * @param signal - cancellation; it stops the export process.
@@ -462,7 +465,7 @@ export default class GodotController extends TypertRemoteService {
     const template = await this.templates.resolve(signal)
     return await this.headless.run(signal, async () => {
       this.requireMemory('a Godot Web export')
-      return await exportWeb({
+      return await this.imports.exclusive(project.dir, () => exportWeb({
         subprocess: this.ctx.subprocess,
         runtime,
         projectDir: project.dir,
@@ -473,7 +476,7 @@ export default class GodotController extends TypertRemoteService {
         graceMs: this.config.stopGraceMs,
         outputBytes: this.config.processOutputBytes,
         signal,
-      })
+      }), signal)
     })
   }
 
@@ -549,6 +552,7 @@ export default class GodotController extends TypertRemoteService {
     }, {
       subprocess: this.ctx.subprocess,
       sequence: this.sequence,
+      imports: this.imports,
       warn: (message) => { this.ctx.logger.warn(message) },
     }))
   }
@@ -564,9 +568,10 @@ export default class GodotController extends TypertRemoteService {
     if (selection.paths.length === 0) return { projectDir: project.dir, scripts: [], total: 0 }
     const runtime = await this.requireRuntime(signal)
     const { check } = await this.scripts()
-    const scripts = await this.headless.run(signal, async () => {
+    const { scripts, importWarning } = await this.headless.run(signal, async () => {
       this.requireMemory('a Godot script check')
-      return await checkScripts({
+      return await checkProject({
+        imports: this.imports,
         subprocess: this.ctx.subprocess,
         runtime,
         projectDir: project.dir,
@@ -579,7 +584,7 @@ export default class GodotController extends TypertRemoteService {
         signal,
       })
     })
-    return { projectDir: project.dir, scripts, total: selection.total }
+    return { projectDir: project.dir, scripts, total: selection.total, ...importWarning === undefined ? {} : { importWarning } }
   }
 
   /**

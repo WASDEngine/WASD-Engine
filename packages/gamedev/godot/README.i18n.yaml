@@ -24,8 +24,8 @@
   en: cc31369797b3b01a
   zh: 2bdd59780bc3df73
 /deepseek-ai-dsh-godot/use-this-package/configuration:
-  en: 6943a6f10152551d
-  zh: 3a45870ee285d128
+  en: da583e866dcbff8e
+  zh: 7cd9e912970f290c
 /deepseek-ai-dsh-godot/use-this-package/godot-runtime:
   en: 054f8cdf262cb88a
   zh: 67ba5e3f63816080
@@ -33,17 +33,17 @@
   en: 682d2ebc08b44a4b
   zh: 3067061f1ded395e
 /deepseek-ai-dsh-godot/use-this-package/game-runs:
-  en: 7b11d65c6bb1b4ad
-  zh: f952274c1fcaa9f1
+  en: 88c11b47f5e00701
+  zh: 77fcf0a84259b7b7
 /deepseek-ai-dsh-godot/use-this-package/the-harness:
   en: 43f59481a70e1fd6
   zh: 69bf147d068b6d1b
 /deepseek-ai-dsh-godot/use-this-package/tools:
-  en: 3b78b5dc1b9baca4
-  zh: ea0dcc28f13204b5
+  en: b268d899b82e01a4
+  zh: 3db9556c5b41c6f5
 /deepseek-ai-dsh-godot/use-this-package/tools-for-connected-agents:
-  en: b6b4ae1e07c8f279
-  zh: e794a1dfb1be0733
+  en: a9aaf968da98b067
+  zh: 10fadaaf2d23359c
 /deepseek-ai-dsh-godot/use-this-package/game-tab:
   en: 5c3cd6e3030973a2
   zh: 760889fe5cb6d357
@@ -60,11 +60,11 @@
   en: 6ed9f9b1dac1df20
   zh: e4cb319cf1d360f9
 /deepseek-ai-dsh-godot/understand-the-implementation:
-  en: 18c986955335ac92
-  zh: 07f4d6a15a8261fe
+  en: 060d04d332b381eb
+  zh: 104ef408743274a4
 /deepseek-ai-dsh-godot/understand-the-implementation/verify-against-a-real-runtime:
-  en: 1b9a769ce3e9f554
-  zh: eb950f63f6480b31
+  en: aa4e53493c5536a1
+  zh: 957036a7d99e0967
 /deepseek-ai-dsh-godot/further-exploration:
   en: 027da62cd8878adf
   zh: a0e6cca07fb268b5
@@ -102,8 +102,8 @@
   en: 28cf07c27a2e0041
   zh: 5ef7b4bcef28cb98
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/what-the-model-sees:
-  en: d4e060912e73c208
-  zh: 945b514d5753a6b5
+  en: 952107e225ded681
+  zh: cae9e81f64c5426d
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/what-the-model-sees/missing-runtime-message:
   en: 859d90af1f75cfb3
   zh: f75a462dc1106dbe
@@ -114,8 +114,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work:
-  en: ec5c84427e88519e
-  zh: 84744266fff8853b
+  en: 580d3899687f8bee
+  zh: adfc006b530e315c
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

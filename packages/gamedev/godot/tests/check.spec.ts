@@ -1,12 +1,24 @@
-/** The static check reports actionable problems per script and fails clearly when the check process ends early. */
+/**
+ * The static check imports a project whose import data may be outdated, reports actionable problems per script, and
+ * fails clearly when the check process ends early.
+ */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { CHECK_SCRIPT_LIMIT, checkScripts, GodotCheckError, selectScripts, type CheckOptions } from '../src/check.ts'
-import { scratch, subprocessFixture, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
+import {
+  CHECK_SCRIPT_LIMIT, checkProject, checkScripts, GodotCheckError, selectScripts,
+  type CheckOptions, type ProjectCheck, type ProjectCheckOptions,
+} from '../src/check.ts'
+import { ProjectImports } from '../src/imports.ts'
+import {
+  configureFake, fakeLog, scratch, subprocessFixture, until, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture,
+} from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
 const signal = new AbortController().signal
+const tick = (milliseconds = 20) => new Promise(resolve => setTimeout(resolve, milliseconds))
+/** Deadline of a spec that starts several fake Godot processes, which a loaded machine starts slowly. */
+const PROCESSES_TIMEOUT = 30_000
 
 const folders: Scratch[] = []
 const hosts: SubprocessFixture[] = []
@@ -32,6 +44,91 @@ async function check(config: FakeGodotConfig, paths: readonly string[], override
     paths, hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, ...overrides,
   })
 }
+
+/** A project with two scripts, one declaring a class that the other uses, checked through {@link checkProject}. */
+interface ProjectFixture {
+  readonly dir: Scratch
+  readonly project: string
+  check(paths: readonly string[], overrides?: Partial<ProjectCheckOptions>): Promise<ProjectCheck>
+}
+
+async function projectFixture(config: FakeGodotConfig): Promise<ProjectFixture> {
+  const dir = await folder('check-project')
+  const host = await subprocessFixture()
+  hosts.push(host)
+  const project = await writeProject(join(dir.root, 'game'), config)
+  await writeFile(join(project, 'art.gd'), 'class_name Art\nextends RefCounted\n')
+  await writeFile(join(project, 'player.gd'), 'extends Node\nvar art: Art\n')
+  const imports = new ProjectImports()
+  return {
+    dir,
+    project,
+    async check(paths, overrides = {}) {
+      // File times and an import's start compare at millisecond precision; a file written in the same millisecond counts as changed.
+      await tick()
+      return checkProject({
+        imports, subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project,
+        checkScript: '/check.gd', paths, hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, ...overrides,
+      })
+    },
+  }
+}
+
+/** The fake's processes in launch order, `import` or `check`, with `imported` where an import step finished. */
+async function processes(project: string): Promise<string[]> {
+  return (await fakeLog(project)).flatMap((entry) => {
+    const argv = entry.argv as string[] | undefined
+    if (argv !== undefined) return [argv.includes('--import') ? 'import' : 'check']
+    return entry.imported === true ? ['imported'] : []
+  })
+}
+
+posix('checkProject', () => {
+  it('imports a project before its first check and again after its files change', async () => {
+    const f = await projectFixture({ check: {} })
+    expect(await f.check(['res://art.gd', 'res://player.gd'])).toEqual({ scripts: [{ path: 'res://art.gd', issues: [] }, { path: 'res://player.gd', issues: [] }] })
+    expect(await processes(f.project)).toEqual(['import', 'imported', 'check'])
+    await f.check(['res://player.gd'])
+    expect(await processes(f.project)).toEqual(['import', 'imported', 'check', 'check'])
+    await writeFile(join(f.project, 'player.gd'), 'extends Node\nvar art := Art.new()\n')
+    await f.check(['res://player.gd'])
+    expect(await processes(f.project)).toEqual(['import', 'imported', 'check', 'check', 'import', 'imported', 'check'])
+  }, PROCESSES_TIMEOUT)
+
+  it('warns when the import before the check ends abnormally or runs out of time, and imports again before the next check', async () => {
+    const f = await projectFixture({ import: { exitCode: 134, stderr: 'handle_crash: Program crashed with signal 11\n' }, check: {} })
+    expect(await f.check(['res://art.gd'])).toEqual({
+      scripts: [{ path: 'res://art.gd', issues: [] }],
+      importWarning: 'The Godot import step before the check ended abnormally (exit code 134: Program crashed with signal 11), so errors about class_name classes or imported assets may be false.',
+    })
+    await configureFake(f.project, { import: { delayMs: 5000 }, check: {} })
+    expect((await f.check(['res://art.gd'], { timeoutMs: 1500 })).importWarning)
+      .toBe('The Godot import step before the check did not finish within 1.5 s, so errors about class_name classes or imported assets may be false.')
+    expect(await processes(f.project)).toEqual(['import', 'imported', 'check', 'import', 'check'])
+  }, PROCESSES_TIMEOUT)
+
+  it('fails when the import cannot start, and stops it when cancelled', async () => {
+    const f = await projectFixture({ import: { delayMs: 5000 }, check: {} })
+    const missing = await f.check(['res://art.gd'], { runtime: { kind: 'libgodot', runner: join(f.dir.root, 'no-godot'), library: '/no-libgodot' } })
+      .catch((caught: unknown) => caught)
+    expect(missing).toBeInstanceOf(GodotCheckError)
+    expect((missing as Error).message).toMatch(/^The Godot import step could not start: /u)
+    const controller = new AbortController()
+    const pending = f.check(['res://art.gd'], { signal: controller.signal })
+    await until(async () => (await processes(f.project)).includes('import'))
+    controller.abort(new Error('cancelled'))
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(await processes(f.project)).toEqual(['import'])
+  }, PROCESSES_TIMEOUT)
+
+  it('checks without importing again once a concurrent check imported the project', async () => {
+    const f = await projectFixture({ import: { delayMs: 300 }, check: {} })
+    const [art, player] = await Promise.all([f.check(['res://art.gd']), f.check(['res://player.gd'])])
+    expect(art).toEqual({ scripts: [{ path: 'res://art.gd', issues: [] }] })
+    expect(player).toEqual({ scripts: [{ path: 'res://player.gd', issues: [] }] })
+    expect(await processes(f.project)).toEqual(['import', 'imported', 'check', 'check'])
+  }, PROCESSES_TIMEOUT)
+})
 
 posix('checkScripts', () => {
   it('keeps located problems and attributes an unlocated failure to its script', async () => {

@@ -3,12 +3,13 @@ import { join } from 'node:path'
 import type { SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { afterEach, describe, expect, it } from 'vitest'
 import { frameStream } from '../src/frames.ts'
+import { importArgv, ProjectImports } from '../src/imports.ts'
 import { LogSequence } from '../src/logs.ts'
 import type { HarnessFrame } from '../src/protocol.ts'
 import {
-  gameArgv, GodotRequestError, GodotRunStateError, importArgv, launcherArgv, LIMIT_FPS, MAX_INPUT_EVENTS, MAX_LOG_MESSAGE_CHARS,
-  type GodotRun, type GodotRunSpec,
+  gameArgv, GodotRequestError, GodotRunStateError, LIMIT_FPS, MAX_INPUT_EVENTS, MAX_LOG_MESSAGE_CHARS, type GodotRun, type GodotRunSpec,
 } from '../src/run.ts'
+import { launcherArgv } from '../src/runtime.ts'
 import type { GodotInputEvent } from '../src/types.ts'
 import { fakeLog, fakeRequests, launch, runSpec, scratch, subprocessFixture, until, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
 
@@ -40,7 +41,7 @@ type Overrides = Partial<GodotRunSpec> | ((project: string) => Partial<GodotRunS
 async function start(
   config: FakeGodotConfig,
   overrides: Overrides = {},
-  options: { subprocess?: (real: SubprocessRuntime) => SubprocessRuntime } = {},
+  options: { subprocess?: (real: SubprocessRuntime) => SubprocessRuntime; imports?: ProjectImports } = {},
 ): Promise<Started> {
   dir = await scratch('run')
   folders.push(dir)
@@ -49,7 +50,8 @@ async function start(
   const project = await writeProject(join(dir.root, 'game'), config)
   const warnings: string[] = []
   const subprocess = options.subprocess?.(host.subprocess) ?? host.subprocess
-  const run = launch(subprocess, runSpec(dir.fakeGodot, project, typeof overrides === 'function' ? overrides(project) : overrides), warnings, new LogSequence())
+  const spec = runSpec(dir.fakeGodot, project, typeof overrides === 'function' ? overrides(project) : overrides)
+  const run = launch(subprocess, spec, warnings, new LogSequence(), options.imports)
   runs.push(run)
   return { run, project, warnings }
 }
@@ -87,7 +89,7 @@ describe('command lines', () => {
 
   it('builds the import and game command lines', () => {
     const spec = runSpec('/bin/godot', '/p', { runtime: libgodot, windowless: true, size: { width: 800, height: 600 }, scene: 'res://level.tscn', harnessPath: '/h.gd' })
-    expect(importArgv(spec)).toEqual([...launcherArgv(libgodot, process.pid, []), '--headless', '--path', '/p', '--import'])
+    expect(importArgv(spec.runtime, spec.hostPid, spec.project.dir)).toEqual([...launcherArgv(libgodot, process.pid, []), '--headless', '--path', '/p', '--import'])
     expect(gameArgv(spec, 1234, 'abc')).toEqual([
       ...launcherArgv(libgodot, process.pid, []), '--path', '/p', '--embedded', '--script', '/h.gd', '--audio-driver', 'Dummy',
       '--resolution', '800x600', '--', '--wasd-port=1234', '--wasd-token=abc', '--wasd-scene=res://level.tscn',
@@ -115,7 +117,7 @@ posix('starting', () => {
     ])
     // The runner passes Godot the command line after its own `--libgodot ... --` options, which the fake records.
     const spec = runSpec(dir?.fakeGodot as string, project, { importBeforeRun: true })
-    const expected = importArgv(spec).slice(launcherArgv(spec.runtime, spec.hostPid, []).length)
+    const expected = importArgv(spec.runtime, spec.hostPid, project).slice(launcherArgv(spec.runtime, spec.hostPid, []).length)
     expect((await fakeLog(project))[0]).toEqual({ argv: expected })
   })
 
@@ -139,6 +141,40 @@ posix('starting', () => {
     const missing = await start({}, { importBeforeRun: true, runtime: { kind: 'libgodot', runner: join(dir?.root as string, 'no-godot'), library: '/no-libgodot' } })
     await missing.run.started()
     expect(missing.run.view()).toMatchObject({ phase: 'failed', message: expect.stringContaining('The Godot import step could not start') as string })
+  })
+
+  it('imports after the other import steps and checks of the project, and makes the project current', async () => {
+    const imports = new ProjectImports()
+    const gate = Promise.withResolvers<undefined>()
+    let held: Promise<undefined> | undefined
+    const { run, project } = await start({ game: {} }, (folder) => {
+      held = imports.exclusive(folder, () => gate.promise, signal)
+      return { importBeforeRun: true }
+    }, { imports })
+    await until(() => run.view().phase === 'importing')
+    await tick(100)
+    expect(await fakeLog(project)).toEqual([])
+    gate.resolve(undefined)
+    await held
+    await run.started()
+    expect(run.view().phase).toBe('running')
+    expect((await fakeLog(project)).slice(0, 2)).toMatchObject([{ argv: expect.arrayContaining(['--import']) as string[] }, { imported: true }])
+    expect(await imports.outdated(project, signal)).toBe(false)
+  })
+
+  it('ends as exited when stopped while it waits for another import of the project', async () => {
+    const imports = new ProjectImports()
+    const gate = Promise.withResolvers<undefined>()
+    const { run, project } = await start({ game: {} }, (folder) => {
+      void imports.exclusive(folder, () => gate.promise, signal)
+      return { importBeforeRun: true }
+    }, { imports })
+    await until(() => run.view().phase === 'importing')
+    await run.stop()
+    expect(run.view()).toMatchObject({ phase: 'exited' })
+    gate.resolve(undefined)
+    await tick(100)
+    expect(await fakeLog(project)).toEqual([])
   })
 
   it('ends as exited when stopped during the import step', async () => {

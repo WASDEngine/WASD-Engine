@@ -11,6 +11,7 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FOLLOW_LOG_ENTRIES, followSession, type FollowSources } from '../src/follow.ts'
+import { ProjectImports } from '../src/imports.ts'
 import { LogSequence } from '../src/logs.ts'
 import { GodotRun } from '../src/run.ts'
 import {
@@ -42,7 +43,7 @@ async function setup(maxRuns = 4, admit: () => void = () => {}) {
   const launch = async (config: Parameters<typeof writeProject>[1] = { game: {} }, startedBy: 'agent' | 'user' = 'agent', subprocess: SubprocessRuntime = ctx.subprocess) => {
     count += 1
     const project = await writeProject(join(dir.root, `game-${count}`), config)
-    return () => GodotRun.launch(runSpec(dir.fakeGodot, project, { runId: `run-${count}`, startedBy }), { subprocess, sequence, warn: () => {} })
+    return () => GodotRun.launch(runSpec(dir.fakeGodot, project, { runId: `run-${count}`, startedBy }), { subprocess, sequence, imports: new ProjectImports(), warn: () => {} })
   }
   return { sessions, sequence, launch }
 }

@@ -16,8 +16,10 @@ import { createServer, type AddressInfo, type Server, type Socket } from 'node:n
 import type { SubprocessHandle, SubprocessOutputReader, SubprocessRuntime, SubprocessStdio } from '@deepseek-ai/dsh-subprocess'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
+import type { GodotCommandOutcome } from './command.ts'
+import { importFailure, type ProjectImports } from './imports.ts'
 import { isErrorEntry, LogRing, type LogSequence } from './logs.ts'
-import { crashSummary, describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
+import { describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
 import { PerformanceReply } from './performance.ts'
 import type { GodotProject } from './project.ts'
 import {
@@ -25,7 +27,7 @@ import {
   type HarnessFrame, type HarnessHello, type HarnessJsonMessage, type HarnessLogEntry, type HarnessMessage,
   type HarnessResult, type HarnessStatus,
 } from './protocol.ts'
-import type { ResolvedGodotRuntime } from './runtime.ts'
+import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 import type { GodotInputEvent, GodotLogEntry, GodotRunLayer, GodotRunPhase, GodotRunStarter, GodotRunView } from './types.ts'
 
 /** Largest message accepted before a connection presents the run's token; `hello` is far smaller. */
@@ -115,6 +117,8 @@ export interface GodotRunDependencies {
   readonly subprocess: SubprocessRuntime
   /** Host-wide log sequence. */
   readonly sequence: LogSequence
+  /** The plugin's import steps, which the run's import step waits its turn in. */
+  readonly imports: ProjectImports
   /**
    * Report a Host-side diagnostic that no caller receives.
    * @param message - diagnostic text.
@@ -261,26 +265,6 @@ function sequenceNeeds(events: readonly GodotInputEvent[]): { readonly seconds: 
     frames += 1
   }
   return { seconds, frames }
-}
-
-/**
- * Prefix a Godot command line with its launcher.
- * @param runtime - resolved runtime.
- * @param hostPid - Host process id for the runner's parent watch.
- * @param godotArgs - Godot command line arguments.
- * @returns the complete argv.
- */
-export function launcherArgv(runtime: ResolvedGodotRuntime, hostPid: number, godotArgs: readonly string[]): string[] {
-  return [runtime.runner, '--libgodot', runtime.library, '--parent-pid', String(hostPid), '--', ...godotArgs]
-}
-
-/**
- * Build the import step's argv.
- * @param spec - run parameters.
- * @returns the argv of a headless `--import`.
- */
-export function importArgv(spec: GodotRunSpec): string[] {
-  return launcherArgv(spec.runtime, spec.hostPid, ['--headless', '--path', spec.project.dir, '--import'])
 }
 
 /**
@@ -675,37 +659,33 @@ export class GodotRun {
   }
 
   private async runImport(): Promise<void> {
-    const timeout = AbortSignal.timeout(this.spec.importTimeoutMs)
-    const handle = this.deps.subprocess.spawn({
-      argv: importArgv(this.spec),
-      cwd: this.spec.project.dir,
-      stdio: this.collectedStdio(),
-      graceMs: this.spec.stopGraceMs,
-      signal: AbortSignal.any([this.lifetime.signal, timeout]),
-      env: CHILD_ENV,
-    })
-    let exit: ProcessExit
+    const { imports } = this.deps
+    const signal = this.lifetime.signal
+    let outcome: GodotCommandOutcome
     try {
-      exit = await handle.done
+      outcome = await imports.exclusive(this.spec.project.dir, () => imports.import({
+        subprocess: this.deps.subprocess,
+        runtime: this.spec.runtime,
+        projectDir: this.spec.project.dir,
+        hostPid: this.spec.hostPid,
+        timeoutMs: this.spec.importTimeoutMs,
+        graceMs: this.spec.stopGraceMs,
+        outputBytes: this.spec.outputBytes,
+        signal,
+      }), signal)
     } catch (error) {
+      signal.throwIfAborted()
       throw new StartupFailure(`The Godot import step could not start: ${(error as Error).message}`, { cause: error })
     }
-    const stdout = reader(handle, 'stdout').readFrom(0).text
-    const stderr = reader(handle, 'stderr').readFrom(0).text
-    const lines = [...parseEngineOutput(stdout, 'stdout', false), ...parseEngineOutput(stderr, 'stderr', false)]
-    const cancelled = this.lifetime.signal.aborted
-    const timedOut = !cancelled && timeout.aborted
-    if (!cancelled && !timedOut && exit.exitCode !== 0) {
-      const crash = crashSummary(stderr) ?? crashSummary(stdout)
-      lines.push({
-        level: 'warning',
-        message: `The Godot import step ended abnormally (${describeExit(exit)}${crash === undefined ? '' : `: ${crash}`}); imported resources may be incomplete.`,
-      })
+    const lines = [...parseEngineOutput(outcome.stdout, 'stdout', false), ...parseEngineOutput(outcome.stderr, 'stderr', false)]
+    const failure = importFailure(outcome, this.spec.importTimeoutMs)
+    if (!signal.aborted && !outcome.timedOut && failure !== undefined) {
+      lines.push({ level: 'warning', message: `The Godot import step ${failure}; imported resources may be incomplete.` })
     }
     for (const line of lines) this.append('import', line)
     if (lines.length > 0) this.emit({ type: 'logs' })
-    if (timedOut) throw new StartupFailure(`The Godot import step did not finish within ${formatSeconds(this.spec.importTimeoutMs)}.`)
-    this.lifetime.signal.throwIfAborted()
+    if (outcome.timedOut) throw new StartupFailure(`The Godot import step did not finish within ${formatSeconds(this.spec.importTimeoutMs)}.`)
+    signal.throwIfAborted()
   }
 
   private async launchGame(): Promise<void> {

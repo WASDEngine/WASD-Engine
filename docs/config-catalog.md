@@ -1749,7 +1749,7 @@ export interface Config {
   streamMaxWidth: number
   /** Import the project's assets before each run. */
   importBeforeRun: boolean
-  /** Deadline of the import step and of `godot_check`, in milliseconds. */
+  /** Deadline of one import step, before a run or a check, and of the script loading of one `godot_check`, in milliseconds. */
   importTimeoutMs: number
   /** Deadline from launch until the game connects, in milliseconds. */
   startTimeoutMs: number
