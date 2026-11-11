@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/polyhaven/README.md
+/:
+  en: 06877f65a90a6b31
+  zh: bb56ffbe2f6f8516
+/deepseek-ai-dsh-polyhaven:
+  en: 05f5327dcb829452
+  zh: 3c82a0b5be59ce72
+/deepseek-ai-dsh-polyhaven/summary:
+  en: 79738fb77d4f210e
+  zh: 3944f8e129c18725
+/deepseek-ai-dsh-polyhaven/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-polyhaven/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-polyhaven/use-this-package/default-composition:
+  en: c429bb9e88d8f63b
+  zh: f03dfa5872263158
+/deepseek-ai-dsh-polyhaven/use-this-package/the-tools:
+  en: 3c3fd0733c27d1b1
+  zh: a6fec41d64d076bb
+/deepseek-ai-dsh-polyhaven/use-this-package/poly-haven-s-terms:
+  en: 20bb61cd621f9085
+  zh: abe2e1774d0f4aee
+/deepseek-ai-dsh-polyhaven/use-this-package/plugin-icon:
+  en: 295bc6cd71f5393f
+  zh: 6bdef7641f12429b
+/deepseek-ai-dsh-polyhaven/understand-the-implementation:
+  en: 2eef7f15f3827619
+  zh: 29eb1caaa12618ba
+/deepseek-ai-dsh-polyhaven/further-exploration:
+  en: 481c5d0a888d9d9e
+  zh: 2d24603c84661b77
+/deepseek-ai-dsh-polyhaven/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-polyhaven/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-polyhaven/model-experience/tool-declarations/what-the-model-sees:
+  en: 6d0090317a1a8460
+  zh: df220f6a686916f0
+/deepseek-ai-dsh-polyhaven/model-experience/tool-declarations/token-effect:
+  en: 7033142dc17c3884
+  zh: dc601fa0ec12b282
+/deepseek-ai-dsh-polyhaven/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 84fc57496e929860
+/deepseek-ai-dsh-polyhaven/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-polyhaven/model-experience/tool-results/what-the-model-sees:
+  en: b6e6db31e057dc7b
+  zh: 9aa8707cbe22669f
+/deepseek-ai-dsh-polyhaven/model-experience/tool-results/token-effect:
+  en: 80560e248fd3c708
+  zh: 8d783c07e020e24e
+/deepseek-ai-dsh-polyhaven/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: 9c36aea51ad3bba1
+/deepseek-ai-dsh-polyhaven/known-limitations-and-deferred-work:
+  en: c0d591c0e86e668d
+  zh: 4270e3e6de9bb3ad
+/deepseek-ai-dsh-polyhaven/known-limitations-and-deferred-work/dev-note:
+  en: 7dc6f03cdc716e7d
+  zh: e36197bc44063b19
