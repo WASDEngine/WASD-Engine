@@ -27,7 +27,7 @@ The shared MCP runtime starts and supervises one headless worker per application
 | Package | What it provides |
 |---|---|
 | [`app-mcp/`](app-mcp/README.md) | Run an application headless behind an MCP stdio server: copy worker scripts out of the package, supervise one JSON-lines worker, and register the server with the MCP manager; also the Config fields, application search, and tool helpers that the Blender, GIMP, and SuperCollider servers share |
-| [`blender/`](blender/README.md) | Blender tools over MCP, backed by the `bpy` module or an installed Blender in background mode |
+| [`blender/`](blender/README.md) | Blender tools over MCP, backed by the `bpy` module or an installed Blender in background mode; the Desktop app ships `bpy` for macOS on Apple silicon and Windows x64 |
 | [`game-mcp/`](game-mcp/README.md) | WASD Engine's MCP server for other agents on the computer: the game tools over loopback Streamable HTTP with a token, their search, the Sessions that connected agents' games run in, and the setup prompt |
 | [`gimp/`](gimp/README.md) | GIMP 3 tools over MCP, backed by `gimp-console` |
 | [`godot/`](godot/README.md) | Godot game runs through LibGodot: `godot_*` tools, the `godot` Remote, the frame route, and the Game tab |

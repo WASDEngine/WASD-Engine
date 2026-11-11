@@ -61,6 +61,17 @@ export const GIMP_ASAR_UNPACK: string
  */
 export function applyWasdengineGimp<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
 
+/** `asarUnpack` pattern of the Blender runtime that `wasdengine-blender.ts` ships in the Blender plugin package. */
+export const BLENDER_ASAR_UNPACK: string
+
+/**
+ * Keep the shipped Blender runtime on disk, outside `app.asar`: its Python starts as a process and loads the bpy
+ * module, Blender's libraries, and Blender's scripts and data by path, which none of them can do inside the archive.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineBlender<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
+
 /** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */
 export const GAME_LAYER_FILE: string
 

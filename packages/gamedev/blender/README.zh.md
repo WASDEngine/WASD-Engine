@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender，要么是 uv 在首次使用时安装的 `bpy` Python 模块，要么是以后台模式运行的已安装 Blender；工具结果会报告安装问题。每个对话都有自己的 Blender 会话和打开的场景；崩溃、超时或长时间没有调用都会丢失未保存的更改。
+让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender：Desktop 应用随附或 uv 安装的 `bpy` 模块，或以后台模式运行的已安装 Blender；工具结果会报告安装问题。每个对话都有自己的 Blender 会话和打开的场景；崩溃、超时或长时间没有调用都会丢失未保存的更改。
 
 ## 目录
 
@@ -65,10 +65,10 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `dataRoot` | 必填 | 存放 bpy 环境、托管的 Python、预览、默认渲染结果和工作脚本副本的绝对目录 |
+| `dataRoot` | 必填 | 存放托管的 bpy 环境及其 Python、Windows 版 Desktop 应用解包的运行时、预览、默认渲染结果和工作脚本副本的绝对目录 |
 | `backend` | `auto` | 由哪种 Blender 运行工具：`auto`、`bpy` 或 `app`（见[后端](#backends)） |
-| `bpyVersion` | `5.2.3` | 托管环境中 `bpy` 包的版本，格式为 `major.minor.patch` |
-| `pythonVersion` | `3.13` | 托管环境的 Python 次版本号，格式为 `3.<minor>`；所用 bpy 版本必须支持它 |
+| `bpyVersion` | `5.2.3` | `bpy` 包的版本，格式为 `major.minor.patch`：[随附的运行时](#shipped-bpy)只在其版本与此相同时运行，uv 也把这个版本安装到托管环境中 |
+| `pythonVersion` | `3.13` | 托管环境的 Python 次版本号，格式为 `3.<minor>`；所用 bpy 版本必须支持它。随附的运行时自带 Python |
 | `uvPath` | `''` | uv 可执行文件的绝对路径；为空时先搜索 `PATH`，再依次查找 `~/.local/bin/uv`、`/opt/homebrew/bin/uv` 与 `/usr/local/bin/uv`（Windows 上为 `%USERPROFILE%\.local\bin\uv.exe`） |
 | `blenderPath` | `''` | Blender 可执行文件的绝对路径；为空时先使用 `BLENDER_PATH` 环境变量，再查找标准安装位置 |
 | `toolCallTimeoutMs` | `900,000` | 单次工具调用的时限，包括首次使用时的 bpy 安装；一个 Blender 请求（包括 `execute_python` 的超时）最多可用到其中除最后 30 s 以外的全部时间，这 30 s 留给工作进程启动和结果 |
@@ -84,11 +84,18 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 插件在每次启动工作进程时选择后端：首次工具调用时，以及工作进程停止后的那次调用时。因安装错误而安装 uv 或 Blender 后，再次调用工具即可，无需重启宿主。
 
-- **`bpy`** 从 uv 在 `dataRoot` 下管理的虚拟环境中运行 Blender Python 模块。首次启动时，uv 把 Python `pythonVersion` 安装到 `uv-python/`，并用 `bpy==<bpyVersion>` 构建 `venv-py<pythonVersion>-bpy<bpyVersion>/`，默认即 `venv-py3.13-bpy5.2.3/`。在 macOS arm64 上使用默认版本时，该环境约占 740 MB，Python 约占 70 MB，uv 还会在自己的缓存中保存下载的包。首次工具调用会等待安装完成，并在结果中报告；之后的启动复用该环境。环境路径上的目录若其 Python 不可执行（例如它在 `uv-python/` 下的解释器已被删除），会被一次全新的安装替换。bpy 模块无法启动时，调用失败并建议删除环境所在的文件夹，以便下一次启动重新安装。没有 uv 时，此后端失败并给出安装步骤。
+- **`bpy`** 运行 Blender Python 模块：其 bpy 版本为 `bpyVersion` 时运行 [Desktop 应用随附的运行时](#shipped-bpy)，否则从 uv 在 `dataRoot` 下管理的虚拟环境中运行。首次启动时，uv 把 Python `pythonVersion` 安装到 `uv-python/`，并用 `bpy==<bpyVersion>` 构建 `venv-py<pythonVersion>-bpy<bpyVersion>/`，默认即 `venv-py3.13-bpy5.2.3/`。在 macOS arm64 上使用默认版本时，该环境约占 740 MB，Python 约占 70 MB，uv 还会在自己的缓存中保存下载的包。首次工具调用会等待安装完成，并在结果中报告；之后的启动复用该环境。环境路径上的目录若其 Python 不可执行（例如它在 `uv-python/` 下的解释器已被删除），会被一次全新的安装替换。bpy 模块无法启动时，调用失败并建议删除环境所在的文件夹，以便下一次启动重新安装。没有 uv 时，此后端失败并给出安装步骤。
 - **`app`** 以后台模式和出厂设置运行已安装的 Blender，因此不会加载用户的启动文件和偏好设置。搜索顺序为 `blenderPath`、`BLENDER_PATH`、macOS 上的 `/Applications/Blender.app` 与 `~/Applications/Blender.app`、`PATH` 上的 `blender`，以及 Windows 上 `%ProgramFiles%\Blender Foundation` 下最新的 `Blender*` 文件夹。
-- **`auto`** 找到 uv 时使用 `bpy`，否则使用 `app`。uv 无法安装 bpy，或已安装的 bpy 模块无法启动时，`auto` 回退到已安装的 Blender，并在下一个工具结果中说明并引用失败信息；两者都不可用时，结果会说明如何安装 uv 或 Blender。
+- **`auto`** 在 Desktop 应用随附 bpy 或插件找到 uv 时使用 `bpy`，否则使用 `app`。uv 无法安装 bpy，或随附的、已安装的 bpy 模块无法启动时，`auto` 回退到已安装的 Blender，并在下一个工具结果中说明并引用失败信息；两者都不可用时，结果会说明如何安装 uv 或 Blender，或如何修复随附的运行时。
 
 `uvPath`、`blenderPath` 或 `BLENDER_PATH` 的值不是可执行文件时，调用失败；插件不会继续搜索。
+
+<a id="shipped-bpy"></a>
+### Desktop 应用中的 bpy
+
+Apple 芯片 macOS 版 Desktop 应用把 Blender 随附在本包的 `runtime/darwin-arm64/` 文件夹中，位于 `app.asar` 之外：CPython 3.13 加上 `bpy` 模块及其依赖的包，因此工具无需 uv、下载或已安装的 Blender。[`wasdengine/blender/BUILD.md`](../../../wasdengine/blender/BUILD.md) 说明如何用 python-build-standalone 的 CPython 和按 SHA-256 固定的 PyPI bpy wheel 构建该运行时。该文件夹的 `runtime.json` 写明 Python 程序及其 `bpy` 的版本；该版本为 `bpyVersion` 时，`auto` 与 `bpy` 后端先运行它，再考虑 uv 的环境；`bpyVersion` 不同时则选用 uv 的环境。服务器以 `-B` 启动工作进程，因此其 Python 不会在已签名的应用中写入字节码缓存，而是在每次启动时编译工作进程导入的模块，耗时不到一秒。`runtime.json` 不是 JSON、描述的是其他平台，或写明的 Python 不是可执行文件时，调用以 `BLENDER_RUNTIME_INVALID` 失败，消息提示重新安装 WASD Engine 或把 `backend` 设为 `app`。EEVEE 渲染（例如以 `material` 着色的 `render_preview`）通过窗口服务器访问 GPU，因此 macOS 把工作进程列为仅后台进程，它没有程序坞图标、菜单栏，也不出现在应用切换器中。运行时中的 `COPYING` 与 `SOURCE.txt` 载有 Blender 的许可证并写明对应的源代码。源码检出用 `wasdengine/blender/build.sh --out <dir> --install "$PWD/packages/gamedev/blender/runtime"` 把运行时安装到 git 忽略的文件夹中，此后工具像 Desktop 应用一样使用它。
+
+Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `runtime/win32-x64/` 中，并附带写明该归档及其 `runtime.json` 字段的 `archive.json`，因为运行时最深的文件在应用安装目录下会超过 Windows 260 个字符的路径长度限制。工作进程首次启动时，服务器用 Windows 自带的 `tar.exe` 把归档解包到 `dataRoot` 下的 `runtime/<version>/`，下一个工具结果以 `Unpacked the bpy runtime that WASD Engine ships into <folder> (first use).` 开头；之后的启动复用该文件夹。归档先解包到 `.partial-<8 个十六进制数字>` 同级文件夹，再重命名到位，因此中断的解包不会留下解包到一半的运行时；该位置上 Python 不可执行的文件夹会被替换。这个运行时不带 `-B` 运行，因此其字节码缓存留在 `dataRoot` 下。归档缺失、tar 无法解包，或其 `runtime.json` 描述的是另一个运行时时，调用以 `BLENDER_RUNTIME_INVALID` 失败；在 `auto` 下随后改由已安装的 Blender 运行工具，结果中会说明这一点。
 
 <a id="tools"></a>
 ### 工具
@@ -149,6 +156,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | 路径 | 内容 | 生命周期 |
 |---|---|---|
 | `payload/<hash>/wasd_blender_worker.py` | 工作脚本的副本，是 Desktop 应用归档之外的普通文件；`<hash>` 是其 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；早期版本保留 |
+| `runtime/<version>/` | Windows 版 Desktop 应用以归档随附、首次使用时解包的 bpy 运行时；先解包到 `.partial-<8 个十六进制数字>` 同级文件夹，再重命名到位 | 保留；新的运行时版本解包在它旁边 |
 | `uv-python/` | uv 为 `bpy` 后端安装的 Python | 保留 |
 | `venv-py<pythonVersion>-bpy<bpyVersion>/` | `bpy` 环境，先在同级的 `.partial-<uuid>` 目录中构建，再重命名到位；该位置上 Python 不可执行的目录会先被移到同级的 `.stale-<uuid>` 目录 | 保留；插件只删除被移开的目录 |
 | `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
@@ -174,13 +182,13 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 
 首次调用时，服务器确定后端，按需准备 bpy 环境，把工作脚本复制到包外，并启动一个 Python 工作进程。服务器与工作进程使用共享的 JSON 行协议：请求写入工作进程的标准输入，回复写到文件描述符 3，日志写到标准输出和标准错误。每个工具校验参数，向同名的工作进程方法发送一个请求，校验回复，并把它转换为简洁的文本和图像。监管器逐个执行调用，并在工作进程停止后启动新的工作进程。
 
-同一个工作脚本既在 bpy 模块下运行（`<venv python> -I -u <script>`），也在 Blender 内运行（`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`）。服务器从 uv 和工作进程的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 Blender。工作进程在回复 `shutdown` 后以 `os._exit(0)` 退出，因为某些导出器运行之后，Blender 可能在自己的退出处理程序中崩溃。标准输入在没有 `shutdown` 请求的情况下关闭，或回复管道失去读取方，都表示服务器已不存在。工作进程中的一个线程每秒检查一次回复管道，因此即使在请求期间工作进程也能察觉；随后它终止自己的进程组（服务器在 POSIX 上为它创建了独立的进程组），执行的代码所启动的进程也随之结束。
+同一个工作脚本既在 bpy 模块下运行（应用内的运行时为 `<python> -I -B -u <script>`，Windows 应用解包的运行时与 uv 的环境为 `<python> -I -u <script>`），也在 Blender 内运行（`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`）。服务器从 uv 和工作进程的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 Blender。工作进程在回复 `shutdown` 后以 `os._exit(0)` 退出，因为某些导出器运行之后，Blender 可能在自己的退出处理程序中崩溃。标准输入在没有 `shutdown` 请求的情况下关闭，或回复管道失去读取方，都表示服务器已不存在。工作进程中的一个线程每秒检查一次回复管道，因此即使在请求期间工作进程也能察觉；随后它终止自己的进程组（服务器在 POSIX 上为它创建了独立的进程组），执行的代码所启动的进程也随之结束。
 
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 宿主插件：展开了共享字段的配置 schema，以及服务器注册 |
 | [`src/worker.ts`](src/worker.ts) | MCP 服务器进程入口：以 Blender 的选项、工作进程启动器、工具和指令调用 `runAppMcpServer` |
-| [`src/environment.ts`](src/environment.ts) | uv 与 Blender 搜索、bpy 环境、后端选择和安装提示 |
+| [`src/environment.ts`](src/environment.ts) | 随附的运行时、uv 与 Blender 搜索、bpy 环境、后端选择和安装提示 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、结果文本和图像文件 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称和指令 |
 | [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | 工作进程：协议循环，以及每个工具对应的一个方法 |
@@ -189,7 +197,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 
 ### 用真实 Blender 验证
 
-在仓库根目录运行端到端测试套件。其中 bpy 套件以离线方式运行 uv，因此只有 uv 缓存中已有 bpy 5.2.3 时才会运行；app 套件只有找到已安装的 Blender 时才会运行。缺少运行时的套件会被跳过。
+在仓库根目录运行端到端测试套件。其中 bpy 套件以离线方式运行 uv，因此只有 uv 缓存中已有 bpy 5.2.3 时才会运行；随附套件只有本包的 `runtime/` 文件夹中有本平台的运行时时才会运行，并检查工作进程没有改动运行时的任何文件；app 套件只有找到已安装的 Blender 时才会运行。缺少运行时的套件会被跳过。
 
 ```sh
 pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
@@ -277,7 +285,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### 模型可见内容
 
-每个结果包含一个文本块，`render_preview` 与 `render` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装提示；bpy 模块无法安装或无法启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
+每个结果包含一个文本块，`render_preview` 与 `render` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `the bpy module that WASD Engine ships`、`bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装或解包提示；bpy 模块无法安装、解包或启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，或如何修复随附的运行时，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
 
 #### Token 影响
 
@@ -297,7 +305,9 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 - **空闲的 Session 会丢失场景** — Session 的工作进程在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止，未保存的场景随之丢失。
 - **没有窗口** — 工具不提供视口、界面，也不提供窗口或区域截图，需要窗口的操作符会失败；`render_preview` 是查看场景的唯一方式，`render` 需要相机。
 - **重启会丢失未保存的工作** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使工作进程停止；场景、Python 命名空间和检查点随之丢失，新的工作进程以 Blender 默认场景启动。
-- **首次使用耗时且占用空间大** — `bpy` 后端在首次工具调用期间安装，该调用会等待安装完成；调用超过 `toolCallTimeoutMs` 时，uv 停止，未完成的环境被删除，下一次调用重新开始安装。新的 `bpyVersion` 或 `pythonVersion` 会安装另一个环境，插件不删除任何可用的环境。
+- **只为 Apple 芯片 macOS 与 Windows x64 随附** — Desktop 应用为 Apple 芯片 macOS 随附 `bpy`，使安装后的应用增大约 770 MB，下载增大约 270 MB；为 Windows x64 随附时，安装程序与安装后的应用增大约 360 MB；Web 与 Linux 用 uv 安装 `bpy` 或使用已安装的 Blender。
+- **Windows 在首次使用时解包** — Windows 上首次启动 Blender 时会把约 1 GB 解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 或换用新的运行时版本后，解包的运行时仍留在原处。EEVEE 渲染（例如 `material` 预览）需要支持 OpenGL 的 GPU，Windows 虚拟机和远程会话可能没有。
+- **首次使用耗时且占用空间大** — 没有随附的运行时时，`bpy` 后端在首次工具调用期间安装，该调用会等待安装完成；调用超过 `toolCallTimeoutMs` 时，uv 停止，未完成的环境被删除，下一次调用重新开始安装。新的 `bpyVersion` 或 `pythonVersion` 会安装另一个环境，插件不删除任何可用的环境。
 - **bpy 只覆盖四个平台** — PyPI 只为 macOS arm64、Linux x86_64 以及 Windows x64 与 arm64 发布 bpy 5.2.3；在其他平台上 `bpy` 后端失败，`auto` 需要已安装的 Blender。
 - **检查点数量有限** — `undo_steps` 偏好设置（出厂设置为 32）限制 `undo` 能回退多远，`new_scene` 与 `open_blend` 会清除检查点。
 - **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到的是诊断文本，而不是预览和渲染图像。

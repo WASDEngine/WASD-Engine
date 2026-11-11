@@ -9,7 +9,8 @@
  * application worker through a `WorkerSupervisor`, which starts the worker as
  * a `JsonLineWorker` on the first call. A `WorkerPool` keeps one such worker
  * per calling Session, which the Host's MCP client names in each call. The setup host and tool helpers carry
- * what the application servers share. `materializePayload` copies a shipped
+ * what the application servers share, and `readShippedRuntime` reads a runtime that the Desktop app ships in a
+ * plugin package. `materializePayload` copies a shipped
  * file, possibly inside `app.asar`, to a real path. This is a library: it
  * exports no plugin.
  *
@@ -81,6 +82,10 @@ export { AppServerOptionFields, TOOL_CALL_RESERVE_MS, decodeServerOptions, encod
 export type { AppServerOptions } from './options.ts'
 export { firstExecutable, newestFirst, nodeSetupHost } from './setup-host.ts'
 export type { CommandArgv, SetupHost } from './setup-host.ts'
+export {
+  ShippedRuntimeFields, ShippedRuntimePath, nodeShippedRuntimeHost, readPackedRuntime, readShippedRuntime, shippedRuntimeRoot,
+} from './shipped-runtime.ts'
+export type { PackedRuntime, ShippedRuntime, ShippedRuntimeHost } from './shipped-runtime.ts'
 export {
   WorkerReplyError, defineAppTool, executePythonTool, formatBytes, replyParser, withSetupNotes, workerParams,
 } from './tools.ts'

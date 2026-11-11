@@ -27,7 +27,7 @@ kind: "package-group"
 | 包 | 提供的能力 |
 |---|---|
 | [`app-mcp/`](app-mcp/README.zh.md) | 在 MCP stdio 服务器之后以无界面方式运行应用程序：把工作脚本复制出包外，监管一个 JSON 行协议的工作进程，并向 MCP 管理器注册该服务器；还提供 Blender、GIMP 与 SuperCollider 服务器共用的 Config 字段、应用程序查找与工具辅助函数 |
-| [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑 |
+| [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑；Desktop 应用为 Apple 芯片 macOS 与 Windows x64 随附 `bpy` |
 | [`game-mcp/`](game-mcp/README.zh.md) | 供这台电脑上其他智能体使用的 WASD Engine MCP 服务器：通过带令牌的回环 Streamable HTTP 提供游戏工具及其搜索、已连接智能体的游戏所在的会话，以及设置提示词 |
 | [`gimp/`](gimp/README.zh.md) | 通过 MCP 提供的 GIMP 3 工具，由 `gimp-console` 支撑 |
 | [`godot/`](godot/README.zh.md) | 通过 LibGodot 运行 Godot 游戏：`godot_*` 工具、`godot` Remote、画面路由与 Game 标签页 |

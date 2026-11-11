@@ -1,0 +1,213 @@
+# Build the WASD Engine Blender runtimes (wasdengine/blender/BUILD.md) for macOS
+# arm64 and Windows x64 from python-build-standalone's CPython and the bpy wheels
+# that wasdengine/blender/requirements-<target>.txt pins, smoke-test each on its
+# own system, and, when run on the default branch, publish the archives and their
+# manifest.json as the GitHub release blender-<version>, whose manifest.json
+# Desktop packaging reads. A run on another branch builds and uploads workflow
+# artifacts only. Runs on manual dispatch only.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: Blender runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Runtime version; the release is tagged blender-<version>
+        required: true
+        default: 5.2.3-wasd.1
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-blender-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the build scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/blender
+
+      - name: Lint build.sh
+        run: |
+          bash -n wasdengine/blender/build.sh
+          shellcheck wasdengine/blender/build.sh
+
+      - name: Test runtime.py and smoke.py
+        run: python3 -B -I -m unittest discover --start-directory wasdengine/blender --pattern 'test_*.py' --verbose
+
+  build:
+    name: Build ${{ matrix.artifact }}
+    needs: check
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - artifact: darwin-arm64
+            os: macos-26
+          # build.sh builds the Windows runtime on any system from its archives; the smoke-windows job runs it.
+          - artifact: win32-x64
+            os: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      # Holds the installed runtime and the smoke test's files; its name has characters outside ASCII, as many
+      # user names do, which Blender and its Python must handle in paths.
+      SMOKE_NAME: blender-smoke-ü-游戏
+    steps:
+      # The sparse checkout keeps the root files, among them LICENSE, which build.sh ships as the runtime's COPYING.
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/blender
+
+      - name: Build and install the runtime
+        run: >-
+          wasdengine/blender/build.sh --target "${{ matrix.artifact }}"
+          --version "$VERSION" --repository "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/blender-out" --install "$RUNNER_TEMP/$SMOKE_NAME/runtime"
+
+      # build.sh smoke-tests the staged files before it packs them; this runs the same test on the unpacked archive.
+      - name: Smoke-test the installed runtime
+        if: matrix.artifact == 'darwin-arm64'
+        timeout-minutes: 10
+        run: >-
+          python3 -I wasdengine/blender/smoke.py
+          --runtime "$RUNNER_TEMP/$SMOKE_NAME/runtime/${{ matrix.artifact }}" --work "$RUNNER_TEMP/$SMOKE_NAME/work"
+
+      - name: Upload the archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: blender-${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/blender-out/blender-*.tar.gz
+            ${{ runner.temp }}/blender-out/manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  smoke-windows:
+    name: Smoke-test win32-x64
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      VERSION: ${{ inputs.version }}
+      SMOKE_NAME: blender-smoke-ü-游戏
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/blender
+
+      - name: Download the archive
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: blender-win32-x64
+          path: ${{ runner.temp }}/blender-win32-x64
+
+      # Installs the archive as the Blender plugin unpacks it, and renders, exports, and saves with its Python, which
+      # build.sh could not run on Linux.
+      - name: Install and smoke-test the runtime
+        timeout-minutes: 15
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP $env:SMOKE_NAME
+          python -I wasdengine/blender/runtime.py install --archive "$env:RUNNER_TEMP/blender-win32-x64/blender-$env:VERSION-win32-x64.tar.gz" --root "$root/runtime" --version $env:VERSION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I wasdengine/blender/smoke.py --runtime "$root/runtime/win32-x64" --work "$root/work"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  release:
+    name: Publish blender-${{ inputs.version }}
+    needs: [build, smoke-windows]
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check out the runtime sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/blender
+
+      - name: Download the archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: blender-*
+          path: ${{ runner.temp }}/artifacts
+
+      - name: Merge the manifests and check the archives
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          mkdir -p "$release_dir"
+          cp "$RUNNER_TEMP"/artifacts/blender-*/blender-*.tar.gz "$release_dir/"
+          python3 -I wasdengine/blender/runtime.py merge --output "$release_dir/manifest.json" "$RUNNER_TEMP"/artifacts/blender-*/manifest.json
+          python3 -I wasdengine/blender/runtime.py verify --manifest "$release_dir/manifest.json" --dir "$release_dir" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/blender-$VERSION/"
+          cat "$release_dir/manifest.json"
+
+      # The release starts as a draft, which stays hidden until its assets are
+      # attached; publishing it creates the tag at this run's commit. A draft
+      # that an earlier failed run left is moved to this run's commit and its
+      # assets are replaced. A published release is never changed, because
+      # replacing an asset deletes it first and packaging verifies the digests
+      # that manifest.json lists. The archives go up before manifest.json.
+      # The release is published as a pre-release so that it never becomes the
+      # repository's latest release, which serves the Desktop update feed and
+      # the front page's Download link: GitHub makes a full release the latest
+      # one while no other full release exists, even with --latest=false.
+      - name: Create and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          tag="blender-$VERSION"
+          bpy=$(jq -j .bpy "$release_dir/manifest.json")
+          title="Blender runtime $VERSION"
+          notes="WASD Engine Blender runtimes $VERSION for macOS arm64 and Windows x64: Blender $bpy as the bpy Python module, installed into python-build-standalone's CPython from wheels pinned by SHA-256, without pip, Tk, headers, scripts, and bytecode caches, which the Desktop apps ship for their Blender plugin. Blender is licensed under GPL-3.0-or-later; each archive's SOURCE.txt names the corresponding source, and wasdengine/blender/BUILD.md describes the build. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::The release $tag is already published and must not change; dispatch a new runtime version."
+              exit 1
+            fi
+            gh release edit "$tag" --target "$GITHUB_SHA"
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi
+          gh release upload "$tag" "$release_dir"/blender-*.tar.gz --clobber
+          gh release upload "$tag" "$release_dir/manifest.json" --clobber
+          gh release edit "$tag" --draft=false --prerelease --title "$title" --notes "$notes"

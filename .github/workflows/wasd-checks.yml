@@ -96,3 +96,4 @@ jobs:
           python3 -B -m unittest discover --start-directory wasdengine/libgodot --pattern 'test_*.py'
           python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
           python3 -B -m unittest discover --start-directory wasdengine/gimp --pattern 'test_*.py'
+          python3 -B -m unittest discover --start-directory wasdengine/blender --pattern 'test_*.py'
