@@ -293,6 +293,7 @@ WASD Engine's headless SuperCollider is not installed for darwin-x64. The WASD E
 - **重启会丢失解释器状态** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期、取消正在运行的调用，或调用 `0.exit` 的代码都会停止 sclang；变量与 SynthDef 随之消失，新的解释器启动时一个都没有。
 - **SuperCollider 只在 macOS arm64、Windows x64 与 Linux x64 上运行** — 面向 Apple 芯片 macOS 与 Windows x64 的 Desktop 应用自带运行时，Linux 检出可安装发布构建；Intel Mac 没有运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在那里报告缺少运行时。
 - **Windows 上的 sclang 使用用户自己的 SuperCollider 文件夹** — 它忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会在 `%LOCALAPPDATA%\SuperCollider` 中创建用户文件夹，并读取那里用户自己的扩展，除非类库配置排除它们（自带运行时的配置会排除）；工作类会跳过那里的启动文件。
+- **Windows 路径中不能有 %** — sclang 通过 cmd.exe 启动 scsynth，而 cmd.exe 即使在引号内也会替换两个 % 之间的文本，因此当运行时所在文件夹或 harness 主目录的路径含有 % 时，工具在 Windows 上拒绝启动（`SUPERCOLLIDER_PATH_UNSUPPORTED`）；移动该文件夹，或把 `DSH_HOME` 设为不含 % 的文件夹，即可启动。
 - **插件仅为核心 UGen** — 自带运行时只包含 SuperCollider 自身的 UGen，不含 sc3-plugins 或其他扩展，其类库也不含 GUI 类。
 - **响度对每个声道同等加权** — 不应用 BS.1770 的环绕声道权重，因此超过两个声道的文件读数会比标准测量值更响。
 - **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到诊断文本，而不是波形与声谱图。

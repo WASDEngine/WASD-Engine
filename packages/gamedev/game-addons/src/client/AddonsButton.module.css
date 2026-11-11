@@ -20,8 +20,10 @@
   cursor: pointer;
 }
 
-.trigger:hover {
-  color: var(--dsw-alias-label-primary);
+@media (hover: hover) {
+  .trigger:hover {
+    color: var(--dsw-alias-label-primary);
+  }
 }
 
 .trigger:focus-visible {
@@ -39,6 +41,9 @@
 }
 
 .content {
+  /* The list scrolls on the dialog's raised surface, so its scrollbar takes that level's colors. */
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
   min-height: 0;
   overflow-y: auto;
 }
@@ -75,7 +80,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 10px 0;
-  border-top: 1px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 20%));
+  border-top: 0.5px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 20%));
 }
 
 /* The add-on's own icon, or a tile with its title's first letter when it has none. */
@@ -128,8 +133,10 @@
   text-decoration: none;
 }
 
-.itemTitle:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .itemTitle:hover {
+    text-decoration: underline;
+  }
 }
 
 .meta {

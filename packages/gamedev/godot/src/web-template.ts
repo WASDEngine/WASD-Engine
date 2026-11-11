@@ -83,7 +83,10 @@ export class WebTemplateManager {
    */
   constructor(private readonly settings: WebTemplateSettings, private readonly fetchUrl: TemplateFetch) {}
 
-  /** @returns where a downloaded template lives, named after its pinned SHA-256. */
+  /**
+   * The path of the downloaded Web template.
+   * @returns where a downloaded template lives, named after its pinned SHA-256.
+   */
   installedPath(): string {
     return join(this.settings.dataRoot, 'templates', `${this.settings.webTemplateSha256}.zip`)
   }

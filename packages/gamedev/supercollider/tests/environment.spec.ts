@@ -251,6 +251,25 @@ describe('SuperColliderWorkers', () => {
     expect(workers.takeNotes()[0]).toContain('(sclang at /opt/sc/sclang)')
   })
 
+  it('refuses Windows paths with %, which cmd.exe would change, before it makes folders or starts sclang', async () => {
+    const start = vi.fn()
+    const windows = (): FakeHost => new FakeHost({
+      platform: 'win32', executables: ['C:\\sc\\sclang.exe', 'C:\\sc\\scsynth.exe', 'C:\\100%\\sclang.exe', 'C:\\100%\\scsynth.exe'],
+    })
+    const workers = (sclangPath: string, host: FakeHost): SuperColliderWorkers<never> => new SuperColliderWorkers(
+      { ...OPTIONS, sclangPath },
+      { host, bundledRoot: 'C:\\app\\runtime', bridge: ['C:\\node.exe'], start, workerScript: async () => 'C:\\p\\WasdWorker.sc' },
+    )
+    const home = windows()
+    const inHome = workers('C:\\sc\\sclang.exe', home).start(signal, { key: 'session:spec', directory: 'C:\\Users\\me\\100%off\\supercollider\\workers\\1' })
+    await expect(inHome).rejects.toMatchObject({ code: 'SUPERCOLLIDER_PATH_UNSUPPORTED' })
+    await expect(inHome).rejects.toThrow('Set DSH_HOME to a folder whose path has no %')
+    expect(home.made).toEqual([])
+    const install = workers('C:\\100%\\sclang.exe', windows()).start(signal, { key: 'session:spec', directory: 'C:\\data\\workers\\1' })
+    await expect(install).rejects.toThrow('SuperCollider cannot run from C:\\100%\\scsynth.exe on Windows')
+    expect(start).not.toHaveBeenCalled()
+  })
+
   it('explains how to get the headless runtime, and starts no installed SuperCollider, when none is shipped', async () => {
     const start = vi.fn()
     const workers = new SuperColliderWorkers(OPTIONS, {

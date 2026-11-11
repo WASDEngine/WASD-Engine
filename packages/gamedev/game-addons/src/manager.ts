@@ -135,7 +135,13 @@ function addonFolder(addon: GameAddon): string {
   return `addons/${(addon.godot as NonNullable<GameAddon['godot']>).addonDir}`
 }
 
-/** A one-line view of a catalog entry for the tools and the dialog. */
+/**
+ * A one-line view of a catalog entry for the tools and the dialog.
+ * @param addon - the catalog entry.
+ * @param presence - whether a project has the add-on (installed, found without a record, or absent) and its version;
+ *   omitted outside a project.
+ * @returns the view.
+ */
 export function addonView(addon: GameAddon, presence?: GameAddonPresence): GameAddonView {
   return {
     id: addon.id,
@@ -491,14 +497,24 @@ export class GameAddonManager {
       const archivePath = await cachedArchive(archive, this.options.downloads, signal)
       const staging = join(parent, `.staging-${randomUUID()}`)
       const trash = join(parent, `.trash-${randomUUID()}`)
+      let movedOld = false
+      let placed = false
       try {
         check(await unpackFolder(archivePath, archive.root, staging, signal))
         await writeFile(join(staging, STORE_MARKER), `${JSON.stringify({ id: addon.id, version: addon.version, sha256: archive.sha256 })}\n`, { flag: 'wx' })
-        if (await exists(target)) await rename(target, trash)
+        if (await exists(target)) {
+          await rename(target, trash)
+          movedOld = true
+        }
         await rename(staging, target)
+        placed = true
+      } catch (error) {
+        // The version that was in place goes back when the new one could not take its place.
+        if (movedOld && !placed) await rename(trash, target)
+        throw error
       } finally {
         await rm(staging, { recursive: true, force: true })
-        await rm(trash, { recursive: true, force: true })
+        if (!movedOld || placed) await rm(trash, { recursive: true, force: true })
       }
       await rm(archivePath, { force: true })
     }, { signal, waitMs: 120_000 })

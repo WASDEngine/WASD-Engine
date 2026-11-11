@@ -86,7 +86,11 @@ function scan(lines: readonly string[]): SectionSpan[] {
   return sections
 }
 
-/** Godot's string literal for one text. */
+/**
+ * Godot's string literal for one text.
+ * @param text - the text.
+ * @returns the quoted literal, with backslashes and double quotes escaped.
+ */
 export function godotString(text: string): string {
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
@@ -125,7 +129,10 @@ export class ProjectFile {
     this.lines = body === '' ? [] : body.split(/\r?\n/u)
   }
 
-  /** @returns the edited text, with the original line endings. */
+  /**
+   * The file's text after the edits.
+   * @returns the edited text, with the original line endings.
+   */
   toString(): string {
     return this.lines.join(this.newline) + (this.finalNewline || this.lines.length > 0 ? this.newline : '')
   }
@@ -191,7 +198,10 @@ export class ProjectFile {
     return true
   }
 
-  /** @returns the `res://` plugin configurations in `[editor_plugins] enabled`. */
+  /**
+   * The editor plugins the project enables.
+   * @returns the `res://` plugin configurations in `[editor_plugins] enabled`.
+   */
   editorPlugins(): string[] {
     return packedStrings(this.get('editor_plugins', 'enabled') ?? '')
   }

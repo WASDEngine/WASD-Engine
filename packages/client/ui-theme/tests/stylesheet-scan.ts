@@ -3,7 +3,7 @@
  * rules and enumerate the package stylesheets those contracts range over.
  */
 import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** One flattened CSS rule: its comma-separated selector parts and its declarations in source order. */
@@ -84,7 +84,9 @@ export function packageFiles(accepts: (name: string) => boolean): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name)
       if (entry.isDirectory()) {
-        if (entry.name !== 'node_modules' && entry.name !== 'lib' && entry.name !== 'dist') walk(path)
+        // WASDEngine fork: a game tool's runtime/<platform>-<arch> folder holds a git-ignored application build.
+        const runtimeBuild = basename(dir) === 'runtime' && /^(?:darwin|linux|win32)-(?:arm64|x64)$/u.test(entry.name)
+        if (entry.name !== 'node_modules' && entry.name !== 'lib' && entry.name !== 'dist' && !runtimeBuild) walk(path)
       } else if (accepts(entry.name)) found.push(path.replaceAll('\\', '/'))
     }
   }

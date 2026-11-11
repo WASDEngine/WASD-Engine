@@ -43,10 +43,14 @@ export class SuperColliderSetupError extends Error {
   /**
    * @param code - `SUPERCOLLIDER_NOT_FOUND` for a missing or misconfigured sclang or scsynth, `SUPERCOLLIDER_RUNTIME_INVALID`
    *   for a shipped runtime that its `runtime.json` does not describe, `SUPERCOLLIDER_NOT_HEADLESS` for a configured sclang
-   *   that macOS would show as an open application.
+   *   that macOS would show as an open application, `SUPERCOLLIDER_PATH_UNSUPPORTED` for a Windows path that cmd.exe
+   *   would change.
    * @param message - actionable description for the agent and the user.
    */
-  constructor(readonly code: 'SUPERCOLLIDER_NOT_FOUND' | 'SUPERCOLLIDER_RUNTIME_INVALID' | 'SUPERCOLLIDER_NOT_HEADLESS', message: string) {
+  constructor(
+    readonly code: 'SUPERCOLLIDER_NOT_FOUND' | 'SUPERCOLLIDER_RUNTIME_INVALID' | 'SUPERCOLLIDER_NOT_HEADLESS' | 'SUPERCOLLIDER_PATH_UNSUPPORTED',
+    message: string,
+  ) {
     super(message)
   }
 }
@@ -293,6 +297,28 @@ export function sclangBridgePlan(
   }
 }
 
+/**
+ * On Windows, sclang starts scsynth through cmd.exe, which replaces text between two % signs with environment variables
+ * even inside double quotes, so a path that holds % would name another file.
+ * @param platform - the host's platform.
+ * @param runtime - the resolved runtime, whose scsynth and plugins paths reach cmd.exe.
+ * @param folders - the worker's folders, whose scratch files reach cmd.exe.
+ * @throws SuperColliderSetupError `SUPERCOLLIDER_PATH_UNSUPPORTED` for such a path on Windows.
+ */
+function refusePercentPaths(platform: NodeJS.Platform, runtime: SuperColliderRuntime, folders: SuperColliderFolders): void {
+  if (platform !== 'win32') return
+  const reason = 'because cmd.exe, which starts scsynth there, replaces text between % signs'
+  const runtimePath = [runtime.scsynth, runtime.plugins].find(item => item?.includes('%') === true)
+  if (runtimePath !== undefined) {
+    throw new SuperColliderSetupError('SUPERCOLLIDER_PATH_UNSUPPORTED',
+      `SuperCollider cannot run from ${runtimePath} on Windows, ${reason}. Install WASD Engine, or point scsynthPath, at a folder whose path has no %.`)
+  }
+  if (folders.scratch.includes('%')) {
+    throw new SuperColliderSetupError('SUPERCOLLIDER_PATH_UNSUPPORTED',
+      `SuperCollider cannot render in ${folders.scratch} on Windows, ${reason}. Set DSH_HOME to a folder whose path has no %, then restart WASD Engine.`)
+  }
+}
+
 function describeRuntime(runtime: SuperColliderRuntime): string {
   switch (runtime.source) {
     case 'bundled': return 'the runtime that WASD Engine ships'
@@ -346,6 +372,7 @@ export class SuperColliderWorkers<W extends { readonly ready: WorkerReady }> {
     const runtime = await findSuperCollider(this.options, this.dependencies.bundledRoot, host)
     if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', runtimeMissing(host))
     const folders = superColliderFolders(scope.directory, host.platform)
+    refusePercentPaths(host.platform, runtime, folders)
     for (const directory of [folders.configHome, folders.dataHome, folders.scratch]) await host.makeDirectory(directory)
     const workerClass = await this.dependencies.workerScript()
     await host.writeTextFile(folders.classLibraryConfig, classLibraryConfig(runtime, pathsOf(host.platform).dirname(workerClass)))

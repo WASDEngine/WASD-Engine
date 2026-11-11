@@ -90,6 +90,7 @@ jobs:
           packages/client/ui-plugin-manager/tests/components.client.spec.tsx
           packages/util/official-bundles
           scripts/optional-bundles.spec.ts
+          packages/client/ui-theme/tests
 
       - name: Runtime script tests
         run: |

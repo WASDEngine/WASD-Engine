@@ -341,7 +341,10 @@ export class ModelStage {
     this.requestRender()
   }
 
-  /** @param playing - whether the clip plays or holds its frame. */
+  /**
+   * Play or pause the chosen animation clip.
+   * @param playing - whether the clip plays or holds its frame.
+   */
   setPlaying(playing: boolean): void {
     this.playing = playing
     if (this.action !== undefined) this.action.paused = !playing
@@ -349,7 +352,10 @@ export class ModelStage {
     this.requestRender()
   }
 
-  /** @param on - whether meshes draw as wireframes. */
+  /**
+   * Draw the model's meshes as wireframes or as surfaces.
+   * @param on - whether meshes draw as wireframes.
+   */
   setWireframe(on: boolean): void {
     this.wireframe = on
     this.applyWireframe()
