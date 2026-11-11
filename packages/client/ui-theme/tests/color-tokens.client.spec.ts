@@ -13,7 +13,19 @@ const EXEMPT_FILES: Record<string, string> = {
   'packages/client/ui-primitives/src/ansi.ts': 'ANSI SGR palette mapping',
   'packages/client/web/src/boot-page.module.css': 'boot page paints before ui-theme loads',
   'packages/client/web/src/base.css': 'shell fallbacks before ui-theme loads',
+  // WASDEngine fork (wasdengine/FORK.md): the Assets tab's file-type icons, like FileTypeIcon above.
+  'packages/gamedev/ui-game-assets/src/client/icon.module.css': 'Assets tab file-type artwork palette',
+  'packages/gamedev/ui-game-assets/src/client/icon.tsx': 'Assets tab file-type artwork palette',
 }
+
+/**
+ * WASDEngine fork (wasdengine/FORK.md): the WASD Engine brand palette, which ui-theme does not define. The fork's own
+ * stylesheets paint it whole; in the upstream sheets the fork patches, only its `--wasdengine-*` properties and the
+ * keycap purple pair do.
+ */
+const WASDENGINE_BRAND_FILE = /\/(packages\/gamedev\/[^/]+\/src\/client\/[^/]+|wasdengine-[^/]+)\.module\.css$/
+const WASDENGINE_BRAND_PROPERTY = /^--wasdengine-/
+const WASDENGINE_BRAND_VALUE = /^#(7c4dff|a585ff)$/i
 
 /** Alpha masks and box-shadow ink are geometry, not themed surface or label colors. */
 const EXEMPT_PROPERTIES = /^(-webkit-)?mask(-image)?$|^box-shadow$/
@@ -32,7 +44,7 @@ function transparentLiteral(literal: string): boolean {
 
 /** Whether a file is listed in {@link EXEMPT_FILES}. */
 function exempt(file: string): boolean {
-  return Object.keys(EXEMPT_FILES).some(suffix => file.endsWith(suffix))
+  return Object.keys(EXEMPT_FILES).some(suffix => file.endsWith(suffix)) || WASDENGINE_BRAND_FILE.test(file)
 }
 
 /**
@@ -42,7 +54,8 @@ function exempt(file: string): boolean {
  */
 function colorViolations(css: string): string[] {
   return parseRules(css).flatMap(rule => rule.declarations
-    .filter(([property, value]) => !EXEMPT_PROPERTIES.test(property) && (
+    .filter(([property, value]) => !EXEMPT_PROPERTIES.test(property)
+      && !WASDENGINE_BRAND_PROPERTY.test(property) && !WASDENGINE_BRAND_VALUE.test(value.trim()) && (
       value.includes('--dsw-static-')
       || [...value.matchAll(LITERAL_COLOR)].some(([literal = '']) => !transparentLiteral(literal))
     ))

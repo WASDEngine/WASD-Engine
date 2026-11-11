@@ -16,6 +16,7 @@
 
 # Specs that read the deleted workflow files.
 apps/desktop/tests/desktop-publish-local-preflight.spec.ts
+apps/desktop/tests/desktop-rollout.spec.ts
 scripts/ci-compatible-selfhosted.spec.ts
 scripts/ci-workflow.spec.ts
 scripts/client-build-environment.client.spec.ts

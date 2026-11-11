@@ -39,18 +39,17 @@ const OFFICE_TOOLS = ['office_convert', 'office_recalculate', 'office_render']
 
 afterEach(() => { vi.unstubAllEnvs() })
 
-/** Plugin rows of one shipped agent preset. */
+/** Plugin rows of one shipped agent preset; WASDEngine's `gamedev` preset is its own patch file (wasdengine/FORK.md). */
 function presetPlugins(preset: string): { id: string; name: string }[] {
-  const [row] = loadOverlayPatches(preset, fileURLToPath(new URL(`../presets/${preset}.patch.yml`, import.meta.url)))
+  const file = preset === 'gamedev' ? '../wasdengine/gamedev.cordis.patch.yml' : `../presets/${preset}.patch.yml`
+  const [row] = loadOverlayPatches(preset, fileURLToPath(new URL(file, import.meta.url)))
     .flatMap(patch => patch.insert ?? [])
   return (row!.config as { plugins: { id: string; name: string }[] }).plugins
 }
 
-it('mounts the Office tools in the standard and PTC presets and omits it from the minimal preset', () => {
+it('mounts the Office tools in the gamedev preset', () => {
   const office = (preset: string) => presetPlugins(preset).filter(row => row.id === 'tool-office').map(row => row.name)
-  expect(office('standard')).toEqual(['@deepseek-ai/dsh-tool-office'])
-  expect(office('ptc')).toEqual(['@deepseek-ai/dsh-tool-office'])
-  expect(office('minimal')).toEqual([])
+  expect(office('gamedev')).toEqual(['@deepseek-ai/dsh-tool-office'])
   const host = loadOverlayPatches('desktop-office', fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)))
     .flatMap(patch => patch.insert ?? []).map(row => row.id)
   expect(host).not.toContain('tool-office')
@@ -92,7 +91,7 @@ async function boot(profile: string, primaryRuntime: (root: string) => string | 
   }
   const hostRows = loadOverlayPatches('desktop-office', fileURLToPath(new URL('../cordis.patch.yml', import.meta.url)))
     .flatMap(patch => patch.insert ?? []).filter(row => ROWS.includes(row.id))
-  const rows = [...hostRows.slice(0, 1), presetPlugins('standard').find(row => row.id === 'tool-office')!, ...hostRows.slice(1)]
+  const rows = [...hostRows.slice(0, 1), presetPlugins('gamedev').find(row => row.id === 'tool-office')!, ...hostRows.slice(1)]
   expect(rows.map(row => row.id)).toEqual(ROWS)
   const entries = rows.map(row => ({ ...row, name: builtin[row.id]! }))
   await ctx.loader.root.update(entries.filter(row => mounted.includes(row.id)))

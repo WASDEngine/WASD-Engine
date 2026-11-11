@@ -35,7 +35,7 @@ it('switches auto recharge through the account Remote, then reads the balance ag
   const c = await start()
   const actions = operations(c)
   c.mock.remote.account.getBalance.mockResolvedValue(ok(balance(false)))
-  c.mock.streams.push('account/watch', stored)
+  c.mock.streams.push('account/watch', { type: 'snapshot', state: stored })
   await vi.waitFor(() => { expect(actions.hooks.account.getSnapshot().details?.balance).toEqual(balance(false)) })
   c.mock.remote.account.getBalance.mockResolvedValue(ok(balance(true)))
   c.mock.remote.account.setAutoRecharge.mockResolvedValueOnce(ok({ enabled: true }))
