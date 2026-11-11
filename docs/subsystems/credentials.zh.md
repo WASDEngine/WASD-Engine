@@ -292,6 +292,15 @@ Account login, credentials, and client-safe Remote operations.
 @Remote getBalance(client: AccountClientMetadata): Promise<AccountDetails['balance'] | null>
 
 /**
+ * WASD Engine: turn the account's auto recharge on or off, which the WASD Engine account service offers while a
+ * ready balance's allowance carries `autoRecharge`; `wasdengine-allowance.ts` validates the reply.
+ * @param enabled - whether auto recharge should be on.
+ * @param client - identity of the requesting UI for this call.
+ * @returns the outcome, or null if signed out or the grant changed during the request.
+ */
+@Remote async setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>
+
+/**
  * Query unconsumed account notifications in server order without reading profile data.
  * @param client - identity of the requesting UI for this call; its language selects the server-authored message.
  * @returns notifications with their next query delay, or null if signed out or the grant changed during the query.
@@ -341,15 +350,6 @@ async getPlatformSession(): Promise<PlatformSession | null>
  * @returns stored token, or undefined for other origins or a signed-out account.
  */
 async resolveToken(url: string): Promise<string | undefined>
-
-/**
- * WASD Engine: turn the account's auto recharge on or off, which the WASD Engine account service offers while a
- * ready balance's allowance carries `autoRecharge`.
- * @param enabled - whether auto recharge should be on.
- * @param client - identity of the requesting UI for this call.
- * @returns the outcome, or null if signed out or the grant changed during the request.
- */
-abstract setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>
 
 /**
  * Join an active attempt or start browser authorization.

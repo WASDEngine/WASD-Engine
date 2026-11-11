@@ -49,8 +49,9 @@ const MAX_DECL_CHARS = 1200
  * into a manual. Every report also lists one line per standard prop seat of its
  * scope, so the widest Session-scope slot (`tool.call.toolview`, with the
  * global and Session access seats and one occupant line per keyed tool view) sets the current 127.
+ * WASDEngine fork: the Game tab's tool card adds one occupant line to that slot (wasdengine/FORK.md).
  */
-const MAX_ENTRY_LINES = 127
+const MAX_ENTRY_LINES = 128
 
 /** One register-call option as the catalog teaches it. */
 interface OptionDoc {

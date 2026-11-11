@@ -348,7 +348,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-api-workspace-controller`
 
 - `inject`: `remoteAccess` · `typert` · `workspaceRegistry`
-- `source`: [`packages/api/workspace-controller/src/index.ts:37`](../packages/api/workspace-controller/src/index.ts)
+- `source`: [`packages/api/workspace-controller/src/index.ts:39`](../packages/api/workspace-controller/src/index.ts)
 
 ```ts config-catalog
 /** First-use directory policy for the Host account. */
@@ -357,6 +357,8 @@ export interface Config {
   documentsDirectory?: string
   /** Maximum duration of the operating system's Documents lookup. */
   documentsLookupTimeoutMs?: number
+  /** Create the first-use default Workspace; false leaves first use to the Client. */
+  defaultWorkspace?: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-controller -->
@@ -491,6 +493,56 @@ export interface Config {
 export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-bash-sandbox -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-blender -->
+<a id="deepseek-aidsh-blender"></a>
+
+## `@deepseek-ai/dsh-blender`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/blender/src/index.ts:26`](../packages/gamedev/blender/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the Blender tools. */
+export interface Config extends AppMcpConfig {
+  /**
+   * Absolute directory for the bpy environment, managed Python, the runtime that the Windows Desktop app unpacks,
+   * previews, renders, and the worker script copy.
+   */
+  dataRoot: string
+  /**
+   * `auto` uses the bpy module that the Desktop app ships, then the one uv installs, then an installed Blender; `bpy`
+   * uses only the bpy module and `app` only an installed Blender.
+   */
+  backend: BlenderBackend
+  /**
+   * bpy package version: the bpy module that the Desktop app ships runs only when it is this version, and uv installs
+   * this version into the managed environment.
+   */
+  bpyVersion: string
+  /** Python minor version of the managed environment; it must match the bpy release. */
+  pythonVersion: string
+  /** Absolute uv executable; empty searches PATH and the uv installers' default locations. */
+  uvPath: string
+  /** Absolute Blender executable; empty uses BLENDER_PATH, then the standard install locations. */
+  blenderPath: string
+  /** Budget for the MCP server and for each Blender worker start to become ready. */
+  startupTimeoutMs: number
+  /**
+   * Absolute folder of the game add-on store, whose catalog add-ons `wasd_addons.enable(id)` enables in a worker;
+   * empty leaves `wasd_addons` without add-ons.
+   */
+  addonStore: string
+}
+
+/**
+ * Which Blender runs the tools: `bpy` (the Python module that the Desktop app ships or uv installs), `app` (an installed
+ * Blender), or `auto`.
+ */
+export type BlenderBackend = 'auto' | 'bpy' | 'app'
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-blender -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-client-connection -->
 <a id="deepseek-aidsh-client-connection"></a>
@@ -657,16 +709,23 @@ export interface Config extends ContactConfig {
   developerTools: Volatile<boolean>
 }
 
-/** Questionnaire destination shared by Host and Client. */
+/** Questionnaire destination and the sign-in choice shared by Host and Client. */
 export interface ContactConfig {
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
   /** Questionnaire source option; empty until Harness is supported by the form. */
   contactSource: string
+  /** Offer Add API Key beside Sign in in the sign-in dialog; false leaves account sign-in as the only way in. */
+  apiKeyEntry: boolean
+  /**
+   * Make every user sign in: the sign-in dialogs offer no way to close them, and losing the sign-in opens the Get
+   * started dialog again, in any view.
+   */
+  signInRequired: boolean
 }
 
-/** Persisted steps; a native top-up page leaves the durable step at credit. */
-export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'done'
+/** Persisted steps; a native top-up page leaves the durable step at credit. WASD Engine adds `agents`, its last step. */
+export type OnboardingStep = 'welcome' | 'credit' | 'purpose' | 'process' | 'agents' | 'done'
 
 /** Work scenarios offered by the desktop introduction. */
 export type OnboardingPurpose = 'office' | 'development' | 'both'
@@ -688,6 +747,12 @@ export type OnboardingProcess = 'compact' | 'standard' | 'detailed'
 export interface Config {
   /** Offer the browser API-key step when no native shell owns credential onboarding. */
   credentialOnboarding: boolean
+  /** Leave credential onboarding to the Desktop app's welcome window; false offers the browser step in the Desktop app too. */
+  nativeCredentialOnboarding: boolean
+  /** Offer API key entry: the Models settings section and the API key step; false leaves account sign-in as the only way in. */
+  apiKeyEntry: boolean
+  /** Show the versioned preview notice in browsers; the Desktop app never shows it. */
+  welcomeNotice: boolean
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-client-ui-settings-models -->
@@ -892,7 +957,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-deepseek-account`
 
 - `inject`: `credentials` · `authorization`
-- `source`: [`packages/credentials/deepseek-account/src/index.ts:40`](../packages/credentials/deepseek-account/src/index.ts)
+- `source`: [`packages/credentials/deepseek-account/src/index.ts:41`](../packages/credentials/deepseek-account/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-specific platform and request deadlines. */
@@ -930,6 +995,29 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-account -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-elevenlabs -->
+<a id="deepseek-aidsh-elevenlabs"></a>
+
+## `@deepseek-ai/dsh-elevenlabs`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/elevenlabs/src/index.ts:38`](../packages/gamedev/elevenlabs/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the ElevenLabs tools. */
+export interface Config {
+  /** Origin of the WASD Engine API, the inference origin that the account sign-in releases its token to. */
+  apiOrigin: string
+  /** Time limit of one `elevenlabs_voices` call. */
+  searchTimeoutMs: number
+  /** Time limit of one `elevenlabs_speech` or `elevenlabs_sound_effect` call. */
+  generationTimeoutMs: number
+  /** Time limit of one `elevenlabs_music` call. */
+  musicTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-elevenlabs -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-api-speech-to-text -->
 <a id="deepseek-aidsh-experimental-api-speech-to-text"></a>
@@ -1662,6 +1750,75 @@ export type Config = LocalConfig
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-fs-sandbox -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
+<a id="deepseek-aidsh-game-addons"></a>
+
+## `@deepseek-ai/dsh-game-addons`
+
+- `inject`: `tools` · `workingDirectory` · `skills` · `typert`
+- `source`: [`packages/gamedev/game-addons/src/index.ts:37`](../packages/gamedev/game-addons/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute catalog folder: one folder per add-on with `addon.json` and `SKILL.md`. */
+  catalogDir: string
+  /** Absolute folder of the plugin's data: the archive cache under `archives/` and Blender asset packs under `blender-assets/`. */
+  dataRoot: string
+  /** Absolute folder of the Blender add-on store, which the Blender plugin's `addonStore` names too. */
+  blenderStore: string
+  /** Time limit of one archive download, including its body. */
+  downloadTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
+<a id="deepseek-aidsh-game-mcp"></a>
+
+## `@deepseek-ai/dsh-game-mcp`
+
+- `inject`: `typert`
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:35`](../packages/gamedev/game-mcp/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute folder of the access token and of the connected agents' Session bindings. */
+  dataRoot: string
+  /** Loopback port of the endpoint; while another program holds it, the server listens on a free port for that Host run. */
+  port: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-gimp -->
+<a id="deepseek-aidsh-gimp"></a>
+
+## `@deepseek-ai/dsh-gimp`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/gimp/src/index.ts:24`](../packages/gamedev/gimp/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the GIMP tools. */
+export interface Config extends AppMcpConfig {
+  /** Absolute directory for the GIMP profile, snapshots, and the worker script copy. */
+  dataRoot: string
+  /**
+   * Absolute gimp-console executable of GIMP 3; empty uses GIMP_CONSOLE, then the runtime that the Desktop app ships,
+   * then the standard install locations.
+   */
+  gimpConsolePath: string
+  /** Budget for the MCP server to start and list its tools. */
+  startupTimeoutMs: number
+  /** Budget for a GIMP worker to become ready; the first start with a new profile takes about 15 s. */
+  readyTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-gimp -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-goal -->
 <a id="deepseek-aidsh-goal"></a>
 
@@ -1678,6 +1835,97 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-goal -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-godot -->
+<a id="deepseek-aidsh-godot"></a>
+
+## `@deepseek-ai/dsh-godot`
+
+- `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
+- `source`: [`packages/gamedev/godot/src/index.ts:59`](../packages/gamedev/godot/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Absolute folder for the managed runtime and copies of the harness scripts. */
+  dataRoot: string
+  /** Managed LibGodot runtime version. */
+  runtimeVersion: string
+  /** Release manifest of the managed runtime. */
+  runtimeManifestUrl: string
+  /** Absolute LibGodot library; set together with `runnerPath`. Empty uses the managed runtime. */
+  libgodotPath: string
+  /** Absolute `godot_runner`; set together with `libgodotPath`. */
+  runnerPath: string
+  /** Frames per second streamed to the Game tab. */
+  streamFps: number
+  /** JPEG quality of streamed JPEG frames, 0.1 to 1. */
+  streamQuality: number
+  /**
+   * Stream lossless PNG frames while preparing a PNG frame keeps up with `streamFps`, and JPEG frames otherwise; `false` streams
+   * only JPEG frames.
+   */
+  streamLossless: boolean
+  /** Largest streamed frame width in pixels. */
+  streamMaxWidth: number
+  /** Import the project's assets before each run. */
+  importBeforeRun: boolean
+  /** Deadline of one import step, before a run or a check, and of the script loading of one `godot_check`, in milliseconds. */
+  importTimeoutMs: number
+  /** Deadline from launch until the game connects, in milliseconds. */
+  startTimeoutMs: number
+  /**
+   * Deadline of instantaneous game requests, the longest silence of a running game while a request waits, and the
+   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds.
+   */
+  requestTimeoutMs: number
+  /** Grace between asking a game to quit and terminating it, in milliseconds. */
+  stopGraceMs: number
+  /** Bytes of process output kept per stream for diagnostics. */
+  processOutputBytes: number
+  /** Log entries kept per run. */
+  maxLogEntries: number
+  /** Most games that may run at once across Sessions on any computer, each counted until its process ended. */
+  maxRuns: number
+  /**
+   * Bytes of the computer's physical memory for each game: at most the computer's memory divided by this, rounded to
+   * the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  runMemoryBytes: number
+  /**
+   * Logical processors for each game: at most the computer's logical processors divided by this, rounded down, run at
+   * once; 0 leaves processors out of the limit.
+   */
+  runCores: number
+  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  maxHeadlessProcesses: number
+  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  minAvailableMemoryBytes: number
+  /**
+   * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
+   * at its own frame rate.
+   */
+  hiddenFps: number
+  /** Milliseconds after the game connected, or after the latest view or request ended, before `hiddenFps` applies. */
+  hiddenDelayMs: number
+  /** Whether games the agent starts run without audio unless the call says otherwise. */
+  agentRunsMuted: boolean
+  /**
+   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
+   * Web template with HTTP range requests.
+   */
+  webTemplateArchiveUrl: string
+  /** Path of the single-threaded Web release template inside that archive. */
+  webTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  webTemplateSha256: string
+  /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
+  webTemplatePath: string
+  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  exportTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-headless -->
 <a id="deepseek-aidsh-headless"></a>
@@ -2448,7 +2696,7 @@ export interface LspLocalServerConfig {
 ## `@deepseek-ai/dsh-mcp-client`
 
 - `inject`: `tools`
-- `source`: [`packages/mcp/mcp-client/src/index.ts:138`](../packages/mcp/mcp-client/src/index.ts)
+- `source`: [`packages/mcp/mcp-client/src/index.ts:140`](../packages/mcp/mcp-client/src/index.ts)
 
 ```ts config-catalog
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -2851,6 +3099,33 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-plugin-package-inventory-deepseek -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-polyhaven -->
+<a id="deepseek-aidsh-polyhaven"></a>
+
+## `@deepseek-ai/dsh-polyhaven`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/polyhaven/src/index.ts:32`](../packages/gamedev/polyhaven/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the Poly Haven tools. */
+export interface Config {
+  /** Base URL of the Poly Haven API. */
+  apiUrl: string
+  /** `User-Agent` of every request; the API terms require it to name the software. */
+  userAgent: string
+  /** Time limit of one `polyhaven_search` or `polyhaven_asset` call. */
+  requestTimeoutMs: number
+  /** Time limit of one `polyhaven_download` call. */
+  downloadTimeoutMs: number
+  /** Largest total size of the files of one `polyhaven_download` call, in bytes. */
+  maxDownloadBytes: number
+  /** How long the asset list stays in memory before a search reads it again; 0 reads it for every search. */
+  catalogMaxAgeMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-polyhaven -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-ptc-runtime-node -->
 <a id="deepseek-aidsh-ptc-runtime-node"></a>
@@ -3431,7 +3706,7 @@ export interface Config extends SessionTitleLlmConfig {
 ```ts config-catalog
 /** Plugin config (all optional — the built-in facts resolve without defaults). */
 export interface Config {
-  /** DeepSeek Harness home directory exposed as `DSH_HOME`; defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** WASD Engine Harness home directory exposed as `DSH_HOME`; defaults to `$DSH_HOME` or `~/.dsh`. */
   dshHome?: string
 }
 ```
@@ -3468,7 +3743,7 @@ export interface Config {
   providerName?: string
   /** Whether project and user roots are included around custom roots. */
   includeDefaultRoots?: boolean
-  /** DeepSeek Harness config root. Defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** WASD Engine Harness config root. Defaults to `$DSH_HOME` or `~/.dsh`. */
   dshHome?: string
   /** Shared agent config root. Defaults to `$DSH_AGENTS_HOME` or `~/.agents`. */
   agentsHome?: string
@@ -3923,6 +4198,32 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-subagent-spawn-in-process -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-supercollider -->
+<a id="deepseek-aidsh-supercollider"></a>
+
+## `@deepseek-ai/dsh-supercollider`
+
+- `inject`: `mcpManager`
+- `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
+- `source`: [`packages/gamedev/supercollider/src/index.ts:24`](../packages/gamedev/supercollider/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the SuperCollider tools. */
+export interface Config extends AppMcpConfig {
+  /** Absolute directory for the interpreter's user folders, render scratch files, and the worker class copy. */
+  dataRoot: string
+  /** Absolute sclang executable of a headless SuperCollider build; empty uses the runtime that the Desktop app ships. */
+  sclangPath: string
+  /** Absolute scsynth executable; empty uses the scsynth beside sclangPath, or that of the shipped runtime. */
+  scsynthPath: string
+  /** Budget for the MCP server to start and list its tools. */
+  startupTimeoutMs: number
+  /** Budget for sclang to compile its class library and report ready; the first start after an install takes longer. */
+  readyTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-supercollider -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-system-prompt -->
 <a id="deepseek-aidsh-system-prompt"></a>
 
@@ -3933,7 +4234,7 @@ export interface Config {
 ```ts config-catalog
 /** Plugin config: the deployment-authored fragment of the system prompt (see {@link Config.personaPrefix} for its contract). */
 export interface Config {
-  /** Include the fixed DeepSeek Harness identity before the deployment persona (default true). */
+  /** Include the fixed WASD Engine Harness identity before the deployment persona (default true). */
   includeHarnessIdentity?: boolean
   /** Include optional runtime-context snapshots in model history (default true); required context remains. */
   includeRuntimeContext?: boolean
@@ -4786,6 +5087,23 @@ export type ApprovalPolicy = 'ask' | 'never'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-user-approval -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->
+<a id="deepseek-aidsh-wasd-plugins"></a>
+
+## `@deepseek-ai/dsh-wasd-plugins`
+
+- `inject`: `tools` · `godot` · `workingDirectory` · `typert`
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:28`](../packages/gamedev/wasd-plugins/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** Path of the Explore page on the WASD Engine site. */
+  explorePath: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-web -->
 <a id="deepseek-aidsh-web"></a>
 
@@ -5080,6 +5398,9 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 | `@deepseek-ai/dsh-client-ui-entry-customization` | — | [`packages/client/ui-entry-customization/src/index.ts`](../packages/client/ui-entry-customization/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-assets` | — | [`packages/gamedev/ui-game-assets/src/index.ts`](../packages/gamedev/ui-game-assets/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-mcp` | — | [`packages/gamedev/ui-game-mcp/src/index.ts`](../packages/gamedev/ui-game-mcp/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-tools` | — | [`packages/gamedev/ui-game-tools/src/index.ts`](../packages/gamedev/ui-game-tools/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-input-trigger` | — | [`packages/client/ui-input-trigger/src/index.ts`](../packages/client/ui-input-trigger/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-jobs` | — | [`packages/client/ui-jobs/src/index.ts`](../packages/client/ui-jobs/src/index.ts) |
@@ -5206,6 +5527,7 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 | `@deepseek-ai/dsh-agent-loop-testkit` | — | [`packages/test-support/agent-loop-testkit/src/index.ts`](../packages/test-support/agent-loop-testkit/src/index.ts) |
 | `@deepseek-ai/dsh-anonymous-user-id` | — | [`packages/identity/anonymous-user-id/src/index.ts`](../packages/identity/anonymous-user-id/src/index.ts) |
 | `@deepseek-ai/dsh-app-boot` | — | [`packages/boot/app-boot/src/index.ts`](../packages/boot/app-boot/src/index.ts) |
+| `@deepseek-ai/dsh-app-mcp` | — | [`packages/gamedev/app-mcp/src/index.ts`](../packages/gamedev/app-mcp/src/index.ts) |
 | `@deepseek-ai/dsh-atomic-write` | — | [`packages/util/atomic-write/src/index.ts`](../packages/util/atomic-write/src/index.ts) |
 | `@deepseek-ai/dsh-base` | — | [`packages/bundle/base/src/index.ts`](../packages/bundle/base/src/index.ts) |
 | `@deepseek-ai/dsh-brand` | — | [`packages/util/brand/src/index.ts`](../packages/util/brand/src/index.ts) |
