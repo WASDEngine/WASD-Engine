@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-polyhaven",
   "description": "Poly Haven for the agent: search CC0 HDRIs, textures, and 3D models and download them into the game project",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
