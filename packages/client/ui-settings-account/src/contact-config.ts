@@ -1,16 +1,12 @@
-/** Public contact, bonus notice, and sign-in options shared by Host and Client. */
+/** Public contact and sign-in options shared by Host and Client. */
 import z from '@deepseek-ai/schemastery'
 
-/** Questionnaire destination, bonus notice timings, and the sign-in choice shared by Host and Client. */
+/** Questionnaire destination and the sign-in choice shared by Host and Client. */
 export interface ContactConfig {
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
   /** Questionnaire source option; empty until Harness is supported by the form. */
   contactSource: string
-  /** First delay before retrying a failed bonus acknowledgement. */
-  bonusAckRetryDelayMs: number
-  /** Ceiling for the acknowledgement retry backoff. */
-  bonusAckRetryMaxDelayMs: number
   /** Offer Add API Key beside Sign in in the sign-in dialog; false leaves account sign-in as the only way in. */
   apiKeyEntry: boolean
   /**
@@ -23,8 +19,6 @@ export interface ContactConfig {
 export const ContactConfigFields = {
   contactFormUrl: z.string().pattern(/^https:\/\/[^/\s]+\//).default('https://trtgsjkv6r.feishu.cn/share/base/form/shrcnlCoGElW7MQznGy9r3YYXcg?hide_uid=1&hide_device_info=1&hide_harness_version=1'),
   contactSource: z.string().default(''),
-  bonusAckRetryDelayMs: z.number().min(1).default(1_000),
-  bonusAckRetryMaxDelayMs: z.number().min(1).default(60_000),
   apiKeyEntry: z.boolean().default(true),
   signInRequired: z.boolean().default(false),
 }
