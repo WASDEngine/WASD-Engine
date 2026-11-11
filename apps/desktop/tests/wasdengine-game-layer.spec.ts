@@ -4,13 +4,13 @@
  */
 import { EventEmitter } from 'node:events'
 import { readFile } from 'node:fs/promises'
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { localMacOSPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { applyWasdengineGameLayer, GAME_LAYER_FILE } from '../scripts/wasdengine-builder-config.mjs'
 import { gameLayerCompileArgs } from '../scripts/wasdengine-game-layer.ts'
 import { GAME_LAYER_IPC, GAME_LAYER_MODULE } from '../src/wasdengine-game-layer-names.ts'
-import { DesktopGameLayers, registerWasdengineGameLayers, type GameLayerHandle, type GameLayerModule } from '../src/wasdengine-game-layer.ts'
+import { DesktopGameLayers, registerWasdengineGameLayers, type GameLayerModule, type GameLayerWindow } from '../src/wasdengine-game-layer.ts'
 
 const PLACEMENT = { context: 4096, x: 10, y: 20, width: 320, height: 180, layerWidth: 800, layerHeight: 450 }
 
@@ -21,19 +21,24 @@ function fakeWindow(zoom = 1) {
     webContents: contents,
     getNativeWindowHandle: () => Buffer.alloc(8),
   })
-  return { window: window as unknown as BrowserWindow, emitter: window, contents }
+  return { window, emitter: window, contents }
+}
+
+/** A view handle of the fake module. */
+interface FakeHandle {
+  readonly id: number
 }
 
 /** A Node-API module that records its views. */
 function fakeModule() {
   let created = 0
-  const views = new Map<GameLayerHandle, { readonly id: number; placed: number[]; attached: boolean }>()
-  const attach = vi.fn((): GameLayerHandle => {
-    const handle = { id: ++created } as unknown as GameLayerHandle
+  const views = new Map<FakeHandle, { readonly id: number; placed: number[]; attached: boolean }>()
+  const attach = vi.fn((): FakeHandle => {
+    const handle = { id: ++created }
     views.set(handle, { id: created, placed: [], attached: true })
     return handle
   })
-  const module: GameLayerModule = {
+  const module: GameLayerModule<FakeHandle> = {
     attach,
     place: (handle, ...geometry) => { (views.get(handle) as { placed: number[] }).placed = geometry },
     detach: (handle) => { (views.get(handle) as { attached: boolean }).attached = false },
@@ -133,7 +138,7 @@ describe('registerWasdengineGameLayers', () => {
     type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
     const ipc = { handle: vi.fn((channel: string, handler: Handler) => { handlers.set(channel, handler) }) }
     const { window } = fakeWindow()
-    const assertProductSender = vi.fn((): BrowserWindow => window)
+    const assertProductSender = vi.fn((): GameLayerWindow => window)
     vi.spyOn(process, 'platform', 'get').mockReturnValue('linux')
     registerWasdengineGameLayers(ipc, assertProductSender)
     expect(ipc.handle).not.toHaveBeenCalled()

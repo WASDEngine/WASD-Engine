@@ -64,6 +64,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/dsh-godot": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*"
   },
   "devDependencies": {

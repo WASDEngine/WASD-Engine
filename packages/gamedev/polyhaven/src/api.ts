@@ -295,7 +295,8 @@ export class PolyHavenApi {
     const response = await this.request(url, 'application/json', what, signal)
     const text = (await readBounded(response, MAX_JSON_BYTES, what)).toString('utf8')
     try {
-      return JSON.parse(text) as unknown
+      const value: unknown = JSON.parse(text)
+      return value
     } catch (error) {
       throw new PolyHavenRequestError(response.status, `Poly Haven sent ${what} that is not JSON.`, { cause: error })
     }

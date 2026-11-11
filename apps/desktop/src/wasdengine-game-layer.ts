@@ -5,7 +5,7 @@
  */
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import type { DesktopGameLayerPlacement } from '@deepseek-ai/dsh-godot/types'
 import { GAME_LAYER_IPC, GAME_LAYER_MODULE } from './wasdengine-game-layer-names.ts'
 
@@ -16,13 +16,30 @@ export interface GameLayerHandle {
   readonly [HANDLE]: 'GameLayerHandle'
 }
 
-/** The Node-API module's functions; `wasdengine/game-layer/game_layer.mm` documents them. */
-export interface GameLayerModule {
-  attach(windowHandle: Buffer): GameLayerHandle
+/**
+ * The Node-API module's functions; `wasdengine/game-layer/game_layer.mm` documents them. `Handle` is the module's view
+ * handle, which the bridge only passes back to the module.
+ */
+export interface GameLayerModule<Handle = GameLayerHandle> {
+  attach(windowHandle: Buffer): Handle
   place(
-    handle: GameLayerHandle, context: number, x: number, y: number, width: number, height: number, layerWidth: number, layerHeight: number,
+    handle: Handle, context: number, x: number, y: number, width: number, height: number, layerWidth: number, layerHeight: number,
   ): void
-  detach(handle: GameLayerHandle): void
+  detach(handle: Handle): void
+}
+
+/** What the layers use of a window: its native handle, its `closed` event, and its page. */
+export interface GameLayerWindow {
+  getNativeWindowHandle(): Buffer
+  once(event: 'closed', listener: () => void): unknown
+  readonly webContents: GameLayerPage
+}
+
+/** What the layers use of a window's page: its zoom factor and the events that end its layers. */
+export interface GameLayerPage {
+  getZoomFactor(): number
+  on(event: 'render-process-gone', listener: () => void): unknown
+  on(event: 'did-start-navigation', listener: (details: { readonly isMainFrame: boolean; readonly isSameDocument: boolean }) => void): unknown
 }
 
 /** Longest layer id the page may use. */
@@ -31,9 +48,9 @@ const MAX_ID_LENGTH = 128
 /** Largest coordinate or size accepted, in CSS pixels or points. */
 const MAX_EXTENT = 100_000
 
-interface ShownLayer {
-  readonly window: BrowserWindow
-  readonly handle: GameLayerHandle
+interface ShownLayer<Handle> {
+  readonly window: GameLayerWindow
+  readonly handle: Handle
 }
 
 /** Reads the page's layer id; the IPC boundary validates it. */
@@ -77,17 +94,17 @@ function placementOf(value: unknown): DesktopGameLayerPlacement {
  * The layers that the primary window's page shows. A page that navigates, a renderer that exits, and a window that
  * closes take their layers with them.
  */
-export class DesktopGameLayers {
-  private module: GameLayerModule | undefined
+export class DesktopGameLayers<Handle = GameLayerHandle> {
+  private module: GameLayerModule<Handle> | undefined
   private unavailable = false
-  private readonly shown = new Map<string, ShownLayer>()
-  private readonly watched = new WeakSet<BrowserWindow>()
+  private readonly shown = new Map<string, ShownLayer<Handle>>()
+  private readonly watched = new WeakSet<GameLayerWindow>()
 
   /**
    * @param load - loads the Node-API module; a failure leaves the bridge unable to show layers.
    * @param warn - reports a module that does not load.
    */
-  constructor(private readonly load: () => GameLayerModule, private readonly warn: (message: string, error: unknown) => void) {}
+  constructor(private readonly load: () => GameLayerModule<Handle>, private readonly warn: (message: string, error: unknown) => void) {}
 
   /**
    * Show or move one layer of a window's page.
@@ -97,7 +114,7 @@ export class DesktopGameLayers {
    * @returns whether the layer shows; false when the module does not load.
    * @throws {Error} When the id or the placement is invalid.
    */
-  show(window: BrowserWindow, id: unknown, placement: unknown): boolean {
+  show(window: GameLayerWindow, id: unknown, placement: unknown): boolean {
     const key = layerId(id)
     const where = placementOf(placement)
     const module = this.moduleOrUndefined()
@@ -125,7 +142,7 @@ export class DesktopGameLayers {
    * @param id - the page's name for the layer.
    * @throws {Error} When the id is invalid.
    */
-  hide(window: BrowserWindow, id: unknown): void {
+  hide(window: GameLayerWindow, id: unknown): void {
     const key = layerId(id)
     if (this.shown.get(key)?.window === window) this.remove(key)
   }
@@ -134,7 +151,7 @@ export class DesktopGameLayers {
    * Stop showing every layer of a window.
    * @param window - the window whose page went away.
    */
-  clear(window: BrowserWindow): void {
+  clear(window: GameLayerWindow): void {
     for (const [key, layer] of [...this.shown]) if (layer.window === window) this.remove(key)
   }
 
@@ -142,10 +159,10 @@ export class DesktopGameLayers {
     const layer = this.shown.get(key)
     if (layer === undefined) return
     this.shown.delete(key)
-    ;(this.module as GameLayerModule).detach(layer.handle)
+    ;(this.module as GameLayerModule<Handle>).detach(layer.handle)
   }
 
-  private watch(window: BrowserWindow): void {
+  private watch(window: GameLayerWindow): void {
     if (this.watched.has(window)) return
     this.watched.add(window)
     const clear = (): void => { this.clear(window) }
@@ -156,7 +173,7 @@ export class DesktopGameLayers {
     })
   }
 
-  private moduleOrUndefined(): GameLayerModule | undefined {
+  private moduleOrUndefined(): GameLayerModule<Handle> | undefined {
     if (this.module !== undefined || this.unavailable) return this.module
     try {
       this.module = this.load()
@@ -181,7 +198,7 @@ export function loadGameLayerModule(): GameLayerModule {
  * @param ipc - the main process's IPC.
  * @param assertProductSender - authenticates a request from the primary window's application page.
  */
-export function registerWasdengineGameLayers(ipc: Pick<IpcMain, 'handle'>, assertProductSender: (event: IpcMainInvokeEvent) => BrowserWindow): void {
+export function registerWasdengineGameLayers(ipc: Pick<IpcMain, 'handle'>, assertProductSender: (event: IpcMainInvokeEvent) => GameLayerWindow): void {
   if (process.platform !== 'darwin') return
   const layers = new DesktopGameLayers(loadGameLayerModule, (message, error) => { console.warn(message, error) })
   ipc.handle(GAME_LAYER_IPC.show, (event, id: unknown, placement: unknown) => layers.show(assertProductSender(event), id, placement))

@@ -141,12 +141,13 @@ describe('GameMcpServer', () => {
 
   it('refuses every tool call while WASD Engine is signed out, and runs them once someone signs in', async () => {
     let status: AccountView['status'] | 'unreadable' = 'signed-out'
-    ctx.provide('deepseekAccount', {
+    const account: Pick<DeepSeekAccount, 'getState'> = {
       getState: async () => {
         if (status === 'unreadable') throw new Error('storage unavailable')
         return { status, links: { usageUrl: '', topUpUrl: '' }, attempt: null }
       },
-    } as unknown as DeepSeekAccount)
+    }
+    ctx.provide('deepseekAccount', account)
     const { server, view } = await start()
     ctx.effect(() => server.provide(alpha))
     const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()

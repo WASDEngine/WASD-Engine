@@ -101,6 +101,8 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-timeout': ['deadline'],
   // A definition must carry the ToolDefinition fields that the Host's own dsh-tools copy reads.
   '@deepseek-ai/dsh-tools': ['defineTool'],
+  // Add-ons and releases resolve projects as the installed Godot plugin does, then hand them to that plugin's service.
+  '@deepseek-ai/dsh-godot': ['resolveGodotProject'],
 } as const satisfies HostDependencyExports
 
 /** Exact import specifier to reviewed runtime exports. */

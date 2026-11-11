@@ -176,6 +176,14 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'packages/extensions/ui-cordis/src/client/CordisPreparingRow.tsx', upstream: ['cordis'] },
   { file: 'packages/extensions/ui-cordis/src/client/CordisRunRow.tsx', upstream: ['cordis'] },
   { file: 'packages/extensions/ui-cordis/src/client/locales.ts', upstream: ['cordis'] },
+  // WASDEngine fork (wasdengine/FORK.md): these files also name the `cordis` preset id. The Creator persona spec and
+  // the subagent interrupt upgrade guide are upstream's; the others are the fork's preset overlay and its specs.
+  { file: 'apps/web/tests/creator-persona.e2e.ts', upstream: ['cordis'] },
+  { file: 'docs/upgrade-guide/v0.2.2-rc.1/subagent-interrupt-default/guide.md', upstream: ['cordis'] },
+  { file: 'docs/upgrade-guide/v0.2.2-rc.1/subagent-interrupt-default/guide.zh.md', upstream: ['cordis'] },
+  { file: 'packages/bundle/web-app/tests/wasdengine-overlay.spec.ts', upstream: ['cordis'] },
+  { file: 'packages/bundle/web-app/wasdengine/gamedev.cordis.patch.yml', upstream: ['cordis'] },
+  { file: 'packages/client/ui-agent-preset/tests/wasdengine-presets.client.spec.ts', upstream: ['cordis'] },
 ]
 
 /** A string that must appear exactly `count` times once the rescope has run. */

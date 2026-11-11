@@ -3,9 +3,7 @@
  * changes): local builds carry the product name in the sidebar and the window title instead
  * of "DSH Local Build"; their version tag still marks them as local.
  */
-
-/** The product title of local builds, in every language. */
-export const WASDENGINE_LOCAL_BUILD_TITLE = 'WASD Engine'
+import { WASDENGINE_LOCAL_BUILD_TITLE } from './wasdengine/locales.ts'
 
 /**
  * Brand the common dictionaries for registration. The inputs stay unchanged, so code that

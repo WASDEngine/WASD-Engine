@@ -7,7 +7,8 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { de, en, es, fr, ja, pt, ru, zh } from '../src/client/locales.ts'
-import { WASDENGINE_ACCOUNT_COPY, WASDENGINE_PRODUCT_NAME, brandAccountDictionaries } from '../src/client/wasdengine-copy.ts'
+import { WASDENGINE_ACCOUNT_COPY } from '../src/client/locales/wasdengine.ts'
+import { WASDENGINE_PRODUCT_NAME, brandAccountDictionaries } from '../src/client/wasdengine-copy.ts'
 
 const dictionaries = { en, zh, ja, es, fr, de, ru, pt }
 const branded = brandAccountDictionaries(dictionaries)
