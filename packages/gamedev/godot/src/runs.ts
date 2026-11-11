@@ -7,6 +7,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { lowMemoryMessage, type MemoryShortage } from '@deepseek-ai/dsh-app-mcp'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { GodotRun } from './run.ts'
 
@@ -42,15 +43,29 @@ export class GodotSessionError extends Error {
   override name = 'GodotSessionError'
 }
 
-/** Starting a run would exceed the configured number of concurrent runs. */
+/** Starting a run would exceed the number of games that may run at once. */
 export class TooManyRunsError extends Error {
   override name = 'TooManyRunsError'
 
   /**
-   * @param limit - configured maximum number of runs.
+   * @param limit - most games that run at once on this computer.
    */
   constructor(readonly limit: number) {
-    super(`The Host already runs ${limit} Godot games; stop one before starting another.`)
+    super(`${limit} Godot ${limit === 1 ? 'game already runs' : 'games already run'}, as many as this computer runs at once; `
+      + 'stop one before starting another.')
+  }
+}
+
+/** The computer has too little memory available to start a Godot process. */
+export class LowMemoryError extends Error {
+  override name = 'LowMemoryError'
+
+  /**
+   * @param what - what did not start, such as `the game`.
+   * @param shortage - the memory available and needed.
+   */
+  constructor(what: string, readonly shortage: MemoryShortage) {
+    super(lowMemoryMessage(what, shortage))
   }
 }
 
@@ -119,8 +134,10 @@ export class GodotSessions {
   /**
    * @param ctx - context whose Agent registry decides liveness.
    * @param maxRuns - most runs whose game may live at once across Sessions; a run counts until it ended.
+   * @param admit - called before each start that `maxRuns` allows, after the Session's previous run ended; it throws
+   *   to refuse the start, such as with a {@link LowMemoryError}.
    */
-  constructor(private readonly ctx: Context, private readonly maxRuns: number) {}
+  constructor(private readonly ctx: Context, private readonly maxRuns: number, private readonly admit: () => void) {}
 
   /**
    * The Godot state of a live Agent, created on first use.
@@ -183,13 +200,14 @@ export class GodotSessions {
    * @param create - launches the new run; called only when the limit allows it.
    * @returns the new run, launched but not necessarily started.
    * @throws {TooManyRunsError} when the games of other Sessions, also of closed Sessions whose game still stops,
-   * use every run slot.
+   * use every run slot; the error of `admit`.
    */
   replace(session: GodotSession, create: () => GodotRun): Promise<GodotRun> {
     return session.serialize(async () => {
       await session.run?.stop()
       if (session.closed) throw new GodotSessionError('This Session closed; reopen it and try again.')
       if (this.live.size >= this.maxRuns) throw new TooManyRunsError(this.maxRuns)
+      this.admit()
       const run = create()
       this.live.add(run)
       void run.whenEnded().then(() => { this.live.delete(run) })

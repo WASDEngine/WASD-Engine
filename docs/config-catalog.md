@@ -919,7 +919,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-deepseek-account-platform`
 
 - `inject`: `credentials` · `authorization`
-- `source`: [`packages/credentials/deepseek-account-platform/src/index.ts:23`](../packages/credentials/deepseek-account-platform/src/index.ts)
+- `source`: [`packages/credentials/deepseek-account-platform/src/index.ts:24`](../packages/credentials/deepseek-account-platform/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-specific platform and request deadlines. */
@@ -1721,7 +1721,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:53`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:54`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1764,8 +1764,29 @@ export interface Config {
   processOutputBytes: number
   /** Log entries kept per run. */
   maxLogEntries: number
-  /** Games that may run at once across Sessions, each counted until its process ended. */
+  /** Most games that may run at once across Sessions on any computer, each counted until its process ended. */
   maxRuns: number
+  /**
+   * Bytes of the computer's physical memory for each game: at most the computer's memory divided by this, rounded to
+   * the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  runMemoryBytes: number
+  /**
+   * Logical processors for each game: at most the computer's logical processors divided by this, rounded down, run at
+   * once; 0 leaves processors out of the limit.
+   */
+  runCores: number
+  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  maxHeadlessProcesses: number
+  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  minAvailableMemoryBytes: number
+  /**
+   * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
+   * at its own frame rate.
+   */
+  hiddenFps: number
+  /** Milliseconds after the game connected, or after the latest view or request ended, before `hiddenFps` applies. */
+  hiddenDelayMs: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**

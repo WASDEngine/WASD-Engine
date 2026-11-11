@@ -49,7 +49,8 @@ it('registers the wasd_gimp stdio server with its options and removes it when th
     expect([importFlag, loader, script]).toEqual(['--import', import.meta.resolve('tsx/esm'), WORKER_ENTRY])
     expect(parseServerOptions(decodeServerOptions([process.execPath, script, encoded]))).toEqual({
       dataRoot: '/data/gimp', gimpConsolePath: '/opt/gimp/bin/gimp-console-3.2', readyTimeoutMs: 120_000, requestTimeoutMs: 120_000,
-      toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4,
+      minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
     })
     await fiber.dispose()
     expect(manager.registered.size).toBe(0)
@@ -93,7 +94,8 @@ it('refuses relative paths before registering', () => {
 it('validates paths and budgets', () => {
   expect(Gimp.Config({ dataRoot: '/d' })).toEqual({
     dataRoot: '/d', gimpConsolePath: '', toolCallTimeoutMs: 900_000, startupTimeoutMs: 30_000, readyTimeoutMs: 120_000,
-    requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+    requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4,
+    minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
   })
   for (const invalid of [{}, { dataRoot: '' }, { dataRoot: '/d', readyTimeoutMs: 0 }, { dataRoot: '/d', requestTimeoutMs: 1.5 },
     { dataRoot: '/d', toolCallTimeoutMs: 2_147_483_648 }, { dataRoot: '/d', startupTimeoutMs: 0 }, { dataRoot: '/d', graceMs: 0 }, { dataRoot: '/d', maxLogBytes: 0 }]) {

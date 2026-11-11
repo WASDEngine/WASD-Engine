@@ -15,7 +15,7 @@ import type { BlenderServerOptions } from '../src/types.ts'
 const OPTIONS: BlenderServerOptions = {
   dataRoot: '/data/blender', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 30_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-  maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
 }
 const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`

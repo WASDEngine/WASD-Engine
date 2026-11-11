@@ -1,6 +1,7 @@
 /**
  * One run of a Session's game: the optional import step, a loopback server with a token handshake, the Godot
- * process, request and response correlation, logs, status, frame fan-out, and shutdown.
+ * process, request and response correlation, logs, status, frame fan-out, the frame rate cap of a game that nobody
+ * shows or uses, and shutdown.
  *
  * Lifecycle: `preparing` → `importing` (when configured) → `starting` → `running` ⇄ `paused` → `exited` or
  * `crashed`; a failure before the harness connects ends in `failed`. The run owns every process, socket, and
@@ -101,6 +102,11 @@ export interface GodotRunSpec {
   readonly maxLogEntries: number
   /** Frame streaming parameters. */
   readonly stream: StreamSettings
+  /**
+   * Frame rate of a windowless game that no view shows and no request uses: `fps` once `delayMs` passed since the game
+   * connected or the latest view or request ended; an `fps` of 0 leaves every game at its own frame rate.
+   */
+  readonly hidden: { readonly fps: number; readonly delayMs: number }
 }
 
 /** Services a run uses. */
@@ -236,6 +242,8 @@ interface RequestOptions {
    */
   readonly bounded: boolean
   readonly image?: boolean
+  /** Whether the Host sends the request for itself, such as a frame rate or streaming change, so it does not use the game. */
+  readonly background?: boolean
 }
 
 /**
@@ -356,6 +364,15 @@ export class GodotRun {
   private lastActivity = 0
   private silenceTimer: NodeJS.Timeout | undefined
   private disconnectTimer: NodeJS.Timeout | undefined
+  /** Views that show the run's picture, such as Game tabs. */
+  private views = 0
+  /** Requests that use the game and have not settled. */
+  private uses = 0
+  /** Real time when the game connected or the latest view or use ended. */
+  private lastUse = 0
+  /** Whether the harness caps the game's frame rate at `hidden.fps`. */
+  private capped = false
+  private paceTimer: NodeJS.Timeout | undefined
   private userInputInFlight = false
   private userQueue: GodotInputEvent[] = []
   private exitCode: number | null | undefined
@@ -478,7 +495,8 @@ export class GodotRun {
   }
 
   /**
-   * Stream frames to a sink while it is subscribed; the harness streams only while at least one sink exists.
+   * Stream frames to a sink while it is subscribed; the harness streams only while at least one sink exists, and each
+   * sink counts as a view of the run, as {@link GodotRun.show} counts one.
    * @param sink - frame receiver; an ended run calls `end` at once.
    * @returns the unsubscriber; it never throws, so an abort listener may call it.
    */
@@ -488,9 +506,30 @@ export class GodotRun {
       return () => {}
     }
     this.frameSinks.add(sink)
+    // A frame stream shows the run's picture.
+    const hide = this.show()
     if (this.frameSinks.size === 1 && this.connected) this.setStreaming(true)
     return () => {
+      hide()
       if (this.frameSinks.delete(sink) && this.frameSinks.size === 0 && this.connected) this.setStreaming(false)
+    }
+  }
+
+  /**
+   * Count a view of the run's picture, such as a Game tab that shows it, until the returned function is called. While
+   * a view counts, and for `hidden.delayMs` after the last one ended, a windowless game keeps its own frame rate.
+   * @returns the release; later calls do nothing.
+   */
+  show(): () => void {
+    this.views += 1
+    this.pace()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.views -= 1
+      this.lastUse = Date.now()
+      this.pace()
     }
   }
 
@@ -760,11 +799,13 @@ export class GodotRun {
     this.windowless = hello.displayServer === 'embedded'
     this.layer = this.windowless ? hello.layer : undefined
     this.lastActivity = Date.now()
+    this.lastUse = this.lastActivity
     socket.setNoDelay(true)
     ;(this.server as Server).close()
     for (const other of this.sockets) if (other !== socket) other.destroy()
     this.setPhase('running')
     if (this.frameSinks.size > 0) this.setStreaming(true)
+    this.pace()
     this.handshake.resolve()
     return true
   }
@@ -928,9 +969,50 @@ export class GodotRun {
         reject(new GodotRequestError(`The game did not answer ${type} within ${formatSeconds(this.spec.requestTimeoutMs)}.`))
       }, this.spec.requestTimeoutMs)
     }
+    if (options.background !== true) {
+      // Lifting the cap first lets the request run at the game's own frame rate.
+      this.uses += 1
+      this.pace()
+      const used = (): void => {
+        this.uses -= 1
+        this.lastUse = Date.now()
+        this.pace()
+      }
+      promise.then(used, used)
+    }
     this.armSilence()
     connection.write(encodeJsonMessage({ ...params, type, id }))
     return promise
+  }
+
+  /**
+   * Cap a windowless game that no view shows and no request uses at `hidden.fps`, `hidden.delayMs` after the game
+   * connected or the latest view or use ended, and lift the cap as soon as a view or a request begins.
+   */
+  private pace(): void {
+    clearTimeout(this.paceTimer)
+    this.paceTimer = undefined
+    if (this.spec.hidden.fps === 0 || !this.windowless || !this.connected) return
+    if (this.views > 0 || this.uses > 0) {
+      if (this.capped) this.setCap(false)
+      return
+    }
+    if (this.capped) return
+    const remaining = this.lastUse + this.spec.hidden.delayMs - Date.now()
+    if (remaining > 0) {
+      this.paceTimer = setTimeout(() => { this.pace() }, remaining)
+      return
+    }
+    this.setCap(true)
+  }
+
+  private setCap(capped: boolean): void {
+    this.capped = capped
+    this.send('pace', { maxFps: capped ? this.spec.hidden.fps : 0 }, { signal: this.lifetime.signal, bounded: true, background: true })
+      .catch((error: unknown) => {
+        // A closing connection or ending run also rejects the request; only a refusal or timeout is news.
+        if (error instanceof GodotRequestError) this.deps.warn(`Godot frame rate request failed: ${error.message}`)
+      })
   }
 
   /**
@@ -983,7 +1065,7 @@ export class GodotRun {
   private setStreaming(on: boolean): void {
     const { fps, quality, maxWidth, lossless } = this.spec.stream
     const params = on ? { fps, quality, maxWidth, lossless } : { fps: 0 }
-    this.send('stream', params, { signal: this.lifetime.signal, bounded: true }).catch((error: unknown) => {
+    this.send('stream', params, { signal: this.lifetime.signal, bounded: true, background: true }).catch((error: unknown) => {
       // A closing connection or ending run also rejects the request; only a refusal or timeout is news.
       if (error instanceof GodotRequestError) this.deps.warn(`Godot frame streaming request failed: ${error.message}`)
     })
@@ -1012,6 +1094,7 @@ export class GodotRun {
     if (this.connection !== socket) return
     this.connection = undefined
     this.userQueue = []
+    clearTimeout(this.paceTimer)
     this.disconnectOffsets = this.outputOffsets()
     this.rejectPending(new GodotRunStateError('The game closed its connection to the Host.'))
     this.bump()
@@ -1066,6 +1149,7 @@ export class GodotRun {
     }
     if (message !== undefined) this.message = message
     clearTimeout(this.disconnectTimer)
+    clearTimeout(this.paceTimer)
     this.connection = undefined
     this.rejectPending(new GodotRunStateError('The game is no longer running.'))
     for (const socket of this.sockets) socket.destroy()

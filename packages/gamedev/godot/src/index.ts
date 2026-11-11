@@ -10,7 +10,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
-import { materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import { materializePayload, memoryShortage, nodeMachine, processLimit, type MachineResources } from '@deepseek-ai/dsh-app-mcp'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -22,7 +22,7 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import { untilAborted } from './abort.ts'
+import { untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkScripts, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
 import { exportWeb } from './export.ts'
 import { followSession } from './follow.ts'
@@ -32,14 +32,15 @@ import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
 import { GodotRequestError, GodotRun, GodotRunStateError, MAX_INPUT_EVENTS } from './run.ts'
-import { GodotSessionError, GodotSessions, TooManyRunsError } from './runs.ts'
+import { GodotSessionError, GodotSessions, LowMemoryError, TooManyRunsError } from './runs.ts'
 import {
   bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
 } from './runtime.ts'
+import { ProcessSlots } from './slots.ts'
 import { registerGodotTools, type GodotToolHost } from './tools.ts'
 import type {
   GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
-  GodotWebExport, GodotWebExportRequest,
+  GodotViewItem, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
 import { WebTemplateManager } from './web-template.ts'
 
@@ -89,8 +90,29 @@ export interface Config {
   processOutputBytes: number
   /** Log entries kept per run. */
   maxLogEntries: number
-  /** Games that may run at once across Sessions, each counted until its process ended. */
+  /** Most games that may run at once across Sessions on any computer, each counted until its process ended. */
   maxRuns: number
+  /**
+   * Bytes of the computer's physical memory for each game: at most the computer's memory divided by this, rounded to
+   * the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  runMemoryBytes: number
+  /**
+   * Logical processors for each game: at most the computer's logical processors divided by this, rounded down, run at
+   * once; 0 leaves processors out of the limit.
+   */
+  runCores: number
+  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  maxHeadlessProcesses: number
+  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  minAvailableMemoryBytes: number
+  /**
+   * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
+   * at its own frame rate.
+   */
+  hiddenFps: number
+  /** Milliseconds after the game connected, or after the latest view or request ended, before `hiddenFps` applies. */
+  hiddenDelayMs: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
@@ -186,6 +208,10 @@ function remoteFailure(error: unknown): unknown {
     return new RemoteError('godot/runtime-unavailable', error.message, { message: error.message }, { cause: error })
   }
   if (error instanceof TooManyRunsError) return new RemoteError('godot/too-many-runs', error.message, { limit: error.limit }, { cause: error })
+  if (error instanceof LowMemoryError) {
+    const { availableBytes, requiredBytes } = error.shortage
+    return new RemoteError('godot/low-memory', error.message, { availableBytes, requiredBytes }, { cause: error })
+  }
   if (error instanceof GodotRunStateError || error instanceof GodotSessionError) return new RemoteError('godot/not-running', error.message, {}, { cause: error })
   if (error instanceof GodotRequestError) return new RemoteError('godot/request-failed', error.message, { message: error.message }, { cause: error })
   if (error instanceof GodotInputError) return new RemoteError('gateway/bad-request', error.message, {}, { cause: error })
@@ -213,6 +239,12 @@ export default class GodotController extends TypertRemoteService {
     processOutputBytes: z.number().step(1).min(1024).default(1024 * 1024),
     maxLogEntries: z.number().step(1).min(1).default(5000),
     maxRuns: z.number().step(1).min(1).default(4),
+    runMemoryBytes: z.number().step(1).min(0).default(8 * 1024 ** 3),
+    runCores: z.number().step(1).min(0).default(4),
+    maxHeadlessProcesses: z.number().step(1).min(1).default(2),
+    minAvailableMemoryBytes: z.number().step(1).min(0).default(1024 ** 3),
+    hiddenFps: z.number().step(1).min(0).max(60).default(10),
+    hiddenDelayMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(30_000),
     agentRunsMuted: z.boolean().default(true),
     webTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
@@ -222,7 +254,10 @@ export default class GodotController extends TypertRemoteService {
   })
 
   private readonly sequence = new LogSequence()
+  private readonly machine: MachineResources = nodeMachine()
   private readonly sessions: GodotSessions
+  /** Slots of the Godot processes that run without a game: script checks and Web exports. */
+  private readonly headless: ProcessSlots
   private readonly runtime: GodotRuntimeManager
   private readonly templates: WebTemplateManager
   private readonly runtimeWatchers = new Set<() => void>()
@@ -235,7 +270,9 @@ export default class GodotController extends TypertRemoteService {
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'godot', { namespace: 'godot' })
     validateConfig(config)
-    this.sessions = new GodotSessions(ctx, config.maxRuns)
+    const maxRuns = processLimit({ max: config.maxRuns, memoryBytes: config.runMemoryBytes, cores: config.runCores }, this.machine)
+    this.sessions = new GodotSessions(ctx, maxRuns, () => { this.requireMemory('the game') })
+    this.headless = new ProcessSlots(config.maxHeadlessProcesses)
     const host = createRuntimeHost(ctx.subprocess, { outputBytes: config.processOutputBytes, graceMs: config.stopGraceMs })
     // The desktop app's packaging puts the runtime it ships in this package's `libgodot` folder.
     const bundledRoot = bundledRuntimeRoot(resolve(fileURLToPath(new URL('..', import.meta.url))))
@@ -245,6 +282,7 @@ export default class GodotController extends TypertRemoteService {
     this.templates = new WebTemplateManager(config, (url, init) => fetch(url, { headers: init.headers, signal: init.signal }))
     ctx.effect(() => async () => {
       this.runtime.dispose()
+      this.headless.close(new Error('The Godot plugin stopped before the check or export could start.'))
       await this.sessions.dispose()
     }, 'godot.runs')
     const toolHost: GodotToolHost = {
@@ -374,6 +412,29 @@ export default class GodotController extends TypertRemoteService {
   }
 
   /**
+   * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
+   * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
+   * the run ends.
+   * @param sessionId - Session whose run is shown.
+   * @param runId - the run the tab shows.
+   * @param signal - ends the view.
+   * @returns the stream.
+   */
+  @Remote({ mode: 'stream' })
+  async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem> {
+    const run = this.sessions.find(sessionId)?.run
+    if (run === undefined || run.terminal) throw notRunning()
+    if (run.id !== runId) throw new RemoteError('godot/stale-run', 'The view was meant for a game that is no longer current.', { runId })
+    const hide = run.show()
+    try {
+      yield { type: 'shown' }
+      await untilSettledOrAborted(run.whenEnded(), signal)
+    } finally {
+      hide()
+    }
+  }
+
+  /**
    * Install the managed LibGodot runtime, or join the install already running.
    * @param signal - stops this wait; the install continues.
    * @returns the runtime view after the install settled.
@@ -393,22 +454,26 @@ export default class GodotController extends TypertRemoteService {
    * @throws {GodotProjectError} without `project.godot` in the project folder.
    * @throws {GodotTemplateError} when the Web template cannot be downloaded.
    * @throws {GodotExportError} when the export writes no playable build.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
    */
   async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport> {
     const project = await resolveGodotProject(request.projectDir, '.', signal)
     const runtime = await this.requireRuntime(signal)
     const template = await this.templates.resolve(signal)
-    return await exportWeb({
-      subprocess: this.ctx.subprocess,
-      runtime,
-      projectDir: project.dir,
-      outputDir: request.outputDir,
-      template,
-      hostPid: process.pid,
-      timeoutMs: this.config.exportTimeoutMs,
-      graceMs: this.config.stopGraceMs,
-      outputBytes: this.config.processOutputBytes,
-      signal,
+    return await this.headless.run(signal, async () => {
+      this.requireMemory('a Godot Web export')
+      return await exportWeb({
+        subprocess: this.ctx.subprocess,
+        runtime,
+        projectDir: project.dir,
+        outputDir: request.outputDir,
+        template,
+        hostPid: process.pid,
+        timeoutMs: this.config.exportTimeoutMs,
+        graceMs: this.config.stopGraceMs,
+        outputBytes: this.config.processOutputBytes,
+        signal,
+      })
     })
   }
 
@@ -480,6 +545,7 @@ export default class GodotController extends TypertRemoteService {
       outputBytes: config.processOutputBytes,
       maxLogEntries: config.maxLogEntries,
       stream: { fps: config.streamFps, quality: config.streamQuality, maxWidth: config.streamMaxWidth, lossless: config.streamLossless },
+      hidden: { fps: config.hiddenFps, delayMs: config.hiddenDelayMs },
     }, {
       subprocess: this.ctx.subprocess,
       sequence: this.sequence,
@@ -498,18 +564,30 @@ export default class GodotController extends TypertRemoteService {
     if (selection.paths.length === 0) return { projectDir: project.dir, scripts: [], total: 0 }
     const runtime = await this.requireRuntime(signal)
     const { check } = await this.scripts()
-    const scripts = await checkScripts({
-      subprocess: this.ctx.subprocess,
-      runtime,
-      projectDir: project.dir,
-      checkScript: check,
-      paths: selection.paths,
-      hostPid: process.pid,
-      timeoutMs: this.config.importTimeoutMs,
-      graceMs: this.config.stopGraceMs,
-      outputBytes: this.config.processOutputBytes,
-      signal,
+    const scripts = await this.headless.run(signal, async () => {
+      this.requireMemory('a Godot script check')
+      return await checkScripts({
+        subprocess: this.ctx.subprocess,
+        runtime,
+        projectDir: project.dir,
+        checkScript: check,
+        paths: selection.paths,
+        hostPid: process.pid,
+        timeoutMs: this.config.importTimeoutMs,
+        graceMs: this.config.stopGraceMs,
+        outputBytes: this.config.processOutputBytes,
+        signal,
+      })
     })
     return { projectDir: project.dir, scripts, total: selection.total }
+  }
+
+  /**
+   * Refuse a start while the computer has less than `minAvailableMemoryBytes` available.
+   * @throws {LowMemoryError} naming `what` when memory is short.
+   */
+  private requireMemory(what: string): void {
+    const shortage = memoryShortage(this.config.minAvailableMemoryBytes, this.machine.availableMemoryBytes)
+    if (shortage !== undefined) throw new LowMemoryError(what, shortage)
   }
 }

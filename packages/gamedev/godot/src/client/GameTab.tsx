@@ -71,6 +71,12 @@ export interface GameTabInjected {
    */
   readonly showLayer?: (presentation: LayerPresentation) => () => void
   /**
+   * Count a run as shown while the tab shows its picture, so the Host keeps a windowless game at its own frame rate.
+   * @param runId - the run whose picture shows.
+   * @returns the release.
+   */
+  readonly holdView: (runId: string) => () => void
+  /**
    * Keep application shortcuts from taking keys while the game view has focus.
    * @returns the release.
    */
@@ -103,7 +109,8 @@ const EMPTY_SIZE: PixelSize = { width: 0, height: 0 }
 /**
  * Render the Game tab of one Session. The game's picture and input capture run
  * only while the follow stream delivers, the tab is visible, and the game is
- * running or paused; keys reach the game only while the game view has focus.
+ * running or paused, and while the picture shows, the tab holds a view of the
+ * run; keys reach the game only while the game view has focus.
  * The picture is the run's layer behind the page when the run reports one and
  * the shell shows layers, and the frame stream otherwise or once the shell
  * refuses the run's layer.
@@ -114,7 +121,7 @@ const EMPTY_SIZE: PixelSize = { width: 0, height: 0 }
  * @returns the tab body.
  */
 export function GameTab({
-  useTabInfo, useGame, reconnect, play, stop, control, install, input, openFrames, showLayer, captureKeyboard, t,
+  useTabInfo, useGame, reconnect, play, stop, control, install, input, openFrames, showLayer, holdView, captureKeyboard, t,
 }: GameTabProps): ReactNode {
   const { tab } = useTabInfo()
   const snapshot = useGame(value => value)
@@ -183,7 +190,7 @@ export function GameTab({
       )}
       <div className={css.stage}>
         <Viewport run={run} visible={tab.visible} connected={!snapshot.disconnected} input={input} openFrames={openFrames}
-          showLayer={showLayer} captureKeyboard={captureKeyboard} t={t} />
+          showLayer={showLayer} holdView={holdView} captureKeyboard={captureKeyboard} t={t} />
         <StageMessage state={state} t={t} />
       </div>
       <LogDrawer run={run} logs={state.logs} open={logsOpen} onToggle={() => { setLogsOpen(open => !open) }} t={t} />
@@ -262,6 +269,7 @@ function failureText(failure: GameFailure, t: Translate): string {
     case 'notRunning': return t('issue.notRunning')
     case 'staleRun': return t('issue.staleRun')
     case 'tooManyRuns': return t('issue.tooManyRuns', { limit: failure.limit })
+    case 'lowMemory': return t('issue.lowMemory')
     case 'sessionInUse': return t('issue.sessionInUse')
     case 'failed': return t('issue.failed', { message: failure.message })
     /* v8 ignore next -- closed GameFailure issue union exhaustiveness guard */
@@ -327,7 +335,7 @@ function inputTarget(run: GodotRunView | null, drawn: PixelSize | undefined): Ga
 }
 
 /* oxlint-disable typescript/no-non-null-assertion -- React sets the element refs before these effects run. */
-function Viewport({ run, visible, connected, input, openFrames, showLayer, captureKeyboard, t }: {
+function Viewport({ run, visible, connected, input, openFrames, showLayer, holdView, captureKeyboard, t }: {
   readonly run: GodotRunView | null
   readonly visible: boolean
   /** Whether the follow stream delivers; a stopped stream leaves the run's last reported phase, which may be outdated. */
@@ -335,6 +343,7 @@ function Viewport({ run, visible, connected, input, openFrames, showLayer, captu
   readonly input: GameTabInjected['input']
   readonly openFrames: GameTabInjected['openFrames']
   readonly showLayer: GameTabInjected['showLayer']
+  readonly holdView: GameTabInjected['holdView']
   readonly captureKeyboard: GameTabInjected['captureKeyboard']
   readonly t: Translate
 }): ReactNode {
@@ -406,6 +415,11 @@ function Viewport({ run, visible, connected, input, openFrames, showLayer, captu
       presenter.dispose()
     }
   }, [framed, openFrames])
+
+  useEffect(() => {
+    if (streaming === undefined) return
+    return holdView(streaming)
+  }, [streaming, holdView])
 
   useEffect(() => {
     if (streaming === undefined) return

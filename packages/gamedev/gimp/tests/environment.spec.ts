@@ -8,7 +8,8 @@ import type { GimpServerOptions } from '../src/types.ts'
 
 const OPTIONS: GimpServerOptions = {
   dataRoot: '/data/gimp', gimpConsolePath: '', readyTimeoutMs: 120_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000,
-  graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0,
+  workerIdleTimeoutMs: 600_000,
 }
 const MACOS = '/Applications/GIMP.app/Contents/MacOS'
 const CONSOLE = `${MACOS}/gimp-console-3.2`

@@ -426,6 +426,60 @@ posix('frames', () => {
   })
 })
 
+posix('frame rate of a game nobody shows', () => {
+  const HIDDEN = { hidden: { fps: 10, delayMs: 150 } }
+  /** The `maxFps` of each pace request the fake received, in order. */
+  async function paces(project: string): Promise<number[]> {
+    return (await fakeRequests(project)).flatMap(request => request.type === 'pace' ? [request.maxFps as number] : [])
+  }
+
+  it('caps a windowless game that nobody shows or uses once the delay passed, and lifts the cap before a request', async () => {
+    const { run, project } = await running({ game: { displayServer: 'embedded' } }, HIDDEN)
+    await until(async () => (await paces(project)).length === 1)
+    expect(await paces(project)).toEqual([10])
+    await run.evaluate('1 + 1', undefined, signal)
+    // The request found the game capped, so the cap was lifted before the request reached the game.
+    const requests = await fakeRequests(project)
+    expect(requests[requests.findIndex(request => request.type === 'eval') - 1]).toMatchObject({ type: 'pace', maxFps: 0 })
+    await until(async () => (await paces(project)).length === 3)
+    expect(await paces(project)).toEqual([10, 0, 10])
+  })
+
+  it('keeps a game at its own frame rate while a view or a frame stream shows it, and for the delay after', async () => {
+    const { run, project } = await start({ game: { displayServer: 'embedded' } }, HIDDEN)
+    const hide = run.show()
+    const leave = run.subscribeFrames({ frame: () => {}, end: () => {} })
+    await run.started()
+    await tick(400)
+    hide()
+    hide()
+    await tick(400)
+    expect(await paces(project)).toEqual([])
+    leave()
+    const left = performance.now()
+    await until(async () => (await paces(project)).length === 1)
+    expect(performance.now() - left).toBeGreaterThanOrEqual(140)
+    const shown = run.show()
+    await until(async () => (await paces(project)).length === 2)
+    expect(await paces(project)).toEqual([10, 0])
+    shown()
+  })
+
+  it('leaves a game with a window, and every game when the hidden frame rate is 0, at its own frame rate', async () => {
+    const windowed = await running({ game: { displayServer: 'macos' } }, HIDDEN)
+    const off = await running({ game: { displayServer: 'embedded' } }, { hidden: { fps: 0, delayMs: 0 } })
+    await tick(400)
+    expect(await paces(windowed.project)).toEqual([])
+    expect(await paces(off.project)).toEqual([])
+  })
+
+  it('warns about a refused frame rate request', async () => {
+    const failing = await running({ game: { displayServer: 'embedded', replies: { pace: 'error' } } }, { hidden: { fps: 10, delayMs: 0 } })
+    await until(() => failing.warnings.length > 0)
+    expect(failing.warnings[0]).toBe('Godot frame rate request failed: fake pace failure')
+  })
+})
+
 posix('user input', () => {
   it('sends one batch at a time, merging motion and trimming the backlog', async () => {
     const { run, project } = await running({ game: {} })

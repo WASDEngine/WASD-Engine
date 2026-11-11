@@ -53,6 +53,10 @@ extends SceneTree
 ## from the root, and the settings that limit the frame rate. Like a `wait`, it ends early at its `timeoutMs` or on
 ## `cancel`, which answer `timedOut` or `cancelled`. While it runs, the root viewport measures its render time;
 ## afterwards the measurement is off.
+##
+## A `pace` request with a positive `maxFps` caps Engine.max_fps at that rate, or at the game's own cap when that is
+## lower; `maxFps` 0 restores the game's own cap. The Host caps a game that nobody shows or uses and lifts the cap
+## before the requests it sends to a capped game. The answer carries the resulting `maxFps`.
 
 const PROTOCOL_VERSION := 1
 const KIND_JSON := 1
@@ -231,6 +235,7 @@ var _scene_override := ""
 var _rx := PackedByteArray()
 
 var _stream_fps := 0.0
+var _own_max_fps := -1  # the game's own Engine.max_fps while the Host caps the frame rate, -1 while it does not
 var _stream_quality := 0.9
 var _stream_max_width := 1280
 var _stream_lossless := false
@@ -403,6 +408,8 @@ func _handle(message: Dictionary, now: float) -> void:
 			_lossless_test_at = 0.0
 			_lossless_test_delay = LOSSLESS_TEST_DELAY
 			_reply(id, {"fps": _stream_fps, "quality": _stream_quality, "maxWidth": _stream_max_width, "lossless": _stream_lossless})
+		"pace":
+			_pace(id, message)
 		"screenshot":
 			_screenshot(id, message)
 		"input":
@@ -457,6 +464,20 @@ func _handle(message: Dictionary, now: float) -> void:
 			quit(int(message.get("exitCode", 0)))
 		_:
 			_reply_error(id, "unknown request type %s" % str(message.get("type", "")))
+
+
+## Caps the frame rate at `maxFps` while nobody shows or uses the game, keeping a lower cap of the game's own, or
+## restores the game's own cap for a `maxFps` of 0. Game time keeps its pace while physics steps fit the capped frames.
+func _pace(id, message: Dictionary) -> void:
+	var cap := clampi(int(message.get("maxFps", 0)), 0, 1000)
+	if cap > 0:
+		if _own_max_fps < 0:
+			_own_max_fps = Engine.max_fps
+		Engine.max_fps = cap if _own_max_fps == 0 else mini(cap, _own_max_fps)
+	elif _own_max_fps >= 0:
+		Engine.max_fps = _own_max_fps
+		_own_max_fps = -1
+	_reply(id, {"maxFps": Engine.max_fps})
 
 
 ## Returns the real time in seconds at which a request's `timeoutMs` ends it, 0 when it has none, or -1 after

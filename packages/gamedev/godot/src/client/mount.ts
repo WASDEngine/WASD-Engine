@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-tool/client'
 import type {} from '@deepseek-ai/dsh-godot/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { RemoteResult, TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import type { DesktopGameLayerBridge, GodotFollowItem } from '../types.ts'
+import type { DesktopGameLayerBridge, GodotFollowItem, GodotViewItem } from '../types.ts'
 import { failureOf, type GameFailure } from './actions.ts'
 import { GODOT_CARD_TOOLS, GodotToolCard } from './cards.tsx'
 import { nextFrame } from './frames.ts'
@@ -131,6 +131,21 @@ function registerUi(ctx: Context): void {
       },
       openFrames: (runId, signal) => fetch(frameUrl(sessionId, runId), { signal, cache: 'no-store' }),
       ...showLayer === undefined ? {} : { showLayer },
+      holdView: (runId) => {
+        // The Gateway's logical stream reopens the view after a carrier loss; it ends with the run.
+        const stream = ctx.remote.$stream<GodotViewItem>({
+          name: 'Godot view stream',
+          open: signal => remote.view(sessionId, runId, signal),
+          ended: () => new Error('the Godot view stream ended'),
+        })
+        void (async () => {
+          for await (const item of stream) item.accept()
+        })().catch((error: unknown) => {
+          // The run ended or is no longer current, and the tab stops showing it with its next run item.
+          void error
+        })
+        return () => { void stream.dispose() }
+      },
       captureKeyboard,
     }
   }

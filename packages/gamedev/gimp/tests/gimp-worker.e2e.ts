@@ -250,7 +250,8 @@ describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
   it('serves the tools through a supervised worker and restarts GIMP after its Python process dies', async () => {
     const options: GimpServerOptions = {
       dataRoot, gimpConsolePath: '', readyTimeoutMs: READY_TIMEOUT_MS, requestTimeoutMs: REQUEST_TIMEOUT_MS, toolCallTimeoutMs: 300_000,
-      graceMs: 3000, maxLogBytes: 64 * 1024, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      graceMs: 3000, maxLogBytes: 64 * 1024, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0,
+      workerIdleTimeoutMs: 600_000,
     }
     const workers = new GimpWorkers(options, {
       host,
@@ -262,7 +263,7 @@ describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
     const pool = new WorkerPool({
       app: 'GIMP', root: join(dataRoot, 'workers'), start: async (signal, scope) => await workers.start(signal, scope),
       takeNotes: () => workers.takeNotes(), maxWorkers: options.maxWorkers, idleTimeoutMs: options.workerIdleTimeoutMs,
-      requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
+      minAvailableMemoryBytes: options.minAvailableMemoryBytes, requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
     })
     const tools = new Map(gimpTools({
       call: async (method, params, callOptions) => await pool.call(session, method, params, callOptions),

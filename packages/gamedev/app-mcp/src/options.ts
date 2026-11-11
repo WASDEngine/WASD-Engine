@@ -26,8 +26,14 @@ export interface AppServerOptions {
   readonly graceMs: number
   /** Bytes of recent worker output kept for diagnostics. */
   readonly maxLogBytes: number
-  /** Most application workers that run at once: one per calling Session. */
+  /** Most application workers that run at once on any computer: one per calling Session. */
   readonly maxWorkers: number
+  /** Bytes of the computer's physical memory for each worker when the server sizes its worker limit; 0 leaves memory out. */
+  readonly workerMemoryBytes: number
+  /** Logical processors for each worker when the server sizes its worker limit; 0 leaves processors out. */
+  readonly workerCores: number
+  /** Bytes of memory that the computer must have available to start a worker; 0 turns the check off. */
+  readonly minAvailableMemoryBytes: number
   /** Milliseconds without a call after which a Session's worker stops. */
   readonly workerIdleTimeoutMs: number
 }
@@ -47,6 +53,9 @@ export const AppServerOptionFields = {
   graceMs: z.int().min(1),
   maxLogBytes: z.int().min(1),
   maxWorkers: z.int().min(1),
+  workerMemoryBytes: z.int().min(0),
+  workerCores: z.int().min(0),
+  minAvailableMemoryBytes: z.int().min(0),
   workerIdleTimeoutMs: z.int().min(1),
 } as const
 

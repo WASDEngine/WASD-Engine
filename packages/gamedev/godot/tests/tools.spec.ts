@@ -456,6 +456,23 @@ posix('godot_check', () => {
     expect(text(await callTool(c, 'godot_check', { paths }))).toContain(message)
   })
 
+  it('runs at most maxHeadlessProcesses checks at once, and later ones wait for a free slot', async () => {
+    const c = await setup({ config: { maxHeadlessProcesses: 1 }, game: { check: { delayMs: 300 } } })
+    await scripts(c)
+    const started = performance.now()
+    const results = await Promise.all([callTool(c, 'godot_check'), callTool(c, 'godot_check')])
+    // Two checks of 300 ms each one after the other.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(600)
+    for (const result of results) expect(text(result)).toBe(`Checked 2 scripts in ${c.project}: no errors.`)
+  })
+
+  it('starts no check while the computer has less memory available than a start needs', async () => {
+    const c = await setup({ config: { minAvailableMemoryBytes: Number.MAX_SAFE_INTEGER } })
+    await scripts(c)
+    expect(text(await callTool(c, 'godot_check'))).toMatch(/ that starting a Godot script check needs, so it did not start\./u)
+    expect(await fakeLog(c.project)).toEqual([])
+  })
+
   it('reports a project without scripts and a check that ends early', async () => {
     const c = await setup({ game: { check: { omit: ['res://player.gd'], stderr: 'crashed here\n', exitCode: 1 } } })
     expect(text(await callTool(c, 'godot_check'))).toBe(`Checked 0 scripts in ${c.project}: no errors.`)

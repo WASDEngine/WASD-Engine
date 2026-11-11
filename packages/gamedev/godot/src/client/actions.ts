@@ -7,7 +7,7 @@ import type {} from '../types.ts'
  * Why an action failed; each issue has its own copy, and `failed` shows the Host's message. `sessionInUse` means
  * that Play could not resume the Session because another Host process writes it.
  */
-export type GameIssue = 'noProject' | 'runtimeUnavailable' | 'notRunning' | 'staleRun' | 'tooManyRuns' | 'sessionInUse' | 'failed'
+export type GameIssue = 'noProject' | 'runtimeUnavailable' | 'notRunning' | 'staleRun' | 'tooManyRuns' | 'lowMemory' | 'sessionInUse' | 'failed'
 
 /** A refused or failed Game tab action: why it failed, the Host's explanation, and the run limit of `tooManyRuns`. */
 export type GameFailure =
@@ -28,6 +28,7 @@ export function failureOf(result: RemoteResult<unknown>): GameFailure | undefine
     case 'godot/not-running': return { issue: 'notRunning', message: error.message }
     case 'godot/stale-run': return { issue: 'staleRun', message: error.message }
     case 'godot/too-many-runs': return { issue: 'tooManyRuns', message: error.message, limit: error.details.limit }
+    case 'godot/low-memory': return { issue: 'lowMemory', message: error.message }
     case 'session/writer-held': return { issue: 'sessionInUse', message: error.message }
     // Gateway, cancellation, and codes of newer Hosts keep the Host's own message.
     default: return { issue: 'failed', message: error.message }
