@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  GodotProjectError, listProjectFiles, parseProjectSettings, PROJECT_SEARCH_DEPTH, readGodotProject, resolveGodotProject,
-  resolveProjectPath, resolveScene, toResPath,
+  GodotProjectError, listProjectFiles, parseProjectSettings, projectDataDirectory, PROJECT_SEARCH_DEPTH, readGodotProject,
+  resolveGodotProject, resolveProjectPath, resolveScene, toResPath,
 } from '../src/project.ts'
 
 let root: string
@@ -36,6 +36,15 @@ describe('parseProjectSettings', () => {
   it('ignores values that are not plain strings and reports absent settings as missing', () => {
     expect(parseProjectSettings('[application]\nconfig/name=StringName("x")\nrun/main_scene\n')).toEqual({})
     expect(parseProjectSettings('')).toEqual({})
+  })
+})
+
+describe('projectDataDirectory', () => {
+  it('names the hidden data folder unless the application section turns it off', () => {
+    expect(projectDataDirectory('config_version=5\n[application]\nconfig/name="Game"\n')).toBe('.godot')
+    expect(projectDataDirectory('[application]\nconfig/use_hidden_project_data_directory=false\n')).toBe('godot')
+    expect(projectDataDirectory('[application]\nconfig/use_hidden_project_data_directory=true\n')).toBe('.godot')
+    expect(projectDataDirectory('[rendering]\nconfig/use_hidden_project_data_directory=false\n')).toBe('.godot')
   })
 })
 

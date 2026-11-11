@@ -1,4 +1,4 @@
-"""Tests for runtime.py: packaging, installing, merging, and verifying SuperCollider runtime archives.
+"""Tests for runtime.py: the Windows build's library checks, and packaging, installing, merging, and verifying SuperCollider runtime archives.
 
 Run with: python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
 """
@@ -12,6 +12,7 @@ import io
 import json
 import os
 import shutil
+import struct
 import tarfile
 import tempfile
 import unittest
@@ -40,6 +41,118 @@ FILES: Dict[str, Tuple[bytes, int]] = {
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def pe_bytes(machine: int = 0x8664, imports: Tuple[str, ...] = ("KERNEL32.dll",), delayed: Tuple[Tuple[str, bool], ...] = (),
+             version: Tuple[int, int, int] = (0, 0, 0)) -> bytes:
+    """Build a small PE32+ file with one section that holds its import and delay-load tables and a version resource.
+
+    @param machine: COFF machine type.
+    @param imports: libraries of the import table.
+    @param delayed: libraries of the delay-load table, each with whether its descriptor holds image-relative addresses.
+    @param version: file version of the VS_FIXEDFILEINFO; (0, 0, 0) writes none.
+    @returns: the file's bytes.
+    """
+    image_base, section_address, raw_offset, size = 0x10000000, 0x1000, 0x200, 0x1000
+    content = bytearray(size)
+    names = 0x400
+
+    def name(text: str) -> int:
+        nonlocal names
+        address = section_address + names
+        content[names:names + len(text) + 1] = text.encode() + b"\0"
+        names += len(text) + 1
+        return address
+
+    cursor = 0
+    for library in imports:
+        struct.pack_into("<IIIII", content, cursor, 0, 0, 0, name(library), 0)
+        cursor += 20
+    cursor += 20
+    delay_address = section_address + cursor
+    for library, relative in delayed:
+        address = name(library)
+        struct.pack_into("<II", content, cursor, 1 if relative else 0, address if relative else address + image_base)
+        cursor += 32
+    if version != (0, 0, 0):
+        major, minor, micro = version
+        content[0x800:0x80C] = struct.pack("<I", 0xFEEF04BD) + struct.pack("<II", 0x10000, (major << 16) | minor)
+        content[0x80C:0x810] = struct.pack("<I", micro << 16)
+    data = bytearray(raw_offset) + content
+    data[0:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 0x40)
+    data[0x40:0x44] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", data, 0x44, machine, 1, 0, 0, 0, 240, 0x22)
+    optional = 0x58
+    struct.pack_into("<H", data, optional, 0x20B)
+    struct.pack_into("<Q", data, optional + 24, image_base)
+    struct.pack_into("<I", data, optional + 108, 16)
+    struct.pack_into("<II", data, optional + 112 + 8, section_address, 40)
+    if delayed:
+        struct.pack_into("<II", data, optional + 112 + 13 * 8, delay_address, 32 * len(delayed))
+    section = optional + 240
+    data[section:section + 8] = b".idata\0\0"
+    struct.pack_into("<IIII", data, section + 8, size, section_address, size, raw_offset)
+    return bytes(data)
+
+
+class WindowsLibrariesTest(unittest.TestCase):
+    """The Windows build copies the Visual C++ runtime that its files load and checks that every library resolves."""
+
+    def setUp(self) -> None:
+        root = tempfile.mkdtemp(prefix="supercollider-windows-test-")
+        self.addCleanup(shutil.rmtree, root)
+        self.stage, self.redist = os.path.join(root, "stage"), os.path.join(root, "Microsoft.VC143.CRT")
+        for name, data in {
+            "sclang.exe": pe_bytes(imports=("sndfile.dll", "MSVCP140.dll", "KERNEL32.dll", "WS2_32.dll")),
+            "scsynth.exe": pe_bytes(imports=("sndfile.dll", "fftw3f.dll", "VCRUNTIME140.dll", "api-ms-win-crt-runtime-l1-1-0.dll")),
+            "sndfile.dll": pe_bytes(imports=("VCRUNTIME140.dll",)),
+            "fftw3f.dll": pe_bytes(imports=("VCRUNTIME140.dll",)),
+            "plugins/OscUGens.scx": pe_bytes(imports=("VCRUNTIME140_1.dll",)),
+        }.items():
+            self.write(os.path.join(self.stage, *name.split("/")), data)
+        for name, data in {
+            "msvcp140.dll": pe_bytes(imports=("vcruntime140.dll", "vcruntime140_1.dll")), "vcruntime140.dll": pe_bytes(),
+            "vcruntime140_1.dll": pe_bytes(imports=("vcruntime140.dll",)), "concrt140.dll": pe_bytes(),
+        }.items():
+            self.write(os.path.join(self.redist, name), data)
+
+    @staticmethod
+    def write(path: str, data: bytes) -> None:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as stream:
+            stream.write(data)
+
+    def run_tool(self, *args: str) -> Tuple[int, str]:
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(stderr):
+            status = runtime.main(list(args))
+        return status, stderr.getvalue()
+
+    def test_vc_runtime_copies_the_libraries_that_the_runtime_loads_and_their_own(self) -> None:
+        self.assertEqual(runtime.unresolved_imports(self.stage, (".",)), [
+            "fftw3f.dll loads VCRUNTIME140.dll", "plugins/OscUGens.scx loads VCRUNTIME140_1.dll", "sclang.exe loads MSVCP140.dll",
+            "scsynth.exe loads VCRUNTIME140.dll", "sndfile.dll loads VCRUNTIME140.dll",
+        ])
+        self.assertEqual(self.run_tool("vc-runtime", "--stage", self.stage, "--redist", self.redist),
+                         (0, f"runtime.py: copied msvcp140.dll, vcruntime140.dll, vcruntime140_1.dll Visual C++ runtime libraries into {self.stage}\n"))
+        self.assertEqual(sorted(os.listdir(self.stage)), ["fftw3f.dll", "msvcp140.dll", "plugins", "sclang.exe", "scsynth.exe", "sndfile.dll",
+                                                          "vcruntime140.dll", "vcruntime140_1.dll"])
+        self.assertEqual(runtime.copy_vc_runtime(self.stage, self.redist), [])
+        status, message = self.run_tool("check-imports", "--stage", self.stage, "--folder", ".")
+        self.assertEqual((status, message), (0, "runtime.py: the libraries of 8 PE files resolve inside the runtime or to Windows\n"))
+
+    def test_check_imports_names_missing_libraries_and_foreign_code(self) -> None:
+        status, message = self.run_tool("check-imports", "--stage", self.stage, "--folder", ".")
+        self.assertEqual(status, 1)
+        self.assertIn("5 libraries resolve neither inside the runtime nor to Windows: fftw3f.dll loads VCRUNTIME140.dll", message)
+        self.write(os.path.join(self.stage, "plugins", "Arm.scx"), pe_bytes(machine=0xAA64))
+        self.assertIn("1 programs or libraries are not x64 code: plugins/Arm.scx", self.run_tool("check-imports", "--stage", self.stage, "--folder", ".")[1])
+
+    def test_vc_runtime_needs_a_folder_of_libraries(self) -> None:
+        status, message = self.run_tool("vc-runtime", "--stage", self.stage, "--redist", os.path.join(self.stage, "missing"))
+        self.assertEqual(status, 1)
+        self.assertIn("holds no Visual C++ runtime library", message)
 
 
 class RuntimeToolTest(unittest.TestCase):

@@ -1672,7 +1672,7 @@ export type Config = LocalConfig
 export interface Config {
   /** Absolute catalog folder: one folder per add-on with `addon.json` and `SKILL.md`. */
   catalogDir: string
-  /** Absolute folder of the plugin's data: the archive cache under `archives/`. */
+  /** Absolute folder of the plugin's data: the archive cache under `archives/` and Blender asset packs under `blender-assets/`. */
   dataRoot: string
   /** Absolute folder of the Blender add-on store, which the Blender plugin's `addonStore` names too. */
   blenderStore: string
@@ -1751,7 +1751,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:57`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:59`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1779,7 +1779,7 @@ export interface Config {
   streamMaxWidth: number
   /** Import the project's assets before each run. */
   importBeforeRun: boolean
-  /** Deadline of the import step and of `godot_check`, in milliseconds. */
+  /** Deadline of one import step, before a run or a check, and of the script loading of one `godot_check`, in milliseconds. */
   importTimeoutMs: number
   /** Deadline from launch until the game connects, in milliseconds. */
   startTimeoutMs: number
@@ -1794,8 +1794,29 @@ export interface Config {
   processOutputBytes: number
   /** Log entries kept per run. */
   maxLogEntries: number
-  /** Games that may run at once across Sessions, each counted until its process ended. */
+  /** Most games that may run at once across Sessions on any computer, each counted until its process ended. */
   maxRuns: number
+  /**
+   * Bytes of the computer's physical memory for each game: at most the computer's memory divided by this, rounded to
+   * the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  runMemoryBytes: number
+  /**
+   * Logical processors for each game: at most the computer's logical processors divided by this, rounded down, run at
+   * once; 0 leaves processors out of the limit.
+   */
+  runCores: number
+  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  maxHeadlessProcesses: number
+  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  minAvailableMemoryBytes: number
+  /**
+   * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
+   * at its own frame rate.
+   */
+  hiddenFps: number
+  /** Milliseconds after the game connected, or after the latest view or request ended, before `hiddenFps` applies. */
+  hiddenDelayMs: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
@@ -5197,6 +5218,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-entry-customization` | — | [`packages/client/ui-entry-customization/src/index.ts`](../packages/client/ui-entry-customization/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-assets` | — | [`packages/gamedev/ui-game-assets/src/index.ts`](../packages/gamedev/ui-game-assets/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-mcp` | — | [`packages/gamedev/ui-game-mcp/src/index.ts`](../packages/gamedev/ui-game-mcp/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-tools` | — | [`packages/gamedev/ui-game-tools/src/index.ts`](../packages/gamedev/ui-game-tools/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |

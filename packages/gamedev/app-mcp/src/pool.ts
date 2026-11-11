@@ -6,8 +6,12 @@
  * scopes, so first-use setup never runs twice at once. A worker that has had
  * no call for `idleTimeoutMs` stops, and when `maxWorkers` workers run, a new
  * scope stops the least recently used worker that has no call running, or
- * fails with `WORKERS_BUSY` when every worker has one. A scope whose worker
- * stopped that way learns on its next call that the state was lost. The
+ * fails with `WORKERS_BUSY` when every worker has one. Each start first checks
+ * the memory the computer has available: while it is below
+ * `minAvailableMemoryBytes`, the start stops the least recently used running
+ * worker of another scope that has no call running, and fails with
+ * `LOW_MEMORY` when none is left. A scope whose worker stopped that way
+ * learns on its next call that the state was lost. The
  * workers' folders sit in a folder named after the pool's process id, so two
  * server processes with one data directory, such as an old server that is
  * still shutting down and its replacement, never delete each other's folders.
@@ -18,6 +22,7 @@
 import { mkdir, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { assertDelay, WorkerError, type JsonLineWorker } from './json-line-worker.ts'
+import { lowMemoryMessage, memoryShortage } from './machine.ts'
 import { STATE_LOST, untilTurn, WorkerSupervisor, type WorkerCallOptions } from './supervisor.ts'
 import type { JsonObject, JsonValue } from './types.ts'
 
@@ -94,6 +99,11 @@ export interface WorkerPoolOptions {
   readonly takeNotes: () => readonly string[]
   /** Most workers that run at once, at least 1. */
   readonly maxWorkers: number
+  /**
+   * Bytes of memory that the computer must have available when a worker starts; while it has less, the start
+   * stops idle workers of other scopes, then fails with `LOW_MEMORY`. 0 starts workers whatever memory is available.
+   */
+  readonly minAvailableMemoryBytes: number
   /** Milliseconds without a call after which a scope's worker stops. */
   readonly idleTimeoutMs: number
   /** Default budget of one worker request, in milliseconds. */
@@ -108,6 +118,8 @@ export interface WorkerPoolOptions {
   readonly processId?: number | undefined
   /** Whether no process with this id runs; omission probes the process with signal 0. */
   readonly processExited?: ((pid: number) => boolean) | undefined
+  /** Bytes of memory the computer has available now; omission uses `process.availableMemory`. */
+  readonly availableMemory?: (() => number) | undefined
 }
 
 interface Entry {
@@ -138,6 +150,7 @@ export class WorkerPool {
   private readonly now: () => number
   private readonly processId: number
   private readonly processExited: (pid: number) => boolean
+  private readonly availableMemory: () => number
   /** This process's folder in `root`, which holds the folders of its workers. */
   private readonly folder: string
   private readonly entries = new Map<string, Entry>()
@@ -152,11 +165,15 @@ export class WorkerPool {
 
   /**
    * @param options - application, worker folder root, worker start, limits, and budgets.
-   * @throws RangeError when `maxWorkers` is not a whole number of at least 1 or a budget is out of range.
+   * @throws RangeError when `maxWorkers` is not a whole number of at least 1, `minAvailableMemoryBytes` is not a
+   *   whole number of at least 0, or a budget is out of range.
    */
   constructor(options: WorkerPoolOptions) {
     if (!Number.isInteger(options.maxWorkers) || options.maxWorkers < 1) {
       throw new RangeError(`maxWorkers must be a whole number of at least 1, got ${String(options.maxWorkers)}`)
+    }
+    if (!Number.isSafeInteger(options.minAvailableMemoryBytes) || options.minAvailableMemoryBytes < 0) {
+      throw new RangeError(`minAvailableMemoryBytes must be a whole number of at least 0, got ${String(options.minAvailableMemoryBytes)}`)
     }
     assertDelay('idleTimeoutMs', options.idleTimeoutMs)
     assertDelay('requestTimeoutMs', options.requestTimeoutMs)
@@ -166,6 +183,7 @@ export class WorkerPool {
     this.now = options.now ?? (() => performance.now())
     this.processId = options.processId ?? process.pid
     this.processExited = options.processExited ?? processExited
+    this.availableMemory = options.availableMemory ?? (() => process.availableMemory())
     this.folder = join(options.root, String(this.processId))
   }
 
@@ -188,7 +206,9 @@ export class WorkerPool {
    * @param options - answer budget and cancellation.
    * @returns the worker's result.
    * @throws WorkerError `WORKER_EXITED` once after the scope's worker stopped without a running call;
-   *   `WORKERS_BUSY` when `maxWorkers` workers each run a call; the errors of {@link WorkerSupervisor.call}.
+   *   `WORKERS_BUSY` when `maxWorkers` workers each run a call; `LOW_MEMORY` when a start finds less than
+   *   `minAvailableMemoryBytes` available after stopping the idle workers of other scopes; the errors of
+   *   {@link WorkerSupervisor.call}.
    */
   async call(scope: string, method: string, params: JsonObject, options: WorkerCallOptions = {}): Promise<JsonValue> {
     if (this.closed) throw new WorkerError('WORKER_EXITED', `The ${this.options.app} server is shutting down.`)
@@ -242,15 +262,12 @@ export class WorkerPool {
     const existing = this.entries.get(key)
     if (existing !== undefined) return existing
     if (this.entries.size >= this.options.maxWorkers) {
-      let oldest: Entry | undefined
-      for (const entry of this.entries.values()) {
-        if (entry.active === 0 && (oldest === undefined || entry.lastUsed < oldest.lastUsed)) oldest = entry
-      }
+      const oldest = this.leastRecentlyUsedIdle(() => true)
       if (oldest === undefined) {
-        throw new WorkerError('WORKERS_BUSY', `All ${String(this.options.maxWorkers)} ${this.options.app} workers are running calls `
-          + 'for other conversations. Call the tool again once one of them has finished.')
+        throw new WorkerError('WORKERS_BUSY', `All ${String(this.options.maxWorkers)} ${this.options.app} workers, as many as this computer `
+          + 'runs at once, are running calls for other conversations. Call the tool again once one of them has finished.')
       }
-      this.release(oldest, `The ${this.options.app} worker of this conversation was stopped to make room for another conversation; ${STATE_LOST}.`)
+      void this.release(oldest, `The ${this.options.app} worker of this conversation was stopped to make room for another conversation; ${STATE_LOST}.`)
     }
     this.serial += 1
     const scope: AppWorkerScope = { key, directory: join(this.folder, String(this.serial)) }
@@ -278,6 +295,7 @@ export class WorkerPool {
     this.starting = new Promise<void>((resolve) => { finished = resolve })
     try {
       await untilTurn(previous, signal)
+      await this.freeMemory(scope.key, signal)
       await this.files.makeDirectory(scope.directory)
       return await this.options.start(signal, scope)
     } finally {
@@ -287,18 +305,48 @@ export class WorkerPool {
     }
   }
 
+  /**
+   * Stop the least recently used running workers of other scopes that have no call running, one at a time, until
+   * the computer has `minAvailableMemoryBytes` available.
+   * @throws WorkerError `LOW_MEMORY` when memory is still short and no such worker is left.
+   */
+  private async freeMemory(key: string, signal: AbortSignal): Promise<void> {
+    for (;;) {
+      const shortage = memoryShortage(this.options.minAvailableMemoryBytes, this.availableMemory)
+      if (shortage === undefined) return
+      const idle = this.leastRecentlyUsedIdle(entry => entry.scope.key !== key && entry.supervisor.running)
+      if (idle === undefined) throw new WorkerError('LOW_MEMORY', lowMemoryMessage(`a ${this.options.app} worker`, shortage))
+      await untilTurn(this.release(idle, `The ${this.options.app} worker of this conversation was stopped to free memory for another `
+        + `conversation; ${STATE_LOST}.`), signal)
+    }
+  }
+
+  /** The least recently used entry that has no call running and that `eligible` accepts. */
+  private leastRecentlyUsedIdle(eligible: (entry: Entry) => boolean): Entry | undefined {
+    let oldest: Entry | undefined
+    for (const entry of this.entries.values()) {
+      if (entry.active === 0 && eligible(entry) && (oldest === undefined || entry.lastUsed < oldest.lastUsed)) oldest = entry
+    }
+    return oldest
+  }
+
   private armIdle(entry: Entry): void {
     entry.idle = setTimeout(() => {
       entry.idle = undefined
       if (entry.active === 0 && this.entries.get(entry.scope.key) === entry) {
-        this.release(entry, `The ${this.options.app} worker of this conversation stopped after ${describeDuration(this.options.idleTimeoutMs)} `
+        void this.release(entry, `The ${this.options.app} worker of this conversation stopped after ${describeDuration(this.options.idleTimeoutMs)} `
           + `without calls; ${STATE_LOST}.`)
       }
     }, this.options.idleTimeoutMs)
     entry.idle.unref()
   }
 
-  private release(entry: Entry, notice: string): void {
+  /**
+   * Remove a scope's entry and stop its worker in the background, leaving `notice` for the scope's next call when
+   * the worker had started.
+   * @returns settles once the worker stopped and its folder is gone; it never rejects.
+   */
+  private release(entry: Entry, notice: string): Promise<void> {
     this.entries.delete(entry.scope.key)
     if (entry.idle !== undefined) clearTimeout(entry.idle)
     if (entry.started) {
@@ -315,5 +363,6 @@ export class WorkerPool {
     })
     this.stopping.add(stop)
     void stop.finally(() => { this.stopping.delete(stop) })
+    return stop
   }
 }

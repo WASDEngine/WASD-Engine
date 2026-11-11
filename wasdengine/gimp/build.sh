@@ -1,20 +1,24 @@
 #!/usr/bin/env bash
-# Build the WASD Engine GIMP runtime for this Mac's architecture from GIMP's
-# official macOS application: gimp-console with GIMP's libraries, plug-ins,
-# data, and Python, without the GUI program, debug symbols, headers,
-# translations, GUI icons, and build tools. The runtime and its runtime.json are
-# packed into <out>/gimp-<version>-darwin-<arch>.tar.gz, which
-# <out>/manifest.json lists; --install also unpacks the archive into
-# <root>/darwin-<arch>/, the layout the GIMP plugin reads from its package's
-# runtime folder. Runs on macOS only; BUILD.md describes the layout and why Linux
-# and Windows use an installed GIMP.
+# Build the WASD Engine GIMP runtime for this computer's platform and
+# architecture from GIMP's official build: its macOS application on macOS, and
+# what its Windows installer installs on Windows x64. The runtime holds
+# gimp-console with GIMP's libraries, plug-ins, data, and Python, without the GUI
+# program, debug symbols, headers, translations, GUI icons, and build tools. The
+# runtime and its runtime.json are packed into
+# <out>/gimp-<version>-<platform>-<arch>.tar.gz, which <out>/manifest.json
+# lists; --install also unpacks the archive into <root>/<platform>-<arch>/, the
+# layout the GIMP plugin reads from its package's runtime folder. Platform and
+# architecture use Node.js names (darwin, win32; arm64, x64). Runs on macOS, and
+# on Windows in Git Bash; BUILD.md describes the layouts and why Linux uses an
+# installed GIMP.
 #
 # Usage: wasdengine/gimp/build.sh --out <dir> [options]
 #
-#   --out <dir>                 output directory (required); the disk image and the stage go under it
-#   --dmg <file>                use this GIMP disk image instead of downloading it; it must match the pinned SHA-256
+#   --out <dir>                 output directory (required); the download and the stage go under it
+#   --dmg <file>                on macOS, use this GIMP disk image instead of downloading it; it must match the pinned SHA-256
+#   --setup <file>              on Windows, use this GIMP installer instead of downloading it; it must match the pinned SHA-256
 #   --version <version>         runtime version (default 3.2.8-wasd.1)
-#   --install <root>            install the archive into <root>/darwin-<arch>/, such as
+#   --install <root>            install the archive into <root>/<platform>-<arch>/, such as
 #                               packages/gamedev/gimp/runtime
 #   --repository <owner/name>   GitHub repository whose release gimp-<version> hosts
 #                               the archive in manifest.json (default WASDEngine/WASD-Engine)
@@ -26,6 +30,10 @@ gimp_version=3.2.8
 dmg_base_url=https://download.gimp.org/gimp/v3.2/macos
 arm64_sha256=06404a375106b7613ba3a14c7d8d9a7cbe18b9b9e2b2050bb72f3162cbcfc395
 x86_64_sha256=7746487985d7143b190692500b58d5317b6ce916a60f8139a76df5eea1e920db
+# GIMP's Windows installer, which installs the x64 or arm64 build, and its SHA-256, from
+# https://download.gimp.org/gimp/v3.2/windows/SHA256SUMS.
+setup_url=https://download.gimp.org/gimp/v3.2/windows/gimp-3.2.8-setup.exe
+setup_sha256=1d78874295661d791eaf149982e9b3564888631ea29186da5ff99e8114020a5b
 # The source release of the same GIMP, from https://download.gimp.org/gimp/v3.2/SHA256SUMS, which SOURCE.txt names.
 source_url=https://download.gimp.org/gimp/v3.2/gimp-3.2.8.tar.xz
 source_sha256=16a2696cadc9e03a2ef97ccb895e062f654cb2b8211fb57074db85f26646c847
@@ -63,6 +71,7 @@ option_value() {
 
 out_dir=
 dmg=
+setup=
 version=3.2.8-wasd.1
 install_root=
 repository=WASDEngine/WASD-Engine
@@ -70,6 +79,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --out) out_dir=$(option_value "$@") ;;
     --dmg) dmg=$(option_value "$@") ;;
+    --setup) setup=$(option_value "$@") ;;
     --version) version=$(option_value "$@") ;;
     --install) install_root=$(option_value "$@") ;;
     --repository) repository=$(option_value "$@") ;;
@@ -90,15 +100,19 @@ if ! [[ $version =~ $version_pattern ]] || [[ $version == *..* ]]; then
 fi
 [[ $repository =~ $repository_pattern ]] || die "invalid --repository '$repository': use owner/name"
 
-[ "$(uname -s)" = Darwin ] || die "the GIMP runtime is built from GIMP's macOS application on macOS; BUILD.md explains why Linux and Windows use an installed GIMP"
-case "$(uname -m)" in
-  arm64) node_arch=arm64 dmg_arch=arm64 dmg_sha256=$arm64_sha256 ;;
-  x86_64) node_arch=x64 dmg_arch=x86_64 dmg_sha256=$x86_64_sha256 ;;
-  *) die "unsupported architecture $(uname -m); build on arm64 or x86_64" ;;
+case "$(uname -s)" in
+  Darwin) node_platform=darwin python=python3 ;;
+  # Git Bash and MSYS2 on Windows; their Python is python.exe.
+  MINGW* | MSYS* | CYGWIN*) node_platform=win32 python=python ;;
+  *) die "unsupported operating system $(uname -s); build on macOS or Windows (BUILD.md explains why Linux uses an installed GIMP)" ;;
 esac
-key=darwin-$node_arch
-dmg_name=gimp-$gimp_version-$dmg_arch.dmg
-dmg_url=$dmg_base_url/$dmg_name
+case "$node_platform-$(uname -m)" in
+  darwin-arm64) node_arch=arm64 dmg_arch=arm64 dmg_sha256=$arm64_sha256 ;;
+  darwin-x86_64) node_arch=x64 dmg_arch=x86_64 dmg_sha256=$x86_64_sha256 ;;
+  win32-x86_64) node_arch=x64 ;;
+  *) die "unsupported architecture $(uname -m) on $node_platform; build on arm64 or x86_64 macOS, or on x64 Windows" ;;
+esac
+key=$node_platform-$node_arch
 
 # Creates directory $1 when missing and prints its absolute physical path.
 absolute_dir() {
@@ -106,36 +120,98 @@ absolute_dir() {
   (cd -- "$1" && pwd -P)
 }
 
-for tool in curl hdiutil ditto codesign otool xattr xargs; do
-  command -v "$tool" >/dev/null 2>&1 || die "$tool is required: install the Xcode Command Line Tools"
-done
-command -v python3 >/dev/null 2>&1 || die "Python 3.8 or newer is required"
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || die "Python 3.8 or newer is required"
-runtime_py() { python3 -I "$script_dir/runtime.py" "$@"; }
-sha256_of() { python3 -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
+if [ "$node_platform" = darwin ]; then
+  for tool in curl hdiutil ditto codesign otool xattr xargs; do
+    command -v "$tool" >/dev/null 2>&1 || die "$tool is required: install the Xcode Command Line Tools"
+  done
+else
+  command -v curl >/dev/null 2>&1 || die "curl is required"
+fi
+command -v "$python" >/dev/null 2>&1 || die "Python 3.8 or newer is required"
+"$python" -c 'import sys; sys.exit(sys.version_info < (3, 8))' || die "Python 3.8 or newer is required"
+runtime_py() { "$python" -I "$script_dir/runtime.py" "$@"; }
+sha256_of() { "$python" -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$1"; }
+
+# Downloads URL $1 to file $2 unless the file already has SHA-256 $3, then checks the file against it.
+fetch_verified() {
+  if [ -f "$2" ] && [ "$(sha256_of "$2")" = "$3" ]; then
+    log "reusing $2"
+  else
+    cleanup_paths+=("$2.partial")
+    log "downloading $1"
+    curl --fail --location --silent --show-error --output "$2.partial" "$1"
+    mv -- "$2.partial" "$2"
+  fi
+  local actual
+  actual=$(sha256_of "$2")
+  [ "$actual" = "$3" ] || die "$2 has SHA-256 $actual, not $3"
+}
 
 out=$(absolute_dir "$out_dir")
+stage=$out/.stage-$key
+rm -rf -- "$stage"
+cleanup_paths+=("$stage")
+
+if [ "$node_platform" = win32 ]; then
+  [ -z "$dmg" ] || die "--dmg applies to macOS builds; on Windows, --setup names the installer"
+  if [ -z "$setup" ]; then
+    setup=$out/gimp-$gimp_version-setup.exe
+    fetch_verified "$setup_url" "$setup" "$setup_sha256"
+  else
+    [ -f "$setup" ] || die "$setup is not a file"
+    actual=$(sha256_of "$setup")
+    [ "$actual" = "$setup_sha256" ] || die "$setup has SHA-256 $actual, not $setup_sha256 of gimp-$gimp_version-setup.exe"
+  fi
+  log "installing GIMP from $setup into $stage"
+  runtime_py install-setup --setup "$setup" --dir "$stage" --log "$out/.setup-$key.log"
+  gimp=$(runtime_py prepare-windows --stage "$stage" --installed "$stage")
+  [ "$gimp" = "$gimp_version" ] || die "$setup installed GIMP $gimp, not $gimp_version"
+  console=bin/gimp-console-${gimp%.*}.exe
+  runtime_py check-imports --stage "$stage" --folder bin
+  cp -- "$script_dir/../../LICENSE" "$stage/COPYING"
+  cat >"$stage/SOURCE.txt" <<EOF
+GIMP $gimp for Windows ($key), repackaged for WASD Engine as runtime $version.
+
+GIMP is free software under the GNU General Public License, version 3 or later; COPYING holds the license. The
+libraries it ships are under their own free licenses, mostly the GNU Lesser General Public License, and its Python is
+under the Python Software Foundation License.
+
+The programs are what GIMP's own Windows installer, $setup_url (SHA-256 $setup_sha256),
+installs for x64 with GIMP, its libraries, Python, Ghostscript, and the MyPaint brushes. wasdengine/gimp/build.sh of
+https://github.com/$repository removes files that the GIMP tools do not use and names the interpreters of GIMP's
+.interp files by file name instead of the installer's folder, without changing the programs.
+
+Corresponding source: $source_url (SHA-256 $source_sha256) for GIMP, and the MSYS2 packages that GIMP's
+build/windows/all-deps-uni.txt names, whose sources and recipes https://github.com/msys2/MINGW-packages publishes.
+EOF
+  log "smoke-testing the staged runtime"
+  "$python" -I "$script_dir/smoke.py" --runtime "$stage" --work "$out/.smoke-$key" --console "$console"
+  cleanup_paths+=("$out/.smoke-$key")
+  archive=$(runtime_py package --stage "$stage" --out "$out" --version "$version" --gimp "$gimp" \
+    --platform "$node_platform" --arch "$node_arch" --console "$console" --repository "$repository")
+  if [ -n "$install_root" ]; then
+    installed=$(runtime_py install --archive "$archive" --root "$(absolute_dir "$install_root")" --version "$version")
+    log "installed the runtime into $installed"
+  fi
+  log "done: $archive"
+  exit 0
+fi
+
+[ -z "$setup" ] || die "--setup applies to Windows builds; on macOS, --dmg names the disk image"
+dmg_name=gimp-$gimp_version-$dmg_arch.dmg
+dmg_url=$dmg_base_url/$dmg_name
 
 if [ -z "$dmg" ]; then
   dmg=$out/$dmg_name
-  if [ -f "$dmg" ] && [ "$(sha256_of "$dmg")" = "$dmg_sha256" ]; then
-    log "reusing $dmg"
-  else
-    cleanup_paths+=("$dmg.partial")
-    log "downloading $dmg_url"
-    curl --fail --location --silent --show-error --output "$dmg.partial" "$dmg_url"
-    mv -- "$dmg.partial" "$dmg"
-  fi
+  fetch_verified "$dmg_url" "$dmg" "$dmg_sha256"
+else
+  [ -f "$dmg" ] || die "$dmg is not a file"
+  actual=$(sha256_of "$dmg")
+  [ "$actual" = "$dmg_sha256" ] || die "$dmg has SHA-256 $actual, not $dmg_sha256 of $dmg_name"
 fi
-[ -f "$dmg" ] || die "$dmg is not a file"
-actual=$(sha256_of "$dmg")
-[ "$actual" = "$dmg_sha256" ] || die "$dmg has SHA-256 $actual, not $dmg_sha256 of $dmg_name"
 
 mount=$out/.mount-$key
-stage=$out/.stage-$key
-rm -rf -- "$stage"
 mkdir -p -- "$mount" "$stage"
-cleanup_paths+=("$stage")
 log "copying GIMP from $dmg"
 hdiutil attach -quiet -nobrowse -readonly -noautoopen -noverify -mountpoint "$mount" "$dmg"
 mounts+=("$mount")
@@ -176,11 +252,11 @@ https://gitlab.gnome.org/Infrastructure/gimp-macos-build, which name the source 
 EOF
 
 log "smoke-testing the staged runtime"
-python3 -I "$script_dir/smoke.py" --runtime "$stage" --work "$out/.smoke-$key" --console "$console"
+"$python" -I "$script_dir/smoke.py" --runtime "$stage" --work "$out/.smoke-$key" --console "$console"
 cleanup_paths+=("$out/.smoke-$key")
 
 archive=$(runtime_py package --stage "$stage" --out "$out" --version "$version" --gimp "$gimp" \
-  --platform darwin --arch "$node_arch" --console "$console" --repository "$repository")
+  --platform "$node_platform" --arch "$node_arch" --console "$console" --repository "$repository")
 
 if [ -n "$install_root" ]; then
   installed=$(runtime_py install --archive "$archive" --root "$(absolute_dir "$install_root")" --version "$version")

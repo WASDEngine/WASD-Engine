@@ -212,6 +212,9 @@ async function configuredRuntime(
   return { source: 'configured', sclang: options.sclangPath, scsynth, classLibrary: undefined, plugins: undefined, helpSource: undefined }
 }
 
+/** File name of the class library configuration in the worker's directory. */
+const CLASS_LIBRARY_CONFIG = 'sclang_conf.yaml'
+
 /** The folders and files a worker uses under the plugin's data directory. */
 export interface SuperColliderFolders {
   /** The worker's own directory, which holds the other folders and is the working directory of the bridge and sclang. */
@@ -222,7 +225,7 @@ export interface SuperColliderFolders {
   readonly dataHome: string
   /** Request parameter files and intermediate render, conversion, and log files. */
   readonly scratch: string
-  /** The class library configuration that sclang reads with `-l`. */
+  /** The class library configuration, in {@link directory}, which sclang reads with `-l` by its file name. */
   readonly classLibraryConfig: string
 }
 
@@ -239,7 +242,7 @@ export function superColliderFolders(directory: string, platform: NodeJS.Platfor
     configHome: paths.join(directory, 'home', 'config'),
     dataHome: paths.join(directory, 'home', 'data'),
     scratch: paths.join(directory, 'scratch'),
-    classLibraryConfig: paths.join(directory, 'sclang_conf.yaml'),
+    classLibraryConfig: paths.join(directory, CLASS_LIBRARY_CONFIG),
   }
 }
 
@@ -266,8 +269,9 @@ export function classLibraryConfig(runtime: SuperColliderRuntime, workerClassDir
 /**
  * The bridge's plan: sclang in its IDE mode with the class library configuration, user folders in the worker's
  * directory, Qt's offscreen platform, the worker's directory as working directory, and the boot parameters of the worker
- * class. The shipped runtime has no Qt and ignores the platform; a configured sclang built with Qt either runs off
- * screen or fails to start, so no build opens a window or an application.
+ * class. sclang on Windows ignores `XDG_CONFIG_HOME` and `XDG_DATA_HOME` and uses the user's own SuperCollider folder,
+ * whose startup file the worker class skips. The shipped runtime has no Qt and ignores the platform; a configured
+ * sclang built with Qt either runs off screen or fails to start, so no build opens a window or an application.
  * @param runtime - the resolved runtime.
  * @param folders - the worker's folders.
  * @param options - the shutdown grace.
@@ -277,7 +281,9 @@ export function sclangBridgePlan(
   runtime: SuperColliderRuntime, folders: SuperColliderFolders, options: Pick<SuperColliderServerOptions, 'graceMs'>,
 ): SclangBridgePlan {
   return {
-    sclang: [runtime.sclang, '-i', IDE_NAME, '-l', folders.classLibraryConfig],
+    // Relative to the working directory, which holds it: sclang on Windows reads its arguments in the ANSI code page,
+    // which cannot hold every character of a user's folder name.
+    sclang: [runtime.sclang, '-i', IDE_NAME, '-l', CLASS_LIBRARY_CONFIG],
     // The bridge needs ELECTRON_RUN_AS_NODE to run under the Desktop app's executable; sclang and its shells do not.
     env: { set: { XDG_CONFIG_HOME: folders.configHome, XDG_DATA_HOME: folders.dataHome, QT_QPA_PLATFORM: 'offscreen' }, unset: ['ELECTRON_RUN_AS_NODE'] },
     cwd: folders.directory,
@@ -294,11 +300,17 @@ function describeRuntime(runtime: SuperColliderRuntime): string {
   }
 }
 
-/** Why no SuperCollider is available, and how the user gets the headless runtime. */
-const RUNTIME_MISSING = 'WASD Engine\'s headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on Apple silicon '
-  + 'and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '
-  + 'packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens '
-  + 'as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.'
+/**
+ * Why no SuperCollider is available, and how the user gets the headless runtime.
+ * @param host - the platform and architecture that have no runtime.
+ * @returns the message.
+ */
+function runtimeMissing(host: Pick<SuperColliderSetupHost, 'platform' | 'arch'>): string {
+  return `WASD Engine's headless SuperCollider is not installed for ${host.platform}-${host.arch}. The WASD Engine desktop app ships it for macOS `
+    + 'on Apple silicon and for Windows x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '
+    + 'packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens '
+    + 'as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.'
+}
 
 /** Dependencies of {@link SuperColliderWorkers}: the server's worker class copy and worker start, the setup host, and the bridge. */
 export interface SuperColliderWorkerDependencies<W extends { readonly ready: WorkerReady }> extends AppWorkerDependencies<W> {
@@ -332,7 +344,7 @@ export class SuperColliderWorkers<W extends { readonly ready: WorkerReady }> {
   async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
     const runtime = await findSuperCollider(this.options, this.dependencies.bundledRoot, host)
-    if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', RUNTIME_MISSING)
+    if (runtime === undefined) throw new SuperColliderSetupError('SUPERCOLLIDER_NOT_FOUND', runtimeMissing(host))
     const folders = superColliderFolders(scope.directory, host.platform)
     for (const directory of [folders.configHome, folders.dataHome, folders.scratch]) await host.makeDirectory(directory)
     const workerClass = await this.dependencies.workerScript()

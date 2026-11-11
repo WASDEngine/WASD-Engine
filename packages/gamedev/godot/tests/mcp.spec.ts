@@ -3,7 +3,7 @@
  * the whole chain from the official MCP client over HTTP, through the game MCP server and the Godot provider, to a
  * fake Godot game, with screenshots as PNG bytes and the window asked to show the Session that runs the game.
  */
-import { mkdir, readFile, realpath } from 'node:fs/promises'
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import GameMcpServer, { type GameMcpView } from '@deepseek-ai/dsh-game-mcp'
@@ -107,6 +107,8 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
+    // A check may import the project first, which writes its import data.
+    expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 12 tools)')
   }, TIMEOUT)
 
@@ -141,6 +143,25 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     await client.callTool({ name: 'godot_run', arguments: {} })
     expect(created).toHaveLength(1)
     await client.callTool({ name: 'godot_stop', arguments: {} })
+  }, TIMEOUT)
+
+  it('holds connected agents to the run limit of WASD Engine\'s own Sessions', async () => {
+    const { client, project, godot } = await connected({}, { maxRuns: 1 })
+    await godot.run(brandString<SessionId>('owner'), {}, new AbortController().signal)
+    const refused = await client.callTool({ name: 'godot_run', arguments: { project } })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain('1 Godot game already runs, as many as this computer runs at once; stop one before starting another.')
+  }, TIMEOUT)
+
+  it('starts no game or check for a connected agent while the computer is short of memory', async () => {
+    const { client, project } = await connected({}, { minAvailableMemoryBytes: Number.MAX_SAFE_INTEGER })
+    await writeFile(join(project, 'player.gd'), 'extends Node\n')
+    const run = await client.callTool({ name: 'godot_run', arguments: { project } })
+    expect(run.isError).toBe(true)
+    expect(text(run)).toMatch(/ that starting the game needs, so it did not start\./u)
+    const check = await client.callTool({ name: 'godot_check', arguments: { project } })
+    expect(check.isError).toBe(true)
+    expect(text(check)).toMatch(/ that starting a Godot script check needs, so it did not start\./u)
   }, TIMEOUT)
 
   it('refuses a call without a usable project', async () => {

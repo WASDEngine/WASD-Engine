@@ -1,4 +1,4 @@
-"""Tests for runtime.py: preparing GIMP's macOS bundle, and packaging, installing, merging, and verifying runtime archives.
+"""Tests for runtime.py: preparing GIMP's macOS bundle and Windows install, and packaging, installing, merging, and verifying runtime archives.
 
 Run with: python3 -B -m unittest discover --start-directory wasdengine/gimp --pattern 'test_*.py'
 """
@@ -13,6 +13,8 @@ import json
 import os
 import plistlib
 import shutil
+import struct
+import subprocess
 import tarfile
 import tempfile
 import unittest
@@ -159,6 +161,214 @@ class PrepareTest(unittest.TestCase):
             runtime.prepare(self.contents)
 
 
+def pe_bytes(machine: int = 0x8664, imports: Tuple[str, ...] = ("KERNEL32.dll",), delayed: Tuple[Tuple[str, bool], ...] = (),
+             version: Tuple[int, int, int] = (0, 0, 0)) -> bytes:
+    """Build a small PE32+ file with one section that holds its import and delay-load tables and a version resource.
+
+    @param machine: COFF machine type.
+    @param imports: libraries of the import table.
+    @param delayed: libraries of the delay-load table, each with whether its descriptor holds image-relative addresses.
+    @param version: file version of the VS_FIXEDFILEINFO; (0, 0, 0) writes none.
+    @returns: the file's bytes.
+    """
+    image_base, section_address, raw_offset, size = 0x10000000, 0x1000, 0x200, 0x1000
+    content = bytearray(size)
+    names = 0x400
+
+    def name(text: str) -> int:
+        nonlocal names
+        address = section_address + names
+        content[names:names + len(text) + 1] = text.encode() + b"\0"
+        names += len(text) + 1
+        return address
+
+    cursor = 0
+    for library in imports:
+        struct.pack_into("<IIIII", content, cursor, 0, 0, 0, name(library), 0)
+        cursor += 20
+    cursor += 20
+    delay_address = section_address + cursor
+    for library, relative in delayed:
+        address = name(library)
+        struct.pack_into("<II", content, cursor, 1 if relative else 0, address if relative else address + image_base)
+        cursor += 32
+    if version != (0, 0, 0):
+        major, minor, micro = version
+        content[0x800:0x80C] = runtime.VERSION_SIGNATURE + struct.pack("<II", 0x10000, (major << 16) | minor)
+        content[0x80C:0x810] = struct.pack("<I", micro << 16)
+    data = bytearray(raw_offset) + content
+    data[0:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, 0x40)
+    data[0x40:0x44] = b"PE\0\0"
+    struct.pack_into("<HHIIIHH", data, 0x44, machine, 1, 0, 0, 0, 240, 0x22)
+    optional = 0x58
+    struct.pack_into("<H", data, optional, 0x20B)
+    struct.pack_into("<Q", data, optional + 24, image_base)
+    struct.pack_into("<I", data, optional + 108, 16)
+    struct.pack_into("<II", data, optional + 112 + 8, section_address, 40)
+    if delayed:
+        struct.pack_into("<II", data, optional + 112 + 13 * 8, delay_address, 32 * len(delayed))
+    section = optional + 240
+    data[section:section + 8] = b".idata\0\0"
+    struct.pack_into("<IIII", data, section + 8, size, section_address, size, raw_offset)
+    return bytes(data)
+
+
+class WindowsTest(unittest.TestCase):
+    """The Windows build: reading PE files, preparing an install, and running the installer."""
+
+    def setUp(self) -> None:
+        self.stage = os.path.join(tempfile.mkdtemp(prefix="gimp-windows-test-"), "stage")
+        self.addCleanup(shutil.rmtree, os.path.dirname(self.stage))
+        self.installed = "D:\\a\\_temp\\gimp-out\\.stage-win32-x64"
+
+    def file(self, relative: str, data: bytes = b"x") -> None:
+        path = os.path.join(self.stage, *relative.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as stream:
+            stream.write(data)
+
+    def install(self) -> None:
+        """Write an install in miniature, as GIMP's installer leaves it."""
+        self.file("bin/gimp-console-3.2.exe", pe_bytes(imports=("libgimp-3.0-0.dll", "KERNEL32.dll"), version=(3, 2, 8)))
+        self.file("bin/gimp-3.2.exe", pe_bytes())
+        self.file("bin/gimp-debug-tool-3.0.exe", pe_bytes())
+        self.file("bin/gimptool-3.0.exe", pe_bytes())
+        self.file("bin/libgimp-3.0-0.dll", pe_bytes(imports=("api-ms-win-crt-runtime-l1-1-0.dll", "libc++.dll")))
+        self.file("bin/libc++.dll", pe_bytes())
+        self.file("bin/libgimp-3.0-0.pdb")
+        self.file("bin/python.exe", pe_bytes())
+        self.file("lib/libgimp-3.0.dll.a")
+        self.file("lib/gimp/3.0/plug-ins/file-png/file-png.exe", pe_bytes(imports=("libgimp-3.0-0.dll",)))
+        self.file("lib/gimp/3.0/plug-ins/twain/twain.exe", pe_bytes())
+        self.file("lib/gimp/3.0/environ/default.env", b"PATH=${gimp_installation_dir}\\bin\n")
+        self.file("lib/gimp/3.0/interpreters/pygimp.interp", b"python=python.exe\n/usr/bin/python3=python.exe\n:Python:E::py::python3:\n")
+        script_fu = f"{self.installed}\\bin\\gimp-script-fu-interpreter-3.0.exe"
+        self.file("lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
+                  f"# Script-Fu\ngimp-script-fu-interpreter={script_fu}\n,ScriptFu,E,,scm,,{script_fu},\n".encode())
+        self.file("lib/python3.12/test/test_os.py")
+        self.file("lib/python3.12/site-packages/setuptools/__init__.py")
+        self.file("lib/python3.12/site-packages/gi/__init__.py")
+        self.file("share/locale/de/LC_MESSAGES/gimp30.mo")
+        self.file("share/icons/hicolor/index.theme")
+        self.file("share/gimp/3.0/brushes/arrow#1.myb", b"brush")
+        self.file("etc/gimp/3.0/gimprc", b"# gimprc")
+        self.file("include/gimp-3.0/libgimp/gimp.h")
+        self.file("uninst/unins000.exe", pe_bytes())
+        os.makedirs(os.path.join(self.stage, "lib", "gimp", "3.0", "modules"))
+
+    def files(self) -> List[str]:
+        found = []
+        for directory, _, names in os.walk(self.stage):
+            found.extend(os.path.relpath(os.path.join(directory, name), self.stage).replace(os.sep, "/") for name in names)
+        return sorted(found)
+
+    def test_pe_imports_reads_the_import_and_delay_load_tables(self) -> None:
+        data = pe_bytes(imports=("KERNEL32.dll", "libglib-2.0-0.dll"), delayed=(("dbghelp.dll", True), ("old.dll", False)))
+        self.assertEqual(runtime.pe_imports(data), (0x8664, ["KERNEL32.dll", "libglib-2.0-0.dll", "dbghelp.dll", "old.dll"]))
+        self.assertEqual(runtime.pe_imports(pe_bytes(machine=0xAA64, imports=()))[0], 0xAA64)
+        self.assertIsNone(runtime.pe_imports(b"#!/bin/sh\n"))
+        self.assertIsNone(runtime.pe_imports(b"MZ" + b"\0" * 62 + b"no PE header"))
+        broken = bytearray(pe_bytes())
+        struct.pack_into("<I", broken, 0x58 + 112 + 8, 0x9000)
+        with self.assertRaisesRegex(runtime.RuntimeToolError, "lies in no section"):
+            runtime.pe_imports(bytes(broken))
+
+    def test_windows_file_version_reads_the_fixed_version_resource(self) -> None:
+        self.file("bin/a.exe", pe_bytes(version=(3, 2, 8)))
+        self.file("bin/b.exe", pe_bytes())
+        self.assertEqual(runtime.windows_file_version(os.path.join(self.stage, "bin", "a.exe")), "3.2.8")
+        self.assertIsNone(runtime.windows_file_version(os.path.join(self.stage, "bin", "b.exe")))
+
+    def test_prepare_windows_keeps_what_the_tools_use_and_names_interpreters_by_file_name(self) -> None:
+        self.install()
+        self.assertEqual(runtime.prepare_windows(self.stage, self.installed), "3.2.8")
+        self.assertEqual(self.files(), [
+            "bin/gimp-console-3.2.exe", "bin/libc++.dll", "bin/libgimp-3.0-0.dll", "bin/python.exe",
+            "etc/gimp/3.0/gimprc", "lib/gimp/3.0/environ/default.env", "lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
+            "lib/gimp/3.0/interpreters/pygimp.interp", f"lib/gimp/3.0/modules/{runtime.KEEP_FILE}", "lib/gimp/3.0/plug-ins/file-png/file-png.exe",
+            "lib/python3.12/site-packages/gi/__init__.py", "share/gimp/3.0/brushes/arrow#1.myb", f"share/locale/{runtime.KEEP_FILE}",
+        ])
+        with open(os.path.join(self.stage, "lib", "gimp", "3.0", "interpreters", "gimp-script-fu-interpreter.interp"), encoding="utf-8") as stream:
+            self.assertEqual(stream.read(), "# Script-Fu\ngimp-script-fu-interpreter=gimp-script-fu-interpreter-3.0.exe\n"
+                                            ",ScriptFu,E,,scm,,gimp-script-fu-interpreter-3.0.exe,\n")
+        with open(os.path.join(self.stage, "lib", "gimp", "3.0", "interpreters", "pygimp.interp"), encoding="utf-8") as stream:
+            self.assertEqual(stream.read(), "python=python.exe\n/usr/bin/python3=python.exe\n:Python:E::py::python3:\n")
+        self.assertEqual(runtime.unresolved_imports(self.stage, ("bin",)), [])
+
+    def test_prepare_windows_refuses_another_install_and_files_that_name_the_install_folder(self) -> None:
+        with self.assertRaisesRegex(runtime.RuntimeToolError, "holds 0 versioned gimp-console programs"):
+            runtime.prepare_windows(self.stage, self.installed)
+        self.install()
+        self.file("bin/gimp-console-3.2.exe", pe_bytes(version=(3, 4, 0)))
+        with self.assertRaisesRegex(runtime.RuntimeToolError, "states the version '3.4.0', which does not match its name"):
+            runtime.prepare_windows(self.stage, self.installed)
+        shutil.rmtree(self.stage)
+        self.install()
+        self.file("etc/fonts/local.conf", f"<dir>{self.installed.replace(chr(92), '/').upper()}/share/fonts</dir>".encode())
+        self.file("bin/libpaths.dll", pe_bytes() + self.installed.lower().encode("utf-16-le"))
+        with self.assertRaisesRegex(runtime.RuntimeToolError, "2 files name the install folder .*: bin/libpaths.dll, etc/fonts/local.conf"):
+            runtime.prepare_windows(self.stage, self.installed)
+
+    def test_rewrite_interpreters_keeps_bare_names_comments_and_other_lines(self) -> None:
+        self.assertEqual(runtime.rewrite_interpreters(self.stage), [])
+        self.file("lib/gimp/3.0/interpreters/lua.interp", b"lua=\\\\server\\share\\luajit.exe\n,Lua,E,,lua,,C:/GIMP/bin/luajit.exe,\nnot a line\n")
+        self.file("lib/gimp/3.0/interpreters/notes.txt", b"C:\\GIMP")
+        self.assertEqual(runtime.rewrite_interpreters(self.stage), ["lib/gimp/3.0/interpreters/lua.interp"])
+        with open(os.path.join(self.stage, "lib", "gimp", "3.0", "interpreters", "lua.interp"), encoding="utf-8") as stream:
+            self.assertEqual(stream.read(), "lua=luajit.exe\n,Lua,E,,lua,,luajit.exe,\nnot a line\n")
+        self.assertEqual(runtime.rewrite_interpreters(self.stage), [])
+
+    def test_unresolved_imports_names_libraries_that_neither_the_runtime_nor_windows_provides(self) -> None:
+        self.file("bin/tool.exe", pe_bytes(imports=("MSVCP140.dll", "ext-ms-win-ntuser-window-l1-1-0.dll", "USER32.dll", "helper.dll")))
+        self.file("bin/helper.dll", pe_bytes())
+        self.file("lib/plugin/plugin.dll", pe_bytes(imports=("sibling.dll", "Tool.EXE", "missing.dll"), delayed=(("dbghelp.dll", True),)))
+        self.file("lib/plugin/sibling.dll", pe_bytes())
+        self.file("lib/plugin/readme.txt", b"MZ but not a program")
+        self.assertEqual(runtime.unresolved_imports(self.stage, ("bin",)), ["bin/tool.exe loads MSVCP140.dll", "lib/plugin/plugin.dll loads missing.dll"])
+        broken = bytearray(pe_bytes())
+        struct.pack_into("<I", broken, 0x58 + 112 + 8, 0x9000)
+        self.file("bin/broken.dll", bytes(broken))
+        with self.assertRaisesRegex(runtime.RuntimeToolError, "broken.dll has a broken import table"):
+            runtime.unresolved_imports(self.stage, ("bin",))
+
+    def test_check_imports_and_prepare_windows_commands(self) -> None:
+        self.install()
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            self.assertEqual(runtime.main(["prepare-windows", "--stage", self.stage, "--installed", self.installed]), 0)
+            self.assertEqual(runtime.main(["check-imports", "--stage", self.stage, "--folder", "bin"]), 0)
+            self.file("bin/extra.dll", pe_bytes(imports=("VCRUNTIME140.dll",)))
+            self.assertEqual(runtime.main(["check-imports", "--stage", self.stage, "--folder", "bin"]), 1)
+            self.file("bin/libarm.dll", pe_bytes(machine=0xAA64))
+            self.assertEqual(runtime.main(["check-imports", "--stage", self.stage, "--folder", "bin"]), 1)
+        self.assertEqual(stdout.getvalue(), "3.2.8\n")
+        self.assertIn("the libraries of 5 PE files resolve inside the runtime or to Windows", stderr.getvalue())
+        self.assertIn("1 libraries resolve neither inside the runtime nor to Windows: bin/extra.dll loads VCRUNTIME140.dll", stderr.getvalue())
+        self.assertIn("1 programs or libraries are not x64 code: bin/libarm.dll", stderr.getvalue())
+
+    def test_run_setup_installs_silently_per_user_into_a_new_folder(self) -> None:
+        with mock.patch.object(runtime.os, "name", "posix"):
+            with self.assertRaisesRegex(runtime.RuntimeToolError, "runs on Windows only"):
+                runtime.run_setup("setup.exe", self.stage, "setup.log")
+        completed = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(runtime.os, "name", "nt"), mock.patch.object(runtime.subprocess, "run", return_value=completed) as run:
+            runtime.run_setup("C:\\dl\\gimp-3.2.8-setup.exe", "C:\\out\\stage", "C:\\out\\setup.log")
+            os.makedirs(self.stage)
+            with self.assertRaisesRegex(runtime.RuntimeToolError, "exists; the installer must install into a new folder"):
+                runtime.run_setup("setup.exe", self.stage, "setup.log")
+            run.return_value = subprocess.CompletedProcess([], 3, "", "")
+            with self.assertRaisesRegex(runtime.RuntimeToolError, "failed with exit code 3; see C:\\\\out\\\\setup.log"):
+                runtime.run_setup("setup.exe", "C:\\out\\stage", "C:\\out\\setup.log")
+            run.side_effect = subprocess.TimeoutExpired("setup.exe", 1800)
+            with self.assertRaisesRegex(runtime.RuntimeToolError, "did not finish within 1800 s"):
+                runtime.run_setup("setup.exe", "C:\\out\\stage", "C:\\out\\setup.log")
+        self.assertEqual(run.call_args_list[0].args[0], [
+            "C:\\dl\\gimp-3.2.8-setup.exe", "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NOCANCEL", "/CURRENTUSER", "/NOICONS",
+            "/TASKS=", "/COMPONENTS=gimpX64,depsX64,pyX64,gsX64,mypaint", "/DIR=C:\\out\\stage", "/LOG=C:\\out\\setup.log",
+        ])
+
+
 class RuntimeToolTest(unittest.TestCase):
     def setUp(self) -> None:
         self.root = tempfile.mkdtemp(prefix="gimp-runtime-test-")
@@ -240,6 +450,27 @@ class RuntimeToolTest(unittest.TestCase):
         self.assertEqual(self.manifest(), {"format": 1, "version": VERSION, "gimp": GIMP, "artifacts": {
             "darwin-arm64": {"url": BASE_URL + os.path.basename(archive), "bytes": len(data), "sha256": sha256(data)},
         }})
+
+    def test_package_names_the_folders_of_the_windows_layout(self) -> None:
+        files = {
+            "bin/gimp-console-3.2.exe": (b"MZ", 0o755), "share/gimp/3.0/brushes/arrow#1.myb": (b"brush", 0o644),
+            "share/locale/wasd-engine-folder.txt": (b"keep", 0o644), "etc/gimp/3.0/gimprc": (b"# gimprc", 0o644), "COPYING": (b"GPL", 0o644),
+        }
+        arguments = self.package_arguments(self.stage(files))
+        arguments[arguments.index("darwin")] = "win32"
+        arguments[arguments.index("arm64")] = "x64"
+        arguments[arguments.index(CONSOLE)] = "bin/gimp-console-3.2.exe"
+        status, archive, _ = self.run_tool(*arguments)
+        self.assertEqual(status, 0)
+        with tarfile.open(archive) as tar:
+            member = tar.extractfile("runtime.json")
+            assert member is not None
+            record = json.loads(member.read())
+        self.assertEqual({field: record[field] for field in ("platform", "arch", "console", "dataDir", "localeDir", "sysconfDir")}, {
+            "platform": "win32", "arch": "x64", "console": "bin/gimp-console-3.2.exe",
+            "dataDir": "share/gimp/3.0", "localeDir": "share/locale", "sysconfDir": "etc/gimp/3.0",
+        })
+        self.assertEqual(list(self.manifest()["artifacts"]), ["win32-x64"])
 
     def test_package_output_is_reproducible_with_source_date_epoch(self) -> None:
         archives = []

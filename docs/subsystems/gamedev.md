@@ -2,30 +2,30 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the six tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the six tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets`, which mounts the [Assets tab](#assets-tab), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.md) | `mcp__wasd_blender__<tool>`, from the MCP server `wasd_blender` | For each calling Session, one Python worker: the `bpy` module that the Desktop app ships, which the Windows app unpacks on first use, or that a managed virtual environment holds, or an installed Blender in background mode |
 | `game-addons` | [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md) | Native `game_addons`, and the usage guides of a project's add-ons as skills | None: the Host downloads and unpacks add-on archives, edits `project.godot`, and imports the project through the `godot` row |
-| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.md) | `mcp__wasd_gimp__<tool>`, from the MCP server `wasd_gimp` | For each calling Session, one GIMP 3 `gimp-console` process that runs the worker as a Python batch command: the runtime that the Desktop app ships on macOS, or an installed GIMP 3 |
+| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.md) | `mcp__wasd_gimp__<tool>`, from the MCP server `wasd_gimp` | For each calling Session, one GIMP 3 `gimp-console` process that runs the worker as a Python batch command: the runtime that the Desktop app ships on macOS and Windows, or an installed GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.md) | Native `godot_*` tools and a `godot` system-prompt section | One game process per Session: `godot_runner` hosting LibGodot |
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.md) | Native `polyhaven_search`, `polyhaven_asset`, and `polyhaven_download` | None: the Host requests the Poly Haven API and writes the downloaded files |
-| `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.md) | `mcp__wasd_supercollider__<tool>`, from the MCP server `wasd_supercollider` | For each calling Session, one bridge process with one sclang, which runs scsynth offline for each render: the runtime that the Desktop app ships, or an installed SuperCollider |
+| `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.md) | `mcp__wasd_supercollider__<tool>`, from the MCP server `wasd_supercollider` | For each calling Session, one bridge process with one sclang, which runs scsynth offline for each render: the runtime that the Desktop app ships, or a headless sclang that `sclangPath` names |
 
 Activation installs, downloads, and starts no application. The Blender, GIMP, and SuperCollider rows start only their MCP server process, which starts the application at the first tool call, and the Godot row starts a game only when a tool or the Game tab asks for one, and the Poly Haven row makes its first request at its first tool call, and the game add-ons row downloads an add-on only when one is installed; a call that needs a missing application fails with installation steps. The three MCP servers are built on the library [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md). Its `materializePayload` copies each script that a package hands to an application to `<dataRoot>/payload/<digest>/<file name>`, where `<digest>` is the first 16 hexadecimal digits of the content's SHA-256. The copy is needed because a packaged Desktop app keeps package files inside `app.asar`, which only Electron's `fs` can read; the Godot package uses the function for its two GDScript files. The MCP server names carry a `wasd_` prefix so that they stay apart from `blender`, `gimp`, or `supercollider` servers that a user configures. The fork's bundled `godot-project` skill directs the agent to the `godot_*`, `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, `mcp__wasd_supercollider__*`, `polyhaven_*`, `game_addons`, and `godot_script` tools when they are present.
 
 | Process | Started by | Ends | Talks to |
 |---|---|---|---|
 | Blender, GIMP, or SuperCollider MCP server, the package's built `lib/worker.js` under the Host's executable, or `src/worker.ts` through tsx in a source launch | The MCP client, from the server entry that the plugin registers | When the MCP client closes the connection, for example after the plugin is disposed | The MCP client over stdio; its worker over stdin and file descriptor 3 |
-| Blender, GIMP, or SuperCollider worker | The MCP server, at a Session's first tool call that finds no running worker for that Session | When it exits, when the server shuts down, or when the server stops it after a timeout, a protocol violation, a cancelled call, `workerIdleTimeoutMs` without calls, or to make room for another Session's worker | Its MCP server; the SuperCollider worker also its sclang |
+| Blender, GIMP, or SuperCollider worker | The MCP server, at a Session's first tool call that finds no running worker for that Session | When it exits, when the server shuts down, or when the server stops it after a timeout, a protocol violation, a cancelled call, `workerIdleTimeoutMs` without calls, or to make room or free memory for another Session's worker | Its MCP server; the SuperCollider worker also its sclang |
 | sclang, and scsynth during a render | The SuperCollider worker, at its start; sclang runs scsynth through a shell for each render | sclang when the worker closes its input, when code exits it, or when the worker's process group is stopped; scsynth when its render ends | sclang: the worker, over its standard input and output; scsynth: none, sclang reads its output file and log |
 | Godot game | `ctx.godot`, through `ctx.subprocess`, once per run | When the run is stopped or the game quits; the harness script also quits when its connection closes, and `godot_runner` exits with the Host process | `ctx.godot` over one loopback TCP connection |
-| Godot import step or script check | `ctx.godot`, before a run and for each `godot_check` call | When Godot finishes, or after `importTimeoutMs` | None; `ctx.godot` reads its output |
+| Godot import step, script check, script, or Web export | `ctx.godot`: the import step before a run, before a `godot_check` or `godot_script` whose project changed since its last import, and for each `ctx.godot.importProject` call, the check for each `godot_check` call, the script for each `godot_script` call, and the export for each Web export; at most `maxHeadlessProcesses` checks, scripts, imports for other plugins, and exports run at once | When Godot finishes, or after `importTimeoutMs` (`exportTimeoutMs` for an export) | None; `ctx.godot` reads its output |
 
 ## Application MCP servers
 
@@ -33,7 +33,7 @@ Blender, GIMP, and SuperCollider use the same process model, which `@deepseek-ai
 
 1. The Host plugin calls `registerAppMcpPlugin`, which checks its path settings and registers a stdio server entry with `ctx.mcpManager` ([MCP](mcp.md)) for the plugin's lifetime. The entry runs the package's server entry with the Host's own executable, which `ELECTRON_RUN_AS_NODE=1` runs as Node in the Desktop app, through tsx when a source launch registers the TypeScript entry, and passes the plugin configuration as one base64url JSON argument.
 2. The server entry calls `runAppMcpServer`. The server process answers MCP tool discovery without starting the application, so the tools are listed whether or not the application is installed. The MCP client exposes them as `mcp__<server>__<tool>` and adds the server's instructions to the system prompt.
-3. The server lists an experimental capability that makes the Host's MCP client name the calling Session in each tool call; a subagent calls as its own Session, and calls that name none, such as those of the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), share one worker. A Session's first tool call prepares the application, copies the worker script out of the package, and starts a worker for that Session in a folder of its own under `<dataRoot>/workers/`; Blender may first install the `bpy` module with uv and keeps its user resources in the worker's folder, GIMP gets a profile folder that all its workers share, and SuperCollider gets user folders and a class library configuration in the worker's folder. A `WorkerPool` gives each Session a `WorkerSupervisor`, which runs that Session's calls one at a time against its worker and application state, while the workers of different Sessions run at the same time. Workers start one at a time. A worker without calls for `workerIdleTimeoutMs` stops, and when `maxWorkers` workers run, a new Session's first call stops the least recently used worker that runs no call, or fails with `WORKERS_BUSY` when every worker runs one; the stopped worker's Session learns on its next call that the state was lost. Facts about a start, such as the application version or a first-use installation, precede the text of the Session's next tool result.
+3. The server lists an experimental capability that makes the Host's MCP client name the calling Session in each tool call; a subagent calls as its own Session, and calls that name none, such as those of the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), share one worker. A Session's first tool call prepares the application, copies the worker script out of the package, and starts a worker for that Session in a folder of its own under `<dataRoot>/workers/`; Blender may first install the `bpy` module with uv and keeps its user resources in the worker's folder, GIMP gets a profile folder that all its workers share, and SuperCollider gets user folders and a class library configuration in the worker's folder. A `WorkerPool` gives each Session a `WorkerSupervisor`, which runs that Session's calls one at a time against its worker and application state, while the workers of different Sessions run at the same time. Workers start one at a time. A worker without calls for `workerIdleTimeoutMs` stops. The server runs at most as many workers as the [process limits](#process-limits) allow this computer: when that many run, a new Session's first call stops the least recently used worker that runs no call, or fails with `WORKERS_BUSY` when every worker runs one. Each start first needs `minAvailableMemoryBytes` of memory available on the computer; while less is available, it stops idle workers of other Sessions, least recently used first, and fails with `LOW_MEMORY` when none is left. The stopped worker's Session learns on its next call that the state was lost. Facts about a start, such as the application version or a first-use installation, precede the text of the Session's next tool result.
 4. Each tool sends one request to the worker method of the same name and turns the reply into text and images. An exception that the worker reports leaves the worker and its state in place. A timeout, a protocol violation, or an exit during a call stops the worker, and that call fails saying that the worker's state was lost; when the worker exits between calls, or a running call is cancelled, the next call fails with that message without running. The Session's next call that runs starts a new worker.
 5. When its stdin closes, when its MCP transport closes itself after a failed stdout write or an incoming message that overflows its read buffer, or when SIGTERM or SIGINT arrives, the server stops its workers and exits; a repeated signal does not cut that shutdown short.
 
@@ -85,7 +85,7 @@ stdout of sclang  <token> END <id> {"ok": false, "error": {"type": "<error class
 
 ## Godot runs
 
-`ctx.godot`, the `GodotController` service that `@deepseek-ai/dsh-godot` exports by default, owns every game run of the Host. It keeps one current run per live Agent, so each Session has its own game, and refuses to start a run while `maxRuns` runs have not ended, counting a closed Session's run until its game process ended. Starts and stops of one Session run one at a time, and a start stops the Session's current run before it launches the next. Disposing an Agent stops its run, after which the Session has no run until a later Agent starts one; disposing the plugin stops every run, ends every follow stream, and cancels a running runtime install. The `godot_*` tools and the Game tab's `godot` Remote act on the same runs.
+`ctx.godot`, the `GodotController` service that `@deepseek-ai/dsh-godot` exports by default, owns every game run of the Host. It keeps one current run per live Agent, so each Session has its own game, and refuses to start a run while the run limit of runs have not ended, counting a closed Session's run until its game process ended, or while the computer has less than `minAvailableMemoryBytes` of memory available ([process limits](#process-limits)). Starts and stops of one Session run one at a time, and a start stops the Session's current run before it launches the next. Disposing an Agent stops its run, after which the Session has no run until a later Agent starts one; disposing the plugin stops every run, ends every follow stream, and cancels a running runtime install. The `godot_*` tools and the Game tab's `godot` Remote act on the same runs.
 
 ### Runtime resolution
 
@@ -118,7 +118,7 @@ A start through `godot_run` or `godot.run` takes these steps; `godot.run` first 
 
 1. Find the project: the `project` argument, a folder or `project.godot` path relative to the Session's working directory; without it, the shallowest `project.godot` at most three folder levels below the working directory, searched breadth first in name order, skipping `.git`, `node_modules`, `.godot`, and `.agents`. A `scene` must name an existing `res://` file or be a `uid://` reference.
 2. Resolve the runtime, copy `wasd_harness.gd` and `wasd_check.gd` out of the package, stop the Session's current run, and check the run limit.
-3. With `importBeforeRun`, run `--headless --path <project> --import` within `importTimeoutMs`. Its `ERROR:`, `SCRIPT ERROR:`, `SHADER ERROR:`, and `WARNING:` lines become `import` log entries; a nonzero exit adds a warning that imported resources may be incomplete, and the start continues.
+3. With `importBeforeRun`, wait until the Host's other import steps, checks, and Web exports of the project have ended, then run `--headless --path <project> --import` within `importTimeoutMs`. Its `ERROR:`, `SCRIPT ERROR:`, `SHADER ERROR:`, and `WARNING:` lines become `import` log entries; a nonzero exit adds a warning that imported resources may be incomplete, and the start continues.
 4. Listen on `127.0.0.1` on an ephemeral port, and draw a token of 32 hexadecimal digits.
 5. Spawn the game in the project folder with the Godot arguments below, without `ELECTRON_RUN_AS_NODE`, collecting at most `processOutputBytes` of stdout and of stderr.
 6. Within `startTimeoutMs`, the harness script connects and authenticates as the [harness protocol](#harness-protocol) describes, and the run becomes `running`.
@@ -162,6 +162,7 @@ The harness logger keeps at most 4,000 unsent entries, drops the oldest beyond t
 | `type` | Parameters | Result fields | Deadline in `ctx.godot` |
 |---|---|---|---|
 | `stream` | `fps` (0 stops; at most 60), `quality` (JPEG quality, 0.1 to 1), `maxWidth` (64 to 4,096), `lossless` (PNG frames while preparing a PNG frame keeps up with `fps`) | `fps`, `quality`, `maxWidth`, `lossless` | `requestTimeoutMs` |
+| `pace` | `maxFps` (0 restores the game's own `Engine.max_fps`; otherwise the cap, or the game's own when that is lower) | `maxFps`, the resulting `Engine.max_fps` | `requestTimeoutMs` |
 | `screenshot` | `format` (`png` or `jpeg`), `maxWidth`, `quality` | `format`, `width`, `height`, `windowWidth`, `windowHeight`, `frame`, `paused`, and a kind 3 image with the request id | `requestTimeoutMs` |
 | `input` | `events`, as [input events](#input-events) describes; optional `timeoutMs` | `events`, `frames`, `seconds` (real time), `frame`, `timedOut`, `cancelled` | None; an agent's sequence carries `timeoutMs` of its waits, one frame per wait and one to start at 10 frames per second, plus `requestTimeoutMs`, and Game tab input carries none |
 | `pause`, `resume` | None | `paused`, `frame` | `requestTimeoutMs` |
@@ -178,6 +179,7 @@ The harness logger keeps at most 4,000 unsent entries, drops the oldest beyond t
 - `step` resumes the game, lets that many frames run, then pauses it; a `pause`, a `resume`, or a newer `step` ends a running step with `cancelled: true`, and the game stays paused after `pause` and running after the others. `wait` counts the frames that run after it arrives, while its `seconds` count only unpaused game time, which `Engine.time_scale` scales. A `wait`, `step`, or `input` request with `timeoutMs` ends once that many milliseconds of real time have passed since it arrived, answering what ran with `timedOut: true`; a step that ends so pauses the game. `cancel` ends the pending request whose id is `request` the same way with `cancelled: true`, and answers `cancelled` with whether one was pending. A request that runs to its end answers `timedOut` and `cancelled` as false.
 - `eval` parses a Godot `Expression` with the inputs `tree`, `root`, and `scene` (the current scene) and runs it on `node` or, without one, on the current scene.
 - `ctx.godot` sends `quit` with `id` 0 and does not wait for its answer.
+- **Frame rate of a game nobody shows.** `ctx.godot` sends `pace` with `hiddenFps` (10 by default) to a windowless game once `hiddenDelayMs` (30 s by default) passed since the game connected, since the last view of it ended, or since its last request settled. A view is a `godot.view` stream, which the Game tab holds while it shows the run's picture, or a frame stream. A new view, and any request other than `pace` and `stream`, first sends `pace` with `maxFps` 0, so the request runs at the game's own frame rate. A game with a window, on Linux and Windows, is never capped.
 
 <a id="input-events"></a>
 ### Input events
@@ -222,7 +224,9 @@ The game process's output becomes `process` entries when a start fails and for o
 
 ### Script check
 
-`godot_check` loads scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
+Scripts resolve `class_name` classes, `uid://` paths, and imported assets through the project's import data, so `godot_check` first runs the import step of a run, `--headless --path <project> --import` within `importTimeoutMs`, when that data may be older than the project's files: when no import of the project that exited with code 0 began since the plugin loaded, when the class cache `global_script_class_cache.cfg` is missing from the project's data folder, or when a file that the import reads has a modification or status change time after the start of the last such import. The walk over the project skips what Godot's import skips, as the [package README](../../packages/gamedev/godot/README.md#tools) lists. An import that exits abnormally or runs out of time puts a warning at the start of the result instead of failing the check. `ctx.godot` runs the import steps, checks, and Web exports of one project one at a time and keeps the start times in memory.
+
+The check then loads the scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}
@@ -231,6 +235,22 @@ WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<le
 A script without a line, because the process crashed or ran out of time, fails the check with the end of the process output.
 
 The check is a `SceneTree` script that creates no autoload: before Godot creates the project's autoloads, it points every autoload entry at itself, which Godot refuses to instantiate because it is not a `Node`, and it restores the entries before the first load. Singleton autoload names stay registered, so scripts that use them compile; the analyzer types a script autoload from its script and a scene autoload as `Node`. No autoload `_init`, `_ready`, or `_process` runs; loading runs the static initializers of the loaded scripts, and Godot creates the custom resource loaders and savers that the project declares as global classes.
+
+<a id="process-limits"></a>
+## Process limits
+
+Blender, GIMP, and SuperCollider workers and Godot games are whole application processes: on an Apple M3 Pro, one Blender render of the default scene at 1280×720 peaked at 1.5 GiB (Cycles) to 1.7 GiB (EEVEE) of memory, and one game of a small 3D project at 0.9 GiB. Each kind of process gets a limit from the computer that runs the Host. `processLimit` of `@deepseek-ai/dsh-app-mcp` takes the smallest of the configured maximum (`maxWorkers` of each application, `maxRuns` of Godot), the computer's physical memory divided by the memory for each process (`workerMemoryBytes`, `runMemoryBytes`) and rounded to the nearest whole number, and its logical processors divided by the processors for each process (`workerCores`, `runCores`) and rounded down; the limit is at least 1. On the default settings, 8 GiB and 4 logical processors for each process:
+
+| Computer | Workers of each application, and games |
+|---|---|
+| 8 GiB of memory, 8 logical processors | 1 |
+| 16 GiB, 8 logical processors | 2 |
+| 18 GiB, 12 logical processors | 2 |
+| 32 GiB, 16 logical processors | 4 |
+
+Before each start of a worker, a game, a script check, a script, an import for another plugin, or a Web export, the starter reads the memory that the operating system reports available, `process.availableMemory()`. While that is less than `minAvailableMemoryBytes`, 1 GiB by default, an application server stops the idle workers of other Sessions of its application, least recently used first, and the start fails with `LOW_MEMORY` or `godot/low-memory` when that does not free enough. The reading covers the whole computer, so the processes of every game tool and of other programs count against it, while the limits are per application. Godot runs at most `maxHeadlessProcesses` script checks and Web exports at once; later ones wait in order for one to end.
+
+Every caller is held to the same limits: the Host's Sessions, subagents, which count as Sessions of their own, and the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), whose calls reach the same worker pools and the same `ctx.godot`. The [app-mcp README](../../packages/gamedev/app-mcp/README.md#one-worker-per-session) and the [Godot README](../../packages/gamedev/godot/README.md#game-runs) own the fields and refusals.
 
 ## Frame stream
 
@@ -262,6 +282,7 @@ The package's `./client` export, a Web platform plugin, mounts the generated `go
 | Layer | `dshDesktop.gameLayer.show` and `hide` of the macOS Desktop app, and the mask of `#root` | While the follow stream delivers, the tab is visible, the run is `running` or `paused` and reports its `layer` and window size, and the page has `dshDesktop.gameLayer` |
 | Frames | A `fetch` of `api/godot.frames?session=<SessionId>&run=<runId>`, resolved against `document.baseURI`, with `cache: 'no-store'` | While the follow stream delivers, the tab is visible, the run is `running` or `paused`, and the tab shows no layer of it |
 | Input | `godot.input`, with the run id | While the follow stream delivers, the tab is visible, and the run is `running` or `paused` |
+| View | The run's `godot.view` stream, through `ctx.remote.$stream`, which reopens it after a carrier loss | While the follow stream delivers, the tab is visible, and the run is `running` or `paused`, by layer or by frames |
 | Actions | `godot.run`, `godot.stop`, `godot.control`, and `godot.installRuntime` | When the user presses a toolbar button; `godot.stop` also when the user closes the tab |
 
 - **Follow stream.** `godot.follow` follows a Session id and needs no live Agent. `ctx.godot` first sends a `snapshot`: the Session's current or last run view, or null while the Session has no live Agent or no run; the runtime view; that run's last 200 log entries; and the cursor. It then sends coalesced changes: `run` with the latest view, and `run: null` when the Session's Agent ends; `logs` with up to the newest 200 entries after the stream's cursor; and `runtime` with the latest runtime view. A run that a later Agent starts arrives in the same stream, which ends when its signal aborts or the plugin unloads. The browser keeps up to 500 entries of the current run, drops the entries of other runs when a `run` item names a new run, and skips entries that it already holds. The Gateway's logical stream reopens the follow stream after a lost connection, starting with a new snapshot. After another end or failure, the browser follows again at once when the stream had delivered its snapshot, and otherwise after 1 s, doubling up to 30 s, or at once when the user presses Retry; until a snapshot arrives it shows a reconnect notice.
@@ -295,7 +316,20 @@ The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gam
 | Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
 | Removal | The recorded paths, the add-on's `project.godot` entries, and its notice go; settings that another installed add-on also sets stay; the result names the files that still use the add-on |
 
-`godot_script` runs the command-line runners of the GUT and GdUnit4 add-ons: it imports the project first, then runs a SceneTree script with `--headless --script`. LibGodot hides the script's exit code, so a test run's result shows in what it prints. The Session header's Add-ons button opens a dialog that installs and removes add-ons through the `gameAddons` Remote at the user's click; LiveShare keeps the Remote for the owner. The catalog's smoke tests run end to end in `packages/gamedev/game-addons/tests/catalog.e2e.ts`.
+`godot_script` runs the command-line runners of the GUT and GdUnit4 add-ons: it imports the project when it changed since its last import, then runs a SceneTree script with `--headless --script`. LibGodot hides the script's exit code, so a test run's result shows in what it prints. The Session header's Add-ons button opens a dialog that installs and removes add-ons through the `gameAddons` Remote at the user's click; LiveShare keeps the Remote for the owner. The catalog's smoke tests run end to end in `packages/gamedev/game-addons/tests/catalog.e2e.ts`.
+
+<a id="assets-tab"></a>
+## Assets tab
+
+The `ui-game-assets` row mounts [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.md), a browser plugin with an empty Host half that registers the right sidebar's `assets` page type, with a guide entry at order 45, after the Game tab's. Its body shows the 2D and 3D art of the Session's game project: a dropdown sorted into the project's folders, with search and an All / 2D / 3D filter, above a view of the chosen asset. Images show in a zoomable view; models show on a three.js stage that turns, zooms, pans, and plays their animations; a Blender file shows the model of the same name that the project holds, such as the GLB that the Blender tools export.
+
+| Data | Channel | When |
+|---|---|---|
+| Asset list | `workspaceFiles.list`, breadth first from the workspace root, at most six folders at a time, skipping hidden folders and `node_modules` | When the tab shows or the dropdown opens and the last scan is older than 2 s or ten times its duration, and when the user presses refresh |
+| Viewed file | `workspaceFiles.readBytes`: one complete read, or byte windows above the Host's complete-file cap | When an asset is chosen, and again for each new version that its `file` resource reports |
+| Files a model names | `GET api/file?path=<absolute path>`, resolved against the viewed file's folder | While three.js loads a glTF buffer or image, an OBJ material library or texture, or an FBX or Collada texture |
+
+The tab keeps no game process and calls no tool: it reads the files that the agent and the game tools write, so a texture that GIMP saves or a model that Blender exports appears once the list is scanned again, and the viewed file reloads as it changes.
 
 <a id="mcp-server-for-other-agents"></a>
 ## MCP server for other agents
@@ -371,6 +405,8 @@ The `godot` Remote methods, listed in the generated Cordis API section, take the
 | `logs` | `entries` (at most 200, oldest first) and `cursor` |
 | `runtime` | `runtime` |
 
+`GodotViewItem` is the one item of a view stream, `{ type: 'shown' }`, which `ctx.godot` sends once the view counts.
+
 The package adds these Remote error codes:
 
 | Code | Details | Raised when |
@@ -379,7 +415,8 @@ The package adds these Remote error codes:
 | `godot/runtime-unavailable` | `message` | No runtime resolves, or a configured runtime path is unusable |
 | `godot/not-running` | None | The Session has no run, or its game does not accept requests |
 | `godot/stale-run` | `runId` | `input` names a run that is not the Session's current run |
-| `godot/too-many-runs` | `limit` | Other Sessions' games, including those of closed Sessions that are still stopping, already fill `maxRuns` |
+| `godot/too-many-runs` | `limit` | Other Sessions' games, including those of closed Sessions that are still stopping, already fill the run limit |
+| `godot/low-memory` | `availableBytes`, `requiredBytes` | The computer has less than `minAvailableMemoryBytes` of memory available as the run starts |
 | `godot/request-failed` | `message` | The game refused a request or did not answer in time |
 
 Invalid input events, window sizes, and step frame counts fail with `gateway/bad-request`.
@@ -403,7 +440,7 @@ Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill pr
  * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
- * @returns the project folder and every catalog add-on.
+ * @returns the project folder, every catalog add-on, and their icons.
  * @throws GodotProjectError when the folder has no Godot project.
  */
 @Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
@@ -507,6 +544,17 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
+ * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
+ * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
+ * the run ends.
+ * @param sessionId - Session whose run is shown.
+ * @param runId - the run the tab shows.
+ * @param signal - ends the view.
+ * @returns the stream.
+ */
+@Remote({ mode: 'stream' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>
+
+/**
  * Install the managed LibGodot runtime, or join the install already running.
  * @param signal - stops this wait; the install continues.
  * @returns the runtime view after the install settled.
@@ -515,7 +563,8 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 
 /**
  * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
- * static web server can serve and any page can frame. The first export downloads the Web template. For other
+ * static web server can serve and any page can frame. The first export downloads the Web template. The export,
+ * which imports the project, waits until the project's import steps and checks in this Host have ended. For other
  * plugins on the Host; the Game tab does not call it.
  * @param request - absolute project folder and output folder.
  * @param signal - cancellation; it stops the export process.
@@ -523,17 +572,21 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {GodotProjectError} without `project.godot` in the project folder.
  * @throws {GodotTemplateError} when the Web template cannot be downloaded.
  * @throws {GodotExportError} when the export writes no playable build.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 
 /**
  * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
- * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.
+ * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it. The step
+ * waits for a process slot and for the project's other import steps and checks in this Host.
  * @param projectDir - absolute folder that holds `project.godot`.
  * @param signal - cancellation; it stops the import process.
- * @returns the errors and warnings it logged, or undefined when no Godot runtime is installed.
+ * @returns the errors and warnings it logged, with a warning when it did not end normally, or undefined when no Godot
+ *   runtime is installed.
  * @throws {GodotProjectError} without `project.godot` in the folder.
- * @throws {GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.
+ * @throws {GodotScriptError} when the import cannot start.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the import starts.
  */
 async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>
 ```

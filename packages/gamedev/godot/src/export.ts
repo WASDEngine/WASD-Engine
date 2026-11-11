@@ -9,12 +9,13 @@
  */
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { turnOffBlenderImport } from './blender-import.ts'
+import { runGodotCommand } from './command.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
-import { FAILURE_OUTPUT_LINES, launcherArgv } from './run.ts'
-import type { ResolvedGodotRuntime } from './runtime.ts'
+import { FAILURE_OUTPUT_LINES } from './run.ts'
+import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 import type { GodotWebExport } from './types.ts'
 
 /** Name of the export preset the Web export writes for the duration of one export. */
@@ -193,22 +194,17 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     let stdout: string
     let stderr: string
     let ended: string
-    const timeout = AbortSignal.timeout(options.timeoutMs)
     try {
-      const handle = options.subprocess.spawn({
+      const outcome = await runGodotCommand({
+        ...options,
         argv: launcherArgv(options.runtime, options.hostPid, [
           '--headless', '--path', options.projectDir, '--export-release', WEB_EXPORT_PRESET, join(options.outputDir, WEB_EXPORT_ENTRY),
         ]),
         cwd: options.projectDir,
-        stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
-        graceMs: options.graceMs,
-        signal: AbortSignal.any([options.signal, timeout]),
-        env: { ELECTRON_RUN_AS_NODE: undefined },
       })
-      const outcome = await handle.done
-      stdout = (handle.collected.stdout as SubprocessOutputReader).readFrom(0).text
-      stderr = (handle.collected.stderr as SubprocessOutputReader).readFrom(0).text
-      ended = timeout.aborted ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(outcome)})`
+      stdout = outcome.stdout
+      stderr = outcome.stderr
+      ended = outcome.timedOut ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(outcome.exit)})`
     } finally {
       if (original === undefined) await rm(presetsPath, { force: true })
       else await writeFile(presetsPath, original)

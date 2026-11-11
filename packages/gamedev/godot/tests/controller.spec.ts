@@ -4,6 +4,7 @@
  */
 import { Buffer } from 'node:buffer'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { totalmem } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -12,7 +13,7 @@ import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, describe, expect, it } from 'vitest'
 import GodotController from '../src/index.ts'
 import type { GodotFollowItem, GodotRunView } from '../src/types.ts'
-import { callTool, compose, type Composition, type CompositionOptions, type ResolveAgent } from './composition.ts'
+import { callTool, compose, text, type Composition, type CompositionOptions, type ResolveAgent } from './composition.ts'
 import { fakeLog, fakeRequests, until } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
@@ -69,7 +70,8 @@ describe('configuration', () => {
       runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json',
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
-      processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, agentRunsMuted: true,
+      processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
+      maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
       webTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
       webTemplateSha256: 'd3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0',
@@ -197,6 +199,50 @@ posix('Remote', () => {
     const limited = await setup({ config: { maxRuns: 1 } })
     await limited.godot.run(OWNER, {}, signal)
     await expectRemote(limited.godot.run(SessionId('other'), {}, signal), 'godot/too-many-runs')
+  })
+
+  it('runs no more games than the computer\'s memory allows', async () => {
+    // A game that needs all of the computer's memory leaves room for one, whatever maxRuns allows.
+    const c = await setup({ config: { maxRuns: 16, runMemoryBytes: totalmem() } })
+    await c.godot.run(OWNER, {}, signal)
+    await expectRemote(c.godot.run(SessionId('other'), {}, signal), 'godot/too-many-runs', '1 Godot game already runs, as many as this computer runs at once')
+  })
+
+  it('starts no game while the computer has less memory available than a start needs', async () => {
+    const c = await setup({ config: { minAvailableMemoryBytes: Number.MAX_SAFE_INTEGER } })
+    const refused = await c.godot.run(OWNER, {}, signal).then(() => undefined, (error: unknown) => error)
+    expect(refused).toMatchObject({ isDSHRemoteError: true, code: 'godot/low-memory', details: { requiredBytes: Number.MAX_SAFE_INTEGER } })
+    expect((refused as RemoteError<'godot/low-memory'>).details.availableBytes).toBeGreaterThan(0)
+    expect(text(await callTool(c, 'godot_run'))).toMatch(/The computer has \S+ \S+ of memory available, less than the \S+ GiB that starting the game needs, so it did not start\./u)
+    expect(await fakeLog(c.project)).toEqual([])
+  })
+
+  it('counts a view of the run while a view stream stays open, and refuses one for another run', async () => {
+    const c = await setup({ game: { game: { displayServer: 'embedded' } }, config: { hiddenFps: 10, hiddenDelayMs: 100 } })
+    const run = await c.godot.run(OWNER, {}, signal)
+    const paces = async (): Promise<number[]> => (await fakeRequests(c.project)).flatMap(request => request.type === 'pace' ? [request.maxFps as number] : [])
+    await until(async () => (await paces()).length === 1)
+    const viewing = new AbortController()
+    const stream = c.godot.view(OWNER, run.runId, viewing.signal)[Symbol.asyncIterator]()
+    expect(await stream.next()).toEqual({ done: false, value: { type: 'shown' } })
+    await until(async () => (await paces()).length === 2)
+    const ended = stream.next()
+    viewing.abort()
+    expect(await ended).toEqual({ done: true, value: undefined })
+    await until(async () => (await paces()).length === 3)
+    expect(await paces()).toEqual([10, 0, 10])
+    await expectRemote(() => c.godot.view(OWNER, 'another-run', signal)[Symbol.asyncIterator]().next(), 'godot/stale-run')
+    await expectRemote(() => c.godot.view(SessionId('other'), run.runId, signal)[Symbol.asyncIterator]().next(), 'godot/not-running')
+  })
+
+  it('ends a view stream when its run ends', async () => {
+    const c = await setup()
+    const run = await c.godot.run(OWNER, {}, signal)
+    const stream = c.godot.view(OWNER, run.runId, signal)[Symbol.asyncIterator]()
+    await stream.next()
+    const ended = stream.next()
+    await c.godot.stop(OWNER, signal)
+    expect(await ended).toEqual({ done: true, value: undefined })
   })
 
   it('pauses, resumes, steps, and stops the game', async () => {

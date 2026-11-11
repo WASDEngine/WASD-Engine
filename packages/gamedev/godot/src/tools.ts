@@ -915,6 +915,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           projectDir: STRING,
           checked: INTEGER,
           total: INTEGER,
+          importWarning: { type: 'string' },
           files: {
             type: 'array',
             required: true,
@@ -947,7 +948,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         const scope = value.checked < value.total ? `${value.checked} of ${value.total}` : `${value.checked}`
         const problems = value.files.flatMap(file => file.issues.map(issue => `[${issue.level}] ${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: ${clip(issue.message, MESSAGE_CHARS)}`))
         const summary = value.files.length === 0 ? `Checked ${scope} scripts in ${value.projectDir}: no errors.` : `Checked ${scope} scripts in ${value.projectDir}; ${value.files.length} have problems:`
-        return textResult([summary, ...problems].join('\n'), formatDigest(value))
+        return textResult([...value.importWarning === undefined ? [] : [value.importWarning], summary, ...problems].join('\n'), formatDigest(value))
       },
     },
     async execute(args, exec) {
@@ -960,6 +961,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           projectDir: report.projectDir,
           checked: report.scripts.length,
           total: report.total,
+          ...report.importWarning === undefined ? {} : { importWarning: report.importWarning },
           files: report.scripts
             .filter(script => script.issues.length > 0)
             .map(script => ({ path: script.path, issues: [...script.issues] })),

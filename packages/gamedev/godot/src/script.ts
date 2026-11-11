@@ -1,16 +1,16 @@
 /**
- * Headless Godot processes outside a game run: the editor's import step for another Host plugin, such as the game
+ * Headless Godot processes outside a game run: the report of an import step for another Host plugin, such as the game
  * add-ons installer, and `godot_script`, which runs a GDScript that extends `SceneTree` or `MainLoop` against the
  * project with `--headless --script`, the way the command-line runners of test add-ons such as GUT and GdUnit4 run.
  * @module @deepseek-ai/dsh-godot/src/script
  */
 import { stat } from 'node:fs/promises'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
-import type { SubprocessOutputReader, SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import { turnOffBlenderImport } from './blender-import.ts'
-import { consoleLines, crashSummary, describeExit, formatSeconds, parseEngineOutput, type EngineOutputLine } from './output.ts'
-import { launcherArgv } from './run.ts'
-import type { ResolvedGodotRuntime } from './runtime.ts'
+import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import { runGodotCommand } from './command.ts'
+import { importFailure, type GodotImportOutcome } from './imports.ts'
+import { consoleLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
+import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 
 /** Most characters of output a script result keeps: its last lines, where runners print their summaries. */
 export const SCRIPT_OUTPUT_CHARS = 6000
@@ -29,7 +29,7 @@ export class GodotScriptError extends Error {
   override name = 'GodotScriptError'
 }
 
-/** Parameters shared by the headless processes of this module. */
+/** Parameters of a script run. */
 export interface HeadlessOptions {
   /** Host subprocess service. */
   readonly subprocess: SubprocessRuntime
@@ -104,47 +104,20 @@ function issueOf(line: EngineOutputLine & { readonly level: EngineIssue['level']
   }
 }
 
-function collected(handle: { readonly collected: { readonly stdout?: unknown; readonly stderr?: unknown } }, stream: 'stdout' | 'stderr'): string {
-  return (handle.collected[stream] as SubprocessOutputReader).readFrom(0).text
-}
-
 /**
- * Run the editor's import step once: it updates the import data and loads the project's enabled editor plugins.
- * @param options - process parameters.
- * @param timeoutMs - deadline of the step.
- * @returns the errors and warnings it logged; an abnormal end adds one warning, and turning off the Blender importer
- *   first adds one at the start.
- * @throws {GodotScriptError} when the step cannot start or does not finish in time.
+ * The errors and warnings of an import step, for the plugin that asked for it.
+ * @param outcome - how the step ended.
+ * @param timeoutMs - the step's deadline.
+ * @returns the note about the Blender importer first, then what the engine logged, then a warning when the step did
+ *   not end normally; at most {@link LISTED_ENGINE_ISSUES}.
  */
-export async function importProject(options: HeadlessOptions, timeoutMs: number): Promise<GodotImportReport> {
-  const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
-  const timeout = AbortSignal.timeout(timeoutMs)
-  const handle = options.subprocess.spawn({
-    argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--import']),
-    cwd: options.projectDir,
-    stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
-    graceMs: options.graceMs,
-    signal: AbortSignal.any([options.signal, timeout]),
-    env: { ELECTRON_RUN_AS_NODE: undefined },
-  })
-  let exit
-  try {
-    exit = await handle.done
-  } catch (error) {
-    throw new GodotScriptError(`The Godot import step could not start: ${(error as Error).message}`)
-  }
-  options.signal.throwIfAborted()
-  if (timeout.aborted) throw new GodotScriptError(`The Godot import step did not finish within ${formatSeconds(timeoutMs)}.`)
-  const stdout = collected(handle, 'stdout')
-  const stderr = collected(handle, 'stderr')
+export function importReport(outcome: GodotImportOutcome, timeoutMs: number): GodotImportReport {
   const issues: EngineIssue[] = [
-    ...blenderNote === undefined ? [] : [{ level: 'warning' as const, message: blenderNote }],
-    ...[...parseEngineOutput(stdout, 'stdout', false), ...parseEngineOutput(stderr, 'stderr', false)].filter(isIssue).map(issueOf),
+    ...outcome.blenderNote === undefined ? [] : [{ level: 'warning' as const, message: outcome.blenderNote }],
+    ...[...parseEngineOutput(outcome.stdout, 'stdout', false), ...parseEngineOutput(outcome.stderr, 'stderr', false)].filter(isIssue).map(issueOf),
   ]
-  if (exit.exitCode !== 0) {
-    const crash = crashSummary(stderr) ?? crashSummary(stdout)
-    issues.push({ level: 'warning', message: `The Godot import step ended abnormally (${describeExit(exit)}${crash === undefined ? '' : `: ${crash}`}); imported resources may be incomplete.` })
-  }
+  const failure = importFailure(outcome, timeoutMs)
+  if (failure !== undefined) issues.push({ level: 'warning', message: `The Godot import step ${failure}; imported resources may be incomplete.` })
   return { issues: issues.slice(0, LISTED_ENGINE_ISSUES) }
 }
 
@@ -186,24 +159,23 @@ export async function runScript(
   timeoutMs: number,
 ): Promise<GodotScriptReport> {
   const started = Date.now()
-  const timeout = AbortSignal.timeout(timeoutMs)
-  const handle = options.subprocess.spawn({
-    argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--script', script, ...args.length === 0 ? [] : ['--', ...args]]),
-    cwd: options.projectDir,
-    stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
-    graceMs: options.graceMs,
-    signal: AbortSignal.any([options.signal, timeout]),
-    env: { ELECTRON_RUN_AS_NODE: undefined },
-  })
-  let exit
+  let outcome
   try {
-    exit = await handle.done
+    outcome = await runGodotCommand({
+      subprocess: options.subprocess,
+      argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--script', script, ...args.length === 0 ? [] : ['--', ...args]]),
+      cwd: options.projectDir,
+      timeoutMs,
+      graceMs: options.graceMs,
+      outputBytes: options.outputBytes,
+      signal: options.signal,
+    })
   } catch (error) {
+    options.signal.throwIfAborted()
     throw new GodotScriptError(`The Godot script could not start: ${(error as Error).message}`)
   }
   options.signal.throwIfAborted()
-  const stdout = collected(handle, 'stdout')
-  const stderr = collected(handle, 'stderr')
+  const { stdout, stderr, timedOut } = outcome
   const issues = [...parseEngineOutput(stdout, 'stdout', false), ...parseEngineOutput(stderr, 'stderr', false)]
     .filter(isIssue).filter(line => line.level !== 'warning').map(issueOf)
   const lines = [...consoleLines(stdout), ...consoleLines(stderr)].filter(line => line.trim() !== '')
@@ -218,8 +190,8 @@ export async function runScript(
   return {
     projectDir: options.projectDir,
     script,
-    exitCode: timeout.aborted ? null : exit.exitCode,
-    timedOut: timeout.aborted,
+    exitCode: timedOut ? null : outcome.exit.exitCode,
+    timedOut,
     durationMs: Date.now() - started,
     output: kept.join('\n'),
     omittedLines: lines.length - kept.length,

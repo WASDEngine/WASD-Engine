@@ -2,30 +2,30 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的六个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的六个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
 | `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：Desktop 应用随附的（Windows 应用在首次使用时解包）或托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
 | `game-addons` | [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md) | 原生 `game_addons`，以及以技能形式提供的项目扩展使用指南 | 无：由 Host 下载并解压扩展压缩包、编辑 `project.godot`，并通过 `godot` 行导入项目 |
-| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 上自带的运行时，或已安装的 GIMP 3 |
+| `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 与 Windows 上自带的运行时，或已安装的 GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.zh.md) | 原生 `polyhaven_search`、`polyhaven_asset` 与 `polyhaven_download` | 无：由 Host 请求 Poly Haven API 并写入下载的文件 |
-| `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
+| `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或 `sclangPath` 指明的无界面 sclang |
 
 激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 行在第一次工具调用时才发出第一个请求，游戏扩展行只在安装扩展时才下载；需要缺失应用的调用会失败，并给出安装步骤。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*`、`polyhaven_*`、`game_addons` 与 `godot_script` 工具存在时引导 agent 使用它们。
 
 | 进程 | 启动方 | 结束时机 | 通信对象 |
 |---|---|---|---|
 | Blender、GIMP 或 SuperCollider 的 MCP 服务器，即在 Host 可执行文件下运行的包内构建产物 `lib/worker.js`，源码启动时则是通过 tsx 运行的 `src/worker.ts` | MCP 客户端，依据插件注册的服务器条目启动 | MCP 客户端关闭连接时，例如插件被 dispose（资源释放）之后 | 通过 stdio 与 MCP 客户端通信；通过 stdin 与文件描述符 3 与其工作进程通信 |
-| Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
+| Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置或释放内存而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
 | sclang，以及渲染期间的 scsynth | SuperCollider 工作进程在启动时启动 sclang；sclang 为每次渲染通过 shell 运行 scsynth | sclang 在工作进程关闭其输入、代码让它退出，或工作进程的进程组被停止时结束；scsynth 在其渲染结束时结束 | sclang：通过标准输入与输出和工作进程通信；scsynth：无，sclang 读取其输出文件与日志 |
 | Godot 游戏 | `ctx.godot` 通过 `ctx.subprocess` 启动，每次运行一个 | 运行被停止或游戏退出时；连接关闭时 harness 脚本也会退出游戏，`godot_runner` 会随 Host 进程一起退出 | 通过一条回环 TCP 连接与 `ctx.godot` 通信 |
-| Godot 导入步骤或脚本检查 | `ctx.godot`，在运行之前以及每次 `godot_check` 调用时启动 | Godot 完成时，或 `importTimeoutMs` 到期后 | 无；`ctx.godot` 读取其输出 |
+| Godot 导入步骤、脚本检查、脚本或 Web 导出 | `ctx.godot`：导入步骤在运行之前、在项目自上次导入以来有改动的 `godot_check` 或 `godot_script` 之前，以及每次 `ctx.godot.importProject` 调用时启动；检查在每次 `godot_check` 调用时启动；脚本在每次 `godot_script` 调用时启动；导出在每次 Web 导出时启动；检查、脚本、供其他插件使用的导入与导出最多同时运行 `maxHeadlessProcesses` 个 | Godot 完成时，或 `importTimeoutMs`（导出为 `exportTimeoutMs`）到期后 | 无；`ctx.godot` 读取其输出 |
 
 ## 应用 MCP 服务器
 
@@ -33,7 +33,7 @@ Blender、GIMP 与 SuperCollider 采用相同的进程模型，由 `@deepseek-ai
 
 1. Host 插件调用 `registerAppMcpPlugin`，它检查插件的路径设置，并在插件生命周期内向 `ctx.mcpManager`（[MCP](mcp.zh.md)）注册一个 stdio 服务器条目。该条目用 Host 自身的可执行文件运行包的服务器入口（在 Desktop 应用中，`ELECTRON_RUN_AS_NODE=1` 使该可执行文件以 Node 运行；源码启动注册 TypeScript 入口时则通过 tsx 运行），并把插件配置作为一个 base64url JSON 参数传入。
 2. 服务器入口调用 `runAppMcpServer`。服务器进程响应 MCP 工具发现时不会启动应用，因此无论应用是否已安装，工具都会列出。MCP 客户端以 `mcp__<server>__<tool>` 公开这些工具，并把服务器的说明加入系统提示词。
-3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，并把用户资源放在工作进程的文件夹中，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止；运行中的工作进程达到 `maxWorkers` 个时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败；被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
+3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，并把用户资源放在工作进程的文件夹中，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止。服务器最多运行[进程上限](#process-limits)对本机允许的工作进程数：运行中的工作进程达到该数时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败。每次启动都先要求电脑有 `minAvailableMemoryBytes` 的可用内存；不足时，它按最久未使用优先停止其他 Session 的空闲工作进程，没有可停止的工作进程时以 `LOW_MEMORY` 失败。被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
 4. 每个工具向同名的工作进程方法发送一个请求，并把回复转换为文本和图像。工作进程报告的异常不会影响工作进程及其状态。调用期间发生超时、协议违规或退出时，工作进程会被停止，该调用失败并说明工作进程的状态已丢失；工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行，而是以同样的消息失败。该 Session 之后第一次实际执行的调用会启动新的工作进程。
 5. stdin 关闭、MCP 传输因 stdout 写入失败或收到的消息超出读取缓冲区而自行关闭，或者收到 SIGTERM 或 SIGINT 时，服务器停止其所有工作进程并退出；重复的信号不会中断这一关闭过程。
 
@@ -85,7 +85,7 @@ stdout of sclang  <token> END <id> {"ok": false, "error": {"type": "<error class
 
 ## Godot 运行
 
-`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有 `maxRuns` 个运行尚未结束时，它会拒绝启动新的运行，已关闭 Session 的运行在其游戏进程结束前一直计入。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
+`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有运行上限个运行尚未结束时（已关闭 Session 的运行在其游戏进程结束前一直计入），或电脑的可用内存少于 `minAvailableMemoryBytes` 时，它会拒绝启动新的运行（[进程上限](#process-limits)）。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
 
 ### 运行时解析
 
@@ -118,7 +118,7 @@ Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibG
 
 1. 查找项目：`project` 参数，即相对于 Session 工作目录的文件夹或 `project.godot` 路径；未给出时，在工作目录下至多三层文件夹内，按名称顺序广度优先查找最浅的 `project.godot`，并跳过 `.git`、`node_modules`、`.godot` 与 `.agents`。`scene` 必须指向已存在的 `res://` 文件，或是 `uid://` 引用。
 2. 解析运行时，把 `wasd_harness.gd` 与 `wasd_check.gd` 复制出包，停止该 Session 的当前运行，并检查运行数量上限。
-3. 设置了 `importBeforeRun` 时，在 `importTimeoutMs` 内运行 `--headless --path <project> --import`。其中以 `ERROR:`、`SCRIPT ERROR:`、`SHADER ERROR:` 与 `WARNING:` 开头的行会成为 `import` 日志条目；非零退出会追加一条警告，说明导入的资源可能不完整，启动继续进行。
+3. 设置了 `importBeforeRun` 时，等待 Host 对该项目的其他导入步骤、检查和 Web 导出结束，然后在 `importTimeoutMs` 内运行 `--headless --path <project> --import`。其中以 `ERROR:`、`SCRIPT ERROR:`、`SHADER ERROR:` 与 `WARNING:` 开头的行会成为 `import` 日志条目；非零退出会追加一条警告，说明导入的资源可能不完整，启动继续进行。
 4. 在 `127.0.0.1` 的临时端口上监听，并生成一个由 32 位十六进制数字组成的令牌。
 5. 在项目文件夹中用下方的 Godot 参数启动游戏，不带 `ELECTRON_RUN_AS_NODE`，stdout 与 stderr 各至多收集 `processOutputBytes` 字节。
 6. 在 `startTimeoutMs` 内，harness 脚本按 [harness 协议](#harness-protocol)所述连接并完成认证，运行随即变为 `running`。
@@ -162,6 +162,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
 | `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（准备 PNG 帧跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
+| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者） | `maxFps`，即生效后的 `Engine.max_fps` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -178,6 +179,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 - `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束，以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
 - `eval` 以输入 `tree`、`root` 与 `scene`（当前场景）解析 Godot `Expression`，并在 `node` 上运行；未给出 `node` 时在当前场景上运行。
 - `ctx.godot` 以 `id` 0 发送 `quit`，并且不等待其回答。
+- **无人显示的游戏的帧率。** 无窗口游戏连接后、其最后一个视图结束后，或其最后一个请求结束后经过 `hiddenDelayMs`（默认 30 秒），`ctx.godot` 会向它发送带 `hiddenFps`（默认 10）的 `pace`。视图是指“游戏”标签页显示运行画面期间持有的 `godot.view` 流，或帧流。新视图以及除 `pace` 与 `stream` 之外的任何请求都会先发送 `maxFps` 为 0 的 `pace`，因此请求以游戏自身的帧率运行。有窗口的游戏（Linux 与 Windows 上）从不受此限制。
 
 <a id="input-events"></a>
 ### 输入事件
@@ -222,7 +224,9 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 ### 脚本检查
 
-`godot_check` 不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
+脚本通过项目的导入数据解析 `class_name` 类、`uid://` 路径和已导入的资源，因此，当这些数据可能比项目文件旧时，`godot_check` 会先运行运行前的导入步骤，即在 `importTimeoutMs` 内运行 `--headless --path <project> --import`：插件加载以来该项目还没有开始过以退出码 0 结束的导入、项目数据文件夹中缺少类缓存 `global_script_class_cache.cfg`，或者导入读取的某个文件的修改时间或状态变更时间晚于最近一次这样的导入的开始时间。对项目的遍历跳过 Godot 导入所跳过的内容，[包 README](../../packages/gamedev/godot/README.zh.md#tools) 列出了这些内容。导入异常退出或超时时，检查不会失败，而是在结果开头加一条警告。`ctx.godot` 逐个执行同一项目的导入步骤、检查和 Web 导出，并在内存中保存这些开始时间。
+
+随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}
@@ -231,6 +235,22 @@ WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<le
 某个脚本因进程崩溃或超时而没有对应的行时，检查失败，并附带进程输出的末尾。
 
 检查是一个不创建任何 autoload 的 `SceneTree` 脚本：在 Godot 创建项目的 autoload 之前，它把每个 autoload 条目指向自身，由于它不是 `Node`，Godot 拒绝实例化它，并在第一次加载之前恢复这些条目。单例 autoload 名称保持注册，因此使用它们的脚本可以编译；分析器根据脚本 autoload 的脚本确定其类型，把场景 autoload 视为 `Node`。不会运行任何 autoload 的 `_init`、`_ready` 或 `_process`；加载会运行被加载脚本的静态初始化代码，Godot 会创建项目声明为全局类的自定义资源加载器与保存器。
+
+<a id="process-limits"></a>
+## 进程上限
+
+Blender、GIMP 与 SuperCollider 的工作进程以及 Godot 游戏都是完整的应用程序进程：在 Apple M3 Pro 上，以 1280×720 渲染一次 Blender 默认场景的内存峰值为 1.5 GiB（Cycles）到 1.7 GiB（EEVEE），一个小型 3D 项目的游戏为 0.9 GiB。每类进程都按运行 Host 的电脑确定上限。`@deepseek-ai/dsh-app-mcp` 的 `processLimit` 取以下三者中最小的一个：配置的上限（各应用程序的 `maxWorkers`、Godot 的 `maxRuns`）、电脑物理内存除以每个进程所需内存（`workerMemoryBytes`、`runMemoryBytes`）并四舍五入的整数、逻辑处理器数除以每个进程所需处理器数（`workerCores`、`runCores`）并向下取整的整数；上限至少为 1。按默认设置（每个进程 8 GiB 与 4 个逻辑处理器）：
+
+| 电脑 | 每个应用程序的工作进程数与游戏数 |
+|---|---|
+| 8 GiB 内存，8 个逻辑处理器 | 1 |
+| 16 GiB，8 个逻辑处理器 | 2 |
+| 18 GiB，12 个逻辑处理器 | 2 |
+| 32 GiB，16 个逻辑处理器 | 4 |
+
+每次启动工作进程、游戏、脚本检查、脚本、供其他插件使用的导入或 Web 导出之前，启动方都会读取操作系统报告的可用内存 `process.availableMemory()`。它少于 `minAvailableMemoryBytes`（默认 1 GiB）时，应用程序服务器会按最久未使用优先停止本应用程序其他 Session 的空闲工作进程；仍然不足时，启动以 `LOW_MEMORY` 或 `godot/low-memory` 失败。该数值涵盖整台电脑，因此每个游戏工具的进程与其他程序都计入其中，而上限按应用程序分别计算。Godot 最多同时运行 `maxHeadlessProcesses` 个脚本检查与 Web 导出，之后的按顺序等待其中一个结束。
+
+所有调用方都受同样的上限约束：Host 的 Session、各自算作独立 Session 的子 agent，以及通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent，它们的调用都到达同样的工作进程池和同一个 `ctx.godot`。字段与拒绝由 [app-mcp README](../../packages/gamedev/app-mcp/README.zh.md#one-worker-per-session) 与 [Godot README](../../packages/gamedev/godot/README.zh.md#game-runs) 负责说明。
 
 ## 帧流
 
@@ -262,6 +282,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 图层 | macOS 桌面应用的 `dshDesktop.gameLayer.show` 与 `hide`，以及 `#root` 的遮罩 | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused` 并报告了 `layer` 与窗口尺寸，且页面具有 `dshDesktop.gameLayer` 时 |
 | 帧 | 对 `api/godot.frames?session=<SessionId>&run=<runId>` 的 `fetch`，相对于 `document.baseURI` 解析，并使用 `cache: 'no-store'` | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused`，且标签页未显示该运行的图层时 |
 | 输入 | 带运行 id 的 `godot.input` | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时 |
+| 视图 | 该运行的 `godot.view` 流，经由 `ctx.remote.$stream`，承载连接中断后会重新打开 | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时（无论通过图层还是帧显示） |
 | 操作 | `godot.run`、`godot.stop`、`godot.control` 与 `godot.installRuntime` | 用户按下工具栏按钮时；用户关闭标签页时也调用 `godot.stop` |
 
 - **follow 流。** `godot.follow` 跟随一个 Session id，不需要存活的 Agent。`ctx.godot` 首先发送 `snapshot`：该 Session 当前或最近一次运行的视图（Session 没有存活的 Agent 或没有运行时为 null）、运行时视图、该运行最后 200 条日志条目，以及游标。随后它发送合并后的变化：带最新视图的 `run`，以及 Session 的 Agent 结束时的 `run: null`；带流游标之后至多最新 200 条条目的 `logs`；以及带最新运行时视图的 `runtime`。之后的 Agent 启动的运行会出现在同一个流中，流在其信号中止或插件卸载时结束。浏览器至多保留当前运行的 500 条条目；`run` 项指向新的运行时，丢弃其他运行的条目；已持有的条目会被跳过。连接断开后，Gateway 的逻辑流会重新打开 follow 流，并从新的快照开始。流再次结束或失败后，若它已送达快照，浏览器立即重新跟随，否则在 1 s 后重新跟随，延迟逐次加倍，至多 30 s，用户按下「重试」时则立即重新跟随；在快照到达之前，界面显示重新连接提示。
@@ -295,7 +316,20 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
 | 移除 | 记录中的路径、该扩展的 `project.godot` 条目及其声明段落会被删除；另一个已安装扩展也设置的设置项会保留；结果会列出仍在使用该扩展的文件 |
 
-`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器：它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
+`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器：项目自上次导入以来有改动时，它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
+
+<a id="assets-tab"></a>
+## 「素材」标签页
+
+`ui-game-assets` 行挂载 [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `assets` 页面类型，其引导项顺序为 45，位于「游戏」标签页的引导项之后。它的主体显示 Session 所在游戏项目的 2D 与 3D 美术素材：一个按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表，下方是所选素材的视图。图片显示在可缩放的视图中；模型显示在 three.js 舞台上，可旋转、缩放、平移并播放其动画；Blender 文件显示项目中同名的模型，例如 Blender 工具导出的 GLB。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
+| 当前查看的文件 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
+| 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
+
+该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
@@ -371,6 +405,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `logs` | `entries`（至多 200 条，最旧的在前）与 `cursor` |
 | `runtime` | `runtime` |
 
+`GodotViewItem` 是视图流中唯一的一项 `{ type: 'shown' }`，`ctx.godot` 在视图计入后发送它。
+
 该包新增以下 Remote 错误码：
 
 | 错误码 | 详情 | 触发条件 |
@@ -379,7 +415,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `godot/runtime-unavailable` | `message` | 没有可以解析的运行时，或某个已配置的运行时路径不可用 |
 | `godot/not-running` | 无 | Session 没有运行，或其游戏不接受请求 |
 | `godot/stale-run` | `runId` | `input` 指向的运行不是该 Session 的当前运行 |
-| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满 `maxRuns` |
+| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满运行上限 |
+| `godot/low-memory` | `availableBytes`、`requiredBytes` | 运行启动时电脑的可用内存少于 `minAvailableMemoryBytes` |
 | `godot/request-failed` | `message` | 游戏拒绝了请求，或没有及时回答 |
 
 无效的输入事件、窗口尺寸与单步帧数会以 `gateway/bad-request` 失败。
@@ -403,7 +440,7 @@ Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill pr
  * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
- * @returns the project folder and every catalog add-on.
+ * @returns the project folder, every catalog add-on, and their icons.
  * @throws GodotProjectError when the folder has no Godot project.
  */
 @Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
@@ -507,6 +544,17 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
+ * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
+ * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
+ * the run ends.
+ * @param sessionId - Session whose run is shown.
+ * @param runId - the run the tab shows.
+ * @param signal - ends the view.
+ * @returns the stream.
+ */
+@Remote({ mode: 'stream' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>
+
+/**
  * Install the managed LibGodot runtime, or join the install already running.
  * @param signal - stops this wait; the install continues.
  * @returns the runtime view after the install settled.
@@ -515,7 +563,8 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 
 /**
  * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
- * static web server can serve and any page can frame. The first export downloads the Web template. For other
+ * static web server can serve and any page can frame. The first export downloads the Web template. The export,
+ * which imports the project, waits until the project's import steps and checks in this Host have ended. For other
  * plugins on the Host; the Game tab does not call it.
  * @param request - absolute project folder and output folder.
  * @param signal - cancellation; it stops the export process.
@@ -523,17 +572,21 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {GodotProjectError} without `project.godot` in the project folder.
  * @throws {GodotTemplateError} when the Web template cannot be downloaded.
  * @throws {GodotExportError} when the export writes no playable build.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 
 /**
  * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
- * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.
+ * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it. The step
+ * waits for a process slot and for the project's other import steps and checks in this Host.
  * @param projectDir - absolute folder that holds `project.godot`.
  * @param signal - cancellation; it stops the import process.
- * @returns the errors and warnings it logged, or undefined when no Godot runtime is installed.
+ * @returns the errors and warnings it logged, with a warning when it did not end normally, or undefined when no Godot
+ *   runtime is installed.
  * @throws {GodotProjectError} without `project.godot` in the folder.
- * @throws {GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.
+ * @throws {GodotScriptError} when the import cannot start.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the import starts.
  */
 async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>
 ```

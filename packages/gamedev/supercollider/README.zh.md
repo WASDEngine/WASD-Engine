@@ -88,12 +88,12 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 非空的 `scsynthPath` 会替换搜索找到的 scsynth。配置的路径不是可执行文件时，调用失败，消息会指出该设置；自带运行时的 `runtime.json` 无法读取、描述的是其他平台或指向缺失的程序时也同样失败；这两种情况下搜索都不会继续。两者都不匹配时，调用在接触 `dataRoot` 之前失败，并返回[模型体验](#model-experience)中引用的缺少运行时消息。每次启动工作进程都会重新搜索，因此安装运行时后无需重启宿主。
 
-Desktop 应用的运行时是从源码构建、不含 Qt、IDE 和 supernova 的 SuperCollider，因此其中包含 sclang、scsynth、UGen 插件、不含 GUI 类的类库以及类的帮助文件；[BUILD.md](../../../wasdengine/supercollider/BUILD.md) 说明它如何构建与发布，[Desktop 应用中的 SuperCollider](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) 说明打包如何附带它。源码检出可通过 `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime` 获得它，或把 `supercollider-<version>` 发布版归档解压到该目录；npm 安装不含该运行时，需要设置 `sclangPath`。
+面向 Apple 芯片 macOS 与 Windows x64 的 Desktop 应用自带的运行时是从源码构建、不含 Qt、IDE 和 supernova 的 SuperCollider，因此其中包含 sclang、scsynth、UGen 插件、不含 GUI 类的类库以及类的帮助文件；[BUILD.md](../../../wasdengine/supercollider/BUILD.md) 说明它如何构建与发布，[Desktop 应用中的 SuperCollider](../../../wasdengine/FORK.md#supercollider-in-the-desktop-app) 说明打包如何附带它。源码检出可通过 `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime` 获得它，或把 `supercollider-<version>` 发布版归档解压到该目录；npm 安装不含该运行时，需要设置 `sclangPath`。
 
 <a id="interpreter"></a>
 ### 每个对话一个解释器
 
-sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入工作进程自己的文件夹 `<dataRoot>/workers/<pid>/<n>/` 中 `sclang_conf.yaml` 的类库配置。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向该文件夹中的 `home/`，因此用户自己的启动文件、扩展、quark 与 synthdef 都不会被加载。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
+sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入工作进程自己的文件夹 `<dataRoot>/workers/<pid>/<n>/` 中 `sclang_conf.yaml` 的类库配置；该文件夹是 sclang 的工作目录，命令行以相对于它的路径指明该文件，因为 Windows 上的 sclang 以 ANSI 代码页读取参数，无法容纳用户文件夹名中的所有字符。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，在 macOS 与 Linux 上，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向该文件夹中的 `home/`，因此用户自己的扩展、quark 与 synthdef 都不会被加载；Windows 上的 sclang 忽略这两个变量，使用用户自己的 `%LOCALAPPDATA%\SuperCollider` 文件夹。在所有平台上，工作类都会跳过用户的启动文件。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
 
 每个调用工具的 Session 都有自己的解释器（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），其状态在该 Session 的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个解释器。解释器在 `workerIdleTimeoutMs` 内没有调用时停止，新的解释器启动时上述状态都不存在。
 
@@ -160,12 +160,14 @@ scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以
 sclang 无法读取工作进程协议的 JSON 请求行，其中运行的代码也无法捕获自己输出的文本，因此工作进程是一个桥接进程：即同一个服务器入口，以 `argv[2]` 中的桥接计划和 `argv[3]` 中的 `--sclang-bridge` 再次运行，并带上服务器自身的加载器参数（例如源码启动时 tsx 的参数）。桥接进程实现[工作进程协议](../app-mcp/README.zh.md#run-the-worker)，并把 sclang 作为子进程运行：
 
 ```text
-<sclang> -i wasd -l <dataRoot>/workers/<pid>/<n>/sclang_conf.yaml
+<sclang> -i wasd -l sclang_conf.yaml
 ```
+
+该命令在工作进程的文件夹 `<dataRoot>/workers/<pid>/<n>/` 中运行，`sclang_conf.yaml` 就在其中。
 
 IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以 ESC（0x1b）结尾的块解释标准输入。桥接进程先发送 `WasdWorker.boot("<token>", "<file>")`，其 JSON 文件指明 scsynth、插件目录、临时目录和帮助目录；工作类设置 `Score.program` 并输出 `<token> READY {"version": …}`，桥接进程随后写出协议的就绪行。对于每个请求，桥接进程把参数写入一个 JSON 文件（因为 sclang 字符串字面量最多容纳 8,191 字节），并发送 `WasdWorker.dispatch(<id>, "<method>", "<file>")`。工作类读取并删除该文件，在 Routine 中运行同名的处理方法，并在一个换行之后输出 `<token> END <id> <JSON reply>`。桥接进程把 sclang 自上一个回复以来输出的文本（最多 20,000 个字符，保留前后各一半）加入回复的 `output`，失败时加入回溯信息，并丢弃创建 Server 对象时输出的 `<name> : setting clientID to <n>.` 行。token 是每个桥接进程 32 位随机的十六进制数字，因此输出的文本无法冒充回复。
 
-桥接进程是工作进程的进程组组长，并把 sclang 留在该组中，而 sclang 通过同一组中的 shell 运行 scsynth，因此停止工作进程会停止一次渲染的所有进程。sclang 退出时，桥接进程以 sclang 的退出码结束；sclang 无法启动或任一方违反协议（回复了另一个请求、回复不是 JSON、在一个请求运行时发来另一个请求，或工作类未加载）时以 1 结束；没有有效计划时以 2 结束。输入结束后，它让 sclang 自行退出，并在 `graceMs` 之后将其终止。
+桥接进程是工作进程的进程组组长，并把 sclang 留在该组中，而 sclang 通过同一组中的 shell 运行 scsynth，因此停止工作进程会停止一次渲染的所有进程；Windows 没有进程组，服务器改为停止桥接进程的进程树。sclang 在 macOS 与 Linux 上通过 `sh`、在 Windows 上通过 `cmd.exe` 运行 scsynth，因此工作类按该 shell 的规则为路径加引号，并且只在 Windows 之外用 `exec` 让 scsynth 取代 shell。sclang 退出时，桥接进程以 sclang 的退出码结束；sclang 无法启动或任一方违反协议（回复了另一个请求、回复不是 JSON、在一个请求运行时发来另一个请求，或工作类未加载）时以 1 结束；没有有效计划时以 2 结束。收到 `shutdown` 或输入结束时，它向 sclang 发送 `0.exit`（因为 Windows 上的 sclang 不会在输入结束时退出），结束 sclang 的输入，并在 sclang 于 `graceMs` 之后仍未退出时将其终止。
 
 | 文件 | 作用 |
 |---|---|
@@ -263,12 +265,12 @@ Game audio:
 
 #### 模型可见内容
 
-每个结果有一个文本块，`render_audio` 与 `analyze_audio` 另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships` 或 `sclang at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少运行时时返回下面的消息，工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
+每个结果有一个文本块，`render_audio` 与 `analyze_audio` 另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships` 或 `sclang at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少运行时时返回下面的消息（消息写明所在计算机的平台与架构，这里是 Intel Mac 的），工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
 
 ##### 缺少运行时消息
 
 ```markdown
-WASD Engine's headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.
+WASD Engine's headless SuperCollider is not installed for darwin-x64. The WASD Engine desktop app ships it for macOS on Apple silicon and for Windows x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app. The SuperCollider plugin settings sclangPath and scsynthPath can name another headless build.
 ```
 
 #### Token 影响
@@ -289,7 +291,8 @@ WASD Engine's headless SuperCollider is not installed. The WASD Engine desktop a
 - **连接的 agent 共享一个解释器** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用其变量与 SynthDef，一次耗时的渲染会推迟其他 agent 的调用。
 - **空闲的 Session 会丢失解释器状态** — Session 的解释器在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止。
 - **重启会丢失解释器状态** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期、取消正在运行的调用，或调用 `0.exit` 的代码都会停止 sclang；变量与 SynthDef 随之消失，新的解释器启动时一个都没有。
-- **SuperCollider 只在 macOS arm64 与 Linux x64 上运行** — Windows 与 Intel Mac 没有自带运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在这些平台上报告缺少运行时；在 Windows 上，这样的 sclang 会忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会读取用户自己的 SuperCollider 目录。
+- **SuperCollider 只在 macOS arm64、Windows x64 与 Linux x64 上运行** — 面向 Apple 芯片 macOS 与 Windows x64 的 Desktop 应用自带运行时，Linux 检出可安装发布构建；Intel Mac 没有运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在那里报告缺少运行时。
+- **Windows 上的 sclang 使用用户自己的 SuperCollider 文件夹** — 它忽略 `XDG_CONFIG_HOME` 与 `XDG_DATA_HOME`，因此会在 `%LOCALAPPDATA%\SuperCollider` 中创建用户文件夹，并读取那里用户自己的扩展，除非类库配置排除它们（自带运行时的配置会排除）；工作类会跳过那里的启动文件。
 - **插件仅为核心 UGen** — 自带运行时只包含 SuperCollider 自身的 UGen，不含 sc3-plugins 或其他扩展，其类库也不含 GUI 类。
 - **响度对每个声道同等加权** — 不应用 BS.1770 的环绕声道权重，因此超过两个声道的文件读数会比标准测量值更响。
 - **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到诊断文本，而不是波形与声谱图。

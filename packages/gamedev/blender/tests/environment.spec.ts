@@ -2,20 +2,20 @@
 import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { WorkerError } from '@deepseek-ai/dsh-app-mcp'
-import type { CommandArgv, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import { WorkerError, findOnPath, runCommand, unpackedRuntimeDirectory } from '@deepseek-ai/dsh-app-mcp'
+import type { CommandArgv, CommandOptions, CommandResult, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
-  BlenderSetupError, BlenderWorkers, bpyEnvironment, childEnvironment, findBlender, findOnPath, findPackedBpy, findShippedBpy, findUv,
-  nodeBlenderSetupHost, parseServerOptions, prepareBpy, resolveWorkerLaunch, runCommand, unpackShippedBpy, unpackedRuntimeDirectory,
+  BlenderSetupError, BlenderWorkers, bpyEnvironment, childEnvironment, findBlender, findPackedBpy, findShippedBpy, findUv,
+  nodeBlenderSetupHost, parseServerOptions, prepareBpy, resolveWorkerLaunch, unpackShippedBpy,
 } from '../src/environment.ts'
-import type { BlenderSetupHost, BlenderWorkerDependencies, CommandOptions, CommandResult } from '../src/environment.ts'
+import type { BlenderSetupHost, BlenderWorkerDependencies } from '../src/environment.ts'
 import type { BlenderServerOptions } from '../src/types.ts'
 
 const OPTIONS: BlenderServerOptions = {
   dataRoot: '/data/blender', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 30_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-  maxWorkers: 4, workerIdleTimeoutMs: 600_000, addonStore: '',
+  maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000, addonStore: '',
 }
 const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`
@@ -120,6 +120,7 @@ interface PackedHostOptions {
   readonly archive?: boolean
   readonly executables?: readonly string[]
   readonly run?: FakeHostOptions['run']
+  readonly rename?: FakeHostOptions['rename']
 }
 
 /** A Windows host whose package ships the bpy runtime's archive; its tar unpacks runtime.json and python.exe into the -C folder. */
@@ -140,6 +141,7 @@ function packedHost(options: PackedHostOptions = {}): FakeHost {
       }),
     },
     run: options.run ?? unpack,
+    ...options.rename === undefined ? {} : { rename: options.rename },
   })
   return host
 }
@@ -307,7 +309,7 @@ describe('findPackedBpy and unpackShippedBpy', () => {
   it('reports a missing archive or tar, a failing tar, and an archive of another runtime, and leaves nothing behind', async () => {
     const cases: readonly (readonly [PackedHostOptions, RegExp])[] = [
       [{ archive: false }, /its archive\.json names C:\\.*\.tar\.gz, which is missing/u],
-      [{ tar: false }, /No tar program was found to unpack the bpy runtime/u],
+      [{ tar: false }, /cannot run: no tar program was found to unpack C:\\.*\.tar\.gz; Windows 10 and later have one in System32\. /u],
       [{ run: () => ({ exitCode: 1, signal: null, output: 'tar: Truncated input file\n' }) }, /tar could not unpack .* \(exit code 1\): tar: Truncated input file/u],
       [{ unpacked: { ...WIN_RUNTIME, version: '5.2.3-wasd.0' } }, /does not describe the runtime 5\.2\.3-wasd\.1 that its archive\.json names/u],
     ]
@@ -318,6 +320,13 @@ describe('findPackedBpy and unpackShippedBpy', () => {
       expect(host.renamed).toEqual([])
       expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.argv[4]])
     }
+  })
+
+  it('reports an unpacked runtime that cannot be moved into place as an install failure', async () => {
+    const host = packedHost({ rename: () => { throw new Error('access denied') } })
+    await expect(unpackShippedBpy((await findPackedBpy(WIN_BUNDLED, host))!, WIN_DATA, host, signal)).rejects.toMatchObject({
+      code: 'BPY_INSTALL_FAILED', message: `Could not move the new bpy runtime to ${WIN_UNPACKED}: access denied. Remove that folder, then call the tool again.`,
+    })
   })
 
   it('looks for tar in /usr/bin, then on PATH, outside Windows', async () => {

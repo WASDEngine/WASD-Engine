@@ -21,6 +21,7 @@ import { RemoteError, type RemoteResult, type TypertRemoteContribution } from '@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type {
   DesktopGameLayerBridge, GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunView, GodotRuntimeView,
+  GodotViewItem,
 } from '../src/types.ts'
 import { GodotToolCard } from '../src/client/cards.tsx'
 import { GameTab, GameTabTitle, type GameTabInjected } from '../src/client/GameTab.tsx'
@@ -87,6 +88,11 @@ async function base() {
     control: vi.fn(async (_sessionId: SessionId, _request: GodotControlRequest): Promise<RemoteResult<GodotRunView>> => ({ ok: true, value: run('r1') })),
     input: vi.fn(async (_sessionId: SessionId, _runId: string, _events: GodotInputEvent[]): Promise<RemoteResult<void>> => OK),
     installRuntime: vi.fn(async (): Promise<RemoteResult<GodotRuntimeView>> => ({ ok: true, value: READY })),
+    // Counts the view until the call's signal aborts, as the Host does while the run lives.
+    view: vi.fn((_sessionId: SessionId, _runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem> => (async function* () {
+      yield { type: 'shown' } as const
+      await new Promise<void>((resolve) => { signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+    })()),
   }
   ctx.provide('remote.godot', godot)
   ctx.provide('locale', new LocaleRuntime(ctx))
@@ -460,6 +466,37 @@ describe('Game tab opening for Agent runs', () => {
     expect(f.sidebarRight.openTabIn).toHaveBeenCalledOnce()
     f.streamsOf(S1)[1]!.push({ type: 'run', run: run('r2', { startedBy: 'agent', phase: 'starting' }) })
     await vi.waitFor(() => { expect(f.sidebarRight.openTabIn).toHaveBeenCalledTimes(2) })
+    await f.fiber.dispose()
+  })
+})
+
+describe('Game view stream', () => {
+  it('holds the run\'s view stream until released', async () => {
+    const f = await fixture()
+    const release = f.face(S1).holdView('r1')
+    await vi.waitFor(() => { expect(f.godot.view).toHaveBeenCalledWith(S1, 'r1', expect.any(AbortSignal)) })
+    const signal = f.godot.view.mock.lastCall![2]
+    expect(signal.aborted).toBe(false)
+    release()
+    await vi.waitFor(() => { expect(signal.aborted).toBe(true) })
+    await f.fiber.dispose()
+  })
+
+  it('stops quietly when the Host refuses the view or ends it with the run', async () => {
+    const f = await fixture()
+    f.godot.view.mockImplementationOnce(() => (async function* () {
+      yield* []
+      throw new RemoteError('godot/stale-run', 'The view was meant for a game that is no longer current.', { runId: 'r0' })
+    })())
+    f.godot.view.mockImplementationOnce(() => (async function* () {
+      yield { type: 'shown' } as const
+    })())
+    const refused = f.face(S1).holdView('r0')
+    const ended = f.face(S1).holdView('r1')
+    await vi.waitFor(() => { expect(f.godot.view).toHaveBeenCalledTimes(2) })
+    await new Promise(resolve => setTimeout(resolve, 20))
+    refused()
+    ended()
     await f.fiber.dispose()
   })
 })

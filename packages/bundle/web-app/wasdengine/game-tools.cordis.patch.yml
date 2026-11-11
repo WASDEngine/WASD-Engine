@@ -9,7 +9,8 @@
 # 127.0.0.1:9273 and keeps its token and the connected agents' Sessions under `dataRoot`; `ui-game-mcp` mounts its
 # browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
 # the Web export and release tools, the Release button, and Explore Games. The plugin manager refuses to switch it off
-# (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it.
+# (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it. `ui-game-assets` is the right Sidebar's
+# Assets tab, which finds the game project's 2D and 3D art and shows images and models.
 - insert:
     - id: blender
       name: '@deepseek-ai/dsh-blender'
@@ -38,6 +39,8 @@
         dataRoot: !!js dshHomePath('supercollider')
     - id: ui-game-tools
       name: '@deepseek-ai/dsh-client-ui-game-tools'
+    - id: ui-game-assets
+      name: '@deepseek-ai/dsh-client-ui-game-assets'
     - id: game-mcp
       name: '@deepseek-ai/dsh-game-mcp'
       config:

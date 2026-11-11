@@ -34,7 +34,7 @@ const shipped = await findShippedBpy(BUNDLED_ROOT, host)
 const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
   backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 300_000, graceMs: 3000, maxLogBytes: 64 * 1024,
-  maxWorkers: 4, workerIdleTimeoutMs: 600_000, addonStore: '',
+  maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000, addonStore: '',
 }
 
 /** Scope of the tool calls, as a Session's calls reach the server. */
@@ -246,7 +246,8 @@ function suite(name: string, { argv, serverWiring, leadsGroup, backend, runtime 
         : async (signal: AbortSignal) => await JsonLineWorker.start(workerSpec, signal)
       const pool = new WorkerPool({
         app: 'Blender', root: join(dataRoot, 'workers'), start, takeNotes: () => workers.takeNotes(), maxWorkers: options.maxWorkers,
-        idleTimeoutMs: options.workerIdleTimeoutMs, requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
+        minAvailableMemoryBytes: options.minAvailableMemoryBytes, idleTimeoutMs: options.workerIdleTimeoutMs,
+        requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
       })
       const tools = new Map(blenderTools({
         call: async (method, params, callOptions) => await pool.call(SESSION, method, params, callOptions),

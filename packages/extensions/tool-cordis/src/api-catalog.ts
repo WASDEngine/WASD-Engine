@@ -1597,7 +1597,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>',
         description: 'The catalog with each add-on\'s presence in the game project of a folder, for the Add-ons dialog.',
         parameters: [{ name: 'directory', description: 'absolute folder: the project folder or a folder up to three levels above it.' }, { name: 'signal', description: 'cancellation.' }],
-        returns: 'the project folder and every catalog add-on.',
+        returns: 'the project folder, every catalog add-on, and their icons.',
         throws: ['GodotProjectError when the folder has no Godot project.'],
       },
       {
@@ -1757,6 +1757,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'sessionId', description: 'Session whose run receives the input.' }, { name: 'runId', description: 'run the input was meant for.' }, { name: 'events', description: 'at most 256 events in game window pixels.' }, { name: 'signal', description: 'cancellation.' }],
       },
       {
+        signature: '@Remote({ mode: \'stream\' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>',
+        description: 'Count the Session\'s run as shown while the stream stays open, so a windowless game keeps its own frame rate; the Game tab holds one while it shows the run\'s picture. The stream yields one item once the view counts and ends when the run ends.',
+        parameters: [{ name: 'sessionId', description: 'Session whose run is shown.' }, { name: 'runId', description: 'the run the tab shows.' }, { name: 'signal', description: 'ends the view.' }],
+        returns: 'the stream.',
+      },
+      {
         signature: '@Remote async installRuntime(signal: AbortSignal): Promise<GodotRuntimeView>',
         description: 'Install the managed LibGodot runtime, or join the install already running.',
         parameters: [{ name: 'signal', description: 'stops this wait; the install continues.' }],
@@ -1764,17 +1770,17 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>',
-        description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The first export downloads the Web template. For other plugins on the Host; the Game tab does not call it.',
+        description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The first export downloads the Web template. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
         returns: 'the exported files.',
-        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.'],
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
         signature: 'async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>',
-        description: 'Import a project with the editor\'s headless import step, which also loads its enabled editor plugins, for other Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it.',
+        description: 'Import a project with the editor\'s headless import step, which also loads its enabled editor plugins, for other Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it. The step waits for a process slot and for the project\'s other import steps and checks in this Host.',
         parameters: [{ name: 'projectDir', description: 'absolute folder that holds `project.godot`.' }, { name: 'signal', description: 'cancellation; it stops the import process.' }],
-        returns: 'the errors and warnings it logged, or undefined when no Godot runtime is installed.',
-        throws: ['{GodotProjectError} without `project.godot` in the folder.', '{GodotScriptError} when the import cannot start or does not finish within `importTimeoutMs`.'],
+        returns: 'the errors and warnings it logged, with a warning when it did not end normally, or undefined when no Godot runtime is installed.',
+        throws: ['{GodotProjectError} without `project.godot` in the folder.', '{GodotScriptError} when the import cannot start.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the import starts.'],
       },
     ],
   },
@@ -6787,6 +6793,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GameAddonAssetsView',
+    declaration: 'export interface GameAddonAssetsView {\n    readonly license: string;\n    readonly bytes: number;\n    readonly homepage: string;\n}',
+  },
+  {
     name: 'GameAddonHost',
     declaration: 'export type GameAddonHost = \'godot\' | \'blender\';',
   },
@@ -6804,7 +6814,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddonsProjectView',
-    declaration: 'export interface GameAddonsProjectView {\n    readonly projectDir: string;\n    readonly addons: readonly GameAddonView[];\n}',
+    declaration: 'export interface GameAddonsProjectView {\n    readonly projectDir: string;\n    readonly addons: readonly GameAddonView[];\n    readonly icons: Readonly<Record<string, string>>;\n}',
   },
   {
     name: 'GameAddonStage',
@@ -6812,7 +6822,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddonView',
-    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly conflicts: readonly string[];\n    readonly presence?: GameAddonPresence;\n}',
+    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly assets?: GameAddonAssetsView;\n    readonly conflicts: readonly string[];\n    readonly presence?: GameAddonPresence;\n}',
   },
   {
     name: 'GameMcpCall',
@@ -6993,6 +7003,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotRunView',
     declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly layer?: GodotRunLayer;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
+  },
+  {
+    name: 'GodotViewItem',
+    declaration: 'export interface GodotViewItem {\n    readonly type: \'shown\';\n}',
   },
   {
     name: 'GodotWebExport',

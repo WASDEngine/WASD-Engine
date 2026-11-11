@@ -1,4 +1,4 @@
-"""Tests for smoke.py's check of the line that sclang prints after rendering the test files.
+"""Tests for smoke.py: the line that sclang prints after rendering the test files, and how it runs sclang on each platform.
 
 Run with: python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
 """
@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import importlib.util
 import os
+import tempfile
 import unittest
 
 SPEC = importlib.util.spec_from_file_location("supercollider_smoke", os.path.join(os.path.dirname(os.path.abspath(__file__)), "smoke.py"))
@@ -49,6 +50,28 @@ class CheckTest(unittest.TestCase):
     def test_rejects_a_result_without_every_field(self) -> None:
         self.assertEqual(smoke.check(line(WAV, "OGG,0,22528,2,44100", FLAC)),
                          "sclang printed the malformed line 'SMOKE 3.14.1 WAV,0,22050,2,44100,0.5;OGG,0,22528,2,44100;FLAC,0,22050,2,44100,0.5'")
+
+
+class PlatformTest(unittest.TestCase):
+    def test_names_the_programs_of_the_build_for_each_platform(self) -> None:
+        with tempfile.TemporaryDirectory() as runtime:
+            self.assertEqual(smoke.runtime_names(runtime, False)["sclang"], "sclang")
+            self.assertEqual(smoke.runtime_names(runtime, True), {"sclang": "sclang.exe", "scsynth": "scsynth.exe", "plugins": "plugins", "classLibrary": "SCClassLibrary"})
+
+    def test_runs_scsynth_through_the_shell_of_each_platform(self) -> None:
+        self.assertEqual(smoke.score_program("/rt/scsynth", False), '"exec %".format("/rt/scsynth".shellQuote)')
+        self.assertEqual(smoke.score_program("C:\\rt\\scsynth.exe", True), '"C:\\\\rt\\\\scsynth.exe".quote')
+        self.assertIn('Score.program = "C:\\\\rt\\\\scsynth.exe".quote;', smoke.command("C:\\rt\\scsynth.exe", "C:\\p", "C:\\w", True))
+
+    def test_deep_plugin_folder_passes_255_bytes_with_few_characters(self) -> None:
+        plugins = smoke.deep_plugins(os.path.join(os.sep, "work"))
+        self.assertGreater(len(plugins.encode("utf-8")), 255)
+        self.assertLess(len(plugins), 120)
+        self.assertEqual(smoke.deep_plugins(os.sep + "w" * 300), os.path.join(os.sep + "w" * 300, "plugins"))
+
+    def test_windows_are_looked_for_only_on_windows(self) -> None:
+        if os.name != "nt":
+            self.assertEqual(smoke.visible_windows(os.getpid()), [])
 
 
 if __name__ == "__main__":

@@ -50,7 +50,8 @@ it('registers the wasd_blender stdio server with its options and removes it when
     expect(parseServerOptions(decodeServerOptions([process.execPath, script, encoded]))).toEqual({
       dataRoot: '/data/blender', backend: 'app', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '/opt/blender/blender',
       startupTimeoutMs: 30_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-      maxWorkers: 4, workerIdleTimeoutMs: 600_000, addonStore: '',
+      maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
+      addonStore: '',
     })
     await fiber.dispose()
     expect(manager.registered.size).toBe(0)
@@ -93,7 +94,8 @@ it('refuses relative paths before registering', () => {
 it('validates versions, backends, and budgets', () => {
   expect(Blender.Config({ dataRoot: '/d' })).toEqual({
     dataRoot: '/d', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '', startupTimeoutMs: 30_000,
-    toolCallTimeoutMs: 900_000, requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+    toolCallTimeoutMs: 900_000, requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4,
+    workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
     addonStore: '',
   })
   for (const invalid of [{}, { dataRoot: '/d', backend: 'gpu' }, { dataRoot: '/d', bpyVersion: '5.2' }, { dataRoot: '/d', pythonVersion: '2.7' },

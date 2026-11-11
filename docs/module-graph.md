@@ -330,6 +330,7 @@ flowchart TD
   subgraph group_gamedev["packages/gamedev"]
     pkg_app_mcp["app-mcp"]
     pkg_blender["blender"]
+    pkg_client_ui_game_assets["client-ui-game-assets"]
     pkg_client_ui_game_mcp["client-ui-game-mcp"]
     pkg_client_ui_game_tools["client-ui-game-tools"]
     pkg_game_addons["game-addons"]
@@ -1666,6 +1667,7 @@ flowchart TD
 | [`personalized-recommendations`](../packages/experimental/personalized-recommendations) | `experimental` | — |
 | [`client-ui-cordis`](../packages/extensions/ui-cordis) | `extensions` | — |
 | [`cordis-client-runner`](../packages/extensions/cordis-client-runner) | `extensions` | — |
+| [`client-ui-game-assets`](../packages/gamedev/ui-game-assets) | `gamedev` | — |
 | [`client-ui-game-mcp`](../packages/gamedev/ui-game-mcp) | `gamedev` | — |
 | [`client-ui-game-tools`](../packages/gamedev/ui-game-tools) | `gamedev` | — |
 | [`game-mcp`](../packages/gamedev/game-mcp) | `gamedev` | — |

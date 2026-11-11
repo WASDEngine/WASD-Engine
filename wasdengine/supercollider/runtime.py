@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Package, install, merge, and verify WASD Engine SuperCollider runtime archives.
 
-build.sh runs the supercollider-version, package, and install commands; the
-release workflow (.github/workflows/wasd-supercollider.yml) runs merge and
-verify. BUILD.md describes runtime.json, manifest.json, and the archive layout.
-The script needs only the standard library of Python 3.8 or newer. It writes
-UTF-8 with LF line ends to stdout and stderr on every platform. Every failure
-prints one "runtime.py: error:" line on stderr and exits with status 1.
+build.sh runs the supercollider-version, package, and install commands, and on
+Windows the vc-runtime and check-imports commands; the release workflow
+(.github/workflows/wasd-supercollider.yml) runs merge and verify. BUILD.md
+describes runtime.json, manifest.json, and the archive layout. The script needs
+only the standard library of Python 3.8 or newer. It writes UTF-8 with LF line
+ends to stdout and stderr on every platform. Every failure prints one
+"runtime.py: error:" line on stderr and exits with status 1.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ import os
 import re
 import shutil
 import stat
+import struct
 import sys
 import tarfile
 import tempfile
@@ -50,6 +52,25 @@ ARTIFACT_KEY_PATTERN = re.compile(r"^(?:darwin|linux|win32)-(?:arm64|x64)\Z")
 COPY_CHUNK_BYTES = 1 << 20
 RUNTIME_FILE_MAX_BYTES = 1 << 20
 NAME_MAX_LENGTH = 200
+
+# PE machine type of x64 code.
+PE_MACHINE_X64 = 0x8664
+# Extensions of the runtime's PE files: programs, libraries, and UGen plugins.
+PE_EXTENSIONS = (".exe", ".dll", ".scx")
+# Libraries that every Windows 10 and later holds in System32, which runtime files may load besides their own; the API
+# set names api-ms-win-* and ext-ms-win-* resolve to system libraries too. The Visual C++ runtime is not among them.
+WINDOWS_SYSTEM_LIBRARIES = frozenset(name.lower() for name in (
+    "advapi32.dll", "avrt.dll", "bcrypt.dll", "bcryptprimitives.dll", "cfgmgr32.dll", "comctl32.dll", "comdlg32.dll",
+    "crypt32.dll", "d2d1.dll", "d3d11.dll", "d3d12.dll", "d3d9.dll", "d3dcompiler_47.dll", "dbghelp.dll", "dcomp.dll",
+    "dnsapi.dll", "dsound.dll", "dwmapi.dll", "dwrite.dll", "dxgi.dll", "gdi32.dll", "gdiplus.dll", "glu32.dll", "hid.dll",
+    "imagehlp.dll", "imm32.dll", "iphlpapi.dll", "kernel32.dll", "kernelbase.dll", "ksuser.dll", "mf.dll", "mfplat.dll",
+    "mfreadwrite.dll", "mpr.dll", "msacm32.dll", "mscms.dll", "msimg32.dll", "msvcrt.dll", "mswsock.dll", "ncrypt.dll",
+    "netapi32.dll", "normaliz.dll", "ntdll.dll", "ole32.dll", "oleacc.dll", "oleaut32.dll", "opengl32.dll", "powrprof.dll",
+    "propsys.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shcore.dll", "shell32.dll", "shlwapi.dll",
+    "ucrtbase.dll", "urlmon.dll", "user32.dll", "userenv.dll", "usp10.dll", "uxtheme.dll", "version.dll", "winhttp.dll",
+    "wininet.dll", "winmm.dll", "winspool.drv", "wintrust.dll", "wldap32.dll", "ws2_32.dll", "wsock32.dll", "wtsapi32.dll",
+    "windowscodecs.dll",
+))
 
 Record = Dict[str, Any]
 
@@ -534,12 +555,206 @@ def replace_directory(staging: str, target: str) -> None:
             os.unlink(previous)
 
 
+def pe_layout(data: bytes) -> Optional[Tuple[int, int, int, List[Tuple[int, int, int]], int]]:
+    """Read the headers of a PE file: the machine, image base, data directories, and sections.
+
+    @param data: the file's bytes.
+    @returns: machine type, image base, offset of the data directories, sections as (virtual address, size, file offset),
+        and the number of data directories; None when the data is not a PE file.
+    """
+    if len(data) < 64 or data[:2] != b"MZ":
+        return None
+    header = struct.unpack_from("<I", data, 0x3C)[0]
+    if header + 24 > len(data) or data[header:header + 4] != b"PE\0\0":
+        return None
+    machine, section_count = struct.unpack_from("<HH", data, header + 4)
+    optional_size = struct.unpack_from("<H", data, header + 20)[0]
+    optional = header + 24
+    magic = struct.unpack_from("<H", data, optional)[0]
+    if magic == 0x20B:
+        image_base, directories = struct.unpack_from("<Q", data, optional + 24)[0], optional + 112
+    elif magic == 0x10B:
+        image_base, directories = struct.unpack_from("<I", data, optional + 28)[0], optional + 96
+    else:
+        return None
+    directory_count = struct.unpack_from("<I", data, directories - 4)[0]
+    sections = []
+    for index in range(section_count):
+        entry = optional + optional_size + index * 40
+        virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from("<IIII", data, entry + 8)
+        sections.append((virtual_address, max(virtual_size, raw_size), raw_offset))
+    return machine, image_base, directories, sections, directory_count
+
+
+def pe_imports(data: bytes) -> Optional[Tuple[int, List[str]]]:
+    """Read the machine type and the libraries that a PE file loads, from its import and delay-load import tables.
+
+    @param data: the file's bytes.
+    @returns: the machine type and the library names in table order, or None when the data is not a PE file.
+    @raises RuntimeToolError: when a table points outside the file.
+    """
+    layout = pe_layout(data)
+    if layout is None:
+        return None
+    machine, image_base, directories, sections, directory_count = layout
+
+    def offset(address: int) -> int:
+        for virtual_address, size, raw_offset in sections:
+            if virtual_address <= address < virtual_address + size:
+                return raw_offset + address - virtual_address
+        raise RuntimeToolError(f"the address {address:#x} lies in no section")
+
+    def name_at(address: int) -> str:
+        start = offset(address)
+        end = data.find(b"\0", start)
+        return data[start:end].decode("ascii", "replace")
+
+    names = []
+    # The import table (directory 1) holds 20-byte descriptors with the name at byte 12; the delay-load table
+    # (directory 13) holds 32-byte descriptors with the name at byte 4, an address relative to the image when bit 0 of
+    # their attributes is set and an absolute one otherwise. A descriptor without a name ends each table.
+    for index, size, name_field in ((1, 20, 12), (13, 32, 4)):
+        if index >= directory_count:
+            continue
+        address = struct.unpack_from("<I", data, directories + index * 8)[0]
+        if address == 0:
+            continue
+        cursor = offset(address)
+        while cursor + size <= len(data):
+            attributes, = struct.unpack_from("<I", data, cursor)
+            name = struct.unpack_from("<I", data, cursor + name_field)[0]
+            if name == 0:
+                break
+            if index == 13 and attributes & 1 == 0:
+                name -= image_base
+            names.append(name_at(name))
+            cursor += size
+    return machine, names
+
+
+def pe_files(stage: str) -> List[str]:
+    """List the PE files of a staged runtime by their extension.
+
+    @param stage: runtime folder.
+    @returns: absolute paths of the files whose extension PE_EXTENSIONS lists, sorted.
+    """
+    found = []
+    for directory, _, names in os.walk(stage):
+        found.extend(os.path.join(directory, name) for name in names if name.lower().endswith(PE_EXTENSIONS))
+    return sorted(found)
+
+
+def pe_machines(stage: str) -> List[Tuple[str, int]]:
+    """List the machine type of every PE file of a staged runtime.
+
+    @param stage: runtime folder.
+    @returns: ('/'-separated path relative to the stage, machine type) of each PE file, sorted by path.
+    """
+    machines = []
+    for path in pe_files(stage):
+        with open(path, "rb") as stream:
+            layout = pe_layout(stream.read())
+        if layout is not None:
+            machines.append((os.path.relpath(path, stage).replace(os.sep, "/"), layout[0]))
+    return machines
+
+
+def unresolved_imports(stage: str, folders: Tuple[str, ...]) -> List[str]:
+    """List the libraries that the PE files of a runtime load but neither the runtime nor Windows provides.
+
+    A library resolves when Windows provides it (WINDOWS_SYSTEM_LIBRARIES or an api-ms-win- or ext-ms-win- API set), or
+    when a file of that name, compared without regard to case, lies beside the file that loads it or in one of the
+    runtime's library folders, which its programs put first on the search path.
+
+    @param stage: runtime folder.
+    @param folders: '/'-separated library folders relative to the stage, such as bin.
+    @returns: one "<file> loads <library>" line per unresolved library, sorted.
+    @raises RuntimeToolError: when a PE file's tables are broken.
+    """
+    def names_in(directory: str) -> set:
+        return {name.lower() for name in os.listdir(directory)} if os.path.isdir(directory) else set()
+
+    shared = set()
+    for folder in folders:
+        shared |= names_in(os.path.join(stage, *folder.split("/")))
+    unresolved = []
+    for path in pe_files(stage):
+        with open(path, "rb") as stream:
+            data = stream.read()
+        try:
+            parsed = pe_imports(data)
+        except (struct.error, RuntimeToolError) as error:
+            raise RuntimeToolError(f"{path} has a broken import table: {error}") from error
+        if parsed is None:
+            continue
+        beside = names_in(os.path.dirname(path))
+        for library in parsed[1]:
+            name = library.lower()
+            if name in WINDOWS_SYSTEM_LIBRARIES or name.startswith(("api-ms-win-", "ext-ms-win-")) or name in shared or name in beside:
+                continue
+            unresolved.append(f"{os.path.relpath(path, stage).replace(os.sep, '/')} loads {library}")
+    return sorted(unresolved)
+
+
+def copy_vc_runtime(stage: str, redist: str) -> List[str]:
+    """Copy the Visual C++ runtime libraries that the runtime's PE files load from Visual Studio's redistributable folder.
+
+    The libraries go beside sclang and scsynth, where Windows looks first, so the runtime needs no Visual C++
+    Redistributable installed; a copied library that loads another one of the folder brings it too.
+
+    @param stage: runtime folder.
+    @param redist: Visual Studio's x64 Microsoft.VC*.CRT folder of redistributable libraries.
+    @returns: the copied file names, in the order they were copied.
+    @raises RuntimeToolError: when the folder holds no library or a PE file's tables are broken.
+    """
+    available = {name.lower(): name for name in os.listdir(redist) if name.lower().endswith(".dll")} if os.path.isdir(redist) else {}
+    if not available:
+        raise RuntimeToolError(f"{redist} holds no Visual C++ runtime library")
+    copied: List[str] = []
+    while True:
+        present = {name.lower() for name in os.listdir(stage)}
+        needed = set()
+        for path in pe_files(stage):
+            with open(path, "rb") as stream:
+                parsed = pe_imports(stream.read())
+            needed.update(name.lower() for name in (parsed[1] if parsed is not None else []) if name.lower() in available and name.lower() not in present)
+        if not needed:
+            return copied
+        for name in sorted(needed):
+            shutil.copyfile(os.path.join(redist, available[name]), os.path.join(stage, available[name]))
+            copied.append(available[name])
+
+
 def command_supercollider_version(args: argparse.Namespace) -> None:
     """Print the SuperCollider version of a source tree on stdout.
 
     @param args: parsed arguments with source.
     """
     print(supercollider_version(args.source))
+
+
+def command_vc_runtime(args: argparse.Namespace) -> None:
+    """Copy the Visual C++ runtime libraries that the runtime loads into its folder and name them on stderr.
+
+    @param args: parsed arguments with stage and redist.
+    """
+    copied = copy_vc_runtime(args.stage, args.redist)
+    print(f"runtime.py: copied {', '.join(copied) or 'no'} Visual C++ runtime libraries into {args.stage}", file=sys.stderr)
+
+
+def command_check_imports(args: argparse.Namespace) -> None:
+    """Require every PE file of the runtime to be x64 code whose libraries resolve inside the runtime or to Windows.
+
+    @param args: parsed arguments with stage and folder.
+    """
+    files = pe_files(args.stage)
+    foreign = [path for path, machine in pe_machines(args.stage) if machine != PE_MACHINE_X64]
+    if foreign:
+        raise RuntimeToolError(f"{len(foreign)} programs or libraries are not x64 code: {', '.join(foreign[:5])}")
+    problems = unresolved_imports(args.stage, tuple(args.folder))
+    if problems:
+        raise RuntimeToolError(f"{len(problems)} libraries resolve neither inside the runtime nor to Windows: {'; '.join(problems[:5])}")
+    print(f"runtime.py: the libraries of {len(files)} PE files resolve inside the runtime or to Windows", file=sys.stderr)
 
 
 def command_package(args: argparse.Namespace) -> None:
@@ -681,6 +896,16 @@ def build_parser() -> argparse.ArgumentParser:
     version_command = commands.add_parser("supercollider-version", help="print the SuperCollider version of a source tree")
     version_command.add_argument("--source", required=True, help="SuperCollider source directory")
     version_command.set_defaults(run=command_supercollider_version)
+
+    vc_runtime = commands.add_parser("vc-runtime", help="copy the Visual C++ runtime libraries that the runtime loads into it")
+    vc_runtime.add_argument("--stage", required=True, help="runtime folder")
+    vc_runtime.add_argument("--redist", required=True, help="Visual Studio's x64 Microsoft.VC*.CRT folder")
+    vc_runtime.set_defaults(run=command_vc_runtime)
+
+    imports = commands.add_parser("check-imports", help="check that every library a PE file loads resolves inside the runtime or to Windows")
+    imports.add_argument("--stage", required=True, help="runtime folder")
+    imports.add_argument("--folder", action="append", required=True, help="library folder relative to the stage, such as .; repeatable")
+    imports.set_defaults(run=command_check_imports)
 
     package = commands.add_parser("package", help="write runtime.json, the archive, and manifest.json")
     package.add_argument("--stage", required=True, help="directory holding the runtime tree")

@@ -198,6 +198,11 @@ export type GodotFollowItem =
   | { readonly type: 'logs'; readonly entries: readonly GodotLogEntry[]; readonly cursor: number }
   | { readonly type: 'runtime'; readonly runtime: GodotRuntimeView }
 
+/** The item of a view stream: the view of the run counts until the stream ends. */
+export interface GodotViewItem {
+  readonly type: 'shown'
+}
+
 /** Where a run's layer shows in the page: a rectangle with the layer's aspect ratio, in CSS pixels of the layout viewport. */
 export interface DesktopGameLayerPlacement {
   /** CAContext id of the layer, {@link GodotRunLayer.context}. */
@@ -246,8 +251,10 @@ declare module '@deepseek-ai/dsh-typert-protocol' {
     'godot/not-running': Record<string, never>
     /** The run id does not name the Session's current run. */
     'godot/stale-run': { readonly runId: string }
-    /** The Host already runs the configured maximum number of games. */
+    /** As many games run as this computer runs at once. */
     'godot/too-many-runs': { readonly limit: number }
+    /** The computer has less memory available than starting a game needs. */
+    'godot/low-memory': { readonly availableBytes: number; readonly requiredBytes: number }
     /** The running game refused a request or did not answer in time. */
     'godot/request-failed': { readonly message: string }
   }

@@ -16,7 +16,8 @@ import type { SuperColliderRuntime, SuperColliderServerOptions } from '../src/ty
 
 const OPTIONS: SuperColliderServerOptions = {
   dataRoot: '/data/supercollider', sclangPath: '', scsynthPath: '', readyTimeoutMs: 60_000, requestTimeoutMs: 600_000,
-  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0,
+  minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
 }
 const BUNDLED = '/app/node_modules/@deepseek-ai/dsh-supercollider/runtime'
 const RUNTIME = `${BUNDLED}/darwin-arm64`
@@ -204,7 +205,7 @@ describe('worker folders, class library configuration, and bridge plan', () => {
   it('plans sclang in its IDE mode, off screen, with the user folders under the data directory', () => {
     const folders = superColliderFolders('/data/sc', 'darwin')
     expect(sclangBridgePlan(bundled, folders, { graceMs: 3000 })).toEqual({
-      sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/sc/sclang_conf.yaml'],
+      sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', 'sclang_conf.yaml'],
       env: {
         set: { XDG_CONFIG_HOME: '/data/sc/home/config', XDG_DATA_HOME: '/data/sc/home/data', QT_QPA_PLATFORM: 'offscreen' },
         unset: ['ELECTRON_RUN_AS_NODE'],
@@ -235,7 +236,7 @@ describe('SuperColliderWorkers', () => {
     expect(spec).toMatchObject({ cwd: '/data/supercollider/workers/1', env: host.env, readyTimeoutMs: 60_000, logTailBytes: 65_536 })
     expect(spec?.argv.slice(0, 4)).toEqual(['/node', '--import', 'tsx', '/pkg/src/worker.ts'])
     expect(spec?.argv[5]).toBe(SCLANG_BRIDGE_ARGUMENT)
-    expect(decodeServerOptions(['', '', spec?.argv[4] ?? ''])).toMatchObject({ sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', '/data/supercollider/workers/1/sclang_conf.yaml'] })
+    expect(decodeServerOptions(['', '', spec?.argv[4] ?? ''])).toMatchObject({ sclang: [`${RUNTIME}/sclang`, '-i', 'wasd', '-l', 'sclang_conf.yaml'], cwd: '/data/supercollider/workers/1' })
     expect(workers.takeNotes()).toEqual(['SuperCollider 3.14.1 started (the runtime that WASD Engine ships) with no SynthDefs or variables defined.'])
     expect(workers.takeNotes()).toEqual([])
   })
@@ -257,9 +258,9 @@ describe('SuperColliderWorkers', () => {
     })
     const failure = workers.start(signal, SCOPE)
     await expect(failure).rejects.toMatchObject({ code: 'SUPERCOLLIDER_NOT_FOUND' })
-    await expect(failure).rejects.toThrow('WASD Engine\'s headless SuperCollider is not installed. The WASD Engine desktop app ships it for macOS on '
-      + 'Apple silicon and for Linux x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> --install '
-      + 'packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app.')
+    await expect(failure).rejects.toThrow('WASD Engine\'s headless SuperCollider is not installed for darwin-arm64. The WASD Engine desktop app ships '
+      + 'it for macOS on Apple silicon and for Windows x64; a source checkout installs it with `wasdengine/supercollider/build.sh --out <folder> '
+      + '--install packages/gamedev/supercollider/runtime`. WASD Engine does not start an installed SuperCollider, whose application opens as an app.')
     expect(start).not.toHaveBeenCalled()
   })
 })

@@ -13,18 +13,17 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import {
-  bundledRuntimeRoot, findGimp, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, workerEnvironment,
-} from '../src/environment.ts'
+import { findGimp, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, workerEnvironment } from '../src/environment.ts'
 import { gimpTools } from '../src/tools.ts'
 import type { GimpServerOptions } from '../src/types.ts'
 
 const WORKER = fileURLToPath(new URL('../py/wasd_gimp_worker.py', import.meta.url))
-const host = nodeGimpSetupHost()
-const BUNDLED_ROOT = bundledRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
-const installation = await findGimp({ gimpConsolePath: '' }, BUNDLED_ROOT, host)
+const host = nodeGimpSetupHost(64 * 1024)
+const BUNDLED_ROOT = shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
+// A packed runtime, which only the Windows app ships, would unpack into this data directory.
+const installation = await findGimp({ gimpConsolePath: '', dataRoot: join(tmpdir(), 'dsh-gimp-e2e-data') }, BUNDLED_ROOT, host, new AbortController().signal)
 
 const READY_TIMEOUT_MS = 120_000
 const REQUEST_TIMEOUT_MS = 120_000
@@ -250,7 +249,8 @@ describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
   it('serves the tools through a supervised worker and restarts GIMP after its Python process dies', async () => {
     const options: GimpServerOptions = {
       dataRoot, gimpConsolePath: '', readyTimeoutMs: READY_TIMEOUT_MS, requestTimeoutMs: REQUEST_TIMEOUT_MS, toolCallTimeoutMs: 300_000,
-      graceMs: 3000, maxLogBytes: 64 * 1024, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      graceMs: 3000, maxLogBytes: 64 * 1024, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0,
+      workerIdleTimeoutMs: 600_000,
     }
     const workers = new GimpWorkers(options, {
       host,
@@ -262,7 +262,7 @@ describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
     const pool = new WorkerPool({
       app: 'GIMP', root: join(dataRoot, 'workers'), start: async (signal, scope) => await workers.start(signal, scope),
       takeNotes: () => workers.takeNotes(), maxWorkers: options.maxWorkers, idleTimeoutMs: options.workerIdleTimeoutMs,
-      requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
+      minAvailableMemoryBytes: options.minAvailableMemoryBytes, requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
     })
     const tools = new Map(gimpTools({
       call: async (method, params, callOptions) => await pool.call(session, method, params, callOptions),

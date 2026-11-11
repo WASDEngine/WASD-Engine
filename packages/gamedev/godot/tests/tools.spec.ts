@@ -1,6 +1,7 @@
 /** The godot_* tools run, observe, and drive the Session's game through the real tool pipeline. */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
@@ -10,6 +11,8 @@ import { callTool, compose, text, type Composition, type CompositionOptions } fr
 import { configureFake, fakeLog, fakeRequests, until } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
+/** Deadline of a spec that starts several fake Godot processes, which a loaded machine starts slowly. */
+const PROCESSES_TIMEOUT = 30_000
 
 let composition: Composition | undefined
 afterEach(async () => {
@@ -383,6 +386,8 @@ posix('result text', () => {
     expect(shot[1]).toEqual({ type: 'image', attachment: image })
     const checked = render('godot_check', { projectDir: '/p', checked: 1, total: 5, files: [{ path: 'res://a.gd', issues: [{ level: 'error', file: 'res://a.gd', message: 'm' }] }] })
     expect(checked[0]).toMatchObject({ text: 'Checked 1 of 5 scripts in /p; 1 have problems:\n[error] res://a.gd: m' })
+    const warned = render('godot_check', { projectDir: '/p', checked: 1, total: 1, importWarning: 'The import warning.', files: [] })
+    expect(warned[0]).toMatchObject({ text: 'The import warning.\nChecked 1 scripts in /p: no errors.' })
     const long = render('godot_eval', { value: 'x'.repeat(TEXT_BUDGET * 2), valueType: 'String' })[0]
     expect(long?.type === 'text' && long.text.length).toBeLessThanOrEqual(TEXT_BUDGET)
     expect(long?.type === 'text' && long.text.endsWith('… (output shortened)')).toBe(true)
@@ -455,6 +460,88 @@ posix('godot_check', () => {
     const c = await setup()
     expect(text(await callTool(c, 'godot_check', { paths }))).toContain(message)
   })
+
+  it('runs at most maxHeadlessProcesses checks at once, and later ones wait for a free slot', async () => {
+    const c = await setup({ config: { maxHeadlessProcesses: 1 }, game: { check: { delayMs: 300 } } })
+    await scripts(c)
+    const started = performance.now()
+    const results = await Promise.all([callTool(c, 'godot_check'), callTool(c, 'godot_check')])
+    // Two checks of 300 ms each one after the other.
+    expect(performance.now() - started).toBeGreaterThanOrEqual(600)
+    for (const result of results) expect(text(result)).toBe(`Checked 2 scripts in ${c.project}: no errors.`)
+  })
+
+  it('starts no check while the computer has less memory available than a start needs', async () => {
+    const c = await setup({ config: { minAvailableMemoryBytes: Number.MAX_SAFE_INTEGER } })
+    await scripts(c)
+    expect(text(await callTool(c, 'godot_check'))).toMatch(/ that starting a Godot script check needs, so it did not start\./u)
+    expect(await fakeLog(c.project)).toEqual([])
+  })
+
+  it('imports the project before the first check and after a script changes', async () => {
+    const c = await setup()
+    await scripts(c)
+    const imports = async (): Promise<number> => (await fakeLog(c.project)).filter(entry => (entry.argv as string[] | undefined)?.includes('--import')).length
+    expect(text(await callTool(c, 'godot_check'))).toBe(`Checked 2 scripts in ${c.project}: no errors.`)
+    expect(await imports()).toBe(1)
+    await callTool(c, 'godot_check', { paths: ['res://player.gd'] })
+    expect(await imports()).toBe(1)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    await writeFile(join(c.project, 'player.gd'), 'extends Node2D\n')
+    await callTool(c, 'godot_check', { paths: ['res://player.gd'] })
+    expect(await imports()).toBe(2)
+  }, PROCESSES_TIMEOUT)
+
+  it('reports an import before the check that ends abnormally ahead of the results', async () => {
+    const c = await setup({ game: { import: { exitCode: 134, stderr: 'handle_crash: Program crashed with signal 11\n' }, check: {} } })
+    await scripts(c)
+    const result = await callTool(c, 'godot_check')
+    expect(text(result)).toBe([
+      'The Godot import step before the check ended abnormally (exit code 134: Program crashed with signal 11), so errors about class_name classes or imported assets may be false.',
+      `Checked 2 scripts in ${c.project}: no errors.`,
+    ].join('\n'))
+    expect(value(result)).toMatchObject({ importWarning: expect.stringContaining('ended abnormally') as string })
+  }, PROCESSES_TIMEOUT)
+
+  it('imports a project for a run and for a check at the same time one step after the other', async () => {
+    const c = await setup({ game: { import: { delayMs: 300 }, game: {} }, config: { importBeforeRun: true } })
+    await scripts(c)
+    const [run, check] = await Promise.all([callTool(c, 'godot_run'), callTool(c, 'godot_check')])
+    expect(run.isError, text(run)).toBe(false)
+    expect(text(check)).toBe(`Checked 2 scripts in ${c.project}: no errors.`)
+    const log = await fakeLog(c.project)
+    const starts = log.flatMap((entry, index) => (entry.argv as string[] | undefined)?.includes('--import') === true ? [index] : [])
+    expect(starts.length).toBeGreaterThan(0)
+    for (const index of starts) expect(log[index + 1]).toEqual({ imported: true })
+  }, PROCESSES_TIMEOUT)
+
+  it('imports a project for a check before or after a Web export of it, never during one', async () => {
+    const files = Object.fromEntries(['index.html', 'index.js', 'index.wasm', 'index.pck'].map(name => [name, name]))
+    // The fake export does not read the template, so any existing file stands in for it.
+    const c = await setup({
+      game: { import: { delayMs: 300 }, export: { delayMs: 300, files }, check: {} },
+      config: { webTemplatePath: fileURLToPath(import.meta.url) },
+    })
+    await scripts(c)
+    const signal = new AbortController().signal
+    const [check, exported] = await Promise.all([callTool(c, 'godot_check'), c.godot.exportWeb({ projectDir: c.project, outputDir: join(c.dir.root, 'web') }, signal)])
+    expect(text(check)).toBe(`Checked 2 scripts in ${c.project}: no errors.`)
+    expect(exported.entry).toBe('index.html')
+    // Each import, check, and export ends before the next one starts.
+    const log = await fakeLog(c.project)
+    let running: string | undefined
+    for (const entry of log) {
+      const argv = entry.argv as string[] | undefined
+      if (argv !== undefined) {
+        expect(running).toBeUndefined()
+        running = argv.includes('--import') ? 'imported' : argv.includes('--export-release') ? 'exported' : 'checked'
+      } else if (running !== undefined && entry[running] === true) {
+        running = undefined
+      }
+    }
+    expect(running).toBeUndefined()
+    expect(log.filter(entry => entry.imported === true)).toHaveLength(1)
+  }, PROCESSES_TIMEOUT)
 
   it('reports a project without scripts and a check that ends early', async () => {
     const c = await setup({ game: { check: { omit: ['res://player.gd'], stderr: 'crashed here\n', exitCode: 1 } } })

@@ -10,6 +10,7 @@
 import { join } from 'node:path'
 import type { z } from 'zod'
 import { JsonLineWorker, type JsonLineWorkerSpec, type WorkerReady } from './json-line-worker.ts'
+import { nodeMachine, processLimit, type MachineResources } from './machine.ts'
 import { materializePayload } from './materialize.ts'
 import { serveAppMcp, type AppMcpProcess, type AppTool } from './mcp-server.ts'
 import { TOOL_CALL_RESERVE_MS, decodeServerOptions, type AppServerOptions } from './options.ts'
@@ -78,8 +79,9 @@ export interface AppMcpServerDefinition<O extends AppServerOptions> {
 /**
  * Run an app MCP server process. It decodes `argv[2]` and validates it with `parseOptions`, then
  * serves the tools with `serveAppMcp`. Each calling Session gets its own worker from a `WorkerPool`,
- * which runs at most `maxWorkers` workers and stops a Session's worker after `workerIdleTimeoutMs`
- * without calls; calls that name no Session share one worker. A worker's request budget is
+ * which runs at most `processLimit` of `maxWorkers`, `workerMemoryBytes`, and `workerCores` on this computer, starts
+ * none while the computer has less than `minAvailableMemoryBytes` available, and stops a Session's worker after
+ * `workerIdleTimeoutMs` without calls; calls that name no Session share one worker. A worker's request budget is
  * `requestTimeoutMs` and its shutdown grace `graceMs`; the pool starts a worker through `workers` on
  * the Session's first call, after copying the worker script with `materializePayload`, and gives it
  * a numbered folder in `<dataRoot>/workers/<pid>/`, the folder of the server process. The tools get `dataRoot`, `requestTimeoutMs`, and
@@ -89,11 +91,13 @@ export interface AppMcpServerDefinition<O extends AppServerOptions> {
  * @param argv - the server process's `process.argv`.
  * @param io - the process resources to serve on; omission binds the current process.
  * @param files - file-system effects of the worker pool; omission uses Node's.
+ * @param machine - the computer's memory and processors; omission reads this computer's.
  * @returns once the server is serving.
  * @throws TypeError when `argv[2]` holds no server options; the errors of `parseOptions` and `serveAppMcp`.
  */
 export async function runAppMcpServer<O extends AppServerOptions>(
   definition: AppMcpServerDefinition<O>, argv: readonly string[], io?: AppMcpProcess, files?: WorkerPoolFiles,
+  machine: MachineResources = nodeMachine(),
 ): Promise<void> {
   const options = definition.parseOptions(decodeServerOptions(argv))
   const workers = definition.workers(options, {
@@ -105,7 +109,9 @@ export async function runAppMcpServer<O extends AppServerOptions>(
     root: join(options.dataRoot, 'workers'),
     start: async (signal, scope) => await workers.start(signal, scope),
     takeNotes: () => workers.takeNotes(),
-    maxWorkers: options.maxWorkers,
+    maxWorkers: processLimit({ max: options.maxWorkers, memoryBytes: options.workerMemoryBytes, cores: options.workerCores }, machine),
+    minAvailableMemoryBytes: options.minAvailableMemoryBytes,
+    availableMemory: machine.availableMemoryBytes,
     idleTimeoutMs: options.workerIdleTimeoutMs,
     requestTimeoutMs: options.requestTimeoutMs,
     closeGraceMs: options.graceMs,

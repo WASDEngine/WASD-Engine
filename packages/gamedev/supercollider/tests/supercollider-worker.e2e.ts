@@ -59,7 +59,7 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     dataRoot = await mkdtemp(join(tmpdir(), 'dsh-supercollider-e2e-'))
     const options: SuperColliderServerOptions = {
       dataRoot, sclangPath, scsynthPath: '', readyTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 150_000, graceMs: 3000,
-      maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
     }
     const started = new SuperColliderWorkers<JsonLineWorker>(options, {
       host, bundledRoot, bridge: [process.execPath, '--import', import.meta.resolve('tsx/esm'), WORKER_ENTRY],
@@ -69,7 +69,7 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     pool = new WorkerPool({
       app: 'SuperCollider', root: join(dataRoot, 'workers'), start: async (signal, scope) => await started.start(signal, scope),
       takeNotes: () => started.takeNotes(), maxWorkers: options.maxWorkers, idleTimeoutMs: options.workerIdleTimeoutMs,
-      requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
+      minAvailableMemoryBytes: options.minAvailableMemoryBytes, requestTimeoutMs: options.requestTimeoutMs, closeGraceMs: options.graceMs,
     })
     const active = pool
     const dependencies: AppToolDependencies = {
@@ -148,7 +148,8 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     expect(await readdir(join(dataRoot, 'workers', String(process.pid), '1', 'scratch'))).toEqual([])
   }, 180_000)
 
-  it.skipIf(!available)('reports a stopped interpreter once, starts a fresh one, and leaves no process behind on close', async () => {
+  // Process groups and ps exist on macOS and Linux only.
+  it.skipIf(!available || process.platform === 'win32')('reports a stopped interpreter once, starts a fresh one, and leaves no process behind on close', async () => {
     // The bridge leads the worker's process group, and sclang and its scsynth renders belong to it.
     const reply = await run('execute_sclang', { code: '~kept = 1; ("ps -o pgid= -p " ++ thisProcess.pid).unixCmdGetStdOut.stripWhiteSpace' })
     const group = Number(/"(\d+)"/u.exec(reply.text)?.[1])

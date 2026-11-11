@@ -21,29 +21,29 @@
   en: da8c7069522909ea
   zh: c936ab87fad3ba5d
 /deepseek-ai-dsh-app-mcp/use-this-package/configure-the-plugin:
-  en: 51923dfdd955f492
-  zh: ac6ad5345f6cebe8
+  en: 1c0e16c786819631
+  zh: cd418ec29d7aa5bc
 /deepseek-ai-dsh-app-mcp/use-this-package/register-the-server:
-  en: 7417b1135536563f
-  zh: 05b19b6a4ae187eb
+  en: c8fb8590169c7993
+  zh: 57c025565209fa1a
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-server-process:
-  en: de7d7ecdac5e31a8
-  zh: 4d891a15c5cafc45
+  en: 4282949fd4d8be26
+  zh: b5e72c51a2a8de84
 /deepseek-ai-dsh-app-mcp/use-this-package/serve-the-tools:
-  en: 7e8f26a2bdcfd727
-  zh: f5575df81865b69d
+  en: ec59e9998c2ec560
+  zh: afd4b2008f813e88
 /deepseek-ai-dsh-app-mcp/use-this-package/build-the-tools:
-  en: 27f046186b7c0e03
-  zh: 8550a458c559417f
+  en: 1b7c8fc5f28fc6b9
+  zh: b53246dbc50caf41
 /deepseek-ai-dsh-app-mcp/use-this-package/find-the-application:
-  en: 707cd9f97edfd046
-  zh: 0c9e7da774494478
+  en: 811c8c0a3f8afee0
+  zh: 69356c82b3c28aec
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-worker:
-  en: 27ccf1f8a44df5e0
-  zh: c6fc549dfa2414fb
+  en: 06726341500636e8
+  zh: 7cfff4bd6a26a2c4
 /deepseek-ai-dsh-app-mcp/use-this-package/one-worker-per-session:
-  en: 0514d4f838fa12f3
-  zh: 4c9955733dcb2fa4
+  en: 2fd59a64c1c26b03
+  zh: 56efe325f7ccf80e
 /deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
   en: d861d4c6e3de143c
   zh: d0654b3832f0ba31
@@ -51,8 +51,8 @@
   en: 97ae7e1c41f94bdf
   zh: 0c3387495709f95e
 /deepseek-ai-dsh-app-mcp/understand-the-implementation:
-  en: 2e7ec024ece9a3d4
-  zh: c59dcc2464d26878
+  en: 84210260bbb9e966
+  zh: 7dcce002552ad978
 /deepseek-ai-dsh-app-mcp/further-exploration:
   en: 85ecbc0d02201f9b
   zh: f446fd63761ac5bd
@@ -99,8 +99,8 @@
   en: 8d7c066c86220247
   zh: 36d2e1f5a741d0cb
 /deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results/what-the-model-sees:
-  en: af82dad03ac5255d
-  zh: 42c170e16f3121d9
+  en: 399ec9053ea05bab
+  zh: ecc6202288236302
 /deepseek-ai-dsh-app-mcp/model-experience/worker-failure-results/token-effect:
   en: a07c8f5dbc8c8856
   zh: bc15cb660c34058f
@@ -108,8 +108,8 @@
   en: c9ff5f25eab76338
   zh: e5ba6dc4b21859da
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work:
-  en: 289bd479a5b1f01a
-  zh: aa4783992e719f01
+  en: b763211f331cf641
+  zh: 5c64cabad5cde6cb
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

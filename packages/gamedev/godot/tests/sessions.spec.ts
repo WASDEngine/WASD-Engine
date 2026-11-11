@@ -1,6 +1,6 @@
 /**
- * Sessions own one run each, serialize restarts, and enforce the run limit; follow streams of a Session id need no live
- * Agent and coalesce changes.
+ * Sessions own one run each, serialize restarts, and enforce the run limit and the admission of each start; follow
+ * streams of a Session id need no live Agent and coalesce changes.
  */
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -9,11 +9,14 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FOLLOW_LOG_ENTRIES, followSession, type FollowSources } from '../src/follow.ts'
+import { ProjectImports } from '../src/imports.ts'
 import { LogSequence } from '../src/logs.ts'
 import { GodotRun } from '../src/run.ts'
-import { GodotSessionError, GodotSessions, TooManyRunsError, type SessionChange, type SessionWatcher } from '../src/runs.ts'
+import {
+  GodotSessionError, GodotSessions, LowMemoryError, TooManyRunsError, type SessionChange, type SessionWatcher,
+} from '../src/runs.ts'
 import type { GodotFollowItem, GodotRuntimeView } from '../src/types.ts'
 import { fakeAgent } from './agents.ts'
 import { runSpec, scratch, until, writeProject, type Scratch } from './helpers.ts'
@@ -27,20 +30,20 @@ afterEach(async () => {
   await dir?.cleanup()
 })
 
-async function setup(maxRuns = 4) {
+async function setup(maxRuns = 4, admit: () => void = () => {}) {
   dir = await scratch('sessions')
   ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalSubprocessRuntime)
-  const sessions = new GodotSessions(ctx, maxRuns)
+  const sessions = new GodotSessions(ctx, maxRuns, admit)
   ctx.effect(() => () => sessions.dispose())
   const sequence = new LogSequence()
   let count = 0
   const launch = async (config: Parameters<typeof writeProject>[1] = { game: {} }, startedBy: 'agent' | 'user' = 'agent', subprocess: SubprocessRuntime = ctx.subprocess) => {
     count += 1
     const project = await writeProject(join(dir.root, `game-${count}`), config)
-    return () => GodotRun.launch(runSpec(dir.fakeGodot, project, { runId: `run-${count}`, startedBy }), { subprocess, sequence, warn: () => {} })
+    return () => GodotRun.launch(runSpec(dir.fakeGodot, project, { runId: `run-${count}`, startedBy }), { subprocess, sequence, imports: new ProjectImports(), warn: () => {} })
   }
   return { sessions, sequence, launch }
 }
@@ -153,6 +156,31 @@ posix('GodotSessions', () => {
     await sessions.stop(one)
     const accepted = await sessions.replace(two, await launch())
     await accepted.stop()
+  })
+
+  it('names the limit in its refusal', () => {
+    expect(new TooManyRunsError(1).message).toBe('1 Godot game already runs, as many as this computer runs at once; stop one before starting another.')
+    expect(new TooManyRunsError(2).message).toBe('2 Godot games already run, as many as this computer runs at once; stop one before starting another.')
+  })
+
+  it('admits a start only after the Session\'s previous game ended, and starts nothing that admission refuses', async () => {
+    let short = false
+    const admit = vi.fn(() => {
+      if (short) throw new LowMemoryError('the game', { availableBytes: 512 * 1024 ** 2, requiredBytes: 1024 ** 3 })
+    })
+    const { sessions, launch } = await setup(4, admit)
+    const session = sessions.session((await fakeAgent(ctx, 'admit-1')).agent)
+    const first = await sessions.replace(session, await launch())
+    await first.started()
+    expect(admit).toHaveBeenCalledOnce()
+    short = true
+    const create = vi.fn(await launch())
+    const refused = await sessions.replace(session, create).catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(LowMemoryError)
+    expect(refused).toMatchObject({ shortage: { availableBytes: 512 * 1024 ** 2, requiredBytes: 1024 ** 3 } })
+    expect(first.terminal).toBe(true)
+    expect(create).not.toHaveBeenCalled()
+    expect(admit).toHaveBeenCalledTimes(2)
   })
 
   it('counts the game of a closed Session against the limit until that game ended', async () => {

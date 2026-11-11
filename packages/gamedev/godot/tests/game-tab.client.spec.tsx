@@ -79,16 +79,20 @@ function tab(initial: GameSnapshot, options: { visible?: boolean; showLayer?: Ga
   const openFrames = vi.fn<GameTabProps['openFrames']>(async () => new Response(null, { status: 503 }))
   const releaseKeyboard = vi.fn<() => void>()
   const captureKeyboard = vi.fn<GameTabProps['captureKeyboard']>(() => releaseKeyboard)
+  const releaseView = vi.fn<() => void>()
+  const holdView = vi.fn<GameTabProps['holdView']>(() => releaseView)
   const props: GameTabProps = {
     useTabInfo: () => tabInfo(useVisibility(current => current)),
     useGame: bindSnapshotSelector(game),
-    reconnect, play, stop, control, install, input, openFrames, captureKeyboard, t,
+    reconnect, play, stop, control, install, input, openFrames, holdView, captureKeyboard, t,
     ...options.showLayer === undefined ? {} : { showLayer: options.showLayer },
   }
   const view = render(<GameTab {...props} />)
   const set = (next: GameSnapshot): void => { act(() => { game.set(next) }) }
   const show = (shown: boolean): void => { act(() => { visibility.set(shown) }) }
-  return { view, set, show, reconnect, play, stop, control, install, input, openFrames, captureKeyboard, releaseKeyboard }
+  return {
+    view, set, show, reconnect, play, stop, control, install, input, openFrames, holdView, releaseView, captureKeyboard, releaseKeyboard,
+  }
 }
 
 function live(next: GameState): GameSnapshot {
@@ -227,6 +231,7 @@ describe('GameTab toolbar', () => {
     [{ issue: 'notRunning', message: 'not running' }, en['issue.notRunning']],
     [{ issue: 'staleRun', message: 'stale' }, en['issue.staleRun']],
     [{ issue: 'tooManyRuns', message: 'limit', limit: 4 }, 'Too many games are running (limit 4). Stop one and try again.'],
+    [{ issue: 'lowMemory', message: 'memory is short' }, en['issue.lowMemory']],
     [{ issue: 'sessionInUse', message: 'session "s1" is already owned by an active write handle' }, en['issue.sessionInUse']],
     [{ issue: 'failed', message: 'carrier lost' }, 'The action failed: carrier lost'],
   ] satisfies [GameFailure, string][])('reports the failure %j until it is dismissed', async (failure, text) => {
@@ -363,6 +368,22 @@ describe('GameTab game view', () => {
     await vi.waitFor(() => { expect(h.openFrames).toHaveBeenLastCalledWith('r2', expect.any(AbortSignal)) })
     h.set(live(state({ run: run('r2', { phase: 'exited', exitCode: 0 }) })))
     expect(h.openFrames.mock.lastCall![1].aborted).toBe(true)
+  })
+
+  it('holds a view of the run while its picture shows, and releases it when hidden or ended', () => {
+    const h = tab(live(state({ run: run('r1') })), { visible: false })
+    expect(h.holdView).not.toHaveBeenCalled()
+    h.show(true)
+    expect(h.holdView).toHaveBeenCalledExactlyOnceWith('r1')
+    h.show(false)
+    expect(h.releaseView).toHaveBeenCalledOnce()
+    h.show(true)
+    h.set(live(state({ run: run('r2') })))
+    expect(h.releaseView).toHaveBeenCalledTimes(2)
+    expect(h.holdView).toHaveBeenLastCalledWith('r2')
+    h.set(live(state({ run: run('r2', { phase: 'exited', exitCode: 0 }) })))
+    expect(h.releaseView).toHaveBeenCalledTimes(3)
+    expect(h.holdView).toHaveBeenCalledTimes(3)
   })
 
   it('takes keys while focused, hints until then, and sends them to the run', async () => {

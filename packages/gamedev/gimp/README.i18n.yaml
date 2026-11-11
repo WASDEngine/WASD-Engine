@@ -24,14 +24,14 @@
   en: f86a474920d683ea
   zh: 81f59388556dc269
 /deepseek-ai-dsh-gimp/use-this-package/configuration:
-  en: 50efcd30b314a3f6
-  zh: 7c623edd1bdc5cbf
+  en: e79702df81bec024
+  zh: bb28eb2896b3cc3b
 /deepseek-ai-dsh-gimp/use-this-package/find-and-install-gimp-3:
-  en: 5416c7517f4abadd
-  zh: 1261e3a8cc1e9d6c
+  en: 673621952a1f9903
+  zh: e2bcfa3a1259e131
 /deepseek-ai-dsh-gimp/use-this-package/gimp-in-the-desktop-app:
-  en: c068cf6e48530b32
-  zh: 0e9b7c19246e8df4
+  en: 9c33d53612015f64
+  zh: 0b91e498175965a5
 /deepseek-ai-dsh-gimp/use-this-package/the-gimp-profile-and-the-first-start:
   en: bbafb968309c667f
   zh: 9af6c7a5fbc2c5c9
@@ -45,8 +45,8 @@
   en: a00b7b7ea0e3a7fe
   zh: f148eff7ebbc743f
 /deepseek-ai-dsh-gimp/use-this-package/files-under-the-data-directory:
-  en: 1a73a26a3204efd2
-  zh: 3a2def154e073fbe
+  en: 9c4c0a484615449f
+  zh: 7df0917414d35ee4
 /deepseek-ai-dsh-gimp/use-this-package/plugin-icon:
   en: 3c989a5cc434eac8
   zh: ecb401d5ae88b0c6
@@ -93,11 +93,11 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees:
-  en: c707ed73fd9fbb9b
-  zh: 03d9f8338dec24c1
-/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees/gimp-installation-message-on-macos:
-  en: c844116985f71eed
-  zh: a8ef30b2c1b84a45
+  en: e375c29649e0d2d9
+  zh: ad85901019137135
+/deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/what-the-model-sees/gimp-installation-message-on-an-intel-mac:
+  en: e02b25268e7c9b5f
+  zh: 2859f6ab45ae5c80
 /deepseek-ai-dsh-gimp/model-experience/tool-results-and-images/token-effect:
   en: 877f75727e3c9f8e
   zh: 60a178afe841849f
@@ -105,8 +105,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work:
-  en: a9e9f88e116956ba
-  zh: 5768e17947830fce
+  en: d10ef796d0be30b5
+  zh: 8b2ef34a819824eb
 /deepseek-ai-dsh-gimp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

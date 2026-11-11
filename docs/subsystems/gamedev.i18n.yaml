@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: 095211b473deef63
-  zh: a5ac39196446d499
+  en: b15b2afb38a75ea9
+  zh: e79e32e98a503303
 /game-tools/composition:
-  en: 6bd86a992cab3f1d
-  zh: f213a54c01b0f815
+  en: 72054438f12b1a75
+  zh: 80a00202d3666aa7
 /game-tools/application-mcp-servers:
-  en: ab5f0f250cc1beb6
-  zh: b336a668af1c701c
+  en: 580c70a2e4dc2335
+  zh: a5f54718ee5fa960
 /game-tools/application-mcp-servers/worker-protocol:
   en: f68a2c4002e88634
   zh: af47db7ee668f384
@@ -18,17 +18,17 @@
   en: 16c4c209db98bfd9
   zh: bf8e6daad28cf9eb
 /game-tools/godot-runs:
-  en: 6cdbbbd8b9876c3d
-  zh: 823821e50ecfdeed
+  en: a97beb5510782845
+  zh: 06c86335e796ac1c
 /game-tools/godot-runs/runtime-resolution:
   en: d6979e6ce4574993
   zh: 86c94652b18e443a
 /game-tools/godot-runs/run-lifecycle:
-  en: e6b2d74b3a1b1e20
-  zh: 7d60d6051acc491f
+  en: 6e617f3265bf3a5e
+  zh: 1a4dd61483eae899
 /game-tools/godot-runs/harness-protocol:
-  en: b88e13c6bd27a3e3
-  zh: 22ce7a7181f78b8e
+  en: 9ae98d7100062148
+  zh: 68781cc4f5b88d05
 /game-tools/godot-runs/input-events:
   en: 19e632b59a04e600
   zh: 1380b209cd31903a
@@ -36,23 +36,29 @@
   en: 1a336d4ce8c60b66
   zh: 5e72dc88ae95aedc
 /game-tools/godot-runs/script-check:
-  en: 8efc4d95807f5dcd
-  zh: 132aa0aa71312fea
+  en: c5c976f933685ec5
+  zh: 5b36e32904263e44
+/game-tools/process-limits:
+  en: 44d0ed085d2618aa
+  zh: ce7e888a48b2c2bc
 /game-tools/frame-stream:
   en: 475c15c349002e4d
   zh: d9c2759956ef57ed
 /game-tools/game-tab:
-  en: ad40a44977183156
-  zh: 05710e45aa77d63d
+  en: 37c2ae4b99db8874
+  zh: 447226ced323b267
 /game-tools/game-tools-tabs:
   en: 188b96586021ae14
   zh: 775e7c76337bc060
 /game-tools/game-add-ons:
-  en: f667181fe8c53e67
-  zh: b72ab37c31f9d6bc
+  en: e14648ae9e422d24
+  zh: 9ef0168eb3ec0494
+/game-tools/assets-tab:
+  en: ba25a8936c726f29
+  zh: 8812820379f94720
 /game-tools/mcp-server-for-other-agents:
   en: 8f38cfad10310bae
   zh: 42a3744cfb9cda97
 /game-tools/remote-types:
-  en: 329d863b81105932
-  zh: cd28a90e311942e1
+  en: 392eec73efb81160
+  zh: b9e684bb0121f09e
