@@ -47,7 +47,8 @@ export interface AppMcpPlugin<C> {
  * must be absolute or empty, and `requestTimeoutMs` must leave `TOOL_CALL_RESERVE_MS` of
  * `toolCallTimeoutMs`, so a request that runs out of time fails before the MCP client gives up on
  * its tool call. The server options are `dataRoot`, `requestTimeoutMs`,
- * `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, and the `options` fields, each under its Config
+ * `toolCallTimeoutMs`, `graceMs`, `maxLogBytes`, the worker limits (`maxWorkers`, `workerMemoryBytes`, `workerCores`,
+ * `minAvailableMemoryBytes`, `workerIdleTimeoutMs`), and the `options` fields, each under its Config
  * name; the MCP client gets `toolCallTimeoutMs` and `startupTimeoutMs` as its budgets. With `gameMcp`, the
  * server's tools are also offered to agents connected through WASD Engine's MCP server.
  * @param ctx - plugin context that injects `mcpManager`.
@@ -76,6 +77,9 @@ export function registerAppMcpPlugin<C extends AppMcpPluginConfig & { readonly [
     graceMs: config.graceMs,
     maxLogBytes: config.maxLogBytes,
     maxWorkers: config.maxWorkers,
+    workerMemoryBytes: config.workerMemoryBytes,
+    workerCores: config.workerCores,
+    minAvailableMemoryBytes: config.minAvailableMemoryBytes,
     workerIdleTimeoutMs: config.workerIdleTimeoutMs,
   }
   for (const field of plugin.options) options[field] = config[field]

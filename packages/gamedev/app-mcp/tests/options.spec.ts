@@ -8,7 +8,8 @@ describe('parseAppServerOptions', () => {
   const Options = z.strictObject({ ...AppServerOptionFields, consolePath: z.string() })
   const valid = {
     dataRoot: '/data/paint', requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-    maxWorkers: 4, workerIdleTimeoutMs: 600_000, consolePath: '',
+    maxWorkers: 4, workerMemoryBytes: 8_589_934_592, workerCores: 4, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
+    consolePath: '',
   }
 
   it('returns the shared and the server-specific fields', () => {
@@ -21,6 +22,7 @@ describe('parseAppServerOptions', () => {
     ['an empty dataRoot', { ...valid, dataRoot: '' }, 'dataRoot'],
     ['a zero budget', { ...valid, requestTimeoutMs: 0 }, 'requestTimeoutMs'],
     ['a fractional budget', { ...valid, graceMs: 1.5 }, 'graceMs'],
+    ['a negative memory minimum', { ...valid, minAvailableMemoryBytes: -1 }, 'minAvailableMemoryBytes'],
     ['a missing field', withoutMaxLogBytes, 'maxLogBytes'],
     ['a server-specific field of the wrong type', { ...valid, consolePath: 3 }, 'consolePath'],
     ['an unknown field', { ...valid, extra: true }, 'extra'],

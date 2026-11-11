@@ -48,16 +48,19 @@ describe('AppMcpConfig', () => {
   it('defaults the shared budgets and bounds them', () => {
     expect(AppMcpConfig({})).toEqual({
       toolCallTimeoutMs: 900_000, requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536,
-      maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
     })
     expect(PaintConfig({ dataRoot: '/data/paint' })).toEqual({
       dataRoot: '/data/paint', paintPath: '', brushes: 3, startupTimeoutMs: 30_000,
       toolCallTimeoutMs: 900_000, requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536,
-      maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+      maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
     })
+    expect(AppMcpConfig({ workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0 }))
+      .toMatchObject({ workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0 })
     for (const invalid of [
       { requestTimeoutMs: 0 }, { toolCallTimeoutMs: 2_147_483_648 }, { graceMs: 1.5 }, { maxLogBytes: 0 },
-      { maxWorkers: 0 }, { maxWorkers: 17 }, { workerIdleTimeoutMs: 0 },
+      { maxWorkers: 0 }, { maxWorkers: 17 }, { workerMemoryBytes: -1 }, { workerCores: 1.5 }, { minAvailableMemoryBytes: -1 },
+      { workerIdleTimeoutMs: 0 },
     ]) {
       expect(() => AppMcpConfig(invalid)).toThrow()
       expect(() => PaintConfig({ dataRoot: '/d', ...invalid })).toThrow()
@@ -82,7 +85,8 @@ describe('registerAppMcpPlugin', () => {
     expect(script).toBe('/opt/WASD Engine/paint/lib/worker.js')
     expect(decodeServerOptions([process.execPath, script, encoded])).toEqual({
       dataRoot: '/data/paint', requestTimeoutMs: 120_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
-      maxWorkers: 4, workerIdleTimeoutMs: 600_000, paintPath: '/opt/paint/bin/paint', brushes: 3,
+      maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
+      paintPath: '/opt/paint/bin/paint', brushes: 3,
     })
     await plugin.dispose()
     expect(unregister).toHaveBeenCalled()

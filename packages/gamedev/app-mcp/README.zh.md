@@ -33,7 +33,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 ### 配置插件
 
-插件的 `Config` 接口扩展 `AppMcpConfig`，其 schema 把 `AppMcpConfig.dict` 展开到自己的对象 schema 中，因此每个 app MCP 插件都以相同的默认值与取值范围提供下列字段。每个预算都是 1 到 2,147,483,647 之间的整数毫秒数。
+插件的 `Config` 接口扩展 `AppMcpConfig`，其 schema 把 `AppMcpConfig.dict` 展开到自己的对象 schema 中，因此每个 app MCP 插件都以相同的默认值与取值范围提供下列字段。每个预算都是 1 到 2,147,483,647 之间的整数毫秒数，内存与处理器字段是从 0 起的整数。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -41,7 +41,10 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 | `requestTimeoutMs` | `600,000` | 一次工作进程请求的默认预算，至少比 `toolCallTimeoutMs` 少 30 s；到期时工作进程停止，其状态丢失 |
 | `graceMs` | `3,000` | 工作进程在收到 `shutdown` 请求后、以及收到 SIGTERM 后各有的退出时间，之后发送 SIGKILL |
 | `maxLogBytes` | `65,536` | 为错误消息保留的最近工作进程输出及安装命令输出的字节数；取正整数 |
-| `maxWorkers` | `4` | 同时运行的工作进程上限，每个调用的 Session 一个，取值 1 到 16；达到上限时，新的 Session 会停止最久未使用且没有运行调用的工作进程 |
+| `maxWorkers` | `4` | 在任何电脑上同时运行的工作进程上限，每个调用的 Session 一个，取值 1 到 16；电脑的[工作进程上限](#one-worker-per-session)可能更低 |
+| `workerMemoryBytes` | `8,589,934,592`（8 GiB） | 每个工作进程所需的电脑物理内存：工作进程上限至多为电脑内存除以此值并四舍五入到整数；`0` 表示不考虑内存 |
+| `workerCores` | `4` | 每个工作进程所需的逻辑处理器数：工作进程上限至多为电脑的逻辑处理器数除以此值并向下取整；`0` 表示不考虑处理器 |
+| `minAvailableMemoryBytes` | `1,073,741,824`（1 GiB） | 启动工作进程时电脑必须有的可用内存；不足时，启动会先停止其他 Session 的空闲工作进程，仍不足则以 `LOW_MEMORY` 失败；`0` 关闭此检查 |
 | `workerIdleTimeoutMs` | `600,000` | Session 的工作进程在没有调用多长时间后停止，其状态随之丢失 |
 
 插件自行声明并说明 `dataRoot`（它拥有的绝对目录）与 `startupTimeoutMs`，因为它们的含义因应用程序而异。
@@ -52,7 +55,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 - `dataRoot` 以及 `plugin.paths` 所列的 Config 字段必须是绝对路径或为空；否则它抛出以 `<plugin.app> plugin:` 开头并指明字段的错误。
 - `requestTimeoutMs` 最多为 `toolCallTimeoutMs` 减去 30 s；否则它抛出以 `<plugin.app> plugin:` 开头并指明两个预算的错误。这 30 s 留给工作进程启动和结果的返回，因此用完时间的请求会以它自己的错误失败，而不会等到 MCP 客户端放弃该调用并以笼统的超时取消它。
-- 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`、`maxWorkers`、`workerIdleTimeoutMs`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
+- 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`、`maxWorkers`、`workerMemoryBytes`、`workerCores`、`minAvailableMemoryBytes`、`workerIdleTimeoutMs`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
 - 当 `plugin.module`（插件的 `import.meta.url`）以 `.ts` 结尾时，服务器入口是它旁边的 `worker.ts`，否则是它旁边的 `worker.js`。
 - 注册通过 `registerAppMcpServer` 完成，使用 `plugin.serverName` 以及 Config 中的 `toolCallTimeoutMs` 与 `startupTimeoutMs`。
 - 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。provider 的指令是服务器的指令，后面附有一条说明：连接的 agent 彼此共享一个应用程序会话，因为它们的调用不指明 Session（[每个 Session 一个工作进程](#one-worker-per-session)）。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
@@ -90,6 +93,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 当 `entry` 不是 `file:` URL 时，`registerAppMcpServer` 抛出 `TypeError`。当服务器名称无效或已被占用（包括被同名的已配置服务器占用）时，管理器抛出错误。任一错误都会使插件失败。
 
+<a id="run-the-server-process"></a>
 ### 运行服务器进程
 
 `runAppMcpServer(definition, process.argv)` 是服务器入口的全部主体。`definition` 给出服务器的 `name`、`version` 与 `instructions`、随包 `workerScript` 的 `file:` URL，以及三个函数：
@@ -98,7 +102,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 - `workers(options, dependencies)` 创建应用程序的 `AppWorkers`。其 `start(signal, scope)` 准备应用程序，并通过 `dependencies.start`（即 `JsonLineWorker.start`）为一个 Session 启动一个工作进程；`scope.directory` 是该工作进程自己的文件夹，用于应用程序配置文件等文件，且各次启动从不重叠，因此所有工作进程共用的安装步骤一次只运行一个。`dependencies.workerScript()` 返回工作进程脚本在 `dataRoot` 下的 `materializePayload` 副本的真实路径。其 `takeNotes()` 交出自上次调用以来收集的安装说明，例如已启动工作进程的版本。
 - `tools(dependencies)` 以 `AppToolDependencies` 构建工具。服务器为每次调用按调用方的 Session 构建它们：`call` 在该 Session 的工作进程上执行工作进程方法，其预算是 `requestTimeoutMs` 与 `graceMs`；`takeNotes` 读取该 Session 的工作进程启动时的说明；`dataRoot`、`requestTimeoutMs` 与 `maxTimeoutMs`（即 `toolCallTimeoutMs` 减去 30 s）携带路径与预算。
 
-定义中的 `app`（例如 `Blender`）在[每个 Session 一个工作进程](#one-worker-per-session)的消息中指称该应用程序。服务器开始提供服务后它即返回；服务器关闭时会关闭工作进程池，后者停止每个工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
+定义中的 `app`（例如 `Blender`）在[每个 Session 一个工作进程](#one-worker-per-session)的消息中指称该应用程序。服务器把 `processLimit({ max: maxWorkers, memoryBytes: workerMemoryBytes, cores: workerCores }, machine)` 作为工作进程池的工作进程上限，并以 `machine` 报告的可用内存检查 `minAvailableMemoryBytes`；可选的第五个参数 `machine` 默认为 `nodeMachine()`，即本机的 `os.totalmem()`、`os.availableParallelism()` 与 `process.availableMemory()`。服务器开始提供服务后它即返回；服务器关闭时会关闭工作进程池，后者停止每个工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
 
 <a id="serve-the-tools"></a>
 ### 提供工具
@@ -120,6 +124,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 以下情况中最先发生的一种会让服务器关闭：stdin 结束或关闭；MCP 传输自行关闭，即 stdout 写入失败（例如客户端离开后出现 EPIPE）或收到的消息超出其读取缓冲区时；或者收到 SIGTERM 或 SIGINT。服务器关闭 MCP 连接（这会中止正在运行的工具调用），然后最多等待 `onClose` 10 s，且只执行一次。它在 stderr 上报告失败或未完成的 `onClose`，并以退出码 0 退出。信号监听器一直保留到进程退出，因此重复的 SIGTERM（MCP 客户端升级关闭时会发送）不能在 `onClose` 完成之前结束进程。对 stderr 的写入尽力而为：写入失败会被忽略。消费方在 `onClose` 中停止其工作进程，例如调用 `supervisor.close()`。
 
+<a id="build-the-tools"></a>
 ### 构建工具
 
 以下辅助函数承载各应用程序工具集共用的部分：
@@ -128,7 +133,8 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 - `workerParams(args)` 把已校验的参数转为工作进程参数，省略的参数不出现。
 - `replyParser(app)` 返回一个按 Zod schema 校验工作进程回复的函数；不匹配时抛出 `WorkerReplyError`，其消息以 `The <app> worker sent an unexpected <method> reply:` 开头并指明每处不匹配。
 - `withSetupNotes(dependencies, result)` 把待报告的安装说明放在结果文本之前，每条之后跟一个空行；`takeNotes` 每条说明只交出一次。
-- `formatBytes(bytes)` 把文件大小写成 `512 bytes`、`2.0 KiB` 或 `5.0 MiB`。
+- `formatBytes(bytes)` 把文件或内存大小写成 `512 bytes`、`2.0 KiB`、`5.0 MiB` 或 `1.5 GiB`。
+- `processLimit(options, machine)` 返回一台电脑上同一类进程同时运行的上限：取 `options.max`、电脑内存除以 `options.memoryBytes` 并四舍五入的整数、逻辑处理器数除以 `options.cores` 并向下取整的整数三者中最小的一个，且至少为 1；`memoryBytes` 或 `cores` 为 0 时不计入该项。内存的商四舍五入，使标称 16 GB、操作系统报告略少的电脑仍按 16 GiB 得到上限。`memoryShortage(requiredBytes, available)` 读取可用内存，不足 `requiredBytes` 时返回 `{ availableBytes, requiredBytes }`；`lowMemoryMessage(what, shortage)` 是拒绝此类启动时面向模型的消息。Godot 插件把它们用于游戏运行。
 - `executePythonTool(dependencies, { app, title, description })` 是以 Python 脚本驱动的应用程序的 `execute_python` 工具；[模型体验](#model-experience)展示其声明与结果文本。
 - `AGENT_IMAGE_MAX_EDGE`（1,568 像素）与 `AGENT_IMAGE_MAX_BYTES`（3 MiB，其 base64 形式正好占满单张图像可用的 4 MiB）规定工具向工作进程请求的图像大小。
 
@@ -167,17 +173,19 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | `WORKER_PROTOCOL` | 某行不是有效回复、回复了不在等待中的 id，或某行超过 32 MiB | 被终止；状态丢失 |
 | `WORKER_EXITED` | 工作进程已退出、已关闭，或在已派发的请求被取消后被停止 | 已不存在；状态丢失 |
 | `WORKER_START_FAILED` | 工作进程无法 spawn，或其在 fd 3 上的第一行不是按时写出的有效就绪行 | 被终止 |
-| `WORKERS_BUSY` | 某个 Session 的第一次调用发现 `maxWorkers` 个工作进程都在运行调用（[每个 Session 一个工作进程](#one-worker-per-session)） | 未启动工作进程 |
+| `WORKERS_BUSY` | 某个 Session 的第一次调用发现工作进程数已达工作进程上限，且每个都在运行调用（[每个 Session 一个工作进程](#one-worker-per-session)） | 未启动工作进程 |
+| `LOW_MEMORY` | 启动工作进程时可用内存少于 `minAvailableMemoryBytes`，停止其他 Session 的空闲工作进程后仍然不足（[每个 Session 一个工作进程](#one-worker-per-session)） | 未启动工作进程 |
 
 <a id="one-worker-per-session"></a>
 ### 每个 Session 一个工作进程
 
-`WorkerPool({ app, root, start, takeNotes, maxWorkers, idleTimeoutMs, requestTimeoutMs, closeGraceMs })` 为每个作用域保留一个 `WorkerSupervisor`，`call(scope, method, params, options)` 在该作用域的工作进程上执行一个工作进程方法。对于指明其 Session 的调用（[提供工具](#serve-the-tools)），`runAppMcpServer` 把作用域命名为 `session:<id>`，对于未指明的调用命名为 `shared`，并把 `<dataRoot>/workers/` 作为池的 `root`。
+`WorkerPool({ app, root, start, takeNotes, maxWorkers, minAvailableMemoryBytes, idleTimeoutMs, requestTimeoutMs, closeGraceMs })` 为每个作用域保留一个 `WorkerSupervisor`，`call(scope, method, params, options)` 在该作用域的工作进程上执行一个工作进程方法。对于指明其 Session 的调用（[提供工具](#serve-the-tools)），`runAppMcpServer` 把作用域命名为 `session:<id>`，对于未指明的调用命名为 `shared`，把 `<dataRoot>/workers/` 作为池的 `root`，并把按电脑内存与处理器确定的工作进程上限作为 `maxWorkers`（[运行服务器进程](#run-the-server-process)）。按默认设置，8 GiB 内存的电脑每个应用程序运行一个工作进程，16 GiB 内存、8 个逻辑处理器的电脑运行两个，32 GiB 内存、16 个逻辑处理器的电脑运行四个。可选的 `availableMemory()` 读取当前可用内存，默认为 `process.availableMemory()`。
 
 - 同一作用域的调用按顺序执行；不同作用域的调用同时执行。
 - 作用域的第一次调用会创建其 supervisor，后者启动时先在池所在进程的文件夹中建立编号文件夹 `<root>/<pid>/<n>`，再调用 `start(signal, { key, directory })`。各作用域的启动一次只运行一个，启动结束后 `takeNotes` 立即交出的说明属于该作用域；`takeNotes(scope)` 把它们交给该作用域的下一个结果。
 - 已有 `idleTimeoutMs` 没有运行调用的工作进程会停止，其文件夹在它退出后删除。
 - 已有 `maxWorkers` 个作用域拥有工作进程时，新的作用域会停止最久未使用且没有运行调用的工作进程；每个工作进程都在运行调用时，新作用域的调用以 `WORKERS_BUSY` 失败，不启动任何进程。
+- 每次启动（作用域的第一次启动，或其工作进程停止后的启动）都先读取可用内存。可用内存少于 `minAvailableMemoryBytes` 时，启动会停止另一个作用域中最久未使用、正在运行且没有运行调用的工作进程，等它退出后再次读取；没有这样的工作进程时，调用以 `LOW_MEMORY` 失败，不启动任何进程。该数值涵盖整台电脑，因此其他应用程序服务器的进程、Godot 的游戏与其他程序都计入其中。`minAvailableMemoryBytes` 为 0 时不读取。
 - 工作进程因上述任一原因停止后，该作用域的下一次调用以 `WORKER_EXITED` 失败，消息说明原因并以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker.` 结尾；之后的调用会启动新的工作进程。池为最近 256 个这样的作用域记住这一点。
 - `prepare()` 删除 `root` 中已退出的服务器进程的文件夹，以及以本进程 id 命名、由使用过同一 id 的先前进程留下的文件夹；它保留仍在运行的进程的文件夹（例如仍在关闭的旧服务器），以及不是进程 id 的名称。`close()` 以 `WORKER_EXITED` 拒绝后续调用，关闭每个 supervisor，并删除本进程的文件夹。
 
@@ -219,7 +227,8 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/register.ts`](src/register.ts) | 宿主注册、通过 tsx 的源码启动，以及固定的管理器条目字段 |
 | [`src/options.ts`](src/options.ts) | `argv[2]` 选项编解码、共享的选项字段及其校验 |
 | [`src/app-server.ts`](src/app-server.ts) | 服务器进程主体：选项、工作进程脚本副本、工作进程池，以及每个调用方 Session 的工具 |
-| [`src/pool.ts`](src/pool.ts) | 每个 Session 作用域一个 supervisor、工作进程文件夹、串行启动、空闲停止、腾出位置与状态丢失通知 |
+| [`src/pool.ts`](src/pool.ts) | 每个 Session 作用域一个 supervisor、工作进程文件夹、串行启动、空闲停止、腾出位置、启动前的内存检查与状态丢失通知 |
+| [`src/machine.ts`](src/machine.ts) | 电脑的内存与处理器、它们允许的进程上限、内存检查及其消息 |
 | [`src/session-scope.ts`](src/session-scope.ts) | Session 作用域能力与 `_meta` 键，以及从调用中读取发起调用的 Session |
 | [`src/mcp-server.ts`](src/mcp-server.ts) | console 重定向、工具注册、结果映射与上限、失败文本以及关闭 |
 | [`src/tools.ts`](src/tools.ts) | 工具辅助函数与 `execute_python` 工具 |
@@ -294,7 +303,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 
 #### 模型看到什么
 
-失败的调用以失败的工具调用形式到达模型，携带错误消息；若为工作进程失败，还携带工作进程 traceback 的末尾、`Recent worker output:` 及其 stdout 与 stderr 的末尾，以及 `Error code: <code>`，各部分以空行分隔。工作进程已停止时，消息以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker` 结尾。工作进程在两次调用之间退出，或正在运行的调用被取消之后，下一次调用不会执行，而是以这样的 `WORKER_EXITED` 消息失败，再下一次调用才启动新的工作进程。
+失败的调用以失败的工具调用形式到达模型，携带错误消息；若为工作进程失败，还携带工作进程 traceback 的末尾、`Recent worker output:` 及其 stdout 与 stderr 的末尾，以及 `Error code: <code>`，各部分以空行分隔。工作进程已停止时，消息以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker` 结尾。工作进程在两次调用之间退出，或正在运行的调用被取消之后，下一次调用不会执行，而是以这样的 `WORKER_EXITED` 消息失败，再下一次调用才启动新的工作进程。上限拒绝的启动以 `WORKERS_BUSY` 失败，告诉模型等其他对话的调用结束后再调用；或以 `LOW_MEMORY` 失败：`The computer has <available> of memory available, less than the <required> that starting a <app> worker needs, so it did not start.`，后接建议：停止不需要的游戏、等待其他工作结束，或请用户关闭程序。
 
 #### Token 影响
 
@@ -311,7 +320,9 @@ traceback 部分最多增加 4,000 个字符，工作进程输出部分最多增
 以下约束适用于基于本库构建的每个服务器。
 
 - **连接的 agent 共享一个工作进程**：通过 WASD Engine 的 MCP 服务器连接的 agent 发起的调用不指明 Session，因此所有连接的 agent 使用 `shared` 工作进程及其应用程序状态，其调用在正在运行的调用之后排队。它们的指令说明了这一点。
-- **每个 Session 的工作进程都是一个进程**：最多同时运行 `maxWorkers` 个应用程序进程，各自占用内存；多个 Session 中的渲染等 CPU 密集型工作会彼此拖慢。
+- **每个 Session 的工作进程都是一个进程**：最多同时运行工作进程上限个应用程序进程，各自占用内存；多个 Session 中的渲染等 CPU 密集型工作会彼此拖慢。在 Apple M3 Pro 上，以 1280×720 渲染一次 Blender 默认场景的内存峰值为 1.5 GiB（Cycles）到 1.7 GiB（EEVEE），因此默认的 `workerMemoryBytes` 为每个工作进程预留电脑的 8 GiB。
+- **每个应用程序各有上限**：Blender、GIMP 与 SuperCollider 各自确定工作进程上限，因此三者合计最多可运行单个上限的三倍，另外还有 Godot 的游戏。它们共享的是读取整台电脑数值的内存检查。
+- **内存检查只针对启动**：工作进程启动后若继续增长（例如加载大场景或渲染），不会被停止；检查会拒绝下一次启动。该数值来自操作系统：在 macOS 上为空闲页加上非活跃、推测与可清除页，不含系统通过压缩或交换才能释放的内存。
 - **子 agent 有自己的工作进程**：子 agent 的 Session 有自己的 id，因此它看不到启动它的 Session 的场景或图像；两者之间通过已保存的文件传递工作。
 - **空闲停止与腾出位置会丢失状态**：因 `workerIdleTimeoutMs` 内没有调用而停止，或为其他 Session 腾出位置而停止的工作进程，会丢失尚未写入磁盘的内容。
 - **停止会丢失应用程序状态**：超时、崩溃、协议违规或取消正在运行的调用都会停止工作进程。本库不保存也不恢复任何内容，因此应用程序尚未写入磁盘的工作会丢失。

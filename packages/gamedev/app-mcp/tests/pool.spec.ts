@@ -2,7 +2,8 @@
  * The worker pool against real fixture workers: one worker per scope, parallel
  * scopes and ordered calls within one, one start at a time with each scope's own
  * setup notes, a folder per worker in the folder of its process, the idle stop and the lost-state notice,
- * making room, the busy refusal, close, and the cleanup of folders that exited processes left behind.
+ * making room, the busy refusal, the memory check before a start, close, and the cleanup of folders that exited
+ * processes left behind.
  */
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -49,6 +50,7 @@ async function pooled(overrides: Partial<WorkerPoolOptions> = {}): Promise<Poole
       return taken
     },
     maxWorkers: 4,
+    minAvailableMemoryBytes: 0,
     idleTimeoutMs: 60_000,
     requestTimeoutMs: 15_000,
     closeGraceMs: 2_000,
@@ -157,9 +159,61 @@ describe('WorkerPool', () => {
     const running = pool.call('session:a', 'sleep', { ms: 500 })
     const error = await workerError(pool.call('session:b', 'echo', {}))
     expect(error.code).toBe('WORKERS_BUSY')
-    expect(error.message).toBe('All 1 Fake workers are running calls for other conversations. Call the tool again once one of them has finished.')
+    expect(error.message).toBe('All 1 Fake workers, as many as this computer runs at once, are running calls for other conversations. '
+      + 'Call the tool again once one of them has finished.')
     await running
     expect(await pool.call('session:b', 'echo', { ok: true })).toEqual({ ok: true })
+  })
+
+  it('starts no worker while the computer has less memory available than a start needs', async () => {
+    const { pool, starts } = await pooled({ minAvailableMemoryBytes: 1024 ** 3, availableMemory: () => 512 * 1024 ** 2 })
+    const error = await workerError(pool.call('session:a', 'echo', {}))
+    expect(error).toMatchObject({
+      code: 'LOW_MEMORY',
+      message: 'The computer has 512.0 MiB of memory available, less than the 1.0 GiB that starting a Fake worker needs, so it did not start. '
+        + 'Stop games you no longer need, wait for other work to finish, or ask the user to close programs they are not using, then try again.',
+    })
+    expect(starts).toEqual([])
+  })
+
+  it('stops the least recently used idle workers of other scopes until a start has the memory it needs', async () => {
+    const pids: number[] = []
+    // Each running worker of session:a and session:b holds 400 bytes of a computer with 1000 available without them.
+    const { pool, starts } = await pooled({
+      minAvailableMemoryBytes: 500,
+      availableMemory: () => 1000 - 400 * pids.filter(pid => isAlive(pid)).length,
+    })
+    pids.push(await pidOf(pool, 'session:a'))
+    pids.push(await pidOf(pool, 'session:b'))
+    await pool.call('session:a', 'echo', {})
+    // b ran its last call before a, so the start of c stops b, after which 600 bytes are available.
+    const c = await pidOf(pool, 'session:c')
+    expect(isAlive(pids[1]!)).toBe(false)
+    expect(isAlive(pids[0]!)).toBe(true)
+    expect(starts.map(scope => scope.key)).toEqual(['session:a', 'session:b', 'session:c'])
+    expect(await workerError(pool.call('session:b', 'echo', {}))).toMatchObject({
+      code: 'WORKER_EXITED', message: `The Fake worker of this conversation was stopped to free memory for another conversation; ${STATE_LOST}.`,
+    })
+    expect(await pidOf(pool, 'session:c')).toBe(c)
+  })
+
+  it('refuses a start with LOW_MEMORY and stops no worker that runs a call', async () => {
+    let available = 1000
+    const { pool, starts } = await pooled({ minAvailableMemoryBytes: 500, availableMemory: () => available })
+    const a = await pidOf(pool, 'session:a')
+    const running = pool.call('session:a', 'sleep', { ms: 500 })
+    available = 100
+    expect((await workerError(pool.call('session:b', 'echo', {}))).code).toBe('LOW_MEMORY')
+    await running
+    expect(isAlive(a)).toBe(true)
+    expect(starts.map(scope => scope.key)).toEqual(['session:a'])
+  })
+
+  it('reads no memory figure when minAvailableMemoryBytes is 0', async () => {
+    const availableMemory = vi.fn(() => 0)
+    const { pool } = await pooled({ availableMemory })
+    expect(await pool.call('session:a', 'echo', { ok: true })).toEqual({ ok: true })
+    expect(availableMemory).not.toHaveBeenCalled()
   })
 
   it('stops every worker on close, deletes the folder of its process, and refuses later calls', async () => {
@@ -191,13 +245,15 @@ describe('WorkerPool', () => {
     expect(await readdir(root)).toEqual([String(process.ppid)])
   })
 
-  it('refuses a maximum below one worker and out-of-range budgets', async () => {
+  it('refuses a maximum below one worker, a negative or fractional memory minimum, and out-of-range budgets', async () => {
     const options: WorkerPoolOptions = {
       app: 'Fake', root: '/tmp/none', start: () => Promise.reject(new Error('unused')), takeNotes: () => [],
-      maxWorkers: 1, idleTimeoutMs: 1000, requestTimeoutMs: 1000, closeGraceMs: 0,
+      maxWorkers: 1, minAvailableMemoryBytes: 0, idleTimeoutMs: 1000, requestTimeoutMs: 1000, closeGraceMs: 0,
     }
     expect(() => new WorkerPool({ ...options, maxWorkers: 0 })).toThrow(RangeError)
     expect(() => new WorkerPool({ ...options, maxWorkers: 1.5 })).toThrow(RangeError)
+    expect(() => new WorkerPool({ ...options, minAvailableMemoryBytes: -1 })).toThrow(RangeError)
+    expect(() => new WorkerPool({ ...options, minAvailableMemoryBytes: 0.5 })).toThrow(RangeError)
     expect(() => new WorkerPool({ ...options, idleTimeoutMs: 0 })).toThrow(RangeError)
   })
 })

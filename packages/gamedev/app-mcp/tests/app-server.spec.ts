@@ -115,7 +115,8 @@ function argv(options: JsonObject): string[] {
 }
 
 const BUDGETS = {
-  requestTimeoutMs: 15_000, toolCallTimeoutMs: 75_000, graceMs: 1000, maxLogBytes: 4096, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  requestTimeoutMs: 15_000, toolCallTimeoutMs: 75_000, graceMs: 1000, maxLogBytes: 4096, maxWorkers: 4, workerMemoryBytes: 0,
+  workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
 }
 
 /** A tool call that names a Session the way the Host's MCP client does. */
@@ -195,6 +196,46 @@ describe('runAppMcpServer', () => {
     await expect(io.exited).resolves.toBe(0)
     await vi.waitFor(() => { for (const pid of [alpha, beta, shared]) expect(isAlive(pid)).toBe(false) }, { timeout: TIMEOUT })
     await expect(access(root)).rejects.toThrow()
+  }, TIMEOUT)
+
+  it('runs as many workers as the computer\'s memory and processors allow, and starts none while memory is short', async () => {
+    const dataRoot = await temporaryDirectory('dsh-app-mcp-machine-')
+    const shipped = join(dataRoot, 'shipped-worker.py')
+    await writeFile(shipped, 'print("fake worker")\n')
+    const application = fakeApplication(pathToFileURL(shipped))
+    const io = fakeProcess()
+    let available = 4 * 1024 ** 3
+    // 8 GiB and 8 logical processors at 8 GiB and 4 processors per worker allow one worker.
+    const machine = { totalMemoryBytes: 8 * 1024 ** 3, cores: 8, availableMemoryBytes: () => available }
+    await runAppMcpServer(application, argv({
+      dataRoot, ...BUDGETS, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, greeting: 'the specs',
+    }), io, undefined, machine)
+    const client = new Client({ name: 'spec', version: '1.0.0' }, { capabilities: {}, versionNegotiation: { mode: 'auto' } })
+    onTestFinished(async () => {
+      await client.close()
+      if (!io.stdin.writableEnded) io.stdin.end()
+      await io.exited
+    })
+    await client.connect(new PipeClientTransport(io.stdout, io.stdin))
+
+    const alpha = Number(textOf(await client.callTool(inSession('alpha', 'worker_pid'))).split('\n').at(-1))
+    onTestFinished(() => { killQuietly(alpha) })
+    const beta = Number(textOf(await client.callTool(inSession('beta', 'worker_pid'))).split('\n').at(-1))
+    onTestFinished(() => { killQuietly(beta) })
+    // Beta's worker took the one place, so alpha's stopped.
+    await vi.waitFor(() => { expect(isAlive(alpha)).toBe(false) }, { timeout: TIMEOUT })
+    expect(isAlive(beta)).toBe(true)
+
+    available = 512 * 1024 ** 2
+    expect(textOf(await client.callTool(inSession('alpha', 'echo', { text: 'a' })))).toContain('was stopped to make room for another conversation')
+    const refused = await client.callTool(inSession('alpha', 'echo', { text: 'a' }))
+    expect(refused.isError).toBe(true)
+    expect(textOf(refused)).toBe('The computer has 512.0 MiB of memory available, less than the 1.0 GiB that starting a Fake worker needs, '
+      + 'so it did not start. Stop games you no longer need, wait for other work to finish, or ask the user to close programs they are not '
+      + 'using, then try again.\n\nError code: LOW_MEMORY')
+    // Making room for alpha stopped beta's idle worker before alpha's start found memory short.
+    await vi.waitFor(() => { expect(isAlive(beta)).toBe(false) }, { timeout: TIMEOUT })
+    expect(application.scopes.map(scope => scope.key)).toEqual(['session:alpha', 'session:beta'])
   }, TIMEOUT)
 
   it('refuses missing or invalid options before it serves', async () => {

@@ -20,6 +20,8 @@ it('maps each Godot refusal to its issue and keeps the Host explanation', () => 
     .toEqual({ issue: 'staleRun', message: 'run r1 ended' })
   expect(failureOf({ ok: false, error: new RemoteError('godot/too-many-runs', '4 games already run', { limit: 4 }) }))
     .toEqual({ issue: 'tooManyRuns', message: '4 games already run', limit: 4 })
+  expect(failureOf({ ok: false, error: new RemoteError('godot/low-memory', 'memory is short', { availableBytes: 1, requiredBytes: 2 }) }))
+    .toEqual({ issue: 'lowMemory', message: 'memory is short' })
 })
 
 it('reports a Session that another Host process writes, which Play cannot resume', () => {

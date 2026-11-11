@@ -71,7 +71,7 @@ describe('withSetupNotes', () => {
 })
 
 describe('formatBytes', () => {
-  it('uses bytes below 1 KiB, then KiB, then MiB, with one decimal', () => {
+  it('uses bytes below 1 KiB, then KiB, MiB, and GiB, with one decimal', () => {
     expect(formatBytes(0)).toBe('0 bytes')
     expect(formatBytes(1023)).toBe('1023 bytes')
     expect(formatBytes(1024)).toBe('1.0 KiB')
@@ -79,6 +79,9 @@ describe('formatBytes', () => {
     expect(formatBytes(1024 * 1024 - 1)).toBe('1024.0 KiB')
     expect(formatBytes(1024 * 1024)).toBe('1.0 MiB')
     expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MiB')
+    expect(formatBytes(1024 ** 3 - 1)).toBe('1024.0 MiB')
+    expect(formatBytes(1024 ** 3)).toBe('1.0 GiB')
+    expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.5 GiB')
   })
 })
 

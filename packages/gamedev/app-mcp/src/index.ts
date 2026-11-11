@@ -8,7 +8,9 @@
  * serves the tools (`serveAppMcp`); the tools run methods of one long-lived
  * application worker through a `WorkerSupervisor`, which starts the worker as
  * a `JsonLineWorker` on the first call. A `WorkerPool` keeps one such worker
- * per calling Session, which the Host's MCP client names in each call. The setup host and tool helpers carry
+ * per calling Session, which the Host's MCP client names in each call, as many as `processLimit` allows the
+ * computer's memory and processors, and starts none while the computer has too little memory available
+ * (`memoryShortage`). The setup host and tool helpers carry
  * what the application servers share, and `readShippedRuntime` reads a runtime that the Desktop app ships in a
  * plugin package. `materializePayload` copies a shipped
  * file, possibly inside `app.asar`, to a real path. This is a library: it
@@ -41,10 +43,25 @@ export interface AppMcpConfig {
   /** Most bytes of recent worker output, and of setup command output, kept for error messages. */
   maxLogBytes: number
   /**
-   * Most application workers that run at once. Each calling Session gets its own worker; when this many run, a new
-   * Session stops the least recently used one that runs no call.
+   * Most application workers that run at once on any computer. Each calling Session gets its own worker; when as many
+   * run as the computer allows, a new Session stops the least recently used one that runs no call.
    */
   maxWorkers: number
+  /**
+   * Bytes of the computer's physical memory for each worker: at most the computer's memory divided by this, rounded to
+   * the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  workerMemoryBytes: number
+  /**
+   * Logical processors for each worker: at most the computer's logical processors divided by this, rounded down, run
+   * at once; 0 leaves processors out of the limit.
+   */
+  workerCores: number
+  /**
+   * Bytes of memory that the computer must have available to start a worker. A start that finds less first stops the
+   * least recently used idle workers of other Sessions, then fails; 0 turns the check off.
+   */
+  minAvailableMemoryBytes: number
   /** Milliseconds without a call after which a Session's worker stops and its state is lost. */
   workerIdleTimeoutMs: number
 }
@@ -56,9 +73,14 @@ export const AppMcpConfig: z<Partial<AppMcpConfig>, AppMcpConfig> = z.object({
   graceMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(3000),
   maxLogBytes: z.natural().min(1).default(64 * 1024),
   maxWorkers: z.natural().min(1).max(16).default(4),
+  workerMemoryBytes: z.natural().default(8 * 1024 ** 3),
+  workerCores: z.natural().default(4),
+  minAvailableMemoryBytes: z.natural().default(1024 ** 3),
   workerIdleTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(600_000),
 })
 
+export { lowMemoryMessage, memoryShortage, nodeMachine, processLimit } from './machine.ts'
+export type { MachineResources, MemoryShortage, ProcessLimitOptions } from './machine.ts'
 export { materializePayload } from './materialize.ts'
 export { JsonLineWorker, WorkerError } from './json-line-worker.ts'
 export type {

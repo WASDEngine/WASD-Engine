@@ -815,6 +815,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotRunRequest: 'gamedev.md',
   GodotRunView: 'gamedev.md',
   GodotRuntimeView: 'gamedev.md',
+  GodotViewItem: 'gamedev.md',
   GameMcpView: 'gamedev.md',
   GameMcpProvider: 'gamedev.md',
   GodotWebExport: 'gamedev.md',

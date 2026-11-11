@@ -86,7 +86,8 @@ export interface WorkerRequestOptions {
 }
 
 /** Failure classes of a {@link WorkerError}. */
-export type WorkerErrorCode = 'WORKER_START_FAILED' | 'WORKER_EXITED' | 'WORKER_TIMEOUT' | 'WORKER_PROTOCOL' | 'WORKER_REMOTE' | 'WORKERS_BUSY'
+export type WorkerErrorCode =
+  'WORKER_START_FAILED' | 'WORKER_EXITED' | 'WORKER_TIMEOUT' | 'WORKER_PROTOCOL' | 'WORKER_REMOTE' | 'WORKERS_BUSY' | 'LOW_MEMORY'
 
 /** Details a {@link WorkerError} carries besides its code and message. */
 export interface WorkerErrorDetails {
@@ -102,7 +103,8 @@ export interface WorkerErrorDetails {
 
 /**
  * A worker failure. `WORKER_REMOTE` is an exception the worker caught while
- * handling a request; the worker keeps running and keeps its state. Every
+ * handling a request; the worker keeps running and keeps its state.
+ * `WORKERS_BUSY` and `LOW_MEMORY` refuse a start: no worker started. Every
  * other code means the worker is stopped or stopping and its state is lost.
  */
 export class WorkerError extends Error {

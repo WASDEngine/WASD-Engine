@@ -21,10 +21,10 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 | 进程 | 启动方 | 结束时机 | 通信对象 |
 |---|---|---|---|
 | Blender、GIMP 或 SuperCollider 的 MCP 服务器，即在 Host 可执行文件下运行的包内构建产物 `lib/worker.js`，源码启动时则是通过 tsx 运行的 `src/worker.ts` | MCP 客户端，依据插件注册的服务器条目启动 | MCP 客户端关闭连接时，例如插件被 dispose（资源释放）之后 | 通过 stdio 与 MCP 客户端通信；通过 stdin 与文件描述符 3 与其工作进程通信 |
-| Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
+| Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置或释放内存而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
 | sclang，以及渲染期间的 scsynth | SuperCollider 工作进程在启动时启动 sclang；sclang 为每次渲染通过 shell 运行 scsynth | sclang 在工作进程关闭其输入、代码让它退出，或工作进程的进程组被停止时结束；scsynth 在其渲染结束时结束 | sclang：通过标准输入与输出和工作进程通信；scsynth：无，sclang 读取其输出文件与日志 |
 | Godot 游戏 | `ctx.godot` 通过 `ctx.subprocess` 启动，每次运行一个 | 运行被停止或游戏退出时；连接关闭时 harness 脚本也会退出游戏，`godot_runner` 会随 Host 进程一起退出 | 通过一条回环 TCP 连接与 `ctx.godot` 通信 |
-| Godot 导入步骤或脚本检查 | `ctx.godot`，在运行之前以及每次 `godot_check` 调用时启动 | Godot 完成时，或 `importTimeoutMs` 到期后 | 无；`ctx.godot` 读取其输出 |
+| Godot 导入步骤、脚本检查或 Web 导出 | `ctx.godot`，在运行之前、每次 `godot_check` 调用时以及每次 Web 导出时启动；检查与导出最多同时运行 `maxHeadlessProcesses` 个 | Godot 完成时，或 `importTimeoutMs`（导出为 `exportTimeoutMs`）到期后 | 无；`ctx.godot` 读取其输出 |
 
 ## 应用 MCP 服务器
 
@@ -32,7 +32,7 @@ Blender、GIMP 与 SuperCollider 采用相同的进程模型，由 `@deepseek-ai
 
 1. Host 插件调用 `registerAppMcpPlugin`，它检查插件的路径设置，并在插件生命周期内向 `ctx.mcpManager`（[MCP](mcp.zh.md)）注册一个 stdio 服务器条目。该条目用 Host 自身的可执行文件运行包的服务器入口（在 Desktop 应用中，`ELECTRON_RUN_AS_NODE=1` 使该可执行文件以 Node 运行；源码启动注册 TypeScript 入口时则通过 tsx 运行），并把插件配置作为一个 base64url JSON 参数传入。
 2. 服务器入口调用 `runAppMcpServer`。服务器进程响应 MCP 工具发现时不会启动应用，因此无论应用是否已安装，工具都会列出。MCP 客户端以 `mcp__<server>__<tool>` 公开这些工具，并把服务器的说明加入系统提示词。
-3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止；运行中的工作进程达到 `maxWorkers` 个时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败；被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
+3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止。服务器最多运行[进程上限](#process-limits)对本机允许的工作进程数：运行中的工作进程达到该数时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败。每次启动都先要求电脑有 `minAvailableMemoryBytes` 的可用内存；不足时，它按最久未使用优先停止其他 Session 的空闲工作进程，没有可停止的工作进程时以 `LOW_MEMORY` 失败。被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
 4. 每个工具向同名的工作进程方法发送一个请求，并把回复转换为文本和图像。工作进程报告的异常不会影响工作进程及其状态。调用期间发生超时、协议违规或退出时，工作进程会被停止，该调用失败并说明工作进程的状态已丢失；工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行，而是以同样的消息失败。该 Session 之后第一次实际执行的调用会启动新的工作进程。
 5. stdin 关闭、MCP 传输因 stdout 写入失败或收到的消息超出读取缓冲区而自行关闭，或者收到 SIGTERM 或 SIGINT 时，服务器停止其所有工作进程并退出；重复的信号不会中断这一关闭过程。
 
@@ -84,7 +84,7 @@ stdout of sclang  <token> END <id> {"ok": false, "error": {"type": "<error class
 
 ## Godot 运行
 
-`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有 `maxRuns` 个运行尚未结束时，它会拒绝启动新的运行，已关闭 Session 的运行在其游戏进程结束前一直计入。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
+`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有运行上限个运行尚未结束时（已关闭 Session 的运行在其游戏进程结束前一直计入），或电脑的可用内存少于 `minAvailableMemoryBytes` 时，它会拒绝启动新的运行（[进程上限](#process-limits)）。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
 
 ### 运行时解析
 
@@ -161,6 +161,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
 | `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（准备 PNG 帧跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
+| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者） | `maxFps`，即生效后的 `Engine.max_fps` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -177,6 +178,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 - `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束，以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
 - `eval` 以输入 `tree`、`root` 与 `scene`（当前场景）解析 Godot `Expression`，并在 `node` 上运行；未给出 `node` 时在当前场景上运行。
 - `ctx.godot` 以 `id` 0 发送 `quit`，并且不等待其回答。
+- **无人显示的游戏的帧率。** 无窗口游戏连接后、其最后一个视图结束后，或其最后一个请求结束后经过 `hiddenDelayMs`（默认 30 秒），`ctx.godot` 会向它发送带 `hiddenFps`（默认 10）的 `pace`。视图是指“游戏”标签页显示运行画面期间持有的 `godot.view` 流，或帧流。新视图以及除 `pace` 与 `stream` 之外的任何请求都会先发送 `maxFps` 为 0 的 `pace`，因此请求以游戏自身的帧率运行。有窗口的游戏（Linux 与 Windows 上）从不受此限制。
 
 <a id="input-events"></a>
 ### 输入事件
@@ -231,6 +233,22 @@ WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<le
 
 检查是一个不创建任何 autoload 的 `SceneTree` 脚本：在 Godot 创建项目的 autoload 之前，它把每个 autoload 条目指向自身，由于它不是 `Node`，Godot 拒绝实例化它，并在第一次加载之前恢复这些条目。单例 autoload 名称保持注册，因此使用它们的脚本可以编译；分析器根据脚本 autoload 的脚本确定其类型，把场景 autoload 视为 `Node`。不会运行任何 autoload 的 `_init`、`_ready` 或 `_process`；加载会运行被加载脚本的静态初始化代码，Godot 会创建项目声明为全局类的自定义资源加载器与保存器。
 
+<a id="process-limits"></a>
+## 进程上限
+
+Blender、GIMP 与 SuperCollider 的工作进程以及 Godot 游戏都是完整的应用程序进程：在 Apple M3 Pro 上，以 1280×720 渲染一次 Blender 默认场景的内存峰值为 1.5 GiB（Cycles）到 1.7 GiB（EEVEE），一个小型 3D 项目的游戏为 0.9 GiB。每类进程都按运行 Host 的电脑确定上限。`@deepseek-ai/dsh-app-mcp` 的 `processLimit` 取以下三者中最小的一个：配置的上限（各应用程序的 `maxWorkers`、Godot 的 `maxRuns`）、电脑物理内存除以每个进程所需内存（`workerMemoryBytes`、`runMemoryBytes`）并四舍五入的整数、逻辑处理器数除以每个进程所需处理器数（`workerCores`、`runCores`）并向下取整的整数；上限至少为 1。按默认设置（每个进程 8 GiB 与 4 个逻辑处理器）：
+
+| 电脑 | 每个应用程序的工作进程数与游戏数 |
+|---|---|
+| 8 GiB 内存，8 个逻辑处理器 | 1 |
+| 16 GiB，8 个逻辑处理器 | 2 |
+| 18 GiB，12 个逻辑处理器 | 2 |
+| 32 GiB，16 个逻辑处理器 | 4 |
+
+每次启动工作进程、游戏、脚本检查或 Web 导出之前，启动方都会读取操作系统报告的可用内存 `process.availableMemory()`。它少于 `minAvailableMemoryBytes`（默认 1 GiB）时，应用程序服务器会按最久未使用优先停止本应用程序其他 Session 的空闲工作进程；仍然不足时，启动以 `LOW_MEMORY` 或 `godot/low-memory` 失败。该数值涵盖整台电脑，因此每个游戏工具的进程与其他程序都计入其中，而上限按应用程序分别计算。Godot 最多同时运行 `maxHeadlessProcesses` 个脚本检查与 Web 导出，之后的按顺序等待其中一个结束。
+
+所有调用方都受同样的上限约束：Host 的 Session、各自算作独立 Session 的子 agent，以及通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent，它们的调用都到达同样的工作进程池和同一个 `ctx.godot`。字段与拒绝由 [app-mcp README](../../packages/gamedev/app-mcp/README.zh.md#one-worker-per-session) 与 [Godot README](../../packages/gamedev/godot/README.zh.md#game-runs) 负责说明。
+
 ## 帧流
 
 `GET /api/godot.frames?session=<SessionId>&run=<runId>` 以流的形式发送一次运行的帧。存在 Connection 服务时，`ctx.godot` 把它注册为精确的 `ctx.connection.fetch` 路由，Connection 对非所有者的 Peer 回答 403。缺少 `session` 或 `run`，或其为空时，该路由回答 400；除非该运行是 Session 的当前运行且尚未结束，否则回答 404；其余情况以 `application/octet-stream` 回答 200。每个回答都带有 `Cache-Control: no-store, no-transform` 与 `X-Content-Type-Options: nosniff`。响应体是一串记录：
@@ -261,6 +279,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 图层 | macOS 桌面应用的 `dshDesktop.gameLayer.show` 与 `hide`，以及 `#root` 的遮罩 | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused` 并报告了 `layer` 与窗口尺寸，且页面具有 `dshDesktop.gameLayer` 时 |
 | 帧 | 对 `api/godot.frames?session=<SessionId>&run=<runId>` 的 `fetch`，相对于 `document.baseURI` 解析，并使用 `cache: 'no-store'` | follow 流正在送达、标签页可见、运行处于 `running` 或 `paused`，且标签页未显示该运行的图层时 |
 | 输入 | 带运行 id 的 `godot.input` | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时 |
+| 视图 | 该运行的 `godot.view` 流，经由 `ctx.remote.$stream`，承载连接中断后会重新打开 | follow 流正在送达、标签页可见且运行处于 `running` 或 `paused` 时（无论通过图层还是帧显示） |
 | 操作 | `godot.run`、`godot.stop`、`godot.control` 与 `godot.installRuntime` | 用户按下工具栏按钮时；用户关闭标签页时也调用 `godot.stop` |
 
 - **follow 流。** `godot.follow` 跟随一个 Session id，不需要存活的 Agent。`ctx.godot` 首先发送 `snapshot`：该 Session 当前或最近一次运行的视图（Session 没有存活的 Agent 或没有运行时为 null）、运行时视图、该运行最后 200 条日志条目，以及游标。随后它发送合并后的变化：带最新视图的 `run`，以及 Session 的 Agent 结束时的 `run: null`；带流游标之后至多最新 200 条条目的 `logs`；以及带最新运行时视图的 `runtime`。之后的 Agent 启动的运行会出现在同一个流中，流在其信号中止或插件卸载时结束。浏览器至多保留当前运行的 500 条条目；`run` 项指向新的运行时，丢弃其他运行的条目；已持有的条目会被跳过。连接断开后，Gateway 的逻辑流会重新打开 follow 流，并从新的快照开始。流再次结束或失败后，若它已送达快照，浏览器立即重新跟随，否则在 1 s 后重新跟随，延迟逐次加倍，至多 30 s，用户按下「重试」时则立即重新跟随；在快照到达之前，界面显示重新连接提示。
@@ -366,6 +385,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `logs` | `entries`（至多 200 条，最旧的在前）与 `cursor` |
 | `runtime` | `runtime` |
 
+`GodotViewItem` 是视图流中唯一的一项 `{ type: 'shown' }`，`ctx.godot` 在视图计入后发送它。
+
 该包新增以下 Remote 错误码：
 
 | 错误码 | 详情 | 触发条件 |
@@ -374,7 +395,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `godot/runtime-unavailable` | `message` | 没有可以解析的运行时，或某个已配置的运行时路径不可用 |
 | `godot/not-running` | 无 | Session 没有运行，或其游戏不接受请求 |
 | `godot/stale-run` | `runId` | `input` 指向的运行不是该 Session 的当前运行 |
-| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满 `maxRuns` |
+| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满运行上限 |
+| `godot/low-memory` | `availableBytes`、`requiredBytes` | 运行启动时电脑的可用内存少于 `minAvailableMemoryBytes` |
 | `godot/request-failed` | `message` | 游戏拒绝了请求，或没有及时回答 |
 
 无效的输入事件、窗口尺寸与单步帧数会以 `gateway/bad-request` 失败。
@@ -465,6 +487,17 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
+ * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
+ * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
+ * the run ends.
+ * @param sessionId - Session whose run is shown.
+ * @param runId - the run the tab shows.
+ * @param signal - ends the view.
+ * @returns the stream.
+ */
+@Remote({ mode: 'stream' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>
+
+/**
  * Install the managed LibGodot runtime, or join the install already running.
  * @param signal - stops this wait; the install continues.
  * @returns the runtime view after the install settled.
@@ -481,6 +514,7 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {GodotProjectError} without `project.godot` in the project folder.
  * @throws {GodotTemplateError} when the Web template cannot be downloaded.
  * @throws {GodotExportError} when the export writes no playable build.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 ```

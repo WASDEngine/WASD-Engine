@@ -89,15 +89,16 @@ export function withSetupNotes(dependencies: Pick<AppToolDependencies, 'takeNote
 }
 
 /**
- * A file size for result text: whole bytes below 1 KiB, otherwise KiB below 1 MiB, otherwise MiB,
- * with one decimal.
+ * A file or memory size for result text: whole bytes below 1 KiB, otherwise KiB below 1 MiB, MiB below 1 GiB,
+ * otherwise GiB, with one decimal.
  * @param bytes - size in bytes.
- * @returns the size, such as `512 bytes`, `2.0 KiB`, or `5.0 MiB`.
+ * @returns the size, such as `512 bytes`, `2.0 KiB`, `5.0 MiB`, or `1.5 GiB`.
  */
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} bytes`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+  if (bytes < 1024 ** 3) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`
 }
 
 const ExecuteReply = z.object({

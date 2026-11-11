@@ -224,6 +224,8 @@ async function runGame(section) {
           }, Math.max(5, Math.round(1000 / message.fps)))
         }
         return reply(message.id, { fps: message.fps })
+      case 'pace':
+        return reply(message.id, { maxFps: message.maxFps })
       case 'screenshot': {
         const scale = message.maxWidth > 0 && state.width > message.maxWidth ? message.maxWidth / state.width : 1
         const meta = {

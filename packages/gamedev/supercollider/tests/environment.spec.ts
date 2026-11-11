@@ -16,7 +16,8 @@ import type { SuperColliderRuntime, SuperColliderServerOptions } from '../src/ty
 
 const OPTIONS: SuperColliderServerOptions = {
   dataRoot: '/data/supercollider', sclangPath: '', scsynthPath: '', readyTimeoutMs: 60_000, requestTimeoutMs: 600_000,
-  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerIdleTimeoutMs: 600_000,
+  toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0,
+  minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000,
 }
 const BUNDLED = '/app/node_modules/@deepseek-ai/dsh-supercollider/runtime'
 const RUNTIME = `${BUNDLED}/darwin-arm64`

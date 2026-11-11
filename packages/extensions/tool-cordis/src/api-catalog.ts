@@ -1731,6 +1731,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [{ name: 'sessionId', description: 'Session whose run receives the input.' }, { name: 'runId', description: 'run the input was meant for.' }, { name: 'events', description: 'at most 256 events in game window pixels.' }, { name: 'signal', description: 'cancellation.' }],
       },
       {
+        signature: '@Remote({ mode: \'stream\' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>',
+        description: 'Count the Session\'s run as shown while the stream stays open, so a windowless game keeps its own frame rate; the Game tab holds one while it shows the run\'s picture. The stream yields one item once the view counts and ends when the run ends.',
+        parameters: [{ name: 'sessionId', description: 'Session whose run is shown.' }, { name: 'runId', description: 'the run the tab shows.' }, { name: 'signal', description: 'ends the view.' }],
+        returns: 'the stream.',
+      },
+      {
         signature: '@Remote async installRuntime(signal: AbortSignal): Promise<GodotRuntimeView>',
         description: 'Install the managed LibGodot runtime, or join the install already running.',
         parameters: [{ name: 'signal', description: 'stops this wait; the install continues.' }],
@@ -1741,7 +1747,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The first export downloads the Web template. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
         returns: 'the exported files.',
-        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.'],
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
     ],
   },
@@ -6924,6 +6930,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotRunView',
     declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly layer?: GodotRunLayer;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
+  },
+  {
+    name: 'GodotViewItem',
+    declaration: 'export interface GodotViewItem {\n    readonly type: \'shown\';\n}',
   },
   {
     name: 'GodotWebExport',

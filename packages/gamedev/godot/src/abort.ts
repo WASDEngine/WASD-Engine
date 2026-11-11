@@ -1,5 +1,5 @@
 /**
- * Waiting on an operation that outlives its caller.
+ * Waiting on an operation that outlives its caller, or until one settles.
  * @module @deepseek-ai/dsh-godot/src/abort
  */
 
@@ -18,5 +18,23 @@ export function untilAborted<T>(operation: Promise<T>, signal: AbortSignal): Pro
     }
     signal.addEventListener('abort', abort, { once: true })
     operation.then(resolve, reject).finally(() => { signal.removeEventListener('abort', abort) })
+  })
+}
+
+/**
+ * Wait until an operation settles or the signal aborts, whichever comes first.
+ * @param operation - the operation; its value or failure is not passed on.
+ * @param signal - ends the wait.
+ * @returns once either happened; it never rejects.
+ */
+export function untilSettledOrAborted(operation: Promise<unknown>, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve()
+  return new Promise<void>((resolve) => {
+    const done = (): void => {
+      signal.removeEventListener('abort', done)
+      resolve()
+    }
+    signal.addEventListener('abort', done, { once: true })
+    operation.then(done, done)
   })
 }

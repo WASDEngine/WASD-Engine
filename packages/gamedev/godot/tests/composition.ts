@@ -141,6 +141,10 @@ export async function compose(options: CompositionOptions = {}): Promise<Composi
     startTimeoutMs: 10_000,
     requestTimeoutMs: 5000,
     stopGraceMs: 1000,
+    // Limits that do not depend on the memory and processors of the computer that runs the specs.
+    runMemoryBytes: 0,
+    runCores: 0,
+    minAvailableMemoryBytes: 0,
     ...options.config,
   }))
   await fiber

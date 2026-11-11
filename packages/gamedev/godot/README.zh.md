@@ -81,7 +81,13 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `stopGraceMs` | `3000` | 被停止的游戏在被终止前用于退出的时间，也是每个 Godot 进程的终止宽限时间 |
 | `processOutputBytes` | `1048576` | 每个 Godot 进程的每个输出流保留的控制台输出字节数，至少 1024 |
 | `maxLogEntries` | `5000` | 每次运行保留的日志条目数 |
-| `maxRuns` | `4` | 所有 Session 合计可同时运行的游戏数，每个游戏在其进程结束前一直计入 |
+| `maxRuns` | `4` | 在任何电脑上所有 Session 合计可同时运行的游戏数上限，每个游戏在其进程结束前一直计入；电脑的[运行上限](#game-runs)可能更低 |
+| `runMemoryBytes` | `8589934592`（8 GiB） | 每个游戏所需的电脑物理内存：运行上限至多为电脑内存除以此值并四舍五入到整数；`0` 表示不考虑内存 |
+| `runCores` | `4` | 每个游戏所需的逻辑处理器数：运行上限至多为电脑的逻辑处理器数除以此值并向下取整；`0` 表示不考虑处理器 |
+| `maxHeadlessProcesses` | `2` | 同时运行的 `godot_check` 进程与 Web 导出数上限；之后的按顺序等待，直到有一个结束 |
+| `minAvailableMemoryBytes` | `1073741824`（1 GiB） | 启动游戏、`godot_check` 进程或 Web 导出时电脑必须有的可用内存；`0` 关闭此检查 |
+| `hiddenFps` | `10` | [无人显示或使用的无窗口游戏](#game-runs)的每秒帧数，取值 0 到 60；`0` 让所有游戏保持自身帧率 |
+| `hiddenDelayMs` | `30000` | 游戏连接后、最后一个“游戏”标签页不再显示它后，或其最后一个请求结束后，经过多长时间开始应用 `hiddenFps` |
 | `agentRunsMuted` | `true` | agent 启动的运行是否默认无音频，除非 `godot_run` 另行指定 |
 | `webTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；[Web 导出](#web-export)只从中下载 Web 模板；须为 http 或 https URL |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
@@ -118,13 +124,15 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 <a id="game-runs"></a>
 ### 游戏运行
 
-一个 Session 最多运行一个游戏。`godot_run` 和“游戏”标签页中的 **运行** 会先停止 Session 当前的游戏，再启动下一个；宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏；游戏在其进程结束前一直计入，包括其 Session 关闭后仍在停止的游戏。Session 的 Agent 结束时（例如 Session 关闭），其游戏会停止；卸载插件会停止所有游戏。
+一个 Session 最多运行一个游戏。`godot_run` 和“游戏”标签页中的 **运行** 会先停止 Session 当前的游戏，再启动下一个；宿主在所有 Session（包括已连接 agent 的 Session）中最多同时运行运行上限个游戏；游戏在其进程结束前一直计入，包括其 Session 关闭后仍在停止的游戏。运行上限是 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md#build-the-tools) 的 `processLimit` 按 `maxRuns`、`runMemoryBytes` 与 `runCores` 算出的值：按默认设置，8 GiB 内存的电脑运行一个游戏，16 GiB 内存、8 个逻辑处理器的电脑运行两个，32 GiB 内存、16 个逻辑处理器的电脑运行四个。在 Apple M3 Pro 上，一个 Defenders of the Wall 游戏的内存峰值为 0.9 GiB。启动还要求电脑有 `minAvailableMemoryBytes` 的可用内存（以操作系统报告的数值为准，因此其他程序以及 Blender、GIMP、SuperCollider 的工作进程都计入其中）；否则以 `godot/low-memory` 失败，不启动任何进程。Session 的 Agent 结束时（例如 Session 关闭），其游戏会停止；卸载插件会停止所有游戏。
+
+无人显示或使用的无窗口游戏以 `hiddenFps` 的帧率运行：游戏连接后、最后一个[“游戏”标签页](#game-tab)或帧流不再显示它后，或其最后一个请求结束后，经过 `hiddenDelayMs`，宿主就通过 harness 为 `Engine.max_fps` 设置上限；游戏自身的上限更低时保留后者。显示该游戏的“游戏”标签页，以及工具或标签页的每个请求，都会立即解除上限，且在请求到达游戏之前解除，因此 `godot_wait`、`godot_input`、`godot_performance` 及其他工具看到的都是游戏自身的帧率。受限期间，只要项目的物理节拍能放进受限后的帧（默认每帧最多 8 个物理步，即每秒 10 帧时每秒 80 个节拍），游戏时间就保持原有速度；每帧按固定量移动、不考虑帧间隔的逻辑会变慢。Linux 与 Windows 上有窗口的游戏保持自身帧率，因为用户能看到窗口。在 Apple M3 Pro 上，一个无人显示的 Defenders of the Wall 游戏以自身帧率运行时占用 0.33 个核心，限制为每秒 10 帧后占用 0.04 个核心。
 
 运行使用 `project` 参数指定的文件夹（相对于工作目录），否则使用最近的 `project.godot`：插件按名称顺序广度优先搜索工作目录及其下三层文件夹，并跳过 `.git`、`node_modules`、`.godot` 和 `.agents`。`scene` 必须是现有文件的 `res://` 路径或 `uid://` 引用；不指定时，游戏打开项目的主场景。`width` 与 `height` 一起设置窗口大小，取值为 1 到 16384 像素。
 
 运行依次经过以下阶段：
 
-1. `preparing`：从运行创建起，到其导入步骤或启动开始为止，后者紧接着发生。插件先解析项目、场景和运行时，再停止 Session 之前的游戏并创建运行，因此其中任何一项有问题时，调用失败，之前的游戏继续运行；`maxRuns` 的拒绝发生在之前的游戏停止之后。
+1. `preparing`：从运行创建起，到其导入步骤或启动开始为止，后者紧接着发生。插件先解析项目、场景和运行时，再停止 Session 之前的游戏并创建运行，因此其中任何一项有问题时，调用失败，之前的游戏继续运行；运行上限或内存的拒绝发生在之前的游戏停止之后。
 2. `importing`：设置了 `importBeforeRun` 时，Godot 的无界面 `--import` 更新项目的导入数据。其错误和警告进入运行的日志；导入异常退出时会添加一条警告，运行继续，超过 `importTimeoutMs` 则运行失败。
 3. `starting`：从启动到游戏连接宿主。插件在 `127.0.0.1` 的随机回环端口上监听，向游戏传入随机令牌；在 `startTimeoutMs` 内没有游戏出示该令牌时，运行失败。
 4. `running` 或 `paused`：游戏保持连接期间。
@@ -137,7 +145,7 @@ agent 启动的运行使用 Godot 的 `Dummy` 音频驱动，除非 `godot_run` 
 <a id="harness"></a>
 ### harness
 
-harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script` 选项，传入本包 `runtime/wasd_harness.gd` 在 `<dataRoot>/payload/` 中的副本，`project.godot` 以及项目的场景和脚本保持不变。导入步骤写入的导入数据与 Godot 编辑器相同。harness 是游戏的主循环：它连同项目的自动加载打开主场景或请求的场景，在游戏暂停时继续为宿主服务，通过 Godot `Logger` 记录打印的行以及带脚本回溯的错误，并通过回环连接响应宿主的截图、帧流、输入、等待、单步、暂停、继续、取消、求值、场景树和退出请求。
+harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script` 选项，传入本包 `runtime/wasd_harness.gd` 在 `<dataRoot>/payload/` 中的副本，`project.godot` 以及项目的场景和脚本保持不变。导入步骤写入的导入数据与 Godot 编辑器相同。harness 是游戏的主循环：它连同项目的自动加载打开主场景或请求的场景，在游戏暂停时继续为宿主服务，通过 Godot `Logger` 记录打印的行以及带脚本回溯的错误，并通过回环连接响应宿主的截图、帧流、帧率、输入、等待、单步、暂停、继续、取消、求值、场景树和退出请求。
 
 <a id="tools"></a>
 ### 工具
@@ -168,7 +176,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 一次运行保留其最新的 `maxLogEntries` 条日志。每个条目带有在宿主所有运行中递增的序号、来源（`game` 表示 harness 日志记录器，`process` 表示 Godot 进程的控制台输出，`import` 表示导入步骤）、级别（`stdout`、`stderr`、`warning`、`error`、`script_error` 或 `shader_error`）、消息（插件在 4,000 个字符处截断），以及 Godot 报告时提供的文件、行号、函数和脚本回溯。游戏进程的控制台输出在游戏关闭连接后进入日志；游戏启动失败时，全部输出都会进入日志。游标之后的条目已被丢弃时，`godot_logs` 会报告这一情况。
 
-`godot_check` 启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
+`godot_check` 启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。最多同时运行 `maxHeadlessProcesses` 个检查与 Web 导出；之后的检查等待空位，得到空位后，若电脑的可用内存少于 `minAvailableMemoryBytes`，则不启动 Godot 并失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
 
 `godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
 
@@ -197,7 +205,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 状态区显示安装进度、运行的阶段、帧率、场景文件（悬停提示显示其 `res://` 路径）以及渲染器。宿主拒绝的操作会显示一条可关闭的消息，每个控件在其自身的请求进行期间保持禁用。另一个正在运行的 Web 或桌面端应用写入该 Session 时，**运行** 显示“此会话已在另一个正在运行的 Web 或桌面端应用中打开，请退出该应用后重试”。
 
-游戏画面按比例适配标签页并在两侧留出边条，只在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时显示游戏。在 macOS 桌面应用中，画面显示游戏自身的画面：应用把无窗口游戏的图层放在页面之后，页面让游戏所在的矩形保持透明，因此游戏以完整分辨率和显示器的刷新率显示，不捕获、编码或解码任何帧。在 Web 应用、Windows 与 Linux 桌面应用中，以及桌面应用不显示其图层的运行，画面改为绘制最新推流的帧。点击游戏即可让画面获得焦点。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Shift+Esc 从不送达游戏：它把键盘交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放键盘”。图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效。游戏捕获鼠标时，下一次按下会把指针锁定在画面上，移动以相对位移送达游戏；游戏释放鼠标或浏览器结束锁定时，锁定结束。失去焦点时，会释放画面按住的所有按键和按钮。
+游戏画面按比例适配标签页并在两侧留出边条，只在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时显示游戏；此期间标签页持有该运行的 `view` 流，使无窗口游戏保持自身帧率（[游戏运行](#game-runs)）。在 macOS 桌面应用中，画面显示游戏自身的画面：应用把无窗口游戏的图层放在页面之后，页面让游戏所在的矩形保持透明，因此游戏以完整分辨率和显示器的刷新率显示，不捕获、编码或解码任何帧。在 Web 应用、Windows 与 Linux 桌面应用中，以及桌面应用不显示其图层的运行，画面改为绘制最新推流的帧。点击游戏即可让画面获得焦点。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Shift+Esc 从不送达游戏：它把键盘交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放键盘”。图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效。游戏捕获鼠标时，下一次按下会把指针锁定在画面上，移动以相对位移送达游戏；游戏释放鼠标或浏览器结束锁定时，锁定结束。失去焦点时，会释放画面按住的所有按键和按钮。
 
 输入按批发送，每批最多 256 个事件，每次重绘一批，连续的鼠标移动会合并；下一批要等宿主接受上一批后才发送。宿主每次向游戏转发一批，排队超过 256 个时丢弃最早的事件。发给已结束运行的输入会被丢弃。一批输入因其他原因失败时，标签页记录一次失败，直到某一批再次成功，并在下一批中、或在画面失去焦点时，再次发送失败那一批中的按键和鼠标按钮释放，使游戏不会一直按住某个键或按钮。
 
@@ -217,9 +225,10 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `stop(session)` | 无 | 游戏结束后返回，Session 没有运行时以 `godot/not-running` 拒绝；取消调用只会停止等待 |
 | `control(session, request)` | `GodotRunView` | `pause`、`resume`，或带 1 到 100000 个 `frames` 的 `step` |
 | `input(session, runId, events)` | 无 | 为指定运行排队最多 256 个事件，不等待游戏处理 |
+| `view(session, runId)` | `GodotViewItem` 流 | 流保持打开期间把指定运行计为正在显示，使无窗口游戏保持自身帧率；视图计入后产出 `{ type: 'shown' }`，运行结束时结束，并以 `godot/not-running` 或 `godot/stale-run` 拒绝 |
 | `installRuntime()` | `GodotRuntimeView` | 安装托管运行时，或加入正在进行的安装，并在其结束后返回 |
 
-拒绝时使用以下代码：`godot/no-project`（附搜索的 `directory`）、`godot/runtime-unavailable`、`godot/not-running`、`godot/stale-run`（输入所针对的运行已不是当前运行）、`godot/too-many-runs`（附 `limit`）、`godot/request-failed`（游戏拒绝了请求或没有应答），以及用于无效事件、大小或帧数的 `gateway/bad-request`。恢复失败的 `run` 带有 Session 控制器的代码，例如 `session/not-found`，或另一个宿主进程写入该 Session 时的 `session/writer-held`。LiveShare 把每个方法归为仅所有者可用，并把该命名空间排除在共享之外。
+拒绝时使用以下代码：`godot/no-project`（附搜索的 `directory`）、`godot/runtime-unavailable`、`godot/not-running`、`godot/stale-run`（输入或视图所针对的运行已不是当前运行）、`godot/too-many-runs`（附 `limit`）、`godot/low-memory`（附可用内存不足的启动的 `availableBytes` 与 `requiredBytes`）、`godot/request-failed`（游戏拒绝了请求或没有应答），以及用于无效事件、大小或帧数的 `gateway/bad-request`。恢复失败的 `run` 带有 Session 控制器的代码，例如 `session/not-found`，或另一个宿主进程写入该 Session 时的 `session/writer-held`。LiveShare 把每个方法归为仅所有者可用，并把该命名空间排除在共享之外。
 
 游戏画面读取 `GET /api/godot.frames?session=<SessionId>&run=<runId>`，这是一个只有所有者 Peer 能访问的 Connection 精确路由；插件在存在 `connection` 服务时注册它。缺少参数时路由返回 400，Session 中没有该 id 的活动运行时返回 404。否则它以 `application/octet-stream` 和 `Cache-Control: no-store, no-transform` 推流，直到运行结束或请求被中止。响应体是一系列记录：
 
@@ -236,7 +245,7 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 <a id="web-export"></a>
 ### Web 导出
 
-`ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：Forward+ 或 Mobile 项目在网页上使用兼容性渲染器，以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
+`ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。导出占用与 `godot_check` 共享的 `maxHeadlessProcesses` 个位置之一；电脑的可用内存少于 `minAvailableMemoryBytes` 时，导出不启动 Godot 并失败。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：Forward+ 或 Mobile 项目在网页上使用兼容性渲染器，以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
 
 Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
 
@@ -278,8 +287,9 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 |---|---|
 | [`src/index.ts`](src/index.ts) | 宿主插件：配置、提示词部分、Remote 方法和帧路由 |
 | [`src/runtime.ts`](src/runtime.ts) | 运行时解析、托管安装和运行时视图 |
-| [`src/runs.ts`](src/runs.ts) | 每 Session 状态、运行替换和运行数上限 |
-| [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧和关闭 |
+| [`src/runs.ts`](src/runs.ts) | 每 Session 状态、运行替换、运行数上限和每次启动的准入 |
+| [`src/slots.ts`](src/slots.ts) | 同时运行的脚本检查与 Web 导出的位置 |
+| [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧、无人显示的游戏的帧率和关闭 |
 | [`src/protocol.ts`](src/protocol.ts) | harness 连接上的消息分帧与校验 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、结果文本和新错误报告 |
 | [`src/check.ts`](src/check.ts) | 静态脚本检查 |
@@ -402,7 +412,8 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **图层可能比布局变化晚一次重绘** — 画面通过桌面应用的主进程放置图层，而页面自行移动挖空区域，因此在侧栏或窗口改变尺寸时，游戏可能比页面边缘晚一次重绘，图层后的黑色会在其边缘露出。
 - **音频只在宿主上播放** — “游戏”标签页不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
-- **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏。
+- **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行运行上限个游戏。
+- **隐藏的游戏继续运行** — 没有“游戏”标签页显示的游戏会一直运行到停止：最后一次被显示或使用后的 `hiddenDelayMs` 内以全速运行，之后以 `hiddenFps` 运行，因此仍会占用一些处理器与图形处理时间；运行上限限制了这样的游戏数。Linux 与 Windows 上有窗口的游戏从不受限。内存检查只针对启动：游戏启动后若继续增长，不会被停止。
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。
