@@ -143,6 +143,23 @@ export function requestBonusNotified(origin: string, token: string, orderId: Acc
   }, signal)
 }
 
+/**
+ * WASD Engine: switch the account's auto recharge at the WASD Engine account service.
+ * @param origin - configured origin matching the grant issuer.
+ * @param token - stored account grant.
+ * @param enabled - whether auto recharge should be on.
+ * @param signal - credential lifetime and request timeout.
+ * @param headers - deployment and client identity headers for this origin.
+ * @returns successful business payload, which `wasdengine-allowance.ts` validates.
+ */
+export function requestAutoRecharge(origin: string, token: string, enabled: boolean,
+  signal: AbortSignal, headers: Record<string, string>): Promise<unknown> {
+  return platformRequest(`${origin}/api/v0/users/set_auto_recharge`, {
+    method: 'POST', headers: { ...accountHeaders(headers, token), 'content-type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  }, signal)
+}
+
 // The grant is provider-owned; deployment requestHeaders cannot override it or the client identity.
 function accountHeaders(headers: Record<string, string>, token: string): Record<string, string> {
   return { ...headers, 'x-dsh-auth-token': token }

@@ -307,6 +307,15 @@ abstract getUnnotifiedBonuses(client: AccountClientMetadata): Promise<AccountBon
 abstract ackBonusNotified(accountId: AccountUserId, orderId: AccountBonusOrderId, client: AccountClientMetadata): Promise<boolean>
 
 /**
+ * WASD Engine: turn the account's auto recharge on or off, which the WASD Engine account service offers while a
+ * ready balance's allowance carries `autoRecharge`.
+ * @param enabled - whether auto recharge should be on.
+ * @param client - identity of the requesting UI for this call.
+ * @returns the outcome, or null if signed out or the grant changed during the request.
+ */
+abstract setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>
+
+/**
  * Join an active attempt or start browser authorization.
  * @param client - identity of the requesting UI; a new attempt captures it, and joining retains the original attempt's identity.
  * @param callbackOrigin - browser-accessible loopback HTTP origin, including any SSH local port.
@@ -488,6 +497,6 @@ Local grant removal has completed.
 Source: [`packages/credentials/deepseek-account/src/index.ts`](../../packages/credentials/deepseek-account/src/index.ts)
 <!-- END GENERATED cordis-surface -->
 
-账号服务定义提供 getState、getProfile、getBalance、getUnnotifiedBonuses、ackBonusNotified、startSignIn、cancelSignIn、signOut、watch 及仅限 Host 的 resolveToken 和 getPlatformSession。平台提供者使用 AuthorizationFlow 和私有 GrantRecord 实现这些操作。AccountView 区分本地存在与服务器验证；尝试 ID 将取消绑定到单次本地流程。参见[账号包](../../packages/credentials/deepseek-account/README.zh.md)。
+账号服务定义提供 getState、getProfile、getBalance、getUnnotifiedBonuses、ackBonusNotified、WASD Engine 的 setAutoRecharge、startSignIn、cancelSignIn、signOut、watch 及仅限 Host 的 resolveToken 和 getPlatformSession。平台提供者使用 AuthorizationFlow 和私有 GrantRecord 实现这些操作。AccountView 区分本地存在与服务器验证；尝试 ID 将取消绑定到单次本地流程。参见[账号包](../../packages/credentials/deepseek-account/README.zh.md)。
 
 `AccountClientMetadata` 携带调用方 `DSH_CLIENT_VERSION` 提供的 `version`、当前界面 `locale`，以及操作发起时采样的 `timezoneOffsetSeconds`。偏移为本地时间减 UTC 的秒数：UTC+8 对应 `28800`。其中不含凭证。登录申请在兑换及取消期间保留发起时的元数据；退出操作为撤销重试保留其元数据。

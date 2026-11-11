@@ -1012,6 +1012,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'true once Platform records the acknowledgement; false if signed out or the account changed.',
       },
       {
+        signature: 'abstract setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>',
+        description: 'WASD Engine: turn the account\'s auto recharge on or off, which the WASD Engine account service offers while a ready balance\'s allowance carries `autoRecharge`.',
+        parameters: [{ name: 'enabled', description: 'whether auto recharge should be on.' }, { name: 'client', description: 'identity of the requesting UI for this call.' }],
+        returns: 'the outcome, or null if signed out or the grant changed during the request.',
+      },
+      {
         signature: 'abstract startSignIn(client: AccountClientMetadata, callbackOrigin: string, loginSource: \'web\' | \'desktop\'): Promise<AccountView>',
         description: 'Join an active attempt or start browser authorization.',
         parameters: [{ name: 'client', description: 'identity of the requesting UI; a new attempt captures it, and joining retains the original attempt\'s identity.' }, { name: 'callbackOrigin', description: 'browser-accessible loopback HTTP origin, including any SSH local port.' }, { name: 'loginSource', description: 'initiating UI, used to return from a failed exchange.' }],
@@ -5552,6 +5558,18 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'AccountAllowance',
+    declaration: 'export interface AccountAllowance {\n    readonly remainingPercent: number;\n    readonly remainingShare: number;\n    readonly refreshesAt: string;\n    readonly creditsPercent?: number;\n    readonly autoRecharge?: AccountAutoRecharge;\n    readonly unlimited?: true;\n}',
+  },
+  {
+    name: 'AccountAutoRecharge',
+    declaration: 'export interface AccountAutoRecharge {\n    readonly enabled: boolean;\n    readonly chargeUsd: number;\n    readonly failure?: string;\n}',
+  },
+  {
+    name: 'AccountAutoRechargeChange',
+    declaration: 'export interface AccountAutoRechargeChange {\n    readonly enabled: boolean;\n    readonly cardUrl?: string;\n}',
+  },
+  {
     name: 'AccountBonusBatch',
     declaration: 'export interface AccountBonusBatch {\n    readonly accountId: AccountUserId;\n    readonly bonuses: readonly AccountBonusNotification[];\n}',
   },
@@ -5569,7 +5587,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountDetails',
-    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n    } | {\n        readonly status: \'failed\';\n    };\n}',
+    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n        readonly allowance?: AccountAllowance;\n    } | {\n        readonly status: \'failed\';\n    };\n}',
   },
   {
     name: 'AccountLinks',

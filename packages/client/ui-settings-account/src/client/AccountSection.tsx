@@ -2,7 +2,7 @@
 import { Big } from 'big.js'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Button, IconRightUpOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AccountDetails, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { AccountAutoRechargeChange, AccountDetails, AccountView, SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { PropsRuntime, PropsLocale, InjectFace, HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
 import type { PlatformPage, PlatformPages } from './platform-pages.ts'
@@ -11,6 +11,7 @@ import { AccountAvatar } from './AccountAvatar.tsx'
 import type { AccountAvatarSnapshot } from './account-avatar.ts'
 import { authorizeUrlWithTheme } from './authorize-url.ts'
 import type { BonusNotice } from './bonus-notices.ts'
+import { allowancePercent, WasdengineAllowanceMeter, WasdengineAutoRecharge } from './wasdengine-allowance.tsx'
 import css from './AccountSection.module.css'
 
 /** Safe account snapshot shared by the settings page and launcher. */
@@ -58,6 +59,12 @@ export interface AccountSectionInjected {
   apiKeyEntry?: boolean
   /** WASD Engine: whether every user must sign in, so the sign-in dialogs cannot be closed; absent, they can. */
   signInRequired?: boolean
+  /**
+   * WASD Engine: turn auto recharge on or off, then re-read the balance; absent, the AI usage row offers no switch.
+   * @param enabled - whether auto recharge should be on.
+   * @returns the outcome, or null when the account is absent or changed.
+   */
+  setAutoRecharge?: (enabled: boolean) => Promise<AccountAutoRechargeChange | null>
 
   /** Account stream owned by the Host and theme snapshots published by the renderer, observed through framework hooks. */
   hooks: {
@@ -94,7 +101,8 @@ export interface AccountSectionInjected {
 export type AccountSectionProps =
   PropsRuntime<'settings.section'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
 /** @param props - localized actions, account subscription, and the shared Platform page channel. @returns account settings UI. */
-export function AccountSection({ t, useAccount, useTheme, start, cancel, openPlatformPage, avatarFailed }: AccountSectionProps) {
+export function AccountSection({ t, useAccount, useTheme, start, cancel, openPlatformPage, avatarFailed,
+  setAutoRecharge, refreshAccount }: AccountSectionProps) {
   const { view: state, details, avatar, failed: streamFailed } = useAccount(value => value)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   // The shared host owns the native view; this page holds only its own request,
@@ -111,6 +119,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
   const active = attempt !== null && attempt !== undefined
     && ['initializing', 'waiting-browser', 'exchanging', 'committing'].includes(attempt.phase)
   const signedIn = state?.status === 'credential-stored'
+  const allowance = signedIn && details?.balance?.status === 'ready' ? details.balance.allowance : undefined
   useEffect(() => () => { releasePage.current?.(); releasePage.current = undefined }, [])
   useEffect(() => {
     if (signedIn) return
@@ -191,14 +200,18 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
       <div className={css.balanceCard}>
         <div className={css.row}>
           <span>{t('balance')}</span>
-          {signedIn && wallets !== undefined && wallets.length > 0
-            ? <span className={css.amount}>{wallets.map(wallet => <span key={wallet.currency}>
-              {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
-            </span>)}</span>
-            : !signedIn || details?.balance === undefined
-              ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
-              : platformLink(t('balanceUnavailable'), css.unavailableLink)}
+          {allowance !== undefined ? <span className={css.amount}>{allowancePercent(allowance, t)}</span>
+            : signedIn && wallets !== undefined && wallets.length > 0
+              ? <span className={css.amount}>{wallets.map(wallet => <span key={wallet.currency}>
+                {formatBalance(wallet.balance, wallet.currency === 'CNY' ? '¥' : '$')}
+              </span>)}</span>
+              : !signedIn || details?.balance === undefined
+                ? <span className={css.unavailable}>{t(!signedIn ? 'balanceSignedOut' : 'loading')}</span>
+                : platformLink(t('balanceUnavailable'), css.unavailableLink)}
         </div>
+        {allowance !== undefined && <WasdengineAllowanceMeter allowance={allowance} t={t} />}
+        {allowance?.autoRecharge !== undefined && setAutoRecharge !== undefined && <WasdengineAutoRecharge
+          recharge={allowance.autoRecharge} t={t} setAutoRecharge={setAutoRecharge} refreshAccount={refreshAccount} />}
         {signedIn && showBonusRow && <>
           <div className={css.divider} />
           <div className={css.row}>

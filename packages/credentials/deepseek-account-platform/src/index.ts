@@ -7,12 +7,13 @@ import { promises as streamPromises } from 'node:stream'
 import { Context, Service } from '@deepseek-ai/cordis'
 import Schema from '@deepseek-ai/schemastery'
 import { z } from 'zod'
-import { DeepSeekAccount, installAccountTaskCancellation, mergePlatformCookies, platformClientHeaders, platformWireLocale, type AccountBonusBatch, type AccountBonusOrderId, type AccountClientMetadata, type AccountDetails, type AccountUserId, type AccountView, type PlatformSession, type SignInAttemptId, type SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
+import { DeepSeekAccount, installAccountTaskCancellation, mergePlatformCookies, platformClientHeaders, platformWireLocale, type AccountAutoRechargeChange, type AccountBonusBatch, type AccountBonusOrderId, type AccountClientMetadata, type AccountDetails, type AccountUserId, type AccountView, type PlatformSession, type SignInAttemptId, type SignInAttemptView } from '@deepseek-ai/dsh-deepseek-account'
 import { credentialKey } from '@deepseek-ai/dsh-credentials'
 import type { AuthorizationSession } from '@deepseek-ai/dsh-authorization'
 import { profile, readAccountDetail, readUnnotifiedBonuses, sendBonusNotified } from './details.ts'
 import { revokeAccount, type LogoutRetryPolicy } from './logout.ts'
-import { AccountUnauthorizedError, PlatformAuthError, platformHeaders, platformOrigin, browserUrl, requestPlatform, initialization, exchange, loginOrigin } from './protocol.ts'
+import { AccountUnauthorizedError, PlatformAuthError, platformHeaders, platformOrigin, browserUrl, requestPlatform, initialization, exchange, loginOrigin, requestAutoRecharge } from './protocol.ts'
+import { autoRechargeChange } from './wasdengine-allowance.ts'
 
 const KEY = credentialKey('deepseek-account-platform', 'default')
 const DEVICE = credentialKey('deepseek-account-platform', 'device')
@@ -240,6 +241,24 @@ export class PlatformAccount extends DeepSeekAccount {
       if (error instanceof AccountUnauthorizedError) {
         if (this.detailsLifetime === lifetime) await this.expireCredential(stored.token, lifetime)
         return false
+      }
+      throw error
+    }
+  }
+
+  // WASD Engine: Settings › Account's auto recharge switch (wasdengine-allowance.ts validates the reply).
+  override async setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null> {
+    const lifetime = this.detailsLifetime
+    const stored = await this.readCurrentGrant(lifetime)
+    if (stored === null) return null
+    try {
+      const reply = await requestAutoRecharge(this.origin, stored.token, enabled,
+        AbortSignal.any([lifetime.signal, AbortSignal.timeout(this.requestTimeout)]), this.detailHeaders(client))
+      return autoRechargeChange(reply, this.origin, this.rewriteBrowserOrigin)
+    } catch (error) {
+      if (error instanceof AccountUnauthorizedError) {
+        if (this.detailsLifetime === lifetime) await this.expireCredential(stored.token, lifetime)
+        return null
       }
       throw error
     }

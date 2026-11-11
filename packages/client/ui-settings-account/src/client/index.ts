@@ -25,7 +25,7 @@ import { AccountSection, type AccountSnapshot, type AccountSectionInjected } fro
 import { createBonusNoticeController } from './bonus-notices.ts'
 import { accountClientMetadata } from './client-metadata.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type AccountKey } from './locales.ts'
-import { brandAccountDictionaries } from './wasdengine-copy.ts'
+import { brandAccountDictionaries, type WasdengineAccountKey } from './wasdengine-copy.ts'
 import {
   AGENTS_STEP_SLOT, WasdengineDesktopOnboardingEntry, type WasdengineDesktopOnboardingInjected,
 } from './wasdengine-onboarding-agents.tsx'
@@ -42,7 +42,7 @@ export type { AccountKey } from './locales.ts'
 export type { OnboardingAgentsClassNames, OnboardingAgentsOwner } from './wasdengine-onboarding-agents.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
-  interface LocaleNamespaceMap { 'settings.account': AccountKey }
+  interface LocaleNamespaceMap { 'settings.account': AccountKey | WasdengineAccountKey }
 }
 
 /** Services required by account settings. */
@@ -268,6 +268,13 @@ export function apply(ctx: Context): void {
         publish({ ...snapshot, loginFailed: true })
         throw error
       }
+    },
+    // WASD Engine: the auto recharge switch of the AI usage row; the balance read then reports the new state.
+    async setAutoRecharge(enabled) {
+      const result = await ctx.remote.account.setAutoRecharge(enabled, client())
+      if (!result.ok) throw new Error('account auto recharge failed')
+      if (result.value !== null) await refreshAfterReturn(refreshing, refresh)
+      return result.value
     },
     async cancel(id) { const result = await ctx.remote.account.cancelSignIn(id); if (!result.ok) throw new Error('account cancel failed') },
     async hasRunningAccountTasks() {

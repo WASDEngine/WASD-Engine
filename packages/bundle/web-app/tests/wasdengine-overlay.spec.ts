@@ -125,6 +125,7 @@ const TARGETS: Readonly<Record<string, { name: string; schema: readonly string[]
     name: '@deepseek-ai/dsh-client-ui-settings-models',
     schema: ['packages/client/ui-settings-models/src/onboarding-config.ts'],
   },
+  web: { name: '@deepseek-ai/dsh-web', schema: ['packages/web/web/src/index.ts'] },
 }
 
 /** Upstream config keys the fork deliberately replaces instead of restating. */
@@ -132,6 +133,8 @@ const REPLACED_KEYS: Readonly<Record<string, readonly string[]>> = {
   'agent-preset-registry': ['default'],
   // dsh-sdk-minimal names DEEPSEEK_API_KEY.
   'llm-deepseek': ['apiKeyEnv'],
+  // Upstream fetches pages anonymously from the user's computer (http).
+  web: ['fetchProvider'],
 }
 
 /** Rows of the `gamedev` preset that carry fork config, with the sources declaring the keys it sets. */
@@ -483,6 +486,14 @@ describe.each([...profiles.keys()])('%s profile', (name) => {
     if (mounts('llm-deepseek-account')) {
       expect(expression(configOf(row(fork.rows, 'llm-deepseek-account')).baseURL, 'llm-deepseek-account.baseURL')).toBe(api)
     }
+  })
+
+  it('sends web search and page fetches to the WASDEngine service, which follows the conversation\'s route', () => {
+    if (!mounts('web')) return
+    expect(configOf(row(fork.rows, 'web'))).toEqual({ searchProvider: 'deepseek-search-api', fetchProvider: 'deepseek-fetch-api' })
+    // Without their own base URL or key, the DeepSeek Search and Fetch API providers follow the conversation's
+    // DeepSeek route, which the rows above point at the WASDEngine origins.
+    expect(configOf(row(fork.rows, 'web-deepseek-api'))).toEqual({})
   })
 
   it('sends the account menu\'s Feedback item to the WASDEngine issue tracker', () => {

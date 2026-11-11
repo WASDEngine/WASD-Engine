@@ -1,0 +1,72 @@
+/* WASD Engine's AI usage row (fork-owned; wasdengine/FORK.md lists the fork changes): under the balance row's
+   percent, a bar of the share of the plan's monthly AI usage that is left, in the purple of the brand mark's W key,
+   the day the usage refreshes, and the auto recharge credits left. Once nothing is left, the empty track turns amber.
+   The auto recharge switch has a row of its own after a divider, as the balance card's other rows do. */
+.allowance {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.meter {
+  --allowance-fill: #8e63ff;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--dsw-alias-bg-skeleton);
+}
+
+:global(body[data-ds-dark-theme]) .meter {
+  --allowance-fill: #a585ff;
+}
+
+.meter[data-empty] {
+  background: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, transparent);
+}
+
+.fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--allowance-fill);
+}
+
+.details,
+.note,
+.warning {
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.divider {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.recharge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding: 6px 0;
+  box-sizing: border-box;
+}
+
+.note {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.note a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.warning {
+  color: var(--dsw-alias-state-warn-label);
+}

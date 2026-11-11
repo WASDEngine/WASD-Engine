@@ -56,10 +56,57 @@ export interface AccountWallet {
   readonly currency: 'CNY' | 'USD'
   readonly balance: string
 }
+/**
+ * WASD Engine: how much of the plan's monthly AI usage is left, which the WASD Engine account service reports with
+ * the wallets in place of a dollar balance; other services report none.
+ */
+export interface AccountAllowance {
+  /** Whole percent left, from 0 to 100, rounded down so it never shows more than is left. */
+  readonly remainingPercent: number
+  /** Exact share left, from 0 to 1; above 0 while anything is left, even when {@link remainingPercent} is 0. */
+  readonly remainingShare: number
+  /** When the allowance refreshes, as an ISO 8601 timestamp. */
+  readonly refreshesAt: string
+  /**
+   * Auto recharge credits left, which the account spends once the allowance is used up, as the whole percent of what
+   * one recharge adds, rounded down: 0 while less than 1% is left, above 100 while more than one recharge's credits
+   * are. Absent while none are left.
+   */
+  readonly creditsPercent?: number
+  /** The account's auto recharge; absent while the account cannot turn it on. */
+  readonly autoRecharge?: AccountAutoRecharge
+  /**
+   * True while the account is on WASD Engine's Unlimited tier, which has no monthly limit: the percent and share then
+   * report everything left, and the service reports no credits or auto recharge. Absent otherwise.
+   */
+  readonly unlimited?: true
+}
+/**
+ * WASD Engine: auto recharge, which charges the account's saved card a fixed amount for more credits each time its AI
+ * usage and credits run out.
+ */
+export interface AccountAutoRecharge {
+  /** Whether auto recharge is on. */
+  readonly enabled: boolean
+  /** Whole US dollars each recharge charges. */
+  readonly chargeUsd: number
+  /** Why the last recharge failed, which turned auto recharge off; absent otherwise. */
+  readonly failure?: string
+}
+/** WASD Engine: the outcome of switching auto recharge on or off. */
+export interface AccountAutoRechargeChange {
+  /** Whether auto recharge is on now. */
+  readonly enabled: boolean
+  /**
+   * The account service's page that saves a card, to open in the browser; auto recharge turns on once the card is
+   * saved. Absent when no card is needed.
+   */
+  readonly cardUrl?: string
+}
 /** Independent query outcomes allow profile and balance failures to render separately. */
 export interface AccountDetails {
   readonly profile: { readonly status: 'ready'; readonly value: AccountProfile } | { readonly status: 'failed' }
-  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[] } | { readonly status: 'failed' }
+  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[]; readonly allowance?: AccountAllowance } | { readonly status: 'failed' }
 }
 
 /** Identity of one granted bonus order; stable across devices and sign-ins. */

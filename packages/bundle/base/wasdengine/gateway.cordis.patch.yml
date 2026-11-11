@@ -3,15 +3,15 @@
 # over dsh-base loads it: web (also the Desktop's desktop profile), acp,
 # headless, and sdk. The standalone sdk-minimal bundle carries the rows it
 # mounts in its own wasdengine/gateway.cordis.patch.yml. This file points the
-# DeepSeek provider rows at the WASDEngine service and switches off the Session
-# log request field and the Session OpenTelemetry export to the DeepSeek
-# collector; every other row keeps its upstream value. A patch replaces the
+# DeepSeek provider rows and web search and fetch at the WASDEngine service and
+# switches off the Session log request field and the Session OpenTelemetry
+# export to the DeepSeek collector; every other row keeps its upstream value. A patch replaces the
 # target row's whole `config`, so each row restates every key it keeps.
 #
 # The WASDEngine service has two production origins: the Platform origin
 # https://app.wasdengine.com (sign-in pages and the account API) and the API
-# origin https://api.wasdengine.com (model, model-list, search, and file
-# requests). WASDENGINE_ORIGIN, read from the launching environment or from
+# origin https://api.wasdengine.com (model, model-list, web search, page
+# fetch, and file requests). WASDENGINE_ORIGIN, read from the launching environment or from
 # $DSH_HOME/.env, replaces both with one origin, such as http://127.0.0.1:8000
 # for a local backend. A project .env is not consulted, so a cloned repository
 # cannot redirect WASDEngine credentials.
@@ -50,9 +50,8 @@
 # API-key route ("deepseek-official"): x-api-key to
 # <API origin>/anthropic/v1/messages. The key is a WASDEngine API token, stored
 # by the Models page or exported as WASDENGINE_API_KEY, so an ambient
-# DEEPSEEK_API_KEY is never sent to the gateway. Web search follows this route's
-# origin and credential (POST <API origin>/v1/tools/search), so it needs no row
-# of its own. The catalog is the upstream deepseek-flash entry alone.
+# DEEPSEEK_API_KEY is never sent to the gateway. The catalog is the upstream
+# deepseek-flash entry alone.
 - id: llm-deepseek
   config:
     baseURL: !!js >-
@@ -65,6 +64,17 @@
         inputModalities: [text, image]
         systemPromptUpdate: in-history
         toolUpdate: addition-only
+
+# Web search and fetch: both go through the WASDEngine service, which prices
+# each successful request. The DeepSeek Search and Fetch API providers follow the
+# conversation's route: POST <API origin>/v1/tools/search and /v1/tools/fetch,
+# with x-dsh-auth-token on the account route and the WASDENGINE_API_KEY token as
+# Authorization: Bearer on the API-key route. Fetch replaces upstream's anonymous
+# local fetcher (http), which Settings can still select.
+- id: web
+  config:
+    searchProvider: deepseek-search-api
+    fetchProvider: deepseek-fetch-api
 
 # The provider copy of the full Session log (`dsh_session_log` on every model
 # request). Settings can still turn it on per user.

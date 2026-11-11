@@ -1,7 +1,7 @@
 /** Account Service Definition shared by platform, API, and model consumers. */
 import { Context, Service } from '@deepseek-ai/cordis'
-import type { AccountBonusBatch, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountUserId, AccountView, SignInAttemptId } from './types.ts'
-export type { AccountBonusBatch, AccountBonusNotification, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountProfile, AccountUserId, AccountWallet, AccountLinks, AccountView, SignInAttemptId, SignInAttemptView, SignInErrorCode } from './types.ts'
+import type { AccountAutoRechargeChange, AccountBonusBatch, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountUserId, AccountView, SignInAttemptId } from './types.ts'
+export type { AccountAllowance, AccountAutoRecharge, AccountAutoRechargeChange, AccountBonusBatch, AccountBonusNotification, AccountBonusOrderId, AccountClientMetadata, AccountDetails, AccountProfile, AccountUserId, AccountWallet, AccountLinks, AccountView, SignInAttemptId, SignInAttemptView, SignInErrorCode } from './types.ts'
 export { isRunningAccountTask, installAccountTaskCancellation } from './account-tasks.ts'
 
 declare module '@deepseek-ai/cordis' {
@@ -65,6 +65,14 @@ export abstract class DeepSeekAccount extends Service {
    * @returns true once Platform records the acknowledgement; false if signed out or the account changed.
    */
   abstract ackBonusNotified(accountId: AccountUserId, orderId: AccountBonusOrderId, client: AccountClientMetadata): Promise<boolean>
+  /**
+   * WASD Engine: turn the account's auto recharge on or off, which the WASD Engine account service offers while a
+   * ready balance's allowance carries `autoRecharge`.
+   * @param enabled - whether auto recharge should be on.
+   * @param client - identity of the requesting UI for this call.
+   * @returns the outcome, or null if signed out or the grant changed during the request.
+   */
+  abstract setAutoRecharge(enabled: boolean, client: AccountClientMetadata): Promise<AccountAutoRechargeChange | null>
   /**
    * Join an active attempt or start browser authorization.
    * @param client - identity of the requesting UI; a new attempt captures it, and joining retains the original attempt's identity.

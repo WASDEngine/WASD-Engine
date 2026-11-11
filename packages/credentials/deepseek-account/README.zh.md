@@ -52,7 +52,7 @@ getUnnotifiedBonuses 返回平台尚未记录为已展示的赠金及其所属�
 
 [凭证子系统](../../../docs/subsystems/credentials.zh.md)定义存储接口；[架构](../../../docs/architecture.zh.md)说明应用组合。
 
-AccountDetails.balance 就绪时，value 保存充值钱包，bonusWallets 保存赠送钱包；两个数组均保留十进制金额字符串和币种。查询失败不提供金额。
+AccountDetails.balance 就绪时，value 保存充值钱包，bonusWallets 保存赠送钱包；两个数组均保留十进制金额字符串和币种。查询失败不提供金额。在 WASD Engine 上，就绪的余额还可以带有 allowance，即 WASD Engine 账号服务代替美元余额报告的 AccountAllowance：套餐每月 AI 用量的剩余整数百分比（向下取整）、精确的剩余比例、刷新时间、以一次充值所加额度为基准的自动充值剩余额度整数百分比（creditsPercent，额度用完时缺省），以及自动充值开关（autoRecharge：是否开启、每次充值扣款的整美元数和上次充值失败的原因）；账号无法开启自动充值时 autoRecharge 缺省；在没有每月上限的无限制档位上，unlimited 为 true，全部用量都算作剩余，且不报告额度和开关。setAutoRecharge 开启或关闭自动充值，并返回 AccountAutoRechargeChange：当前是否开启；开启需要银行卡时还带有 cardUrl，即账号服务用于保存银行卡的页面，由调用方在浏览器中打开；已退出登录或授权已变化时返回 null。
 
 <a id="model-experience"></a>
 ## 模型体验
