@@ -2,8 +2,9 @@
 """Smoke-test a WASD Engine Blender runtime the way the Blender plugin runs it.
 
 The test starts the runtime's Python as the plugin starts its worker, isolated
-(-I) and without writing bytecode (-B), in an environment without Python
-redirection, and runs one script. The script imports bpy and numpy, builds a
+(-I), in UTF-8 mode (-X utf8), which Blender also sets for its own Python, and
+without writing bytecode (-B), in an environment without Python redirection,
+and runs one script. The script imports bpy and numpy, builds a
 scene with a mesh, a material, a camera, and a light, renders it with Cycles on
 the CPU and, on macOS, with EEVEE, exports it as glTF, and saves it as a .blend
 file, then waits until the test has looked at it. EEVEE renders on the GPU,
@@ -289,8 +290,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     names = ("worked", "checked", "result.json", "cycles.png", "eevee.png", "scene.glb", "scene.blend")
     worked, checked, result, cycles, eevee, glb, blend = (os.path.join(work, name) for name in names)
     before = tree_state(runtime)
-    command = [os.path.join(runtime, *executable.split("/")), "-I", "-B", "-u", "-c", SCRIPT, worked, checked, result, cycles, eevee, glb, blend]
-    # Python reads and writes UTF-8 whatever the locale, so the work folder's name may hold any character.
+    command = [os.path.join(runtime, *executable.split("/")), "-I", "-X", "utf8", "-B", "-u", "-c", SCRIPT, worked, checked, result, cycles, eevee,
+               glb, blend]
+    # In UTF-8 mode Python reads and writes UTF-8 whatever the locale, so the work folder's name may hold any character.
     process = subprocess.Popen(command, cwd=work, env=python_environment(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                encoding="utf-8", errors="replace")
     deadline = time.monotonic() + TIMEOUT_SECONDS

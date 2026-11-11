@@ -82,6 +82,8 @@ class PrepareTest(unittest.TestCase):
         self.file("lib/libglib-2.0.0.dylib")
         self.link("lib/libglib-2.0.dylib", "libglib-2.0.0.dylib")
         self.file("lib/gimp/3.0/plug-ins/python-eval/python-eval.py", mode=0o755)
+        self.file(f"{runtime.DEMO_EXTENSION}/goat-exercise-vala", mode=0o755)
+        self.file(f"{runtime.DEMO_EXTENSION}/locale/de/LC_MESSAGES/org.gimp.extension.goat-exercises.mo")
         self.file("include/gimp-3.0/libgimp/gimp.h")
         self.file("etc/gimp/3.0/gimprc")
         self.file("Resources/gimp/3.0/brushes/arrow#1.myb")
@@ -133,6 +135,7 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual([entry for entry in tree if not entry.endswith("/")], sorted([
             "MacOS/gimp-console-3.2", "MacOS/python3",
             "lib/libglib-2.0.0.dylib", "lib/gimp/3.0/plug-ins/python-eval/python-eval.py",
+            "lib/gimp/3.0/extensions/wasd-engine-folder.txt",
             "etc/gimp/3.0/gimprc",
             "share/gimp/3.0/brushes/arrow#1.myb", "share/gimp/3.0/fonts/wasd-engine-folder.txt",
             "share/locale/wasd-engine-folder.txt", "Resources/wasd-engine-folder.txt",
@@ -241,6 +244,8 @@ class WindowsTest(unittest.TestCase):
         self.file("lib/libgimp-3.0.dll.a")
         self.file("lib/gimp/3.0/plug-ins/file-png/file-png.exe", pe_bytes(imports=("libgimp-3.0-0.dll",)))
         self.file("lib/gimp/3.0/plug-ins/twain/twain.exe", pe_bytes())
+        self.file(f"{runtime.DEMO_EXTENSION}/goat-exercise-vala.exe", pe_bytes(imports=("libgimp-3.0-0.dll",)))
+        self.file(f"{runtime.DEMO_EXTENSION}/locale/de/LC_MESSAGES/org.gimp.extension.goat-exercises.mo")
         self.file("lib/gimp/3.0/environ/default.env", b"PATH=${gimp_installation_dir}\\bin\n")
         self.file("lib/gimp/3.0/interpreters/pygimp.interp", b"python=python.exe\n/usr/bin/python3=python.exe\n:Python:E::py::python3:\n")
         script_fu = f"{self.installed}\\bin\\gimp-script-fu-interpreter-3.0.exe"
@@ -285,7 +290,8 @@ class WindowsTest(unittest.TestCase):
         self.assertEqual(runtime.prepare_windows(self.stage, self.installed), "3.2.8")
         self.assertEqual(self.files(), [
             "bin/gimp-console-3.2.exe", "bin/libc++.dll", "bin/libgimp-3.0-0.dll", "bin/python.exe",
-            "etc/gimp/3.0/gimprc", "lib/gimp/3.0/environ/default.env", "lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
+            "etc/gimp/3.0/gimprc", "lib/gimp/3.0/environ/default.env", f"lib/gimp/3.0/extensions/{runtime.KEEP_FILE}",
+            "lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
             "lib/gimp/3.0/interpreters/pygimp.interp", f"lib/gimp/3.0/modules/{runtime.KEEP_FILE}", "lib/gimp/3.0/plug-ins/file-png/file-png.exe",
             "lib/python3.12/site-packages/gi/__init__.py", "share/gimp/3.0/brushes/arrow#1.myb", f"share/locale/{runtime.KEEP_FILE}",
         ])

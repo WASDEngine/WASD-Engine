@@ -199,8 +199,15 @@ jobs:
           $data = Join-Path $env:RUNNER_TEMP 'gimp-ü-游戏'
           $unpacked = Join-Path $data "runtime/$($archive.runtime.version)"
           New-Item -ItemType Directory -Force -Path $unpacked | Out-Null
-          & "$env:SystemRoot\System32\tar.exe" -xzf (Resolve-Path -LiteralPath $file) -C $unpacked
-          if ($LASTEXITCODE -ne 0) { throw "tar.exe could not unpack $file" }
+          # As the plugin does, tar gets the archive as its standard input and no path, which tar.exe would read in the ANSI code page.
+          $start = [System.Diagnostics.ProcessStartInfo]::new("$env:SystemRoot\System32\tar.exe", '-xzf -')
+          $start.WorkingDirectory = (Resolve-Path -LiteralPath $unpacked).Path
+          $start.RedirectStandardInput = $true
+          $tar = [System.Diagnostics.Process]::Start($start)
+          $archiveStream = [System.IO.File]::OpenRead((Resolve-Path -LiteralPath $file).Path)
+          try { $archiveStream.CopyTo($tar.StandardInput.BaseStream) } finally { $archiveStream.Dispose(); $tar.StandardInput.Close() }
+          $tar.WaitForExit()
+          if ($tar.ExitCode -ne 0) { throw "tar.exe could not unpack $file" }
           python -I wasdengine/gimp/smoke.py --runtime $unpacked --work (Join-Path $data 'work')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 

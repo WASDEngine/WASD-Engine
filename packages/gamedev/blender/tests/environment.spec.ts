@@ -123,10 +123,9 @@ interface PackedHostOptions {
   readonly rename?: FakeHostOptions['rename']
 }
 
-/** A Windows host whose package ships the bpy runtime's archive; its tar unpacks runtime.json and python.exe into the -C folder. */
+/** A Windows host whose package ships the bpy runtime's archive; its tar unpacks runtime.json and python.exe into its working folder. */
 function packedHost(options: PackedHostOptions = {}): FakeHost {
-  const unpack: FakeHostOptions['run'] = (argv) => {
-    const destination = argv.at(-1)!
+  const unpack: FakeHostOptions['run'] = (_argv, { cwd: destination }) => {
     host.files.set(`${destination}\\runtime.json`, JSON.stringify({ ...options.unpacked ?? WIN_RUNTIME, sha256: {} }))
     host.executables.add(`${destination}\\python\\python.exe`)
     return { exitCode: 0, signal: null, output: '' }
@@ -295,10 +294,10 @@ describe('findPackedBpy and unpackShippedBpy', () => {
     const packed = (await findPackedBpy(WIN_BUNDLED, host))!
     await expect(unpackShippedBpy(packed, WIN_DATA, host, signal)).resolves.toEqual({ directory: WIN_UNPACKED, python: WIN_PYTHON, bpy: '5.2.3', unpacked: true })
     const [command] = host.commands
-    const partial = command!.argv[4]!
+    const partial = command!.options.cwd
     expect(partial).toMatch(/^C:\\Users\\dev\\\.wasdengine\\blender\\runtime\\5\.2\.3-wasd\.1\.partial-[0-9a-f]{8}$/u)
-    expect(command!.argv).toEqual([WIN_TAR, '-xzf', WIN_ARCHIVE, '-C', partial])
-    expect(command!.options).toMatchObject({ cwd: WIN_DATA, signal })
+    expect(command!.argv).toEqual([WIN_TAR, '-xzf', '-'])
+    expect(command!.options).toMatchObject({ cwd: partial, signal, stdinFile: WIN_ARCHIVE })
     expect(host.made).toEqual([`${WIN_DATA}\\runtime`, partial])
     expect(host.renamed).toEqual([[partial, WIN_UNPACKED]])
     expect(host.removed).toEqual([partial])
@@ -318,7 +317,7 @@ describe('findPackedBpy and unpackShippedBpy', () => {
       const failure = unpackShippedBpy((await findPackedBpy(WIN_BUNDLED, host))!, WIN_DATA, host, signal)
       await expect(failure).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID', message: expect.stringMatching(message) as string })
       expect(host.renamed).toEqual([])
-      expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.argv[4]])
+      expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.options.cwd])
     }
   })
 
@@ -454,7 +453,7 @@ describe('resolveWorkerLaunch', () => {
     const host = uvHost()
     const launch = await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, host, signal)
     expect(launch).toEqual({
-      backend: 'bpy', shipped: false, argv: [VENV_PYTHON, '-I', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' },
+      backend: 'bpy', shipped: false, argv: [VENV_PYTHON, '-I', '-X', 'utf8', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' },
       notes: [`Installed Python 3.13 and bpy 5.2.3 into ${VENV} (first use).`],
       repair: `If the bpy environment at ${VENV} is damaged, delete that folder so that the next start installs it again.`,
     })
@@ -465,7 +464,7 @@ describe('resolveWorkerLaunch', () => {
     for (const backend of ['auto', 'bpy'] as const) {
       const host = shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, '/usr/bin/uv', APP])
       await expect(resolveWorkerLaunch({ ...OPTIONS, backend }, SCRIPT, BUNDLED, host, signal)).resolves.toEqual({
-        backend: 'bpy', shipped: true, argv: [SHIPPED_PYTHON, '-I', '-B', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' }, notes: [],
+        backend: 'bpy', shipped: true, argv: [SHIPPED_PYTHON, '-I', '-X', 'utf8', '-B', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' }, notes: [],
         repair: `If the bpy runtime that WASD Engine ships in ${SHIPPED} is damaged, reinstall WASD Engine.`,
       })
       expect(host.commands).toEqual([])
@@ -475,7 +474,7 @@ describe('resolveWorkerLaunch', () => {
   it('passes over the shipped runtime for another bpyVersion and for the app backend', async () => {
     const other = shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, '/usr/bin/uv'])
     const managed = await resolveWorkerLaunch({ ...OPTIONS, bpyVersion: '5.3.0' }, SCRIPT, BUNDLED, other, signal)
-    expect(managed).toMatchObject({ backend: 'bpy', argv: ['/data/blender/venv-py3.13-bpy5.3.0/bin/python', '-I', '-u', SCRIPT] })
+    expect(managed).toMatchObject({ backend: 'bpy', argv: ['/data/blender/venv-py3.13-bpy5.3.0/bin/python', '-I', '-X', 'utf8', '-u', SCRIPT] })
     expect(managed.shipped).toBe(false)
     const app = shippedHost({ ...SHIPPED_RECORD, arch: 'x64' }, [SHIPPED_PYTHON, APP])
     await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, BUNDLED, app, signal)).resolves.toMatchObject({ backend: 'app', argv: [APP, '--background', '--factory-startup', '-noaudio', '--python-exit-code', '1', '--python', SCRIPT] })
@@ -485,7 +484,7 @@ describe('resolveWorkerLaunch', () => {
   it('unpacks and runs the archive that the Windows app ships, which keeps its bytecode caches under dataRoot', async () => {
     const host = packedHost({ executables: ['C:\\Users\\dev\\.local\\bin\\uv.exe'] })
     await expect(resolveWorkerLaunch(WIN_OPTIONS, SCRIPT, WIN_BUNDLED, host, signal)).resolves.toEqual({
-      backend: 'bpy', shipped: true, argv: [WIN_PYTHON, '-I', '-u', SCRIPT], env: { SystemRoot: 'C:\\Windows', PATH: 'C:\\Windows\\System32' },
+      backend: 'bpy', shipped: true, argv: [WIN_PYTHON, '-I', '-X', 'utf8', '-u', SCRIPT], env: { SystemRoot: 'C:\\Windows', PATH: 'C:\\Windows\\System32' },
       notes: [`Unpacked the bpy runtime that WASD Engine ships into ${WIN_UNPACKED} (first use).`],
       repair: `If the bpy runtime that WASD Engine unpacked into ${WIN_UNPACKED} is damaged, delete that folder so that the next start unpacks it again.`,
     })
@@ -621,7 +620,7 @@ describe('BlenderWorkers', () => {
     const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('5.2.3')
     expect(start).toHaveBeenCalledWith({
-      argv: [VENV_PYTHON, '-I', '-u', SCRIPT],
+      argv: [VENV_PYTHON, '-I', '-X', 'utf8', '-u', SCRIPT],
       cwd: '/data/blender/workers/1',
       env: { PATH: '/usr/bin:/bin', BLENDER_USER_RESOURCES: '/data/blender/workers/1/blender-user' },
       readyTimeoutMs: 30_000,

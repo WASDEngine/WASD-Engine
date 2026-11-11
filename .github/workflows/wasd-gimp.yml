@@ -104,7 +104,8 @@ jobs:
         run: |
           unpacked="$RUNNER_TEMP/$SMOKE_NAME/data/runtime/$VERSION"
           mkdir -p "$unpacked"
-          /c/Windows/System32/tar.exe -xzf "$(cygpath -w "$RUNNER_TEMP/gimp-out/gimp-$VERSION-win32-x64.tar.gz")" -C "$(cygpath -w "$unpacked")"
+          # As the plugin does, tar gets the archive as its standard input and no path, which tar.exe would read in the ANSI code page.
+          (cd "$unpacked" && /c/Windows/System32/tar.exe -xzf - < "$RUNNER_TEMP/gimp-out/gimp-$VERSION-win32-x64.tar.gz")
           python -I wasdengine/gimp/smoke.py --runtime "$unpacked" --work "$RUNNER_TEMP/$SMOKE_NAME/work-unpacked"
 
       - name: Upload the archive
