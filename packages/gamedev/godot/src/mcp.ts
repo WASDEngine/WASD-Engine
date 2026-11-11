@@ -135,7 +135,8 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       properties: { project: PROJECT_PARAMETER, ...others },
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
-    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_performance', 'godot_check'].includes(definition.name),
+    // godot_check is not read-only: it may import the project first, which writes import data into it.
+    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
       const { project, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')

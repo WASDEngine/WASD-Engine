@@ -75,7 +75,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `streamLossless` | `true` | 准备 PNG 帧跟得上 `streamFps` 时推流无损 PNG 帧，否则推流 JPEG 帧；`false` 只推流 JPEG 帧 |
 | `streamMaxWidth` | `1280` | 推流帧的最大宽度（像素），64 到 4096 |
 | `importBeforeRun` | `true` | 每次运行前导入项目资源 |
-| `importTimeoutMs` | `180000` | 导入步骤及单次 `godot_check` 的时限 |
+| `importTimeoutMs` | `180000` | 单个导入步骤（在运行或检查之前）以及单次 `godot_check` 脚本加载的时限 |
 | `startTimeoutMs` | `60000` | 从启动到游戏连接的时限 |
 | `requestTimeoutMs` | `15000` | 截图、求值、场景树、暂停或继续请求的时限，有请求等待时游戏可保持沉默的最长时间，以及等待、单步或 agent 的输入序列在其按每秒 10 帧所需时间之外最多可用的实际时间 |
 | `stopGraceMs` | `3000` | 被停止的游戏在被终止前用于退出的时间，也是每个 Godot 进程的终止宽限时间 |
@@ -125,7 +125,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 运行依次经过以下阶段：
 
 1. `preparing`：从运行创建起，到其导入步骤或启动开始为止，后者紧接着发生。插件先解析项目、场景和运行时，再停止 Session 之前的游戏并创建运行，因此其中任何一项有问题时，调用失败，之前的游戏继续运行；`maxRuns` 的拒绝发生在之前的游戏停止之后。
-2. `importing`：设置了 `importBeforeRun` 时，Godot 的无界面 `--import` 更新项目的导入数据。其错误和警告进入运行的日志；导入异常退出时会添加一条警告，运行继续，超过 `importTimeoutMs` 则运行失败。
+2. `importing`：设置了 `importBeforeRun` 时，Godot 的无界面 `--import` 更新项目的导入数据；该步骤先等待宿主对该项目的其他导入步骤、检查和 Web 导出结束。其错误和警告进入运行的日志；导入异常退出时会添加一条警告，运行继续，超过 `importTimeoutMs` 则运行失败。
 3. `starting`：从启动到游戏连接宿主。插件在 `127.0.0.1` 的随机回环端口上监听，向游戏传入随机令牌；在 `startTimeoutMs` 内没有游戏出示该令牌时，运行失败。
 4. `running` 或 `paused`：游戏保持连接期间。
 5. `exited`、`crashed` 或 `failed`：运行结束后。以退出码 0 自行退出的游戏，或被用户或 agent 停止的游戏，结束于 `exited`。其他任何退出都结束于 `crashed`，关闭连接后仍持续运行 `stopGraceMs` 的游戏也是如此。在游戏连接之前失败的运行结束于 `failed`。崩溃与失败消息会引用进程输出的最后 20 行。
@@ -156,7 +156,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `godot_scene_tree` | `node`、`depth`（默认 6，最多 64）、`max_nodes`（默认 400，最多 5000） | 缩进的大纲，列出节点名称、类、脚本、位置、大小、隐藏节点、Label 与 Button 文本，以及被禁用的处理 |
 | `godot_performance` | `seconds`（默认 2，0.25 到 20） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制 |
 | `godot_logs` | `since`、`levels`、`limit`（默认 200，最多 1000） | 游标 `since` 之后、或本 Session 上次读取之后的日志条目，以及下一个游标 |
-| `godot_check` | `paths`、`project` | 在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
+| `godot_check` | `paths`、`project` | 项目自上次导入以来有改动时先导入项目，然后在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
 
 `godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree` 和 `godot_performance` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
 
@@ -168,7 +168,9 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 一次运行保留其最新的 `maxLogEntries` 条日志。每个条目带有在宿主所有运行中递增的序号、来源（`game` 表示 harness 日志记录器，`process` 表示 Godot 进程的控制台输出，`import` 表示导入步骤）、级别（`stdout`、`stderr`、`warning`、`error`、`script_error` 或 `shader_error`）、消息（插件在 4,000 个字符处截断），以及 Godot 报告时提供的文件、行号、函数和脚本回溯。游戏进程的控制台输出在游戏关闭连接后进入日志；游戏启动失败时，全部输出都会进入日志。游标之后的条目已被丢弃时，`godot_logs` 会报告这一情况。
 
-`godot_check` 启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
+`godot_check` 按游戏加载脚本的方式加载脚本。Godot 通过项目的导入数据查找脚本用 `class_name` 声明的类、`uid://` 路径指向的文件，以及纹理等已导入的资源，而这些数据由导入写入；因此，当这些数据可能比项目文件旧时，检查会先运行运行前导入步骤所用的无界面 `--import`：插件加载以来该项目还没有开始过以退出码 0 结束的导入、项目数据文件夹中缺少类缓存 `global_script_class_cache.cfg`，或者在最近一次这样的导入开始之后，导入读取的某个文件发生了变化。文件的修改时间或状态变更时间较晚即视为发生变化，因此移入项目的文件也算在内。查找变化的文件时，跳过导入所跳过的内容：隐藏的文件和文件夹、数据文件夹（`.godot`；`application/config/use_hidden_project_data_directory` 为 `false` 时为 `godot`）、包含 `.gdignore` 文件或另一个项目的 `project.godot` 的文件夹，以及导入在其导入的文件旁边写入的 `.import` 与 `.uid` 文件。与运行前的导入一样，这次导入向项目写入 Godot 编辑器会写入的内容，执行导入的编辑器也会运行项目已启用的编辑器插件和 `@tool` 脚本。导入异常退出或超过 `importTimeoutMs` 时，检查不会失败：结果以一条警告开头，说明有关 `class_name` 类或已导入资源的错误可能是误报，下一次检查会再次导入。宿主对同一项目的导入步骤、检查和 Web 导出逐个执行，因此同时开始的检查和运行导入步骤不会同时导入该项目。
+
+随后，检查启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。这个 Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
 
 `godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
 
@@ -183,7 +185,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
 - 截图以 PNG 字节形式直接放在结果中返回，而不是为模型路由保存附件，也不检查模型；每张截图请求的宽度使其最长边至多 1,568 像素、面积至多 1,150,000 像素，即 agent 无需缩放即可接收的尺寸。
 
-`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。
+`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目。
 
 <a id="game-tab"></a>
 ### “游戏”标签页
@@ -266,7 +268,7 @@ Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平
 <details>
 <summary>实现细节 — 点击展开</summary>
 
-本包有宿主侧与 Client 侧两部分。宿主侧是 `godot` 服务，一个 Typert Remote 服务：其构造函数校验配置，注册工具和提示词部分，并在存在 `connection` 服务时注册帧路由。它拥有一个运行时管理器，负责解析和安装运行时，并把运行时视图发布给每个跟随流；还拥有一个以活动 Agent 为键的每 Session 状态注册表，其中包括当前运行、日志与新错误游标，以及最新截图的帧；该注册表还保存每个 Session id 的跟随流，它们比 Agent 存在得更久。同一个 Session 的启动与停止依次进行。
+本包有宿主侧与 Client 侧两部分。宿主侧是 `godot` 服务，一个 Typert Remote 服务：其构造函数校验配置，注册工具和提示词部分，并在存在 `connection` 服务时注册帧路由。它拥有一个运行时管理器，负责解析和安装运行时，并把运行时视图发布给每个跟随流；还拥有一个以活动 Agent 为键的每 Session 状态注册表，其中包括当前运行、日志与新错误游标，以及最新截图的帧；该注册表还保存每个 Session id 的跟随流，它们比 Agent 存在得更久。同一个 Session 的启动与停止依次进行。它还拥有项目导入记录：同一项目的导入步骤、检查和 Web 导出由它逐个执行，它还记住每个项目最近一次以退出码 0 结束的导入的开始时间。
 
 一次运行拥有它的导入进程、回环监听器、游戏进程和计时器，并在结束时全部释放。[harness 协议](../../../docs/subsystems/gamedev.zh.md#harness-protocol)定义了运行与 harness 交换的消息：令牌握手、请求及其应答、状态、日志、帧和截图图像。
 
@@ -282,7 +284,9 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧和关闭 |
 | [`src/protocol.ts`](src/protocol.ts) | harness 连接上的消息分帧与校验 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、结果文本和新错误报告 |
-| [`src/check.ts`](src/check.ts) | 静态脚本检查 |
+| [`src/check.ts`](src/check.ts) | 静态脚本检查及其之前的导入 |
+| [`src/imports.ts`](src/imports.ts) | 运行与检查的导入步骤、同一项目的导入步骤、检查与 Web 导出的执行顺序，以及项目自上次导入以来是否有改动 |
+| [`src/command.ts`](src/command.ts) | 运行到结束并收集输出的 Godot 命令：导入步骤、检查和 Web 导出 |
 | [`src/project.ts`](src/project.ts) | 项目搜索、`project.godot` 设置和 `res://` 路径 |
 | [`src/input.ts`](src/input.ts)、[`src/logs.ts`](src/logs.ts) | 输入校验与截图坐标；日志环形缓冲区及其游标 |
 | [`src/follow.ts`](src/follow.ts)、[`src/frames.ts`](src/frames.ts) | 跟随流和帧路由 |
@@ -295,7 +299,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 
 ### 用真实运行时验证
 
-在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、控制、检查和停止工具，读取帧路由，并运行第二个项目，其拉伸模式会给游戏加上黑边；未设置该变量时，测试套件会被跳过。
+在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它检查一个从未导入过、脚本相互使用对方 `class_name` 类的项目，导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、控制、检查和停止工具，读取帧路由，并运行第二个项目，其拉伸模式会给游戏加上黑边；未设置该变量时，测试套件会被跳过。
 
 ```sh
 WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.2" \
@@ -369,7 +373,7 @@ The user can watch and play the running game in the Game panel.
 
 #### 模型可见内容
 
-每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存，文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。
+每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存，文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。导入未正常结束的 `godot_check` 的结果以 `The Godot import step before the check ended abnormally (<exit>), so errors about class_name classes or imported assets may be false.` 开头，或者其中的 `ended abnormally (<exit>)` 换成 `did not finish within <seconds>`。
 
 ##### 缺少运行时的消息
 
@@ -403,6 +407,8 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **音频只在宿主上播放** — “游戏”标签页不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行 `maxRuns` 个游戏。
+- **导入只在同一宿主内相互等待** — 宿主逐个执行同一项目的导入步骤、检查和 Web 导出，但另一个宿主或 Godot 编辑器在此期间导入同一项目时，会同时写入其导入数据。
+- **删除文件不会触发检查前的导入** — 检查在项目文件发生变化或新增后才导入，因此在下一次导入之前，预加载已删除资源（其导入副本仍在）的脚本会通过检查，而使用已删除脚本的 `class_name` 类的脚本虽然检查失败，但错误消息与游戏显示的不同。
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。

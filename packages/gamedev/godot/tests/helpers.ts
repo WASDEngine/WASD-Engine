@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import { ProjectImports } from '../src/imports.ts'
 import { LogSequence } from '../src/logs.ts'
 import { GodotRun, type GodotRunSpec } from '../src/run.ts'
 
@@ -65,7 +66,7 @@ export async function writeProject(dir: string, config: FakeGodotConfig = {}, se
   lines.push('run/main_scene="res://main.tscn"', '')
   await writeFile(join(dir, 'project.godot'), lines.join('\n'))
   await writeFile(join(dir, 'main.tscn'), '[gd_scene format=3]\n')
-  await writeFile(join(dir, 'fake-godot.json'), JSON.stringify(config))
+  await writeFile(join(dir, '.fake-godot.json'), JSON.stringify(config))
   return dir
 }
 
@@ -75,7 +76,7 @@ export async function writeProject(dir: string, config: FakeGodotConfig = {}, se
  * @param config - fake behavior.
  */
 export async function configureFake(dir: string, config: FakeGodotConfig): Promise<void> {
-  await writeFile(join(dir, 'fake-godot.json'), JSON.stringify(config))
+  await writeFile(join(dir, '.fake-godot.json'), JSON.stringify(config))
 }
 
 /**
@@ -84,7 +85,7 @@ export async function configureFake(dir: string, config: FakeGodotConfig): Promi
  * @returns recorded entries in order.
  */
 export async function fakeLog(dir: string): Promise<Array<Record<string, unknown>>> {
-  const text = await readFile(join(dir, 'fake-godot.log'), 'utf8').catch(() => '')
+  const text = await readFile(join(dir, '.fake-godot.log'), 'utf8').catch(() => '')
   return text.split('\n').filter(line => line !== '').map(line => JSON.parse(line) as Record<string, unknown>)
 }
 
@@ -148,10 +149,17 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
  * @param spec - run spec.
  * @param warnings - receives Host diagnostics.
  * @param sequence - log sequence shared with other runs.
+ * @param imports - import steps shared with other runs and checks.
  * @returns the run.
  */
-export function launch(subprocess: SubprocessRuntime, spec: GodotRunSpec, warnings: string[] = [], sequence = new LogSequence()): GodotRun {
-  return GodotRun.launch(spec, { subprocess, sequence, warn: (message) => { warnings.push(message) } })
+export function launch(
+  subprocess: SubprocessRuntime,
+  spec: GodotRunSpec,
+  warnings: string[] = [],
+  sequence = new LogSequence(),
+  imports = new ProjectImports(),
+): GodotRun {
+  return GodotRun.launch(spec, { subprocess, sequence, imports, warn: (message) => { warnings.push(message) } })
 }
 
 /**

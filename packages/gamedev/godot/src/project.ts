@@ -62,14 +62,12 @@ function parseGodotString(value: string): string | undefined {
 }
 
 /**
- * Read `application/config/name` and `application/run/main_scene` from `project.godot` text.
+ * List the `[application]` settings of `project.godot` text.
  * @param text - complete file content.
- * @returns the settings that are present as plain quoted strings.
+ * @yields each setting's key, such as `config/name`, and its raw value text after `=`.
  */
-export function parseProjectSettings(text: string): ProjectSettings {
+function* applicationSettings(text: string): Generator<readonly [string, string]> {
   let section = ''
-  let name: string | undefined
-  let mainScene: string | undefined
   for (const raw of text.split(/\r?\n/u)) {
     const line = raw.trim()
     const header = /^\[([^\]]+)\]$/u.exec(line)
@@ -78,17 +76,46 @@ export function parseProjectSettings(text: string): ProjectSettings {
       continue
     }
     const separator = line.indexOf('=')
-    if (section !== 'application' || separator < 0) continue
-    const key = line.slice(0, separator).trim()
-    const value = parseGodotString(line.slice(separator + 1).trim())
+    if (section === 'application' && separator >= 0) yield [line.slice(0, separator).trim(), line.slice(separator + 1).trim()]
+  }
+}
+
+/**
+ * Read `application/config/name` and `application/run/main_scene` from `project.godot` text.
+ * @param text - complete file content.
+ * @returns the settings that are present as plain quoted strings.
+ */
+export function parseProjectSettings(text: string): ProjectSettings {
+  let name: string | undefined
+  let mainScene: string | undefined
+  for (const [key, raw] of applicationSettings(text)) {
+    const value = parseGodotString(raw)
     if (key === 'config/name') name = value
     else if (key === 'run/main_scene') mainScene = value
   }
   return { ...name === undefined ? {} : { name }, ...mainScene === undefined ? {} : { mainScene } }
 }
 
-/** List a folder's entries in name order; an absent or unreadable folder has none. */
-async function readDirectory(directory: string): Promise<Dirent[]> {
+/**
+ * Name the folder inside a project where Godot keeps the project's import data and caches: `.godot`, or `godot`
+ * when `application/config/use_hidden_project_data_directory` is `false`.
+ * @param text - complete `project.godot` content.
+ * @returns the folder name.
+ */
+export function projectDataDirectory(text: string): string {
+  let hidden = true
+  for (const [key, value] of applicationSettings(text)) {
+    if (key === 'config/use_hidden_project_data_directory') hidden = value !== 'false'
+  }
+  return hidden ? '.godot' : 'godot'
+}
+
+/**
+ * List a folder's entries in name order.
+ * @param directory - absolute folder.
+ * @returns the entries; an absent or unreadable folder has none.
+ */
+export async function readDirectory(directory: string): Promise<Dirent[]> {
   let entries: Dirent[]
   try {
     entries = await readdir(directory, { withFileTypes: true })
@@ -101,7 +128,12 @@ async function readDirectory(directory: string): Promise<Dirent[]> {
   return [...byName.keys()].sort().map(name => byName.get(name) as Dirent)
 }
 
-async function isFile(path: string): Promise<boolean> {
+/**
+ * Whether a path names a file.
+ * @param path - absolute path.
+ * @returns false when nothing exists there or it is not a file.
+ */
+export async function isFile(path: string): Promise<boolean> {
   try {
     return (await stat(path)).isFile()
   } catch (error) {

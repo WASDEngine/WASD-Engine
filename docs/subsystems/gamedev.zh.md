@@ -24,7 +24,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 | Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
 | sclang，以及渲染期间的 scsynth | SuperCollider 工作进程在启动时启动 sclang；sclang 为每次渲染通过 shell 运行 scsynth | sclang 在工作进程关闭其输入、代码让它退出，或工作进程的进程组被停止时结束；scsynth 在其渲染结束时结束 | sclang：通过标准输入与输出和工作进程通信；scsynth：无，sclang 读取其输出文件与日志 |
 | Godot 游戏 | `ctx.godot` 通过 `ctx.subprocess` 启动，每次运行一个 | 运行被停止或游戏退出时；连接关闭时 harness 脚本也会退出游戏，`godot_runner` 会随 Host 进程一起退出 | 通过一条回环 TCP 连接与 `ctx.godot` 通信 |
-| Godot 导入步骤或脚本检查 | `ctx.godot`，在运行之前以及每次 `godot_check` 调用时启动 | Godot 完成时，或 `importTimeoutMs` 到期后 | 无；`ctx.godot` 读取其输出 |
+| Godot 导入步骤或脚本检查 | `ctx.godot`：导入步骤在运行之前，以及项目自上次导入以来有改动的 `godot_check` 之前启动；检查在每次 `godot_check` 调用时启动 | Godot 完成时，或 `importTimeoutMs` 到期后 | 无；`ctx.godot` 读取其输出 |
 
 ## 应用 MCP 服务器
 
@@ -117,7 +117,7 @@ Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibG
 
 1. 查找项目：`project` 参数，即相对于 Session 工作目录的文件夹或 `project.godot` 路径；未给出时，在工作目录下至多三层文件夹内，按名称顺序广度优先查找最浅的 `project.godot`，并跳过 `.git`、`node_modules`、`.godot` 与 `.agents`。`scene` 必须指向已存在的 `res://` 文件，或是 `uid://` 引用。
 2. 解析运行时，把 `wasd_harness.gd` 与 `wasd_check.gd` 复制出包，停止该 Session 的当前运行，并检查运行数量上限。
-3. 设置了 `importBeforeRun` 时，在 `importTimeoutMs` 内运行 `--headless --path <project> --import`。其中以 `ERROR:`、`SCRIPT ERROR:`、`SHADER ERROR:` 与 `WARNING:` 开头的行会成为 `import` 日志条目；非零退出会追加一条警告，说明导入的资源可能不完整，启动继续进行。
+3. 设置了 `importBeforeRun` 时，等待 Host 对该项目的其他导入步骤、检查和 Web 导出结束，然后在 `importTimeoutMs` 内运行 `--headless --path <project> --import`。其中以 `ERROR:`、`SCRIPT ERROR:`、`SHADER ERROR:` 与 `WARNING:` 开头的行会成为 `import` 日志条目；非零退出会追加一条警告，说明导入的资源可能不完整，启动继续进行。
 4. 在 `127.0.0.1` 的临时端口上监听，并生成一个由 32 位十六进制数字组成的令牌。
 5. 在项目文件夹中用下方的 Godot 参数启动游戏，不带 `ELECTRON_RUN_AS_NODE`，stdout 与 stderr 各至多收集 `processOutputBytes` 字节。
 6. 在 `startTimeoutMs` 内，harness 脚本按 [harness 协议](#harness-protocol)所述连接并完成认证，运行随即变为 `running`。
@@ -221,7 +221,9 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 ### 脚本检查
 
-`godot_check` 不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
+脚本通过项目的导入数据解析 `class_name` 类、`uid://` 路径和已导入的资源，因此，当这些数据可能比项目文件旧时，`godot_check` 会先运行运行前的导入步骤，即在 `importTimeoutMs` 内运行 `--headless --path <project> --import`：插件加载以来该项目还没有开始过以退出码 0 结束的导入、项目数据文件夹中缺少类缓存 `global_script_class_cache.cfg`，或者导入读取的某个文件的修改时间或状态变更时间晚于最近一次这样的导入的开始时间。对项目的遍历跳过 Godot 导入所跳过的内容，[包 README](../../packages/gamedev/godot/README.zh.md#tools) 列出了这些内容。导入异常退出或超时时，检查不会失败，而是在结果开头加一条警告。`ctx.godot` 逐个执行同一项目的导入步骤、检查和 Web 导出，并在内存中保存这些开始时间。
+
+随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}

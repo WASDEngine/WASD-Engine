@@ -1,22 +1,24 @@
 // Stand-in for the LibGodot runner in tests; tests/helpers.ts starts it through a shell script that runs Node. Like
 // `godot_runner`, it takes `--libgodot <library> --parent-pid <pid> --` before Godot's own command line, which it
-// keeps. It reads its behavior from `fake-godot.json` in the `--path` project folder and appends the Godot command
-// line it received to `fake-godot.log` there. Modes follow the Host's command lines: `--import` runs the import step,
-// `--export-release` writes the configured export files next to the requested page and records the export presets it
-// saw, `--headless ... --script` runs the static check, anything else runs a game that speaks the wasd_harness.gd
-// protocol on the loopback port the Host passes.
+// keeps. It reads its behavior from `.fake-godot.json` in the `--path` project folder and appends the Godot command
+// line it received to `.fake-godot.log` there; the names are hidden, as Godot's import skips hidden files, so they never
+// count as project changes. Modes follow the Host's command lines: `--import` runs the import step, which writes the
+// class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
+// `--export-release` writes the configured export files next to the requested page, records the export presets it saw,
+// and records `exported` at its end, `--headless ... --script` runs the static check, which records `checked` at its end,
+// and anything else runs a game that speaks the wasd_harness.gd protocol on the loopback port the Host passes.
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { dirname, join } from 'node:path'
 
 const raw = process.argv.slice(2)
 const args = raw[0] === '--libgodot' ? raw.slice(raw.indexOf('--') + 1) : raw
 const project = args[args.indexOf('--path') + 1]
-const configFile = join(project, 'fake-godot.json')
+const configFile = join(project, '.fake-godot.json')
 const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : {}
-const record = entry => appendFileSync(join(project, 'fake-godot.log'), `${JSON.stringify(entry)}\n`)
+const record = entry => appendFileSync(join(project, '.fake-godot.log'), `${JSON.stringify(entry)}\n`)
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))
 const write = (stream, text) => new Promise(resolve => stream.write(text, resolve))
 
@@ -35,6 +37,11 @@ async function finish(section) {
 async function runImport(section) {
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
+  if (section.classCache !== false) {
+    mkdirSync(join(project, '.godot'), { recursive: true })
+    writeFileSync(join(project, '.godot', 'global_script_class_cache.cfg'), 'list=[]\n')
+  }
+  record({ imported: true })
   await finish(section)
 }
 
@@ -54,6 +61,7 @@ async function runCheck(section) {
     await write(process.stdout, `WASD_CHECK ${JSON.stringify({ path, loaded: true, errors: section.errors?.[path] ?? [] })}\n`)
   }
   await emitOutput(section)
+  record({ checked: true })
   await finish(section)
 }
 
@@ -323,6 +331,7 @@ async function runExport(section) {
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
   for (const [name, text] of Object.entries(section.files ?? {})) writeFileSync(join(dirname(page), name), text)
+  record({ exported: true })
   await finish(section)
 }
 

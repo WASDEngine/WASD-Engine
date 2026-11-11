@@ -24,7 +24,7 @@ Activation installs, downloads, and starts no application. The Blender, GIMP, an
 | Blender, GIMP, or SuperCollider worker | The MCP server, at a Session's first tool call that finds no running worker for that Session | When it exits, when the server shuts down, or when the server stops it after a timeout, a protocol violation, a cancelled call, `workerIdleTimeoutMs` without calls, or to make room for another Session's worker | Its MCP server; the SuperCollider worker also its sclang |
 | sclang, and scsynth during a render | The SuperCollider worker, at its start; sclang runs scsynth through a shell for each render | sclang when the worker closes its input, when code exits it, or when the worker's process group is stopped; scsynth when its render ends | sclang: the worker, over its standard input and output; scsynth: none, sclang reads its output file and log |
 | Godot game | `ctx.godot`, through `ctx.subprocess`, once per run | When the run is stopped or the game quits; the harness script also quits when its connection closes, and `godot_runner` exits with the Host process | `ctx.godot` over one loopback TCP connection |
-| Godot import step or script check | `ctx.godot`, before a run and for each `godot_check` call | When Godot finishes, or after `importTimeoutMs` | None; `ctx.godot` reads its output |
+| Godot import step or script check | `ctx.godot`: the import step before a run and before a `godot_check` whose project changed since its last import, the check for each `godot_check` call | When Godot finishes, or after `importTimeoutMs` | None; `ctx.godot` reads its output |
 
 ## Application MCP servers
 
@@ -117,7 +117,7 @@ A start through `godot_run` or `godot.run` takes these steps; `godot.run` first 
 
 1. Find the project: the `project` argument, a folder or `project.godot` path relative to the Session's working directory; without it, the shallowest `project.godot` at most three folder levels below the working directory, searched breadth first in name order, skipping `.git`, `node_modules`, `.godot`, and `.agents`. A `scene` must name an existing `res://` file or be a `uid://` reference.
 2. Resolve the runtime, copy `wasd_harness.gd` and `wasd_check.gd` out of the package, stop the Session's current run, and check the run limit.
-3. With `importBeforeRun`, run `--headless --path <project> --import` within `importTimeoutMs`. Its `ERROR:`, `SCRIPT ERROR:`, `SHADER ERROR:`, and `WARNING:` lines become `import` log entries; a nonzero exit adds a warning that imported resources may be incomplete, and the start continues.
+3. With `importBeforeRun`, wait until the Host's other import steps, checks, and Web exports of the project have ended, then run `--headless --path <project> --import` within `importTimeoutMs`. Its `ERROR:`, `SCRIPT ERROR:`, `SHADER ERROR:`, and `WARNING:` lines become `import` log entries; a nonzero exit adds a warning that imported resources may be incomplete, and the start continues.
 4. Listen on `127.0.0.1` on an ephemeral port, and draw a token of 32 hexadecimal digits.
 5. Spawn the game in the project folder with the Godot arguments below, without `ELECTRON_RUN_AS_NODE`, collecting at most `processOutputBytes` of stdout and of stderr.
 6. Within `startTimeoutMs`, the harness script connects and authenticates as the [harness protocol](#harness-protocol) describes, and the run becomes `running`.
@@ -221,7 +221,9 @@ The game process's output becomes `process` entries when a start fails and for o
 
 ### Script check
 
-`godot_check` loads scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
+Scripts resolve `class_name` classes, `uid://` paths, and imported assets through the project's import data, so `godot_check` first runs the import step of a run, `--headless --path <project> --import` within `importTimeoutMs`, when that data may be older than the project's files: when no import of the project that exited with code 0 began since the plugin loaded, when the class cache `global_script_class_cache.cfg` is missing from the project's data folder, or when a file that the import reads has a modification or status change time after the start of the last such import. The walk over the project skips what Godot's import skips, as the [package README](../../packages/gamedev/godot/README.md#tools) lists. An import that exits abnormally or runs out of time puts a warning at the start of the result instead of failing the check. `ctx.godot` runs the import steps, checks, and Web exports of one project one at a time and keeps the start times in memory.
+
+The check then loads the scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}

@@ -52,6 +52,17 @@ export interface ResolvedGodotRuntime {
   readonly version?: string
 }
 
+/**
+ * Prefix a Godot command line with its launcher.
+ * @param runtime - resolved runtime.
+ * @param hostPid - Host process id for the runner's parent watch.
+ * @param godotArgs - Godot command line arguments.
+ * @returns the complete argv.
+ */
+export function launcherArgv(runtime: ResolvedGodotRuntime, hostPid: number, godotArgs: readonly string[]): string[] {
+  return [runtime.runner, '--libgodot', runtime.library, '--parent-pid', String(hostPid), '--', ...godotArgs]
+}
+
 /** Platform facts and effects the runtime manager uses. */
 export interface RuntimeHost {
   /** Node platform name. */
