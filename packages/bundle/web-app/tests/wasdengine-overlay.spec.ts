@@ -62,7 +62,7 @@ const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-
 const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
-const SKILLS = ['game-design-doc', 'godot-project', 'phaser-game'] as const
+const SKILLS = ['game-design-doc', 'godot-project'] as const
 
 /**
  * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's

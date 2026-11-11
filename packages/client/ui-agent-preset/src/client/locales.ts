@@ -44,7 +44,7 @@ export const en: Record<AgentPresetSettingsKey, string> = {
   view: 'View configuration',
 
   presetGamedevName: 'Game developer',
-  presetGamedevDescription: 'Designs, builds, runs, and debugs games with bundled Godot, Phaser, and game-design skills.',
+  presetGamedevDescription: 'Designs, builds, runs, and debugs games with bundled Godot and game-design skills.',
   presetCordisName: 'Customize mode',
   presetCordisDescription:
     'Customize WASD Engine through conversation. Let the agent write plugins that add features or UI, or combine tools and prompts to create your own mode.',
@@ -81,7 +81,7 @@ export const zh: Record<AgentPresetSettingsKey, string> = {
   view: '查看配置',
 
   presetGamedevName: '游戏开发者',
-  presetGamedevDescription: '借助内置的 Godot、Phaser 和游戏设计技能，设计、构建、运行和调试游戏。',
+  presetGamedevDescription: '借助内置的 Godot 和游戏设计技能，设计、构建、运行和调试游戏。',
   presetCordisName: '自定义模式',
   presetCordisDescription: '用对话定制 WASD Engine：让 Agent 编写插件，添加新功能或界面；也能组合工具和提示词，创建自己的模式。',
 
@@ -121,7 +121,7 @@ export const ja = {
   'setDefault': '新しいタスクの既定に設定',
   'view': '設定を表示',
   'presetGamedevName': 'ゲーム開発者',
-  'presetGamedevDescription': '同梱の Godot、Phaser、ゲームデザインのスキルで、ゲームを設計、構築、実行、デバッグします。',
+  'presetGamedevDescription': '同梱の Godot とゲームデザインのスキルで、ゲームを設計、構築、実行、デバッグします。',
   'presetCordisName': 'カスタマイズモード',
   'presetCordisDescription': '会話を通じて WASD Engine をカスタマイズします。機能や UI を追加するプラグインをエージェントに書かせたり、ツールとプロンプトを組み合わせて独自のモードを作成したりできます。',
   'inUse': '新しいタスクの既定',
@@ -152,7 +152,7 @@ export const es = {
   view: 'Ver configuración',
 
   presetGamedevName: 'Desarrollador de juegos',
-  presetGamedevDescription: 'Diseña, construye, ejecuta y depura juegos con las habilidades incluidas de Godot, Phaser y diseño de juegos.',
+  presetGamedevDescription: 'Diseña, construye, ejecuta y depura juegos con las habilidades incluidas de Godot y diseño de juegos.',
   presetCordisName: 'Modo de personalización',
   presetCordisDescription:
     'Personaliza WASD Engine a través de la conversación. Deje que el agente escriba complementos que agreguen funciones o interfaz de usuario, o combine herramientas e indicaciones para crear su propio modo.',
@@ -191,7 +191,7 @@ export const fr = {
 
   presetGamedevName: 'Développeur de jeux',
   presetGamedevDescription:
-    'Conçoit, crée, exécute et débogue des jeux avec les compétences intégrées pour Godot, Phaser et la conception de jeux.',
+    'Conçoit, crée, exécute et débogue des jeux avec les compétences intégrées pour Godot et la conception de jeux.',
   presetCordisName: 'Mode Personnalisation',
   presetCordisDescription:
     "Personnalisez WASD Engine via la conversation. Laissez l'agent écrire des plugins qui ajoutent des fonctionnalités ou une interface utilisateur, ou combinez des outils et des invites pour créer votre propre mode.",
@@ -229,7 +229,7 @@ export const de = {
   view: 'Konfiguration anzeigen',
 
   presetGamedevName: 'Spieleentwickler',
-  presetGamedevDescription: 'Entwirft, baut, startet und debuggt Spiele mit den mitgelieferten Skills für Godot, Phaser und Spieldesign.',
+  presetGamedevDescription: 'Entwirft, baut, startet und debuggt Spiele mit den mitgelieferten Skills für Godot und Spieldesign.',
   presetCordisName: 'Anpassungsmodus',
   presetCordisDescription:
     'Passen Sie WASD Engine durch Gespräche an. Lassen Sie den Agenten Plugins schreiben, die Funktionen oder Benutzeroberflächen hinzufügen, oder kombinieren Sie Tools und Eingabeaufforderungen, um Ihren eigenen Modus zu erstellen.',
@@ -268,7 +268,7 @@ export const ru = {
 
   presetGamedevName: 'Разработчик игр',
   presetGamedevDescription:
-    'Проектирует, собирает, запускает и отлаживает игры с помощью встроенных навыков для Godot, Phaser и геймдизайна.',
+    'Проектирует, собирает, запускает и отлаживает игры с помощью встроенных навыков для Godot и геймдизайна.',
   presetCordisName: 'Режим настройки',
   presetCordisDescription:
     'Настройте WASD Engine через разговор. Позвольте агенту писать плагины, которые добавляют функции или пользовательский интерфейс, или комбинируйте инструменты и подсказки для создания собственного режима.',
@@ -306,7 +306,7 @@ export const pt = {
   view: 'Ver configuração',
 
   presetGamedevName: 'Desenvolvedor de jogos',
-  presetGamedevDescription: 'Projeta, cria, executa e depura jogos com as habilidades incluídas de Godot, Phaser e design de jogos.',
+  presetGamedevDescription: 'Projeta, cria, executa e depura jogos com as habilidades incluídas de Godot e design de jogos.',
   presetCordisName: 'Modo de personalização',
   presetCordisDescription:
     'Personalize o WASD Engine por meio de conversa. Deixe o agente escrever plug-ins que adicionem recursos ou UI, ou combine ferramentas e prompts para criar seu próprio modo.',

@@ -1,6 +1,6 @@
 ---
 name: game-design-doc
-description: Plan a new game or a feature that changes how a game plays before building it, and keep a short design doc in the repository (pitch, core loop, controls, rules, scope, milestones). Load when the user asks for a new game, a game jam entry, or a gameplay feature, or before choosing an engine.
+description: Plan a new game or a feature that changes how a game plays before building it, and keep a short design doc in the repository (pitch, core loop, controls, rules, scope, milestones). Load when the user asks for a new game, a game jam entry, or a gameplay feature.
 ---
 
 # Game design doc
@@ -17,7 +17,7 @@ Keep it in `docs/game-design.md` unless the project already has a design documen
 
 ## Ask only what you cannot infer
 
-Ask a few questions at most, each with a default the user can accept: genre and one reference game, target platform and input (keyboard, gamepad, touch), session length, art style, and whether assets must be original or may come from licensed packs. Take the engine from the existing workspace. For a new project, propose Godot for desktop or console-style 2D and 3D games and Phaser for games that run in a browser, and let the user decide.
+Ask a few questions at most, each with a default the user can accept: genre and one reference game, target platform and input (keyboard, gamepad, touch), session length, art style, and whether assets must be original or may come from licensed packs. Take the engine from the existing workspace. Make every new project a Godot game, including one that runs in a browser: Godot is built in, and `wasd_export_web` builds a Godot project for the Web.
 
 ## Template
 
