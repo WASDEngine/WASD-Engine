@@ -1,16 +1,22 @@
 /**
  * Blender worker environment, resolved in the MCP server process on the first tool call: find
- * `uv` or a Blender executable, prepare the managed `bpy` virtual environment, and build the
- * worker command line for the selected backend. Every file-system and process effect goes
- * through a {@link BlenderSetupHost}, so resolution is testable without Blender or uv.
+ * the `bpy` runtime that the Desktop app ships, unpacking it when the app ships its archive, `uv`,
+ * or a Blender executable, prepare the managed `bpy` virtual environment, and build the worker
+ * command line for the selected backend. Every file-system and process effect goes through a
+ * {@link BlenderSetupHost}, so resolution is testable without Blender or uv.
  */
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
-import { AppServerOptionFields, WorkerError, firstExecutable, newestFirst, nodeSetupHost, parseAppServerOptions } from '@deepseek-ai/dsh-app-mcp'
-import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import {
+  AppServerOptionFields, ShippedRuntimeFields, ShippedRuntimePath, WorkerError, firstExecutable, newestFirst, nodeShippedRuntimeHost,
+  parseAppServerOptions, readPackedRuntime, readShippedRuntime,
+} from '@deepseek-ai/dsh-app-mcp'
+import type {
+  AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, PackedRuntime, SetupHost, ShippedRuntimeHost, WorkerReady,
+} from '@deepseek-ai/dsh-app-mcp'
 import type { BlenderServerOptions } from './types.ts'
 
 /** A `bpy` package version such as `5.2.3`. */
@@ -45,10 +51,11 @@ export class BlenderSetupError extends Error {
 
   /**
    * @param code - `UV_NOT_FOUND` and `BLENDER_NOT_FOUND` for missing or misconfigured executables,
-   * `BPY_INSTALL_FAILED` when uv could not create the bpy environment or it could not be moved into place.
+   * `BPY_INSTALL_FAILED` when uv could not create the bpy environment or it could not be moved into place,
+   * `BLENDER_RUNTIME_INVALID` for a shipped bpy runtime that its `runtime.json` does not describe.
    * @param message - actionable description for the agent and the user.
    */
-  constructor(readonly code: 'UV_NOT_FOUND' | 'BLENDER_NOT_FOUND' | 'BPY_INSTALL_FAILED', message: string) {
+  constructor(readonly code: 'UV_NOT_FOUND' | 'BLENDER_NOT_FOUND' | 'BPY_INSTALL_FAILED' | 'BLENDER_RUNTIME_INVALID', message: string) {
     super(message)
   }
 }
@@ -70,8 +77,11 @@ export interface CommandResult {
   readonly output: string
 }
 
-/** File-system and process effects of environment resolution: the shared setup host plus what installing bpy needs. */
-export interface BlenderSetupHost extends SetupHost {
+/**
+ * File-system and process effects of environment resolution: the shared setup host with the shipped runtime lookup's
+ * architecture and file reads, plus what installing bpy needs.
+ */
+export interface BlenderSetupHost extends ShippedRuntimeHost {
   /**
    * Rename a directory; rejects when the destination exists and is not empty.
    * @param from - existing path.
@@ -116,14 +126,14 @@ export function runCommand(argv: CommandArgv, options: CommandOptions, outputLim
 }
 
 /**
- * The real host: the shared `nodeSetupHost`, plus `node:fs` renames and removals and
+ * The real host: the shared `nodeShippedRuntimeHost`, plus `node:fs` renames and removals and
  * `node:child_process` commands on this machine.
  * @param outputLimit - bytes of command output kept for diagnostics.
- * @returns a host bound to the current process environment.
+ * @returns a host bound to the current process environment and architecture.
  */
 export function nodeBlenderSetupHost(outputLimit: number): BlenderSetupHost {
   return {
-    ...nodeSetupHost(),
+    ...nodeShippedRuntimeHost(),
     async rename(from, to) { await rename(from, to) },
     async remove(target) { await rm(target, { recursive: true, force: true }) },
     run: async (argv, options) => await runCommand(argv, options, outputLimit),
@@ -202,6 +212,150 @@ export async function findBlender(options: Pick<BlenderServerOptions, 'blenderPa
   return await firstExecutable(installs.map(name => paths.join(root, name, 'blender.exe')), host)
 }
 
+/** `runtime.json` of a shipped bpy runtime, as `wasdengine/blender/runtime.py` writes it. */
+const BpyRuntimeRecord = z.object({
+  ...ShippedRuntimeFields,
+  bpy: z.string().regex(BPY_VERSION_PATTERN),
+  python: z.string().regex(/^3\.\d+\.\d+$/u),
+  executable: ShippedRuntimePath,
+})
+
+/** The fields of a shipped bpy runtime's `runtime.json`. */
+export type BpyRuntime = z.infer<typeof BpyRuntimeRecord>
+
+/** The bpy runtime that the Desktop app ships: a Python with the bpy module installed. */
+export interface ShippedBpy {
+  /** The runtime's folder: `<platform>-<arch>` in the package, or the folder under `dataRoot` it was unpacked into. */
+  readonly directory: string
+  /** The runtime's Python executable. */
+  readonly python: string
+  /** Version of its bpy module, such as `5.2.3`. */
+  readonly bpy: string
+}
+
+/**
+ * The bpy runtime that the Desktop app ships for this platform: `<bundledRoot>/<platform>-<arch>/runtime.json` names
+ * its Python executable and the version of its bpy module.
+ * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
+ * @param host - environment and file checks.
+ * @returns the runtime, or undefined when no runtime is shipped for this platform.
+ * @throws BlenderSetupError `BLENDER_RUNTIME_INVALID` when `runtime.json` is not JSON, is not a runtime record,
+ *   describes another platform, or names a Python that is not an executable file.
+ */
+export async function findShippedBpy(bundledRoot: string, host: ShippedRuntimeHost): Promise<ShippedBpy | undefined> {
+  const runtime = await readShippedRuntime(bundledRoot, host, BpyRuntimeRecord, shippedInvalid)
+  if (runtime === undefined) return undefined
+  const python = runtime.resolve(runtime.record.executable)
+  if (!await host.isExecutable(python)) throw shippedInvalid(runtime.directory, `${python} is not an executable file`)
+  return { directory: runtime.directory, python, bpy: runtime.record.bpy }
+}
+
+/** The error for a shipped bpy runtime that cannot run, with how to recover. */
+function shippedInvalid(directory: string, reason: string): BlenderSetupError {
+  return new BlenderSetupError('BLENDER_RUNTIME_INVALID',
+    `The bpy runtime shipped in ${directory} cannot run: ${reason}. Reinstall WASD Engine, or set the Blender plugin setting backend to app to use an installed Blender.`)
+}
+
+/**
+ * The bpy runtime that the Desktop app ships as its archive for this platform: `<bundledRoot>/<platform>-<arch>/archive.json`
+ * names the archive beside it and the fields of its `runtime.json`. The Desktop app for Windows ships the archive,
+ * because the runtime's deepest files would pass Windows' path length limit below the app's install folder.
+ * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
+ * @param host - environment and file reads.
+ * @returns the archive, or undefined when no archive is shipped for this platform.
+ * @throws BlenderSetupError `BLENDER_RUNTIME_INVALID` when `archive.json` is not JSON, is not an archive record, or
+ *   describes another platform.
+ */
+export async function findPackedBpy(bundledRoot: string, host: ShippedRuntimeHost): Promise<PackedRuntime<BpyRuntime> | undefined> {
+  return await readPackedRuntime(bundledRoot, host, BpyRuntimeRecord, shippedInvalid)
+}
+
+/**
+ * The folder that a packed shipped runtime unpacks into: `<dataRoot>/runtime/<version>`, where even a long user name
+ * leaves the deepest files of the runtime well inside Windows' path length limit.
+ * @param dataRoot - the plugin's data directory.
+ * @param version - the runtime version, such as `5.2.3-wasd.1`.
+ * @param platform - selects the path syntax.
+ * @returns the folder.
+ */
+export function unpackedRuntimeDirectory(dataRoot: string, version: string, platform: NodeJS.Platform): string {
+  return pathsOf(platform).join(dataRoot, 'runtime', version)
+}
+
+/**
+ * The `tar` that unpacks a packed runtime: on Windows the bsdtar of `%SystemRoot%\System32`, because the GNU tar that
+ * Git for Windows puts on `PATH` reads `C:\...` as a remote host; elsewhere `/usr/bin/tar`, then `tar` on `PATH`.
+ */
+async function findTar(host: SetupHost): Promise<string | undefined> {
+  if (host.platform !== 'win32') return await firstExecutable(['/usr/bin/tar'], host) ?? await findOnPath('tar', host)
+  const root = host.env.SystemRoot ?? host.env.windir ?? 'C:\\Windows'
+  return await firstExecutable([path.win32.join(root, 'System32', 'tar.exe')], host)
+}
+
+/** Whether a folder holds an unpacked runtime whose `runtime.json` describes the given runtime. */
+async function holdsRuntime(directory: string, expected: BpyRuntime, host: ShippedRuntimeHost): Promise<boolean> {
+  const text = await host.readTextFile(pathsOf(host.platform).join(directory, 'runtime.json'))
+  if (text === undefined) return false
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch {
+    // SyntaxError: a runtime.json that is not JSON describes no runtime, so the archive unpacks again.
+    return false
+  }
+  const parsed = BpyRuntimeRecord.safeParse(json)
+  return parsed.success && (['format', 'version', 'bpy', 'python', 'platform', 'arch', 'executable'] as const)
+    .every(field => parsed.data[field] === expected[field])
+}
+
+/**
+ * Unpack the bpy runtime that the Desktop app ships as its archive into {@link unpackedRuntimeDirectory}, unless that
+ * folder already holds it. The archive unpacks into a uniquely named sibling folder that is renamed into place, so an
+ * interrupted unpack never leaves a half-unpacked runtime at the final path; a folder there whose Python is not
+ * executable is replaced, and a runtime that a concurrent server unpacked first is accepted.
+ * @param packed - the archive and its runtime fields, from {@link findPackedBpy}.
+ * @param dataRoot - the plugin's data directory.
+ * @param host - file-system and process effects.
+ * @param signal - cancels the running tar.
+ * @returns the unpacked runtime and whether this call unpacked it.
+ * @throws BlenderSetupError `BLENDER_RUNTIME_INVALID` when the archive or tar is missing, tar fails, or the unpacked
+ *   `runtime.json` does not describe the archive's runtime; `BPY_INSTALL_FAILED` when the runtime cannot be moved into place.
+ */
+export async function unpackShippedBpy(
+  packed: PackedRuntime<BpyRuntime>, dataRoot: string, host: BlenderSetupHost, signal: AbortSignal,
+): Promise<ShippedBpy & { readonly unpacked: boolean }> {
+  const paths = pathsOf(host.platform)
+  const directory = unpackedRuntimeDirectory(dataRoot, packed.record.version, host.platform)
+  const python = paths.join(directory, ...packed.record.executable.split('/'))
+  const runtime = { directory, python, bpy: packed.record.bpy }
+  if (await holdsRuntime(directory, packed.record, host) && await host.isExecutable(python)) return { ...runtime, unpacked: false }
+  if (!(await host.listDirectory(packed.directory)).includes(paths.basename(packed.archive))) {
+    throw shippedInvalid(packed.directory, `its archive.json names ${packed.archive}, which is missing`)
+  }
+  const tar = await findTar(host)
+  if (tar === undefined) {
+    throw new BlenderSetupError('BLENDER_RUNTIME_INVALID', `No tar program was found to unpack the bpy runtime that WASD Engine ships in ${packed.archive}; `
+      + 'Windows 10 and later have one in System32. Set the Blender plugin setting backend to app to use an installed Blender.')
+  }
+  await host.makeDirectory(paths.dirname(directory))
+  // A short suffix keeps the folder's deepest paths inside Windows' path length limit while the archive unpacks.
+  const partial = `${directory}.partial-${randomUUID().slice(0, 8)}`
+  await host.makeDirectory(partial)
+  try {
+    const result = await host.run([tar, '-xzf', packed.archive, '-C', partial], { cwd: dataRoot, env: childEnvironment(host.env), signal })
+    if (result.exitCode !== 0) {
+      throw shippedInvalid(packed.directory, `tar could not unpack ${packed.archive} (${exitText(result)}): ${result.output.trim()}`)
+    }
+    if (!await holdsRuntime(partial, packed.record, host)) {
+      throw shippedInvalid(packed.directory, `the runtime.json in ${packed.archive} does not describe the runtime ${packed.record.version} that its archive.json names`)
+    }
+    await moveIntoPlace(host, partial, { directory, python }, 'bpy runtime')
+  } finally {
+    await host.remove(partial)
+  }
+  return { ...runtime, unpacked: true }
+}
+
 /**
  * The managed bpy environment for this configuration.
  * @param options - data root and pinned versions.
@@ -231,26 +385,30 @@ export function childEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([name]) => !REDIRECTING_VARIABLES.has(name)))
 }
 
+/** How a command ended, as a clause: `exit code 2` or `signal SIGKILL`. */
+function exitText(result: CommandResult): string {
+  return result.exitCode === null ? `signal ${String(result.signal)}` : `exit code ${String(result.exitCode)}`
+}
+
 async function runSetupStep(host: BlenderSetupHost, argv: CommandArgv, options: CommandOptions, action: string): Promise<void> {
   const result = await host.run(argv, options)
   if (result.exitCode === 0) return
-  const status = result.exitCode === null ? `signal ${String(result.signal)}` : `exit code ${String(result.exitCode)}`
-  throw new BlenderSetupError('BPY_INSTALL_FAILED', `Could not ${action}: uv ${argv.slice(1, 3).join(' ')} failed with ${status}.\n${result.output.trim()}`)
+  throw new BlenderSetupError('BPY_INSTALL_FAILED', `Could not ${action}: uv ${argv.slice(1, 3).join(' ')} failed with ${exitText(result)}.\n${result.output.trim()}`)
 }
 
-function installFailure(target: { readonly directory: string }, error: unknown): BlenderSetupError {
+function installFailure(target: { readonly directory: string }, what: string, error: unknown): BlenderSetupError {
   const message = error instanceof Error ? error.message : String(error)
-  return new BlenderSetupError('BPY_INSTALL_FAILED', `Could not move the new bpy environment to ${target.directory}: ${message}. Remove that folder, then call the tool again.`)
+  return new BlenderSetupError('BPY_INSTALL_FAILED', `Could not move the new ${what} to ${target.directory}: ${message}. Remove that folder, then call the tool again.`)
 }
 
 /**
- * Move a built environment to its final path. A directory already there whose Python is not
- * executable, such as one whose managed Python was removed, is moved aside and deleted; a working
- * environment that a concurrent installer moved there first is accepted.
- * @throws BlenderSetupError `BPY_INSTALL_FAILED` when the environment cannot be moved into place.
+ * Move a built environment or unpacked runtime to its final path. A directory already there whose Python is not
+ * executable, such as one whose managed Python was removed, is moved aside and deleted; a working one that a
+ * concurrent installer moved there first is accepted.
+ * @throws BlenderSetupError `BPY_INSTALL_FAILED` when the folder cannot be moved into place.
  */
 async function moveIntoPlace(
-  host: BlenderSetupHost, built: string, target: { readonly directory: string; readonly python: string },
+  host: BlenderSetupHost, built: string, target: { readonly directory: string; readonly python: string }, what: string,
 ): Promise<void> {
   try {
     await host.rename(built, target.directory)
@@ -262,12 +420,12 @@ async function moveIntoPlace(
       await host.rename(target.directory, stale)
     } catch {
       // Nothing could be moved aside, so the failure of the first rename is the cause.
-      throw installFailure(target, error)
+      throw installFailure(target, what, error)
     }
     try {
       await host.rename(built, target.directory)
     } catch (retryError) {
-      if (!await host.isExecutable(target.python)) throw installFailure(target, retryError)
+      if (!await host.isExecutable(target.python)) throw installFailure(target, what, retryError)
     } finally {
       await host.remove(stale)
     }
@@ -303,7 +461,7 @@ export async function prepareBpy(
       `create a Python ${options.pythonVersion} environment`)
     await runSetupStep(host, [uv, 'pip', 'install', '--no-progress', '--python', venvPython(partial, host.platform), `bpy==${options.bpyVersion}`],
       commandOptions, `install bpy ${options.bpyVersion}`)
-    await moveIntoPlace(host, partial, target)
+    await moveIntoPlace(host, partial, target, 'bpy environment')
   } finally {
     await host.remove(partial)
   }
@@ -313,6 +471,10 @@ export async function prepareBpy(
 /** How to start one worker process. */
 export interface WorkerLaunch {
   readonly backend: 'bpy' | 'app'
+  /** Whether the launch runs the bpy runtime that the Desktop app ships, packed or not. */
+  readonly shipped: boolean
+  /** What a bpy module that does not start says to do about its runtime; empty for the app backend. */
+  readonly repair: string
   readonly argv: CommandArgv
   readonly env: NodeJS.ProcessEnv
   /** Setup facts to report to the agent with the next tool result. */
@@ -326,6 +488,8 @@ const SETUP_HELP = 'Install uv (https://docs.astral.sh/uv/getting-started/instal
 function appLaunch(blender: string, workerScript: string, env: NodeJS.ProcessEnv, notes: readonly string[]): WorkerLaunch {
   return {
     backend: 'app',
+    shipped: false,
+    repair: '',
     argv: [blender, '--background', '--factory-startup', '-noaudio', '--python-exit-code', '1', '--python', workerScript],
     env,
     notes,
@@ -333,28 +497,59 @@ function appLaunch(blender: string, workerScript: string, env: NodeJS.ProcessEnv
 }
 
 /**
- * Choose the backend and build the worker command line. `auto` prefers the bpy module when uv is
- * available and falls back to an installed Blender when the bpy environment cannot be prepared.
+ * Choose the backend and build the worker command line. `auto` and `bpy` prefer the bpy runtime that the Desktop app
+ * ships when its bpy version is `bpyVersion`, unpacking it under `dataRoot` first when the app ships its archive, then
+ * the bpy module in the environment that uv manages; `auto` falls back to an installed Blender when uv is missing or
+ * the archive or the bpy environment cannot be prepared. The runtime inside the app runs with `-B`, because it lives
+ * inside the signed application and writes no bytecode caches there; an unpacked runtime and uv's environment, under
+ * `dataRoot`, keep them.
  * @param options - backend selection, executable overrides, and versions.
  * @param workerScript - real path of `wasd_blender_worker.py`.
+ * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
  * @param host - file-system and process effects.
- * @param signal - cancels a running bpy installation.
+ * @param signal - cancels a running bpy installation or unpack.
  * @returns the worker launch with setup notes.
- * @throws BlenderSetupError with installation instructions when no backend is usable.
+ * @throws BlenderSetupError with installation instructions when no backend is usable, and the errors of
+ *   {@link findShippedBpy} and {@link findPackedBpy}.
  */
 export async function resolveWorkerLaunch(
-  options: BlenderServerOptions, workerScript: string, host: BlenderSetupHost, signal: AbortSignal,
+  options: BlenderServerOptions, workerScript: string, bundledRoot: string, host: BlenderSetupHost, signal: AbortSignal,
 ): Promise<WorkerLaunch> {
   const env = childEnvironment(host.env)
   if (options.backend !== 'app') {
+    const shipped = await findShippedBpy(bundledRoot, host)
+    if (shipped !== undefined && shipped.bpy === options.bpyVersion) {
+      return {
+        backend: 'bpy', shipped: true, argv: [shipped.python, '-I', '-B', '-u', workerScript], env, notes: [],
+        repair: `If the bpy runtime that WASD Engine ships in ${shipped.directory} is damaged, reinstall WASD Engine.`,
+      }
+    }
+    const packed = await findPackedBpy(bundledRoot, host)
+    if (packed !== undefined && packed.record.bpy === options.bpyVersion) {
+      try {
+        const runtime = await unpackShippedBpy(packed, options.dataRoot, host, signal)
+        return {
+          backend: 'bpy', shipped: true, argv: [runtime.python, '-I', '-u', workerScript], env,
+          notes: runtime.unpacked ? [`Unpacked the bpy runtime that WASD Engine ships into ${runtime.directory} (first use).`] : [],
+          repair: `If the bpy runtime that WASD Engine unpacked into ${runtime.directory} is damaged, delete that folder so that the next start unpacks it again.`,
+        }
+      } catch (error) {
+        if (options.backend === 'bpy' || !(error instanceof BlenderSetupError)) throw error
+        const blender = await findBlender(options, host)
+        if (blender === undefined) throw error
+        return appLaunch(blender, workerScript, env, [`The bpy runtime that WASD Engine ships could not be unpacked, so Blender at ${blender} runs the tools instead. ${error.message}`])
+      }
+    }
     const uv = await findUv(options, host)
     if (uv !== undefined) {
       try {
         const { python, installed } = await prepareBpy(uv, options, host, signal)
-        const notes = installed
-          ? [`Installed Python ${options.pythonVersion} and bpy ${options.bpyVersion} into ${bpyEnvironment(options, host.platform).directory} (first use).`]
-          : []
-        return { backend: 'bpy', argv: [python, '-I', '-u', workerScript], env, notes }
+        const environment = bpyEnvironment(options, host.platform).directory
+        const notes = installed ? [`Installed Python ${options.pythonVersion} and bpy ${options.bpyVersion} into ${environment} (first use).`] : []
+        return {
+          backend: 'bpy', shipped: false, argv: [python, '-I', '-u', workerScript], env, notes,
+          repair: `If the bpy environment at ${environment} is damaged, delete that folder so that the next start installs it again.`,
+        }
       } catch (error) {
         if (options.backend === 'bpy' || !(error instanceof BlenderSetupError)) throw error
         const blender = await findBlender(options, host)
@@ -375,9 +570,11 @@ export async function resolveWorkerLaunch(
   return appLaunch(blender, workerScript, env, [])
 }
 
-/** Dependencies of {@link BlenderWorkers}: the server's worker script copy and worker start, and the setup host. */
+/** Dependencies of {@link BlenderWorkers}: the server's worker script copy and worker start, the setup host, and the shipped runtimes. */
 export interface BlenderWorkerDependencies<W extends { readonly ready: WorkerReady }> extends AppWorkerDependencies<W> {
   readonly host: BlenderSetupHost
+  /** The package's `runtime` folder, from `shippedRuntimeRoot`. */
+  readonly bundledRoot: string
 }
 
 /** Characters of the last line of worker output that a setup note quotes. */
@@ -406,7 +603,8 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
   /**
    * Prepare the environment and start one worker. When the `bpy` module does not start, such as
    * from a damaged environment, the `auto` backend starts an installed Blender instead and a note
-   * quotes the failure; otherwise the start failure says how to reinstall the environment.
+   * quotes the failure; otherwise the start failure says how to repair the shipped runtime or
+   * reinstall the environment.
    * @param signal - cancels preparation and the ready wait.
    * @param scope - the Session whose worker this is, and its own directory, which is the worker's working directory.
    * @returns the ready worker.
@@ -416,18 +614,16 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
     const { host } = this.dependencies
     await host.makeDirectory(this.options.dataRoot)
     const script = await this.dependencies.workerScript()
-    const launch = await resolveWorkerLaunch(this.options, script, host, signal)
+    const launch = await resolveWorkerLaunch(this.options, script, this.dependencies.bundledRoot, host, signal)
     try {
       return await this.startWorker(launch, scope, signal)
     } catch (error) {
       if (launch.backend === 'app' || !(error instanceof WorkerError) || error.code !== 'WORKER_START_FAILED') throw error
-      const environment = bpyEnvironment(this.options, host.platform).directory
-      const reinstall = `If the bpy environment at ${environment} is damaged, delete that folder so that the next start installs it again.`
       const blender = this.options.backend === 'auto' ? await findBlender(this.options, host) : undefined
-      if (blender === undefined) throw new WorkerError(error.code, `${error.message}. ${reinstall}`, { logTail: error.logTail, cause: error })
+      if (blender === undefined) throw new WorkerError(error.code, `${error.message}. ${launch.repair}`, { logTail: error.logTail, cause: error })
       return await this.startWorker(appLaunch(blender, script, launch.env, [
         ...launch.notes,
-        `The bpy module did not start (${error.message}${lastOutputLine(error.logTail)}), so Blender at ${blender} runs the tools instead. ${reinstall}`,
+        `The bpy module did not start (${error.message}${lastOutputLine(error.logTail)}), so Blender at ${blender} runs the tools instead. ${launch.repair}`,
       ]), scope, signal)
     }
   }
@@ -437,7 +633,7 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
       argv: launch.argv, cwd: scope.directory, env: launch.env,
       readyTimeoutMs: this.options.startupTimeoutMs, logTailBytes: this.options.maxLogBytes,
     }, signal)
-    const runtime = launch.backend === 'bpy' ? 'bpy module' : 'Blender app'
+    const runtime = launch.backend === 'app' ? 'Blender app' : launch.shipped ? 'the bpy module that WASD Engine ships' : 'bpy module'
     const python = worker.ready.python === undefined ? '' : `, Python ${worker.ready.python}`
     this.notes.push(...launch.notes, `Blender ${worker.ready.version} started (${runtime}${python}) with its default scene.`)
     return worker

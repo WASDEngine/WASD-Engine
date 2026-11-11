@@ -2,9 +2,10 @@
 # (wasdengine/FORK.md, Releases): the unsigned NSIS installer, its blockmap, and the stable.yml and nightly.yml feed
 # files that installed Windows apps read through releases/latest/download. The release is created as a draft when it
 # does not exist yet; wasdengine-github-release.ts publish makes it the latest release once the macOS files are in.
-# Every installer bundles LibGodot, so the job stops at its start until the LibGodot release that
-# apps/desktop/scripts/wasdengine-libgodot.ts names lists a win32-x64 build; publish it with wasd-libgodot.yml on main,
-# then re-run this workflow. Runs on every pushed v* tag and on manual dispatch.
+# Every installer bundles LibGodot and Blender's bpy runtime, so the job stops at its start until the LibGodot release
+# that apps/desktop/scripts/wasdengine-libgodot.ts names and the Blender release that
+# apps/desktop/scripts/wasdengine-blender.ts names list a win32-x64 build; publish them with wasd-libgodot.yml and
+# wasd-blender.yml on main, then re-run this workflow. Runs on every pushed v* tag and on manual dispatch.
 #
 # The job runs the build and the upload in one place, so the token that may write releases reaches only the upload
 # step; the installer it builds is what users run, so a build that could tamper with that step could equally tamper
@@ -74,17 +75,21 @@ jobs:
           node-version: '24'
           cache: pnpm
 
-      # Packaging would otherwise fail an hour in, or, for a manifest without a Windows build, ship without LibGodot.
-      - name: Require the LibGodot release
+      # Packaging would otherwise fail an hour in, or, for a manifest without a Windows build, ship without the runtime.
+      - name: Require the LibGodot and Blender releases
         run: |
           node --input-type=module --eval @'
           const { LIBGODOT_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-libgodot.ts')
-          const response = await fetch(LIBGODOT_MANIFEST_URL)
-          const manifest = response.ok ? await response.json() : undefined
-          if (manifest?.artifacts?.['win32-x64'] === undefined) {
-            console.log(`::error::${LIBGODOT_MANIFEST_URL} ${response.ok ? 'lists no win32-x64 build' : `answered HTTP ${response.status}`}. Run the LibGodot runtime workflow (wasd-libgodot.yml) on main to publish it, then re-run this workflow.`)
-            process.exit(1)
+          const { BLENDER_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-blender.ts')
+          let missing = false
+          for (const [url, runtime, workflow] of [[LIBGODOT_MANIFEST_URL, 'LibGodot', 'wasd-libgodot.yml'], [BLENDER_MANIFEST_URL, 'Blender', 'wasd-blender.yml']]) {
+            const response = await fetch(url)
+            const manifest = response.ok ? await response.json() : undefined
+            if (manifest?.artifacts?.['win32-x64'] !== undefined) continue
+            console.log(`::error::${url} ${response.ok ? 'lists no win32-x64 build' : `answered HTTP ${response.status}`}. Run the ${runtime} runtime workflow (${workflow}) on main to publish it, then re-run this workflow.`)
+            missing = true
           }
+          if (missing) process.exit(1)
           '@
 
       - name: Install dependencies
@@ -108,6 +113,18 @@ jobs:
           $runtime = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-godot/libgodot/win32-x64/runtime.json'
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no LibGodot runtime at $runtime" }
           Get-Content -Raw $runtime | ConvertFrom-Json | Select-Object version, godot, runner, library | Format-List
+
+      # The app ships Blender's runtime as its archive, which the Blender plugin unpacks under its data folder on first
+      # use, because the runtime's deepest files would pass Windows' path length limit below the install folder.
+      - name: Check that the installer bundles Blender
+        run: |
+          $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-blender/runtime/win32-x64'
+          $record = Join-Path $folder 'archive.json'
+          if (-not (Test-Path -LiteralPath $record -PathType Leaf)) { throw "The packaged app has no Blender runtime archive at $folder" }
+          $archive = Get-Content -Raw $record | ConvertFrom-Json
+          $file = Join-Path $folder $archive.archive
+          if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Get-Item -LiteralPath $file).Length -ne $archive.bytes) { throw "The packaged app's Blender archive $file is missing or has the wrong size" }
+          $archive.runtime | Select-Object version, bpy, python, executable | Format-List
 
       - name: Keep the packaging logs
         if: always()

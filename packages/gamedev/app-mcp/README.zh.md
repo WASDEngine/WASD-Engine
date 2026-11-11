@@ -136,6 +136,8 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 服务器通过 `SetupHost`（setup host，安装环境宿主）查找其应用程序：服务器进程的平台、环境与主目录，判断用户可执行的普通文件的 `isExecutable`，把缺失或不可访问的目录列为空的 `listDirectory`，以及 `makeDirectory`。`nodeSetupHost()` 把它绑定到本机；测试传入假的 host。`firstExecutable(candidates, host)` 返回第一个通过 `isExecutable` 的候选路径；`newestFirst` 按名称中的数字从新到旧排序，因此 `Blender 4.10` 排在 `Blender 4.2` 之前，`GIMP 3.0.1` 排在 `GIMP 3.0` 之前。`CommandArgv` 表示一个绝对路径的可执行程序及其参数。
 
+Desktop 应用随附在插件包中的运行时位于包的 `runtime/<platform>-<arch>/` 文件夹，该文件夹由 `shippedRuntimeRoot(packageRoot)` 给出；位于 `app.asar` 内的包从 `app.asar.unpacked` 读取。`readShippedRuntime(root, host, schema, invalid)` 通过 `ShippedRuntimeHost`（带有 `arch` 与 `readTextFile` 的 setup host，`nodeShippedRuntimeHost()` 把它绑定到本机）读取该文件夹中对应宿主平台与架构的 `runtime.json`。文件不存在时它不返回任何内容，否则返回文件夹、记录，以及解析记录中路径的 `resolve` 函数；记录不是 JSON、不符合 schema，或描述的是其他平台或架构时，以 `invalid` 构造的错误失败。运行时的 schema 展开 `ShippedRuntimeFields`（每条记录都有的 `format`、`version`、`platform` 与 `arch`），并把其中的路径声明为 `ShippedRuntimePath`，即不含 `.` 或 `..` 段、以 `/` 分隔的相对路径。应用随附运行时的归档而非其文件时，`readPackedRuntime` 以同样的方式读取该文件夹的 `archive.json`，返回归档的路径、大小与 SHA-256 以及其 `runtime.json` 的字段，供服务器解包。Blender 服务器以这两种方式读取 bpy 运行时。
+
 <a id="run-the-worker"></a>
 ### 运行工作进程
 
@@ -222,6 +224,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/mcp-server.ts`](src/mcp-server.ts) | console 重定向、工具注册、结果映射与上限、失败文本以及关闭 |
 | [`src/tools.ts`](src/tools.ts) | 工具辅助函数与 `execute_python` 工具 |
 | [`src/setup-host.ts`](src/setup-host.ts) | setup host 以及可执行文件与版本的辅助函数 |
+| [`src/shipped-runtime.ts`](src/shipped-runtime.ts) | 插件包的运行时文件夹与 `runtime.json` 查找 |
 | [`src/supervisor.ts`](src/supervisor.ts) | 延迟启动、串行调用、状态丢失消息以及关闭 |
 | [`src/json-line-worker.ts`](src/json-line-worker.ts) | spawn、行解析、超时、取消、进程组信号以及日志尾部 |
 | [`src/materialize.ts`](src/materialize.ts) | 按内容寻址的载荷副本 |

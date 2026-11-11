@@ -4,7 +4,9 @@
  * {@link ShippedRuntimeKind}; `stageRuntimeArchive` reads the kind's release manifest, from a URL or from a local
  * `build.sh --out` folder, checks the archive of the packaged platform against the manifest's size and SHA-256,
  * unpacks it with `tar`, lets the kind check the unpacked files, and moves them into
- * `<package>/<folder>/<platform>-<arch>/` of the prepared dsh tree.
+ * `<package>/<folder>/<platform>-<arch>/` of the prepared dsh tree. For a platform where the kind ships the archive
+ * itself, that folder holds the checked archive and an `archive.json` instead, and the plugin unpacks the archive on
+ * first use.
  *
  * Environment, for a kind whose prefix is `WASD_X`: `WASD_X_DIR` names a local folder holding `manifest.json` and its
  * archives; `WASD_X_MANIFEST_URL` replaces the default manifest; `WASD_X_BUNDLE=0` packages without the runtime.
@@ -12,7 +14,7 @@
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream, createWriteStream } from 'node:fs'
-import { chmod, mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
@@ -86,7 +88,18 @@ export interface ShippedRuntimeKind<A extends RuntimeArchive, M extends RuntimeM
    * @returns text such as `LibGodot 4.7.2-wasd.1 (Godot 4.7.2-stable)`.
    */
   describe(manifest: M): string
+  /**
+   * Whether the app ships the checked archive itself, with an `archive.json`, for the plugin to unpack on first use,
+   * instead of the unpacked files; for a platform whose deepest runtime paths would pass the path length limit below
+   * the app's install folder. Omitted, the app ships the unpacked files.
+   * @param target - packaged platform and architecture.
+   * @returns true to ship the archive.
+   */
+  shipsArchive?(target: RuntimeTarget): boolean
 }
+
+/** The `archive.json` file of a runtime that the app ships as its archive. */
+export const ARCHIVE_RECORD_FILE = 'archive.json'
 
 /**
  * Whether a value is a JSON object.
@@ -274,8 +287,23 @@ export async function stageRuntimeArchive<A extends RuntimeArchive, M extends Ru
     await mkdir(extracted)
     await promisify(execFile)('tar', ['-xzf', archive, '-C', extracted])
     const executables = await kind.verify(extracted, manifest, artifact, target)
-    if (target.platform !== 'win32') for (const file of executables) await chmod(join(extracted, file), 0o755)
     const destination = join(root, key)
+    if (kind.shipsArchive?.(target) === true) {
+      const packed = join(work, `${key}.archive`)
+      const name = posix.basename(new URL(artifact.url, 'file:///').pathname)
+      await mkdir(packed)
+      await rename(archive, join(packed, name))
+      // archive.json carries the archive's runtime.json without its file digests, so the plugin reads the runtime's
+      // fields before it unpacks the archive.
+      const { sha256: _digests, ...runtime } = JSON.parse(await readFile(join(extracted, 'runtime.json'), 'utf8')) as Record<string, unknown>
+      const record = { format: 1, archive: name, bytes: artifact.bytes, sha256: artifact.sha256, runtime }
+      await writeFile(join(packed, ARCHIVE_RECORD_FILE), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o644 })
+      await rm(destination, { recursive: true, force: true })
+      await rename(packed, destination)
+      console.log(`desktop runtime: shipping ${kind.describe(manifest)} for ${key} as its archive, which the plugin unpacks on first use`)
+      return { version: manifest.version, directory: destination }
+    }
+    if (target.platform !== 'win32') for (const file of executables) await chmod(join(extracted, file), 0o755)
     await rm(destination, { recursive: true, force: true })
     await rename(extracted, destination)
     console.log(`desktop runtime: shipping ${kind.describe(manifest)} for ${key}`)

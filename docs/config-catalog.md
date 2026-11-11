@@ -485,11 +485,20 @@ export type Config = LocalConfig
 ```ts config-catalog
 /** Deployment configuration of the Blender tools. */
 export interface Config extends AppMcpConfig {
-  /** Absolute directory for the bpy environment, managed Python, previews, renders, and the worker script copy. */
+  /**
+   * Absolute directory for the bpy environment, managed Python, the runtime that the Windows Desktop app unpacks,
+   * previews, renders, and the worker script copy.
+   */
   dataRoot: string
-  /** `auto` uses the bpy module when uv is available and an installed Blender otherwise; `bpy` and `app` force one. */
+  /**
+   * `auto` uses the bpy module that the Desktop app ships, then the one uv installs, then an installed Blender; `bpy`
+   * uses only the bpy module and `app` only an installed Blender.
+   */
   backend: BlenderBackend
-  /** bpy package version installed into the managed environment. */
+  /**
+   * bpy package version: the bpy module that the Desktop app ships runs only when it is this version, and uv installs
+   * this version into the managed environment.
+   */
   bpyVersion: string
   /** Python minor version of the managed environment; it must match the bpy release. */
   pythonVersion: string
@@ -501,7 +510,10 @@ export interface Config extends AppMcpConfig {
   startupTimeoutMs: number
 }
 
-/** Which Blender runs the tools: `bpy` (the Python module, installed with uv), `app` (an installed Blender), or `auto`. */
+/**
+ * Which Blender runs the tools: `bpy` (the Python module that the Desktop app ships or uv installs), `app` (an installed
+ * Blender), or `auto`.
+ */
 export type BlenderBackend = 'auto' | 'bpy' | 'app'
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-blender -->

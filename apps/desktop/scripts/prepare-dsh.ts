@@ -24,6 +24,7 @@ import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-patches.ts'
 import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
+import { stageBlenderRuntime } from './wasdengine-blender.ts'
 import { stageGimpRuntime } from './wasdengine-gimp.ts'
 import { stageLibGodotRuntime } from './wasdengine-libgodot.ts'
 import { stageSuperColliderRuntime } from './wasdengine-supercollider.ts'
@@ -170,6 +171,7 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:libgodot', () => stageLibGodotRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:supercollider', () => stageSuperColliderRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:gimp', () => stageGimpRuntime(DSH_OUTPUT_ROOT, target))
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:blender', () => stageBlenderRuntime(DSH_OUTPUT_ROOT, target))
     if (process.platform === 'darwin' && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       const cacheDirectory = resolveMacOSSignatureCacheDirectory(process.env, BUILD_PATHS.root)
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, cacheDirectory))

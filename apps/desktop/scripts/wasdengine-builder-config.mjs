@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, and GIMP runtimes, and the game layer module, to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, GIMP, and Blender runtimes, and the game layer module, to the ordinary Desktop release configuration. */
 
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
@@ -67,6 +67,20 @@ export const GIMP_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-gimp/runtime/*
  */
 export function applyWasdengineGimp(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, GIMP_ASAR_UNPACK] }
+}
+
+/** `asarUnpack` pattern of the Blender runtime that `wasdengine-blender.ts` ships in the Blender plugin package. */
+export const BLENDER_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-blender/runtime/**/*'
+
+/**
+ * Keep the shipped Blender runtime on disk, outside `app.asar`: its Python starts as a process and loads the bpy
+ * module, Blender's libraries, and Blender's scripts and data by path, which none of them can do inside the archive.
+ * @template {{ readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `asarUnpack` also lists the runtime folder.
+ */
+export function applyWasdengineBlender(config) {
+  return { ...config, asarUnpack: [...config.asarUnpack, BLENDER_ASAR_UNPACK] }
 }
 
 /** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */

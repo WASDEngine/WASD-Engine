@@ -10,7 +10,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
-| `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
+| `blender` | [`@deepseek-ai/dsh-blender`](../../packages/gamedev/blender/README.zh.md) | MCP 服务器 `wasd_blender` 提供的 `mcp__wasd_blender__<tool>` | 每个调用的 Session 一个 Python 工作进程：Desktop 应用随附的（Windows 应用在首次使用时解包）或托管虚拟环境中的 `bpy` 模块，或以后台模式运行的已安装 Blender |
 | `gimp` | [`@deepseek-ai/dsh-gimp`](../../packages/gamedev/gimp/README.zh.md) | MCP 服务器 `wasd_gimp` 提供的 `mcp__wasd_gimp__<tool>` | 每个调用的 Session 一个 GIMP 3 `gimp-console` 进程，以 Python 批处理命令运行工作进程：Desktop 应用在 macOS 上自带的运行时，或已安装的 GIMP 3 |
 | `godot` | [`@deepseek-ai/dsh-godot`](../../packages/gamedev/godot/README.zh.md) | 原生 `godot_*` 工具与 `godot` 系统提示词分节 | 每个 Session 一个游戏进程：承载 LibGodot 的 `godot_runner` |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或已安装的 SuperCollider |
@@ -58,7 +58,7 @@ fd 3   failure  {"id": <integer>, "ok": false, "error": {"type": "<exception cla
 | | Blender 工作进程 | GIMP 工作进程 |
 |---|---|---|
 | 脚本 | [`wasd_blender_worker.py`](../../packages/gamedev/blender/py/wasd_blender_worker.py) | [`wasd_gimp_worker.py`](../../packages/gamedev/gimp/py/wasd_gimp_worker.py) |
-| 命令 | 使用 `bpy` 模块时为 `<environment python> -I -u <script>`，否则为 `<Blender> --background --factory-startup -noaudio --python-exit-code 1 --python <script>` | `<gimp-console> -n -s -c --batch-interpreter=python-fu-eval -b 'import runpy; runpy.run_path("<script>", run_name="__main__")' --quit`，并把 `GIMP3_DIRECTORY` 设为 `<dataRoot>/profile` |
+| 命令 | 使用应用内的 `bpy` 模块时为 `<runtime python> -I -B -u <script>`，使用 Windows 应用解包的或托管环境中的 `bpy` 模块时为 `<python> -I -u <script>`，否则为 `<Blender> --background --factory-startup -noaudio --python-exit-code 1 --python <script>` | `<gimp-console> -n -s -c --batch-interpreter=python-fu-eval -b 'import runpy; runpy.run_path("<script>", run_name="__main__")' --quit`，并把 `GIMP3_DIRECTORY` 设为 `<dataRoot>/profile` |
 | 请求 | 直接从文件描述符 0 读取，因为 Blender 可能替换 `sys.stdin` | 由 GIMP 的 Python 插件进程读取，该进程继承 stdin 与 fd 3 |
 | 退出 | 在 `shutdown` 回复之后执行 `os._exit(0)`，因为某些导出器运行之后，Blender 可能在其退出处理程序中崩溃。stdin 在没有 `shutdown` 请求的情况下结束，或 fd 3 不再有读取方（工作进程中的线程每秒检查一次，请求期间也会检查）时，说明服务器已不存在：工作进程若是进程组的组长，就用 SIGKILL 终止整个进程组，否则直接退出 | 脚本返回，GIMP 通过 `--quit` 退出。在 POSIX 上，插件进程未完成就结束时，一个看门狗进程会杀死 GIMP，因为 GIMP 会继续运行并保持 fd 3 打开 |
 

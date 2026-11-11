@@ -3,13 +3,13 @@ import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { WorkerError } from '@deepseek-ai/dsh-app-mcp'
-import type { CommandArgv } from '@deepseek-ai/dsh-app-mcp'
+import type { CommandArgv, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
-  BlenderSetupError, BlenderWorkers, bpyEnvironment, childEnvironment, findBlender, findOnPath, findUv, nodeBlenderSetupHost,
-  parseServerOptions, prepareBpy, resolveWorkerLaunch, runCommand,
+  BlenderSetupError, BlenderWorkers, bpyEnvironment, childEnvironment, findBlender, findOnPath, findPackedBpy, findShippedBpy, findUv,
+  nodeBlenderSetupHost, parseServerOptions, prepareBpy, resolveWorkerLaunch, runCommand, unpackShippedBpy, unpackedRuntimeDirectory,
 } from '../src/environment.ts'
-import type { BlenderSetupHost, CommandOptions, CommandResult } from '../src/environment.ts'
+import type { BlenderSetupHost, BlenderWorkerDependencies, CommandOptions, CommandResult } from '../src/environment.ts'
 import type { BlenderServerOptions } from '../src/types.ts'
 
 const OPTIONS: BlenderServerOptions = {
@@ -21,21 +21,39 @@ const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`
 const APP = '/Applications/Blender.app/Contents/MacOS/Blender'
 const SCRIPT = '/data/blender/payload/abc/wasd_blender_worker.py'
+/** The package's `runtime` folder, and the bpy runtime that a Desktop app ships in it for macOS on Apple silicon. */
+const BUNDLED = '/app/dsh-blender/runtime'
+const SHIPPED = `${BUNDLED}/darwin-arm64`
+const SHIPPED_PYTHON = `${SHIPPED}/python/bin/python3.13`
+const SHIPPED_RECORD = {
+  format: 1, version: '5.2.3-wasd.1', bpy: '5.2.3', python: '3.13.18', platform: 'darwin', arch: 'arm64',
+  executable: 'python/bin/python3.13', sha256: {},
+}
 
 interface FakeHostOptions {
   platform?: NodeJS.Platform
+  arch?: string
   env?: NodeJS.ProcessEnv
   executables?: readonly string[]
   directories?: Readonly<Record<string, readonly string[]>>
+  /** Text files by absolute path. */
+  files?: Readonly<Record<string, string>>
   run?: (argv: CommandArgv, options: CommandOptions) => CommandResult | Promise<CommandResult>
   rename?: (from: string, to: string) => void
 }
 
+/** A host whose package ships the bpy runtime, with the record changed as given. */
+function shippedHost(record: object = SHIPPED_RECORD, executables: readonly string[] = [SHIPPED_PYTHON]): FakeHost {
+  return new FakeHost({ executables, files: { [`${SHIPPED}/runtime.json`]: JSON.stringify(record) } })
+}
+
 class FakeHost implements BlenderSetupHost {
   readonly platform: NodeJS.Platform
+  readonly arch: string
   readonly env: NodeJS.ProcessEnv
   readonly homeDirectory: string
   readonly executables: Set<string>
+  readonly files: Map<string, string>
   readonly commands: { argv: CommandArgv; options: CommandOptions }[] = []
   readonly made: string[] = []
   readonly renamed: [string, string][] = []
@@ -43,17 +61,31 @@ class FakeHost implements BlenderSetupHost {
 
   constructor(private readonly options: FakeHostOptions = {}) {
     this.platform = options.platform ?? 'darwin'
+    this.arch = options.arch ?? 'arm64'
     this.env = options.env ?? { PATH: '/usr/bin:/bin' }
     this.homeDirectory = this.platform === 'win32' ? 'C:\\Users\\dev' : '/Users/dev'
     this.executables = new Set(options.executables ?? [])
+    this.files = new Map(Object.entries(options.files ?? {}))
   }
 
   async isExecutable(file: string): Promise<boolean> { return this.executables.has(file) }
   async listDirectory(directory: string): Promise<readonly string[]> { return this.options.directories?.[directory] ?? [] }
+  async readTextFile(file: string): Promise<string | undefined> { return this.files.get(file) }
   async makeDirectory(directory: string): Promise<void> { this.made.push(directory) }
+  /** Renames move the files and executables below `from`; a renamed folder also gets a venv Python. */
   async rename(from: string, to: string): Promise<void> {
     this.options.rename?.(from, to)
     this.renamed.push([from, to])
+    const below = (file: string): boolean => file.startsWith(`${from}/`) || file.startsWith(`${from}\\`)
+    for (const [file, text] of [...this.files]) {
+      if (!below(file)) continue
+      this.files.delete(file)
+      this.files.set(to + file.slice(from.length), text)
+    }
+    for (const file of [...this.executables].filter(below)) {
+      this.executables.delete(file)
+      this.executables.add(to + file.slice(from.length))
+    }
     this.executables.add(`${to}/bin/python`)
   }
 
@@ -65,6 +97,59 @@ class FakeHost implements BlenderSetupHost {
 }
 
 const signal = new AbortController().signal
+
+/** The bpy runtime that a Windows Desktop app ships as its archive, and the folder under `dataRoot` it unpacks into. */
+const WIN_BUNDLED = 'C:\\app\\dsh-blender\\runtime'
+const WIN_PACKED = `${WIN_BUNDLED}\\win32-x64`
+const WIN_ARCHIVE = `${WIN_PACKED}\\blender-5.2.3-wasd.1-win32-x64.tar.gz`
+const WIN_DATA = 'C:\\Users\\dev\\.wasdengine\\blender'
+const WIN_UNPACKED = `${WIN_DATA}\\runtime\\5.2.3-wasd.1`
+const WIN_PYTHON = `${WIN_UNPACKED}\\python\\python.exe`
+const WIN_TAR = 'C:\\Windows\\System32\\tar.exe'
+const WIN_RUNTIME = { format: 1, version: '5.2.3-wasd.1', bpy: '5.2.3', python: '3.13.18', platform: 'win32', arch: 'x64', executable: 'python/python.exe' }
+const WIN_OPTIONS: BlenderServerOptions = { ...OPTIONS, dataRoot: WIN_DATA }
+
+interface PackedHostOptions {
+  /** The runtime fields of archive.json. */
+  readonly runtime?: object
+  /** The runtime.json that tar unpacks. */
+  readonly unpacked?: object
+  /** Whether System32 holds tar.exe. */
+  readonly tar?: boolean
+  /** Whether the package folder lists the archive. */
+  readonly archive?: boolean
+  readonly executables?: readonly string[]
+  readonly run?: FakeHostOptions['run']
+}
+
+/** A Windows host whose package ships the bpy runtime's archive; its tar unpacks runtime.json and python.exe into the -C folder. */
+function packedHost(options: PackedHostOptions = {}): FakeHost {
+  const unpack: FakeHostOptions['run'] = (argv) => {
+    const destination = argv.at(-1)!
+    host.files.set(`${destination}\\runtime.json`, JSON.stringify({ ...options.unpacked ?? WIN_RUNTIME, sha256: {} }))
+    host.executables.add(`${destination}\\python\\python.exe`)
+    return { exitCode: 0, signal: null, output: '' }
+  }
+  const host: FakeHost = new FakeHost({
+    platform: 'win32', arch: 'x64', env: { SystemRoot: 'C:\\Windows', PATH: 'C:\\Windows\\System32' },
+    executables: [...options.tar ?? true ? [WIN_TAR] : [], ...options.executables ?? []],
+    directories: { [WIN_PACKED]: ['archive.json', ...options.archive ?? true ? ['blender-5.2.3-wasd.1-win32-x64.tar.gz'] : []] },
+    files: {
+      [`${WIN_PACKED}\\archive.json`]: JSON.stringify({
+        format: 1, archive: 'blender-5.2.3-wasd.1-win32-x64.tar.gz', bytes: 361_000_000, sha256: 'a'.repeat(64), runtime: options.runtime ?? WIN_RUNTIME,
+      }),
+    },
+    run: options.run ?? unpack,
+  })
+  return host
+}
+
+/** What the server hands `BlenderWorkers`: the host, the worker script copy, the package's runtime folder, and the start. */
+function workerDependencies<W extends { readonly ready: WorkerReady }>(
+  host: FakeHost, start: BlenderWorkerDependencies<W>['start'],
+): BlenderWorkerDependencies<W> {
+  return { host, workerScript: async () => SCRIPT, bundledRoot: BUNDLED, start }
+}
 
 /** The worker scope the pool would pass: a Session and its numbered folder. */
 const SCOPE = { key: 'session:spec', directory: '/data/blender/workers/1' }
@@ -167,6 +252,84 @@ describe('bpyEnvironment and childEnvironment', () => {
     const env = { PATH: '/bin', HOME: '/home', PYTHONPATH: 'x', PYTHONHOME: 'y', PYTHONSTARTUP: 'z', VIRTUAL_ENV: 'v', ELECTRON_RUN_AS_NODE: '1' }
     expect(childEnvironment(env)).toEqual({ PATH: '/bin', HOME: '/home' })
     expect(env.PYTHONPATH).toBe('x')
+  })
+})
+
+describe('findShippedBpy', () => {
+  it('reads the runtime of this platform and its Python', async () => {
+    await expect(findShippedBpy(BUNDLED, shippedHost())).resolves.toEqual({ directory: SHIPPED, python: SHIPPED_PYTHON, bpy: '5.2.3' })
+    await expect(findShippedBpy(BUNDLED, new FakeHost())).resolves.toBeUndefined()
+    const intel = new FakeHost({ arch: 'x64', executables: [SHIPPED_PYTHON], files: { [`${SHIPPED}/runtime.json`]: JSON.stringify(SHIPPED_RECORD) } })
+    await expect(findShippedBpy(BUNDLED, intel)).resolves.toBeUndefined()
+  })
+
+  it('reports a runtime that cannot run, with how to recover', async () => {
+    const cases: readonly (readonly [FakeHost, RegExp])[] = [
+      [shippedHost(SHIPPED_RECORD, []), /python3\.13 is not an executable file\. Reinstall WASD Engine, or set .* backend to app/u],
+      [shippedHost({ ...SHIPPED_RECORD, arch: 'x64' }), /its runtime\.json describes darwin-x64/u],
+      [shippedHost({ ...SHIPPED_RECORD, bpy: 'latest' }), /is not a format 1 runtime record/u],
+      [shippedHost({ ...SHIPPED_RECORD, executable: '/usr/bin/python3' }), /must be a relative path inside the runtime folder/u],
+      [new FakeHost({ files: { [`${SHIPPED}/runtime.json`]: '{' } }), /runtime\.json is not JSON/u],
+    ]
+    for (const [host, message] of cases) {
+      const failure = findShippedBpy(BUNDLED, host)
+      await expect(failure).rejects.toBeInstanceOf(BlenderSetupError)
+      await expect(failure).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID', message: expect.stringMatching(message) as string })
+    }
+  })
+})
+
+describe('findPackedBpy and unpackShippedBpy', () => {
+  it('reads the archive that the Windows app ships', async () => {
+    await expect(findPackedBpy(WIN_BUNDLED, packedHost())).resolves.toEqual({
+      directory: WIN_PACKED, archive: WIN_ARCHIVE, bytes: 361_000_000, sha256: 'a'.repeat(64), record: WIN_RUNTIME,
+    })
+    await expect(findPackedBpy(BUNDLED, new FakeHost())).resolves.toBeUndefined()
+    expect(unpackedRuntimeDirectory('/data/blender', '5.2.3-wasd.1', 'darwin')).toBe('/data/blender/runtime/5.2.3-wasd.1')
+  })
+
+  it('unpacks the archive with Windows tar beside its final folder once, then reuses it', async () => {
+    const host = packedHost()
+    const packed = (await findPackedBpy(WIN_BUNDLED, host))!
+    await expect(unpackShippedBpy(packed, WIN_DATA, host, signal)).resolves.toEqual({ directory: WIN_UNPACKED, python: WIN_PYTHON, bpy: '5.2.3', unpacked: true })
+    const [command] = host.commands
+    const partial = command!.argv[4]!
+    expect(partial).toMatch(/^C:\\Users\\dev\\\.wasdengine\\blender\\runtime\\5\.2\.3-wasd\.1\.partial-[0-9a-f]{8}$/u)
+    expect(command!.argv).toEqual([WIN_TAR, '-xzf', WIN_ARCHIVE, '-C', partial])
+    expect(command!.options).toMatchObject({ cwd: WIN_DATA, signal })
+    expect(host.made).toEqual([`${WIN_DATA}\\runtime`, partial])
+    expect(host.renamed).toEqual([[partial, WIN_UNPACKED]])
+    expect(host.removed).toEqual([partial])
+    await expect(unpackShippedBpy(packed, WIN_DATA, host, signal)).resolves.toMatchObject({ unpacked: false })
+    expect(host.commands).toHaveLength(1)
+  })
+
+  it('reports a missing archive or tar, a failing tar, and an archive of another runtime, and leaves nothing behind', async () => {
+    const cases: readonly (readonly [PackedHostOptions, RegExp])[] = [
+      [{ archive: false }, /its archive\.json names C:\\.*\.tar\.gz, which is missing/u],
+      [{ tar: false }, /No tar program was found to unpack the bpy runtime/u],
+      [{ run: () => ({ exitCode: 1, signal: null, output: 'tar: Truncated input file\n' }) }, /tar could not unpack .* \(exit code 1\): tar: Truncated input file/u],
+      [{ unpacked: { ...WIN_RUNTIME, version: '5.2.3-wasd.0' } }, /does not describe the runtime 5\.2\.3-wasd\.1 that its archive\.json names/u],
+    ]
+    for (const [options, message] of cases) {
+      const host = packedHost(options)
+      const failure = unpackShippedBpy((await findPackedBpy(WIN_BUNDLED, host))!, WIN_DATA, host, signal)
+      await expect(failure).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID', message: expect.stringMatching(message) as string })
+      expect(host.renamed).toEqual([])
+      expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.argv[4]])
+    }
+  })
+
+  it('looks for tar in /usr/bin, then on PATH, outside Windows', async () => {
+    const record = { ...WIN_RUNTIME, platform: 'darwin', arch: 'arm64', executable: 'python/bin/python3.13' }
+    const host = new FakeHost({
+      env: { PATH: '/opt/tools' }, executables: ['/opt/tools/tar'],
+      directories: { [SHIPPED]: ['archive.json', 'blender.tar.gz'] },
+      files: { [`${SHIPPED}/archive.json`]: JSON.stringify({ format: 1, archive: 'blender.tar.gz', bytes: 1, sha256: 'b'.repeat(64), runtime: record }) },
+      run: () => ({ exitCode: 2, signal: null, output: '' }),
+    })
+    await expect(unpackShippedBpy((await findPackedBpy(BUNDLED, host))!, '/data/blender', host, signal)).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID' })
+    expect(host.commands[0]!.argv[0]).toBe('/opt/tools/tar')
   })
 })
 
@@ -280,16 +443,62 @@ describe('resolveWorkerLaunch', () => {
 
   it('runs the bpy module with an isolated, unbuffered Python and reports a first-use install', async () => {
     const host = uvHost()
-    const launch = await resolveWorkerLaunch(OPTIONS, SCRIPT, host, signal)
+    const launch = await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, host, signal)
     expect(launch).toEqual({
-      backend: 'bpy', argv: [VENV_PYTHON, '-I', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' },
+      backend: 'bpy', shipped: false, argv: [VENV_PYTHON, '-I', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' },
       notes: [`Installed Python 3.13 and bpy 5.2.3 into ${VENV} (first use).`],
+      repair: `If the bpy environment at ${VENV} is damaged, delete that folder so that the next start installs it again.`,
     })
-    expect((await resolveWorkerLaunch(OPTIONS, SCRIPT, host, signal)).notes).toEqual([])
+    expect((await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, host, signal)).notes).toEqual([])
+  })
+
+  it('runs the shipped bpy runtime first, without uv and without writing bytecode into it', async () => {
+    for (const backend of ['auto', 'bpy'] as const) {
+      const host = shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, '/usr/bin/uv', APP])
+      await expect(resolveWorkerLaunch({ ...OPTIONS, backend }, SCRIPT, BUNDLED, host, signal)).resolves.toEqual({
+        backend: 'bpy', shipped: true, argv: [SHIPPED_PYTHON, '-I', '-B', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' }, notes: [],
+        repair: `If the bpy runtime that WASD Engine ships in ${SHIPPED} is damaged, reinstall WASD Engine.`,
+      })
+      expect(host.commands).toEqual([])
+    }
+  })
+
+  it('passes over the shipped runtime for another bpyVersion and for the app backend', async () => {
+    const other = shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, '/usr/bin/uv'])
+    const managed = await resolveWorkerLaunch({ ...OPTIONS, bpyVersion: '5.3.0' }, SCRIPT, BUNDLED, other, signal)
+    expect(managed).toMatchObject({ backend: 'bpy', argv: ['/data/blender/venv-py3.13-bpy5.3.0/bin/python', '-I', '-u', SCRIPT] })
+    expect(managed.shipped).toBe(false)
+    const app = shippedHost({ ...SHIPPED_RECORD, arch: 'x64' }, [SHIPPED_PYTHON, APP])
+    await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, BUNDLED, app, signal)).resolves.toMatchObject({ backend: 'app', argv: [APP, '--background', '--factory-startup', '-noaudio', '--python-exit-code', '1', '--python', SCRIPT] })
+    await expect(resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, app, signal)).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID' })
+  })
+
+  it('unpacks and runs the archive that the Windows app ships, which keeps its bytecode caches under dataRoot', async () => {
+    const host = packedHost({ executables: ['C:\\Users\\dev\\.local\\bin\\uv.exe'] })
+    await expect(resolveWorkerLaunch(WIN_OPTIONS, SCRIPT, WIN_BUNDLED, host, signal)).resolves.toEqual({
+      backend: 'bpy', shipped: true, argv: [WIN_PYTHON, '-I', '-u', SCRIPT], env: { SystemRoot: 'C:\\Windows', PATH: 'C:\\Windows\\System32' },
+      notes: [`Unpacked the bpy runtime that WASD Engine ships into ${WIN_UNPACKED} (first use).`],
+      repair: `If the bpy runtime that WASD Engine unpacked into ${WIN_UNPACKED} is damaged, delete that folder so that the next start unpacks it again.`,
+    })
+    expect((await resolveWorkerLaunch(WIN_OPTIONS, SCRIPT, WIN_BUNDLED, host, signal)).notes).toEqual([])
+    expect(host.commands.map(command => command.argv[0])).toEqual([WIN_TAR])
+  })
+
+  it('falls back to an installed Blender under auto when the archive does not unpack, and fails for the bpy backend', async () => {
+    const blender = 'C:\\Blender\\blender.exe'
+    const failing = (): FakeHost => packedHost({ executables: [blender], run: () => ({ exitCode: 1, signal: null, output: 'tar: Error opening archive' }) })
+    const launch = await resolveWorkerLaunch({ ...WIN_OPTIONS, blenderPath: blender }, SCRIPT, WIN_BUNDLED, failing(), signal)
+    expect(launch).toMatchObject({ backend: 'app', shipped: false, repair: '' })
+    expect(launch.notes).toHaveLength(1)
+    expect(launch.notes[0]).toMatch(/^The bpy runtime that WASD Engine ships could not be unpacked, so Blender at /u)
+    expect(launch.notes[0]).toContain(`${blender} runs the tools instead. The bpy runtime shipped in ${WIN_PACKED} cannot run: tar could not unpack`)
+    await expect(resolveWorkerLaunch({ ...WIN_OPTIONS, backend: 'bpy', blenderPath: blender }, SCRIPT, WIN_BUNDLED, failing(), signal))
+      .rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID' })
+    await expect(resolveWorkerLaunch(WIN_OPTIONS, SCRIPT, WIN_BUNDLED, failing(), signal)).rejects.toMatchObject({ code: 'BLENDER_RUNTIME_INVALID' })
   })
 
   it('falls back to an installed Blender when auto cannot install bpy', async () => {
-    const launch = await resolveWorkerLaunch(OPTIONS, SCRIPT, uvHost({ executables: [APP], run: failingInstall }), signal)
+    const launch = await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, uvHost({ executables: [APP], run: failingInstall }), signal)
     expect(launch.backend).toBe('app')
     expect(launch.argv).toEqual([APP, '--background', '--factory-startup', '-noaudio', '--python-exit-code', '1', '--python', SCRIPT])
     const fallback = /^The bpy module could not be installed, so Blender at .* runs the tools instead\. Could not create/
@@ -297,34 +506,34 @@ describe('resolveWorkerLaunch', () => {
   })
 
   it('adds installation help when auto has neither bpy nor Blender', async () => {
-    const failure = resolveWorkerLaunch(OPTIONS, SCRIPT, uvHost({ run: failingInstall }), signal)
+    const failure = resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, uvHost({ run: failingInstall }), signal)
     await expect(failure).rejects.toMatchObject({ code: 'BPY_INSTALL_FAILED', message: expect.stringContaining('Install uv (https://docs.astral.sh/uv/getting-started/installation/)') as string })
   })
 
   it('rethrows cancellation and forced-bpy failures without falling back', async () => {
     const aborted = uvHost({ executables: [APP], run: () => { throw new DOMException('stopped', 'AbortError') } })
-    await expect(resolveWorkerLaunch(OPTIONS, SCRIPT, aborted, signal)).rejects.toThrow('stopped')
-    const forced = resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy' }, SCRIPT, uvHost({ executables: [APP], run: failingInstall }), signal)
+    await expect(resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, aborted, signal)).rejects.toThrow('stopped')
+    const forced = resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy' }, SCRIPT, BUNDLED, uvHost({ executables: [APP], run: failingInstall }), signal)
     await expect(forced).rejects.toMatchObject({ code: 'BPY_INSTALL_FAILED', message: expect.not.stringContaining('Install uv') as string })
   })
 
   it('requires uv for the bpy backend', async () => {
-    await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy' }, SCRIPT, new FakeHost({ executables: [APP] }), signal))
+    await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy' }, SCRIPT, BUNDLED, new FakeHost({ executables: [APP] }), signal))
       .rejects.toMatchObject({ code: 'UV_NOT_FOUND', message: expect.stringContaining('set to the bpy backend') as string })
   })
 
   it('uses Blender when auto finds no uv, and only Blender for the app backend', async () => {
     const host = new FakeHost({ executables: [APP] })
-    expect((await resolveWorkerLaunch(OPTIONS, SCRIPT, host, signal)).backend).toBe('app')
+    expect((await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, host, signal)).backend).toBe('app')
     const withUv = uvHost({ executables: [APP] })
-    expect(await resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, withUv, signal)).toMatchObject({ backend: 'app', notes: [] })
+    expect(await resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, BUNDLED, withUv, signal)).toMatchObject({ backend: 'app', notes: [] })
     expect(withUv.commands).toEqual([])
   })
 
   it('explains how to install Blender when nothing is found', async () => {
-    await expect(resolveWorkerLaunch(OPTIONS, SCRIPT, new FakeHost(), signal))
+    await expect(resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, new FakeHost(), signal))
       .rejects.toMatchObject({ code: 'BLENDER_NOT_FOUND', message: expect.stringContaining('Neither uv nor Blender was found') as string })
-    await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, new FakeHost(), signal))
+    await expect(resolveWorkerLaunch({ ...OPTIONS, backend: 'app' }, SCRIPT, BUNDLED, new FakeHost(), signal))
       .rejects.toMatchObject({ code: 'BLENDER_NOT_FOUND', message: expect.stringContaining('set to the app backend') as string })
   })
 })
@@ -342,7 +551,7 @@ describe('BlenderWorkers', () => {
       if (spec.argv[0] === VENV_PYTHON) throw exitedBeforeReady('Traceback (most recent call last):\n  File "x"\nImportError: libGL.so.1: cannot open shared object file\n\n')
       return { ready }
     })
-    const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
+    const workers = new BlenderWorkers(OPTIONS, workerDependencies(installedHost(), start))
     await expect(workers.start(signal, SCOPE)).resolves.toEqual({ ready })
     expect(start.mock.calls.map(([spec]) => spec.argv[0])).toEqual([VENV_PYTHON, APP])
     expect(workers.takeNotes()).toEqual([
@@ -358,7 +567,7 @@ describe('BlenderWorkers', () => {
         if (spec.argv[0] === VENV_PYTHON) throw exitedBeforeReady(logTail)
         return { ready }
       })
-      const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
+      const workers = new BlenderWorkers(OPTIONS, workerDependencies(installedHost(), start))
       await workers.start(signal, SCOPE)
       expect(workers.takeNotes()[0]).toBe(`The bpy module did not start (worker python: exited with code 1 before it reported ready${quoted}), so Blender at ${APP} runs the tools instead. ${reinstall}`)
     }
@@ -367,7 +576,7 @@ describe('BlenderWorkers', () => {
   it('adds reinstall advice to the start failure when auto finds no Blender and for the bpy backend', async () => {
     for (const [backend, app] of [['auto', false], ['bpy', true]] as const) {
       const start = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw exitedBeforeReady('ImportError: no module\n') })
-      const workers = new BlenderWorkers({ ...OPTIONS, backend }, { host: installedHost(app), workerScript: async () => SCRIPT, start })
+      const workers = new BlenderWorkers({ ...OPTIONS, backend }, workerDependencies(installedHost(app), start))
       const failure = workers.start(signal, SCOPE)
       await expect(failure).rejects.toBeInstanceOf(WorkerError)
       await expect(failure).rejects.toMatchObject({
@@ -386,20 +595,20 @@ describe('BlenderWorkers', () => {
     ]
     for (const failure of failures) {
       const start = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw failure })
-      const workers = new BlenderWorkers(OPTIONS, { host: installedHost(), workerScript: async () => SCRIPT, start })
+      const workers = new BlenderWorkers(OPTIONS, workerDependencies(installedHost(), start))
       await expect(workers.start(signal, SCOPE)).rejects.toBe(failure)
       expect(start).toHaveBeenCalledOnce()
     }
     const appFailure = exitedBeforeReady()
     const app = vi.fn(async (): Promise<{ ready: typeof ready }> => { throw appFailure })
-    await expect(new BlenderWorkers({ ...OPTIONS, backend: 'app' }, { host: installedHost(), workerScript: async () => SCRIPT, start: app }).start(signal, SCOPE))
+    await expect(new BlenderWorkers({ ...OPTIONS, backend: 'app' }, workerDependencies(installedHost(), app)).start(signal, SCOPE))
       .rejects.toBe(appFailure)
   })
 
   it('starts a worker from the resolved launch and reports setup notes once', async () => {
     const host = new FakeHost({ executables: ['/usr/bin/uv'] })
     const start = vi.fn(async () => ({ ready: { app: 'blender', version: '5.2.3', python: '3.13.16' } }))
-    const workers = new BlenderWorkers(OPTIONS, { host, workerScript: async () => SCRIPT, start })
+    const workers = new BlenderWorkers(OPTIONS, workerDependencies(host, start))
     const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('5.2.3')
     expect(start).toHaveBeenCalledWith({
@@ -413,9 +622,31 @@ describe('BlenderWorkers', () => {
     expect(workers.takeNotes()).toEqual([])
   })
 
+  it('names the shipped bpy module, and says to reinstall WASD Engine when it does not start', async () => {
+    const ready = { app: 'blender', version: '5.2.3', python: '3.13.18' }
+    const started = new BlenderWorkers(OPTIONS, workerDependencies(shippedHost(), async () => ({ ready })))
+    await started.start(signal, SCOPE)
+    expect(started.takeNotes()).toEqual(['Blender 5.2.3 started (the bpy module that WASD Engine ships, Python 3.13.18) with its default scene.'])
+    const repair = `If the bpy runtime that WASD Engine ships in ${SHIPPED} is damaged, reinstall WASD Engine.`
+    const failing = async (spec: { argv: readonly string[] }): Promise<{ ready: typeof ready }> => {
+      if (spec.argv[0] === SHIPPED_PYTHON) throw exitedBeforeReady('Killed: 9\n')
+      return { ready: { ...ready, python: '3.11.9' } }
+    }
+    const fallback = new BlenderWorkers(OPTIONS, workerDependencies(shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, APP]), failing))
+    await fallback.start(signal, SCOPE)
+    expect(fallback.takeNotes()).toEqual([
+      `The bpy module did not start (worker python: exited with code 1 before it reported ready; its last output line was: Killed: 9), so Blender at ${APP} runs the tools instead. ${repair}`,
+      'Blender 5.2.3 started (Blender app, Python 3.11.9) with its default scene.',
+    ])
+    const alone = new BlenderWorkers(OPTIONS, workerDependencies(shippedHost(), failing))
+    await expect(alone.start(signal, SCOPE)).rejects.toMatchObject({
+      code: 'WORKER_START_FAILED', message: `worker python: exited with code 1 before it reported ready. ${repair}`,
+    })
+  })
+
   it('names the Blender app runtime', async () => {
     const start = async (): Promise<{ ready: { app: string; version: string; python: string } }> => ({ ready: { app: 'blender', version: '4.2.0', python: '3.11.9' } })
-    const workers = new BlenderWorkers({ ...OPTIONS, backend: 'app' }, { host: new FakeHost({ executables: [APP] }), workerScript: async () => SCRIPT, start })
+    const workers = new BlenderWorkers({ ...OPTIONS, backend: 'app' }, workerDependencies(new FakeHost({ executables: [APP] }), start))
     await workers.start(signal, SCOPE)
     expect(workers.takeNotes()).toEqual(['Blender 4.2.0 started (Blender app, Python 3.11.9) with its default scene.'])
   })
@@ -455,6 +686,29 @@ describe('nodeBlenderSetupHost', () => {
     expect(result.output.endsWith('89') || result.output.endsWith('ab')).toBe(true)
     await expect(runCommand([process.execPath, '-e', 'console.log(process.cwd())'], options, 4096)).resolves.toMatchObject({ exitCode: 0 })
     await expect(runCommand([join(root, 'no-such-command')], options, 64)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
+  it.skipIf(process.platform === 'win32')('unpacks a packed runtime with the real tar once, and reuses the unpacked folder', async () => {
+    const runtime = { ...WIN_RUNTIME, platform: process.platform, arch: process.arch, executable: 'python/bin/python3.13' }
+    const content = join(root, 'content')
+    await mkdir(join(content, 'python', 'bin'), { recursive: true })
+    await writeFile(join(content, 'python', 'bin', 'python3.13'), '#!/bin/sh\n', { mode: 0o755 })
+    await writeFile(join(content, 'runtime.json'), JSON.stringify({ ...runtime, sha256: {} }))
+    const packedFolder = join(root, 'pkg', 'runtime', `${process.platform}-${process.arch}`)
+    await mkdir(packedFolder, { recursive: true })
+    const { execFileSync } = await import('node:child_process')
+    execFileSync('tar', ['-czf', join(packedFolder, 'runtime.tar.gz'), '-C', content, 'python', 'runtime.json'])
+    await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: 'c'.repeat(64), runtime }))
+    const host = nodeBlenderSetupHost(4096)
+    const dataRoot = join(root, 'data ü')
+    const packed = (await findPackedBpy(join(root, 'pkg', 'runtime'), host))!
+    const directory = join(dataRoot, 'runtime', '5.2.3-wasd.1')
+    await expect(unpackShippedBpy(packed, dataRoot, host, signal)).resolves.toEqual({
+      directory, python: join(directory, 'python', 'bin', 'python3.13'), bpy: '5.2.3', unpacked: true,
+    })
+    await expect(readdir(join(dataRoot, 'runtime'))).resolves.toEqual(['5.2.3-wasd.1'])
+    await expect(host.isExecutable(join(directory, 'python', 'bin', 'python3.13'))).resolves.toBe(true)
+    await expect(unpackShippedBpy(packed, dataRoot, host, signal)).resolves.toMatchObject({ unpacked: false })
   })
 
   it('kills a command when its signal aborts', async () => {

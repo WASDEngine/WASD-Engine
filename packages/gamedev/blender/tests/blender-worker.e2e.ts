@@ -1,23 +1,24 @@
 /**
  * The Blender worker and tools against real Blender: the bpy module through uv (offline, from the
- * uv cache) and an installed Blender in background mode. Each suite skips when its runtime is
- * missing on this machine.
+ * uv cache), the bpy runtime installed in this package's `runtime` folder as the Desktop app ships
+ * it, and an installed Blender in background mode. Each suite skips when its runtime is missing on
+ * this machine.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
 import type { AppWorkerScope, JsonLineWorkerSpec } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { BlenderWorkers, childEnvironment, findBlender, findUv, nodeBlenderSetupHost, resolveWorkerLaunch } from '../src/environment.ts'
+import { BlenderWorkers, childEnvironment, findBlender, findShippedBpy, findUv, nodeBlenderSetupHost, resolveWorkerLaunch } from '../src/environment.ts'
 import { blenderTools } from '../src/tools.ts'
-import type { BlenderServerOptions } from '../src/types.ts'
+import type { BlenderBackend, BlenderServerOptions } from '../src/types.ts'
 
 const WORKER = fileURLToPath(new URL('../py/wasd_blender_worker.py', import.meta.url))
 const BPY_VERSION = '5.2.3'
@@ -26,6 +27,9 @@ const uv = await findUv({ uvPath: '' }, host)
 const uvRun = (uvPath: string): string[] => [uvPath, 'run', '--offline', '--python', '3.13', '--no-project', '--with', `bpy==${BPY_VERSION}`, 'python', '-I']
 const bpyCached = uv !== undefined && spawnSync(uv, [...uvRun(uv).slice(1), '-c', 'import bpy'], { stdio: 'ignore', timeout: 300_000 }).status === 0
 const blender = await findBlender({ blenderPath: '' }, host)
+/** This package's `runtime` folder, where `wasdengine/blender/build.sh --install` puts the runtime that the Desktop app ships. */
+const BUNDLED_ROOT = shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
+const shipped = await findShippedBpy(BUNDLED_ROOT, host)
 
 const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
   backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
@@ -132,9 +136,24 @@ interface Launcher {
   readonly serverWiring: boolean
   /** Whether the worker leads its own process group; uv, which runs the bpy suite's worker, leads it otherwise. */
   readonly leadsGroup: boolean
+  /** The backend that the server wiring resolves. */
+  readonly backend: BlenderBackend
+  /** How the first result's start note names the runtime, with server wiring. */
+  readonly runtime: string
 }
 
-function suite(name: string, { argv, serverWiring, leadsGroup }: Launcher): void {
+/** Every entry of a folder: files with their size and modification time, folders as such. */
+async function treeState(root: string): Promise<Map<string, string>> {
+  const state = new Map<string, string>()
+  for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
+    const path = join(entry.parentPath, entry.name)
+    const info = await lstat(path)
+    state.set(path, entry.isDirectory() ? 'folder' : `${String(info.size)} ${String(info.mtimeMs)}`)
+  }
+  return state
+}
+
+function suite(name: string, { argv, serverWiring, leadsGroup, backend, runtime }: Launcher): void {
   describe(name, () => {
     let dataRoot = ''
     beforeAll(async () => { dataRoot = await mkdtemp(join(tmpdir(), 'dsh-blender-e2e-')) })
@@ -214,11 +233,12 @@ function suite(name: string, { argv, serverWiring, leadsGroup }: Launcher): void
     }, 240_000)
 
     it('serves the tools through a supervised worker', async () => {
-      const options: BlenderServerOptions = { ...OPTIONS, dataRoot }
+      const options: BlenderServerOptions = { ...OPTIONS, backend, dataRoot }
       const workerSpec = await spec()
       const workers = new BlenderWorkers(options, {
         host,
         workerScript: async () => await materializePayload(new URL('../py/wasd_blender_worker.py', import.meta.url), dataRoot),
+        bundledRoot: BUNDLED_ROOT,
         start: async (startSpec, signal) => await JsonLineWorker.start(startSpec, signal),
       })
       const start = serverWiring
@@ -237,7 +257,7 @@ function suite(name: string, { argv, serverWiring, leadsGroup }: Launcher): void
       }).map(tool => [tool.name, tool]))
       const run = async (tool: string, args: Record<string, unknown> = {}) => await tools.get(tool)!.run(args, new AbortController().signal)
       try {
-        const started = /^Blender \d+\.\d+\.\d+ started \(Blender app, Python 3\.\d+\.\d+\) with its default scene\.\n\n/
+        const started = new RegExp(`^Blender \\d+\\.\\d+\\.\\d+ started \\(${runtime}, Python 3\\.\\d+\\.\\d+\\) with its default scene\\.\\n\\n`, 'u')
         const first = await run('new_scene', { empty: false })
         expect(first.text.replace(serverWiring ? started : /^/, '')).toBe('Started a new scene with Cube, Light, Camera.')
         if (serverWiring) expect(first.text).toMatch(started)
@@ -511,13 +531,35 @@ result = errors`
 }
 
 describe.skipIf(!bpyCached)('bpy module worker', () => {
-  suite(`bpy ${BPY_VERSION} through uv`, { argv: async () => [...uvRun(uv!), '-u', WORKER], serverWiring: false, leadsGroup: false })
+  suite(`bpy ${BPY_VERSION} through uv`, {
+    argv: async () => [...uvRun(uv!), '-u', WORKER], serverWiring: false, leadsGroup: false, backend: 'bpy', runtime: 'bpy module',
+  })
+})
+
+describe.skipIf(shipped?.bpy !== BPY_VERSION)('shipped bpy runtime worker', () => {
+  let before = new Map<string, string>()
+  beforeAll(async () => { before = await treeState(shipped!.directory) })
+
+  suite(`bpy ${BPY_VERSION} that WASD Engine ships`, {
+    argv: async dataRoot => (await resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy', dataRoot }, WORKER, BUNDLED_ROOT, host, new AbortController().signal)).argv,
+    serverWiring: true,
+    leadsGroup: true,
+    backend: 'bpy',
+    runtime: 'the bpy module that WASD Engine ships',
+  })
+
+  it('leaves every file and folder of the runtime as it found them', async () => {
+    expect(await treeState(shipped!.directory)).toEqual(before)
+  })
 })
 
 describe.skipIf(blender === undefined)('Blender app worker', () => {
   suite('Blender --background', {
-    argv: async dataRoot => (await resolveWorkerLaunch({ ...OPTIONS, dataRoot }, WORKER, host, new AbortController().signal)).argv,
+    argv: async dataRoot => (await resolveWorkerLaunch({ ...OPTIONS, dataRoot }, WORKER, BUNDLED_ROOT, host, new AbortController().signal))
+      .argv,
     serverWiring: true,
     leadsGroup: true,
+    backend: 'app',
+    runtime: 'Blender app',
   })
 })

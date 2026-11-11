@@ -136,6 +136,8 @@ These helpers carry what the application tool sets share:
 
 A server finds its application through a `SetupHost`: the platform, environment, and home directory of the server process, `isExecutable` for regular files the user may execute, `listDirectory`, which lists a missing or inaccessible directory as empty, and `makeDirectory`. `nodeSetupHost()` binds it to this machine; tests pass a fake host. `firstExecutable(candidates, host)` returns the first candidate that passes `isExecutable`, and `newestFirst` sorts names by the numbers in them, newest first, so `Blender 4.10` precedes `Blender 4.2` and `GIMP 3.0.1` precedes `GIMP 3.0`. `CommandArgv` types an absolute executable followed by its arguments.
 
+A runtime that the Desktop app ships inside a plugin package lives in the package's `runtime/<platform>-<arch>/` folder, which `shippedRuntimeRoot(packageRoot)` names, reading a package inside `app.asar` from `app.asar.unpacked`. `readShippedRuntime(root, host, schema, invalid)` reads that folder's `runtime.json` for the host's platform and architecture through a `ShippedRuntimeHost`, a setup host with `arch` and `readTextFile`, which `nodeShippedRuntimeHost()` binds to this machine. It returns nothing when the file is missing, and the folder, the record, and a `resolve` function for the record's paths otherwise; a record that is not JSON, does not match the schema, or describes another platform or architecture fails with the error that `invalid` builds. A runtime's schema spreads `ShippedRuntimeFields`, the `format`, `version`, `platform`, and `arch` of every record, and types its paths as `ShippedRuntimePath`, a relative `/`-separated path without `.` or `..` parts. Where the app ships a runtime's archive instead of its files, `readPackedRuntime` reads the folder's `archive.json` the same way and returns the archive's path, size, and SHA-256 and the fields of its `runtime.json`, for the server to unpack. The Blender server reads the bpy runtime both ways.
+
 <a id="run-the-worker"></a>
 ### Run the worker
 
@@ -222,6 +224,7 @@ Three processes take part: the Host, the server process that the MCP client star
 | [`src/mcp-server.ts`](src/mcp-server.ts) | Console routing, tool registration, result mapping and bounds, failure text, and shutdown |
 | [`src/tools.ts`](src/tools.ts) | Tool helpers and the `execute_python` tool |
 | [`src/setup-host.ts`](src/setup-host.ts) | The setup host and the executable and version helpers |
+| [`src/shipped-runtime.ts`](src/shipped-runtime.ts) | The runtime folder of a plugin package and the `runtime.json` lookup |
 | [`src/supervisor.ts`](src/supervisor.ts) | Lazy start, serialized calls, lost-state messages, and close |
 | [`src/json-line-worker.ts`](src/json-line-worker.ts) | Spawn, line parsing, timeouts, cancellation, process-group signals, and the log tail |
 | [`src/materialize.ts`](src/materialize.ts) | Content-addressed payload copies |
