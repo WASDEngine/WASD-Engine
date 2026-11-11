@@ -252,7 +252,7 @@ export function apply(ctx: Context): void {
     },
     // WASD Engine: the auto recharge switch of the AI usage row; the balance read then reports the new state.
     async setAutoRecharge(enabled) {
-      const result = await ctx.remote.account.setAutoRecharge(enabled, client())
+      const result = await ctx.remote.account.setAutoRecharge(enabled, client(ctx.locale.getSnapshot().active))
       if (!result.ok) throw new Error('account auto recharge failed')
       if (result.value !== null) await refreshAfterReturn(refreshing, refresh)
       return result.value

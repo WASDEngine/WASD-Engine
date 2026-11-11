@@ -78,7 +78,7 @@ function onboardingProps(account: () => AccountSnapshot, signInRequired: boolean
     useAccount: <T,>(select: (snapshot: AccountSnapshot) => T) => select(account()),
     useTheme: <T,>(select: (snapshot: ThemeSnapshot) => T) => select(theme),
     start: vi.fn(async () => {}), cancel: vi.fn(async () => {}), signOut: vi.fn(async () => {}),
-    contactUs: vi.fn(), t, refreshAccount: vi.fn(async () => {}), bonusNoticeShown: vi.fn(), bonusNoticeDismissed: vi.fn(),
+    contactUs: vi.fn(), t, refreshAccount: vi.fn(async () => {}),
     avatarFailed: vi.fn(),
   }
 }
@@ -107,10 +107,10 @@ function menu(signInRequired: boolean | undefined) {
       theme: { getSnapshot: () => theme, subscribe: () => () => {} },
     },
     hasRunningAccountTasks: vi.fn(async () => false), contactUs: vi.fn(), showLogin: vi.fn(), setOnboarding: vi.fn(),
-    bonusNoticeShown: vi.fn(), bonusNoticeDismissed: vi.fn(), refreshAccount: vi.fn(async () => {}), avatarFailed: vi.fn(),
+    refreshAccount: vi.fn(async () => {}), avatarFailed: vi.fn(),
     start: vi.fn(async () => {}), cancel: vi.fn(async () => {}), signOut: vi.fn(async () => {}),
   }
-  const element = () => <AccountMenu {...({} as GlobalStandardProps)} {...operations} settingsOpen={false} wide
+  const element = () => <AccountMenu renderSlot={() => null} {...({} as GlobalStandardProps)} {...operations} settingsOpen={false} wide
     useAccount={select => select(account)} useTheme={select => select(theme)}
     openOnboarding={openOnboarding} openSettings={() => {}} t={t} />
   const view = render(element())
