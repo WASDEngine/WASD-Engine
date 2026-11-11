@@ -148,7 +148,8 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     expect(await readdir(join(dataRoot, 'workers', String(process.pid), '1', 'scratch'))).toEqual([])
   }, 180_000)
 
-  it.skipIf(!available)('reports a stopped interpreter once, starts a fresh one, and leaves no process behind on close', async () => {
+  // Process groups and ps exist on macOS and Linux only.
+  it.skipIf(!available || process.platform === 'win32')('reports a stopped interpreter once, starts a fresh one, and leaves no process behind on close', async () => {
     // The bridge leads the worker's process group, and sclang and its scsynth renders belong to it.
     const reply = await run('execute_sclang', { code: '~kept = 1; ("ps -o pgid= -p " ++ thisProcess.pid).unixCmdGetStdOut.stripWhiteSpace' })
     const group = Number(/"(\d+)"/u.exec(reply.text)?.[1])

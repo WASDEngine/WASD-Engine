@@ -13,18 +13,17 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerPool, materializePayload } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import {
-  bundledRuntimeRoot, findGimp, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, workerEnvironment,
-} from '../src/environment.ts'
+import { findGimp, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, workerEnvironment } from '../src/environment.ts'
 import { gimpTools } from '../src/tools.ts'
 import type { GimpServerOptions } from '../src/types.ts'
 
 const WORKER = fileURLToPath(new URL('../py/wasd_gimp_worker.py', import.meta.url))
-const host = nodeGimpSetupHost()
-const BUNDLED_ROOT = bundledRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
-const installation = await findGimp({ gimpConsolePath: '' }, BUNDLED_ROOT, host)
+const host = nodeGimpSetupHost(64 * 1024)
+const BUNDLED_ROOT = shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))
+// A packed runtime, which only the Windows app ships, would unpack into this data directory.
+const installation = await findGimp({ gimpConsolePath: '', dataRoot: join(tmpdir(), 'dsh-gimp-e2e-data') }, BUNDLED_ROOT, host, new AbortController().signal)
 
 const READY_TIMEOUT_MS = 120_000
 const REQUEST_TIMEOUT_MS = 120_000

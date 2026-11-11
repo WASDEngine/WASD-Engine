@@ -66,6 +66,19 @@ describe('SclangOutputParser', () => {
     ])
   })
 
+  it('reads the CR LF line ends of sclang on Windows, splitting CR from LF across chunks', () => {
+    const { events, push } = parse()
+    push('compiling class library...\r\n\r\nabc READY {"version":"3.14.1"}\r\n')
+    push('posted\r')
+    push('\nmid\rline\r\n\r\nabc END 1 {"ok":true,"result":{}}\r\n')
+    expect(events).toEqual([
+      ['startup', 'compiling class library...'],
+      ['startup', ''],
+      ['ready', '{"version":"3.14.1"}'],
+      ['reply', 1, '{"ok":true,"result":{}}', 'posted\nmid\rline\n'],
+    ])
+  })
+
   it('bounds the output of one reply', () => {
     const { events, push } = parse()
     push('abc READY {}\n')

@@ -5,17 +5,16 @@
  * command line for the selected backend. Every file-system and process effect goes through a
  * {@link BlenderSetupHost}, so resolution is testable without Blender or uv.
  */
-import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
 import {
-  AppServerOptionFields, ShippedRuntimeFields, ShippedRuntimePath, WorkerError, firstExecutable, newestFirst, nodeShippedRuntimeHost,
-  parseAppServerOptions, readPackedRuntime, readShippedRuntime,
+  AppServerOptionFields, ShippedRuntimeFields, ShippedRuntimePath, WorkerError, findOnPath, firstExecutable, moveIntoPlace, newestFirst,
+  nodeRuntimeUnpackHost, parseAppServerOptions, readPackedRuntime, readShippedRuntime, unpackPackedRuntime,
 } from '@deepseek-ai/dsh-app-mcp'
 import type {
-  AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, PackedRuntime, SetupHost, ShippedRuntimeHost, WorkerReady,
+  AppWorkerDependencies, AppWorkerScope, CommandArgv, CommandOptions, CommandResult, JsonObject, PackedRuntime, RuntimeUnpackHost,
+  SetupHost, ShippedRuntimeHost, WorkerReady,
 } from '@deepseek-ai/dsh-app-mcp'
 import type { BlenderServerOptions } from './types.ts'
 
@@ -60,105 +59,23 @@ export class BlenderSetupError extends Error {
   }
 }
 
-/** Options for {@link BlenderSetupHost.run}. */
-export interface CommandOptions {
-  readonly cwd: string
-  /** Complete child environment. */
-  readonly env: NodeJS.ProcessEnv
-  /** Aborting kills the command and rejects with the abort reason. */
-  readonly signal: AbortSignal
-}
-
-/** Completion of a command started by {@link BlenderSetupHost.run}. */
-export interface CommandResult {
-  readonly exitCode: number | null
-  readonly signal: NodeJS.Signals | null
-  /** Interleaved stdout and stderr, keeping the most recent bytes. */
-  readonly output: string
-}
-
 /**
- * File-system and process effects of environment resolution: the shared setup host with the shipped runtime lookup's
- * architecture and file reads, plus what installing bpy needs.
+ * File-system and process effects of environment resolution: the shared runtime unpack host, whose `run` also installs
+ * bpy with uv.
  */
-export interface BlenderSetupHost extends ShippedRuntimeHost {
-  /**
-   * Rename a directory; rejects when the destination exists and is not empty.
-   * @param from - existing path.
-   * @param to - new path.
-   */
-  rename(from: string, to: string): Promise<void>
-  /**
-   * Remove a file or directory tree; succeeds when it is already absent.
-   * @param target - absolute path.
-   */
-  remove(target: string): Promise<void>
-  /**
-   * Run a command to completion without a shell.
-   * @param argv - absolute executable followed by its arguments.
-   * @param options - working directory, environment, and cancellation.
-   * @returns exit status and the bounded output tail.
-   */
-  run(argv: CommandArgv, options: CommandOptions): Promise<CommandResult>
-}
+export type BlenderSetupHost = RuntimeUnpackHost
 
 /**
- * Run a command and keep the tail of its interleaved output.
- * @param argv - executable and arguments.
- * @param options - working directory, environment, and cancellation.
- * @param outputLimit - bytes of output kept from the end.
- * @returns exit status and output tail; rejects when the command cannot start or is aborted.
- */
-export function runCommand(argv: CommandArgv, options: CommandOptions, outputLimit: number): Promise<CommandResult> {
-  const [command, ...args] = argv
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-    let output = Buffer.alloc(0)
-    const collect = (chunk: Buffer): void => {
-      output = Buffer.concat([output, chunk])
-      if (output.length > outputLimit) output = output.subarray(output.length - outputLimit)
-    }
-    child.stdout.on('data', collect)
-    child.stderr.on('data', collect)
-    child.once('error', reject)
-    child.once('close', (exitCode, signal) => { resolve({ exitCode, signal, output: output.toString('utf8') }) })
-  })
-}
-
-/**
- * The real host: the shared `nodeShippedRuntimeHost`, plus `node:fs` renames and removals and
- * `node:child_process` commands on this machine.
+ * The real host: the shared `nodeRuntimeUnpackHost`.
  * @param outputLimit - bytes of command output kept for diagnostics.
  * @returns a host bound to the current process environment and architecture.
  */
 export function nodeBlenderSetupHost(outputLimit: number): BlenderSetupHost {
-  return {
-    ...nodeShippedRuntimeHost(),
-    async rename(from, to) { await rename(from, to) },
-    async remove(target) { await rm(target, { recursive: true, force: true }) },
-    run: async (argv, options) => await runCommand(argv, options, outputLimit),
-  }
+  return nodeRuntimeUnpackHost(outputLimit)
 }
 
 function pathsOf(platform: NodeJS.Platform): path.PlatformPath {
   return platform === 'win32' ? path.win32 : path.posix
-}
-
-/**
- * Find an executable in the absolute `PATH` entries (`name.exe` on Windows).
- * @param name - executable name without extension.
- * @param host - environment and file checks.
- * @returns the first match, or undefined.
- */
-export async function findOnPath(name: string, host: SetupHost): Promise<string | undefined> {
-  const paths = pathsOf(host.platform)
-  const file = host.platform === 'win32' ? `${name}.exe` : name
-  for (const directory of (host.env.PATH ?? host.env.Path ?? '').split(paths.delimiter)) {
-    if (!paths.isAbsolute(directory)) continue
-    const candidate = paths.join(directory, file)
-    if (await host.isExecutable(candidate)) return candidate
-  }
-  return undefined
 }
 
 /**
@@ -270,49 +187,15 @@ export async function findPackedBpy(bundledRoot: string, host: ShippedRuntimeHos
   return await readPackedRuntime(bundledRoot, host, BpyRuntimeRecord, shippedInvalid)
 }
 
-/**
- * The folder that a packed shipped runtime unpacks into: `<dataRoot>/runtime/<version>`, where even a long user name
- * leaves the deepest files of the runtime well inside Windows' path length limit.
- * @param dataRoot - the plugin's data directory.
- * @param version - the runtime version, such as `5.2.3-wasd.1`.
- * @param platform - selects the path syntax.
- * @returns the folder.
- */
-export function unpackedRuntimeDirectory(dataRoot: string, version: string, platform: NodeJS.Platform): string {
-  return pathsOf(platform).join(dataRoot, 'runtime', version)
+/** How the shared unpack reports a bpy runtime archive that cannot run or cannot be moved into place. */
+const BPY_UNPACK_FAILURES = {
+  invalid: shippedInvalid,
+  moveFailed: (directory: string, cause: unknown) => installFailure({ directory }, 'bpy runtime', cause),
 }
 
 /**
- * The `tar` that unpacks a packed runtime: on Windows the bsdtar of `%SystemRoot%\System32`, because the GNU tar that
- * Git for Windows puts on `PATH` reads `C:\...` as a remote host; elsewhere `/usr/bin/tar`, then `tar` on `PATH`.
- */
-async function findTar(host: SetupHost): Promise<string | undefined> {
-  if (host.platform !== 'win32') return await firstExecutable(['/usr/bin/tar'], host) ?? await findOnPath('tar', host)
-  const root = host.env.SystemRoot ?? host.env.windir ?? 'C:\\Windows'
-  return await firstExecutable([path.win32.join(root, 'System32', 'tar.exe')], host)
-}
-
-/** Whether a folder holds an unpacked runtime whose `runtime.json` describes the given runtime. */
-async function holdsRuntime(directory: string, expected: BpyRuntime, host: ShippedRuntimeHost): Promise<boolean> {
-  const text = await host.readTextFile(pathsOf(host.platform).join(directory, 'runtime.json'))
-  if (text === undefined) return false
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch {
-    // SyntaxError: a runtime.json that is not JSON describes no runtime, so the archive unpacks again.
-    return false
-  }
-  const parsed = BpyRuntimeRecord.safeParse(json)
-  return parsed.success && (['format', 'version', 'bpy', 'python', 'platform', 'arch', 'executable'] as const)
-    .every(field => parsed.data[field] === expected[field])
-}
-
-/**
- * Unpack the bpy runtime that the Desktop app ships as its archive into {@link unpackedRuntimeDirectory}, unless that
- * folder already holds it. The archive unpacks into a uniquely named sibling folder that is renamed into place, so an
- * interrupted unpack never leaves a half-unpacked runtime at the final path; a folder there whose Python is not
- * executable is replaced, and a runtime that a concurrent server unpacked first is accepted.
+ * Unpack the bpy runtime that the Desktop app ships as its archive into `<dataRoot>/runtime/<version>`, unless that
+ * folder already holds it, with app-mcp's `unpackPackedRuntime`.
  * @param packed - the archive and its runtime fields, from {@link findPackedBpy}.
  * @param dataRoot - the plugin's data directory.
  * @param host - file-system and process effects.
@@ -324,36 +207,9 @@ async function holdsRuntime(directory: string, expected: BpyRuntime, host: Shipp
 export async function unpackShippedBpy(
   packed: PackedRuntime<BpyRuntime>, dataRoot: string, host: BlenderSetupHost, signal: AbortSignal,
 ): Promise<ShippedBpy & { readonly unpacked: boolean }> {
-  const paths = pathsOf(host.platform)
-  const directory = unpackedRuntimeDirectory(dataRoot, packed.record.version, host.platform)
-  const python = paths.join(directory, ...packed.record.executable.split('/'))
-  const runtime = { directory, python, bpy: packed.record.bpy }
-  if (await holdsRuntime(directory, packed.record, host) && await host.isExecutable(python)) return { ...runtime, unpacked: false }
-  if (!(await host.listDirectory(packed.directory)).includes(paths.basename(packed.archive))) {
-    throw shippedInvalid(packed.directory, `its archive.json names ${packed.archive}, which is missing`)
-  }
-  const tar = await findTar(host)
-  if (tar === undefined) {
-    throw new BlenderSetupError('BLENDER_RUNTIME_INVALID', `No tar program was found to unpack the bpy runtime that WASD Engine ships in ${packed.archive}; `
-      + 'Windows 10 and later have one in System32. Set the Blender plugin setting backend to app to use an installed Blender.')
-  }
-  await host.makeDirectory(paths.dirname(directory))
-  // A short suffix keeps the folder's deepest paths inside Windows' path length limit while the archive unpacks.
-  const partial = `${directory}.partial-${randomUUID().slice(0, 8)}`
-  await host.makeDirectory(partial)
-  try {
-    const result = await host.run([tar, '-xzf', packed.archive, '-C', partial], { cwd: dataRoot, env: childEnvironment(host.env), signal })
-    if (result.exitCode !== 0) {
-      throw shippedInvalid(packed.directory, `tar could not unpack ${packed.archive} (${exitText(result)}): ${result.output.trim()}`)
-    }
-    if (!await holdsRuntime(partial, packed.record, host)) {
-      throw shippedInvalid(packed.directory, `the runtime.json in ${packed.archive} does not describe the runtime ${packed.record.version} that its archive.json names`)
-    }
-    await moveIntoPlace(host, partial, { directory, python }, 'bpy runtime')
-  } finally {
-    await host.remove(partial)
-  }
-  return { ...runtime, unpacked: true }
+  const runtime = await unpackPackedRuntime(packed, packed.record.executable, dataRoot, host, signal, BPY_UNPACK_FAILURES)
+  const python = runtime.resolve(packed.record.executable)
+  return { directory: runtime.directory, python, bpy: packed.record.bpy, unpacked: runtime.unpacked }
 }
 
 /**
@@ -402,37 +258,6 @@ function installFailure(target: { readonly directory: string }, what: string, er
 }
 
 /**
- * Move a built environment or unpacked runtime to its final path. A directory already there whose Python is not
- * executable, such as one whose managed Python was removed, is moved aside and deleted; a working one that a
- * concurrent installer moved there first is accepted.
- * @throws BlenderSetupError `BPY_INSTALL_FAILED` when the folder cannot be moved into place.
- */
-async function moveIntoPlace(
-  host: BlenderSetupHost, built: string, target: { readonly directory: string; readonly python: string }, what: string,
-): Promise<void> {
-  try {
-    await host.rename(built, target.directory)
-    return
-  } catch (error) {
-    if (await host.isExecutable(target.python)) return
-    const stale = `${target.directory}.stale-${randomUUID()}`
-    try {
-      await host.rename(target.directory, stale)
-    } catch {
-      // Nothing could be moved aside, so the failure of the first rename is the cause.
-      throw installFailure(target, what, error)
-    }
-    try {
-      await host.rename(built, target.directory)
-    } catch (retryError) {
-      if (!await host.isExecutable(target.python)) throw installFailure(target, what, retryError)
-    } finally {
-      await host.remove(stale)
-    }
-  }
-}
-
-/**
  * Create the managed bpy environment unless it already exists. The environment is built in a
  * uniquely named sibling directory and renamed into place, so an interrupted install never
  * leaves a half-built environment at the final path. A concurrent installer that wins the rename
@@ -461,7 +286,7 @@ export async function prepareBpy(
       `create a Python ${options.pythonVersion} environment`)
     await runSetupStep(host, [uv, 'pip', 'install', '--no-progress', '--python', venvPython(partial, host.platform), `bpy==${options.bpyVersion}`],
       commandOptions, `install bpy ${options.bpyVersion}`)
-    await moveIntoPlace(host, partial, target, 'bpy environment')
+    await moveIntoPlace(host, partial, { directory: target.directory, program: target.python }, cause => installFailure(target, 'bpy environment', cause))
   } finally {
     await host.remove(partial)
   }

@@ -4,8 +4,8 @@
  * closes. Wiring only: the modules it connects carry the behavior and their tests.
  */
 import { fileURLToPath } from 'node:url'
-import { runAppMcpServer } from '@deepseek-ai/dsh-app-mcp'
-import { bundledRuntimeRoot, GimpWorkers, nodeGimpSetupHost, parseServerOptions } from './environment.ts'
+import { runAppMcpServer, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
+import { GimpWorkers, nodeGimpSetupHost, parseServerOptions } from './environment.ts'
 import { GIMP_INSTRUCTIONS, GIMP_SERVER_NAME } from './instructions.ts'
 import { gimpTools } from './tools.ts'
 
@@ -21,8 +21,8 @@ async function main(): Promise<void> {
       parseOptions: parseServerOptions,
       workers: (options, dependencies) => new GimpWorkers(options, {
         ...dependencies,
-        host: nodeGimpSetupHost(),
-        bundledRoot: bundledRuntimeRoot(fileURLToPath(new URL('..', import.meta.url))),
+        host: nodeGimpSetupHost(options.maxLogBytes),
+        bundledRoot: shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url))),
       }),
       tools: gimpTools,
     }, process.argv)

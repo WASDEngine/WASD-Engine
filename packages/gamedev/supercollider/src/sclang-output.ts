@@ -105,7 +105,8 @@ export class SclangOutputParser {
   push(chunk: Buffer): void {
     const lines = (this.partial + this.decoder.write(chunk)).split('\n')
     this.partial = lines.pop() ?? ''
-    for (const line of lines) this.line(line)
+    // sclang on Windows writes its stdout in text mode, which ends each line with CR LF.
+    for (const line of lines) this.line(line.endsWith('\r') ? line.slice(0, -1) : line)
   }
 
   private line(line: string): void {

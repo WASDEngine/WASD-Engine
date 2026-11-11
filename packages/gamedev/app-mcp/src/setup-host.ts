@@ -1,16 +1,58 @@
 /**
  * File-system effects that a server uses to find its application before the
- * first worker starts. A server reaches the machine only through a
+ * first worker starts, and the setup commands, such as an unpack, that it runs
+ * to completion. A server reaches the machine only through a
  * {@link SetupHost}, so its search order is testable without the application.
  *
  * @module
  */
 
+import { spawn } from 'node:child_process'
 import { access, constants, mkdir, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 
 /** An absolute executable followed by its arguments. */
 export type CommandArgv = readonly [string, ...string[]]
+
+/** Options of a setup command that {@link runCommand} runs. */
+export interface CommandOptions {
+  readonly cwd: string
+  /** Complete child environment. */
+  readonly env: NodeJS.ProcessEnv
+  /** Aborting kills the command and rejects with the abort reason. */
+  readonly signal: AbortSignal
+}
+
+/** Completion of a setup command that {@link runCommand} ran. */
+export interface CommandResult {
+  readonly exitCode: number | null
+  readonly signal: NodeJS.Signals | null
+  /** Interleaved stdout and stderr, keeping the most recent bytes. */
+  readonly output: string
+}
+
+/**
+ * Run a setup command to completion without a shell or a window, and keep the tail of its interleaved output.
+ * @param argv - executable and arguments.
+ * @param options - working directory, environment, and cancellation.
+ * @param outputLimit - bytes of output kept from the end.
+ * @returns exit status and output tail; rejects when the command cannot start or is aborted.
+ */
+export function runCommand(argv: CommandArgv, options: CommandOptions, outputLimit: number): Promise<CommandResult> {
+  const [command, ...args] = argv
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    let output = Buffer.alloc(0)
+    const collect = (chunk: Buffer): void => {
+      output = Buffer.concat([output, chunk])
+      if (output.length > outputLimit) output = output.subarray(output.length - outputLimit)
+    }
+    child.stdout.on('data', collect)
+    child.stderr.on('data', collect)
+    child.once('error', reject)
+    child.once('close', (exitCode, signal) => { resolve({ exitCode, signal, output: output.toString('utf8') }) })
+  })
+}
 
 /** File-system effects and facts of the machine that runs the server. */
 export interface SetupHost {

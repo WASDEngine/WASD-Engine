@@ -1,15 +1,20 @@
 /**
  * GIMP worker environment, resolved in the MCP server process on the first tool call: find a
  * GIMP 3 `gimp-console` executable, which is the runtime that the Desktop app ships unless a setting
- * names another, build the worker command line that runs the worker script as a Python batch
- * command, and give GIMP its own profile directory. Every file-system effect goes through a
- * {@link GimpSetupHost}, so resolution is testable without GIMP.
+ * names another, unpacking that runtime under the data directory first when the app ships its archive,
+ * build the worker command line that runs the worker script as a Python batch command, and give GIMP
+ * its own profile directory. Every file-system and process effect goes through a {@link GimpSetupHost},
+ * so resolution is testable without GIMP.
  */
-import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
-import { AppServerOptionFields, firstExecutable, newestFirst, nodeSetupHost, parseAppServerOptions } from '@deepseek-ai/dsh-app-mcp'
-import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
+import {
+  AppServerOptionFields, ShippedRuntimeFields, ShippedRuntimePath, WorkerError, firstExecutable, newestFirst, nodeRuntimeUnpackHost,
+  parseAppServerOptions, readPackedRuntime, readShippedRuntime, unpackPackedRuntime,
+} from '@deepseek-ai/dsh-app-mcp'
+import type {
+  AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, RuntimeUnpackHost, SetupHost, ShippedRuntimeHost, WorkerReady,
+} from '@deepseek-ai/dsh-app-mcp'
 import type { GimpServerOptions } from './types.ts'
 
 const ServerOptions = z.strictObject({
@@ -34,7 +39,7 @@ export class GimpSetupError extends Error {
 
   /**
    * @param code - `GIMP_NOT_FOUND` for a missing or misconfigured `gimp-console` executable, `GIMP_RUNTIME_INVALID` for a
-   *   shipped runtime that its `runtime.json` does not describe.
+   *   shipped runtime that its `runtime.json` or `archive.json` does not describe, or whose archive cannot be unpacked.
    * @param message - actionable description for the agent and the user.
    */
   constructor(readonly code: 'GIMP_NOT_FOUND' | 'GIMP_RUNTIME_INVALID', message: string) {
@@ -42,49 +47,23 @@ export class GimpSetupError extends Error {
   }
 }
 
-/** The setup host plus the processor architecture and the text file that resolution reads. */
-export interface GimpSetupHost extends SetupHost {
-  /** Processor architecture in Node's names, such as `arm64`; selects the shipped runtime. */
-  readonly arch: string
-  /**
-   * Read a UTF-8 text file.
-   * @param file - absolute path.
-   * @returns the text, or undefined when the file does not exist.
-   */
-  readTextFile(file: string): Promise<string | undefined>
-}
+/**
+ * File-system and process effects of environment resolution: the shared runtime unpack host, which also unpacks the
+ * runtime that the Desktop app ships as its archive.
+ */
+export type GimpSetupHost = RuntimeUnpackHost
 
 /**
- * The real host: `node:fs` on this machine, the current process environment, and its architecture.
+ * The real host: the shared `nodeRuntimeUnpackHost`.
+ * @param outputLimit - bytes of command output kept for diagnostics, such as a failing unpack.
  * @returns a host bound to this process.
  */
-export function nodeGimpSetupHost(): GimpSetupHost {
-  return {
-    ...nodeSetupHost(),
-    arch: process.arch,
-    async readTextFile(file) {
-      try {
-        return await readFile(file, 'utf8')
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-        throw error
-      }
-    },
-  }
+export function nodeGimpSetupHost(outputLimit: number): GimpSetupHost {
+  return nodeRuntimeUnpackHost(outputLimit)
 }
 
 function pathsOf(platform: NodeJS.Platform): path.PlatformPath {
   return platform === 'win32' ? path.win32 : path.posix
-}
-
-/**
- * Locate the runtimes a packaged application ships inside this package. A package inside an Electron `app.asar`
- * archive reads them from the sibling `app.asar.unpacked`, where the application keeps native files on disk.
- * @param packageRoot - folder holding the package manifest.
- * @returns the package's `runtime` folder, which holds one `<platform>-<arch>` folder per shipped runtime.
- */
-export function bundledRuntimeRoot(packageRoot: string): string {
-  return path.join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'runtime')
 }
 
 /** A GIMP 3 to run: its console executable and the variables that its worker environment adds. */
@@ -95,66 +74,93 @@ export interface GimpInstallation {
   readonly shipped: boolean
   /** `GIMP3_DATADIR`, `GIMP3_LOCALEDIR`, and `GIMP3_SYSCONFDIR` of the shipped runtime; empty for another GIMP. */
   readonly environment: Readonly<Record<string, string>>
+  /** Setup facts to report to the agent with the next tool result, such as a first-use unpack. */
+  readonly notes: readonly string[]
+  /** What to do when this GIMP does not start; empty when there is nothing to repair. */
+  readonly repair: string
 }
 
-/** A path inside the runtime folder: relative, with `/` separators, and without `.` or `..` parts. */
-const RuntimePath = z.string().min(1).refine(
-  value => !value.startsWith('/') && value.split('/').every(part => part !== '' && part !== '.' && part !== '..' && !part.includes('\\')),
-  'must be a relative path inside the runtime folder',
-)
-
 /** `runtime.json` of a shipped runtime, as `wasdengine/gimp/runtime.py` writes it. */
-const RuntimeRecord = z.object({
-  format: z.literal(1),
-  version: z.string().min(1),
+const GimpRuntimeRecord = z.object({
+  ...ShippedRuntimeFields,
   gimp: z.string().min(1),
-  platform: z.string(),
-  arch: z.string(),
-  console: RuntimePath,
-  dataDir: RuntimePath,
-  localeDir: RuntimePath,
-  sysconfDir: RuntimePath,
+  console: ShippedRuntimePath,
+  dataDir: ShippedRuntimePath,
+  localeDir: ShippedRuntimePath,
+  sysconfDir: ShippedRuntimePath,
 })
+
+/** The fields of a shipped GIMP runtime's `runtime.json`. */
+type GimpRuntime = z.infer<typeof GimpRuntimeRecord>
+
+/** The error for a shipped runtime that cannot run, with how to recover. */
+function shippedInvalid(directory: string, reason: string): GimpSetupError {
+  return new GimpSetupError('GIMP_RUNTIME_INVALID',
+    `The GIMP runtime shipped in ${directory} cannot run: ${reason}. Reinstall WASD Engine, or set the GIMP plugin setting gimpConsolePath to an installed gimp-console.`)
+}
+
+/** How the shared unpack reports a GIMP runtime archive that cannot run or cannot be moved into place. */
+const GIMP_UNPACK_FAILURES = {
+  invalid: shippedInvalid,
+  moveFailed: (directory: string, cause: unknown) => new GimpSetupError('GIMP_RUNTIME_INVALID',
+    `Could not move the unpacked GIMP runtime to ${directory}: ${cause instanceof Error ? cause.message : String(cause)}. Remove that folder, then call the tool again.`),
+}
+
+/** A shipped runtime's installation: its console and the folders that GIMP reads from its variables. */
+function runtimeInstallation(
+  record: GimpRuntime, resolve: (relative: string) => string, notes: readonly string[], repair: string,
+): GimpInstallation {
+  return {
+    console: resolve(record.console),
+    shipped: true,
+    environment: {
+      GIMP3_DATADIR: resolve(record.dataDir), GIMP3_LOCALEDIR: resolve(record.localeDir), GIMP3_SYSCONFDIR: resolve(record.sysconfDir),
+    },
+    notes,
+    repair,
+  }
+}
 
 /**
  * The runtime that the Desktop app ships for this platform: `<bundledRoot>/<platform>-<arch>/runtime.json` names its
  * console and the folders that GIMP reads from `GIMP3_DATADIR`, `GIMP3_LOCALEDIR`, and `GIMP3_SYSCONFDIR`. GIMP's Python
- * plug-ins run from a nested `Python.app` and find GIMP's folders only through those variables.
- * @param bundledRoot - the package's `runtime` folder.
+ * plug-ins on macOS run from a nested `Python.app` and find GIMP's folders only through those variables.
+ * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
  * @param host - environment and file checks.
  * @returns the runtime, or undefined when no runtime is shipped for this platform.
  * @throws GimpSetupError `GIMP_RUNTIME_INVALID` when `runtime.json` is unreadable, describes another platform, or names a
  *   console that is not an executable file.
  */
-export async function findShippedGimp(bundledRoot: string, host: GimpSetupHost): Promise<GimpInstallation | undefined> {
-  const paths = pathsOf(host.platform)
-  const directory = paths.join(bundledRoot, `${host.platform}-${host.arch}`)
-  const recordFile = paths.join(directory, 'runtime.json')
-  const text = await host.readTextFile(recordFile)
-  if (text === undefined) return undefined
-  const invalid = (reason: string): GimpSetupError => new GimpSetupError('GIMP_RUNTIME_INVALID',
-    `The GIMP runtime shipped in ${directory} cannot run: ${reason}. Reinstall WASD Engine, or set the GIMP plugin setting gimpConsolePath to an installed gimp-console.`)
-  let json: unknown
-  try {
-    json = JSON.parse(text)
-  } catch {
-    // SyntaxError: the file is not JSON, which the runtime record must be.
-    throw invalid(`${recordFile} is not JSON`)
-  }
-  const parsed = RuntimeRecord.safeParse(json)
-  if (!parsed.success) throw invalid(`${recordFile} is not a format 1 runtime record: ${z.prettifyError(parsed.error)}`)
-  const record = parsed.data
-  if (record.platform !== host.platform || record.arch !== host.arch) throw invalid(`its runtime.json describes ${record.platform}-${record.arch}`)
-  const resolve = (relative: string): string => paths.join(directory, ...relative.split('/'))
-  const console = resolve(record.console)
-  if (!await host.isExecutable(console)) throw invalid(`${console} is not an executable file`)
-  return {
-    console,
-    shipped: true,
-    environment: {
-      GIMP3_DATADIR: resolve(record.dataDir), GIMP3_LOCALEDIR: resolve(record.localeDir), GIMP3_SYSCONFDIR: resolve(record.sysconfDir),
-    },
-  }
+export async function findShippedGimp(bundledRoot: string, host: ShippedRuntimeHost): Promise<GimpInstallation | undefined> {
+  const runtime = await readShippedRuntime(bundledRoot, host, GimpRuntimeRecord, shippedInvalid)
+  if (runtime === undefined) return undefined
+  const installation = runtimeInstallation(runtime.record, relative => runtime.resolve(relative), [], '')
+  if (!await host.isExecutable(installation.console)) throw shippedInvalid(runtime.directory, `${installation.console} is not an executable file`)
+  return installation
+}
+
+/**
+ * The runtime that the Desktop app ships as its archive for this platform, unpacked into `<dataRoot>/runtime/<version>`
+ * on first use. The Desktop app for Windows ships the archive, because the runtime's deepest files would pass Windows'
+ * path length limit below the app's install folder.
+ * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
+ * @param dataRoot - the plugin's data directory.
+ * @param host - file-system and process effects.
+ * @param signal - cancels the running unpack.
+ * @returns the unpacked runtime, or undefined when no archive is shipped for this platform.
+ * @throws GimpSetupError `GIMP_RUNTIME_INVALID` when `archive.json` does not describe the archive for this platform, or
+ *   when the archive or tar is missing, tar fails, the archive holds another runtime, or the runtime cannot be moved
+ *   into place.
+ */
+export async function findPackedGimp(
+  bundledRoot: string, dataRoot: string, host: GimpSetupHost, signal: AbortSignal,
+): Promise<GimpInstallation | undefined> {
+  const packed = await readPackedRuntime(bundledRoot, host, GimpRuntimeRecord, shippedInvalid)
+  if (packed === undefined) return undefined
+  const runtime = await unpackPackedRuntime(packed, packed.record.console, dataRoot, host, signal, GIMP_UNPACK_FAILURES)
+  return runtimeInstallation(packed.record, relative => runtime.resolve(relative),
+    runtime.unpacked ? [`Unpacked the GIMP runtime that WASD Engine ships into ${runtime.directory} (first use).`] : [],
+    `If the GIMP runtime that WASD Engine unpacked into ${runtime.directory} is damaged, delete that folder so that the next start unpacks it again.`)
 }
 
 /** Versioned GIMP 3 console executable names: `gimp-console-3`, `gimp-console-3.2`, and `.exe` forms on Windows. */
@@ -202,26 +208,32 @@ async function windowsInstallDirectories(host: SetupHost): Promise<string[]> {
 }
 
 /**
- * Locate GIMP 3: `gimpConsolePath`, the `GIMP_CONSOLE` variable, the runtime that the Desktop app ships, the newest
- * `gimp-console-3*` in a macOS GIMP application bundle, the newest versioned `gimp-console-3*` in the first `PATH`
- * directory that has one, `gimp-console` on `PATH`, then on Windows the GIMP 3 installations under Program Files and
- * then the per-user programs folder, newest first.
- * @param options - `gimpConsolePath`, empty to search.
+ * Locate GIMP 3: `gimpConsolePath`, the `GIMP_CONSOLE` variable, the runtime that the Desktop app ships, unpacking it
+ * under `dataRoot` first when the app ships its archive, the newest `gimp-console-3*` in a macOS GIMP application
+ * bundle, the newest versioned `gimp-console-3*` in the first `PATH` directory that has one, `gimp-console` on `PATH`,
+ * then on Windows the GIMP 3 installations under Program Files and then the per-user programs folder, newest first.
+ * @param options - `gimpConsolePath`, empty to search, and the data directory that a packed runtime unpacks into.
  * @param bundledRoot - the package's `runtime` folder.
- * @param host - environment and file checks.
+ * @param host - file-system and process effects.
+ * @param signal - cancels a running unpack.
  * @returns the GIMP to run, or undefined when no runtime is shipped and GIMP 3 is not installed.
  * @throws GimpSetupError `GIMP_NOT_FOUND` when `gimpConsolePath` or `GIMP_CONSOLE` is set but not executable, and the
- *   errors of {@link findShippedGimp}.
+ *   errors of {@link findShippedGimp} and {@link findPackedGimp}.
  */
 export async function findGimp(
-  options: Pick<GimpServerOptions, 'gimpConsolePath'>, bundledRoot: string, host: GimpSetupHost,
+  options: Pick<GimpServerOptions, 'gimpConsolePath' | 'dataRoot'>, bundledRoot: string, host: GimpSetupHost, signal: AbortSignal,
 ): Promise<GimpInstallation | undefined> {
   const configured = await configuredConsole(options, host)
-  if (configured !== undefined) return { console: configured, shipped: false, environment: {} }
-  const shipped = await findShippedGimp(bundledRoot, host)
+  if (configured !== undefined) return otherGimp(configured)
+  const shipped = await findShippedGimp(bundledRoot, host) ?? await findPackedGimp(bundledRoot, options.dataRoot, host, signal)
   if (shipped !== undefined) return shipped
   const installed = await installedConsole(host)
-  return installed === undefined ? undefined : { console: installed, shipped: false, environment: {} }
+  return installed === undefined ? undefined : otherGimp(installed)
+}
+
+/** A GIMP that WASD Engine does not ship: a configured or installed console, run with its own folders. */
+function otherGimp(console: string): GimpInstallation {
+  return { console, shipped: false, environment: {}, notes: [], repair: '' }
 }
 
 /** `gimpConsolePath`, then `GIMP_CONSOLE`; undefined when neither is set. */
@@ -300,16 +312,18 @@ export function workerEnvironment(
   }
 }
 
-function installHelp(platform: NodeJS.Platform): string {
-  const brew = platform === 'darwin' ? ' (on macOS, `brew install --cask gimp` also works)' : ''
-  return `GIMP 3 was not found. Install GIMP 3 from https://www.gimp.org/downloads/${brew}, then call the tool again. `
+/** Why no GIMP is available on this machine, and how the user gets one. */
+function installHelp(host: Pick<ShippedRuntimeHost, 'platform' | 'arch'>): string {
+  const brew = host.platform === 'darwin' ? ' (on macOS, `brew install --cask gimp` also works)' : ''
+  return `GIMP 3 was not found: this installation of WASD Engine has no GIMP runtime for ${host.platform}-${host.arch}, and no GIMP 3 is installed. `
+    + `Install GIMP 3 from https://www.gimp.org/downloads/${brew}, then call the tool again. `
     + 'The GIMP plugin setting gimpConsolePath or the GIMP_CONSOLE environment variable selects a specific gimp-console executable.'
 }
 
 /** Dependencies of {@link GimpWorkers}: the server's worker script copy and worker start, the setup host, and the shipped runtimes. */
 export interface GimpWorkerDependencies<W extends { readonly ready: WorkerReady }> extends AppWorkerDependencies<W> {
   readonly host: GimpSetupHost
-  /** The package's `runtime` folder, from {@link bundledRuntimeRoot}. */
+  /** The package's `runtime` folder, from `shippedRuntimeRoot`. */
   readonly bundledRoot: string
 }
 
@@ -332,24 +346,31 @@ export class GimpWorkers<W extends { readonly ready: WorkerReady }> {
    * @param scope - the Session whose worker this is, and its own directory, which is GIMP's working directory.
    * @returns the ready worker.
    * @throws GimpSetupError with installation instructions when no runtime is shipped and GIMP 3 is not installed, and
-   *   the errors of {@link findGimp}.
+   *   the errors of {@link findGimp}; WorkerError `WORKER_START_FAILED` when the worker does not start, which for an
+   *   unpacked runtime says how to unpack it again.
    */
   async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
-    const gimp = await findGimp(this.options, this.dependencies.bundledRoot, host)
-    if (gimp === undefined) throw new GimpSetupError('GIMP_NOT_FOUND', installHelp(host.platform))
+    const gimp = await findGimp(this.options, this.dependencies.bundledRoot, host, signal)
+    if (gimp === undefined) throw new GimpSetupError('GIMP_NOT_FOUND', installHelp(host))
     const profile = gimpProfileDirectory(this.options.dataRoot, host.platform)
     await host.makeDirectory(profile)
     const script = await this.dependencies.workerScript()
-    const worker = await this.dependencies.start({
-      argv: gimpWorkerArgv(gimp.console, script), cwd: scope.directory, env: workerEnvironment(host.env, profile, gimp.environment),
-      readyTimeoutMs: this.options.readyTimeoutMs, logTailBytes: this.options.maxLogBytes,
-    }, signal)
+    let worker: W
+    try {
+      worker = await this.dependencies.start({
+        argv: gimpWorkerArgv(gimp.console, script), cwd: scope.directory, env: workerEnvironment(host.env, profile, gimp.environment),
+        readyTimeoutMs: this.options.readyTimeoutMs, logTailBytes: this.options.maxLogBytes,
+      }, signal)
+    } catch (error) {
+      if (gimp.repair === '' || !(error instanceof WorkerError) || error.code !== 'WORKER_START_FAILED') throw error
+      throw new WorkerError(error.code, `${error.message}. ${gimp.repair}`, { logTail: error.logTail, cause: error })
+    }
     const details = [
       ...gimp.shipped ? ['the runtime that WASD Engine ships'] : [],
       ...worker.ready.python === undefined ? [] : [`Python ${worker.ready.python}`],
     ]
-    this.notes.push(`GIMP ${worker.ready.version} started${details.length === 0 ? '' : ` (${details.join(', ')})`} with no images open.`)
+    this.notes.push(...gimp.notes, `GIMP ${worker.ready.version} started${details.length === 0 ? '' : ` (${details.join(', ')})`} with no images open.`)
     return worker
   }
 

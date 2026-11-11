@@ -2,11 +2,14 @@
 """Prepare, package, install, merge, and verify WASD Engine GIMP runtime archives.
 
 build.sh runs the prepare, macho-files, check-links, package, and install
-commands; the release workflow (.github/workflows/wasd-gimp.yml) runs merge and
-verify. BUILD.md describes the runtime layout, runtime.json, and manifest.json.
-The script needs only the standard library of Python 3.8 or newer; check-links
-also runs otool. It writes UTF-8 with LF line ends to stdout and stderr. Every
-failure prints one "runtime.py: error:" line on stderr and exits with status 1.
+commands for macOS, and the install-setup, prepare-windows, check-imports,
+package, and install commands for Windows; the release workflow
+(.github/workflows/wasd-gimp.yml) runs merge and verify. BUILD.md describes the
+runtime layout, runtime.json, and manifest.json. The script needs only the
+standard library of Python 3.8 or newer; check-links also runs otool, and
+install-setup runs GIMP's Windows installer, so it runs on Windows only. It
+writes UTF-8 with LF line ends to stdout and stderr. Every failure prints one
+"runtime.py: error:" line on stderr and exits with status 1.
 """
 
 from __future__ import annotations
@@ -22,6 +25,7 @@ import plistlib
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -83,6 +87,42 @@ UNUSED_SITE_PACKAGES = (
     "smartypants-*.dist-info", "typogrify", "typogrify-*.dist-info", "toml", "toml-*.dist-info", "packaging",
     "packaging-*.dist-info",
 )
+
+# GIMP's Windows installer (Inno Setup) and the switches that install it without a window or a question: per user, without
+# Start menu or desktop entries, and only the components that the macOS runtime also holds: GIMP and its libraries,
+# Python for the python-fu-eval batch interpreter, Ghostscript for PostScript, and the MyPaint brushes; not the debug
+# symbols, the development files, or the translations.
+SETUP_COMPONENTS = ("gimpX64", "depsX64", "pyX64", "gsX64", "mypaint")
+SETUP_SWITCHES = ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NOCANCEL", "/CURRENTUSER", "/NOICONS", "/TASKS=")
+SETUP_TIMEOUT_SECONDS = 1800
+# Paths of a Windows install, relative to its folder, that the runtime leaves out: the uninstaller, headers and import
+# libraries, the 32-bit TWAIN helper, the hicolor icon theme of the desktop, and the scanner plug-in, which only opens
+# the scanner's own dialog.
+WINDOWS_UNUSED_PATHS = ("uninst", "include", "lib/pkgconfig", "32", "share/icons", "lib/gimp/3.0/plug-ins/twain")
+# Files of a Windows install that the runtime leaves out wherever they are: debug symbols and static libraries.
+WINDOWS_UNUSED_FILES = ("*.pdb", "*.a")
+# The folder of GIMP's interpreter files, whose programs the installer names by its own absolute folder.
+INTERPRETERS = "lib/gimp/3.0/interpreters"
+# PE machine type of x64 code.
+PE_MACHINE_X64 = 0x8664
+# Extensions of the runtime's PE files: programs, libraries, and Python extension modules.
+PE_EXTENSIONS = (".exe", ".dll", ".pyd")
+# The signature of VS_FIXEDFILEINFO, which starts the fixed part of a program's version resource.
+VERSION_SIGNATURE = struct.pack("<I", 0xFEEF04BD)
+# Libraries that every Windows 10 and later holds in System32, which runtime files may load besides their own; the API
+# set names api-ms-win-* and ext-ms-win-* resolve to system libraries too. The Visual C++ runtime is not among them.
+WINDOWS_SYSTEM_LIBRARIES = frozenset(name.lower() for name in (
+    "advapi32.dll", "avrt.dll", "bcrypt.dll", "bcryptprimitives.dll", "cfgmgr32.dll", "comctl32.dll", "comdlg32.dll",
+    "crypt32.dll", "d2d1.dll", "d3d11.dll", "d3d12.dll", "d3d9.dll", "d3dcompiler_47.dll", "dbghelp.dll", "dcomp.dll",
+    "dnsapi.dll", "dsound.dll", "dwmapi.dll", "dwrite.dll", "dxgi.dll", "gdi32.dll", "gdiplus.dll", "glu32.dll", "hid.dll",
+    "imagehlp.dll", "imm32.dll", "iphlpapi.dll", "kernel32.dll", "kernelbase.dll", "ksuser.dll", "mf.dll", "mfplat.dll",
+    "mfreadwrite.dll", "mpr.dll", "msacm32.dll", "mscms.dll", "msimg32.dll", "msvcrt.dll", "mswsock.dll", "ncrypt.dll",
+    "netapi32.dll", "normaliz.dll", "ntdll.dll", "ole32.dll", "oleacc.dll", "oleaut32.dll", "opengl32.dll", "powrprof.dll",
+    "propsys.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shcore.dll", "shell32.dll", "shlwapi.dll",
+    "ucrtbase.dll", "urlmon.dll", "user32.dll", "userenv.dll", "usp10.dll", "uxtheme.dll", "version.dll", "winhttp.dll",
+    "wininet.dll", "winmm.dll", "winspool.drv", "wintrust.dll", "wldap32.dll", "ws2_32.dll", "wsock32.dll", "wtsapi32.dll",
+    "windowscodecs.dll",
+))
 
 Record = Dict[str, Any]
 
@@ -472,6 +512,16 @@ def prepare(contents: str) -> str:
     return version
 
 
+def runtime_folders(platform: str) -> Dict[str, str]:
+    """Return the runtime.json folders of a platform's layout: inside Contents on macOS, at the root on Windows.
+
+    @param platform: Node.js platform name.
+    @returns: dataDir, localeDir, and sysconfDir.
+    """
+    prefix = f"{CONTENTS}/" if platform == "darwin" else ""
+    return {"dataDir": f"{prefix}share/gimp/3.0", "localeDir": f"{prefix}share/locale", "sysconfDir": f"{prefix}etc/gimp/3.0"}
+
+
 def console_name(gimp: str) -> str:
     """Return the console program name of a GIMP version.
 
@@ -739,6 +789,308 @@ def replace_directory(staging: str, target: str) -> None:
             os.unlink(previous)
 
 
+def run_setup(setup: str, directory: str, log: str) -> None:
+    """Install GIMP into a folder with its Windows installer, without a window or a question.
+
+    The installer runs in its per-user mode with the components that SETUP_COMPONENTS names, writes its log, and adds
+    no Start menu or desktop entry; its registry entries stay on the machine that builds the runtime.
+
+    @param setup: GIMP's Inno Setup installer.
+    @param directory: absolute folder to install into; it must not exist yet.
+    @param log: file the installer writes its log to.
+    @raises RuntimeToolError: when not on Windows, the folder exists, or the installer fails or runs too long.
+    """
+    if os.name != "nt":
+        raise RuntimeToolError("install-setup runs GIMP's Windows installer, so it runs on Windows only")
+    if os.path.lexists(directory):
+        raise RuntimeToolError(f"{directory} exists; the installer must install into a new folder")
+    command = [setup, *SETUP_SWITCHES, f"/COMPONENTS={','.join(SETUP_COMPONENTS)}", f"/DIR={directory}", f"/LOG={log}"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=SETUP_TIMEOUT_SECONDS, check=False,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeToolError(f"{setup} did not finish within {SETUP_TIMEOUT_SECONDS} s; see {log}") from error
+    if result.returncode != 0:
+        raise RuntimeToolError(f"{setup} failed with exit code {result.returncode}; see {log}")
+
+
+def windows_file_version(path: str) -> Optional[str]:
+    """Read the file version that a Windows program's version resource states.
+
+    @param path: program file.
+    @returns: major.minor.micro of VS_FIXEDFILEINFO, such as 3.2.8, or None when the file has no version resource.
+    """
+    with open(path, "rb") as stream:
+        data = stream.read()
+    index = data.find(VERSION_SIGNATURE)
+    if index < 0 or index + 16 > len(data):
+        return None
+    most, least = struct.unpack_from("<II", data, index + 8)
+    return f"{most >> 16}.{most & 0xFFFF}.{least >> 16}"
+
+
+def rewrite_interpreters(stage: str) -> List[str]:
+    """Name the programs of GIMP's interpreter files by file name instead of the installer's absolute folder.
+
+    GIMP looks a program that its .interp file names without a folder up in the folder of the running GIMP program
+    first, which is the runtime's bin folder, so the files work wherever the runtime is unpacked. A program line is
+    name=program; a binfmt line is :name:type:offset:magic:mask:program:flags, with its first character as separator.
+
+    @param stage: runtime folder.
+    @returns: the '/'-separated paths of the files that changed, relative to the stage.
+    """
+    folder = os.path.join(stage, *INTERPRETERS.split("/"))
+    changed = []
+    for name in sorted(os.listdir(folder)) if os.path.isdir(folder) else []:
+        if not name.endswith(".interp"):
+            continue
+        path = os.path.join(folder, name)
+        with open(path, encoding="utf-8") as stream:
+            lines = stream.read().split("\n")
+        rewritten = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "" or stripped.startswith("#"):
+                rewritten.append(line)
+            elif stripped[0] in ":,":
+                fields = stripped.split(stripped[0])
+                if len(fields) > 6:
+                    fields[6] = windows_basename(fields[6])
+                rewritten.append(stripped[0].join(fields))
+            elif "=" in stripped:
+                key, program = stripped.split("=", 1)
+                rewritten.append(f"{key}={windows_basename(program)}")
+            else:
+                rewritten.append(line)
+        if rewritten != lines:
+            write_text_atomic(path, "\n".join(rewritten))
+            changed.append(f"{INTERPRETERS}/{name}")
+    return changed
+
+
+def windows_basename(program: str) -> str:
+    """Return the file name of an absolute Windows path, and any other text unchanged.
+
+    @param program: a program as an .interp file names it.
+    @returns: the file name after the last separator of a drive or UNC path, else program.
+    """
+    if re.match(r"^(?:[A-Za-z]:[\\/]|\\\\)", program) is None:
+        return program
+    return re.split(r"[\\/]", program)[-1]
+
+
+def path_references(stage: str, folder: str) -> List[str]:
+    """List the files of a runtime that name a folder, such as the one the installer installed into.
+
+    @param stage: runtime folder.
+    @param folder: absolute folder whose path, with either separator and in UTF-8 or UTF-16, files must not hold, compared
+        without regard to case.
+    @returns: the '/'-separated paths of the files that hold it, relative to the stage, sorted.
+    """
+    forms = {folder.replace("/", "\\"), folder.replace("\\", "/")}
+    needles = [form.lower().encode(encoding) for form in forms for encoding in ("utf-8", "utf-16-le")]
+    found = []
+    for directory, _, names in os.walk(stage):
+        for name in names:
+            path = os.path.join(directory, name)
+            with open(path, "rb") as stream:
+                data = stream.read().lower()
+            if any(needle in data for needle in needles):
+                found.append(os.path.relpath(path, stage).replace(os.sep, "/"))
+    return sorted(found)
+
+
+def prepare_windows(stage: str, installed: str) -> str:
+    """Turn a GIMP install made by its Windows installer into the runtime layout, in place, and return the GIMP version.
+
+    The layout keeps the install's bin, lib, share, and etc folders. The runtime drops the uninstaller, debug symbols,
+    the GUI program and the other unused programs, headers and import libraries, translations, the desktop icon theme,
+    the scanner plug-in, Python's test suite and other unused standard library folders, and build tools in
+    site-packages; it names the programs of the interpreter files by file name, keeps an empty share/locale with
+    KEEP_FILE, and gives every other empty folder KEEP_FILE.
+
+    @param stage: the install folder.
+    @param installed: the absolute folder the installer installed into, which no file may name afterwards.
+    @returns: the GIMP version of the console program's version resource, such as 3.2.8.
+    @raises RuntimeToolError: when the console program or its version is missing, or a file still names the install folder.
+    """
+    binaries = os.path.join(stage, "bin")
+    consoles = sorted(name for name in os.listdir(binaries) if re.match(r"^gimp-console-\d+\.\d+\.exe\Z", name)) if os.path.isdir(binaries) else []
+    if len(consoles) != 1:
+        raise RuntimeToolError(f"{binaries} holds {len(consoles)} versioned gimp-console programs, not one; the install is not GIMP 3 for Windows")
+    version = windows_file_version(os.path.join(binaries, consoles[0]))
+    if version is None or GIMP_PATTERN.match(version) is None or consoles[0] != f"{console_name(version)}.exe":
+        raise RuntimeToolError(f"{consoles[0]} states the version {version!r}, which does not match its name")
+
+    for relative in WINDOWS_UNUSED_PATHS:
+        remove_path(os.path.join(stage, *relative.split("/")))
+    gui = re.compile(r"^gimp-\d+(?:\.\d+)*\.exe\Z")
+    for name in sorted(os.listdir(binaries)):
+        if gui.match(name) or any(fnmatch.fnmatchcase(name.lower(), pattern) for pattern in UNUSED_PROGRAMS):
+            remove_path(os.path.join(binaries, name))
+    for directory, _, names in os.walk(stage):
+        for name in names:
+            if any(fnmatch.fnmatchcase(name.lower(), pattern) for pattern in WINDOWS_UNUSED_FILES):
+                os.unlink(os.path.join(directory, name))
+    remove_path(os.path.join(stage, "share", "locale"))
+    os.makedirs(os.path.join(stage, "share", "locale"))
+    library = os.path.join(stage, "lib")
+    for name in sorted(os.listdir(library)) if os.path.isdir(library) else []:
+        if re.match(r"^python3\.\d+\Z", name):
+            remove_matching(os.path.join(library, name), UNUSED_STDLIB)
+            remove_matching(os.path.join(library, name, "site-packages"), UNUSED_SITE_PACKAGES)
+    rewrite_interpreters(stage)
+
+    for directory, folders, names in os.walk(stage, topdown=False):
+        if not os.listdir(directory) and os.path.basename(directory) != "__pycache__":
+            write_text_atomic(os.path.join(directory, KEEP_FILE), KEEP_TEXT)
+    references = path_references(stage, installed)
+    if references:
+        raise RuntimeToolError(f"{len(references)} files name the install folder {installed}: {', '.join(references[:5])}")
+    return version
+
+
+def pe_layout(data: bytes) -> Optional[Tuple[int, int, int, List[Tuple[int, int, int]], int]]:
+    """Read the headers of a PE file: the machine, image base, data directories, and sections.
+
+    @param data: the file's bytes.
+    @returns: machine type, image base, offset of the data directories, sections as (virtual address, size, file offset),
+        and the number of data directories; None when the data is not a PE file.
+    """
+    if len(data) < 64 or data[:2] != b"MZ":
+        return None
+    header = struct.unpack_from("<I", data, 0x3C)[0]
+    if header + 24 > len(data) or data[header:header + 4] != b"PE\0\0":
+        return None
+    machine, section_count = struct.unpack_from("<HH", data, header + 4)
+    optional_size = struct.unpack_from("<H", data, header + 20)[0]
+    optional = header + 24
+    magic = struct.unpack_from("<H", data, optional)[0]
+    if magic == 0x20B:
+        image_base, directories = struct.unpack_from("<Q", data, optional + 24)[0], optional + 112
+    elif magic == 0x10B:
+        image_base, directories = struct.unpack_from("<I", data, optional + 28)[0], optional + 96
+    else:
+        return None
+    directory_count = struct.unpack_from("<I", data, directories - 4)[0]
+    sections = []
+    for index in range(section_count):
+        entry = optional + optional_size + index * 40
+        virtual_size, virtual_address, raw_size, raw_offset = struct.unpack_from("<IIII", data, entry + 8)
+        sections.append((virtual_address, max(virtual_size, raw_size), raw_offset))
+    return machine, image_base, directories, sections, directory_count
+
+
+def pe_imports(data: bytes) -> Optional[Tuple[int, List[str]]]:
+    """Read the machine type and the libraries that a PE file loads, from its import and delay-load import tables.
+
+    @param data: the file's bytes.
+    @returns: the machine type and the library names in table order, or None when the data is not a PE file.
+    @raises RuntimeToolError: when a table points outside the file.
+    """
+    layout = pe_layout(data)
+    if layout is None:
+        return None
+    machine, image_base, directories, sections, directory_count = layout
+
+    def offset(address: int) -> int:
+        for virtual_address, size, raw_offset in sections:
+            if virtual_address <= address < virtual_address + size:
+                return raw_offset + address - virtual_address
+        raise RuntimeToolError(f"the address {address:#x} lies in no section")
+
+    def name_at(address: int) -> str:
+        start = offset(address)
+        end = data.find(b"\0", start)
+        return data[start:end].decode("ascii", "replace")
+
+    names = []
+    # The import table (directory 1) holds 20-byte descriptors with the name at byte 12; the delay-load table
+    # (directory 13) holds 32-byte descriptors with the name at byte 4, an address relative to the image when bit 0 of
+    # their attributes is set and an absolute one otherwise. A descriptor without a name ends each table.
+    for index, size, name_field in ((1, 20, 12), (13, 32, 4)):
+        if index >= directory_count:
+            continue
+        address = struct.unpack_from("<I", data, directories + index * 8)[0]
+        if address == 0:
+            continue
+        cursor = offset(address)
+        while cursor + size <= len(data):
+            attributes, = struct.unpack_from("<I", data, cursor)
+            name = struct.unpack_from("<I", data, cursor + name_field)[0]
+            if name == 0:
+                break
+            if index == 13 and attributes & 1 == 0:
+                name -= image_base
+            names.append(name_at(name))
+            cursor += size
+    return machine, names
+
+
+def pe_files(stage: str) -> List[str]:
+    """List the PE files of a staged runtime by their extension.
+
+    @param stage: runtime folder.
+    @returns: absolute paths of the files whose extension PE_EXTENSIONS lists, sorted.
+    """
+    found = []
+    for directory, _, names in os.walk(stage):
+        found.extend(os.path.join(directory, name) for name in names if name.lower().endswith(PE_EXTENSIONS))
+    return sorted(found)
+
+
+def pe_machines(stage: str) -> List[Tuple[str, int]]:
+    """List the machine type of every PE file of a staged runtime.
+
+    @param stage: runtime folder.
+    @returns: ('/'-separated path relative to the stage, machine type) of each PE file, sorted by path.
+    """
+    machines = []
+    for path in pe_files(stage):
+        with open(path, "rb") as stream:
+            layout = pe_layout(stream.read())
+        if layout is not None:
+            machines.append((os.path.relpath(path, stage).replace(os.sep, "/"), layout[0]))
+    return machines
+
+
+def unresolved_imports(stage: str, folders: Tuple[str, ...]) -> List[str]:
+    """List the libraries that the PE files of a runtime load but neither the runtime nor Windows provides.
+
+    A library resolves when Windows provides it (WINDOWS_SYSTEM_LIBRARIES or an api-ms-win- or ext-ms-win- API set), or
+    when a file of that name, compared without regard to case, lies beside the file that loads it or in one of the
+    runtime's library folders, which its programs put first on the search path.
+
+    @param stage: runtime folder.
+    @param folders: '/'-separated library folders relative to the stage, such as bin.
+    @returns: one "<file> loads <library>" line per unresolved library, sorted.
+    @raises RuntimeToolError: when a PE file's tables are broken.
+    """
+    def names_in(directory: str) -> set:
+        return {name.lower() for name in os.listdir(directory)} if os.path.isdir(directory) else set()
+
+    shared = set()
+    for folder in folders:
+        shared |= names_in(os.path.join(stage, *folder.split("/")))
+    unresolved = []
+    for path in pe_files(stage):
+        with open(path, "rb") as stream:
+            data = stream.read()
+        try:
+            parsed = pe_imports(data)
+        except (struct.error, RuntimeToolError) as error:
+            raise RuntimeToolError(f"{path} has a broken import table: {error}") from error
+        if parsed is None:
+            continue
+        beside = names_in(os.path.dirname(path))
+        for library in parsed[1]:
+            name = library.lower()
+            if name in WINDOWS_SYSTEM_LIBRARIES or name.startswith(("api-ms-win-", "ext-ms-win-")) or name in shared or name in beside:
+                continue
+            unresolved.append(f"{os.path.relpath(path, stage).replace(os.sep, '/')} loads {library}")
+    return sorted(unresolved)
+
+
 def command_prepare(args: argparse.Namespace) -> None:
     """Turn a copy of GIMP.app/Contents into the runtime layout and print the GIMP version on stdout.
 
@@ -767,6 +1119,38 @@ def command_check_links(args: argparse.Namespace) -> None:
     print(f"runtime.py: the libraries of {len(binaries)} Mach-O files resolve inside Contents or the system", file=sys.stderr)
 
 
+def command_install_setup(args: argparse.Namespace) -> None:
+    """Install GIMP into a new folder with its Windows installer.
+
+    @param args: parsed arguments with setup, dir, and log.
+    """
+    run_setup(os.path.abspath(args.setup), os.path.abspath(args.dir), os.path.abspath(args.log))
+    print(f"runtime.py: installed GIMP into {os.path.abspath(args.dir)}", file=sys.stderr)
+
+
+def command_prepare_windows(args: argparse.Namespace) -> None:
+    """Turn a GIMP install made by its Windows installer into the runtime layout and print the GIMP version on stdout.
+
+    @param args: parsed arguments with stage and installed.
+    """
+    print(prepare_windows(args.stage, args.installed))
+
+
+def command_check_imports(args: argparse.Namespace) -> None:
+    """Require every PE file of the runtime to be x64 code whose libraries resolve inside the runtime or to Windows.
+
+    @param args: parsed arguments with stage and folder.
+    """
+    files = pe_files(args.stage)
+    foreign = [path for path, machine in pe_machines(args.stage) if machine != PE_MACHINE_X64]
+    if foreign:
+        raise RuntimeToolError(f"{len(foreign)} programs or libraries are not x64 code: {', '.join(foreign[:5])}")
+    problems = unresolved_imports(args.stage, tuple(args.folder))
+    if problems:
+        raise RuntimeToolError(f"{len(problems)} libraries resolve neither inside the runtime nor to Windows: {'; '.join(problems[:5])}")
+    print(f"runtime.py: the libraries of {len(files)} PE files resolve inside the runtime or to Windows", file=sys.stderr)
+
+
 def command_package(args: argparse.Namespace) -> None:
     """Write runtime.json into the stage, archive the stage, and record the archive in manifest.json.
 
@@ -789,9 +1173,7 @@ def command_package(args: argparse.Namespace) -> None:
         "platform": args.platform,
         "arch": args.arch,
         "console": args.console,
-        "dataDir": f"{CONTENTS}/share/gimp/3.0",
-        "localeDir": f"{CONTENTS}/share/locale",
-        "sysconfDir": f"{CONTENTS}/etc/gimp/3.0",
+        **runtime_folders(args.platform),
         "sha256": {name: sha256_file(os.path.join(args.stage, *name.split("/"))) for name in sorted(files)},
     }, RUNTIME_FILE)
     write_text_atomic(os.path.join(args.stage, RUNTIME_FILE), json_text(record))
@@ -912,6 +1294,22 @@ def build_parser() -> argparse.ArgumentParser:
     links = commands.add_parser("check-links", help="check that every library a Mach-O file loads resolves inside Contents")
     links.add_argument("--contents", required=True, help="the runtime's Contents folder")
     links.set_defaults(run=command_check_links)
+
+    setup = commands.add_parser("install-setup", help="install GIMP into a new folder with its Windows installer (Windows only)")
+    setup.add_argument("--setup", required=True, help="GIMP's Windows installer")
+    setup.add_argument("--dir", required=True, help="new folder to install into")
+    setup.add_argument("--log", required=True, help="file for the installer's log")
+    setup.set_defaults(run=command_install_setup)
+
+    windows = commands.add_parser("prepare-windows", help="turn a GIMP install for Windows into the runtime layout")
+    windows.add_argument("--stage", required=True, help="the install folder")
+    windows.add_argument("--installed", required=True, help="absolute folder the installer installed into, which no file may name")
+    windows.set_defaults(run=command_prepare_windows)
+
+    imports = commands.add_parser("check-imports", help="check that every library a PE file loads resolves inside the runtime or to Windows")
+    imports.add_argument("--stage", required=True, help="runtime folder")
+    imports.add_argument("--folder", action="append", required=True, help="library folder relative to the stage, such as bin; repeatable")
+    imports.set_defaults(run=command_check_imports)
 
     package = commands.add_parser("package", help="write runtime.json, the archive, and manifest.json")
     package.add_argument("--stage", required=True, help="directory holding the runtime tree")

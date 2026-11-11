@@ -1,7 +1,12 @@
-/** Worker environment resolution: the shipped runtime and gimp-console search, worker command line and environment, and worker start. */
+/**
+ * Worker environment resolution: the shipped runtime, packed or not, and the gimp-console search, worker command line and
+ * environment, and worker start.
+ */
+import { WorkerError } from '@deepseek-ai/dsh-app-mcp'
+import type { CommandArgv, CommandOptions, CommandResult } from '@deepseek-ai/dsh-app-mcp'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  bundledRuntimeRoot, findGimp, GimpSetupError, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, parseServerOptions, workerEnvironment,
+  findGimp, GimpSetupError, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, parseServerOptions, workerEnvironment,
   type GimpSetupHost,
 } from '../src/environment.ts'
 import type { GimpServerOptions } from '../src/types.ts'
@@ -21,6 +26,8 @@ interface FakeHostOptions {
   executables?: readonly string[]
   directories?: Readonly<Record<string, readonly string[]>>
   files?: Readonly<Record<string, string>>
+  run?: (argv: CommandArgv, options: CommandOptions) => CommandResult
+  rename?: ((from: string, to: string) => void) | undefined
 }
 
 class FakeHost implements GimpSetupHost {
@@ -37,12 +44,37 @@ class FakeHost implements GimpSetupHost {
     this.env = options.env ?? { PATH: '/usr/bin:/bin' }
     this.homeDirectory = this.platform === 'win32' ? 'C:\\Users\\dev' : '/Users/dev'
     this.executables = new Set(options.executables ?? [])
+    this.files = new Map(Object.entries(options.files ?? {}))
   }
+
+  readonly files: Map<string, string>
+  readonly commands: { argv: CommandArgv; options: CommandOptions }[] = []
+  readonly renamed: [string, string][] = []
+  readonly removed: string[] = []
 
   async isExecutable(file: string): Promise<boolean> { return this.executables.has(file) }
   async listDirectory(directory: string): Promise<readonly string[]> { return this.options.directories?.[directory] ?? [] }
   async makeDirectory(directory: string): Promise<void> { this.made.push(directory) }
-  async readTextFile(file: string): Promise<string | undefined> { return this.options.files?.[file] }
+  async readTextFile(file: string): Promise<string | undefined> { return this.files.get(file) }
+  /** Renames move the files and executables below `from`. */
+  async rename(from: string, to: string): Promise<void> {
+    this.options.rename?.(from, to)
+    this.renamed.push([from, to])
+    for (const [file, text] of [...this.files].filter(([file]) => file.startsWith(`${from}\\`))) {
+      this.files.delete(file)
+      this.files.set(to + file.slice(from.length), text)
+    }
+    for (const file of [...this.executables].filter(file => file.startsWith(`${from}\\`))) {
+      this.executables.delete(file)
+      this.executables.add(to + file.slice(from.length))
+    }
+  }
+
+  async remove(target: string): Promise<void> { this.removed.push(target) }
+  async run(argv: CommandArgv, options: CommandOptions): Promise<CommandResult> {
+    this.commands.push({ argv, options })
+    return this.options.run?.(argv, options) ?? { exitCode: 0, signal: null, output: '' }
+  }
 }
 
 /** The package's runtime folder in the specs; a host without files there has no shipped runtime. */
@@ -70,7 +102,7 @@ function shipped(options: FakeHostOptions = {}, record = runtimeRecord()): FakeH
 
 /** The console that {@link findGimp} picks. */
 async function search(options: Pick<GimpServerOptions, 'gimpConsolePath'>, host: FakeHost): Promise<string | undefined> {
-  return (await findGimp(options, RUNTIMES, host))?.console
+  return (await findGimp({ ...options, dataRoot: OPTIONS.dataRoot }, RUNTIMES, host, signal))?.console
 }
 
 /** A macOS host with GIMP.app in /Applications holding the given console names, all executable. */
@@ -188,22 +220,21 @@ describe('findGimp', () => {
 })
 
 describe('the shipped runtime', () => {
-  it('finds it in app.asar.unpacked for a package inside app.asar', () => {
-    expect(bundledRuntimeRoot('/App.app/Contents/Resources/app.asar/node_modules/@deepseek-ai/dsh-gimp'))
-      .toBe('/App.app/Contents/Resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-gimp/runtime')
-    expect(bundledRuntimeRoot('/repo/packages/gamedev/gimp')).toBe('/repo/packages/gamedev/gimp/runtime')
+  const other = (console: string): object => ({ console, shipped: false, environment: {}, notes: [], repair: '' })
+
+  it('binds the real host to this process', () => {
+    expect(nodeGimpSetupHost(1024)).toMatchObject({ platform: process.platform, arch: process.arch, env: process.env })
   })
 
   it('runs it with its folders unless a setting names another GIMP, and before an installed GIMP', async () => {
     const host = macHost(['gimp-console-3.2'], shipped())
-    await expect(findGimp(OPTIONS, RUNTIMES, host))
-      .resolves.toEqual({ console: SHIPPED_CONSOLE, shipped: true, environment: SHIPPED_ENVIRONMENT })
+    await expect(findGimp(OPTIONS, RUNTIMES, host, signal))
+      .resolves.toEqual({ console: SHIPPED_CONSOLE, shipped: true, environment: SHIPPED_ENVIRONMENT, notes: [], repair: '' })
     const configured = macHost(['gimp-console-3.2'], shipped({ executables: ['/custom/gimp-console'], env: { GIMP_CONSOLE: '/custom/gimp-console' } }))
-    await expect(findGimp(OPTIONS, RUNTIMES, configured)).resolves.toEqual({ console: '/custom/gimp-console', shipped: false, environment: {} })
-    await expect(findGimp({ gimpConsolePath: CONSOLE }, RUNTIMES, host))
-      .resolves.toEqual({ console: CONSOLE, shipped: false, environment: {} })
+    await expect(findGimp(OPTIONS, RUNTIMES, configured, signal)).resolves.toEqual(other('/custom/gimp-console'))
+    await expect(findGimp({ ...OPTIONS, gimpConsolePath: CONSOLE }, RUNTIMES, host, signal)).resolves.toEqual(other(CONSOLE))
     const intel = macHost(['gimp-console-3.2'], shipped({ arch: 'x64' }))
-    await expect(findGimp(OPTIONS, RUNTIMES, intel)).resolves.toEqual({ console: CONSOLE, shipped: false, environment: {} })
+    await expect(findGimp(OPTIONS, RUNTIMES, intel, signal)).resolves.toEqual(other(CONSOLE))
   })
 
   it('refuses a runtime that its runtime.json does not describe', async () => {
@@ -215,10 +246,77 @@ describe('the shipped runtime', () => {
       [{ ...shipped(), executables: [] }, `${SHIPPED_CONSOLE} is not an executable file`],
     ]
     for (const [options, reason] of cases) {
-      const failure = findGimp(OPTIONS, RUNTIMES, new FakeHost(options))
+      const failure = findGimp(OPTIONS, RUNTIMES, new FakeHost(options), signal)
       await expect(failure).rejects.toBeInstanceOf(GimpSetupError)
       await expect(failure).rejects.toMatchObject({ code: 'GIMP_RUNTIME_INVALID', message: expect.stringContaining(reason) as string })
       await expect(failure).rejects.toMatchObject({ message: expect.stringContaining('set the GIMP plugin setting gimpConsolePath') as string })
+    }
+  })
+})
+
+/** The GIMP runtime that a Windows Desktop app ships as its archive, and the folder under `dataRoot` it unpacks into. */
+const WIN_RUNTIMES = 'C:\\app\\dsh-gimp\\runtime'
+const WIN_PACKED = `${WIN_RUNTIMES}\\win32-x64`
+const WIN_ARCHIVE = `${WIN_PACKED}\\gimp-3.2.8-wasd.1-win32-x64.tar.gz`
+const WIN_DATA = 'C:\\Users\\dev\\.wasdengine\\gimp'
+const WIN_UNPACKED = `${WIN_DATA}\\runtime\\3.2.8-wasd.1`
+const WIN_CONSOLE = `${WIN_UNPACKED}\\bin\\gimp-console-3.2.exe`
+const WIN_TAR = 'C:\\Windows\\System32\\tar.exe'
+const WIN_RUNTIME = {
+  format: 1, version: '3.2.8-wasd.1', gimp: '3.2.8', platform: 'win32', arch: 'x64', console: 'bin/gimp-console-3.2.exe',
+  dataDir: 'share/gimp/3.0', localeDir: 'share/locale', sysconfDir: 'etc/gimp/3.0',
+}
+const WIN_OPTIONS: GimpServerOptions = { ...OPTIONS, dataRoot: WIN_DATA }
+const WIN_ENVIRONMENT = {
+  GIMP3_DATADIR: `${WIN_UNPACKED}\\share\\gimp\\3.0`, GIMP3_LOCALEDIR: `${WIN_UNPACKED}\\share\\locale`, GIMP3_SYSCONFDIR: `${WIN_UNPACKED}\\etc\\gimp\\3.0`,
+}
+const WIN_REPAIR = `If the GIMP runtime that WASD Engine unpacked into ${WIN_UNPACKED} is damaged, delete that folder so that the next start unpacks it again.`
+
+/** A Windows host whose package ships the GIMP runtime's archive; its tar unpacks runtime.json and the console into the -C folder. */
+function packedHost(options: Pick<FakeHostOptions, 'rename' | 'run'> & { readonly archive?: boolean } = {}): FakeHost {
+  const host: FakeHost = new FakeHost({
+    platform: 'win32', arch: 'x64', env: { SystemRoot: 'C:\\Windows', Path: 'C:\\Windows\\System32' },
+    executables: [WIN_TAR],
+    directories: { [WIN_PACKED]: ['archive.json', ...options.archive ?? true ? ['gimp-3.2.8-wasd.1-win32-x64.tar.gz'] : []] },
+    files: {
+      [`${WIN_PACKED}\\archive.json`]: JSON.stringify({
+        format: 1, archive: 'gimp-3.2.8-wasd.1-win32-x64.tar.gz', bytes: 150_000_000, sha256: 'a'.repeat(64), runtime: WIN_RUNTIME,
+      }),
+    },
+    rename: options.rename,
+    run: options.run ?? ((argv) => {
+      const destination = argv.at(-1)!
+      host.files.set(`${destination}\\runtime.json`, JSON.stringify({ ...WIN_RUNTIME, sha256: {} }))
+      host.executables.add(`${destination}\\bin\\gimp-console-3.2.exe`)
+      return { exitCode: 0, signal: null, output: '' }
+    }),
+  })
+  return host
+}
+
+describe('the packed runtime', () => {
+  it('unpacks it under the data directory on first use, runs it with its folders, and reuses it', async () => {
+    const host = packedHost()
+    await expect(findGimp(WIN_OPTIONS, WIN_RUNTIMES, host, signal)).resolves.toEqual({
+      console: WIN_CONSOLE, shipped: true, environment: WIN_ENVIRONMENT, repair: WIN_REPAIR,
+      notes: [`Unpacked the GIMP runtime that WASD Engine ships into ${WIN_UNPACKED} (first use).`],
+    })
+    expect(host.commands.map(command => command.argv.slice(0, 3))).toEqual([[WIN_TAR, '-xzf', WIN_ARCHIVE]])
+    await expect(findGimp(WIN_OPTIONS, WIN_RUNTIMES, host, signal)).resolves.toMatchObject({ console: WIN_CONSOLE, notes: [] })
+    expect(host.commands).toHaveLength(1)
+  })
+
+  it('reports an archive that cannot be unpacked or moved into place as a broken shipped runtime', async () => {
+    const cases: readonly (readonly [FakeHost, string])[] = [
+      [packedHost({ archive: false }), `its archive.json names ${WIN_ARCHIVE}, which is missing`],
+      [packedHost({ run: () => ({ exitCode: 1, signal: null, output: 'tar: Damaged archive' }) }), '(exit code 1): tar: Damaged archive. Reinstall WASD Engine'],
+      [packedHost({ rename: () => { throw new Error('access denied') } }), `Could not move the unpacked GIMP runtime to ${WIN_UNPACKED}: access denied. Remove that folder`],
+      [packedHost({ rename: () => { throw 'busy' } }), `Could not move the unpacked GIMP runtime to ${WIN_UNPACKED}: busy. Remove that folder`],
+    ]
+    for (const [host, message] of cases) {
+      const failure = findGimp(WIN_OPTIONS, WIN_RUNTIMES, host, signal)
+      await expect(failure).rejects.toBeInstanceOf(GimpSetupError)
+      await expect(failure).rejects.toMatchObject({ code: 'GIMP_RUNTIME_INVALID', message: expect.stringContaining(message) as string })
     }
   })
 })
@@ -276,6 +374,41 @@ describe('GimpWorkers', () => {
     expect(workers.takeNotes()).toEqual(['GIMP 3.2.8 started (the runtime that WASD Engine ships, Python 3.14.10) with no images open.'])
   })
 
+  it('reports a first-use unpack, and says how to unpack a runtime again that does not start', async () => {
+    const host = packedHost()
+    const start = vi.fn(async () => ({ ready: { app: 'gimp', version: '3.2.8', python: '3.13.11' } }))
+    const workers = new GimpWorkers(WIN_OPTIONS, { host, workerScript: vi.fn(async () => SCRIPT), start, bundledRoot: WIN_RUNTIMES })
+    await workers.start(signal, SCOPE)
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ argv: gimpWorkerArgv(WIN_CONSOLE, SCRIPT) }), signal)
+    expect(workers.takeNotes()).toEqual([
+      `Unpacked the GIMP runtime that WASD Engine ships into ${WIN_UNPACKED} (first use).`,
+      'GIMP 3.2.8 started (the runtime that WASD Engine ships, Python 3.13.11) with no images open.',
+    ])
+    const crash = new WorkerError('WORKER_START_FAILED', 'GIMP exited with code 3 before it was ready', { logTail: 'missing DLL' })
+    const failing = new GimpWorkers(WIN_OPTIONS, {
+      host, workerScript: vi.fn(async () => SCRIPT), start: vi.fn(async () => { throw crash }), bundledRoot: WIN_RUNTIMES,
+    })
+    await expect(failing.start(signal, SCOPE)).rejects.toMatchObject({
+      code: 'WORKER_START_FAILED', message: `GIMP exited with code 3 before it was ready. ${WIN_REPAIR}`, logTail: 'missing DLL', cause: crash,
+    })
+    const timeout = new WorkerError('WORKER_TIMEOUT', 'GIMP was not ready in time')
+    const slow = new GimpWorkers(WIN_OPTIONS, {
+      host, workerScript: vi.fn(async () => SCRIPT), start: vi.fn(async () => { throw timeout }), bundledRoot: WIN_RUNTIMES,
+    })
+    await expect(slow.start(signal, SCOPE)).rejects.toBe(timeout)
+    const installed = new GimpWorkers(OPTIONS, { host: macHost(['gimp-console-3.2']), workerScript: vi.fn(async () => SCRIPT), start: vi.fn(async () => { throw crash }), bundledRoot: RUNTIMES })
+    await expect(installed.start(signal, SCOPE)).rejects.toBe(crash)
+  })
+
+  it('reports a GIMP that names no Python without details', async () => {
+    const workers = new GimpWorkers(OPTIONS, {
+      host: macHost(['gimp-console-3.2']), workerScript: vi.fn(async () => SCRIPT), bundledRoot: RUNTIMES,
+      start: vi.fn(async () => ({ ready: { app: 'gimp', version: '3.2.8' } })),
+    })
+    await workers.start(signal, SCOPE)
+    expect(workers.takeNotes()).toEqual(['GIMP 3.2.8 started with no images open.'])
+  })
+
   it('explains how to install GIMP 3 before touching the data directory', async () => {
     const workerScript = vi.fn(async () => SCRIPT)
     const start = vi.fn(async () => ({ ready: { app: 'gimp', version: '3.2.8', python: '3.14.10' } }))
@@ -284,13 +417,15 @@ describe('GimpWorkers', () => {
     await expect(failure).rejects.toBeInstanceOf(GimpSetupError)
     await expect(failure).rejects.toMatchObject({
       code: 'GIMP_NOT_FOUND',
-      message: 'GIMP 3 was not found. Install GIMP 3 from https://www.gimp.org/downloads/ (on macOS, `brew install --cask gimp` also works), '
+      message: 'GIMP 3 was not found: this installation of WASD Engine has no GIMP runtime for darwin-arm64, and no GIMP 3 is installed. '
+        + 'Install GIMP 3 from https://www.gimp.org/downloads/ (on macOS, `brew install --cask gimp` also works), '
         + 'then call the tool again. The GIMP plugin setting gimpConsolePath or the GIMP_CONSOLE environment variable selects a specific '
         + 'gimp-console executable.',
     })
     const linux = new GimpWorkers(OPTIONS, { host: new FakeHost({ platform: 'linux', env: {} }), workerScript, start, bundledRoot: RUNTIMES })
       .start(signal, SCOPE)
     await expect(linux).rejects.toMatchObject({ message: expect.not.stringContaining('brew') as string })
+    await expect(linux).rejects.toMatchObject({ message: expect.stringContaining('has no GIMP runtime for linux-arm64,') as string })
     expect(mac.made).toEqual([])
     expect(workerScript).not.toHaveBeenCalled()
     expect(start).not.toHaveBeenCalled()

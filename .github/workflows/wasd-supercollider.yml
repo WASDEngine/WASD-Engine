@@ -1,5 +1,5 @@
 # Build the WASD Engine SuperCollider runtime (wasdengine/supercollider/BUILD.md)
-# for macOS arm64 and Linux x64, smoke-test each build, and, when run on the
+# for macOS arm64, Linux x64, and Windows x64, smoke-test each build, and, when run on the
 # default branch, publish the archives and their merged manifest.json as the
 # GitHub release supercollider-<version>, whose manifest.json Desktop packaging
 # reads. A run on another branch builds and uploads workflow artifacts only.
@@ -61,8 +61,14 @@ jobs:
         include:
           - artifact: darwin-arm64
             os: macos-26
+            python: python3
           - artifact: linux-x64
             os: ubuntu-24.04
+            python: python3
+          # Built with the runner's Visual Studio from Git Bash.
+          - artifact: win32-x64
+            os: windows-2025
+            python: python
     defaults:
       run:
         shell: bash
@@ -84,6 +90,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config libasound2-dev zip unzip
+
+      # vcpkg's build trees nest deeper than 260 characters.
+      - name: Allow long paths in Git
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
 
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -116,7 +127,7 @@ jobs:
       - name: Smoke-test the installed runtime
         timeout-minutes: 5
         run: >-
-          python3 -I wasdengine/supercollider/smoke.py
+          ${{ matrix.python }} -I wasdengine/supercollider/smoke.py
           --runtime "$RUNNER_TEMP/$SMOKE_NAME/runtime/${{ matrix.artifact }}" --work "$RUNNER_TEMP/$SMOKE_NAME/work"
 
       - name: Upload the archive
@@ -185,7 +196,7 @@ jobs:
           tag="supercollider-$VERSION"
           supercollider=$(jq -j .supercollider "$release_dir/manifest.json")
           title="SuperCollider runtime $VERSION"
-          notes="WASD Engine SuperCollider runtime $VERSION: sclang without Qt, scsynth, and the UGen plugins of SuperCollider $supercollider, with the class library and the class help files, which the Desktop app ships for its SuperCollider plugin. SuperCollider is licensed under GPL-3.0-or-later; each archive's SOURCE.txt names the corresponding source, and wasdengine/supercollider/BUILD.md describes the build. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          notes="WASD Engine SuperCollider runtimes $VERSION for macOS arm64, Linux x64, and Windows x64: sclang without Qt, scsynth, and the UGen plugins of SuperCollider $supercollider, with the class library and the class help files, which the Desktop apps ship for their SuperCollider plugin. SuperCollider is licensed under GPL-3.0-or-later; each archive's SOURCE.txt names the corresponding source, and wasdengine/supercollider/BUILD.md describes the build. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
           if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
             if [ "$draft" != true ]; then
               echo "::error::The release $tag is already published and must not change; dispatch a new runtime version."

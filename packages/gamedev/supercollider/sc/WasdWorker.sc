@@ -22,7 +22,7 @@ WasdWorker {
 		plugins = params["plugins"];
 		scratch = params["scratch"];
 		helpSource = params["helpSource"] ?? { SCDoc.helpSourceDir };
-		Score.program = "exec %".format(scsynth.shellQuote);
+		Score.program = this.prExec ++ this.prShellPath(scsynth);
 		this.prPost("READY", nil, (version: Main.version, helpSource: helpSource));
 	}
 
@@ -258,8 +258,8 @@ WasdWorker {
 		var condition = Condition.new, exitCode, command, text;
 		if(plugins.notNil) { options.ugenPluginsPath = plugins };
 		this.prWriteScore(events, osc);
-		command = "exec % -N % _ % % WAV float %".format(scsynth.shellQuote, osc.shellQuote, output.shellQuote, sampleRate,
-			options.asOptionsString) ++ " > " ++ log.shellQuote ++ " 2>&1";
+		command = "%% -N % _ % % WAV float %".format(this.prExec, this.prShellPath(scsynth), this.prShellPath(osc), this.prShellPath(output),
+			sampleRate, options.asOptionsString) ++ " > " ++ this.prShellPath(log) ++ " 2>&1";
 		command.unixCmd({ |code| exitCode = code; condition.test = true; condition.signal }, false);
 		condition.wait;
 		text = if(File.exists(log)) { File.readAllString(log) } { "" };
@@ -269,6 +269,16 @@ WasdWorker {
 		if(text.notEmpty) { ("scsynth: " ++ text).postln };
 		if(exitCode != 0) { Error("scsynth stopped with exit code % while rendering.".format(exitCode)).throw };
 		if(File.exists(output).not) { Error("scsynth finished without writing audio.").throw };
+	}
+
+	// unixCmd runs a command through sh on macOS and Linux, and through cmd.exe on Windows, which quotes with double quotes
+	// and has no exec: a path quoted for that shell, and the prefix that replaces the shell with the program.
+	*prShellPath { |path|
+		^if(thisProcess.platform.name == \windows) { path.quote } { path.shellQuote }
+	}
+
+	*prExec {
+		^if(thisProcess.platform.name == \windows) { "" } { "exec " }
 	}
 
 	// Score.write without its tempo scaling: event times are seconds whatever TempoClock.default's tempo is.
@@ -404,6 +414,12 @@ WasdWorker {
 		};
 		^method.name.asString ++ "(" ++ parts.join(", ") ++ ")"
 	}
+}
+
+// The worker runs code only from its tools: skip the user's startup files, which sclang on Windows reads from the user's
+// own SuperCollider folder, because it ignores XDG_CONFIG_HOME there.
++ Platform {
+	loadStartupFiles { }
 }
 
 // No audio device: refuse to boot a real-time server instead of opening the machine's audio output.

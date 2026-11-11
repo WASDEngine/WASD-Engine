@@ -27,11 +27,11 @@
   en: 9d134a1a3744c15b
   zh: 10bbdfa4ee3e3d24
 /deepseek-ai-dsh-supercollider/use-this-package/find-supercollider:
-  en: 9df1e2089b63a3a0
-  zh: 90a4222a46509bd1
+  en: c18bddb5cfb4cb51
+  zh: 324ece34847dc711
 /deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-per-conversation:
-  en: 1b8a3f6e2d1b55f5
-  zh: 2528c85665b55469
+  en: 3e2b0cb5d6952230
+  zh: 22a67a7b0ebe18d2
 /deepseek-ai-dsh-supercollider/use-this-package/tools:
   en: 6a5e83240731811d
   zh: 5572917eeb7341f6
@@ -42,8 +42,8 @@
   en: 1f60aacd73da07d5
   zh: 68b4eb8f4e33a67f
 /deepseek-ai-dsh-supercollider/understand-the-implementation:
-  en: 9154b3b51314be79
-  zh: ef265d1adcdd4948
+  en: c32bd3977299e5d1
+  zh: 6b62d96f241727e4
 /deepseek-ai-dsh-supercollider/understand-the-implementation/verify-against-real-supercollider:
   en: 9d282332fc26a718
   zh: 1276de4184994268
@@ -84,8 +84,8 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees:
-  en: 20c0ce0106c074ce
-  zh: 83b26fef9fb8bc7e
+  en: c02f54841361a04e
+  zh: 80375f8320647402
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees/missing-runtime-message:
   en: 859d90af1f75cfb3
   zh: ec2b54aeeae58a07
@@ -96,8 +96,8 @@
   en: 00af0e13a5a63f94
   zh: 21a0433bbdc9d3c0
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
-  en: ead1787eacd99fcb
-  zh: 39fac78f33fe2b7b
+  en: f02ec539a61eed85
+  zh: 11c6f46a06f808af
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

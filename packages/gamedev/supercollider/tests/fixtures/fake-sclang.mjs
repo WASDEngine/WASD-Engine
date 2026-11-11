@@ -55,6 +55,10 @@ function dispatch(id, method, params) {
 }
 
 function command(text) {
+  if (text === '0.exit') {
+    if (mode !== 'stubborn') process.exit(0)
+    return
+  }
   const boot = /^WasdWorker\.boot\("([0-9a-f]+)", "((?:[^"\\]|\\.)*)"\)$/u.exec(text)
   if (boot !== null) {
     if (mode === 'no-class') {
