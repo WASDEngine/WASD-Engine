@@ -36,6 +36,10 @@ const SKIP = [
   'docs/postmortem/',
   'docs/upgrade-guide/',
   'docs/i18n/style-samples.md',
+  // Upstream's Desktop uninstall guide, whose cleanup scripts delete DeepSeek Harness Desktop's own paths;
+  // WASD Engine's app uses other ones and has no uninstall guide yet (wasdengine/FORK.md, Known limitations).
+  'docs/user/guide/desktop-uninstall-cleanup.md',
+  'docs/user/guide/desktop-uninstall-cleanup.zh.md',
   // Generated from the CLI and the config schemas; their sources carry the name.
   'docs/cli-help.md',
   'docs/cli-help.zh.md',
