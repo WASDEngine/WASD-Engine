@@ -333,6 +333,7 @@ flowchart TD
     pkg_client_ui_game_assets["client-ui-game-assets"]
     pkg_client_ui_game_mcp["client-ui-game-mcp"]
     pkg_client_ui_game_tools["client-ui-game-tools"]
+    pkg_elevenlabs["elevenlabs"]
     pkg_game_addons["game-addons"]
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
@@ -1032,6 +1033,7 @@ flowchart TD
   pkg_message_feedback --> pkg_session
   pkg_message_feedback --> pkg_session_persistence
   pkg_message_feedback --> pkg_typert_protocol
+  pkg_elevenlabs --> pkg_tools
   pkg_game_addons --> pkg_tools
   pkg_godot --> pkg_tools
   pkg_polyhaven --> pkg_tools
@@ -1837,6 +1839,7 @@ flowchart TD
 | [`tool-terminal`](../packages/experimental/tool-terminal) | `experimental` | [`agent`](../packages/core/agent), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`output-retention`](../packages/util/output-retention), [`system-prompt`](../packages/core/system-prompt), [`terminal`](../packages/terminal/terminal), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
 | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | `extensions` | [`agent`](../packages/core/agent), [`brand`](../packages/util/brand), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |
 | [`message-feedback`](../packages/feedback/message-feedback) | `feedback` | [`brand`](../packages/util/brand), [`command-feedback`](../packages/feedback/command-feedback), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`typert-protocol`](../packages/typert/protocol) |
+| [`elevenlabs`](../packages/gamedev/elevenlabs) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`game-addons`](../packages/gamedev/game-addons) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`godot`](../packages/gamedev/godot) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`polyhaven`](../packages/gamedev/polyhaven) | `gamedev` | [`tools`](../packages/core/tools) |

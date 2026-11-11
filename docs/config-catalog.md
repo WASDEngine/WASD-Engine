@@ -959,6 +959,29 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-deepseek-account-platform -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-elevenlabs -->
+<a id="deepseek-aidsh-elevenlabs"></a>
+
+## `@deepseek-ai/dsh-elevenlabs`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/elevenlabs/src/index.ts:38`](../packages/gamedev/elevenlabs/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the ElevenLabs tools. */
+export interface Config {
+  /** Origin of the WASD Engine API, the inference origin that the account sign-in releases its token to. */
+  apiOrigin: string
+  /** Time limit of one `elevenlabs_voices` call. */
+  searchTimeoutMs: number
+  /** Time limit of one `elevenlabs_speech` or `elevenlabs_sound_effect` call. */
+  generationTimeoutMs: number
+  /** Time limit of one `elevenlabs_music` call. */
+  musicTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-elevenlabs -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-experimental-api-speech-to-text -->
 <a id="deepseek-aidsh-experimental-api-speech-to-text"></a>
 

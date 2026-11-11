@@ -30,6 +30,16 @@ export const BLENDER: PluginInfo = {
   },
 }
 
+/** ElevenLabs running, switchable through its patch row, with a package that declares no icon. */
+export const ELEVENLABS: PluginInfo = {
+  entryId: entryId('elevenlabs'),
+  moduleName: '@deepseek-ai/dsh-elevenlabs',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'elevenlabs',
+  meta: { title: 'ElevenLabs', description: 'Make voices, sound effects, and music.' },
+}
+
 /** The game add-ons running, switchable through their patch row. */
 export const GAME_ADDONS: PluginInfo = {
   entryId: entryId('game-addons'),
@@ -96,7 +106,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -108,7 +118,7 @@ export function inventory(
  * @returns the successful answer.
  */
 export function plugins(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
 ): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }

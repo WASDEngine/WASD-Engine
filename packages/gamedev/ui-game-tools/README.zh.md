@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine Web 界面中「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：供维护者修改 Blender、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 在其中如何随标志与 Loader 状态显示，或排查在 profile patch 中关闭或开启某个工具的开关。"
+description: "WASD Engine Web 界面中「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：供维护者修改 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 在其中如何随标志与 Loader 状态显示，或排查在 profile patch 中关闭或开启某个工具的开关。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。
+在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。
 
 ## 目录
 
@@ -25,7 +25,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-打开**设置** › **内置插件**即可查看游戏工具；该分区先显示**游戏工具**标签页。要关闭或开启某个工具，请打开侧栏中的**插件**并选择**游戏工具**。两个标签页都按 Blender、游戏扩展、GIMP、Godot、Poly Haven、SuperCollider 的顺序列出工具，并标出 profile 没有挂载的工具。
+打开**设置** › **内置插件**即可查看游戏工具；该分区先显示**游戏工具**标签页。要关闭或开启某个工具，请打开侧栏中的**插件**并选择**游戏工具**。两个标签页都按 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Poly Haven、SuperCollider 的顺序列出工具，并标出 profile 没有挂载的工具。
 
 ### 默认组合
 
@@ -107,7 +107,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 这些限制定义标签页显示什么以及何时更新；它们是当前包约束。
 
 - **工具固定为三个**：标签页列出 `GAME_TOOL_MODULES` 中的包；overlay 新增的工具行只有在其包加入该列表后才会出现在标签页中，两者一致之前 overlay 漂移测试会失败。
-- **只显示 Loader 状态**：卡片显示所在行是否启用、正在加载或启动失败，而不显示工具的应用程序是否就绪，例如 Blender 的 `bpy` 环境、GIMP 3、LibGodot 运行时或 SuperCollider；这些由工具的结果与 Game 标签页报告。
+- **只显示 Loader 状态**：卡片显示所在行是否启用、正在加载或启动失败，而不显示工具的应用程序是否就绪，例如 Blender 的 `bpy` 环境、GIMP 3、LibGodot 运行时、SuperCollider，或 ElevenLabs 需要的 WASD Engine 登录；这些由工具的结果与 Game 标签页报告。
 - **设置标签页每次挂载或重试只读取一次**：设置标签页保持挂载期间不跟随之后的变化；重新打开设置会再次读取。
 - **未宣布的 profile 编辑**：对 profile patch 的手工编辑由 HMR 应用，插件管理器不会为它宣布更改，因此插件页面标签页要到再次挂载时才显示它；该标签页没有刷新控件，而贡献的标签页打开期间，页面会隐藏自己的刷新按钮。
 - **插件列表中没有标志**：「内置插件」的「插件列表」标签页仍把这三个工具列在默认收起的全局插件中，且不带标志。

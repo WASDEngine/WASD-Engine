@@ -1,7 +1,7 @@
 /**
  * Game tools, browser half: the Game tools tab of Settings → Built-in plugins and the Game tools tab of the Plugins
- * page. Both list Blender, GIMP, Godot, Poly Haven, and SuperCollider with their package logos and Loader state; the
- * Plugins page tab also switches each tool in the profile patch through the `pluginManager` Remote, and a
+ * page. Both list Blender, ElevenLabs, GIMP, Godot, Poly Haven, and SuperCollider with their package logos and Loader
+ * state; the Plugins page tab also switches each tool in the profile patch through the `pluginManager` Remote, and a
  * `shell.overlay` entry shows what a switch write left to say. Neither tab reads the Host before it renders.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'

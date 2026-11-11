@@ -1,0 +1,73 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/elevenlabs/README.md
+/:
+  en: ff41c70167a0f69b
+  zh: 365014b5601305d9
+/deepseek-ai-dsh-elevenlabs:
+  en: 285f30e1329ff1bb
+  zh: 0321ba961fa54bd5
+/deepseek-ai-dsh-elevenlabs/summary:
+  en: 2e00e8301ca2d462
+  zh: 95d0209ae4d72187
+/deepseek-ai-dsh-elevenlabs/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-elevenlabs/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-elevenlabs/use-this-package/default-composition:
+  en: 12fe807e7b0415f8
+  zh: 1b5751c50edfcca8
+/deepseek-ai-dsh-elevenlabs/use-this-package/the-tools:
+  en: 5cb772f9c7c8e1fc
+  zh: 014193ea1c511cb3
+/deepseek-ai-dsh-elevenlabs/use-this-package/prices-and-the-account:
+  en: 920663db337236bf
+  zh: 19a0bb650dcac044
+/deepseek-ai-dsh-elevenlabs/use-this-package/voice-clones:
+  en: b63ca4f41ea46482
+  zh: 3e735f8cbe2cd73b
+/deepseek-ai-dsh-elevenlabs/use-this-package/plugin-icon:
+  en: 3373339c2ab4f72a
+  zh: 010ce5b96f1f86ce
+/deepseek-ai-dsh-elevenlabs/understand-the-implementation:
+  en: bb47bac41b45a62b
+  zh: e0dcaee4d0609d61
+/deepseek-ai-dsh-elevenlabs/further-exploration:
+  en: 205fdedd87a6a98f
+  zh: 59ee7c1270db75fe
+/deepseek-ai-dsh-elevenlabs/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-declarations/what-the-model-sees:
+  en: 05a3aba811fd781f
+  zh: f521f2a871ac6533
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-declarations/token-effect:
+  en: 9195a09834b9e982
+  zh: 0653b3c92f71d5b2
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 9fd227b419b111fb
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-results/what-the-model-sees:
+  en: 3843183017081af6
+  zh: 785472e8b5f5002e
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-results/token-effect:
+  en: c0221febfbb84798
+  zh: 44f41f2843e297e7
+/deepseek-ai-dsh-elevenlabs/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: 9c36aea51ad3bba1
+/deepseek-ai-dsh-elevenlabs/known-limitations-and-deferred-work:
+  en: a13c7eb68e420672
+  zh: 969aca191710f1fa
+/deepseek-ai-dsh-elevenlabs/known-limitations-and-deferred-work/dev-note:
+  en: fdc13bebbad43959
+  zh: b2bed215775144b5

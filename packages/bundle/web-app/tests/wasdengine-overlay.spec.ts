@@ -45,6 +45,7 @@ const FORK_PATCHES: Readonly<Record<string, readonly string[]>> = {
 /** The game tool rows the fork inserts into every Web and Desktop profile, by row id, with the package each mounts. */
 const GAME_TOOLS: Readonly<Record<string, string>> = {
   blender: '@deepseek-ai/dsh-blender',
+  elevenlabs: '@deepseek-ai/dsh-elevenlabs',
   'game-addons': '@deepseek-ai/dsh-game-addons',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
@@ -52,8 +53,11 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   supercollider: '@deepseek-ai/dsh-supercollider',
 }
 
-/** The game tool row that keeps no files under the harness home: Poly Haven, which runs with its default configuration. */
+/** The game tool row without config: Poly Haven, which keeps no files under the harness home and runs with its defaults. */
 const POLY_HAVEN = 'polyhaven'
+
+/** The game tool row whose only config is the WASDEngine API origin: ElevenLabs, whose audio the API makes and charges. */
+const ELEVENLABS = 'elevenlabs'
 
 /** The game tool row that reads the shipped add-on catalog and keeps the Blender add-on store, which the `blender` row names too. */
 const GAME_ADDONS = 'game-addons'
@@ -358,6 +362,12 @@ describe('WASDEngine overlay', () => {
         expect(entry.config, `${id} config`).toBeUndefined()
         continue
       }
+      if (id === ELEVENLABS) {
+        // The account sign-in releases its token only to the inference origin, so the audio goes there.
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['apiOrigin'])
+        expect(expression(configOf(entry).apiOrigin, `${id}.apiOrigin`), `${id}.apiOrigin`).toBe(api)
+        continue
+      }
       const store = `dshHomePath('${GAME_ADDONS}', 'blender')`
       if (id === GAME_ADDONS) {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['catalogDir', 'dataRoot', 'blenderStore'])
@@ -373,6 +383,7 @@ describe('WASDEngine overlay', () => {
     }
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[POLY_HAVEN] ?? ''), 'the Plugins page can switch Poly Haven off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[GAME_ADDONS] ?? ''), 'the Plugins page can switch the game add-ons off').toBe(false)
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[ELEVENLABS] ?? ''), 'the Plugins page can switch ElevenLabs off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {
