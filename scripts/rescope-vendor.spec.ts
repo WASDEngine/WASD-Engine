@@ -106,7 +106,6 @@ describe('product identifiers', () => {
     'packages/client/ui-agent-preset/tests/analytics.client.spec.ts',
     'packages/client/ui-agent-preset/tests/components.client.spec.tsx',
     'packages/client/ui-agent-preset/tests/create-plugin-menu-item.client.spec.tsx',
-    'packages/client/ui-agent-preset/tests/section-store.client.spec.ts',
     'packages/client/ui-conversation/src/client/input/submission-analytics.ts',
     'packages/client/ui-conversation/tests/service-orchestration.client.spec.ts',
     'packages/client/ui-entry-customization/src/client/index.ts',
