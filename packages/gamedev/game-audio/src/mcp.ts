@@ -1,9 +1,11 @@
 /**
  * The audio tools for agents connected through WASD Engine's MCP server: the Session's own tool definitions, run in
- * the connected agent's Session of the game project it names as `project`, with the picture sent as image bytes.
+ * the connected agent's Session of the game project it names as `project`, with sound paths from that folder and the
+ * picture sent as image bytes.
  * @module @deepseek-ai/dsh-game-audio/src/mcp
  */
-import { isAbsolute } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { isAbsolute, relative, sep } from 'node:path'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -22,6 +24,9 @@ const PROJECT_PARAMETER = { type: 'string', description: 'Absolute path of the g
 
 /** The picture of each call, waiting for the call's result. */
 type CapturedPictures = WeakMap<ToolRunContext, AudioPicture>
+
+/** The canonical project folder each call names, by the arguments object the call's execution carries. */
+type CallFolders = WeakMap<object, string>
 
 /**
  * The picture surface of connected agents: each call's picture waits for its result, which sends it after its text.
@@ -42,9 +47,10 @@ function mcpPictures(pictures: CapturedPictures): AudioToolSurface {
  * Offer one audio tool definition to connected agents.
  * @param definition - the tool, built with the connected agents' picture surface.
  * @param pictures - the picture of each call.
+ * @param folders - the project folder per call.
  * @returns the server tool.
  */
-function mcpTool(definition: ToolDefinition, pictures: CapturedPictures): GameMcpTool {
+function mcpTool(definition: ToolDefinition, pictures: CapturedPictures, folders: CallFolders): GameMcpTool {
   // `defineTool` writes an object schema whose properties describe the arguments.
   const { properties, required = [] } = definition.parameters as {
     readonly properties: Readonly<Record<string, JsonObject>>
@@ -58,7 +64,10 @@ function mcpTool(definition: ToolDefinition, pictures: CapturedPictures): GameMc
     async prepare(args, call) {
       const { project, ...rest } = args
       if (typeof project !== 'string' || !isAbsolute(project)) throw new Error('project must be the absolute path of the game project\'s folder.')
-      return { args: rest, agent: await call.session(project) }
+      const agent = await call.session(project)
+      // The Session belongs to the registered game project that holds the folder; the call's paths start at the folder.
+      folders.set(rest, await realpath(project))
+      return { args: rest, agent }
     },
     content: (value: JsonValue, args: JsonObject, exec: ToolRunContext): GameMcpContent[] => {
       const picture = pictures.get(exec)
@@ -77,7 +86,18 @@ function mcpTool(definition: ToolDefinition, pictures: CapturedPictures): GameMc
  */
 export function audioMcpProvider(host: AudioToolHost): GameMcpProvider {
   const pictures: CapturedPictures = new WeakMap()
-  const tools = audioToolDefinitions(host, mcpPictures(pictures)).map(definition => mcpTool(definition, pictures))
+  const folders: CallFolders = new WeakMap()
+  const named: AudioToolHost = {
+    ...host,
+    async project(exec) {
+      const session = await host.project(exec)
+      const folder = typeof exec.arguments === 'object' && exec.arguments !== null ? folders.get(exec.arguments) : undefined
+      if (folder === undefined) return session
+      const inside = relative(session, folder)
+      return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside) ? session : folder
+    },
+  }
+  const tools = audioToolDefinitions(named, mcpPictures(pictures)).map(definition => mcpTool(definition, pictures, folders))
   return {
     id: 'audio',
     title: 'Audio',
