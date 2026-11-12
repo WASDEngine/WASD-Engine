@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-game-addons",
   "description": "Curated Godot and Blender add-ons for the agent: search, install into the game project, and usage guides that only that project's Sessions see",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

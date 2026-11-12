@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-game-assets",
   "description": "Assets for the agent: find a game project's 2D and 3D art and look at it as the Assets tab draws it, for every Session and for connected agents",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publishConfig": {
     "access": "public"
   },

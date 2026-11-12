@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-game-audio",
   "description": "Audio tab of the right Sidebar: search a game project's sound effects, dialogue, and music or browse them by folder, listen to them with their waveform, and read their loudness and length",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publishConfig": {
     "access": "public"
   },

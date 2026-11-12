@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-game-assets",
   "description": "Assets tab of the right Sidebar: search a game project's 2D and 3D art or browse it by folder, and view images and models",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publishConfig": {
     "access": "public"
   },
