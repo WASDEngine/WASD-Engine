@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/README.md
 /:
-  en: e573efa21e7632cc
-  zh: c1bab70a4e11b27c
+  en: 96857032a8e7dd27
+  zh: a1b3e4fa23f90cb3
 /deepseek-ai-dsh-wasd-plugins:
   en: cb5ec703da430be8
   zh: d206a2431aaa3c7e
 /deepseek-ai-dsh-wasd-plugins/summary:
-  en: d3fc674845afd9aa
-  zh: 7ae5affb3677e7f0
+  en: e522875a046850d7
+  zh: 3c7ae18474213810
 /deepseek-ai-dsh-wasd-plugins/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -24,8 +24,8 @@
   en: f3b69a891713ae41
   zh: 5a66f65b08afeac4
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-release-button-and-explore-games:
-  en: 861dc9c07fa99c00
-  zh: 9a0ffbab22140ede
+  en: a7c7653d26f30c5e
+  zh: 2cfabadecc2d36a8
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-wasdplugins-remote:
   en: 8a5c8ccf1d1de8ef
   zh: 40be99467e540446

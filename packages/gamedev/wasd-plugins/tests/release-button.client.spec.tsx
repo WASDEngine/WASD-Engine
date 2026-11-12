@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 /**
- * The Session header's Release button: shown for a game project's Session the Peer may prompt, it opens a dialog with
- * the last release, takes notes, and asks the Session's agent to release.
+ * The Release button of the Session header and the New Session row: shown for a game project's Session the Peer may
+ * prompt, in the New Session row only while the Session is blank, it opens a dialog with the last release, takes notes,
+ * and asks the Session's agent to release.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
-import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
+import { bindSnapshotSelector, makeTranslate, sessionSnapshot } from '@deepseek-ai/dsh-client-test-runtime'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import { ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonProps } from '../src/client/ReleaseButton.tsx'
+import {
+  ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonPlacement, type ReleaseButtonProps,
+} from '../src/client/ReleaseButton.tsx'
 import { en } from '../src/client/locales.ts'
 import type { WasdProjectView } from '../src/types.ts'
 
@@ -22,9 +25,12 @@ const SESSION = brandString<SessionId>('session-1')
 function button(options: {
   readonly path?: string
   readonly mayPrompt?: boolean
+  readonly placement?: ReleaseButtonPlacement
+  readonly blank?: boolean
   readonly view?: WasdProjectView
   readonly startRelease?: ReleaseButtonInjected['startRelease']
 } = {}) {
+  const session = createSnapshotStore({ ...sessionSnapshot(SESSION), blank: options.blank ?? false })
   const workspaces = createSnapshotStore<WorkspaceSnapshot>({
     items: options.path === undefined ? [] : [{
       workspaceId: brandString<WorkspaceId>('w1'), path: options.path, title: 'Game', sessionIds: [SESSION],
@@ -43,7 +49,9 @@ function button(options: {
     sessionId: SESSION,
     useWorkspaces: bindSnapshotSelector(workspaces),
     useAccess: () => options.mayPrompt ?? true,
+    useSession: bindSnapshotSelector(session),
     t,
+    placement: options.placement ?? 'header',
     readProject,
     startRelease,
   }
@@ -61,6 +69,18 @@ describe('ReleaseButton', () => {
     cleanup()
     button({ path: '/games/neon' })
     expect(screen.getByRole('button', { name: en['release.button'] }).title).toBe(en['release.tooltip'])
+  })
+
+  it('shows in the New Session row only while the Session is blank, and in the header either way', () => {
+    button({ path: '/games/neon', placement: 'newSession', blank: true })
+    expect(screen.getByRole('button', { name: en['release.button'] }).getAttribute('data-placement')).toBe('newSession')
+    cleanup()
+    // A Session that is no longer blank shows its header, which has the button.
+    button({ path: '/games/neon', placement: 'newSession', blank: false })
+    expect(screen.queryByRole('button', { name: en['release.button'] })).toBeNull()
+    cleanup()
+    button({ path: '/games/neon', placement: 'header', blank: true })
+    expect(screen.getByRole('button', { name: en['release.button'] }).getAttribute('data-placement')).toBe('header')
   })
 
   it('names the last release and asks the agent to release with the notes', async () => {

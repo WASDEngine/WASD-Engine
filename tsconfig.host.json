@@ -206,6 +206,7 @@
     "apps/web/tests/agent-preset-authoring.e2e.ts",
     "apps/web/tests/shipped-composition.e2e.ts",
     "apps/web/tests/game-addons.e2e.ts",
+    "apps/web/tests/wasd-release-button.e2e.ts",
     "apps/web/tests/goal-bar.e2e.ts",
     "apps/web/tests/schedule-after.e2e.ts",
     "apps/web/tests/schedule-manual.e2e.ts",
