@@ -156,6 +156,7 @@ export interface SidebarBrowserTab {
 /** Finds the automation face of a Desktop Browser tab. */
 export interface SidebarBrowserAutomation {
   /**
+   * Find a Browser tab of a Session; the face drives the body mounted at this call, so find the tab again after its body remounts.
    * @param sessionId - the Session whose right Sidebar holds the tab.
    * @param tabId - the tab.
    * @returns the tab's face while its body is mounted, or undefined.
