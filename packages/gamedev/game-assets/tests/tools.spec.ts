@@ -283,6 +283,24 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     expect(await gltfFilesBytes(join(c.work, 'models', 'broken.gltf'), 10, c.work, new AbortController().signal)).toBe(0)
   })
 
+  it('refuses a glTF model whose files together are larger than the window reads, before asking the window', async () => {
+    const c = await composed({ maxPreviewBytes: 1500 })
+    c.openWindow({ details: KNIGHT, images: [] })
+    await mkdir(join(c.work, 'models'), { recursive: true })
+    const gltf = JSON.stringify({ asset: { version: '2.0' }, buffers: [{ uri: 'tree.bin', byteLength: 1400 }] })
+    await writeFile(join(c.work, 'models', 'tree.gltf'), gltf)
+    // One byte more than the window reads.
+    await writeFile(join(c.work, 'models', 'tree.bin'), Buffer.alloc(1501 - Buffer.byteLength(gltf)))
+    const refused = await callTool(c, 'asset_view', { path: 'models/tree.gltf' })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain('models/tree.gltf and the files it names take 1.5 KB, more than the 1.5 KB the viewer reads for one model.')
+    expect(c.requests).toEqual([])
+    // At the limit, the window draws it.
+    await writeFile(join(c.work, 'models', 'tree.bin'), Buffer.alloc(1500 - Buffer.byteLength(gltf)))
+    expect((await callTool(c, 'asset_view', { path: 'models/tree.gltf' })).isError).toBeFalsy()
+    expect(c.requests[0]?.bytes).toBe(1500)
+  })
+
   it('reads the sizes of at most MAX_GLTF_FILES files a glTF model names, and stops when the call ends', async () => {
     const c = await composed()
     c.openWindow({ details: KNIGHT, images: [] })

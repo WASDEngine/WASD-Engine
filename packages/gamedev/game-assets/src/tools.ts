@@ -17,7 +17,7 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { describeDetails, describeSearch, type ListedAsset, type ListedFolder } from './describe.ts'
+import { describeDetails, describeSearch, sizeText, type ListedAsset, type ListedFolder } from './describe.ts'
 import { exportOf, formatOf, isBlendFormat, NAME_ORDER } from './formats.ts'
 import { ANSWER_LIMITS, parseDetails } from './result.ts'
 import { scanProject, type ScanLimits } from './scan.ts'
@@ -588,7 +588,13 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       const sent = windowPath(root, absolute)
       // A glTF model's buffers and images in files of their own load with it, from the project folder the window reads:
       // the folder in the Session's header, or the model's own folder for a model outside it.
-      if (format.label === 'glTF') bytes += await gltfFilesBytes(absolute, bytes, root === undefined || sent === absolute ? dirname(absolute) : root, exec.signal)
+      if (format.label === 'glTF') {
+        const named = await gltfFilesBytes(absolute, bytes, root === undefined || sent === absolute ? dirname(absolute) : root, exec.signal)
+        if (bytes + named > host.maxPreviewBytes) {
+          fail(`${path} and the files it names take ${sizeText(bytes + named)}, more than the ${sizeText(host.maxPreviewBytes)} the viewer reads for one model.`, ASSET_ERROR.tooLarge)
+        }
+        bytes += named
+      }
       const images = await surface.seesImages(exec)
       let answer: AssetRenderResult
       try {
