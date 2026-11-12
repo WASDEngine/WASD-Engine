@@ -3,7 +3,8 @@
  * over HTTP, through the game MCP server and the audio provider, to the connected agent's Session of the project it
  * names, with the window's picture sent as PNG bytes after the text.
  */
-import { readFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import GameMcpServer, { type GameMcpView } from '@deepseek-ai/dsh-game-mcp'
@@ -13,6 +14,7 @@ import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/cli
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MCP_INSTRUCTIONS } from '../src/mcp.ts'
 import { compose, fakeAgent, JUMP, PIXEL_PNG, type Composition } from './composition.ts'
+import { pcmWav } from './signals.ts'
 
 const TIMEOUT = 60_000
 
@@ -26,11 +28,12 @@ afterEach(async () => {
 /**
  * The composition with a game project registry, a Session controller that creates fake Agents, the game MCP server,
  * and an official MCP client connected to it.
+ * @param registered - game project folders registered before the client connects.
  */
-async function connected() {
+async function connected(registered: readonly string[] = []) {
   const current = composition = await compose()
   const { ctx, work } = current
-  const workspaces: Array<{ id: string; path: string; sessionIds: SessionId[] }> = []
+  const workspaces: Array<{ id: string; path: string; sessionIds: SessionId[] }> = registered.map((path, index) => ({ id: `r${String(index + 1)}`, path, sessionIds: [] }))
   ctx.provide('workspaceRegistry', {
     list: () => workspaces,
     create: async (path: string) => {
@@ -44,8 +47,10 @@ async function connected() {
   ctx.provide('sessionController', {
     create: async ({ workspaceId }: { workspaceId: string }) => {
       const sessionId = SessionId(`agent-session-${String(agents.size + 1)}`)
-      workspaces.find(workspace => workspace.id === workspaceId)?.sessionIds.push(sessionId)
-      agents.set(sessionId, await fakeAgent(ctx, sessionId, 'vision'))
+      const workspace = workspaces.find(candidate => candidate.id === workspaceId)
+      workspace?.sessionIds.push(sessionId)
+      // A Session created in a game project records the project's folder in its header.
+      agents.set(sessionId, await fakeAgent(ctx, sessionId, 'vision', workspace?.path))
       return { sessionId }
     },
     resolveAgent: async (sessionId: SessionId) => {
@@ -93,7 +98,8 @@ describe('the audio tools over WASD Engine\'s MCP server', () => {
     expect(text(relative)).toBe('project must be the absolute path of the game project\'s folder.')
     const search = await client.callTool({ name: 'audio_search', arguments: { project: work, kind: 'dialogue' } })
     expect(search.isError, text(search)).toBeFalsy()
-    expect(text(search)).toContain(`1 sound dialogue lines only in ${work}: 1 dialogue line.`)
+    // The connected agent's Session works in the project's canonical folder.
+    expect(text(search)).toContain(`1 sound dialogue lines only in ${await realpath(work)}: 1 dialogue line.`)
   }, TIMEOUT)
 
   it('has the window measure a sound in the agent\'s own Session and sends the picture as PNG bytes after the text', async () => {
@@ -110,5 +116,31 @@ describe('the audio tools over WASD Engine\'s MCP server', () => {
     expect(requests[0]?.agent?.id).toBe('agent-session-1')
     expect(reveals).toEqual([{ sessionId: 'agent-session-1', path: 'audio/sfx/jump.wav' }])
     expect(saved).toEqual([])
+  }, TIMEOUT)
+
+  it('finds sounds from the folder the agent names when a game project registered above it holds the Session', async () => {
+    const parent = await realpath(await mkdtemp(join(tmpdir(), 'dsh-game-audio-parent-')))
+    try {
+      // The registered folder holds its own audio/hit.wav; the game the agent names is in game/.
+      await mkdir(join(parent, 'audio'), { recursive: true })
+      await mkdir(join(parent, 'game', 'audio'), { recursive: true })
+      await writeFile(join(parent, 'audio', 'hit.wav'), pcmWav({ sampleRate: 8000, frames: 80 }))
+      await writeFile(join(parent, 'game', 'project.godot'), '[application]\n')
+      await writeFile(join(parent, 'game', 'audio', 'hit.wav'), pcmWav({ sampleRate: 22_050, frames: 2205 }))
+      const current = await connected([parent])
+      const { client, requests, reveals } = current
+      current.openWindow({ measurements: JUMP })
+      const project = join(parent, 'game')
+      const review = await client.callTool({ name: 'call_game_tool', arguments: { name: 'audio_review', arguments: { project, path: 'audio/hit.wav', picture: false, show: true } } })
+      expect(review.isError, text(review)).toBeFalsy()
+      expect(text(review)).toContain('audio/hit.wav: sound effect by its length; WAV, 16-bit PCM, mono, 22.1 kHz, 0.100 s')
+      // The Session works in the registered folder, from which the window reads the game's sound.
+      expect(requests[0]).toMatchObject({ path: 'game/audio/hit.wav' })
+      expect(reveals).toEqual([{ sessionId: requests[0]?.agent?.id, path: 'game/audio/hit.wav' }])
+      const search = await client.callTool({ name: 'audio_search', arguments: { project } })
+      expect(text(search)).toContain(`1 sound in ${project}`)
+    } finally {
+      await rm(parent, { recursive: true, force: true })
+    }
   }, TIMEOUT)
 })

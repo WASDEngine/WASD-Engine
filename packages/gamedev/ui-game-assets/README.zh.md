@@ -92,7 +92,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 <a id="for-the-agent"></a>
 ### 面向 agent
 
-插件会答复 `asset_view` 为这个窗口可以读取的 Session 发出的 `game-assets/render` 请求：它通过 `workspaceFiles` 读取素材，测量面板所显示的同样的详细信息，并在屏幕外绘制图片。模型用标签页的光照、网格、骨架叠加以及白模或线框着色绘制，每个视角或姿势一格，输出为 JPEG；图片绘制在棋盘格上，小尺寸像素画按整数倍放大，按需附带网格与格子编号，或绘制为一张动画各帧的拼图，每帧标注其序号与时长，输出为 PNG。多个 agent 的请求（例如模型的并行调用、agent 团队的队友、子 agent，以及通过 MCP 服务器连接的 agent）按到达顺序绘制，最多同时绘制 `maxAgentDraws` 个，且同时绘制的素材合计不超过 `maxAgentDrawBytes`；更大的素材单独绘制。请求计入其文件，对于 glTF 模型还计入它引用的缓冲区和图片。调用在请求等待期间结束时，该请求离开队列；在绘制期间结束时，它立即让出位置。每个请求都在它所注明的 Session 中读取并绘制。图片的 Godot 动画在 Session 标签页的扫描结果新鲜时取自该结果，因此 agent 能找到它刚写入的资源；否则为该 Session 绘制的图片在遍历结果新鲜期间共用对其项目的同一次遍历。没有 WebGL 的窗口把模型交给另一个窗口。`game-assets/reveal` 通知会打开该 Session（若它不在屏幕上）及其素材标签页，并选中该素材；正在等待其 Session 出现在屏幕上的 reveal 会在另一个 reveal 到达时停止。
+插件会答复 `asset_view` 为这个窗口可以读取的 Session 发出的 `game-assets/render` 请求：它通过 `workspaceFiles` 读取素材，测量面板所显示的同样的详细信息，并在屏幕外绘制图片。答复中的详细信息按请求携带的上限裁剪（[`src/client/answer.ts`](src/client/answer.ts)）：更长的列表保留前面的条目并统计全部数量，更长的名称以省略号结尾，更长的路径被省去，帧尺寸（例如带小数的 Godot 区域）以整数像素给出；面板自身的详细信息保持完整。模型用标签页的光照、网格、骨架叠加以及白模或线框着色绘制，每个视角或姿势一格，输出为 JPEG；图片绘制在棋盘格上，小尺寸像素画按整数倍放大，按需附带网格与格子编号，或绘制为一张动画各帧的拼图，每帧标注其序号与时长，输出为 PNG。多个 agent 的请求（例如模型的并行调用、agent 团队的队友、子 agent，以及通过 MCP 服务器连接的 agent）按到达顺序绘制，最多同时绘制 `maxAgentDraws` 个，且同时绘制的素材合计不超过 `maxAgentDrawBytes`；更大的素材单独绘制。请求计入其文件，对于 glTF 模型还计入它引用的缓冲区和图片。调用在请求等待期间结束时，该请求离开队列；在绘制期间结束时，它立即让出位置。每个请求都在它所注明的 Session 中读取并绘制。图片的 Godot 动画在 Session 标签页的扫描结果新鲜时取自该结果，因此 agent 能找到它刚写入的资源；否则为该 Session 绘制的图片在遍历结果新鲜期间共用对其项目的同一次遍历。没有 WebGL 的窗口把模型交给另一个窗口。`game-assets/reveal` 通知会打开该 Session（若它不在屏幕上）及其素材标签页，并选中该素材；正在等待其 Session 出现在屏幕上的 reveal 会在另一个 reveal 到达时停止。
 
 -----
 
@@ -129,6 +129,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/client/sprites.ts`](src/client/sprites.ts)、[`src/client/animations2d.ts`](src/client/animations2d.ts)、[`src/client/frames.ts`](src/client/frames.ts) | 2D 动画：网格、序列、精灵表、Godot 与自身的帧，以及查找图片的动画 |
 | [`src/client/sprite-player.ts`](src/client/sprite-player.ts) | 当前显示的一张图片的已解码图片与动画 |
 | [`src/client/agent.ts`](src/client/agent.ts)、[`src/client/render2d.ts`](src/client/render2d.ts) | 答复渲染请求：解码、测量、绘制与编码 |
+| [`src/client/answer.ts`](src/client/answer.ts) | 按请求的上限裁剪答复的详细信息 |
 | [`src/client/queue.ts`](src/client/queue.ts) | 为 agent 同时绘制的图片的顺序与数量 |
 | [`src/client/viewer/`](src/client/viewer/) | 延迟加载的 three.js 分块：图片解码器、模型加载器、测量、舞台、骨架叠加，以及 agent 的模型格子 |
 | [`src/client/icon.tsx`](src/client/icon.tsx) | 标签页图标与 3D 模型文件图标 |

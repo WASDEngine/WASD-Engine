@@ -57,7 +57,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 `asset_view` 在显示透明度的棋盘格上绘制图片：小尺寸像素画按适合 `size` 的最大整数倍放大，大于实际尺寸的图片平滑缩小；`region` 只绘制其中一个矩形，以便近看细节。`grid` 把图片读作 `columns` × `rows`（及 `count`）帧的精灵表：图片上会画出网格并标出每格编号，详细信息把它列为名为 `grid` 的动画。给出 `animation`（图片某个动画的名称）时，它按顺序绘制该动画的各帧，每帧标注序号与时长，最多 16 帧或 `frames` 帧；`fps` 设置网格或编号图片的速度。返回的图片为 PNG，像素保持精确。
 
-模型的详细信息包括格式和文件大小、尺寸与包围盒、三角形、顶点、网格与节点数，每个材质的类型、颜色、金属度、粗糙度、标志以及按槽位列出的纹理，纹理及其尺寸，骨骼树，每个动画片段的时长、轨道数与动画骨骼，每个网格的变形目标，以及模型引用但缺失的文件。图片的详细信息包括格式、文件大小、像素尺寸、透明度（无、镂空或半透明）、最多数到 256 的颜色数，以及它的 2D 动画：自身的帧（动画 GIF、WebP 或 PNG）、旁边的编号图片（`walk_01.png`、`walk_02.png` 等）、使用它的 Godot 场景与资源中的 SpriteFrames 动画和 Sprite2D 帧网格、同名精灵表 JSON 文件（Aseprite 或 TexturePacker）中的帧与标签，以及调用给出的网格，每个都附带帧数、速度与时长。
+模型的详细信息包括格式和文件大小、尺寸与包围盒、三角形、顶点、网格与节点数，每个材质的类型、颜色、金属度、粗糙度、标志以及按槽位列出的纹理，纹理及其尺寸，骨骼树，每个动画片段的时长、轨道数与动画骨骼，每个网格的变形目标，以及模型引用但缺失的文件。图片的详细信息包括格式、文件大小、像素尺寸、透明度（无、镂空或半透明）、最多数到 256 的颜色数，以及它的 2D 动画：自身的帧（动画 GIF、WebP 或 PNG）、旁边的编号图片（`walk_01.png`、`walk_02.png` 等）、使用它的 Godot 场景与资源中的 SpriteFrames 动画和 Sprite2D 帧网格、同名精灵表 JSON 文件（Aseprite 或 TexturePacker）中的帧与标签，以及调用给出的网格，每个都附带帧数、速度与时长。详细信息最多列出 64 个动画片段或 2D 动画、32 个带变形目标的网格，以及每个网格的 64 个目标，并统计全部数量，因此文字会说明还有多少未列出。
 
 模型不接受图像的会话只得到详细信息，窗口不绘制任何图片。`show` 发出 `game-assets/reveal` 事件，可以读取该会话的窗口会打开该会话（若它不在屏幕上）及其素材标签页，并选中该素材；调用给出 `grid` 时在图片上显示该网格，给出 `animation` 时还会播放它。队友或子 agent 会在其子 agent 树的领导 agent 的会话（即用户正在查看的会话）中显示素材；该领导 agent 已不存在时，则在它自己的会话中显示。
 
@@ -73,7 +73,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节——点击展开</summary>
 
-`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 在 Host 上解析路径及其格式，用同样的遍历查找 Blender 文件的导出模型，然后带着调用方 Agent、调用的取消信号和 JSON 请求（工作区路径、类型、选项、是否绘制图片，以及字节与面积上限）发出作用域化的 waterfall 事件 `game-assets/render`。[`api-remotes`](../../api/remotes/README.zh.md) 把它转发给可以读取该会话的 owner 窗口；第一个答复胜出，无法处理的窗口（例如没有 WebGL 时遇到模型）用 `next()` 交给下一个。素材标签页的浏览器端负责答复（[`ui-game-assets`](../ui-game-assets/README.zh.md)）：它通过 `workspaceFiles` 读取文件、测量详细信息，并用标签页的 three.js 查看器在屏幕外绘制图片。请求以相对于会话头部所记录文件夹的路径给出素材（窗口按该文件夹解析会话的路径），并附带该文件以及 glTF 文件所引用的缓冲区和图片的大小。Host 会把窗口详细信息中提到的文件以及窗口失败消息中的路径，重新按调用方 agent 的工作目录给出。没有窗口连接到 Host 时，调用立即以 `ASSET_NO_WINDOW` 失败，因为网关会为之后连接的窗口保留该请求；已连接的窗口都无法处理时，waterfall 到达插件自己的最后一环，以同样的错误失败。窗口自身的失败，例如模型中没有调用给出的片段名称，会连同消息传给 agent。Host 先用 [`src/result.ts`](src/result.ts) 逐字段检查每个答复，再把图片存为附件或通过 MCP 发送；结果以 JSON 保留详细信息。
+`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 在 Host 上解析路径及其格式，用同样的遍历查找 Blender 文件的导出模型，然后带着调用方 Agent、调用的取消信号和 JSON 请求（工作区路径、类型、选项、是否绘制图片、字节与面积上限，以及答复详细信息中每个列表的最多条目数与最长名称，即 [`src/result.ts`](src/result.ts) 中的 `ANSWER_LIMITS`，窗口按其裁剪答复）发出作用域化的 waterfall 事件 `game-assets/render`。[`api-remotes`](../../api/remotes/README.zh.md) 把它转发给可以读取该会话的 owner 窗口；第一个答复胜出，无法处理的窗口（例如没有 WebGL 时遇到模型）用 `next()` 交给下一个。素材标签页的浏览器端负责答复（[`ui-game-assets`](../ui-game-assets/README.zh.md)）：它通过 `workspaceFiles` 读取文件、测量详细信息，并用标签页的 three.js 查看器在屏幕外绘制图片。请求以相对于会话头部所记录文件夹的路径给出素材（窗口按该文件夹解析会话的路径），并附带该文件以及 glTF 文件所引用的缓冲区和图片的大小，这些大小每次读取 16 个，调用结束时停止；引用超过 1,024 个文件的 glTF 文件以 `ASSET_TOO_LARGE` 失败。Host 会把窗口详细信息中提到的文件以及窗口失败消息中的路径，重新按调用方 agent 的工作目录给出。没有窗口连接到 Host 时，调用立即以 `ASSET_NO_WINDOW` 失败，因为网关会为之后连接的窗口保留该请求；已连接的窗口都无法处理时，waterfall 到达插件自己的最后一环，以同样的错误失败。窗口自身的失败，例如模型中没有调用给出的片段名称，会连同消息传给 agent。Host 先用 [`src/result.ts`](src/result.ts) 逐字段检查每个答复，再把图片存为附件或通过 MCP 发送；结果以 JSON 保留详细信息。
 
 格式表与 Blender 导出查找位于 [`src/formats.ts`](src/formats.ts)，以 `@deepseek-ai/dsh-game-assets/formats` 导出。插件的浏览器包不能导入其他插件的值，因此素材标签页保留一份副本，并由那里的一个测试保证两者一致。
 

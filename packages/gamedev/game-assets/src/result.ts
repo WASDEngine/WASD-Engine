@@ -5,15 +5,32 @@
  */
 import { z } from 'zod'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { AssetDetails, AssetRenderResult } from './types.ts'
+import type { AssetAnswerLimits, AssetDetails, AssetRenderResult } from './types.ts'
 
 /** Images one answer may carry. */
 export const MAX_ANSWER_IMAGES = 4
 
+/**
+ * The most entries of each list of an answer's details and the longest name in them. `asset_view` sends these with
+ * every request, and the window lists the first entries of a longer list and counts the rest.
+ */
+export const ANSWER_LIMITS: AssetAnswerLimits = {
+  name: 512,
+  animations: 64,
+  materials: 48,
+  maps: 32,
+  textures: 48,
+  bones: 256,
+  clipTargets: 24,
+  morphMeshes: 32,
+  morphTargets: 64,
+  missing: 32,
+}
+
 /** Longest base64 text of one image: 16 MiB of image bytes. */
 const MAX_IMAGE_BASE64 = Math.ceil((16 * 1024 * 1024) / 3) * 4
 
-const name = z.string().max(512)
+const name = z.string().max(ANSWER_LIMITS.name)
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 const measure = z.number()
 const positive = z.number().int().min(1).max(1_000_000)
@@ -39,7 +56,8 @@ const imageDetails = z.strictObject({
   height: positive,
   transparency: z.enum(['opaque', 'cutout', 'translucent']),
   colors: z.number().int().min(0).max(257),
-  animations: z.array(spriteAnimation).max(64),
+  animations: z.array(spriteAnimation).max(ANSWER_LIMITS.animations),
+  animationCount: count.exactOptional(),
 })
 
 const modelDetails = z.strictObject({
@@ -58,25 +76,31 @@ const modelDetails = z.strictObject({
     color: z.string().regex(/^#[0-9a-f]{6}$/u).exactOptional(),
     metalness: measure.exactOptional(),
     roughness: measure.exactOptional(),
-    maps: z.array(z.strictObject({ slot: z.string().max(64), texture: name })).max(32),
+    maps: z.array(z.strictObject({ slot: z.string().max(64), texture: name })).max(ANSWER_LIMITS.maps),
     transparent: z.boolean(),
     doubleSided: z.boolean(),
     vertexColors: z.boolean(),
-  })).max(48),
+  })).max(ANSWER_LIMITS.materials),
   materialCount: count,
-  textures: z.array(z.strictObject({ name, width: count, height: count })).max(48),
+  textures: z.array(z.strictObject({ name, width: count, height: count })).max(ANSWER_LIMITS.textures),
   textureCount: count,
-  bones: z.array(z.strictObject({ name, parent: z.number().int().min(0).exactOptional() })).max(256),
+  bones: z.array(z.strictObject({ name, parent: z.number().int().min(0).exactOptional() })).max(ANSWER_LIMITS.bones),
   boneCount: count,
   animations: z.array(z.strictObject({
     name,
     seconds: z.number().min(0),
     tracks: count,
-    targets: z.array(name).max(24),
+    targets: z.array(name).max(ANSWER_LIMITS.clipTargets),
     targetCount: count,
-  })).max(64),
-  morphTargets: z.array(z.strictObject({ mesh: name, targets: z.array(name).max(64) })).max(32),
-  missing: z.array(name).max(32),
+  })).max(ANSWER_LIMITS.animations),
+  animationCount: count.exactOptional(),
+  morphTargets: z.array(z.strictObject({
+    mesh: name,
+    targets: z.array(name).max(ANSWER_LIMITS.morphTargets),
+    targetCount: count.exactOptional(),
+  })).max(ANSWER_LIMITS.morphMeshes),
+  morphMeshCount: count.exactOptional(),
+  missing: z.array(name).max(ANSWER_LIMITS.missing),
 })
 
 const details = z.discriminatedUnion('kind', [imageDetails, modelDetails])

@@ -12,6 +12,7 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { HarnessError } from '@deepseek-ai/dsh-error'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import { deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -102,6 +103,20 @@ function settleBefore<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   })
 }
 
+/** The method of the optional subagent service (`@deepseek-ai/dsh-subagent`'s `subagents`) that a reveal calls. */
+interface SubagentTrees {
+  rootOf(agent: Agent): Agent
+}
+
+/**
+ * Whether the optional subagent service is present with the method a reveal calls.
+ * @param service - the service, or undefined.
+ * @returns true when it has `rootOf`.
+ */
+function isSubagentTrees(service: unknown): service is SubagentTrees {
+  return typeof service === 'object' && service !== null && typeof Reflect.get(service, 'rootOf') === 'function'
+}
+
 /**
  * The picture surface of the Session's own tools: the picture becomes an attachment that the Session's model receives,
  * and a model that does not accept images gets the figures alone.
@@ -179,6 +194,18 @@ export function apply(ctx: Context, config: Config): void {
         throw new HarnessError(error instanceof Error ? error.message : String(error), typeof code === 'string' ? code : AUDIO_ERROR.measure, { cause: error })
       }
       return parseMeasureResult(answer)
+    },
+    revealTarget(agent) {
+      // The subagent service is optional, so this package relies only on the method it calls.
+      const subagents: unknown = ctx.get('subagents')
+      if (!isSubagentTrees(subagents)) return agent
+      try {
+        return subagents.rootOf(agent)
+      } catch (error) {
+        // An independently resumed child has no live tree root; its own Session shows the sound.
+        if (typeof error === 'object' && error !== null && Reflect.get(error, 'code') === 'UNAUTHORIZED') return agent
+        throw error
+      }
     },
     reveal(reveal) {
       ctx.emit('game-audio/reveal', reveal)

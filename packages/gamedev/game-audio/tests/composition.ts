@@ -11,7 +11,7 @@ import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
 import { createInboxStub, provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { AttachmentId, type ImageAttachmentRef, type SaveImageAttachment } from '@deepseek-ai/dsh-attachment'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
@@ -73,15 +73,19 @@ export interface Composition {
  * @param ctx - the composition's root context.
  * @param id - the Agent's Session id.
  * @param model - `vision` or `blind`.
+ * @param cwd - the project folder in the Session's header; none by default.
  * @returns the registered Agent.
  */
-export async function fakeAgent(ctx: Context, id: string, model: string): Promise<Agent> {
+export async function fakeAgent(ctx: Context, id: string, model: string, cwd?: string): Promise<Agent> {
   const scope = ctx.plugin(() => {})
   const sessionId = SessionId(id)
   const route = { provider: 'test', model }
   const selection: Model = { current: () => route, select: () => {} }
+  const session = cwd === undefined
+    ? Session.create(sessionId)
+    : Session.create(sessionId, [], { version: SESSION_FORMAT_VERSION, id: sessionId, createdAt: 0, cwd, isSeeded: false })
   const agent: Agent = {
-    id: sessionId, options: {}, session: Session.create(sessionId), model: selection, inbox: createInboxStub(), status: 'idle', ctx: scope.ctx,
+    id: sessionId, options: {}, session, model: selection, inbox: createInboxStub(), status: 'idle', ctx: scope.ctx,
     send: () => {}, followup: () => {}, steer: () => {}, inject: () => {}, cancel() {},
     runMaintenance: job => job(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
@@ -127,8 +131,8 @@ export async function compose(config: Partial<GameAudio.Config> = {}): Promise<C
   const reveals: AudioReveal[] = []
   ctx.on('game-audio/reveal', (reveal) => { reveals.push(reveal) })
   await ctx.plugin(GameAudio, GameAudio.Config(config))
-  const agent = await fakeAgent(ctx, 'owner', 'vision')
-  const blind = await fakeAgent(ctx, 'blind', 'blind')
+  const agent = await fakeAgent(ctx, 'owner', 'vision', work)
+  const blind = await fakeAgent(ctx, 'blind', 'blind', work)
   return {
     ctx, work, saved, requests, reveals, agent, blind,
     openWindow(answer) {

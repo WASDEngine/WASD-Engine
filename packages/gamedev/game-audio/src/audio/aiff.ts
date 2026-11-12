@@ -57,13 +57,29 @@ function sampleReader(format: AiffFormat): { readonly read: SampleReader; readon
   throw new AiffDecodeError(`the AIFF file stores ${format.compression === 'NONE' ? `${String(bits)}-bit` : `"${format.compression.trim()}"`} samples, which the decoder does not read`)
 }
 
+/** An AIFF file's sound, located and readable sample by sample without decoding it whole. */
+export interface AiffSound {
+  /** Frames per second, as the file's format chunk states it; it may have a fraction. */
+  readonly sampleRate: number
+  readonly channels: number
+  /** Frames the file holds: as many as its format chunk names and its sound chunk has bytes for. */
+  readonly frames: number
+  /**
+   * Read one sample.
+   * @param frame - frame index, below `frames`.
+   * @param channel - channel index, below `channels`.
+   * @returns the sample from -1 to 1.
+   */
+  sample(frame: number, channel: number): number
+}
+
 /**
- * Decode a complete AIFF or AIFC file.
+ * Locate the sound of a complete AIFF or AIFC file, allocating nothing for its samples.
  * @param bytes - the file.
- * @returns its samples, interleaved as the file stores them.
+ * @returns the sound's format and a reader of its samples.
  * @throws {AiffDecodeError} for a file that is not AIFF, lacks its format or sound chunk, or stores another encoding.
  */
-export function decodeAiff(bytes: Uint8Array): AudioSamples {
+export function openAiff(bytes: Uint8Array): AiffSound {
   if (bytes.length < 12 || text(bytes, 0) !== 'FORM' || (text(bytes, 8) !== 'AIFF' && text(bytes, 8) !== 'AIFC')) {
     throw new AiffDecodeError('the file is not an AIFF file')
   }
@@ -85,8 +101,28 @@ export function decodeAiff(bytes: Uint8Array): AudioSamples {
   if (format === undefined || format.channels < 1) throw new AiffDecodeError('the AIFF file has no usable format chunk')
   if (sound === undefined) throw new AiffDecodeError('the AIFF file has no sound chunk')
   const { read, bytes: width } = sampleReader(format)
-  const frames = Math.max(0, Math.min(format.frames, Math.floor((sound.end - sound.start) / (width * format.channels))))
-  const samples = new Float32Array(frames * format.channels)
-  for (let index = 0; index < samples.length; index++) samples[index] = read(view, sound.start + index * width)
-  return { sampleRate: format.sampleRate, channels: format.channels, frames, samples }
+  const channels = format.channels
+  const start = sound.start
+  const frames = Math.max(0, Math.min(format.frames, Math.floor((sound.end - start) / (width * channels))))
+  return {
+    sampleRate: format.sampleRate,
+    channels,
+    frames,
+    sample: (frame, channel) => read(view, start + (frame * channels + channel) * width),
+  }
+}
+
+/**
+ * Decode a complete AIFF or AIFC file.
+ * @param bytes - the file.
+ * @returns its samples, interleaved as the file stores them.
+ * @throws {AiffDecodeError} for a file that is not AIFF, lacks its format or sound chunk, or stores another encoding.
+ */
+export function decodeAiff(bytes: Uint8Array): AudioSamples {
+  const sound = openAiff(bytes)
+  const samples = new Float32Array(sound.frames * sound.channels)
+  for (let frame = 0; frame < sound.frames; frame++) {
+    for (let channel = 0; channel < sound.channels; channel++) samples[frame * sound.channels + channel] = sound.sample(frame, channel)
+  }
+  return { sampleRate: sound.sampleRate, channels: sound.channels, frames: sound.frames, samples }
 }

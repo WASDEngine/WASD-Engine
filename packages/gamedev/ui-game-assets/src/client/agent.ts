@@ -11,6 +11,7 @@ import type {
 import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { findAnimations, type AnimationSources } from './animations2d.ts'
+import { fitDetails } from './answer.ts'
 import { formatOf, type AssetFormat } from './formats.ts'
 import { closeFrames, decodeOwnFrames } from './frames.ts'
 import type { AssetFile } from './read.ts'
@@ -402,7 +403,7 @@ async function framePicture(
  * @param request - the asset and what to draw.
  * @param sources - reads and loads bound to the calling Session.
  * @param signal - the request's cancellation.
- * @returns the details and pictures.
+ * @returns the details, fitted to the request's limits, and pictures.
  * @throws {AssetDrawError} for a failure the agent reads.
  */
 export async function answerRender(
@@ -414,9 +415,10 @@ export async function answerRender(
   signal.throwIfAborted()
   const format = formatOf(request.path)
   if (format === undefined) throw new AssetDrawError(`${request.path} is not an asset the viewer reads.`, 'ASSET_FORMAT')
-  return format.kind === 'model'
+  const answer = format.kind === 'model'
     ? await answerModel(request, format, sources, signal)
     : await answerImage(request, format, sources, signal)
+  return { ...answer, details: fitDetails(answer.details, request.limits) }
 }
 
 /**

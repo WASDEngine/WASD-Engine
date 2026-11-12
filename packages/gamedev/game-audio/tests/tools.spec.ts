@@ -4,12 +4,14 @@
  * request, validates the answer, stores the picture for a model that accepts images, reports the figures with how
  * Godot imports the sound, and opens it in the Audio tab.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { describeAudioImage } from '../src/audio/picture.ts'
 import { Config } from '../src/index.ts'
-import { NO_WINDOW_MESSAGE } from '../src/tools.ts'
-import { callTool, compose, JUMP, PIXEL_PNG, text, type Composition } from './composition.ts'
+import { NO_WINDOW_MESSAGE, windowPath } from '../src/tools.ts'
+import { callTool, compose, fakeAgent, JUMP, PIXEL_PNG, text, type Composition } from './composition.ts'
 
 let composition: Composition | undefined
 
@@ -166,6 +168,55 @@ describe('audio_review', () => {
     expect(failure(await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' }))).toEqual({
       message: 'The WASD Engine window measured the sound but answered with an invalid measurements.peak.', code: 'AUDIO_MEASURE',
     })
+  })
+})
+
+describe('audio_review below the project folder and for subagents', () => {
+  it('names the sound to the window from the Session\'s project folder after the agent\'s working directory moved below it', async () => {
+    const c = await composed()
+    // A teammate in audio/, or an agent after working_directory, keeps the project folder in its Session header.
+    const sounds = await fakeAgent(c.ctx, 'sounds', 'vision', c.work)
+    const ensure = c.ctx.workingDirectory.ensure.bind(c.ctx.workingDirectory)
+    vi.spyOn(c.ctx.workingDirectory, 'ensure').mockImplementation(async (agent, signal) => (agent === sounds ? join(c.work, 'audio') : await ensure(agent, signal)))
+    c.openWindow((request) => {
+      if (request.start > 0) throw Object.assign(new Error(`${request.path} is no longer in the project.`), { code: 'AUDIO_NOT_FOUND' })
+      return { measurements: JUMP }
+    })
+    const result = await callTool(c, 'audio_review', { path: 'sfx/jump.wav', picture: false, show: true }, sounds)
+    expect(result.isError, JSON.stringify(result.content)).toBeFalsy()
+    expect(c.requests[0]).toMatchObject({ path: 'audio/sfx/jump.wav' })
+    expect(text(result)).toContain('sfx/jump.wav: sound effect; WAV, 16-bit PCM, mono, 48 kHz, 0.620 s')
+    expect(c.reveals).toEqual([{ sessionId: sounds.id, path: 'audio/sfx/jump.wav' }])
+    // The window's failure names the sound as the agent named it.
+    const failed = await callTool(c, 'audio_review', { path: 'sfx/jump.wav', start: 0.1 }, sounds)
+    expect(failure(failed)).toEqual({ message: 'sfx/jump.wav is no longer in the project.', code: 'AUDIO_NOT_FOUND' })
+  })
+
+  it('names a sound outside the Session\'s project folder by its absolute path', () => {
+    expect(windowPath('/games/knight', '/games/knight/audio/hit.wav')).toBe('audio/hit.wav')
+    expect(windowPath('/games/knight/audio', '/games/knight/music/theme.ogg')).toBe('/games/knight/music/theme.ogg')
+    expect(windowPath(undefined, '/games/knight/audio/hit.wav')).toBe('/games/knight/audio/hit.wav')
+  })
+
+  it('opens what a subagent shows in its lead\'s Session, and what a child without a live lead shows in its own', async () => {
+    const c = await composed()
+    c.openWindow({ measurements: JUMP })
+    const teammate = await fakeAgent(c.ctx, 'teammate', 'vision', c.work)
+    const orphan = await fakeAgent(c.ctx, 'orphan', 'vision', c.work)
+    c.ctx.provide('subagents', {
+      rootOf(agent: Agent): Agent {
+        if (agent === orphan) throw Object.assign(new Error('agent has no active runtime owner'), { code: 'UNAUTHORIZED' })
+        return agent === teammate ? c.agent : agent
+      },
+    } as never)
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false, show: true }, teammate)).isError).toBeFalsy()
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false, show: true }, orphan)).isError).toBeFalsy()
+    // Each measures in its own Session; each shows where the user watches.
+    expect(c.requests.map(request => request.agent?.id)).toEqual([teammate.id, orphan.id])
+    expect(c.reveals).toEqual([
+      { sessionId: c.agent.id, path: 'audio/sfx/coin.wav' },
+      { sessionId: orphan.id, path: 'audio/sfx/coin.wav' },
+    ])
   })
 })
 

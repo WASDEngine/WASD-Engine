@@ -75,6 +75,35 @@ export interface AssetRenderRequest {
   readonly maxBytes: number
   /** Largest area of one returned image, in pixels. */
   readonly maxPixels: number
+  /** The most entries of each list of the answer's details, and the longest name, that the Host accepts. */
+  readonly limits: AssetAnswerLimits
+}
+
+/**
+ * The most entries of each list of a window's details and the longest name in them. A window lists the first entries
+ * of a longer list, counts all of them in the details' count fields, and leaves out a name that is longer.
+ */
+export interface AssetAnswerLimits {
+  /** Characters of a name or path. */
+  readonly name: number
+  /** 2D animations of an image, and animation clips of a model. */
+  readonly animations: number
+  /** Materials of a model. */
+  readonly materials: number
+  /** Texture slots of one material. */
+  readonly maps: number
+  /** Textures of a model. */
+  readonly textures: number
+  /** Bones of a model. */
+  readonly bones: number
+  /** Animated bones and nodes named for one clip. */
+  readonly clipTargets: number
+  /** Meshes with morph targets. */
+  readonly morphMeshes: number
+  /** Morph targets of one mesh. */
+  readonly morphTargets: number
+  /** Files a model names that could not be loaded. */
+  readonly missing: number
 }
 
 /** The `game-assets/render` request on the Host: the JSON fields, the calling Agent, and the call's cancellation. */
@@ -137,7 +166,10 @@ export interface ImageAssetDetails {
   readonly transparency: AssetTransparency
   /** Distinct colors of the first frame, counted up to 257; 257 means more than 256. */
   readonly colors: number
+  /** 2D animations, at most {@link AssetAnswerLimits.animations} in an agent's answer; `animationCount` counts all. */
   readonly animations: readonly SpriteAnimationDetails[]
+  /** 2D animations in all; absent in details written before the window counted them, which list every animation. */
+  readonly animationCount?: number
 }
 
 /** One material of a model. */
@@ -185,7 +217,10 @@ export interface ModelClipDetails {
 /** The morph targets (shape keys) of one mesh. */
 export interface ModelMorphDetails {
   readonly mesh: string
+  /** Target names, at most {@link AssetAnswerLimits.morphTargets} in an agent's answer; `targetCount` counts all. */
   readonly targets: readonly string[]
+  /** Morph targets of the mesh in all; absent in details written before the window counted them. */
+  readonly targetCount?: number
 }
 
 /** What a window found in a model. */
@@ -209,8 +244,14 @@ export interface ModelAssetDetails {
   /** Bones in depth-first order, at most 256; `boneCount` counts all. */
   readonly bones: readonly ModelBoneDetails[]
   readonly boneCount: number
+  /** Animation clips, at most {@link AssetAnswerLimits.animations} in an agent's answer; `animationCount` counts all. */
   readonly animations: readonly ModelClipDetails[]
+  /** Animation clips in all; absent in details written before the window counted them, which list every clip. */
+  readonly animationCount?: number
+  /** Meshes with morph targets, at most {@link AssetAnswerLimits.morphMeshes} in an agent's answer. */
   readonly morphTargets: readonly ModelMorphDetails[]
+  /** Meshes with morph targets in all; absent in details written before the window counted them. */
+  readonly morphMeshCount?: number
   /** Files the model names that could not be loaded, such as missing textures. */
   readonly missing: readonly string[]
 }

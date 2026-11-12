@@ -1,11 +1,12 @@
 /**
  * Decoding a sound in the browser and measuring it as the agent's `audio_review` reports it. WAV, MP3, Ogg Vorbis and
  * Opus, and FLAC files decode with the browser's own decoder through an OfflineAudioContext at the file's own sample
- * rate, so the samples are not resampled; AIFF files, which browsers do not decode, use the audio tools' AIFF reader.
- * The picture is the one the audio tools draw, encoded as PNG on a canvas.
+ * rate, so the samples are not resampled; AIFF files, which browsers do not decode, use the audio tools' AIFF reader,
+ * which fills the AudioBuffer a slice at a time so a long file neither holds a second copy nor blocks the page. The
+ * picture is the one the audio tools draw, encoded as PNG on a canvas.
  */
 import {
-  analyzeAudio, AUDIO_ERROR, decodeAiff, drawAudioImage, loopSeam, stereoImage, type AudioFormat, type AudioSamples, type RgbImage,
+  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, stereoImage, type AudioFormat, type AudioSamples, type RgbImage,
 } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasurements, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
 
@@ -26,22 +27,66 @@ const LOWEST_RATE = 3000
 const HIGHEST_RATE = 768_000
 const DEFAULT_RATE = 48_000
 
+/** Most channels an AudioBuffer holds. */
+const MAX_CHANNELS = 32
+
+/** Samples, over all channels, that an AIFF decode copies before it lets the page handle its events. */
+const AIFF_SLICE_SAMPLES = 1 << 20
+
+/** What a decode may cost: the longest sound it decodes, and its cancellation. */
+export interface DecodeBounds {
+  /** Longest sound in seconds; a longer AIFF file is refused before its samples are copied. */
+  readonly maxSeconds: number
+  /** Ends the decode: an AIFF decode stops at its next slice, a browser decode before and after it runs. */
+  readonly signal: AbortSignal
+}
+
 /**
- * Copy interleaved samples into an AudioBuffer.
- * @param samples - the samples.
- * @returns the buffer.
+ * Wait for the page to handle its pending events.
+ * @returns settles on a later turn of the event loop.
  */
-function bufferOf(samples: AudioSamples): AudioBuffer {
-  const buffer = new AudioBuffer({
-    length: Math.max(1, samples.frames),
-    numberOfChannels: samples.channels,
-    sampleRate: samples.sampleRate,
-  })
-  for (let channel = 0; channel < samples.channels; channel++) {
-    const plane = buffer.getChannelData(channel)
-    for (let frame = 0; frame < samples.frames; frame++) plane[frame] = samples.samples[frame * samples.channels + channel] ?? 0
+function yieldToEvents(): Promise<void> {
+  return new Promise((resolve) => { setTimeout(resolve, 0) })
+}
+
+/**
+ * Decode an AIFF file into an AudioBuffer, a slice of samples at a time, after checking that the buffer can hold it.
+ * @param data - the complete file.
+ * @param bounds - the longest sound and the cancellation.
+ * @returns the decoded sound.
+ * @throws {SoundError} `AUDIO_UNREADABLE` for a channel count or rate an AudioBuffer cannot hold, `AUDIO_TOO_LARGE`
+ * for a sound longer than the bound; the signal's reason when it ends the decode.
+ */
+async function decodeAiffSound(data: Uint8Array<ArrayBuffer>, bounds: DecodeBounds): Promise<AudioBuffer> {
+  const sound = openAiff(data)
+  if (sound.channels > MAX_CHANNELS) throw new SoundError(`The AIFF file has ${String(sound.channels)} channels, more than the ${String(MAX_CHANNELS)} the Audio panel plays.`, AUDIO_ERROR.unreadable)
+  if (!(sound.sampleRate >= LOWEST_RATE && sound.sampleRate <= HIGHEST_RATE)) {
+    throw new SoundError(`The AIFF file's sample rate, ${String(sound.sampleRate)} Hz, is outside the ${String(LOWEST_RATE)} to ${String(HIGHEST_RATE)} Hz the Audio panel plays.`, AUDIO_ERROR.unreadable)
+  }
+  if (sound.frames / sound.sampleRate > bounds.maxSeconds) throw tooLong('The AIFF file', sound.frames / sound.sampleRate, bounds.maxSeconds)
+  const buffer = new AudioBuffer({ length: Math.max(1, sound.frames), numberOfChannels: sound.channels, sampleRate: sound.sampleRate })
+  const sliceFrames = Math.max(1, Math.floor(AIFF_SLICE_SAMPLES / sound.channels))
+  for (let first = 0; first < sound.frames; first += sliceFrames) {
+    bounds.signal.throwIfAborted()
+    const last = Math.min(sound.frames, first + sliceFrames)
+    for (let channel = 0; channel < sound.channels; channel++) {
+      const plane = buffer.getChannelData(channel)
+      for (let frame = first; frame < last; frame++) plane[frame] = sound.sample(frame, channel)
+    }
+    if (last < sound.frames) await yieldToEvents()
   }
   return buffer
+}
+
+/**
+ * The failure of a sound longer than a window decodes.
+ * @param name - what the message names: the sound's path, or its kind of file.
+ * @param seconds - its length.
+ * @param maxSeconds - the longest sound a window decodes.
+ * @returns the error, `AUDIO_TOO_LARGE`.
+ */
+export function tooLong(name: string, seconds: number, maxSeconds: number): SoundError {
+  return new SoundError(`${name} is ${seconds.toFixed(1)} s long, longer than the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`, AUDIO_ERROR.tooLarge)
 }
 
 /**
@@ -49,21 +94,28 @@ function bufferOf(samples: AudioSamples): AudioBuffer {
  * @param data - the complete file.
  * @param format - its listed format.
  * @param sampleRate - the rate its headers name, which the decoded samples keep.
+ * @param bounds - the longest sound and the cancellation.
  * @returns the decoded sound.
- * @throws {SoundError} `AUDIO_UNREADABLE` when the file does not decode.
+ * @throws {SoundError} `AUDIO_UNREADABLE` when the file does not decode, `AUDIO_TOO_LARGE` for an AIFF sound longer than
+ * the bound; the signal's reason when it ends the decode.
  */
 export async function decodeSound(
   data: Uint8Array<ArrayBuffer>,
   format: AudioFormat,
   sampleRate: number | undefined,
+  bounds: DecodeBounds,
 ): Promise<AudioBuffer> {
+  bounds.signal.throwIfAborted()
   try {
-    if (format.decoder === 'aiff') return bufferOf(decodeAiff(data))
+    if (format.decoder === 'aiff') return await decodeAiffSound(data, bounds)
     const rate = sampleRate !== undefined && sampleRate >= LOWEST_RATE && sampleRate <= HIGHEST_RATE ? Math.round(sampleRate) : DEFAULT_RATE
     const context = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: rate })
     // decodeAudioData takes over the buffer it is given, so it receives a copy.
-    return await context.decodeAudioData(data.slice().buffer)
+    const decoded = await context.decodeAudioData(data.slice().buffer)
+    bounds.signal.throwIfAborted()
+    return decoded
   } catch (error) {
+    if (bounds.signal.aborted || error instanceof SoundError) throw error
     // decodeAudioData rejects with a DOMException, which is not an Error in every browser.
     const message: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'message') : undefined
     const reason = typeof message === 'string' && message !== '' ? ` (${message})` : ''
@@ -117,7 +169,8 @@ export function measureSound(buffer: AudioBuffer, start: number, end: number | u
   const seam = loopSeam(samples)
   const stereo = stereoImage(samples)
   const measurements: AudioMeasurements = {
-    sampleRate: buffer.sampleRate,
+    // An AIFF file may state a rate with a fraction, which the decoded samples keep; the figures name whole hertz.
+    sampleRate: Math.round(buffer.sampleRate),
     channels: buffer.numberOfChannels,
     seconds,
     start: from,

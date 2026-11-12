@@ -6206,6 +6206,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n    interpolate?: boolean;\n}',
   },
   {
+    name: 'AssetAnswerLimits',
+    declaration: 'export interface AssetAnswerLimits {\n    readonly name: number;\n    readonly animations: number;\n    readonly materials: number;\n    readonly maps: number;\n    readonly textures: number;\n    readonly bones: number;\n    readonly clipTargets: number;\n    readonly morphMeshes: number;\n    readonly morphTargets: number;\n    readonly missing: number;\n}',
+  },
+  {
     name: 'AssetDetails',
     declaration: 'export type AssetDetails = ImageAssetDetails | ModelAssetDetails;',
   },
@@ -6235,7 +6239,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AssetRenderRequest',
-    declaration: 'export interface AssetRenderRequest {\n    readonly path: string;\n    readonly kind: AssetKind;\n    readonly draw: AssetDrawOptions;\n    readonly images: boolean;\n    readonly bytes: number;\n    readonly maxBytes: number;\n    readonly maxPixels: number;\n}',
+    declaration: 'export interface AssetRenderRequest {\n    readonly path: string;\n    readonly kind: AssetKind;\n    readonly draw: AssetDrawOptions;\n    readonly images: boolean;\n    readonly bytes: number;\n    readonly maxBytes: number;\n    readonly maxPixels: number;\n    readonly limits: AssetAnswerLimits;\n}',
   },
   {
     name: 'AssetRenderResult',
@@ -7619,7 +7623,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ImageAssetDetails',
-    declaration: 'export interface ImageAssetDetails {\n    readonly kind: \'image\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly width: number;\n    readonly height: number;\n    readonly transparency: AssetTransparency;\n    readonly colors: number;\n    readonly animations: readonly SpriteAnimationDetails[];\n}',
+    declaration: 'export interface ImageAssetDetails {\n    readonly kind: \'image\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly width: number;\n    readonly height: number;\n    readonly transparency: AssetTransparency;\n    readonly colors: number;\n    readonly animations: readonly SpriteAnimationDetails[];\n    readonly animationCount?: number;\n}',
   },
   {
     name: 'ImageAttachmentLimits',
@@ -8251,7 +8255,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelAssetDetails',
-    declaration: 'export interface ModelAssetDetails {\n    readonly kind: \'model\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly min: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly max: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly triangles: number;\n    readonly vertices: number;\n    readonly meshes: number;\n    readonly nodes: number;\n    readonly materials: readonly ModelMaterialDetails[];\n    readonly materialCount: number;\n    readonly textures: readonly ModelTextureDetails[];\n    readonly textureCount: number;\n    readonly bones: readonly ModelBoneDetails[];\n    readonly boneCount: number;\n    readonly animations: readonly ModelClipDetails[];\n    readonly morphTargets: readonly ModelMorphDetails[];\n    readonly missing: readonly string[];\n}',
+    declaration: 'export interface ModelAssetDetails {\n    readonly kind: \'model\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly min: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly max: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly triangles: number;\n    readonly vertices: number;\n    readonly meshes: number;\n    readonly nodes: number;\n    readonly materials: readonly ModelMaterialDetails[];\n    readonly materialCount: number;\n    readonly textures: readonly ModelTextureDetails[];\n    readonly textureCount: number;\n    readonly bones: readonly ModelBoneDetails[];\n    readonly boneCount: number;\n    readonly animations: readonly ModelClipDetails[];\n    readonly animationCount?: number;\n    readonly morphTargets: readonly ModelMorphDetails[];\n    readonly morphMeshCount?: number;\n    readonly missing: readonly string[];\n}',
   },
   {
     name: 'ModelBoneDetails',
@@ -8291,7 +8295,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ModelMorphDetails',
-    declaration: 'export interface ModelMorphDetails {\n    readonly mesh: string;\n    readonly targets: readonly string[];\n}',
+    declaration: 'export interface ModelMorphDetails {\n    readonly mesh: string;\n    readonly targets: readonly string[];\n    readonly targetCount?: number;\n}',
   },
   {
     name: 'ModelProviderGroup',

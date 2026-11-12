@@ -136,11 +136,13 @@ function describeImage(path: string, details: ImageAssetDetails): string[] {
   }[details.transparency]
   const colors = details.colors > 256 ? 'more than 256 colors' : plural(details.colors, 'color', 'colors')
   const lines = [`Image ${path} (${details.format}, ${sizeText(details.bytes)}): ${details.width} × ${details.height} pixels, ${transparency}, ${colors}.`]
-  if (details.animations.length === 0) {
+  const animations = details.animationCount ?? details.animations.length
+  if (animations === 0) {
     lines.push('No animations use it. Pass grid to read it as a sprite sheet.')
   } else {
-    lines.push(`Animations (${details.animations.length}); pass one's name as animation to see its frames:`)
+    lines.push(`Animations (${animations}); pass one's name as animation to see its frames:`)
     for (const animation of details.animations) lines.push(animationLine(animation))
+    if (details.animations.length < animations) lines.push(`- and ${plural(animations - details.animations.length, 'more animation', 'more animations')}`)
   }
   return lines
 }
@@ -199,17 +201,25 @@ function describeModel(path: string, details: ModelAssetDetails): string[] {
   } else {
     lines.push('No skeleton.')
   }
-  if (details.animations.length === 0) {
+  const clips = details.animationCount ?? details.animations.length
+  if (clips === 0) {
     lines.push('No animation clips.')
   } else {
-    lines.push(`Animation clips (${details.animations.length}); pass one's name as animation to see frames across it:`)
+    lines.push(`Animation clips (${clips}); pass one's name as animation to see frames across it:`)
     for (const clip of details.animations) {
       const targets = clip.targets.length === 0 ? '' : `: ${clip.targets.join(', ')}${clip.targets.length < clip.targetCount ? ', …' : ''}`
       lines.push(`- ${clip.name === '' ? '(unnamed)' : clip.name}: ${secondsText(clip.seconds)}, ${plural(clip.tracks, 'track', 'tracks')} on ${plural(clip.targetCount, 'bone or node', 'bones or nodes')}${targets}`)
     }
+    if (details.animations.length < clips) lines.push(`- and ${plural(clips - details.animations.length, 'more clip', 'more clips')}`)
   }
   if (details.morphTargets.length > 0) {
-    lines.push(`Morph targets: ${details.morphTargets.map(morph => `${morph.mesh === '' ? '(unnamed mesh)' : morph.mesh}: ${morph.targets.join(', ')}`).join('; ')}.`)
+    const meshes = details.morphMeshCount ?? details.morphTargets.length
+    const morphs = details.morphTargets.map((morph) => {
+      const more = (morph.targetCount ?? morph.targets.length) - morph.targets.length
+      return `${morph.mesh === '' ? '(unnamed mesh)' : morph.mesh}: ${morph.targets.join(', ')}${more > 0 ? `, and ${String(more)} more` : ''}`
+    })
+    const moreMeshes = meshes - details.morphTargets.length
+    lines.push(`Morph targets: ${morphs.join('; ')}${moreMeshes > 0 ? `; and ${plural(moreMeshes, 'more mesh', 'more meshes')} with morph targets` : ''}.`)
   }
   if (details.missing.length > 0) lines.push(`Files the model names that are missing or unreadable: ${details.missing.join(', ')}.`)
   return lines

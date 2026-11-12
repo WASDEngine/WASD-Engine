@@ -74,6 +74,54 @@ export function wavFile(options: {
   return new Uint8Array(view.buffer)
 }
 
+/**
+ * An 80-bit extended float, as AIFF stores its sample rate.
+ * @param value - a positive number, which may have a fraction.
+ * @returns the 10 bytes, big-endian.
+ */
+export function extendedFloat(value: number): number[] {
+  const exponent = Math.floor(Math.log2(value))
+  // Scaling by a power of two keeps the double exact, and the 64-bit mantissa holds all of its bits.
+  const mantissa = BigInt(value * 2 ** (63 - exponent))
+  const bytes = [((exponent + 16_383) >> 8) & 0x7f, (exponent + 16_383) & 0xff]
+  for (let shift = 56n; shift >= 0n; shift -= 8n) bytes.push(Number((mantissa >> shift) & 0xffn))
+  return bytes
+}
+
+/**
+ * A 16-bit big-endian PCM AIFF file.
+ * @param options - rate, channels, and frames, and each frame's sample in every channel from -1 to 1; silence by default.
+ * @returns the file bytes.
+ */
+export function aiffFile(options: {
+  readonly sampleRate: number
+  readonly channels: number
+  readonly frames: number
+  readonly sample?: (frame: number) => number
+}): Uint8Array<ArrayBuffer> {
+  const data = options.frames * options.channels * 2
+  const view = new DataView(new ArrayBuffer(12 + 26 + 16 + data))
+  const text = (offset: number, value: string): void => {
+    for (let index = 0; index < 4; index++) view.setUint8(offset + index, value.charCodeAt(index))
+  }
+  text(0, 'FORM')
+  view.setUint32(4, view.byteLength - 8, false)
+  text(8, 'AIFF')
+  text(12, 'COMM')
+  view.setUint32(16, 18, false)
+  view.setUint16(20, options.channels, false)
+  view.setUint32(22, options.frames, false)
+  view.setUint16(26, 16, false)
+  extendedFloat(options.sampleRate).forEach((byte, index) => { view.setUint8(28 + index, byte) })
+  text(38, 'SSND')
+  view.setUint32(42, 8 + data, false)
+  for (let frame = 0; frame < options.frames; frame++) {
+    const sample = Math.round(Math.max(-1, Math.min(1, options.sample?.(frame) ?? 0)) * 32_767)
+    for (let channel = 0; channel < options.channels; channel++) view.setInt16(54 + (frame * options.channels + channel) * 2, sample, false)
+  }
+  return new Uint8Array(view.buffer)
+}
+
 /** Decode a 16-bit PCM WAV file as the stand-in decoder does: at its own rate, or reject. */
 function decodeWav(data: ArrayBuffer): FakeAudioBuffer {
   const view = new DataView(data)

@@ -75,6 +75,13 @@ export interface AudioToolHost {
    */
   measure(agent: Agent, request: AudioMeasureRequest, signal: AbortSignal): Promise<AudioMeasureResult>
   /**
+   * The Agent whose Session shows what a calling Agent opens: the root of its subagent tree, where the user follows a
+   * teammate's or subagent's work, or the Agent itself.
+   * @param agent - the calling Agent.
+   * @returns the Agent whose Session's Audio tab opens.
+   */
+  revealTarget(agent: Agent): Agent
+  /**
    * Open a sound in the Session's Audio tab of the windows that may read the Session.
    * @param reveal - the Session and the sound.
    */
@@ -198,6 +205,21 @@ export function insideProject(project: string, path: string): { readonly absolut
   const outside = steps === '..' || steps.startsWith(`..${sep}`) || isAbsolute(steps)
   if (outside) fail(`${path} is not inside the project folder ${project}.`, AUDIO_ERROR.outside)
   return { absolute, path: steps.split(sep).join('/') }
+}
+
+/**
+ * The path a window reads a sound at. The window resolves a Session's relative paths against the folder in the
+ * Session's header, which stays the project folder when an agent's working directory moves below it, as after a
+ * `working_directory` change or for a subagent started in a subfolder.
+ * @param root - the folder in the Session's header, or undefined when the header has none.
+ * @param absolute - absolute path of the sound.
+ * @returns the `/`-separated path relative to `root` for a sound inside it, and the absolute path otherwise.
+ */
+export function windowPath(root: string | undefined, absolute: string): string {
+  if (root === undefined) return absolute
+  const inside = relative(root, absolute)
+  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return absolute
+  return inside.split(sep).join('/')
 }
 
 function folderOf(path: string): string {
@@ -401,17 +423,28 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
         readGodotImport(target.absolute),
         args.picture === false ? Promise.resolve(false) : surface.seesImages(exec),
       ])
-      const answer = await host.measure(agent, {
-        path: target.path,
-        ...window,
-        maxSeconds: host.maxReviewSeconds,
-        picture: images,
-        maxBytes: host.maxPreviewBytes,
-      }, exec.signal)
+      const sent = windowPath(agent.session.header.cwd, target.absolute)
+      let answer: AudioMeasureResult
+      try {
+        answer = await host.measure(agent, {
+          path: sent,
+          ...window,
+          maxSeconds: host.maxReviewSeconds,
+          picture: images,
+          maxBytes: host.maxPreviewBytes,
+        }, exec.signal)
+      } catch (error) {
+        // The window names the sound as it reads it, which an agent working below the project folder names otherwise.
+        if (sent === target.path || !(error instanceof HarnessError)) throw error
+        throw new HarnessError(error.message.replaceAll(sent, target.path), error.code, { cause: error })
+      }
       const kept = answer.picture === undefined ? [] : await surface.keep(exec, answer.picture, nameOf(target.path))
       const { category, source } = audioCategoryOf(target.path, answer.measurements.seconds)
       const shown = args.show === true
-      if (shown) host.reveal({ sessionId: agent.id, path: target.path })
+      if (shown) {
+        const watched = host.revealTarget(agent)
+        host.reveal({ sessionId: watched.id, path: windowPath(watched.session.header.cwd, target.absolute) })
+      }
       return {
         path: target.path,
         kind: category,
