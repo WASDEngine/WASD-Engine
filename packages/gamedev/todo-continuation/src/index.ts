@@ -4,14 +4,15 @@
  * that calls no tool, the plugin steers one reminder that names the unfinished
  * items, so the next step continues the work. Each distinct unfinished list is
  * reminded at most once per turn, and a turn receives at most
- * `maxRemindersPerTurn` reminders. Subagent Sessions, and turns that a tool
- * ended, are left alone.
+ * `maxRemindersPerTurn` reminders. Subagent Sessions, turns that a tool
+ * ended, turns the user stopped or steered, and turns with a message from the
+ * user waiting are left alone.
  * @module @deepseek-ai/dsh-todo-continuation
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-agent'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
@@ -48,6 +49,10 @@ interface TurnState {
   todos: readonly TodoItem[]
   /** Whether the turn's latest assistant message called no tool. */
   endedByReply: boolean
+  /** Steps the turn has started. */
+  steps: number
+  /** Whether the user steered the turn after its first step, which then follows the user rather than its list. */
+  userSteered: boolean
   /** Keys of the unfinished lists already reminded in this turn. */
   readonly reminded: Set<string>
 }
@@ -80,6 +85,16 @@ function summaryOf(count: number): string {
 }
 
 /**
+ * Whether a message the user sent waits in the agent's inbox, for the next
+ * step (steering) or for its own turn (a queued follow-up).
+ * @param agent - the agent whose turn is stopping.
+ * @returns true when the user's message should run instead of a reminder.
+ */
+function userMessageWaiting(agent: Agent): boolean {
+  return [...agent.inbox.nextStep, ...agent.inbox.nextTurn].some(message => message.source.kind === 'user')
+}
+
+/**
  * Build the steered reminder message for one unfinished list.
  * @param unfinished - the items whose status is not `completed`.
  * @returns a `notice`-form message attributed to this plugin.
@@ -106,8 +121,21 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('session/event', (session, event) => {
     switch (event.type) {
       case 'turn/start':
-        turns.set(session, { turn: event.data.turn, todos: [], endedByReply: false, reminded: new Set() })
+        turns.set(session, {
+          turn: event.data.turn, todos: [], endedByReply: false, steps: 0, userSteered: false, reminded: new Set(),
+        })
         return
+      case 'step/start': {
+        const state = turns.get(session)
+        if (state !== undefined) state.steps++
+        return
+      }
+      case 'user/message': {
+        // The turn's own prompt enters in its first step; a user message in a later step steered it.
+        const state = turns.get(session)
+        if (state !== undefined && state.steps > 1 && event.data.source.kind === 'user') state.userSteered = true
+        return
+      }
       case 'todo/write': {
         const state = turns.get(session)
         if (state !== undefined) state.todos = event.data.todos
@@ -127,13 +155,19 @@ export function apply(ctx: Context, config: Config): void {
     }
   })
 
-  ctx.on('agent/turn-stopping', ({ agent, turn }) => {
+  ctx.on('agent/turn-stopping', ({ agent, turn, signal }) => {
     const { session } = agent
+    // A Stop that landed while an earlier listener ran ends the turn: steering
+    // now would start a new turn behind the user's back.
+    if (signal.aborted) return
     // A subagent reports to its parent, which decides whether it continues.
     if (session.header.origin === 'subagent') return
+    // The user's own message runs next; a reminder would delay it or contradict it.
+    if (userMessageWaiting(agent)) return
     const state = turns.get(session)
-    // A turn that a tool ended, such as a dismissed plan review, stays ended.
-    if (state?.turn !== turn || !state.endedByReply) return
+    // A turn that a tool ended, such as a dismissed plan review, stays ended,
+    // and a turn the user steered follows the user.
+    if (state?.turn !== turn || !state.endedByReply || state.userSteered) return
     const unfinished = state.todos.filter(item => item.status !== 'completed')
     if (unfinished.length === 0 || state.reminded.size >= maxReminders) return
     const key = JSON.stringify(unfinished.map(item => [item.status, item.content]))

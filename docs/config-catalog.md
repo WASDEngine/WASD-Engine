@@ -4454,7 +4454,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-todo-continuation`
 
-- `source`: [`packages/gamedev/todo-continuation/src/index.ts:29`](../packages/gamedev/todo-continuation/src/index.ts)
+- `source`: [`packages/gamedev/todo-continuation/src/index.ts:30`](../packages/gamedev/todo-continuation/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
