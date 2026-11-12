@@ -270,15 +270,18 @@ export function clickControl(options: { readonly key: string; readonly element: 
   return true
 }
 
-/** How a field takes text after {@link prepareField}. */
+/**
+ * How a field takes text after {@link prepareField}. `secret` is a password or payment field: an `<input
+ * type="password">`, or a field whose `autocomplete` names a password, a one-time code, or payment card details.
+ */
 export type FieldPreparation =
-  | { readonly ready: false; readonly reason: 'missing' | 'not-a-field' | 'no-such-option' }
+  | { readonly ready: false; readonly reason: 'missing' | 'not-a-field' | 'no-such-option' | 'secret' }
   | { readonly ready: true; readonly mode: 'insert' }
   | { readonly ready: true; readonly mode: 'chosen'; readonly choice: string }
 
 /**
  * Prepare control n to take text: focus a text field and select what it holds, so typing replaces it, or choose the
- * option of a select whose text or value matches the text.
+ * option of a select whose text or value matches the text. A password or payment field is refused untouched.
  * @param options - the page property that keeps the controls, the control's number from 1, and the text.
  * @returns how the field takes the text, or why it cannot.
  */
@@ -286,6 +289,9 @@ export function prepareField(options: { readonly key: string; readonly element: 
   const controls: unknown = Reflect.get(window, options.key)
   const element: unknown = Array.isArray(controls) ? controls[options.element - 1] : undefined
   if (!(element instanceof HTMLElement) || !element.isConnected) return { ready: false, reason: 'missing' }
+  const secret = /(?:^|\s)(?:current-password|new-password|one-time-code|cc-[a-z-]+)(?:\s|$)/u
+  if ((element instanceof HTMLInputElement && element.type === 'password')
+    || secret.test((element.getAttribute('autocomplete') ?? '').toLowerCase())) return { ready: false, reason: 'secret' }
   if (element instanceof HTMLSelectElement) {
     const wanted = options.text.trim().toLowerCase()
     const choice = [...element.options].find(option => option.text.trim().toLowerCase() === wanted || option.value.toLowerCase() === wanted)
@@ -308,6 +314,23 @@ export function prepareField(options: { readonly key: string; readonly element: 
     selection?.addRange(range)
   }
   return { ready: true, mode: 'insert' }
+}
+
+/**
+ * Whether the page's focus, followed into open shadow roots, is on a password or payment field as
+ * {@link FieldPreparation} names them; typed text goes to the focus, which a page script may move after
+ * {@link prepareField}.
+ * @returns whether the focused element is such a field.
+ */
+export function focusedSecretField(): boolean {
+  let focused = document.activeElement
+  for (let inner = focused?.shadowRoot?.activeElement; inner !== null && inner !== undefined; inner = inner.shadowRoot?.activeElement) {
+    focused = inner
+  }
+  if (focused === null) return false
+  const secret = /(?:^|\s)(?:current-password|new-password|one-time-code|cc-[a-z-]+)(?:\s|$)/u
+  return (focused instanceof HTMLInputElement && focused.type === 'password')
+    || secret.test((focused.getAttribute('autocomplete') ?? '').toLowerCase())
 }
 
 /**

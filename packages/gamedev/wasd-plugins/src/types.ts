@@ -64,6 +64,11 @@ export interface WasdBrowserLimits {
   readonly maxChars: number
   /** Longest wait in milliseconds for a page to finish loading after the command. */
   readonly loadTimeoutMs: number
+  /**
+   * Longest wait in milliseconds for one operation on the page, such as a script, a screenshot, or an input event,
+   * before the command fails; shorter than the tool call's own timeout.
+   */
+  readonly operationTimeoutMs: number
   /** Largest screenshot width in pixels. */
   readonly screenshotWidth: number
 }
@@ -80,10 +85,15 @@ export interface WasdBrowserRequest {
   readonly limits: WasdBrowserLimits
 }
 
-/** The commands no window has claimed yet, as the window follows them. */
+/** The commands as windows follow them: those no window has claimed yet, and those still waiting for their outcome. */
 export interface WasdBrowserRequests {
-  /** The commands, oldest first. */
+  /** The commands no window has claimed yet, oldest first. */
   readonly requests: readonly WasdBrowserRequest[]
+  /**
+   * Ids of the commands a window claimed whose tool call still waits for the outcome. A window stops a command it took
+   * once the command's id is in neither list, because its tool call ended, by its timeout or its cancellation.
+   */
+  readonly claimed: readonly string[]
 }
 
 /** The page of the Session's Browser tab after a command. */

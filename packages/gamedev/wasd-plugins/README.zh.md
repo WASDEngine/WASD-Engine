@@ -43,6 +43,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `browserTimeoutMs` | `60000` | 每次 `browser_*` 调用的协作式超时预算 |
 | `browserClaimTimeoutMs` | `5000` | `browser_*` 调用等待窗口接手的时长 |
 | `browserLoadTimeoutMs` | `15000` | 调用操作页面之后，等待页面加载完成的最长时间 |
+| `browserOperationTimeoutMs` | `10000` | 等待页面上单个操作（例如脚本、截图或输入事件）的最长时间；必须短于 `browserTimeoutMs`，否则插件加载失败 |
 | `browserMaxChars` | `40000` | 结果中页面文本的最大字符数 |
 | `browserScreenshotWidth` | `1280` | `browser_screenshot` 图像的最大宽度（像素） |
 
@@ -86,7 +87,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 页面文本按文档顺序列出页面的可见文本，保留标题、列表项、表格行和预格式化块；带 http(s) 地址的链接写作 `[text](url)`，带替代文本的图片写作 `![alt](src)`，按钮、输入框、其他链接以及具有控件角色的元素写作 `[n: kind "label"]`，并附上输入框的值、下拉框的选项以及复选框是否勾选；密码框从不显示其值。编号属于窗口为该标签页最近一次返回的页面文本。`browser` 系统提示词段落告诉智能体：当用户要求它搜索、查找资料或访问网站时，在浏览器中进行；通过 `https://duckduckgo.com/?q=` 搜索网页；而它自己的快速查询使用 `web_search` 与 `web_fetch`。
 
-每次调用为该会话排入一条命令。当某个会话在窗口中显示，或窗口持有该会话的智能体标签页时，窗口会接手该会话的命令；即使用户转到另一个会话，持有的标签页也继续工作。窗口按顺序执行同一会话的命令，并用页面文本或截图结束每条命令。在 `browserClaimTimeoutMs` 内没有窗口接手的命令（例如来自子智能体或来自未显示的会话的命令）会失败，并附带一条消息：请用户显示该对话，或让智能体改用 `web_search` 与 `web_fetch`。智能体的标签页是 `browser_open` 打开的那个；`browser_open` 从不加载到用户打开的标签页中，而智能体还没有标签页时，`browser_read` 与 `browser_screenshot` 会接手用户打开的浏览器标签页。点击会先把控件滚动到视野中，再在控件中心发出可信的鼠标输入；被其他内容（例如 Cookie 横幅）遮挡的控件由脚本点击，结果会说明遮挡它的是什么。输入时先点击输入框、选中其文本，再以键盘输入的方式插入新文本。窗口能编码 JPEG 时截图为 JPEG 图像，否则为 PNG 图像；截图会成为会话模型可见的附件。之后点击的 `x` 与 `y` 是最新截图中的像素，工具会把它们换算为页面的 CSS 像素。
+每次调用为该会话排入一条命令。当某个会话在窗口中显示，或窗口持有该会话的智能体标签页时，窗口会接手该会话的命令；即使用户转到另一个会话，持有的标签页也继续工作。窗口会立即认领它接手的每条命令，按顺序执行同一会话的命令，并用页面文本或截图结束每条命令。页面上的每个操作（例如脚本、截图或输入事件）最多等待 `browserOperationTimeoutMs`，因此主线程被阻塞的页面会让该命令带着一条消息失败，同一会话的下一条命令随即运行。当调用因超时或轮次被停止而结束时，窗口会在该命令对页面的下一个动作（例如输入后按下回车）之前停止它。在 `browserClaimTimeoutMs` 内没有窗口接手的命令（例如来自子智能体或来自未显示的会话的命令）会失败，并附带一条消息：请用户显示该对话，或让智能体改用 `web_search` 与 `web_fetch`。智能体的标签页是 `browser_open` 打开的那个；智能体还没有标签页时，`browser_read` 与 `browser_screenshot` 会接手用户打开的浏览器标签页，而 `browser_open` 从不加载到用户打开的标签页中，因此在这样的读取之后，它会打开一个自己的标签页。点击会先把控件滚动到视野中，再在控件中心发出可信的鼠标输入；被其他内容（例如 Cookie 横幅）遮挡的控件由脚本点击，结果会说明遮挡它的是什么。输入时先点击输入框、选中其文本，再以键盘输入的方式插入新文本。窗口从不在密码或支付字段中输入：即 `<input type="password">`，或其 `autocomplete` 指明密码、一次性验证码或支付卡信息的字段；页面把焦点移到这类字段时，窗口同样不输入任何内容。窗口能编码 JPEG 时截图为 JPEG 图像，否则为 PNG 图像；截图会成为会话模型可见的附件。之后点击的 `x` 与 `y` 是最新截图中的像素，工具会把它们换算为页面的 CSS 像素。
 
 ### `wasdPlugins` Remote
 
@@ -94,7 +95,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 |---|---|
 | `project(projectDir)` | 该绝对路径文件夹是否包含 `project.godot`，以及它在应用所登录的网站上发布到的游戏：标题、分享页面和最新版本 |
 | `links()` | 网站的“探索”页面 |
-| `browserRequests()` | 尚无窗口接手的浏览器命令流，每次变化后再次给出 |
+| `browserRequests()` | 尚无窗口接手的浏览器命令流，附带已被接手、其调用仍在等待的命令 id，每次变化后再次给出 |
 | `claimBrowserRequest(id)` | 调用的窗口是否接手了该命令；若另一个窗口已接手或调用已结束则为 false |
 | `settleBrowserRequest(id, outcome)` | 页面或失败是否送达了等待中的调用；若调用已结束则为 false |
 
@@ -123,7 +124,7 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 | [`src/zip.ts`](src/zip.ts) | 上传所用的流式 ZIP 写入器 |
 | [`src/client/`](src/client/) | “发布”按钮、“探索游戏”、首次构建提示、它们的文案和 Remote 挂载 |
 
-Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列表，因此重新连接的窗口能看到所有等待中的命令。窗口通过标签页的 `executeJavaScript`，在页面的主环境中按源代码文本运行每个页面脚本；页面文本把编号控件保存在一个按窗口随机命名的页面属性中。由于页面可以改变其脚本看到的内容，窗口会检查脚本返回的每个值。[侧边栏浏览器](../../client/ui-sidebar-browser/README.zh.md)为标签页的 Electron `<webview>` 提供自动化接口；Web 的 iframe 载体没有该接口，因此 Web 窗口从不接手命令。
+Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列表，因此重新连接的窗口能看到所有等待中的命令，同时给出已被接手、其调用仍在等待的命令 id；当两个列表都不再包含某条命令时，接手它的窗口会停止该命令。窗口通过标签页的 `executeJavaScript`，在页面的主环境中按源代码文本运行每个页面脚本；页面文本把编号控件保存在一个按窗口随机命名的页面属性中。由于页面可以改变其脚本看到的内容，窗口会检查脚本返回的每个值。[侧边栏浏览器](../../client/ui-sidebar-browser/README.zh.md)为标签页的 Electron `<webview>` 提供自动化接口；Web 的 iframe 载体没有该接口，因此 Web 窗口从不接手命令。
 
 </details>
 

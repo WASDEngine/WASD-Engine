@@ -60,7 +60,8 @@ export class BrowserRequestQueue {
    * @param sessionId - the calling Session.
    * @param command - the command.
    * @param limits - limits the window applies.
-   * @param signal - the tool call's cancellation; a command a window already claimed may still act on the page.
+   * @param signal - the tool call's cancellation; a window that claimed the command stops it once the next list it
+   *   follows no longer names it, so the command takes no further action on the page.
    * @returns the page after the command.
    * @throws {Error} with the window's message when the command failed, or {@link UNCLAIMED_MESSAGE} when no window claimed it.
    */
@@ -90,9 +91,9 @@ export class BrowserRequestQueue {
   }
 
   /**
-   * Follow the unclaimed commands for a window.
+   * Follow the commands for a window: the unclaimed ones, and the ids of claimed ones whose call still waits.
    * @param signal - stream cancellation.
-   * @returns the unclaimed commands, then again after each change, until cancelled or the plugin is disposed.
+   * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
    */
   async* follow(signal: AbortSignal): AsyncIterable<WasdBrowserRequests> {
     const ended = AbortSignal.any([signal, this.lifetime])
@@ -113,7 +114,11 @@ export class BrowserRequestQueue {
           continue
         }
         dirty = false
-        yield { requests: [...this.pending.values()].filter(entry => !entry.claimed).map(entry => entry.request) }
+        const entries = [...this.pending.values()]
+        yield {
+          requests: entries.filter(entry => !entry.claimed).map(entry => entry.request),
+          claimed: entries.filter(entry => entry.claimed).map(entry => entry.request.id),
+        }
       }
     } finally {
       this.watchers.delete(notify)

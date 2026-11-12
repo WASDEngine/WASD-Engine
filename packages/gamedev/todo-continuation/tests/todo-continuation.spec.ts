@@ -2,7 +2,8 @@
  * The todo continuation plugin in a composition with the real Agent loop, tool runtime, session projections, and
  * `todo_write` tool, driven by a scripted model: a turn that ends with unfinished todos continues with one reminder,
  * an unchanged list or the per-turn cap lets the turn end, and finished lists, lists from earlier turns, turns that a
- * tool ended, subagent Sessions, and an unloaded plugin get no reminder.
+ * tool ended, turns the user stopped or sent a message during, subagent Sessions, and an unloaded plugin get no
+ * reminder.
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -52,8 +53,21 @@ function writeTodos(id: string, todos: TodoItem[]): StreamChunk[] {
   return toolCallResponse(id, 'todo_write', { todos })
 }
 
-/** Boot the real loop spine, `todo_write`, a turn-ending tool, and the plugin under test. */
-async function compose(config: TodoContinuation.Config = { maxRemindersPerTurn: 3 }): Promise<Context> {
+/** A message the user sent, as the composer sends it. */
+function userMessage(text: string) {
+  return createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } })
+}
+
+/**
+ * Boot the real loop spine, `todo_write`, a turn-ending tool, a tool through which the user queues a message while the
+ * turn works, and the plugin under test.
+ * @param config - the plugin's configuration.
+ * @param before - registers listeners that run before the plugin's, such as an earlier `agent/turn-stopping` listener.
+ */
+async function compose(
+  config: TodoContinuation.Config = { maxRemindersPerTurn: 3 },
+  before?: (context: Context) => void,
+): Promise<Context> {
   const created = new Context()
   ctx = created
   await mountAgentLoopTestDependencies(created)
@@ -68,6 +82,16 @@ async function compose(config: TodoContinuation.Config = { maxRemindersPerTurn: 
       return Promise.resolve([{ type: 'text', text: 'ended' }])
     },
   }))
+  created.tools.register(defineContentToolFixture({
+    name: 'user_queues_message',
+    description: 'Stands for the user typing a follow-up while the turn works.',
+    parameters: {},
+    execute(_args, exec) {
+      exec.agent?.followup(userMessage('Use the bark texture for the trees.'))
+      return Promise.resolve([{ type: 'text', text: 'queued' }])
+    },
+  }))
+  before?.(created)
   await created.plugin(TodoContinuation, config)
   return created
 }
@@ -82,9 +106,32 @@ async function startAgent(context: Context, script: StreamChunk[][]): Promise<{ 
 
 /** Send one user message and wait until the agent is idle again. */
 async function ask(agent: Agent, text: string): Promise<void> {
-  agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+  agent.followup(userMessage(text))
   await Promise.resolve()
   await agent.whenIdle()
+}
+
+/** The texts of the user messages in the agent's log, in order. */
+function userTexts(agent: Agent): string[] {
+  return agent.session.snapshotEvents()
+    .filter((event): event is SessionEvent<'user/message'> => event.type === 'user/message' && event.data.source.kind === 'user')
+    .map(event => event.data.content.map(block => block.type === 'text' ? block.text : '').join(''))
+}
+
+/** An `agent/turn-stopping` listener that holds the stopping turn until released, like a slow workspace snapshot. */
+function holdingListener() {
+  const reached = Promise.withResolvers<Agent>()
+  const release = Promise.withResolvers<undefined>()
+  return {
+    install: (context: Context) => {
+      context.on('agent/turn-stopping', async ({ agent }) => {
+        reached.resolve(agent)
+        await release.promise
+      })
+    },
+    reached: reached.promise,
+    release: () => { release.resolve(undefined) },
+  }
 }
 
 /** Every reminder this plugin added to the agent's log, with its source. */
@@ -199,6 +246,62 @@ describe('turns that get no reminder', () => {
 
     expect(reminders(agent)).toEqual([])
     expect(adapter.requests).toHaveLength(2)
+  })
+
+  it('ends a turn the user stopped while an earlier listener held it, without starting another', async () => {
+    const hold = holdingListener()
+    const context = await compose(undefined, hold.install)
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      textResponse('I textured the terrain. Want me to do the trees next?'),
+      textResponse('A reminder turn must not start.'),
+    ])
+    agent.followup(userMessage('Texture the terrain and the trees.'))
+    await hold.reached
+    agent.cancel({ kind: 'user' }, { keepInbox: true })
+    hold.release()
+    await agent.whenIdle()
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(2)
+    expect(turnEnds(agent)).toBe(1)
+  })
+
+  it('lets the turn end for a message the user queued while it worked, which then runs as its own turn', async () => {
+    const context = await compose()
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      toolCallResponse('q1', 'user_queues_message', {}),
+      textResponse('I textured the terrain. Want me to do the trees next?'),
+      textResponse('The trees now use the bark texture.'),
+    ])
+    await ask(agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(4)
+    expect(turnEnds(agent)).toBe(2)
+    expect(userTexts(agent)).toEqual(['Texture the terrain and the trees.', 'Use the bark texture for the trees.'])
+    expect(JSON.stringify(adapter.requests[3]?.messages)).toContain('Use the bark texture for the trees.')
+  })
+
+  it('leaves the next step to a message the user steered in while the turn was stopping', async () => {
+    const hold = holdingListener()
+    const context = await compose(undefined, hold.install)
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      textResponse('I textured the terrain. Want me to do the trees next?'),
+      textResponse('Stopping as you asked.'),
+    ])
+    agent.followup(userMessage('Texture the terrain and the trees.'))
+    const stopping = await hold.reached
+    stopping.steer(userMessage('Stop after the terrain.'))
+    hold.release()
+    await agent.whenIdle()
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(3)
+    expect(JSON.stringify(adapter.requests[2]?.messages)).toContain('Stop after the terrain.')
+    expect(turnEnds(agent)).toBe(1)
   })
 
   it('leaves a subagent Session to its parent', async () => {

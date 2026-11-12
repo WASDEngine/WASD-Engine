@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package keeps the agent from stopping partway through a request. When the model ends a turn with a reply while the todo list it wrote in that turn still has pending or in-progress items, the plugin adds one reminder naming them, and the turn continues: the model finishes the items, marks finished ones completed, or says what it needs from the user. Each distinct unfinished list is reminded once, and a configured cap bounds one turn's reminders. Subagent Sessions and turns that a tool ended are left alone. The `gamedev` preset mounts it with a cap of five.
+This package keeps the agent from stopping partway through a request. When the model ends a turn with a reply while the todo list it wrote in that turn still has pending or in-progress items, the plugin adds one reminder naming them, and the turn continues: the model finishes the items, marks finished ones completed, or says what it needs from the user. Each distinct unfinished list is reminded once, and a configured cap bounds one turn's reminders. Subagent Sessions, and turns that a tool ended or the user interrupted, are left alone. The `gamedev` preset caps it at five.
 
 ## Table of Contents
 
@@ -50,7 +50,9 @@ A missing value or one below 1 fails at load. The generated [configuration catal
 
 The plugin acts when a top-level agent's turn is about to end because the model replied without calling a tool. If the latest `todo_write` list of that turn has items that are not `completed`, the plugin steers one reminder listing them in order with their status, and the turn runs another step. The reminder tells the model to continue without asking, to mark finished items completed, and to leave an item unfinished only when it needs the user's answer or waits on work it cannot do itself, such as a running subagent or background job.
 
-The turn ends without a reminder when every item is completed, when the turn wrote no list, when the unfinished items and their statuses are the same as at an earlier reminder in the turn, or when the turn already received `maxRemindersPerTurn` reminders. A list from an earlier turn does not count, because the list belongs to the turn that wrote it. A turn that a tool ended, such as a plan review the user dismissed, stays ended, and so does a cancelled turn. Subagent Sessions get no reminder: the parent agent reads their result and decides whether they continue.
+The turn ends without a reminder when every item is completed, when the turn wrote no list, when the unfinished items and their statuses are the same as at an earlier reminder in the turn, or when the turn already received `maxRemindersPerTurn` reminders. A list from an earlier turn does not count, because the list belongs to the turn that wrote it. A turn that a tool ended, such as a plan review the user dismissed, stays ended, and so does a cancelled turn, including one the user stopped while another plugin was still finishing the turn. Subagent Sessions get no reminder: the parent agent reads their result and decides whether they continue.
+
+The user's own messages come first. While a message from the user waits, either one typed during the turn that runs as the next turn or steering for the next step, the plugin adds no reminder: the turn ends so the queued message runs, or its next step answers the steering. Once the user steers a turn, the rest of that turn follows the user and gets no further reminder.
 
 The reminder is a `notice` from the `todo-continuation` producer whose one-line summary counts the unfinished items, such as `2 todos left`, so the conversation shows it as a collapsed row rather than a user message.
 
@@ -69,6 +71,7 @@ This section explains how the plugin tracks a turn and decides to remind; the ob
 - **Plugin, not loop change.** The plugin listens on `agent/turn-stopping`, the serial checkpoint before an otherwise completed turn closes; a listener that steers makes the loop run another step, and the turn closes once no steering is pending.
 - **State from the log.** A `session/event` listener keeps one record per Session's open turn in a `WeakMap`: the turn number from `turn/start`, the latest `todo/write` list, and whether the latest `assistant/message` called a tool. `turn/end` deletes the record.
 - **Reply, not tool.** A turn that a tool ended through `concludeTurn` ends after a message with tool calls, so the record shows no reply and the plugin leaves the turn alone.
+- **The user first.** The listener steers nothing once the turn's abort signal fired, which a Stop during an earlier `agent/turn-stopping` listener leaves set, while a message whose source is `user` waits in the inbox's next-step or next-turn list, or after a `user` message entered the turn in a step after its first; the record counts the turn's `step/start` events for that.
 - **Bounded by data.** The key of a reminded list is its unfinished items' statuses and contents in order. A key reminded once in the turn is never reminded again, and `maxRemindersPerTurn` caps the distinct keys.
 - **Logged.** The reminder enters the Session as an ordinary `user/message` with the `todo-continuation` source, so every model-visible input is reconstructable from the log.
 
