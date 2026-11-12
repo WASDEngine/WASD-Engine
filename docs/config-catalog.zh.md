@@ -1775,6 +1775,35 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-assets -->
+<a id="deepseek-aidsh-game-assets"></a>
+
+## `@deepseek-ai/dsh-game-assets`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/game-assets/src/index.ts:38`](../packages/gamedev/game-assets/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the asset tools. */
+export interface Config {
+  /** Time limit of one `asset_view` call, which waits for a window to read and draw the asset. */
+  renderTimeoutMs: number
+  /** Longest edge in pixels of the image `asset_view` returns when the call names no size. */
+  imageEdge: number
+  /** Largest longest edge in pixels a call may ask for. */
+  maxImageEdge: number
+  /** Largest area in pixels of one returned image. */
+  maxImagePixels: number
+  /** Largest file a window reads to draw it, in bytes. */
+  maxPreviewBytes: number
+  /** Folders one project walk lists, the project folder included. */
+  maxFolders: number
+  /** Assets one project walk collects. */
+  maxAssets: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-assets -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-audio -->
 <a id="deepseek-aidsh-game-audio"></a>
 

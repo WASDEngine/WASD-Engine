@@ -8,10 +8,11 @@
  */
 
 import { existsSync, readFileSync } from 'node:fs'
-import { dirname, relative, resolve, sep } from 'node:path'
+import { dirname, relative, resolve } from 'node:path'
 import type { Nodes } from 'mdast'
 import { markdownHeadingLines, parseMarkdown, visitMarkdown } from './markdown.ts'
 import { isArchivedAgentNotePath, uniqueRepoFiles } from './repo-files.ts'
+import { isPrunedUpstreamPath } from './wasdengine-absent-paths.ts'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -199,25 +200,6 @@ export function markdownLinkCache(): MarkdownLinkCache {
       return exists
     },
   }
-}
-
-/**
- * WASDEngine fork: whether a missing link target is an upstream path the fork
- * deletes, so upstream documents may keep linking to it.
- * @param scanRoot - repository root holding `wasdengine/upstream-prune.txt`.
- * @param target - absolute path of the missing target.
- * @returns true when a listed literal path names the target or one of its directories.
- */
-function isPrunedUpstreamPath(scanRoot: string, target: string): boolean {
-  const manifest = resolve(scanRoot, 'wasdengine/upstream-prune.txt')
-  if (!existsSync(manifest)) return false
-  return readFileSync(manifest, 'utf8').split('\n')
-    .map(entry => entry.trim())
-    .filter(entry => entry !== '' && !entry.startsWith('#'))
-    .some((entry) => {
-      const pruned = resolve(scanRoot, entry)
-      return target === pruned || target.startsWith(pruned + sep)
-    })
 }
 
 /**

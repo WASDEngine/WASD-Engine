@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-assets/README.md
 /:
-  en: 1126be44dc7c6979
-  zh: be0d4d0469e2e7d9
+  en: c26504e351edff88
+  zh: ada29b9ba668f356
 /deepseek-ai-dsh-client-ui-game-assets:
   en: 7d66f29372891b8c
   zh: 77f9c3bc78a3e805
 /deepseek-ai-dsh-client-ui-game-assets/summary:
-  en: 69f07dcd7507460f
-  zh: f1fd3ca509541c6b
+  en: 895b93897764e06f
+  zh: b161fc58f807e176
 /deepseek-ai-dsh-client-ui-game-assets/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,41 +18,47 @@
   en: 2eac94e3b6a31b91
   zh: d89e3ba8d105b21e
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/default-composition:
-  en: 0b3e300dc547f6ec
-  zh: a1dc1c9daea67423
+  en: 0d29713fa221b420
+  zh: 614ba6c922d40ba3
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/what-the-tab-lists:
-  en: eb9527d9b8c1d9be
-  zh: 7773eca1cf4f966e
+  en: 7adaac4d16a79c04
+  zh: 3ade57e07e37c635
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/picking-an-asset:
-  en: 64eb829aba840dcf
-  zh: 6f80046947951042
+  en: b8212d82567d1b75
+  zh: a89841834e044af5
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/images:
-  en: f83d10e74c5149b3
-  zh: d921eabf0adb5929
+  en: c353e00c3f3371e8
+  zh: 3d7d678773c1d3b2
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/2d-animations:
+  en: 137595e953e1c9a3
+  zh: a393237bd84f5a8f
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/models:
-  en: c09481def6f358e0
-  zh: 299be47028547c07
+  en: 5b517c93ca14ca48
+  zh: e385222d8407d7c6
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/blender-files:
   en: ce8c53c23c87db83
   zh: 8a979276c7f54fee
 /deepseek-ai-dsh-client-ui-game-assets/use-this-package/failures:
-  en: b401148601c597ad
-  zh: 12d94ee0cc09a25e
+  en: c5afb6283d5c161e
+  zh: 0313842f421604ba
+/deepseek-ai-dsh-client-ui-game-assets/use-this-package/for-the-agent:
+  en: c12e180cdf92b485
+  zh: bd2140d29c8ebeab
 /deepseek-ai-dsh-client-ui-game-assets/understand-the-implementation:
-  en: ccfa5fd5bbfc7072
-  zh: 3672aff72b18edc4
+  en: 46f4cfe5af3a97f5
+  zh: 332b8937397adadc
 /deepseek-ai-dsh-client-ui-game-assets/further-exploration:
-  en: 38eb1526c3b23e34
-  zh: ef4ebdb3e1b0531d
+  en: 1853d1118e814284
+  zh: c2cbd8475dad204b
 /deepseek-ai-dsh-client-ui-game-assets/model-experience:
-  en: 8479d6d6e6652825
-  zh: 379dc0899aa0f2ab
+  en: e694aff03c2c7329
+  zh: 7cd66629f5557bf3
 /deepseek-ai-dsh-client-ui-game-assets/model-experience/kv-cache-effect:
-  en: ca75c51c89c2c9b0
-  zh: e6d410fef4af337e
+  en: 9b82bbb04cc4a409
+  zh: bdf8dd27e964fa86
 /deepseek-ai-dsh-client-ui-game-assets/known-limitations-and-deferred-work:
-  en: c34a9731156973f5
-  zh: 8ddfe3bca8487283
+  en: 0eb2109d190f64b5
+  zh: 9a8f2ea5589fa2f7
 /deepseek-ai-dsh-client-ui-game-assets/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

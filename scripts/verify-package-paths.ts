@@ -15,6 +15,7 @@ import {
   uniqueRepoFiles,
   type ReferenceViolation as Violation,
 } from './repo-files.ts'
+import { isGitIgnoredPath, isPrunedUpstreamPath } from './wasdengine-absent-paths.ts'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -64,6 +65,9 @@ function isDriftedPackageReference(repoRoot: string, packageNames: ReadonlySet<s
   const parts = ref.split('/')
   const libAt = parts.indexOf('lib')
   if (libAt === 3 && existsSync(resolve(repoRoot, parts.slice(0, 3).join('/')))) return false
+  // WASDEngine fork: an upstream path the fork deletes, or a folder git ignores, such as an installed game tool runtime.
+  const target = resolve(repoRoot, ref)
+  if (isPrunedUpstreamPath(repoRoot, target) || isGitIgnoredPath(repoRoot, target)) return false
   // A missing reference is drift only when a path segment names a live package.
   // A leading segment that is itself an existing group directory is explained by
   // the group, not by a relocated leaf sharing its name (`client` is both the

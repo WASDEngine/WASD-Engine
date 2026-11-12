@@ -14,13 +14,14 @@ import { ImageView } from './ImageView.tsx'
 import type { NS } from './locales.ts'
 import { ModelView } from './ModelView.tsx'
 import type { AssetFile } from './read.ts'
+import type { ViewRequest } from './source.ts'
 import { NAME_ORDER, type AssetEntry } from './scan.ts'
 import css from './AssetViewer.module.css'
 
 type Translate = PropsLocale<typeof NS>['t']
 
 /** What the viewer needs from the tab. */
-export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'relatedUrl' | 'fileAddress'> {
+export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'relatedUrl' | 'fileAddress' | 'animations'> {
   /** The asset to show. */
   readonly asset: AssetEntry
   /** The project's assets, where a Blender file's export is looked up. */
@@ -28,6 +29,8 @@ export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'rela
   readonly useResource: PropsRuntime<'sidebar.right.pane.tab'>['useResource']
   /** @param path - workspace path of an asset to select instead. */
   readonly onSelect: (path: string) => void
+  /** What an agent asked to show with the asset, once per `request`. */
+  readonly requested?: ViewRequest | undefined
   readonly t: Translate
 }
 
@@ -39,7 +42,8 @@ type Load =
 
 /**
  * The model exported from a Blender file: a listed model of the same name, nearest first, in the Blender file's folder,
- * then in a folder above it, then in a folder below it, then anywhere; GLB before glTF before other formats.
+ * then in a folder above it, then in a folder below it, then anywhere; GLB before glTF before other formats. The agent's
+ * asset tools pick the same model with their copy in `@deepseek-ai/dsh-game-assets/formats`.
  * @param blend - the Blender file.
  * @param assets - the project's assets.
  * @returns the export, or undefined when the project has none.
@@ -108,7 +112,7 @@ export function AssetViewer(props: AssetViewerProps): ReactNode {
 }
 
 /** Read an asset, again for each new version, and show it. */
-function LoadedAsset({ asset, useResource, read, relatedUrl, fileAddress, t }: AssetViewerProps): ReactNode {
+function LoadedAsset({ asset, useResource, read, relatedUrl, fileAddress, animations, requested, t }: AssetViewerProps): ReactNode {
   const resource = useResource<'file'>(fileAddress(asset.path))
   const version = resource.status === 'live' ? resource.value?.version : undefined
   // A read waits for the resource's first frame, so opening a file reads it once, not before and after its version arrives.
@@ -153,6 +157,6 @@ function LoadedAsset({ asset, useResource, read, relatedUrl, fileAddress, t }: A
     )
   }
   return asset.format.kind === 'image'
-    ? <ImageView asset={asset} file={load.file} t={t} />
-    : <ModelView asset={asset} file={load.file} relatedUrl={relatedUrl} t={t} />
+    ? <ImageView asset={asset} file={load.file} animations={animations} read={read} requested={requested} t={t} />
+    : <ModelView asset={asset} file={load.file} relatedUrl={relatedUrl} requested={requested} t={t} />
 }

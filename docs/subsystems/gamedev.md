@@ -2,11 +2,11 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models, and the Audio tab plays the project's sound effects, dialogue, and music, which native `audio_*` tools let agents list and measure. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models with their animations and details, which native `asset_*` tools let agents find and see as that tab draws them, and the Audio tab plays the project's sound effects, dialogue, and music, which native `audio_*` tools let agents list and measure. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the seven tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets`, which mounts the [Assets tab](#assets-tab), `ui-game-audio` and `game-audio`, which mount the [Audio tab and the audio tools](#audio-tab), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` row keeps no files there and sets only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the seven tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets` and `game-assets`, which mount the [Assets tab and the asset tools](#assets-tab), `ui-game-audio` and `game-audio`, which mount the [Audio tab and the audio tools](#audio-tab), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` row keeps no files there and sets only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
@@ -322,15 +322,27 @@ The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gam
 <a id="assets-tab"></a>
 ## Assets tab
 
-The `ui-game-assets` row mounts [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.md), a browser plugin with an empty Host half that registers the right sidebar's `assets` page type, with a guide entry at order 45, after the Game tab's. Its body shows the 2D and 3D art of the Session's game project: a dropdown sorted into the project's folders, with search and an All / 2D / 3D filter, above a view of the chosen asset. Images show in a zoomable view; models show on a three.js stage that turns, zooms, pans, and plays their animations; a Blender file shows the model of the same name that the project holds, such as the GLB that the Blender tools export.
+The `ui-game-assets` row mounts [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.md), a browser plugin with an empty Host half that registers the right sidebar's `assets` page type, with a guide entry at order 45, after the Game tab's. Its body shows the 2D and 3D art of the Session's game project: a dropdown sorted into the project's folders, with search and an All / 2D / 3D filter, above a view of the chosen asset and its details. Images show in a zoomable view that plays the 2D animations they take part in: their own frames, numbered images beside them, the SpriteFrames animations and Sprite2D frame grids of the Godot scenes and resources that name them, a sprite sheet JSON of the same name, or a grid the user gives. Models show on a three.js stage that turns, zooms, pans, plays their clips on a timeline, draws their skeleton, and switches to clay or wireframe; a Blender file shows the model of the same name that the project holds, such as the GLB that the Blender tools export.
 
 | Data | Channel | When |
 |---|---|---|
-| Asset list | `workspaceFiles.list`, breadth first from the workspace root, at most six folders at a time, skipping hidden folders and `node_modules` | When the tab shows or the dropdown opens and the last scan is older than 2 s or ten times its duration, and when the user presses refresh |
+| Asset list | `workspaceFiles.list`, breadth first from the workspace root, at most six folders at a time, skipping hidden folders and `node_modules`; it also notes the Godot scenes and resources and the folders holding `project.godot` | When the tab shows or the dropdown opens and the last scan is older than 2 s or ten times its duration, and when the user presses refresh |
 | Viewed file | `workspaceFiles.readBytes`: one complete read, or byte windows above the Host's complete-file cap | When an asset is chosen, and again for each new version that its `file` resource reports |
 | Files a model names | `GET api/file?path=<absolute path>`, resolved against the viewed file's folder | While three.js loads a glTF buffer or image, an OBJ material library or texture, or an FBX or Collada texture |
+| An image's animations | `workspaceFiles.readBytes` of the Godot files that name the image, at most 400, and of a sprite sheet JSON beside it; `workspaceFiles.list` of its folder for numbered images | When an image shows |
 
 The tab keeps no game process and calls no tool: it reads the files that the agent and the game tools write, so a texture that GIMP saves or a model that Blender exports appears once the list is scanned again, and the viewed file reloads as it changes.
+
+**The agent's view.** The `game-assets` row mounts [`@deepseek-ai/dsh-game-assets`](../../packages/gamedev/game-assets/README.md), the native `asset_search` and `asset_view` tools. `asset_search` walks the project folder on the Host. `asset_view` has a window draw the asset with the tab's own viewer:
+
+1. The tool resolves the path inside the Session's working directory, its format, and a Blender file's export. While no window is connected to the Host, it fails at once with `ASSET_NO_WINDOW`; otherwise it emits the scoped waterfall `game-assets/render` with the calling Agent, the call's cancellation, and a JSON request: the workspace path, relative to the folder in the Session's header, against which the window resolves the Session's paths, the size of the file and of the buffers and images a glTF file names, the kind, the views, shading, skeleton, animation, frames, time, grid, region, and size, whether to draw images, and the byte and area bounds.
+2. The Remote events allowlist forwards the waterfall to every owner window that may read the Session; the first answer wins, and a window that cannot help, such as one without WebGL for a model, delegates with `next()`.
+3. The tab's browser plugin reads the asset through `workspaceFiles`, measures the details its panel shows, and draws the pictures off screen, up to three requests at once in the order they came and within 64 MiB of files at once, a larger file alone: a model with the tab's lighting, grid, and skeleton overlay as JPEG tiles of views or poses, an image on a checkerboard, with a numbered grid, or as a sheet of an animation's frames as a PNG.
+4. The Host validates the answer field by field, stores the pictures as attachments for a model that accepts images, and returns the details as text; a model that does not accept images gets the details alone, and a call that no window answers fails with `ASSET_NO_WINDOW`.
+
+`show` emits `game-assets/reveal` with the Session, the asset, the animation, and the grid; the allowlist forwards it to the windows that may read the Session, which open the Session if it is not on screen and its Assets tab with the asset selected, the grid over an image, and the animation playing. A teammate or subagent shows the asset in the Session of the agent that leads its subagent tree, which the user watches.
+
+Agents use the viewer at the same time: a model's parallel calls, the teammates of an agent team, subagents, and agents connected through the [MCP server](#mcp-server-for-other-agents). Each call's request names the calling agent's own Session, the window reads and draws in that Session, and a request whose call ends while it waits leaves the window's queue.
 
 <a id="audio-tab"></a>
 ## Audio tab and audio tools
@@ -359,6 +371,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `search_game_tools`, `call_game_tool` | `game-mcp` | The server searches the providers' tools and their readiness, or calls one by name |
 | `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
 | `polyhaven_*` | `polyhaven`, through `polyHavenMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) | The Session's own tool definitions, which need no Session; preview images return as JPEG bytes, and a download needs an absolute folder |
+| `asset_search`, `asset_view` | `asset`, through `assetMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) | The Session's own tool definitions, for the connected agent's Session of the game project it names as `project`; a window of WASD Engine draws the pictures, which return as image bytes |
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
@@ -685,6 +698,49 @@ Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Rem
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
+
+<a id="game-assets-events"></a>
+
+### `game-assets/*` events
+
+<a id="game-assetsrender--waterfall"></a>
+
+#### `game-assets/render` — waterfall
+
+Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it. Return the details and images to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it. Return the
+ * details and images to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the asset, what to draw, the bounds, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'game-assets/render'( this: Scoped<Agent>, request: AssetRenderEvent, next: () => Promise<AssetRenderResult>, ): Promise<AssetRenderResult>
+```
+
+Types: [Agent](core.md) · [Scoped](scope.md)
+
+Source: [`packages/gamedev/game-assets/src/types.ts`](../../packages/gamedev/game-assets/src/types.ts)
+
+<a id="game-assetsreveal--emit"></a>
+
+#### `game-assets/reveal` — emit
+
+An agent asked to show an asset to the user; the windows that may read the Session open it in the Session's Assets tab.
+
+```ts cordis-catalog
+/**
+ * An agent asked to show an asset to the user; the windows that may read the Session open it in the Session's
+ * Assets tab.
+ * @mode emit
+ * @param reveal - the Session, the asset, and the animation to play.
+ */
+'game-assets/reveal'(reveal: AssetReveal): void
+```
+
+Source: [`packages/gamedev/game-assets/src/types.ts`](../../packages/gamedev/game-assets/src/types.ts)
 
 <a id="game-audio-events"></a>
 

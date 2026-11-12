@@ -206,7 +206,8 @@ function remapBlockPaths(output: string, blocks: Block[]): string {
 const markdownGlobs = ['README.md', '.agents/notes/**/*.md', 'docs/**/*.md', 'packages/*/*.md', 'packages/*/*/*.md']
 
 const files: string[] = []
-const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version: string }
+// WASDEngine fork: upgrade guides follow upstream's version numbers; package.json carries WASD Engine's own.
+const version = readFileSync(join(root, 'wasdengine/upstream-version.txt'), 'utf8').trim()
 for (const pattern of markdownGlobs) {
   for (const match of globSync(pattern, { cwd: root })) {
     const file = match.replaceAll('\\', '/')

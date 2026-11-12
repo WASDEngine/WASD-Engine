@@ -4,6 +4,7 @@ import { Button, IconRefreshOutlineRegular, StateDot, Tooltip } from '@deepseek-
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import type { AnimationSources } from './animations2d.ts'
 import { AssetPicker } from './AssetPicker.tsx'
 import { AssetViewer } from './AssetViewer.tsx'
 import { formatOf } from './formats.ts'
@@ -11,7 +12,7 @@ import { AssetsGlyph } from './icon.tsx'
 import type { NS } from './locales.ts'
 import type { AssetFile } from './read.ts'
 import type { AssetEntry, AssetScan } from './scan.ts'
-import type { ScanState, ViewState } from './source.ts'
+import type { ScanState, ViewAsk, ViewState } from './source.ts'
 import type { KindFilter } from './tree.ts'
 import css from './AssetsTab.module.css'
 
@@ -23,8 +24,12 @@ export interface AssetsTabInjected {
   readonly rescan: () => void
   /** Scan the project unless the latest scan is fresh or one runs. */
   readonly refresh: () => void
-  /** @param path - workspace path of the asset to show, or undefined for none. */
-  readonly select: (path: string | undefined) => void
+  /**
+   * Select an asset.
+   * @param path - workspace path of the asset to show, or undefined for none.
+   * @param ask - the clip or 2D animation to play and the grid to read an image as, when it shows.
+   */
+  readonly select: (path: string | undefined, ask?: ViewAsk) => void
   /** @param keys - row keys of the picker's open folders. */
   readonly setOpen: (keys: readonly string[]) => void
   /** @param filter - the kinds the picker shows. */
@@ -49,11 +54,20 @@ export interface AssetsTabInjected {
    * @returns the `dsh-resource://file/…` address.
    */
   readonly fileAddress: (path: string) => string
+  /** The reads that find an image's 2D animations. */
+  readonly animations: AnimationSources
+  /**
+   * Note that a tab acts on one of its navigations.
+   * @param tabId - the tab.
+   * @param revision - the navigation's revision.
+   * @returns true the first time the tab reaches this revision.
+   */
+  readonly takeNavigation: (tabId: string, revision: number) => boolean
 }
 
 /** Full props of the Assets tab body. */
 export type AssetsTabProps =
-  & Pick<PropsRuntime<'sidebar.right.pane.tab'>, 'useResource'>
+  & Pick<PropsRuntime<'sidebar.right.pane.tab'>, 'useResource' | 'useTabInfo'>
   & InjectFace<AssetsTabInjected>
   & PropsLocale<typeof NS>
 
@@ -75,18 +89,31 @@ export function selectedAsset(path: string | undefined, scan: AssetScan | undefi
 
 /**
  * Render the Assets tab of one Session. Showing the tab scans the project unless the latest scan is fresh, and so does
- * opening the picker; the refresh control scans again and reloads the viewed asset.
- * @param props - the file resource hook, the Session's face, and copy.
+ * opening the picker; the refresh control scans again and reloads the viewed asset. Opening the tab with a `path`
+ * parameter, as an agent's `show` does, selects that asset and plays the `animation` it names.
+ * @param props - the file resource hook, the tab's navigation, the Session's face, and copy.
  * @returns the tab body.
  */
 export function AssetsTab({
-  useResource, useScan, useView, rescan, refresh, select, setOpen, setFilter, read, relatedUrl, fileAddress, t,
+  useResource, useTabInfo, useScan, useView, rescan, refresh, select, setOpen, setFilter, read, relatedUrl, fileAddress, animations,
+  takeNavigation, t,
 }: AssetsTabProps): ReactNode {
   const scanState = useScan(state => state)
   const view = useView(state => state)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reloads, setReloads] = useState(0)
   useEffect(() => { refresh() }, [refresh])
+  const { id: tabId, navigation } = useTabInfo().tab
+  // Each navigation that names an asset selects it once, also when the body mounts after it.
+  useEffect(() => {
+    if (!takeNavigation(tabId, navigation.revision)) return
+    const params = navigation.params
+    if (params === undefined || !('path' in params) || typeof params.path !== 'string') return
+    select(params.path, {
+      ...'animation' in params && typeof params.animation === 'string' ? { animation: params.animation } : {},
+      ...'grid' in params ? { grid: params.grid } : {},
+    })
+  }, [navigation, select, tabId, takeNavigation])
   const scan = scanState.scan
   const selected = useMemo(() => selectedAsset(view.selected, scan), [view.selected, scan])
   const openPicker = (open: boolean): void => {
@@ -124,6 +151,8 @@ export function AssetsTab({
         </div>
       )
   } else {
+    const asked = view.asked
+    const requested = asked !== undefined && asked.path === selected.path ? asked : undefined
     content = (
       <AssetViewer
         key={`${selected.path}#${String(reloads)}`}
@@ -133,7 +162,9 @@ export function AssetsTab({
         read={read}
         relatedUrl={relatedUrl}
         fileAddress={fileAddress}
-        onSelect={select}
+        animations={animations}
+        requested={requested}
+        onSelect={(path) => { select(path) }}
         t={t}
       />
     )

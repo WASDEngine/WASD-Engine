@@ -275,6 +275,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-client-ui-game-tools` | no | Game tools tabs in Web Settings and on the Plugins page: Blender, GIMP, Godot, and SuperCollider with their logos, Loader state, and profile switches |
 | `@deepseek-ai/dsh-elevenlabs` | yes | ElevenLabs for the agent: character voices, sound effects, and music saved into the game project, charged to the WASD Engine plan |
 | `@deepseek-ai/dsh-game-addons` | yes | Curated Godot and Blender add-ons for the agent: search, install into the game project, and usage guides that only that project's Sessions see |
+| `@deepseek-ai/dsh-game-assets` | yes | Assets for the agent: find a game project's 2D and 3D art and look at it as the Assets tab draws it, for every Session and for connected agents |
 | `@deepseek-ai/dsh-game-audio` | yes | Audio for the agent: list a game project's sound effects, dialogue, and music and measure them as the Audio tab plays them, for every Session and for connected agents |
 | `@deepseek-ai/dsh-game-mcp` | yes | Serve WASD Engine's game tools to other agents on this computer over a local MCP server |
 | `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |

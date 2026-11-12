@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Merge deepseek-ai/deepseek-harness into this fork's main branch, delete the
-# upstream paths listed in wasdengine/upstream-prune.txt, and commit the merge
-# when no other conflict remains. Run it from any directory of the fork; it
-# never pushes.
+# upstream paths listed in wasdengine/upstream-prune.txt, record the merged
+# version in wasdengine/upstream-version.txt, and commit the merge when no
+# other conflict remains. Run it from any directory of the fork; it never
+# pushes.
 #
 # Usage:
 #   wasdengine/sync-upstream.sh                          # merge upstream master
@@ -13,6 +14,7 @@ UPSTREAM_URL="https://github.com/deepseek-ai/deepseek-harness.git"
 UPSTREAM_REF="${UPSTREAM_REF:-master}"
 FORK_BRANCH="${FORK_BRANCH:-main}"
 MANIFEST="wasdengine/upstream-prune.txt"
+VERSION_FILE="wasdengine/upstream-version.txt"
 
 cd "$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
@@ -74,6 +76,15 @@ if git merge-base --is-ancestor "$target_sha" HEAD; then
   exit 0
 fi
 
+# Upgrade guides follow upstream's version numbers, while the root package.json
+# carries WASD Engine's own, so scripts/doc-typecheck.ts reads this version to
+# tell which guides are frozen.
+upstream_version="$(git show "$target_sha:package.json" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')"
+if ! [[ "$upstream_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+  echo "The package.json of upstream $UPSTREAM_REF (${target_sha:0:10}) has no version." >&2
+  exit 1
+fi
+
 merge_message="Merge deepseek-ai/deepseek-harness $UPSTREAM_REF (${target_sha:0:10}) into $FORK_BRANCH"
 merge_clean=true
 git merge --no-ff --no-commit "$target_sha" || merge_clean=false
@@ -83,6 +94,8 @@ if ! merging; then
   echo "git merge did not start; fix the problem it reports above and rerun." >&2
   exit 1
 fi
+printf '%s\n' "$upstream_version" > "$VERSION_FILE"
+git add -- "$VERSION_FILE"
 
 # An unmerged path appears once per stage, hence sort -u.
 pruned=0

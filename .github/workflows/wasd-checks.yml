@@ -1,5 +1,5 @@
 # The fork's checks on every push to main and every pull request: the build, the vitest runs that steps 3 to 7 of
-# the merge checklist name (wasdengine/FORK.md), and the runtime script tests.
+# the merge checklist name (wasdengine/FORK.md), the runtime script tests, and the documentation checks of step 10.
 # Upstream's CI targets DeepSeek's runners and secrets, so the fork deletes it; this workflow runs the part the fork
 # relies on, on macOS, where the fork is developed.
 #
@@ -90,6 +90,7 @@ jobs:
           packages/client/ui-plugin-manager/tests/components.client.spec.tsx
           packages/util/official-bundles
           scripts/optional-bundles.spec.ts
+          scripts/wasdengine-absent-paths.spec.ts
           packages/client/ui-theme/tests
           packages/client/ui-sidebar-browser
           packages/client/ui-primitives/tests/web-block.client.spec.tsx
@@ -104,3 +105,9 @@ jobs:
           python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
           python3 -B -m unittest discover --start-directory wasdengine/gimp --pattern 'test_*.py'
           python3 -B -m unittest discover --start-directory wasdengine/blender --pattern 'test_*.py'
+
+      # The doc-sync gates read only the checked-out commit and its files, so the shallow checkout is enough.
+      - name: Documentation checks
+        run: |
+          node wasdengine/brand-docs.mjs --check
+          pnpm run doc-sync

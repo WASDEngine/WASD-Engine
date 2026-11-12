@@ -43,6 +43,7 @@ import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/d
 import type { ModelLabelOwner, ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
 import { orderModelProviders } from './provider-order.ts'
+import type {} from './wasdengine-callout.ts'
 import { wasdengineEffortOnly } from './wasdengine-effort-only.ts'
 
 /** Which pane the dropdown shows: the two-row root or one drilled-in list. */
@@ -64,7 +65,7 @@ interface EffortChoice {
 export function ModelSelect(
   { locked, available, directory, load, select, resolveText, t, renderSlot }:
   ModelSelectInjected & Pick<PropsRuntime<'conversation.input.model'>, 'locked'> & PropsLocale<'model'>
-    & Omit<PropsRenderSlots<'conversation.input.model.label' | 'conversation.input.model.options'>, 'SessionProvider'>,
+    & Omit<PropsRenderSlots<'conversation.input.model.label' | 'conversation.input.model.options' | 'conversation.input.model.callout'>, 'SessionProvider'>,
 ) {
   const state = useSyncExternalStore(
     fn => directory.subscribe(fn),
@@ -476,6 +477,8 @@ export function ModelSelect(
           ? <StateDot state="ongoing" />
           : <IconChevronDownOutlineRegular className={clsx(css.chevron, open && css.chevronOpen)} />}
       </button>
+      {currentChoice !== undefined
+        && renderSlot('conversation.input.model.callout', { anchor: anchorStyle['--dsh-model-anchor'], menuOpen: open, locked })}
 
       {/* Portaled to body (Menu primitive's portal mode) so the sidebar and
           column overflow clips cannot crop the card; synthetic events still

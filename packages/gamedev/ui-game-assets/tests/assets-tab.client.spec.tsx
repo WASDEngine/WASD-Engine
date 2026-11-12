@@ -130,6 +130,20 @@ async function boot(list: (path: string) => Promise<Listing> = async path => lis
 }
 
 describe('Assets tab', () => {
+  it('selects the asset a navigation names, also when the body mounts after it, and once per navigation', async () => {
+    const h = await boot()
+    act(() => { h.rt.ctx.sidebarRight.openTab('assets', { params: { path: 'assets/textures/hero.png' } }) })
+    await waitFor(() => { expect(h.view.container.querySelector('[data-game-assets]')?.textContent).toContain('hero.png') })
+    act(() => { h.rt.ctx.sidebarRight.openTab('assets', { params: { path: 'assets/textures/grass.png' } }) })
+    await waitFor(() => { expect(h.view.container.querySelector('[data-game-assets]')?.textContent).toContain('grass.png') })
+  })
+
+  it('opens an asset that an agent reveals in the Session on screen', async () => {
+    const h = await boot()
+    act(() => { h.rt.remote.emit('game-assets/reveal', [{ sessionId: SESSION, path: 'assets/models/archer.glb' }]) })
+    await waitFor(() => { expect(h.view.container.querySelector('[data-game-assets]')?.textContent).toContain('archer.glb') })
+  })
+
   it('is offered on the guide with its description, and opens from it', async () => {
     const h = await boot()
     act(() => { h.rt.ctx.sidebarRight.openTab('guide') })

@@ -9,9 +9,12 @@ import { randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock, ToolCallId } from '@deepseek-ai/dsh-llm'
+import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ToolExecutionToken, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import type { GameMcpCall, GameMcpContent, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject } from './provider.ts'
+import type {
+  GameMcpCall, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject,
+} from './provider.ts'
 
 /** Name of the search tool. */
 export const SEARCH_TOOL = 'search_game_tools'
@@ -261,18 +264,44 @@ export class GameToolCatalog {
    */
   async run(entry: CatalogTool, args: JsonObject, call: GameMcpCall): Promise<McpCallResult> {
     const { tool } = entry
+    let prepared: GameMcpPreparedCall
     try {
-      const prepared = tool.prepare === undefined ? { args } : await tool.prepare(args, call)
-      const exec = execution(tool, prepared.args, prepared.agent, call.signal)
+      prepared = tool.prepare === undefined ? { args } : await tool.prepare(args, call)
+    } catch (error) {
+      return failureResult(error)
+    }
+    // The tool's own time limit applies as it does to a Session's call: its execution sees the expiry as cancellation,
+    // and the result says the call ran out of time.
+    const timeoutMs = tool.definition.timeoutMs
+    using limit = timeoutMs === undefined ? undefined : deadline(call.signal, timeoutMs, TIMEOUT_CODE)
+    const exec = execution(tool, prepared.args, prepared.agent, limit?.signal ?? call.signal)
+    let result: McpCallResult
+    try {
       const value = await tool.definition.execute(prepared.args, exec) as JsonValue
       const content = tool.content === undefined
         ? textContent(tool.definition.output.render(prepared.args, value))
         : [...await tool.content(value, prepared.args, exec)]
-      return { content: content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block) }
+      result = { content: content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block) }
     } catch (error) {
-      return { isError: true, content: [{ type: 'text', text: boundText(failureText(error)) }] }
+      result = failureResult(error)
     }
+    if (limit !== undefined && timeoutOf(limit.signal, TIMEOUT_CODE) !== undefined) {
+      return { isError: true, content: [{ type: 'text', text: `tool call timed out after ${String(timeoutMs)}ms` }] }
+    }
+    return result
   }
+}
+
+/** Code of the deadline a tool's declared time limit sets. */
+const TIMEOUT_CODE = 'TOOL_TIMEOUT'
+
+/**
+ * The MCP result of a failed call.
+ * @param error - the failure.
+ * @returns an error result whose text says why.
+ */
+function failureResult(error: unknown): McpCallResult {
+  return { isError: true, content: [{ type: 'text', text: boundText(failureText(error)) }] }
 }
 
 /** The execution a tool definition runs one connected agent's call with; its context deferral has no agent loop to reach. */
