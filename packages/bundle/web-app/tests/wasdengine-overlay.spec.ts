@@ -318,10 +318,16 @@ describe('WASDEngine overlay', () => {
       .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
-  it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
+  it('mounts WASD Engine Plugins from a web-app dependency, with the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
     const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === WASD_PLUGINS.id)
     expect(entry?.name).toBe(WASD_PLUGINS.name)
-    expect(entry?.config).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['browser'])
+    const browser = expression(configOf(entry).browser, 'wasd-plugins.browser')
+    expect(expression(row(profile('web').fork.rows, 'ui-sidebar-browser')?.disabled, 'ui-sidebar-browser.disabled')).toBe(browser.replace('===', '!=='))
+    for (const name of ['desktop', 'web', undefined]) {
+      const profile = name === undefined ? undefined : { name }
+      expect(evaluate({ get: (service: string) => service === 'profileContext' ? profile : undefined }, browser), String(name)).toBe(name === 'desktop')
+    }
     expect(entry?.disabled).toBeUndefined()
     expect(manifest(webAppDir).dependencies?.[WASD_PLUGINS.name]).toBe('workspace:*')
     expect(PROTECTED_PLUGINS.has(WASD_PLUGINS.name)).toBe(true)

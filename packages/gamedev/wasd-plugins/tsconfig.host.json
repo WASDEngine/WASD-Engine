@@ -42,6 +42,21 @@
     },
     {
       "path": "../godot/tsconfig.host.json"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/system-prompt"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../core/session"
     }
   ]
 }

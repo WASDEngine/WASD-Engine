@@ -39,7 +39,7 @@ kind: "package-group"
 | [`ui-game-assets/`](ui-game-assets/README.zh.md) | 右侧栏的「素材」标签页：在按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表中列出游戏项目的图片与模型，提供可缩放的图片视图、带动画的 three.js 模型视图，并通过导出的模型显示 Blender 文件 |
 | [`ui-game-mcp/`](ui-game-mcp/README.zh.md) | MCP 服务器的浏览器部分：登录后的「使用其他智能体设置」，作为桌面引导的最后一步与设置中的「其他智能体」分区，包含智能体标志、设置提示词与是否已有智能体连接，以及窗口打开已连接智能体启动游戏所在的会话 |
 | [`ui-game-tools/`](ui-game-tools/README.zh.md) | 「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：列出 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 及其标志与 Loader 状态，并在「插件」页面为每个工具提供开关，在 profile patch 中关闭或开启其所在行 |
-| [`wasd-plugins/`](wasd-plugins/README.zh.md) | WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 MCP 服务器都提供的 Web 导出与发布工具，它们把 Godot 游戏作为带分享链接的编号版本发布到 WASD Engine 网站；会话标题栏与新会话页面上的“发布”按钮；以及侧边栏中的“探索游戏” |
+| [`wasd-plugins/`](wasd-plugins/README.zh.md) | WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 MCP 服务器都提供的 Web 导出与发布工具，它们把 Godot 游戏作为带分享链接的编号版本发布到 WASD Engine 网站；桌面应用中智能体的 `browser_*` 工具，在右侧边栏的浏览器中搜索和浏览；会话标题栏与新会话页面上的“发布”按钮；以及侧边栏中的“探索游戏” |
 
 -----
 

@@ -355,6 +355,27 @@ A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, an
 
 **Setup.** Every user signs in to WASD Engine first, and the server refuses tool calls while the account plugin reports no stored sign-in. The same browser plugin then offers Set up with another agent in two places: the Desktop introduction's last step, `settings.account.onboarding.agents`, and the Other agents section of Settings. Both show the AI agents' logos and follow the `gameMcp.watch` stream while they show: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
 
+<a id="agents-browser"></a>
+## Agent's Browser
+
+In the Desktop profile, the `wasd-plugins` row sets `browser`, and [`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.md#the-agents-browser) gives the Session's agent the `browser_*` tools, which act on a Browser tab of the right sidebar. The Browser tabs live in the window, so each tool call becomes a command that the Host queues and a window carries out:
+
+1. The tool call queues a `WasdBrowserRequest`: an `id`, the calling `sessionId`, the `command`, and the `limits` from the row's configuration: `maxChars`, `loadTimeoutMs`, and `screenshotWidth`.
+2. Every window whose Peer may call the endpoint follows `wasdPlugins.browserRequests`, which yields the whole list of untaken requests again after each change.
+3. A window takes a request with `wasdPlugins.claimBrowserRequest` while the request's Session is on screen in it, or while it holds that Session's agent tab; only the first claim succeeds. A request that no window takes within `browserClaimTimeoutMs` fails its tool call.
+4. The window acts through the `sidebarBrowserAutomation` service of [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.md), which only the Desktop carrier provides: scripts in the page's main world, trusted input, typed text, and captures of the `<webview>` guest.
+5. The window ends the request with `wasdPlugins.settleBrowserRequest` and a `WasdBrowserOutcome`.
+
+| `command.kind` | Fields | The window |
+|---|---|---|
+| `open` | `url` | Loads the address into the Session's agent tab, opening one first in the Session on screen, shows the tab, and returns the page |
+| `read` | None | Returns the page of the agent tab, or of the Browser tab the user has open |
+| `click` | `element`, or `x` and `y` in CSS pixels of the viewport | Clicks the control or the point, and returns the page |
+| `type` | `element`, `text`, `submit` | Fills the field or chooses the option, presses Enter when `submit` is true, and returns the page |
+| `screenshot` | `element` | Captures the visible part of the page, after scrolling the control into view when given |
+
+A `WasdBrowserOutcome` is either `{ ok: true, page, note?, image? }` or `{ ok: false, message }`. `page` holds the page's `url`, `title`, and `text`, whether the text was `truncated`, whether the page was still `loading`, and an optional load `error`; `note` says how the window carried out the command, such as a click by script; `image` holds a screenshot's base64 `data`, its `mediaType`, `width`, and `height`, and the `viewportWidth` and `viewportHeight` in CSS pixels that it shows, from which the tools map screenshot pixels back to the page. The Host refuses an outcome whose text exceeds `maxChars` or whose image data exceeds 32 MiB. [LiveShare](liveshare.md) classifies the three endpoints as owner-only and never offers the `wasdPlugins` namespace to share viewers.
+
 ## Remote types
 
 The `godot` Remote methods, listed in the generated Cordis API section, take the Session first as a plain `SessionId`, which needs no live Agent: `follow`, `stop`, `control`, and `input` act on the Session's current run, and `godot.run` resumes a Session without a live Agent through `ctx.sessionController.resolveAgent`, as a prompt does, and passes on its refusals, such as `session/not-found` and `session/writer-held`; `installRuntime` takes no Session. Their types live in the browser-safe [`src/types.ts`](../../packages/gamedev/godot/src/types.ts). [LiveShare](liveshare.md) classifies every `godot/*` endpoint as owner-only and never offers the `godot` namespace to share viewers.
@@ -602,7 +623,7 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
@@ -619,6 +640,30 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * @param signal - stream cancellation.
+ * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
+
+/**
+ * Take a Browser command for the calling window, which then carries it out and settles it.
+ * @param id - the command.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the command ended.
+ */
+@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+
+/**
+ * End a Browser command the window took, with the page afterwards or why it failed.
+ * @param id - the command.
+ * @param outcome - how it ended.
+ * @param signal - cancellation.
+ * @returns whether the outcome reached the waiting tool call; false when the call already ended.
+ */
+@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
