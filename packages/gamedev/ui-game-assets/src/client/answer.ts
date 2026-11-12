@@ -1,7 +1,8 @@
 /**
  * The details of an agent's answer, fitted to the limits its request carries: each list keeps its first entries and
  * the details count all of them, a name longer than the limit is shortened (a path is left out instead, since a cut
- * path names another file), and a frame size becomes a whole number of pixels. The Assets tab's own details stay whole.
+ * path names another file), and a frame size becomes a whole number of pixels, left out when it is larger than the
+ * limit. The Assets tab's own details stay whole.
  */
 import type {
   AssetAnswerLimits, AssetDetails, ImageAssetDetails, ModelAssetDetails, SpriteAnimationDetails,
@@ -13,7 +14,7 @@ import type {
  * @param limit - most characters.
  * @returns the name, at most `limit` characters long.
  */
-function shortened(name: string, limit: number): string {
+export function shortened(name: string, limit: number): string {
   if (name.length <= limit) return name
   let cut = name.slice(0, Math.max(0, limit - 1))
   // A cut through a surrogate pair would leave half a character before the ellipsis.
@@ -24,20 +25,24 @@ function shortened(name: string, limit: number): string {
 /**
  * A size in whole pixels: a Godot region of fractional size covers this many pixels.
  * @param size - the size.
- * @returns the size rounded, at least 1.
+ * @param limit - the largest size the answer may give.
+ * @returns the size rounded, at least 1, or undefined for a size that is not a finite number or is above the limit.
  */
-function wholePixels(size: number): number {
-  return Math.max(1, Math.round(size))
+function wholePixels(size: number, limit: number): number | undefined {
+  const pixels = Math.max(1, Math.round(size))
+  return Number.isFinite(pixels) && pixels <= limit ? pixels : undefined
 }
 
 function fitAnimation(animation: SpriteAnimationDetails, limits: AssetAnswerLimits): SpriteAnimationDetails {
   const { definedIn, frameWidth, frameHeight, ...rest } = animation
+  // A frame of a region larger than any image, as a damaged sheet may give, has no size to report.
+  const width = frameWidth === undefined ? undefined : wholePixels(frameWidth, limits.edge)
+  const height = frameHeight === undefined ? undefined : wholePixels(frameHeight, limits.edge)
   return {
     ...rest,
     name: shortened(animation.name, limits.name),
     ...definedIn === undefined || definedIn.length > limits.name ? {} : { definedIn },
-    ...frameWidth === undefined ? {} : { frameWidth: wholePixels(frameWidth) },
-    ...frameHeight === undefined ? {} : { frameHeight: wholePixels(frameHeight) },
+    ...width === undefined || height === undefined ? {} : { frameWidth: width, frameHeight: height },
   }
 }
 

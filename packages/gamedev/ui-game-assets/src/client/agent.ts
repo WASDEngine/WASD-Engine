@@ -11,7 +11,7 @@ import type {
 import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { findAnimations, type AnimationSources } from './animations2d.ts'
-import { fitDetails } from './answer.ts'
+import { fitDetails, shortened } from './answer.ts'
 import { formatOf, type AssetFormat } from './formats.ts'
 import { closeFrames, decodeOwnFrames } from './frames.ts'
 import type { AssetFile } from './read.ts'
@@ -167,6 +167,19 @@ function seconds(value: number): string {
 }
 
 /**
+ * A caption that names a clip or an animation, with the name shortened so that the caption fits the request's limit,
+ * which the Host checks.
+ * @param name - the clip's or animation's name.
+ * @param limit - most characters of a caption.
+ * @param build - the caption around a name.
+ * @returns the caption, at most `limit` characters long.
+ */
+export function namingCaption(name: string, limit: number, build: (name: string) => string): string {
+  const room = limit - build('').length
+  return shortened(build(name.length <= room ? name : shortened(name, Math.max(1, room))), limit)
+}
+
+/**
  * Pick a clip by name.
  * @param names - the model's clip names.
  * @param wanted - the requested name.
@@ -261,11 +274,12 @@ async function answerModel(
     })), 1, bounds)
     const shading = { material: 'in its materials', solid: 'as solid clay', wireframe: 'as wireframe' }[draw.shading]
     const viewNames = `${views.join(', ')} view${views.length === 1 ? '' : 's'}`
+    const limit = request.limits.caption
     const caption = clipName === undefined
-      ? `${viewNames} ${shading}${draw.skeleton ? ' with the skeleton' : ''}`
+      ? shortened(`${viewNames} ${shading}${draw.skeleton ? ' with the skeleton' : ''}`, limit)
       : times !== undefined && times.length === 1 && draw.time !== undefined
-        ? `${viewNames} ${shading}, posed at ${seconds(times[0] ?? 0)} of ${clipName}${draw.skeleton ? ', with the skeleton' : ''}`
-        : `${times?.length ?? 0} poses of ${clipName} across its ${seconds(duration)}, ${viewNames} ${shading}${draw.skeleton ? ', with the skeleton' : ''}`
+        ? namingCaption(clipName, limit, name => `${viewNames} ${shading}, posed at ${seconds(times[0] ?? 0)} of ${name}${draw.skeleton ? ', with the skeleton' : ''}`)
+        : namingCaption(clipName, limit, name => `${times?.length ?? 0} poses of ${name} across its ${seconds(duration)}, ${viewNames} ${shading}${draw.skeleton ? ', with the skeleton' : ''}`)
     const image: AssetRenderedImage = { data: await encodeCanvas(sheet, 'image/jpeg'), mediaType: 'image/jpeg', width: sheet.width, height: sheet.height, caption }
     return { details, images: [image] }
   } finally {
@@ -329,6 +343,10 @@ async function answerImage(
   const pictures = new FramePictures(sources, request.maxBytes, signal)
   try {
     const size = { width: own.picture.width, height: own.picture.height }
+    // The details could not give a longer side.
+    if (size.width > request.limits.edge || size.height > request.limits.edge) {
+      throw new AssetDrawError(`${request.path} is ${size.width} × ${size.height} pixels; the viewer draws images up to ${request.limits.edge} pixels wide and tall.`, 'ASSET_TOO_LARGE')
+    }
     const found = await findAnimations(request.path, size, frames?.durationsMs, sources.animations, signal)
     // The search treats its failed reads, cancelled ones included, as finding nothing.
     signal.throwIfAborted()
@@ -351,7 +369,7 @@ async function answerImage(
     if (draw.animation === undefined) {
       const { canvas, scale } = drawImagePicture(own.picture, bounds, draw.region, draw.grid)
       const part = draw.region === undefined ? 'the image' : `pixels (${draw.region.x}, ${draw.region.y}) to (${draw.region.x + draw.region.width}, ${draw.region.y + draw.region.height})`
-      const caption = `${part} at ${scale >= 1 ? `${scale}×` : `${Math.round(scale * 100)}%`} on a checkerboard that shows transparency${draw.grid === undefined ? '' : `, with the ${draw.grid.columns} × ${draw.grid.rows} grid and each cell's number`}`
+      const caption = shortened(`${part} at ${scale >= 1 ? `${scale}×` : `${Math.round(scale * 100)}%`} on a checkerboard that shows transparency${draw.grid === undefined ? '' : `, with the ${draw.grid.columns} × ${draw.grid.rows} grid and each cell's number`}`, request.limits.caption)
       return { details, images: [{ data: await encodeCanvas(canvas, 'image/png'), mediaType: 'image/png', width: canvas.width, height: canvas.height, caption }] }
     }
     const wanted = draw.animation
@@ -372,7 +390,8 @@ async function answerImage(
     const aspect = firstSize === undefined ? 1 : firstSize.width / Math.max(1, firstSize.height)
     const sheet = drawSheet(tiles, aspect, bounds)
     const detail = animationDetails(timed, imageSize)
-    const caption = `${chosen.length === timed.frames.length ? `all ${chosen.length}` : `${chosen.length} of ${timed.frames.length}`} frames of ${timed.name} in order, each labeled with its index and duration (${detail.fps} fps)`
+    const counted = chosen.length === timed.frames.length ? `all ${chosen.length}` : `${chosen.length} of ${timed.frames.length}`
+    const caption = namingCaption(timed.name, request.limits.caption, name => `${counted} frames of ${name} in order, each labeled with its index and duration (${detail.fps} fps)`)
     return { details, images: [{ data: await encodeCanvas(sheet, 'image/png'), mediaType: 'image/png', width: sheet.width, height: sheet.height, caption }] }
   } finally {
     own.close()

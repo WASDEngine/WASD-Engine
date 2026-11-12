@@ -80,12 +80,18 @@ export interface AssetRenderRequest {
 }
 
 /**
- * The most entries of each list of a window's details and the longest name in them. A window lists the first entries
- * of a longer list, counts all of them in the details' count fields, and leaves out a name that is longer.
+ * The most entries of each list of a window's details, the longest name in them, the longest caption, and the largest
+ * size in pixels. A window lists the first entries of a longer list, counts all of them in the details' count fields,
+ * shortens or leaves out a name that is longer, shortens the names in a caption that would be longer, and leaves out a
+ * frame size that is larger.
  */
 export interface AssetAnswerLimits {
   /** Characters of a name or path. */
   readonly name: number
+  /** Characters of one image's caption. */
+  readonly caption: number
+  /** Pixels of an image's or a frame's width or height. */
+  readonly edge: number
   /** 2D animations of an image, and animation clips of a model. */
   readonly animations: number
   /** Materials of a model. */

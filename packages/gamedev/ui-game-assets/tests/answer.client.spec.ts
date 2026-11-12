@@ -1,11 +1,13 @@
 /**
  * An agent's answer fits the Host's limits: the window lists the first entries of every longer list and counts them
- * all, shortens long names, leaves out long paths, and gives frame sizes in whole pixels, so the asset tools accept
- * the details of any asset the Assets tab shows.
+ * all, shortens long names, leaves out long paths, gives frame sizes in whole pixels and leaves out those no image
+ * has, and shortens the names in a caption, so the asset tools accept the details and pictures of any asset the
+ * Assets tab shows.
  */
 import { ANSWER_LIMITS, parseRenderResult } from '@deepseek-ai/dsh-game-assets/src/result.ts'
 import type { ImageAssetDetails, ModelAssetDetails, SpriteAnimationDetails } from '@deepseek-ai/dsh-game-assets/types'
 import { describe, expect, it } from 'vitest'
+import { namingCaption } from '../src/client/agent.ts'
 import { fitDetails } from '../src/client/answer.ts'
 
 const names = (count: number, prefix: string): string[] => Array.from({ length: count }, (_, index) => `${prefix}${String(index)}`)
@@ -78,6 +80,35 @@ describe('fitDetails', () => {
     const emoji = fitDetails(image(1, { name: `${'a'.repeat(ANSWER_LIMITS.name - 2)}😀😀` }), ANSWER_LIMITS)
     assertImage(emoji)
     expect(emoji.animations[0]?.name).toBe(`${'a'.repeat(ANSWER_LIMITS.name - 2)}…`)
+  })
+})
+
+describe('answer limits', () => {
+  it('leaves out frame sizes that are not finite or larger than any image the Host accepts', () => {
+    for (const frameWidth of [ANSWER_LIMITS.edge + 1, Number.POSITIVE_INFINITY, Number.NaN]) {
+      const details = image(1, { frameWidth, frameHeight: 16 })
+      expect(() => parseRenderResult({ details, images: [] })).toThrow('malformed asset details')
+      const fitted = accepted(fitDetails(details, ANSWER_LIMITS))
+      assertImage(fitted)
+      expect(fitted.animations[0]).not.toHaveProperty('frameWidth')
+      expect(fitted.animations[0]).not.toHaveProperty('frameHeight')
+    }
+    const edge = fitDetails(image(1, { frameWidth: ANSWER_LIMITS.edge, frameHeight: 1 }), ANSWER_LIMITS)
+    assertImage(edge)
+    expect(edge.animations[0]).toMatchObject({ frameWidth: ANSWER_LIMITS.edge, frameHeight: 1 })
+  })
+
+  it('shortens a long clip or animation name in a caption, so the Host accepts the picture', () => {
+    const name = 'Walk'.repeat(ANSWER_LIMITS.name / 4)
+    const build = (shown: string) => `all 16 frames of ${shown} in order, each labeled with its index and duration (12 fps)`
+    const picture = (caption: string) => ({ details: image(0), images: [{ data: 'AAAA', mediaType: 'image/png', width: 1, height: 1, caption }] })
+    expect(() => parseRenderResult(picture(build(name)))).toThrow('malformed asset details at images.0.caption')
+    const caption = namingCaption(name, ANSWER_LIMITS.caption, build)
+    expect(caption).toHaveLength(ANSWER_LIMITS.caption)
+    expect(caption).toMatch(/^all 16 frames of (?:Walk)+Wa?l?k?… in order, each labeled with its index and duration \(12 fps\)$/u)
+    expect(parseRenderResult(picture(caption)).images[0]?.caption).toBe(caption)
+    // A short name stays whole.
+    expect(namingCaption('Walk', ANSWER_LIMITS.caption, build)).toBe(build('Walk'))
   })
 })
 
