@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版，并作为带分享链接的编号版本发布到 WASD Engine 网站；wasdPlugins Remote；会话标题栏与新会话页面上的“发布”按钮；以及侧边栏中的“探索游戏”。"
+description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版，并作为带分享链接的编号版本发布到 WASD Engine 网站；wasdPlugins Remote；会话标题栏与新会话页面上的“发布”按钮；侧边栏中的“探索游戏”；以及输入框推理等级选择器旁的首次构建提示。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-WASD Engine 插件包含 WASD Engine 自带的功能，在每个 Web 与桌面配置中始终开启。它用内置的 Godot 把游戏导出为网页版，并作为下一个编号版本发布到应用所登录的 WASD Engine 网站；分享链接页面中任何人都可以游玩、选择更早的版本并评论。会话的智能体与连接的智能体获得同样的工具；“发布”按钮请智能体发布，侧边栏中的“探索游戏”打开已发布游戏的页面。
+WASD Engine 插件包含 WASD Engine 自带的功能，在每个 Web 与桌面配置中始终开启。它把游戏导出为网页版，并作为下一个编号版本发布到应用所登录的 WASD Engine 网站；分享链接页面中任何人都可以游玩、选择更早的版本并评论。会话的智能体与连接的智能体获得同样的工具；“发布”按钮请智能体发布，“探索游戏”打开已发布游戏的页面。对于新游戏，推理等级选择器旁的提示建议使用 Max 推理等级并启用智能体团队协作。
 
 ## 目录
 
@@ -57,6 +57,12 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 当 Peer 可以调用 `wasdPlugins/links` 时，“探索游戏”位于左侧边栏底部的“设置”上方。它通过 `window.open` 打开网站的“探索”页面：桌面应用把链接交给系统浏览器，Web UI 在新标签页中打开。在窄侧栏中它只显示地球图标，标签作为提示文字出现。
 
+### 首次构建提示
+
+输入框推理等级选择器旁的卡片建议游戏首次构建时使用 Max 推理等级并启用智能体团队协作。卡片在以下条件同时满足时出现：会话的工作目录（游戏项目文件夹或其 worktree）中除隐藏条目外没有任何内容，例如新游戏项目的 `.git` 文件夹，以及 Windows 的 `Thumbs.db` 与 `desktop.ini` 文件；会话处于空闲状态；会话的推理等级低于 Max 或未启用智能体团队协作。它要求会话是游戏项目的根会话、所选模型提供 Max 推理等级、组合中包含智能体团队，并且 Peer 可以调用 `session/selectModel` 和 `agentTeams/setEnabled`。模型菜单打开或输入框锁定时，以及模型选择器未显示或位于 inert 区域（例如打开的侧边栏抽屉之后）时，卡片隐藏。卡片紧贴在输入框下方，右边缘与推理等级选择器对齐，箭头指向该选择器；窗口下方空间不足时移到输入框正上方，不遮挡草稿，箭头随之调整。
+
+“使用 Max + 团队协作”为会话的模型选择 Max 推理等级并启用智能体团队协作，已经开启的一项会跳过；随后卡片确认两项均已开启，约三秒后消失。某项设置被拒绝时，卡片保持打开并显示原因。“暂不”，或卡片获得焦点时按 Escape，会在当前浏览器中隐藏该游戏项目的提示。提示通过 `workspaceFiles` Remote 跟踪文件夹的直接条目，文件夹一有内容就停止跟踪，因此首次构建写入的文件会让提示永久消失。它占用本分支为 [`@deepseek-ai/dsh-client-ui-model-selection`](../../client/ui-model-selection/README.zh.md) 的模型选择器添加的 `conversation.input.model.callout` 插槽。
+
 ### `wasdPlugins` Remote
 
 | 方法 | 返回 |
@@ -84,7 +90,7 @@ LiveShare 把这两个方法都保留给所有者，因为发布是以所有者�
 | [`src/tools.ts`](src/tools.ts) | 工具定义及其 MCP 包装 |
 | [`src/release.ts`](src/release.ts) | 网站 API 客户端、游戏关联文件和发布流程 |
 | [`src/zip.ts`](src/zip.ts) | 上传所用的流式 ZIP 写入器 |
-| [`src/client/`](src/client/) | “发布”按钮、“探索游戏”、它们的文案和 Remote 挂载 |
+| [`src/client/`](src/client/) | “发布”按钮、“探索游戏”、首次构建提示、它们的文案和 Remote 挂载 |
 
 </details>
 
@@ -157,6 +163,7 @@ LiveShare 把这两个方法都保留给所有者，因为发布是以所有者�
 - **单一模板版本** — Godot 插件固定使用 Godot 4.7.2 的 Web 模板；其他运行时版本需要在该插件的配置中设置其模板归档的 URL 和 SHA-256。
 - **公开发布** — 每次发布都会公开出现在网站的“探索”页面上；删除游戏需要调用网站的 API。
 - **按登录的网站发布** — 项目发布到应用所登录的网站；登录另一个网站会在那里创建另一个游戏。
+- **首次构建提示按浏览器记录** — “暂不”保存在当前浏览器的 localStorage 中，因此在其他浏览器中或清除网站数据后，仍为空的游戏项目会再次显示提示。
 
 <a id="dev-note"></a>
 ### 开发备注

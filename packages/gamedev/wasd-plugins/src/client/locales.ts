@@ -1,4 +1,4 @@
-/** Copy of the Release button and Explore Games, owned by the locale dictionaries. */
+/** Copy of the Release button, Explore Games, and the first build tip, owned by the locale dictionaries. */
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
 
 /** Locale namespace of WASD Engine Plugins' browser half. */
@@ -25,6 +25,12 @@ export const en = {
   'release.promptWithNotes': 'Release this game on WASD Engine: call wasd_release_game with these release notes, then give me the share link.\n\nRelease notes: {notes}',
   'explore.label': 'Explore Games',
   'explore.tooltip': 'Play the games people release with WASD Engine',
+  'firstBuild.title': 'Starting a new game?',
+  'firstBuild.body': 'For the first build, use Max effort with agent teamwork: the agents plan more carefully and build parts of the game at the same time. It uses more of your monthly usage.',
+  'firstBuild.apply': 'Use Max + teamwork',
+  'firstBuild.dismiss': 'Not now',
+  'firstBuild.applied': 'All set: Max effort and agent teamwork are on.',
+  'firstBuild.failed': 'Could not change the settings. {message}',
 } satisfies Record<string, string>
 
 /** Keys of WASD Engine Plugins' browser copy. */
@@ -32,7 +38,7 @@ export type WasdPluginsUiKey = keyof typeof en
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
-    /** The Release button and Explore Games. */
+    /** The Release button, Explore Games, and the first build tip. */
     wasdPlugins: WasdPluginsUiKey
   }
 }
@@ -58,6 +64,12 @@ export const zh = {
   'release.promptWithNotes': '在 WASD Engine 上发布这个游戏：调用 wasd_release_game 并使用下面的更新说明，然后把分享链接给我。\n\n更新说明：{notes}',
   'explore.label': '探索游戏',
   'explore.tooltip': '游玩大家用 WASD Engine 发布的游戏',
+  'firstBuild.title': '要开始做新游戏吗？',
+  'firstBuild.body': '首次构建时，建议使用 Max 推理等级并启用智能体团队协作：智能体会更周密地规划，并同时构建游戏的各个部分。这会消耗更多每月用量。',
+  'firstBuild.apply': '使用 Max + 团队协作',
+  'firstBuild.dismiss': '暂不',
+  'firstBuild.applied': '已就绪：Max 推理等级和智能体团队协作均已开启',
+  'firstBuild.failed': '无法更改设置。{message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** Japanese copy. */
@@ -81,6 +93,12 @@ export const ja = {
   'release.promptWithNotes': 'このゲームを WASD Engine でリリースしてください。次のリリースノートで wasd_release_game を呼び出し、共有リンクを教えてください。\n\nリリースノート：{notes}',
   'explore.label': 'ゲームを探す',
   'explore.tooltip': 'WASD Engine でリリースされたゲームを遊ぶ',
+  'firstBuild.title': '新しいゲームを作りますか？',
+  'firstBuild.body': '最初のビルドには、強度 Max とエージェント連携がおすすめです。エージェントがより丁寧に計画し、ゲームの各部分を同時に作ります。毎月の利用量は多めに消費されます。',
+  'firstBuild.apply': 'Max + 連携を使う',
+  'firstBuild.dismiss': '今はしない',
+  'firstBuild.applied': '準備完了です。強度 Max とエージェント連携をオンにしました。',
+  'firstBuild.failed': '設定を変更できませんでした。{message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** Spanish copy. */
@@ -104,6 +122,12 @@ export const es = {
   'release.promptWithNotes': 'Publica este juego en WASD Engine: llama a wasd_release_game con estas notas de la versión y luego dame el enlace para compartir.\n\nNotas de la versión: {notes}',
   'explore.label': 'Explorar juegos',
   'explore.tooltip': 'Juega a los juegos que la gente publica con WASD Engine',
+  'firstBuild.title': '¿Empiezas un juego nuevo?',
+  'firstBuild.body': 'Para la primera versión, usa el esfuerzo Max con la colaboración entre agentes: los agentes planifican con más cuidado y construyen partes del juego a la vez. Consume más de tu uso mensual.',
+  'firstBuild.apply': 'Usar Max + colaboración',
+  'firstBuild.dismiss': 'Ahora no',
+  'firstBuild.applied': 'Listo: el esfuerzo Max y la colaboración entre agentes están activados.',
+  'firstBuild.failed': 'No se pudo cambiar la configuración. {message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** French copy. */
@@ -127,6 +151,12 @@ export const fr = {
   'release.promptWithNotes': 'Publie ce jeu sur WASD Engine : appelle wasd_release_game avec ces notes de version, puis donne-moi le lien de partage.\n\nNotes de version : {notes}',
   'explore.label': 'Explorer les jeux',
   'explore.tooltip': 'Jouer aux jeux publiés avec WASD Engine',
+  'firstBuild.title': 'Vous commencez un nouveau jeu ?',
+  'firstBuild.body': 'Pour la première version, utilisez l’effort Max avec la collaboration entre agents : les agents planifient plus soigneusement et construisent plusieurs parties du jeu en même temps. Cela consomme davantage de votre usage mensuel.',
+  'firstBuild.apply': 'Utiliser Max + collaboration',
+  'firstBuild.dismiss': 'Plus tard',
+  'firstBuild.applied': 'C’est prêt : l’effort Max et la collaboration entre agents sont activés.',
+  'firstBuild.failed': 'Impossible de modifier les réglages. {message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** German copy. */
@@ -150,6 +180,12 @@ export const de = {
   'release.promptWithNotes': 'Veröffentliche dieses Spiel auf WASD Engine: Rufe wasd_release_game mit diesen Versionshinweisen auf und gib mir dann den Link zum Teilen.\n\nVersionshinweise: {notes}',
   'explore.label': 'Spiele entdecken',
   'explore.tooltip': 'Spiele spielen, die mit WASD Engine veröffentlicht wurden',
+  'firstBuild.title': 'Startest du ein neues Spiel?',
+  'firstBuild.body': 'Nutze für den ersten Build den Aufwand Max mit Agentenzusammenarbeit: Die Agenten planen gründlicher und bauen Teile des Spiels gleichzeitig. Das verbraucht mehr von deinem monatlichen Kontingent.',
+  'firstBuild.apply': 'Max + Zusammenarbeit nutzen',
+  'firstBuild.dismiss': 'Nicht jetzt',
+  'firstBuild.applied': 'Fertig: Aufwand Max und Agentenzusammenarbeit sind aktiviert.',
+  'firstBuild.failed': 'Die Einstellungen konnten nicht geändert werden. {message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** Russian copy. */
@@ -173,6 +209,12 @@ export const ru = {
   'release.promptWithNotes': 'Выпусти эту игру в WASD Engine: вызови wasd_release_game с этими примечаниями к выпуску, а затем дай мне ссылку, чтобы поделиться.\n\nПримечания к выпуску: {notes}',
   'explore.label': 'Обзор игр',
   'explore.tooltip': 'Играйте в игры, выпущенные с WASD Engine',
+  'firstBuild.title': 'Начинаете новую игру?',
+  'firstBuild.body': 'Для первой сборки выберите усилие Max и совместную работу агентов: агенты тщательнее планируют и создают части игры одновременно. Это расходует больше месячного лимита.',
+  'firstBuild.apply': 'Включить Max и совместную работу',
+  'firstBuild.dismiss': 'Не сейчас',
+  'firstBuild.applied': 'Готово: усилие Max и совместная работа агентов включены.',
+  'firstBuild.failed': 'Не удалось изменить настройки. {message}',
 } satisfies Record<WasdPluginsUiKey, string>
 
 /** Portuguese copy. */
@@ -196,4 +238,10 @@ export const pt = {
   'release.promptWithNotes': 'Publique este jogo no WASD Engine: chame wasd_release_game com estas notas da versão e depois me dê o link para compartilhar.\n\nNotas da versão: {notes}',
   'explore.label': 'Explorar jogos',
   'explore.tooltip': 'Jogue os jogos que as pessoas publicam com o WASD Engine',
+  'firstBuild.title': 'Começando um jogo novo?',
+  'firstBuild.body': 'Na primeira versão, use o esforço Max com a colaboração entre agentes: os agentes planejam com mais cuidado e constroem partes do jogo ao mesmo tempo. Isso consome mais do seu uso mensal.',
+  'firstBuild.apply': 'Usar Max + colaboração',
+  'firstBuild.dismiss': 'Agora não',
+  'firstBuild.applied': 'Tudo pronto: o esforço Max e a colaboração entre agentes estão ativados.',
+  'firstBuild.failed': 'Não foi possível alterar as configurações. {message}',
 } satisfies Record<WasdPluginsUiKey, string>
