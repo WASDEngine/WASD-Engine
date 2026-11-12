@@ -105,8 +105,9 @@ async function importProject(projectDir: string): Promise<ImportReport> {
 async function checkErrors(projectDir: string, paths: readonly string[]): Promise<string[]> {
   const ran = await godot(['--headless', '--path', projectDir, '--script', CHECK_SCRIPT, '--', ...paths], projectDir, 300_000)
   const reports = ran.output.split('\n').filter(line => line.startsWith('WASD_CHECK '))
-    .map(line => parseGodotJson(line.slice('WASD_CHECK '.length)) as { path: string; errors: { level: string; message: string }[] })
-  expect(reports.map(report => report.path), `checked scripts\n${ran.output.slice(-2000)}`).toEqual(paths)
+    .map(line => parseGodotJson(line.slice('WASD_CHECK '.length)) as { path: string; plugin?: true; errors: { level: string; message: string }[] })
+  // The lines of the plugin loads that come before a script of their add-on count their errors too.
+  expect(reports.filter(report => report.plugin !== true).map(report => report.path), `checked scripts\n${ran.output.slice(-2000)}`).toEqual(paths)
   return reports.flatMap(report => report.errors.filter(error => error.level !== 'warning').slice(0, 1).map(error => `${report.path}: ${error.message}`))
 }
 

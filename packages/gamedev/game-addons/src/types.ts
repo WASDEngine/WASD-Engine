@@ -265,8 +265,13 @@ export interface GameAddonRemoveResult {
   readonly id: string
   /** Absolute folder that holds `project.godot`. */
   readonly projectDir: string
-  /** Project-relative paths that were deleted. */
+  /** Project-relative paths that were taken out of the project. */
   readonly removed: readonly string[]
+  /**
+   * Project-relative folder that keeps what was taken out, `.wasdengine/backups/<id>`, with the paths of `removed` below
+   * it; absent when nothing was taken out.
+   */
+  readonly backup?: string
   /** Project files outside the add-on that still name its folder, at most 20, which now need changes. */
   readonly references: readonly string[]
 }

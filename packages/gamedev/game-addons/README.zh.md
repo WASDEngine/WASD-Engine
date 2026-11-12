@@ -60,7 +60,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `search` | 为 `query` 对目录中的扩展排序，或列出全部扩展，可以只看某个 `host`（`godot` 或 `blender`）或 `stage`。每个扩展会显示其 id、版本、许可证、下载大小、摘要、何时使用、何时不必使用、与之冲突的扩展、要求的署名，以及项目中是否已有它 |
 | `guide` | 返回扩展的使用指南，并注明项目中尚未安装该扩展的情况 |
 | `install` | 把 `id` 安装到项目中；`replace` 会替换 `addons/` 中已有但没有 WASD Engine 记录的副本 |
-| `remove` | 从项目中移除 `id`，并列出仍在使用它的项目文件 |
+| `remove` | 从项目中移除 `id`，把它的文件夹保留在备份中，并列出仍在使用它的项目文件 |
 | `list` | 列出项目中的目录扩展 |
 
 `project` 指定包含 `project.godot` 的文件夹，相对于工作目录；省略时会像 Godot 工具那样使用最近的项目。一次 Godot 安装依次执行以下步骤：
@@ -75,7 +75,9 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 在写入记录之前失败时，会恢复原有的文件夹和 `project.godot`。如果与之冲突的扩展已在项目中，或其自动加载名称已被另一个脚本占用，安装会失败并说明该怎么做。再次安装同一版本不会下载任何内容，只会重写丢失的 `project.godot` 条目。Blender 安装会把扩展只解压一次到存储目录中，即 `<blenderStore>/<module>/`，并把其资源包只解压一次到 `<dataRoot>/blender-assets/<id>/`，二者都带有一个注明其压缩包的标记文件。之后它们的压缩包会离开缓存，因为存储目录会为所有项目保留这些文件。安装还会写入存储索引（其中给出每个 Blender 扩展的模块、设置脚本和资源文件夹），并在项目中记录该扩展。Blender 自带的扩展只会被记录。解压时会读取压缩包的中央目录并逐个文件流式写出，因此即使是 MPFB 的 268 MB 资源包，内存占用也保持有限。
 
-移除会删除记录中列出的内容，并移除该扩展的 `project.godot` 条目和声明段落。它会列出最多 20 个仍引用该扩展文件夹或其自动加载的场景、脚本和资源，便于智能体修改它们。在 `addons/` 中发现但没有记录的目录扩展也可以用同样的方式移除。移除 Blender 扩展只会删去项目中的记录；存储目录会为其他项目保留它。
+移除会把该扩展的文件夹移出项目，并移除该扩展的 `project.godot` 条目和声明段落。该文件夹会移到该扩展的备份 `.wasdengine/backups/<id>/`，取代此前移除或替换该扩展时留下的备份；那里的 `.gitignore` 使备份不进入版本控制，带 `replace` 的安装也会以同样方式保留被替换的文件夹。移除会列出最多 20 个仍引用该扩展文件夹或其自动加载的场景、脚本和资源，便于智能体修改它们。在 `addons/` 中发现但没有记录的目录扩展也可以用同样的方式移除。移除 Blender 扩展只会删去项目中的记录；存储目录会为其他项目保留它。
+
+项目中的记录可能由他人写入，因此移除只会移出记录所列、位于该扩展文件夹 `addons/<folder>/` 之内的路径：记录中有其他位置的路径时，移除会在做出任何更改之前停止；路径含反斜杠、冒号或 `..` 段的记录无效。任何更改都不会沿符号链接离开项目：如果 `addons` 或 `.wasdengine` 文件夹指向别处，安装或移除会在那里移动或写入任何内容之前失败；作为链接的扩展文件夹会以链接本身被移动。
 
 ### 智能体何时安装扩展
 
@@ -116,6 +118,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/archive.ts`](src/archive.ts) | 固定版本的下载缓存，以及用 yauzl 逐个文件解压压缩包中的一个文件夹 |
 | [`src/project-file.ts`](src/project-file.ts) | 保持其他行不变的 `project.godot` 编辑 |
 | [`src/record.ts`](src/record.ts) | 在文件锁下读写 `.wasdengine/addons.json` |
+| [`src/paths.ts`](src/paths.ts) | 记录路径的规则，以及经过解析、使任何更改都不离开项目的项目路径 |
 | [`src/notices.ts`](src/notices.ts) | `THIRD_PARTY_NOTICES.md` 中的标记段落 |
 | [`src/skills.ts`](src/skills.ts) | 指南的技能提供者与文件夹监视器 |
 | [`src/tools.ts`](src/tools.ts) | `game_addons` 定义及其结果文本 |
@@ -205,7 +208,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### 模型看到的内容
 
-搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明删除的路径，以及最多 20 个仍在使用该扩展的文件。
+搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。
 
 #### Token 影响
 
@@ -232,6 +235,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 - **开发用扩展会被打包** — Web 导出会打包所有资源，因此 GUT 这类测试扩展（约 3 MB）在被移除之前会随发布的游戏一起发布。
 - **编辑器设置** — 编辑器插件在导入步骤中使用用户的 Godot 编辑器设置加载；Importality 会在其中的 `editor_settings-4.7.tres` 里添加空的 `importality/*` 键。
 - **无界面运行时崩溃的扩展** — Sprite Sheet Generator 2.2.3 在写出精灵图之后会以段错误结束无界面的 Blender，因此目录不收录它；智能体改用 `bpy` 渲染精灵帧。
+- **备份占用空间** — 扩展的备份会留在 `.wasdengine/backups/<id>/`，直到下一次移除或替换该扩展；删除该文件夹即可释放空间。
 - **资源包很大** — MPFB 附带 MakeHuman 的系统资源：与扩展一起下载 312 MB，在扩展存储和资源文件夹中占用 358 MB；所有项目共用它们，移除扩展时会保留。
 - **字母方块** — Extra Import Hints、GdUnit4 和 YATI 只有以 Godot 或 Blender 标志改作的图标，而商标条款禁止把这些标志用作其他项目的标志；VRM 的列表图标没有许可证。这四个扩展显示字母方块。
 - **AGPL 图标** — MPFB 的图标是采用 AGPL-3.0-or-later 的 MakeHuman 标志，因此 `ICONS.md` 旁随附 `LICENSE-AGPL-3.0.txt`，其中是该许可证的全文。

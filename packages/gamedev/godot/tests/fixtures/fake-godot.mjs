@@ -57,6 +57,9 @@ async function runCheck(section) {
   const paths = args.slice(args.lastIndexOf('--') + 1)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
   for (const path of paths) {
+    // An add-on plugin that the check loads before this script, as `wasd_check.gd` reports it on its own line.
+    const plugin = section.plugins?.[path]
+    if (plugin !== undefined) await write(process.stdout, `WASD_CHECK ${JSON.stringify({ path: plugin.path, plugin: true, loaded: true, errors: plugin.errors ?? [] })}\n`)
     if (section.omit?.includes(path)) continue
     if (section.garbage?.includes(path)) {
       await write(process.stdout, `WASD_CHECK {"path": "${path}", "loaded"\n`)

@@ -4,22 +4,25 @@
  * place in `res://addons/<folder>/`; the installer enables it in `project.godot` the way the editor's plugin switch
  * does, writes its license into the project's notices, records it in `.wasdengine/addons.json`, and imports the
  * project so the add-on's errors show at once. A failure before the record is written puts the previous folder and
- * `project.godot` back. A Blender extension unpacks once into the shared add-on store, where every Blender worker
- * enables it by id, and its asset pack, if it has one, into the asset folder beside the store; its project keeps only
- * the record. Their archives then leave the cache.
+ * `project.godot` back. A removal takes out only paths in the add-on's own folder. The folder that a removal or a
+ * replacement takes out moves to the add-on's backup, `.wasdengine/backups/<id>/`, instead of being deleted. Every
+ * change stays inside the project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks
+ * once into the shared add-on store, where every Blender worker enables it by id, and its asset pack, if it has one,
+ * into the asset folder beside the store; its project keeps only the record. Their archives then leave the cache.
  * @module @deepseek-ai/dsh-game-addons/src/manager
  */
 import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { copyFile, lstat, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads } from './archive.ts'
 import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catalog.ts'
 import { standardLicenseText } from './licenses.ts'
 import { noticeSection, removeNotice, writeNotice } from './notices.ts'
+import { projectEntry, projectFolder } from './paths.ts'
 import { ProjectFile } from './project-file.ts'
-import { readRecord, STATE_DIR, updateRecord } from './record.ts'
+import { RECORD_FILE, readRecord, STATE_DIR, updateRecord } from './record.ts'
 import type {
   GameAddon,
   GameAddonInstallResult,
@@ -49,6 +52,22 @@ export const STORE_MARKER = '.wasd-addon.json'
 
 /** Index of the catalog's Blender add-ons in the store, which Blender workers read to enable an add-on by id. */
 export const STORE_INDEX = 'catalog.json'
+
+/**
+ * Project-relative folder that keeps, per add-on id, the last folder a removal or a replacement took out of the project.
+ */
+export const BACKUPS_DIR = `${STATE_DIR}/backups`
+
+/** Content of the `.gitignore` in {@link BACKUPS_DIR}, which keeps the backups out of version control. */
+const BACKUPS_IGNORE = '*\n'
+
+/** An entry that a change takes out of the project. */
+interface TakenEntry {
+  /** Project-relative path it had, with `/` separators. */
+  readonly path: string
+  /** Its current location. */
+  readonly location: string
+}
 
 /** A request that the manager refuses, with a message for the model or the user. */
 export class GameAddonError extends Error {
@@ -135,6 +154,12 @@ function pluginVersion(text: string): string | undefined {
 /** The project-relative folder of a Godot add-on, with `/` separators. */
 function addonFolder(addon: GameAddon): string {
   return `addons/${(addon.godot as NonNullable<GameAddon['godot']>).addonDir}`
+}
+
+/** The distinct paths of a list that no other path of the list contains. */
+function outermost(paths: readonly string[]): string[] {
+  const distinct = [...new Set(paths)]
+  return distinct.filter(path => !distinct.some(other => path.startsWith(`${other}/`)))
 }
 
 /**
@@ -267,29 +292,40 @@ export class GameAddonManager {
   }
 
   /**
-   * Remove one add-on from a project: an installed one by its record, or a catalog add-on found in `res://addons/`.
+   * Remove one add-on from a project: an installed one by its record, or a catalog add-on found in `res://addons/`. The
+   * add-on's folder moves to its backup, `.wasdengine/backups/<id>/`, in place of an older backup of the add-on.
    * @param projectDir - absolute folder that holds `project.godot`.
    * @param id - catalog id.
-   * @param signal - cancellation before files are deleted.
-   * @returns the deleted paths and the project files that still name the add-on.
-   * @throws {GameAddonError} when the project does not have the add-on.
+   * @param signal - cancellation before files are moved.
+   * @returns the paths taken out, their backup folder, and the project files that still name the add-on.
+   * @throws {GameAddonError} when the project does not have the add-on, or when its record lists a path outside the
+   *   add-on's folder; nothing changes then.
+   * @throws {GameAddonPathError} when a folder on the way to the add-on leads outside the project; nothing changes then.
    */
   async remove(projectDir: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult> {
     const addon = this.entry(id)
     const record = (await readRecord(projectDir)).find(item => item.id === id)
     const presence = (await this.presence(projectDir)).get(id)
     if (record === undefined && presence?.state !== 'found') throw new GameAddonError(`${addon.title} is not in this project.`)
-    signal.throwIfAborted()
-    const removed: string[] = []
+    let removed: string[] = []
+    let backup: string | undefined
     let references: string[] = []
     if (addon.godot !== undefined) {
-      const paths = record?.paths ?? [addonFolder(addon)]
-      for (const path of paths) {
-        const absolute = join(projectDir, ...path.split('/'))
-        if (await exists(absolute)) {
-          await rm(absolute, { recursive: true, force: true })
-          removed.push(path)
-        }
+      const folder = addonFolder(addon)
+      const paths = record?.paths ?? [folder]
+      const foreign = paths.filter(path => path !== folder && !path.startsWith(`${folder}/`))
+      if (foreign.length > 0) {
+        throw new GameAddonError(`${STATE_DIR}/${RECORD_FILE} lists ${foreign.join(', ')} for ${addon.title}, outside its folder ${folder}, so nothing was removed. Fix or delete that entry of the record.`)
+      }
+      const taken: TakenEntry[] = []
+      for (const path of outermost(paths)) {
+        const location = await projectEntry(projectDir, path)
+        if (location !== undefined) taken.push({ path, location })
+      }
+      signal.throwIfAborted()
+      if (taken.length > 0) {
+        backup = await this.keepBackup(projectDir, addon.id, taken)
+        removed = taken.map(entry => entry.path)
       }
       const others = [...(await this.presence(projectDir)).entries()]
         .filter(([other, state]) => other !== id && state.state !== 'absent')
@@ -302,7 +338,53 @@ export class GameAddonManager {
       current.some(item => item.id === id) ? current.filter(item => item.id !== id) : undefined
     await updateRecord(projectDir, withoutAddon, signal)
     this.options.changed(projectDir)
-    return { id, projectDir, removed, references }
+    return { id, projectDir, removed, ...backup === undefined ? {} : { backup }, references }
+  }
+
+  /**
+   * Move entries that a removal or a replacement takes out of a project into the add-on's backup,
+   * `.wasdengine/backups/<id>/`, each at its project-relative path, in place of the backup that an earlier change of
+   * the add-on left. The backups folder holds a `.gitignore` that keeps it out of version control.
+   * @param projectDir - absolute project folder.
+   * @param id - catalog id.
+   * @param taken - each entry's project-relative path and current location.
+   * @returns the project-relative backup folder.
+   * @throws {GameAddonPathError} when the backups folder leads outside the project.
+   */
+  private async keepBackup(projectDir: string, id: string, taken: readonly TakenEntry[]): Promise<string> {
+    const backups = await projectFolder(projectDir, BACKUPS_DIR)
+    try {
+      // Exclusive creation never writes through a link that the project put there.
+      await writeFile(join(backups, '.gitignore'), BACKUPS_IGNORE, { flag: 'wx' })
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+    const backup = join(backups, id)
+    await rm(backup, { recursive: true, force: true })
+    for (const entry of taken) {
+      const target = join(backup, ...entry.path.split('/'))
+      await mkdir(dirname(target), { recursive: true })
+      await rename(entry.location, target)
+    }
+    return `${BACKUPS_DIR}/${id}`
+  }
+
+  /**
+   * Move the add-on folder that an installation replaced from the installation's trash to the add-on's backup.
+   * @param projectDir - absolute project folder.
+   * @param id - catalog id.
+   * @param replaced - the folder's project-relative path and its place in the trash.
+   * @returns a note that says where the replaced folder is, also when it could not move and stays in the trash.
+   */
+  private async keepReplaced(projectDir: string, id: string, replaced: TakenEntry): Promise<string> {
+    try {
+      const backup = await this.keepBackup(projectDir, id, [replaced])
+      await removeEmpty(dirname(replaced.location))
+      return `The ${replaced.path} folder it replaced is kept in ${backup}/${replaced.path}.`
+    } catch (error) {
+      // The installation is complete, so a failed move only leaves the replaced folder in the trash, which the note names.
+      return `The ${replaced.path} folder it replaced stays in ${STATE_DIR}/trash/${basename(replaced.location)}, because it could not move to the add-on's backup: ${(error as Error).message}`
+    }
   }
 
   private async installGodot(
@@ -315,7 +397,6 @@ export class GameAddonManager {
     const godot = addon.godot as NonNullable<GameAddon['godot']>
     const archive = addon.archive as NonNullable<GameAddon['archive']>
     const folderPath = addonFolder(addon)
-    const folder = join(projectDir, 'addons', godot.addonDir)
     const projectPath = join(projectDir, 'project.godot')
     const projectText = await readText(projectPath)
     if (projectText === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`)
@@ -331,16 +412,18 @@ export class GameAddonManager {
       }
     }
     // A recorded add-on whose folder was deleted installs again.
-    const unchanged = presence.state === 'installed' && presence.version === addon.version && await exists(folder)
+    const unchanged = presence.state === 'installed' && presence.version === addon.version && await projectEntry(projectDir, folderPath) !== undefined
     const notes: string[] = []
+    // The add-on folder that the installation replaced, until it moves to the add-on's backup.
+    let replaced: TakenEntry | undefined
     if (!unchanged) {
       const archivePath = await cachedArchive(archive, this.options.downloads, signal)
-      const staging = join(projectDir, STATE_DIR, 'staging', randomUUID())
-      const trash = join(projectDir, STATE_DIR, 'trash', randomUUID())
-      let movedOld = false
-      let placed = false
+      const stagingRoot = await projectFolder(projectDir, `${STATE_DIR}/staging`)
+      const staging = join(stagingRoot, randomUUID())
+      let trashRoot: string | undefined
+      let previous: string | undefined
+      let folder: string | undefined
       try {
-        await mkdir(join(projectDir, STATE_DIR, 'staging'), { recursive: true })
         const files = await unpackFolder(archivePath, archive.root, staging, signal)
         const licenseText = await this.licenseText(addon, archivePath, staging, files)
         const rootPrefix = archive.root === '' ? '' : `${archive.root}/`
@@ -350,27 +433,29 @@ export class GameAddonManager {
         }
         for (const overlay of godot.overlay ?? []) await this.addOverlay(addon, overlay, staging, signal)
         signal.throwIfAborted()
-        await mkdir(join(projectDir, 'addons'), { recursive: true })
-        if (await exists(folder)) {
-          await mkdir(join(projectDir, STATE_DIR, 'trash'), { recursive: true })
-          await rename(folder, trash)
-          movedOld = true
+        const target = join(await projectFolder(projectDir, 'addons'), godot.addonDir)
+        previous = await projectEntry(projectDir, folderPath)
+        if (previous !== undefined) {
+          trashRoot = await projectFolder(projectDir, `${STATE_DIR}/trash`)
+          const trash = join(trashRoot, randomUUID())
+          await rename(previous, trash)
+          replaced = { path: folderPath, location: trash }
         }
-        await rename(staging, folder)
-        placed = true
+        await rename(staging, target)
+        folder = target
         this.enableInProject(project, addon)
         await writeFileAtomic(projectPath, project.toString(), { mode: 0o644 })
         await writeNotice(projectDir, noticeSection(addon, licenseText), addon.id)
       } catch (error) {
-        if (placed) await rm(folder, { recursive: true, force: true })
-        if (movedOld) await rename(trash, folder)
+        if (folder !== undefined) await rm(folder, { recursive: true, force: true })
+        if (replaced !== undefined && previous !== undefined) await rename(replaced.location, previous)
+        replaced = undefined
         await writeFileAtomic(projectPath, projectText, { mode: 0o644 })
+        if (trashRoot !== undefined) await removeEmpty(trashRoot)
         throw error
       } finally {
         await rm(staging, { recursive: true, force: true })
-        if (!movedOld || placed) await rm(trash, { recursive: true, force: true })
-        await removeEmpty(join(projectDir, STATE_DIR, 'staging'))
-        await removeEmpty(join(projectDir, STATE_DIR, 'trash'))
+        await removeEmpty(stagingRoot)
       }
     } else {
       // A reinstall at the same version only repairs what enabling wrote.
@@ -401,6 +486,7 @@ export class GameAddonManager {
       }
       return [...current.filter(item => item.id !== addon.id), installed]
     }, signal)
+    if (replaced !== undefined) notes.push(await this.keepReplaced(projectDir, addon.id, replaced))
     const importIssues: string[] = []
     const passes = godot.importTwice === true ? 2 : 1
     for (let pass = 0; pass < passes; pass += 1) {

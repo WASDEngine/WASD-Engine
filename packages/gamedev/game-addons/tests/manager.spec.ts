@@ -1,11 +1,15 @@
-/** Installing, reinstalling, and removing add-ons in a game project, and the Blender add-on store. */
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+/**
+ * Installing, reinstalling, and removing add-ons in a game project, the backups of what removals and replacements take
+ * out, changes that stay inside the project, and the Blender add-on store.
+ */
+import { lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { dirname, join, posix, win32 } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
-import { addonView, GameAddonManager, STORE_INDEX, STORE_MARKER, type ImportReport } from '../src/manager.ts'
+import { addonView, BACKUPS_DIR, GameAddonManager, STORE_INDEX, STORE_MARKER, type ImportReport } from '../src/manager.ts'
 import { NOTICES_FILE } from '../src/notices.ts'
-import { readRecord } from '../src/record.ts'
+import { GameAddonPathError, isProjectPath, within } from '../src/paths.ts'
+import { GameAddonRecordError, readRecord } from '../src/record.ts'
 import {
   catalogEntries, editableCatalogEntries, entriesWithTreeAssets, fakeDownloads, PROJECT_GODOT, scratch, TREE_ASSETS_ARCHIVE, TREES_ARCHIVE,
   URLS, writeCatalog, writeProject, type FakeDownloads, type Scratch,
@@ -81,6 +85,24 @@ async function tree(root: string): Promise<string[]> {
   return entries.filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(root.length + 1)).sort()
 }
 
+/** Symbolic links need a privilege on Windows, so the specs that make them run elsewhere. */
+const linking = it.skipIf(process.platform === 'win32')
+
+/** Write a record that names one Godot add-on with the given paths, as a project from elsewhere could carry it. */
+async function writeRecordWith(project: string, id: string, paths: readonly string[]): Promise<void> {
+  await mkdir(join(project, '.wasdengine'), { recursive: true })
+  const addon = { id, title: 'Test Camera', host: 'godot', version: '1.2.0', license: 'MIT', paths, installedAt: '2026-11-11T12:00:00.000Z' }
+  await writeFile(join(project, '.wasdengine', 'addons.json'), `${JSON.stringify({ format: 1, addons: [addon] }, null, 2)}\n`)
+}
+
+/** A folder outside the project holding one file, which no change of the project may move or delete. */
+async function outsideFolder(root: string, name: string): Promise<string> {
+  const folder = join(root, 'outside', name)
+  await mkdir(folder, { recursive: true })
+  await writeFile(join(folder, 'keep.txt'), 'mine\n')
+  return folder
+}
+
 describe('GameAddonManager.install for Godot', () => {
   it('unpacks the add-on folder with its license, enables it, writes the notice and record, and imports twice', async () => {
     const { manager, project, downloads, imports, changed } = await setup({ issues: ['res://addons/test_camera/rig.gd:3: warning'] })
@@ -147,9 +169,13 @@ describe('GameAddonManager.install for Godot', () => {
     await writeFile(join(project, 'addons', 'test_camera', 'old.gd'), 'extends Node\n')
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'found', version: '0.9' })
     await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/addons\/test_camera \(version 0\.9\) is already in the project without a WASD Engine record/u)
-    await manager.install(project, 'test-camera', { replace: true }, signal)
+    const replaced = await manager.install(project, 'test-camera', { replace: true }, signal)
     expect(await tree(join(project, 'addons', 'test_camera'))).not.toContain('old.gd')
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'installed', version: '1.2.0' })
+    // The replaced copy is kept as the add-on's backup, and no trash or staging folder stays behind.
+    expect(replaced.notes).toContain(`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/addons/test_camera.`)
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toEqual(['addons/test_camera/old.gd', 'addons/test_camera/plugin.cfg'])
+    expect((await readdir(join(project, '.wasdengine'))).sort()).toEqual(['addons.json', 'backups'])
   })
 
   it('refuses an add-on that does the job of one already in the project, and an autoload name in use', async () => {
@@ -189,7 +215,7 @@ describe('GameAddonManager.install for Godot', () => {
 })
 
 describe('GameAddonManager.remove', () => {
-  it('deletes the recorded folder, its project.godot entries, notice, and record, and names files that still use it', async () => {
+  it('moves the recorded folder to its backup, removes its project.godot entries, notice, and record, and names files that still use it', async () => {
     const { manager, project } = await setup()
     await manager.install(project, 'test-camera', {}, signal)
     await manager.install(project, 'test-trees', {}, signal)
@@ -198,7 +224,15 @@ describe('GameAddonManager.remove', () => {
     await writeFile(join(project, 'player.gd'), 'func _ready():\n\tTestCameraManager.follow(self)\n')
     await writeFile(join(project, 'clean.gd'), 'extends Node\n')
     const result = await manager.remove(project, 'test-camera', signal)
-    expect(result).toEqual({ id: 'test-camera', projectDir: project, removed: ['addons/test_camera'], references: ['player.gd', 'scenes/level.tscn'] })
+    expect(result).toEqual({
+      id: 'test-camera', projectDir: project, removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera`, references: ['player.gd', 'scenes/level.tscn'],
+    })
+    await expect(lstat(join(project, 'addons', 'test_camera'))).rejects.toThrow(/ENOENT/u)
+    expect(await tree(join(project, BACKUPS_DIR))).toEqual([
+      '.gitignore', 'test-camera/addons/test_camera/LICENSE', 'test-camera/addons/test_camera/manager.gd',
+      'test-camera/addons/test_camera/nodes/rig.gd', 'test-camera/addons/test_camera/plugin.cfg', 'test-camera/addons/test_camera/plugin.gd',
+    ])
+    expect(await readFile(join(project, BACKUPS_DIR, '.gitignore'), 'utf8')).toBe('*\n')
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
     await expect(readFile(join(project, NOTICES_FILE), 'utf8')).rejects.toThrow(/ENOENT/u)
     expect((await readRecord(project)).map(addon => addon.id)).toEqual(['test-trees'])
@@ -232,6 +266,18 @@ describe('GameAddonManager.remove', () => {
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
   })
 
+  it('keeps only the latest backup of an add-on', async () => {
+    const { manager, project } = await setup()
+    await manager.install(project, 'test-camera', {}, signal)
+    await writeFile(join(project, 'addons', 'test_camera', 'mine.gd'), 'extends Node\n')
+    await manager.remove(project, 'test-camera', signal)
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toContain('addons/test_camera/mine.gd')
+    await manager.install(project, 'test-camera', {}, signal)
+    await manager.remove(project, 'test-camera', signal)
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).not.toContain('addons/test_camera/mine.gd')
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toContain('addons/test_camera/plugin.cfg')
+  })
+
   it('keeps a notices file with text of the developer\'s own', async () => {
     const { manager, project } = await setup()
     await manager.install(project, 'test-camera', {}, signal)
@@ -241,6 +287,85 @@ describe('GameAddonManager.remove', () => {
     const rest = await readFile(path, 'utf8')
     expect(rest).not.toContain('wasd-addon:test-camera')
     expect(rest).toContain('## My music')
+  })
+})
+
+describe('GameAddonManager changes stay inside the project', () => {
+  linking('refuses a record path outside the add-on\'s folder, even through a link, and changes nothing', async () => {
+    const { manager, project } = await setup()
+    const documents = await outsideFolder(dir!.root, 'Documents')
+    await symlink(dirname(documents), join(project, 'home'))
+    await writeRecordWith(project, 'test-camera', ['home/Documents'])
+    const record = await readFile(join(project, '.wasdengine', 'addons.json'), 'utf8')
+    await expect(manager.remove(project, 'test-camera', signal))
+      .rejects.toThrow('.wasdengine/addons.json lists home/Documents for Test Camera, outside its folder addons/test_camera, so nothing was removed.')
+    expect(await tree(documents)).toEqual(['keep.txt'])
+    expect(await readFile(join(project, '.wasdengine', 'addons.json'), 'utf8')).toBe(record)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  it.each([
+    ['..\\..\\Documents'], ['addons\\test_camera'], ['C:/Users/me/Documents'], ['C:\\Users\\me\\Documents'], ['addons/../../Documents'],
+    ['/Users/me/Documents'], ['addons//test_camera'], ['addons/./test_camera'], ['addons/test_camera\u0000'],
+  ])('reads a record path %j as invalid, so nothing is removed', async (path) => {
+    const { manager, project } = await setup()
+    await writeRecordWith(project, 'test-camera', [path])
+    await expect(manager.remove(project, 'test-camera', signal)).rejects.toThrow(GameAddonRecordError)
+    expect(isProjectPath(path)).toBe(false)
+  })
+
+  linking('does not follow an addons folder that links outside the project', async () => {
+    const { manager, project } = await setup()
+    const elsewhere = await outsideFolder(dir!.root, 'test_camera')
+    await writeFile(join(elsewhere, 'plugin.cfg'), '[plugin]\nversion="0.9"\n')
+    await symlink(dirname(elsewhere), join(project, 'addons'))
+    expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'found', version: '0.9' })
+    await expect(manager.remove(project, 'test-camera', signal)).rejects.toThrow(GameAddonPathError)
+    await expect(manager.install(project, 'test-camera', { replace: true }, signal)).rejects.toThrow(/addons in .* leads outside the project/u)
+    expect(await tree(dirname(elsewhere))).toEqual(['test_camera/keep.txt', 'test_camera/plugin.cfg'])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    expect(await readRecord(project)).toEqual([])
+  })
+
+  linking('does not write state through a .wasdengine folder that links outside the project', async () => {
+    const { manager, project } = await setup()
+    const state = await outsideFolder(dir!.root, 'state')
+    await symlink(state, join(project, '.wasdengine'))
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/\.wasdengine\/staging in .* leads outside the project/u)
+    await expect(manager.install(project, 'test-rig', {}, signal)).rejects.toThrow(GameAddonPathError)
+    expect(await tree(state)).toEqual(['keep.txt'])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  linking('moves a linked add-on folder as the link, leaving what it points to', async () => {
+    const { manager, project } = await setup()
+    const linked = await outsideFolder(dir!.root, 'camera')
+    await writeFile(join(linked, 'plugin.cfg'), '[plugin]\n')
+    await mkdir(join(project, 'addons'))
+    await symlink(linked, join(project, 'addons', 'test_camera'))
+    expect(await manager.remove(project, 'test-camera', signal)).toMatchObject({ removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera` })
+    expect(await readlink(join(project, BACKUPS_DIR, 'test-camera', 'addons', 'test_camera'))).toBe(linked)
+    expect(await tree(linked)).toEqual(['keep.txt', 'plugin.cfg'])
+  })
+
+  it('tells whether a path lies in a folder on POSIX and Windows', () => {
+    expect(within('/games/neon', '/games/neon/addons/x', posix)).toBe(true)
+    expect(within('/games/neon', '/games/neon', posix)).toBe(true)
+    expect(within('/games/neon', '/games/neon2', posix)).toBe(false)
+    expect(within('/games/neon', '/games', posix)).toBe(false)
+    expect(within('/games/neon', '/games/neon/../other', posix)).toBe(false)
+    expect(within('/games/neon', '/games/neon/..foo', posix)).toBe(true)
+    expect(within('C:\\games\\neon', 'C:\\games\\neon\\addons\\x', win32)).toBe(true)
+    expect(within('C:\\games\\neon', 'c:\\GAMES\\NEON\\addons', win32)).toBe(true)
+    expect(within('C:\\games\\neon', 'C:\\games\\neon2', win32)).toBe(false)
+    expect(within('C:\\games\\neon', 'C:\\Users\\me\\Documents', win32)).toBe(false)
+    expect(within('C:\\games\\neon', 'D:\\games\\neon', win32)).toBe(false)
+    expect(within('C:\\games\\neon', '\\\\server\\share\\neon', win32)).toBe(false)
+  })
+
+  it('accepts record paths of / separated segments', () => {
+    for (const path of ['addons/test_camera', 'addons/test_camera/nodes', 'addons/a.b-c', 'addons/..foo']) expect(isProjectPath(path)).toBe(true)
+    for (const path of ['', '.', '..', 'addons/', '/addons', 'addons/..', 'C:', 'a:b', 'addons\\x', 'addons/\u0007x']) expect(isProjectPath(path)).toBe(false)
   })
 })
 

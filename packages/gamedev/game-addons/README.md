@@ -60,7 +60,7 @@ Each entry pins one release: its archive URL, SHA-256, and size, the folder insi
 | `search` | Ranks catalog add-ons for `query`, or lists all of them, optionally only for `host` (`godot` or `blender`) or `stage`. Each one shows its id, version, license, download size, summary, when to use it, when to skip it, what it conflicts with, any required credit, and whether the project has it |
 | `guide` | Returns an add-on's usage guide, noting when the project does not have the add-on yet |
 | `install` | Installs `id` into the project; `replace` replaces a copy already in `addons/` without a WASD Engine record |
-| `remove` | Removes `id` from the project and names the project files that still use it |
+| `remove` | Takes `id` out of the project, keeping its folder in a backup, and names the project files that still use it |
 | `list` | Lists the project's catalog add-ons |
 
 `project` names the folder that holds `project.godot`, relative to the working directory; without it, the nearest project is used, as the Godot tools find it. A Godot installation runs these steps:
@@ -75,7 +75,9 @@ Each entry pins one release: its archive URL, SHA-256, and size, the folder insi
 
 A failure before the record is written puts the previous folder and `project.godot` back. Installing an add-on whose conflict is already in the project, or one whose autoload name another script holds, fails with what to do. Installing the same version again downloads nothing and only rewrites `project.godot` entries that were lost. A Blender installation unpacks the extension once into the store, as `<blenderStore>/<module>/`, and its asset pack once into `<dataRoot>/blender-assets/<id>/`, each with a marker that names its archive. Their archives then leave the cache, since the store keeps their files for every project. It writes the store's index, which gives each Blender add-on's module, setup script, and asset folder, and records the add-on in the project. An add-on that ships inside Blender is only recorded. Unpacking reads an archive's central directory and streams one file at a time, so memory stays bounded for MPFB's 268 MB pack too.
 
-A removal deletes what the record lists and removes the add-on's `project.godot` entries and notice. It names up to 20 scenes, scripts, and resources that still refer to the add-on's folder or its autoloads, so the agent can change them. A catalog add-on found in `addons/` without a record can be removed the same way. A Blender add-on leaves only the project's record; the store keeps it for other projects.
+A removal takes the add-on's folder out of the project and removes the add-on's `project.godot` entries and notice. The folder moves to the add-on's backup, `.wasdengine/backups/<id>/`, in place of the backup an earlier removal or replacement of the add-on left; a `.gitignore` there keeps the backups out of version control, and an installation with `replace` keeps the folder it replaces the same way. A removal names up to 20 scenes, scripts, and resources that still refer to the add-on's folder or its autoloads, so the agent can change them. A catalog add-on found in `addons/` without a record can be removed the same way. A Blender add-on leaves only the project's record; the store keeps it for other projects.
+
+The project's record may come from someone else, so a removal takes out only the paths it lists inside the add-on's folder `addons/<folder>/`: a record path elsewhere stops the removal before anything changes, and a record whose paths hold a backslash, a colon, or a `..` segment is invalid. No change follows a symbolic link out of the project: an installation or removal whose `addons` or `.wasdengine` folder leads elsewhere fails before it moves or writes anything there, and a linked add-on folder moves as the link.
 
 ### When the agent installs one
 
@@ -116,6 +118,7 @@ The Game tools tabs show the package's [`icon.svg`](icon.svg): a WASD Engine key
 | [`src/archive.ts`](src/archive.ts) | Pinned downloads into the cache, and unpacking one archive folder file by file with yauzl |
 | [`src/project-file.ts`](src/project-file.ts) | `project.godot` edits that keep every other line |
 | [`src/record.ts`](src/record.ts) | `.wasdengine/addons.json` under its file lock |
+| [`src/paths.ts`](src/paths.ts) | Record path rules, and project paths resolved so that no change leaves the project |
 | [`src/notices.ts`](src/notices.ts) | Marked sections of `THIRD_PARTY_NOTICES.md` |
 | [`src/skills.ts`](src/skills.ts) | The guides' skill provider and the folder watcher |
 | [`src/tools.ts`](src/tools.ts) | The `game_addons` definition and its result text |
@@ -205,7 +208,7 @@ An installation or removal changes the catalog, which reaches the model as a new
 
 #### What the model sees
 
-A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, notes such as a required credit or a skipped import, and up to 20 import problems, and asks the model to tell the user that it added the add-on, why, and its license, except when the project already had that version. A removal names the deleted paths and up to 20 files that still use the add-on.
+A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, notes such as a required credit or a skipped import, and up to 20 import problems, and asks the model to tell the user that it added the add-on, why, and its license, except when the project already had that version. A removal names the paths it took out, the backup that keeps them, and up to 20 files that still use the add-on.
 
 #### Token effect
 
@@ -232,6 +235,7 @@ These limits define what the plugin offers; they are current package constraints
 - **Development add-ons ship** — the Web export packs every resource, so a test add-on such as GUT, about 3 MB, ships inside the released game until it is removed.
 - **Editor settings** — editor plugins load during the import step with the user's Godot editor settings; Importality adds empty `importality/*` keys to `editor_settings-4.7.tres` there.
 - **Add-ons that crash headless** — Sprite Sheet Generator 2.2.3 ends a headless Blender with a segmentation fault after it writes its sheet, so the catalog leaves it out; the agent renders sprite frames with `bpy` instead.
+- **Backups take space** — the backup of an add-on stays in `.wasdengine/backups/<id>/` until the next removal or replacement of that add-on; deleting the folder frees the space.
 - **Large asset packs** — MPFB comes with MakeHuman's system assets: 312 MB to download with the add-on, and 358 MB in the store and asset folder, which every project shares and a removal keeps.
 - **Letter tiles** — Extra Import Hints, GdUnit4, and YATI have only icons built from the Godot or Blender logos, which the trademark terms forbid as another project's logo, and VRM's listing icon has no license. These four show a letter tile.
 - **An AGPL icon** — MPFB's icon is MakeHuman's logo under AGPL-3.0-or-later, so `LICENSE-AGPL-3.0.txt` ships beside `ICONS.md` with that license's text.
