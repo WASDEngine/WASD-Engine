@@ -28,7 +28,7 @@ import { stageBlenderRuntime } from './wasdengine-blender.ts'
 import { stageGimpRuntime } from './wasdengine-gimp.ts'
 import { stageLibGodotRuntime } from './wasdengine-libgodot.ts'
 import { stageSuperColliderRuntime } from './wasdengine-supercollider.ts'
-import { signWasdengineRuntimes } from './wasdengine-runtime-signing.ts'
+import { checkWasdengineRuntimes, signWasdengineRuntimes } from './wasdengine-runtime-signing.ts'
 import {
   resolveDesktopAppId,
   resolveMacOSSigningEnvironment,
@@ -172,6 +172,7 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:supercollider', () => stageSuperColliderRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:gimp', () => stageGimpRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:blender', () => stageBlenderRuntime(DSH_OUTPUT_ROOT, target))
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:wasdengine-pins', () => checkWasdengineRuntimes(DSH_OUTPUT_ROOT, target, process.env))
     if (process.platform === 'darwin' && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       const cacheDirectory = resolveMacOSSignatureCacheDirectory(process.env, BUILD_PATHS.root)
       await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'sign:dsh-native', () => signMacOSRuntime(DSH_OUTPUT_ROOT, resolveDesktopAppId(process.env), resolveMacOSSigningEnvironment(process.env), target.arch, cacheDirectory))

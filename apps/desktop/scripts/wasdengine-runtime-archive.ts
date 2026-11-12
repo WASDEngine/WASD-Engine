@@ -6,7 +6,8 @@
  * unpacks it with `tar`, lets the kind check the unpacked files, and moves them into
  * `<package>/<folder>/<platform>-<arch>/` of the prepared dsh tree. For a platform where the kind ships the archive
  * itself, that folder holds the checked archive and an `archive.json` instead, and the plugin unpacks the archive on
- * first use.
+ * first use. `shippedRuntimeVersion` reads which version of a runtime a prepared tree holds, which
+ * `checkWasdengineRuntimes` in `wasdengine-runtime-signing.ts` compares with the version the kind pins.
  *
  * Environment, for a kind whose prefix is `WASD_X`: `WASD_X_DIR` names a local folder holding `manifest.json` and its
  * archives; `WASD_X_MANIFEST_URL` replaces the default manifest; `WASD_X_BUNDLE=0` packages without the runtime.
@@ -50,20 +51,26 @@ export interface ShippedRuntime {
   readonly directory: string
 }
 
-/** What differs between the runtimes that the Desktop app ships. */
-export interface ShippedRuntimeKind<A extends RuntimeArchive, M extends RuntimeManifest<A>> {
+/** A runtime that the Desktop app ships, where the prepared dsh tree holds it, and the version that a release pins. */
+export interface PinnedRuntime {
   /** Runtime name in messages, such as `LibGodot`. */
   readonly label: string
   /** Prefix of the environment variables, such as `WASD_LIBGODOT`. */
   readonly environmentPrefix: string
-  /** Manifest read without a local folder or a manifest URL in the environment. */
-  readonly manifestUrl: string
-  /** What to do when no manifest can be read; packaging stops until one of these holds. */
-  readonly remedy: string
   /** Plugin package that holds the runtime, such as `@deepseek-ai/dsh-godot`. */
   readonly packageName: string
   /** Folder of the package that holds one `<platform>-<arch>` folder per runtime. */
   readonly folder: string
+  /** Runtime version that the default manifest URL names and that every signed build ships, such as `4.7.2-wasd.2`. */
+  readonly version: string
+}
+
+/** What differs between the runtimes that the Desktop app ships. */
+export interface ShippedRuntimeKind<A extends RuntimeArchive, M extends RuntimeManifest<A>> extends PinnedRuntime {
+  /** Manifest read without a local folder or a manifest URL in the environment. */
+  readonly manifestUrl: string
+  /** What to do when no manifest can be read; packaging stops until one of these holds. */
+  readonly remedy: string
   /**
    * Validate a parsed manifest.
    * @param value - parsed JSON.
@@ -311,4 +318,38 @@ export async function stageRuntimeArchive<A extends RuntimeArchive, M extends Ru
   } finally {
     await rm(work, { recursive: true, force: true })
   }
+}
+
+/** A JSON file's value, or undefined when the file does not exist. */
+async function readJsonIfPresent(path: string): Promise<unknown> {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined
+    throw error
+  }
+  return JSON.parse(text)
+}
+
+/**
+ * Read the version of a runtime that a prepared dsh tree ships for a target.
+ * @param dshRoot - Prepared dsh tree.
+ * @param runtime - The runtime's package and folder.
+ * @param target - Packaged platform and architecture.
+ * @returns The version that the shipped `runtime.json` names or, for a runtime shipped as its archive, the one that the
+ *   runtime of its `archive.json` names; undefined when the tree holds neither file.
+ * @throws When the file is not JSON or names no version.
+ */
+export async function shippedRuntimeVersion(dshRoot: string, runtime: PinnedRuntime, target: RuntimeTarget): Promise<string | undefined> {
+  const directory = join(dshRoot, 'node_modules', ...runtime.packageName.split('/'), runtime.folder, `${target.platform}-${target.arch}`)
+  const unpacked = await readJsonIfPresent(join(directory, 'runtime.json'))
+  const record = unpacked ?? await readJsonIfPresent(join(directory, ARCHIVE_RECORD_FILE))
+  if (record === undefined) return undefined
+  const described = unpacked === undefined && isRecord(record) ? record.runtime : record
+  if (!isRecord(described) || typeof described.version !== 'string') {
+    throw new Error(`desktop runtime: the ${runtime.label} runtime in ${directory} names no version`)
+  }
+  return described.version
 }

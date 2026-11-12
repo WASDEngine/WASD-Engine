@@ -1,4 +1,7 @@
-/** Finish the Developer ID signing of WASDEngine's bundled runtimes after upstream's per-file pass in `prepare-dsh.ts`. */
+/**
+ * Check that a signed build of the Desktop app carries WASDEngine's bundled runtimes in their pinned versions, and
+ * finish their Developer ID signing after upstream's per-file pass in `prepare-dsh.ts`.
+ */
 
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -8,8 +11,73 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import type { MacOSSigningEnvironment } from './desktop-release-environment.mjs'
 import { signMacOSRuntimeCode, verifyMacOSRuntimeCode } from './verify-macos-signature.mjs'
+import { BLENDER_RUNTIME } from './wasdengine-blender.ts'
+import { GIMP_RUNTIME } from './wasdengine-gimp.ts'
+import { LIBGODOT_RUNTIME } from './wasdengine-libgodot.ts'
+import { shippedRuntimeVersion, type PinnedRuntime, type RuntimeTarget } from './wasdengine-runtime-archive.ts'
+import { SUPERCOLLIDER_RUNTIME } from './wasdengine-supercollider.ts'
 
 const execute = promisify(execFile)
+
+/** The runtimes that every signed build ships, in the order of their staging steps in `prepare-dsh.ts`. */
+export const WASDENGINE_PINNED_RUNTIMES: readonly PinnedRuntime[] = [LIBGODOT_RUNTIME, SUPERCOLLIDER_RUNTIME, GIMP_RUNTIME, BLENDER_RUNTIME]
+
+/** A pinned runtime that a prepared tree lacks or holds in another version. */
+export interface WasdengineRuntimeMismatch {
+  readonly runtime: PinnedRuntime
+  /** Version that the tree holds; undefined when it holds none. */
+  readonly shipped: string | undefined
+}
+
+/**
+ * Compare the runtimes in a prepared tree with their pins.
+ * @param root - Prepared `dsh` output root, after the runtime staging steps.
+ * @param target - Packaged platform and architecture.
+ * @param runtimes - The pinned runtimes.
+ * @returns Each runtime that the tree lacks or holds in another version than its pin; empty when it holds every
+ *   runtime in its pinned version.
+ * @throws When a runtime's record in the tree is not JSON or names no version.
+ */
+export async function wasdengineRuntimeMismatches(
+  root: string, target: RuntimeTarget, runtimes: readonly PinnedRuntime[] = WASDENGINE_PINNED_RUNTIMES,
+): Promise<WasdengineRuntimeMismatch[]> {
+  const mismatches: WasdengineRuntimeMismatch[] = []
+  for (const runtime of runtimes) {
+    const shipped = await shippedRuntimeVersion(root, runtime, target)
+    if (shipped !== runtime.version) mismatches.push({ runtime, shipped })
+  }
+  return mismatches
+}
+
+function mismatchText({ runtime, shipped }: WasdengineRuntimeMismatch): string {
+  return shipped === undefined
+    ? `it ships no ${runtime.label} runtime, whose pinned version is ${runtime.version}`
+    : `it ships ${runtime.label} ${shipped}, not the pinned ${runtime.version}`
+}
+
+/**
+ * The `runtime:wasdengine-pins` step of `prepare-dsh.ts`, after the runtime staging steps and before signing. A signed
+ * build stops unless the tree holds every pinned runtime in its pinned version, so a stale `WASD_<RUNTIME>_DIR`,
+ * `WASD_<RUNTIME>_MANIFEST_URL`, or `WASD_<RUNTIME>_BUNDLE=0` in the shell cannot put another runtime, or none, into a
+ * release; an unsigned build warns and continues.
+ * @param root - Prepared `dsh` output root.
+ * @param target - Packaged platform and architecture.
+ * @param env - Packaging environment; `DSH_DESKTOP_UNSIGNED=1` marks an unsigned build.
+ * @throws When a signed build lacks a pinned runtime or holds another version of one, or a runtime's record names no
+ *   version.
+ */
+export async function checkWasdengineRuntimes(root: string, target: RuntimeTarget, env: NodeJS.ProcessEnv): Promise<void> {
+  const mismatches = await wasdengineRuntimeMismatches(root, target)
+  if (mismatches.length === 0) return
+  if (env.DSH_DESKTOP_UNSIGNED !== '1') {
+    const variables = mismatches.flatMap(({ runtime: { environmentPrefix: prefix } }) => [`${prefix}_DIR`, `${prefix}_MANIFEST_URL`, `${prefix}_BUNDLE`])
+    throw new Error(`desktop runtime: a signed build ships every runtime in its pinned version, but ${mismatches.map(mismatchText).join('; ')}. `
+      + `Unset ${variables.join(', ')} to package the pinned releases.`)
+  }
+  for (const mismatch of mismatches) {
+    console.warn(`desktop runtime: this unsigned build continues, but ${mismatchText(mismatch)}; a signed build stops here`)
+  }
+}
 
 /** Entitlements of the LibGodot runner, which loads the GDExtension libraries of the games it runs. */
 export const GODOT_RUNNER_ENTITLEMENTS = fileURLToPath(new URL('./wasdengine-godot-entitlements.plist', import.meta.url))
