@@ -65,6 +65,7 @@ jobs:
           packages/shell/shell-env/tests
           packages/context/agent-instructions/tests
           scripts/verify-dsh-package-licenses.spec.ts
+          apps/cli/tests/windows-shell.spec.ts
           packages/client/ui-brand-official
           packages/client/ui-chat
           packages/client/ui-sidebar-right
