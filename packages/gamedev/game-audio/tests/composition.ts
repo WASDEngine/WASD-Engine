@@ -177,6 +177,21 @@ export function text(result: ToolExecutionResult): string {
   return result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
+/**
+ * Measurements as a window answers a request with them: the seam at the loop the request names, or none when it names
+ * none or the loop lies outside the sound.
+ * @param measurements - the figures, with a seam to place.
+ * @param request - the request.
+ * @returns the answer's measurements.
+ */
+export function atLoop(measurements: AudioMeasurements, request: AudioMeasureEvent): AudioMeasurements {
+  const { seam, ...rest } = measurements
+  const loop = request.loop
+  const end = loop?.end ?? measurements.seconds
+  if (seam === undefined || loop === undefined || loop.start >= end || end > measurements.seconds) return rest
+  return { ...rest, seam: { ...seam, start: loop.start, end } }
+}
+
 /** A stereo jump sound as a window measures it: clipped, late, and clicking where it repeats. */
 export const JUMP: AudioMeasurements = {
   sampleRate: 44_100,
@@ -195,6 +210,6 @@ export const JUMP: AudioMeasurements = {
     { peak: 1, rms: 0.2, dcOffset: 0.02, clipped: 12, nonFinite: 0 },
     { peak: 0.5, rms: 0.1, dcOffset: 0, clipped: 0, nonFinite: 0 },
   ],
-  seam: { jump: 0.42, step: 0.03, levelChange: -9.5 },
+  seam: { start: 0, end: 0.4, jump: 0.42, step: 0.03, levelChange: -9.5 },
   stereo: { correlation: -0.6, balance: 6, identical: false },
 }

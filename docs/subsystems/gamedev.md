@@ -359,7 +359,7 @@ The `game-audio` row mounts [`@deepseek-ai/dsh-game-audio`](../../packages/gamed
 | Agent's measurement | The `game-audio/measure` request and its answer: the measurements and a PNG picture | For each `audio_review` call, one at a time per window |
 | Agent's reveal | The `game-audio/reveal` event | For an `audio_review` call with `show` |
 
-`AudioMeasureEvent` is the request of `game-audio/measure`: the sound's workspace `path`, the measured stretch from `start` to `end` (the end of the sound without `end`), `maxSeconds`, the longest stretch, `picture`, whether to draw the picture, `maxBytes`, the largest file to read, and on the Host the calling `agent` and the call's `signal`. `AudioMeasureResult` answers it with `measurements`, the figures the tools render, and `picture`, a base64 PNG with its `layout`. `AudioReveal` carries the `sessionId` and the sound's `path`.
+`AudioMeasureEvent` is the request of `game-audio/measure`: the sound's workspace `path`, the measured stretch from `start` to `end` (the end of the sound without `end`), `maxSeconds`, the longest stretch, `picture`, whether to draw the picture, `maxBytes`, the largest file to read, `loop`, the loop the game plays, whose seam the window measures from the whole decoded sound, and on the Host the calling `agent` and the call's `signal`. `AudioMeasureResult` answers it with `measurements`, the figures the tools render, and `picture`, a base64 PNG with its `layout`. `AudioReveal` carries the `sessionId` and the sound's `path`.
 
 <a id="mcp-server-for-other-agents"></a>
 ## MCP server for other agents

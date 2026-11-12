@@ -36,6 +36,12 @@ const FILES: Readonly<Record<string, Uint8Array<ArrayBuffer>>> = {
   'audio/voice/hello.wav': tone(1),
   // Its headers estimate 75 s from its quiet first frame; at its highest bit rate it lasts at least 7.5 s.
   'audio/music/theme.mp3': vbrMp3File(300_000),
+  // Two seconds of whole cycles whose last 10 ms hold a level far from the first sample, so it clicks where it repeats.
+  'audio/music/ending.wav': wavFile({
+    sampleRate: 8000,
+    channels: 1,
+    samples: Array.from({ length: 16_000 }, (_, frame) => frame >= 15_920 ? 0.8 : 0.5 * Math.sin(2 * Math.PI * 100 * frame / 8000)),
+  }),
 }
 
 /** The project: folders by workspace path; a trailing `/` marks a folder. */
@@ -214,6 +220,15 @@ describe('Audio tab', () => {
     const longer = await boot(project, { maxDecodedSeconds: 60 })
     longer.openAudio({ path: 'audio/music/theme.mp3' })
     expect(await screen.findByText('This file is larger than 60 s, too large to play here.')).toBeTruthy()
+  })
+
+  it('notes a click where the whole sound repeats, also past the stretch its details measure', async () => {
+    const h = await boot({ '': ['audio/'], audio: ['music/'], 'audio/music': ['ending.wav'] }, { maxMeasuredSeconds: 1 })
+    h.openAudio({ path: 'audio/music/ending.wav' })
+    await waitFor(() => { expect(screen.getByRole('slider', { name: 'Position in ending.wav' })).toBeTruthy() })
+    fireEvent.click(screen.getByRole('button', { name: 'Repeat' }))
+    expect(await screen.findByText('It clicks where it repeats.')).toBeTruthy()
+    expect(screen.getByText(/The details measure its first/u)).toBeTruthy()
   })
 
   it('says when the project has no sounds yet', async () => {

@@ -348,54 +348,102 @@ function averageSpectrum(audio: AudioSamples): { dominant: number; centroid: num
   return { dominant: (strongest + shift) * resolution, centroid: weighted / total }
 }
 
-/** Seconds at each end of a sound whose levels the loop measurement compares. */
+/** Seconds on either side of a loop's seam whose samples the seam measurement reads. */
 const SEAM_SECONDS = 0.05
 
-/** How a sound joins its own start when it repeats. */
+/** Where a loop's end meets its start each time it repeats. */
 export interface LoopSeam {
-  /** Largest step of any channel from its last sample to its first, as a fraction of full scale (0 to 2). */
+  /** Largest step of any channel from the loop's last sample to its first, as a fraction of full scale (0 to 2). */
   readonly jump: number
-  /** Root mean square of the steps between neighboring samples over the whole sound, of its busiest channel. */
+  /**
+   * Root mean square of the steps between neighboring samples on either side of the seam, up to {@link SEAM_SECONDS}
+   * each, of the busiest channel: the usual step there, which a jump must stand out from to click.
+   */
   readonly step: number
   /**
-   * RMS level of the last {@link SEAM_SECONDS} minus that of the first, in dB, over every channel; undefined when
-   * either end is silent or the sound is shorter than both ends together.
+   * RMS level of the loop's last {@link SEAM_SECONDS} minus that of its first, in dB, over every channel; undefined
+   * when either is silent or the loop is shorter than both together.
    */
   readonly levelChange: number | undefined
 }
 
+/** The frames whose samples {@link loopSeam} reads: the loop's last frames and its first, each `[first, end)`. */
+export interface SeamFrames {
+  readonly tail: readonly [number, number]
+  readonly head: readonly [number, number]
+}
+
 /**
- * Measure where a sound's end meets its start, as it does when the sound loops. A jump well above the usual step
- * between neighboring samples sounds as a click at every repeat, and a level change as a sudden swell or drop.
- * @param audio - interleaved samples.
- * @returns the seam, or undefined for fewer than two frames.
+ * The frames on either side of a loop's seam: up to {@link SEAM_SECONDS} before the frame playback jumps from and as
+ * many from the frame it jumps to, without overlapping.
+ * @param first - the loop's first frame, which playback jumps back to.
+ * @param end - the frame after its last.
+ * @param sampleRate - frames per second.
+ * @returns the frames, or undefined for a loop of fewer than two frames.
  */
-export function loopSeam(audio: AudioSamples): LoopSeam | undefined {
-  const { channels, frames, samples, sampleRate } = audio
-  if (frames < 2) return undefined
+export function seamFrames(first: number, end: number, sampleRate: number): SeamFrames | undefined {
+  if (end - first < 2) return undefined
+  const span = Math.max(1, Math.min(Math.round(SEAM_SECONDS * sampleRate), Math.floor((end - first) / 2)))
+  return { tail: [end - span, end], head: [first, first + span] }
+}
+
+/**
+ * Root mean square of one channel's samples.
+ * @param audio - interleaved samples.
+ * @param channel - the channel.
+ * @returns the level, 0 without frames.
+ */
+function channelLevel(audio: AudioSamples, channel: number): number {
+  let squares = 0
+  for (let frame = 0; frame < audio.frames; frame++) squares += finiteSample(audio.samples[frame * audio.channels + channel]) ** 2
+  return audio.frames === 0 ? 0 : Math.sqrt(squares / audio.frames)
+}
+
+/**
+ * Sum of the squared steps between one channel's neighboring samples.
+ * @param audio - interleaved samples.
+ * @param channel - the channel.
+ * @returns the sum, over `frames - 1` steps.
+ */
+function stepSquares(audio: AudioSamples, channel: number): number {
+  const { channels, frames, samples } = audio
+  let squares = 0
+  for (let frame = 1; frame < frames; frame++) {
+    const difference = finiteSample(samples[frame * channels + channel]) - finiteSample(samples[(frame - 1) * channels + channel])
+    squares += difference * difference
+  }
+  return squares
+}
+
+/**
+ * Measure where a loop's end meets its start, as each repeat plays the frame before the jump and then the frame after
+ * it. A jump well above the usual step between neighboring samples there sounds as a click at every repeat, and a
+ * level change as a sudden swell or drop.
+ * @param tail - the loop's last samples, which end with the frame playback jumps from: the {@link seamFrames} tail.
+ * @param head - its first samples, which begin with the frame playback jumps to: the {@link seamFrames} head.
+ * @returns the seam, or undefined when a stretch is empty or the two differ in channels or rate.
+ */
+export function loopSeam(tail: AudioSamples, head: AudioSamples): LoopSeam | undefined {
+  const { channels, sampleRate } = tail
+  if (tail.frames < 1 || head.frames < 1 || head.channels !== channels || head.sampleRate !== sampleRate) return undefined
+  const steps = tail.frames - 1 + head.frames - 1
   let jump = 0
   let step = 0
+  let endSquares = 0
+  let startSquares = 0
   for (let channel = 0; channel < channels; channel++) {
-    const first = finiteSample(samples[channel])
-    const last = finiteSample(samples[(frames - 1) * channels + channel])
+    const last = finiteSample(tail.samples[(tail.frames - 1) * channels + channel])
+    const first = finiteSample(head.samples[channel])
     jump = Math.max(jump, Math.abs(first - last))
-    let squares = 0
-    for (let frame = 1; frame < frames; frame++) {
-      const difference = finiteSample(samples[frame * channels + channel]) - finiteSample(samples[(frame - 1) * channels + channel])
-      squares += difference * difference
-    }
-    step = Math.max(step, Math.sqrt(squares / (frames - 1)))
+    if (steps > 0) step = Math.max(step, Math.sqrt((stepSquares(tail, channel) + stepSquares(head, channel)) / steps))
+    endSquares += channelLevel(tail, channel) ** 2
+    startSquares += channelLevel(head, channel) ** 2
   }
   const span = Math.round(SEAM_SECONDS * sampleRate)
   let levelChange: number | undefined
-  if (span >= 1 && frames >= 2 * span) {
-    const level = (from: number): number => {
-      let squares = 0
-      for (let index = from * channels; index < (from + span) * channels; index++) squares += finiteSample(samples[index]) ** 2
-      return Math.sqrt(squares / (span * channels))
-    }
-    const start = level(0)
-    const end = level(frames - span)
+  if (span >= 1 && tail.frames >= span && head.frames >= span) {
+    const end = Math.sqrt(endSquares / channels)
+    const start = Math.sqrt(startSquares / channels)
     if (start > SILENCE_THRESHOLD && end > SILENCE_THRESHOLD) levelChange = 20 * Math.log10(end / start)
   }
   return { jump, step, levelChange }

@@ -30,6 +30,17 @@ export function sine(options: {
   return { sampleRate, channels, frames, samples }
 }
 
+/**
+ * Frames of interleaved samples between two indices.
+ * @param audio - the samples.
+ * @param first - first frame.
+ * @param end - frame after the last.
+ * @returns the frames, as samples of their own.
+ */
+export function slice(audio: AudioSamples, first: number, end: number): AudioSamples {
+  return { ...audio, frames: end - first, samples: audio.samples.slice(first * audio.channels, end * audio.channels) }
+}
+
 /** A little-endian or big-endian byte writer for test files. */
 export class Bytes {
   private readonly parts: number[] = []

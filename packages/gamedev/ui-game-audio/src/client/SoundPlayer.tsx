@@ -12,7 +12,7 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import { Button, fileSizeText, IconPauseOutlineRegular, IconPlayOutlineRegular, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RemoteError, type RemoteFailure, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { decodeSound, lengthBeforeDecoding, measureSound, SoundError } from './decode.ts'
+import { decodeSound, lengthBeforeDecoding, measureSound, SoundError, WHOLE_SOUND } from './decode.ts'
 import { clockText, decibelText, kilohertzText, lengthValue } from './format.ts'
 import { AudioGlyph, RepeatGlyph } from './icon.tsx'
 import type { NS } from './locales.ts'
@@ -200,8 +200,10 @@ function LoadedSound(props: LoadedSoundProps): ReactNode {
   const [measured, setMeasured] = useState<AudioMeasurements>()
   useEffect(() => {
     setMeasured(undefined)
-    // The waveform shows first; measuring a long sound takes a moment.
-    const timer = setTimeout(() => { setMeasured(measureSound(buffer, 0, undefined, maxMeasuredSeconds).measurements) }, 0)
+    // The waveform shows first; measuring a long sound takes a moment. The repeat control loops the whole sound, so its
+    // seam is the one the details measure, also past the stretch they measure otherwise.
+    const stretch = { start: 0, maxSeconds: maxMeasuredSeconds, loop: WHOLE_SOUND }
+    const timer = setTimeout(() => { setMeasured(measureSound(buffer, stretch).measurements) }, 0)
     return () => { clearTimeout(timer) }
   }, [buffer, maxMeasuredSeconds])
   // Leaving the sound stops it, whether another sound was chosen, the file changed, or the tab closed.

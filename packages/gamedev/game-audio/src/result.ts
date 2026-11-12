@@ -43,7 +43,7 @@ const measurements = z.strictObject({
   dominantFrequency: seconds.exactOptional(),
   spectralCentroid: seconds.exactOptional(),
   channelLevels: z.array(z.strictObject({ peak: level, rms: level, dcOffset: offset, clipped: count, nonFinite: count })).max(MAX_CHANNELS),
-  seam: z.strictObject({ jump: level, step: level, levelChange: finite.exactOptional() }).exactOptional(),
+  seam: z.strictObject({ start: seconds, end: seconds, jump: level, step: level, levelChange: finite.exactOptional() }).exactOptional(),
   stereo: z.strictObject({
     correlation: z.number().min(-1.000_001).max(1.000_001).exactOptional(),
     balance: finite.exactOptional(),

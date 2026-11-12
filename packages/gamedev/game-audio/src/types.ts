@@ -10,6 +10,14 @@ import type { Scoped } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { AudioImageLayout } from './audio/picture.ts'
 
+/** The stretch of a sound that a game repeats, in seconds from the beginning. */
+export interface AudioLoop {
+  /** Where the stretch starts: where playback jumps back to at each repeat. */
+  readonly start: number
+  /** Where it ends: where playback jumps back from; absent for the end of the sound. */
+  readonly end?: number
+}
+
 /** One measure request as the Host forwards it to a window: JSON fields only. */
 export interface AudioMeasureRequest {
   /** Workspace path of the sound: relative to the project folder and `/`-separated. */
@@ -24,6 +32,11 @@ export interface AudioMeasureRequest {
   readonly picture: boolean
   /** Largest file the window reads, in bytes. */
   readonly maxBytes: number
+  /**
+   * The loop whose seam the window measures from the whole decoded sound, whatever stretch it measures otherwise;
+   * absent to measure no seam.
+   */
+  readonly loop?: AudioLoop
 }
 
 /** The `game-audio/measure` request on the Host: the JSON fields, the calling Agent, and the call's cancellation. */
@@ -71,13 +84,20 @@ export interface AudioMeasurements {
   /** Amplitude-weighted mean frequency in Hz of the average spectrum. */
   readonly spectralCentroid?: number
   readonly channelLevels: readonly AudioChannelMeasure[]
-  /** Where the window's end meets its start, as when the sound loops. */
+  /**
+   * Where the requested loop's end meets its start, from the samples on either side of the jump; absent when the
+   * request names no loop, or the loop lies outside the sound or holds fewer than two frames.
+   */
   readonly seam?: {
-    /** Largest step of a channel from its last sample to its first, as a fraction of full scale. */
+    /** Seconds from the beginning where the loop starts: the frame playback jumps to. */
+    readonly start: number
+    /** Seconds where it ends: after the frame playback jumps from. */
+    readonly end: number
+    /** Largest step of a channel from the loop's last sample to its first, as a fraction of full scale. */
     readonly jump: number
-    /** Root mean square of the steps between neighboring samples, of the busiest channel. */
+    /** Root mean square of the steps between neighboring samples within 50 ms on either side, of the busiest channel. */
     readonly step: number
-    /** RMS level of the last 50 ms minus the first 50 ms, in dB. */
+    /** RMS level of the loop's last 50 ms minus its first 50 ms, in dB. */
     readonly levelChange?: number
   }
   /** How the two channels of a stereo window relate. */

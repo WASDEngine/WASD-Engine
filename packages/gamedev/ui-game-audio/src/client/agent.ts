@@ -1,8 +1,8 @@
 /**
  * This window's answer to an agent's `game-audio/measure` request: it reads the sound from the calling Session's
  * workspace, decodes it at its own sample rate as the Audio tab plays it, measures the requested window as the tab's
- * details do, and draws the waveform and spectrogram picture when asked. A failure rejects with a {@link SoundError}
- * whose code and message the agent receives.
+ * details do and the seam of the requested loop, and draws the waveform and spectrogram picture when asked. A failure
+ * rejects with a {@link SoundError} whose code and message the agent receives.
  */
 import { AUDIO_ERROR, audioFormatOf, probeAudio } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasureRequest, AudioMeasureResult } from '@deepseek-ai/dsh-game-audio/types'
@@ -74,7 +74,7 @@ export async function answerMeasure(
   const buffer = await decodeSound(file.data, format, probe?.sampleRate, { maxSeconds: maxDecodedSeconds, signal })
   // Headers that did not tell the length, or only estimated it, leave the check to the decoded sound.
   if (buffer.duration > maxDecodedSeconds) throw tooLong(request.path, buffer.duration, maxDecodedSeconds)
-  const { measurements, samples } = measureSound(buffer, request.start, request.end, request.maxSeconds)
+  const { measurements, samples } = measureSound(buffer, request)
   if (!request.picture) return { measurements }
   signal.throwIfAborted()
   return { measurements, picture: await pictureOf(samples) }

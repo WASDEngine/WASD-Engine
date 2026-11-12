@@ -359,7 +359,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | agent 的测量 | `game-audio/measure` 请求及其答复：测量结果与一张 PNG 图像 | 每次 `audio_review` 调用，每个窗口每次处理一个 |
 | agent 的展示 | `game-audio/reveal` 事件 | 带 `show` 的 `audio_review` 调用 |
 
-`AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`，以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。
+`AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`、游戏所播放的循环 `loop`（窗口从整个解码后的声音测量其衔接），以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器

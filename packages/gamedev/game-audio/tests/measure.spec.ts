@@ -1,10 +1,11 @@
 /** Audio measurements: levels, silence, loudness after BS.1770, the spectrum figures, the loop seam, and stereo. */
 import { describe, expect, it } from 'vitest'
 import {
-  analyzeAudio, fft, integratedLoudness, loopSeam, magnitudeSpectrum, seamClicks, SILENCE_THRESHOLD, stereoImage,
+  analyzeAudio, fft, integratedLoudness, loopSeam, magnitudeSpectrum, seamClicks, seamFrames, SILENCE_THRESHOLD, stereoImage,
+  type AudioSamples,
 } from '../src/audio/measure.ts'
 import { drawAudioImage } from '../src/audio/picture.ts'
-import { sine } from './signals.ts'
+import { sine, slice } from './signals.ts'
 
 describe('analyzeAudio', () => {
   it('measures levels, silence around the sound, and the dominant frequency', () => {
@@ -61,7 +62,7 @@ describe('analyzeAudio', () => {
     expect(analysis.channels.map(level => level.nonFinite)).toEqual([2, 1])
     expect(analysis.peak).toBeCloseTo(0.5, 3)
     expect(analysis.dominantFrequency).toBeCloseTo(440, -1)
-    const seam = loopSeam(audio)
+    const seam = loopSeam(slice(audio, 7600, 8000), slice(audio, 0, 400))
     const stereo = stereoImage(audio)
     const figures = [
       analysis.rms, analysis.loudness, analysis.spectralCentroid,
@@ -154,16 +155,33 @@ describe('fft and magnitudeSpectrum', () => {
   })
 })
 
-describe('loopSeam and seamClicks', () => {
+describe('loopSeam, seamFrames, and seamClicks', () => {
+  /** The two sides of a loop's seam, as a window reads them from the whole sound. */
+  function sides(audio: AudioSamples, first = 0, end = audio.frames): readonly [AudioSamples, AudioSamples] {
+    const frames = seamFrames(first, end, audio.sampleRate)
+    if (frames === undefined) throw new Error('the loop has no seam')
+    return [slice(audio, ...frames.tail), slice(audio, ...frames.head)]
+  }
+
   it('finds no click where a whole number of cycles meets its start, and a click where a cycle is cut', () => {
     // 100 Hz at 8 kHz: 80 samples a cycle, so 0.5 s holds whole cycles and 0.5125 s cuts one at its peak.
-    const whole = loopSeam(sine({ frequency: 100, amplitude: 0.5, seconds: 0.5, sampleRate: 8000 }))
+    const whole = loopSeam(...sides(sine({ frequency: 100, amplitude: 0.5, seconds: 0.5, sampleRate: 8000 })))
     expect(whole?.jump).toBeLessThan(0.05)
     expect(seamClicks(whole ?? { jump: 1, step: 0 })).toBe(false)
-    const cut = loopSeam(sine({ frequency: 100, amplitude: 0.5, seconds: 0.5125 - 1 / 8000, sampleRate: 8000 }))
+    const cut = loopSeam(...sides(sine({ frequency: 100, amplitude: 0.5, seconds: 0.5125 - 1 / 8000, sampleRate: 8000 })))
     expect(cut?.jump).toBeGreaterThan(0.45)
     expect(cut?.step).toBeCloseTo(0.5 * 2 * Math.sin(Math.PI * 100 / 8000) / Math.SQRT2, 3)
     expect(seamClicks(cut ?? { jump: 0, step: 0 })).toBe(true)
+  })
+
+  it('measures a loop inside a sound at its own frames, whatever the sound does past them', () => {
+    const audio = sine({ frequency: 100, amplitude: 0.5, seconds: 1, sampleRate: 8000 })
+    // From frame 1000 to 5000, whole cycles; then a held level that would click if the whole sound repeated.
+    audio.samples.fill(0.8, 7000)
+    expect(loopSeam(...sides(audio, 1000, 5000))?.jump).toBeLessThan(0.05)
+    expect(loopSeam(...sides(audio))?.jump).toBeCloseTo(0.8, 5)
+    // From frame 1020, at a trough three quarters into a cycle, to frame 5000: the jump from about 0 to -0.5 clicks.
+    expect(seamClicks(loopSeam(...sides(audio, 1020, 5000)) ?? { jump: 0, step: 0 })).toBe(true)
   })
 
   it('does not call a jump a click inside a sound whose samples already jump that much', () => {
@@ -171,12 +189,16 @@ describe('loopSeam and seamClicks', () => {
     expect(seamClicks({ jump: 0.04, step: 0 })).toBe(false)
   })
 
-  it('compares the level of the last and first 50 ms, and measures nothing for one frame', () => {
+  it('compares the levels of the last and first 50 ms of the loop, and reads no further from the seam', () => {
     const rising = sine({ frequency: 100, amplitude: 0.5, seconds: 1, sampleRate: 8000 })
     for (let frame = 0; frame < 400; frame++) rising.samples[frame] = (rising.samples[frame] ?? 0) / 4
-    expect(loopSeam(rising)?.levelChange).toBeCloseTo(20 * Math.log10(4), 1)
-    expect(loopSeam(sine({ frequency: 100, amplitude: 0.5, seconds: 0.05, sampleRate: 8000 }))?.levelChange).toBeUndefined()
-    expect(loopSeam({ sampleRate: 8000, channels: 1, frames: 1, samples: Float32Array.of(0.5) })).toBeUndefined()
+    expect(loopSeam(...sides(rising))?.levelChange).toBeCloseTo(20 * Math.log10(4), 1)
+    expect(seamFrames(0, 8000, 8000)).toEqual({ tail: [7600, 8000], head: [0, 400] })
+    // A loop shorter than both 50 ms stretches splits between them, with no level change to compare.
+    expect(seamFrames(100, 500, 8000)).toEqual({ tail: [300, 500], head: [100, 300] })
+    expect(loopSeam(...sides(sine({ frequency: 100, amplitude: 0.5, seconds: 0.05, sampleRate: 8000 })))?.levelChange).toBeUndefined()
+    expect(seamFrames(10, 11, 8000)).toBeUndefined()
+    expect(loopSeam(slice(rising, 0, 0), slice(rising, 0, 10))).toBeUndefined()
   })
 })
 

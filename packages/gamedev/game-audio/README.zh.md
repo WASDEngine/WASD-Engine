@@ -49,11 +49,13 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | 工具 | 作用 |
 |---|---|
 | `audio_search` | 遍历项目文件夹，查找 WAV、MP3、Ogg Vorbis 与 Opus、FLAC 和 AIFF 文件，跳过隐藏文件夹和 `node_modules`，读取每个文件的文件头，并列出声音及其类型、格式、编码、声道、采样率、时长和大小，以及每个文件夹中各类声音的数量。`query` 先排名称以它开头的声音，再排名称和路径包含它的声音，最后排路径按顺序包含其字母的声音；`kind`（`effect`、`dialogue` 或 `music`）和 `folder` 缩小列表范围；`limit`（1 到 200，默认 50）和 `offset` 用于分页 |
-| `audio_review` | 请求一个可以读取该会话的 WASD Engine 窗口，以声音自身的采样率解码并测量它：每个声道的峰值和 RMS 电平、按 ITU-R BS.1770 计算的响度、开头和结尾低于 -60 dBFS 的静音、去除直流偏移后的最强频谱成分和频谱质心（只有直流偏移的声音没有这两项）、结尾与开头的衔接，以及两个声道的相关性与平衡。它从声音旁边的 `.import` 文件读取 Godot 的导入方式；除非 `picture` 为 false 或模型只接受文本，否则返回波形与频谱图；`show` 会在用户跟随的会话的音频标签页中打开该声音：subagent（子智能体）或队友的声音在其主导者的会话中打开。`start` 和 `end` 用于测量长音轨的一部分，最长为 `maxReviewSeconds`；比音频标签页解码上限（其 `maxDecodedSeconds`，默认 20 分钟）更长的声音以 `AUDIO_TOO_LARGE` 失败 |
+| `audio_review` | 请求一个可以读取该会话的 WASD Engine 窗口，以声音自身的采样率解码并测量它：每个声道的峰值和 RMS 电平、按 ITU-R BS.1770 计算的响度、开头和结尾低于 -60 dBFS 的静音、去除直流偏移后的最强频谱成分和频谱质心（只有直流偏移的声音没有这两项）、游戏所播放循环的结尾与其开头的衔接，以及两个声道的相关性与平衡。它从声音旁边的 `.import` 文件读取 Godot 的导入方式；除非 `picture` 为 false 或模型只接受文本，否则返回波形与频谱图；`show` 会在用户跟随的会话的音频标签页中打开该声音：subagent（子智能体）或队友的声音在其主导者的会话中打开。`start` 和 `end` 用于测量长音轨的一部分，最长为 `maxReviewSeconds`；比音频标签页解码上限（其 `maxDecodedSeconds`，默认 20 分钟）更长的声音以 `AUDIO_TOO_LARGE` 失败 |
 
 声音的类型取自其文件名、或从最近的文件夹起其上级文件夹中，第一个表示类型的单词：`sfx`、`fx`、`sound`、`foley`、`ui` 或 `ambience` 表示音效，`voice`、`vo`、`dialogue`、`speech`、`narrator` 或 `bark` 表示对白，`music`、`bgm`、`ost`、`soundtrack`、`song` 或 `jingle` 表示音乐。路径中没有这类单词时，30 秒及以上的声音算作音乐，其余算作音效。
 
 审阅结果的文本会对游戏中播放效果不好的问题给出警告：达到满刻度而削波的采样、为 NaN 或无穷大的采样（各项数值把它们当作静音）、比满刻度高 40 dB 或更多的峰值（不稳定的滤波器会产生这种峰值）、直流偏移、开头有 50 毫秒或更长静音因而播放延迟的音效或对白、在 Godot 循环处会有咔哒声的衔接、相位相反的声道，以及两个声道采样完全相同的立体声文件。
+
+衔接是游戏所播放循环的衔接，从整个解码后声音中循环跳转两侧的采样测量，与所测量的片段位于何处无关：在 Godot 导入设置的循环点之间（WAV 导入以采样帧计，Ogg 或 MP3 导入从其偏移量到声音结尾），或在 WAV 文件采样器块所存储的循环点之间，Godot 默认遵循后者；没有任何循环设置的声音整体重复。乒乓循环没有衔接；当循环位于声音之外或其循环点无法定位时，审查会如实说明，而不是测量另一处衔接。
 
 通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `audio` 下使用这些工具，每个工具都必须提供 `project`，即游戏项目文件夹的绝对路径；两个工具都标记为只读，在已连接 agent 于该项目中的会话里运行；即使会话属于登记在其上层的游戏项目，声音路径也从 `project` 文件夹算起；并在结果文本之后以 PNG 字节发送图像。`search_game_tools` 报告该提供方已就绪；没有打开的 WASD Engine 窗口时，还会说明在用户打开窗口之前 `audio_review` 都会失败。
 
@@ -67,7 +69,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `audioCategoryOf`、`pathWords` | 根据路径和时长判断声音的类型 |
 | `probeAudio` | 从几个较小的字节窗口读取文件头信息：WAV 和 AIFF 的块、FLAC 的 STREAMINFO、MP3 的 Xing、Info 或 VBRI 帧数减去 LAME 编码器延迟和填充，或按第一帧的比特率估算，并给出该格式最高比特率下其大小所允许的最短长度，以及 Ogg 流最后的 granule 位置 |
 | `openAiff`、`decodeAiff` | 浏览器不解码的 AIFF 和 AIFC 采样：任一字节序的 8 到 32 位整数 PCM、无符号 8 位，以及 32 位和 64 位浮点；`openAiff` 定位采样并逐个读取而不复制，`decodeAiff` 复制全部采样 |
-| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限 |
+| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`seamFrames`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限；`loopSeam` 根据 `seamFrames` 给出的循环跳转两侧的帧测量循环衔接 |
 | `drawAudioImage`、`describeAudioImage` | 原始 RGB 格式的图像，以及说明其面板和网格的句子 |
 | `AUDIO_ERROR` | 工具的错误码，窗口无法完成请求时用它作答 |
 
@@ -79,7 +81,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。当 Host 可选的 `typertGateway` 报告没有已连接的窗口时，审查会立即以 `AUDIO_NO_WINDOW` 失败，而不发出请求，因为网关会把请求留给之后连接的窗口。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
+`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`，并以秒为单位指明游戏所播放的循环，作为要测量其衔接的循环。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。当 Host 可选的 `typertGateway` 报告没有已连接的窗口时，审查会立即以 `AUDIO_NO_WINDOW` 失败，而不发出请求，因为网关会把请求留给之后连接的窗口。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
 
 `audio_search` 在 Host 上遍历文件夹，并以每次八个的方式探测每个列出的声音；只要文件的大小和修改时间不变，插件就保留其探测结果，最多保留 `maxSounds` 个文件。
 
@@ -88,6 +90,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/index.ts`](src/index.ts) | 配置、探测缓存、测量请求及其兜底、会话的图像附件、工具注册和游戏 MCP 提供方 |
 | [`src/tools.ts`](src/tools.ts) | 工具定义、参数和返回值 |
 | [`src/describe.ts`](src/describe.ts) | 结果文本 |
+| [`src/loop.ts`](src/loop.ts) | 游戏所播放的循环，取自 Godot 导入设置和 WAV 文件的采样器块 |
 | [`src/scan.ts`](src/scan.ts) | 项目遍历 |
 | [`src/files.ts`](src/files.ts) | 通过文件句柄进行的文件头探测，以及 Godot 导入设置的读取 |
 | [`src/result.ts`](src/result.ts) | 对窗口答复和已存储结果字段的校验 |
@@ -153,7 +156,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 - **没有文字稿** —— 审阅会测量对白，但不会说明说了什么。
 - **固定的类型词** —— 类型取自英文路径单词和时长；文件夹以其他方式命名的项目只能按时长得到音效和音乐。
 - **没有响度目标** —— 审阅报告响度和峰值，但不会在声音之间或与目标电平进行比较。
-- **格式** —— 不列出 M4A、AAC、WebM 和 tracker 模块，并且只读取 WAV sampler 块中的第一个循环。
+- **格式** —— 不列出 M4A、AAC、WebM 和 tracker 模块，并且只读取 WAV sampler 块中的第一个循环，并将其视为正向循环：对于乒乓采样器循环，审查仍会测量衔接，而 Godot 来回播放这种循环，并不存在衔接。
 - **通用的对话行** —— Web UI 在通用工具行中显示这些工具调用。
 
 <a id="dev-note"></a>

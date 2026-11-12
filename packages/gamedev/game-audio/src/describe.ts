@@ -10,6 +10,7 @@ import { LATE_START_SECONDS, seamClicks } from './audio/measure.ts'
 import { describeAudioImage } from './audio/picture.ts'
 import type { AudioProbe } from './audio/probe.ts'
 import type { GodotImport } from './files.ts'
+import { playedLoop, type LoopSource, type PlayedLoop } from './loop.ts'
 import type { AudioMeasurements, AudioPicture } from './types.ts'
 
 /** One listed sound. */
@@ -209,18 +210,56 @@ function godotLine(godot: GodotImport | undefined, sampleRate: number, fileLoop:
   }
 }
 
-function seamLines(measurements: AudioMeasurements, loops: boolean, music: boolean): string[] {
-  const seam = measurements.seam
-  if (seam === undefined) return []
-  const clicks = seamClicks(seam)
-  const lines = [clicks
-    ? `Loop seam: the end meets the start with a step of ${seam.jump.toFixed(3)} of full scale, ${seam.step === 0 ? 'where the sound is otherwise constant' : `${(seam.jump / seam.step).toFixed(0)} times the usual step between samples`}, so it clicks at every repeat.`
-    : 'Loop seam: the end meets the start without a click.']
-  // A one-shot sound fades out by design; a level change matters only where the sound repeats.
-  if ((loops || music) && seam.levelChange !== undefined && Math.abs(seam.levelChange) >= 6) {
-    lines.push(`The last 50 ms are ${Math.abs(seam.levelChange).toFixed(1)} dB ${seam.levelChange < 0 ? 'quieter' : 'louder'} than the first 50 ms, so a repeat ${seam.levelChange < 0 ? 'jumps up' : 'drops'} in level.`)
+/** How the text names a loop by what places it. */
+const LOOP_NAMES: Readonly<Record<Exclude<LoopSource, 'whole'>, string>> = {
+  import: 'the loop Godot imports',
+  file: 'the loop the file stores',
+}
+
+/**
+ * Why the window has no seam for a loop that jumps: the loop lies outside the sound, or holds fewer than two frames.
+ * @param m - the measurements, with the length of the whole sound.
+ * @param loop - the loop that plays.
+ * @returns the line.
+ */
+function unmeasuredSeam(m: AudioMeasurements, loop: Extract<PlayedLoop, { kind: 'jump' }>): string {
+  if (loop.from === 'whole') return 'Loop seam: not measured, since the sound is shorter than two samples.'
+  const name = LOOP_NAMES[loop.from]
+  const { start } = loop.stretch
+  const end = loop.stretch.end ?? m.seconds
+  if (start >= end) return `Loop seam: not measured, since ${name} starts at ${lengthText(start)}, not before its end at ${lengthText(end)}.`
+  // Half a frame allows for the rounding of a loop that ends where the sound does.
+  if (end > m.seconds + 0.5 / m.sampleRate) {
+    return `Loop seam: not measured, since ${name} ends at ${lengthText(end)}, past the end of the sound at ${lengthText(m.seconds)}.`
   }
-  if (loops && clicks) lines.push('Warning: Godot loops this sound, so the click plays in the game; cross-fade the ends or cut at zero crossings.')
+  return `Loop seam: not measured, since ${name}, from ${lengthText(start)} to ${lengthText(end)}, holds fewer than two samples.`
+}
+
+/**
+ * The lines on the seam of the loop that plays: where its end meets its start and whether it clicks there, how the
+ * level changes across it, and the warning when Godot repeats a click; or why the seam has no figures.
+ * @param m - the measurements, whose seam the window measured at the loop the request named.
+ * @param loop - the loop that plays.
+ * @param music - whether the sound is music, which repeats in a game whatever its import says.
+ * @returns the lines.
+ */
+function seamLines(m: AudioMeasurements, loop: PlayedLoop, music: boolean): string[] {
+  if (loop.kind === 'ping-pong') return ['Loop seam: none, since Godot plays the loop forward and then backward, turning at its ends without a jump.']
+  if (loop.kind === 'unplaced') return [`Loop seam: not measured, since the file's header names no sample rate to place ${LOOP_NAMES[loop.from]}.`]
+  const seam = m.seam
+  if (seam === undefined) return [unmeasuredSeam(m, loop)]
+  const whole = loop.from === 'whole'
+  const clicks = seamClicks(seam)
+  const where = whole ? 'the end meets the start' : `the loop's end at ${lengthText(seam.end)} meets its start at ${lengthText(seam.start)}`
+  const lines = [clicks
+    ? `Loop seam: ${where} with a step of ${seam.jump.toFixed(3)} of full scale, ${seam.step === 0 ? 'where the sound is otherwise constant' : `${(seam.jump / seam.step).toFixed(0)} times the usual step between samples there`}, so it clicks at every repeat.`
+    : `Loop seam: ${where} without a click.`]
+  // A one-shot sound fades out by design; a level change matters only where the sound repeats.
+  if ((loop.loops || music) && seam.levelChange !== undefined && Math.abs(seam.levelChange) >= 6) {
+    const [last, first] = whole ? ['The last 50 ms are', 'the first 50 ms'] : ['The loop\'s last 50 ms are', 'its first 50 ms']
+    lines.push(`${last} ${Math.abs(seam.levelChange).toFixed(1)} dB ${seam.levelChange < 0 ? 'quieter' : 'louder'} than ${first}, so a repeat ${seam.levelChange < 0 ? 'jumps up' : 'drops'} in level.`)
+  }
+  if (loop.loops && clicks) lines.push('Warning: Godot loops this sound, so the click plays in the game; cross-fade the ends or cut at zero crossings.')
   return lines
 }
 
@@ -269,8 +308,7 @@ export function describeReview(facts: ReviewFacts): string {
   if (m.dominantFrequency !== undefined && m.spectralCentroid !== undefined) {
     lines.push(`Spectrum: strongest component ${hertz(m.dominantFrequency)}, centroid ${hertz(m.spectralCentroid)}.`)
   }
-  const loops = facts.godot !== undefined && facts.godot.loop !== 'off' && (facts.godot.loop !== 'file' || facts.probe?.loop !== undefined)
-  lines.push(...seamLines(m, loops, facts.kind === 'music'))
+  lines.push(...seamLines(m, playedLoop(facts.godot, facts.probe), facts.kind === 'music'))
   const stereo = stereoLine(m)
   if (stereo !== undefined) lines.push(stereo)
   m.channelLevels.forEach((level, index) => {

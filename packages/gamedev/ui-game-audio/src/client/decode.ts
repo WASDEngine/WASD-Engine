@@ -2,14 +2,15 @@
  * Decoding a sound in the browser and measuring it as the agent's `audio_review` reports it. WAV, MP3, Ogg Vorbis and
  * Opus, and FLAC files decode with the browser's own decoder through an OfflineAudioContext at the file's own sample
  * rate, so the samples are not resampled; AIFF files, which browsers do not decode, use the audio tools' AIFF reader,
- * which fills the AudioBuffer a slice at a time so a long file neither holds a second copy nor blocks the page. The
- * picture is the one the audio tools draw, encoded as PNG on a canvas.
+ * which fills the AudioBuffer a slice at a time so a long file neither holds a second copy nor blocks the page. A
+ * measurement covers one stretch of the decoded sound and the seam of one loop, wherever that loop lies in the whole
+ * sound. The picture is the one the audio tools draw, encoded as PNG on a canvas.
  */
 import {
-  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, stereoImage, type AudioFormat, type AudioProbe, type AudioSamples,
-  type RgbImage,
+  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, seamFrames, stereoImage, type AudioFormat, type AudioProbe,
+  type AudioSamples, type RgbImage,
 } from '@deepseek-ai/dsh-game-audio/audio'
-import type { AudioMeasurements, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
+import type { AudioLoop, AudioMeasurements, AudioMeasureRequest, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
 
 /** A failure of decoding or measuring a sound, with the audio tools' error code. */
 export class SoundError extends Error {
@@ -162,15 +163,47 @@ export interface MeasuredWindow {
 }
 
 /**
- * Measure a window of a decoded sound.
- * @param buffer - the decoded sound.
- * @param start - seconds from the beginning where the window starts.
- * @param end - seconds where it ends; the end of the sound when absent or later.
- * @param maxSeconds - longest window; a longer one ends this long after its start.
- * @returns the measurements and the window's samples.
- * @throws {SoundError} `AUDIO_ARGUMENT` when the window starts at or after the end of the sound.
+ * What one measurement of a decoded sound covers, as a measure request names it: the stretch from `start` to `end`,
+ * the end of the sound when `end` is absent or later, at most `maxSeconds` long; and the loop whose seam it measures,
+ * none when `loop` is absent.
  */
-export function measureSound(buffer: AudioBuffer, start: number, end: number | undefined, maxSeconds: number): MeasuredWindow {
+export type SoundStretch = Pick<AudioMeasureRequest, 'start' | 'end' | 'maxSeconds' | 'loop'>
+
+/** The loop of a sound that repeats whole, as the Audio tab's repeat plays it. */
+export const WHOLE_SOUND: AudioLoop = { start: 0 }
+
+/**
+ * Measure where a loop of a decoded sound meets its start, from the frames on either side of the jump, wherever they
+ * lie in the sound.
+ * @param buffer - the decoded sound.
+ * @param loop - the loop, in seconds.
+ * @returns the seam, or undefined for a loop that lies outside the sound or holds fewer than two frames.
+ */
+function seamOf(buffer: AudioBuffer, loop: AudioLoop): AudioMeasurements['seam'] {
+  const first = Math.round(loop.start * buffer.sampleRate)
+  const end = loop.end === undefined ? buffer.length : Math.round(loop.end * buffer.sampleRate)
+  const frames = first < 0 || end > buffer.length ? undefined : seamFrames(first, end, buffer.sampleRate)
+  if (frames === undefined) return undefined
+  const seam = loopSeam(interleave(buffer, ...frames.tail), interleave(buffer, ...frames.head))
+  if (seam === undefined) return undefined
+  return {
+    start: first / buffer.sampleRate,
+    end: end / buffer.sampleRate,
+    jump: seam.jump,
+    step: seam.step,
+    ...seam.levelChange === undefined ? {} : { levelChange: seam.levelChange },
+  }
+}
+
+/**
+ * Measure a stretch of a decoded sound, and the seam of a loop of the whole sound.
+ * @param buffer - the decoded sound.
+ * @param stretch - the stretch to measure and the loop.
+ * @returns the measurements and the stretch's samples.
+ * @throws {SoundError} `AUDIO_ARGUMENT` when the stretch starts at or after the end of the sound.
+ */
+export function measureSound(buffer: AudioBuffer, stretch: SoundStretch): MeasuredWindow {
+  const { start, end, maxSeconds, loop } = stretch
   const seconds = buffer.length / buffer.sampleRate
   if (start > 0 && start >= seconds) {
     throw new SoundError(`start (${start.toFixed(3)} s) is not before the end of the sound, which is ${seconds.toFixed(3)} s long.`, AUDIO_ERROR.argument)
@@ -180,7 +213,7 @@ export function measureSound(buffer: AudioBuffer, start: number, end: number | u
   const first = Math.round(from * buffer.sampleRate)
   const samples = interleave(buffer, first, Math.max(first, Math.round(to * buffer.sampleRate)))
   const analysis = analyzeAudio(samples)
-  const seam = loopSeam(samples)
+  const seam = loop === undefined ? undefined : seamOf(buffer, loop)
   const stereo = stereoImage(samples)
   const measurements: AudioMeasurements = {
     // An AIFF file may state a rate with a fraction, which the decoded samples keep; the figures name whole hertz.
@@ -199,9 +232,7 @@ export function measureSound(buffer: AudioBuffer, start: number, end: number | u
     channelLevels: analysis.channels.map(level => ({
       peak: level.peak, rms: level.rms, dcOffset: level.dcOffset, clipped: level.clipped, nonFinite: level.nonFinite,
     })),
-    ...seam === undefined ? {} : {
-      seam: { jump: seam.jump, step: seam.step, ...seam.levelChange === undefined ? {} : { levelChange: seam.levelChange } },
-    },
+    ...seam === undefined ? {} : { seam },
     ...stereo === undefined ? {} : {
       stereo: {
         identical: stereo.identical,
