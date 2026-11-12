@@ -1,5 +1,5 @@
 ---
-description: "Game add-ons for the agent: a curated catalog of Godot and Blender add-ons pinned to tested versions, the game_addons tool that installs one into a game project, usage guides that only that project's Sessions see as skills, and the Add-ons dialog in Session headers."
+description: "Game add-ons for the agent: a curated catalog of Godot and Blender add-ons pinned to tested versions, the system prompt section that lists them, the game_addons tool with which the agent installs one into a game project when it decides that the game needs it, usage guides that only that project's Sessions see as skills, and the Add-ons dialog in Session headers."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The game add-ons plugin offers the agent third-party Godot and Blender add-ons that WASD Engine tested with its own Godot 4.7.2 and Blender 5.2.3, without crowding the model's context. The model sees one fixed `game_addons` tool: it searches the catalog for what a game needs, reads an add-on's usage guide, and installs the add-on into the game project after the user approves. Only then does the guide appear as a skill, and only in that project's Sessions. Users install and remove add-ons in the Session header's Add-ons dialog, and agents connected through WASD Engine's MCP server get the same tool.
+The plugin offers the agent third-party Godot and Blender add-ons tested with WASD Engine's Godot 4.7.2 and Blender 5.2.3. The system prompt lists each add-on with the game stages it helps and when to use it. The agent decides when the game needs one, installs it with the `game_addons` tool without asking the user, and tells the user what it added. Only then does the add-on's guide appear as a skill, and only in that project's Sessions. Users manage add-ons in the Session header's Add-ons dialog, and agents connected through WASD Engine's MCP server get the same tool and list.
 
 ## Table of Contents
 
@@ -38,7 +38,7 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
     blenderStore: !!js dshHomePath('game-addons', 'blender')
 ```
 
-The Game tools tabs list the row with its icon, and the Plugins page's switch turns it off with `- id: game-addons` and `disabled: true` in the profile patch. The plugin needs the `tools`, `workingDirectory`, `skills`, and `typert` services. It imports a project after an installation through the `godot` service of [`@deepseek-ai/dsh-godot`](../godot/README.md) when that service runs. It asks before a change through the `approval` service, and offers its tool to connected agents through the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md).
+The Game tools tabs list the row with its icon, and the Plugins page's switch turns it off with `- id: game-addons` and `disabled: true` in the profile patch. The plugin needs the `tools`, `systemPrompt`, `workingDirectory`, `skills`, and `typert` services. It imports a project after an installation through the `godot` service of [`@deepseek-ai/dsh-godot`](../godot/README.md) when that service runs, and offers its tool to connected agents through the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md).
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -77,9 +77,11 @@ A failure before the record is written puts the previous folder and `project.god
 
 A removal deletes what the record lists and removes the add-on's `project.godot` entries and notice. It names up to 20 scenes, scripts, and resources that still refer to the add-on's folder or its autoloads, so the agent can change them. A catalog add-on found in `addons/` without a record can be removed the same way. A Blender add-on leaves only the project's record; the store keeps it for other projects.
 
-### Approval
+### When the agent installs one
 
-The tool asks the user before `install` and `remove` under the Session's `ask` approval policy, through the same approval prompt as shell commands. The question names the add-on, its version, license, and project page, the download size and host, any asset pack with its license, page, size, and host, and the project. It says that the add-on's scripts become part of the game, and names any credit the license requires. Under the `never` policy, which full access sets, it proceeds without asking. `search`, `guide`, and `list` never ask. A user's click in the Add-ons dialog is the approval for that change. A connected agent's own harness decides whether to ask its user.
+The agent decides when an add-on is worth installing. The plugin adds the `game-addons` section to the system prompt, in the slot of the Godot games section. It tells the agent to install an add-on, without asking the user first, when the work at hand needs what the add-on does and plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps; to skip it when the engine's own nodes and tools or a short script do the job, and never to install one in case it is needed later; and, after an installation, to load the guide before using the add-on and to tell the user what it added and why, with the license and any credit the license requires. One line per catalog add-on follows: its id, application, the stages at which it helps, and when to use it.
+
+`install` and `remove` ask nobody under every approval policy, like the other game tools, and the Session's permission mode does not confine them. A user's click in the Add-ons dialog changes the project the same way. Connected agents read the same judgment and list in the MCP server's instructions, and their own harness decides whether to ask its user.
 
 ### Guides as skills
 
@@ -108,7 +110,7 @@ The Game tools tabs show the package's [`icon.svg`](icon.svg): a WASD Engine key
 
 | File | Role |
 |---|---|
-| [`src/index.ts`](src/index.ts) | Config, catalog loading, tool, approval, skill provider, and game MCP registration, and the `gameAddons` Remote |
+| [`src/index.ts`](src/index.ts) | Config, catalog loading, tool, prompt section, skill provider, and game MCP registration, and the `gameAddons` Remote |
 | [`src/catalog.ts`](src/catalog.ts) | Entry validation, guide frontmatter, and search ranking |
 | [`src/manager.ts`](src/manager.ts) | Presence in a project, installation, removal, references, and the Blender store |
 | [`src/archive.ts`](src/archive.ts) | Pinned downloads into the cache, and unpacking one archive folder file by file with yauzl |
@@ -116,8 +118,9 @@ The Game tools tabs show the package's [`icon.svg`](icon.svg): a WASD Engine key
 | [`src/record.ts`](src/record.ts) | `.wasdengine/addons.json` under its file lock |
 | [`src/notices.ts`](src/notices.ts) | Marked sections of `THIRD_PARTY_NOTICES.md` |
 | [`src/skills.ts`](src/skills.ts) | The guides' skill provider and the folder watcher |
-| [`src/tools.ts`](src/tools.ts) | The `game_addons` definition, its result text, and the approval question |
-| [`src/mcp.ts`](src/mcp.ts) | The tool for connected agents and the provider's instructions |
+| [`src/tools.ts`](src/tools.ts) | The `game_addons` definition and its result text |
+| [`src/prompt.ts`](src/prompt.ts) | The `game-addons` system prompt section and the provider's instructions: when to install an add-on, and one line per catalog add-on |
+| [`src/mcp.ts`](src/mcp.ts) | The tool and provider for connected agents |
 | [`src/client/`](src/client/) | The Add-ons button and dialog |
 
 Search scores each query word by the best field one of whose words it starts: 3 for the id or title, 2 for a tag, and 1 for the summary or use. Common words do not count. A word of five letters or more also matches a field word of four letters or more that it starts with, so `characters` matches the tag `character`. Unzipping reads the archive's directory first, then decompresses entries in batches of about 8 MB with a pause between batches, writes each file with exclusive create, and skips `__MACOSX` and `.DS_Store` entries.
@@ -139,15 +142,46 @@ Search scores each query word by the best field one of whose words it starts: 3 
 <a id="model-experience"></a>
 ## Model Experience
 
+### System prompt section
+
+#### What the model sees
+
+The Session's agent sees the `game-addons` section just before the Godot games section: the section text below, then one line per catalog add-on, Godot add-ons first, in the form of the catalog line below. A connected agent reads the same judgment and lines in the MCP server's instructions under `## Game add-ons`, with the absolute `project`, the `guide` action, and Blender's `wasd_addons.enable` call in place of the guide skill.
+
+##### Section text
+
+```markdown
+# Game add-ons
+
+game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later. action search shows each add-on's download size, conflicts, and when to skip it.
+After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
+
+Each add-on below shows its id, its application, the stages at which it helps (prototype makes the core game playable, content adds levels, characters, and assets, polish adds game feel and finish, and ship tests and releases the game), and when to use it:
+```
+
+##### Catalog line
+
+```markdown
+- beehave (Godot; prototype, content): Enemies or NPCs need layered decisions such as patrol, chase, attack, flee and cooldowns that would become a tangle of if-statements or one large state machine script.
+```
+
+#### Token effect
+
+With the 22 add-ons of the shipped catalog the section comes to about 6,100 characters, about 1,500 tokens, in every request of every Session, with or without a Godot project. Each added entry adds one line of about 180 to 270 characters; the shipped catalog spec keeps the section within 8,000 characters.
+
+#### KV Cache effect
+
+The text changes only with the shipped catalog, so it stays in the cached system prompt prefix; a WASD Engine update that changes the catalog changes it once.
+
 ### Tool declaration
 
 #### What the model sees
 
-The Session's agent sees `game_addons` with `action` (`search`, `guide`, `install`, `remove`, or `list`) and the optional `query`, `host`, `stage`, `id`, `replace`, and `project`. The description names the kinds of add-ons the catalog holds, says that installing asks the user and makes the guide a skill named by the add-on id, and asks the model to prefer what Godot and Blender already do, install only what the user agreed to, and tell the user the license. A connected agent sees the same tool with `project` as an absolute path, and the provider's instructions under `## Game add-ons`.
+The Session's agent sees `game_addons` with `action` (`search`, `guide`, `install`, `remove`, or `list`) and the optional `query`, `host`, `stage`, `id`, `replace`, and `project`. The description names the kinds of add-ons the catalog holds and tells the model to install one itself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer, and then to tell the user what it added and its license. A connected agent sees the same tool with `project` as an absolute path.
 
 #### Token effect
 
-The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 1,100 characters to the MCP server's instructions.
+The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 6,500 characters to the MCP server's instructions, most of them the catalog lines.
 
 #### KV Cache effect
 
@@ -171,7 +205,7 @@ An installation or removal changes the catalog, which reaches the model as a new
 
 #### What the model sees
 
-A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, notes such as a required credit or a skipped import, and up to 20 import problems. A removal names the deleted paths and up to 20 files that still use the add-on.
+A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, notes such as a required credit or a skipped import, and up to 20 import problems, and asks the model to tell the user that it added the add-on, why, and its license, except when the project already had that version. A removal names the deleted paths and up to 20 files that still use the add-on.
 
 #### Token effect
 
@@ -187,6 +221,8 @@ Append-only in the conversation.
 
 These limits define what the plugin offers; they are current package constraints.
 
+- **No question before a change** — the agent installs and removes catalog add-ons on its own judgment under every approval policy and permission mode, so a user learns of an installation from the agent's reply, the tool call in the transcript, and the project's `.wasdengine/addons.json`, and undoes one in the Add-ons dialog.
+- **The catalog in every request** — every Session's system prompt lists the whole catalog, also in Sessions without a Godot project; a catalog that outgrows the section's 8,000-character budget needs a shorter listing.
 - **Pinned upstream archives** — archives download from their projects' release or tag URLs. A tag archive that GitHub rebuilds with other bytes fails its SHA-256 check until the entry is pinned again.
 - **No editor-only add-ons** — the agent cannot use an editor dock, brush, or gizmo, so the catalog leaves out add-ons that work only through the editor interface.
 - **No GDExtension add-ons** — WASD Engine's Web release loads no GDExtensions, so the catalog leaves out compiled add-ons such as Terrain3D or LimboAI.

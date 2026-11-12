@@ -1757,8 +1757,8 @@ export type Config = LocalConfig
 
 ## `@deepseek-ai/dsh-game-addons`
 
-- `inject`: `tools` · `workingDirectory` · `skills` · `typert`
-- `source`: [`packages/gamedev/game-addons/src/index.ts:37`](../packages/gamedev/game-addons/src/index.ts)
+- `inject`: `tools` · `systemPrompt` · `workingDirectory` · `skills` · `typert`
+- `source`: [`packages/gamedev/game-addons/src/index.ts:41`](../packages/gamedev/game-addons/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */

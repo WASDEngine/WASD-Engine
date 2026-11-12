@@ -1,8 +1,7 @@
 /**
- * The `game_addons` tool as the Session's agent calls it through the real tool runtime and executor, with a fake
- * approval service that records each question and answers as the user would.
+ * The `game_addons` tool as the Session's agent calls it through the real tool runtime and executor, with an approval
+ * service under the `ask` policy that records every question: the agent installs and removes add-ons without one.
  */
-import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
@@ -18,8 +17,8 @@ import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-app
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
-import { approvalQuestion, gameAddonToolDefinition, registerApproval, SESSION_WORDING, TOOL_NAME } from '../src/tools.ts'
-import { entriesWithTreeAssets, fakeDownloads, scratch, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
+import { gameAddonToolDefinition, SESSION_WORDING, TOOL_NAME } from '../src/tools.ts'
+import { fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
 let ctx: Context | undefined
@@ -35,18 +34,19 @@ interface Setup {
   readonly manager: GameAddonManager
   readonly project: string
   readonly agent: Agent
+  readonly downloads: string[]
+  /** Every question the approval service received. */
   readonly asked: ApprovalRequest[]
-  /** Answer of the fake user; `never` sets that policy instead. */
-  answer: ApprovalOutcome | 'never'
 }
 
 async function setup(): Promise<Setup> {
   dir = await scratch('tools')
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   const project = await writeProject(join(dir.root, 'work', 'game'))
+  const downloads = fakeDownloads()
   const manager = new GameAddonManager({
     catalog,
-    downloads: { cacheDir: join(dir.root, 'archives'), fetch: fakeDownloads().fetch },
+    downloads: { cacheDir: join(dir.root, 'archives'), fetch: downloads.fetch },
     blenderStore: join(dir.root, 'store'),
     assetsDir: join(dir.root, 'assets'),
     importProject: () => Promise.resolve({ issues: ['res://player.gd:4: Parse Error: x'] }),
@@ -60,13 +60,13 @@ async function setup(): Promise<Setup> {
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
-  const state: Setup = { manager, project, agent: undefined as never, asked: [], answer: 'allowed-once' }
+  const asked: ApprovalRequest[] = []
   ctx.provide('approval', {
     config: { policy: 'ask' },
-    overrideOf: () => state.answer === 'never' ? 'never' : undefined,
+    overrideOf: () => undefined,
     request(req: ApprovalRequest): Promise<ApprovalOutcome> {
-      state.asked.push(req)
-      return Promise.resolve(state.answer === 'never' ? 'rejected' : state.answer)
+      asked.push(req)
+      return Promise.resolve('rejected')
     },
   } as never)
   ctx.tools.register(gameAddonToolDefinition({
@@ -76,7 +76,6 @@ async function setup(): Promise<Setup> {
       throw new Error(`No project.godot in ${requested}.`)
     },
   }, SESSION_WORDING))
-  registerApproval(ctx, manager, () => Promise.resolve('game'))
   const scope = ctx.plugin(() => {})
   const route = { provider: 'test', model: 'm' }
   const selection: Model = { current: () => route, select: () => {} }
@@ -87,7 +86,7 @@ async function setup(): Promise<Setup> {
     whenIdle: () => Promise.resolve(),
   }
   await ctx.agents.register(agent)
-  return Object.assign(state, { agent })
+  return { manager, project, agent, downloads: downloads.requests, asked }
 }
 
 let calls = 0
@@ -102,7 +101,16 @@ function text(result: ToolExecutionResult): string {
 }
 
 describe('game_addons', () => {
-  it('searches the catalog with each add-on\'s presence and use, without asking the user', async () => {
+  it('tells the model what kinds of add-ons there are and to install what the game needs without asking the user', async () => {
+    await setup()
+    expect(ctx!.tools.get(TOOL_NAME)?.description).toBe(
+      'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
+      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove deletes one; list shows the project\'s add-ons. '
+      + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
+    )
+  })
+
+  it('searches the catalog with each add-on\'s presence and use', async () => {
     const state = await setup()
     const result = await call(state, { action: 'search', query: 'camera smoothing' })
     expect(result.isError).toBe(false)
@@ -118,11 +126,10 @@ describe('game_addons', () => {
       '  Use when: Never in tests.',
       '  Instead of: test-camera',
       '  Required credit: Other Camera by Other',
-      'Read one with action guide, or install it with action install; tell the user its license first.',
+      'Read one with action guide, or install it with action install.',
     ].join('\n'))
     expect(await call(state, { action: 'search', query: 'zzz' })).toMatchObject({ isError: false })
     expect(text(await call(state, { action: 'search', host: 'blender', project: 'elsewhere' }))).toContain('- test-rig: Test Rig 5.2.3 (Blender, GPL-2.0-or-later, ships inside Blender)\n')
-    expect(state.asked).toEqual([])
   })
 
   it('shows a guide, noting when the project does not have the add-on yet', async () => {
@@ -131,82 +138,36 @@ describe('game_addons', () => {
     expect(text(await call(state, { action: 'guide' }))).toContain('action guide needs id')
   })
 
-  it('asks the user before installing and removing, naming the add-on, its license, download, and project', async () => {
+  it('installs and removes an add-on without asking the user under the ask policy, and asks the model to tell the user', async () => {
     const state = await setup()
     const installed = await call(state, { action: 'install', id: 'test-camera' })
     expect(installed.isError).toBe(false)
-    expect(state.asked.map(request => [request.toolName, request.reason])).toEqual([[TOOL_NAME,
-      'Install Test Camera 1.2.0 (MIT, https://example.test/camera) into the game project game? It downloads 1 KB from example.test. '
-      + 'Its scripts become part of the game and run whenever the project is imported or played.']])
     expect(text(installed)).toBe([
       `Installed Test Camera 1.2.0 (MIT) in ${state.project}: addons/test_camera.`,
       'Its guide is now the skill test-camera; load it before using the add-on.',
+      'Tell the user that you added it and why, with its license.',
       'The project\'s import reported:\n- res://player.gd:4: Parse Error: x',
     ].join('\n'))
+    expect(state.downloads).toEqual([URLS.camera])
     expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; each one's guide is listed as the skill of its id:\n- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed]`)
     const removed = await call(state, { action: 'remove', id: 'test-camera' })
     expect(text(removed)).toBe('Removed test-camera: deleted addons/test_camera, and its project.godot entries and notice.')
-    expect(state.asked[1]?.reason).toBe('Remove Test Camera from the game project game? This deletes addons/test_camera and its project.godot entries; scenes and scripts that use it stop working.')
+    expect((await state.manager.presence(state.project)).get('test-camera')).toEqual({ state: 'absent' })
+    expect(state.asked).toEqual([])
   })
 
-  it('installs nothing when the user rejects, and asks nobody under the never policy', async () => {
+  it('reports an add-on that is already installed without asking the model to tell the user again', async () => {
     const state = await setup()
-    state.answer = 'rejected'
-    const rejected = await call(state, { action: 'install', id: 'test-rig' })
-    expect(rejected.isError).toBe(true)
-    expect(text(rejected)).toContain('the user rejected tool "game_addons"')
-    expect((await state.manager.presence(state.project)).get('test-rig')).toEqual({ state: 'absent' })
-    state.answer = 'never'
-    const asked = state.asked.length
-    expect((await call(state, { action: 'install', id: 'test-rig' })).isError).toBe(false)
-    expect(state.asked).toHaveLength(asked)
-    expect(text(await call(state, { action: 'install', id: 'test-rig' }))).toContain('Test Rig 5.2.3 was already installed')
+    expect(text(await call(state, { action: 'install', id: 'test-rig' }))).toContain('Tell the user that you added it')
+    const again = text(await call(state, { action: 'install', id: 'test-rig' }))
+    expect(again).toContain('Test Rig 5.2.3 was already installed')
+    expect(again).not.toContain('Tell the user')
+    expect(state.asked).toEqual([])
   })
 
   it('reports an unknown id and a missing project as tool errors', async () => {
     const state = await setup()
-    state.answer = 'never'
     expect(text(await call(state, { action: 'install', id: 'nope' }))).toContain('No catalog add-on has the id "nope"')
     expect(text(await call(state, { action: 'list', project: 'elsewhere' }))).toContain('No project.godot in elsewhere.')
   })
 })
-
-describe('approvalQuestion', () => {
-  it('names the credit a license requires and what a Blender add-on does', async () => {
-    const state = await setup()
-    expect(approvalQuestion(state.manager, { action: 'install', id: 'other-camera' }, undefined)).toBe(
-      'Install Other Camera 0.1 (MIT, https://example.test/other) into the game project? It downloads 1 KB from example.test. '
-      + 'Its scripts become part of the game and run whenever the project is imported or played. Its license requires a credit in the game: Other Camera by Other.',
-    )
-    expect(approvalQuestion(state.manager, { action: 'install', id: 'test-rig' }, 'game')).toBe(
-      'Install Test Rig 5.2.3 (GPL-2.0-or-later, https://example.test/rig) into the game project game? It ships inside Blender, so nothing is downloaded. Its Python code runs inside Blender when the agent enables it.',
-    )
-    expect(approvalQuestion(state.manager, { action: 'remove', id: 'test-trees' }, 'game')).toBe(
-      'Remove Test Trees from the game project game? Its guide leaves the project; the Blender add-on stays downloaded for other projects.',
-    )
-    expect(approvalQuestion(state.manager, { action: 'install', id: 'nope' }, 'game')).toBeUndefined()
-  })
-
-  it('names an asset pack that comes with an add-on, its license, and its download', async () => {
-    const manager = new GameAddonManager({
-      catalog: await loadCatalog(await catalogWithSetup()),
-      downloads: { cacheDir: join(dir!.root, 'archives'), fetch: fakeDownloads().fetch },
-      blenderStore: join(dir!.root, 'store'),
-      assetsDir: join(dir!.root, 'assets'),
-      importProject: () => Promise.resolve(undefined),
-      now: () => new Date(),
-      changed: () => {},
-    })
-    expect(approvalQuestion(manager, { action: 'install', id: 'test-trees' }, 'game')).toBe(
-      'Install Test Trees 2.0.0 (GPL-3.0-or-later, https://example.test/trees) into the game project game? It downloads 1 KB from example.test. '
-      + 'With it comes an asset pack (CC0-1.0, https://assets.example.test/): 1 KB from assets.example.test. Its Python code runs inside Blender when the agent enables it.',
-    )
-  })
-})
-
-async function catalogWithSetup(): Promise<string> {
-  dir ??= await scratch('tools')
-  const catalogDir = await writeCatalog(join(dir.root, 'assets-catalog'), entriesWithTreeAssets())
-  await writeFile(join(catalogDir, 'test-trees', 'setup.py'), 'def setup(module, assets):\n    pass\n')
-  return catalogDir
-}

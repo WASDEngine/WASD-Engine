@@ -306,12 +306,12 @@ Each tool package names `icon.svg` in the `icon` field of its `package.json`, so
 <a id="game-add-ons"></a>
 ## Game add-ons
 
-The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, whatever its project holds, so the tool prefix stays cached; the guides reach the model only as skills of the projects that use them.
+The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, and one fixed system prompt section, `game-addons`, whatever its project holds, so the cached prefix stays the same; the guides reach the model only as skills of the projects that use them.
 
 | Step | What happens |
 |---|---|
-| Discovery | `game_addons` `search` ranks the catalog for the game's need; `guide` returns a guide before installation |
-| Approval | Under the Session's `ask` approval policy a `tools/pre-execute` listener asks the user before `install` and `remove`, naming the add-on, its license, its download, and the project |
+| Discovery | The `game-addons` section lists every catalog add-on with the stages at which it helps and when to use it; `game_addons` `search` ranks the catalog for the game's need and shows sizes, conflicts, and when to skip each one; `guide` returns a guide before installation |
+| Decision | The agent installs or removes an add-on when it decides that the game needs it, without asking the user under any approval policy; the section tells it when an add-on is worth installing and to tell the user what it added, with the license |
 | Godot installation | The archive downloads once into `<dataRoot>/archives/<sha256>.zip` and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
 | Blender installation | The extension unpacks once into `<blenderStore>/<module>/` and its asset pack, if any, into `<dataRoot>/blender-assets/<id>/`, the store's `catalog.json` lists every catalog Blender add-on with its setup script and asset folder, and the project's record lists it; a worker's `wasd_addons.enable("<id>")` enables it and runs its setup script, and does both again after factory settings load |
 | Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
@@ -436,7 +436,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**

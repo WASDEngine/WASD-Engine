@@ -1,5 +1,5 @@
 ---
-description: "为智能体提供的游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、把扩展安装到游戏项目中的 game_addons 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框。"
+description: "为智能体提供的游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、列出这些扩展的系统提示词部分、智能体在判断游戏需要时用来把扩展安装到游戏项目中的 game_addons 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-游戏扩展插件为智能体提供经过 WASD Engine 自带的 Godot 4.7.2 与 Blender 5.2.3 测试的第三方 Godot 扩展和 Blender 扩展，且不会挤占模型的上下文。模型只看到一个固定的 `game_addons` 工具：它在目录中搜索游戏需要的扩展，阅读扩展的使用指南，并在用户同意后把扩展安装到游戏项目中。只有在安装之后，该扩展的指南才会以技能形式出现，并且只出现在该项目的会话中。用户可以在会话标题栏的“扩展”对话框中安装和移除扩展，通过 WASD Engine 的 MCP 服务器连接的智能体也能使用同一个工具。
+该插件为智能体提供经过 WASD Engine 的 Godot 4.7.2 与 Blender 5.2.3 测试的第三方 Godot 扩展和 Blender 扩展。系统提示词会列出每个扩展、它有帮助的游戏阶段以及何时使用它。智能体自行判断游戏何时需要某个扩展，用 `game_addons` 工具安装它而无需征求用户同意，并告诉用户它添加了什么。只有在安装之后，该扩展的指南才会以技能形式出现，并且只出现在该项目的会话中。用户可以在会话标题栏的“扩展”对话框中管理扩展，通过 WASD Engine 的 MCP 服务器连接的智能体也能使用同一个工具和列表。
 
 ## 目录
 
@@ -38,7 +38,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
     blenderStore: !!js dshHomePath('game-addons', 'blender')
 ```
 
-“游戏工具”标签页会用其图标列出这一行，“插件”页面的开关会在 profile 补丁中写入 `- id: game-addons` 与 `disabled: true` 来关闭它。插件需要 `tools`、`workingDirectory`、`skills` 和 `typert` 服务。当 [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot` 服务在运行时，插件会在安装后通过它导入项目。插件通过 `approval` 服务在更改前征求同意，并通过 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务把工具提供给连接的智能体。
+“游戏工具”标签页会用其图标列出这一行，“插件”页面的开关会在 profile 补丁中写入 `- id: game-addons` 与 `disabled: true` 来关闭它。插件需要 `tools`、`systemPrompt`、`workingDirectory`、`skills` 和 `typert` 服务。当 [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot` 服务在运行时，插件会在安装后通过它导入项目，并通过 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务把工具提供给连接的智能体。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -77,9 +77,11 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 移除会删除记录中列出的内容，并移除该扩展的 `project.godot` 条目和声明段落。它会列出最多 20 个仍引用该扩展文件夹或其自动加载的场景、脚本和资源，便于智能体修改它们。在 `addons/` 中发现但没有记录的目录扩展也可以用同样的方式移除。移除 Blender 扩展只会删去项目中的记录；存储目录会为其他项目保留它。
 
-### 审批
+### 智能体何时安装扩展
 
-在会话的 `ask` 审批策略下，工具会在 `install` 和 `remove` 之前通过与 shell 命令相同的审批提示征求用户同意。问题会写明扩展、其版本、许可证和项目主页、下载大小与主机，附带资源包时写明其许可证、页面、大小与主机，以及目标项目。它还会说明扩展的脚本将成为游戏的一部分，并写明许可证要求的署名。在完全访问模式设置的 `never` 策略下，它会直接执行而不询问。`search`、`guide` 和 `list` 从不询问。用户在“扩展”对话框中的点击就是对该更改的同意。连接的智能体由其自身的运行框架决定是否询问其用户。
+由智能体判断何时值得安装某个扩展。插件在系统提示词中 Godot 游戏部分的位置添加 `game-addons` 部分。它告诉智能体：当手头的工作需要某个扩展的功能，而只用 Godot 或 Blender 会耗时更长或效果更差时，在该扩展有帮助的游戏阶段直接安装它，无需先征求用户同意；当引擎自带的节点和工具或一小段脚本就能完成时则不用它，也绝不因为以后可能用到而预先安装；安装之后，在使用扩展前先加载其指南，并告诉用户它添加了什么、为什么添加，以及许可证和许可证要求的署名。随后每个目录扩展占一行：其 id、应用、有帮助的阶段以及何时使用它。
+
+在任何审批策略下，`install` 和 `remove` 都不询问任何人，这与其他游戏工具相同，会话的权限模式也不限制它们。用户在“扩展”对话框中的点击会以同样的方式更改项目。连接的智能体会在 MCP 服务器的说明中读到相同的判断规则和列表，并由其自身的运行框架决定是否询问其用户。
 
 ### 以技能形式提供的指南
 
@@ -108,7 +110,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 | 文件 | 作用 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | 配置、目录加载、工具、审批、技能提供者与游戏 MCP 注册，以及 `gameAddons` Remote |
+| [`src/index.ts`](src/index.ts) | 配置、目录加载、工具、提示词部分、技能提供者与游戏 MCP 注册，以及 `gameAddons` Remote |
 | [`src/catalog.ts`](src/catalog.ts) | 条目校验、指南 frontmatter 和搜索排序 |
 | [`src/manager.ts`](src/manager.ts) | 项目中的状态、安装、移除、引用查找和 Blender 存储 |
 | [`src/archive.ts`](src/archive.ts) | 固定版本的下载缓存，以及用 yauzl 逐个文件解压压缩包中的一个文件夹 |
@@ -116,8 +118,9 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/record.ts`](src/record.ts) | 在文件锁下读写 `.wasdengine/addons.json` |
 | [`src/notices.ts`](src/notices.ts) | `THIRD_PARTY_NOTICES.md` 中的标记段落 |
 | [`src/skills.ts`](src/skills.ts) | 指南的技能提供者与文件夹监视器 |
-| [`src/tools.ts`](src/tools.ts) | `game_addons` 定义、其结果文本和审批问题 |
-| [`src/mcp.ts`](src/mcp.ts) | 面向连接智能体的工具及提供者说明 |
+| [`src/tools.ts`](src/tools.ts) | `game_addons` 定义及其结果文本 |
+| [`src/prompt.ts`](src/prompt.ts) | `game-addons` 系统提示词部分与提供者说明：何时安装扩展，以及每个目录扩展一行 |
+| [`src/mcp.ts`](src/mcp.ts) | 面向连接智能体的工具与提供者 |
 | [`src/client/`](src/client/) | “扩展”按钮与对话框 |
 
 搜索会按每个查询词在字段中匹配到的最佳位置计分：词作为某个字段单词的开头时，id 或标题计 3 分，标签计 2 分，摘要或用途计 1 分。常见词不计分。五个字母及以上的词，若以某个四个字母及以上的字段单词开头，也算匹配，因此 `characters` 能匹配标签 `character`。解压时先读取压缩包目录，再以约 8 MB 为一批解压条目，各批之间稍作停顿，以独占创建方式写入每个文件，并跳过 `__MACOSX` 与 `.DS_Store` 条目。
@@ -139,15 +142,46 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <a id="model-experience"></a>
 ## 模型体验
 
+### 系统提示词部分
+
+#### 模型看到的内容
+
+会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后每个目录扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则和各行，只是以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。
+
+##### 部分文本
+
+```markdown
+# Game add-ons
+
+game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later. action search shows each add-on's download size, conflicts, and when to skip it.
+After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
+
+Each add-on below shows its id, its application, the stages at which it helps (prototype makes the core game playable, content adds levels, characters, and assets, polish adds game feel and finish, and ship tests and releases the game), and when to use it:
+```
+
+##### 目录行
+
+```markdown
+- beehave (Godot; prototype, content): Enemies or NPCs need layered decisions such as patrol, chase, attack, flee and cooldowns that would become a tangle of if-statements or one large state machine script.
+```
+
+#### Token 影响
+
+随附目录有 22 个扩展，该部分约 6,100 个字符，约 1,500 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符；随附目录测试会把该部分限制在 8,000 个字符以内。
+
+#### KV Cache 影响
+
+文本只随随附目录变化，因此保留在已缓存的系统提示词前缀中；改变目录的 WASD Engine 更新只会改变它一次。
+
 ### 工具声明
 
 #### 模型看到的内容
 
-会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，说明安装会征求用户同意，并会把指南变成以扩展 id 命名的技能；同时要求模型优先使用 Godot 和 Blender 已有的功能，只安装用户同意的内容，并告诉用户其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，提供者说明位于 `## Game add-ons` 之下。
+会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径。
 
 #### Token 影响
 
-该声明约为 2,300 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 1,100 个字符。
+该声明约为 2,300 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 6,500 个字符，其中大部分是目录各行。
 
 #### KV Cache 影响
 
@@ -171,7 +205,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型看到的内容
 
-搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题。移除结果会写明删除的路径，以及最多 20 个仍在使用该扩展的文件。
+搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明删除的路径，以及最多 20 个仍在使用该扩展的文件。
 
 #### Token 影响
 
@@ -187,6 +221,8 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 这些限制界定了插件提供的范围；它们是当前包的约束。
 
+- **更改前不征求同意** — 在任何审批策略和权限模式下，智能体都会自行判断安装和移除目录扩展，因此用户通过智能体的回复、对话记录中的工具调用以及项目的 `.wasdengine/addons.json` 得知安装情况，并可在“扩展”对话框中撤销。
+- **每个请求都带有目录** — 每个会话的系统提示词都会列出整个目录，没有 Godot 项目的会话也不例外；目录超出该部分 8,000 个字符的预算时，需要更短的列表。
 - **固定的上游压缩包** — 压缩包从各项目的发布或标签 URL 下载。若 GitHub 用不同的字节重新生成了标签压缩包，SHA-256 检查会失败，直到重新固定该条目。
 - **不收录仅限编辑器的扩展** — 智能体无法使用编辑器的停靠面板、笔刷或控件，因此目录不收录只能通过编辑器界面使用的扩展。
 - **不收录 GDExtension 扩展** — WASD Engine 的 Web 发布不加载 GDExtension，因此目录不收录 Terrain3D 或 LimboAI 等编译型扩展。

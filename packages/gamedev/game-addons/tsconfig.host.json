@@ -26,10 +26,10 @@
       "path": "../../core/agent"
     },
     {
-      "path": "../../core/tools"
+      "path": "../../core/system-prompt"
     },
     {
-      "path": "../../interaction/user-approval"
+      "path": "../../core/tools"
     },
     {
       "path": "../../llm/llm"

@@ -306,12 +306,12 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="game-add-ons"></a>
 ## 游戏扩展
 
-`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons`，因此工具前缀保持缓存；指南只会以技能形式出现在使用该扩展的项目中。
+`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons` 和一个固定的系统提示词部分 `game-addons`，因此已缓存的前缀保持不变；指南只会以技能形式出现在使用该扩展的项目中。
 
 | 步骤 | 内容 |
 |---|---|
-| 发现 | `game_addons` 的 `search` 按游戏的需求对目录排序；`guide` 在安装前返回指南 |
-| 审批 | 在 Session 的 `ask` 审批策略下，一个 `tools/pre-execute` 监听器会在 `install` 与 `remove` 之前询问用户，写明扩展、其许可证、下载内容和项目 |
+| 发现 | `game-addons` 部分列出目录中的每个扩展、它有帮助的阶段以及何时使用它；`game_addons` 的 `search` 按游戏的需求对目录排序，并显示每个扩展的大小、冲突以及何时不用；`guide` 在安装前返回指南 |
+| 判断 | 智能体判断游戏需要某个扩展时就安装或移除它，在任何审批策略下都不询问用户；该部分告诉它何时值得安装扩展，并要求它告诉用户添加了什么以及许可证 |
 | Godot 安装 | 压缩包只下载一次到 `<dataRoot>/archives/<sha256>.zip`，并须与固定值一致；其中一个文件夹经 `.wasdengine/staging/` 解压到 `res://addons/<folder>/`；`project.godot` 获得插件的 `_enable_plugin()` 本会添加的编辑器插件、自动加载与设置；`THIRD_PARTY_NOTICES.md` 获得许可证；`.wasdengine/addons.json` 记录该扩展；`ctx.godot.importProject` 导入项目 |
 | Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
 | 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
@@ -436,7 +436,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**

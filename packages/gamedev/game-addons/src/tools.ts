@@ -2,16 +2,14 @@
  * The model-facing `game_addons` tool: search the curated catalog of Godot and Blender add-ons, read an add-on's
  * usage guide, install or remove one in the game project, and list what the project has. One set of definitions
  * serves the Session's own agent, whose project paths are relative to its working directory, and agents connected
- * through WASD Engine's MCP server, which name projects by absolute path. Installing and removing ask the user first
- * when the Session's approval policy asks.
+ * through WASD Engine's MCP server, which name projects by absolute path. The agent decides when to install or remove
+ * an add-on: neither action asks the user.
  * @module @deepseek-ai/dsh-game-addons/src/tools
  */
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 import { readFile } from 'node:fs/promises'
-import type { Context } from '@deepseek-ai/cordis'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { defineTool, type InferValue, type PreToolDecision, type ToolDefinition, type ToolExecution, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-user-approval'
+import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { GUIDE_FILE, parseGuide } from './catalog.ts'
 import type { GameAddonManager } from './manager.ts'
 import type { GameAddonPresence, GameAddonStage, GameAddonView } from './types.ts'
@@ -179,7 +177,7 @@ function render(value: ToolValue): string {
       const addons = value.addons ?? []
       if (addons.length === 0) return 'No catalog add-on matches. Search with other words, or without a query to list the whole catalog; Godot and Blender may already do this without an add-on.'
       const head = `${addons.length} of ${value.total ?? addons.length} catalog add-ons${value.projectDir === undefined ? '' : ` for ${value.projectDir}`}:`
-      return `${head}\n${addons.map(renderView).join('\n')}\nRead one with action guide, or install it with action install; tell the user its license first.`
+      return `${head}\n${addons.map(renderView).join('\n')}\nRead one with action guide, or install it with action install.`
     }
     case 'list': {
       const addons = value.addons ?? []
@@ -201,6 +199,7 @@ function render(value: ToolValue): string {
           : `Installed ${install.title} ${install.version} (${install.license})${value.projectDir === undefined ? '' : ` in ${value.projectDir}`}${install.paths.length === 0 ? '' : `: ${install.paths.join(', ')}`}.`,
         `Its guide is now the skill ${install.id}; load it before using the add-on.`,
         ...install.notes,
+        ...install.unchanged ? [] : ['Tell the user that you added it and why, with its license.'],
       ]
       if (install.importIssues.length > 0) lines.push(`The project's import reported:\n${install.importIssues.map(issue => `- ${issue}`).join('\n')}`)
       return lines.join('\n')
@@ -233,9 +232,9 @@ function requireId(id: string | undefined, action: string): string {
 export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAddonToolWording): ToolDefinition {
   return defineTool({
     name: TOOL_NAME,
-    description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, importers for Tiled, LDtk, and sprite editors, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
-      + 'action search finds add-ons for a need and says when each helps and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project, asking the user first, after which its guide is the skill named by its id; remove deletes one; list shows the project\'s add-ons. '
-      + 'Prefer what Godot and Blender already do: suggest an add-on only when it replaces a system the game would otherwise build, install only what the user agreed to, and tell the user its license.',
+    description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
+      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove deletes one; list shows the project\'s add-ons. '
+      + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'search, guide, install, remove, or list.' },
       query: { type: 'string', description: 'For search: what the game needs, such as "camera follow" or "dialogue". Default: the whole catalog.' },
@@ -311,79 +310,4 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
       }
     },
   })
-}
-
-/** The fields of a call that its approval question names. */
-export interface ChangeCall {
-  readonly action: 'install' | 'remove'
-  readonly id: string
-  readonly project?: string
-}
-
-function changeCall(args: unknown): ChangeCall | undefined {
-  if (typeof args !== 'object' || args === null) return undefined
-  const { action, id, project } = args as Record<string, unknown>
-  if ((action !== 'install' && action !== 'remove') || typeof id !== 'string') return undefined
-  return { action, id, ...typeof project === 'string' ? { project } : {} }
-}
-
-/**
- * The approval question of one installation or removal, naming the add-on, its license, its download, and the project.
- * @param manager - the add-on manager.
- * @param call - the call's action, id, and project.
- * @param projectName - the project folder's name, or undefined when it cannot be resolved.
- * @returns the question, or undefined for an unknown id, which the tool itself refuses.
- */
-export function approvalQuestion(manager: GameAddonManager, call: ChangeCall, projectName: string | undefined): string | undefined {
-  const addon = manager.catalog.get(call.id)
-  if (addon === undefined) return undefined
-  const where = projectName === undefined ? 'the game project' : `the game project ${projectName}`
-  if (call.action === 'remove') {
-    return `Remove ${addon.title} from ${where}? ${addon.host === 'godot' ? `This deletes addons/${addon.godot?.addonDir ?? ''} and its project.godot entries; scenes and scripts that use it stop working.` : 'Its guide leaves the project; the Blender add-on stays downloaded for other projects.'}`
-  }
-  const assets = addon.assets === undefined
-    ? ''
-    : ` With it comes an asset pack (${addon.assets.license}, ${addon.assets.homepage}): ${sizeText(addon.assets.bytes)} from ${new URL(addon.assets.url).host}.`
-  const download = addon.archive === undefined
-    ? 'It ships inside Blender, so nothing is downloaded.'
-    : `It downloads ${sizeText(addon.archive.bytes)} from ${new URL(addon.archive.url).host}.${assets}`
-  const runs = addon.host === 'godot' ? ' Its scripts become part of the game and run whenever the project is imported or played.' : ' Its Python code runs inside Blender when the agent enables it.'
-  const credit = addon.credit === undefined ? '' : ` Its license requires a credit in the game: ${addon.credit}.`
-  return `Install ${addon.title} ${addon.version} (${addon.license}, ${addon.homepage}) into ${where}? ${download}${runs}${credit}`
-}
-
-/**
- * Ask the user before an installation or removal when the Session's approval policy asks; under the `never` policy
- * the call proceeds, as other tools do under full access. Later listeners decide first, and a stricter decision
- * of theirs wins.
- * @param ctx - plugin context; the listener lives as long as it.
- * @param manager - the add-on manager.
- * @param projectName - the folder name of a call's project, or undefined when it cannot be resolved.
- */
-export function registerApproval(
-  ctx: Context,
-  manager: GameAddonManager,
-  projectName: (call: ChangeCall, exec: ToolExecution) => Promise<string | undefined>,
-): void {
-  ctx.on('tools/pre-execute', async (exec, next): Promise<PreToolDecision> => {
-    const downstream = await next()
-    if (exec.name !== TOOL_NAME || downstream.kind !== 'allow' || exec.agent === undefined) return downstream
-    const call = changeCall(exec.arguments)
-    if (call === undefined) return downstream
-    const approval = ctx.get('approval')
-    const policy = approval?.overrideOf(exec.agent.session) ?? approval?.config.policy ?? 'ask'
-    if (policy === 'never') return downstream
-    const question = approvalQuestion(manager, call, await projectName(call, exec).catch(() => undefined))
-    if (question === undefined) return downstream
-    return { kind: 'ask', reason: question }
-  })
-}
-
-/**
- * The folder name of a project for approval questions.
- * @param projectDir - absolute project folder.
- * @returns its last path segment.
- */
-export function projectLabel(projectDir: string): string {
-  return basename(projectDir)
 }

@@ -1756,8 +1756,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'gameAddons',
-    summary: 'Owner of the add-on catalog, the `game_addons` tool, the add-on guides\' skill provider, and the `gameAddons` Remote.',
-    description: 'Owner of the add-on catalog, the `game_addons` tool, the add-on guides\' skill provider, and the `gameAddons` Remote.',
+    summary: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, and the `gameAddons` Remote.',
+    description: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, and the `gameAddons` Remote.',
     methods: [
       {
         signature: '@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>',
