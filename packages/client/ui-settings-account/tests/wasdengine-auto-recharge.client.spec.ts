@@ -21,7 +21,7 @@ const stored: AccountView = {
 function balance(enabled: boolean): AccountDetails['balance'] {
   return {
     status: 'ready', value: [], bonusWallets: [],
-    allowance: { remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z', autoRecharge: { enabled, chargeUsd: 10 } },
+    allowance: { remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z', autoRecharge: { enabled } },
   }
 }
 function operations(c: TestClient): AccountSectionInjected {

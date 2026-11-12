@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: dd84e061d4481ab7
-  zh: 336be4473ffadef5
+  en: 3704bd413971aab5
+  zh: 420c635cd6da54fc
 /game-tools/composition:
-  en: b259b258b907d0c6
-  zh: e2cea114e1947ea4
+  en: 615d8d0f65b9ab7f
+  zh: d9599908b2752b4d
 /game-tools/application-mcp-servers:
   en: 580c70a2e4dc2335
   zh: a5f54718ee5fa960
@@ -36,8 +36,8 @@
   en: 1a336d4ce8c60b66
   zh: 5e72dc88ae95aedc
 /game-tools/godot-runs/script-check:
-  en: c5c976f933685ec5
-  zh: 5b36e32904263e44
+  en: b79fff5eadd29b29
+  zh: 3315350f812c5ebb
 /game-tools/process-limits:
   en: 44d0ed085d2618aa
   zh: ce7e888a48b2c2bc
@@ -45,20 +45,26 @@
   en: 475c15c349002e4d
   zh: d9c2759956ef57ed
 /game-tools/game-tab:
-  en: 37c2ae4b99db8874
-  zh: 447226ced323b267
+  en: b9fdad3e25e23647
+  zh: d4808f55da2a4e12
 /game-tools/game-tools-tabs:
   en: f03b34a167deab64
   zh: d91819c45eb46021
 /game-tools/game-add-ons:
-  en: e14648ae9e422d24
-  zh: 9ef0168eb3ec0494
+  en: bef5f7c0e1dd4060
+  zh: 0d15bdf36bc10139
 /game-tools/assets-tab:
-  en: 4e9bf58974e93cae
-  zh: aa47814606362b42
+  en: 9928fe8a679fec67
+  zh: 26754e3e32f1fc15
+/game-tools/audio-tab-and-audio-tools:
+  en: 2a7c3cc1d91f78f6
+  zh: 297cde5459838c6b
 /game-tools/mcp-server-for-other-agents:
-  en: 019933fa85133aa8
-  zh: 90611716990d6c1e
+  en: 3121e5b69c7a02e9
+  zh: 87af3d0c399e3362
+/game-tools/agent-s-browser:
+  en: 8c5498309cf9607a
+  zh: 67a9b66419e1fe5d
 /game-tools/remote-types:
   en: 392eec73efb81160
   zh: b9e684bb0121f09e

@@ -3,7 +3,14 @@
 // A windowless Godot game draws into a Core Animation layer that LibGodot's embedded display server shares through a
 // CAContext. This module shows that layer in an Electron window: a CALayerHost in a view that sits above the window's
 // vibrancy view and below Chromium's views, so the game shows where the page leaves its rectangle transparent, and
-// the page's overlays draw over it. The view takes no mouse events; the page receives them.
+// the page's overlays and every web contents view added later, such as an account page, draw over it. The view takes
+// no mouse events; the page receives them.
+//
+// Chromium sorts the content view's subviews whenever its views change, for example when Electron adds or removes a
+// WebContentsView: background effect views first, then its compositor's view and the web contents views, then every
+// other view, which would lift the game's view above the page. So attach gives the class of the window's content view,
+// once per class, a sortSubviewsUsingFunction:context: that keeps the game's views right above the background effect
+// views and leaves the order of every other view to Chromium.
 //
 //   attach(windowHandle: Buffer) -> handle
 //       windowHandle: BrowserWindow.getNativeWindowHandle(), an NSView of the window. The view starts hidden.
@@ -18,7 +25,10 @@
 
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
 #include <node_api.h>
+#include <utility>
+#include <vector>
 
 typedef uint32_t CAContextID;
 
@@ -41,6 +51,78 @@ namespace {
 struct Handle {
 	WasdGameLayerView *view;
 };
+
+// A view that Chromium sorts below its compositor and web contents views, as remote_cocoa's IsBackgroundEffectView
+// decides: the window's vibrancy view, and on macOS 26 and later a glass effect view.
+bool IsBackgroundView(NSView *view) {
+	static Class glass = NSClassFromString(@"NSGlassEffectView");
+	return [view isKindOfClass:[NSVisualEffectView class]] || (glass != nil && [view isKindOfClass:glass]);
+}
+
+using SubviewComparator = NSComparisonResult (*)(__kindof NSView *, __kindof NSView *, void *);
+using SortSubviews = void (*)(id, SEL, SubviewComparator, void *);
+
+// The comparator and context of one sortSubviewsUsingFunction:context: call.
+struct SortRequest {
+	SubviewComparator compare;
+	void *context;
+};
+
+// The requested order, except that a game's view goes right above the background views and below every other view.
+NSComparisonResult CompareKeepingGameBelowPage(__kindof NSView *lhs, __kindof NSView *rhs, void *request) {
+	const bool leftGame = [lhs isKindOfClass:[WasdGameLayerView class]];
+	const bool rightGame = [rhs isKindOfClass:[WasdGameLayerView class]];
+	if (leftGame && !rightGame) {
+		return IsBackgroundView(rhs) ? NSOrderedDescending : NSOrderedAscending;
+	}
+	if (rightGame && !leftGame) {
+		return IsBackgroundView(lhs) ? NSOrderedAscending : NSOrderedDescending;
+	}
+	const SortRequest *sort = static_cast<const SortRequest *>(request);
+	return sort->compare(lhs, rhs, sort->context);
+}
+
+// The sortSubviewsUsingFunction:context: implementations that the override replaced, by class.
+std::vector<std::pair<const void *, SortSubviews>> &ReplacedSorts() {
+	static std::vector<std::pair<const void *, SortSubviews>> replaced;
+	return replaced;
+}
+
+// The implementation that the nearest overridden class of `cls` had before the override, or nullptr.
+SortSubviews ReplacedSortOf(Class cls) {
+	for (Class current = cls; current != nil; current = class_getSuperclass(current)) {
+		for (const auto &entry : ReplacedSorts()) {
+			if (entry.first == (__bridge const void *)current) {
+				return entry.second;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void SortSubviewsKeepingGameBelowPage(NSView *self, SEL selector, SubviewComparator compare, void *context) {
+	const SortSubviews replaced = ReplacedSortOf(object_getClass(self));
+	SortRequest request{ compare, context };
+	replaced(self, selector, &CompareKeepingGameBelowPage, &request);
+}
+
+// Override sortSubviewsUsingFunction:context: in the class of a window's content view, once per class.
+void KeepGameBelowPageWhenSorted(NSView *content) {
+	Class cls = [content class];
+	if (cls == [NSView class] || ReplacedSortOf(cls) != nullptr) {
+		return;
+	}
+	const SEL selector = @selector(sortSubviewsUsingFunction:context:);
+	Method method = class_getInstanceMethod(cls, selector);
+	if (method == nullptr) {
+		return;
+	}
+	ReplacedSorts().emplace_back((__bridge const void *)cls, reinterpret_cast<SortSubviews>(method_getImplementation(method)));
+	const IMP override = reinterpret_cast<IMP>(&SortSubviewsKeepingGameBelowPage);
+	if (!class_addMethod(cls, selector, override, method_getTypeEncoding(method))) {
+		method_setImplementation(method, override);
+	}
+}
 
 napi_value Fail(napi_env env, const char *message) {
 	napi_throw_error(env, "WASD_GAME_LAYER", message);
@@ -96,15 +178,16 @@ napi_value Attach(napi_env env, napi_callback_info info) {
 	view.host = host;
 	[view.layer addSublayer:host];
 
-	// Above the vibrancy view, which Electron keeps lowest, and below Chromium's compositor and web contents views.
-	NSView *vibrancy = nil;
+	// Above the background views, such as the vibrancy view, which Electron and Chromium keep lowest, and below
+	// Chromium's compositor and web contents views.
+	NSView *background = nil;
 	for (NSView *child in content.subviews) {
-		if ([child isKindOfClass:[NSVisualEffectView class]]) {
-			vibrancy = child;
-			break;
+		if (IsBackgroundView(child)) {
+			background = child;
 		}
 	}
-	[content addSubview:view positioned:(vibrancy != nil ? NSWindowAbove : NSWindowBelow) relativeTo:vibrancy];
+	[content addSubview:view positioned:(background != nil ? NSWindowAbove : NSWindowBelow) relativeTo:background];
+	KeepGameBelowPageWhenSorted(content);
 
 	Handle *handle = new Handle{ view };
 	napi_value external;

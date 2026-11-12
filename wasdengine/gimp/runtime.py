@@ -72,9 +72,13 @@ KEEP_TEXT = (
 # Programs of GIMP's macOS bundle that the tools never run: the debug dialog, a clipboard test, and the plug-in
 # build helper. The bundle's own executable, the GUI program, goes too.
 UNUSED_PROGRAMS = ("gimp-debug-tool*", "gimp-test-clipboard*", "gimptool*")
-# GIMP's demo extension, plug-in examples in C, Vala, and Python that each open a dialog. On Windows its Vala plug-in reads
-# its own path from the ANSI command line, so in a folder outside ASCII it reports that its translation catalog is missing.
-DEMO_EXTENSION = "lib/gimp/3.0/extensions/org.gimp.extension.goat-exercises"
+# The folder of GIMP's system extensions. GIMP needs none there and reports, at each start, every file in it that is no
+# extension, so the runtime removes the folder once it is empty instead of keeping it with KEEP_FILE.
+EXTENSIONS = "lib/gimp/3.0/extensions"
+# GIMP's demo extension, plug-in examples in C, Vala, and Python that each open a dialog, and the only extension GIMP
+# installs. On Windows its Vala plug-in reads its own path from the ANSI command line, so in a folder outside ASCII it
+# reports that its translation catalog is missing.
+DEMO_EXTENSION = f"{EXTENSIONS}/org.gimp.extension.goat-exercises"
 # Paths relative to the bundle's Contents that the runtime leaves out: bundle metadata and signatures, headers,
 # translations, the GUI icons and themes' icon files, and the demo extension.
 UNUSED_PATHS = ("Info.plist", "CodeResources", "_CodeSignature", "include", "Resources/icons", "Resources/locale", DEMO_EXTENSION)
@@ -410,6 +414,15 @@ def remove_path(path: str) -> None:
         shutil.rmtree(path)
 
 
+def remove_empty_folder(path: str) -> None:
+    """Delete a folder that holds nothing; a missing folder, a link, or a folder with entries stays as it is.
+
+    @param path: folder path.
+    """
+    if os.path.isdir(path) and not os.path.islink(path) and not os.listdir(path):
+        os.rmdir(path)
+
+
 def remove_matching(directory: str, patterns: Tuple[str, ...]) -> None:
     """Delete the entries of one folder whose names match any of the patterns.
 
@@ -449,9 +462,9 @@ def prepare(contents: str) -> str:
     The layout keeps GIMP's MacOS, lib, and etc folders; Resources moves to share, the folder GIMP and its
     libraries read through the bundle's share link, and an empty Resources folder stays, because GIMP sets up its
     bundled libraries only when that folder exists. The runtime drops debug symbols, the GUI program and the other
-    unused programs, headers, translations, GUI icons, bundle metadata and signatures, the demo extension, Python's
-    test suite and other unused standard library folders, and the build tools in site-packages. Every empty folder
-    outside __pycache__ gets KEEP_FILE.
+    unused programs, headers, translations, GUI icons, bundle metadata and signatures, the demo extension and the
+    extensions folder that it leaves empty, Python's test suite and other unused standard library folders, and the build
+    tools in site-packages. Every other empty folder outside __pycache__ gets KEEP_FILE.
 
     @param contents: copy of a GIMP 3 application bundle's Contents folder.
     @returns: the GIMP version from Info.plist, such as 3.2.8.
@@ -487,10 +500,9 @@ def prepare(contents: str) -> str:
     remove_matching(os.path.join(contents, "MacOS"), UNUSED_PROGRAMS)
     for relative in UNUSED_PATHS:
         remove_path(os.path.join(contents, *relative.split("/")))
+    remove_empty_folder(os.path.join(contents, *EXTENSIONS.split("/")))
     remove_matching(os.path.join(contents, "Resources"), UNUSED_RESOURCE_FILES)
-    resources_share = os.path.join(contents, "Resources", "share")
-    if os.path.isdir(resources_share) and not os.listdir(resources_share):
-        os.rmdir(resources_share)
+    remove_empty_folder(os.path.join(contents, "Resources", "share"))
     versions = os.path.join(contents, "lib", "Python.framework", "Versions")
     for python in sorted(os.listdir(versions)) if os.path.isdir(versions) else []:
         framework = os.path.join(versions, python)
@@ -908,9 +920,9 @@ def prepare_windows(stage: str, installed: str) -> str:
 
     The layout keeps the install's bin, lib, share, and etc folders. The runtime drops the uninstaller, debug symbols,
     the GUI program and the other unused programs, headers and import libraries, translations, the desktop icon theme,
-    the scanner plug-in, the demo extension, Python's test suite and other unused standard library folders, and build
-    tools in site-packages; it names the programs of the interpreter files by file name, keeps an empty share/locale
-    with KEEP_FILE, and gives every other empty folder KEEP_FILE.
+    the scanner plug-in, the demo extension and the extensions folder that it leaves empty, Python's test suite and other
+    unused standard library folders, and build tools in site-packages; it names the programs of the interpreter files by
+    file name, keeps an empty share/locale with KEEP_FILE, and gives every other empty folder KEEP_FILE.
 
     @param stage: the install folder.
     @param installed: the absolute folder the installer installed into, which no file may name afterwards.
@@ -927,6 +939,7 @@ def prepare_windows(stage: str, installed: str) -> str:
 
     for relative in WINDOWS_UNUSED_PATHS:
         remove_path(os.path.join(stage, *relative.split("/")))
+    remove_empty_folder(os.path.join(stage, *EXTENSIONS.split("/")))
     gui = re.compile(r"^gimp-\d+(?:\.\d+)*\.exe\Z")
     for name in sorted(os.listdir(binaries)):
         if gui.match(name) or any(fnmatch.fnmatchcase(name.lower(), pattern) for pattern in UNUSED_PROGRAMS):

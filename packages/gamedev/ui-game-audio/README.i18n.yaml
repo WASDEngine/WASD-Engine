@@ -1,0 +1,52 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-audio/README.md
+/:
+  en: 1cff98353317bf45
+  zh: 9c126504b38f99dc
+/deepseek-ai-dsh-client-ui-game-audio:
+  en: fb599138ac8a5131
+  zh: 0d9b5ad2827a7a1c
+/deepseek-ai-dsh-client-ui-game-audio/summary:
+  en: 73b17611246d9636
+  zh: 4dbd21799dfe019d
+/deepseek-ai-dsh-client-ui-game-audio/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package/default-composition:
+  en: ae887957ffbad76b
+  zh: 24268b20e5fa47bb
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package/what-the-tab-lists:
+  en: 2531e5b32d79dfa8
+  zh: d84357ad3968a6b1
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package/listening:
+  en: 4ae9d726bde16896
+  zh: 4e70a850f5da899e
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package/details:
+  en: 86b784a83734058d
+  zh: 6e537ae31564ac4f
+/deepseek-ai-dsh-client-ui-game-audio/use-this-package/answers-to-the-agent:
+  en: adebacbc33cf7ec8
+  zh: c0a8fada0e70ece1
+/deepseek-ai-dsh-client-ui-game-audio/understand-the-implementation:
+  en: aca94700bf93c00a
+  zh: 9dbe8b110a3e1b30
+/deepseek-ai-dsh-client-ui-game-audio/further-exploration:
+  en: fd2435c9f971cfdd
+  zh: 5863103e32dd9a4e
+/deepseek-ai-dsh-client-ui-game-audio/model-experience:
+  en: c6bf76b8e9b0024e
+  zh: 18cdfb4d8995438c
+/deepseek-ai-dsh-client-ui-game-audio/model-experience/kv-cache-effect:
+  en: 40294c1c31b74824
+  zh: 0857e9b4dd363e0a
+/deepseek-ai-dsh-client-ui-game-audio/known-limitations-and-deferred-work:
+  en: 80b52d96b8387832
+  zh: 90fbd3585fc9510f
+/deepseek-ai-dsh-client-ui-game-audio/known-limitations-and-deferred-work/dev-note:
+  en: 4230e7798e4e0de4
+  zh: 4e58995e7e5ad28b

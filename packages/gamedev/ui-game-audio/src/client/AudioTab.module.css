@@ -1,0 +1,220 @@
+/* Audio tab: the search toolbar and the stage that holds the filter, the player, and the list with its walk notice. */
+.root {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-base);
+}
+
+.toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  box-sizing: border-box;
+  height: 38px;
+  padding: 5px 6px;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.searchRow {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.searchRow .search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  background: transparent;
+  border: 0 solid transparent;
+  border-radius: var(--dsw-radius-sm);
+}
+
+.searchRow .searchWithQuery {
+  padding-right: 32px;
+}
+
+@media (hover: hover) {
+  .searchRow .search:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+
+  .tool:hover,
+  .searchClear:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.searchRow .search:focus-within {
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-color: transparent;
+}
+
+.searchRow .search input {
+  padding: 0;
+  font-size: 13px;
+  line-height: normal;
+}
+
+@media (pointer: coarse) {
+  .searchRow .search input {
+    font-size: 16px;
+  }
+}
+
+/* The search glyph and the placeholder share one ink. */
+.searchRow .search > span {
+  color: var(--dsw-alias-label-caption);
+}
+
+.searchRow .search input::placeholder {
+  color: var(--dsw-alias-label-caption);
+}
+
+.searchClear {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  corner-shape: round;
+}
+
+.searchClear:focus-visible {
+  background: var(--dsw-alias-interactive-bg-hover);
+  outline: none;
+}
+
+.tool {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--dsw-alias-label-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.tool:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-alias-state-business-primary);
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
+}
+
+.notice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 8px 0;
+  padding: 4px 4px 4px 8px;
+  color: var(--dsw-alias-state-error-primary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.noticeText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 120px;
+  overflow: hidden;
+}
+
+.filter {
+  flex: 0 0 auto;
+  margin: 8px 8px 0;
+}
+
+.player {
+  flex: 0 0 auto;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.choose {
+  margin: 0;
+  padding: 16px 12px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  text-align: center;
+}
+
+.listArea {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.listMessage {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.centered {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 24px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xs-13);
+  text-align: center;
+}
+
+.emptyGlyph {
+  margin-bottom: 4px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.title {
+  margin: 0;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+}
+
+.message {
+  max-width: 320px;
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.chipTitle {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

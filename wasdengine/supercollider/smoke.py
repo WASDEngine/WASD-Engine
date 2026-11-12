@@ -32,7 +32,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 # Terminal input byte that makes sclang interpret the text before it without printing its value.
 INTERPRET = "\x1b"
@@ -161,6 +161,38 @@ def check(line: str) -> Optional[str]:
     return None
 
 
+def process_tree(root: int, parents: Dict[int, int], created: Callable[[int], Optional[int]]) -> Set[int]:
+    """Collect a process and every process that it started, directly or through others.
+
+    A process joins when its recorded parent is in the collection and was created no later than it: Windows reuses process
+    ids, so a process whose parent has exited can name an id that a later, unrelated process holds.
+
+    @param root: process id of the first process.
+    @param parents: the recorded parent id of every process.
+    @param created: a process's creation time, or None when it cannot be read; such a process never joins.
+    @returns: the ids of root and its descendants.
+    """
+    tree = {root}
+    times: Dict[int, Optional[int]] = {}
+
+    def time_of(process: int) -> Optional[int]:
+        if process not in times:
+            times[process] = created(process)
+        return times[process]
+
+    grown = True
+    while grown:
+        grown = False
+        for process, parent in parents.items():
+            if parent not in tree or process in tree or process == parent:
+                continue
+            child, origin = time_of(process), time_of(parent)
+            if child is not None and origin is not None and child >= origin:
+                tree.add(process)
+                grown = True
+    return tree
+
+
 def visible_windows(root: int) -> List[str]:
     """List the visible top-level windows of a Windows process and every process it started, which the taskbar shows.
 
@@ -185,6 +217,22 @@ def visible_windows(root: int) -> List[str]:
     kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
     kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+
+    def created(process: int) -> Optional[int]:
+        handle = kernel32.OpenProcess(0x1000, False, process)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return None
+        try:
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel32.GetProcessTimes(handle, *(ctypes.byref(time) for time in times)):
+                return None
+            return times[0].dwHighDateTime << 32 | times[0].dwLowDateTime
+        finally:
+            kernel32.CloseHandle(handle)
+
     parents: Dict[int, int] = {}
     programs: Dict[int, str] = {}
     snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
@@ -200,14 +248,7 @@ def visible_windows(root: int) -> List[str]:
             more = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
     finally:
         kernel32.CloseHandle(snapshot)
-    tree = {root}
-    grown = True
-    while grown:
-        grown = False
-        for process, parent in parents.items():
-            if parent in tree and process not in tree and process != parent:
-                tree.add(process)
-                grown = True
+    tree = process_tree(root, parents, created)
 
     found: List[str] = []
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)

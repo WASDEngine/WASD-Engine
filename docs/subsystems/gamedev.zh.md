@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_search` 与 `asset_view` 工具则让 agent 看到同样的美术素材，由该标签页绘制。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`、该标签页为之绘制的[素材工具](#assets-tab) `game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页与素材工具](#assets-tab)的 `ui-game-assets` 与 `game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -227,7 +227,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 脚本通过项目的导入数据解析 `class_name` 类、`uid://` 路径和已导入的资源，因此，当这些数据可能比项目文件旧时，`godot_check` 会先运行运行前的导入步骤，即在 `importTimeoutMs` 内运行 `--headless --path <project> --import`：插件加载以来该项目还没有开始过以退出码 0 结束的导入、项目数据文件夹中缺少类缓存 `global_script_class_cache.cfg`，或者导入读取的某个文件的修改时间或状态变更时间晚于最近一次这样的导入的开始时间。对项目的遍历跳过 Godot 导入所跳过的内容，[包 README](../../packages/gamedev/godot/README.zh.md#tools) 列出了这些内容。导入异常退出或超时时，检查不会失败，而是在结果开头加一条警告。`ctx.godot` 逐个执行同一项目的导入步骤、检查和 Web 导出，并在内存中保存这些开始时间。
 
-随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
+随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本；脚本位于 `res://addons/` 下的某个文件夹中时，先加载 `plugin.cfg` 指定的脚本，就像编辑器先加载扩展的插件一样；并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}
@@ -291,7 +291,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 - **关闭标签页。** 插件为 `godot` 类型注册右侧 Sidebar 的关闭处理器：用户关闭标签页或新内容取代它时，处理器为该标签页的 Session 调用 `godot.stop`，不等待游戏结束。没有运行的 Session 收到的 `godot/not-running` 拒绝会被忽略；其他失败写入浏览器日志，游戏继续运行。折叠侧栏、切换 Session 和卸载插件不会运行关闭处理器。
 - **图层。** 画面调用 `dshDesktop.gameLayer.show` 显示运行的图层，传入 CAContext id、以点为单位的图层尺寸（窗口尺寸除以 `layer.scale`），以及在画面边框内居中、具有图层宽高比且边缘对齐设备像素的矩形，单位为布局视口的 CSS 像素。桌面应用回复 true 后，插件用遮罩从 `#root` 中挖去该矩形：一个覆盖根元素的遮罩层减去每个显示中图层的矩形对应的一层，使页面在那里透明，后面的图层得以显示，而其下的画面仍能接收指针（裁剪路径会使其收不到指针）；最后一个图层结束时以及插件卸载时，它恢复根元素原先的遮罩。焦点环与提示若在根元素内会随挖空区域一起被裁掉，因此由 portal 到 `document.body`、覆盖在画面上的一个框绘制。画面或窗口尺寸改变后，或指针拖动期间，画面在每个动画帧重新放置图层与挖空区域，直到其边框连续 10 帧保持不变；此外每 500 ms 检查一次边框。回复 false 或调用失败时，图层结束，并开始推流该运行的帧；下一次运行会再次尝试图层。[fork 的桌面说明](../../wasdengine/FORK.md#game-layer-in-the-desktop-app)介绍主进程一侧。
 - **帧。** 读取方在字节到达时解析记录，并把声明零字节、宽度或高度为零，或超过 32 MiB 的记录视为损坏。响应失败、被拒绝、损坏或结束后，它在 250 ms 后重新打开；尝试一直没有交付记录时，延迟逐次加倍，至多 4 s。同一时间只用 `createImageBitmap` 解码一张图像：以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码；较新的记录会替换正在等待的记录，最新解码的帧在下一个动画帧绘制到保持帧宽高比的 canvas 上。
-- **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件；鼠标位于 canvas 上方时，发送鼠标事件。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
+- **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件，以及 canvas 上方的鼠标事件；没有焦点时，指针移动只更新下一次移动的起点。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移；模式仍为捕获时结束的锁定（例如按下 Esc）会使视图失去焦点。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮并结束指针锁定。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
 - **操作。** 「运行」以最近一次运行的项目调用 `godot.run`；首次运行之前不带项目，由 `ctx.godot` 查找最近的项目。运行进行中时代替「运行」显示的「重新运行」还会传入该运行 `launch` 中的场景与窗口尺寸。「停止」、「暂停」、「继续」、「前进一帧」与「安装 Godot」（运行时缺失或失败时显示）调用对应的方法。被拒绝的操作会显示其 Remote 错误码对应的文案，包括 `session/writer-held`。
 
 <a id="game-tools-tabs"></a>
@@ -306,12 +306,12 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="game-add-ons"></a>
 ## 游戏扩展
 
-`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons`，因此工具前缀保持缓存；指南只会以技能形式出现在使用该扩展的项目中。
+`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons` 和一个固定的系统提示词部分 `game-addons`，因此已缓存的前缀保持不变；指南只会以技能形式出现在使用该扩展的项目中。
 
 | 步骤 | 内容 |
 |---|---|
-| 发现 | `game_addons` 的 `search` 按游戏的需求对目录排序；`guide` 在安装前返回指南 |
-| 审批 | 在 Session 的 `ask` 审批策略下，一个 `tools/pre-execute` 监听器会在 `install` 与 `remove` 之前询问用户，写明扩展、其许可证、下载内容和项目 |
+| 发现 | `game-addons` 部分列出目录中的每个扩展、它有帮助的阶段以及何时使用它；`game_addons` 的 `search` 按游戏的需求对目录排序，并显示每个扩展的大小、冲突以及何时不用；`guide` 在安装前返回指南 |
+| 判断 | 智能体判断游戏需要某个扩展时就安装或移除它，在任何审批策略下都不询问用户；该部分告诉它何时值得安装扩展，并要求它告诉用户添加了什么以及许可证 |
 | Godot 安装 | 压缩包只下载一次到 `<dataRoot>/archives/<sha256>.zip`，并须与固定值一致；其中一个文件夹经 `.wasdengine/staging/` 解压到 `res://addons/<folder>/`；`project.godot` 获得插件的 `_enable_plugin()` 本会添加的编辑器插件、自动加载与设置；`THIRD_PARTY_NOTICES.md` 获得许可证；`.wasdengine/addons.json` 记录该扩展；`ctx.godot.importProject` 导入项目 |
 | Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
 | 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
@@ -344,6 +344,23 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 多个 agent 可以同时使用查看器：模型的并行调用、agent 团队的队友、子 agent，以及通过 [MCP 服务器](#mcp-server-for-other-agents)连接的 agent。每个调用的请求都注明调用方 agent 自己的 Session，窗口在该 Session 中读取并绘制；调用在等待期间结束时，其请求会离开窗口的队列。
 
+<a id="audio-tab"></a>
+## 「音频」标签页与音频工具
+
+`ui-game-audio` 行挂载 [`@deepseek-ai/dsh-client-ui-game-audio`](../../packages/gamedev/ui-game-audio/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `audio` 页面类型，其引导项顺序为 46，位于「素材」标签页的引导项之后。它的主体按文件夹列出 Session 所在游戏项目的音效、对白和音乐及其时长，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，并播放所选声音：提供可拖动的波形、按采样精确循环的重复播放、音量控件，以及格式、响度和峰值等详细信息。整个窗口共用一个 `AudioContext`，因此同一时间只播放一个声音。
+
+`game-audio` 行挂载 [`@deepseek-ai/dsh-game-audio`](../../packages/gamedev/game-audio/README.zh.md)，其 `audio_search` 与 `audio_review` 工具让无法收听的 Session agent 与已连接的 agent 列出声音并测量其中一个。Host 读取文件及其文件头，但不解码：`audio_review` 通过以发起调用的 Session 为作用域、被转发的 waterfall 事件 `game-audio/measure` 请求一个窗口，由浏览器解码 MP3、Ogg 和 FLAC，并在答复成为结果之前校验它；带 `show` 时，它发出 `game-audio/reveal`，在该 Session 的「音频」标签页中打开该声音。该包浏览器安全的 `./audio` 导出（客户端打包纯净性检查把它作为可内联的线路层放行）包含格式、文件头探测、测量和图像，因此标签页的详细信息、agent 得到的数值，以及 SuperCollider 的 `render_audio` 与 `analyze_audio` 以同样的方式测量声音。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 声音列表 | `workspaceFiles.list`，从工作区根目录起逐层遍历，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示且上一次遍历早于 2 秒或其耗时的十倍时、用户按下刷新时，以及 agent 展示一个声音时 |
+| 时长 | 每个声音文件头的 `workspaceFiles.readBytes` 字节窗口，每次四个声音 | 每次遍历之后，针对新的或大小有变化的声音 |
+| 所选声音 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择声音时，以及其 `file` 资源每报告一个新版本时 |
+| agent 的测量 | `game-audio/measure` 请求及其答复：测量结果与一张 PNG 图像 | 每次 `audio_review` 调用，每个窗口每次处理一个 |
+| agent 的展示 | `game-audio/reveal` 事件 | 带 `show` 的 `audio_review` 调用 |
+
+`AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`，以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。
+
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
 
@@ -356,6 +373,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
+| `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_release_game` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` | Session 自身的工具定义，不需要 Session；`project` 与 `cover_image` 是绝对路径，发布到 WASD Engine 已登录的网站 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
@@ -367,6 +385,27 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
 **设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+
+<a id="agents-browser"></a>
+## 智能体的浏览器
+
+在桌面配置中，`wasd-plugins` 行设置 `browser`，[`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.zh.md#the-agents-browser) 为会话的智能体提供 `browser_*` 工具，这些工具在右侧边栏的浏览器标签页中操作。浏览器标签页位于窗口中，因此每次工具调用都会成为一条由 Host 排队、由窗口执行的命令：
+
+1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs` 和 `screenshotWidth`。
+2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表。
+3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
+4. 窗口通过 [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.zh.md) 的 `sidebarBrowserAutomation` 服务执行操作，该服务只由桌面载体提供：在页面主环境中运行脚本、发送可信输入、输入文本，以及截取 `<webview>` guest 的画面。
+5. 窗口用 `wasdPlugins.settleBrowserRequest` 和一个 `WasdBrowserOutcome` 结束该请求。
+
+| `command.kind` | 字段 | 窗口的操作 |
+|---|---|---|
+| `open` | `url` | 把地址加载到该会话的智能体标签页（必要时先在显示中的会话里打开一个），显示该标签页，并返回页面 |
+| `read` | 无 | 返回智能体标签页的页面，或用户打开的浏览器标签页的页面 |
+| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 点击该控件或该点，并返回页面 |
+| `type` | `element`、`text`、`submit` | 填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面 |
+| `screenshot` | `element` | 截取页面的可见部分；给出控件时先把它滚动到视野中 |
+
+`WasdBrowserOutcome` 要么是 `{ ok: true, page, note?, image? }`，要么是 `{ ok: false, message }`。`page` 包含页面的 `url`、`title` 和 `text`、文本是否被截断（`truncated`）、页面是否仍在加载（`loading`），以及可选的加载错误 `error`；`note` 说明窗口如何执行了该命令，例如通过脚本点击；`image` 包含截图的 base64 `data`、`mediaType`、`width` 和 `height`，以及它所显示视口的 CSS 像素尺寸 `viewportWidth` 与 `viewportHeight`，工具据此把截图像素换算回页面坐标。Host 拒绝文本超过 `maxChars` 或图像数据超过 32 MiB 的结果。[LiveShare](liveshare.zh.md) 把这三个端点都归为仅所有者可用，并且从不向共享观看者提供 `wasdPlugins` 命名空间。
 
 ## Remote 类型
 
@@ -449,7 +488,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**
@@ -615,7 +654,7 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
@@ -632,6 +671,30 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * @param signal - stream cancellation.
+ * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
+
+/**
+ * Take a Browser command for the calling window, which then carries it out and settles it.
+ * @param id - the command.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the command ended.
+ */
+@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+
+/**
+ * End a Browser command the window took, with the page afterwards or why it failed.
+ * @param id - the command.
+ * @param outcome - how it ended.
+ * @param signal - cancellation.
+ * @returns whether the outcome reached the waiting tool call; false when the call already ended.
+ */
+@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
@@ -678,6 +741,49 @@ An agent asked to show an asset to the user; the windows that may read the Sessi
 ```
 
 Source: [`packages/gamedev/game-assets/src/types.ts`](../../packages/gamedev/game-assets/src/types.ts)
+
+<a id="game-audio-events"></a>
+
+### `game-audio/*` events
+
+<a id="game-audiomeasure--waterfall"></a>
+
+#### `game-audio/measure` — waterfall
+
+Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab
+ * plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the sound, the window to measure, the bounds, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'game-audio/measure'( this: Scoped<Agent>, request: AudioMeasureEvent, next: () => Promise<AudioMeasureResult>, ): Promise<AudioMeasureResult>
+```
+
+Types: [Agent](core.zh.md) · [Scoped](scope.zh.md)
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
+
+<a id="game-audioreveal--emit"></a>
+
+#### `game-audio/reveal` — emit
+
+An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's Audio tab.
+
+```ts cordis-catalog
+/**
+ * An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's
+ * Audio tab.
+ * @mode emit
+ * @param reveal - the Session and the sound.
+ */
+'game-audio/reveal'(reveal: AudioReveal): void
+```
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
 
 <a id="game-mcp-events"></a>
 

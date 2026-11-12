@@ -598,8 +598,8 @@ describe('bindGameInput mouse', () => {
   })
 
   it('sends a wheel step as a press and release at the pointer and keeps it from scrolling the page', () => {
-    const h = harness()
-    const step = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 100, clientX: 200, clientY: 150, altKey: true })
+    const h = harness({ focused: true })
+    const step =new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 100, clientX: 200, clientY: 150, altKey: true })
     h.canvas.dispatchEvent(step)
     const still = new WheelEvent('wheel', { bubbles: true, cancelable: true, clientX: 200, clientY: 150 })
     h.canvas.dispatchEvent(still)
@@ -614,6 +614,75 @@ describe('bindGameInput mouse', () => {
       { kind: 'mouse_button', button: 'wheel_down', pressed: false, x: 640, y: 360, factor: 3, alt: true },
     ])
     h.dispose()
+  })
+
+  it('sends hover and wheel steps only while the view has focus, with motion from where the pointer last was', () => {
+    const h = harness()
+    mouse(h.element, 'mousemove', { clientX: 100, clientY: 150 })
+    const scroll = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 100, clientX: 100, clientY: 150 })
+    h.canvas.dispatchEvent(scroll)
+    mouse(h.element, 'mousemove', { clientX: 200, clientY: 150 })
+    // A bar keeps the position of the last point on the image.
+    mouse(h.element, 'mousemove', { clientX: 200, clientY: 10 })
+    expect(scroll.defaultPrevented).toBe(false)
+    h.flush()
+    expect(h.sent()).toEqual([])
+    h.element.focus()
+    mouse(h.element, 'mousemove', { clientX: 210, clientY: 160 })
+    h.flush()
+    h.element.blur()
+    mouse(h.element, 'mousemove', { clientX: 300, clientY: 160 })
+    h.canvas.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 100, clientX: 300, clientY: 160 }))
+    h.flush()
+    expect(h.sent()).toEqual([{ kind: 'mouse_motion', x: 672, y: 392, dx: 32, dy: 32 }])
+    h.dispose()
+  })
+
+  it('lets go of the view when the user ends the pointer lock while the game still captures the mouse', () => {
+    const h = harness()
+    h.target = { window: { width: 1280, height: 720 }, image: { width: 1280, height: 720 }, mouseMode: MOUSE_MODE_CAPTURED }
+    mouse(h.canvas, 'mousedown', { button: 0, clientX: 200, clientY: 150 })
+    mouse(window, 'mouseup', { button: 0, clientX: 200, clientY: 150 })
+    lockTarget = h.canvas
+    document.dispatchEvent(new Event('pointerlockchange'))
+    expect(document.activeElement).toBe(h.element)
+    // Escape: the browser ends the lock, and the game has not released the mouse.
+    lockTarget = null
+    document.dispatchEvent(new Event('pointerlockchange'))
+    expect(document.activeElement).not.toBe(h.element)
+    expect(h.releaseKeyboard).toHaveBeenCalledOnce()
+    mouse(h.element, 'mousemove', { clientX: 300, clientY: 150, movementX: 100 })
+    h.flush()
+    expect(h.sent()).toEqual([
+      { kind: 'mouse_button', button: 'left', pressed: true, x: 640, y: 360 },
+      { kind: 'mouse_button', button: 'left', pressed: false, x: 640, y: 360 },
+    ])
+    h.dispose()
+  })
+
+  it('keeps the view focused when the game frees the mouse, and ends the lock when the view loses focus', () => {
+    const captured: GameInputTarget = {
+      window: { width: 1280, height: 720 }, image: { width: 1280, height: 720 }, mouseMode: MOUSE_MODE_CAPTURED,
+    }
+    const h = harness()
+    h.target = captured
+    mouse(h.canvas, 'mousedown', { button: 0, clientX: 200, clientY: 150 })
+    lockTarget = h.canvas
+    document.dispatchEvent(new Event('pointerlockchange'))
+    h.target = { ...captured, mouseMode: 0 }
+    lockTarget = null
+    document.dispatchEvent(new Event('pointerlockchange'))
+    expect(document.activeElement).toBe(h.element)
+    h.target = captured
+    mouse(h.canvas, 'mousedown', { button: 0, clientX: 200, clientY: 150 })
+    expect(requestPointerLock).toHaveBeenCalledTimes(2)
+    lockTarget = h.canvas
+    document.dispatchEvent(new Event('pointerlockchange'))
+    expect(exitPointerLock).not.toHaveBeenCalled()
+    h.element.blur()
+    expect(exitPointerLock).toHaveBeenCalledOnce()
+    h.dispose()
+    expect(exitPointerLock).toHaveBeenCalledOnce()
   })
 
   it('drops pointer input while the canvas has no size', () => {

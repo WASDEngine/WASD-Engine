@@ -304,6 +304,13 @@ describe('client bundle purity gate', () => {
     expect(() => resolveId('@deepseek-ai/dsh-spill-policy/notice/internal')).toThrow(/purity/)
   })
 
+  // WASDEngine fork: the Audio tab inlines the audio tools' browser-safe entry (wasdengine/FORK.md).
+  it('admits only the browser-safe audio entry of the audio tools, not their Host plugin', () => {
+    expect(resolveId('@deepseek-ai/dsh-game-audio/audio')).toBeNull()
+    expect(() => resolveId('@deepseek-ai/dsh-game-audio')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-game-audio/audio/internal')).toThrow(/purity/)
+  })
+
   it.each(['file-drag'])('inlines the stateless %s entry without admitting its subpaths or UI plugin', (name) => {
     expect(resolveId(`@deepseek-ai/dsh-util-${name}`)).toBeNull()
     expect(() => resolveId(`@deepseek-ai/dsh-util-${name}/internal`)).toThrow(/purity/)

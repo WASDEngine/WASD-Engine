@@ -102,6 +102,7 @@
     "@deepseek-ai/dsh-office-kit": "workspace:*",
     "@deepseek-ai/dsh-deepseek-account": "workspace:*",
     "@deepseek-ai/dsh-game-assets": "workspace:*",
+    "@deepseek-ai/dsh-game-audio": "workspace:*",
     "@deepseek-ai/dsh-game-mcp": "workspace:*",
     "@deepseek-ai/dsh-client-product-analytics": "workspace:*",
     "@deepseek-ai/dsh-agent-team": "workspace:*",

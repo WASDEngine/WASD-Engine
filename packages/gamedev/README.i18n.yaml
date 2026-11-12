@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/README.md
 /:
-  en: 8aa117cc3f20caeb
-  zh: 213b6b2951d965ac
+  en: 72b4e088f86a1ec1
+  zh: 4e55bda195feda37
 /game-development-tools:
   en: 9fb1ccab0f774fde
   zh: 8d89440760003efc
 /game-development-tools/summary:
-  en: 2033da31cfdf5bb5
-  zh: 01703185a9c4fa47
+  en: ab9e46f4313c992e
+  zh: 9c2e700ffca1d7f3
 /game-development-tools/table-of-contents:
   en: 1eb35b015a6c423f
   zh: a8a3dceee2c9e943
 /game-development-tools/packages:
-  en: 4e9eeeee3fe5c7c1
-  zh: d0a7231f04f60b0a
+  en: 931daf76aa7f462e
+  zh: c73f5c6ba3398c73
 /game-development-tools/related-documentation:
   en: ef538deb9ed85ca8
   zh: 29748d9b4228d00d

@@ -1,9 +1,10 @@
 /**
- * Keyless assembled-Web evidence for the game add-ons: the shipped composition mounts the `game-addons` row, a
- * scripted model searches the catalog, installs an add-on after the user approves, and loads its guide through the
- * `skill` tool. The model's skill catalog lists the guide only once the add-on is in the project, while the tool
- * declarations, apart from those of MCP servers that finish connecting during the turn, stay the same in every request.
- * The overlay points the row at a one-entry test catalog whose archive the test serves in place of its pinned URL.
+ * Keyless assembled-Web evidence for the game add-ons: the shipped composition mounts the `game-addons` row, whose
+ * system prompt section lists the catalog, and a scripted model searches the catalog, installs an add-on without a
+ * question to the user, and loads its guide through the `skill` tool. The model's skill catalog lists the guide only
+ * once the add-on is in the project, while the tool declarations, apart from those of MCP servers that finish
+ * connecting during the turn, stay the same in every request. The overlay points the row at a one-entry test catalog
+ * whose archive the test serves in place of its pinned URL.
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -87,6 +88,12 @@ function catalogs(options: GenerateOptions): string[] {
     .flatMap(block => block.type === 'text' && block.text.includes('<available_skills>') ? [block.text] : [])
 }
 
+/** The text of a request's system prompt, which its leading system-role message carries. */
+function systemPrompt(options: GenerateOptions): string {
+  return options.messages.filter(message => message.role === 'system').flatMap(message => message.content)
+    .flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+}
+
 let scaffold: WebScaffold | undefined
 let root: string | undefined
 
@@ -98,7 +105,7 @@ afterEach(async () => {
   root = undefined
 })
 
-it('lists an add-on guide for the model only after the approved installation, with the same tools in every request', async () => {
+it('tells the model the catalog and lists an add-on guide only after an installation that asked nobody, with the same tools in every request', async () => {
   root = await mkdtemp(join(tmpdir(), 'dsh-web-game-addons-'))
   const catalogDir = join(root, 'catalog')
   await mkdir(join(catalogDir, 'test-camera'), { recursive: true })
@@ -133,8 +140,8 @@ it('lists an add-on guide for the model only after the approved installation, wi
   const questions: Array<string | undefined> = []
   ctx.effect(() => ctx.on('approval/request', (request) => {
     questions.push(request.reason)
-    return Promise.resolve('allowed-once' as const)
-  }, { prepend: true }), 'game add-ons approving user')
+    return Promise.resolve('rejected' as const)
+  }, { prepend: true }), 'game add-ons user who answers no')
   await writeFile(join(scaffold.workspaceCwd, 'project.godot'), 'config_version=5\n\n[application]\n\nconfig/name="Web e2e"\n')
 
   const created = await remote<{ sessionId: string }>(scaffold, 'session/create', { request: { cwd: scaffold.workspaceCwd } })
@@ -155,8 +162,11 @@ it('lists an add-on guide for the model only after the approved installation, wi
   // Before the installation no catalog names the guide; the step after it receives a replacement catalog that does.
   for (const request of adapter.requests.slice(0, 2)) for (const text of catalogs(request)) expect(text).not.toContain('test-camera')
   expect(catalogs(adapter.requests[2] as GenerateOptions).at(-1)).toContain('test-camera')
-  expect(questions).toHaveLength(1)
-  expect(questions[0]).toMatch(/^Install Test Camera 1\.2\.0 \(MIT, https:\/\/addons\.example\.test\/camera\) into the game project /u)
+  // The system prompt lists the catalog from the first request on, and the installation asked the user nothing.
+  const prompt = systemPrompt(adapter.requests[0] as GenerateOptions)
+  expect(prompt).toContain('# Game add-ons\n\ngame_addons installs tested third-party add-ons into the game project')
+  expect(prompt).toContain('\n- test-camera (Godot; prototype): The camera must follow a moving target.')
+  expect(questions).toEqual([])
   const skillResult = (adapter.requests[3] as GenerateOptions).messages.filter(message => message.role === 'tool').at(-1)?.content
     .flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
   expect(skillResult).toContain('<skill_content name="test-camera">')

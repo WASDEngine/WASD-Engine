@@ -122,6 +122,9 @@
       "path": "../../gamedev/game-assets"
     },
     {
+      "path": "../../gamedev/game-audio"
+    },
+    {
       "path": "../../gamedev/game-mcp"
     }
   ]

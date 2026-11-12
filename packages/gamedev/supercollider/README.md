@@ -115,9 +115,9 @@ The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path a
 - A SynthDef plays with its default arguments; one without an `Out` UGen fails the call.
 - A pattern renders through `asScore(duration)`, and a Score or a list of score events renders as it is. Both play SynthDefs by name, so every SynthDef that `SynthDescLib.global` holds, such as those added with `.add` and `\default`, is sent to scsynth before the first event; events after `duration` are dropped. They render 2 channels unless `channels` says otherwise.
 
-scsynth renders 32-bit float WAV into the scratch folder, with the runtime's plugin folder as `-U` for the shipped runtime. The worker then measures its peak, and with `normalize_db` scales the sound so that its peak reaches that level; it writes exactly `duration` seconds, rounded to whole samples, to `path` in the format of its extension: `.wav`, `.aif` or `.aiff`, `.flac`, or `.ogg` (Ogg Vorbis). `sample_format` (`int16`, `int24`, or `float`, default `int16`) applies to the first three; FLAC refuses `float`. `sample_rate` defaults to 44,100 Hz, Godot's default mix rate. Missing folders are created and an existing file is replaced. Sound after `duration` is cut off, and samples beyond full scale clip in the integer formats.
+scsynth renders 32-bit float WAV into the scratch folder, with the runtime's plugin folder as `-U` for the shipped runtime. The score ends by freeing every node one block after the last frame that `path` receives: scsynth 3.14 unloads its plugins before it frees the nodes that still run when a render ends, and freeing a node whose UGens have a destructor, such as a delay line or `LocalIn`, would then crash scsynth. The worker then measures its peak, and with `normalize_db` scales the sound so that its peak reaches that level; it writes exactly `duration` seconds, rounded to whole samples, to `path` in the format of its extension: `.wav`, `.aif` or `.aiff`, `.flac`, or `.ogg` (Ogg Vorbis). `sample_format` (`int16`, `int24`, or `float`, default `int16`) applies to the first three; FLAC refuses `float`. `sample_rate` defaults to 44,100 Hz, Godot's default mix rate. Missing folders are created and an existing file is replaced. Sound after `duration` is cut off, and samples beyond full scale clip in the integer formats.
 
-The analysis reads the float copy of the render, scaled by the normalization gain, or for `analyze_audio` a float copy of the window between `start` and `end` (the whole file by default, at most 600 s), which the worker decodes with libsndfile; the server deletes each copy after reading it. The report gives:
+The analysis reads the samples of the float copy of the render that `path` receives, scaled by the normalization gain, or for `analyze_audio` a float copy of the window between `start` and `end` (the whole file by default, at most 600 s), which the worker decodes with libsndfile; the server deletes each copy after reading it. The report gives:
 
 - Peak and RMS levels in dBFS, overall and per channel when there are several.
 - Integrated loudness after ITU-R BS.1770-4 in LUFS, with every channel weighted 1; windows shorter than one 400 ms block, or without blocks above the gates, are not measured.
@@ -177,13 +177,13 @@ The bridge leads the worker's process group and keeps sclang in it, and sclang r
 | [`src/sclang-bridge.ts`](src/sclang-bridge.ts) | The bridge: the plan, sclang's environment, request files and commands, and protocol replies |
 | [`src/sclang-output.ts`](src/sclang-output.ts) | Reply lines in sclang's post output, and the bounded output between them |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, the analysis report, and help text |
-| [`src/audio.ts`](src/audio.ts) | Float WAV reading, levels, BS.1770 loudness, silence, the FFT, and the average spectrum |
-| [`src/image.ts`](src/image.ts), [`src/png.ts`](src/png.ts) | The waveform and spectrogram image, its description, and PNG encoding |
+| [`src/audio.ts`](src/audio.ts) | Float WAV reading and the gain of a normalized render |
+| [`src/png.ts`](src/png.ts) | PNG encoding of the waveform and spectrogram image |
 | [`src/schelp.ts`](src/schelp.ts) | Plain text of SCDoc help files |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | Worker class: boot, dispatch, JSON replies, one handler per method, and the `Server:boot` override |
 
-The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, and the setup host.
+The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, and the setup host. The levels, BS.1770 loudness, silence, FFT, average spectrum, and the waveform and spectrogram image with its description come from the `./audio` module of [`dsh-game-audio`](../game-audio/README.md), which the Audio tab and the audio tools share.
 
 ### Verify against real SuperCollider
 

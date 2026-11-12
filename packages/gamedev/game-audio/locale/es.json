@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Audio para el agente",
+    "description": "Permite que el agente y los agentes conectados encuentren los efectos de sonido, los diálogos y la música del proyecto de juego y los midan tal como suenan en la pestaña Audio: sonoridad, picos, silencios, uniones de bucle y una imagen de la forma de onda."
+  }
+}

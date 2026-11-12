@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Aufgaben fortsetzen",
+    "description": "Lässt den Agenten weiterarbeiten, solange die Aufgabenliste, die er für eine Anfrage angelegt hat, noch offene Punkte enthält, statt auf halbem Weg aufzuhören."
+  }
+}

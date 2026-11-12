@@ -458,7 +458,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'game-addons',
     title: 'Game add-ons: catalog, installs, and project guides',
     mode: 'service',
-    note: 'Installs curated Godot and Blender add-ons from the shipped catalog into a game project after the user approves, through the game_addons tool of every Session and of the game MCP server, lists the installed add-ons\' guides as skills of only that project\'s Sessions, and serves the Add-ons dialog\'s Remote.',
+    note: 'Lists the shipped catalog of curated Godot and Blender add-ons in the system prompt and installs one into a game project when the agent decides that the game needs it, through the game_addons tool of every Session and of the game MCP server, lists the installed add-ons\' guides as skills of only that project\'s Sessions, and serves the Add-ons dialog\'s Remote.',
   },
   {
     key: 'typert',

@@ -1,0 +1,109 @@
+/* The list of sounds: folder headings and sound rows, 28px tall like the asset picker's rows. */
+.list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.folder,
+.sound {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xs-13);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  outline: none;
+  cursor: pointer;
+}
+
+.folder {
+  padding-left: 4px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.sound {
+  padding-left: 26px;
+}
+
+.soundFlat {
+  padding-left: 8px;
+}
+
+.sound[aria-current='true'] {
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+@media (hover: hover) {
+  .folder:hover,
+  .sound:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.folder:focus-visible,
+.sound:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-caption);
+  transition: transform 120ms ease;
+}
+
+.chevronOpen {
+  transform: rotate(90deg);
+}
+
+.folderGlyph {
+  flex: 0 0 auto;
+}
+
+.folderName,
+.soundName {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.count,
+.duration {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The folder gives way before the name loses a character. */
+.soundFolder {
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.statePlaying {
+  color: var(--dsw-alias-state-business-primary);
+}

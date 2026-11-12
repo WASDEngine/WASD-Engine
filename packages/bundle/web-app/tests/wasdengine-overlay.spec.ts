@@ -5,11 +5,11 @@
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
  * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
- * for one, the game tool rows, the row of their Game tools tabs, and the row of the Assets tab must mount from web-app
- * dependencies, each tool package must resolve the title, description, and logo the tabs show, and the `gamedev`
- * preset must be the default
- * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root,
- * whose skills the `skill` tool returns within the tool-result pruner threshold.
+ * for one, the game tool rows, the row of their Game tools tabs, the row of the Assets tab, and the rows of the Audio
+ * tab and its audio tools must mount from web-app dependencies, each tool package must resolve the title, description,
+ * and logo the tabs show, and the `gamedev` preset must be the default
+ * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona, bundled skill root, and
+ * todo continuation, whose skills the `skill` tool returns within the tool-result pruner threshold.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -27,6 +27,7 @@ import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } fro
 import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
 import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
+import * as TodoContinuation from '@deepseek-ai/dsh-todo-continuation'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = resolve(webAppDir, '../../..')
@@ -70,7 +71,13 @@ const GAME_ASSETS_UI = { id: 'ui-game-assets', name: '@deepseek-ai/dsh-client-ui
 /** The agent's asset tools, whose pictures the Assets tab draws. */
 const GAME_ASSETS = { id: 'game-assets', name: '@deepseek-ai/dsh-game-assets' } as const
 
-/** The row the fork inserts after the Assets tab: the MCP server through which other agents on the computer use the game tools. */
+/** The row the fork inserts after the asset tools: the right Sidebar's Audio tab, which plays the project's sounds. */
+const GAME_AUDIO_UI = { id: 'ui-game-audio', name: '@deepseek-ai/dsh-client-ui-game-audio' } as const
+
+/** The row the fork inserts after the Audio tab: the agent's audio tools, whose measurements the Audio tab makes. */
+const GAME_AUDIO = { id: 'game-audio', name: '@deepseek-ai/dsh-game-audio' } as const
+
+/** The row the fork inserts after the audio tools: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
 
 /** The row the fork inserts after the MCP server: the browser half of the MCP server, the setup for another agent. */
@@ -313,16 +320,22 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab and tools, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
-  it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
+  it('mounts WASD Engine Plugins from a web-app dependency, with the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
     const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === WASD_PLUGINS.id)
     expect(entry?.name).toBe(WASD_PLUGINS.name)
-    expect(entry?.config).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['browser'])
+    const browser = expression(configOf(entry).browser, 'wasd-plugins.browser')
+    expect(expression(row(profile('web').fork.rows, 'ui-sidebar-browser')?.disabled, 'ui-sidebar-browser.disabled')).toBe(browser.replace('===', '!=='))
+    for (const name of ['desktop', 'web', undefined]) {
+      const profile = name === undefined ? undefined : { name }
+      expect(evaluate({ get: (service: string) => service === 'profileContext' ? profile : undefined }, browser), String(name)).toBe(name === 'desktop')
+    }
     expect(entry?.disabled).toBeUndefined()
     expect(manifest(webAppDir).dependencies?.[WASD_PLUGINS.name]).toBe('workspace:*')
     expect(PROTECTED_PLUGINS.has(WASD_PLUGINS.name)).toBe(true)
@@ -420,6 +433,20 @@ describe('WASDEngine overlay', () => {
     expect(meta?.error).toBeUndefined()
     const title = meta?.title
     expect(typeof title === 'object' ? title.en : title).toBe('Assets for the agent')
+  })
+
+  it('mounts the Audio tab and the audio tools from web-app dependencies by their bare package names, with their default caps', () => {
+    const parent = pathToFileURL(join(webAppDir, 'package.json')).href
+    for (const [row, title] of [[GAME_AUDIO_UI, 'Audio tab'], [GAME_AUDIO, 'Audio for the agent']] as const) {
+      const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(candidate => candidate.id === row.id)
+      expect(entry?.name).toBe(row.name)
+      expect(entry?.config).toBeUndefined()
+      expect(entry?.disabled).toBeUndefined()
+      expect(manifest(webAppDir).dependencies?.[row.name]).toBe('workspace:*')
+      const meta = readPluginMeta(row.name, parent)
+      expect(meta?.error).toBeUndefined()
+      expect(typeof meta?.title === 'object' ? meta.title.en : meta?.title).toBe(title)
+    }
   })
 
   it('resolves the title, description, and SVG logo the Game tools tabs show for each game tool', () => {
@@ -681,6 +708,16 @@ describe('gamedev preset', () => {
     expect(prefix).toBeTypeOf('string')
     expect(String(prefix)).toContain('{{model}}')
     expect(String(prefix).replaceAll(/\{\{(?:model|provider)\}\}/gu, '')).not.toMatch(/\{\{|\}\}/u)
+  })
+
+  it('mounts the todo continuation right after todo_write, with a cap its schema accepts, behind a persona that asks for the list', () => {
+    const ids = gameRows.map(entry => entry.id)
+    expect(ids.indexOf('todo-continuation')).toBe(ids.indexOf('tool-todo') + 1)
+    expect(gameRow('todo-continuation').name).toBe('@deepseek-ai/dsh-todo-continuation')
+    const own = configOf(gameRow('todo-continuation'))
+    expect(own).toEqual({ maxRemindersPerTurn: 5 })
+    expect(TodoContinuation.Config({ maxRemindersPerTurn: 5 })).toEqual(own)
+    expect(String(configOf(gameRow('persona')).prefix)).toContain('list every one with todo_write before you start')
   })
 
   it('resolves its bundled skill root to valid skills inside this package', () => {

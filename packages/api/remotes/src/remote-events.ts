@@ -9,9 +9,10 @@
 import type {} from '@deepseek-ai/dsh-api-session-controller/remote-events'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-deepseek-account/types'
-// WASDEngine fork: the game MCP server's request to show a Session, and the asset tools' render request and asset
-// reveal (wasdengine/FORK.md).
+// WASDEngine fork: the game MCP server's request to show a Session, the asset tools' render request and asset reveal,
+// and the audio tools' measure request and sound reveal (wasdengine/FORK.md).
 import type {} from '@deepseek-ai/dsh-game-assets/types'
+import type {} from '@deepseek-ai/dsh-game-audio/types'
 import type {} from '@deepseek-ai/dsh-game-mcp/types'
 import type {} from '@deepseek-ai/dsh-permission-presets/types'
 import type {} from '@deepseek-ai/dsh-plugin-manager/types'
@@ -42,6 +43,8 @@ export const API_REMOTE_FORWARDED_EVENTS = [
   { event: 'game-mcp/reveal', mode: 'emit', resources: { session: (sessionId): SessionId => sessionId } },
   { event: 'game-assets/render', mode: 'waterfall' },
   { event: 'game-assets/reveal', mode: 'emit', resources: { session: (reveal): SessionId => reveal.sessionId } },
+  { event: 'game-audio/measure', mode: 'waterfall' },
+  { event: 'game-audio/reveal', mode: 'emit', resources: { session: (reveal): SessionId => reveal.sessionId } },
   { event: 'credentials/record-updated', mode: 'emit' },
   { event: 'credentials/reference-updated', mode: 'emit' },
   { event: 'goal/activation-changed', mode: 'emit' },

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder and a signed-in WASD Engine, and offers the `godot_*`, `blender_*`, `gimp_*`, `supercollider_*`, `asset_*`, and other tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own, so it plays in the WASD Engine window's Game tab. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) shows the setup prompt after sign-in.
+Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder and a signed-in WASD Engine, and offers the `godot_*`, `blender_*`, `gimp_*`, `supercollider_*`, `asset_*`, `audio_*`, and other tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own, so it plays in the WASD Engine window's Game tab. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) shows the setup prompt after sign-in.
 
 ## Table of Contents
 
@@ -150,7 +150,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all nine providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the game add-ons, WASD Engine Plugins, and the asset tools, the instructions come to about 18,700 characters and the 67 tool declarations to about 68,300 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all ten providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 25,000 characters, about 6,500 of them the game add-ons catalog, and the 69 tool declarations to about 71,300 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -160,7 +160,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the asset tools' pictures, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the asset tools' pictures, the audio review's waveform and spectrogram picture, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token effect
 

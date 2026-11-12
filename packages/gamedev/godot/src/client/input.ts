@@ -261,7 +261,7 @@ export interface GameInputTarget {
 
 /** Options of {@link bindGameInput}. */
 export interface GameInputOptions {
-  /** Focusable element that receives keyboard input while focused and pointer input over the canvas. */
+  /** Focusable element that receives keyboard input, and pointer input over the canvas, while focused. */
   readonly element: HTMLElement
   /** Canvas whose letterboxed drawing maps to the game window. */
   readonly canvas: HTMLCanvasElement
@@ -295,14 +295,19 @@ function isReleaseChord(event: KeyboardEvent): boolean {
 }
 
 /**
- * Forward keyboard input while `element` is focused and mouse input over the
- * canvas to the game. Mapped keys do not reach the page, except presses with
- * the Meta modifier, which stay with the application. Shift+Escape never
- * reaches the game: it removes focus from `element`, so the keyboard returns
- * to the page. While `element` has focus, `captureKeyboard` holds the keys
- * from application shortcuts. A press locks the pointer while the game
- * captures the mouse, and locked motion sends deltas. Losing focus releases
- * every held key and button.
+ * Forward input to the game while `element` has focus: mapped keys, and mouse
+ * buttons, motion, and wheel steps over the canvas. A press on the canvas
+ * focuses `element` and reaches the game. Without focus, pointer motion over
+ * the canvas only moves the position that the next motion starts from, so the
+ * pointer crosses the game without moving it. Mapped keys do not reach the
+ * page, except presses with the Meta modifier, which stay with the
+ * application. Shift+Escape never reaches the game: it removes focus from
+ * `element`, so the keyboard and the mouse return to the page. While
+ * `element` has focus, `captureKeyboard` holds the keys from application
+ * shortcuts. A press locks the pointer while the game captures the mouse, and
+ * locked motion sends deltas; a lock that ends while the game still captures
+ * the mouse, as when the user presses Escape, also removes focus from
+ * `element`. Losing focus releases every held key and button and the lock.
  * @param options - elements, game geometry, the batch sender, and the keyboard capture.
  * @returns a disposer that releases held keys, buttons, and the keyboard, sends what is queued, and detaches every listener.
  */
@@ -313,6 +318,7 @@ export function bindGameInput(options: GameInputOptions): () => void {
   const buttons = new Set<GodotMouseButton>()
   let position = { x: 0, y: 0 }
   let dragging = false
+  let hadLock = false
   let releaseKeyboard: (() => void) | undefined
 
   const locate = (event: MouseEvent): GamePoint | undefined => {
@@ -320,6 +326,7 @@ export function bindGameInput(options: GameInputOptions): () => void {
     return toGamePoint(canvas.getBoundingClientRect(), target.image, target.window, event.clientX, event.clientY)
   }
   const locked = (): boolean => document.pointerLockElement === canvas
+  const focused = (): boolean => document.activeElement === element
   const setDragging = (next: boolean): void => {
     if (next === dragging) return
     dragging = next
@@ -350,6 +357,13 @@ export function bindGameInput(options: GameInputOptions): () => void {
   const blur = (): void => {
     releaseAll()
     uncapture()
+    if (locked()) document.exitPointerLock()
+  }
+  const lockChange = (): void => {
+    const lockedNow = locked()
+    // The game did not release the mouse, so the user or the browser ended the lock, and the pointer leaves the game.
+    if (hadLock && !lockedNow && options.target().mouseMode === MOUSE_MODE_CAPTURED) element.blur()
+    hadLock = lockedNow
   }
 
   const keydown = (event: KeyboardEvent): void => {
@@ -416,9 +430,16 @@ export function bindGameInput(options: GameInputOptions): () => void {
   }
   const hover = (event: MouseEvent): void => {
     // While a button is held, the window listener reports motion everywhere.
-    if (!dragging) move(event)
+    if (dragging) return
+    if (focused()) {
+      move(event)
+      return
+    }
+    const point = locate(event)
+    if (point?.inside === true) position = { x: point.x, y: point.y }
   }
   const wheel = (event: WheelEvent): void => {
+    if (!focused()) return
     const step = wheelButton(event)
     const point = locate(event)
     if (step === undefined || point === undefined || !point.inside) return
@@ -438,7 +459,8 @@ export function bindGameInput(options: GameInputOptions): () => void {
   element.addEventListener('focus', capture)
   element.addEventListener('blur', blur)
   window.addEventListener('blur', releaseAll)
-  if (document.activeElement === element) capture()
+  document.addEventListener('pointerlockchange', lockChange)
+  if (focused()) capture()
   return () => {
     releaseAll()
     queue.close()
@@ -452,6 +474,7 @@ export function bindGameInput(options: GameInputOptions): () => void {
     element.removeEventListener('focus', capture)
     element.removeEventListener('blur', blur)
     window.removeEventListener('blur', releaseAll)
+    document.removeEventListener('pointerlockchange', lockChange)
     if (locked()) document.exitPointerLock()
   }
 }

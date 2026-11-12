@@ -2,14 +2,14 @@
  * WASD Engine's AI usage row (fork-owned; `wasdengine/FORK.md` lists the fork changes). The WASD Engine account
  * service reports how much of the plan's monthly AI usage is left instead of a dollar balance, and Settings › Account
  * shows it the way the website's account page does: the balance row's amount is the whole percent left, and under the
- * row a bar shows the exact share left, with the day the usage refreshes and the auto recharge credits left. While the
- * account can use auto recharge, a row under the bar has the plans page's auto recharge switch. On the Unlimited tier
- * the amount reads Unlimited, with no bar, and the row says the account has no monthly limit. `AccountSection`
- * renders the parts.
+ * row a bar shows the exact share left, with the day the usage refreshes and the credits left, as a share of a month's
+ * usage. While the account can use auto recharge, a row under the bar has the plans page's auto recharge switch, and
+ * while it has a referral link, a row shares it. None shows a dollar amount. On the Unlimited tier the amount reads
+ * Unlimited, with no bar, and the row says the account has no monthly limit. `AccountSection` renders the parts.
  */
 import { useEffect, useState } from 'react'
-import { Switch } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { AccountAllowance, AccountAutoRecharge, AccountAutoRechargeChange } from '@deepseek-ai/dsh-deepseek-account/types'
+import { Button, Switch, useClipboardCopy } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { AccountAllowance, AccountAutoRecharge, AccountAutoRechargeChange, AccountReferral } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import css from './wasdengine-allowance.module.css'
 
@@ -45,8 +45,8 @@ export function allowancePercent(allowance: AccountAllowance, t: Translate): str
 }
 
 /**
- * The auto recharge credits left, as the share of what one recharge adds, worded as the website words it.
- * @param creditsPercent - the whole percent the service reports; 0 while less than 1% is left.
+ * The credits left, as the share of a month's AI usage they come to, worded as the website words it.
+ * @param creditsPercent - the whole percent of the monthly allowance the service reports; 0 while less than 1%.
  * @param t - the account copy.
  * @returns the credits line.
  */
@@ -59,7 +59,7 @@ function creditsLabel(creditsPercent: number, t: Translate): string {
 
 /**
  * The bar of the share left, amber once nothing is, the day the usage refreshes, in UTC as the service counts it, and
- * the auto recharge credits left, while any are; on the Unlimited tier, only that the account has no monthly limit.
+ * the credits left, while any are; on the Unlimited tier, only that the account has no monthly limit.
  * @param props - what the account service reported, and the account copy.
  * @returns the part of the AI usage row under its amount.
  */
@@ -98,10 +98,10 @@ export interface WasdengineAutoRechargeProps {
 }
 
 /**
- * The auto recharge switch, worded as the plans page words it, with the charge in US dollars. Turning it on without a
- * saved card opens the account service's card page in the browser and keeps a link to it, until a balance read
- * reports auto recharge on; returning to the app reads the balance again. A failed charge's reason, which turned auto
- * recharge off, shows under the switch.
+ * The auto recharge switch, worded as the plans page words it, without an amount: the card page states what each
+ * recharge charges. Turning it on without a saved card opens the account service's card page in the browser and keeps
+ * a link to it, until a balance read reports auto recharge on; returning to the app reads the balance again. A failed
+ * charge's reason, which turned auto recharge off, shows under the switch.
  * @param props - the reported state, the account copy, and the account operations.
  * @returns the divider and the rows of the switch.
  */
@@ -109,9 +109,7 @@ export function WasdengineAutoRecharge({ recharge, t, setAutoRecharge, refreshAc
   const [requested, setRequested] = useState<boolean | undefined>(undefined)
   const [failed, setFailed] = useState(false)
   const [cardUrl, setCardUrl] = useState<string | undefined>(undefined)
-  const amount = new Intl.NumberFormat(pageLanguage(), { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-    .format(recharge.chargeUsd)
-  const label = t('autoRecharge', { amount })
+  const label = t('autoRecharge')
   useEffect(() => { if (recharge.enabled) setCardUrl(undefined) }, [recharge.enabled])
   useEffect(() => {
     if (cardUrl === undefined) return undefined
@@ -140,5 +138,29 @@ export function WasdengineAutoRecharge({ recharge, t, setAutoRecharge, refreshAc
       {t('autoRechargeCard')} <a href={cardUrl} target="_blank" rel="noreferrer">{t('autoRechargeCardOpen')}</a>
     </span>}
     {failed && <span className={css.warning} role="alert">{t('autoRechargeError')}</span>}
+  </>
+}
+
+/**
+ * The referral row: the account's referral link, which earns it free credits when people join through it, with a copy
+ * button and how many joined; it names no amount, as the website does not. The link selects whole on a click, so it can
+ * be copied by hand where the clipboard refuses the button.
+ * @param props - the reported referral and the account copy.
+ * @returns the divider and the rows of the referral.
+ */
+export function WasdengineReferral({ referral, t }: { referral: AccountReferral; t: Translate }) {
+  const { copied, onCopy } = useClipboardCopy(referral.url)
+  const count = new Intl.NumberFormat(pageLanguage()).format(referral.joined)
+  return <>
+    <div className={css.divider} />
+    <div className={css.referral}>
+      <div className={css.referralHeader}>
+        <span>{t('referralTitle')}</span>
+        <Button variant="outline" size="sm" onClick={onCopy}>{t(copied ? 'referralCopied' : 'referralCopy')}</Button>
+      </div>
+      <span className={css.note}>{t('referralDescription')}</span>
+      <span className={css.referralLink}>{referral.url}</span>
+      {referral.joined > 0 && <span className={css.note}>{t('referralJoined', { count })}</span>}
+    </div>
   </>
 }

@@ -1,8 +1,9 @@
 /**
- * WASD Engine's allowance (fork-owned drift spec; `wasdengine/FORK.md` lists the fork changes): the balance read
- * projects the `allowance` that the WASD Engine account service reports beside the wallets, with the auto recharge
- * credits and switch, and drops a malformed one, or a malformed member, without failing the wallet read. The auto
- * recharge switch's reply may name only the service's own card page.
+ * WASD Engine's allowance and referral link (fork-owned drift spec; `wasdengine/FORK.md` lists the fork changes): the
+ * balance read projects the `allowance` that the WASD Engine account service reports beside the wallets, with the
+ * credits and the auto recharge switch, and the `referral` link, and drops a malformed one, or a malformed member,
+ * without failing the wallet read. Neither carries a dollar amount. The referral link and the auto recharge switch's
+ * reply may name only the service's own pages.
  */
 import { afterEach, expect, it, vi } from 'vitest'
 import { readAccountDetail } from '../src/details.ts'
@@ -46,21 +47,33 @@ it('reports no allowance for a service that sends none', async () => {
     .resolves.toEqual({ status: 'ready', value: [], bonusWallets: [] })
 })
 
-it('projects the auto recharge credits and switch with the allowance', async () => {
+it('projects the credits and the auto recharge switch with the allowance', async () => {
   const allowance = {
-    remaining_percent: 0, remaining_share: 0, refreshes_at: '2026-12-01T00:00:00Z', credits_percent: 85,
-    auto_recharge: { enabled: true, charge_usd: 10, failure: null },
+    remaining_percent: 0, remaining_share: 0, refreshes_at: '2026-12-01T00:00:00Z', credits_allowance_percent: 250,
+    auto_recharge: { enabled: true, failure: null },
   }
   await expect(readBalance({ normal_wallets: [], bonus_wallets: [], allowance })).resolves.toEqual({
     status: 'ready', value: [], bonusWallets: [],
     allowance: {
-      remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z', creditsPercent: 85,
-      autoRecharge: { enabled: true, chargeUsd: 10 },
+      remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z', creditsPercent: 250,
+      autoRecharge: { enabled: true },
     },
   })
-  const failed = { ...allowance, auto_recharge: { enabled: false, charge_usd: 10, failure: 'Your card was declined.' } }
+  const failed = { ...allowance, auto_recharge: { enabled: false, failure: 'Your card was declined.' } }
   await expect(readBalance({ normal_wallets: [], bonus_wallets: [], allowance: failed })).resolves.toMatchObject({
-    allowance: { autoRecharge: { enabled: false, chargeUsd: 10, failure: 'Your card was declined.' } },
+    allowance: { autoRecharge: { enabled: false, failure: 'Your card was declined.' } },
+  })
+})
+
+it('ignores the dollar fields that services before the referral link sent', async () => {
+  // Earlier services sent credits as a share of one recharge and the recharge's price; the app shows neither.
+  const allowance = {
+    remaining_percent: 38, remaining_share: 0.383, refreshes_at: '2026-12-01T00:00:00Z', credits_percent: 85,
+    auto_recharge: { enabled: true, charge_usd: 10, failure: null },
+  }
+  await expect(readBalance({ normal_wallets: [], bonus_wallets: [], allowance })).resolves.toEqual({
+    status: 'ready', value: [], bonusWallets: [],
+    allowance: { remainingPercent: 38, remainingShare: 0.383, refreshesAt: '2026-12-01T00:00:00Z', autoRecharge: { enabled: true } },
   })
 })
 
@@ -76,9 +89,9 @@ it('projects the Unlimited tier, and drops a malformed flag', async () => {
 })
 
 it.each([
-  { credits_percent: -1, auto_recharge: { enabled: 'yes', charge_usd: 10, failure: null } },
-  { credits_percent: 8.5, auto_recharge: { enabled: true, charge_usd: 0, failure: null } },
-  { credits_percent: '85%', auto_recharge: { enabled: true, charge_usd: 10 } },
+  { credits_allowance_percent: -1, auto_recharge: { enabled: 'yes', failure: null } },
+  { credits_allowance_percent: 8.5, auto_recharge: { enabled: true, failure: 7 } },
+  { credits_allowance_percent: '85%', auto_recharge: { enabled: true } },
 ])('drops a malformed credits or switch report and keeps the allowance: %j', async (members) => {
   const allowance = { remaining_percent: 38, remaining_share: 0.383, refreshes_at: '2026-12-01T00:00:00Z', ...members }
   await expect(readBalance({ normal_wallets: [], bonus_wallets: [], allowance })).resolves.toEqual({
@@ -104,6 +117,29 @@ it('accepts a switch reply whose card page is the service\'s own, and refuses an
     null,
   ]) {
     expect(() => autoRechargeChange(reply, origin, false), JSON.stringify(reply)).toThrow(PlatformAuthError)
+  }
+  error.mockRestore()
+})
+
+it('projects the referral link on the service\'s own front page, and drops any other', async () => {
+  const link = 'https://platform.example/?ref=k3x9q2mw'
+  await expect(readBalance({ normal_wallets: [], bonus_wallets: [], referral: { url: link, joined: 2 } })).resolves.toEqual({
+    status: 'ready', value: [], bonusWallets: [], referral: { url: link, joined: 2 },
+  })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  for (const referral of [
+    { url: 'https://elsewhere.example/?ref=k3x9q2mw', joined: 0 },
+    { url: 'https://platform.example/signup?ref=k3x9q2mw', joined: 0 },
+    { url: 'https://platform.example/?ref=k3x9q2mw&next=/upgrade', joined: 0 },
+    { url: 'https://platform.example/?ref=<script>', joined: 0 },
+    { url: 'https://platform.example/', joined: 0 },
+    { url: 'javascript:alert(1)', joined: 0 },
+    { url: link, joined: -1 },
+    { url: link },
+    'k3x9q2mw',
+  ]) {
+    await expect(readBalance({ normal_wallets: [], bonus_wallets: [], referral }), JSON.stringify(referral))
+      .resolves.toEqual({ status: 'ready', value: [], bonusWallets: [] })
   }
   error.mockRestore()
 })

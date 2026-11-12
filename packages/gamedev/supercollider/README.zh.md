@@ -115,9 +115,9 @@ sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器�
 - SynthDef 以其默认参数播放；没有 `Out` UGen 的 SynthDef 会使调用失败。
 - 模式（pattern）通过 `asScore(duration)` 渲染，Score 或乐谱事件列表按原样渲染。两者都按名称播放 SynthDef，因此 `SynthDescLib.global` 中的每个 SynthDef（例如用 `.add` 添加的，以及 `\default`）都会在第一个事件之前发送给 scsynth；`duration` 之后的事件会被丢弃。除非 `channels` 另有指定，它们渲染 2 个声道。
 
-scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以运行时的插件目录作为 `-U`。随后工作类测量其峰值，若给出 `normalize_db`，则缩放声音使峰值达到该电平；它把恰好 `duration` 秒（按整数采样取整）以 `path` 扩展名对应的格式写入 `path`：`.wav`、`.aif` 或 `.aiff`、`.flac`，或 `.ogg`（Ogg Vorbis）。`sample_format`（`int16`、`int24` 或 `float`，默认 `int16`）适用于前三种格式；FLAC 不接受 `float`。`sample_rate` 默认为 44,100 Hz，即 Godot 的默认混音采样率。缺失的目录会被创建，已有文件会被替换。`duration` 之后的声音被截断，超过满刻度的采样在整数格式中会削波。
+scsynth 把 32 位浮点 WAV 渲染到临时目录；对于自带运行时，以运行时的插件目录作为 `-U`。乐谱最后在 `path` 所得最后一帧之后一个块处释放所有节点：scsynth 3.14 结束渲染时先卸载插件、再释放仍在运行的节点，此时释放 UGen 带有析构函数的节点（如延迟线或 `LocalIn`）会让 scsynth 崩溃。随后工作类测量其峰值，若给出 `normalize_db`，则缩放声音使峰值达到该电平；它把恰好 `duration` 秒（按整数采样取整）以 `path` 扩展名对应的格式写入 `path`：`.wav`、`.aif` 或 `.aiff`、`.flac`，或 `.ogg`（Ogg Vorbis）。`sample_format`（`int16`、`int24` 或 `float`，默认 `int16`）适用于前三种格式；FLAC 不接受 `float`。`sample_rate` 默认为 44,100 Hz，即 Godot 的默认混音采样率。缺失的目录会被创建，已有文件会被替换。`duration` 之后的声音被截断，超过满刻度的采样在整数格式中会削波。
 
-分析读取渲染结果的浮点副本（按归一化增益缩放），对于 `analyze_audio` 则读取 `start` 与 `end` 之间窗口的浮点副本（默认整个文件，最长 600 s），由工作类用 libsndfile 解码；服务器读取每个副本后将其删除。报告包括：
+分析读取渲染结果浮点副本中 `path` 所得的采样（按归一化增益缩放），对于 `analyze_audio` 则读取 `start` 与 `end` 之间窗口的浮点副本（默认整个文件，最长 600 s），由工作类用 libsndfile 解码；服务器读取每个副本后将其删除。报告包括：
 
 - 以 dBFS 表示的峰值与 RMS 电平，有多个声道时还会逐声道给出。
 - 按 ITU-R BS.1770-4 计算的积分响度（LUFS），每个声道权重均为 1；短于一个 400 ms 块的窗口，或没有高于门限的块的窗口，不予测量。
@@ -177,13 +177,13 @@ IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以
 | [`src/sclang-bridge.ts`](src/sclang-bridge.ts) | 桥接进程：计划、sclang 的环境、请求文件与命令，以及协议回复 |
 | [`src/sclang-output.ts`](src/sclang-output.ts) | sclang 输出中的回复行，以及它们之间有上限的输出 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、分析报告与帮助文本 |
-| [`src/audio.ts`](src/audio.ts) | 浮点 WAV 读取、电平、BS.1770 响度、静音、FFT 与平均频谱 |
-| [`src/image.ts`](src/image.ts)、[`src/png.ts`](src/png.ts) | 波形与声谱图图像、其描述，以及 PNG 编码 |
+| [`src/audio.ts`](src/audio.ts) | 浮点 WAV 读取，以及归一化渲染的增益 |
+| [`src/png.ts`](src/png.ts) | 波形与声谱图图像的 PNG 编码 |
 | [`src/schelp.ts`](src/schelp.ts) | SCDoc 帮助文件的纯文本 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称与指令 |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | 工作类：启动、分派、JSON 回复、每个方法一个处理方法，以及对 `Server:boot` 的覆盖 |
 
-共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限以及安装宿主（setup host）。
+共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限以及安装宿主（setup host）。电平、BS.1770 响度、静音、FFT、平均频谱，以及波形与声谱图图像及其描述，来自 [`dsh-game-audio`](../game-audio/README.zh.md) 的 `./audio` 模块，「音频」标签页与音频工具也共用该模块。
 
 ### 用真实 SuperCollider 验证
 

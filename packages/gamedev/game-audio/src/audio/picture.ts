@@ -1,12 +1,19 @@
 /**
- * The picture of a sound that the audio tools return to the agent: the waveform of each channel above a spectrogram
- * of the channel mix, on a dark background, with grid lines whose spacing {@link describeAudioImage} states.
+ * The picture of a sound that the audio tools return to agents: the waveform of each channel above a spectrogram of
+ * the channel mix, on a dark background, with grid lines whose spacing {@link describeAudioImage} states. The image is
+ * raw RGB, which the Host encodes as PNG and a browser draws on a canvas.
  *
  * @module
  */
 
-import { magnitudeSpectrum, type AudioSamples } from './audio.ts'
-import type { RgbImage } from './png.ts'
+import { magnitudeSpectrum, type AudioSamples } from './measure.ts'
+
+/** An 8-bit RGB image: `width * height` pixels of 3 bytes each, rows from top to bottom. */
+export interface RgbImage {
+  readonly width: number
+  readonly height: number
+  readonly pixels: Uint8Array
+}
 
 /** Image width in pixels: one waveform column and one spectrogram column per pixel. */
 export const IMAGE_WIDTH = 1024
