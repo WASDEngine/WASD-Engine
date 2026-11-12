@@ -44,11 +44,19 @@ export interface DecodeBounds {
 }
 
 /**
- * Wait for the page to handle its pending events.
+ * Wait for the page to handle its pending events. The wait is a message to the page itself: Chromium throttles the
+ * timers of a hidden window, which would hold a decode for an agent past its time limit, but not its messages.
  * @returns settles on a later turn of the event loop.
  */
 function yieldToEvents(): Promise<void> {
-  return new Promise((resolve) => { setTimeout(resolve, 0) })
+  return new Promise((resolve) => {
+    const channel = new MessageChannel()
+    channel.port1.onmessage = () => {
+      channel.port1.close()
+      resolve()
+    }
+    channel.port2.postMessage(undefined)
+  })
 }
 
 /**

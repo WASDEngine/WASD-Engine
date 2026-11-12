@@ -211,6 +211,18 @@ describe('the bounds of a decode', () => {
     expect(decode).not.toHaveBeenCalled()
   })
 
+  it('decodes a long AIFF file in a hidden window, whose timers Chromium throttles', async () => {
+    // A hidden window runs its timers late; these never run, and the decode still lets the page handle its events.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
+    try {
+      const frames = (1 << 20) * 2 + 10
+      const decoded = await decodeSound(aiffFile({ sampleRate: 48_000, channels: 1, frames }), AIFF, undefined, BOUNDS)
+      expect(decoded.length).toBe(frames)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('refuses an AIFF file that an AudioBuffer cannot hold, or that is too long, before copying its samples', async () => {
     const decode = (data: Uint8Array<ArrayBuffer>, maxSeconds = 1200) =>
       decodeSound(data, AIFF, undefined, { maxSeconds, signal: new AbortController().signal }).catch((error: unknown) => error)

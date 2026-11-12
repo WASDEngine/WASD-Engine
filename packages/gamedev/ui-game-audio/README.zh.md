@@ -68,7 +68,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
+该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件；解码通过发给页面自身的消息等待这些事件，Chromium 会在隐藏窗口中节流计时器，但不会节流消息。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
 
 | 文件 | 作用 |
 |---|---|
