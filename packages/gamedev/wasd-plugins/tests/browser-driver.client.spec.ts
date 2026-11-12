@@ -86,6 +86,7 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     expanded = true
   })
   const focus = vi.fn((tabId: TabId) => { active = [...tabs.values()].flat().find(tab => tab.id === tabId) })
+  const expandIn = vi.fn((_sessionId: SessionId) => { expanded = true })
   const addTab = (sessionId: SessionId, id = `tab-${String(++sequence)}` as TabId) => {
     const tab = { id, kind: BROWSER_KIND }
     tabs.set(sessionId, [...tabs.get(sessionId) ?? [], tab])
@@ -102,8 +103,7 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     tabsIn: sessionId => tabs.get(sessionId) ?? [],
     active: () => active,
     focus,
-    isExpanded: () => expanded,
-    toggleExpanded: () => { expanded = !expanded },
+    expandIn,
   }
   const automation: SidebarBrowserAutomation = { tab: (_sessionId, tabId) => pages.get(tabId)?.face }
   const deliveries: BrowserRequestDelivery[] = []
@@ -183,7 +183,9 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     for (const listener of [...listeners]) listener()
   }
   return {
-    sidebar, openTabIn, focus, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, isExpanded: () => expanded,
+    sidebar, openTabIn, focus, expandIn, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show,
+    isExpanded: () => expanded,
+    collapse: () => { expanded = false },
   }
 }
 
@@ -230,6 +232,18 @@ describe('followBrowserRequests', () => {
     expect(h.isExpanded()).toBe(true)
     expect(result.page).toMatchObject({ title: 'Results', truncated: false, loading: false })
     expect(result.page.text).toBe('# Results\n[Godot](https://godotengine.org/) [1: textbox "Search" value=""] [2: button "Go"]')
+  })
+
+  it('shows its tab again in a collapsed column through the expansion that leaves the input focus alone', async () => {
+    const h = start()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/one' })))
+    h.collapse()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/two' })))
+    expect(h.expandIn).toHaveBeenLastCalledWith(SESSION)
+    expect(h.isExpanded()).toBe(true)
+    h.collapse()
+    page(await h.outcome(h.send({ kind: 'screenshot' })))
+    expect(h.isExpanded()).toBe(true)
   })
 
   it('never loads into a tab the user opened, even after reading it, and keeps loading into its own', async () => {

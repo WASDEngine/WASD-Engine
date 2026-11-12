@@ -77,10 +77,8 @@ export interface BrowserSidebar {
   active(): SidebarTabRecord | undefined
   /** Focus a tab of the Session on screen. */
   focus(tabId: TabId): void
-  /** @returns whether the docked column of the Session on screen is expanded. */
-  isExpanded(): boolean
-  /** Expand or collapse the docked column of the Session on screen. */
-  toggleExpanded(): void
+  /** Expand the docked column of a Session whose layout the window adopted, leaving the input focus where it is. */
+  expandIn(sessionId: SessionId): void
 }
 
 /** What the window half needs. */
@@ -339,12 +337,12 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   }
   const canServe = (request: WasdBrowserRequest): boolean => agentTab(request.sessionId) !== undefined || onScreen(request.sessionId)
 
-  /** Show a tab of the Session on screen, expanding the column. */
+  /** Show a tab of the Session on screen, expanding the column; the user's typing, as in the composer, keeps its focus. */
   const reveal = (sessionId: SessionId, tabId: TabId, run: Run): void => {
     run.signal.throwIfAborted()
     if (!onScreen(sessionId)) return
     sidebar.focus(tabId)
-    if (!sidebar.isExpanded()) sidebar.toggleExpanded()
+    sidebar.expandIn(sessionId)
   }
 
   const mounted = async (sessionId: SessionId, tabId: TabId, run: Run): Promise<SidebarBrowserTab> => {

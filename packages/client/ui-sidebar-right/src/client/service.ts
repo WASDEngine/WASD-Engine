@@ -434,6 +434,16 @@ export class SidebarRightController implements ISidebarRight {
     this.removeAfterCleanup(sessionId, tab, () => { actions.closeTab(sessionId, tabId) })
   }
 
+  /**
+   * Expand one session's column without moving the input focus, as an open does; an expanded column is left as it
+   * is, and nothing happens for a session whose store was never adopted or whose adoption was released. Recorded.
+   * Not part of `ISidebarRight`: for a plugin that shows a tab while the user types elsewhere.
+   * @param sessionId - the session whose column expands.
+   */
+  expandIn(sessionId: SessionId): void {
+    this.actionsFor(sessionId)?.setExpanded(sessionId, true)
+  }
+
   private removeAfterCleanup(sessionId: SessionId, tab: TabRecord, commit: () => void): void {
     this.closeHandlers.get(tab.kind)?.(sessionId, tab)
     commit()
