@@ -26,15 +26,21 @@ export function isPrunedUpstreamPath(root: string, target: string): boolean {
 }
 
 /**
- * Whether git ignores a missing path or one of its directories, such as the runtime folder that a game tool's
- * build script installs into a source checkout.
+ * Whether a package's own `.gitignore` ignores a missing path or one of its directories, such as the runtime folder
+ * that a game tool's build script installs into a source checkout. The repository root's `.gitignore` does not count:
+ * its patterns (`lib/`, `node_modules/`) name build output, whose stale paths upstream's gates must still report.
  * @param root - repository root, the working directory of `git check-ignore`.
  * @param target - absolute path of the missing target.
- * @returns true when git ignores the path as a directory; false when it does not, or when `root` is not a git checkout.
+ * @returns true when a `.gitignore` below the root ignores the path as a directory; false when none does, or when
+ *   `root` is not a git checkout.
  */
 export function isGitIgnoredPath(root: string, target: string): boolean {
   // Relative, because git compares an absolute path with the checkout's real path, which a symlinked root does not match.
   // The trailing slash: a pattern such as `/runtime/` matches only directories, and git cannot tell that a missing path is one.
   const path = `${relative(root, target).replaceAll(sep, '/')}/`
-  return spawnSync('git', ['check-ignore', '-q', '--', path], { cwd: root, stdio: 'ignore' }).status === 0
+  const matched = spawnSync('git', ['check-ignore', '-v', '--', path], { cwd: root, encoding: 'utf8' })
+  if (matched.status !== 0) return false
+  // `<source>:<line>:<pattern>\t<path>`; the source is a path relative to the checkout for its own .gitignore files.
+  const source = matched.stdout.slice(0, matched.stdout.indexOf(':'))
+  return source !== '.gitignore' && source.endsWith('/.gitignore')
 }

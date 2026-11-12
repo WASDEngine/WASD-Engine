@@ -51,6 +51,15 @@ describe('isGitIgnoredPath', () => {
     expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/src/missing.ts'))).toBe(false)
   })
 
+  it('does not match build output that the root .gitignore ignores', () => {
+    initGit()
+    write('.gitignore', 'node_modules/\nlib/\n')
+    expect(isGitIgnoredPath(root, join(root, 'packages/client/ui-chat/lib'))).toBe(false)
+    expect(isGitIgnoredPath(root, join(root, 'packages/client/ui-chat/lib/client.js'))).toBe(false)
+    expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/node_modules'))).toBe(false)
+    expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/runtime'))).toBe(true)
+  })
+
   it('matches nothing outside a git checkout', () => {
     expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/runtime'))).toBe(false)
   })
@@ -68,6 +77,21 @@ describe('verify-package-paths in the fork', () => {
     expect(findPackagePathViolations(root, join(root, 'docs/guide.md'), new Set(['web-app', 'blender']))).toEqual([
       { file: 'docs/guide.md', line: 3, ref: 'packages/bundle/web-app/presets/ptc.patch.yml' },
       { file: 'docs/guide.md', line: 4, ref: 'packages/gamedev/blender/src/missing.ts' },
+    ])
+  })
+
+  it('still reports the stale lib paths of a package that moved group, which the root .gitignore ignores', () => {
+    initGit()
+    write('.gitignore', 'node_modules/\nlib/\n')
+    write('packages/chat/ui-chat/package.json', '{}\n')
+    write('docs/guide.md', [
+      'Old group: `packages/client/ui-chat/lib/client.js`.',
+      'Group-less: `packages/ui-chat/lib/client.js`.',
+      'Current, unbuilt: `packages/chat/ui-chat/lib/client.js`.',
+    ].join('\n'))
+    expect(findPackagePathViolations(root, join(root, 'docs/guide.md'), new Set(['ui-chat']))).toEqual([
+      { file: 'docs/guide.md', line: 1, ref: 'packages/client/ui-chat/lib/client.js' },
+      { file: 'docs/guide.md', line: 2, ref: 'packages/ui-chat/lib/client.js' },
     ])
   })
 })
