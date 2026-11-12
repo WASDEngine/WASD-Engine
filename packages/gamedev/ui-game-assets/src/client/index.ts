@@ -32,7 +32,8 @@ import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { DrawQueue } from './queue.ts'
 import { readAsset, relatedUrl } from './read.ts'
 import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
-import { AssetsSource, freshScanMs } from './source.ts'
+import { AssetsSource } from './source.ts'
+import { ProjectWalks } from './walks.ts'
 
 export type { AssetsTabInjected, AssetsTabProps, ViewerLimits } from './AssetsTab.tsx'
 export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from './formats.ts'
@@ -127,40 +128,21 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     sources.set(sessionId, { source, release: () => { void dispose() } })
     return source
   }
-  // The latest project walk of each Session drawn for without an Assets tab scan, such as a teammate's or a connected
-  // agent's, which the pictures drawn for that Session share while it runs and while it stays fresh.
-  const walks = new Map<SessionId, { readonly scan: Promise<AssetScan | undefined>; expiresAt?: number }>()
+  // The project walks of the Sessions drawn for, whose Godot files an image's animations come from: the pictures drawn
+  // for an agent use only a walk that started after their request arrived, so a scene the agent just wrote is in it.
   const walking = new AbortController()
-  ctx.effect(() => () => {
-    walking.abort()
-    walks.clear()
-  }, 'ui-game-assets: agent project walks')
-  const walkOf = async (sessionId: SessionId, signal: AbortSignal): Promise<AssetScan | undefined> => {
-    signal.throwIfAborted()
-    const now = Date.now()
-    for (const [id, known] of walks) if (known.expiresAt !== undefined && now >= known.expiresAt) walks.delete(id)
-    let walk = walks.get(sessionId)
-    if (walk === undefined) {
-      const started: { readonly scan: Promise<AssetScan | undefined>; expiresAt?: number } = {
-        scan: scanAssets(listOf(sessionId), limits, walking.signal).then(
-          result => (result.ok ? result.value : undefined),
-          (error: unknown) => {
-            // The walk ended with this plugin, or a Remote call rejected for an assembly fault: no Godot files.
-            if (!walking.signal.aborted) ctx.logger.warn('ui-game-assets: a project walk for an agent failed', error)
-            return undefined
-          },
-        ).finally(() => { started.expiresAt = Date.now() + freshScanMs(Date.now() - now) }),
-      }
-      walks.set(sessionId, started)
-      walk = started
-    }
-    // The caller stops waiting when its call ends; the walk goes on for the others.
-    const waiting = Promise.withResolvers<AssetScan | undefined>()
-    const stop = (): void => { waiting.reject(signal.reason) }
-    signal.addEventListener('abort', stop, { once: true })
-    void walk.scan.then(waiting.resolve).finally(() => { signal.removeEventListener('abort', stop) })
-    return await waiting.promise
-  }
+  ctx.effect(() => () => { walking.abort() }, 'ui-game-assets: project walks')
+  const walkProject = (sessionId: string, signal: AbortSignal): Promise<AssetScan | undefined> => scanAssets(
+    listOf(brandString<SessionId>(sessionId)), limits, signal,
+  ).then(
+    result => (result.ok ? result.value : undefined),
+    (error: unknown) => {
+      // The walk ended with this plugin, or a Remote call rejected for an assembly fault: no Godot files.
+      if (!signal.aborted) ctx.logger.warn('ui-game-assets: a project walk failed', error)
+      return undefined
+    },
+  )
+  const walks = new ProjectWalks<AssetScan>(walkProject, () => Date.now(), walking.signal)
   /**
    * The reads that find an image's animations in one Session.
    * @param sessionId - the Session.
@@ -181,10 +163,10 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       return { files: scan?.godotFiles ?? [], projects: scan?.godotProjects ?? [] }
     },
   })
-  // An agent that just wrote a Godot resource looks for it, so its pictures use the tab's scan only while it is fresh.
-  const agentSources = (sessionId: SessionId): AgentRenderSources => ({
+  // An agent that just wrote a Godot resource looks for it, so its pictures use a walk that started after its request.
+  const agentSources = (sessionId: SessionId, ticket: number): AgentRenderSources => ({
     read: readOf(sessionId),
-    animations: animationSources(sessionId, async signal => sources.get(sessionId)?.source.freshScan() ?? await walkOf(sessionId, signal)),
+    animations: animationSources(sessionId, signal => walks.get(sessionId, ticket, signal)),
     relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
     viewer,
   })
@@ -205,7 +187,10 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       }),
       relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
-      animations: animationSources(sessionId, async signal => source.scanState.getSnapshot().scan ?? await walkOf(sessionId, signal)),
+      animations: animationSources(
+        sessionId,
+        async signal => source.scanState.getSnapshot().scan ?? await walks.get(sessionId, walks.ticket(), signal),
+      ),
       limits: { maxPreviewBytes: config.maxPreviewBytes },
       takeNavigation: (tabId, revision) => source.takeNavigation(tabId, revision),
     }
@@ -233,7 +218,8 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     const sessionId = ctx.sessions.scopeOf(this)
     if (sessionId === undefined || (request.kind === 'model' && !(drawsModels ||= canDrawModels()))) return next()
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
-    return draws.run(fields.bytes, signal, () => answerRender(fields, agentSources(sessionId), signal))
+    const reads = agentSources(sessionId, walks.ticket())
+    return draws.run(fields.bytes, signal, () => answerRender(fields, reads, signal))
   }), 'ui-game-assets: draw assets for agents')
   // Only the latest reveal goes on: one that waits for its Session to come on screen stops when another arrives.
   let revealing: (() => void) | undefined

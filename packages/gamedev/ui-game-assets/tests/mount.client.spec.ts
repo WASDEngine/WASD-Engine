@@ -201,42 +201,24 @@ describe('Assets tab registration', () => {
     await f.fiber.dispose()
   })
 
-  it('walks the project once for the pictures drawn together for a Session without a scan', async () => {
+  it('walks a Session\'s project for its images\' animations when it has no scan, again for each later image', async () => {
     const f = await fixture()
     const agentSession = SessionId('agent-session')
     const animations = f.face(agentSession).animations
     const signal = new AbortController().signal
     const walks = () => f.workspaceFiles.list.mock.calls.filter(([sessionId, path]) => sessionId === agentSession && path === '.').length
-    const [first, second] = await Promise.all([animations.godot(signal), animations.godot(signal)])
-    expect(first).toEqual(second)
+    expect(await animations.godot(signal)).toEqual({ files: [], projects: [] })
     expect(walks()).toBe(1)
-    // A fresh walk serves the next picture too.
-    await animations.godot(signal)
-    expect(walks()).toBe(1)
+    // The project may have changed since: a later image's animations come from a new walk.
+    f.workspaceFiles.list.mockImplementation(async (_sessionId: string, path: string) => ({
+      ok: true as const, value: { path: path === '.' ? '' : path, entries: [{ name: 'hero.tres', type: 'file' as const }], truncated: false },
+    }))
+    expect(await animations.godot(signal)).toEqual({ files: ['hero.tres'], projects: [] })
+    expect(walks()).toBe(2)
     // A caller whose call has ended does not wait.
     const ended = new AbortController()
     ended.abort(new Error('the call ended'))
     await expect(animations.godot(ended.signal)).rejects.toThrow('the call ended')
-    await f.fiber.dispose()
-  })
-
-  it('lets a caller stop waiting for a shared walk while the walk goes on for the others', async () => {
-    const f = await fixture()
-    const agentSession = SessionId('agent-session')
-    const listed = Promise.withResolvers<undefined>()
-    f.workspaceFiles.list.mockImplementation(async (_sessionId: string, path: string) => {
-      await listed.promise
-      return { ok: true as const, value: { path: path === '.' ? '' : path, entries: [{ name: 'hero.tres', type: 'file' as const }], truncated: false } }
-    })
-    const animations = f.face(agentSession).animations
-    const stopping = new AbortController()
-    const stopped = animations.godot(stopping.signal)
-    const staying = animations.godot(new AbortController().signal)
-    stopping.abort(new Error('the call ended'))
-    await expect(stopped).rejects.toThrow('the call ended')
-    listed.resolve(undefined)
-    expect(await staying).toEqual({ files: ['hero.tres'], projects: [] })
-    expect(f.workspaceFiles.list.mock.calls.filter(([sessionId]) => sessionId === agentSession)).toHaveLength(1)
     await f.fiber.dispose()
   })
 
