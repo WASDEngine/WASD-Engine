@@ -18,6 +18,12 @@
       "path": "../../core/agent"
     },
     {
+      "path": "../../preset/agent-preset-registry"
+    },
+    {
+      "path": "../../plan/plan-mode"
+    },
+    {
       "path": "../../core/session"
     },
     {

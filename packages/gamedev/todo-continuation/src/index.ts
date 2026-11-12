@@ -5,15 +5,19 @@
  * items, so the next step continues the work. Each distinct unfinished list is
  * reminded at most once per turn, and a turn receives at most
  * `maxRemindersPerTurn` reminders. Subagent Sessions, turns that a tool
- * ended, turns the user stopped or steered, and turns with a message from the
- * user waiting are left alone.
+ * ended, turns the user stopped or steered, turns with a message from the
+ * user waiting, turns in which a step stopped at the model's output limit, and
+ * turns in plan mode are left alone.
  * @module @deepseek-ai/dsh-todo-continuation
  */
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { boundContextSummary, createUserMessage } from '@deepseek-ai/dsh-llm'
+// Type-only: the optional `agentPresets` and `planMode` services the plan mode check reads.
+import type {} from '@deepseek-ai/dsh-agent-preset-registry'
+import type {} from '@deepseek-ai/dsh-plan-mode'
+import { boundContextSummary, createUserMessage, lastAssistantStreamChunk } from '@deepseek-ai/dsh-llm'
 import type { ContextFormed } from '@deepseek-ai/dsh-llm'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
@@ -53,6 +57,11 @@ interface TurnState {
   steps: number
   /** Whether the user steered the turn after its first step, which then follows the user rather than its list. */
   userSteered: boolean
+  /**
+   * Whether a step of the turn stopped at the model's output limit. The loop keeps that end reason for the rest of the
+   * turn, so it would end the turn right after a later step's tool calls, before the model reads their results.
+   */
+  outputLimited: boolean
   /** Keys of the unfinished lists already reminded in this turn. */
   readonly reminded: Set<string>
 }
@@ -95,6 +104,21 @@ function userMessageWaiting(agent: Agent): boolean {
 }
 
 /**
+ * Whether plan mode is on for the agent's next step: a selection that waits for that step, else the logged state. A
+ * preset mounts plan mode in a group that isolates its service, so the preset registry finds it for the agent; a
+ * composition without presets offers it to every plugin.
+ * @param ctx - this plugin's context.
+ * @param agent - the agent whose turn is stopping.
+ * @returns true while plan mode is on.
+ */
+function planModeOn(ctx: Context, agent: Agent): boolean {
+  const planMode = ctx.get('agentPresets')?.serviceFor(agent, 'planMode') ?? ctx.get('planMode')
+  if (planMode === undefined) return false
+  const { active, pending } = planMode.get(agent)
+  return pending ?? active
+}
+
+/**
  * Build the steered reminder message for one unfinished list.
  * @param unfinished - the items whose status is not `completed`.
  * @returns a `notice`-form message attributed to this plugin.
@@ -122,7 +146,8 @@ export function apply(ctx: Context, config: Config): void {
     switch (event.type) {
       case 'turn/start':
         turns.set(session, {
-          turn: event.data.turn, todos: [], endedByReply: false, steps: 0, userSteered: false, reminded: new Set(),
+          turn: event.data.turn, todos: [], endedByReply: false, steps: 0, userSteered: false, outputLimited: false,
+          reminded: new Set(),
         })
         return
       case 'step/start': {
@@ -143,7 +168,9 @@ export function apply(ctx: Context, config: Config): void {
       }
       case 'assistant/message': {
         const state = turns.get(session)
-        if (state !== undefined) state.endedByReply = !event.data.message.content.some(block => block.type === 'tool-call')
+        if (state === undefined) return
+        state.endedByReply = !event.data.message.content.some(block => block.type === 'tool-call')
+        if (lastAssistantStreamChunk(event.data.stream, 'finish')?.reason.kind === 'max-tokens') state.outputLimited = true
         return
       }
       case 'turn/end':
@@ -166,12 +193,16 @@ export function apply(ctx: Context, config: Config): void {
     if (userMessageWaiting(agent)) return
     const state = turns.get(session)
     // A turn that a tool ended, such as a dismissed plan review, stays ended,
-    // and a turn the user steered follows the user.
-    if (state?.turn !== turn || !state.endedByReply || state.userSteered) return
+    // a turn the user steered follows the user, and a turn cut off at the
+    // output limit would end before the model read the results of its next
+    // tool calls.
+    if (state?.turn !== turn || !state.endedByReply || state.userSteered || state.outputLimited) return
     const unfinished = state.todos.filter(item => item.status !== 'completed')
     if (unfinished.length === 0 || state.reminded.size >= maxReminders) return
     const key = JSON.stringify(unfinished.map(item => [item.status, item.content]))
     if (state.reminded.has(key)) return
+    // Plan mode waits for the user's approval; a reminder to continue without asking would start the work.
+    if (planModeOn(ctx, agent)) return
     state.reminded.add(key)
     agent.steer(reminderMessage(unfinished))
   })
