@@ -335,11 +335,43 @@ export interface UnpackedRuntime {
 }
 
 /**
+ * Remove what other versions of a packed runtime left in `<dataRoot>/runtime`: every entry there except the folder of
+ * `version` and the `.partial-` and `.stale-` folders beside it, which a concurrent unpack of the version may still
+ * use. Nothing outside that folder is touched, and removal is best effort: an entry that cannot be removed, such as a
+ * folder with a file that a running program holds on Windows, stays until a later call removes it.
+ * @param directory - the folder of the version in place, from {@link unpackedRuntimeDirectory}.
+ * @param version - its runtime version.
+ * @param host - directory listings and removals.
+ */
+async function removeOtherVersions(directory: string, version: string, host: RuntimeUnpackHost): Promise<void> {
+  const paths = pathsOf(host.platform)
+  const root = paths.dirname(directory)
+  const own = (name: string): boolean => name === version || name.startsWith(`${version}.partial-`) || name.startsWith(`${version}.stale-`)
+  let entries: readonly string[]
+  try {
+    entries = await host.listDirectory(root)
+  } catch (error) {
+    // A runtime folder that cannot be listed holds nothing this call can remove; the runtime in place still runs.
+    void error
+    return
+  }
+  for (const name of entries.filter(entry => !own(entry))) {
+    try {
+      await host.remove(paths.join(root, name))
+    } catch (error) {
+      // A file in use keeps its folder until a later call removes it; the runtime in place still runs.
+      void error
+    }
+  }
+}
+
+/**
  * Unpack a runtime that the Desktop app ships as its archive into {@link unpackedRuntimeDirectory}, unless that folder
  * already holds it: a `runtime.json` with every field of the archive's record and an executable `program`. The archive
  * unpacks into a uniquely named sibling folder that is renamed into place, so an interrupted unpack never leaves a
  * half-unpacked runtime at the final path; a folder there whose program is not executable is replaced, and a runtime
- * that a concurrent server unpacked first is accepted.
+ * that a concurrent server unpacked first is accepted. Once the runtime is in place, the folders that other runtime
+ * versions left beside it are removed as far as they can be, without failing the call.
  * @param packed - the archive and its runtime fields, from {@link readPackedRuntime}.
  * @param program - the record's `/`-separated path of the program that a working runtime holds.
  * @param dataRoot - the plugin's data directory.
@@ -359,6 +391,7 @@ export async function unpackPackedRuntime<R extends { readonly version: string }
   const resolve = (relative: string): string => paths.join(directory, ...relative.split('/'))
   const target = { directory, program: resolve(program) }
   if (await holdsRuntime(directory, packed.record, host) && await host.isExecutable(target.program)) {
+    await removeOtherVersions(directory, packed.record.version, host)
     return { directory, resolve, unpacked: false }
   }
   if (!(await host.listDirectory(packed.directory)).includes(paths.basename(packed.archive))) {
@@ -387,6 +420,7 @@ export async function unpackPackedRuntime<R extends { readonly version: string }
   } finally {
     await host.remove(partial)
   }
+  await removeOtherVersions(directory, packed.record.version, host)
   return { directory, resolve, unpacked: true }
 }
 

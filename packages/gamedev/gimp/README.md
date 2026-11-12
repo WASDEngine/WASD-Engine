@@ -177,7 +177,7 @@ The first tool call that finds GIMP creates `dataRoot`. Each worker runs in its 
 | Path | Contents | Lifetime |
 |---|---|---|
 | `profile/` | The GIMP profile that `GIMP3_DIRECTORY` names | Kept; the plugin never removes it |
-| `runtime/<version>/` | The GIMP runtime that the Windows Desktop app ships as its archive, unpacked on first use; unpacked in a `.partial-<8 hex digits>` sibling and renamed into place | Kept; a new runtime version unpacks beside it |
+| `runtime/<version>/` | The GIMP runtime that the Windows Desktop app ships as its archive, unpacked on first use; unpacked in a `.partial-<8 hex digits>` sibling and renamed into place | Kept while the app ships that version; a start that finds another version in place removes it |
 | `payload/<hash>/wasd_gimp_worker.py` | Copy of the worker script as a real file outside the Desktop application archive; `<hash>` is the first 16 hex digits of its SHA-256 | Reused while the script is unchanged; earlier versions stay |
 | `snapshots/<uuid>.png` or `snapshots/<uuid>.jpg` | `snapshot` images | Deleted when the call returns |
 | `workers/<pid>/<n>/` | A worker's working directory | Deleted after the worker stops; a starting server deletes the folders of server processes that have exited |
@@ -334,7 +334,7 @@ These limits describe current gaps in the GIMP tools.
 - **Restarts lose open images** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops GIMP; the open images, unsaved changes, selections, and the Python namespace are gone, and the fresh worker starts with no images open.
 - **Slow first start** — the first start with a new profile takes about 15 s, and the tool call that triggers it waits.
 - **Shipped for macOS on Apple silicon and Windows x64 only** — the Desktop app ships GIMP for those platforms, which adds about 290 MB to the installed macOS app and about 95 MB to its download, and the runtime's archive to the Windows installer; Web, Linux, and Intel Macs use an installed GIMP 3.
-- **Windows unpacks on first use** — the first GIMP start on Windows unpacks the runtime into `dataRoot`, which the tool call waits for, and the unpacked runtime stays there when WASD Engine is uninstalled or moves to a new runtime version.
+- **Windows unpacks on first use** — the first GIMP start on Windows unpacks the runtime into `dataRoot`, which the tool call waits for, and the unpacked runtime stays there when WASD Engine is uninstalled; after a move to a new runtime version, the first start removes the old one.
 - **Fixed GIMP search** — the search covers the two settings, the shipped runtime, macOS application bundles, `PATH`, and Windows installations under `%ProgramFiles%` and `%LOCALAPPDATA%\Programs`; GIMP installed elsewhere needs `gimpConsolePath` or `GIMP_CONSOLE`. A plain `gimp-console` on `PATH` is used without a version check, so a GIMP 2 found there cannot start the worker.
 - **No crash watchdog on Windows** — the worker starts its watchdog only where `os.name` is `posix`; elsewhere, when GIMP's Python process dies, GIMP keeps running and holds the reply pipe open, so the running call fails only when its request budget expires.
 - **Some procedure values are out of reach** — `pdb_run` cannot set an argument whose type has no JSON form, and it returns integer and number arrays as a placeholder, because GIMP's Python bindings cannot read them.
