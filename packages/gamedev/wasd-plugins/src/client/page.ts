@@ -5,6 +5,27 @@
  * property the window names, so later scripts find control n of the latest text.
  */
 
+/**
+ * What makes a field secret, as data, because each page script runs from its own source text and shares no code: an
+ * `<input>` of one of `inputTypes`, or an element whose lowercased `autocomplete` attribute matches `autocomplete`.
+ */
+export interface SecretFieldRule {
+  /** `type` values of a secret `<input>`. */
+  readonly inputTypes: readonly string[]
+  /** Source of a regular expression, compiled with the `u` flag, that a secret field's `autocomplete` matches. */
+  readonly autocomplete: string
+}
+
+/**
+ * The password and payment fields: an `<input type="password">`, or a field whose `autocomplete` names a password, a
+ * one-time code, or payment card details. The page text never shows their values, and the window never types into
+ * them; every page script that reads or fills fields takes this rule.
+ */
+export const SECRET_FIELDS: SecretFieldRule = {
+  inputTypes: ['password'],
+  autocomplete: '(?:^|\\s)(?:current-password|new-password|one-time-code|cc-[a-z-]+)(?:\\s|$)',
+}
+
 /** Options of {@link snapshotPage}. */
 export interface SnapshotOptions {
   /** Page property that keeps the numbered controls. */
@@ -15,6 +36,8 @@ export interface SnapshotOptions {
   readonly maxElements: number
   /** Whether the page has layout, so hidden elements can be told apart; false in tests without a renderer. */
   readonly layout: boolean
+  /** The secret fields, whose values the text leaves out: {@link SECRET_FIELDS}. */
+  readonly secret: SecretFieldRule
 }
 
 /** A page as text. */
@@ -31,8 +54,9 @@ export interface PageSnapshot {
 
 /**
  * Render the page as text and number its controls. Links with an http(s) address appear as Markdown links; buttons,
- * fields, other links, and elements with a control role appear as `[n: kind "label"]`, with a field's value; headings,
- * list items, table rows, and preformatted blocks keep their structure.
+ * fields, other links, and elements with a control role appear as `[n: kind "label"]`, with a field's value, except a
+ * secret field, which shows `secret` instead of its value and options; headings, list items, table rows, and
+ * preformatted blocks keep their structure.
  * @param options - the snapshot options.
  * @returns the page as text.
  */
@@ -55,6 +79,9 @@ export function snapshotPage(options: SnapshotOptions): PageSnapshot {
   }
   const TEXT_INPUTS = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'number', 'password', 'date', 'time',
     'datetime-local', 'month', 'week'])
+  const secretAutocomplete = new RegExp(options.secret.autocomplete, 'u')
+  const secret = (element: Element): boolean => (element instanceof HTMLInputElement && options.secret.inputTypes.includes(element.type))
+    || secretAutocomplete.test((element.getAttribute('autocomplete') ?? '').toLowerCase())
   const collapse = (value: string): string => value.replace(/\s+/gu, ' ').trim()
   const clip = (value: string, max: number): string => value.length > max ? `${value.slice(0, max - 1)}…` : value
   const quote = (value: string): string => JSON.stringify(clip(collapse(value), 100))
@@ -135,7 +162,8 @@ export function snapshotPage(options: SnapshotOptions): PageSnapshot {
   const control = (element: Element, kind: string): void => {
     controls.push(element)
     let text = `[${String(controls.length)}: ${kind} ${quote(labelOf(element))}`
-    if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) {
+    if (secret(element)) text += ' secret'
+    else if (element instanceof HTMLInputElement && (element.type === 'checkbox' || element.type === 'radio')) {
       if (element.checked) text += ' checked'
     } else if (element.getAttribute('aria-checked') === 'true' || element.getAttribute('aria-selected') === 'true'
       || element.getAttribute('aria-pressed') === 'true') {
@@ -271,8 +299,8 @@ export function clickControl(options: { readonly key: string; readonly element: 
 }
 
 /**
- * How a field takes text after {@link prepareField}. `secret` is a password or payment field: an `<input
- * type="password">`, or a field whose `autocomplete` names a password, a one-time code, or payment card details.
+ * How a field takes text after {@link prepareField}. `secret` is a field the secret rule names, a password or payment
+ * field ({@link SECRET_FIELDS}).
  */
 export type FieldPreparation =
   | { readonly ready: false; readonly reason: 'missing' | 'not-a-field' | 'no-such-option' | 'secret' }
@@ -281,17 +309,23 @@ export type FieldPreparation =
 
 /**
  * Prepare control n to take text: focus a text field and select what it holds, so typing replaces it, or choose the
- * option of a select whose text or value matches the text. A password or payment field is refused untouched.
- * @param options - the page property that keeps the controls, the control's number from 1, and the text.
+ * option of a select whose text or value matches the text. A secret field is refused untouched.
+ * @param options - the page property that keeps the controls, the control's number from 1, the text, and the secret
+ *   fields ({@link SECRET_FIELDS}).
  * @returns how the field takes the text, or why it cannot.
  */
-export function prepareField(options: { readonly key: string; readonly element: number; readonly text: string }): FieldPreparation {
+export function prepareField(options: {
+  readonly key: string
+  readonly element: number
+  readonly text: string
+  readonly secret: SecretFieldRule
+}): FieldPreparation {
   const controls: unknown = Reflect.get(window, options.key)
   const element: unknown = Array.isArray(controls) ? controls[options.element - 1] : undefined
   if (!(element instanceof HTMLElement) || !element.isConnected) return { ready: false, reason: 'missing' }
-  const secret = /(?:^|\s)(?:current-password|new-password|one-time-code|cc-[a-z-]+)(?:\s|$)/u
-  if ((element instanceof HTMLInputElement && element.type === 'password')
-    || secret.test((element.getAttribute('autocomplete') ?? '').toLowerCase())) return { ready: false, reason: 'secret' }
+  const secretAutocomplete = new RegExp(options.secret.autocomplete, 'u')
+  if ((element instanceof HTMLInputElement && options.secret.inputTypes.includes(element.type))
+    || secretAutocomplete.test((element.getAttribute('autocomplete') ?? '').toLowerCase())) return { ready: false, reason: 'secret' }
   if (element instanceof HTMLSelectElement) {
     const wanted = options.text.trim().toLowerCase()
     const choice = [...element.options].find(option => option.text.trim().toLowerCase() === wanted || option.value.toLowerCase() === wanted)
@@ -317,20 +351,20 @@ export function prepareField(options: { readonly key: string; readonly element: 
 }
 
 /**
- * Whether the page's focus, followed into open shadow roots, is on a password or payment field as
- * {@link FieldPreparation} names them; typed text goes to the focus, which a page script may move after
- * {@link prepareField}.
+ * Whether the page's focus, followed into open shadow roots, is on a secret field; typed text goes to the focus, which
+ * a page script may move after {@link prepareField}.
+ * @param options - the secret fields ({@link SECRET_FIELDS}).
  * @returns whether the focused element is such a field.
  */
-export function focusedSecretField(): boolean {
+export function focusedSecretField(options: { readonly secret: SecretFieldRule }): boolean {
   let focused = document.activeElement
   for (let inner = focused?.shadowRoot?.activeElement; inner !== null && inner !== undefined; inner = inner.shadowRoot?.activeElement) {
     focused = inner
   }
   if (focused === null) return false
-  const secret = /(?:^|\s)(?:current-password|new-password|one-time-code|cc-[a-z-]+)(?:\s|$)/u
-  return (focused instanceof HTMLInputElement && focused.type === 'password')
-    || secret.test((focused.getAttribute('autocomplete') ?? '').toLowerCase())
+  const secretAutocomplete = new RegExp(options.secret.autocomplete, 'u')
+  return (focused instanceof HTMLInputElement && options.secret.inputTypes.includes(focused.type))
+    || secretAutocomplete.test((focused.getAttribute('autocomplete') ?? '').toLowerCase())
 }
 
 /**

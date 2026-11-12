@@ -287,6 +287,15 @@ describe('followBrowserRequests', () => {
       .toEqual({ ok: false, message: 'Element 2 is not a field you can type into.' })
   })
 
+  it('reads password and payment fields without their values', async () => {
+    document.body.innerHTML = '<input autocomplete="current-password" aria-label="Password" value="hunter2-shown">'
+      + '<input type="tel" autocomplete="cc-number" aria-label="Card" value="4242 4242 4242 4242"><input aria-label="Name" value="Ada">'
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text)
+      .toBe('[1: textbox "Password" secret] [2: textbox "Card" secret] [3: textbox "Name" value="Ada"]')
+  })
+
   it('refuses to type into a password or payment field, or where the page moves the focus to one', async () => {
     document.body.innerHTML = '<input type="password" aria-label="Password"><input autocomplete="cc-number" aria-label="Card">'
       + '<input aria-label="Name">'

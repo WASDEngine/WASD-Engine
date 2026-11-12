@@ -17,8 +17,8 @@ import type {
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WasdBrowserImage, WasdBrowserLimits, WasdBrowserOutcome, WasdBrowserRequest, WasdBrowserRequests } from '../types.ts'
 import {
-  clickControl, focusedSecretField, locateControl, pageScript, prepareField, snapshotPage, viewportSize, type ControlLocation,
-  type FieldPreparation, type PageSnapshot,
+  clickControl, focusedSecretField, locateControl, pageScript, prepareField, SECRET_FIELDS, snapshotPage, viewportSize,
+  type ControlLocation, type FieldPreparation, type PageSnapshot,
 } from './page.ts'
 
 /** Kind of the right Sidebar's Browser tabs. */
@@ -415,7 +415,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
       : state.error.description === undefined ? 'the page failed to load' : `${state.error.description} (${String(state.error.code)})`
     const snapshot = tab.page.ready()
       ? pageSnapshotOf(await evaluate(tab, run, pageScript(snapshotPage,
-        { key, maxChars: limits.maxChars, maxElements: MAX_ELEMENTS, layout: true })))
+        { key, maxChars: limits.maxChars, maxElements: MAX_ELEMENTS, layout: true, secret: SECRET_FIELDS })))
       : { title: state.target?.title ?? '', url: state.target?.url ?? '', text: '', truncated: false }
     const text = snapshot.text.slice(0, limits.maxChars)
     return {
@@ -501,7 +501,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         const tab = requireTab(sessionId, false)
         const location = await locate(tab.face, run, command.element)
         if (location.covered === undefined && !location.select) await click(tab.face, run, location.x, location.y)
-        const script = pageScript(prepareField, { key, element: command.element, text: command.text })
+        const script = pageScript(prepareField, { key, element: command.element, text: command.text, secret: SECRET_FIELDS })
         const field = preparationOf(await evaluate(tab.face, run, script))
         if (!field.ready) {
           if (field.reason === 'missing') throw missingElement(command.element)
@@ -512,7 +512,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         }
         if (field.mode === 'insert') {
           // The text goes where the page's focus is, which a page script may move after the field was prepared.
-          if (await evaluate(tab.face, run, pageScript(focusedSecretField)) !== false) {
+          if (await evaluate(tab.face, run, pageScript(focusedSecretField, { secret: SECRET_FIELDS })) !== false) {
             throw new BrowserCommandError('The page moved the focus to a password or payment field, so the Browser typed nothing; '
               + 'call browser_read and try again, or ask the user to fill in the field.')
           }
