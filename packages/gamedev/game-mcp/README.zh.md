@@ -150,7 +150,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部九个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 24,000 个字符（其中约 6,500 个是游戏扩展目录），67 个工具声明约 66,200 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部九个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 24,500 个字符（其中约 6,900 个是游戏扩展目录），67 个工具声明约 66,200 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
