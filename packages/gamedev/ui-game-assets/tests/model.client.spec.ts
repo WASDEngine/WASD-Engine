@@ -4,9 +4,10 @@
  * library, STL, PLY meshes and point clouds; the counts shown beside a model; disposal; and a Blender file's export.
  */
 import { BoxGeometry, BufferGeometry, Group, InstancedMesh, Mesh, MeshPhongMaterial, MeshStandardMaterial, Points, Texture } from 'three'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { exportOf } from '../src/client/AssetViewer.tsx'
 import { formatOf } from '../src/client/formats.ts'
+import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
 import { disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
 
@@ -41,7 +42,11 @@ function triangleGltf(): { readonly json: string; readonly bin: ArrayBuffer } {
   }
 }
 
-function source(decoder: ModelSource['decoder'], data: Uint8Array<ArrayBuffer>, related = vi.fn((reference: string) => `http://host/api/file?path=/p/${reference}`)) {
+function source(
+  decoder: ModelSource['decoder'],
+  data: Uint8Array<ArrayBuffer>,
+  related: Mock<(reference: string) => string | undefined> = vi.fn((reference: string) => `http://host/api/file?path=/p/${reference}`),
+) {
   return { decoder, data, related, changed: vi.fn() } satisfies ModelSource
 }
 
@@ -93,6 +98,28 @@ describe('loadModel', () => {
     const cloud = await loadModel(source('ply', encode(`${header}end_header\n0 0 0\n1 0 0\n0 1 0\n`)), new AbortController().signal)
     expect(cloud.root).toBeInstanceOf(Points)
     expect(cloud.stats).toEqual({ triangles: 0, vertices: 3 })
+  })
+
+  it('requests no file a model names outside the project or on the web, and lists it as missing', async () => {
+    const fetched: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (request: Request | string) => {
+      const url = typeof request === 'string' ? request : request.url
+      fetched.push(url)
+      // Browsers refuse a data URL without a comma without any request.
+      if (/^data:[^,]*$/u.test(url)) throw new TypeError('Failed to fetch')
+      return new Response('newmtl red\nKd 1 0 0\n')
+    }))
+    const related = (path: string) => vi.fn((reference: string) => relatedUrl('http://host/', `/Users/me/Knight/${path}`, path, reference))
+    const obj = await loadModel(source('obj', encode('mtllib ../../../../Pictures/private.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'), related('models/hero.obj')), new AbortController().signal)
+    expect(fetched).toEqual([])
+    expect(obj.missing).toEqual(['private.mtl'])
+    expect(obj.stats.triangles).toBe(1)
+    // A buffer on the web fails the model without a request to the web.
+    const { json } = triangleGltf()
+    const web = JSON.stringify({ ...JSON.parse(json) as object, buffers: [{ uri: 'https://tracker.example/t%0A.bin', byteLength: 68 }] })
+    await expect(loadModel(source('gltf', encode(web), related('models/tri.gltf')), new AbortController().signal)).rejects.toThrow('Failed to load buffer')
+    expect(fetched).toHaveLength(1)
+    expect(fetched[0]).toMatch(/^data:[^,]*$/u)
   })
 
   it('rejects a file that is not a model of its format', async () => {

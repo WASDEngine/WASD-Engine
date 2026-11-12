@@ -287,17 +287,22 @@ export const MAX_GLTF_FILES = 1024
 /** Files whose sizes are read at once while summing a glTF model's files. */
 const GLTF_STAT_CONCURRENCY = 16
 
+/** A URL scheme of two letters or more, which a Windows drive such as `C:` is not. */
+const URL_SCHEME = /^[A-Za-z][A-Za-z\d+.-]+:/u
+
 /**
  * The total size of the files a glTF model names outside its .gltf file, its buffers and images, which the window
- * loads with it. Names resolve as the window resolves them: from the model's folder, and an absolute name by its file
- * name in that folder. The sizes are read {@link GLTF_STAT_CONCURRENCY} at a time.
+ * loads with it. Names resolve as the window resolves them: from the model's folder, an absolute name by its file name
+ * in that folder, and only inside the project folder; a web address or other URL, and a name that leads out of the
+ * project, load nothing and count nothing. The sizes are read {@link GLTF_STAT_CONCURRENCY} at a time.
  * @param file - absolute path of the .gltf file.
  * @param size - its size in bytes.
+ * @param root - the project folder the window loads the model's files from.
  * @param signal - the call's cancellation, checked before each read.
  * @returns the total size in bytes, 0 when the file holds its data inside or is not readable JSON.
  * @throws {HarnessError} `ASSET_TOO_LARGE` when the model names more than {@link MAX_GLTF_FILES} distinct files.
  */
-export async function gltfFilesBytes(file: string, size: number, signal: AbortSignal): Promise<number> {
+export async function gltfFilesBytes(file: string, size: number, root: string, signal: AbortSignal): Promise<number> {
   if (size > MAX_GLTF_JSON_BYTES) return 0
   let parsed: unknown
   try {
@@ -311,19 +316,22 @@ export async function gltfFilesBytes(file: string, size: number, signal: AbortSi
     if (!Array.isArray(list)) return []
     return list.flatMap((entry: unknown) => {
       const uri: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'uri') : undefined
-      return typeof uri === 'string' && !/^(?:data|blob):/iu.test(uri) ? [uri] : []
+      return typeof uri === 'string' && !URL_SCHEME.test(uri) ? [uri] : []
     })
   }
   const folder = dirname(file)
-  const named = new Set([...uris('buffers'), ...uris('images')].map((uri) => {
+  const named = new Set([...uris('buffers'), ...uris('images')].flatMap((uri) => {
     let name = uri
     try {
       name = decodeURIComponent(uri)
     } catch {
       // URIError: a name with a stray `%` is a literal file name, as the window reads it.
     }
+    if (URL_SCHEME.test(name)) return []
     const slashed = name.replaceAll('\\', '/')
-    return isAbsolute(name) || /^[A-Za-z]:\//u.test(slashed) ? join(folder, basename(slashed)) : resolve(folder, name)
+    const path = isAbsolute(name) || /^[A-Za-z]:\//u.test(slashed) ? join(folder, basename(slashed)) : resolve(folder, slashed)
+    const inside = relative(root, path)
+    return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside) ? [] : [path]
   }))
   if (named.size > MAX_GLTF_FILES) {
     fail(`The glTF model names ${String(named.size)} files, more than the ${String(MAX_GLTF_FILES)} the viewer loads with one model.`, ASSET_ERROR.tooLarge)
@@ -576,11 +584,12 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
         bytes = exported.bytes
         format = exported.format
       }
-      // A glTF model's buffers and images in files of their own load with it.
-      if (format.label === 'glTF') bytes += await gltfFilesBytes(absolute, bytes, exec.signal)
-      const images = await surface.seesImages(exec)
       const root = agent.session.header.cwd
       const sent = windowPath(root, absolute)
+      // A glTF model's buffers and images in files of their own load with it, from the project folder the window reads:
+      // the folder in the Session's header, or the model's own folder for a model outside it.
+      if (format.label === 'glTF') bytes += await gltfFilesBytes(absolute, bytes, root === undefined || sent === absolute ? dirname(absolute) : root, exec.signal)
+      const images = await surface.seesImages(exec)
       let answer: AssetRenderResult
       try {
         answer = await host.render(agent, {

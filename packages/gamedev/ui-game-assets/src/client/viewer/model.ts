@@ -67,9 +67,9 @@ export interface ModelSource {
   /**
    * The URL of a file the model names, such as a texture, a glTF buffer, or an OBJ material library.
    * @param reference - the name as the model stores it, relative to the model file.
-   * @returns the URL to load.
+   * @returns the URL to load, or undefined for a file the viewer does not load, which the model lists as missing.
    */
-  readonly related: (reference: string) => string
+  readonly related: (reference: string) => string | undefined
   /** Called when a texture that loads after the model arrives, so the stage draws it. */
   readonly changed: () => void
 }
@@ -117,12 +117,14 @@ function arrayBufferOf(bytes: Uint8Array): ArrayBuffer {
 async function objMaterials(
   library: string,
   manager: LoadingManager,
-  related: (reference: string) => string,
+  related: (reference: string) => string | undefined,
   signal: AbortSignal,
 ): Promise<MTLLoader.MaterialCreator | undefined> {
+  const url = related(library)
+  if (url === undefined) return undefined
   let response: Response
   try {
-    response = await fetch(related(library), { signal, credentials: 'same-origin' })
+    response = await fetch(url, { signal, credentials: 'same-origin' })
   } catch {
     // TypeError or AbortError: a library that cannot be fetched leaves the model untextured, and an abort ends the load
     // at its next check.
@@ -247,8 +249,13 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
   const missing: string[] = []
   let outstanding = 0
   const settled = Promise.withResolvers<void>()
+  // A file the viewer does not load gets a `data:` URL without a comma, which fetches and images refuse without any
+  // request; each is its own URL, also beside another model's in the loaders' shared request table, so its failure
+  // names its own file.
+  const refusals = `refused-${Math.random().toString(36).slice(2)}-`
+  let refused = 0
   manager.setURLModifier((url) => {
-    const resolved = source.related(url)
+    const resolved = source.related(url) ?? `data:${refusals}${String(++refused)}`
     references.set(resolved, url)
     return resolved
   })

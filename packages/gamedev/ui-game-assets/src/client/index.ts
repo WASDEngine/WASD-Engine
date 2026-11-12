@@ -185,7 +185,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   const agentSources = (sessionId: SessionId): AgentRenderSources => ({
     read: readOf(sessionId),
     animations: animationSources(sessionId, async signal => sources.get(sessionId)?.source.freshScan() ?? await walkOf(sessionId, signal)),
-    relatedUrl: (base, reference) => relatedUrl(document.baseURI, base, reference),
+    relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
     viewer,
   })
   const tabFace = (scopeKey: string): AssetsTabInjected => {
@@ -203,7 +203,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
         ctx.logger.warn('ui-game-assets: reading an asset failed', error)
         return { ok: false, error: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}) } as const
       }),
-      relatedUrl: (base, reference) => relatedUrl(document.baseURI, base, reference),
+      relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
       animations: animationSources(sessionId, async signal => source.scanState.getSnapshot().scan ?? await walkOf(sessionId, signal)),
       takeNavigation: (tabId, revision) => source.takeNavigation(tabId, revision),

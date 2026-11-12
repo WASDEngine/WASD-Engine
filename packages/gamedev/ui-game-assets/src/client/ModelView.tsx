@@ -30,12 +30,13 @@ export interface ModelViewProps {
   /** Its bytes. */
   readonly file: AssetFile
   /**
-   * The URL of a file the model names.
+   * The URL of a file the model names, inside the project.
    * @param base - absolute path of the model file.
+   * @param path - the model's workspace path, which places the project folder in `base`.
    * @param reference - the name as the model stores it.
-   * @returns the URL to load.
+   * @returns the URL to load, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, reference: string) => string
+  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
   /** What an agent asked to show: the clip to play once the model shows; `request` changes for each ask. */
   readonly requested?: ViewRequest | undefined
   readonly t: Translate
@@ -230,7 +231,7 @@ export function ModelView({ asset, file, relatedUrl, requested, t }: ModelViewPr
     void module.loadModel({
       decoder: format.decoder,
       data: file.data,
-      related: reference => relatedUrl(file.absolutePath, reference),
+      related: reference => relatedUrl(file.absolutePath, path, reference),
       changed: () => { drawn.requestRender() },
     }, controller.signal).then((model) => {
       if (controller.signal.aborted) {

@@ -136,7 +136,7 @@ describe('Assets tab registration', () => {
     face.select('other.png')
     expect(face.hooks.view.getSnapshot().asked).toBeUndefined()
     expect(await face.animations.files('', new AbortController().signal)).toEqual(['hero.png'])
-    expect(face.relatedUrl('/p/models/a.gltf', 'a.bin')).toBe(new URL(`api/file?path=${encodeURIComponent('/p/models/a.bin')}`, document.baseURI).href)
+    expect(face.relatedUrl('/p/models/a.gltf', 'models/a.gltf', 'a.bin')).toBe(new URL(`api/file?path=${encodeURIComponent('/p/models/a.bin')}`, document.baseURI).href)
     expect(() => f.face(GONE)).toThrow('is not retained')
     await f.scopes.get(S1)?.dispose()
     expect(f.face(S1).hooks.scan).not.toBe(face.hooks.scan)

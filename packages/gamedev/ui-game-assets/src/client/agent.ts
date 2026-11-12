@@ -45,12 +45,13 @@ export interface AgentRenderSources {
   /** The reads that find an image's animations. */
   readonly animations: AnimationSources
   /**
-   * The URL of a file that a model names.
+   * The URL of a file that a model names, inside the project.
    * @param base - absolute path of the model file.
+   * @param path - the model's workspace path, which places the project folder in `base`.
    * @param reference - the name as the model stores it.
-   * @returns the URL.
+   * @returns the URL, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, reference: string) => string
+  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
   /** @returns the viewer's three.js chunk, loaded on first use. */
   readonly viewer: () => Promise<ViewerModule>
 }
@@ -197,7 +198,7 @@ async function answerModel(
     model = await viewer.loadModel({
       decoder: format.decoder,
       data: file.data,
-      related: reference => sources.relatedUrl(file.absolutePath, reference),
+      related: reference => sources.relatedUrl(file.absolutePath, request.path, reference),
       changed: () => {},
     }, signal)
   } catch (error) {
