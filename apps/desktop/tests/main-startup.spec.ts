@@ -3095,7 +3095,8 @@ describe('desktop main startup', () => {
     expect(harness.windows).toHaveLength(1)
   })
 
-  // WASD Engine: updates download in the background, and the indicator offers only Restart to Update.
+  // WASD Engine: updates download in the background; the indicator offers Restart to Update, and Retry update once the
+  // automatic downloads stop.
   it('downloads an update as soon as a check publishes it and presents only Restart to Update', async () => {
     await readyForUpdate()
     harness.dialog.showMessageBox.mockClear()
@@ -3132,6 +3133,36 @@ describe('desktop main startup', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(harness.updateCheck).toHaveBeenCalledWith(true)
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+  })
+
+  it('offers Retry update once the automatic downloads stop, and downloads when the user retries', async () => {
+    vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_JITTER', '0')
+    await readyForUpdate()
+    await vi.advanceTimersByTimeAsync(0)
+    harness.dialog.showMessageBox.mockClear()
+    const window = harness.windows[0]!
+    const presented = () => window.webContents.send.mock.calls
+      .filter(([channel]) => channel === DESKTOP_IPC.updatesPresentation).at(-1)?.[1]
+    for (const delay of [600_000, 1_200_000]) {
+      harness.updateState = { phase: 'error', failedOperation: 'download', version: '1.0.1', message: 'EPERM: operation not permitted',
+        downloadFailure: 'permission' }
+      harness.publishUpdate(harness.updateState)
+      expect(presented()).toEqual({ phase: 'idle' })
+      await vi.advanceTimersByTimeAsync(delay)
+    }
+    harness.updateState = { phase: 'error', failedOperation: 'download', version: '1.0.1', message: 'EPERM: operation not permitted',
+      downloadFailure: 'permission' }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'error', version: '1.0.1', failure: 'download-permission' })
+    expect(await invoke(DESKTOP_IPC.updatesStatus, 'app')).toEqual({ phase: 'error', version: '1.0.1', failure: 'download-permission' })
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+    harness.updateDownload.mockClear()
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 0 })
+    // The user's retry downloads at once and, unlike the automatic attempts, reports its failure.
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
+    const shown = harness.dialog.showMessageBox.mock.calls.map(call => call.at(-1) as Electron.MessageBoxOptions)
+    expect(shown.map(options => options.message)).toEqual([en.updateDownloadPermissionFailed])
   })
 
   it('answers Check for Updates… with the background download and reports a failed one', async () => {

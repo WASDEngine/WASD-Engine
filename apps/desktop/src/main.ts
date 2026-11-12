@@ -68,7 +68,7 @@ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.t
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
-import { WasdengineUpdateDownloads, wasdengineIndicatorUpdate } from './wasdengine-update-downloads.ts'
+import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
@@ -443,7 +443,7 @@ async function main(): Promise<void> {
   let updateStopFailure: DesktopHostUncleanExitError | undefined
   let updateState: DesktopUpdateState = { phase: 'idle' }
   let channelState: DesktopChannelState | undefined
-  const updatePresentation = (state: DesktopUpdateState) => ({ ...presentDesktopUpdate(wasdengineIndicatorUpdate(state)),
+  const updatePresentation = (state: DesktopUpdateState) => ({ ...presentDesktopUpdate(automaticDownloads.indicator(state)),
     ...(channelState?.error === undefined ? {} : { configurationError: channelState.error }) })
   const systemLanguages = app.getPreferredSystemLanguages()
   let locale = windowsLanguage === undefined
@@ -637,10 +637,10 @@ async function main(): Promise<void> {
     updateJournal?.state(state)
     updateState = state
     mandatoryUI?.sync()
+    automaticDownloads.published(state)
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(DESKTOP_IPC.updatesPresentation, updatePresentation(state))
     }
-    automaticDownloads.published(state)
     if (state.phase === 'error' && state.failedOperation !== 'check' && state.failedOperation !== 'configuration') {
       if (state.failedOperation === 'install' && fileDragStopped && !quitting) {
         fileDragCleanups.add(installFileDrag())
