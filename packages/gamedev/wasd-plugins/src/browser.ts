@@ -271,19 +271,40 @@ interface ScreenshotScale {
 }
 
 /**
- * The model-facing text of a page result.
+ * The page's title and address, and the window's note, which can quote the page, as the lines after the
+ * external-content notice: the page sets all three.
+ * @param value - the page's fields.
+ * @returns the lines.
+ */
+function pageLines(value: { readonly title: string; readonly url: string; readonly note?: string | undefined }): string[] {
+  return [`Page: ${value.title === '' ? '(untitled)' : value.title}`, `URL: ${value.url}`, ...value.note === undefined ? [] : [value.note]]
+}
+
+/**
+ * The model-facing text of a page result: the window's own state, then the external-content notice, and below it
+ * everything the page controls, so nothing the page wrote precedes the notice.
  * @param value - the result.
  * @param maxChars - the text limit, named when the text was cut.
  * @returns the text.
  */
 export function formatPage(value: BrowserPageValue, maxChars: number): string {
-  const lines = [`Page: ${value.title === '' ? '(untitled)' : value.title}`, `URL: ${value.url}`]
-  if (value.error !== undefined) lines.push(`The page did not load: ${value.error}`)
-  if (value.loading) lines.push('The page was still loading when the wait ended; call browser_read to read it again.')
-  if (value.note !== undefined) lines.push(value.note)
-  lines.push('', EXTERNAL_NOTICE, '', value.text === '' ? '(The page shows no text.)' : value.text)
+  const state: string[] = []
+  if (value.error !== undefined) state.push(`The page did not load: ${value.error}`)
+  if (value.loading) state.push('The page was still loading when the wait ended; call browser_read to read it again.')
+  const lines = [...state, ...state.length === 0 ? [] : [''], EXTERNAL_NOTICE, '', ...pageLines(value), '',
+    value.text === '' ? '(The page shows no text.)' : value.text]
   if (value.truncated) lines.push('', `(The page text was cut at ${String(maxChars)} characters.)`)
   return lines.join('\n')
+}
+
+/**
+ * The model-facing text before a screenshot: its size, then the external-content notice, and below it what the page
+ * controls, as in {@link formatPage}.
+ * @param value - the result.
+ * @returns the text.
+ */
+export function formatScreenshot(value: BrowserScreenshotValue): string {
+  return [`Screenshot: ${String(value.width)}x${String(value.height)} pixels.`, '', EXTERNAL_NOTICE, '', ...pageLines(value)].join('\n')
 }
 
 function pageValue(done: WasdBrowserDone): BrowserPageValue {
@@ -386,11 +407,7 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
     output: {
       schema: SCREENSHOT_SCHEMA,
       render: (_args, value) => [
-        {
-          type: 'text',
-          text: [`Screenshot of ${value.title === '' ? value.url : `${value.title} (${value.url})`}: ${String(value.width)}x${String(value.height)} pixels.`,
-            ...value.note === undefined ? [] : [value.note]].join('\n'),
-        },
+        { type: 'text', text: formatScreenshot(value) },
         { type: 'image', attachment: { ...value.image, attachmentId: brandString<AttachmentId>(value.image.attachmentId) } },
       ],
     },
