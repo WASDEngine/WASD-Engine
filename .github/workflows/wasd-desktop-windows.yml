@@ -163,8 +163,10 @@ jobs:
       - name: Package the installer
         run: pnpm run package:desktop:win:x64:unsigned
 
+      # GitHub compares an unset variable, null, with '0' as the number 0 and finds them equal, so each check below turns
+      # the variable into a string first: it runs unless the runtime-release step set the variable to 0 for a test.
       - name: Check that the installer bundles LibGodot
-        if: env.WASD_LIBGODOT_BUNDLE != '0'
+        if: format('{0}', env.WASD_LIBGODOT_BUNDLE) != '0'
         run: |
           $runtime = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-godot/libgodot/win32-x64/runtime.json'
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no LibGodot runtime at $runtime" }
@@ -173,7 +175,7 @@ jobs:
       # The app ships Blender's and GIMP's runtimes as their archives, which their plugins unpack under their data folders
       # on first use, because the runtimes' deepest files would pass Windows' path length limit below the install folder.
       - name: Check that the installer bundles Blender
-        if: env.WASD_BLENDER_BUNDLE != '0'
+        if: format('{0}', env.WASD_BLENDER_BUNDLE) != '0'
         run: |
           $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-blender/runtime/win32-x64'
           $record = Join-Path $folder 'archive.json'
@@ -186,7 +188,7 @@ jobs:
       # Unpacks the archive with Windows' own tar.exe into a data folder whose path holds characters outside ASCII, as
       # the GIMP plugin does on first use, and runs gimp-console there as the plugin runs it.
       - name: Check and smoke-test the GIMP runtime that the installer bundles
-        if: env.WASD_GIMP_BUNDLE != '0'
+        if: format('{0}', env.WASD_GIMP_BUNDLE) != '0'
         timeout-minutes: 15
         run: |
           $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-gimp/runtime/win32-x64'
@@ -212,7 +214,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Check and smoke-test the SuperCollider runtime that the installer bundles
-        if: env.WASD_SUPERCOLLIDER_BUNDLE != '0'
+        if: format('{0}', env.WASD_SUPERCOLLIDER_BUNDLE) != '0'
         timeout-minutes: 10
         run: |
           $folder = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-supercollider/runtime/win32-x64'
@@ -226,7 +228,7 @@ jobs:
       # as the app's MCP servers do, against the runtimes that the installer holds, which they find in the checkout's
       # plugin packages; the GIMP suite unpacks the archive under its data folder first, as the plugin does.
       - name: Run the GIMP and SuperCollider tools against the bundled runtimes
-        if: env.WASD_GIMP_BUNDLE != '0' || env.WASD_SUPERCOLLIDER_BUNDLE != '0'
+        if: format('{0}', env.WASD_GIMP_BUNDLE) != '0' || format('{0}', env.WASD_SUPERCOLLIDER_BUNDLE) != '0'
         timeout-minutes: 30
         run: |
           $unpacked = 'apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/win-unpacked/resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai'
