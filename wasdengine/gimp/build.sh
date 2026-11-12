@@ -17,7 +17,7 @@
 #   --out <dir>                 output directory (required); the download and the stage go under it
 #   --dmg <file>                on macOS, use this GIMP disk image instead of downloading it; it must match the pinned SHA-256
 #   --setup <file>              on Windows, use this GIMP installer instead of downloading it; it must match the pinned SHA-256
-#   --version <version>         runtime version (default 3.2.8-wasd.1)
+#   --version <version>         runtime version (default 3.2.8-wasd.2)
 #   --install <root>            install the archive into <root>/<platform>-<arch>/, such as
 #                               packages/gamedev/gimp/runtime
 #   --repository <owner/name>   GitHub repository whose release gimp-<version> hosts
@@ -72,7 +72,7 @@ option_value() {
 out_dir=
 dmg=
 setup=
-version=3.2.8-wasd.1
+version=3.2.8-wasd.2
 install_root=
 repository=WASDEngine/WASD-Engine
 while [ "$#" -gt 0 ]; do

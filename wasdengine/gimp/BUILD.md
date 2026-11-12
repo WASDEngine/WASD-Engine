@@ -67,7 +67,7 @@ On Windows, the runtime's root holds `bin/` with `gimp-console-3.2.exe`, GIMP's 
 ```json
 {
   "format": 1,
-  "version": "3.2.8-wasd.1",
+  "version": "3.2.8-wasd.2",
   "gimp": "3.2.8",
   "platform": "darwin",
   "arch": "arm64",
@@ -91,11 +91,11 @@ In `runtime.json`, `format` is the file format that the plugin and Desktop packa
 ```json
 {
   "format": 1,
-  "version": "3.2.8-wasd.1",
+  "version": "3.2.8-wasd.2",
   "gimp": "3.2.8",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-3.2.8-wasd.1/gimp-3.2.8-wasd.1-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-3.2.8-wasd.2/gimp-3.2.8-wasd.2-darwin-arm64.tar.gz",
       "bytes": 95737486,
       "sha256": "<SHA-256 digest of the archive>"
     }
@@ -123,12 +123,12 @@ The GIMP plugin's end-to-end suite, `packages/gamedev/gimp/tests/gimp-worker.e2e
 
 ## Release
 
-The GIMP runtime workflow, [wasd-gimp.yml](../../.github/workflows/wasd-gimp.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-gimp.yml -f version=3.2.8-wasd.1`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
+The GIMP runtime workflow, [wasd-gimp.yml](../../.github/workflows/wasd-gimp.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-gimp.yml -f version=3.2.8-wasd.2`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
 
 The `build` jobs run `build.sh` on macOS 26 (arm64) and on Windows Server 2025 (x64), install each runtime into a directory whose name holds characters outside ASCII, smoke-test the installed runtime, and upload each archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days. The Windows job also unpacks its archive with Windows' `tar.exe`, as the plugin does, and smoke-tests that copy.
 
 When the workflow runs on the default branch and both runtimes pass, the `release` job merges the manifests and checks every archive against the merged manifest: URL, size, digest, and the files and platform inside. It then creates the release `gimp-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archives and then `manifest.json`, and publishes the release as a pre-release, so that it never becomes the repository's latest release, which the Desktop update feed and the front page's Download link reach through `releases/latest`; GitHub makes a full release the latest one while no other full release exists, even one published with `--latest=false`. A published release is never changed; the job fails instead.
 
-Desktop packaging reads the release's `manifest.json` to ship the runtime inside the app; to package with a local build instead, set `WASD_GIMP_DIR` to its `--out` folder, and `WASD_GIMP_BUNDLE=0` packages without GIMP. A published runtime version never changes, so publish a new one, such as `3.2.8-wasd.2`, whenever `prepare`, `prepare-windows`, or the pinned disk images or installer change, and update the `version` default of `build.sh` and `GIMP_MANIFEST_URL` in `apps/desktop/scripts/wasdengine-gimp.ts` to match. To move to a new GIMP release, update `gimp_version`, the disk image and installer URLs and digests, and the source URL and digest in `build.sh` from GIMP's `SHA256SUMS`, check that `prepare` still knows every link in the bundle and that the installer's component names are those that `SETUP_COMPONENTS` in `runtime.py` lists, and run the smoke test and the end-to-end suite.
+Desktop packaging reads the release's `manifest.json` to ship the runtime inside the app; to package with a local build instead, set `WASD_GIMP_DIR` to its `--out` folder, and `WASD_GIMP_BUNDLE=0` packages without GIMP. A published runtime version never changes, so publish a new one, such as `3.2.8-wasd.3`, whenever `prepare`, `prepare-windows`, or the pinned disk images or installer change, and update the `version` default of `build.sh` and `GIMP_MANIFEST_URL` in `apps/desktop/scripts/wasdengine-gimp.ts` to match. To move to a new GIMP release, update `gimp_version`, the disk image and installer URLs and digests, and the source URL and digest in `build.sh` from GIMP's `SHA256SUMS`, check that `prepare` still knows every link in the bundle and that the installer's component names are those that `SETUP_COMPONENTS` in `runtime.py` lists, and run the smoke test and the end-to-end suite.
 
 No Linux runtime is built: GIMP publishes an AppImage for Linux, whose layout and environment `prepare` and the plugin do not handle, and WASD Engine publishes no Linux Desktop app. The workflow builds no macOS x64 runtime either, although `build.sh` supports one. Where no runtime is shipped, the plugin uses an installed GIMP 3. The Windows runtime is smoke-tested only on the workflows' Windows runners, which have no display adapter of their own.

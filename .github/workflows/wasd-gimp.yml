@@ -15,7 +15,7 @@ on:
       version:
         description: Runtime version; the release is tagged gimp-<version>
         required: true
-        default: 3.2.8-wasd.1
+        default: 3.2.8-wasd.2
         type: string
 
 permissions: {}
