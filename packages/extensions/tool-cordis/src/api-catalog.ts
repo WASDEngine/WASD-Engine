@@ -4687,9 +4687,9 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote({ mode: \'stream\' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>',
-        description: 'Follow the agents\' Browser commands that no window has taken yet, for a window that can drive Browser tabs.',
+        description: 'Follow the agents\' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and the ids of taken ones whose call still waits, so a window stops a command whose call ended.',
         parameters: [{ name: 'signal', description: 'stream cancellation.' }],
-        returns: 'the waiting commands, then again after each change, until cancelled or the plugin is disposed.',
+        returns: 'both lists, then again after each change, until cancelled or the plugin is disposed.',
       },
       {
         signature: '@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean',
@@ -11019,7 +11019,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WasdBrowserLimits',
-    declaration: 'export interface WasdBrowserLimits {\n    readonly maxChars: number;\n    readonly loadTimeoutMs: number;\n    readonly screenshotWidth: number;\n}',
+    declaration: 'export interface WasdBrowserLimits {\n    readonly maxChars: number;\n    readonly loadTimeoutMs: number;\n    readonly operationTimeoutMs: number;\n    readonly screenshotWidth: number;\n}',
   },
   {
     name: 'WasdBrowserOutcome',
@@ -11035,7 +11035,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WasdBrowserRequests',
-    declaration: 'export interface WasdBrowserRequests {\n    readonly requests: readonly WasdBrowserRequest[];\n}',
+    declaration: 'export interface WasdBrowserRequests {\n    readonly requests: readonly WasdBrowserRequest[];\n    readonly claimed: readonly string[];\n}',
   },
   {
     name: 'WasdProjectView',

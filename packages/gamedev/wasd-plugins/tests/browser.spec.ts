@@ -11,7 +11,7 @@ import {
 import type { WasdBrowserCommand, WasdBrowserLimits, WasdBrowserOutcome, WasdBrowserRequests } from '../src/types.ts'
 
 const SESSION = 'session-1' as SessionId
-const LIMITS: WasdBrowserLimits = { maxChars: 1000, loadTimeoutMs: 1000, screenshotWidth: 1280 }
+const LIMITS: WasdBrowserLimits = { maxChars: 1000, loadTimeoutMs: 1000, operationTimeoutMs: 500, screenshotWidth: 1280 }
 const lifetimes: AbortController[] = []
 
 afterEach(() => {
@@ -88,6 +88,20 @@ describe('BrowserRequestQueue', () => {
     cancel.abort(new Error('cancelled'))
     await expect(sent).rejects.toThrow('cancelled')
     expect(requests.settle(id, page('Late'))).toBe(false)
+  })
+
+  it('names a claimed command while its call waits, so a window stops it once the call ends', async () => {
+    const { requests, views } = queue()
+    const cancel = new AbortController()
+    const sent = requests.send(SESSION, { kind: 'read' }, LIMITS, cancel.signal)
+    await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
+    const id = views.at(-1)!.requests[0]!.id
+    expect(views.at(-1)?.claimed).toEqual([])
+    requests.claim(id)
+    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ requests: [], claimed: [id] }) })
+    cancel.abort(new Error('timed out'))
+    await expect(sent).rejects.toThrow('timed out')
+    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ requests: [], claimed: [] }) })
   })
 
   it('fails waiting commands and ends the stream when the plugin stops', async () => {

@@ -46,6 +46,11 @@ export interface Config {
   browserClaimTimeoutMs: number
   /** Longest wait for a page to finish loading after a `browser_*` call acted on it, in milliseconds. */
   browserLoadTimeoutMs: number
+  /**
+   * Longest wait for one operation on the page of a `browser_*` call, such as a script, a screenshot, or an input event,
+   * in milliseconds; it must be shorter than `browserTimeoutMs`.
+   */
+  browserOperationTimeoutMs: number
   /** Most characters of page text in a `browser_*` result. */
   browserMaxChars: number
   /** Largest width in pixels of a `browser_screenshot` image. */
@@ -68,6 +73,7 @@ export default class WasdPlugins extends TypertRemoteService {
     browserTimeoutMs: z.natural().min(1).default(60_000),
     browserClaimTimeoutMs: z.natural().min(1).default(5000),
     browserLoadTimeoutMs: z.natural().min(1).default(15_000),
+    browserOperationTimeoutMs: z.natural().min(1).default(10_000),
     browserMaxChars: z.natural().min(1000).default(40_000),
     browserScreenshotWidth: z.natural().min(320).default(1280),
   })
@@ -84,8 +90,14 @@ export default class WasdPlugins extends TypertRemoteService {
     ctx.effect(() => () => { this.lifetime.abort() }, 'wasd-plugins: lifetime')
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
     if (config.browser) {
+      if (config.browserOperationTimeoutMs >= config.browserTimeoutMs) {
+        throw new TypeError('wasd-plugins: browserOperationTimeoutMs must be shorter than browserTimeoutMs')
+      }
       const limits = {
-        maxChars: config.browserMaxChars, loadTimeoutMs: config.browserLoadTimeoutMs, screenshotWidth: config.browserScreenshotWidth,
+        maxChars: config.browserMaxChars,
+        loadTimeoutMs: config.browserLoadTimeoutMs,
+        operationTimeoutMs: config.browserOperationTimeoutMs,
+        screenshotWidth: config.browserScreenshotWidth,
       }
       for (const definition of browserToolDefinitions({
         send: (sessionId, command, signal) => this.browserRequestQueue.send(sessionId, command, limits, signal),
@@ -152,9 +164,10 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
-   * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+   * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and
+   * the ids of taken ones whose call still waits, so a window stops a command whose call ended.
    * @param signal - stream cancellation.
-   * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+   * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
    */
   @Remote({ mode: 'stream' })
   browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests> {

@@ -391,9 +391,9 @@ A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, an
 
 In the Desktop profile, the `wasd-plugins` row sets `browser`, and [`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.md#the-agents-browser) gives the Session's agent the `browser_*` tools, which act on a Browser tab of the right sidebar. The Browser tabs live in the window, so each tool call becomes a command that the Host queues and a window carries out:
 
-1. The tool call queues a `WasdBrowserRequest`: an `id`, the calling `sessionId`, the `command`, and the `limits` from the row's configuration: `maxChars`, `loadTimeoutMs`, and `screenshotWidth`.
-2. Every window whose Peer may call the endpoint follows `wasdPlugins.browserRequests`, which yields the whole list of untaken requests again after each change.
-3. A window takes a request with `wasdPlugins.claimBrowserRequest` while the request's Session is on screen in it, or while it holds that Session's agent tab; only the first claim succeeds. A request that no window takes within `browserClaimTimeoutMs` fails its tool call.
+1. The tool call queues a `WasdBrowserRequest`: an `id`, the calling `sessionId`, the `command`, and the `limits` from the row's configuration: `maxChars`, `loadTimeoutMs`, `operationTimeoutMs`, and `screenshotWidth`.
+2. Every window whose Peer may call the endpoint follows `wasdPlugins.browserRequests`, which yields the whole list of untaken requests, with the ids of taken requests whose tool call still waits, again after each change.
+3. A window takes a request with `wasdPlugins.claimBrowserRequest` while the request's Session is on screen in it, or while it holds that Session's agent tab; only the first claim succeeds. A window claims each request as soon as it takes it and carries out one Session's requests in order; each operation on the page waits at most `operationTimeoutMs`, and the window stops a request before its next action on the page once neither list names it, because its tool call ended. A request that no window takes within `browserClaimTimeoutMs` fails its tool call.
 4. The window acts through the `sidebarBrowserAutomation` service of [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.md), which only the Desktop carrier provides: scripts in the page's main world, trusted input, typed text, and captures of the `<webview>` guest.
 5. The window ends the request with `wasdPlugins.settleBrowserRequest` and a `WasdBrowserOutcome`.
 
@@ -673,9 +673,10 @@ Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Rem
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
 
 /**
- * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and
+ * the ids of taken ones whose call still waits, so a window stops a command whose call ended.
  * @param signal - stream cancellation.
- * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
  */
 @Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
 

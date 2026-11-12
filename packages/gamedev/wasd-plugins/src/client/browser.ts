@@ -3,16 +3,22 @@
  * on a Desktop Browser tab in the right Sidebar. A window takes a command for a Session while the Session is on screen,
  * or while it holds that Session's agent tab, which keeps working when the user turns to another Session. The agent tab
  * is the Browser tab `browser_open` opened, or the Browser tab the user had open when the agent first read or looked at
- * the Browser; `browser_open` never loads into a tab the user opened. A window carries out one Session's commands in
- * order. Values a page script returns come from the page, so the window checks them before use.
+ * the Browser; `browser_open` never loads into a tab the user opened, so after reading the user's tab it opens a tab of
+ * its own. A window claims each command it takes at once and carries out one Session's commands in order. Every
+ * operation on the page has the command's time limit, and a command whose tool call ended, by its timeout or its
+ * cancellation, stops before its next action on the page, so the Session's next command runs. Values a page script
+ * returns come from the page, so the window checks them before use, and the window types into no password or payment
+ * field.
  */
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
-import type { BrowserAddressFailure, SidebarBrowserAutomation, SidebarBrowserTab } from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
+import type {
+  BrowserAddressFailure, BrowserInputEvent, SidebarBrowserAutomation, SidebarBrowserTab,
+} from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WasdBrowserImage, WasdBrowserLimits, WasdBrowserOutcome, WasdBrowserRequest, WasdBrowserRequests } from '../types.ts'
 import {
-  clickControl, locateControl, pageScript, prepareField, snapshotPage, viewportSize, type ControlLocation, type FieldPreparation,
-  type PageSnapshot,
+  clickControl, focusedSecretField, locateControl, pageScript, prepareField, snapshotPage, viewportSize, type ControlLocation,
+  type FieldPreparation, type PageSnapshot,
 } from './page.ts'
 
 /** Kind of the right Sidebar's Browser tabs. */
@@ -103,7 +109,108 @@ interface AgentTab {
   readonly face: SidebarBrowserTab
 }
 
-const delay = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms) })
+/** The Browser tab a Session's agent uses, and whether the user opened it, which keeps `browser_open` out of it. */
+interface HeldTab {
+  readonly id: TabId
+  readonly adopted: boolean
+}
+
+/** One command as the window carries it out: its limits, and its cancellation when its tool call ends. */
+interface Run {
+  readonly limits: WasdBrowserLimits
+  readonly signal: AbortSignal
+}
+
+/**
+ * The reason a cancelled command stops with.
+ * @param signal - the command's cancellation.
+ * @returns the signal's reason when it is an error, else an error that carries it as its cause.
+ */
+function cancellation(signal: AbortSignal): Error {
+  return signal.reason instanceof Error ? signal.reason : new Error('The Browser command was cancelled.', { cause: signal.reason })
+}
+
+/**
+ * Whether a command was cancelled. A call rather than a property read, because an await may change the answer.
+ * @param signal - the command's cancellation.
+ * @returns whether it fired.
+ */
+function cancelled(signal: AbortSignal): boolean {
+  return signal.aborted
+}
+
+/**
+ * Wait, unless the command is cancelled first.
+ * @param ms - the wait in milliseconds.
+ * @param signal - the command's cancellation.
+ * @returns after the wait.
+ * @throws the cancellation's reason once the command is cancelled.
+ */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted()
+  return new Promise((resolve, reject) => {
+    const stop = (): void => {
+      clearTimeout(timer)
+      reject(cancellation(signal))
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', stop)
+      resolve()
+    }, ms)
+    signal.addEventListener('abort', stop, { once: true })
+  })
+}
+
+/** A duration for the agent to read, such as `10 seconds`. */
+function seconds(ms: number): string {
+  const value = Math.round(ms / 100) / 10
+  return `${String(value)} ${value === 1 ? 'second' : 'seconds'}`
+}
+
+/**
+ * Carry out one operation on the page for a command. A cancelled command starts none, and the window stops waiting
+ * for one that the command's cancellation interrupts or that does not answer within the command's operation limit,
+ * such as a script on a page whose main thread is blocked.
+ * @param run - the command.
+ * @param action - what the Browser does, completing "while the Browser ...", for the failure message.
+ * @param operation - starts the operation.
+ * @returns the operation's result.
+ * @throws {BrowserCommandError} when the page does not answer in time; the cancellation's reason once cancelled.
+ */
+function operate<T>(run: Run, action: string, operation: () => Promise<T>): Promise<T> {
+  run.signal.throwIfAborted()
+  return new Promise<T>((resolve, reject) => {
+    const finish = (): void => {
+      clearTimeout(timer)
+      run.signal.removeEventListener('abort', stop)
+    }
+    const stop = (): void => {
+      finish()
+      reject(cancellation(run.signal))
+    }
+    const timer = setTimeout(() => {
+      finish()
+      reject(new BrowserCommandError(`The page did not answer within ${seconds(run.limits.operationTimeoutMs)} while the `
+        + `Browser ${action}; it may be busy or frozen. Call browser_read to try again, or browser_open to load a page.`))
+    }, run.limits.operationTimeoutMs)
+    run.signal.addEventListener('abort', stop, { once: true })
+    let started: Promise<T>
+    try {
+      started = operation()
+    } catch (error) {
+      finish()
+      reject(error instanceof Error ? error : new Error(String(error)))
+      return
+    }
+    started.then((value) => {
+      finish()
+      resolve(value)
+    }, (error: unknown) => {
+      finish()
+      reject(error instanceof Error ? error : new Error(String(error)))
+    })
+  })
+}
 
 const ADDRESS_FAILURES: Record<BrowserAddressFailure, string> = {
   'empty': 'The address is empty.',
@@ -143,7 +250,8 @@ function locationOf(value: unknown): ControlLocation {
 
 function preparationOf(value: unknown): FieldPreparation {
   const fields = record(value)
-  if (fields?.ready === false && (fields.reason === 'missing' || fields.reason === 'not-a-field' || fields.reason === 'no-such-option')) {
+  if (fields?.ready === false && (fields.reason === 'missing' || fields.reason === 'not-a-field' || fields.reason === 'no-such-option'
+    || fields.reason === 'secret')) {
     return { ready: false, reason: fields.reason }
   }
   if (fields?.ready === true && fields.mode === 'insert') return { ready: true, mode: 'insert' }
@@ -164,6 +272,14 @@ function viewportOf(value: unknown): { readonly width: number; readonly height: 
 function missingElement(element: number): BrowserCommandError {
   return new BrowserCommandError(`Element ${String(element)} is not on the page now; call browser_read for the current numbers.`)
 }
+
+function secretField(element: number): BrowserCommandError {
+  return new BrowserCommandError(`Element ${String(element)} is a password or payment field, which the Browser never fills in; `
+    + 'ask the user to fill it in.')
+}
+
+/** What a command that ended in the window stops with; its tool call already ended, so nobody reads the message. */
+const ENDED = 'The tool call of this Browser command ended.'
 
 /**
  * Encode a PNG `data:` URL as a JPEG, which keeps screenshots of photos and art small.
@@ -206,27 +322,32 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   const { sidebar, automation } = services
   const key = `__wasdBrowserControls${Math.random().toString(36).slice(2)}`
   const taken = new Set<string>()
-  const agentTabs = new Map<SessionId, TabId>()
+  const agentTabs = new Map<SessionId, HeldTab>()
   const queues = new Map<SessionId, Promise<void>>()
+  // The cancellation of each command this window took, until the command ends here.
+  const commands = new Map<string, AbortController>()
   let waiting: readonly WasdBrowserRequest[] = []
   const lifetime = new AbortController()
 
   const onScreen = (sessionId: SessionId): boolean => sidebar.mounted.getSnapshot() === sessionId
-  const agentTab = (sessionId: SessionId): AgentTab | undefined => {
-    const id = agentTabs.get(sessionId)
-    const face = id === undefined ? undefined : automation.tab(sessionId, id)
-    return id === undefined || face === undefined ? undefined : { id, face }
+  /** The Session's agent tab while its body is mounted; with `ownOnly`, only a tab `browser_open` opened. */
+  const agentTab = (sessionId: SessionId, ownOnly = false): AgentTab | undefined => {
+    const held = agentTabs.get(sessionId)
+    if (held === undefined || (ownOnly && held.adopted)) return undefined
+    const face = automation.tab(sessionId, held.id)
+    return face === undefined ? undefined : { id: held.id, face }
   }
   const canServe = (request: WasdBrowserRequest): boolean => agentTab(request.sessionId) !== undefined || onScreen(request.sessionId)
 
   /** Show a tab of the Session on screen, expanding the column. */
-  const reveal = (sessionId: SessionId, tabId: TabId): void => {
+  const reveal = (sessionId: SessionId, tabId: TabId, run: Run): void => {
+    run.signal.throwIfAborted()
     if (!onScreen(sessionId)) return
     sidebar.focus(tabId)
     if (!sidebar.isExpanded()) sidebar.toggleExpanded()
   }
 
-  const mounted = async (sessionId: SessionId, tabId: TabId): Promise<SidebarBrowserTab> => {
+  const mounted = async (sessionId: SessionId, tabId: TabId, run: Run): Promise<SidebarBrowserTab> => {
     const deadline = Date.now() + TAB_MOUNT_MS
     for (;;) {
       const face = automation.tab(sessionId, tabId)
@@ -234,12 +355,13 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
       if (Date.now() >= deadline) {
         throw new BrowserCommandError('The Browser tab did not open in the right panel; ask the user to show this conversation in WASD Engine.')
       }
-      await delay(POLL_MS)
+      await pause(POLL_MS, run.signal)
     }
   }
 
   /** A new agent tab in the Session on screen. */
-  const openTab = async (sessionId: SessionId): Promise<AgentTab> => {
+  const openTab = async (sessionId: SessionId, run: Run): Promise<AgentTab> => {
+    run.signal.throwIfAborted()
     if (!onScreen(sessionId)) {
       throw new BrowserCommandError('This conversation is not on screen in WASD Engine, so the Browser cannot open. Ask the user to show it, or use web_search and web_fetch.')
     }
@@ -247,8 +369,8 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     sidebar.openTabIn(sessionId, BROWSER_KIND)
     const opened = sidebar.tabsIn(sessionId).find(tab => tab.kind === BROWSER_KIND && !before.has(tab.id))
     if (opened === undefined) throw new BrowserCommandError('The Browser tab did not open in the right panel.')
-    agentTabs.set(sessionId, opened.id)
-    return { id: opened.id, face: await mounted(sessionId, opened.id) }
+    agentTabs.set(sessionId, { id: opened.id, adopted: false })
+    return { id: opened.id, face: await mounted(sessionId, opened.id, run) }
   }
 
   /** The Browser tab the user has open in the Session on screen: the active one, else the newest. */
@@ -258,7 +380,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     const id = active?.kind === BROWSER_KIND ? active.id : sidebar.tabsIn(sessionId).filter(tab => tab.kind === BROWSER_KIND).at(-1)?.id
     const face = id === undefined ? undefined : automation.tab(sessionId, id)
     if (id === undefined || face === undefined) return undefined
-    agentTabs.set(sessionId, id)
+    agentTabs.set(sessionId, { id, adopted: true })
     return { id, face }
   }
 
@@ -271,19 +393,28 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   }
 
   /** Wait until an action's page load, if it started one, ended, and the page's scripts had a moment. */
-  const settlePage = async (tab: SidebarBrowserTab, limits: WasdBrowserLimits): Promise<void> => {
-    await delay(ACTION_SETTLE_MS)
-    const deadline = Date.now() + limits.loadTimeoutMs
-    while ((tab.state().loading || !tab.page.ready()) && Date.now() < deadline) await delay(POLL_MS)
-    if (!tab.state().loading) await delay(RENDER_SETTLE_MS)
+  const settlePage = async (tab: SidebarBrowserTab, run: Run): Promise<void> => {
+    await pause(ACTION_SETTLE_MS, run.signal)
+    const deadline = Date.now() + run.limits.loadTimeoutMs
+    while ((tab.state().loading || !tab.page.ready()) && Date.now() < deadline) await pause(POLL_MS, run.signal)
+    if (!tab.state().loading) await pause(RENDER_SETTLE_MS, run.signal)
   }
 
-  const pageOutcome = async (tab: SidebarBrowserTab, limits: WasdBrowserLimits, note?: string): Promise<WasdBrowserOutcome> => {
+  /** Run a page script for a command. */
+  const evaluate = (tab: SidebarBrowserTab, run: Run, code: string): Promise<unknown> =>
+    operate(run, 'ran a script in the page', () => tab.page.evaluate(code))
+
+  /** Send one trusted input event for a command. */
+  const input = (tab: SidebarBrowserTab, run: Run, event: BrowserInputEvent): Promise<void> =>
+    operate(run, 'sent input to the page', () => tab.page.sendInput(event))
+
+  const pageOutcome = async (tab: SidebarBrowserTab, run: Run, note?: string): Promise<WasdBrowserOutcome> => {
+    const { limits } = run
     const state = tab.state()
     const error = state.error === undefined ? undefined
       : state.error.description === undefined ? 'the page failed to load' : `${state.error.description} (${String(state.error.code)})`
     const snapshot = tab.page.ready()
-      ? pageSnapshotOf(await tab.page.evaluate(pageScript(snapshotPage,
+      ? pageSnapshotOf(await evaluate(tab, run, pageScript(snapshotPage,
         { key, maxChars: limits.maxChars, maxElements: MAX_ELEMENTS, layout: true })))
       : { title: state.target?.title ?? '', url: state.target?.url ?? '', text: '', truncated: false }
     const text = snapshot.text.slice(0, limits.maxChars)
@@ -298,22 +429,22 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     }
   }
 
-  const locate = async (tab: SidebarBrowserTab, element: number): Promise<Extract<ControlLocation, { found: true }>> => {
-    const location = locationOf(await tab.page.evaluate(pageScript(locateControl, { key, element })))
+  const locate = async (tab: SidebarBrowserTab, run: Run, element: number): Promise<Extract<ControlLocation, { found: true }>> => {
+    const location = locationOf(await evaluate(tab, run, pageScript(locateControl, { key, element })))
     if (location.found) return location
     if (location.reason === 'missing') throw missingElement(element)
     throw new BrowserCommandError(`Element ${String(element)} is not visible on the page.`)
   }
 
-  const click = async (tab: SidebarBrowserTab, x: number, y: number): Promise<void> => {
-    await tab.page.sendInput({ type: 'mouseMove', x, y })
-    await tab.page.sendInput({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
-    await tab.page.sendInput({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+  const click = async (tab: SidebarBrowserTab, run: Run, x: number, y: number): Promise<void> => {
+    await input(tab, run, { type: 'mouseMove', x, y })
+    await input(tab, run, { type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+    await input(tab, run, { type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
   }
 
-  const screenshot = async (tab: SidebarBrowserTab, limits: WasdBrowserLimits): Promise<WasdBrowserImage> => {
-    const capture = await tab.page.capture(limits.screenshotWidth)
-    const viewport = viewportOf(await tab.page.evaluate(pageScript(viewportSize)))
+  const screenshot = async (tab: SidebarBrowserTab, run: Run): Promise<WasdBrowserImage> => {
+    const capture = await operate(run, 'captured the page', () => tab.page.capture(run.limits.screenshotWidth))
+    const viewport = viewportOf(await evaluate(tab, run, pageScript(viewportSize)))
     let jpeg: string | undefined
     try {
       jpeg = await jpegOf(capture.dataUrl)
@@ -330,67 +461,78 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     }
   }
 
-  const run = async ({ sessionId, command, limits }: WasdBrowserRequest): Promise<WasdBrowserOutcome> => {
+  const carryOut = async ({ sessionId, command, limits }: WasdBrowserRequest, signal: AbortSignal): Promise<WasdBrowserOutcome> => {
+    const run: Run = { limits, signal }
     switch (command.kind) {
       case 'open': {
-        const tab = agentTab(sessionId) ?? await openTab(sessionId)
+        // A tab the user opened stays theirs: after browser_read adopted it, the agent opens a tab of its own.
+        const tab = agentTab(sessionId, true) ?? await openTab(sessionId, run)
+        signal.throwIfAborted()
         const refused = tab.face.load(command.url)
         if (refused !== undefined) throw new BrowserCommandError(ADDRESS_FAILURES[refused])
-        reveal(sessionId, tab.id)
-        await settlePage(tab.face, limits)
-        return await pageOutcome(tab.face, limits)
+        reveal(sessionId, tab.id, run)
+        await settlePage(tab.face, run)
+        return await pageOutcome(tab.face, run)
       }
       case 'read': {
         const tab = requireTab(sessionId, true)
-        if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, limits)
-        return await pageOutcome(tab.face, limits)
+        if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, run)
+        return await pageOutcome(tab.face, run)
       }
       case 'click': {
         const tab = requireTab(sessionId, false)
         let note: string | undefined
         if (command.element !== undefined) {
-          const location = await locate(tab.face, command.element)
-          if (location.covered === undefined && !location.select) await click(tab.face, location.x, location.y)
+          const location = await locate(tab.face, run, command.element)
+          if (location.covered === undefined && !location.select) await click(tab.face, run, location.x, location.y)
           else {
-            const clicked = await tab.face.page.evaluate(pageScript(clickControl, { key, element: command.element }))
+            const clicked = await evaluate(tab.face, run, pageScript(clickControl, { key, element: command.element }))
             if (clicked !== true) throw missingElement(command.element)
             if (location.covered !== undefined) {
               note = `Element ${String(command.element)} was clicked by script, because ${location.covered} covers it; check whether that matters.`
             }
           }
-        } else if (command.x !== undefined && command.y !== undefined) await click(tab.face, command.x, command.y)
+        } else if (command.x !== undefined && command.y !== undefined) await click(tab.face, run, command.x, command.y)
         else throw new BrowserCommandError('Give element, or both x and y.')
-        await settlePage(tab.face, limits)
-        return await pageOutcome(tab.face, limits, note)
+        await settlePage(tab.face, run)
+        return await pageOutcome(tab.face, run, note)
       }
       case 'type': {
         const tab = requireTab(sessionId, false)
-        const location = await locate(tab.face, command.element)
-        if (location.covered === undefined && !location.select) await click(tab.face, location.x, location.y)
+        const location = await locate(tab.face, run, command.element)
+        if (location.covered === undefined && !location.select) await click(tab.face, run, location.x, location.y)
         const script = pageScript(prepareField, { key, element: command.element, text: command.text })
-        const field = preparationOf(await tab.face.page.evaluate(script))
+        const field = preparationOf(await evaluate(tab.face, run, script))
         if (!field.ready) {
           if (field.reason === 'missing') throw missingElement(command.element)
+          if (field.reason === 'secret') throw secretField(command.element)
           throw new BrowserCommandError(field.reason === 'no-such-option'
             ? `Element ${String(command.element)} has no option "${command.text}".`
             : `Element ${String(command.element)} is not a field you can type into.`)
         }
-        if (field.mode === 'insert') await tab.face.page.insertText(command.text)
-        if (command.submit) {
-          await tab.face.page.sendInput({ type: 'keyDown', keyCode: 'Enter' })
-          await tab.face.page.sendInput({ type: 'char', keyCode: '\r' })
-          await tab.face.page.sendInput({ type: 'keyUp', keyCode: 'Enter' })
+        if (field.mode === 'insert') {
+          // The text goes where the page's focus is, which a page script may move after the field was prepared.
+          if (await evaluate(tab.face, run, pageScript(focusedSecretField)) !== false) {
+            throw new BrowserCommandError('The page moved the focus to a password or payment field, so the Browser typed nothing; '
+              + 'call browser_read and try again, or ask the user to fill in the field.')
+          }
+          await operate(run, 'typed into the page', () => tab.face.page.insertText(command.text))
         }
-        await settlePage(tab.face, limits)
-        return await pageOutcome(tab.face, limits, field.mode === 'chosen' ? `Chose "${field.choice}".` : undefined)
+        if (command.submit) {
+          await input(tab.face, run, { type: 'keyDown', keyCode: 'Enter' })
+          await input(tab.face, run, { type: 'char', keyCode: '\r' })
+          await input(tab.face, run, { type: 'keyUp', keyCode: 'Enter' })
+        }
+        await settlePage(tab.face, run)
+        return await pageOutcome(tab.face, run, field.mode === 'chosen' ? `Chose "${field.choice}".` : undefined)
       }
       case 'screenshot': {
         const tab = requireTab(sessionId, true)
-        reveal(sessionId, tab.id)
-        if (command.element !== undefined) await locate(tab.face, command.element)
-        if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, limits)
-        else await delay(ACTION_SETTLE_MS)
-        const image = await screenshot(tab.face, limits)
+        reveal(sessionId, tab.id, run)
+        if (command.element !== undefined) await locate(tab.face, run, command.element)
+        if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, run)
+        else await pause(ACTION_SETTLE_MS, signal)
+        const image = await screenshot(tab.face, run)
         const state = tab.face.state()
         return {
           ok: true,
@@ -405,14 +547,17 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     }
   }
 
-  const serve = async (request: WasdBrowserRequest): Promise<void> => {
-    if (!await services.claim(request.id)) return
+  /** Carry out a command once the Session's earlier commands ended here, unless its tool call ended meanwhile. */
+  const serve = async (request: WasdBrowserRequest, claimed: Promise<boolean>, signal: AbortSignal): Promise<void> => {
+    if (!await claimed || cancelled(signal)) return
     let result: WasdBrowserOutcome
     try {
-      result = await run(request)
+      result = await carryOut(request, signal)
     } catch (error) {
       result = { ok: false, message: error instanceof BrowserCommandError ? error.message : `The Browser failed: ${messageOf(error)}` }
     }
+    // The call that waited for this command ended; nothing reads an outcome now.
+    if (cancelled(signal)) return
     await services.settle(request.id, result)
   }
 
@@ -420,12 +565,28 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     for (const request of waiting) {
       if (taken.has(request.id) || !canServe(request)) continue
       taken.add(request.id)
-      const next = (queues.get(request.sessionId) ?? Promise.resolve()).then(() => serve(request)).catch((error: unknown) => {
-        services.warn('wasd-plugins: a Browser command failed in the window', error)
+      // Claimed at once, so a command that waits behind the Session's earlier ones is not taken for unclaimed.
+      const claimed = services.claim(request.id).catch((error: unknown) => {
+        services.warn('wasd-plugins: a window could not take a Browser command', error)
+        return false
       })
+      const controller = new AbortController()
+      commands.set(request.id, controller)
+      const next = (queues.get(request.sessionId) ?? Promise.resolve())
+        .then(() => serve(request, claimed, controller.signal))
+        .catch((error: unknown) => {
+          services.warn('wasd-plugins: a Browser command failed in the window', error)
+        })
+        .finally(() => { commands.delete(request.id) })
       queues.set(request.sessionId, next)
       void next.then(() => { if (queues.get(request.sessionId) === next) queues.delete(request.sessionId) })
     }
+  }
+
+  /** Stop the commands this window took whose tool calls ended: they are in neither list the Host follows. */
+  const stopEnded = (requests: WasdBrowserRequests): void => {
+    const live = new Set([...requests.requests.map(request => request.id), ...requests.claimed])
+    for (const [id, controller] of commands) if (!live.has(id)) controller.abort(new BrowserCommandError(ENDED))
   }
 
   const stream = services.follow()
@@ -437,6 +598,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
       waiting = delivery.value.requests
       const current = new Set(waiting.map(request => request.id))
       for (const id of [...taken]) if (!current.has(id)) taken.delete(id)
+      stopEnded(delivery.value)
       consider()
     }
   })().catch((error: unknown) => {

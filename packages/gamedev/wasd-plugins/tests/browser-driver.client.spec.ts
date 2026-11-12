@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The window half of the agent's Browser: which commands a window takes, which Browser tab it acts on, and what it
- * returns. The tabs are fakes whose page is this test's document; the page scripts run from their source text, as the
- * window sends them, against a document without layout.
+ * The window half of the agent's Browser: which commands a window takes, which Browser tab it acts on, what it
+ * returns, and how it stops a command whose page does not answer or whose tool call ended. The tabs are fakes whose
+ * page is this test's document; the page scripts run from their source text, as the window sends them, against a
+ * document without layout. The followed lists come from a model of the Host's queue.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
@@ -15,13 +16,22 @@ import type { WasdBrowserCommand, WasdBrowserOutcome, WasdBrowserRequest } from 
 
 const SESSION = 'session-1' as SessionId
 const OTHER = 'session-2' as SessionId
-const LIMITS = { maxChars: 10_000, loadTimeoutMs: 2000, screenshotWidth: 1280 } as const
+const LIMITS = { maxChars: 10_000, loadTimeoutMs: 2000, operationTimeoutMs: 1000, screenshotWidth: 1280 } as const
+
+/** The page operations a test can hold until it lets them go on, like a page whose main thread is busy. */
+type PageOperation = 'evaluate' | 'insertText' | 'sendInput' | 'capture'
 
 /** A Browser tab whose page is the test document. */
 function fakeTab() {
   const inputs: BrowserInputEvent[] = []
   const typed: string[] = []
   const loads: string[] = []
+  const calls: PageOperation[] = []
+  const stall: Partial<Record<PageOperation, Promise<unknown>>> = {}
+  const enter = async (operation: PageOperation): Promise<void> => {
+    calls.push(operation)
+    await stall[operation]
+  }
   const state: ReturnType<SidebarBrowserTab['state']> = {
     target: undefined, address: 'empty', loading: false, canGoBack: false, canGoForward: false, error: undefined, sandboxEnabled: undefined,
   }
@@ -37,17 +47,27 @@ function fakeTab() {
     page: {
       ready: () => true,
       // The test document has no layout, so the page text reads it without visibility checks.
-      evaluate: (code) => {
+      evaluate: async (code) => {
+        await enter('evaluate')
         // oxlint-disable-next-line typescript/no-implied-eval -- The fake page runs the script text the window sends.
         const run = new Function(`return ${code.replace('"layout":true', '"layout":false')}`) as () => unknown
-        return Promise.resolve(run())
+        return run()
       },
-      capture: () => Promise.resolve({ dataUrl: 'data:image/png;base64,iVBORw0K', width: 640, height: 400 }),
-      sendInput: (event) => { inputs.push(event); return Promise.resolve() },
-      insertText: (text) => { typed.push(text); return Promise.resolve() },
+      capture: async () => {
+        await enter('capture')
+        return { dataUrl: 'data:image/png;base64,iVBORw0K', width: 640, height: 400 }
+      },
+      sendInput: async (event) => {
+        await enter('sendInput')
+        inputs.push(event)
+      },
+      insertText: async (text) => {
+        await enter('insertText')
+        typed.push(text)
+      },
     },
   }
-  return { face, inputs, typed, loads }
+  return { face, inputs, typed, loads, calls, stall }
 }
 
 function harness(onScreen: SessionId | undefined = SESSION) {
@@ -92,7 +112,26 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     return Promise.resolve()
   })
   const outcomes = new Map<string, WasdBrowserOutcome>()
-  const claim = vi.fn((_id: string) => Promise.resolve(true))
+  // The Host's queue: the commands no window claimed, and the claimed ones whose call still waits.
+  const queued = new Map<string, { request: WasdBrowserRequest; claimed: boolean }>()
+  const publish = () => {
+    const entries = [...queued.values()]
+    deliveries.push({
+      value: {
+        requests: entries.filter(entry => !entry.claimed).map(entry => entry.request),
+        claimed: entries.filter(entry => entry.claimed).map(entry => entry.request.id),
+      },
+      accept: vi.fn(),
+    })
+    wake?.()
+  }
+  const claim = vi.fn((id: string) => {
+    const entry = queued.get(id)
+    if (entry === undefined || entry.claimed) return Promise.resolve(false)
+    entry.claimed = true
+    publish()
+    return Promise.resolve(true)
+  })
   const warn = vi.fn()
   const stop = followBrowserRequests({
     follow: () => ({
@@ -107,7 +146,11 @@ function harness(onScreen: SessionId | undefined = SESSION) {
       dispose,
     }),
     claim,
-    settle: (id, outcome) => { outcomes.set(id, outcome); return Promise.resolve() },
+    settle: (id, outcome) => {
+      if (queued.delete(id)) outcomes.set(id, outcome)
+      publish()
+      return Promise.resolve()
+    },
     sidebar,
     automation,
     warn,
@@ -115,9 +158,14 @@ function harness(onScreen: SessionId | undefined = SESSION) {
   let requestSequence = 0
   const send = (command: WasdBrowserCommand, sessionId = SESSION): string => {
     const request: WasdBrowserRequest = { id: `request-${String(++requestSequence)}`, sessionId, command, limits: LIMITS }
-    deliveries.push({ value: { requests: [request] }, accept: vi.fn() })
-    wake?.()
+    queued.set(request.id, { request, claimed: false })
+    publish()
     return request.id
+  }
+  /** End a command's tool call, as its timeout or its cancellation does on the Host. */
+  const end = (id: string) => {
+    queued.delete(id)
+    publish()
   }
   const outcome = async (id: string): Promise<WasdBrowserOutcome> => {
     for (let step = 0; step < 100; step++) {
@@ -131,7 +179,9 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     mounted = sessionId
     for (const listener of [...listeners]) listener()
   }
-  return { sidebar, openTabIn, focus, pages, addTab, claim, warn, dispose, stop, send, outcome, show, isExpanded: () => expanded }
+  return {
+    sidebar, openTabIn, focus, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, isExpanded: () => expanded,
+  }
 }
 
 function page(outcome: WasdBrowserOutcome) {
@@ -179,9 +229,10 @@ describe('followBrowserRequests', () => {
     expect(result.page.text).toBe('# Results\n[Godot](https://godotengine.org/) [1: textbox "Search" value=""] [2: button "Go"]')
   })
 
-  it('never loads into a tab the user opened, and keeps loading into its own', async () => {
+  it('never loads into a tab the user opened, even after reading it, and keeps loading into its own', async () => {
     const h = start()
     const user = h.addTab(SESSION, 'user-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
     page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/one' })))
     page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/two' })))
     expect(h.openTabIn).toHaveBeenCalledOnce()
@@ -234,6 +285,82 @@ describe('followBrowserRequests', () => {
     ])
     expect(await h.outcome(h.send({ kind: 'type', element: 2, text: 'x', submit: false })))
       .toEqual({ ok: false, message: 'Element 2 is not a field you can type into.' })
+  })
+
+  it('refuses to type into a password or payment field, or where the page moves the focus to one', async () => {
+    document.body.innerHTML = '<input type="password" aria-label="Password"><input autocomplete="cc-number" aria-label="Card">'
+      + '<input aria-label="Name">'
+    const [, password, name] = document.querySelectorAll('input')
+    const h = start()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
+    const [tab] = h.sidebar.tabsIn(SESSION)
+    const fake = h.pages.get(tab!.id)!
+    for (const element of [1, 2]) {
+      expect(await h.outcome(h.send({ kind: 'type', element, text: 'hunter2', submit: true }))).toEqual({
+        ok: false, message: `Element ${String(element)} is a password or payment field, which the Browser never fills in; ask the user to fill it in.`,
+      })
+    }
+    name!.addEventListener('focus', () => { password!.focus() })
+    expect(await h.outcome(h.send({ kind: 'type', element: 3, text: 'hunter2', submit: true }))).toEqual({
+      ok: false,
+      message: 'The page moved the focus to a password or payment field, so the Browser typed nothing; call browser_read and try again, or ask the user to fill in the field.',
+    })
+    expect(fake.typed).toEqual([])
+    expect(fake.inputs.filter(input => input.type === 'keyDown')).toEqual([])
+  })
+
+  it('fails a page operation that does not answer in time, and then serves the Session\'s next command', async () => {
+    const h = start()
+    const user = h.addTab(SESSION, 'user-tab' as TabId)
+    const fake = h.pages.get(user.id)!
+    const busy = Promise.withResolvers<undefined>()
+    fake.stall.evaluate = busy.promise
+    const first = h.send({ kind: 'read' })
+    const second = h.send({ kind: 'read' })
+    await vi.advanceTimersByTimeAsync(0)
+    // Both are taken at once, so the second does not wait for the first unclaimed.
+    expect(h.claim.mock.calls.map(([id]) => id)).toEqual([first, second])
+    expect(await h.outcome(first)).toEqual({
+      ok: false,
+      message: 'The page did not answer within 1 second while the Browser ran a script in the page; it may be busy or frozen. Call browser_read to try again, or browser_open to load a page.',
+    })
+    busy.resolve(undefined)
+    expect(page(await h.outcome(second)).page.text).toContain('# Results')
+  })
+
+  it('stops a command whose tool call ended before its next action on the page, and serves the next command', async () => {
+    const h = start()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
+    const [tab] = h.sidebar.tabsIn(SESSION)
+    const fake = h.pages.get(tab!.id)!
+    const typing = Promise.withResolvers<undefined>()
+    fake.stall.insertText = typing.promise
+    const id = h.send({ kind: 'type', element: 1, text: 'godot shaders', submit: true })
+    for (let step = 0; step < 50 && !fake.calls.includes('insertText'); step++) await vi.advanceTimersByTimeAsync(10)
+    expect(fake.calls).toContain('insertText')
+    h.end(id)
+    typing.resolve(undefined)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fake.inputs.filter(input => input.type === 'keyDown')).toEqual([])
+    expect(h.outcomes.has(id)).toBe(false)
+    expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('# Results')
+  })
+
+  it('drops a command whose tool call ended while it waited behind the Session\'s earlier command', async () => {
+    const h = start()
+    const user = h.addTab(SESSION, 'user-tab' as TabId)
+    const fake = h.pages.get(user.id)!
+    const busy = Promise.withResolvers<undefined>()
+    fake.stall.evaluate = busy.promise
+    const first = h.send({ kind: 'read' })
+    const second = h.send({ kind: 'click', element: 2 })
+    await vi.advanceTimersByTimeAsync(0)
+    h.end(second)
+    busy.resolve(undefined)
+    page(await h.outcome(first))
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(h.outcomes.has(second)).toBe(false)
+    expect(fake.inputs).toEqual([])
   })
 
   it('refuses an address the Browser does not open', async () => {

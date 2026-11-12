@@ -391,9 +391,9 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 在桌面配置中，`wasd-plugins` 行设置 `browser`，[`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.zh.md#the-agents-browser) 为会话的智能体提供 `browser_*` 工具，这些工具在右侧边栏的浏览器标签页中操作。浏览器标签页位于窗口中，因此每次工具调用都会成为一条由 Host 排队、由窗口执行的命令：
 
-1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs` 和 `screenshotWidth`。
-2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表。
-3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
+1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs`、`operationTimeoutMs` 和 `screenshotWidth`。
+2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表，以及已被接手、其工具调用仍在等待的请求 id。
+3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。窗口接手请求时立即认领，并按顺序执行同一会话的请求；页面上的每个操作最多等待 `operationTimeoutMs`，当两个列表都不再包含某个请求（即其工具调用已结束）时，窗口会在该请求对页面的下一个动作之前停止它。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
 4. 窗口通过 [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.zh.md) 的 `sidebarBrowserAutomation` 服务执行操作，该服务只由桌面载体提供：在页面主环境中运行脚本、发送可信输入、输入文本，以及截取 `<webview>` guest 的画面。
 5. 窗口用 `wasdPlugins.settleBrowserRequest` 和一个 `WasdBrowserOutcome` 结束该请求。
 
@@ -673,9 +673,10 @@ Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Rem
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
 
 /**
- * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and
+ * the ids of taken ones whose call still waits, so a window stops a command whose call ended.
  * @param signal - stream cancellation.
- * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
  */
 @Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
 

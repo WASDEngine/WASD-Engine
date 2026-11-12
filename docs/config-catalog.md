@@ -5185,6 +5185,11 @@ export interface Config {
   browserClaimTimeoutMs: number
   /** Longest wait for a page to finish loading after a `browser_*` call acted on it, in milliseconds. */
   browserLoadTimeoutMs: number
+  /**
+   * Longest wait for one operation on the page of a `browser_*` call, such as a script, a screenshot, or an input event,
+   * in milliseconds; it must be shorter than `browserTimeoutMs`.
+   */
+  browserOperationTimeoutMs: number
   /** Most characters of page text in a `browser_*` result. */
   browserMaxChars: number
   /** Largest width in pixels of a `browser_screenshot` image. */
