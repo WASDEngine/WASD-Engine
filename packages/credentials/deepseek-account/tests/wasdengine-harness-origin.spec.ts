@@ -41,7 +41,8 @@ async function signedIn(issuer: string, config: Config) {
 async function notificationListUrl(account: Awaited<ReturnType<typeof signedIn>>): Promise<string> {
   const urls: string[] = []
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-    urls.push(String(input))
+    if (typeof input !== 'string') throw new Error('expected a URL string')
+    urls.push(input)
     return new Response(JSON.stringify({ code: 0, data: { biz_code: 0, biz_data: { notifications: [], next_poll_after: 600 } } }))
   })
   await account.getNotifications(CLIENT)
