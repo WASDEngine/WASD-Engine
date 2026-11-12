@@ -66,9 +66,9 @@
             config:
               # Bundled WASDEngine skills at rank 600: project and user skills with the
               # same name win. The path resolves the installed dsh-web-app package.
+              # Unlike `standard`, no customSkillDirs: its dsh-doc skill documents the
+              # harness itself, which Customize mode (cordis) keeps.
               bundledSkillDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-web-app/package.json')), 'wasdengine', 'skills')
-              customSkillDirs:
-                - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@deepseek-ai/dsh-agent-preset/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
           - id: command-goal

@@ -740,6 +740,15 @@ describe('gamedev preset', () => {
     }
   })
 
+  it('leaves upstream\'s dsh-doc skill, which documents the harness itself, to Customize mode and keeps the Office tools', () => {
+    expect(Object.keys(configOf(gameRow('skill-filesystem')))).toEqual(['bundledSkillDir'])
+    const customize = configOf(rowsOf(cordis.plugins).find(entry => entry.id === 'skill-filesystem')).customSkillDirs
+    const dirs: unknown[] = Array.isArray(customize) ? customize : []
+    expect(dirs.map((dir, index) => expression(dir, `cordis skill-filesystem.customSkillDirs[${String(index)}]`)))
+      .toEqual([expect.stringContaining("resolve('@deepseek-ai/dsh-agent-preset/package.json')), 'skills')")])
+    expect(gameRow('tool-office').name).toBe('@deepseek-ai/dsh-tool-office')
+  })
+
   it('returns each bundled skill from the installed macOS app within the tool-result pruner threshold', async (test) => {
     const pruner = configOf(rowsOf(gameRow('compaction').config).find(entry => entry.id === 'tool-result-pruner'))
     const threshold = typeof pruner.thresholdChars === 'number' ? pruner.thresholdChars : PRUNER_DEFAULTS.thresholdChars
