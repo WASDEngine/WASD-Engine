@@ -294,7 +294,7 @@ describe('followBrowserRequests', () => {
     h.show(OTHER)
     const id = h.send({ kind: 'read' })
     await vi.advanceTimersByTimeAsync(1000)
-    expect(h.claim).not.toHaveBeenCalledWith(id)
+    expect(h.claim.mock.calls.map(([claimed]) => claimed)).not.toContain(id)
     expect(h.pages.get(second.id)?.calls).toEqual(['evaluate'])
   })
 
