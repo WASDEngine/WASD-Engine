@@ -227,7 +227,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 
 脚本通过项目的导入数据解析 `class_name` 类、`uid://` 路径和已导入的资源，因此，当这些数据可能比项目文件旧时，`godot_check` 会先运行运行前的导入步骤，即在 `importTimeoutMs` 内运行 `--headless --path <project> --import`：插件加载以来该项目还没有开始过以退出码 0 结束的导入、项目数据文件夹中缺少类缓存 `global_script_class_cache.cfg`，或者导入读取的某个文件的修改时间或状态变更时间晚于最近一次这样的导入的开始时间。对项目的遍历跳过 Godot 导入所跳过的内容，[包 README](../../packages/gamedev/godot/README.zh.md#tools) 列出了这些内容。导入异常退出或超时时，检查不会失败，而是在结果开头加一条警告。`ctx.godot` 逐个执行同一项目的导入步骤、检查和 Web 导出，并在内存中保存这些开始时间。
 
-随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本，并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
+随后，检查不运行游戏，而是在一个无界面进程中加载脚本：`--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`，至多 400 个脚本，期限为 `importTimeoutMs`。[`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) 绕过资源缓存加载每个脚本；脚本位于 `res://addons/` 下的某个文件夹中时，先加载 `plugin.cfg` 指定的脚本，就像编辑器先加载扩展的插件一样；并为每个脚本打印一行；`ctx.godot` 读取以该标记开头的行：
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}

@@ -12,13 +12,23 @@ extends SceneTree
 ## script, and a scene autoload as `Node`, because only an instance of the scene carries its root script.
 ## Loading a script runs its static initializers. As in a game, Godot creates the custom resource loaders and
 ## savers that the project declares as global classes, so scripts can preload the resources those loaders read.
+##
+## Before the first script of a folder under `res://addons/`, the check loads the script that the folder's
+## `plugin.cfg` names, as the editor loads an editor plugin before the rest of its add-on; the errors of that load
+## belong to the script whose check started it. Add-ons rely on that order: a view script that uses its plugin's
+## class, while the plugin preloads the view's scene, loads only after the plugin, because loading the view's
+## script first reaches the view's scene while that script is still loading, and Godot reports the script as a
+## non-existent resource.
 
 const MARKER := "WASD_CHECK "
 const AUTOLOAD_PREFIXES: Array[String] = ["autoload/", "autoload_prepend/"]
+const ADDONS := "res://addons/"
 
 ## Original values of the project's autoload settings, keyed by setting name, while they point at this script.
 var _autoloads := {}
 var _printing_errors := true
+## Add-on folders whose `plugin.cfg` the check has read, so that each plugin script loads once.
+var _plugin_folders := {}
 
 
 class CheckLogger extends Logger:
@@ -78,11 +88,36 @@ func _initialize() -> void:
 	OS.add_logger(logger)
 	for path in OS.get_cmdline_user_args():
 		logger.take()
+		_load_plugin_of(path)
 		var resource := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 		var errors := logger.take()
 		print(MARKER + JSON.stringify({"path": path, "loaded": resource is Script, "errors": errors}))
 	OS.remove_logger(logger)
 	quit()
+
+
+## Load the editor plugin script of the add-on folder that holds `path`, the first time the check reaches that
+## folder, unless `path` is that plugin script, whose own check loads it. A folder without `plugin.cfg`, or whose
+## `plugin.cfg` names no script, loads nothing.
+func _load_plugin_of(path: String) -> void:
+	if not path.begins_with(ADDONS) or not path.trim_prefix(ADDONS).contains("/"):
+		return
+	var folder := ADDONS + path.trim_prefix(ADDONS).get_slice("/", 0)
+	if _plugin_folders.has(folder):
+		return
+	_plugin_folders[folder] = true
+	var settings := folder.path_join("plugin.cfg")
+	if not FileAccess.file_exists(settings):
+		return
+	var config := ConfigFile.new()
+	if config.load(settings) != OK:
+		return
+	var script := str(config.get_value("plugin", "script", ""))
+	if script.is_empty():
+		return
+	var plugin := (script if script.begins_with("res://") else folder.path_join(script)).simplify_path()
+	if plugin != path:
+		ResourceLoader.load(plugin)
 
 
 ## Point the autoload settings back at their scripts and scenes, so the GDScript analyzer types singleton names
