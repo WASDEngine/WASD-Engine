@@ -151,7 +151,7 @@ describe('game_addons', () => {
     expect(state.downloads).toEqual([URLS.camera])
     expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; each one's guide is listed as the skill of its id:\n- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed]`)
     const removed = await call(state, { action: 'remove', id: 'test-camera' })
-    expect(text(removed)).toBe('Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera: addons/test_camera.')
+    expect(text(removed)).toBe('Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera/2026-11-11T12-00-00.000Z: addons/test_camera.')
     expect((await state.manager.presence(state.project)).get('test-camera')).toEqual({ state: 'absent' })
     expect(state.asked).toEqual([])
   })

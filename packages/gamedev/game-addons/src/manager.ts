@@ -4,9 +4,9 @@
  * place in `res://addons/<folder>/`; the installer enables it in `project.godot` the way the editor's plugin switch
  * does, writes its license into the project's notices, records it in `.wasdengine/addons.json`, and imports the
  * project so the add-on's errors show at once. A failure before the record is written puts the previous folder and
- * `project.godot` back. A removal takes out only paths in the add-on's own folder. The folder that a removal or a
- * replacement takes out moves to the add-on's backup, `.wasdengine/backups/<id>/`, instead of being deleted. Every
- * change stays inside the project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks
+ * `project.godot` back. A removal takes out only paths in the add-on's own folder. Every folder that a removal or a
+ * replacement takes out moves to a new backup folder of the add-on, `.wasdengine/backups/<id>/<time>/`, and stays
+ * there. Every change stays inside the project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks
  * once into the shared add-on store, where every Blender worker enables it by id, and its asset pack, if it has one,
  * into the asset folder beside the store; its project keeps only the record. Their archives then leave the cache.
  * @module @deepseek-ai/dsh-game-addons/src/manager
@@ -54,7 +54,8 @@ export const STORE_MARKER = '.wasd-addon.json'
 export const STORE_INDEX = 'catalog.json'
 
 /**
- * Project-relative folder that keeps, per add-on id, the last folder a removal or a replacement took out of the project.
+ * Project-relative folder that keeps, in a folder per add-on id, one folder per removal or replacement with what it
+ * took out of the project.
  */
 export const BACKUPS_DIR = `${STATE_DIR}/backups`
 
@@ -123,6 +124,26 @@ async function exists(path: string): Promise<boolean> {
   } catch (error) {
     if (isMissing(error)) return false
     throw error
+  }
+}
+
+/**
+ * Create the folder of one backup inside an add-on's backups, named by the time of the change, with `-2`, `-3`, and so
+ * on added when an earlier change took the name.
+ * @param parent - the add-on's backups folder.
+ * @param time - the time of the change.
+ * @returns the new folder's name.
+ */
+async function newBackupFolder(parent: string, time: Date): Promise<string> {
+  const stamp = time.toISOString().replaceAll(':', '-')
+  for (let count = 1; ; count += 1) {
+    const name = count === 1 ? stamp : `${stamp}-${count}`
+    try {
+      await mkdir(join(parent, name))
+      return name
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
   }
 }
 
@@ -293,7 +314,8 @@ export class GameAddonManager {
 
   /**
    * Remove one add-on from a project: an installed one by its record, or a catalog add-on found in `res://addons/`. The
-   * add-on's folder moves to its backup, `.wasdengine/backups/<id>/`, in place of an older backup of the add-on.
+   * add-on's folder moves to a new backup folder of the add-on, `.wasdengine/backups/<id>/<time>/`, beside the backups
+   * of earlier changes.
    * @param projectDir - absolute folder that holds `project.godot`.
    * @param id - catalog id.
    * @param signal - cancellation before files are moved.
@@ -342,9 +364,9 @@ export class GameAddonManager {
   }
 
   /**
-   * Move entries that a removal or a replacement takes out of a project into the add-on's backup,
-   * `.wasdengine/backups/<id>/`, each at its project-relative path, in place of the backup that an earlier change of
-   * the add-on left. The backups folder holds a `.gitignore` that keeps it out of version control.
+   * Move entries that a removal or a replacement takes out of a project into a new backup folder of the add-on,
+   * `.wasdengine/backups/<id>/<time>/`, each at its project-relative path; no earlier backup is changed. The backups
+   * folder holds a `.gitignore` that keeps it out of version control.
    * @param projectDir - absolute project folder.
    * @param id - catalog id.
    * @param taken - each entry's project-relative path and current location.
@@ -359,18 +381,18 @@ export class GameAddonManager {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
-    const backup = join(backups, id)
-    await rm(backup, { recursive: true, force: true })
+    const parent = await projectFolder(projectDir, `${BACKUPS_DIR}/${id}`)
+    const name = await newBackupFolder(parent, this.options.now())
     for (const entry of taken) {
-      const target = join(backup, ...entry.path.split('/'))
+      const target = join(parent, name, ...entry.path.split('/'))
       await mkdir(dirname(target), { recursive: true })
       await rename(entry.location, target)
     }
-    return `${BACKUPS_DIR}/${id}`
+    return `${BACKUPS_DIR}/${id}/${name}`
   }
 
   /**
-   * Move the add-on folder that an installation replaced from the installation's trash to the add-on's backup.
+   * Move the add-on folder that an installation replaced from the installation's trash to a new backup of the add-on.
    * @param projectDir - absolute project folder.
    * @param id - catalog id.
    * @param replaced - the folder's project-relative path and its place in the trash.

@@ -24,6 +24,9 @@ afterEach(async () => {
 
 const signal = new AbortController().signal
 
+/** The name of the first backup folder of a change at the setup's time. */
+const STAMP = '2026-11-11T12-00-00.000Z'
+
 interface Setup {
   readonly manager: GameAddonManager
   readonly project: string
@@ -172,9 +175,9 @@ describe('GameAddonManager.install for Godot', () => {
     const replaced = await manager.install(project, 'test-camera', { replace: true }, signal)
     expect(await tree(join(project, 'addons', 'test_camera'))).not.toContain('old.gd')
     expect((await manager.presence(project)).get('test-camera')).toEqual({ state: 'installed', version: '1.2.0' })
-    // The replaced copy is kept as the add-on's backup, and no trash or staging folder stays behind.
-    expect(replaced.notes).toContain(`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/addons/test_camera.`)
-    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toEqual(['addons/test_camera/old.gd', 'addons/test_camera/plugin.cfg'])
+    // The replaced copy is kept in a backup of the add-on, and no trash or staging folder stays behind.
+    expect(replaced.notes).toContain(`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`)
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toEqual([`${STAMP}/addons/test_camera/old.gd`, `${STAMP}/addons/test_camera/plugin.cfg`])
     expect((await readdir(join(project, '.wasdengine'))).sort()).toEqual(['addons.json', 'backups'])
   })
 
@@ -225,12 +228,11 @@ describe('GameAddonManager.remove', () => {
     await writeFile(join(project, 'clean.gd'), 'extends Node\n')
     const result = await manager.remove(project, 'test-camera', signal)
     expect(result).toEqual({
-      id: 'test-camera', projectDir: project, removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera`, references: ['player.gd', 'scenes/level.tscn'],
+      id: 'test-camera', projectDir: project, removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera/${STAMP}`, references: ['player.gd', 'scenes/level.tscn'],
     })
     await expect(lstat(join(project, 'addons', 'test_camera'))).rejects.toThrow(/ENOENT/u)
     expect(await tree(join(project, BACKUPS_DIR))).toEqual([
-      '.gitignore', 'test-camera/addons/test_camera/LICENSE', 'test-camera/addons/test_camera/manager.gd',
-      'test-camera/addons/test_camera/nodes/rig.gd', 'test-camera/addons/test_camera/plugin.cfg', 'test-camera/addons/test_camera/plugin.gd',
+      '.gitignore', ...['LICENSE', 'manager.gd', 'nodes/rig.gd', 'plugin.cfg', 'plugin.gd'].map(file => `test-camera/${STAMP}/addons/test_camera/${file}`),
     ])
     expect(await readFile(join(project, BACKUPS_DIR, '.gitignore'), 'utf8')).toBe('*\n')
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
@@ -266,16 +268,37 @@ describe('GameAddonManager.remove', () => {
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
   })
 
-  it('keeps only the latest backup of an add-on', async () => {
+  it('keeps every backup of an add-on in a folder of its own, named in the result', async () => {
     const { manager, project } = await setup()
-    await manager.install(project, 'test-camera', {}, signal)
+    // A copy changed by hand, which an installation with replace takes out.
+    await mkdir(join(project, 'addons', 'test_camera'), { recursive: true })
     await writeFile(join(project, 'addons', 'test_camera', 'mine.gd'), 'extends Node\n')
-    await manager.remove(project, 'test-camera', signal)
-    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toContain('addons/test_camera/mine.gd')
+    const replaced = await manager.install(project, 'test-camera', { replace: true }, signal)
+    expect(replaced.notes).toContain(`The addons/test_camera folder it replaced is kept in ${BACKUPS_DIR}/test-camera/${STAMP}/addons/test_camera.`)
+    expect((await manager.remove(project, 'test-camera', signal)).backup).toBe(`${BACKUPS_DIR}/test-camera/${STAMP}-2`)
     await manager.install(project, 'test-camera', {}, signal)
-    await manager.remove(project, 'test-camera', signal)
-    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).not.toContain('addons/test_camera/mine.gd')
-    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toContain('addons/test_camera/plugin.cfg')
+    expect((await manager.remove(project, 'test-camera', signal)).backup).toBe(`${BACKUPS_DIR}/test-camera/${STAMP}-3`)
+    const installed = ['LICENSE', 'manager.gd', 'nodes/rig.gd', 'plugin.cfg', 'plugin.gd']
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera'))).toEqual([
+      `${STAMP}-2/addons/test_camera/LICENSE`, ...installed.slice(1).map(file => `${STAMP}-2/addons/test_camera/${file}`),
+      ...installed.map(file => `${STAMP}-3/addons/test_camera/${file}`),
+      `${STAMP}/addons/test_camera/mine.gd`,
+    ].sort())
+  })
+
+  it('names backup folders by the time of the change', async () => {
+    const { project } = await setup()
+    const manager = new GameAddonManager({
+      catalog: await loadCatalog(join(dir!.root, 'catalog')),
+      downloads: { cacheDir: join(dir!.root, 'archives'), fetch: fakeDownloads().fetch },
+      blenderStore: join(dir!.root, 'store'),
+      assetsDir: join(dir!.root, 'assets'),
+      importProject: () => Promise.resolve({ issues: [] }),
+      now: () => new Date('2026-11-12T09:45:10Z'),
+      changed: () => {},
+    })
+    await manager.install(project, 'test-camera', {}, signal)
+    expect((await manager.remove(project, 'test-camera', signal)).backup).toBe(`${BACKUPS_DIR}/test-camera/2026-11-12T09-45-10.000Z`)
   })
 
   it('keeps a notices file with text of the developer\'s own', async () => {
@@ -343,8 +366,8 @@ describe('GameAddonManager changes stay inside the project', () => {
     await writeFile(join(linked, 'plugin.cfg'), '[plugin]\n')
     await mkdir(join(project, 'addons'))
     await symlink(linked, join(project, 'addons', 'test_camera'))
-    expect(await manager.remove(project, 'test-camera', signal)).toMatchObject({ removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera` })
-    expect(await readlink(join(project, BACKUPS_DIR, 'test-camera', 'addons', 'test_camera'))).toBe(linked)
+    expect(await manager.remove(project, 'test-camera', signal)).toMatchObject({ removed: ['addons/test_camera'], backup: `${BACKUPS_DIR}/test-camera/${STAMP}` })
+    expect(await readlink(join(project, BACKUPS_DIR, 'test-camera', STAMP, 'addons', 'test_camera'))).toBe(linked)
     expect(await tree(linked)).toEqual(['keep.txt', 'plugin.cfg'])
   })
 
