@@ -2,17 +2,17 @@
 
 English | [中文](providers.zh.md)
 
-This guide assumes you started the Web UI through the [root README](../../../README.md#run). Model changes take effect on the next request without restarting the server.
+This guide assumes you started the Web UI as the [front page](https://github.com/WASDEngine/WASD-Engine#run-from-source) describes. Model changes take effect on the next request without restarting the server.
 
-## Configure DeepSeek
+## Use the WASD Engine service
 
-Open **Settings → Models**. The DeepSeek card exposes one API-key field; enter the key and save it.
+The Web UI and the Desktop app sign in with a WASD Engine account and use the models it lists, so their settings have no **Models** page.
 
-![The Models page: the DeepSeek card, with Add model provider below it](providers-models-page.png)
+A profile whose `ui-settings-models` row sets `apiKeyEntry: true` shows **Settings → Models**, where the card of the WASD Engine provider (`deepseek-official`) takes a WASD Engine API token: enter the token in its API-key field and save it.
 
 Keys are write-only. The page receives a redacted descriptor after saving, never the literal secret. The key is stored in `$DSH_HOME/.credentials.yaml`, while settings retain only its credential reference.
 
-With a key saved and the default endpoint, DeepSeek's models follow the list the DeepSeek API publishes. The list loads when the models are first needed, refreshes in the background about every ten minutes while they are in use, and falls back to the built-in models when it cannot load. Editing **Models** under **Customized settings** keeps your own list instead and stops following the published one; **Restore defaults** follows it again and reloads it. While the published list is in use, the card shows the built-in models, so a newly published model appears only in the model picker. The [API-key provider reference](../../../packages/llm/llm-deepseek-api-key/README.md) owns the listing, fallback, and gating rules.
+The card's route offers the models of its configured catalog, `deepseek-flash` by default, and requests no model list. Editing **Models** under **Customized settings** replaces that catalog, and **Restore defaults** removes your edits. The [API-key provider reference](../../../packages/llm/llm-deepseek-api-key/README.md) owns the catalog, listing, and gating rules.
 
 ## Add a third-party provider
 
@@ -20,13 +20,13 @@ Choose **Add model provider**. The card opens on **Third-party model provider**:
 
 The authentication **?** explains saved-credential priority and environment fallbacks. Leave the key blank to use a saved credential or try the listed environment variables. A green hint identifies a detected environment variable. A yellow hint means no credential variable was detected; enter an API key or configure the listed variable. An unconfirmed hint means the status read failed. Detection does not validate the credential or test the connection. Provider-managed credential files, including AWS profiles and Google application-default credentials, are outside this check. Providers without native key authentication, such as `openai-codex`, show no key field unless the profile explicitly names a credential reference.
 
-A saved credential uses the placeholder **Leave blank to use saved credentials**, with no status text below the input. Environment fallback uses **Leave blank to use env as auth** and one detection hint while the input is empty. A nonempty input shows no authentication status text. Address configuration variables appear under **Base URL** and do not count as credentials.
+A saved credential displays a masked preview in the input and a green hint that the saved key will be used. The preview retains the identifier before the first hyphen or underscore, then five leading and four trailing key characters, only when at least eight middle characters stay hidden; otherwise the entire key and identifier become dots. Counts use Unicode code points. Saved keys have no eye button and cannot be revealed, copied, cut, or partially edited; typing or pasting replaces the whole key. Backspace or Delete stages whole-key removal. Press Backspace or Delete, then **Apply**, to remove the stored override and use environment authentication. Emptying a replacement also stages deletion of the saved key. **Cancel** preserves the saved key before saving. A refused deletion leaves settings unchanged. If the key is removed but settings fail, the warning reports that deletion cannot be undone; retry **Apply** to finish settings, or **Close** to leave the partial result. Clearing a shared credential affects every feature using the same reference. Without an environment credential, the provider has no authentication after clearing. Environment fallback uses **Leave blank to use env as auth** and one detection hint while the input is empty. A replacement draft shows a reminder to apply the new key. Pending removal names the environment variable used after applying, when the route declares one. Other nonempty inputs show no authentication status text. Address configuration variables appear under **Base URL** and do not count as credentials.
 
-A nonempty key input has an eye button. Select **Show secret** to check what you typed, and **Hide secret** to mask it again. Changing the input masks it again. Stored credentials remain write-only.
+An editable, nonempty key draft has an eye button. Select **Show secret** to check what you typed, and **Hide secret** to mask it again. Changing the input masks it again. Native password fields do not offer cut; select the draft and press Backspace to erase it, or reveal it before cutting. Stored credentials remain write-only.
 
 ## Add a custom model API
 
-Switch the card to **Custom model API** for a relay, a company gateway, a self-hosted server, or any provider absent from the installed catalog. Supply a lowercase Provider ID, base URL, API protocol, credential, and at least one model. The **API protocol** must be the one your gateway speaks, and the picker offers three: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages, stored in the active profile's `cordis.patch.yml` as `openai-completions`, `openai-responses`, and `anthropic-messages`. A provider speaks one protocol, so a gateway that serves two needs two providers.
+Switch the card to **Custom model API** for a relay, a company gateway, a self-hosted server, or any provider absent from the installed catalog. Supply a lowercase Provider ID, base URL, API protocol, credential, and at least one model. The **API protocol** must be the one your gateway speaks, and the picker offers four: OpenAI Chat Completions, OpenAI Responses, Anthropic Messages, and Gemini API, stored in the active profile's `cordis.patch.yml` as `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. A Gemini API base URL includes the API version, such as `https://gateway.example/v1beta`. A provider speaks one protocol, so a gateway that serves two needs two providers.
 
 ![The custom model API form: Provider ID, display name, base URL, API protocol, and API key](providers-custom-form.png)
 
@@ -60,7 +60,7 @@ For the standard Web UI launch with `dsh web`, `<profile>` is `web`, so the path
 
 In **Settings → Models**, edit the provider, open **Customized settings**, and expand the model's **Model options**. **Input types** occupies its own row below the capacity fields. Select **Image** for a model that accepts images, and save. **Text** starts selected for a new custom model with no inherited image capability. At least one type must remain selected; select Image before clearing Text for an image-only model.
 
-The checkboxes save `input` for pi-ai models and `inputModalities` for the direct DeepSeek adapter. You can also edit the model in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`; for example, this custom pi-ai provider declares one text-only model and one vision model:
+The checkboxes save `input` for pi-ai models and `inputModalities` for the WASD Engine service's adapter. You can also edit the model in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`; for example, this custom pi-ai provider declares one text-only model and one vision model:
 
 These examples show config fields inside a profile patch. A Cordis config override replaces the complete entry config; preserve other providers and fields when editing an existing override.
 
@@ -80,7 +80,7 @@ These examples show config fields inside a profile patch. A Cordis config overri
 
 Pi-ai's `input` accepts `text` and `image` and applies to that model alone. An explicit nonempty selection takes priority. An omitted or empty `input` inherits the installed catalog's input types, then the route's `defaultInput`, which defaults to `[text]`. The checkboxes display these inherited values without saving an override when you merely open the row.
 
-DeepSeek treats an omitted `inputModalities` as text-only and rejects an empty list. Clearing Image also removes that model's `imagePixelBudget` and `imageMaxBytes`, because DeepSeek rejects image limits on a text-only model. Set those limits again if you later enable images and need custom limits.
+The WASD Engine service's adapter treats an omitted `inputModalities` as text-only and rejects an empty list. Clearing Image also removes that model's `imagePixelBudget` and `imageMaxBytes`, because the adapter rejects image limits on a text-only model. Set those limits again if you later enable images and need custom limits.
 
 To restore inheritance after editing the checkboxes, remove the model's `input` or `inputModalities` field from `cordis.patch.yml`. **Restore defaults** removes the entire model-catalog override, including other model edits, so use it only when you want to restore the whole catalog.
 
@@ -116,9 +116,9 @@ In pi-ai configuration, every list must name at least one modality except a mode
 
 Both fields state a claim about your endpoint rather than checking it. A model that declares images its endpoint does not serve is not caught here; the provider rejects the request instead.
 
-### DeepSeek account models
+### WASD Engine account models
 
-A signed-in DeepSeek account lists its models from the account service, so the Models page offers no model editor for it. Adjust a single model with `modelOverrides` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`; the fields match a DeepSeek `models` entry, and unset fields keep the listed values:
+A signed-in WASD Engine account lists its models from the WASD Engine service, so the Models page offers no model editor for it. Adjust a single model with `modelOverrides` in `$DSH_HOME/profiles/<profile>/cordis.patch.yml`; the fields match a `models` entry of the WASD Engine provider, and unset fields keep the listed values:
 
 ```yaml
 - id: llm-deepseek-account
@@ -133,7 +133,7 @@ A model that needs a newer WASD Engine Harness fails with `CLIENT_UPGRADE_REQUIR
 
 ### Reasoning effort
 
-The model picker offers an **Effort** menu for a model that declares reasoning levels. A built-in provider's models inherit their levels from the installed catalog, and DeepSeek's models keep the adapter's levels. A model you enter by hand declares none until you add them, so until then the Effort entry does not appear in the menu and the endpoint's own default decides whether the model thinks.
+The model picker offers an **Effort** menu for a model that declares reasoning levels. A built-in provider's models inherit their levels from the installed catalog, and the WASD Engine service's models keep the levels of its adapter. A model you enter by hand declares none until you add them, so until then the Effort entry does not appear in the menu and the endpoint's own default decides whether the model thinks.
 
 On a custom model API provider, declare the levels in **Settings → Models**: edit the provider, open **Customized settings**, expand the model's **Model options**, and turn on **Reasoning levels**. The rows start with off, low, medium, and high. Each row pairs a level with the **API value** sent for it, which defaults to the level name; change it only where the model provider's API documentation spells the level differently. Add or delete rows to match what the endpoint supports, keep at least one level besides off, and save. Turning the switch off removes the declaration.
 
@@ -158,7 +158,7 @@ The page writes `reasoningEfforts` in `$DSH_HOME/profiles/<profile>/cordis.patch
 
 Each key is a level the menu offers, and its value is the spelling sent on the wire as `reasoning_effort`, so `max: xhigh` renames a level for a gateway with its own vocabulary. Only `off` may stay empty, because for most endpoints not thinking is the parameter's absence. The route's `reasoning` is the level used while a session has picked none; choosing an effort in the picker saves it, with the model, as the default for new sessions.
 
-An `off` left empty sends nothing, which only stops a model that thinks on request; an `off` given a value sends that value as `reasoning_effort` instead. A model that thinks unless told not to — DeepSeek V4 behind an OpenAI-compatible gateway, for example — needs `compat.thinkingFormat: deepseek`, which makes `off` send `thinking: {type: disabled}` and every other level send `thinking: {type: enabled}` beside the effort:
+An `off` left empty sends nothing, which only stops a model that thinks on request; an `off` given a value sends that value as `reasoning_effort` instead. A model that thinks unless told not to needs `compat.thinkingFormat: deepseek`, which makes `off` send `thinking: {type: disabled}` and every other level send `thinking: {type: enabled}` beside the effort:
 
 ```yaml
         models:
@@ -171,7 +171,7 @@ An `off` left empty sends nothing, which only stops a model that thinks on reque
               max: max
 ```
 
-A built-in provider's model whose gateway does not reason loses its levels with `reasoningEfforts: false` under `modelOverrides`; selecting an effort for it is then refused as `UNSUPPORTED_REASONING_EFFORT`. DeepSeek's own route needs none of this: its models already offer `off`, `low`, `high`, and `max`, and `llm-deepseek.reasoningEffort` sets the default the picker starts from:
+A built-in provider's model whose gateway does not reason loses its levels with `reasoningEfforts: false` under `modelOverrides`; selecting an effort for it is then refused as `UNSUPPORTED_REASONING_EFFORT`. The WASD Engine service's own route needs none of this: its models already offer `off`, `low`, `high`, and `max`, and `llm-deepseek.reasoningEffort` sets the default the picker starts from:
 
 ```yaml
 - id: llm-deepseek
@@ -225,7 +225,7 @@ Every switch, its accepted values, and the protocols that take it are listed und
 - **The gateway refuses every request although the key and URL are right** — Its request shape differs from OpenAI's. Start with `compat.supportsDeveloperRole: false` and `compat.maxTokensField: max_tokens` on the route.
 - **Only reasoning models fail** — pi-ai sends their system prompt as the `developer` role, which the gateway rejects. Set `compat.supportsDeveloperRole: false`.
 - **The Effort menu does not appear for a model you entered by hand** — It declares no levels. On a custom model API provider, turn on **Reasoning levels** in the model's **Model options**; elsewhere, add `reasoningEfforts` to the model in `cordis.patch.yml`.
-- **`off` does not stop a DeepSeek model from thinking** — An empty `off` sends no reasoning field at all, and an endpoint that thinks by default keeps thinking. Set `compat.thinkingFormat: deepseek` on the model or the route.
+- **`off` does not stop the model from thinking** — An empty `off` sends no reasoning field at all, and an endpoint that thinks by default keeps thinking. Set `compat.thinkingFormat: deepseek` on the model or the route.
 - **A compat switch is refused as having no value** — A key written with nothing after the colon. Give it a value, or remove the key to keep the installed catalog's.
-- **An image is refused before sending** — The model declares no image modality. Give a custom provider's model `input: [text, image]`; on DeepSeek's own route, select an image-capable entry from the configured catalog (`deepseek-flash` by default) and confirm that your gateway serves that model with image input.
+- **An image is refused before sending** — The model declares no image modality. Give a custom provider's model `input: [text, image]`; on the WASD Engine service's own route, select an image-capable entry from the configured catalog (`deepseek-flash` by default) and confirm that its endpoint serves that model with image input.
 - **The provider rejects a request carrying an image** — The model declares images its endpoint does not actually serve. Remove `image` from whichever list granted it — the model's `input`, or the route's `defaultInput` — then start a new session: the attached image stays in the session log, so the same request repeats until the session moves off it.

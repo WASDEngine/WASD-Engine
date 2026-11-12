@@ -51,8 +51,18 @@ const DUPLICATE_SAFE_PACKAGES: readonly string[] = [
  * prominent heading in the pull request description.
  */
 const SAFE_HOST_DEPENDENCY_EXPORTS = {
-  // Copies a packaged file into a caller-owned directory and keeps no module state.
-  '@deepseek-ai/dsh-app-mcp': ['materializePayload'],
+  '@deepseek-ai/dsh-app-mcp': [
+    // Copies a packaged file into a caller-owned directory and keeps no module state.
+    'materializePayload',
+    // Returns a new object that reads this computer's memory and processors when called; keeps no module state.
+    'nodeMachine',
+    // Computes a process limit from its arguments alone.
+    'processLimit',
+    // Compares the bytes a start needs with the caller's reading of available memory.
+    'memoryShortage',
+    // Formats model-facing text from its arguments alone.
+    'lowMemoryMessage',
+  ],
   '@deepseek-ai/dsh-atomic-write': ['withFileLock', 'writeFileAtomic'],
   '@deepseek-ai/dsh-computer-use/brand': ['ComputerUseProviderName'],
   '@deepseek-ai/dsh-credentials': ['credentialKey'],
@@ -72,6 +82,8 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
   '@deepseek-ai/dsh-session-format': ['sessionFormatLogFilename'],
   '@deepseek-ai/dsh-storage-domain': ['defineDomain'],
   '@deepseek-ai/dsh-timeout': ['MAX_TIMER_DELAY_MS'],
+  // Both operate only on the caller's subprocess service and handle; the module memoizes only the binary path.
+  '@deepseek-ai/dsh-util-ripgrep': ['readRipgrepLines', 'spawnRipgrep'],
   '@deepseek-ai/schemastery': ['default'],
 } as const satisfies HostDependencyExports
 
@@ -82,11 +94,13 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   // CUA checks UserQuestionError and preserves AttachmentError from image admission.
   '@deepseek-ai/dsh-attachment': ['admitEncodedImages'],
   '@deepseek-ai/dsh-user-questions': ['UserQuestionError'],
+  // The tool registry and every subclass rely on `instanceof` against one HarnessError class.
+  '@deepseek-ai/dsh-error': ['HarnessError'],
   // `instanceof` checks need the translator's own class instance.
   '@deepseek-ai/dsh-experimental-translator': ['TranslationError'],
   // Stateless; a safe classification would turn the forge panel's forge and worktree peers into dependencies.
   '@deepseek-ai/dsh-experimental-forge': ['changeRequestKey'],
-  '@deepseek-ai/dsh-experimental-worktree': ['generatedWorktreeName'],
+  '@deepseek-ai/dsh-experimental-worktree': ['generatedWorktreeName', 'CREATED_RECORD', 'createdWorktreeSchema'],
   // The forge panel matches ctx.fs failures with `instanceof FsError`.
   '@deepseek-ai/dsh-fs': ['FsError'],
   '@deepseek-ai/dsh-scope': ['carrierKeyOf', 'createScope', 'scopeOf', 'scopeTarget'],
@@ -97,6 +111,8 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-timeout': ['deadline'],
   // A definition must carry the ToolDefinition fields that the Host's own dsh-tools copy reads.
   '@deepseek-ai/dsh-tools': ['defineTool'],
+  // Add-ons and releases resolve projects as the installed Godot plugin does, then hand them to that plugin's service.
+  '@deepseek-ai/dsh-godot': ['resolveGodotProject'],
 } as const satisfies HostDependencyExports
 
 /** Exact import specifier to reviewed runtime exports. */

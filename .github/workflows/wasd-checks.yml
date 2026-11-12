@@ -56,9 +56,9 @@ jobs:
           pnpm exec vitest run
           packages/bundle
           packages/client/ui-settings-account/tests
-          packages/credentials/deepseek-account-platform/tests/wasdengine-allowance.spec.ts
-          packages/credentials/deepseek-account-platform/tests/wasdengine-auto-recharge.spec.ts
-          packages/api/account-controller/tests/wasdengine-auto-recharge.spec.ts
+          packages/credentials/deepseek-account/tests/wasdengine-allowance.spec.ts
+          packages/credentials/deepseek-account/tests/wasdengine-auto-recharge.spec.ts
+          packages/credentials/deepseek-account/tests/remote.spec.ts
           apps/desktop/tests
           packages/util/home-paths/tests
           packages/shell/shell-env/tests

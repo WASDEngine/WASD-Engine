@@ -712,16 +712,10 @@ exports[`pins the tool declarations > tool declarations 1`] = `
               },
               {
                 "items": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                    },
-                    {
-                      "type": "number",
-                    },
-                    {
-                      "type": "boolean",
-                    },
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
                   ],
                 },
                 "type": "array",
@@ -811,16 +805,10 @@ exports[`pins the tool declarations > tool declarations 1`] = `
               },
               {
                 "items": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                    },
-                    {
-                      "type": "number",
-                    },
-                    {
-                      "type": "boolean",
-                    },
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
                   ],
                 },
                 "type": "array",

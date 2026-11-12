@@ -26,15 +26,19 @@
 # 127.0.0.1, and [::1].
 
 # Account sign-in: browser PKCE against the Platform origin's /dsh/authorize
-# plus the account API under its /auth-api and /api. The account token is
-# released for model and file requests only to inferenceOrigin. At startup the
-# provider deletes a stored sign-in whose issuer is not platformOrigin.
+# plus the account API under its /auth-api and /api, which also serves the
+# account notifications (harnessOrigin; upstream's default, DeepSeek's harness
+# host, would receive the sign-in token and sign the user out on its 401). The
+# account token is released for model and file requests only to
+# inferenceOrigin. At startup the provider deletes a stored sign-in whose issuer
+# is not platformOrigin.
 - id: deepseek-account
   config:
     platformOrigin: &wasdengine-platform-origin !!js >-
       ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://app.wasdengine.com'
     inferenceOrigin: &wasdengine-api-origin !!js >-
       ctx.get('launchEnvironment')?.getFrom('WASDENGINE_ORIGIN', ['process', 'user-env'])?.value || 'https://api.wasdengine.com'
+    harnessOrigin: *wasdengine-platform-origin
     # The provider honors this flag only for localhost, 127.0.0.1, and [::1];
     # an HTTPS origin ignores it.
     allowLoopbackHttp: true

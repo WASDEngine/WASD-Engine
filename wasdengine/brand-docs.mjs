@@ -11,6 +11,10 @@
  * output or generated reference), and lines that KEEP matches. The app itself is called WASD
  * Engine, so the READMEs under APP_PATHS, which describe what the app shows, use that name instead.
  *
+ * The documents in USER_DOCS, which WASD Engine users read, name no DeepSeek product at all. The
+ * script cannot rewrite them, so both modes list each of their lines whose visible text says
+ * DeepSeek and exit 1 while any is left.
+ *
  * Usage: node wasdengine/brand-docs.mjs [--check]
  */
 import { execFileSync } from 'node:child_process'
@@ -47,6 +51,47 @@ const SKIP = [
 const KEEP = /built on DeepSeek Harness|fork of DeepSeek Harness|trademark|developed by/iu
 
 const FENCE = /^\s*(`{3,}|~{3,})/u
+
+/**
+ * The front page and the user guides, whose visible text may not say DeepSeek. Code blocks,
+ * inline code, link and image targets, and HTML tags may, because they hold the names users type,
+ * such as `@deepseek-ai/` packages, and paths such as the license notice's file.
+ */
+const USER_DOCS = ['.github/README.md', 'docs/user/guide/']
+
+/**
+ * Strip from one prose line what a reader does not see as text.
+ * @param {string} line - A line outside fenced code blocks.
+ * @returns {string} The line without inline code, link and image targets, and HTML tags.
+ */
+function visibleText(line) {
+  return line.split(/(`+[^`]*`+)/u).filter((_, index) => index % 2 === 0).join('')
+    .replace(/\]\([^)]*\)/gu, ']')
+    .replace(/<[^>]*>/gu, '')
+}
+
+/**
+ * List the lines of USER_DOCS whose visible text says DeepSeek.
+ * @returns {string[]} One `path:line: text` entry per line.
+ */
+function userDocLeaks() {
+  const pathspecs = USER_DOCS.map(path => path.endsWith('/') ? `${path}*.md` : path)
+  const files = execFileSync('git', ['ls-files', '-z', '--', ...pathspecs], { encoding: 'utf8' }).split('\0').filter(path => path !== '')
+  const leaks = []
+  for (const path of files) {
+    let fence
+    readFileSync(path, 'utf8').split('\n').forEach((line, index) => {
+      const match = FENCE.exec(line)
+      if (match) {
+        if (fence === undefined) fence = match[1][0]
+        else if (match[1][0] === fence) fence = undefined
+      } else if (fence === undefined && /deepseek/iu.test(visibleText(line))) {
+        leaks.push(`${path}:${index + 1}: ${line.trim()}`)
+      }
+    })
+  }
+  return leaks
+}
 
 /**
  * List the tracked files this script owns.
@@ -106,9 +151,10 @@ if (import.meta.main) {
       console.log(`branded ${path}`)
     }
   }
-  if (check && changed > 0) {
-    console.error(`brand-docs: ${changed} file(s) still name ${UPSTREAM_NAME}; run node wasdengine/brand-docs.mjs`)
-    process.exit(1)
-  }
+  const leaks = userDocLeaks()
+  for (const leak of leaks) console.log(leak)
+  if (leaks.length > 0) console.error(`brand-docs: ${leaks.length} line(s) of the front page and user guides say DeepSeek; rewrite them by hand`)
+  if (check && changed > 0) console.error(`brand-docs: ${changed} file(s) still name ${UPSTREAM_NAME}; run node wasdengine/brand-docs.mjs`)
   if (!check) console.log(`brand-docs: ${changed} file(s) renamed to ${HARNESS_NAME}.`)
+  if ((check && changed > 0) || leaks.length > 0) process.exit(1)
 }

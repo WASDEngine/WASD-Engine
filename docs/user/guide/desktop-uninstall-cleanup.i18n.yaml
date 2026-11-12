@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for desktop-uninstall-cleanup.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/desktop-uninstall-cleanup.md
+/uninstall-wasd-engine:
+  en: 7f5630565e88736c
+  zh: 63caf4ff291221a5
+/uninstall-wasd-engine/1-uninstall-the-app:
+  en: 6242073da9f03824
+  zh: 5f89171e2fe6a9e0
+/uninstall-wasd-engine/2-clean-up-local-data:
+  en: 5a92983649e69c8d
+  zh: d0f61ff8d3a6fdd0
+/uninstall-wasd-engine/3-verify-cleanup:
+  en: 396bdba7cd24b278
+  zh: 2488dc9721081aee

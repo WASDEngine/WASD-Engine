@@ -4,7 +4,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
-import { WASDENGINE_LOCAL_BUILD_TITLE, brandCommonDictionaries } from '../src/client/wasdengine-copy.ts'
+import { brandCommonDictionaries } from '../src/client/wasdengine-copy.ts'
+import { WASDENGINE_LOCAL_BUILD_TITLE } from '../src/client/wasdengine/locales.ts'
 import { de, en, es, fr, ja, pt, ru, zh } from '../src/locales/index.ts'
 
 const dictionaries = { zh, en, ja, es, fr, de, ru, pt }

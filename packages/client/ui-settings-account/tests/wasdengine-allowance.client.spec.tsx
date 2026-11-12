@@ -42,7 +42,6 @@ function mount(balance: AccountDetails['balance'], language: keyof typeof brande
     },
     hasRunningAccountTasks: vi.fn(async () => false),
     contactUs: vi.fn(), showLogin: vi.fn(), setOnboarding: vi.fn(),
-    bonusNoticeShown: vi.fn(), bonusNoticeDismissed: vi.fn(),
     refreshAccount: vi.fn(() => Promise.resolve()), avatarFailed: vi.fn(),
     start: vi.fn(() => Promise.resolve()), cancel: vi.fn(() => Promise.resolve()), signOut: vi.fn(() => Promise.resolve()),
     ...extra,
@@ -184,7 +183,7 @@ describe('WASD Engine auto recharge switch', () => {
         theme: { getSnapshot: () => theme, subscribe: () => () => {} },
       },
       hasRunningAccountTasks: vi.fn(async () => false), contactUs: vi.fn(), showLogin: vi.fn(), setOnboarding: vi.fn(),
-      bonusNoticeShown: vi.fn(), bonusNoticeDismissed: vi.fn(), refreshAccount, avatarFailed: vi.fn(),
+      refreshAccount, avatarFailed: vi.fn(),
       start: vi.fn(() => Promise.resolve()), cancel: vi.fn(() => Promise.resolve()), signOut: vi.fn(() => Promise.resolve()),
       setAutoRecharge,
     } satisfies AccountSectionInjected

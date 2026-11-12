@@ -2,11 +2,11 @@
 
 [English](index.md) | 中文
 
-请先按照[根目录 README](../../../README.zh.md#run) 中的说明启动 Web UI；命令会打印其访问地址。本指南从服务器已经运行的状态开始。`dsh` 进程会把启动时所在的目录作为默认文件系统位置；全新的 Web UI 则不会选中任何工作区，你需要添加一个工作区。
+请先按照[项目首页](https://github.com/WASDEngine/WASD-Engine#run-from-source)中的说明启动 Web UI；命令会打印其访问地址。本指南从服务器已经运行的状态开始。`dsh` 进程会把启动时所在的目录作为默认文件系统位置；全新的 Web UI 则不会选中任何工作区，你需要添加一个工作区。
 
-## 配置模型
+## 登录
 
-打开**设置 → 模型**，输入 [DeepSeek API 密钥](https://platform.deepseek.com/)并保存。模型路由会立即可用，不需要重启服务器。
+在“开始使用”对话框中，或在侧边栏底部的账号菜单中选择**登录**，然后在浏览器打开的页面中登录你的 WASD Engine 账号。之后模型请求会发往 WASD Engine 服务，不需要重启服务器。
 
 [模型配置指南](./providers.zh.md)介绍其他提供方和自定义 OpenAI 兼容端点。
 
@@ -27,5 +27,6 @@ Agent（智能体）可以读取和编辑工作区文件、运行命令、委派
 - [配置模型](./providers.zh.md)
 - [使用 Python SDK](./python-sdk.zh.md)
 - [在反向代理之后发布 Web UI](./public-deployments.zh.md)
+- [卸载 WASD Engine](./desktop-uninstall-cleanup.zh.md)
 - [使用其他 CLI 模式](../../../apps/cli/README.zh.md)
 - [开发插件](../develop/basic/index.zh.md)

@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web and release them to the WASD Engine site as numbered versions with share links; the wasdPlugins Remote; the Release button in the Session header; and Explore Games in the sidebar."
+description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web and release them to the WASD Engine site as numbered versions with share links; the wasdPlugins Remote; the Release button in the Session header and on the New Session screen; and Explore Games in the sidebar."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-WASD Engine Plugins holds WASD Engine's own features and stays on in every Web and Desktop profile. It exports the user's Godot game for the Web with the built-in Godot and releases it to the WASD Engine site the app is signed in to as the game's next numbered version, at a share link where anyone can play it, pick earlier versions, and comment. Session agents and connected agents get the same tools; the Release button in the Session header asks the agent to release, and Explore Games in the sidebar opens the released games.
+WASD Engine Plugins holds WASD Engine's own features and stays on in every Web and Desktop profile. It exports the user's Godot game for the Web with the built-in Godot and releases it to the WASD Engine site the app is signed in to as the game's next numbered version, at a share link where anyone can play it, pick earlier versions, and comment. Session agents and connected agents get the same tools; the Release button asks the agent to release, and Explore Games in the sidebar opens the released games.
 
 ## Table of Contents
 
@@ -53,7 +53,7 @@ A project remembers its game per site in `.wasdengine/game.json`, so later relea
 
 ### The Release button and Explore Games
 
-The Release button appears in the header of a Session that belongs to a game project, when the Peer may prompt the Session and call `wasdPlugins/project`. It opens a dialog that names the project's last release with a link to its page, refuses a folder without `project.godot`, and takes optional release notes. Release sends the Session a prompt, in the window's language, that asks its agent to call `wasd_release_game` with those notes, or with notes it writes from what changed, and to answer with the share link, so the export and the upload run as a turn the user watches.
+The Release button appears in the header of a Session that belongs to a game project, when the Peer may prompt the Session and call `wasdPlugins/project`. A blank Session's header shows no actions until its first prompt, so while the Session is blank the button sits on the New Session screen instead, at the right end of the row with the game project and agent preset pickers, before the branch controls. It opens a dialog that names the project's last release with a link to its page, refuses a folder without `project.godot`, and takes optional release notes. Release sends the Session a prompt, in the window's language, that asks its agent to call `wasd_release_game` with those notes, or with notes it writes from what changed, and to answer with the share link, so the export and the upload run as a turn the user watches.
 
 Explore Games sits above Settings at the foot of the left sidebar while the Peer may call `wasdPlugins/links`. It opens the site's Explore page with `window.open`, which the Desktop app hands to the system browser and the Web UI opens in a new tab. On the narrow rail it shows its globe alone, with its label as a tooltip.
 

@@ -73,12 +73,15 @@ export function varReferences(value: string): string[] {
 
 /**
  * Every file shipped as package source whose name the predicate accepts,
- * excluding build output and installed dependencies.
+ * excluding build output, installed dependencies, and dot directories.
+ * Dot directories hold VCS metadata and per-test temporary roots rather than
+ * shipped source, and their owner can remove one while a scan reads it.
  * @param accepts - filename predicate.
- * @returns absolute paths under packages/, `/`-separated on every platform so
+ * @param root - tree to walk, the packages directory by default.
+ * @returns absolute paths under `root`, `/`-separated on every platform so
  *   specs can match repo-relative suffixes verbatim.
  */
-export function packageFiles(accepts: (name: string) => boolean): string[] {
+export function packageFiles(accepts: (name: string) => boolean, root: string = PACKAGES_DIR): string[] {
   const found: string[] = []
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -86,11 +89,14 @@ export function packageFiles(accepts: (name: string) => boolean): string[] {
       if (entry.isDirectory()) {
         // WASDEngine fork: a game tool's runtime/<platform>-<arch> folder holds a git-ignored application build.
         const runtimeBuild = basename(dir) === 'runtime' && /^(?:darwin|linux|win32)-(?:arm64|x64)$/u.test(entry.name)
-        if (entry.name !== 'node_modules' && entry.name !== 'lib' && entry.name !== 'dist' && !runtimeBuild) walk(path)
+        // Dot directories hold VCS metadata and the temporary roots each spec
+        // creates inside the package tree, never shipped package source; a
+        // concurrent owner can remove one while a scan reads it.
+        if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'lib' && entry.name !== 'dist' && !runtimeBuild) walk(path)
       } else if (accepts(entry.name)) found.push(path.replaceAll('\\', '/'))
     }
   }
-  walk(PACKAGES_DIR)
+  walk(root)
   return found
 }
 
