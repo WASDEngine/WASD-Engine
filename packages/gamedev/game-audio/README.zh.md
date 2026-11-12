@@ -53,7 +53,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 声音的类型取自其文件名、或从最近的文件夹起其上级文件夹中，第一个表示类型的单词：`sfx`、`fx`、`sound`、`foley`、`ui` 或 `ambience` 表示音效，`voice`、`vo`、`dialogue`、`speech`、`narrator` 或 `bark` 表示对白，`music`、`bgm`、`ost`、`soundtrack`、`song` 或 `jingle` 表示音乐。路径中没有这类单词时，30 秒及以上的声音算作音乐，其余算作音效。
 
-审阅结果的文本会对游戏中播放效果不好的问题给出警告：达到满刻度而削波的采样、直流偏移、开头有 50 毫秒或更长静音因而播放延迟的音效或对白、在 Godot 循环处会有咔哒声的衔接、相位相反的声道，以及两个声道采样完全相同的立体声文件。
+审阅结果的文本会对游戏中播放效果不好的问题给出警告：达到满刻度而削波的采样、为 NaN 或无穷大的采样（各项数值把它们当作静音）、比满刻度高 40 dB 或更多的峰值（不稳定的滤波器会产生这种峰值）、直流偏移、开头有 50 毫秒或更长静音因而播放延迟的音效或对白、在 Godot 循环处会有咔哒声的衔接、相位相反的声道，以及两个声道采样完全相同的立体声文件。
 
 通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `audio` 下使用这些工具，每个工具都必须提供 `project`，即游戏项目文件夹的绝对路径；两个工具都标记为只读，在已连接 agent 于该项目中的会话里运行；即使会话属于登记在其上层的游戏项目，声音路径也从 `project` 文件夹算起；并在结果文本之后以 PNG 字节发送图像。`search_game_tools` 报告该提供方已就绪；没有打开的 WASD Engine 窗口时，还会说明在用户打开窗口之前 `audio_review` 都会失败。
 
@@ -67,7 +67,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `audioCategoryOf`、`pathWords` | 根据路径和时长判断声音的类型 |
 | `probeAudio` | 从几个较小的字节窗口读取文件头信息：WAV 和 AIFF 的块、FLAC 的 STREAMINFO、MP3 的 Xing、Info 或 VBRI 帧数减去 LAME 编码器延迟和填充，或按第一帧的比特率估算，并给出该格式最高比特率下其大小所允许的最短长度，以及 Ogg 流最后的 granule 位置 |
 | `openAiff`、`decodeAiff` | 浏览器不解码的 AIFF 和 AIFC 采样：任一字节序的 8 到 32 位整数 PCM、无符号 8 位，以及 32 位和 64 位浮点；`openAiff` 定位采样并逐个读取而不复制，`decodeAiff` 复制全部采样 |
-| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量 |
+| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限 |
 | `drawAudioImage`、`describeAudioImage` | 原始 RGB 格式的图像，以及说明其面板和网格的句子 |
 | `AUDIO_ERROR` | 工具的错误码，窗口无法完成请求时用它作答 |
 

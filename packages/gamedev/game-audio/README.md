@@ -53,7 +53,7 @@ The plugin needs the `tools` and `workingDirectory` services. With the `attachme
 
 A sound's kind comes from the first word of its file name, or of its folders from the nearest, that names one: `sfx`, `fx`, `sound`, `foley`, `ui`, or `ambience` for sound effects, `voice`, `vo`, `dialogue`, `speech`, `narrator`, or `bark` for dialogue, and `music`, `bgm`, `ost`, `soundtrack`, `song`, or `jingle` for music. A path without such a word is music from 30 seconds on and a sound effect otherwise.
 
-The review's text warns about what a game plays badly: samples that reach full scale and clip, a DC offset, a sound effect or line that starts with 50 ms or more of silence and so plays late, a seam that clicks where Godot loops the sound, channels in opposite phase, and stereo files whose channels hold the same samples.
+The review's text warns about what a game plays badly: samples that reach full scale and clip, samples that are NaN or infinite, which the figures count as silence, a peak 40 dB or more above full scale, as an unstable filter makes, a DC offset, a sound effect or line that starts with 50 ms or more of silence and so plays late, a seam that clicks where Godot loops the sound, channels in opposite phase, and stereo files whose channels hold the same samples.
 
 Agents connected through WASD Engine's MCP server reach the tools under the provider `audio`, each with a required `project`, the absolute path of the game project's folder; both are marked read-only, run in the connected agent's Session of that project, take sound paths from the `project` folder also when a game project registered above it holds the Session, and send the picture as PNG bytes after the result's text. `search_game_tools` reports the provider ready, adding while no WASD Engine window is open that `audio_review` fails until the user opens one.
 
@@ -67,7 +67,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 | `audioCategoryOf`, `pathWords` | The kind of a sound from its path and length |
 | `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its first frame's bit rate with the shortest length its size allows at the format's highest bit rate, and an Ogg stream's last granule position |
 | `openAiff`, `decodeAiff` | AIFF and AIFC samples, which browsers do not decode: integer PCM of 8 to 32 bits in either byte order, unsigned 8-bit, and 32-bit and 64-bit float; `openAiff` locates them and reads one at a time without copying them, and `decodeAiff` copies them all |
-| `analyzeAudio`, `integratedLoudness`, `loopSeam`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples |
+| `analyzeAudio`, `integratedLoudness`, `loopSeam`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples, which count each NaN or infinite sample and read it as silence, so every figure stays finite |
 | `drawAudioImage`, `describeAudioImage` | The picture as raw RGB, and the sentence that states its panels and grid |
 | `AUDIO_ERROR` | The tools' error codes, with which a window answers a request it cannot fulfil |
 

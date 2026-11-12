@@ -1,7 +1,8 @@
 /**
  * Measurements of decoded audio for agents, which cannot listen: levels, loudness, clipping, silence, spectrum, how a
  * sound joins its own start when it loops, and how its two channels relate. Every measurement reads interleaved 32-bit
- * float samples, whether SuperCollider wrote them or a browser decoded them.
+ * float samples, whether SuperCollider wrote them or a browser decoded them, and counts a NaN or infinite sample, which
+ * no player can play, as silence, so every figure stays finite.
  *
  * @module
  */
@@ -21,6 +22,15 @@ export const SILENCE_THRESHOLD = 0.001
 /** Samples at or above full scale, which integer formats clip. */
 const CLIP_LEVEL = 1
 
+/**
+ * A sample as the measurements read it.
+ * @param value - the stored sample; undefined past the end of the samples.
+ * @returns the sample, or 0 for a NaN or infinite one.
+ */
+export function finiteSample(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) ? value : 0
+}
+
 /** Levels of one channel, as linear amplitudes. */
 export interface ChannelLevels {
   /** Largest absolute sample. */
@@ -31,6 +41,8 @@ export interface ChannelLevels {
   readonly dcOffset: number
   /** Samples whose absolute value reaches full scale. */
   readonly clipped: number
+  /** Samples that are NaN or infinite, which the other figures count as silence. */
+  readonly nonFinite: number
 }
 
 /** What the agent learns about one audio window. */
@@ -70,12 +82,17 @@ export function analyzeAudio(audio: AudioSamples): AudioAnalysis {
   const squares = new Float64Array(channels)
   const totals = new Float64Array(channels)
   const clipped = new Float64Array(channels)
+  const nonFinite = new Float64Array(channels)
   let first = -1
   let last = -1
   for (let frame = 0; frame < frames; frame++) {
     let loud = false
     for (let channel = 0; channel < channels; channel++) {
       const value = samples[frame * channels + channel] ?? 0
+      if (!Number.isFinite(value)) {
+        nonFinite[channel] = (nonFinite[channel] ?? 0) + 1
+        continue
+      }
       const magnitude = Math.abs(value)
       if (magnitude > (peaks[channel] ?? 0)) peaks[channel] = magnitude
       squares[channel] = (squares[channel] ?? 0) + value * value
@@ -93,6 +110,7 @@ export function analyzeAudio(audio: AudioSamples): AudioAnalysis {
     rms: frames === 0 ? 0 : Math.sqrt((squares[channel] ?? 0) / frames),
     dcOffset: frames === 0 ? 0 : (totals[channel] ?? 0) / frames,
     clipped: clipped[channel] ?? 0,
+    nonFinite: nonFinite[channel] ?? 0,
   }))
   const seconds = frames / sampleRate
   const squareSum = squares.reduce((total, value) => total + value, 0)
@@ -178,7 +196,7 @@ export function integratedLoudness(audio: AudioSamples): number | undefined {
   const energies = new Float64Array(Math.floor((frames - block) / step) + 1)
   for (let channel = 0; channel < channels; channel++) {
     const signal = new Float64Array(frames)
-    for (let frame = 0; frame < frames; frame++) signal[frame] = samples[frame * channels + channel] ?? 0
+    for (let frame = 0; frame < frames; frame++) signal[frame] = finiteSample(samples[frame * channels + channel])
     const weighted = filter(filter(signal, shelf), pass)
     // Running sums of squares give each block's energy in constant time.
     const cumulative = new Float64Array(frames + 1)
@@ -283,7 +301,7 @@ export function magnitudeSpectrum(audio: AudioSamples, center: number, size: num
  */
 function mixAt(audio: AudioSamples, frame: number): number {
   let mix = 0
-  for (let channel = 0; channel < audio.channels; channel++) mix += audio.samples[frame * audio.channels + channel] ?? 0
+  for (let channel = 0; channel < audio.channels; channel++) mix += finiteSample(audio.samples[frame * audio.channels + channel])
   return mix / audio.channels
 }
 
@@ -358,12 +376,12 @@ export function loopSeam(audio: AudioSamples): LoopSeam | undefined {
   let jump = 0
   let step = 0
   for (let channel = 0; channel < channels; channel++) {
-    const first = samples[channel] ?? 0
-    const last = samples[(frames - 1) * channels + channel] ?? 0
+    const first = finiteSample(samples[channel])
+    const last = finiteSample(samples[(frames - 1) * channels + channel])
     jump = Math.max(jump, Math.abs(first - last))
     let squares = 0
     for (let frame = 1; frame < frames; frame++) {
-      const difference = (samples[frame * channels + channel] ?? 0) - (samples[(frame - 1) * channels + channel] ?? 0)
+      const difference = finiteSample(samples[frame * channels + channel]) - finiteSample(samples[(frame - 1) * channels + channel])
       squares += difference * difference
     }
     step = Math.max(step, Math.sqrt(squares / (frames - 1)))
@@ -373,7 +391,7 @@ export function loopSeam(audio: AudioSamples): LoopSeam | undefined {
   if (span >= 1 && frames >= 2 * span) {
     const level = (from: number): number => {
       let squares = 0
-      for (let index = from * channels; index < (from + span) * channels; index++) squares += (samples[index] ?? 0) ** 2
+      for (let index = from * channels; index < (from + span) * channels; index++) squares += finiteSample(samples[index]) ** 2
       return Math.sqrt(squares / (span * channels))
     }
     const start = level(0)
@@ -409,8 +427,8 @@ export function stereoImage(audio: AudioSamples): StereoImage | undefined {
   let products = 0
   let largestDifference = 0
   for (let frame = 0; frame < frames; frame++) {
-    const left = samples[frame * 2] ?? 0
-    const right = samples[frame * 2 + 1] ?? 0
+    const left = finiteSample(samples[frame * 2])
+    const right = finiteSample(samples[frame * 2 + 1])
     leftSquares += left * left
     rightSquares += right * right
     products += left * right

@@ -1,7 +1,8 @@
 /**
  * The text agents read from the audio tools: the listing of `audio_search` and the report of `audio_review`, with
  * levels in dBFS, loudness in LUFS, lengths in seconds or minutes, and warnings for what a game plays badly: clipping,
- * a DC offset, silence before a sound, and a seam that clicks where Godot loops it.
+ * samples that are NaN, infinite, or far beyond full scale, a DC offset, silence before a sound, and a seam that clicks
+ * where Godot loops it.
  * @module @deepseek-ai/dsh-game-audio/src/describe
  */
 import type { AudioCategory, AudioCategorySource } from './audio/formats.ts'
@@ -66,6 +67,9 @@ export interface ReviewFacts {
   readonly pictureOmitted?: boolean
   readonly shown: boolean
 }
+
+/** A peak far beyond full scale, +40 dBFS, which no recording or mix reaches but an unstable filter or a wrong gain does. */
+const FAR_BEYOND_FULL_SCALE = 100
 
 /** How the kinds read in text, one and many. */
 const KIND_NAMES: Readonly<Record<AudioCategory, readonly [string, string]>> = {
@@ -270,9 +274,20 @@ export function describeReview(facts: ReviewFacts): string {
   const stereo = stereoLine(m)
   if (stereo !== undefined) lines.push(stereo)
   m.channelLevels.forEach((level, index) => {
-    const subject = m.channelLevels.length === 1 ? 'samples' : `samples of ${m.channelLevels.length === 2 ? (index === 0 ? 'the left channel' : 'the right channel') : `channel ${String(index + 1)}`}`
-    if (level.clipped > 0) lines.push(`Warning: ${String(level.clipped)} ${subject} reach full scale and clip; lower the level and export it again.`)
-    if (Math.abs(level.dcOffset) >= 0.01) lines.push(`Warning: the ${subject} have a DC offset of ${level.dcOffset.toFixed(3)}, which thumps when the sound starts and stops; filter it out with a high-pass.`)
+    const channel = m.channelLevels.length === 1 ? undefined : m.channelLevels.length === 2 ? (index === 0 ? 'the left channel' : 'the right channel') : `channel ${String(index + 1)}`
+    const of = channel === undefined ? '' : ` of ${channel}`
+    const counted = (count: number): string => `${String(count)} sample${count === 1 ? '' : 's'}${of}`
+    if (level.nonFinite > 0) {
+      const one = level.nonFinite === 1
+      lines.push(`Warning: ${counted(level.nonFinite)} ${one ? 'is' : 'are'} NaN or infinite, which no player can play; the figures count ${one ? 'it' : 'them'} as silence. Fix what made ${one ? 'it' : 'them'}, such as an unstable filter, and export the sound again.`)
+    }
+    // A peak this far beyond full scale comes from a fault that lowering the level does not fix.
+    if (level.peak >= FAR_BEYOND_FULL_SCALE) {
+      lines.push(`Warning: ${channel ?? 'the sound'} peaks at ${dbfs(level.peak)}, far beyond full scale, as an unstable filter or a wrong gain makes; find the cause and export the sound again.`)
+    } else if (level.clipped > 0) {
+      lines.push(`Warning: ${counted(level.clipped)} ${level.clipped === 1 ? 'reaches full scale and clips' : 'reach full scale and clip'}; lower the level and export it again.`)
+    }
+    if (Math.abs(level.dcOffset) >= 0.01) lines.push(`Warning: the samples${of} have a DC offset of ${level.dcOffset.toFixed(3)}, which thumps when the sound starts and stops; filter it out with a high-pass.`)
   })
   if (facts.probe?.loop !== undefined) {
     lines.push(`The file stores a loop from frame ${String(facts.probe.loop.start)} to frame ${String(facts.probe.loop.end)}.`)

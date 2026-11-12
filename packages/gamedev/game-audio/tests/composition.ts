@@ -191,7 +191,10 @@ export const JUMP: AudioMeasurements = {
   trailingSilence: 0.02,
   dominantFrequency: 440,
   spectralCentroid: 2310,
-  channelLevels: [{ peak: 1, rms: 0.2, dcOffset: 0.02, clipped: 12 }, { peak: 0.5, rms: 0.1, dcOffset: 0, clipped: 0 }],
+  channelLevels: [
+    { peak: 1, rms: 0.2, dcOffset: 0.02, clipped: 12, nonFinite: 0 },
+    { peak: 0.5, rms: 0.1, dcOffset: 0, clipped: 0, nonFinite: 0 },
+  ],
   seam: { jump: 0.42, step: 0.03, levelChange: -9.5 },
   stereo: { correlation: -0.6, balance: 6, identical: false },
 }

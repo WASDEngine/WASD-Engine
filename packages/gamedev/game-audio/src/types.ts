@@ -41,6 +41,8 @@ export interface AudioChannelMeasure {
   readonly dcOffset: number
   /** Samples that reach full scale. */
   readonly clipped: number
+  /** Samples that are NaN or infinite, which every other figure counts as silence. */
+  readonly nonFinite: number
 }
 
 /** What a window measured in a sound. */

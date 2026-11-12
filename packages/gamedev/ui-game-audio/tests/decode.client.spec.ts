@@ -71,6 +71,21 @@ describe('decodeSound and measureSound', () => {
     expect(String(failure)).toContain('The WAV file could not be decoded (Unable to decode audio data)')
   })
 
+  it('measures NaN, infinite, and far over full scale samples as finite figures that the audio tools accept', () => {
+    // A float render from a filter that blew up: a tone with a NaN, an infinite, and a huge sample.
+    const buffer = new FakeAudioBuffer({ length: 8000, numberOfChannels: 1, sampleRate: 8000 })
+    const plane = buffer.getChannelData(0)
+    for (let frame = 0; frame < 8000; frame++) plane[frame] = 0.5 * Math.sin(2 * Math.PI * 100 * frame / 8000)
+    plane[100] = Number.NaN
+    plane[200] = Number.POSITIVE_INFINITY
+    plane[300] = 2e6
+    const { measurements } = measureSound(buffer, 0, undefined, 300)
+    expect(measurements.channelLevels[0]).toMatchObject({ nonFinite: 2, peak: 2e6 })
+    // The answer crosses the Remote as JSON, which holds no NaN or infinity.
+    expect(JSON.parse(JSON.stringify(measurements))).toEqual(measurements)
+    expect(parseMeasureResult({ measurements }).measurements).toEqual(measurements)
+  })
+
   it('draws the picture as a PNG with its layout', async () => {
     const drawn: number[] = []
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({

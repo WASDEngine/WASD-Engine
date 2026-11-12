@@ -6,7 +6,7 @@
  * @module
  */
 
-import { magnitudeSpectrum, type AudioSamples } from './measure.ts'
+import { finiteSample, magnitudeSpectrum, type AudioSamples } from './measure.ts'
 
 /** An 8-bit RGB image: `width * height` pixels of 3 bytes each, rows from top to bottom. */
 export interface RgbImage {
@@ -102,11 +102,11 @@ function heat(level: number): Color {
   return [mix(low[0], high[0]), mix(low[1], high[1]), mix(low[2], high[2])]
 }
 
-/** Sample value of a waveform panel: one channel, or the mean of all channels. */
+/** Sample value of a waveform panel: one channel, or the mean of all channels; a NaN or infinite sample counts as 0. */
 function sampleAt(audio: AudioSamples, frame: number, channel: number | undefined): number {
-  if (channel !== undefined) return audio.samples[frame * audio.channels + channel] ?? 0
+  if (channel !== undefined) return finiteSample(audio.samples[frame * audio.channels + channel])
   let mix = 0
-  for (let index = 0; index < audio.channels; index++) mix += audio.samples[frame * audio.channels + index] ?? 0
+  for (let index = 0; index < audio.channels; index++) mix += finiteSample(audio.samples[frame * audio.channels + index])
   return mix / audio.channels
 }
 

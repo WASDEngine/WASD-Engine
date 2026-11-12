@@ -196,7 +196,9 @@ export function measureSound(buffer: AudioBuffer, start: number, end: number | u
     trailingSilence: analysis.trailingSilence,
     ...analysis.dominantFrequency === undefined ? {} : { dominantFrequency: analysis.dominantFrequency },
     ...analysis.spectralCentroid === undefined ? {} : { spectralCentroid: analysis.spectralCentroid },
-    channelLevels: analysis.channels.map(level => ({ peak: level.peak, rms: level.rms, dcOffset: level.dcOffset, clipped: level.clipped })),
+    channelLevels: analysis.channels.map(level => ({
+      peak: level.peak, rms: level.rms, dcOffset: level.dcOffset, clipped: level.clipped, nonFinite: level.nonFinite,
+    })),
     ...seam === undefined ? {} : {
       seam: { jump: seam.jump, step: seam.step, ...seam.levelChange === undefined ? {} : { levelChange: seam.levelChange } },
     },

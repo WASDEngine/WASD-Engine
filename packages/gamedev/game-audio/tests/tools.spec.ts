@@ -133,7 +133,7 @@ describe('audio_review', () => {
     const c = await composed({ maxReviewSeconds: 60 })
     const silent = {
       ...JUMP, channels: 1, peak: 0, rms: 0, leadingSilence: 0.4, trailingSilence: 0.4,
-      channelLevels: [{ peak: 0, rms: 0, dcOffset: 0, clipped: 0 }],
+      channelLevels: [{ peak: 0, rms: 0, dcOffset: 0, clipped: 0, nonFinite: 0 }],
     }
     const { loudness: _loudness, dominantFrequency: _dominant, spectralCentroid: _centroid, seam: _seam, stereo: _stereo, ...plain } =
       silent
@@ -161,6 +161,26 @@ describe('audio_review', () => {
     expect(text_).toContain('Loop seam: the end meets the start with a step of 0.420 of full scale')
     expect(text_).not.toContain('The last 50 ms are')
     expect(text_).not.toContain('Warning: Godot loops this sound')
+  })
+
+  it('warns of samples that are NaN, infinite, or far beyond full scale, which a window measures as finite figures', async () => {
+    const c = await composed()
+    // A float render from a filter that blew up: two NaN samples and one far over full scale on the left, one clipped
+    // sample on the right.
+    const left = { peak: 2e6, rms: 900, dcOffset: 250, clipped: 40, nonFinite: 2 }
+    const right = { peak: 1.5, rms: 0.1, dcOffset: 0, clipped: 1, nonFinite: 1 }
+    c.openWindow({ measurements: { ...JUMP, peak: 2e6, rms: 640, channelLevels: [left, right] } })
+    const result = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })
+    expect(result.isError, text(result)).toBeFalsy()
+    const lines = text(result).split('\n')
+    expect(lines).toContain('Levels: peak 126.0 dBFS (left 126.0 dBFS peak, right 3.5 dBFS peak), RMS 56.1 dBFS, loudness -14.3 LUFS.')
+    expect(lines.filter(line => line.startsWith('Warning: ') && !line.includes('late') && !line.includes('Godot'))).toEqual([
+      'Warning: 2 samples of the left channel are NaN or infinite, which no player can play; the figures count them as silence. Fix what made them, such as an unstable filter, and export the sound again.',
+      'Warning: the left channel peaks at 126.0 dBFS, far beyond full scale, as an unstable filter or a wrong gain makes; find the cause and export the sound again.',
+      'Warning: the samples of the left channel have a DC offset of 250.000, which thumps when the sound starts and stops; filter it out with a high-pass.',
+      'Warning: 1 sample of the right channel is NaN or infinite, which no player can play; the figures count it as silence. Fix what made it, such as an unstable filter, and export the sound again.',
+      'Warning: 1 sample of the right channel reaches full scale and clips; lower the level and export it again.',
+    ])
   })
 
   it('names the sound\'s place in the project, its format, and its existence before asking a window', async () => {

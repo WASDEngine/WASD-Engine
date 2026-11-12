@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   analyzeAudio, fft, integratedLoudness, loopSeam, magnitudeSpectrum, seamClicks, SILENCE_THRESHOLD, stereoImage,
 } from '../src/audio/measure.ts'
+import { drawAudioImage } from '../src/audio/picture.ts'
 import { sine } from './signals.ts'
 
 describe('analyzeAudio', () => {
@@ -34,7 +35,8 @@ describe('analyzeAudio', () => {
     expect(silent).toMatchObject({ dominantFrequency: undefined, spectralCentroid: undefined })
     const empty = analyzeAudio({ sampleRate: 44_100, channels: 2, frames: 0, samples: new Float32Array(0) })
     expect(empty).toMatchObject({ seconds: 0, peak: 0, rms: 0, loudness: undefined })
-    expect(empty.channels).toEqual([{ peak: 0, rms: 0, dcOffset: 0, clipped: 0 }, { peak: 0, rms: 0, dcOffset: 0, clipped: 0 }])
+    const nothing = { peak: 0, rms: 0, dcOffset: 0, clipped: 0, nonFinite: 0 }
+    expect(empty.channels).toEqual([nothing, nothing])
   })
 
   it('measures the DC offset of a constant signal, which has no spectrum beside it', () => {
@@ -47,6 +49,39 @@ describe('analyzeAudio', () => {
         expect(dc.leadingSilence).toBe(0)
       }
     }
+  })
+
+  it('counts NaN and infinite samples as silence, so every figure stays finite', () => {
+    const audio = sine({ frequency: 440, amplitude: 0.5, seconds: 1, sampleRate: 8000, channels: 2 })
+    // Left: NaN at frame 1000 and -infinity at frame 3000; right: +infinity at frame 2000.
+    audio.samples[2000] = Number.NaN
+    audio.samples[6000] = Number.NEGATIVE_INFINITY
+    audio.samples[4001] = Number.POSITIVE_INFINITY
+    const analysis = analyzeAudio(audio)
+    expect(analysis.channels.map(level => level.nonFinite)).toEqual([2, 1])
+    expect(analysis.peak).toBeCloseTo(0.5, 3)
+    expect(analysis.dominantFrequency).toBeCloseTo(440, -1)
+    const seam = loopSeam(audio)
+    const stereo = stereoImage(audio)
+    const figures = [
+      analysis.rms, analysis.loudness, analysis.spectralCentroid,
+      ...analysis.channels.flatMap(level => [level.peak, level.rms, level.dcOffset]),
+      seam?.jump, seam?.step, seam?.levelChange, stereo?.correlation, stereo?.balance,
+    ]
+    for (const figure of figures) expect(Number.isFinite(figure), String(figure)).toBe(true)
+    expect(drawAudioImage(audio).image.pixels.every(value => Number.isInteger(value))).toBe(true)
+  })
+
+  it('measures samples far beyond full scale, up to the largest 32-bit float, as finite figures', () => {
+    const audio = sine({ frequency: 440, amplitude: 0.5, seconds: 1, sampleRate: 8000 })
+    audio.samples[1000] = 2e6
+    audio.samples[3000] = -3.4028234663852886e38
+    const analysis = analyzeAudio(audio)
+    expect(analysis.peak).toBe(3.4028234663852886e38)
+    expect(analysis.channels[0]?.clipped).toBe(2)
+    expect(analysis.channels[0]?.nonFinite).toBe(0)
+    const figures = [analysis.rms, analysis.loudness, analysis.dominantFrequency, analysis.spectralCentroid, analysis.channels[0]?.dcOffset]
+    for (const figure of figures) expect(Number.isFinite(figure), String(figure)).toBe(true)
   })
 
   it('names the pitch of a sine on a DC offset, also where the offset outweighs a quiet, low sine', () => {
