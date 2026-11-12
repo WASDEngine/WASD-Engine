@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Poursuite des tâches",
+    "description": "Fait continuer l'agent tant que la liste de tâches qu'il a créée pour une demande contient des éléments inachevés, au lieu de s'arrêter en cours de route."
+  }
+}

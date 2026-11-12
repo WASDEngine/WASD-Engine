@@ -4397,6 +4397,26 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tmux-context -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-todo-continuation -->
+<a id="deepseek-aidsh-todo-continuation"></a>
+
+## `@deepseek-ai/dsh-todo-continuation`
+
+- `source`: [`packages/gamedev/todo-continuation/src/index.ts:29`](../packages/gamedev/todo-continuation/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /**
+   * Most reminders one turn receives. A reminder needs a different
+   * unfinished list from every earlier one in the turn, so the cap stops
+   * a model that keeps rewriting its list without finishing it.
+   */
+  maxRemindersPerTurn: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-todo-continuation -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-token-meter -->
 <a id="deepseek-aidsh-token-meter"></a>
 

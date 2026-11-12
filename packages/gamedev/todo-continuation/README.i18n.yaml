@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/todo-continuation/README.md
+/:
+  en: fe9d387115cd81a9
+  zh: 3cc492dcb85abc56
+/deepseek-ai-dsh-todo-continuation:
+  en: 4623f4bf12d98ae9
+  zh: 194c9c7d9104fbce
+/deepseek-ai-dsh-todo-continuation/summary:
+  en: 48b270a33e2a2536
+  zh: 774fd2aec4a1c4d9
+/deepseek-ai-dsh-todo-continuation/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-todo-continuation/use-this-package:
+  en: 7260c91f56fc0fc9
+  zh: f55f28f151897d75
+/deepseek-ai-dsh-todo-continuation/use-this-package/when-to-choose-it:
+  en: 037ad43d0d70a812
+  zh: bdb9a67d0f828fd3
+/deepseek-ai-dsh-todo-continuation/use-this-package/configure-it:
+  en: 8eef782ec8cf2e51
+  zh: f8d19ff3b6f4ecf4
+/deepseek-ai-dsh-todo-continuation/use-this-package/what-happens-at-the-end-of-a-turn:
+  en: d099b1d67764b4d4
+  zh: 920e882cba208ebf
+/deepseek-ai-dsh-todo-continuation/understand-the-implementation:
+  en: 1132e6765eca6fa1
+  zh: 1590dcc4aa8dad2e
+/deepseek-ai-dsh-todo-continuation/understand-the-implementation/design:
+  en: 42fd59a1216af03f
+  zh: e0ffb3775f4ee6ca
+/deepseek-ai-dsh-todo-continuation/understand-the-implementation/source-map:
+  en: 2873af2ecbe5fe66
+  zh: 2c109ec5689b4611
+/deepseek-ai-dsh-todo-continuation/further-exploration:
+  en: 23a20a806b0bf3b0
+  zh: 5f71dafc6518ed28
+/deepseek-ai-dsh-todo-continuation/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-todo-continuation/model-experience/reminder-context-message:
+  en: ef098b05ebce91e2
+  zh: 82bd7fa1ffe9f263
+/deepseek-ai-dsh-todo-continuation/model-experience/reminder-context-message/what-the-model-sees:
+  en: f71760cca533ebd2
+  zh: 59dc0cecd42edd34
+/deepseek-ai-dsh-todo-continuation/model-experience/reminder-context-message/what-the-model-sees/reminder:
+  en: a121c054d284acdc
+  zh: 85611a7f243e9409
+/deepseek-ai-dsh-todo-continuation/model-experience/reminder-context-message/token-effect:
+  en: 9bfd50d58e757209
+  zh: 70860772fb4cb701
+/deepseek-ai-dsh-todo-continuation/model-experience/reminder-context-message/kv-cache-effect:
+  en: f5d5f97a153f7c70
+  zh: 025acde33563cfa5
+/deepseek-ai-dsh-todo-continuation/known-limitations-and-deferred-work:
+  en: b3c3ac688b4eb31f
+  zh: 0d79cfc4cd9b532a
+/deepseek-ai-dsh-todo-continuation/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98
