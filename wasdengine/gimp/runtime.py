@@ -72,9 +72,12 @@ KEEP_TEXT = (
 # Programs of GIMP's macOS bundle that the tools never run: the debug dialog, a clipboard test, and the plug-in
 # build helper. The bundle's own executable, the GUI program, goes too.
 UNUSED_PROGRAMS = ("gimp-debug-tool*", "gimp-test-clipboard*", "gimptool*")
+# GIMP's demo extension, plug-in examples in C, Vala, and Python that each open a dialog. On Windows its Vala plug-in reads
+# its own path from the ANSI command line, so in a folder outside ASCII it reports that its translation catalog is missing.
+DEMO_EXTENSION = "lib/gimp/3.0/extensions/org.gimp.extension.goat-exercises"
 # Paths relative to the bundle's Contents that the runtime leaves out: bundle metadata and signatures, headers,
-# translations, and the GUI icons and themes' icon files.
-UNUSED_PATHS = ("Info.plist", "CodeResources", "_CodeSignature", "include", "Resources/icons", "Resources/locale")
+# translations, the GUI icons and themes' icon files, and the demo extension.
+UNUSED_PATHS = ("Info.plist", "CodeResources", "_CodeSignature", "include", "Resources/icons", "Resources/locale", DEMO_EXTENSION)
 UNUSED_RESOURCE_FILES = ("*.icns", "Assets.car")
 # Python standard library folders that GIMP's Python never imports: the test suite, the IDE, Tk, turtle demos, and pip's installer.
 UNUSED_STDLIB = ("test", "idlelib", "tkinter", "turtledemo", "ensurepip")
@@ -96,9 +99,9 @@ SETUP_COMPONENTS = ("gimpX64", "depsX64", "pyX64", "gsX64", "mypaint")
 SETUP_SWITCHES = ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NOCANCEL", "/CURRENTUSER", "/NOICONS", "/TASKS=")
 SETUP_TIMEOUT_SECONDS = 1800
 # Paths of a Windows install, relative to its folder, that the runtime leaves out: the uninstaller, headers and import
-# libraries, the 32-bit TWAIN helper, the hicolor icon theme of the desktop, and the scanner plug-in, which only opens
-# the scanner's own dialog.
-WINDOWS_UNUSED_PATHS = ("uninst", "include", "lib/pkgconfig", "32", "share/icons", "lib/gimp/3.0/plug-ins/twain")
+# libraries, the 32-bit TWAIN helper, the hicolor icon theme of the desktop, the scanner plug-in, which only opens
+# the scanner's own dialog, and the demo extension.
+WINDOWS_UNUSED_PATHS = ("uninst", "include", "lib/pkgconfig", "32", "share/icons", "lib/gimp/3.0/plug-ins/twain", DEMO_EXTENSION)
 # Files of a Windows install that the runtime leaves out wherever they are: debug symbols and static libraries.
 WINDOWS_UNUSED_FILES = ("*.pdb", "*.a")
 # The folder of GIMP's interpreter files, whose programs the installer names by its own absolute folder.
@@ -121,7 +124,7 @@ WINDOWS_SYSTEM_LIBRARIES = frozenset(name.lower() for name in (
     "propsys.dll", "psapi.dll", "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shcore.dll", "shell32.dll", "shlwapi.dll",
     "ucrtbase.dll", "urlmon.dll", "user32.dll", "userenv.dll", "usp10.dll", "uxtheme.dll", "version.dll", "winhttp.dll",
     "wininet.dll", "winmm.dll", "winspool.drv", "wintrust.dll", "wldap32.dll", "ws2_32.dll", "wsock32.dll", "wtsapi32.dll",
-    "windowscodecs.dll",
+    "windowscodecs.dll", "xmllite.dll",
 ))
 
 Record = Dict[str, Any]
@@ -446,9 +449,9 @@ def prepare(contents: str) -> str:
     The layout keeps GIMP's MacOS, lib, and etc folders; Resources moves to share, the folder GIMP and its
     libraries read through the bundle's share link, and an empty Resources folder stays, because GIMP sets up its
     bundled libraries only when that folder exists. The runtime drops debug symbols, the GUI program and the other
-    unused programs, headers, translations, GUI icons, bundle metadata and signatures, Python's test suite and
-    other unused standard library folders, and the build tools in site-packages. Every empty folder outside
-    __pycache__ gets KEEP_FILE.
+    unused programs, headers, translations, GUI icons, bundle metadata and signatures, the demo extension, Python's
+    test suite and other unused standard library folders, and the build tools in site-packages. Every empty folder
+    outside __pycache__ gets KEEP_FILE.
 
     @param contents: copy of a GIMP 3 application bundle's Contents folder.
     @returns: the GIMP version from Info.plist, such as 3.2.8.
@@ -905,9 +908,9 @@ def prepare_windows(stage: str, installed: str) -> str:
 
     The layout keeps the install's bin, lib, share, and etc folders. The runtime drops the uninstaller, debug symbols,
     the GUI program and the other unused programs, headers and import libraries, translations, the desktop icon theme,
-    the scanner plug-in, Python's test suite and other unused standard library folders, and build tools in
-    site-packages; it names the programs of the interpreter files by file name, keeps an empty share/locale with
-    KEEP_FILE, and gives every other empty folder KEEP_FILE.
+    the scanner plug-in, the demo extension, Python's test suite and other unused standard library folders, and build
+    tools in site-packages; it names the programs of the interpreter files by file name, keeps an empty share/locale
+    with KEEP_FILE, and gives every other empty folder KEEP_FILE.
 
     @param stage: the install folder.
     @param installed: the absolute folder the installer installed into, which no file may name afterwards.

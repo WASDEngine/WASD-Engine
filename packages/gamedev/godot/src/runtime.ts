@@ -15,7 +15,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { constants, createWriteStream } from 'node:fs'
 import { access, chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
@@ -468,7 +468,10 @@ export class GodotRuntimeManager {
 }
 
 /**
- * Build the runtime host of a Host process: `tar` extraction through the subprocess service.
+ * Build the runtime host of a Host process: `tar` extraction through the subprocess service. `tar` runs in the
+ * destination and names the archive by its `/`-separated path relative to it, because Windows' `tar.exe` reads its
+ * arguments in the ANSI code page, which cannot hold every character of a user's profile folder; the managed install
+ * downloads the archive beside the destination, so that path is `../<archive name>`.
  * @param subprocess - Host subprocess service.
  * @param options - collected output cap and termination grace for `tar`.
  * @returns the runtime host.
@@ -484,7 +487,7 @@ export function createRuntimeHost(
     async extract(archive, destination, signal) {
       const tar = await subprocess.resolveExecutable('tar', undefined, signal)
       const handle = subprocess.spawn({
-        argv: [tar, '-xzf', archive, '-C', destination],
+        argv: [tar, '-xzf', relative(destination, archive).split(sep).join('/')],
         cwd: destination,
         stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
         graceMs: options.graceMs,

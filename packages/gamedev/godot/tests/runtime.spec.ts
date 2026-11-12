@@ -4,8 +4,9 @@ import { once } from 'node:events'
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import type { SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE,
@@ -312,6 +313,26 @@ posix('managed install', () => {
     const manager = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl }), { ...real, platform: 'win32', arch: 'x64' }, () => {})
     expect(await manager.install(signal)).toMatchObject({ state: 'ready', kind: 'libgodot' })
     expect((await stat(join(manager.managedDirectory(), 'godot_runner'))).mode & 0o111).toBe(0)
+  })
+
+  it('runs tar in the staging folder with no folder of the data root among its arguments', async () => {
+    const { manifestUrl } = await release()
+    host = await subprocessFixture()
+    const spawned: SubprocessSpawnSpec[] = []
+    const recording = new Proxy(host.subprocess, {
+      get(target, key) {
+        if (key === 'spawn') return (spec: SubprocessSpawnSpec) => { spawned.push(spec); return target.spawn(spec) }
+        if (key === 'resolveExecutable') return target.resolveExecutable.bind(target)
+        throw new Error(`the runtime host used the subprocess member ${String(key)}`)
+      },
+    })
+    const dataRoot = join(root, 'data ü 游戏')
+    const real = createRuntimeHost(recording, { outputBytes: 4096, graceMs: 1000 })
+    const manager = new GodotRuntimeManager(settings({ dataRoot, runtimeManifestUrl: manifestUrl }), { ...real, platform: 'linux', arch: 'x64' }, () => {})
+    expect(await manager.install(signal)).toMatchObject({ state: 'ready', kind: 'libgodot' })
+    expect(spawned.map(spec => [spec.argv.slice(1), relative(join(dataRoot, 'runtime'), spec.cwd)])).toEqual([[
+      ['-xzf', expect.stringMatching(/^\.\.\/\.download-[0-9a-f-]{36}\.tar\.gz$/u)], expect.stringMatching(/^\.staging-[0-9a-f-]{36}$/u),
+    ]])
   })
 
   it('publishes nothing when another Host completed the runtime first', async () => {

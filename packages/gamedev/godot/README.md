@@ -116,7 +116,7 @@ The managed runtime is Godot 4.7.2 built as LibGodot with the WASD Engine patche
 1. downloads `runtimeManifestUrl` and requires its `version` to equal `runtimeVersion`;
 2. picks the artifact for the Host's `<platform>-<arch>` key, such as `darwin-arm64`;
 3. downloads the archive from the artifact's `url`, resolved against the manifest URL, and checks its size and SHA-256 while it arrives;
-4. extracts the archive with `tar` into a staging folder, checks that the runner and the library are there, and writes `runtime.json`;
+4. extracts the archive with `tar` into a staging folder, running `tar` in that folder with `../<archive name>` as its only path, because Windows' `tar.exe` reads its arguments in the ANSI code page, which cannot hold every character of a user's profile folder; checks that the runner and the library are there; and writes `runtime.json`;
 5. renames the staging folder to `<dataRoot>/runtime/<runtimeVersion>/` under a file lock; when another Host process installed the runtime meanwhile, it keeps that one.
 
 While the install runs, every Game tab shows Downloading Godot with a percentage, then Verifying Godot and Unpacking Godot. A second request joins the running install; closing the tab stops only its wait, and unloading the plugin cancels the install. The download and staging files are removed after success and failure alike, and a failure shows its cause: an unreachable manifest or its HTTP status, an invalid manifest or one for another version, no build for the platform, a download error, a size or SHA-256 mismatch, or an archive without the runtime files. `wasdengine/libgodot/build.sh --install <dataRoot>` installs a local build in the same place.

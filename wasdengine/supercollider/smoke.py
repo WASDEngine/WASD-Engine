@@ -24,6 +24,7 @@ Usage: smoke.py --runtime <dir> --work <dir>
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import os
 import shutil
@@ -236,6 +237,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     @param argv: arguments without the program name; None reads sys.argv.
     @returns: process exit status.
     """
+    # A Windows console writes in its code page, which cannot hold every character of a runtime's output or paths.
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="smoke.py", description=__doc__.splitlines()[0])
     parser.add_argument("--runtime", required=True, help="runtime directory")
     parser.add_argument("--work", required=True, help="work directory, emptied first and removed after a passing test")

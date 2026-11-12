@@ -21,9 +21,9 @@ when it leads its own process group, which the server gives it on POSIX, it
 kills the group with SIGKILL, so processes that executed code started end
 with it; otherwise it exits with ``os._exit``.
 
-The same file runs under the ``bpy`` module (``python -I -u <file>``) and
-inside Blender (``blender --background --python <file>``). It uses only the
-standard library and Blender's bundled modules.
+The same file runs under the ``bpy`` module (``python -I -X utf8 -u <file>``)
+and inside Blender (``blender --background --python <file>``). It uses only
+the standard library and Blender's bundled modules.
 """
 
 import builtins

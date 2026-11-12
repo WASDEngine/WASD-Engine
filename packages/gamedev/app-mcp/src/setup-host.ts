@@ -8,7 +8,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { access, constants, mkdir, readdir, stat } from 'node:fs/promises'
+import { access, constants, mkdir, open, readdir, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 
 /** An absolute executable followed by its arguments. */
@@ -21,6 +21,8 @@ export interface CommandOptions {
   readonly env: NodeJS.ProcessEnv
   /** Aborting kills the command and rejects with the abort reason. */
   readonly signal: AbortSignal
+  /** A file that the command reads as its standard input; without one, its standard input is empty. */
+  readonly stdinFile?: string
 }
 
 /** Completion of a setup command that {@link runCommand} ran. */
@@ -34,24 +36,33 @@ export interface CommandResult {
 /**
  * Run a setup command to completion without a shell or a window, and keep the tail of its interleaved output.
  * @param argv - executable and arguments.
- * @param options - working directory, environment, and cancellation.
+ * @param options - working directory, environment, cancellation, and standard input.
  * @param outputLimit - bytes of output kept from the end.
- * @returns exit status and output tail; rejects when the command cannot start or is aborted.
+ * @returns exit status and output tail; rejects when the command cannot start, its standard input file cannot be opened,
+ *   or it is aborted.
  */
-export function runCommand(argv: CommandArgv, options: CommandOptions, outputLimit: number): Promise<CommandResult> {
+export async function runCommand(argv: CommandArgv, options: CommandOptions, outputLimit: number): Promise<CommandResult> {
   const [command, ...args] = argv
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: options.cwd, env: options.env, signal: options.signal, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-    let output = Buffer.alloc(0)
-    const collect = (chunk: Buffer): void => {
-      output = Buffer.concat([output, chunk])
-      if (output.length > outputLimit) output = output.subarray(output.length - outputLimit)
-    }
-    child.stdout.on('data', collect)
-    child.stderr.on('data', collect)
-    child.once('error', reject)
-    child.once('close', (exitCode, signal) => { resolve({ exitCode, signal, output: output.toString('utf8') }) })
-  })
+  const input = options.stdinFile === undefined ? undefined : await open(options.stdinFile, 'r')
+  try {
+    return await new Promise((resolve, reject) => {
+      const child = spawn(command, args, {
+        cwd: options.cwd, env: options.env, signal: options.signal, stdio: [input?.fd ?? 'ignore', 'pipe', 'pipe'], windowsHide: true,
+      })
+      let output = Buffer.alloc(0)
+      const collect = (chunk: Buffer): void => {
+        output = Buffer.concat([output, chunk])
+        if (output.length > outputLimit) output = output.subarray(output.length - outputLimit)
+      }
+      // A file descriptor as standard input leaves Node's types without the output pipes that 'pipe' always creates.
+      child.stdout?.on('data', collect)
+      child.stderr?.on('data', collect)
+      child.once('error', reject)
+      child.once('close', (exitCode, signal) => { resolve({ exitCode, signal, output: output.toString('utf8') }) })
+    })
+  } finally {
+    await input?.close()
+  }
 }
 
 /** File-system effects and facts of the machine that runs the server. */

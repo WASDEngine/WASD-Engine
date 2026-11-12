@@ -373,7 +373,9 @@ export async function unpackPackedRuntime<R extends { readonly version: string }
   const partial = `${directory}.partial-${randomUUID().slice(0, 8)}`
   await host.makeDirectory(partial)
   try {
-    const result = await host.run([tar, '-xzf', packed.archive, '-C', partial], { cwd: dataRoot, env: host.env, signal })
+    // Windows' tar reads its arguments in the ANSI code page, which cannot hold every character of a profile folder, so
+    // tar gets no path: it unpacks the archive from its standard input into its working folder.
+    const result = await host.run([tar, '-xzf', '-'], { cwd: partial, env: host.env, signal, stdinFile: packed.archive })
     if (result.exitCode !== 0) {
       const ended = result.exitCode === null ? `signal ${String(result.signal)}` : `exit code ${String(result.exitCode)}`
       throw failures.invalid(packed.directory, `tar could not unpack ${packed.archive} (${ended}): ${result.output.trim()}`)

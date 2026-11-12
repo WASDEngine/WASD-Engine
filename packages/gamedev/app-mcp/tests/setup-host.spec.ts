@@ -56,6 +56,17 @@ describe('runCommand', () => {
     await expect(runCommand([join(root, 'no-such-command')], options, 64)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
+  it('gives a command a file as its standard input, and empty standard input without one', async () => {
+    const root = await temporaryDirectory('dsh-app-mcp-command-')
+    const options = { cwd: root, env: process.env, signal: new AbortController().signal }
+    const input = join(root, 'input ü 游戏.bin')
+    await writeFile(input, Buffer.from([0, 1, 2, 0xfe, 0xff]))
+    const hex = 'let n = 0; process.stdin.on("data", c => { n += c.length; process.stdout.write(c.toString("hex")) }).on("end", () => process.stdout.write(`:${n}`))'
+    await expect(runCommand([process.execPath, '-e', hex], { ...options, stdinFile: input }, 64)).resolves.toEqual({ exitCode: 0, signal: null, output: '000102feff:5' })
+    await expect(runCommand([process.execPath, '-e', hex], options, 64)).resolves.toEqual({ exitCode: 0, signal: null, output: ':0' })
+    await expect(runCommand([process.execPath, '-e', ''], { ...options, stdinFile: join(root, 'missing') }, 64)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('kills a command when its signal aborts', async () => {
     const root = await temporaryDirectory('dsh-app-mcp-command-')
     const controller = new AbortController()

@@ -317,6 +317,13 @@ export interface WorkerLaunch {
   readonly notes: readonly string[]
 }
 
+/**
+ * Interpreter options of every bpy backend: isolated mode, and the UTF-8 mode that Blender also sets for its own Python.
+ * Without UTF-8 mode, Python on Windows writes its output in the ANSI code page and fails on text outside it, such as a
+ * path below a user profile with a non-ASCII name, which Blender's glTF exporter prints.
+ */
+const BPY_PYTHON_OPTIONS = ['-I', '-X', 'utf8'] as const
+
 const SETUP_HELP = 'Install uv (https://docs.astral.sh/uv/getting-started/installation/) so the Blender tools can install the bpy module, '
   + 'or install Blender (https://www.blender.org/download/); then call the tool again. '
   + 'The Blender plugin settings uvPath and blenderPath select specific executables.'
@@ -336,9 +343,9 @@ function appLaunch(blender: string, workerScript: string, env: NodeJS.ProcessEnv
  * Choose the backend and build the worker command line. `auto` and `bpy` prefer the bpy runtime that the Desktop app
  * ships when its bpy version is `bpyVersion`, unpacking it under `dataRoot` first when the app ships its archive, then
  * the bpy module in the environment that uv manages; `auto` falls back to an installed Blender when uv is missing or
- * the archive or the bpy environment cannot be prepared. The runtime inside the app runs with `-B`, because it lives
- * inside the signed application and writes no bytecode caches there; an unpacked runtime and uv's environment, under
- * `dataRoot`, keep them.
+ * the archive or the bpy environment cannot be prepared. Every bpy launch runs Python with {@link BPY_PYTHON_OPTIONS}.
+ * The runtime inside the app runs with `-B`, because it lives inside the signed application and writes no bytecode
+ * caches there; an unpacked runtime and uv's environment, under `dataRoot`, keep them.
  * @param options - backend selection, executable overrides, and versions.
  * @param workerScript - real path of `wasd_blender_worker.py`.
  * @param bundledRoot - the package's `runtime` folder, from `shippedRuntimeRoot`.
@@ -357,7 +364,7 @@ export async function resolveWorkerLaunch(
     const shipped = await findShippedBpy(bundledRoot, host)
     if (shipped !== undefined && shipped.bpy === options.bpyVersion) {
       return {
-        backend: 'bpy', shipped: true, argv: [shipped.python, '-I', '-B', '-u', workerScript], env, notes: [],
+        backend: 'bpy', shipped: true, argv: [shipped.python, ...BPY_PYTHON_OPTIONS, '-B', '-u', workerScript], env, notes: [],
         repair: `If the bpy runtime that WASD Engine ships in ${shipped.directory} is damaged, reinstall WASD Engine.`,
       }
     }
@@ -366,7 +373,7 @@ export async function resolveWorkerLaunch(
       try {
         const runtime = await unpackShippedBpy(packed, options.dataRoot, host, signal)
         return {
-          backend: 'bpy', shipped: true, argv: [runtime.python, '-I', '-u', workerScript], env,
+          backend: 'bpy', shipped: true, argv: [runtime.python, ...BPY_PYTHON_OPTIONS, '-u', workerScript], env,
           notes: runtime.unpacked ? [`Unpacked the bpy runtime that WASD Engine ships into ${runtime.directory} (first use).`] : [],
           repair: `If the bpy runtime that WASD Engine unpacked into ${runtime.directory} is damaged, delete that folder so that the next start unpacks it again.`,
         }
@@ -384,7 +391,7 @@ export async function resolveWorkerLaunch(
         const environment = bpyEnvironment(options, host.platform).directory
         const notes = installed ? [`Installed Python ${options.pythonVersion} and bpy ${options.bpyVersion} into ${environment} (first use).`] : []
         return {
-          backend: 'bpy', shipped: false, argv: [python, '-I', '-u', workerScript], env, notes,
+          backend: 'bpy', shipped: false, argv: [python, ...BPY_PYTHON_OPTIONS, '-u', workerScript], env, notes,
           repair: `If the bpy environment at ${environment} is damaged, delete that folder so that the next start installs it again.`,
         }
       } catch (error) {

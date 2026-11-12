@@ -195,7 +195,7 @@ class FakeUnpackHost implements RuntimeUnpackHost {
   async remove(target: string): Promise<void> { this.removed.push(target) }
   async run(argv: CommandArgv, options: CommandOptions): Promise<CommandResult> {
     this.commands.push({ argv, options })
-    return this.unpack(argv.at(-1)!)
+    return this.unpack(options.cwd)
   }
 }
 
@@ -213,10 +213,10 @@ describe('unpackPackedRuntime', () => {
     expect(runtime).toMatchObject({ directory: UNPACKED, unpacked: true })
     expect(runtime.resolve(PACKED_RUNTIME.program)).toBe(PROGRAM)
     const [command] = host.commands
-    const partial = command!.argv[4]!
+    const partial = command!.options.cwd
     expect(partial).toMatch(/^C:\\Users\\dev\\\.wasdengine\\gimp\\runtime\\3\.2\.8-wasd\.1\.partial-[0-9a-f]{8}$/u)
-    expect(command!.argv).toEqual([TAR, '-xzf', PACKED.archive, '-C', partial])
-    expect(command!.options).toEqual({ cwd: DATA, env: host.env, signal })
+    expect(command!.argv).toEqual([TAR, '-xzf', '-'])
+    expect(command!.options).toEqual({ cwd: partial, env: host.env, signal, stdinFile: PACKED.archive })
     expect(host.made).toEqual([`${DATA}\\runtime`, partial])
     expect(host.renamed).toEqual([[partial, UNPACKED]])
     expect(host.removed).toEqual([partial])
@@ -256,7 +256,7 @@ describe('unpackPackedRuntime', () => {
       host = make()
       await expect(unpackPackedRuntime(PACKED, PACKED_RUNTIME.program, DATA, host, signal, FAILURES)).rejects.toThrow(message)
       expect(host.renamed).toEqual([])
-      expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.argv[4]])
+      expect(host.removed).toEqual(host.commands.length === 0 ? [] : [host.commands[0]!.options.cwd])
     }
   })
 

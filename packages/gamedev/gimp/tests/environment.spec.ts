@@ -273,7 +273,7 @@ const WIN_ENVIRONMENT = {
 }
 const WIN_REPAIR = `If the GIMP runtime that WASD Engine unpacked into ${WIN_UNPACKED} is damaged, delete that folder so that the next start unpacks it again.`
 
-/** A Windows host whose package ships the GIMP runtime's archive; its tar unpacks runtime.json and the console into the -C folder. */
+/** A Windows host whose package ships the GIMP runtime's archive; its tar unpacks runtime.json and the console into its working folder. */
 function packedHost(options: Pick<FakeHostOptions, 'rename' | 'run'> & { readonly archive?: boolean } = {}): FakeHost {
   const host: FakeHost = new FakeHost({
     platform: 'win32', arch: 'x64', env: { SystemRoot: 'C:\\Windows', Path: 'C:\\Windows\\System32' },
@@ -285,8 +285,7 @@ function packedHost(options: Pick<FakeHostOptions, 'rename' | 'run'> & { readonl
       }),
     },
     rename: options.rename,
-    run: options.run ?? ((argv) => {
-      const destination = argv.at(-1)!
+    run: options.run ?? ((_argv, { cwd: destination }) => {
       host.files.set(`${destination}\\runtime.json`, JSON.stringify({ ...WIN_RUNTIME, sha256: {} }))
       host.executables.add(`${destination}\\bin\\gimp-console-3.2.exe`)
       return { exitCode: 0, signal: null, output: '' }
@@ -302,7 +301,7 @@ describe('the packed runtime', () => {
       console: WIN_CONSOLE, shipped: true, environment: WIN_ENVIRONMENT, repair: WIN_REPAIR,
       notes: [`Unpacked the GIMP runtime that WASD Engine ships into ${WIN_UNPACKED} (first use).`],
     })
-    expect(host.commands.map(command => command.argv.slice(0, 3))).toEqual([[WIN_TAR, '-xzf', WIN_ARCHIVE]])
+    expect(host.commands.map(command => [command.argv, command.options.stdinFile])).toEqual([[[WIN_TAR, '-xzf', '-'], WIN_ARCHIVE]])
     await expect(findGimp(WIN_OPTIONS, WIN_RUNTIMES, host, signal)).resolves.toMatchObject({ console: WIN_CONSOLE, notes: [] })
     expect(host.commands).toHaveLength(1)
   })
