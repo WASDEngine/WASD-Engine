@@ -24,10 +24,19 @@
       "path": "../../api/session-controller/tsconfig.client.json"
     },
     {
+      "path": "../../api/workspace-files/tsconfig.client.json"
+    },
+    {
       "path": "../../client/locale/tsconfig.client.json"
     },
     {
+      "path": "../../client/store"
+    },
+    {
       "path": "../../client/ui-conversation/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-model-selection"
     },
     {
       "path": "../../client/ui-primitives"
@@ -46,6 +55,9 @@
     },
     {
       "path": "../../core/session"
+    },
+    {
+      "path": "../../team/agent-team"
     },
     {
       "path": "../../typert/protocol"
