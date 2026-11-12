@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/user/guide/providers.md
 /configure-models:
-  en: b1631dcf25e805a1
-  zh: 8ded02e2ae87f00b
-/configure-models/configure-deepseek:
-  en: 44852da64a6a39ec
-  zh: 4c280e428f0fec08
+  en: 1fd0059473767248
+  zh: eae70d2726e15b85
+/configure-models/use-the-wasd-engine-service:
+  en: f18922c870d9a701
+  zh: 1c3c397baf22aaa1
 /configure-models/add-a-third-party-provider:
   en: ed03fba6cf4739af
   zh: b0fd9221047e1c89
@@ -24,17 +24,17 @@
   en: b882ec69a6899d8a
   zh: 66a1713aca0e6f1c
 /configure-models/advanced-configuration/image-input:
-  en: 75350cb615da03a4
-  zh: 6f8b3510085e4ac4
-/configure-models/advanced-configuration/deepseek-account-models:
-  en: a3bf9b6359a192be
-  zh: 603d0f82b78e8782
+  en: 41dd6c5b452757b0
+  zh: 4af0f64d573d9355
+/configure-models/advanced-configuration/wasd-engine-account-models:
+  en: 869bcc8609017e06
+  zh: fe14d7df35296423
 /configure-models/advanced-configuration/reasoning-effort:
-  en: f2ffb493997dcc72
-  zh: dee9238f072e53ad
+  en: 9ff2e4ae5353e47d
+  zh: 2d84dc2ef70fb7c2
 /configure-models/advanced-configuration/request-compatibility:
   en: 6f52195d1502783e
   zh: 34dbbeacb541afd4
 /configure-models/troubleshooting:
-  en: af9f866bec7701f0
-  zh: 0e4f5e1da975be41
+  en: dbfaab4c73e1246b
+  zh: d479c4369169c4b2
