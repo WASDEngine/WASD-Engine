@@ -13,7 +13,9 @@
 # browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
 # the Web export and release tools, the Release button, and Explore Games. The plugin manager refuses to switch it off
 # (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it. `ui-game-assets` is the right Sidebar's
-# Assets tab, which finds the game project's 2D and 3D art and shows images and models.
+# Assets tab, which finds the game project's 2D and 3D art and shows images, models, their animations, and their
+# details; `game-assets` gives the agent and connected agents the same view through `asset_search` and `asset_view`,
+# whose pictures the Assets tab's browser half draws.
 - insert:
     - id: blender
       name: '@deepseek-ai/dsh-blender'
@@ -49,6 +51,8 @@
       name: '@deepseek-ai/dsh-client-ui-game-tools'
     - id: ui-game-assets
       name: '@deepseek-ai/dsh-client-ui-game-assets'
+    - id: game-assets
+      name: '@deepseek-ai/dsh-game-assets'
     - id: game-mcp
       name: '@deepseek-ai/dsh-game-mcp'
       config:

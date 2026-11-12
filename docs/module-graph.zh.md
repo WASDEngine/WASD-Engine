@@ -340,6 +340,7 @@ flowchart TD
     pkg_client_ui_game_tools["client-ui-game-tools"]
     pkg_elevenlabs["elevenlabs"]
     pkg_game_addons["game-addons"]
+    pkg_game_assets["game-assets"]
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
@@ -1480,6 +1481,8 @@ flowchart TD
   pkg_tool_ralph --> pkg_workflow
   pkg_app_mcp --> pkg_mcp_manager
   pkg_blender --> pkg_mcp_manager
+  pkg_game_assets --> pkg_subagent
+  pkg_game_assets --> pkg_tools
   pkg_gimp --> pkg_mcp_manager
   pkg_supercollider --> pkg_mcp_manager
   pkg_sdk_protocol --> pkg_commands
@@ -1950,6 +1953,7 @@ flowchart TD
 | [`tool-ralph`](../packages/experimental/tool-ralph) | `experimental` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`subagent`](../packages/subagent/subagent), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow) |
 | [`app-mcp`](../packages/gamedev/app-mcp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`blender`](../packages/gamedev/blender) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
+| [`game-assets`](../packages/gamedev/game-assets) | `gamedev` | [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools) |
 | [`gimp`](../packages/gamedev/gimp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`supercollider`](../packages/gamedev/supercollider) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`sdk-protocol`](../packages/sdk/protocol) | `sdk` | [`commands`](../packages/interaction/commands), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`user-questions`](../packages/interaction/user-questions) |

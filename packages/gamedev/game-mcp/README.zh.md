@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让这台电脑上的 Claude Code、Codex 和其他 agent 通过 MCP 使用 WASD Engine 的游戏工具。Host 插件监听 `http://127.0.0.1:9273/mcp`，要求提供其数据文件夹中的令牌且 WASD Engine 已登录，并提供游戏工具插件贡献的 `godot_*`、`blender_*`、`gimp_*` 与 `supercollider_*` 工具，外加 `search_game_tools` 与 `call_game_tool`。已连接 agent 的 Godot 游戏在属于它自己的 Session 里运行，因此会在 WASD Engine 窗口的「游戏」标签页中播放。[`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 在登录后显示设置提示词。
+让这台电脑上的 Claude Code、Codex 和其他 agent 通过 MCP 使用 WASD Engine 的游戏工具。Host 插件监听 `http://127.0.0.1:9273/mcp`，要求提供其数据文件夹中的令牌且 WASD Engine 已登录，并提供游戏工具插件贡献的 `godot_*`、`blender_*`、`gimp_*`、`supercollider_*`、`asset_*` 等工具，外加 `search_game_tools` 与 `call_game_tool`。已连接 agent 的 Godot 游戏在属于它自己的 Session 里运行，因此会在 WASD Engine 窗口的「游戏」标签页中播放。[`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 在登录后显示设置提示词。
 
 ## 目录
 
@@ -82,7 +82,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 ### 提供工具
 
-`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。
+`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。
 
 -----
 
@@ -150,7 +150,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部八个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、游戏扩展与 WASD Engine 插件都提供工具时，指令约 17,700 个字符，65 个工具声明约 63,200 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部九个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、游戏扩展、WASD Engine 插件与素材工具都提供工具时，指令约 18,700 个字符，67 个工具声明约 68,300 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -160,7 +160,7 @@ Web 与 Desktop profile 的全部八个 provider，即 Godot、Blender、GIMP、
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 
@@ -182,6 +182,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
 - **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏。
+- **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。
 
 <a id="dev-note"></a>
 ### 开发备注

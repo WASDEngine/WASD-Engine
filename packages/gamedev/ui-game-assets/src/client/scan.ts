@@ -1,9 +1,11 @@
 /**
  * The project scan: a breadth-first walk of a Session's workspace through the `workspaceFiles.list` Remote that
- * collects every file whose extension the Assets tab lists. The walk skips hidden folders (a name starting with `.`,
- * such as `.godot` and `.git`) and `node_modules`, lists a few folders at a time, and stops at the configured folder
- * and asset caps. A folder reached a second time, through a link to a folder already listed, is not listed again,
- * because the Host reports a listed folder by the path it resolves to.
+ * collects every file whose extension the Assets tab lists, and notes the Godot scenes and resources, which may define
+ * 2D animations over the images, and the folders holding `project.godot`, against which their `res://` paths resolve.
+ * The walk skips hidden folders (a name starting with `.`, such as `.godot` and `.git`) and `node_modules`, lists a
+ * few folders at a time, and stops at the configured folder and asset caps. A folder reached a second time, through a
+ * link to a folder already listed, is not listed again, because the Host reports a listed folder by the path it
+ * resolves to.
  */
 import type { WorkspaceDirectoryListing } from '@deepseek-ai/dsh-api-workspace-files/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
@@ -31,7 +33,14 @@ export interface AssetScan {
   readonly truncated: boolean
   /** Folders below the project folder whose listing failed; their assets are missing. */
   readonly unreadable: number
+  /** Workspace paths of the Godot scenes and resources (`.tscn`, `.tres`), at most {@link MAX_GODOT_FILES}. */
+  readonly godotFiles: readonly string[]
+  /** Workspace paths of the folders holding `project.godot`; empty for the project folder itself. */
+  readonly godotProjects: readonly string[]
 }
+
+/** Godot scenes and resources one scan notes. */
+export const MAX_GODOT_FILES = 2000
 
 /** Caps of one scan. */
 export interface ScanLimits {
@@ -116,6 +125,8 @@ export async function scanAssets(list: ListFolder, limits: ScanLimits, signal: A
   signal.throwIfAborted()
   if (!root.ok) return root
   const assets: AssetEntry[] = []
+  const godotFiles: string[] = []
+  const godotProjects: string[] = []
   const visited = new Set<string>([root.value.path])
   const queue: string[] = []
   let truncated = false
@@ -130,6 +141,8 @@ export async function scanAssets(list: ListFolder, limits: ScanLimits, signal: A
         continue
       }
       if (entry.type !== 'file') continue
+      if (entry.name === 'project.godot') godotProjects.push(listing.path)
+      if (/\.t(?:scn|res)$/iu.test(entry.name) && godotFiles.length < MAX_GODOT_FILES) godotFiles.push(path)
       const format = formatOf(entry.name)
       if (format === undefined) continue
       if (assets.length >= limits.maxAssets) {
@@ -182,5 +195,6 @@ export async function scanAssets(list: ListFolder, limits: ScanLimits, signal: A
   })
   signal.throwIfAborted()
   if (outcome.kind === 'rejected') throw outcome.reason
-  return { ok: true, value: { assets: assets.sort(compareAssets), truncated, unreadable } }
+  godotFiles.sort((left, right) => NAME_ORDER.compare(left, right))
+  return { ok: true, value: { assets: assets.sort(compareAssets), truncated, unreadable, godotFiles, godotProjects } }
 }

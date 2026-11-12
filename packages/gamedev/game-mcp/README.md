@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder and a signed-in WASD Engine, and offers the `godot_*`, `blender_*`, `gimp_*`, and `supercollider_*` tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own, so it plays in the WASD Engine window's Game tab. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) shows the setup prompt after sign-in.
+Let Claude Code, Codex, and other agents on this computer use WASD Engine's game tools through MCP. The Host plugin listens on `http://127.0.0.1:9273/mcp`, requires the token in its data folder and a signed-in WASD Engine, and offers the `godot_*`, `blender_*`, `gimp_*`, `supercollider_*`, `asset_*`, and other tools that game tool plugins contribute, with `search_game_tools` and `call_game_tool`. A connected agent's Godot game runs in a Session of its own, so it plays in the WASD Engine window's Game tab. [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.md) shows the setup prompt after sign-in.
 
 ## Table of Contents
 
@@ -82,7 +82,7 @@ A Godot call names its project by absolute path: the folder that holds `project.
 
 ### Provide tools
 
-`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message.
+`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents.
 
 -----
 
@@ -150,7 +150,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all eight providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the game add-ons, and WASD Engine Plugins, the instructions come to about 17,700 characters and the 65 tool declarations to about 63,200 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all nine providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the game add-ons, WASD Engine Plugins, and the asset tools, the instructions come to about 18,700 characters and the 67 tool declarations to about 68,300 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -160,7 +160,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the asset tools' pictures, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token effect
 
@@ -182,6 +182,7 @@ These limits define what the server serves and to whom; they are current package
 - **Blank Sessions** — a connected agent's Session has no turns, so the Session list names it New Session, New Session in its game project opens it, and while no provider is signed in, the Get started dialog opens over it when the window shows it.
 - **No transcript** — the connected agent's tool calls appear in its own harness, not in the Session; the Session shows its game in the Game tab.
 - **Stateless serving** — two instances of the same agent share its Session, its project default, and its game per project.
+- **Cancellation from 2025 clients** — a client on a 2025 revision cancels with a `notifications/cancelled` request, which reaches a server of its own and no running call, so the call ends only when its request closes or its tool's time limit passes.
 
 <a id="dev-note"></a>
 ### Dev Note

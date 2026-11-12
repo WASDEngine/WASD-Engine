@@ -5452,6 +5452,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
   },
   {
+    name: 'game-assets/render',
+    mode: 'waterfall',
+    signature: '\'game-assets/render\'( this: Scoped<Agent>, request: AssetRenderEvent, next: () => Promise<AssetRenderResult>, ): Promise<AssetRenderResult>',
+    summary: 'Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it.',
+    description: 'Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it. Return the details and images to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.',
+    parameters: [{ name: 'request', description: 'the asset, what to draw, the bounds, the calling Agent, and the call\'s cancellation.' }],
+  },
+  {
+    name: 'game-assets/reveal',
+    mode: 'emit',
+    signature: '\'game-assets/reveal\'(reveal: AssetReveal): void',
+    summary: 'An agent asked to show an asset to the user; the windows that may read the Session open it in the Session\'s Assets tab.',
+    description: 'An agent asked to show an asset to the user; the windows that may read the Session open it in the Session\'s Assets tab.',
+    parameters: [{ name: 'reveal', description: 'the Session, the asset, and the animation to play.' }],
+  },
+  {
     name: 'game-mcp/reveal',
     mode: 'emit',
     signature: '\'game-mcp/reveal\'(sessionId: SessionId): void',
@@ -6150,6 +6166,58 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AssembledSection',
     declaration: 'export interface AssembledSection {\n    name: string;\n    text: string;\n    interpolate?: boolean;\n}',
+  },
+  {
+    name: 'AssetDetails',
+    declaration: 'export type AssetDetails = ImageAssetDetails | ModelAssetDetails;',
+  },
+  {
+    name: 'AssetDrawOptions',
+    declaration: 'export interface AssetDrawOptions {\n    readonly views: readonly AssetViewDirection[];\n    readonly shading: AssetShading;\n    readonly skeleton: boolean;\n    readonly animation?: string;\n    readonly frames?: number;\n    readonly time?: number;\n    readonly grid?: AssetGrid;\n    readonly fps?: number;\n    readonly region?: AssetRegion;\n    readonly size: number;\n}',
+  },
+  {
+    name: 'AssetGrid',
+    declaration: 'export interface AssetGrid {\n    readonly columns: number;\n    readonly rows: number;\n    readonly count?: number;\n}',
+  },
+  {
+    name: 'AssetKind',
+    declaration: 'export type AssetKind = \'image\' | \'model\';',
+  },
+  {
+    name: 'AssetRegion',
+    declaration: 'export interface AssetRegion {\n    readonly x: number;\n    readonly y: number;\n    readonly width: number;\n    readonly height: number;\n}',
+  },
+  {
+    name: 'AssetRenderedImage',
+    declaration: 'export interface AssetRenderedImage {\n    readonly data: string;\n    readonly mediaType: \'image/png\' | \'image/jpeg\';\n    readonly width: number;\n    readonly height: number;\n    readonly caption: string;\n}',
+  },
+  {
+    name: 'AssetRenderEvent',
+    declaration: 'export interface AssetRenderEvent extends AssetRenderRequest {\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'AssetRenderRequest',
+    declaration: 'export interface AssetRenderRequest {\n    readonly path: string;\n    readonly kind: AssetKind;\n    readonly draw: AssetDrawOptions;\n    readonly images: boolean;\n    readonly bytes: number;\n    readonly maxBytes: number;\n    readonly maxPixels: number;\n}',
+  },
+  {
+    name: 'AssetRenderResult',
+    declaration: 'export interface AssetRenderResult {\n    readonly details: AssetDetails;\n    readonly images: readonly AssetRenderedImage[];\n}',
+  },
+  {
+    name: 'AssetReveal',
+    declaration: 'export interface AssetReveal {\n    readonly sessionId: SessionId;\n    readonly path: string;\n    readonly animation?: string;\n    readonly grid?: AssetGrid;\n}',
+  },
+  {
+    name: 'AssetShading',
+    declaration: 'export type AssetShading = \'material\' | \'solid\' | \'wireframe\';',
+  },
+  {
+    name: 'AssetTransparency',
+    declaration: 'export type AssetTransparency = \'opaque\' | \'cutout\' | \'translucent\';',
+  },
+  {
+    name: 'AssetViewDirection',
+    declaration: 'export type AssetViewDirection = \'iso\' | \'front\' | \'back\' | \'left\' | \'right\' | \'top\' | \'bottom\';',
   },
   {
     name: 'AssistantMessage',
@@ -7480,6 +7548,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface HostConnectionRpc {\n    handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void>;\n    intercept(channel: \'/api\', matches: ConnectionRpcEndpointMatcher, handler: ConnectionRpcHandler): () => Promise<void>;\n}',
   },
   {
+    name: 'ImageAssetDetails',
+    declaration: 'export interface ImageAssetDetails {\n    readonly kind: \'image\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly width: number;\n    readonly height: number;\n    readonly transparency: AssetTransparency;\n    readonly colors: number;\n    readonly animations: readonly SpriteAnimationDetails[];\n}',
+  },
+  {
     name: 'ImageAttachmentLimits',
     declaration: 'export interface ImageAttachmentLimits {\n    maxImageBytes: number;\n    maxImagesPerMessage: number;\n    maxMessageImageBytes: number;\n    maxImagePixels: number;\n    maxImageDimension: number;\n    mediaTypes: readonly ImageMediaType[];\n}',
   },
@@ -8108,6 +8180,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModDefinition {\n    readonly name: string;\n    readonly version?: string;\n    readonly root?: string;\n    readonly options?: PluginOptions;\n    readonly register: ModRegister;\n}',
   },
   {
+    name: 'ModelAssetDetails',
+    declaration: 'export interface ModelAssetDetails {\n    readonly kind: \'model\';\n    readonly format: string;\n    readonly bytes: number;\n    readonly min: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly max: readonly [\n        number,\n        number,\n        number\n    ];\n    readonly triangles: number;\n    readonly vertices: number;\n    readonly meshes: number;\n    readonly nodes: number;\n    readonly materials: readonly ModelMaterialDetails[];\n    readonly materialCount: number;\n    readonly textures: readonly ModelTextureDetails[];\n    readonly textureCount: number;\n    readonly bones: readonly ModelBoneDetails[];\n    readonly boneCount: number;\n    readonly animations: readonly ModelClipDetails[];\n    readonly morphTargets: readonly ModelMorphDetails[];\n    readonly missing: readonly string[];\n}',
+  },
+  {
+    name: 'ModelBoneDetails',
+    declaration: 'export interface ModelBoneDetails {\n    readonly name: string;\n    readonly parent?: number;\n}',
+  },
+  {
     name: 'ModelCatalog',
     declaration: 'export interface ModelCatalog {\n    readonly default: ModelSelection;\n    readonly routableProviders: readonly string[];\n    readonly groups: readonly ModelProviderGroup[];\n    readonly failures: readonly ModelCatalogFailure[];\n}',
   },
@@ -8118,6 +8198,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelCatalogModel',
     declaration: 'export interface ModelCatalogModel {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n    readonly reasoning?: ModelReasoning;\n    readonly badge?: LlmModelBadge;\n}',
+  },
+  {
+    name: 'ModelClipDetails',
+    declaration: 'export interface ModelClipDetails {\n    readonly name: string;\n    readonly seconds: number;\n    readonly tracks: number;\n    readonly targets: readonly string[];\n    readonly targetCount: number;\n}',
+  },
+  {
+    name: 'ModelMaterialDetails',
+    declaration: 'export interface ModelMaterialDetails {\n    readonly name: string;\n    readonly type: string;\n    readonly color?: string;\n    readonly metalness?: number;\n    readonly roughness?: number;\n    readonly maps: readonly {\n        readonly slot: string;\n        readonly texture: string;\n    }[];\n    readonly transparent: boolean;\n    readonly doubleSided: boolean;\n    readonly vertexColors: boolean;\n}',
   },
   {
     name: 'ModelMessageSource',
@@ -8132,6 +8220,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ModelModalityMap {\n    text: \'text\';\n    image: \'image\';\n}',
   },
   {
+    name: 'ModelMorphDetails',
+    declaration: 'export interface ModelMorphDetails {\n    readonly mesh: string;\n    readonly targets: readonly string[];\n}',
+  },
+  {
     name: 'ModelProviderGroup',
     declaration: 'export interface ModelProviderGroup {\n    readonly id: string;\n    readonly name: string;\n    readonly models: readonly ModelCatalogModel[];\n}',
   },
@@ -8142,6 +8234,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ModelReasoningEffort',
     declaration: 'export interface ModelReasoningEffort {\n    readonly id: string;\n    readonly name: string;\n    readonly description?: string;\n}',
+  },
+  {
+    name: 'ModelTextureDetails',
+    declaration: 'export interface ModelTextureDetails {\n    readonly name: string;\n    readonly width: number;\n    readonly height: number;\n}',
   },
   {
     name: 'ModEvents',
@@ -10026,6 +10122,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'SpillSource',
     declaration: 'export type SpillSource = {\n    kind: \'tool\';\n    toolName: string;\n    callId: ToolCallId;\n    label: string;\n} | {\n    kind: \'session-reference\';\n    sessionId: SessionId;\n    label: string;\n};',
+  },
+  {
+    name: 'SpriteAnimationDetails',
+    declaration: 'export interface SpriteAnimationDetails {\n    readonly name: string;\n    readonly source: SpriteAnimationSource;\n    readonly definedIn?: string;\n    readonly frames: number;\n    readonly fps: number;\n    readonly seconds: number;\n    readonly loop: boolean;\n    readonly frameWidth?: number;\n    readonly frameHeight?: number;\n}',
+  },
+  {
+    name: 'SpriteAnimationSource',
+    declaration: 'export type SpriteAnimationSource = \'frames\' | \'sequence\' | \'godot\' | \'sheet\' | \'grid\';',
   },
   {
     name: 'SshStreamEndpoint',

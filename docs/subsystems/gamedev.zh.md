@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_search` 与 `asset_view` 工具则让 agent 看到同样的美术素材，由该标签页绘制。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`、该标签页为之绘制的[素材工具](#assets-tab) `game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -322,15 +322,27 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="assets-tab"></a>
 ## 「素材」标签页
 
-`ui-game-assets` 行挂载 [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `assets` 页面类型，其引导项顺序为 45，位于「游戏」标签页的引导项之后。它的主体显示 Session 所在游戏项目的 2D 与 3D 美术素材：一个按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表，下方是所选素材的视图。图片显示在可缩放的视图中；模型显示在 three.js 舞台上，可旋转、缩放、平移并播放其动画；Blender 文件显示项目中同名的模型，例如 Blender 工具导出的 GLB。
+`ui-game-assets` 行挂载 [`@deepseek-ai/dsh-client-ui-game-assets`](../../packages/gamedev/ui-game-assets/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `assets` 页面类型，其引导项顺序为 45，位于「游戏」标签页的引导项之后。它的主体显示 Session 所在游戏项目的 2D 与 3D 美术素材：一个按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表，下方是所选素材及其详细信息的视图。图片显示在可缩放的视图中，并播放它们参与的 2D 动画：图片自身的帧、与它并列的编号图片、名称指向它的 Godot 场景与资源中的 SpriteFrames 动画和 Sprite2D 帧网格、同名的精灵表 JSON，或用户给出的网格。模型显示在 three.js 舞台上，可旋转、缩放、平移，在时间轴上播放其动画片段，绘制其骨架，并切换为白模或线框；Blender 文件显示项目中同名的模型，例如 Blender 工具导出的 GLB。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|
-| 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
+| 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules`；同时记录 Godot 场景与资源，以及包含 `project.godot` 的文件夹 | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
 | 当前查看的文件 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
+| 图片的动画 | `workspaceFiles.readBytes`：读取名称指向该图片的 Godot 文件（最多 400 个）和旁边的精灵表 JSON；`workspaceFiles.list`：列出其文件夹以查找编号图片 | 图片显示时 |
 | 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
 
 该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
+
+**agent 的视图。** `game-assets` 行挂载 [`@deepseek-ai/dsh-game-assets`](../../packages/gamedev/game-assets/README.zh.md)，即原生 `asset_search` 与 `asset_view` 工具。`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 让一个窗口用该标签页自己的查看器绘制素材：
+
+1. 工具解析出素材在 Session 工作目录内的路径、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：工作区路径（相对于 Session 头部记录的文件夹，窗口按该文件夹解析该 Session 的路径）、该文件以及 glTF 文件所引用的缓冲区和图片的大小、类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
+2. Remote events 白名单把该 waterfall 转发给每个可读取该 Session 的所有者窗口；第一个应答生效，无法处理的窗口（例如模型所需的 WebGL 不可用）用 `next()` 委托出去。
+3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时绘制的文件合计不超过 64 MiB，更大的文件单独绘制：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
+4. Host 逐字段验证应答，把图片作为附件存储给接受图像的模型，并把详细信息作为文本返回；不接受图像的模型只得到详细信息，没有窗口应答的调用以 `ASSET_NO_WINDOW` 失败。
+
+`show` 发出 `game-assets/reveal`，附带 Session、素材、动画和网格；白名单把它转发给可读取该 Session 的窗口，这些窗口会在 Session 不在屏幕上时打开它，并打开其「素材」标签页，选中该素材，在图片上显示该网格并播放该动画。队友或子 agent 会在其子 agent 树的领导 agent 的 Session 中显示素材，也就是用户正在查看的 Session。
+
+多个 agent 可以同时使用查看器：模型的并行调用、agent 团队的队友、子 agent，以及通过 [MCP 服务器](#mcp-server-for-other-agents)连接的 agent。每个调用的请求都注明调用方 agent 自己的 Session，窗口在该 Session 中读取并绘制；调用在等待期间结束时，其请求会离开窗口的队列。
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
@@ -342,6 +354,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `search_game_tools`、`call_game_tool` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态，或按名调用其中一个 |
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
+| `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_release_game` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` | Session 自身的工具定义，不需要 Session；`project` 与 `cover_image` 是绝对路径，发布到 WASD Engine 已登录的网站 |
@@ -622,6 +635,49 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
+
+<a id="game-assets-events"></a>
+
+### `game-assets/*` events
+
+<a id="game-assetsrender--waterfall"></a>
+
+#### `game-assets/render` — waterfall
+
+Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it. Return the details and images to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to draw one asset of its workspace as the Assets tab draws it. Return the
+ * details and images to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the asset, what to draw, the bounds, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'game-assets/render'( this: Scoped<Agent>, request: AssetRenderEvent, next: () => Promise<AssetRenderResult>, ): Promise<AssetRenderResult>
+```
+
+Types: [Agent](core.zh.md) · [Scoped](scope.zh.md)
+
+Source: [`packages/gamedev/game-assets/src/types.ts`](../../packages/gamedev/game-assets/src/types.ts)
+
+<a id="game-assetsreveal--emit"></a>
+
+#### `game-assets/reveal` — emit
+
+An agent asked to show an asset to the user; the windows that may read the Session open it in the Session's Assets tab.
+
+```ts cordis-catalog
+/**
+ * An agent asked to show an asset to the user; the windows that may read the Session open it in the Session's
+ * Assets tab.
+ * @mode emit
+ * @param reveal - the Session, the asset, and the animation to play.
+ */
+'game-assets/reveal'(reveal: AssetReveal): void
+```
+
+Source: [`packages/gamedev/game-assets/src/types.ts`](../../packages/gamedev/game-assets/src/types.ts)
 
 <a id="game-mcp-events"></a>
 

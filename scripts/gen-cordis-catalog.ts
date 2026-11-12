@@ -276,8 +276,10 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'webserver': 'web-server.md',
   'workflow': 'workflow.md',
   'workspace': 'workspace.md',
-  // WASDEngine fork: the game MCP server's request to show a Session (wasdengine/FORK.md).
+  // WASDEngine fork: the game MCP server's request to show a Session, and the asset tools' render request and asset
+  // reveal (wasdengine/FORK.md).
   'game-mcp': 'gamedev.md',
+  'game-assets': 'gamedev.md',
   'working-directory': 'working-directory.md',
   'worktree': 'worktrees.md',
 }
@@ -860,6 +862,9 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GameAddonInstallResult: 'gamedev.md',
   GameAddonRemoveResult: 'gamedev.md',
   GodotImportReport: 'gamedev.md',
+  AssetRenderEvent: 'gamedev.md',
+  AssetRenderResult: 'gamedev.md',
+  AssetReveal: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

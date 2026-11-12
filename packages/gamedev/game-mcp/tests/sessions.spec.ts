@@ -10,8 +10,14 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import type { GameMcpClient } from '../src/provider.ts'
 import { ExternalSessions, GameMcpSessionError } from '../src/sessions.ts'
+
+vi.mock('@deepseek-ai/dsh-atomic-write', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@deepseek-ai/dsh-atomic-write')>()
+  return { ...actual, writeFileAtomic: vi.fn(actual.writeFileAtomic) }
+})
 
 const CLAUDE: GameMcpClient = { id: 'claude-code', title: 'Claude Code' }
 const CODEX: GameMcpClient = { id: 'codex', title: 'Codex' }
@@ -108,6 +114,20 @@ describe('ExternalSessions.agent', () => {
     const agents = await Promise.all([1, 2, 3].map(() => store.agent(CLAUDE, join(root, 'game'), signal)))
     expect(new Set(agents.map(agent => agent.id)).size).toBe(1)
     expect(fakes.controller.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('remembers both Sessions when two agents\' first calls come together and the first write is slow', async () => {
+    fakes.workspaces.push({ id: 'game', path: join(root, 'game'), sessionIds: [] })
+    const write = vi.mocked(writeFileAtomic)
+    const actual = write.getMockImplementation()
+    write.mockImplementationOnce(async (...args) => {
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await actual?.(...args)
+    })
+    const store = sessions()
+    const [claude, codex] = await Promise.all([store.agent(CLAUDE, join(root, 'game'), signal), store.agent(CODEX, join(root, 'game'), signal)])
+    const saved = JSON.parse(await readFile(join(root, 'data', 'sessions.json'), 'utf8')) as { sessions: { client: string; sessionId: string }[] }
+    expect(saved.sessions.map(({ client, sessionId }) => [client, sessionId]).sort()).toEqual([['claude-code', claude.id], ['codex', codex.id]])
   })
 
   it('creates a new Session when the remembered one left the project, was archived, or no longer exists', async () => {

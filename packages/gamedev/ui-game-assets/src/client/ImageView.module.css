@@ -146,3 +146,125 @@
   cursor: default;
   opacity: 0.5;
 }
+
+.tool[aria-pressed='true'] {
+  color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-interactive-bg-active);
+}
+
+/* An animation frame always draws its pixels as squares; frames are mostly pixel art. */
+.frame {
+  image-rendering: pixelated;
+}
+
+/* The sprite grid over the still image, in the image's pixels; lines stay one screen pixel wide. */
+.grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+.grid rect {
+  fill: none;
+  stroke: #ff40a0;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The playing animation's controls, and the sprite grid's fields, above the info bar. */
+.timeline,
+.gridBar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 2px 6px;
+  background: var(--dsw-alias-bg-base);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.gridBar {
+  flex-wrap: wrap;
+}
+
+.scrubber {
+  flex: 1 1 auto;
+  min-width: 40px;
+  accent-color: var(--dsw-alias-state-business-primary);
+}
+
+.counter,
+.gridTitle {
+  flex: 0 0 auto;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.gridTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 600;
+}
+
+.gridField {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+}
+
+.gridField input {
+  box-sizing: border-box;
+  width: 48px;
+  height: 22px;
+  padding: 0 4px;
+  color: var(--dsw-alias-label-primary);
+  font: var(--dsw-font-xxs-12);
+  background: var(--dsw-alias-bg-layer-1);
+  border: 0.5px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-sm);
+}
+
+.gridField input:focus-visible,
+.menuButton:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-alias-state-business-primary);
+  outline-offset: calc(-1 * var(--dsw-focus-ring-width));
+}
+
+.menuButton {
+  display: inline-flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  max-width: 140px;
+  height: 26px;
+  padding: 0 6px;
+  color: var(--dsw-alias-label-secondary);
+  font: var(--dsw-font-xxs-12);
+  background: transparent;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.menuLabel {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@media (hover: hover) {
+  .menuButton:hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
