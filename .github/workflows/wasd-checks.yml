@@ -66,6 +66,14 @@ jobs:
           packages/context/agent-instructions/tests
           scripts/verify-dsh-package-licenses.spec.ts
           apps/cli/tests/windows-shell.spec.ts
+          packages/core/system-prompt/tests/system-prompt.spec.ts
+          packages/core/agent-loop/tests/loop.spec.ts
+          packages/preset/persona/tests/persona.spec.ts
+          packages/fs/tool-fs/tests/tools.spec.ts
+          packages/fs/tool-fs-search/tests/tools.spec.ts
+          packages/web/tool-web/tests/tool-web.spec.ts
+          packages/context/harness-dev-context/tests/harness-dev-context.spec.ts
+          scripts/rescope-vendor.spec.ts
           packages/client/ui-brand-official
           packages/client/ui-chat
           packages/client/ui-sidebar-right
@@ -75,6 +83,7 @@ jobs:
           packages/client/web/tests/boot-page.client.spec.ts
           packages/client/ui-plugin-manager/tests/wasdengine-copy.client.spec.ts
           packages/client/ui-sidebar-documentpreview/tests/wasdengine-copy.client.spec.ts
+          packages/client/ui-sidebar-documentpreview/tests/office-registration.client.spec.ts
           packages/experimental/cua/tests/wasdengine-copy.client.spec.ts
           packages/api/workspace-controller
           packages/client/ui-workspace
@@ -102,6 +111,7 @@ jobs:
           packages/client/ui-tool/tests/web-card.client.spec.tsx
           packages/client/ui-tool/tests/tool-row.client.spec.tsx
           packages/client/ui-tool/tests/wasdengine-web-links.client.spec.tsx
+          scripts/client-bundle-purity.spec.ts
 
       - name: Runtime script tests
         run: |
