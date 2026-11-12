@@ -55,7 +55,7 @@ WASD Engine bundles everything you need to build high-polish games in a single a
   </tr>
 </table>
 
-Godot is built into the Desktop app, and so are SuperCollider and GIMP on macOS. Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and elsewhere the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks.
+Godot, Blender, GIMP, and SuperCollider come with the Desktop app for macOS and Windows, so there is nothing else to install. When you run WASD Engine from source instead, Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks.
 
 ## Agents fill every game dev role
 
