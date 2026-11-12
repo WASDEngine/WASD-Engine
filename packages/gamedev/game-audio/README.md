@@ -49,7 +49,7 @@ The plugin needs the `tools` and `workingDirectory` services. With the `attachme
 | Tool | What it does |
 |---|---|
 | `audio_search` | Walks the project folder for WAV, MP3, Ogg Vorbis and Opus, FLAC, and AIFF files, skipping hidden folders and `node_modules`, reads each one's headers, and lists the sounds with their kind, format, encoding, channels, sample rate, length, and size, and how many of each kind each folder holds. `query` ranks names that start with it, then names and paths that contain it, then paths that hold its letters in order; `kind` (`effect`, `dialogue`, or `music`) and `folder` narrow the list; `limit` (1 to 200, default 50) and `offset` page it |
-| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid, where the end meets the start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture unless `picture` is false or the model takes text only, and with `show` opens the sound in the Session's Audio tab. `start` and `end` measure part of a long track, at most `maxReviewSeconds` |
+| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid, where the end meets the start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture unless `picture` is false or the model takes text only, and with `show` opens the sound in the Session's Audio tab. `start` and `end` measure part of a long track, at most `maxReviewSeconds`; a sound longer than the Audio tab decodes (its `maxDecodedSeconds`, 20 minutes by default) fails with `AUDIO_TOO_LARGE` |
 
 A sound's kind comes from the first word of its file name, or of its folders from the nearest, that names one: `sfx`, `fx`, `sound`, `foley`, `ui`, or `ambience` for sound effects, `voice`, `vo`, `dialogue`, `speech`, `narrator`, or `bark` for dialogue, and `music`, `bgm`, `ost`, `soundtrack`, `song`, or `jingle` for music. A path without such a word is music from 30 seconds on and a sound effect otherwise.
 
@@ -66,7 +66,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 | `audioFormatOf`, `AUDIO_EXTENSIONS` | The listed formats by lowercase extension, with the media type and whether a browser decodes the format |
 | `audioCategoryOf`, `pathWords` | The kind of a sound from its path and length |
 | `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its bit rate, and an Ogg stream's last granule position |
-| `decodeAiff` | AIFF and AIFC samples, which browsers do not decode: integer PCM of 8 to 32 bits in either byte order, unsigned 8-bit, and 32-bit and 64-bit float |
+| `openAiff`, `decodeAiff` | AIFF and AIFC samples, which browsers do not decode: integer PCM of 8 to 32 bits in either byte order, unsigned 8-bit, and 32-bit and 64-bit float; `openAiff` locates them and reads one at a time without copying them, and `decodeAiff` copies them all |
 | `analyzeAudio`, `integratedLoudness`, `loopSeam`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples |
 | `drawAudioImage`, `describeAudioImage` | The picture as raw RGB, and the sentence that states its panels and grid |
 | `AUDIO_ERROR` | The tools' error codes, with which a window answers a request it cannot fulfil |
@@ -132,7 +132,7 @@ The declarations are static, so they stay in the cached tool prefix.
 
 #### What the model sees
 
-A search result names the number of sounds with the count of each kind and lists one line per sound with its kind, format, encoding, channels, sample rate, length, and size, followed by each folder's counts. A review result names the sound's kind and format, how Godot imports it, the measured stretch, the levels and loudness, the silence at either end, the spectrum, the loop seam, the stereo channels, a warning for each problem it found, and a sentence that states the picture's panels and grid, followed by the picture as an attachment when the Session's model accepts images. A failure names the cause: a path outside the project, a missing file, a file that is not a sound, a bad argument, no open window, or a sound the window could not read, decode, or measure.
+A search result names the number of sounds with the count of each kind and lists one line per sound with its kind, format, encoding, channels, sample rate, length, and size, followed by each folder's counts. A review result names the sound's kind and format, how Godot imports it, the measured stretch, the levels and loudness, the silence at either end, the spectrum, the loop seam, the stereo channels, a warning for each problem it found, and a sentence that states the picture's panels and grid, followed by the picture as an attachment when the Session's model accepts images. A failure names the cause: a path outside the project, a missing file, a file that is not a sound, a bad argument, no open window, a sound longer than the window decodes, or a sound the window could not read, decode, or measure.
 
 #### Token effect
 
@@ -149,6 +149,7 @@ Append-only in the conversation.
 These limits define what the tools measure and where; they are current package constraints.
 
 - **A window decodes the sound** — `audio_review` fails while no WASD Engine window is open, because the browser decodes MP3, Ogg, and FLAC; `audio_search` works without one.
+- **Length** — a window decodes a whole sound to measure part of it, so a sound longer than the Audio tab decodes cannot be reviewed.
 - **No transcript** — a review measures dialogue but does not say what is spoken.
 - **Fixed kind words** — the kinds come from English path words and length; a project that names its folders otherwise gets sound effects and music by length.
 - **No loudness targets** — a review reports loudness and peak but does not compare sounds with each other or with a target level.

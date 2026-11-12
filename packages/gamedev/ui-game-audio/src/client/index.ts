@@ -195,14 +195,16 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     name: 'sidebar.right.pane.tab.title', key: TAB_ID, locale: NS,
   }, AudioTabTitle))
 
-  // The agent's audio tools: this window decodes and measures for the Sessions it may read, one sound at a time.
+  // The agent's audio tools: this window decodes and measures for the Sessions it may read, one sound at a time, each no
+  // longer than the tab decodes. A request whose call ended while it waited is dropped when its turn comes, and one
+  // that is decoding stops at its next step, so a cancelled call does not keep the next one waiting.
   const queue = serial()
   ctx.effect(() => ctx.remote.$on('game-audio/measure', function (request, next) {
     const sessionId = ctx.sessions.scopeOf(this)
     if (sessionId === undefined) return next()
-    const { agent: _agent, signal, ...fields } = request
+    const { agent: _agent, signal = new AbortController().signal, ...fields } = request
     const read = readOf(sessionId)
-    return queue(() => answerMeasure(fields, read, signal ?? new AbortController().signal))
+    return queue(() => answerMeasure(fields, read, signal, config.maxDecodedSeconds))
   }), 'ui-game-audio: measure sounds for agents')
   ctx.effect(() => ctx.remote.$on('game-audio/reveal', (reveal) => { revealSound(ctx, reveal) }), 'ui-game-audio: reveal sounds')
 }

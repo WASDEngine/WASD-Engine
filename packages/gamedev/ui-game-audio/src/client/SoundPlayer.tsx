@@ -5,7 +5,7 @@
  * peak, with notes on clipping, silence before the sound, a click where it repeats, and stereo that holds one sound.
  */
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { LATE_START_SECONDS, probeAudio, seamClicks, type AudioCategory, type AudioProbe } from '@deepseek-ai/dsh-game-audio/audio'
+import { AUDIO_ERROR, LATE_START_SECONDS, probeAudio, seamClicks, type AudioCategory, type AudioProbe } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasurements } from '@deepseek-ai/dsh-game-audio/types'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
@@ -124,11 +124,12 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
       const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
       if (probe?.seconds !== undefined && probe.seconds > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
       try {
-        const buffer = await decodeSound(file.value.data, format, probe?.sampleRate)
+        const bounds = { maxSeconds: maxDecodedSeconds, signal: controller.signal }
+        const buffer = await decodeSound(file.value.data, format, probe?.sampleRate, bounds)
         return { kind: 'ready', buffer, probe, bytes: file.value.data.byteLength, version: file.value.version }
       } catch (error) {
         if (!(error instanceof SoundError)) throw error
-        return { kind: 'undecodable' }
+        return error.code === AUDIO_ERROR.tooLarge ? { kind: 'undecodable', tooLong: maxDecodedSeconds } : { kind: 'undecodable' }
       }
     }
     void run().then((next) => {

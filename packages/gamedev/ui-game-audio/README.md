@@ -58,7 +58,7 @@ Below the player the tab shows the sound's kind, format with its encoding, sampl
 
 ### Answers to the agent
 
-For a `game-audio/measure` request of a Session that the window may read, the plugin reads the sound, decodes it at its own sample rate, measures the requested stretch, and draws the waveform and spectrogram picture as a PNG on a canvas when the request asks for it, one request at a time. A request of another scope goes to the next window. For `game-audio/reveal`, the plugin opens the sound in that Session's Audio tab, after showing the Session when another one is on screen.
+For a `game-audio/measure` request of a Session that the window may read, the plugin reads the sound, decodes it at its own sample rate, measures the requested stretch, and draws the waveform and spectrogram picture as a PNG on a canvas when the request asks for it, one request at a time. A sound longer than `maxDecodedSeconds`, by its headers or once decoded when they do not tell, fails with `AUDIO_TOO_LARGE`, as the tab refuses it. A request whose call ended while it waited is dropped when its turn comes, and one being answered stops at its next step, an AIFF decode at its next slice; a browser decode, which cannot be stopped, runs to its end. The figures name the sample rate in whole hertz, as AIFF files may state a rate with a fraction. A request of another scope goes to the next window. For `game-audio/reveal`, the plugin opens the sound in that Session's Audio tab, after showing the Session when another one is on screen.
 
 -----
 
@@ -68,7 +68,7 @@ For a `game-audio/measure` request of a Session that the window may read, the pl
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The tab adds no Host service: it lists the workspace with `workspaceFiles.list`, reads headers and files with `workspaceFiles.readBytes`, and follows the selected file with the `file` resource. Browsers decode WAV, MP3, Ogg, and FLAC through an `OfflineAudioContext` created at the rate the headers name, so the samples keep the file's rate; AIFF files decode with `decodeAiff` from `@deepseek-ai/dsh-game-audio/audio`, which the client bundle inlines. The player is one `AudioContext` for the window, created on the first play, with one gain node for the volume and a new `AudioBufferSourceNode` for each start.
+The tab adds no Host service: it lists the workspace with `workspaceFiles.list`, reads headers and files with `workspaceFiles.readBytes`, and follows the selected file with the `file` resource. Browsers decode WAV, MP3, Ogg, and FLAC through an `OfflineAudioContext` created at the rate the headers name, so the samples keep the file's rate; AIFF files decode with `openAiff` from `@deepseek-ai/dsh-game-audio/audio`, which the client bundle inlines: after checking that an AudioBuffer holds the file's channels and rate and that the sound is within `maxDecodedSeconds`, the samples go straight into the buffer a slice at a time, with the page free to handle its events between slices. The player is one `AudioContext` for the window, created on the first play, with one gain node for the volume and a new `AudioBufferSourceNode` for each start.
 
 | File | Role |
 |---|---|

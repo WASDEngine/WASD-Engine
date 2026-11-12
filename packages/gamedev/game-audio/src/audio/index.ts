@@ -4,7 +4,7 @@
  * samples, and their picture. Nothing here reads files itself or uses Node or browser APIs.
  * @module @deepseek-ai/dsh-game-audio/audio
  */
-export { AiffDecodeError, decodeAiff } from './aiff.ts'
+export { AiffDecodeError, decodeAiff, openAiff, type AiffSound } from './aiff.ts'
 export { AUDIO_ERROR } from './errors.ts'
 export {
   AUDIO_CATEGORIES, AUDIO_EXTENSIONS, audioCategoryOf, audioFormatOf, MUSIC_MIN_SECONDS, pathWords,
