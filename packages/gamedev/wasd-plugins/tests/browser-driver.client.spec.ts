@@ -16,6 +16,9 @@ import type { WasdBrowserCommand, WasdBrowserOutcome, WasdBrowserRequest } from 
 
 const SESSION = 'session-1' as SessionId
 const OTHER = 'session-2' as SessionId
+const NOT_OWN_TAB = 'The Browser clicks and types only in a tab you opened, and you have none now; it never acts in a tab '
+  + 'the user opened. Open the page with browser_open, which loads it in a tab of your own, signed in to the same sites '
+  + 'as the user\'s tabs, then click or type there.'
 const LIMITS = { maxChars: 10_000, loadTimeoutMs: 2000, operationTimeoutMs: 1000, screenshotWidth: 1280 } as const
 
 /** The page operations a test can hold until it lets them go on, like a page whose main thread is busy. */
@@ -241,23 +244,46 @@ describe('followBrowserRequests', () => {
     expect(h.pages.get(own.id)?.loads).toEqual(['https://example.test/one', 'https://example.test/two'])
   })
 
-  it('reads the Browser tab the user has open, then acts on it', async () => {
+  it('reads and looks at the Browser tab the user has open, but never clicks or types in it', async () => {
     const h = start()
     const user = h.addTab(SESSION, 'user-tab' as TabId)
+    const clicked = vi.fn()
+    document.querySelector('button')!.addEventListener('click', clicked)
     expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('[2: button "Go"]')
+    expect(page(await h.outcome(h.send({ kind: 'screenshot' }))).image).toBeDefined()
+    for (const command of [
+      { kind: 'click', element: 2 }, { kind: 'click', x: 10, y: 10 }, { kind: 'type', element: 1, text: 'godot', submit: true },
+    ] as const) expect(await h.outcome(h.send(command))).toEqual({ ok: false, message: NOT_OWN_TAB })
     expect(h.openTabIn).not.toHaveBeenCalled()
+    expect(h.pages.get(user.id)).toMatchObject({ inputs: [], typed: [], loads: [] })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  it('reads the Browser tab the user has open at each call, and keeps no hold on it once the user turns away', async () => {
+    const h = start()
+    const first = h.addTab(SESSION, 'first-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    const second = h.addTab(SESSION, 'second-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    expect([h.pages.get(first.id)?.calls, h.pages.get(second.id)?.calls]).toEqual([['evaluate'], ['evaluate']])
+    h.show(OTHER)
+    const id = h.send({ kind: 'read' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.claim).not.toHaveBeenCalledWith(id)
+    expect(h.pages.get(second.id)?.calls).toEqual(['evaluate'])
+  })
+
+  it('tells the agent to open the page in a tab of its own before it clicks or types', async () => {
+    const h = start()
+    expect(await h.outcome(h.send({ kind: 'click', element: 1 }))).toEqual({ ok: false, message: NOT_OWN_TAB })
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
     page(await h.outcome(h.send({ kind: 'click', element: 2 })))
-    expect(h.pages.get(user.id)?.inputs).toEqual([
+    const [own] = h.sidebar.tabsIn(SESSION)
+    expect(h.pages.get(own!.id)?.inputs).toEqual([
       { type: 'mouseMove', x: 50, y: 10 },
       { type: 'mouseDown', x: 50, y: 10, button: 'left', clickCount: 1 },
       { type: 'mouseUp', x: 50, y: 10, button: 'left', clickCount: 1 },
     ])
-  })
-
-  it('asks for browser_open before acting without a tab of its own', async () => {
-    const h = start()
-    const failed = await h.outcome(h.send({ kind: 'click', element: 1 }))
-    expect(failed).toEqual({ ok: false, message: 'No page is open in your Browser tab; call browser_open first, or browser_read to use the Browser tab the user has open.' })
   })
 
   it('clicks a covered control by script and says so, and reports a number that is no longer on the page', async () => {
@@ -357,8 +383,9 @@ describe('followBrowserRequests', () => {
 
   it('drops a command whose tool call ended while it waited behind the Session\'s earlier command', async () => {
     const h = start()
-    const user = h.addTab(SESSION, 'user-tab' as TabId)
-    const fake = h.pages.get(user.id)!
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
+    const [own] = h.sidebar.tabsIn(SESSION)
+    const fake = h.pages.get(own!.id)!
     const busy = Promise.withResolvers<undefined>()
     fake.stall.evaluate = busy.promise
     const first = h.send({ kind: 'read' })

@@ -400,10 +400,10 @@ In the Desktop profile, the `wasd-plugins` row sets `browser`, and [`@deepseek-a
 | `command.kind` | Fields | The window |
 |---|---|---|
 | `open` | `url` | Loads the address into the Session's agent tab, opening one first in the Session on screen, shows the tab, and returns the page |
-| `read` | None | Returns the page of the agent tab, or of the Browser tab the user has open |
-| `click` | `element`, or `x` and `y` in CSS pixels of the viewport | Clicks the control or the point, and returns the page |
-| `type` | `element`, `text`, `submit` | Fills the field or chooses the option, presses Enter when `submit` is true, and returns the page |
-| `screenshot` | `element` | Captures the visible part of the page, after scrolling the control into view when given |
+| `read` | None | Returns the page of the agent tab, or else of the Browser tab the user has open at that moment |
+| `click` | `element`, or `x` and `y` in CSS pixels of the viewport | Clicks the control or the point in the agent tab, and returns the page; without an agent tab it fails, because the window never acts in a tab the user opened |
+| `type` | `element`, `text`, `submit` | Fills the field or chooses the option in the agent tab, presses Enter when `submit` is true, and returns the page; without an agent tab it fails, as a click does |
+| `screenshot` | `element` | Captures the visible part of the page of the agent tab, or else of the Browser tab the user has open, after scrolling the control into view when given |
 
 A `WasdBrowserOutcome` is either `{ ok: true, page, note?, image? }` or `{ ok: false, message }`. `page` holds the page's `url`, `title`, and `text`, whether the text was `truncated`, whether the page was still `loading`, and an optional load `error`; `note` says how the window carried out the command, such as a click by script; `image` holds a screenshot's base64 `data`, its `mediaType`, `width`, and `height`, and the `viewportWidth` and `viewportHeight` in CSS pixels that it shows, from which the tools map screenshot pixels back to the page. The Host refuses an outcome whose text exceeds `maxChars` or whose image data exceeds 32 MiB. [LiveShare](liveshare.md) classifies the three endpoints as owner-only and never offers the `wasdPlugins` namespace to share viewers.
 

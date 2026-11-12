@@ -400,10 +400,10 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `command.kind` | 字段 | 窗口的操作 |
 |---|---|---|
 | `open` | `url` | 把地址加载到该会话的智能体标签页（必要时先在显示中的会话里打开一个），显示该标签页，并返回页面 |
-| `read` | 无 | 返回智能体标签页的页面，或用户打开的浏览器标签页的页面 |
-| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 点击该控件或该点，并返回页面 |
-| `type` | `element`、`text`、`submit` | 填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面 |
-| `screenshot` | `element` | 截取页面的可见部分；给出控件时先把它滚动到视野中 |
+| `read` | 无 | 返回智能体标签页的页面；没有智能体标签页时，返回用户此刻打开的浏览器标签页的页面 |
+| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 在智能体标签页中点击该控件或该点，并返回页面；没有智能体标签页时失败，因为窗口从不在用户打开的标签页中操作 |
+| `type` | `element`、`text`、`submit` | 在智能体标签页中填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面；没有智能体标签页时同点击一样失败 |
+| `screenshot` | `element` | 截取智能体标签页中页面的可见部分，没有智能体标签页时截取用户打开的浏览器标签页中页面的可见部分；给出控件时先把它滚动到视野中 |
 
 `WasdBrowserOutcome` 要么是 `{ ok: true, page, note?, image? }`，要么是 `{ ok: false, message }`。`page` 包含页面的 `url`、`title` 和 `text`、文本是否被截断（`truncated`）、页面是否仍在加载（`loading`），以及可选的加载错误 `error`；`note` 说明窗口如何执行了该命令，例如通过脚本点击；`image` 包含截图的 base64 `data`、`mediaType`、`width` 和 `height`，以及它所显示视口的 CSS 像素尺寸 `viewportWidth` 与 `viewportHeight`，工具据此把截图像素换算回页面坐标。Host 拒绝文本超过 `maxChars` 或图像数据超过 32 MiB 的结果。[LiveShare](liveshare.zh.md) 把这三个端点都归为仅所有者可用，并且从不向共享观看者提供 `wasdPlugins` 命名空间。
 

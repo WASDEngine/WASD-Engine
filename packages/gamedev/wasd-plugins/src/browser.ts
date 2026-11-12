@@ -328,15 +328,17 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
   }), defineTool({
     name: 'browser_read',
     description: 'Return the text of the page in your Browser tab again, after it changed or finished loading, with '
-      + 'fresh control numbers. Without a tab of your own yet, it reads the Browser tab the user has open.',
+      + 'fresh control numbers. Without a tab of your own, it reads the Browser tab the user has open at that moment, '
+      + 'which you can read but not click or type in.',
     parameters: {},
     output: pageOutput,
     timeoutMs: host.timeoutMs,
     execute: (_args, exec) => run(exec, { kind: 'read' }),
   }), defineTool({
     name: 'browser_click',
-    description: 'Click a link, button, or other control of the page in your Browser tab: give element, its number in '
-      + 'the latest page text, or x and y, pixels of the latest browser_screenshot. Returns the page\'s text afterwards.',
+    description: 'Click a link, button, or other control of the page in your Browser tab, the one browser_open opened: '
+      + 'give element, its number in the latest page text, or x and y, pixels of the latest browser_screenshot. Returns '
+      + 'the page\'s text afterwards. It never clicks in a tab the user opened; open that page with browser_open first.',
     parameters: {
       element: ELEMENT,
       x: { type: 'number', description: 'Horizontal pixel of the latest browser_screenshot; give y too.' },
@@ -364,9 +366,9 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
     },
   }), defineTool({
     name: 'browser_type',
-    description: 'Type text into a field of the page in your Browser tab, replacing what it holds, and press Enter '
-      + 'afterwards when submit is true. Returns the page\'s text afterwards. Never type passwords, payment details, or '
-      + 'other secrets.',
+    description: 'Type text into a field of the page in your Browser tab, the one browser_open opened, replacing what it '
+      + 'holds, and press Enter afterwards when submit is true. Returns the page\'s text afterwards. It never types in a '
+      + 'tab the user opened. Never type passwords, payment details, or other secrets.',
     parameters: {
       element: { ...ELEMENT, required: true },
       text: { type: 'string', required: true, description: 'The text to type.' },
@@ -377,8 +379,9 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
     execute: (args, exec) => run(exec, { kind: 'type', element: args.element, text: args.text, submit: args.submit ?? false }),
   }), defineTool({
     name: 'browser_screenshot',
-    description: 'Look at the visible part of the page in your Browser tab, such as reference art or a game\'s page, '
-      + 'after scrolling element into view when given. x and y of browser_click are pixels of this image.',
+    description: 'Look at the visible part of the page in your Browser tab, or without one the Browser tab the user has '
+      + 'open, such as reference art or a game\'s page, after scrolling element into view when given. x and y of '
+      + 'browser_click are pixels of this image.',
     parameters: { element: { ...ELEMENT, description: 'Number n of a control shown as [n: ...] to scroll into view first.' } },
     output: {
       schema: SCREENSHOT_SCHEMA,

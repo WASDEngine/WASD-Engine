@@ -2,9 +2,10 @@
  * Window half of the agent's Browser: it follows the agents' Browser commands, takes those it can carry out, and acts
  * on a Desktop Browser tab in the right Sidebar. A window takes a command for a Session while the Session is on screen,
  * or while it holds that Session's agent tab, which keeps working when the user turns to another Session. The agent tab
- * is the Browser tab `browser_open` opened, or the Browser tab the user had open when the agent first read or looked at
- * the Browser; `browser_open` never loads into a tab the user opened, so after reading the user's tab it opens a tab of
- * its own. A window claims each command it takes at once and carries out one Session's commands in order. Every
+ * is the Browser tab `browser_open` opened; the window clicks and types only there. Without one, a read or a
+ * screenshot looks at the Browser tab the user has open at that moment, which the window never acts in and keeps no
+ * hold on, and `browser_open` opens a tab of the agent's own. A window claims each command it takes at once and carries
+ * out one Session's commands in order. Every
  * operation on the page has the command's time limit, and a command whose tool call ended, by its timeout or its
  * cancellation, stops before its next action on the page, so the Session's next command runs. Values a page script
  * returns come from the page, so the window checks them before use, and the window types into no password or payment
@@ -107,12 +108,6 @@ class BrowserCommandError extends Error {
 interface AgentTab {
   readonly id: TabId
   readonly face: SidebarBrowserTab
-}
-
-/** The Browser tab a Session's agent uses, and whether the user opened it, which keeps `browser_open` out of it. */
-interface HeldTab {
-  readonly id: TabId
-  readonly adopted: boolean
 }
 
 /** One command as the window carries it out: its limits, and its cancellation when its tool call ends. */
@@ -278,6 +273,11 @@ function secretField(element: number): BrowserCommandError {
     + 'ask the user to fill it in.')
 }
 
+/** What a click or typing fails with when the agent has no Browser tab of its own. */
+const NOT_OWN_TAB = 'The Browser clicks and types only in a tab you opened, and you have none now; it never acts in a tab '
+  + 'the user opened. Open the page with browser_open, which loads it in a tab of your own, signed in to the same sites '
+  + 'as the user\'s tabs, then click or type there.'
+
 /** What a command that ended in the window stops with; its tool call already ended, so nobody reads the message. */
 const ENDED = 'The tool call of this Browser command ended.'
 
@@ -322,7 +322,8 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   const { sidebar, automation } = services
   const key = `__wasdBrowserControls${Math.random().toString(36).slice(2)}`
   const taken = new Set<string>()
-  const agentTabs = new Map<SessionId, HeldTab>()
+  // The Browser tab `browser_open` opened for each Session's agent.
+  const agentTabs = new Map<SessionId, TabId>()
   const queues = new Map<SessionId, Promise<void>>()
   // The cancellation of each command this window took, until the command ends here.
   const commands = new Map<string, AbortController>()
@@ -330,12 +331,11 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   const lifetime = new AbortController()
 
   const onScreen = (sessionId: SessionId): boolean => sidebar.mounted.getSnapshot() === sessionId
-  /** The Session's agent tab while its body is mounted; with `ownOnly`, only a tab `browser_open` opened. */
-  const agentTab = (sessionId: SessionId, ownOnly = false): AgentTab | undefined => {
-    const held = agentTabs.get(sessionId)
-    if (held === undefined || (ownOnly && held.adopted)) return undefined
-    const face = automation.tab(sessionId, held.id)
-    return face === undefined ? undefined : { id: held.id, face }
+  /** The Session's agent tab while its body is mounted. */
+  const agentTab = (sessionId: SessionId): AgentTab | undefined => {
+    const id = agentTabs.get(sessionId)
+    const face = id === undefined ? undefined : automation.tab(sessionId, id)
+    return id === undefined || face === undefined ? undefined : { id, face }
   }
   const canServe = (request: WasdBrowserRequest): boolean => agentTab(request.sessionId) !== undefined || onScreen(request.sessionId)
 
@@ -369,27 +369,34 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     sidebar.openTabIn(sessionId, BROWSER_KIND)
     const opened = sidebar.tabsIn(sessionId).find(tab => tab.kind === BROWSER_KIND && !before.has(tab.id))
     if (opened === undefined) throw new BrowserCommandError('The Browser tab did not open in the right panel.')
-    agentTabs.set(sessionId, { id: opened.id, adopted: false })
+    agentTabs.set(sessionId, opened.id)
     return { id: opened.id, face: await mounted(sessionId, opened.id, run) }
   }
 
-  /** The Browser tab the user has open in the Session on screen: the active one, else the newest. */
+  /**
+   * The Browser tab the user has open in the Session on screen at this moment: the active one, else the newest. The
+   * window only reads it, and asks again at each read.
+   */
   const userTab = (sessionId: SessionId): AgentTab | undefined => {
     if (!onScreen(sessionId)) return undefined
     const active = sidebar.active()
     const id = active?.kind === BROWSER_KIND ? active.id : sidebar.tabsIn(sessionId).filter(tab => tab.kind === BROWSER_KIND).at(-1)?.id
     const face = id === undefined ? undefined : automation.tab(sessionId, id)
-    if (id === undefined || face === undefined) return undefined
-    agentTabs.set(sessionId, { id, adopted: true })
-    return { id, face }
+    return id === undefined || face === undefined ? undefined : { id, face }
   }
 
-  const requireTab = (sessionId: SessionId, adopt: boolean): AgentTab => {
-    const tab = agentTab(sessionId) ?? (adopt ? userTab(sessionId) : undefined)
-    if (tab !== undefined) return tab
-    throw new BrowserCommandError(adopt
-      ? 'No page is open in the Browser; call browser_open first.'
-      : 'No page is open in your Browser tab; call browser_open first, or browser_read to use the Browser tab the user has open.')
+  /** The tab a read or a screenshot looks at: the agent tab, else the Browser tab the user has open. */
+  const readTab = (sessionId: SessionId): AgentTab => {
+    const tab = agentTab(sessionId) ?? userTab(sessionId)
+    if (tab === undefined) throw new BrowserCommandError('No page is open in the Browser; call browser_open first.')
+    return tab
+  }
+
+  /** The tab a click or typing acts on: only the agent tab. */
+  const actTab = (sessionId: SessionId): AgentTab => {
+    const tab = agentTab(sessionId)
+    if (tab === undefined) throw new BrowserCommandError(NOT_OWN_TAB)
+    return tab
   }
 
   /** Wait until an action's page load, if it started one, ended, and the page's scripts had a moment. */
@@ -465,8 +472,8 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     const run: Run = { limits, signal }
     switch (command.kind) {
       case 'open': {
-        // A tab the user opened stays theirs: after browser_read adopted it, the agent opens a tab of its own.
-        const tab = agentTab(sessionId, true) ?? await openTab(sessionId, run)
+        // A tab the user opened stays theirs: the agent loads pages only into a tab of its own.
+        const tab = agentTab(sessionId) ?? await openTab(sessionId, run)
         signal.throwIfAborted()
         const refused = tab.face.load(command.url)
         if (refused !== undefined) throw new BrowserCommandError(ADDRESS_FAILURES[refused])
@@ -475,12 +482,12 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         return await pageOutcome(tab.face, run)
       }
       case 'read': {
-        const tab = requireTab(sessionId, true)
+        const tab = readTab(sessionId)
         if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, run)
         return await pageOutcome(tab.face, run)
       }
       case 'click': {
-        const tab = requireTab(sessionId, false)
+        const tab = actTab(sessionId)
         let note: string | undefined
         if (command.element !== undefined) {
           const location = await locate(tab.face, run, command.element)
@@ -498,7 +505,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         return await pageOutcome(tab.face, run, note)
       }
       case 'type': {
-        const tab = requireTab(sessionId, false)
+        const tab = actTab(sessionId)
         const location = await locate(tab.face, run, command.element)
         if (location.covered === undefined && !location.select) await click(tab.face, run, location.x, location.y)
         const script = pageScript(prepareField, { key, element: command.element, text: command.text, secret: SECRET_FIELDS })
@@ -527,7 +534,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         return await pageOutcome(tab.face, run, field.mode === 'chosen' ? `Chose "${field.choice}".` : undefined)
       }
       case 'screenshot': {
-        const tab = requireTab(sessionId, true)
+        const tab = readTab(sessionId)
         reveal(sessionId, tab.id, run)
         if (command.element !== undefined) await locate(tab.face, run, command.element)
         if (tab.face.state().loading || !tab.face.page.ready()) await settlePage(tab.face, run)
