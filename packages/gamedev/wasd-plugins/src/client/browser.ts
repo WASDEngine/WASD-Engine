@@ -2,14 +2,13 @@
  * Window half of the agent's Browser: it follows the agents' Browser commands, takes those it can carry out, and acts
  * on a Desktop Browser tab in the right Sidebar. A window takes a command for a Session while the Session is on screen,
  * or while it holds that Session's agent tab, which keeps working when the user turns to another Session. The agent tab
- * is the Browser tab `browser_open` opened; the window clicks and types only there. Without one, a read or a
- * screenshot looks at the Browser tab the user has open at that moment, which the window never acts in and keeps no
- * hold on, and `browser_open` opens a tab of the agent's own. A window claims each command it takes at once and carries
- * out one Session's commands in order. Every
- * operation on the page has the command's time limit, and a command whose tool call ended, by its timeout or its
- * cancellation, stops before its next action on the page, so the Session's next command runs. Values a page script
- * returns come from the page, so the window checks them before use, and the window types into no password or payment
- * field.
+ * is the Browser tab `browser_open` opened; the window clicks and types only there. Without one, a read or a screenshot
+ * looks at the Browser tab the user has open at that moment, which the window never acts in and keeps no hold on, and
+ * `browser_open` opens a tab of the agent's own. A window claims each command it takes at once, through the command
+ * stream it follows, and carries out one Session's commands in order. Every operation on the page has the command's
+ * time limit, and a command whose tool call ended, by its timeout or its cancellation, stops before its next action on
+ * the page, so the Session's next command runs. Values a page script returns come from the page, so the window checks
+ * them before use, and the window types into no password or payment field.
  */
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type {
@@ -576,13 +575,18 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
     for (const request of waiting) {
       if (taken.has(request.id) || !canServe(request)) continue
       taken.add(request.id)
-      // Claimed at once, so a command that waits behind the Session's earlier ones is not taken for unclaimed. A refused
-      // claim, such as one through a stream that reopened meanwhile, lets a later list offer the command again.
-      const claimed = services.claim(request.id, follower).catch((error: unknown) => {
+      // Claimed at once, so a command that waits behind the Session's earlier ones is not taken for unclaimed. After a
+      // refused claim, such as one through a stream that ended meanwhile, a later list offers the command again; one
+      // that a reopened stream delivered before the refusal came back is considered at once.
+      const through = follower
+      const claimed = services.claim(request.id, through).catch((error: unknown) => {
         services.warn('wasd-plugins: a window could not take a Browser command', error)
         return false
       }).then((took) => {
-        if (!took) taken.delete(request.id)
+        if (!took) {
+          taken.delete(request.id)
+          if (follower !== through) consider()
+        }
         return took
       })
       const controller = new AbortController()

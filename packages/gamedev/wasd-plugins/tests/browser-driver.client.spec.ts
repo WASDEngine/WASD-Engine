@@ -131,13 +131,18 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     })
     wake?.()
   }
+  // The Host decides a claim when it arrives; the answer reaches the window once `answers` lets it.
+  let answers: Promise<unknown> | undefined
   const claim = vi.fn((id: string, through: string) => {
     const entry = queued.get(id)
-    if (entry === undefined || entry.claimed || through !== follower) return Promise.resolve(false)
-    entry.claimed = true
-    publish()
-    return Promise.resolve(true)
+    const took = entry !== undefined && !entry.claimed && through === follower
+    if (took) {
+      entry.claimed = true
+      publish()
+    }
+    return answers === undefined ? Promise.resolve(took) : answers.then(() => took)
   })
+  const holdAnswers = (until: Promise<unknown> | undefined) => { answers = until }
   /** End the window's command stream before the window hears of it, as a reconnect does before the new stream delivers. */
   const reopenQuietly = () => { follower = `stream-${String(Number(follower.slice(7)) + 1)}` }
   const warn = vi.fn()
@@ -189,7 +194,7 @@ function harness(onScreen: SessionId | undefined = SESSION) {
   }
   return {
     sidebar, openTabIn, focus, expandIn, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, publish,
-    reopenQuietly,
+    reopenQuietly, holdAnswers,
     isExpanded: () => expanded,
     collapse: () => { expanded = false },
   }
@@ -462,6 +467,23 @@ describe('followBrowserRequests', () => {
     h.publish()
     page(await h.outcome(id))
     expect(h.claim).toHaveBeenLastCalledWith(id, 'stream-2')
+  })
+
+  it('takes a command again at once when its stream reopened before the refusal of its claim came back', async () => {
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    const answer = Promise.withResolvers<undefined>()
+    h.holdAnswers(answer.promise)
+    const id = h.send({ kind: 'read' })
+    h.reopenQuietly()
+    await vi.advanceTimersByTimeAsync(0)
+    h.publish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.claim.mock.calls).toEqual([[id, 'stream-1']])
+    h.holdAnswers(undefined)
+    answer.resolve(undefined)
+    page(await h.outcome(id))
+    expect(h.claim.mock.calls).toEqual([[id, 'stream-1'], [id, 'stream-2']])
   })
 
   it('stops following when disposed', async () => {
