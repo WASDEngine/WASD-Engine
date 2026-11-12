@@ -31,6 +31,8 @@ export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'rela
   readonly onSelect: (path: string) => void
   /** What an agent asked to show with the asset, once per `request`. */
   readonly requested?: ViewRequest | undefined
+  /** Whether the tab is on screen; a hidden view pauses its animation. */
+  readonly visible: boolean
   readonly t: Translate
 }
 
@@ -112,7 +114,9 @@ export function AssetViewer(props: AssetViewerProps): ReactNode {
 }
 
 /** Read an asset, again for each new version, and show it. */
-function LoadedAsset({ asset, useResource, read, relatedUrl, fileAddress, animations, requested, t }: AssetViewerProps): ReactNode {
+function LoadedAsset({
+  asset, useResource, read, relatedUrl, fileAddress, animations, visible, requested, t,
+}: AssetViewerProps): ReactNode {
   const resource = useResource<'file'>(fileAddress(asset.path))
   const version = resource.status === 'live' ? resource.value?.version : undefined
   // A read waits for the resource's first frame, so opening a file reads it once, not before and after its version arrives.
@@ -158,5 +162,5 @@ function LoadedAsset({ asset, useResource, read, relatedUrl, fileAddress, animat
   }
   return asset.format.kind === 'image'
     ? <ImageView asset={asset} file={load.file} animations={animations} read={read} requested={requested} t={t} />
-    : <ModelView asset={asset} file={load.file} relatedUrl={relatedUrl} requested={requested} t={t} />
+    : <ModelView asset={asset} file={load.file} relatedUrl={relatedUrl} visible={visible} requested={requested} t={t} />
 }

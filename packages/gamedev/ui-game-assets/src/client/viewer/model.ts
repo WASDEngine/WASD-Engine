@@ -235,6 +235,46 @@ function fileName(reference: string): string {
   return normalized.slice(normalized.lastIndexOf('/') + 1)
 }
 
+/** Whether every corner of a box is a finite number. */
+function isFiniteBox(box: Box3): boolean {
+  return [box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].every(Number.isFinite)
+}
+
+/**
+ * The world bounds of a model in its current pose, as three.js measures them precisely, leaving out vertices whose
+ * position is not a finite number and instanced meshes whose bounds are not, so that a damaged vertex leaves the
+ * rest measured.
+ * @param root - the model.
+ * @returns the bounds; empty when no vertex has a finite position.
+ */
+export function finiteBounds(root: Object3D): Box3 {
+  const bounds = new Box3()
+  const point = new Vector3()
+  const part = new Box3()
+  root.updateMatrixWorld(true)
+  root.traverse((object) => {
+    const geometry: unknown = Reflect.get(object, 'geometry')
+    if (!isGeometry(geometry)) return
+    if (!geometry.hasAttribute('position')) return
+    const position = geometry.getAttribute('position')
+    if (object instanceof InstancedMesh) {
+      // Instanced meshes are measured by their bounding box over every instance, as three.js measures them.
+      if (object.boundingBox === null) object.computeBoundingBox()
+      if (object.boundingBox === null) return
+      part.copy(object.boundingBox).applyMatrix4(object.matrixWorld)
+      if (!part.isEmpty() && isFiniteBox(part)) bounds.union(part)
+      return
+    }
+    for (let index = 0; index < position.count; index += 1) {
+      if (object instanceof Mesh) object.getVertexPosition(index, point)
+      else point.fromBufferAttribute(position, index)
+      point.applyMatrix4(object.matrixWorld)
+      if (Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z)) bounds.expandByPoint(point)
+    }
+  })
+  return bounds
+}
+
 /**
  * Read a model.
  * @param source - the format, the bytes, and how related files resolve.
@@ -384,6 +424,11 @@ function round(value: number): number {
   return Number(value.toPrecision(6))
 }
 
+/** Whether a value is a finite number, which the details can carry. */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 /**
  * Measure a model for its details.
  * @param model - the loaded model, in its rest pose.
@@ -393,8 +438,7 @@ function round(value: number): number {
  */
 export function describeModel(model: LoadedModel, format: string, bytes: number): ModelAssetDetails {
   const { root } = model
-  root.updateMatrixWorld(true)
-  const bounds = new Box3().setFromObject(root, true)
+  const bounds = finiteBounds(root)
   const empty = bounds.isEmpty()
   let meshes = 0
   let nodes = 0
@@ -420,7 +464,7 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
         const size = (key: 'width' | 'height'): number => {
           if (typeof image !== 'object' || image === null || !(key in image)) return 0
           const measured: unknown = Reflect.get(image, key)
-          return typeof measured === 'number' ? measured : 0
+          return isFiniteNumber(measured) && measured > 0 ? Math.round(measured) : 0
         }
         textures.set(value, { name: name === '' ? '(embedded)' : name, width: size('width'), height: size('height') })
       }
@@ -433,8 +477,8 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
         name: material.name,
         type: material.type,
         ...color instanceof Color ? { color: `#${color.getHexString()}` } : {},
-        ...typeof metalness === 'number' ? { metalness: round(metalness) } : {},
-        ...typeof roughness === 'number' ? { roughness: round(roughness) } : {},
+        ...isFiniteNumber(metalness) ? { metalness: round(metalness) } : {},
+        ...isFiniteNumber(roughness) ? { roughness: round(roughness) } : {},
         maps,
         transparent: material.transparent,
         doubleSided: material.side === DoubleSide,
@@ -456,7 +500,8 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
     }
     return {
       name: clip.name,
-      seconds: round(clip.duration),
+      // A clip whose key times are not numbers has no length to give.
+      seconds: isFiniteNumber(clip.duration) && clip.duration > 0 ? round(clip.duration) : 0,
       tracks: clip.tracks.length,
       targets: [...targets].slice(0, LISTED.targets),
       targetCount: targets.size,
@@ -682,6 +727,8 @@ export class ModelStage {
   private home: View | undefined
   /** Whether the reader moved the camera since the model was framed; until then a resize frames it again. */
   private moved = false
+  /** Whether the canvas is on screen; while it is not, the stage draws nothing. */
+  private visible = true
   private disposed = false
   private readonly clockListeners = new Set<(clock: ClipClock) => void>()
 
@@ -712,8 +759,7 @@ export class ModelStage {
     this.model = model
     this.scene.add(model.root)
     applyWireframe(model.root, this.shading === 'wireframe')
-    model.root.updateMatrixWorld(true)
-    const bounds = new Box3().setFromObject(model.root, true)
+    const bounds = finiteBounds(model.root)
     if (bounds.isEmpty()) bounds.set(new Vector3(-0.5, -0.5, -0.5), new Vector3(0.5, 0.5, 0.5))
     this.placeGrid(bounds)
     if (!keepView || this.home === undefined) this.fit(bounds)
@@ -877,15 +923,30 @@ export class ModelStage {
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     if (!this.moved && this.model !== undefined) {
-      const bounds = new Box3().setFromObject(this.model.root, true)
+      const bounds = finiteBounds(this.model.root)
       if (!bounds.isEmpty()) this.fit(bounds)
     }
     this.requestRender()
   }
 
-  /** Draw at the next animation frame, once however often it is asked. */
+  /**
+   * Draw while the canvas is on screen, or stop drawing while it is not: a hidden stage asks for no frames, and its
+   * playing clip waits where it stands until the stage shows again.
+   * @param visible - whether the canvas is on screen.
+   */
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return
+    this.visible = visible
+    if (visible) {
+      // The time spent hidden does not move the clip.
+      this.timer.update()
+      this.requestRender()
+    }
+  }
+
+  /** Draw at the next animation frame, once however often it is asked, unless the stage is hidden. */
   requestRender(): void {
-    if (this.pending !== 0 || this.disposed) return
+    if (this.pending !== 0 || this.disposed || !this.visible) return
     this.pending = requestAnimationFrame(this.tick)
   }
 

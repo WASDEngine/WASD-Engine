@@ -2,8 +2,10 @@
  * The 3D view: the model on a three.js stage, framed from the front right and above, with orbit controls (drag to turn,
  * right drag or Shift drag to pan, scroll to zoom, arrow keys to pan), its animations on a timeline that seeks and
  * changes speed, its skeleton drawn over it, clay and wireframe shading, a reset of the camera, and its details: size,
- * geometry, materials, textures, bones, clips, and morph targets with sliders. three.js and the loaders arrive in a
- * chunk loaded on first use. A new version of the same file keeps the camera, the shading, and the playing clip.
+ * geometry, materials, textures, bones, clips, and morph targets with sliders. The size is measured in the rest pose,
+ * as the agent's details measure it, whatever clip plays. three.js and the loaders arrive in a chunk loaded on first
+ * use. A new version of the same file keeps the camera, the shading, and the playing clip. While the view is off
+ * screen, the stage draws nothing and the playing clip waits.
  */
 import clsx from 'clsx'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -37,6 +39,8 @@ export interface ModelViewProps {
    * @returns the URL to load, or undefined for a file the viewer does not load.
    */
   readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
+  /** Whether the view is on screen; a hidden view draws nothing. */
+  readonly visible: boolean
   /** What an agent asked to show: the clip to play once the model shows; `request` changes for each ask. */
   readonly requested?: ViewRequest | undefined
   readonly t: Translate
@@ -160,7 +164,7 @@ function Timeline({ stage, t }: { readonly stage: ModelStage; readonly t: Transl
  * @param props - the asset, its bytes, the related-file resolver, the clip an agent asked for, and copy.
  * @returns the stage over its timeline, info bar, controls, and details.
  */
-export function ModelView({ asset, file, relatedUrl, requested, t }: ModelViewProps): ReactNode {
+export function ModelView({ asset, file, relatedUrl, visible, requested, t }: ModelViewProps): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<StageState>()
@@ -222,6 +226,11 @@ export function ModelView({ asset, file, relatedUrl, requested, t }: ModelViewPr
     return () => { observer.disconnect() }
   }, [stage])
 
+  // Off screen, as in a collapsed sidebar or another Session's, the stage stops drawing until it shows again.
+  useEffect(() => {
+    if (stage?.kind === 'ready') stage.stage.setVisible(visible)
+  }, [stage, visible])
+
   // A rescan lists the asset again as a new object; only its path, its format, and the read file decide a reload.
   const { path, format } = asset
   useEffect(() => {
@@ -248,6 +257,8 @@ export function ModelView({ asset, file, relatedUrl, requested, t }: ModelViewPr
       const first = clips.length > 0 ? 0 : undefined
       const next = kept >= 0 ? kept : restPose ? undefined : first
       drawn.show(model, sameFile)
+      // Measured before a clip poses it: the size of the rest pose, which the agent's details give too.
+      const rest = module.describeModel(model, asset.format.label, file.data.byteLength)
       drawn.setShading(previous.shading)
       drawn.setSkeleton(previous.skeleton)
       drawn.setPlaying(previous.playing)
@@ -256,13 +267,15 @@ export function ModelView({ asset, file, relatedUrl, requested, t }: ModelViewPr
       setClip(next)
       setBone(undefined)
       setMorphs(module.morphTargetsOf(model.root).map(entry => ({ ...entry, values: entry.targets.map(() => 0) })))
-      setDetails(module.describeModel(model, asset.format.label, file.data.byteLength))
+      setDetails(rest)
       setPhase('ready')
-      // Texture sizes and missing files are known once the files the model names have loaded.
+      // Texture sizes and missing files are known once the files the model names have loaded; the size stays the rest
+      // pose's while a clip plays.
       let timer: ReturnType<typeof setTimeout> | undefined
       void Promise.race([model.settled, new Promise<void>((resolve) => { timer = setTimeout(resolve, TEXTURE_WAIT_MS) })]).then(() => {
         clearTimeout(timer)
-        if (!controller.signal.aborted) setDetails(module.describeModel(model, asset.format.label, file.data.byteLength))
+        if (controller.signal.aborted) return
+        setDetails({ ...module.describeModel(model, asset.format.label, file.data.byteLength), min: rest.min, max: rest.max })
       })
     }, () => {
       if (!controller.signal.aborted) setPhase('failed')

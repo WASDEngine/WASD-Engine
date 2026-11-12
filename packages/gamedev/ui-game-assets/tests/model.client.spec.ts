@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * Reading models with the real three.js loaders: glTF with an external buffer and an animation, OBJ with its material
- * library, STL, PLY meshes and point clouds; the counts shown beside a model; disposal; and a Blender file's export.
+ * library, STL, PLY meshes and point clouds; files named outside the project or on the web; the counts shown beside a
+ * model; measurements of vertices that are not finite; disposal; and a Blender file's export.
  */
 import { BoxGeometry, BufferGeometry, Group, InstancedMesh, Mesh, MeshPhongMaterial, MeshStandardMaterial, Points, Texture } from 'three'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
@@ -9,7 +10,7 @@ import { exportOf } from '../src/client/AssetViewer.tsx'
 import { formatOf } from '../src/client/formats.ts'
 import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
-import { disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
+import { describeModel, disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -120,6 +121,13 @@ describe('loadModel', () => {
     await expect(loadModel(source('gltf', encode(web), related('models/tri.gltf')), new AbortController().signal)).rejects.toThrow('Failed to load buffer')
     expect(fetched).toHaveLength(1)
     expect(fetched[0]).toMatch(/^data:[^,]*$/u)
+  })
+
+  it('measures a model whose vertices are not all finite by the vertices that are, so its details stay plain JSON', async () => {
+    const model = await loadModel(source('stl', encode('solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 2 0 0\nvertex 0 3 0\nendloop\nendfacet\nfacet normal 0 0 1\nouter loop\nvertex nan 0 0\nvertex 1 inf 0\nvertex 0 1 1\nendloop\nendfacet\nendsolid t\n')), new AbortController().signal)
+    const details = describeModel(model, 'STL', 100)
+    expect([details.min, details.max]).toEqual([[0, 0, 0], [2, 3, 1]])
+    expect(JSON.parse(JSON.stringify(details))).toEqual(details)
   })
 
   it('rejects a file that is not a model of its format', async () => {

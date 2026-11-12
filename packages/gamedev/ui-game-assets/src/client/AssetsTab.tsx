@@ -104,7 +104,7 @@ export function AssetsTab({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reloads, setReloads] = useState(0)
   useEffect(() => { refresh() }, [refresh])
-  const { id: tabId, navigation } = useTabInfo().tab
+  const { id: tabId, navigation, visible } = useTabInfo().tab
   // Each navigation that names an asset selects it once, also when the body mounts after it.
   useEffect(() => {
     if (!takeNavigation(tabId, navigation.revision)) return
@@ -164,6 +164,7 @@ export function AssetsTab({
         relatedUrl={relatedUrl}
         fileAddress={fileAddress}
         animations={animations}
+        visible={visible}
         requested={requested}
         onSelect={(path) => { select(path) }}
         t={t}
