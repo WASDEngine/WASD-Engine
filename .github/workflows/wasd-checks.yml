@@ -90,6 +90,7 @@ jobs:
           packages/client/ui-plugin-manager/tests/components.client.spec.tsx
           packages/util/official-bundles
           scripts/optional-bundles.spec.ts
+          scripts/wasdengine-absent-paths.spec.ts
           packages/client/ui-theme/tests
           packages/client/ui-sidebar-browser
           packages/client/ui-primitives/tests/web-block.client.spec.tsx
