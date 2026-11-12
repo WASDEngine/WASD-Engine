@@ -66,6 +66,7 @@ jobs:
           scripts/verify-dsh-package-licenses.spec.ts
           packages/client/ui-brand-official
           packages/client/ui-chat
+          packages/client/ui-sidebar-right
           apps/web/tests/app-icons.spec.ts
           apps/web/tests/wasdengine-app-icons.spec.ts
           packages/client/locale/tests/wasdengine-copy.client.spec.ts

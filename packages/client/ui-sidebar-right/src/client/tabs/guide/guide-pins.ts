@@ -30,10 +30,11 @@ export interface GuidePins {
 
 /**
  * Create the in-memory guide pin list; the snapshot keeps its reference until the list changes.
+ * @param unpinned - `kind:id` card ids that start unpinned; cards of the fixed kind show regardless.
  * @returns Unpinned card ids and the pin mutation.
  */
-export function createGuidePins(): GuidePins {
-  const store = createSnapshotStore<{ readonly unpinned: readonly string[] }>({ unpinned: NO_CARDS })
+export function createGuidePins(unpinned: readonly string[] = NO_CARDS): GuidePins {
+  const store = createSnapshotStore<{ readonly unpinned: readonly string[] }>({ unpinned })
   return {
     unpinned: { getSnapshot: () => store.getSnapshot().unpinned, subscribe: listener => store.subscribe(listener) },
     setPinned: (id, pinned) => {

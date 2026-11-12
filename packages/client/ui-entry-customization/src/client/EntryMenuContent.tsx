@@ -1,9 +1,10 @@
-/** Folded Conversation Views, plugin discovery while reachable, and creation. */
+/** Unpinned sidebar entries and guide cards, folded Conversation Views, plugin discovery while reachable, and creation. */
 import {
   Button, IconCheckOutlineRegular, IconPinOutlineRegular, IconPluginPinwheelOutlineRegular, IconPlusOutlineRegular, MenuItemButton, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRenderFactories, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type { SidebarRightGuideActionEntry } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import css from './EntryMenu.module.css'
 
 /** Navigation region whose More menu hosts one registration. */
@@ -23,19 +24,22 @@ export interface EntryMenuInjected {
   readonly createPlugin: () => void
 }
 
+/** One listed entry; a guide card also carries its glyph. */
+type EntryMenuEntry = PropsRuntime<'sidebar.panellist.actions'>['entries'][number] & Pick<SidebarRightGuideActionEntry, 'icon'>
+
 // The three region owners declare the same fields; the sidebar's slot names them.
-type EntryMenuContentProps = PropsRuntime<'sidebar.panellist.actions'>
+type EntryMenuContentProps = Omit<PropsRuntime<'sidebar.panellist.actions'>, 'entries'> & { readonly entries: readonly EntryMenuEntry[] }
   & PropsRenderFactories & PropsLocale<'entryCustomization'> & InjectFace<EntryMenuInjected>
 
 /**
- * Render unpinned sidebar entries or folded Conversation Views, followed by discovery and Creator actions.
+ * Render unpinned sidebar entries or guide cards, or folded Conversation Views, followed by discovery and Creator actions.
  * @param props - Owner dismissal callback, injected actions, and localized copy.
  * @returns Menu rows for the region's More menu.
  */
 export function EntryMenuContent({
   entries, onOpen, onPinnedChange, region, onDismiss, usePluginNavigation, browsePlugins, createPlugin, t, renderFactorySlot,
 }: EntryMenuContentProps) {
-  const moreEntries = region === 'sidebar' ? entries.filter(entry => !entry.pinned) : region === 'conversation' ? entries : []
+  const moreEntries = region === 'conversation' ? entries : entries.filter(entry => !entry.pinned)
   const browsable = usePluginNavigation(present => present)
   return <>
     {moreEntries.map(entry => <div key={entry.id} className={region === 'sidebar' ? css.sidebarEntry : undefined}>
@@ -43,7 +47,9 @@ export function EntryMenuContent({
         <span className={css.entryIcon} aria-hidden="true">
           {renderFactorySlot('sidebar.panel.icon', { id: entry.id, size: 16, active: entry.active === true })}
         </span>
-      ) : undefined}
+      ) : entry.icon === undefined ? undefined : (
+        <span className={`${css.entryIcon} ${css.guideIcon}`} aria-hidden="true"><entry.icon size={16} /></span>
+      )}
       onSelect={() => { onDismiss(); onOpen(entry.id) }}>
         <span className={css.entryName}>
           <span className={css.entryTitle}>{entry.label}</span>

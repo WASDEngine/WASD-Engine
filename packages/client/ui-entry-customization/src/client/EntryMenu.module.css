@@ -30,3 +30,11 @@
   .sidebarEntry:hover .activeMark,
   :global(html[data-input-modality='keyboard']) .sidebarEntry:focus-within .activeMark { opacity: 0; }
 }
+
+/* WASD Engine: a guide card's glyph in More tools takes the keycap purple, lighter in the dark theme, as the card
+   does on the guide (ui-sidebar-right GuideBody.module.css); fixed-palette artwork, such as the terminal's blue
+   strokes, follows it. */
+.guideIcon { color: #7C4DFF; }
+:global(body[data-ds-dark-theme]) .guideIcon { color: #A585FF; }
+.guideIcon [stroke]:not([stroke='none']) { stroke: currentColor; }
+.guideIcon [fill]:not([fill='none']) { fill: currentColor; }

@@ -29,6 +29,7 @@ import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type { PaneId, TabId, TabRecord } from '@deepseek-ai/dsh-client-ui-dockkit'
 import type { SlotHookFactory } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TabHookContext } from '../tab-info.ts'
+import type { SidebarRightGuideEntry } from '../tab-registry.ts'
 import type { SidebarRightKey } from '../locales.ts'
 import type { SidebarRightNavigationParams, SidebarRightResourceParams, SidebarRightTabParamsFor } from './params.ts'
 
@@ -249,6 +250,8 @@ export interface SidebarRightGuideActionEntry {
   readonly label: string
   /** False while the card is unpinned from the guide. */
   readonly pinned: boolean
+  /** The glyph the card draws; absent when its type registered none. */
+  readonly icon?: NonNullable<SidebarRightGuideEntry['icon']>
 }
 
 /** Owner share of the guide's More menu rows. */

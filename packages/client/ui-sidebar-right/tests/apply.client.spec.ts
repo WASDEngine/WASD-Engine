@@ -30,6 +30,7 @@ import { ExpandButton } from '../src/client/shell/ExpandButton.tsx'
 import { GuideBody } from '../src/client/tabs/guide/GuideBody.tsx'
 import { GuideTitle } from '../src/client/tabs/guide/GuideTitle.tsx'
 import { GUIDE_ID } from '../src/client/tabs/guide/definition.ts'
+import { WASDENGINE_GUIDE_MORE_TOOLS } from '../src/client/tabs/guide/wasdengine-more-tools.ts'
 import { en, ja, zh, es, fr, de, ru, pt } from '../src/client/locales.ts'
 
 const SHORTCUT_CATALOG: readonly never[] = []
@@ -312,9 +313,9 @@ describe('ui-sidebar-right apply', () => {
   it('hands the guide body its pin list, pin mutation, and the actions registration state', async () => {
     const { slots, seat, injectedOf } = await boot()
     const { hooks: { entryPins, entryActions }, setPinned } = injectedOf(seat('sidebar.right.pane.tab')) as GuideInjected
-    expect(entryPins.getSnapshot()).toEqual([])
+    expect(entryPins.getSnapshot()).toEqual(WASDENGINE_GUIDE_MORE_TOOLS)
     setPinned('terminal:shell', false)
-    expect(entryPins.getSnapshot()).toEqual(['terminal:shell'])
+    expect(entryPins.getSnapshot()).toEqual([...WASDENGINE_GUIDE_MORE_TOOLS, 'terminal:shell'])
     const listener = vi.fn()
     entryActions.subscribe(listener)
     expect(slots.subscribe).toHaveBeenCalledWith('sidebar.right.tab.guide.actions', listener)

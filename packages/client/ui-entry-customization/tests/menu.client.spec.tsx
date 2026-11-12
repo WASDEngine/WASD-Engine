@@ -45,10 +45,10 @@ function content(overrides: Partial<ContentProps> = {}) {
 }
 
 describe('More menu rows', () => {
-  it.each(['rightbar'] as const)('shows only discovery and creation in %s regardless of entries', (region) => {
+  it.each(['rightbar'] as const)('shows only discovery and creation in %s while every card is on the guide', (region) => {
     const b = content({ region, entries: [
       { id: 'notes', label: 'Notes', pinned: true, active: true },
-      { id: 'tasks', label: 'Tasks', pinned: false },
+      { id: 'tasks', label: 'Tasks', pinned: true },
     ] })
     expect(b.view.getAllByRole('menuitem').map(row => row.textContent)).toEqual(['Browse other plugins', 'Create your plugin'])
     expect(b.view.queryByRole('separator')).toBeNull()

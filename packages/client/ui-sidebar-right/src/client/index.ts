@@ -49,6 +49,7 @@ import { createSidebarRightStore } from './stores.ts'
 import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { GUIDE_ID, guideDefinition } from './tabs/guide/definition.ts'
 import { createGuidePins } from './tabs/guide/guide-pins.ts'
+import { WASDENGINE_GUIDE_MORE_TOOLS } from './tabs/guide/wasdengine-more-tools.ts'
 import { guideTabInfoFactory, tabInfoFactory } from './tab-info.ts'
 import type { TabId } from '@deepseek-ai/dsh-client-ui-dockkit'
 import { defaultSeed } from './contract/seed.ts'
@@ -274,7 +275,7 @@ export function apply(ctx: ClientContext): void {
     }, ExpandButton))
     // Stage two for the guide: it declares the chain child it hosts and reads
     // the registry's entry boxes, which an ordinary type has no reason to do.
-    const guidePins = createGuidePins()
+    const guidePins = createGuidePins(WASDENGINE_GUIDE_MORE_TOOLS)
     const guideInjected: GuideInjected = {
       hooks: {
         shortcuts: ctx.shortcuts.catalog,

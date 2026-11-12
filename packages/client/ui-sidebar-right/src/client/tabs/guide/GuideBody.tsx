@@ -161,7 +161,8 @@ export function GuideBody({
         <GuideMoreMenu
           label={t('tab.guide.more')}
           entries={entries.filter(entry => entry.kind !== FIXED_GUIDE_KIND)
-            .map(entry => ({ id: guideEntryId(entry), label: entry.title(), pinned: !unpinned.includes(guideEntryId(entry)) }))}
+            .map(entry => ({ id: guideEntryId(entry), label: entry.title(), pinned: !unpinned.includes(guideEntryId(entry)),
+              ...entry.icon === undefined ? {} : { icon: entry.icon } }))}
           onOpen={(id) => {
             const entry = entries.find(candidate => guideEntryId(candidate) === id)
             if (entry !== undefined) open(entry.kind)
