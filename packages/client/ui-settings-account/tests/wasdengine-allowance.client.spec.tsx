@@ -2,16 +2,16 @@
 /**
  * WASD Engine's AI usage row (fork-owned drift spec; `wasdengine/FORK.md` lists the fork changes): when the account
  * service reports the allowance, Settings › Account shows the whole percent left in the balance row, a bar of the
- * exact share left, the day it refreshes, and the auto recharge credits left, and no dollar amount; without it, the
- * row keeps upstream's wallets. While the account can use auto recharge, a row has its switch, which opens the card
- * page in the browser when a card is needed. The registered dictionaries carry WASD Engine's own messages in every
- * language.
+ * exact share left, the day it refreshes, and the credits left as a share of a month's usage, and no dollar amount;
+ * without it, the row keeps upstream's wallets. While the account can use auto recharge, a row has its switch, which
+ * names no amount and opens the card page in the browser when a card is needed; while the account has a referral link,
+ * a row shares it with a copy button. The registered dictionaries carry WASD Engine's own messages in every language.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ThemeSnapshot } from '@deepseek-ai/dsh-client-ui-theme/client'
-import type { AccountAllowance, AccountAutoRechargeChange, AccountDetails } from '@deepseek-ai/dsh-deepseek-account/types'
+import type { AccountAllowance, AccountAutoRechargeChange, AccountDetails, AccountReferral } from '@deepseek-ai/dsh-deepseek-account/types'
 import { makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import { AccountSection, type AccountSectionInjected, type AccountSnapshot } from '../src/client/AccountSection.tsx'
 import { de, en, es, fr, ja, pt, ru, zh } from '../src/client/locales.ts'
@@ -89,15 +89,19 @@ describe('WASD Engine AI usage row', () => {
     expect(screen.getByText('将于12月1日刷新').textContent).toBeTruthy()
   })
 
-  it('shows the auto recharge credits left under the refresh day', () => {
-    mount(ready({ ...allowance(0, 0), creditsPercent: 85 }))
-    expect(screen.getByText('Recharge credits: 85% left').textContent).toBeTruthy()
+  it('shows the credits left under the refresh day, as a share of a month\'s usage', () => {
+    const container = mount(ready({ ...allowance(0, 0), creditsPercent: 250 }))
+    expect(screen.getByText('Credits: 250% of a month\'s AI usage').textContent).toBeTruthy()
+    expect(container.textContent).not.toMatch(/[$¥]/u)
     cleanup()
     mount(ready({ ...allowance(0, 0), creditsPercent: 0 }))
-    expect(screen.getByText('Recharge credits: less than 1% left').textContent).toBeTruthy()
+    expect(screen.getByText('Credits: less than 1% of a month\'s AI usage').textContent).toBeTruthy()
     cleanup()
-    const container = mount(ready(allowance(38, 0.383)))
-    expect(container.textContent).not.toContain('Recharge credits')
+    mount(ready(allowance(38, 0.383)))
+    expect(screen.queryByText(/^Credits/u)).toBeNull()
+    cleanup()
+    mount(ready({ ...allowance(0, 0), creditsPercent: 250 }), 'de')
+    expect(screen.getByText(/^Guthaben: 250\s% der monatlichen KI-Nutzung$/u).textContent).toBeTruthy()
   })
 
   it('reads Unlimited with no bar on the Unlimited tier', () => {
@@ -120,9 +124,9 @@ describe('WASD Engine AI usage row', () => {
 
 describe('WASD Engine auto recharge switch', () => {
   const recharging = (enabled: boolean, failure?: string): AccountDetails['balance'] => ready({
-    ...allowance(0, 0), autoRecharge: { enabled, chargeUsd: 10, ...(failure === undefined ? {} : { failure }) },
+    ...allowance(0, 0), autoRecharge: { enabled, ...(failure === undefined ? {} : { failure }) },
   })
-  const label = 'Auto recharge credits when you run out, $10 at a time.'
+  const label = 'Auto recharge credits when you run out.'
 
   it('shows the switch, worded as the plans page words it, only while the account can use it', () => {
     const setAutoRecharge = vi.fn<(enabled: boolean) => Promise<AccountAutoRechargeChange | null>>()
@@ -211,10 +215,50 @@ describe('WASD Engine auto recharge switch', () => {
     expect(screen.getByRole('switch', { name: label }).getAttribute('aria-checked')).toBe('false')
   })
 
-  it('formats the charge in the page language', () => {
-    mount(recharging(true), 'de', { setAutoRecharge: vi.fn() })
-    expect(screen.getByRole('switch').getAttribute('aria-label'))
-      .toMatch(/^Guthaben automatisch aufladen, wenn es aufgebraucht ist, 10\s\$ pro Aufladung\.$/u)
+  it('names no amount in any language', () => {
+    for (const language of Object.keys(dictionaries) as (keyof typeof branded)[]) {
+      const container = mount(recharging(true), language, { setAutoRecharge: vi.fn() })
+      const name = screen.getByRole('switch').getAttribute('aria-label')
+      expect(name, language).toBe(branded[language].autoRecharge)
+      expect(name, language).not.toMatch(/[$¥\d]/u)
+      expect(container.textContent, language).not.toMatch(/[$¥]/u)
+      cleanup()
+    }
+  })
+})
+
+describe('WASD Engine referral row', () => {
+  const link = 'https://wasdengine.example/?ref=k3x9q2mw'
+  const sharing = (joined: number, left?: AccountAllowance): AccountDetails['balance'] => {
+    const referral: AccountReferral = { url: link, joined }
+    return { ...ready(left), referral } as AccountDetails['balance']
+  }
+
+  it('shares the link with a copy button and says it earns free credits, with no amount', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const container = mount(sharing(0, allowance(38, 0.383)))
+    expect(screen.getByText('Refer friends').textContent).toBeTruthy()
+    expect(screen.getByText('Earn free credits when friends join WASD Engine with your link.').textContent).toBeTruthy()
+    expect(screen.getByText(link).textContent).toBe(link)
+    expect(screen.queryByText(/^Friends who joined/u)).toBeNull()
+    expect(container.textContent).not.toMatch(/[$¥]/u)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Copy link' })) })
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(link)
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeTruthy()
+  })
+
+  it('counts the friends who joined, in the page language', () => {
+    mount(sharing(1200), 'de')
+    expect(screen.getByText('Freunde einladen').textContent).toBeTruthy()
+    expect(screen.getByText(/^Beigetretene Freunde: 1\.200$/u).textContent).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Link kopieren' })).toBeTruthy()
+  })
+
+  it('shows no row without a link', () => {
+    mount(ready(allowance(38, 0.383)))
+    expect(screen.queryByText('Refer friends')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull()
   })
 })
 
@@ -226,7 +270,12 @@ describe('WASD Engine account messages', () => {
     expect(messages.allowanceRefreshes).toContain('{date}')
     expect(messages.allowanceCredits).toContain('{percent}')
     expect(messages.allowanceCreditsUnderOnePercent).toContain('{percent}')
-    expect(messages.autoRecharge).toContain('{amount}')
+    expect(messages.referralJoined).toContain('{count}')
+    for (const key of ['autoRecharge', 'referralTitle', 'referralDescription', 'referralCopy', 'referralCopied'] as const) {
+      expect(messages[key], key).toBeTruthy()
+    }
+    // The copy names no amount, of usage, credits, or a charge.
+    expect(Object.values(WASDENGINE_ACCOUNT_MESSAGES[id]!).filter(message => /[$¥]|\{amount\}/u.test(message))).toEqual([])
     expect(messages.allowanceUnlimited && messages.allowanceNoLimit).toBeTruthy()
     expect(messages.autoRechargeFailed).toContain('{reason}')
     for (const key of ['autoRechargeCard', 'autoRechargeCardOpen', 'autoRechargeError'] as const) expect(messages[key]).toBeTruthy()

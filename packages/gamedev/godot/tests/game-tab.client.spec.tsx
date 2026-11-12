@@ -449,6 +449,7 @@ describe('GameTab game view', () => {
     const canvas = viewport().querySelector('canvas')!
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 320, 180))
     h.show(true)
+    act(() => { viewport().focus() })
     fireEvent.mouseMove(canvas, { clientX: 160, clientY: 90 })
     await vi.waitFor(() => { expect(drawImage).toHaveBeenCalled() })
     fireEvent.mouseMove(canvas, { clientX: 80, clientY: 90 })

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Continuação de tarefas",
+    "description": "Mantém o agente trabalhando enquanto a lista de tarefas que ele criou para um pedido ainda tiver itens pendentes, em vez de parar no meio."
+  }
+}

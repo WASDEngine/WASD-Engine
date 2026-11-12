@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Todo continuation",
+    "description": "Keep the agent working while the todo list it made for a request still has unfinished items, instead of stopping partway."
+  }
+}

@@ -594,6 +594,7 @@
     { "path": "./packages/gamedev/elevenlabs" },
     { "path": "./packages/gamedev/wasd-plugins/tsconfig.host.json" },
     { "path": "./packages/gamedev/game-addons/tsconfig.host.json" },
+    { "path": "./packages/gamedev/todo-continuation" },
     { "path": "./packages/mcp/mcp-resources" },
     { "path": "./packages/host/directory-picker" },
     { "path": "./packages/host/directory-picker-auto" },

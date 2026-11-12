@@ -218,7 +218,8 @@
     "@deepseek-ai/dsh-client-ui-game-assets": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-mcp": "workspace:*",
     "@deepseek-ai/dsh-game-mcp": "workspace:*",
-    "@deepseek-ai/dsh-wasd-plugins": "workspace:*"
+    "@deepseek-ai/dsh-wasd-plugins": "workspace:*",
+    "@deepseek-ai/dsh-todo-continuation": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
