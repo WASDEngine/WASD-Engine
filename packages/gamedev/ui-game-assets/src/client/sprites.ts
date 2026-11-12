@@ -6,13 +6,26 @@
  */
 import type { AssetGrid, SpriteAnimationDetails, SpriteAnimationSource } from '@deepseek-ai/dsh-game-assets/types'
 import { formatOf } from './formats.ts'
-import { godotAnimations, workspacePathOf, type PixelRect } from './godot.ts'
+import { godotAnimations, workspacePathOf, type GodotCell, type PixelRect } from './godot.ts'
 
 /** Frames per second of an animation without its own timing. */
 export const DEFAULT_FPS = 12
 
 /** Most frames one animation keeps. */
 export const MAX_ANIMATION_FRAMES = 1024
+
+/** Longest time one frame shows, in milliseconds; a longer duration, such as an overflowing Godot speed, is cut to it. */
+export const MAX_FRAME_MS = 3_600_000
+
+/**
+ * A frame duration that playback and the details can use.
+ * @param ms - the duration a file gives, in milliseconds.
+ * @returns the duration from 0 to {@link MAX_FRAME_MS}; 0 for a duration that is not a number.
+ */
+export function frameDuration(ms: number): number {
+  if (Number.isNaN(ms)) return 0
+  return Math.min(MAX_FRAME_MS, Math.max(0, ms))
+}
 
 /** One frame of a 2D animation. */
 export interface SpriteFrame {
@@ -136,11 +149,13 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
+/** A sheet frame's rectangle; one with a value that is not a finite number, such as `1e999`, names no frame. */
 function rect(value: unknown): PixelRect | undefined {
   const fields = record(value)
   if (fields === undefined) return undefined
   const [x, y, width, height] = [fields.x, fields.y, fields.w, fields.h]
-  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number' || width <= 0 || height <= 0) return undefined
+  if (typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') return undefined
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return undefined
   return { x, y, width, height }
 }
 
@@ -166,7 +181,8 @@ export function sheetAnimations(json: unknown, path: string, sheetPath: string):
     const fields = record(entry)
     const region = rect(fields?.frame)
     if (region === undefined) continue
-    const duration = typeof fields?.duration === 'number' && fields.duration > 0 ? fields.duration : 1000 / DEFAULT_FPS
+    const given = fields?.duration
+    const duration = typeof given === 'number' && Number.isFinite(given) && given > 0 ? frameDuration(given) : 1000 / DEFAULT_FPS
     frames.push({ path, region, durationMs: duration })
   }
   if (frames.length === 0) return []
@@ -209,12 +225,33 @@ export interface GodotFile {
 }
 
 /**
+ * The region of a sprite's frame grid cell, as Godot cuts it: the grid divides the sprite's region, or the whole
+ * texture, into cells of equal size, which need not be whole pixels.
+ * @param cell - the cell.
+ * @param size - the texture's size.
+ * @returns the cell's region, or undefined when it has no area.
+ */
+export function godotCellRegion(cell: GodotCell, size: { readonly width: number; readonly height: number }): PixelRect | undefined {
+  const base = cell.region ?? { x: 0, y: 0, width: size.width, height: size.height }
+  const width = base.width / cell.columns
+  const height = base.height / cell.rows
+  if (!(width > 0) || !(height > 0)) return undefined
+  return {
+    x: base.x + (cell.index % cell.columns) * width,
+    y: base.y + Math.floor(cell.index / cell.columns) * height,
+    width,
+    height,
+  }
+}
+
+/**
  * The Godot animations whose frames show an image.
  * @param files - Godot scenes and resources to read.
  * @param path - workspace path of the image.
  * @param projectFolders - workspace paths of the folders holding `project.godot`.
- * @param size - the image's size, which turns Sprite2D grid cells into regions.
- * @returns the animations, each with the file that defines it; files that do not parse are skipped.
+ * @param size - the image's size, which turns sprite grid cells into regions.
+ * @returns the animations, each with the file that defines it; files that do not parse are skipped, and so are frames
+ * whose `res://` path leads out of the project.
  */
 export function godotSpriteAnimations(
   files: readonly GodotFile[],
@@ -239,10 +276,10 @@ export function godotSpriteAnimations(
         if (image === undefined) continue
         let region = frame.region
         if (frame.cell !== undefined && image === path) {
-          region = gridRegions(size.width, size.height, { columns: frame.cell.columns, rows: frame.cell.rows })[frame.cell.index]
+          region = godotCellRegion(frame.cell, size)
           if (region === undefined) continue
         }
-        frames.push({ path: image, ...region === undefined ? {} : { region }, durationMs: frame.seconds * 1000 })
+        frames.push({ path: image, ...region === undefined ? {} : { region }, durationMs: frameDuration(frame.seconds * 1000) })
       }
       if (!frames.some(frame => frame.path === path)) continue
       animations.push({ name: animation.name, source: 'godot', definedIn: file.path, frames: frames.slice(0, MAX_ANIMATION_FRAMES), loop: animation.loop })
@@ -262,7 +299,7 @@ export function ownFramesAnimation(path: string, durationsMs: readonly number[])
     name: 'frames',
     source: 'frames',
     frames: durationsMs.slice(0, MAX_ANIMATION_FRAMES).map((durationMs, index) => ({
-      path, index, durationMs: durationMs > 0 ? durationMs : 100,
+      path, index, durationMs: durationMs > 0 ? frameDuration(durationMs) : 100,
     })),
     loop: true,
   }
@@ -315,12 +352,14 @@ export function animationDetails(
   const sizes = animation.frames.map(frame => frame.region ?? imageSize(frame.path))
   const first = sizes[0]
   const uniform = first !== undefined && sizes.every(size => size?.width === first.width && size.height === first.height)
+  // Frames of a few nanoseconds would make the rate overflow; such an animation reports none.
+  const fps = totalMs > 0 ? (animation.frames.length * 1000) / totalMs : 0
   return {
     name: animation.name,
     source: animation.source,
     ...animation.definedIn === undefined ? {} : { definedIn: animation.definedIn },
     frames: animation.frames.length,
-    fps: totalMs > 0 ? Number(((animation.frames.length * 1000) / totalMs).toFixed(2)) : 0,
+    fps: Number.isFinite(fps) ? Number(fps.toFixed(2)) : 0,
     seconds: Number((totalMs / 1000).toFixed(3)),
     loop: animation.loop,
     ...uniform ? { frameWidth: first.width, frameHeight: first.height } : {},
