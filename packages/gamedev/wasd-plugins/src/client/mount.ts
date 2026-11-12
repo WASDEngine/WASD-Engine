@@ -1,8 +1,8 @@
 /**
  * Remote contribution and registrations of WASD Engine Plugins' browser half: the Release button after the agent preset
- * label of each Session header, and Explore Games at the foot of the left sidebar. The Release button exists while the
- * Peer may read the `wasdPlugins` Remote's project views, and Explore Games while it may read the site links;
- * LiveShare keeps both for the owner.
+ * label of each Session header and in the New Session row of a blank Session, and Explore Games at the foot of the left
+ * sidebar. The Release button exists while the Peer may read the `wasdPlugins` Remote's project views, and Explore
+ * Games while it may read the site links; LiveShare keeps both for the owner.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remote-access/client'
@@ -18,12 +18,15 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import { ExploreLink, type ExploreLinkInjected } from './ExploreLink.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
-import { ReleaseButton, type ReleaseButtonInjected } from './ReleaseButton.tsx'
+import { ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonPlacement } from './ReleaseButton.tsx'
 
 /** Services required before the Remote contribution mounts. */
 export const inject = ['remote', 'slots', 'locale', 'remoteAccess', 'sessions']
 
-/** Order of the Release button in the header actions: right after the agent preset label (-10). */
+/**
+ * Order of the Release button: right after the agent preset label (-10) in the header actions, and before the branch
+ * and New worktree controls (0) in the New Session options.
+ */
 export const RELEASE_ORDER = -9
 
 function registerUi(ctx: Context): void {
@@ -31,7 +34,8 @@ function registerUi(ctx: Context): void {
   const t = ctx.locale.bind(NS)
   const remote = ctx.remote.wasdPlugins
   ctx.remoteAccess.whenAccess('wasdPlugins/project', function* () {
-    const injected = (): ReleaseButtonInjected => ({
+    const injected = (placement: ReleaseButtonPlacement) => (): ReleaseButtonInjected => ({
+      placement,
       async readProject(projectDir) {
         const result = await remote.project(projectDir)
         return result.ok ? { view: result.value } : { error: result.error.message }
@@ -53,7 +57,15 @@ function registerUi(ctx: Context): void {
       id: 'wasd-release',
       order: RELEASE_ORDER,
       locale: NS,
-      inject: injected,
+      inject: injected('header'),
+    }, ReleaseButton))
+    // The header shows no actions until a Session's first prompt, so a blank Session offers Release in this row.
+    yield ctx.slots.inject('conversation.hero.options', () => ctx.slots.register({
+      name: 'conversation.hero.options',
+      id: 'wasd-release',
+      order: RELEASE_ORDER,
+      locale: NS,
+      inject: injected('newSession'),
     }, ReleaseButton))
   })
   ctx.remoteAccess.whenAccess('wasdPlugins/links', function* () {

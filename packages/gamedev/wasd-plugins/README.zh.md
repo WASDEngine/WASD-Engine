@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版，并作为带分享链接的编号版本发布到 WASD Engine 网站；wasdPlugins Remote；会话标题栏中的“发布”按钮；以及侧边栏中的“探索游戏”。"
+description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版，并作为带分享链接的编号版本发布到 WASD Engine 网站；wasdPlugins Remote；会话标题栏与新会话页面上的“发布”按钮；以及侧边栏中的“探索游戏”。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-WASD Engine 插件包含 WASD Engine 自带的功能，在每个 Web 与桌面配置中始终开启。它用内置的 Godot 把游戏导出为网页版，并作为下一个编号版本发布到应用所登录的 WASD Engine 网站；分享链接页面中任何人都可以游玩、选择更早的版本并评论。会话的智能体与连接的智能体获得同样的工具；会话标题栏中的“发布”按钮请智能体发布，侧边栏中的“探索游戏”打开已发布游戏的页面。
+WASD Engine 插件包含 WASD Engine 自带的功能，在每个 Web 与桌面配置中始终开启。它用内置的 Godot 把游戏导出为网页版，并作为下一个编号版本发布到应用所登录的 WASD Engine 网站；分享链接页面中任何人都可以游玩、选择更早的版本并评论。会话的智能体与连接的智能体获得同样的工具；“发布”按钮请智能体发布，侧边栏中的“探索游戏”打开已发布游戏的页面。
 
 ## 目录
 
@@ -53,7 +53,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### “发布”按钮与“探索游戏”
 
-当会话属于某个游戏项目，并且 Peer 可以向该会话发送提示并调用 `wasdPlugins/project` 时，“发布”按钮出现在会话标题栏中。它打开一个对话框：显示项目最近一次发布及其页面链接，拒绝没有 `project.godot` 的文件夹，并接受可选的更新说明。点击“发布”会用窗口的语言向会话发送一条提示，请智能体用这些更新说明（或根据改动自行撰写的说明）调用 `wasd_release_game`，并回复分享链接，因此导出和上传会作为用户可以观看的一轮对话运行。
+当会话属于某个游戏项目，并且 Peer 可以向该会话发送提示并调用 `wasdPlugins/project` 时，“发布”按钮出现在会话标题栏中。空白会话的标题栏在首次发送提示之前不显示操作，因此会话仍为空白时，按钮改为出现在新会话页面上，位于游戏项目与智能体预设选择器那一行的右端、分支控件之前。它打开一个对话框：显示项目最近一次发布及其页面链接，拒绝没有 `project.godot` 的文件夹，并接受可选的更新说明。点击“发布”会用窗口的语言向会话发送一条提示，请智能体用这些更新说明（或根据改动自行撰写的说明）调用 `wasd_release_game`，并回复分享链接，因此导出和上传会作为用户可以观看的一轮对话运行。
 
 当 Peer 可以调用 `wasdPlugins/links` 时，“探索游戏”位于左侧边栏底部的“设置”上方。它通过 `window.open` 打开网站的“探索”页面：桌面应用把链接交给系统浏览器，Web UI 在新标签页中打开。在窄侧栏中它只显示地球图标，标签作为提示文字出现。
 

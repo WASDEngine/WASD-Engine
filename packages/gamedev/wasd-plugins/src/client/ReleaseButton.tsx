@@ -1,8 +1,9 @@
 /**
- * The Session header's Release button, after the agent preset label: it opens a dialog that names the project's last
- * release, takes optional release notes, and on Release asks the Session's agent to release the game, so the export
- * and upload run as a turn the user watches in the chat. It shows only for a Session of a game project whose Peer
- * may prompt it.
+ * The Release button of a game project's Session: in the Session header after the agent preset label, and in the New
+ * Session row before the branch controls while the Session is blank, since the header shows no actions until the
+ * first prompt. It opens a dialog that names the project's last release, takes optional release notes, and on Release
+ * asks the Session's agent to release the game, so the export and upload run as a turn the user watches in the chat.
+ * It shows only for a Session of a game project whose Peer may prompt it.
  */
 import { useId, useState } from 'react'
 import { Button, IconLoadingOutlineRegular, IconShareOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -17,8 +18,16 @@ import css from './ReleaseButton.module.css'
 /** Longest release notes the dialog takes; the release tool keeps at most 1000 characters. */
 export const NOTES_LIMIT = 1000
 
-/** Registration-side operations of the Release button. */
+/**
+ * Where a Release button registration sits: `header` among the Session header actions, or `newSession` in the New
+ * Session row, which shows the button only while the Session is blank, at the row's control height.
+ */
+export type ReleaseButtonPlacement = 'header' | 'newSession'
+
+/** Registration-side placement and operations of the Release button. */
 export interface ReleaseButtonInjected {
+  /** The registration's slot. */
+  readonly placement: ReleaseButtonPlacement
   /**
    * Read what a project released.
    * @param projectDir - absolute game project folder.
@@ -34,7 +43,7 @@ export interface ReleaseButtonInjected {
   readonly startRelease: (sessionId: SessionId, notes: string) => Promise<string | undefined>
 }
 
-/** Props of {@link ReleaseButton}. */
+/** Props of {@link ReleaseButton}; the New Session options pass the same Session props as the header actions. */
 export type ReleaseButtonProps = PropsRuntime<'conversation.session.header.actions'> & PropsLocale<typeof NS> & InjectFace<ReleaseButtonInjected>
 
 type Loaded = { readonly state: 'loading' } | { readonly state: 'ready'; readonly view: WasdProjectView } | { readonly state: 'failed'; readonly message: string }
@@ -42,18 +51,22 @@ type Loaded = { readonly state: 'loading' } | { readonly state: 'ready'; readonl
 /**
  * Render the Release button and its dialog.
  * @param props - composed slot props.
- * @returns the button, or null when the Session has no game project or its Peer may not prompt it.
+ * @returns the button, or null when the Session has no game project, its Peer may not prompt it, or the New Session
+ * row shows a Session that is no longer blank, whose header has the button.
  */
-export function ReleaseButton({ sessionId, useWorkspaces, useAccess, t, readProject, startRelease }: ReleaseButtonProps) {
+export function ReleaseButton({
+  sessionId, useWorkspaces, useAccess, useSession, t, placement, readProject, startRelease,
+}: ReleaseButtonProps) {
   const projectDir = useWorkspaces(state => state.items.find(workspace => workspace.sessionIds.includes(sessionId))?.path)
   const mayPrompt = useAccess('session/prompt')
+  const blank = useSession(state => state.blank)
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
   const [notes, setNotes] = useState('')
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState<string>()
   const notesId = useId()
-  if (projectDir === undefined || !mayPrompt) return null
+  if (projectDir === undefined || !mayPrompt || (placement === 'newSession' && !blank)) return null
 
   const show = (): void => {
     setOpen(true)
@@ -83,7 +96,7 @@ export function ReleaseButton({ sessionId, useWorkspaces, useAccess, t, readProj
 
   return (
     <>
-      <button type="button" className={css.trigger} onClick={show} title={t('release.tooltip')}>
+      <button type="button" className={css.trigger} data-placement={placement} onClick={show} title={t('release.tooltip')}>
         <IconShareOutlineRegular size={14} className={css.icon} />
         {t('release.button')}
       </button>

@@ -58,6 +58,8 @@ class SmokeTest(unittest.TestCase):
         self.assertEqual(len(found), 6)
         self.assertIn("GIMP exited with status 1", found)
         self.assertTrue(any("macOS lists an application" in problem for problem in found))
+        stray = "Skipping unknown file '/r/lib/gimp/3.0/extensions/a.txt' in extension directory.\n" + OUTPUT
+        self.assertEqual(smoke.problems(0, stray, [smoke.WIDTH, smoke.HEIGHT], data, data, ""), ["GIMP printed 'Skipping unknown file'"])
         shown = smoke.problems(0, OUTPUT, [smoke.WIDTH, smoke.HEIGHT], data, data, "", ["python.exe (42): ConsoleWindowClass 'C:\\x'"])
         self.assertEqual(shown, ["GIMP's processes showed windows: python.exe (42): ConsoleWindowClass 'C:\\x'"])
 
@@ -66,6 +68,13 @@ class SmokeTest(unittest.TestCase):
             self.assertEqual(smoke.visible_windows(os.getpid()), [])
         else:
             self.assertIsInstance(smoke.visible_windows(os.getpid()), list)
+
+    def test_process_tree_takes_a_child_only_after_its_parent_was_created(self) -> None:
+        parents = {10: 1, 11: 10, 12: 11, 20: 11, 30: 99, 40: 40}
+        created = {10: 100, 11: 110, 12: 120, 20: 50, 30: 130, 40: 140}
+        # 20 names 11 as its parent but is older than 11: its own parent exited, and Windows gave that id to 11.
+        self.assertEqual(smoke.process_tree(10, parents, created.get), {10, 11, 12})
+        self.assertEqual(smoke.process_tree(10, {11: 10}, {11: 110}.get), {10})
 
 
 if __name__ == "__main__":

@@ -116,6 +116,14 @@ describe('render_audio', () => {
     expect(result.text).toContain('(OGG, vorbis, 86.2 KiB).\nNormalized with a gain of 6.0 dB.\nLevels: peak -0.0 dBFS')
   })
 
+  it('analyzes only the frames that the file receives, though the float copy runs past them', async () => {
+    const samples = new Float32Array(200).fill(0.5).fill(1, 100)
+    const raw = await rawCopy('render-4.wav', { sampleRate: 44_100, channels: 1, frames: 200, samples })
+    const tools = harness({ render_audio: renderReply(raw, { channels: 1, frames: 100 }) })
+    const result = await tools.run('render_audio', { code: '{ DelayN.ar(SinOsc.ar, 0.2, 0.2) }', path: '/game/a.wav', duration: 1 })
+    expect(result.text).toContain('Levels: peak -6.0 dBFS')
+  })
+
   it('reports no gain for a silent render and refuses float FLAC before rendering', async () => {
     const raw = await rawCopy('render-3.wav', { sampleRate: 44_100, channels: 1, frames: 100, samples: new Float32Array(100) })
     const tools = harness({ render_audio: renderReply(raw, { channels: 1, frames: 100 }) })

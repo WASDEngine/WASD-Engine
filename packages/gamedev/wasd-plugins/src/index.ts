@@ -3,7 +3,7 @@
  * switch this row off). It exports Godot games for the Web and releases them to the WASD Engine site the app is signed
  * in to, as numbered versions with share links, through the `wasd_export_web` and `wasd_release_game` tools of every
  * Session and of WASD Engine's MCP server. The `wasdPlugins` Remote tells the window what each project released and
- * where the site's Explore page is, for the Release button in the Session header and Explore Games in the sidebar.
+ * where the site's Explore page is, for the Release button of game project Sessions and Explore Games in the sidebar.
  * @module @deepseek-ai/dsh-wasd-plugins
  */
 import { tmpdir } from 'node:os'
