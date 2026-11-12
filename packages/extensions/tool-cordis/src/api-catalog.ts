@@ -7371,7 +7371,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddonRemoveResult',
-    declaration: 'export interface GameAddonRemoveResult {\n    readonly id: string;\n    readonly projectDir: string;\n    readonly removed: readonly string[];\n    readonly references: readonly string[];\n}',
+    declaration: 'export interface GameAddonRemoveResult {\n    readonly id: string;\n    readonly projectDir: string;\n    readonly removed: readonly string[];\n    readonly backup?: string;\n    readonly references: readonly string[];\n}',
   },
   {
     name: 'GameAddonsProjectView',

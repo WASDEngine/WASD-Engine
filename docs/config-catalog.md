@@ -1811,7 +1811,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-audio`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/game-audio/src/index.ts:40`](../packages/gamedev/game-audio/src/index.ts)
+- `source`: [`packages/gamedev/game-audio/src/index.ts:41`](../packages/gamedev/game-audio/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the audio tools. */
