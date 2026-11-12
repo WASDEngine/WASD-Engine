@@ -79,7 +79,9 @@ async function groupEnds(pgid: number, ms: number): Promise<boolean> {
 describe.skipIf(installation === undefined)('GIMP 3 worker', () => {
   let dataRoot = ''
   beforeAll(async () => { dataRoot = await mkdtemp(join(tmpdir(), 'dsh-gimp-e2e-')) })
-  afterAll(async () => { await rm(dataRoot, { recursive: true, force: true }) })
+  // On Windows, GIMP's plug-in processes can hold the unpacked runtime's programs for a moment after the worker exits, so
+  // removing them fails with EBUSY until they end; rm retries those errors.
+  afterAll(async () => { await rm(dataRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) })
 
   it('speaks the worker protocol for every kind of method and leaves images unchanged by snapshots and exports', async () => {
     const profile = gimpProfileDirectory(dataRoot, process.platform)

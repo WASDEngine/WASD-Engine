@@ -8,7 +8,7 @@ import { extname, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { defineAppTool, formatBytes, replyParser, withSetupNotes, workerParams } from '@deepseek-ai/dsh-app-mcp'
 import type { AppTool, AppToolDependencies } from '@deepseek-ai/dsh-app-mcp'
-import { analyzeAudio, applyGain, readFloatWav, type AudioAnalysis } from './audio.ts'
+import { analyzeAudio, applyGain, readFloatWav, type AudioAnalysis, type AudioSamples } from './audio.ts'
 import { describeAudioImage, drawAudioImage } from './image.ts'
 import { encodePng } from './png.ts'
 import { condenseHelp, helpSummary } from './schelp.ts'
@@ -181,10 +181,16 @@ interface Inspection {
   readonly png: Buffer
 }
 
-/** Read, measure, and draw a float WAV copy, then delete it. */
-async function inspect(raw: string, gain: number): Promise<Inspection> {
+/**
+ * Read, measure, and draw the first frames of a float WAV copy, then delete it.
+ * @param raw - path of the copy.
+ * @param gain - factor that every sample is multiplied by.
+ * @param frames - sample frames to analyze from the start: a render's copy runs past the frames that the file receives.
+ * @returns the analysis, its report lines, and the PNG image.
+ */
+async function inspect(raw: string, gain: number, frames: number): Promise<Inspection> {
   try {
-    const audio = readFloatWav(await readFile(raw))
+    const audio = firstFrames(readFloatWav(await readFile(raw)), frames)
     applyGain(audio, gain)
     const analysis = analyzeAudio(audio)
     const { image, layout } = drawAudioImage(audio)
@@ -192,6 +198,11 @@ async function inspect(raw: string, gain: number): Promise<Inspection> {
   } finally {
     await rm(raw, { force: true })
   }
+}
+
+/** The first frames of audio, or all of it when it holds no more. */
+function firstFrames(audio: AudioSamples, frames: number): AudioSamples {
+  return frames >= audio.frames ? audio : { ...audio, frames, samples: audio.samples.subarray(0, frames * audio.channels) }
 }
 
 function withOutput(lines: readonly string[], output: string): string {
@@ -229,7 +240,7 @@ function renderAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSha
         header_format: headerFormat, sample_format: sampleFormat, normalize_db: args.normalize_db,
       })
       const reply = parseReply(RenderReply, 'render_audio', await dependencies.call('render_audio', params, callOptions(signal, args.timeout_seconds)))
-      const { analysis, lines, png } = await inspect(reply.raw, reply.gain)
+      const { analysis, lines, png } = await inspect(reply.raw, reply.gain, reply.frames)
       const header = `Rendered ${seconds(reply.frames / reply.sampleRate)} of ${channelCount(reply.channels)} audio at ${String(reply.sampleRate)} Hz from the ${reply.source} `
         + `to ${reply.path} (${reply.headerFormat}, ${reply.sampleFormat}, ${formatBytes(reply.bytes)}).`
       const gain = args.normalize_db === undefined || analysis.peak === 0 ? [] : [`Normalized with a gain of ${(20 * Math.log10(reply.gain)).toFixed(1)} dB.`]
@@ -253,7 +264,7 @@ function analyzeAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSh
       if (args.start !== undefined && args.end !== undefined && args.end <= args.start) throw new Error('end must be later than start.')
       const params = workerParams({ path: args.path, start: args.start, end: args.end, max_seconds: MAX_ANALYSIS_SECONDS })
       const reply = parseReply(DecodeReply, 'decode_audio', await dependencies.call('decode_audio', params, { signal }))
-      const { lines, png } = await inspect(reply.raw, 1)
+      const { lines, png } = await inspect(reply.raw, 1, reply.lastFrame - reply.firstFrame)
       const window = reply.firstFrame === 0 && reply.lastFrame === reply.frames
         ? 'Analyzed the whole file.'
         : `Analyzed ${seconds(reply.firstFrame / reply.sampleRate)} to ${seconds(reply.lastFrame / reply.sampleRate)}.`

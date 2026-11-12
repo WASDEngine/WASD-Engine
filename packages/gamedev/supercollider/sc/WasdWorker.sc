@@ -158,7 +158,8 @@ WasdWorker {
 
 	// render_audio: evaluate code to a function, SynthDef, pattern, Score, or score list, render it offline as 32-bit
 	// float WAV, then write exactly duration seconds of it to path in the requested format, scaled by the
-	// normalization gain. The float render stays in the scratch folder for the server's analysis, which deletes it.
+	// normalization gain. The float render, which runs past duration, stays in the scratch folder for the server's analysis
+	// of its first frames, which deletes it.
 	*method_render_audio { |params|
 		var duration = params["duration"].asFloat, sampleRate = params["sample_rate"].asInteger;
 		var channels = params["channels"] !? { |value| value.asInteger }, normalizeDb = this.prNumber(params, "normalize_db");
@@ -251,13 +252,18 @@ WasdWorker {
 		^(score: defs ++ events ++ [[duration, [0]]], channels: recorded, source: source)
 	}
 
+	// scsynth 3.14 ends a render by unloading its plugins before it frees the nodes that still run, so freeing a node whose
+	// UGens have a destructor, such as a delay line or LocalIn, then calls code of an unloaded plugin: scsynth crashes, on
+	// Windows every time. The score therefore frees every node itself. scsynth performs a bundle on a block boundary before
+	// it computes the block that ends there, so the free waits until the block after the one that holds the last frame.
 	*prRenderNRT { |events, output, channels, sampleRate, duration|
 		var osc = this.prScratchFile("score.osc"), log = this.prScratchFile("scsynth.log");
 		var options = ServerOptions.new.numOutputBusChannels_(channels).numInputBusChannels_(0).sampleRate_(sampleRate)
 			.memSize_(2 ** 18).maxSynthDefs_(4096);
+		var blocks = ((duration * sampleRate).round / options.blockSize).ceil;
 		var condition = Condition.new, exitCode, command, text;
 		if(plugins.notNil) { options.ugenPluginsPath = plugins };
-		this.prWriteScore(events, osc);
+		this.prWriteScore(events ++ [[(blocks + 1) * options.blockSize / sampleRate, [\g_freeAll, 0]]], osc);
 		command = "%% -N % _ % % WAV float %".format(this.prExec, this.prShellPath(scsynth), this.prShellPath(osc), this.prShellPath(output),
 			sampleRate, options.asOptionsString) ++ " > " ++ this.prShellPath(log) ++ " 2>&1";
 		command.unixCmd({ |code| exitCode = code; condition.test = true; condition.signal }, false);
