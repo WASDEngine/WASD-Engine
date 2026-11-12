@@ -221,7 +221,13 @@ jobs:
           $runtime = Join-Path $folder 'runtime.json'
           if (-not (Test-Path -LiteralPath $runtime -PathType Leaf)) { throw "The packaged app has no SuperCollider runtime at $folder" }
           Get-Content -Raw $runtime | ConvertFrom-Json | Select-Object version, supercollider, sclang, scsynth | Format-List
-          python -I wasdengine/supercollider/smoke.py --runtime (Resolve-Path -LiteralPath $folder) --work (Join-Path $env:RUNNER_TEMP 'supercollider-ü-游戏')
+          # Below this checkout's build folder, the class library's deepest files pass the 259 characters that sclang can
+          # open; an installed app's folder is 60 characters shorter, less the user name. The test runs a copy from a short folder.
+          $data = Join-Path $env:RUNNER_TEMP 'supercollider-ü-游戏'
+          $copy = Join-Path $data 'runtime/win32-x64'
+          New-Item -ItemType Directory -Force -Path (Split-Path -Parent $copy) | Out-Null
+          Copy-Item -Recurse -LiteralPath $folder -Destination $copy
+          python -I wasdengine/supercollider/smoke.py --runtime $copy --work (Join-Path $data 'work')
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # The end-to-end suites run the GIMP worker and the SuperCollider bridge and worker class through their tools,
