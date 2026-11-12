@@ -186,6 +186,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/client/ui-plugin-manager': { kind: 'none', reason: 'Browser-side management surface; registers nothing model-facing.' },
   'packages/client/ui-settings-plugin-inventory': { kind: 'none', reason: 'Browser-side inventory projection; registers nothing model-facing.' },
   'packages/gamedev/ui-game-assets': { kind: 'none', reason: 'Browser-side Assets tab of the right Sidebar; registers nothing model-facing.' },
+  'packages/gamedev/ui-game-audio': { kind: 'indirect', reason: 'Browser-side Audio tab; the measurements and picture it makes for dsh-game-audio reach models only through that package\'s audio_review result.' },
   'packages/gamedev/ui-game-tools': { kind: 'none', reason: 'Browser-side Game tools tabs; registers nothing model-facing.' },
   'packages/client/locale': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/web': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },

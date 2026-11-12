@@ -150,7 +150,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all eight providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the game add-ons, and WASD Engine Plugins, the instructions come to about 23,100 characters, about 6,500 of them the game add-ons catalog, and the 65 tool declarations to about 63,200 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all nine providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 24,000 characters, about 6,500 of them the game add-ons catalog, and the 67 tool declarations to about 66,200 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -160,7 +160,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the audio review's waveform and spectrogram picture, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token effect
 

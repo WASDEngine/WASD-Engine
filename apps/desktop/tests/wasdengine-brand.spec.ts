@@ -216,11 +216,11 @@ describe('WASDEngine Desktop shell copy', () => {
     expect(ja.hideApplication).toBe('WASD Engine を隠す')
   })
 
-  it.each(Object.keys(dictionaries))('applies the WASD Engine welcome copy in %s', (id) => {
+  it.each(Object.keys(dictionaries))('applies the WASD Engine welcome and update copy in %s', (id) => {
     const messages = dictionaries[id as keyof typeof dictionaries]
     const copy = WASDENGINE_DESKTOP_COPY[id]
     expect(copy, id).toBeDefined()
-    expect(Object.keys(copy!).sort()).toEqual(['welcomeDescription', 'welcomeKeyDescription'])
+    expect(Object.keys(copy!).sort()).toEqual(['updateDetail', 'updateDownloadDetail', 'welcomeDescription', 'welcomeKeyDescription'])
     for (const [key, message] of Object.entries(copy!)) expect(messages[key as keyof typeof messages], key).toBe(message)
     expect(messages.welcomeKeyDescription).toContain(BRAND.productName)
     expect(messages.welcomeKeyDescription).not.toContain('DeepSeek')

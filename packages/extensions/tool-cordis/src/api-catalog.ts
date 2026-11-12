@@ -4670,8 +4670,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'wasdPlugins',
-    summary: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
-    description: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
+    summary: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
+    description: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
     methods: [
       {
         signature: '@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>',
@@ -4684,6 +4684,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Pages of the WASD Engine site the app is signed in to, or would sign in to.',
         parameters: [{ name: 'signal', description: 'cancellation.' }],
         returns: 'the Explore page.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>',
+        description: 'Follow the agents\' Browser commands that no window has taken yet, for a window that can drive Browser tabs.',
+        parameters: [{ name: 'signal', description: 'stream cancellation.' }],
+        returns: 'the waiting commands, then again after each change, until cancelled or the plugin is disposed.',
+      },
+      {
+        signature: '@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean',
+        description: 'Take a Browser command for the calling window, which then carries it out and settles it.',
+        parameters: [{ name: 'id', description: 'the command.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the window took it; false when another window did or the command ended.',
+      },
+      {
+        signature: '@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean',
+        description: 'End a Browser command the window took, with the page afterwards or why it failed.',
+        parameters: [{ name: 'id', description: 'the command.' }, { name: 'outcome', description: 'how it ended.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the outcome reached the waiting tool call; false when the call already ended.',
       },
     ],
   },
@@ -5452,6 +5470,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
   },
   {
+    name: 'game-audio/measure',
+    mode: 'waterfall',
+    signature: '\'game-audio/measure\'( this: Scoped<Agent>, request: AudioMeasureEvent, next: () => Promise<AudioMeasureResult>, ): Promise<AudioMeasureResult>',
+    summary: 'Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it.',
+    description: 'Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.',
+    parameters: [{ name: 'request', description: 'the sound, the window to measure, the bounds, the calling Agent, and the call\'s cancellation.' }],
+  },
+  {
+    name: 'game-audio/reveal',
+    mode: 'emit',
+    signature: '\'game-audio/reveal\'(reveal: AudioReveal): void',
+    summary: 'An agent asked to play a sound to the user; the windows that may read the Session open it in the Session\'s Audio tab.',
+    description: 'An agent asked to play a sound to the user; the windows that may read the Session open it in the Session\'s Audio tab.',
+    parameters: [{ name: 'reveal', description: 'the Session and the sound.' }],
+  },
+  {
     name: 'game-mcp/reveal',
     mode: 'emit',
     signature: '\'game-mcp/reveal\'(sessionId: SessionId): void',
@@ -6194,6 +6228,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AttachmentId',
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
+  },
+  {
+    name: 'AudioChannelMeasure',
+    declaration: 'export interface AudioChannelMeasure {\n    readonly peak: number;\n    readonly rms: number;\n    readonly dcOffset: number;\n    readonly clipped: number;\n}',
+  },
+  {
+    name: 'AudioImageLayout',
+    declaration: 'export interface AudioImageLayout {\n    readonly width: number;\n    readonly height: number;\n    readonly waveformPanels: \'channels\' | \'mix\';\n    readonly timeStep: number;\n    readonly nyquist: number;\n}',
+  },
+  {
+    name: 'AudioMeasureEvent',
+    declaration: 'export interface AudioMeasureEvent extends AudioMeasureRequest {\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'AudioMeasurements',
+    declaration: 'export interface AudioMeasurements {\n    readonly sampleRate: number;\n    readonly channels: number;\n    readonly seconds: number;\n    readonly start: number;\n    readonly end: number;\n    readonly peak: number;\n    readonly rms: number;\n    readonly loudness?: number;\n    readonly leadingSilence: number;\n    readonly trailingSilence: number;\n    readonly dominantFrequency?: number;\n    readonly spectralCentroid?: number;\n    readonly channelLevels: readonly AudioChannelMeasure[];\n    readonly seam?: {\n        readonly jump: number;\n        readonly step: number;\n        readonly levelChange?: number;\n    };\n    readonly stereo?: {\n        readonly correlation?: number;\n        readonly balance?: number;\n        readonly identical: boolean;\n    };\n}',
+  },
+  {
+    name: 'AudioMeasureRequest',
+    declaration: 'export interface AudioMeasureRequest {\n    readonly path: string;\n    readonly start: number;\n    readonly end?: number;\n    readonly maxSeconds: number;\n    readonly picture: boolean;\n    readonly maxBytes: number;\n}',
+  },
+  {
+    name: 'AudioMeasureResult',
+    declaration: 'export interface AudioMeasureResult {\n    readonly measurements: AudioMeasurements;\n    readonly picture?: AudioPicture;\n}',
+  },
+  {
+    name: 'AudioPicture',
+    declaration: 'export interface AudioPicture {\n    readonly data: string;\n    readonly mediaType: \'image/png\';\n    readonly layout: AudioImageLayout;\n}',
+  },
+  {
+    name: 'AudioReveal',
+    declaration: 'export interface AudioReveal {\n    readonly sessionId: SessionId;\n    readonly path: string;\n}',
   },
   {
     name: 'AuthorizationEntry',
@@ -10838,6 +10904,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ViewerPluginPolicy',
     declaration: 'export interface ViewerPluginPolicy {\n    readonly plugin: string;\n    readonly mode: \'all\' | \'none\' | \'selected\';\n    readonly endpoints?: readonly string[];\n}',
+  },
+  {
+    name: 'WasdBrowserCommand',
+    declaration: 'export type WasdBrowserCommand = {\n    readonly kind: \'open\';\n    readonly url: string;\n} | {\n    readonly kind: \'read\';\n} | {\n    readonly kind: \'click\';\n    readonly element?: number;\n    readonly x?: number;\n    readonly y?: number;\n} | {\n    readonly kind: \'type\';\n    readonly element: number;\n    readonly text: string;\n    readonly submit: boolean;\n} | {\n    readonly kind: \'screenshot\';\n    readonly element?: number;\n};',
+  },
+  {
+    name: 'WasdBrowserImage',
+    declaration: 'export interface WasdBrowserImage {\n    readonly data: string;\n    readonly mediaType: \'image/jpeg\' | \'image/png\';\n    readonly width: number;\n    readonly height: number;\n    readonly viewportWidth: number;\n    readonly viewportHeight: number;\n}',
+  },
+  {
+    name: 'WasdBrowserLimits',
+    declaration: 'export interface WasdBrowserLimits {\n    readonly maxChars: number;\n    readonly loadTimeoutMs: number;\n    readonly screenshotWidth: number;\n}',
+  },
+  {
+    name: 'WasdBrowserOutcome',
+    declaration: 'export type WasdBrowserOutcome = {\n    readonly ok: true;\n    readonly page: WasdBrowserPage;\n    readonly note?: string;\n    readonly image?: WasdBrowserImage;\n} | {\n    readonly ok: false;\n    readonly message: string;\n};',
+  },
+  {
+    name: 'WasdBrowserPage',
+    declaration: 'export interface WasdBrowserPage {\n    readonly url: string;\n    readonly title: string;\n    readonly text: string;\n    readonly truncated: boolean;\n    readonly loading: boolean;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'WasdBrowserRequest',
+    declaration: 'export interface WasdBrowserRequest {\n    readonly id: string;\n    readonly sessionId: SessionId;\n    readonly command: WasdBrowserCommand;\n    readonly limits: WasdBrowserLimits;\n}',
+  },
+  {
+    name: 'WasdBrowserRequests',
+    declaration: 'export interface WasdBrowserRequests {\n    readonly requests: readonly WasdBrowserRequest[];\n}',
   },
   {
     name: 'WasdProjectView',

@@ -6,6 +6,7 @@ import { emptyBrowserFrame, type BrowserFrame, type BrowserFrameState, type Brow
 import type { BrowserPageOptions } from '../browser/BrowserPage.ts'
 import { browserAddressCheckpoint, currentBrowserTarget } from '../browser/BrowserPersistence.ts'
 import { parseBrowserAddress, type BrowserTarget } from '../browser/url.ts'
+import { webviewAutomation, type BrowserAutomation } from '../wasdengine/automation.ts'
 
 interface NavigationEvent extends Event { readonly isMainFrame: boolean }
 interface LoadFailureEvent extends NavigationEvent {
@@ -30,6 +31,8 @@ export class ElectronWebViewImpl implements BrowserFrame {
   private disposal: Promise<void> | undefined
   private attachment: AbortController | undefined
   private readonly releases = new Set<Promise<void>>()
+  /** Agent control of the ready guest (WASD Engine). */
+  readonly automation: BrowserAutomation = webviewAutomation(() => this.ready ? this.element : undefined)
 
   /**
    * @param options - saved address, persistence and source-tab opening callback.

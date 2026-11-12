@@ -590,6 +590,7 @@
     { "path": "./packages/gamedev/godot/tsconfig.host.json" },
     { "path": "./packages/gamedev/supercollider" },
     { "path": "./packages/gamedev/game-mcp" },
+    { "path": "./packages/gamedev/game-audio" },
     { "path": "./packages/gamedev/polyhaven" },
     { "path": "./packages/gamedev/elevenlabs" },
     { "path": "./packages/gamedev/wasd-plugins/tsconfig.host.json" },

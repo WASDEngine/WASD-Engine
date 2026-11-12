@@ -7,6 +7,7 @@ import type { BrowserPage, BrowserPageFactory } from './BrowserPage.ts'
 import { currentBrowserTarget, type BrowserTabState } from './BrowserPersistence.ts'
 import type { BrowserStore } from './store.ts'
 import { parseBrowserAddress, type BrowserAddressFailure, type BrowserTarget } from './url.ts'
+import type { BrowserAutomation, BrowserTabControllers } from '../wasdengine/automation.ts'
 
 /** Live tab state; navigation comes from its provider and draft validation stays local. */
 export interface BrowserControllerState {
@@ -76,6 +77,9 @@ export class BrowserController implements HostObservable<BrowserControllerState>
   getSnapshot = (): BrowserControllerState => this.store.getSnapshot()
   /** @param listener - state invalidation. @returns unsubscribe callback. */
   subscribe = (listener: () => void): (() => void) => this.store.subscribe(listener)
+
+  /** Agent control of the page (WASD Engine), when its carrier has one. */
+  get automation(): BrowserAutomation | undefined { return this.page.frame.automation }
 
   /**
    * Attach the page without transferring ownership of its tab occurrence.
@@ -204,15 +208,18 @@ export interface BrowserInjected {
   setSandbox(tabId: TabId, enabled: boolean): void
 }
 
+/** A Session's tab callbacks, and its mounted controllers for agent control (WASD Engine). */
+export type BrowserControllers = BrowserInjected & BrowserTabControllers
+
 /**
  * Own tab-occurrence controllers behind Session-scoped callbacks.
  * @param actions - persisted view-state writer.
  * @param createPage - composition-selected provider.
  * @param isTabOpen - authoritative layout membership, independent of mounted bodies and plugin lifetime.
- * @returns tab callbacks.
+ * @returns tab callbacks, and each mounted tab's controller.
  */
 export function createBrowserControllers(actions: BoundActions<BrowserStore>, createPage: BrowserPageFactory,
-  isTabOpen: (tabId: TabId) => boolean): BrowserInjected {
+  isTabOpen: (tabId: TabId) => boolean): BrowserControllers {
   let currentActions = actions
   const controllers = new Map<TabId, {
     readonly signal: AbortSignal
@@ -222,6 +229,7 @@ export function createBrowserControllers(actions: BoundActions<BrowserStore>, cr
   const controller = (id: TabId): BrowserController | undefined => controllers.get(id)?.controller
   return {
     keyedHooks: { browserState: key => controller(key as TabId) },
+    controller,
     mount(request) {
       const { tabId, signal } = request
       if (signal.aborted) return () => {}

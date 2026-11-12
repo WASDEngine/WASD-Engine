@@ -91,6 +91,12 @@ jobs:
           packages/util/official-bundles
           scripts/optional-bundles.spec.ts
           packages/client/ui-theme/tests
+          packages/client/ui-sidebar-browser
+          packages/client/ui-primitives/tests/web-block.client.spec.tsx
+          packages/client/ui-primitives/tests/wasdengine-web-block-links.client.spec.tsx
+          packages/client/ui-tool/tests/web-card.client.spec.tsx
+          packages/client/ui-tool/tests/tool-row.client.spec.tsx
+          packages/client/ui-tool/tests/wasdengine-web-links.client.spec.tsx
 
       - name: Runtime script tests
         run: |

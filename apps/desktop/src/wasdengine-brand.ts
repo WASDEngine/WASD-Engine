@@ -56,41 +56,59 @@ export const WASDENGINE_DESKTOP_BRAND = {
 const UPSTREAM_PRODUCT_NAME = /(?:DeepSeek )?\bHarness\b/gu
 
 /**
- * WASD Engine's own welcome-window copy, by language: the tagline under the welcome title,
- * and the API-key prompt, which takes a WASD Engine API token rather than a DeepSeek key.
+ * WASD Engine's own shell copy, by language: the tagline under the welcome title; the API-key
+ * prompt, which takes a WASD Engine API token rather than a DeepSeek key; and the details of the
+ * update dialogs, which say that an update downloads in the background and name the sidebar's
+ * Restart to Update button, worded as `desktop.update.ready` of ui-settings-general.
  */
 export const WASDENGINE_DESKTOP_COPY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   en: {
     welcomeDescription: 'Build games with an agent at the keys.',
     welcomeKeyDescription: 'Paste an API token from your WASD Engine account page to start.',
+    updateDetail: 'It is downloading in the background. When it is ready, choose Restart to Update in the sidebar.',
+    updateDownloadDetail: 'The update is downloading in the background. When it is ready, choose Restart to Update in the sidebar.',
   },
   zh: {
     welcomeDescription: '与智能体并肩，打造你的游戏',
     welcomeKeyDescription: '粘贴 WASD Engine 账号页面中的 API 令牌，即可开始使用',
+    updateDetail: '正在后台下载，准备就绪后可点击侧边栏中的“重启以更新”。',
+    updateDownloadDetail: '更新正在后台下载，准备就绪后可点击侧边栏中的“重启以更新”。',
   },
   ja: {
     welcomeDescription: 'エージェントと一緒にゲームを作ろう。',
     welcomeKeyDescription: 'WASD Engine のアカウントページで作成した API トークンを貼り付けて開始します',
+    updateDetail: 'バックグラウンドでダウンロードしています。準備ができたら、サイドバーの「再起動して更新」を選択してください。',
+    updateDownloadDetail: 'アップデートをバックグラウンドでダウンロードしています。準備ができたら、サイドバーの「再起動して更新」を選択してください。',
   },
   es: {
     welcomeDescription: 'Crea juegos con un agente a los mandos.',
     welcomeKeyDescription: 'Pega un token de API de la página de tu cuenta de WASD Engine para empezar',
+    updateDetail: 'Se está descargando en segundo plano. Cuando esté lista, seleccione Reiniciar para actualizar en la barra lateral.',
+    updateDownloadDetail: 'La actualización se está descargando en segundo plano. Cuando esté lista, seleccione Reiniciar para actualizar en la barra lateral.',
   },
   fr: {
     welcomeDescription: 'Créez des jeux avec un agent aux commandes.',
     welcomeKeyDescription: "Collez un jeton d'API depuis la page de votre compte WASD Engine pour commencer",
+    updateDetail: 'Elle se télécharge en arrière-plan. Une fois prête, sélectionnez Redémarrer pour mettre à jour dans la barre latérale.',
+    updateDownloadDetail: 'La mise à jour se télécharge en arrière-plan. Une fois prête, sélectionnez Redémarrer pour mettre à jour dans la barre latérale.',
   },
   de: {
     welcomeDescription: 'Spiele bauen, mit einem Agenten an den Tasten.',
     welcomeKeyDescription: 'Fügen Sie ein API-Token von Ihrer WASD Engine-Kontoseite ein, um loszulegen',
+    updateDetail: 'Sie wird im Hintergrund heruntergeladen. Sobald sie bereit ist, wählen Sie in der Seitenleiste „Zum Aktualisieren neu starten“.',
+    updateDownloadDetail: 'Das Update wird im Hintergrund heruntergeladen. Sobald es bereit ist, wählen Sie in der Seitenleiste „Zum Aktualisieren neu starten“.',
   },
   ru: {
     welcomeDescription: 'Создавайте игры вместе с агентом.',
     welcomeKeyDescription: 'Вставьте API-токен со страницы вашей учётной записи WASD Engine, чтобы начать',
+    updateDetail: 'Она загружается в фоновом режиме. Когда она будет готова, выберите «Перезапустить для обновления» на боковой панели.',
+    updateDownloadDetail: 'Обновление загружается в фоновом режиме. Когда оно будет готово, выберите «Перезапустить для обновления» на боковой панели.',
   },
   pt: {
     welcomeDescription: 'Crie jogos com um agente no controle.',
     welcomeKeyDescription: 'Cole um token de API da página da sua conta WASD Engine para começar',
+    updateDetail: 'Ela está sendo baixada em segundo plano. Quando estiver pronta, selecione Reiniciar para atualizar na barra lateral.',
+    updateDownloadDetail: 'A atualização está sendo baixada em segundo plano. Quando estiver pronta, selecione Reiniciar para atualizar na barra lateral.',
   },
 }
 

@@ -1,5 +1,6 @@
 /** Carrier-neutral page navigation and observable state. */
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
+import type { BrowserAutomation } from '../wasdengine/automation.ts'
 import type { BrowserTarget } from './url.ts'
 
 /** A loading failure, optionally carrying the underlying browser's diagnostic. */
@@ -29,6 +30,8 @@ export interface BrowserSandboxControl {
 /** Navigation owns page lifetime; mounting and hiding belong to BrowserPresentation. */
 export interface BrowserFrame extends HostObservable<BrowserFrameState> {
   readonly sandbox?: BrowserSandboxControl
+  /** Agent control of the page (WASD Engine); undefined when the carrier cannot read its page. */
+  readonly automation?: BrowserAutomation
   /** @param target - validated HTTP(S) address; loading failures are published in state. */
   loadUrl(target: BrowserTarget): void
   /** Move backward when the provider reports an available entry. */

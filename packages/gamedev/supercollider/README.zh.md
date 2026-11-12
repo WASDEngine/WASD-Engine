@@ -177,13 +177,13 @@ IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以
 | [`src/sclang-bridge.ts`](src/sclang-bridge.ts) | 桥接进程：计划、sclang 的环境、请求文件与命令，以及协议回复 |
 | [`src/sclang-output.ts`](src/sclang-output.ts) | sclang 输出中的回复行，以及它们之间有上限的输出 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、分析报告与帮助文本 |
-| [`src/audio.ts`](src/audio.ts) | 浮点 WAV 读取、电平、BS.1770 响度、静音、FFT 与平均频谱 |
-| [`src/image.ts`](src/image.ts)、[`src/png.ts`](src/png.ts) | 波形与声谱图图像、其描述，以及 PNG 编码 |
+| [`src/audio.ts`](src/audio.ts) | 浮点 WAV 读取，以及归一化渲染的增益 |
+| [`src/png.ts`](src/png.ts) | 波形与声谱图图像的 PNG 编码 |
 | [`src/schelp.ts`](src/schelp.ts) | SCDoc 帮助文件的纯文本 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称与指令 |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | 工作类：启动、分派、JSON 回复、每个方法一个处理方法，以及对 `Server:boot` 的覆盖 |
 
-共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限以及安装宿主（setup host）。
+共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限以及安装宿主（setup host）。电平、BS.1770 响度、静音、FFT、平均频谱，以及波形与声谱图图像及其描述，来自 [`dsh-game-audio`](../game-audio/README.zh.md) 的 `./audio` 模块，「音频」标签页与音频工具也共用该模块。
 
 ### 用真实 SuperCollider 验证
 

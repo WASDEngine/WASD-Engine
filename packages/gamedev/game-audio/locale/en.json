@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Audio for the agent",
+    "description": "Let the agent and connected agents find the game project's sound effects, dialogue, and music and measure them as the Audio tab plays them: loudness, peaks, silence, loop seams, and a waveform picture."
+  }
+}
