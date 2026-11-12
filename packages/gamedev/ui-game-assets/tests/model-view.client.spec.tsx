@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The 3D view over a stand-in for its three.js chunk: the size it shows is the rest pose's, as the agent's details give
- * it, also after a clip poses the model and its textures settle, and the stage stops drawing while the view is off
- * screen and draws again when it shows.
+ * it, also after a clip poses the model and its textures settle; a model that asks for too much memory shows a notice;
+ * and the stage stops drawing while the view is off screen and draws again when it shows.
  */
 import type { ModelAssetDetails } from '@deepseek-ai/dsh-game-assets/types'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -35,9 +35,11 @@ class FakeStage {
 const viewer = vi.hoisted(() => ({
   stages: [] as unknown[],
   settled: Promise.withResolvers<undefined>(),
+  tooLarge: false,
 }))
 
 vi.mock('../src/client/viewer/index.ts', () => {
+  class ModelTooLargeError extends Error {}
   /** Details whose bounds show whether the stage's clip posed the model when it was measured. */
   const describeModel = (): ModelAssetDetails => {
     const posed = (viewer.stages.at(-1) as FakeStage | undefined)?.posed === true
@@ -48,6 +50,7 @@ vi.mock('../src/client/viewer/index.ts', () => {
     }
   }
   return {
+    ModelTooLargeError,
     ModelStage: class extends FakeStage {
       constructor() {
         super()
@@ -55,6 +58,7 @@ vi.mock('../src/client/viewer/index.ts', () => {
       }
     },
     loadModel: async () => {
+      if (viewer.tooLarge) throw new ModelTooLargeError('too large')
       return { root: {}, animations: [{ name: 'Wave', duration: 1 }], stats: { triangles: 2, vertices: 4 }, missing: [], settled: viewer.settled.promise, textureName: () => '', dispose: () => {} }
     },
     describeModel,
@@ -71,6 +75,7 @@ function props(overrides: Partial<ModelViewProps> = {}): ModelViewProps {
     asset: { path: 'models/robot.glb', name: 'robot.glb', folder: 'models', format },
     file: { data: new Uint8Array([1, 2, 3]), absolutePath: '/p/models/robot.glb', version: 'v1' },
     relatedUrl: () => undefined,
+    maxBytes: 1024,
     visible: true,
     t,
     ...overrides,
@@ -80,6 +85,7 @@ function props(overrides: Partial<ModelViewProps> = {}): ModelViewProps {
 beforeEach(() => {
   viewer.stages.length = 0
   viewer.settled = Promise.withResolvers<undefined>()
+  viewer.tooLarge = false
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
 })
 
@@ -113,5 +119,11 @@ describe('ModelView', () => {
     view.rerender(<ModelView {...props({ visible: false })} />)
     view.rerender(<ModelView {...props({ visible: true })} />)
     expect(stage.visible).toEqual([true, false, true])
+  })
+
+  it('shows a notice for a model that asks for more memory than the viewer sets aside', async () => {
+    viewer.tooLarge = true
+    render(<ModelView {...props()} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('viewer.modelTooLarge {"limit":"1.0KB"}')
   })
 })

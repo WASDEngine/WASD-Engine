@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * Reading models with the real three.js loaders: glTF with an external buffer and an animation, OBJ with its material
- * library, STL, PLY meshes and point clouds; files named outside the project or on the web; the counts shown beside a
- * model; measurements of vertices that are not finite; disposal; and a Blender file's export.
+ * library, STL, PLY meshes and point clouds; files named outside the project or on the web; glTF descriptions that ask
+ * for more memory than the viewer sets aside; the counts shown beside a model; measurements of vertices that are not
+ * finite; disposal; and a Blender file's export.
  */
 import { BoxGeometry, BufferGeometry, Group, InstancedMesh, Mesh, MeshPhongMaterial, MeshStandardMaterial, Points, Texture } from 'three'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
@@ -10,7 +11,7 @@ import { exportOf } from '../src/client/AssetViewer.tsx'
 import { formatOf } from '../src/client/formats.ts'
 import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
-import { describeModel, disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
+import { describeModel, disposeObject, gltfDeclaredBytes, gltfJson, loadModel, ModelTooLargeError, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -48,7 +49,7 @@ function source(
   data: Uint8Array<ArrayBuffer>,
   related: Mock<(reference: string) => string | undefined> = vi.fn((reference: string) => `http://host/api/file?path=/p/${reference}`),
 ) {
-  return { decoder, data, related, changed: vi.fn() } satisfies ModelSource
+  return { decoder, data, related, changed: vi.fn(), maxBytes: 256 * 1024 * 1024 } satisfies ModelSource
 }
 
 describe('loadModel', () => {
@@ -121,6 +122,41 @@ describe('loadModel', () => {
     await expect(loadModel(source('gltf', encode(web), related('models/tri.gltf')), new AbortController().signal)).rejects.toThrow('Failed to load buffer')
     expect(fetched).toHaveLength(1)
     expect(fetched[0]).toMatch(/^data:[^,]*$/u)
+  })
+
+  it('refuses a glTF description that sizes more arrays than the viewer sets aside, before the loader allocates them', async () => {
+    // Three positions the loader fills with zeros itself: an accessor without a buffer view.
+    const zeros = (count: number) => JSON.stringify({
+      asset: { version: '2.0' },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      accessors: [{ componentType: 5126, count, type: 'VEC3' }],
+    })
+    const small = await loadModel({ ...source('gltf', encode(zeros(3))), maxBytes: 36 }, new AbortController().signal)
+    expect(small.stats.vertices).toBe(3)
+    // About 4.8 GB of zeros from a description of a few hundred bytes.
+    const huge = zeros(400_000_000)
+    expect(gltfDeclaredBytes(JSON.parse(huge))).toBe(4_800_000_000)
+    const refused = loadModel(source('gltf', encode(huge)), new AbortController().signal)
+    await expect(refused).rejects.toBeInstanceOf(ModelTooLargeError)
+    await expect(refused).rejects.toMatchObject({ bytes: 4_800_000_000, limit: 256 * 1024 * 1024 })
+    // A Meshopt-compressed buffer view decodes into the size it gives, inside a GLB file as in a .gltf file.
+    const meshopt = { asset: { version: '2.0' }, bufferViews: [{ buffer: 0, byteLength: 4, extensions: { EXT_meshopt_compression: { buffer: 0, byteLength: 4, count: 1_000_000_000, byteStride: 16, mode: 'ATTRIBUTES' } } }] }
+    const text = new TextEncoder().encode(JSON.stringify(meshopt).padEnd(Math.ceil(JSON.stringify(meshopt).length / 4) * 4, ' '))
+    const glb = new Uint8Array(20 + text.byteLength)
+    const view = new DataView(glb.buffer)
+    view.setUint32(0, 0x46546c67, true)
+    view.setUint32(4, 2, true)
+    view.setUint32(8, glb.byteLength, true)
+    view.setUint32(12, text.byteLength, true)
+    view.setUint32(16, 0x4e4f534a, true)
+    glb.set(text, 20)
+    expect(gltfDeclaredBytes(gltfJson(glb))).toBe(16_000_000_000)
+    await expect(loadModel(source('gltf', glb), new AbortController().signal)).rejects.toBeInstanceOf(ModelTooLargeError)
+    // Sizes the loader refuses itself add nothing.
+    expect(gltfDeclaredBytes({ accessors: [{ count: -1, type: 'VEC3', componentType: 5126 }, { count: 1.5, type: 'VEC3', componentType: 5126 }, { count: 9, type: 'VEC9', componentType: 5126 }] })).toBe(0)
   })
 
   it('measures a model whose vertices are not all finite by the vertices that are, so its details stay plain JSON', async () => {

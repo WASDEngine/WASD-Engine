@@ -21,7 +21,7 @@ import css from './AssetViewer.module.css'
 type Translate = PropsLocale<typeof NS>['t']
 
 /** What the viewer needs from the tab. */
-export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'relatedUrl' | 'fileAddress' | 'animations'> {
+export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'relatedUrl' | 'fileAddress' | 'animations' | 'limits'> {
   /** The asset to show. */
   readonly asset: AssetEntry
   /** The project's assets, where a Blender file's export is looked up. */
@@ -115,7 +115,7 @@ export function AssetViewer(props: AssetViewerProps): ReactNode {
 
 /** Read an asset, again for each new version, and show it. */
 function LoadedAsset({
-  asset, useResource, read, relatedUrl, fileAddress, animations, visible, requested, t,
+  asset, useResource, read, relatedUrl, fileAddress, animations, limits, visible, requested, t,
 }: AssetViewerProps): ReactNode {
   const resource = useResource<'file'>(fileAddress(asset.path))
   const version = resource.status === 'live' ? resource.value?.version : undefined
@@ -162,5 +162,10 @@ function LoadedAsset({
   }
   return asset.format.kind === 'image'
     ? <ImageView asset={asset} file={load.file} animations={animations} read={read} requested={requested} t={t} />
-    : <ModelView asset={asset} file={load.file} relatedUrl={relatedUrl} visible={visible} requested={requested} t={t} />
+    : (
+      <ModelView
+        asset={asset} file={load.file} relatedUrl={relatedUrl} maxBytes={limits.maxPreviewBytes}
+        visible={visible} requested={requested} t={t}
+      />
+    )
 }

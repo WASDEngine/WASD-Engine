@@ -39,6 +39,8 @@ export interface ModelViewProps {
    * @returns the URL to load, or undefined for a file the viewer does not load.
    */
   readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
+  /** Largest number of bytes a model's description may size itself, beyond its files; a larger model shows a notice. */
+  readonly maxBytes: number
   /** Whether the view is on screen; a hidden view draws nothing. */
   readonly visible: boolean
   /** What an agent asked to show: the clip to play once the model shows; `request` changes for each ask. */
@@ -164,11 +166,11 @@ function Timeline({ stage, t }: { readonly stage: ModelStage; readonly t: Transl
  * @param props - the asset, its bytes, the related-file resolver, the clip an agent asked for, and copy.
  * @returns the stage over its timeline, info bar, controls, and details.
  */
-export function ModelView({ asset, file, relatedUrl, visible, requested, t }: ModelViewProps): ReactNode {
+export function ModelView({ asset, file, relatedUrl, maxBytes, visible, requested, t }: ModelViewProps): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<StageState>()
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed'>('loading')
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed' | 'tooLarge'>('loading')
   const [details, setDetails] = useState<ModelAssetDetails>()
   const [clip, setClip] = useState<number>()
   const [playing, setPlaying] = useState(true)
@@ -242,6 +244,7 @@ export function ModelView({ asset, file, relatedUrl, visible, requested, t }: Mo
       data: file.data,
       related: reference => relatedUrl(file.absolutePath, path, reference),
       changed: () => { drawn.requestRender() },
+      maxBytes,
     }, controller.signal).then((model) => {
       if (controller.signal.aborted) {
         model.dispose()
@@ -277,11 +280,11 @@ export function ModelView({ asset, file, relatedUrl, visible, requested, t }: Mo
         if (controller.signal.aborted) return
         setDetails({ ...module.describeModel(model, asset.format.label, file.data.byteLength), min: rest.min, max: rest.max })
       })
-    }, () => {
-      if (!controller.signal.aborted) setPhase('failed')
+    }, (error: unknown) => {
+      if (!controller.signal.aborted) setPhase(error instanceof module.ModelTooLargeError ? 'tooLarge' : 'failed')
     })
     return () => { controller.abort() }
-  }, [stage, file, path, format, relatedUrl, asset.format.label])
+  }, [stage, file, path, format, relatedUrl, maxBytes, asset.format.label])
 
   const drawn = stage?.kind === 'ready' ? stage.stage : undefined
   const clips = details?.animations.map(animation => animation.name) ?? settings.current.clips
@@ -320,6 +323,7 @@ export function ModelView({ asset, file, relatedUrl, visible, requested, t }: Mo
   ]
   let status: ReactNode
   if (stage?.kind === 'unavailable') status = <div className={css.status} role="alert">{t('viewer.noWebgl')}</div>
+  else if (phase === 'tooLarge') status = <div className={css.status} role="alert">{t('viewer.modelTooLarge', { limit: fileSizeText(maxBytes) })}</div>
   else if (stage?.kind === 'failed' || phase === 'failed') status = <div className={css.status} role="alert">{t('viewer.unreadable')}</div>
   else if (phase === 'loading') status = <div className={css.status} role="status" aria-label={t('viewer.loading', { name: asset.name })}><StateDot state="ongoing" /></div>
   const chooseShading = (next: 'material' | 'solid' | 'wireframe'): void => {

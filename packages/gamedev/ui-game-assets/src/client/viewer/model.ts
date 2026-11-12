@@ -72,6 +72,92 @@ export interface ModelSource {
   readonly related: (reference: string) => string | undefined
   /** Called when a texture that loads after the model arrives, so the stage draws it. */
   readonly changed: () => void
+  /**
+   * Largest number of bytes the model's description may size itself, beyond the files it is read from: the glTF
+   * accessors without a buffer view, which the loader fills, and the Meshopt-compressed buffer views it decodes.
+   */
+  readonly maxBytes: number
+}
+
+/** A model whose description asks for more memory than {@link ModelSource.maxBytes}. */
+export class ModelTooLargeError extends Error {
+  /**
+   * @param bytes - the bytes the description asks for.
+   * @param limit - the most the viewer sets aside.
+   */
+  constructor(readonly bytes: number, readonly limit: number) {
+    super(`the model asks for ${String(bytes)} bytes of geometry, more than the ${String(limit)} the viewer sets aside`)
+    this.name = 'ModelTooLargeError'
+  }
+}
+
+/** Components of each glTF accessor type. */
+const GLTF_COMPONENTS: Readonly<Record<string, number>> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 }
+
+/** Bytes of each glTF component type. */
+const GLTF_COMPONENT_BYTES: Readonly<Record<number, number>> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }
+
+/** The objects of one top-level glTF list. */
+function gltfEntries(json: unknown, key: string): object[] {
+  const list: unknown = typeof json === 'object' && json !== null ? Reflect.get(json, key) : undefined
+  return Array.isArray(list) ? list.filter((entry: unknown): entry is object => typeof entry === 'object' && entry !== null) : []
+}
+
+/** A count from a glTF description, or undefined when the loader would refuse it itself. */
+function gltfCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+/**
+ * The JSON of a glTF model: the text of a `.gltf` file, or the JSON chunk of a GLB file.
+ * @param data - the model file.
+ * @returns the parsed JSON, or undefined when the file holds none, which the loader then reports.
+ */
+export function gltfJson(data: Uint8Array): unknown {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  let text: Uint8Array = data
+  // A GLB file: the magic `glTF`, then the first chunk, which is the JSON.
+  if (data.byteLength >= 20 && view.getUint32(0, true) === 0x46546c67) {
+    const length = view.getUint32(12, true)
+    if (view.getUint32(16, true) !== 0x4e4f534a || 20 + length > data.byteLength) return undefined
+    text = data.subarray(20, 20 + length)
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(text))
+  } catch {
+    // SyntaxError: a file that is not JSON fails in the loader with its own message.
+    return undefined
+  }
+}
+
+/**
+ * The bytes the glTF loader sets aside from sizes a description gives alone, before it reads any buffer: an array of
+ * `count` items for each accessor without a buffer view, and the decoded size of each Meshopt-compressed buffer view.
+ * Sizes the loader refuses itself, such as a negative or fractional count, add nothing.
+ * @param json - the model's JSON.
+ * @returns the total in bytes.
+ */
+export function gltfDeclaredBytes(json: unknown): number {
+  let total = 0
+  for (const accessor of gltfEntries(json, 'accessors')) {
+    if (Reflect.get(accessor, 'bufferView') !== undefined) continue
+    const count = gltfCount(Reflect.get(accessor, 'count'))
+    const type: unknown = Reflect.get(accessor, 'type')
+    const componentType: unknown = Reflect.get(accessor, 'componentType')
+    const components = typeof type === 'string' && Object.hasOwn(GLTF_COMPONENTS, type) ? GLTF_COMPONENTS[type] : undefined
+    const bytes = typeof componentType === 'number' && Object.hasOwn(GLTF_COMPONENT_BYTES, componentType) ? GLTF_COMPONENT_BYTES[componentType] : undefined
+    if (count === undefined || components === undefined || bytes === undefined) continue
+    total += count * components * bytes
+  }
+  for (const bufferView of gltfEntries(json, 'bufferViews')) {
+    const extensions: unknown = Reflect.get(bufferView, 'extensions')
+    const meshopt: unknown = typeof extensions === 'object' && extensions !== null ? Reflect.get(extensions, 'EXT_meshopt_compression') : undefined
+    if (typeof meshopt !== 'object' || meshopt === null) continue
+    const count = gltfCount(Reflect.get(meshopt, 'count'))
+    const stride = gltfCount(Reflect.get(meshopt, 'byteStride'))
+    if (count !== undefined && stride !== undefined) total += count * stride
+  }
+  return total
 }
 
 /** Grid and helper line color, a gray that reads on light and dark backgrounds. */
@@ -321,6 +407,9 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
   let animations: readonly AnimationClip[] = []
   switch (source.decoder) {
     case 'gltf': {
+      // The loader allocates these arrays from the description's sizes alone, so a small file could ask for gigabytes.
+      const declared = gltfDeclaredBytes(gltfJson(source.data))
+      if (declared > source.maxBytes) throw new ModelTooLargeError(declared, source.maxBytes)
       const gltf = await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(arrayBufferOf(source.data), '')
       root = gltf.scene
       animations = gltf.animations

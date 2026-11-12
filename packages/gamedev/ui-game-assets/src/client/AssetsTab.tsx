@@ -16,6 +16,12 @@ import type { ScanState, ViewAsk, ViewState } from './source.ts'
 import type { KindFilter } from './tree.ts'
 import css from './AssetsTab.module.css'
 
+/** The caps of what the viewer reads and decodes. */
+export interface ViewerLimits {
+  /** Largest file the viewer reads, in bytes, which also bounds what a model's description may size itself. */
+  readonly maxPreviewBytes: number
+}
+
 /** Business face of the Assets tab body, bound to one Session. */
 export interface AssetsTabInjected {
   /** The project scan and the reader's choices; the renderer binds them as `useScan` and `useView`. */
@@ -57,6 +63,8 @@ export interface AssetsTabInjected {
   readonly fileAddress: (path: string) => string
   /** The reads that find an image's 2D animations. */
   readonly animations: AnimationSources
+  /** The caps of what the viewer reads and decodes. */
+  readonly limits: ViewerLimits
   /**
    * Note that a tab acts on one of its navigations.
    * @param tabId - the tab.
@@ -97,7 +105,7 @@ export function selectedAsset(path: string | undefined, scan: AssetScan | undefi
  */
 export function AssetsTab({
   useResource, useTabInfo, useScan, useView, rescan, refresh, select, setOpen, setFilter, read, relatedUrl, fileAddress, animations,
-  takeNavigation, t,
+  limits, takeNavigation, t,
 }: AssetsTabProps): ReactNode {
   const scanState = useScan(state => state)
   const view = useView(state => state)
@@ -164,6 +172,7 @@ export function AssetsTab({
         relatedUrl={relatedUrl}
         fileAddress={fileAddress}
         animations={animations}
+        limits={limits}
         visible={visible}
         requested={requested}
         onSelect={(path) => { select(path) }}

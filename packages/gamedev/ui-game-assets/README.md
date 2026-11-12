@@ -42,7 +42,7 @@ The row's Host half does nothing: the row exists so that the Host serves the bro
 |---|---|---|
 | `maxFolders` | `2000` | Folders one scan lists, the project folder included, before it stops and says the list is incomplete |
 | `maxAssets` | `5000` | Assets one scan collects before it stops and says the list is incomplete |
-| `maxPreviewBytes` | `268435456` (256 MiB) | Largest file the viewer reads; a larger asset shows a notice instead |
+| `maxPreviewBytes` | `268435456` (256 MiB) | Largest file the viewer reads, and the most memory a glTF model's description may size itself; a larger asset shows a notice instead |
 | `maxAgentDraws` | `3` | Pictures the window draws at once for agents; later requests wait their turn |
 | `maxAgentDrawBytes` | `67108864` (64 MiB) | Largest total size of the assets the window draws at once for agents, as each request counts its asset; a larger asset draws alone |
 
@@ -87,7 +87,7 @@ The viewer cannot read a `.blend` file. It shows the project's model of the same
 
 ### Failures
 
-A file that is gone, larger than `maxPreviewBytes`, or changing between the windows of a large read shows a notice in place of the view; a failed read offers **Retry**. A file that its loader cannot read shows that the file may be damaged or use a feature the viewer does not support. A browser without WebGL shows that 3D models need it.
+A file that is gone, larger than `maxPreviewBytes`, or changing between the windows of a large read shows a notice in place of the view; a failed read offers **Retry**. A file that its loader cannot read shows that the file may be damaged or use a feature the viewer does not support. A glTF model whose description sizes more than `maxPreviewBytes` of arrays that the loader fills itself, its accessors without a buffer view and its Meshopt-compressed buffer views once decoded, shows that it needs too much memory, before the loader allocates any of them, so a description of a few hundred bytes cannot ask the window for gigabytes. A browser without WebGL shows that 3D models need it.
 
 ### For the agent
 

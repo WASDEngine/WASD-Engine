@@ -6,6 +6,6 @@
 export { renderModelTiles, type ModelTile, type ModelTilePlan } from './agent.ts'
 export { decodeImage, type DecodedImageFormat } from './image.ts'
 export {
-  bonesOf, describeModel, disposeObject, loadModel, ModelStage, morphTargetsOf, statsOf,
+  bonesOf, describeModel, disposeObject, loadModel, ModelStage, ModelTooLargeError, morphTargetsOf, statsOf,
   type ClipClock, type LoadedModel, type ModelSource, type ModelStats, type MorphTargets,
 } from './model.ts'

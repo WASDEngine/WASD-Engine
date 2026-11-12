@@ -34,7 +34,7 @@ import { readAsset, relatedUrl } from './read.ts'
 import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
 import { AssetsSource, freshScanMs } from './source.ts'
 
-export type { AssetsTabInjected, AssetsTabProps } from './AssetsTab.tsx'
+export type { AssetsTabInjected, AssetsTabProps, ViewerLimits } from './AssetsTab.tsx'
 export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from './formats.ts'
 export type { GameAssetsLocaleKey } from './locales.ts'
 export type { AssetFile, ReadBytes } from './read.ts'
@@ -206,6 +206,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
       animations: animationSources(sessionId, async signal => source.scanState.getSnapshot().scan ?? await walkOf(sessionId, signal)),
+      limits: { maxPreviewBytes: config.maxPreviewBytes },
       takeNavigation: (tabId, revision) => source.takeNavigation(tabId, revision),
     }
   }

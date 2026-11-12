@@ -42,7 +42,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 |---|---|---|
 | `maxFolders` | `2000` | 一次扫描在停止并提示列表不完整之前列出的文件夹数，包括项目文件夹本身 |
 | `maxAssets` | `5000` | 一次扫描在停止并提示列表不完整之前收集的素材数 |
-| `maxPreviewBytes` | `268435456`（256 MiB） | 查看器读取的最大文件；更大的素材改为显示提示 |
+| `maxPreviewBytes` | `268435456`（256 MiB） | 查看器读取的最大文件，也是 glTF 模型的描述自行设定大小的内存上限；更大的素材改为显示提示 |
 | `maxAgentDraws` | `3` | 窗口为 agent 同时绘制的图片数；之后的请求排队等候 |
 | `maxAgentDrawBytes` | `67108864`（64 MiB） | 窗口为 agent 同时绘制的素材的最大合计大小，按各请求计算其素材的方式计算；更大的素材单独绘制 |
 
@@ -87,7 +87,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 ### 失败
 
-文件已不存在、大于 `maxPreviewBytes`，或在分块读取大文件期间不断变化时，视图位置会显示提示；读取失败时提供**重试**。加载器无法读取的文件会提示该文件可能已损坏，或使用了查看器不支持的功能。浏览器不支持 WebGL 时会提示 3D 模型需要 WebGL。
+文件已不存在、大于 `maxPreviewBytes`，或在分块读取大文件期间不断变化时，视图位置会显示提示；读取失败时提供**重试**。加载器无法读取的文件会提示该文件可能已损坏，或使用了查看器不支持的功能。若 glTF 模型的描述为加载器自行填充的数组（没有缓冲区视图的访问器，以及解码后的 Meshopt 压缩缓冲区视图）设定的大小超过 `maxPreviewBytes`，会在加载器分配任何数组之前提示它需要的内存过多，因此几百字节的描述无法让窗口分配数 GB 的内存。浏览器不支持 WebGL 时会提示 3D 模型需要 WebGL。
 
 <a id="for-the-agent"></a>
 ### 面向 agent

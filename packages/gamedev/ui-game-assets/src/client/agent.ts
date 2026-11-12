@@ -200,9 +200,13 @@ async function answerModel(
       data: file.data,
       related: reference => sources.relatedUrl(file.absolutePath, request.path, reference),
       changed: () => {},
+      maxBytes: request.maxBytes,
     }, signal)
   } catch (error) {
     signal.throwIfAborted()
+    if (error instanceof viewer.ModelTooLargeError) {
+      throw new AssetDrawError(`${request.path} asks for ${fileSizeText(error.bytes)} of geometry, more than the ${fileSizeText(error.limit)} the viewer sets aside for one model.`, 'ASSET_TOO_LARGE')
+    }
     throw new AssetDrawError(`${request.path} could not be read as ${format.label}: ${error instanceof Error ? error.message : String(error)}. It may be damaged or use a feature the viewer does not support.`, 'ASSET_UNREADABLE')
   }
   try {
