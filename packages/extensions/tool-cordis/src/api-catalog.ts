@@ -5452,6 +5452,22 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'target', description: 'the resolved target about to be written.' }, { name: 'actor', description: 'the opaque tool-execution context the decider keys off.' }],
   },
   {
+    name: 'game-audio/measure',
+    mode: 'waterfall',
+    signature: '\'game-audio/measure\'( this: Scoped<Agent>, request: AudioMeasureEvent, next: () => Promise<AudioMeasureResult>, ): Promise<AudioMeasureResult>',
+    summary: 'Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it.',
+    description: 'Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.',
+    parameters: [{ name: 'request', description: 'the sound, the window to measure, the bounds, the calling Agent, and the call\'s cancellation.' }],
+  },
+  {
+    name: 'game-audio/reveal',
+    mode: 'emit',
+    signature: '\'game-audio/reveal\'(reveal: AudioReveal): void',
+    summary: 'An agent asked to play a sound to the user; the windows that may read the Session open it in the Session\'s Audio tab.',
+    description: 'An agent asked to play a sound to the user; the windows that may read the Session open it in the Session\'s Audio tab.',
+    parameters: [{ name: 'reveal', description: 'the Session and the sound.' }],
+  },
+  {
     name: 'game-mcp/reveal',
     mode: 'emit',
     signature: '\'game-mcp/reveal\'(sessionId: SessionId): void',
@@ -6190,6 +6206,38 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AttachmentId',
     declaration: 'export type AttachmentId = Branded<\'AttachmentId\'>;',
+  },
+  {
+    name: 'AudioChannelMeasure',
+    declaration: 'export interface AudioChannelMeasure {\n    readonly peak: number;\n    readonly rms: number;\n    readonly dcOffset: number;\n    readonly clipped: number;\n}',
+  },
+  {
+    name: 'AudioImageLayout',
+    declaration: 'export interface AudioImageLayout {\n    readonly width: number;\n    readonly height: number;\n    readonly waveformPanels: \'channels\' | \'mix\';\n    readonly timeStep: number;\n    readonly nyquist: number;\n}',
+  },
+  {
+    name: 'AudioMeasureEvent',
+    declaration: 'export interface AudioMeasureEvent extends AudioMeasureRequest {\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'AudioMeasurements',
+    declaration: 'export interface AudioMeasurements {\n    readonly sampleRate: number;\n    readonly channels: number;\n    readonly seconds: number;\n    readonly start: number;\n    readonly end: number;\n    readonly peak: number;\n    readonly rms: number;\n    readonly loudness?: number;\n    readonly leadingSilence: number;\n    readonly trailingSilence: number;\n    readonly dominantFrequency?: number;\n    readonly spectralCentroid?: number;\n    readonly channelLevels: readonly AudioChannelMeasure[];\n    readonly seam?: {\n        readonly jump: number;\n        readonly step: number;\n        readonly levelChange?: number;\n    };\n    readonly stereo?: {\n        readonly correlation?: number;\n        readonly balance?: number;\n        readonly identical: boolean;\n    };\n}',
+  },
+  {
+    name: 'AudioMeasureRequest',
+    declaration: 'export interface AudioMeasureRequest {\n    readonly path: string;\n    readonly start: number;\n    readonly end?: number;\n    readonly maxSeconds: number;\n    readonly picture: boolean;\n    readonly maxBytes: number;\n}',
+  },
+  {
+    name: 'AudioMeasureResult',
+    declaration: 'export interface AudioMeasureResult {\n    readonly measurements: AudioMeasurements;\n    readonly picture?: AudioPicture;\n}',
+  },
+  {
+    name: 'AudioPicture',
+    declaration: 'export interface AudioPicture {\n    readonly data: string;\n    readonly mediaType: \'image/png\';\n    readonly layout: AudioImageLayout;\n}',
+  },
+  {
+    name: 'AudioReveal',
+    declaration: 'export interface AudioReveal {\n    readonly sessionId: SessionId;\n    readonly path: string;\n}',
   },
   {
     name: 'AuthorizationEntry',

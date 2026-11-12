@@ -2,11 +2,11 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models, and the Audio tab plays the project's sound effects, dialogue, and music, which native `audio_*` tools let agents list and measure. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the seven tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets`, which mounts the [Assets tab](#assets-tab), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` row keeps no files there and sets only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the seven tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets`, which mounts the [Assets tab](#assets-tab), `ui-game-audio` and `game-audio`, which mount the [Audio tab and the audio tools](#audio-tab), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` row keeps no files there and sets only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
@@ -332,6 +332,23 @@ The `ui-game-assets` row mounts [`@deepseek-ai/dsh-client-ui-game-assets`](../..
 
 The tab keeps no game process and calls no tool: it reads the files that the agent and the game tools write, so a texture that GIMP saves or a model that Blender exports appears once the list is scanned again, and the viewed file reloads as it changes.
 
+<a id="audio-tab"></a>
+## Audio tab and audio tools
+
+The `ui-game-audio` row mounts [`@deepseek-ai/dsh-client-ui-game-audio`](../../packages/gamedev/ui-game-audio/README.md), a browser plugin with an empty Host half that registers the right sidebar's `audio` page type, with a guide entry at order 46, after the Assets tab's. Its body lists the sound effects, dialogue, and music of the Session's game project by folder with their lengths, with search and an All / Effects / Dialogue / Music filter, and plays the selected sound with a scrubbable waveform, a repeat that loops it sample-accurately, a volume control, and details of its format, loudness, and peak. One `AudioContext` serves the window, so one sound plays at a time.
+
+The `game-audio` row mounts [`@deepseek-ai/dsh-game-audio`](../../packages/gamedev/game-audio/README.md), whose `audio_search` and `audio_review` tools let the Session's agent and connected agents, which cannot listen, list the sounds and measure one. The Host reads files and their headers but decodes nothing: `audio_review` asks a window, which decodes MP3, Ogg, and FLAC with the browser, through the forwarded waterfall event `game-audio/measure`, scoped to the calling Session, and validates the answer before it becomes a result; with `show` it emits `game-audio/reveal`, which opens the sound in that Session's Audio tab. The package's browser-safe `./audio` export, which the client bundle purity gate admits as an inline wire layer, holds the formats, the header probe, the measurements, and the picture, so the tab's details, the agent's figures, and SuperCollider's `render_audio` and `analyze_audio` measure sound the same way.
+
+| Data | Channel | When |
+|---|---|---|
+| Sound list | `workspaceFiles.list`, folder level by folder level from the workspace root, at most six folders at a time, skipping hidden folders and `node_modules` | When the tab shows and the last walk is older than 2 s or ten times its duration, when the user presses refresh, and when an agent shows a sound |
+| Lengths | `workspaceFiles.readBytes` byte windows of each sound's headers, four sounds at a time | After each walk, for the sounds that are new or changed size |
+| Selected sound | `workspaceFiles.readBytes`: one complete read, or byte windows above the Host's complete-file cap | When a sound is chosen, and again for each new version that its `file` resource reports |
+| Agent's measurement | The `game-audio/measure` request and its answer: the measurements and a PNG picture | For each `audio_review` call, one at a time per window |
+| Agent's reveal | The `game-audio/reveal` event | For an `audio_review` call with `show` |
+
+`AudioMeasureEvent` is the request of `game-audio/measure`: the sound's workspace `path`, the measured stretch from `start` to `end` (the end of the sound without `end`), `maxSeconds`, the longest stretch, `picture`, whether to draw the picture, `maxBytes`, the largest file to read, and on the Host the calling `agent` and the call's `signal`. `AudioMeasureResult` answers it with `measurements`, the figures the tools render, and `picture`, a base64 PNG with its `layout`. `AudioReveal` carries the `sessionId` and the sound's `path`.
+
 <a id="mcp-server-for-other-agents"></a>
 ## MCP server for other agents
 
@@ -343,6 +360,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
 | `polyhaven_*` | `polyhaven`, through `polyHavenMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) | The Session's own tool definitions, which need no Session; preview images return as JPEG bytes, and a download needs an absolute folder |
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
+| `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
 | `wasd_export_web`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions, which need no Session; `project` and `cover_image` are absolute paths, and a release publishes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images |
@@ -622,6 +640,49 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
+
+<a id="game-audio-events"></a>
+
+### `game-audio/*` events
+
+<a id="game-audiomeasure--waterfall"></a>
+
+#### `game-audio/measure` — waterfall
+
+Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab
+ * plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the sound, the window to measure, the bounds, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'game-audio/measure'( this: Scoped<Agent>, request: AudioMeasureEvent, next: () => Promise<AudioMeasureResult>, ): Promise<AudioMeasureResult>
+```
+
+Types: [Agent](core.md) · [Scoped](scope.md)
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
+
+<a id="game-audioreveal--emit"></a>
+
+#### `game-audio/reveal` — emit
+
+An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's Audio tab.
+
+```ts cordis-catalog
+/**
+ * An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's
+ * Audio tab.
+ * @mode emit
+ * @param reveal - the Session and the sound.
+ */
+'game-audio/reveal'(reveal: AudioReveal): void
+```
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
 
 <a id="game-mcp-events"></a>
 

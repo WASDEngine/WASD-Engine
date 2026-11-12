@@ -80,9 +80,11 @@ function styleInjectionModule(
  * Contract layers and pure folds a client bundle may inline: browser-safe
  * values with no runtime identity to share (no Symbol/instanceof/singleton state).
  * Everything else under @deepseek-ai/* is either a module-table entry
- * (external) or a leak the purity gate rejects.
+ * (external) or a leak the purity gate rejects. WASDEngine fork: the audio
+ * tools' formats, probe, measurements, and picture (`dsh-game-audio/audio`),
+ * which the Audio tab shares with the Host (wasdengine/FORK.md).
  */
-export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|fs-patch|session|llm|tools|brand|official-bundles|deque|output-retention|typert-protocol|util-crypto|util-time|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-util-file-drag$|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-commands\/builtin$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$)/
+export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|fs-patch|session|llm|tools|brand|official-bundles|deque|output-retention|typert-protocol|util-crypto|util-time|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-util-file-drag$|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-commands\/builtin$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$|@deepseek-ai\/dsh-game-audio\/audio$)/
 
 /**
  * Vendored framework libraries: rescoped into @deepseek-ai, so the gate below

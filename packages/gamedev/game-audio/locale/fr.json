@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Audio pour l’agent",
+    "description": "Permet à l’agent et aux agents connectés de trouver les effets sonores, les dialogues et la musique du projet de jeu et de les mesurer tels que l’onglet Audio les joue : sonie, crêtes, silences, raccords de boucle et image de la forme d’onde."
+  }
+}

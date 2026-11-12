@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型，「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的七个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页](#assets-tab)的 `ui-game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -332,6 +332,23 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
 
+<a id="audio-tab"></a>
+## 「音频」标签页与音频工具
+
+`ui-game-audio` 行挂载 [`@deepseek-ai/dsh-client-ui-game-audio`](../../packages/gamedev/ui-game-audio/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `audio` 页面类型，其引导项顺序为 46，位于「素材」标签页的引导项之后。它的主体按文件夹列出 Session 所在游戏项目的音效、对白和音乐及其时长，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，并播放所选声音：提供可拖动的波形、按采样精确循环的重复播放、音量控件，以及格式、响度和峰值等详细信息。整个窗口共用一个 `AudioContext`，因此同一时间只播放一个声音。
+
+`game-audio` 行挂载 [`@deepseek-ai/dsh-game-audio`](../../packages/gamedev/game-audio/README.zh.md)，其 `audio_search` 与 `audio_review` 工具让无法收听的 Session agent 与已连接的 agent 列出声音并测量其中一个。Host 读取文件及其文件头，但不解码：`audio_review` 通过以发起调用的 Session 为作用域、被转发的 waterfall 事件 `game-audio/measure` 请求一个窗口，由浏览器解码 MP3、Ogg 和 FLAC，并在答复成为结果之前校验它；带 `show` 时，它发出 `game-audio/reveal`，在该 Session 的「音频」标签页中打开该声音。该包浏览器安全的 `./audio` 导出（客户端打包纯净性检查把它作为可内联的线路层放行）包含格式、文件头探测、测量和图像，因此标签页的详细信息、agent 得到的数值，以及 SuperCollider 的 `render_audio` 与 `analyze_audio` 以同样的方式测量声音。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 声音列表 | `workspaceFiles.list`，从工作区根目录起逐层遍历，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示且上一次遍历早于 2 秒或其耗时的十倍时、用户按下刷新时，以及 agent 展示一个声音时 |
+| 时长 | 每个声音文件头的 `workspaceFiles.readBytes` 字节窗口，每次四个声音 | 每次遍历之后，针对新的或大小有变化的声音 |
+| 所选声音 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择声音时，以及其 `file` 资源每报告一个新版本时 |
+| agent 的测量 | `game-audio/measure` 请求及其答复：测量结果与一张 PNG 图像 | 每次 `audio_review` 调用，每个窗口每次处理一个 |
+| agent 的展示 | `game-audio/reveal` 事件 | 带 `show` 的 `audio_review` 调用 |
+
+`AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`，以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。
+
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
 
@@ -343,6 +360,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
+| `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_release_game` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` | Session 自身的工具定义，不需要 Session；`project` 与 `cover_image` 是绝对路径，发布到 WASD Engine 已登录的网站 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
@@ -622,6 +640,49 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)
+
+<a id="game-audio-events"></a>
+
+### `game-audio/*` events
+
+<a id="game-audiomeasure--waterfall"></a>
+
+#### `game-audio/measure` — waterfall
+
+Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to decode one sound of its workspace and measure it as the Audio tab
+ * plays it. Return the measurements to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the sound, the window to measure, the bounds, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'game-audio/measure'( this: Scoped<Agent>, request: AudioMeasureEvent, next: () => Promise<AudioMeasureResult>, ): Promise<AudioMeasureResult>
+```
+
+Types: [Agent](core.zh.md) · [Scoped](scope.zh.md)
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
+
+<a id="game-audioreveal--emit"></a>
+
+#### `game-audio/reveal` — emit
+
+An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's Audio tab.
+
+```ts cordis-catalog
+/**
+ * An agent asked to play a sound to the user; the windows that may read the Session open it in the Session's
+ * Audio tab.
+ * @mode emit
+ * @param reveal - the Session and the sound.
+ */
+'game-audio/reveal'(reveal: AudioReveal): void
+```
+
+Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game-audio/src/types.ts)
 
 <a id="game-mcp-events"></a>
 

@@ -1,0 +1,54 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../core/agent"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../core/scope"
+    },
+    {
+      "path": "../../core/session"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../util/timeout"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../util/error"
+    },
+    {
+      "path": "../game-mcp"
+    }
+  ]
+}

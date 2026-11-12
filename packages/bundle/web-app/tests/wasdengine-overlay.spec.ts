@@ -5,9 +5,9 @@
  * the WASDEngine origins must resolve from trusted environment layers only, the account menu's Feedback item must
  * open the WASDEngine issue tracker, whose new-issue page must offer only the fork's issue forms, first use must
  * show no DeepSeek Harness preview notice and create no default Workspace, so the Create game project dialog asks
- * for one, the game tool rows, the row of their Game tools tabs, and the row of the Assets tab must mount from web-app
- * dependencies, each tool package must resolve the title, description, and logo the tabs show, and the `gamedev`
- * preset must be the default
+ * for one, the game tool rows, the row of their Game tools tabs, the row of the Assets tab, and the rows of the Audio
+ * tab and its audio tools must mount from web-app dependencies, each tool package must resolve the title, description,
+ * and logo the tabs show, and the `gamedev` preset must be the default
  * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root,
  * whose skills the `skill` tool returns within the tool-result pruner threshold.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
@@ -68,7 +68,13 @@ const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-g
 /** The row the fork inserts after the Game tools tabs: the right Sidebar's Assets tab, which shows the project's 2D and 3D art. */
 const GAME_ASSETS_UI = { id: 'ui-game-assets', name: '@deepseek-ai/dsh-client-ui-game-assets' } as const
 
-/** The row the fork inserts after the Assets tab: the MCP server through which other agents on the computer use the game tools. */
+/** The row the fork inserts after the Assets tab: the right Sidebar's Audio tab, which plays the project's sounds. */
+const GAME_AUDIO_UI = { id: 'ui-game-audio', name: '@deepseek-ai/dsh-client-ui-game-audio' } as const
+
+/** The row the fork inserts after the Audio tab: the agent's audio tools, whose measurements the Audio tab makes. */
+const GAME_AUDIO = { id: 'game-audio', name: '@deepseek-ai/dsh-game-audio' } as const
+
+/** The row the fork inserts after the audio tools: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
 
 /** The row the fork inserts after the MCP server: the browser half of the MCP server, the setup for another agent. */
@@ -311,10 +317,10 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets and Audio tabs, the audio tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
   it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
@@ -404,6 +410,20 @@ describe('WASDEngine overlay', () => {
     expect(meta?.error).toBeUndefined()
     const title = meta?.title
     expect(typeof title === 'object' ? title.en : title).toBe('Assets tab')
+  })
+
+  it('mounts the Audio tab and the audio tools from web-app dependencies by their bare package names, with their default caps', () => {
+    const parent = pathToFileURL(join(webAppDir, 'package.json')).href
+    for (const [row, title] of [[GAME_AUDIO_UI, 'Audio tab'], [GAME_AUDIO, 'Audio for the agent']] as const) {
+      const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(candidate => candidate.id === row.id)
+      expect(entry?.name).toBe(row.name)
+      expect(entry?.config).toBeUndefined()
+      expect(entry?.disabled).toBeUndefined()
+      expect(manifest(webAppDir).dependencies?.[row.name]).toBe('workspace:*')
+      const meta = readPluginMeta(row.name, parent)
+      expect(meta?.error).toBeUndefined()
+      expect(typeof meta?.title === 'object' ? meta.title.en : meta?.title).toBe(title)
+    }
   })
 
   it('resolves the title, description, and SVG logo the Game tools tabs show for each game tool', () => {

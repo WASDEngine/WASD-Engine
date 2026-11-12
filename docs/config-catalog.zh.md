@@ -1775,6 +1775,31 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-audio -->
+<a id="deepseek-aidsh-game-audio"></a>
+
+## `@deepseek-ai/dsh-game-audio`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/game-audio/src/index.ts:40`](../packages/gamedev/game-audio/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the audio tools. */
+export interface Config {
+  /** Time limit of one `audio_review` call, which waits for a window to read, decode, and measure the sound. */
+  measureTimeoutMs: number
+  /** Longest window one `audio_review` call measures, in seconds. */
+  maxReviewSeconds: number
+  /** Largest file a window reads to measure it, in bytes. */
+  maxPreviewBytes: number
+  /** Folders one project walk lists, the project folder included. */
+  maxFolders: number
+  /** Sounds one project walk collects. */
+  maxSounds: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-audio -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
 <a id="deepseek-aidsh-game-mcp"></a>
 
@@ -5401,6 +5426,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-assets` | — | [`packages/gamedev/ui-game-assets/src/index.ts`](../packages/gamedev/ui-game-assets/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-audio` | — | [`packages/gamedev/ui-game-audio/src/index.ts`](../packages/gamedev/ui-game-audio/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-mcp` | — | [`packages/gamedev/ui-game-mcp/src/index.ts`](../packages/gamedev/ui-game-mcp/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-tools` | — | [`packages/gamedev/ui-game-tools/src/index.ts`](../packages/gamedev/ui-game-tools/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |
