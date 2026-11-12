@@ -1,7 +1,8 @@
 /* WASD Engine's AI usage row (fork-owned; wasdengine/FORK.md lists the fork changes): under the balance row's
    percent, a bar of the share of the plan's monthly AI usage that is left, in the purple of the brand mark's W key,
-   the day the usage refreshes, and the auto recharge credits left. Once nothing is left, the empty track turns amber.
-   The auto recharge switch has a row of its own after a divider, as the balance card's other rows do. */
+   the day the usage refreshes, and the credits left. Once nothing is left, the empty track turns amber. The auto
+   recharge switch and the referral link each have rows of their own after a divider, as the balance card's other
+   rows do. */
 .allowance {
   display: flex;
   flex-direction: column;
@@ -70,4 +71,28 @@
 
 .warning {
   color: var(--dsw-alias-state-warn-label);
+}
+
+.referral {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0 10px;
+}
+
+.referralHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 28px;
+}
+
+.referralLink {
+  font-family: var(--ds-font-family-code);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+  overflow-wrap: anywhere;
+  user-select: all;
 }

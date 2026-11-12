@@ -89,7 +89,7 @@ attemptTimeoutMs 包含初始化、等待浏览器和兑换的耗时。初始化
 
 账号更新共用一条有序流。凭据写入优先于待发送的进度快照；状态读取期间若凭据生命周期被替换，则丢弃该次读取。
 
-在 WASD Engine 上，就绪的 AccountDetails.balance 还可以带有 allowance，即 WASD Engine 账号服务代替美元余额报告的 AccountAllowance：套餐每月 AI 用量的剩余整数百分比（向下取整）、精确的剩余比例、刷新时间、以一次充值所加额度为基准的自动充值剩余额度整数百分比（creditsPercent，额度用完时缺省），以及自动充值开关（autoRecharge：是否开启、每次充值扣款的整美元数和上次充值失败的原因）；账号无法开启自动充值时 autoRecharge 缺省；在没有每月上限的无限制档位上，unlimited 为 true，全部用量都算作剩余，且不报告额度和开关。余额读取解析该服务随钱包发送的 allowance 对象（remaining_percent、remaining_share、refreshes_at、可选的 credits_percent，由 enabled、charge_usd 和 failure 组成的可选 auto_recharge 对象，以及无限制档位的可选 unlimited 标记）；该对象不合法时只丢弃它本身，不影响钱包读取，不合法的可选成员也只丢弃该成员。setAutoRecharge（`account` Remote 命名空间同样导出）开启或关闭自动充值，并返回 AccountAutoRechargeChange：当前是否开启；开启需要银行卡时还带有 cardUrl，即账号服务用于保存银行卡的页面，由调用方在浏览器中打开；已退出登录或授权已变化时返回 null。
+在 WASD Engine 上，就绪的 AccountDetails.balance 还可以带有 allowance，即 WASD Engine 账号服务代替美元余额报告的 AccountAllowance：套餐每月 AI 用量的剩余整数百分比（向下取整）、精确的剩余比例、刷新时间、以套餐每月用量为基准的剩余额度整数百分比（额度来自邀请与自动充值；creditsPercent，额度用完时缺省），以及自动充值开关（autoRecharge：是否开启和上次充值失败的原因）；账号无法开启自动充值时 autoRecharge 缺省；在没有每月上限的无限制档位上，unlimited 为 true，全部用量都算作剩余，且不报告额度和开关。就绪的余额还可以带有 referral，即账号邀请链接（url）及通过它加入的账号数（joined）组成的 AccountReferral。两者都不包含美元金额。余额读取解析该服务随钱包发送的 allowance 对象（remaining_percent、remaining_share、refreshes_at、可选的 credits_allowance_percent，由 enabled 和 failure 组成的可选 auto_recharge 对象，以及无限制档位的可选 unlimited 标记）和 referral 对象（url 与 joined），仅当链接是所配置源的首页并带有 ref 邀请码时才保留；该对象不合法时只丢弃它本身，不影响钱包读取，不合法的可选成员也只丢弃该成员。setAutoRecharge（`account` Remote 命名空间同样导出）开启或关闭自动充值，并返回 AccountAutoRechargeChange：当前是否开启；开启需要银行卡时还带有 cardUrl，即账号服务用于保存银行卡的页面，由调用方在浏览器中打开；已退出登录或授权已变化时返回 null。
 
 <a id="model-experience"></a>
 ## 模型体验

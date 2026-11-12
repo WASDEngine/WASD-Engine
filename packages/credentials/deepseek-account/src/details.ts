@@ -2,7 +2,7 @@
 import { z } from 'zod'
 import type { AccountDetails, AccountProfile, AccountUserId } from './types.ts'
 import { AccountUnauthorizedError, PlatformAuthError, requestAccount } from './protocol.ts'
-import { allowance, projectAllowance } from './wasdengine-allowance.ts'
+import { allowance, projectAllowance, projectReferral, referral } from './wasdengine-allowance.ts'
 
 const user = z.object({
   id: z.string().nullish(),
@@ -15,8 +15,9 @@ const decimal = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
 const wallet = z.object({
   currency: z.enum(['CNY', 'USD']), balance: z.string().regex(decimal),
 })
-// WASD Engine: the WASD Engine account service reports its allowance beside the wallets (wasdengine-allowance.ts).
-const summary = z.object({ normal_wallets: z.array(wallet), bonus_wallets: z.array(wallet), allowance })
+// WASD Engine: the WASD Engine account service reports its allowance and the referral link beside the wallets
+// (wasdengine-allowance.ts).
+const summary = z.object({ normal_wallets: z.array(wallet), bonus_wallets: z.array(wallet), allowance, referral })
 /** Project Platform user data without retaining credentials or unneeded fields.
  * @param value - current or exchange user response.
  * @returns UI account profile.
@@ -49,17 +50,19 @@ function accountPayload<T>(schema: z.ZodType<T>, value: unknown, field: 'profile
 
 const queries: { [K in keyof AccountDetails]: {
   path: '/auth-api/v0/users/current' | '/api/v0/users/get_user_summary'
-  parse: (value: unknown) => AccountDetails[K]
+  parse: (value: unknown, origin: string) => AccountDetails[K]
 } } = {
   profile: { path: '/auth-api/v0/users/current', parse: value => ({
     status: 'ready', value: projectProfile(accountPayload(user, value, 'profile')),
   }) },
-  balance: { path: '/api/v0/users/get_user_summary', parse: (value) => {
+  balance: { path: '/api/v0/users/get_user_summary', parse: (value, origin) => {
     const parsed = accountPayload(summary, value, 'balance')
-    const { allowance: left } = parsed
+    const { allowance: left, referral: shared } = parsed
+    const link = shared === undefined ? undefined : projectReferral(shared, origin)
     return {
       status: 'ready', value: parsed.normal_wallets, bonusWallets: parsed.bonus_wallets,
       ...(left === undefined ? {} : { allowance: projectAllowance(left) }),
+      ...(link === undefined ? {} : { referral: link }),
     }
   } },
 }
@@ -77,7 +80,7 @@ const queries: { [K in keyof AccountDetails]: {
 export async function readAccountDetail<K extends keyof AccountDetails>(field: K, origin: string, token: string,
   signal: AbortSignal, headers: Record<string, string>): Promise<AccountDetails[K]> {
   const query = queries[field]
-  try { return query.parse(await requestAccount(origin, query.path, token, signal, headers)) }
+  try { return query.parse(await requestAccount(origin, query.path, token, signal, headers), origin) }
   catch (error) {
     if (error instanceof AccountUnauthorizedError) throw error
     return { status: 'failed' }
