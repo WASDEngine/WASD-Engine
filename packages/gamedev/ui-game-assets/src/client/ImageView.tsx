@@ -2,10 +2,11 @@
  * The 2D view: the image on a checkerboard that shows transparency, fitted to the stage until the reader zooms. The
  * wheel and pinch zoom around the pointer, dragging pans, a double click switches between the fitted view and actual
  * size, and pixels stay sharp from twice the actual size. Images the browser decodes show from their bytes; TGA, HDR,
- * and EXR images are decoded by three.js, high dynamic range ones tone mapped for the screen. The Animation menu plays
- * the 2D animations the image plays or takes part in, frame by frame with a timeline and a speed, and its Sprite grid
- * reads the image as a sheet of the columns and rows the reader gives, drawn over it. The details list the image's
- * size, transparency, colors, and animations.
+ * and EXR images are decoded by three.js, high dynamic range ones tone mapped for the screen. An image whose header
+ * states more pixels than the viewer decodes shows a notice instead. The Animation menu plays the 2D animations the
+ * image plays or takes part in, frame by frame with a timeline and a speed, each frame once its picture is decoded and
+ * only while the view is on screen, and its Sprite grid reads the image as a sheet of the columns and rows the reader
+ * gives, drawn over it. The details list the image's size, transparency, colors, and animations.
  */
 import clsx from 'clsx'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
@@ -22,6 +23,7 @@ import type { NS } from './locales.ts'
 import type { AssetFile } from './read.ts'
 import type { AssetEntry } from './scan.ts'
 import type { ViewRequest } from './source.ts'
+import { FALLBACK_EDGE } from './picture.ts'
 import { SpritePlayer, type SpriteState } from './sprite-player.ts'
 import { gridAnimation, gridRegions, stripGuess, type SpriteAnimation } from './sprites.ts'
 import css from './ImageView.module.css'
@@ -45,13 +47,19 @@ export interface ImageViewProps {
   readonly read?: ((path: string, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>) | undefined
   /** What an agent asked to show: a sprite grid and a 2D animation to play once found; `request` changes for each ask. */
   readonly requested?: ViewRequest | undefined
+  /** The most pixels the viewer decodes for one image; a larger image shows a notice. */
+  readonly maxDecodedPixels: number
+  /** Whether the view is on screen; a hidden view's animation waits where it stands. */
+  readonly visible: boolean
   readonly t: Translate
 }
 
-/** A decoded picture: a Blob URL the browser decodes, or a bitmap three.js decoded. */
-type Picture =
+/** The shown image's picture: a Blob URL the browser decodes, a bitmap three.js decoded, or why there is none. */
+type Shown =
   | { readonly kind: 'url'; readonly url: string }
-  | { readonly kind: 'bitmap'; readonly bitmap: ImageBitmap }
+  | { readonly kind: 'bitmap'; readonly bitmap: CanvasImageSource; readonly width: number; readonly height: number }
+  | { readonly kind: 'tooLarge'; readonly width: number; readonly height: number }
+  | { readonly kind: 'failed' }
 
 interface Size {
   readonly width: number
@@ -69,8 +77,6 @@ const ZOOM_STEP = 1.5
 const PIXELATED_FROM = 2
 /** Distance an arrow key pans, in CSS pixels. */
 const PAN_STEP = 40
-/** Edge used for an image without an intrinsic size, such as an SVG with only a viewBox. */
-const FALLBACK_EDGE = 512
 /** Playback speeds the timeline offers. */
 const SPEEDS = [0.25, 0.5, 1, 1.5, 2] as const
 /** Most columns or rows of a sprite grid. */
@@ -93,59 +99,48 @@ function clampCount(value: number): number {
  * @param props - the asset, its bytes, the reads for its animations, the animation an agent asked for, and copy.
  * @returns the zoomable picture over its timeline, sprite grid, info and zoom bar, and details.
  */
-export function ImageView({ asset, file, animations: sources, read, requested, t }: ImageViewProps): ReactNode {
+export function ImageView({ asset, file, animations: sources, read, requested, maxDecodedPixels, visible, t }: ImageViewProps): ReactNode {
   const format = asset.format
-  const [picture, setPicture] = useState<Picture | 'failed'>()
+  const [picture, setPicture] = useState<Shown>()
   const [natural, setNatural] = useState<Size>()
-  useEffect(() => {
-    if (format.kind !== 'image') return
-    let disposed = false
-    let release = (): void => {}
-    setPicture(undefined)
-    setNatural(undefined)
-    if (format.decoder === 'browser') {
-      const url = URL.createObjectURL(new Blob([file.data], format.mediaType === undefined ? {} : { type: format.mediaType }))
-      release = () => { URL.revokeObjectURL(url) }
-      setPicture({ kind: 'url', url })
-    } else {
-      const decoder = format.decoder
-      void import('./viewer/index.ts').then(module => module.decodeImage(decoder, file.data)).then((bitmap) => {
-        if (disposed) {
-          bitmap.close()
-          return
-        }
-        release = () => { bitmap.close() }
-        setNatural({ width: bitmap.width, height: bitmap.height })
-        setPicture({ kind: 'bitmap', bitmap })
-      }, () => {
-        if (!disposed) setPicture('failed')
-      })
-    }
-    return () => {
-      disposed = true
-      release()
-    }
-  }, [file, format])
-
-  // The animation player: the decoded image and its frames, and the animations found for it.
+  // The player decodes the image once, from the URL the image element shows, and finds its animations.
   const [player, setPlayer] = useState<SpritePlayer>()
   const [sprite, setSprite] = useState<SpriteState>()
   useEffect(() => {
     if (format.kind !== 'image') return
-    const created = new SpritePlayer(asset.path, format, read ?? (() => Promise.reject(new Error('no reads'))), () => import('./viewer/index.ts'))
+    const created = new SpritePlayer(
+      asset.path, format, file.data, read ?? (() => Promise.reject(new Error('no reads'))), () => import('./viewer/index.ts'), maxDecodedPixels,
+    )
     const controller = new AbortController()
     setPlayer(created)
     setSprite(undefined)
-    void created.load(file, sources, controller.signal).then((state) => {
-      if (state !== undefined && !controller.signal.aborted) setSprite(state)
-    }, () => {
-      // Error: an image the player cannot decode shows without animations, as the view shows it.
-    })
+    setNatural(undefined)
+    if (created.tooLarge !== undefined) {
+      setPicture({ kind: 'tooLarge', ...created.tooLarge })
+    } else if (created.url !== undefined) {
+      setPicture({ kind: 'url', url: created.url })
+    } else {
+      setPicture(undefined)
+      void created.picture().then((decoded) => {
+        if (controller.signal.aborted) return
+        setNatural({ width: decoded.width, height: decoded.height })
+        setPicture({ kind: 'bitmap', bitmap: decoded.source, width: decoded.width, height: decoded.height })
+      }, () => {
+        if (!controller.signal.aborted) setPicture({ kind: 'failed' })
+      })
+    }
+    if (created.tooLarge === undefined) {
+      void created.load(sources, controller.signal).then((state) => {
+        if (state !== undefined && !controller.signal.aborted) setSprite(state)
+      }, () => {
+        // Error: an image the player cannot decode shows without animations, as the view shows it.
+      })
+    }
     return () => {
       controller.abort()
       created.close()
     }
-  }, [asset.path, file, format, read, sources])
+  }, [asset.path, file, format, read, sources, maxDecodedPixels])
 
   const [grid, setGrid] = useState<AssetGrid>()
   const [gridOpen, setGridOpen] = useState(false)
@@ -172,7 +167,11 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
     return [...found, gridAnimation(asset.path, imageSize.width, imageSize.height, grid)]
   }, [sprite, grid, imageSize?.width, imageSize?.height, asset.path])
   const animation = active === undefined ? undefined : animations.find(candidate => candidate.name === active)
-  const current = animation?.frames[Math.min(frame, animation.frames.length - 1)]
+  const shownFrame = animation === undefined ? 0 : Math.min(frame, animation.frames.length - 1)
+  const current = animation?.frames[shownFrame]
+  // The current frame's picture: playback moves on only once it is decoded, or once it failed.
+  const currentState = current === undefined || player === undefined ? undefined : player.frame(current)
+  const settled = currentState !== undefined && currentState.kind !== 'pending'
 
   // An agent's grid shows over the image, and the animation it asked for plays once it is found.
   useEffect(() => {
@@ -192,9 +191,10 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
     setPlaying(true)
   }, [requested, sprite, animations, grid])
 
-  // Playback: each frame shows for its duration at the chosen speed; a looping animation starts over.
+  // Playback: each frame shows for its duration at the chosen speed once its picture is decoded, while the view is on
+  // screen; a looping animation starts over.
   useEffect(() => {
-    if (animation === undefined || !playing || animation.frames.length < 2 || current === undefined) return
+    if (animation === undefined || !playing || !visible || !settled || animation.frames.length < 2 || current === undefined) return
     const timer = setTimeout(() => {
       setFrame((index) => {
         const next = index + 1
@@ -205,19 +205,25 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
       })
     }, Math.max(10, current.durationMs / speed))
     return () => { clearTimeout(timer) }
-  }, [animation, playing, current, speed])
+  }, [animation, playing, visible, settled, current, speed])
 
-  // A frame of another image is read on first show; the canvas draws it once it is ready.
+  // A frame's picture, one of the image's own frames or another image, decodes when the frame comes up, and the next
+  // frame's while it shows; the canvas draws a frame once its picture is ready.
   useEffect(() => {
-    if (current === undefined || player === undefined || player.ready(current) !== undefined) return
-    const controller = new AbortController()
-    void player.picture(current, controller.signal).then(() => {
-      if (!controller.signal.aborted) setDrawn(count => count + 1)
-    })
-    return () => { controller.abort() }
-  }, [current, player])
+    if (animation === undefined || current === undefined || player === undefined) return
+    let live = true
+    if (player.frame(current).kind === 'pending') {
+      void player.request(current).then(() => {
+        if (live) setDrawn(count => count + 1)
+      })
+    }
+    const following = animation.frames[(shownFrame + 1) % animation.frames.length]
+    if (following !== undefined && visible) void player.request(following)
+    return () => { live = false }
+  }, [animation, current, shownFrame, player, visible])
 
-  const frameSize = current === undefined ? undefined : current.region ?? (player?.ready(current) ?? imageSize)
+  const currentPicture = currentState?.kind === 'ready' ? currentState.picture : undefined
+  const frameSize = current === undefined ? undefined : current.region ?? (currentPicture ?? imageSize)
   const shownSize = animation === undefined ? natural : frameSize ?? natural
 
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -331,20 +337,21 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
   }
 
   const drawBitmap = useCallback((canvas: HTMLCanvasElement | null): void => {
-    if (canvas === null || typeof picture !== 'object' || picture.kind !== 'bitmap') return
+    if (canvas === null || picture?.kind !== 'bitmap') return
     canvas.getContext('2d')?.drawImage(picture.bitmap, 0, 0)
   }, [picture])
 
-  // The current frame, drawn at its own size; the zoom scales the canvas.
+  // The current frame, drawn at its own size once its picture is ready; the zoom scales the canvas.
   const frameCanvas = useRef<HTMLCanvasElement>(null)
   useLayoutEffect(() => {
     const canvas = frameCanvas.current
     if (canvas === null || current === undefined || player === undefined) return
-    const source = player.ready(current) ?? (current.path === asset.path ? sprite?.picture : undefined)
     const context = canvas.getContext('2d')
     if (context === null) return
     context.clearRect(0, 0, canvas.width, canvas.height)
-    if (source === undefined) return
+    const state = player.frame(current)
+    if (state.kind !== 'ready') return
+    const source = state.picture
     const region = current.region ?? { x: 0, y: 0, width: source.width, height: source.height }
     context.imageSmoothingEnabled = false
     context.drawImage(source.source, region.x, region.y, region.width, region.height, 0, 0, canvas.width, canvas.height)
@@ -406,8 +413,11 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
         onKeyDown={onKeyDown}
       >
         {picture === undefined && <div className={css.status}><StateDot state="ongoing" /></div>}
-        {picture === 'failed' && <div className={css.status} role="alert">{t('viewer.unreadable')}</div>}
-        {animation === undefined && typeof picture === 'object' && picture.kind === 'url' && (
+        {picture?.kind === 'failed' && <div className={css.status} role="alert">{t('viewer.unreadable')}</div>}
+        {picture?.kind === 'tooLarge' && (
+          <div className={css.status} role="alert">{t('viewer.imageTooLarge', { width: picture.width, height: picture.height })}</div>
+        )}
+        {animation === undefined && picture?.kind === 'url' && (
           <img
             className={pictureClass}
             style={box}
@@ -418,11 +428,11 @@ export function ImageView({ asset, file, animations: sources, read, requested, t
               const image = event.currentTarget
               setNatural({ width: image.naturalWidth || FALLBACK_EDGE, height: image.naturalHeight || FALLBACK_EDGE })
             }}
-            onError={() => { setPicture('failed') }}
+            onError={() => { setPicture({ kind: 'failed' }) }}
           />
         )}
-        {animation === undefined && typeof picture === 'object' && picture.kind === 'bitmap' && (
-          <canvas ref={drawBitmap} className={pictureClass} style={box} width={picture.bitmap.width} height={picture.bitmap.height} />
+        {animation === undefined && picture?.kind === 'bitmap' && (
+          <canvas ref={drawBitmap} className={pictureClass} style={box} width={picture.width} height={picture.height} />
         )}
         {animation !== undefined && frameSize !== undefined && (
           <canvas

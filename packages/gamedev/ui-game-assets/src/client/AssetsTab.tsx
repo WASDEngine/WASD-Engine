@@ -20,6 +20,8 @@ import css from './AssetsTab.module.css'
 export interface ViewerLimits {
   /** Largest file the viewer reads, in bytes, which also bounds what a model's description may size itself. */
   readonly maxPreviewBytes: number
+  /** Most pixels the viewer decodes for one image, as its header states them. */
+  readonly maxDecodedPixels: number
 }
 
 /** Business face of the Assets tab body, bound to one Session. */

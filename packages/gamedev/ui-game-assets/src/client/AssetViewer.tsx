@@ -161,7 +161,12 @@ function LoadedAsset({
     )
   }
   return asset.format.kind === 'image'
-    ? <ImageView asset={asset} file={load.file} animations={animations} read={read} requested={requested} t={t} />
+    ? (
+      <ImageView
+        asset={asset} file={load.file} animations={animations} read={read} requested={requested}
+        maxDecodedPixels={limits.maxDecodedPixels} visible={visible} t={t}
+      />
+    )
     : (
       <ModelView
         asset={asset} file={load.file} relatedUrl={relatedUrl} maxBytes={limits.maxPreviewBytes}

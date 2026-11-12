@@ -24,7 +24,7 @@ import type { AssetGrid, AssetReveal } from '@deepseek-ai/dsh-game-assets/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { answerRender, canDrawModels, type AgentRenderSources } from './agent.ts'
+import { answerRender, canDrawModels, drawWeight, HEAD_BYTES, type AgentRenderSources } from './agent.ts'
 import { MAX_TEXT_BYTES, type AnimationSources } from './animations2d.ts'
 import { AssetsTab, AssetsTabTitle, type AssetsTabInjected } from './AssetsTab.tsx'
 import { AssetsGlyph } from './icon.tsx'
@@ -68,11 +68,17 @@ export interface Config {
   maxAssets?: number
   /** Largest file the viewer reads, in bytes; a larger asset shows a notice instead. */
   maxPreviewBytes?: number
+  /**
+   * Most pixels, width times height, of an image the viewer decodes, as its header states them before any pixel is
+   * decoded; a larger image shows a notice instead, and an agent's picture of it fails.
+   */
+  maxDecodedPixels?: number
   /** Pictures this window draws at once for agents; later requests wait their turn. */
   maxAgentDraws?: number
   /**
-   * Largest total size in bytes of the assets this window draws at once for agents, as each request counts its asset;
-   * a larger asset draws alone.
+   * Largest total memory in bytes that the pictures this window draws at once for agents decode, as each request counts
+   * it: an image its file and the pixels its header states, a model its file with a glTF model's buffers and images; a
+   * larger draw draws alone.
    */
   maxAgentDrawBytes?: number
 }
@@ -82,6 +88,7 @@ export const Config: z<Config, Required<Config>> = z.object({
   maxFolders: z.natural().min(1).default(2000),
   maxAssets: z.natural().min(1).default(5000),
   maxPreviewBytes: z.natural().min(1).default(256 * 1024 * 1024),
+  maxDecodedPixels: z.natural().min(1).default(8192 * 8192),
   maxAgentDraws: z.natural().min(1).default(3),
   maxAgentDrawBytes: z.natural().min(1).default(64 * 1024 * 1024),
 })
@@ -166,6 +173,14 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   // An agent that just wrote a Godot resource looks for it, so its pictures use a walk that started after its request.
   const agentSources = (sessionId: SessionId, ticket: number): AgentRenderSources => ({
     read: readOf(sessionId),
+    async readHead(path, signal) {
+      const range = { offset: 0, length: HEAD_BYTES }
+      const head = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range }, signal).catch(() => {
+        // AbortError or an assembly fault: the draw counts the file alone, and a cancelled one ends before its turn.
+        return undefined
+      })
+      return head?.ok === true ? head.value.data : undefined
+    },
     animations: animationSources(sessionId, signal => walks.get(sessionId, ticket, signal)),
     relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
     viewer,
@@ -191,7 +206,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
         sessionId,
         async signal => source.scanState.getSnapshot().scan ?? await walks.get(sessionId, walks.ticket(), signal),
       ),
-      limits: { maxPreviewBytes: config.maxPreviewBytes },
+      limits: { maxPreviewBytes: config.maxPreviewBytes, maxDecodedPixels: config.maxDecodedPixels },
       takeNavigation: (tabId, revision) => source.takeNavigation(tabId, revision),
     }
   }
@@ -213,13 +228,17 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   // The agent's asset tools: this window draws for the Sessions it may read, several pictures at a time in the order
   // the requests came; a window that cannot draw 3D leaves a model to another window. Once WebGL worked, it works.
   const draws = new DrawQueue(config.maxAgentDraws, config.maxAgentDrawBytes)
+  const drawLimits = { maxDecodedPixels: config.maxDecodedPixels }
   let drawsModels = false
   ctx.effect(() => ctx.remote.$on('game-assets/render', function (request, next) {
     const sessionId = ctx.sessions.scopeOf(this)
     if (sessionId === undefined || (request.kind === 'model' && !(drawsModels ||= canDrawModels()))) return next()
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
     const reads = agentSources(sessionId, walks.ticket())
-    return draws.run(fields.bytes, signal, () => answerRender(fields, reads, signal))
+    // A draw counts the memory it decodes, which an image's header gives before the draw waits for its turn.
+    return drawWeight(fields, reads, signal).then(
+      weight => draws.run(weight, signal, () => answerRender(fields, reads, drawLimits, signal)),
+    )
   }), 'ui-game-assets: draw assets for agents')
   // Only the latest reveal goes on: one that waits for its Session to come on screen stops when another arrives.
   let revealing: (() => void) | undefined

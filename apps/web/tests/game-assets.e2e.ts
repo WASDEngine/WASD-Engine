@@ -3,7 +3,8 @@
  * the Assets tab, a real Chromium window connects, and scripted models use the tools. One model lists the project's
  * art, has the window draw a skinned and animated glTF model from two sides with its skeleton and across its clip, and
  * reads a PNG strip as a sprite grid and as that grid's frames, then shows it in the Assets tab, read as that grid and
- * playing it; a reveal of the model with a clip opens it playing that clip on the timeline. Then agents look at
+ * playing it; a reveal of the model with a clip opens it playing that clip on the timeline, and a reveal of a numbered
+ * image with its animation plays the picture of every file in turn. Then agents look at
  * different assets at the same time: one model turn that asks for four, three teammates of an agent team (one started
  * in a subfolder, one showing its asset in the lead's Session), subagents beside their lead, and Claude Code and Codex
  * calling through WASD Engine's MCP server. The Host sends their requests to the window together, the window draws
@@ -210,9 +211,12 @@ function crateGltf(): string {
   })
 }
 
+/** The colors of the numbered images `fx/boom_1.png` to `fx/boom_4.png`, one each. */
+const BOOM_COLORS = [[230, 60, 60, 255], [240, 200, 40, 255], [60, 200, 90, 255], [60, 110, 230, 255]] as const
+
 /**
- * Write the game project: the robot and a crate, the hero strip, a 16 × 16 coin, a 16 × 16 red icon in art/, and a
- * different 8 × 8 blue icon.png in the project folder itself.
+ * Write the game project: the robot and a crate, the hero strip, a 16 × 16 coin, a 16 × 16 red icon in art/, a
+ * different 8 × 8 blue icon.png in the project folder itself, and four numbered 8 × 8 images of one color each in fx/.
  * @param root - the project folder.
  */
 async function writeProject(root: string): Promise<void> {
@@ -225,6 +229,8 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(join(root, 'art', 'coin.png'), png(16, 16, (x, y) => ((x - 7.5) ** 2 + (y - 7.5) ** 2 < 49 ? [240, 190, 40, 255] : [0, 0, 0, 0])))
   await writeFile(join(root, 'art', 'icon.png'), png(16, 16, () => [220, 40, 40, 255]))
   await writeFile(join(root, 'icon.png'), png(8, 8, () => [40, 60, 220, 255]))
+  await mkdir(join(root, 'fx'), { recursive: true })
+  for (const [index, color] of BOOM_COLORS.entries()) await writeFile(join(root, 'fx', `boom_${String(index + 1)}.png`), png(8, 8, () => color))
 }
 
 /** One tool call of a scripted model. */
@@ -387,7 +393,7 @@ function overlap(ctx: Context, count: number) {
 /**
  * Hold the window's file reads and count the most open at once. Reads are held until `count` are open and half a second
  * more, in which a window that draws beyond its limit would open a further one, or until ten seconds after the first
- * read when fewer come.
+ * read when fewer come. The reads of an image's first bytes, which size it before its draw waits for its turn, go on.
  * @param page - the window.
  * @param count - the reads to wait for.
  * @returns the most reads that were open at once.
@@ -399,6 +405,11 @@ async function windowReads(page: Page, count: number): Promise<{ readonly peak: 
   const all = Promise.withResolvers<undefined>()
   const release = (): void => { all.resolve(undefined) }
   await page.route(/readBytes/u, async (route) => {
+    // A window of given length is only ever an image's first bytes; a read of a whole file names none.
+    if (/"range":\{[^}]*"length":/u.test(route.request().postData() ?? '')) {
+      await route.continue()
+      return
+    }
     open += 1
     peak = Math.max(peak, open)
     timer ??= setTimeout(release, 10_000)
@@ -580,6 +591,20 @@ it('draws models and sprites for the model in a real window, with their details,
     await page.waitForTimeout(500)
     await page.screenshot({ path: join(out, 'assets-tab-model.png') })
   }
+
+  // A reveal of a numbered image with its animation plays every file's own picture in turn, none of them blank.
+  ctx.emit('game-assets/reveal', { sessionId, path: 'fx/boom_2.png', animation: 'boom' })
+  const seen = new Set<string>()
+  await vi.waitFor(async () => {
+    const pixel = await page.evaluate(() => {
+      const canvas = document.querySelector<HTMLCanvasElement>('[data-game-assets] [role="img"] canvas')
+      const context = canvas?.getContext('2d')
+      if (canvas === null || context === null || context === undefined) return undefined
+      return [...context.getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data].join(',')
+    })
+    if (pixel !== undefined) seen.add(pixel)
+    for (const color of BOOM_COLORS) expect([...seen]).toContain(color.join(','))
+  }, { timeout: 30_000, interval: 20 })
 }, 240_000)
 
 it('draws four different assets that one model turn asks for at once, three at a time in the window', async () => {

@@ -92,8 +92,10 @@ describe('Assets tab registration', () => {
   it('declares the browser services it needs and validates its caps', () => {
     expect(inject).toEqual(['slots', 'locale', 'sidebarRightTabs', 'sessions', 'remote', 'remote.workspaceFiles'])
     expect(Config({})).toEqual({
-      maxFolders: 2000, maxAssets: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxAgentDraws: 3, maxAgentDrawBytes: 64 * 1024 * 1024,
+      maxFolders: 2000, maxAssets: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxDecodedPixels: 8192 * 8192,
+      maxAgentDraws: 3, maxAgentDrawBytes: 64 * 1024 * 1024,
     })
+    expect(() => Config({ maxDecodedPixels: 0 })).toThrow()
     expect(() => Config({ maxAgentDraws: 0 })).toThrow()
     expect(() => Config({ maxAssets: 0 })).toThrow()
   })
@@ -172,7 +174,13 @@ describe('Assets tab registration', () => {
     const render = f.listeners.get('game-assets/render') as ((this: unknown, ...args: unknown[]) => Promise<unknown>) | undefined
     assert(render !== undefined)
     const reads: { path: string; release: () => void }[] = []
-    f.workspaceFiles.readBytes.mockImplementation(async (_sessionId: string, path: string) => {
+    const heads: string[] = []
+    f.workspaceFiles.readBytes.mockImplementation(async (_sessionId: string, path: string, options?: { readonly range?: unknown }) => {
+      // An image's first bytes, which size it before its draw waits for its turn, are not held.
+      if (options?.range !== undefined) {
+        heads.push(path)
+        return { ok: true as const, value: { absolutePath: `/p/${path}`, version: 'v1', bytes: 3, offset: 0, data: new Uint8Array([1, 2, 3]), eof: true } }
+      }
       const released = Promise.withResolvers<undefined>()
       reads.push({ path, release: () => { released.resolve(undefined) } })
       await released.promise
@@ -191,6 +199,7 @@ describe('Assets tab registration', () => {
       render.call('scoped', request('d.png'), next),
     ].map(answer => answer.then(() => 'drawn', (error: unknown) => (error instanceof Error ? error.message : String(error))))
     await vi.waitFor(() => { expect(reads.map(read => read.path)).toEqual(['a.png', 'b.png']) })
+    expect(heads).toEqual(['a.png', 'b.png', 'c.png', 'd.png'])
     ended.abort(new Error('the call ended'))
     for (const read of reads) read.release()
     await vi.waitFor(() => { expect(reads.map(read => read.path)).toEqual(['a.png', 'b.png', 'd.png']) })
