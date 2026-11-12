@@ -86,7 +86,7 @@ describe('WASD Engine Plugins composition', () => {
         if (request === undefined) continue
         expect(request.command).toEqual({ kind: 'open', url: 'https://duckduckgo.com/?q=pixel+trees' })
         expect(request.limits).toEqual({ maxChars: 40_000, loadTimeoutMs: 15_000, operationTimeoutMs: 10_000, screenshotWidth: 1280 })
-        expect(ctx.wasdPlugins.claimBrowserRequest(request.id, following.signal)).toBe(true)
+        expect(ctx.wasdPlugins.claimBrowserRequest(request.id, view.follower, following.signal)).toBe(true)
         expect(ctx.wasdPlugins.settleBrowserRequest(request.id, {
           ok: true,
           page: { url: 'https://duckduckgo.com/?q=pixel+trees', title: 'pixel trees at DuckDuckGo', text: '[Tree pack](https://example.com/trees) [1: button "More results"]', truncated: false, loading: false },

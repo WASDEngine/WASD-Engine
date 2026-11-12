@@ -6,7 +6,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import {
-  BrowserRequestQueue, browserToolDefinitions, formatPage, UNCLAIMED_MESSAGE, type BrowserToolHost, type WasdBrowserDone,
+  BrowserRequestQueue, browserToolDefinitions, formatPage, UNCLAIMED_MESSAGE, WINDOW_GONE_MESSAGE, type BrowserToolHost,
+  type WasdBrowserDone,
 } from '../src/browser.ts'
 import type { WasdBrowserCommand, WasdBrowserLimits, WasdBrowserOutcome, WasdBrowserRequests } from '../src/types.ts'
 
@@ -19,17 +20,24 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function queue(claimTimeoutMs = 1000) {
-  const lifetime = new AbortController()
-  lifetimes.push(lifetime)
-  const requests = new BrowserRequestQueue(claimTimeoutMs, lifetime.signal)
+/** A window's command stream: the lists it received and its cancellation, which ends it as a closed window does. */
+function windowStream(requests: BrowserRequestQueue) {
   const views: WasdBrowserRequests[] = []
   const following = new AbortController()
   lifetimes.push(following)
   const done = (async () => {
     for await (const view of requests.follow(following.signal)) views.push(view)
   })()
-  return { requests, views, lifetime, following, done }
+  /** The id through which this window claims, from its latest list. */
+  const follower = (): string => views.at(-1)!.follower
+  return { views, following, done, follower }
+}
+
+function queue(claimTimeoutMs = 1000) {
+  const lifetime = new AbortController()
+  lifetimes.push(lifetime)
+  const requests = new BrowserRequestQueue(claimTimeoutMs, lifetime.signal)
+  return { requests, lifetime, ...windowStream(requests) }
 }
 
 const page = (text: string): WasdBrowserOutcome => ({
@@ -39,13 +47,13 @@ const page = (text: string): WasdBrowserOutcome => ({
 
 describe('BrowserRequestQueue', () => {
   it('serves a command to the window that claims it and returns the page the window settles it with', async () => {
-    const { requests, views } = queue()
+    const { requests, views, follower } = queue()
     const sent = requests.send(SESSION, { kind: 'open', url: 'https://example.test/' }, LIMITS, new AbortController().signal)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
     const request = views.at(-1)!.requests[0]!
     expect(request).toMatchObject({ sessionId: SESSION, command: { kind: 'open', url: 'https://example.test/' }, limits: LIMITS })
-    expect(requests.claim(request.id)).toBe(true)
-    expect(requests.claim(request.id)).toBe(false)
+    expect(requests.claim(request.id, follower())).toBe(true)
+    expect(requests.claim(request.id, follower())).toBe(false)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toEqual([]) })
     expect(requests.settle(request.id, page('Hello'))).toBe(true)
     expect((await sent).page.text).toBe('Hello')
@@ -63,45 +71,68 @@ describe('BrowserRequestQueue', () => {
   })
 
   it('reports the window\'s failure, and refuses page text beyond the command\'s limit', async () => {
-    const { requests, views } = queue()
+    const { requests, views, follower } = queue()
     const first = requests.send(SESSION, { kind: 'click', element: 4 }, LIMITS, new AbortController().signal)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
     const one = views.at(-1)!.requests[0]!.id
-    requests.claim(one)
+    requests.claim(one, follower())
     requests.settle(one, { ok: false, message: 'Element 4 is not on the page now.' })
     await expect(first).rejects.toThrow('Element 4 is not on the page now.')
     const second = requests.send(SESSION, { kind: 'read' }, LIMITS, new AbortController().signal)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
     const two = views.at(-1)!.requests[0]!.id
-    requests.claim(two)
+    requests.claim(two, follower())
     requests.settle(two, page('x'.repeat(LIMITS.maxChars + 1)))
     await expect(second).rejects.toThrow('The window returned more page text than the command allows.')
   })
 
   it('ends a cancelled call at once and drops the outcome a window settles later', async () => {
-    const { requests, views } = queue()
+    const { requests, views, follower } = queue()
     const cancel = new AbortController()
     const sent = requests.send(SESSION, { kind: 'read' }, LIMITS, cancel.signal)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
     const id = views.at(-1)!.requests[0]!.id
-    requests.claim(id)
+    requests.claim(id, follower())
     cancel.abort(new Error('cancelled'))
     await expect(sent).rejects.toThrow('cancelled')
     expect(requests.settle(id, page('Late'))).toBe(false)
   })
 
   it('names a claimed command while its call waits, so a window stops it once the call ends', async () => {
-    const { requests, views } = queue()
+    const { requests, views, follower } = queue()
     const cancel = new AbortController()
     const sent = requests.send(SESSION, { kind: 'read' }, LIMITS, cancel.signal)
     await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(1) })
     const id = views.at(-1)!.requests[0]!.id
     expect(views.at(-1)?.claimed).toEqual([])
-    requests.claim(id)
-    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ requests: [], claimed: [id] }) })
+    requests.claim(id, follower())
+    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ follower: follower(), requests: [], claimed: [id] }) })
     cancel.abort(new Error('timed out'))
     await expect(sent).rejects.toThrow('timed out')
-    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ requests: [], claimed: [] }) })
+    await vi.waitFor(() => { expect(views.at(-1)).toEqual({ follower: follower(), requests: [], claimed: [] }) })
+  })
+
+  it('fails a claimed command at once when the stream of the window that claimed it ends, and leaves the others', async () => {
+    vi.useFakeTimers()
+    const { requests, views, following, follower } = queue(5000)
+    const other = windowStream(requests)
+    const claimedHere = requests.send(SESSION, { kind: 'read' }, LIMITS, new AbortController().signal)
+    const claimedThere = requests.send(SESSION, { kind: 'read' }, LIMITS, new AbortController().signal)
+    const unclaimed = requests.send(SESSION, { kind: 'read' }, LIMITS, new AbortController().signal)
+    await vi.waitFor(() => { expect(views.at(-1)?.requests).toHaveLength(3) })
+    const [here, there, waiting] = views.at(-1)!.requests.map(request => request.id)
+    await vi.waitFor(() => { expect(other.views.at(-1)?.requests).toHaveLength(3) })
+    expect(other.follower()).not.toBe(follower())
+    expect(requests.claim(here!, follower())).toBe(true)
+    expect(requests.claim(there!, other.follower())).toBe(true)
+    following.abort()
+    await expect(claimedHere).rejects.toThrow(WINDOW_GONE_MESSAGE)
+    // The ended stream takes no more commands; the window that stays carries out its own and may take the rest.
+    expect(requests.claim(waiting!, follower())).toBe(false)
+    expect(requests.claim(waiting!, other.follower())).toBe(true)
+    expect(requests.settle(there!, page('There'))).toBe(true)
+    expect(requests.settle(waiting!, page('Waiting'))).toBe(true)
+    expect([(await claimedThere).page.text, (await unclaimed).page.text]).toEqual(['There', 'Waiting'])
   })
 
   it('fails waiting commands and ends the stream when the plugin stops', async () => {

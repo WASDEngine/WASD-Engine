@@ -138,8 +138,8 @@ function registerUi(ctx: Context): void {
         open: signal => remote.browserRequests(signal),
         ended: () => new Error('the WASD Engine Browser command stream ended'),
       }),
-      claim: async (id) => {
-        const result = await remote.claimBrowserRequest(id)
+      claim: async (id, follower) => {
+        const result = await remote.claimBrowserRequest(id, follower)
         return result.ok && result.value
       },
       settle: async (id, outcome) => {

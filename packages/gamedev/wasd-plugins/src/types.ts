@@ -87,6 +87,12 @@ export interface WasdBrowserRequest {
 
 /** The commands as windows follow them: those no window has claimed yet, and those still waiting for their outcome. */
 export interface WasdBrowserRequests {
+  /**
+   * Id of this command stream, which a window names when it claims a command. When the stream ends, because the window
+   * closed, reloaded, or lost its connection, the commands claimed through it fail at once, and a stream the window
+   * opens again has a new id.
+   */
+  readonly follower: string
   /** The commands no window has claimed yet, oldest first. */
   readonly requests: readonly WasdBrowserRequest[]
   /**

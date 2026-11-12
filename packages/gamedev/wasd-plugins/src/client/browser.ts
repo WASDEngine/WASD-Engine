@@ -85,8 +85,11 @@ export interface BrowserSidebar {
 export interface BrowserDriverServices {
   /** Open the logical stream of waiting commands. */
   readonly follow: () => BrowserRequestStream
-  /** @returns whether this window took the command. */
-  readonly claim: (id: string) => Promise<boolean>
+  /**
+   * Take a command through the command stream this window follows.
+   * @returns whether this window took the command.
+   */
+  readonly claim: (id: string, follower: string) => Promise<boolean>
   /** End a command this window took. */
   readonly settle: (id: string, outcome: WasdBrowserOutcome) => Promise<void>
   /** The right Sidebar. */
@@ -326,6 +329,8 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   // The cancellation of each command this window took, until the command ends here.
   const commands = new Map<string, AbortController>()
   let waiting: readonly WasdBrowserRequest[] = []
+  // The id of the command stream that delivered `waiting`, through which this window takes commands.
+  let follower: string | undefined
   const lifetime = new AbortController()
 
   const onScreen = (sessionId: SessionId): boolean => sidebar.mounted.getSnapshot() === sessionId
@@ -567,13 +572,18 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
   }
 
   const consider = (): void => {
+    if (follower === undefined) return
     for (const request of waiting) {
       if (taken.has(request.id) || !canServe(request)) continue
       taken.add(request.id)
-      // Claimed at once, so a command that waits behind the Session's earlier ones is not taken for unclaimed.
-      const claimed = services.claim(request.id).catch((error: unknown) => {
+      // Claimed at once, so a command that waits behind the Session's earlier ones is not taken for unclaimed. A refused
+      // claim, such as one through a stream that reopened meanwhile, lets a later list offer the command again.
+      const claimed = services.claim(request.id, follower).catch((error: unknown) => {
         services.warn('wasd-plugins: a window could not take a Browser command', error)
         return false
+      }).then((took) => {
+        if (!took) taken.delete(request.id)
+        return took
       })
       const controller = new AbortController()
       commands.set(request.id, controller)
@@ -601,6 +611,7 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
       if (lifetime.signal.aborted) return
       delivery.accept()
       waiting = delivery.value.requests
+      follower = delivery.value.follower
       const current = new Set(waiting.map(request => request.id))
       for (const id of [...taken]) if (!current.has(id)) taken.delete(id)
       stopEnded(delivery.value)

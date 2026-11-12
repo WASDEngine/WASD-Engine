@@ -115,12 +115,15 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     return Promise.resolve()
   })
   const outcomes = new Map<string, WasdBrowserOutcome>()
-  // The Host's queue: the commands no window claimed, and the claimed ones whose call still waits.
+  // The Host's queue: the commands no window claimed, and the claimed ones whose call still waits, and the id of the
+  // window's command stream, through which it claims.
   const queued = new Map<string, { request: WasdBrowserRequest; claimed: boolean }>()
+  let follower = 'stream-1'
   const publish = () => {
     const entries = [...queued.values()]
     deliveries.push({
       value: {
+        follower,
         requests: entries.filter(entry => !entry.claimed).map(entry => entry.request),
         claimed: entries.filter(entry => entry.claimed).map(entry => entry.request.id),
       },
@@ -128,13 +131,15 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     })
     wake?.()
   }
-  const claim = vi.fn((id: string) => {
+  const claim = vi.fn((id: string, through: string) => {
     const entry = queued.get(id)
-    if (entry === undefined || entry.claimed) return Promise.resolve(false)
+    if (entry === undefined || entry.claimed || through !== follower) return Promise.resolve(false)
     entry.claimed = true
     publish()
     return Promise.resolve(true)
   })
+  /** End the window's command stream before the window hears of it, as a reconnect does before the new stream delivers. */
+  const reopenQuietly = () => { follower = `stream-${String(Number(follower.slice(7)) + 1)}` }
   const warn = vi.fn()
   const stop = followBrowserRequests({
     follow: () => ({
@@ -183,7 +188,8 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     for (const listener of [...listeners]) listener()
   }
   return {
-    sidebar, openTabIn, focus, expandIn, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show,
+    sidebar, openTabIn, focus, expandIn, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, publish,
+    reopenQuietly,
     isExpanded: () => expanded,
     collapse: () => { expanded = false },
   }
@@ -224,7 +230,7 @@ describe('followBrowserRequests', () => {
     const h = start()
     const id = h.send({ kind: 'open', url: 'https://duckduckgo.com/?q=godot' })
     const result = page(await h.outcome(id))
-    expect(h.claim).toHaveBeenCalledWith(id)
+    expect(h.claim).toHaveBeenCalledWith(id, 'stream-1')
     expect(h.openTabIn).toHaveBeenCalledWith(SESSION, BROWSER_KIND)
     const [agentTab] = h.sidebar.tabsIn(SESSION)
     expect(h.pages.get(agentTab!.id)?.loads).toEqual(['https://duckduckgo.com/?q=godot'])
@@ -439,6 +445,23 @@ describe('followBrowserRequests', () => {
     h.show(OTHER)
     expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('# Results')
     expect(h.claim).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes a command through its latest command stream, again after a claim through a stream that ended', async () => {
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    expect(h.claim).toHaveBeenLastCalledWith('request-1', 'stream-1')
+    // The list offering the command comes through the old stream, which ends before the window claims through it.
+    const id = h.send({ kind: 'read' })
+    h.reopenQuietly()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.claim).toHaveBeenLastCalledWith(id, 'stream-1')
+    expect(h.outcomes.has(id)).toBe(false)
+    // The reopened stream's first list offers the command again.
+    h.publish()
+    page(await h.outcome(id))
+    expect(h.claim).toHaveBeenLastCalledWith(id, 'stream-2')
   })
 
   it('stops following when disposed', async () => {
