@@ -5,7 +5,7 @@ import type { SkillCandidate, SkillProviderObservation } from '@deepseek-ai/dsh-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
-import { updateRecord } from '../src/record.ts'
+import { lockRecord } from '../src/record.ts'
 import { ADDON_SKILL_RANK, gameAddonSkillProvider, SKILL_PROVIDER_NAME } from '../src/skills.ts'
 import { fakeDownloads, scratch, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
@@ -73,7 +73,9 @@ describe('gameAddonSkillProvider', () => {
     const { project, provider, invalidate } = await setup()
     await provider.list({ cwd: project })
     expect(invalidate).not.toHaveBeenCalled()
-    await updateRecord(project, () => [{ id: 'test-rig', title: 'Test Rig', host: 'blender', version: '5.2.3', license: 'GPL-2.0-or-later', paths: [], installedAt: 'now' }], signal)
+    await lockRecord(project, async (record) => {
+      await record.write([{ id: 'test-rig', title: 'Test Rig', host: 'blender', version: '5.2.3', license: 'GPL-2.0-or-later', paths: [], installedAt: 'now' }])
+    }, signal)
     await vi.waitFor(() => { expect(invalidate).toHaveBeenCalled() }, { timeout: 5000 })
     invalidate.mockClear()
     await mkdir(join(project, 'addons', 'test_camera'), { recursive: true })

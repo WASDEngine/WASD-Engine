@@ -1,14 +1,16 @@
 /**
  * Installing, reinstalling, and removing add-ons in a game project, the backups of what removals and replacements take
- * out, changes that stay inside the project, and the Blender add-on store.
+ * out, installations and removals that run at once or beside other writers of `project.godot`, changes that stay inside
+ * the project, and the Blender add-on store.
  */
-import { lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, posix, win32 } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import { addonView, BACKUPS_DIR, GameAddonManager, STORE_INDEX, STORE_MARKER, type ImportReport } from '../src/manager.ts'
 import { NOTICES_FILE } from '../src/notices.ts'
 import { GameAddonPathError, isProjectPath, within } from '../src/paths.ts'
+import { ProjectFile } from '../src/project-file.ts'
 import { GameAddonRecordError, readRecord } from '../src/record.ts'
 import {
   catalogEntries, editableCatalogEntries, entriesWithTreeAssets, fakeDownloads, PROJECT_GODOT, scratch, TREE_ASSETS_ARCHIVE, TREES_ARCHIVE,
@@ -27,6 +29,15 @@ const signal = new AbortController().signal
 /** The name of the first backup folder of a change at the setup's time. */
 const STAMP = '2026-11-11T12-00-00.000Z'
 
+/** A change that another writer, such as a teammate or the user, makes to `project.godot`. */
+const DISPLAY = '\n[display]\n\nwindow/size/viewport_width=1920\n'
+
+/** What installing the camera add-on adds at the end of `project.godot`. */
+const CAMERA_ENTRIES = '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/test_camera/plugin.cfg")\n\n[autoload]\n\nTestCameraManager="*res://addons/test_camera/manager.gd"\n\n[test_camera]\n\ngeneral/smoothing=true\n'
+
+/** A fetch in front of the test archives, with which a spec acts while an archive downloads. */
+type FetchHook = (url: string, signal: AbortSignal, serve: FakeDownloads['fetch']) => Promise<Response>
+
 interface Setup {
   readonly manager: GameAddonManager
   readonly project: string
@@ -39,11 +50,14 @@ interface Setup {
 /**
  * @param importReport - what each import reports; null for a Host without a Godot runtime.
  * @param entries - the catalog's entries; the test catalog by default.
+ * @param files - more catalog files by path.
+ * @param hook - runs in front of each download.
  */
 async function setup(
   importReport: ImportReport | null = { issues: [] },
   entries?: Record<string, unknown>,
   files: Readonly<Record<string, string>> = {},
+  hook?: FetchHook,
 ): Promise<Setup> {
   dir = await scratch('manager')
   const catalogDir = await writeCatalog(dir.root, entries)
@@ -59,7 +73,10 @@ async function setup(
   const changed: string[] = []
   const manager = new GameAddonManager({
     catalog,
-    downloads: { cacheDir: join(dir.root, 'archives'), fetch: downloads.fetch },
+    downloads: {
+      cacheDir: join(dir.root, 'archives'),
+      fetch: hook === undefined ? downloads.fetch : async (url, fetchSignal) => await hook(url, fetchSignal, downloads.fetch),
+    },
     blenderStore: store,
     assetsDir: join(dir.root, 'assets'),
     importProject: (projectDir) => {
@@ -74,6 +91,13 @@ async function setup(
 
 /** Catalog files of the camera add-on's two overlay folders: one in its own folder, one beside the entries. */
 const OVERLAY_FILES = { 'test-camera/overlay/rig.gd.import': '[remap]\n', 'camera-tools/tools/framing.gd': 'extends SceneTree\n' }
+
+/** The test catalog's entries without the conflict between the two camera add-ons. */
+function entriesWithoutConflicts(): Record<string, Record<string, unknown>> {
+  const entries = editableCatalogEntries()
+  for (const id of ['test-camera', 'other-camera']) delete (entries[id] as { conflicts?: unknown }).conflicts
+  return entries
+}
 
 /** The test catalog's entries with the camera add-on naming both overlay folders. */
 function overlayEntries(): Record<string, Record<string, unknown>> {
@@ -217,6 +241,85 @@ describe('GameAddonManager.install for Godot', () => {
   })
 })
 
+describe('GameAddonManager beside other writers', () => {
+  it('keeps a project.godot change that another writer made while the archive downloaded', async () => {
+    const state: Setup = await setup(undefined, undefined, {}, async (url, fetchSignal, serve) => {
+      await appendFile(join(state.project, 'project.godot'), DISPLAY)
+      return await serve(url, fetchSignal)
+    })
+    await state.manager.install(state.project, 'test-camera', {}, signal)
+    expect(await readFile(join(state.project, 'project.godot'), 'utf8')).toBe(`${PROJECT_GODOT}${DISPLAY}${CAMERA_ENTRIES}`)
+  })
+
+  it('keeps that change when the installation fails before the add-on takes its place', async () => {
+    const state: Setup = await setup(undefined, overlayEntries(), { ...OVERLAY_FILES, 'camera-tools/plugin.cfg': '[plugin]\n' }, async (url, fetchSignal, serve) => {
+      await appendFile(join(state.project, 'project.godot'), DISPLAY)
+      return await serve(url, fetchSignal)
+    })
+    await expect(state.manager.install(state.project, 'test-camera', {}, signal)).rejects.toThrow(/would replace a file of the Test Camera archive/u)
+    expect(await readFile(join(state.project, 'project.godot'), 'utf8')).toBe(`${PROJECT_GODOT}${DISPLAY}`)
+  })
+
+  it('takes out only its own project.godot entries when a later step fails, keeping what others changed', async () => {
+    const start = `${PROJECT_GODOT}\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/mine/plugin.cfg")\n\n[test_camera]\n\ngeneral/smoothing=false\n`
+    const state: Setup = await setup(undefined, undefined, {}, async (url, fetchSignal, serve) => {
+      await appendFile(join(state.project, 'project.godot'), DISPLAY)
+      return await serve(url, fetchSignal)
+    })
+    await writeFile(join(state.project, 'project.godot'), start)
+    // A folder where the notices file belongs makes the notice step fail after project.godot enabled the add-on.
+    await mkdir(join(state.project, NOTICES_FILE))
+    await expect(state.manager.install(state.project, 'test-camera', {}, signal)).rejects.toThrow(/EISDIR/u)
+    expect(await readFile(join(state.project, 'project.godot'), 'utf8')).toBe(`${start}${DISPLAY}`)
+    await expect(lstat(join(state.project, 'addons'))).rejects.toThrow(/ENOENT/u)
+    expect(await readRecord(state.project)).toEqual([])
+  })
+
+  it('installs two add-ons at once, keeping both in project.godot, the notices, and the record', async () => {
+    let otherInstalled!: () => void
+    const other = new Promise<void>((resolve) => { otherInstalled = resolve })
+    const { manager, project } = await setup(undefined, entriesWithoutConflicts(), {}, async (url, fetchSignal, serve) => {
+      // The camera's archive arrives after the other add-on is installed.
+      if (url === URLS.camera) await other
+      return await serve(url, fetchSignal)
+    })
+    const camera = manager.install(project, 'test-camera', {}, signal)
+    await manager.install(project, 'other-camera', {}, signal)
+    otherInstalled()
+    await camera
+    const godot = new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8'))
+    expect(godot.editorPlugins()).toEqual(['res://addons/other_camera/plugin.cfg', 'res://addons/test_camera/plugin.cfg'])
+    expect(godot.autoload('TestCameraManager')).toBe('res://addons/test_camera/manager.gd')
+    const notices = await readFile(join(project, NOTICES_FILE), 'utf8')
+    expect([notices.includes('wasd-addon:other-camera'), notices.includes('wasd-addon:test-camera')]).toEqual([true, true])
+    expect((await readRecord(project)).map(addon => addon.id)).toEqual(['other-camera', 'test-camera'])
+  })
+
+  it('installs the same add-on twice at once only once', async () => {
+    const { manager, project } = await setup()
+    const results = await Promise.all([manager.install(project, 'test-camera', {}, signal), manager.install(project, 'test-camera', {}, signal)])
+    expect(results.map(result => result.unchanged).sort()).toEqual([false, true])
+    expect(await tree(join(project, 'addons', 'test_camera'))).toEqual(['LICENSE', 'manager.gd', 'nodes/rig.gd', 'plugin.cfg', 'plugin.gd'])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(`${PROJECT_GODOT}${CAMERA_ENTRIES}`)
+    expect(await readRecord(project)).toHaveLength(1)
+    // Neither replaced the other's folder, so no backup, trash, or staging folder is left.
+    expect(await readdir(join(project, '.wasdengine'))).toEqual(['addons.json'])
+  })
+
+  it('installs only one of two conflicting add-ons that are installed at once', async () => {
+    const { manager, project } = await setup()
+    const results = await Promise.allSettled([manager.install(project, 'test-camera', {}, signal), manager.install(project, 'other-camera', {}, signal)])
+    const installed = results.flatMap(result => result.status === 'fulfilled' ? [result.value.addon.id] : [])
+    const refused = results.flatMap(result => result.status === 'rejected' ? [(result.reason as Error).message] : [])
+    expect(installed).toHaveLength(1)
+    expect(refused).toHaveLength(1)
+    expect(refused[0]).toMatch(/is already in this project and does the same job as/u)
+    expect((await readRecord(project)).map(addon => addon.id)).toEqual(installed)
+    expect(new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8')).editorPlugins()).toHaveLength(1)
+    expect(await readdir(join(project, 'addons'))).toHaveLength(1)
+  })
+})
+
 describe('GameAddonManager.remove', () => {
   it('moves the recorded folder to its backup, removes its project.godot entries, notice, and record, and names files that still use it', async () => {
     const { manager, project } = await setup()
@@ -299,6 +402,19 @@ describe('GameAddonManager.remove', () => {
     })
     await manager.install(project, 'test-camera', {}, signal)
     expect((await manager.remove(project, 'test-camera', signal)).backup).toBe(`${BACKUPS_DIR}/test-camera/2026-11-12T09-45-10.000Z`)
+  })
+
+  it('lets only one of two removals of an add-on at once take it out, and keeps its backup whole', async () => {
+    const { manager, project } = await setup()
+    await manager.install(project, 'test-camera', {}, signal)
+    const results = await Promise.allSettled([manager.remove(project, 'test-camera', signal), manager.remove(project, 'test-camera', signal)])
+    const removed = results.flatMap(result => result.status === 'fulfilled' ? [result.value] : [])
+    const refused = results.flatMap(result => result.status === 'rejected' ? [(result.reason as Error).message] : [])
+    expect(refused).toEqual(['Test Camera is not in this project.'])
+    expect(removed.map(result => result.backup)).toEqual([`${BACKUPS_DIR}/test-camera/${STAMP}`])
+    expect(await tree(join(project, BACKUPS_DIR, 'test-camera', STAMP))).toEqual(['LICENSE', 'manager.gd', 'nodes/rig.gd', 'plugin.cfg', 'plugin.gd'].map(file => `addons/test_camera/${file}`))
+    expect(await readRecord(project)).toEqual([])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
   })
 
   it('keeps a notices file with text of the developer\'s own', async () => {

@@ -1,7 +1,24 @@
-/** Enabling and disabling add-ons in `project.godot` while every other line stays as it was. */
+/**
+ * Enabling and disabling add-ons in `project.godot` while every other line stays as it was, and undoing an edit later
+ * while keeping what others changed meanwhile.
+ */
 import { describe, expect, it } from 'vitest'
-import { godotString, packedStrings, ProjectFile } from '../src/project-file.ts'
+import { godotString, packedStrings, projectChanges, ProjectFile, revertEdit } from '../src/project-file.ts'
 import { PROJECT_GODOT } from './fixtures.ts'
+
+/** Apply an edit to a text. */
+function edited(text: string, edit: (file: ProjectFile) => void): string {
+  const file = new ProjectFile(text)
+  edit(file)
+  return file.toString()
+}
+
+/** Enable a camera add-on the way the installer does. */
+function enableCamera(file: ProjectFile): void {
+  file.enablePlugin('res://addons/cam/plugin.cfg')
+  file.addAutoload('Cam', 'res://addons/cam/cam.gd')
+  file.set('cam', 'general/smoothing', 'true')
+}
 
 describe('ProjectFile', () => {
   it('adds a plugin, an autoload, and a setting in new sections at the end, and removes them back to the original text', () => {
@@ -60,6 +77,55 @@ describe('ProjectFile', () => {
     const file = new ProjectFile('')
     file.set('s', 'k', '1')
     expect(file.toString()).toBe('[s]\n\nk=1\n')
+  })
+})
+
+describe('Undoing an edit', () => {
+  const start = `${PROJECT_GODOT}\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/mine/plugin.cfg")\n\n[cam]\n\ngeneral/smoothing=false\n`
+
+  it('lists the keys an edit added, changed, and removed, with both values', () => {
+    const after = edited(start, (file) => {
+      enableCamera(file)
+      file.remove('application', 'config/name')
+    })
+    expect(projectChanges(start, after)).toEqual([
+      { section: 'application', key: 'config/name', before: '"Test Game"', after: undefined },
+      { section: 'editor_plugins', key: 'enabled', before: 'PackedStringArray("res://addons/mine/plugin.cfg")', after: 'PackedStringArray("res://addons/mine/plugin.cfg", "res://addons/cam/plugin.cfg")' },
+      { section: 'cam', key: 'general/smoothing', before: 'false', after: 'true' },
+      { section: 'autoload', key: 'Cam', before: undefined, after: '"*res://addons/cam/cam.gd"' },
+    ])
+    expect(projectChanges(start, start)).toEqual([])
+    expect(new ProjectFile('a=1\n[s]\nk=2\nk=3\n').keys()).toEqual([{ section: '', key: 'a', value: '1' }, { section: 's', key: 'k', value: '2' }])
+  })
+
+  it('brings the text before the edit back byte for byte when nobody changed the file since', () => {
+    const disabled = edited(edited(start, enableCamera), file => file.remove('cam', 'general/smoothing'))
+    const enabled = edited(start, enableCamera)
+    expect(revertEdit(enabled, start, enabled)).toBe(start)
+    // The keys that a removal took out come back in their places, not at the end of the file.
+    expect(revertEdit(disabled, enabled, disabled)).toBe(enabled)
+  })
+
+  it('keeps what others changed after the edit, in other keys, in the same keys, and in the plugin list', () => {
+    const enabled = edited(start, enableCamera)
+    const theirs = edited(enabled, (file) => {
+      file.set('display', 'window/size/viewport_width', '1920')
+      file.enablePlugin('res://addons/theirs/plugin.cfg')
+      file.set('cam', 'general/smoothing', '"theirs"')
+    })
+    const reverted = new ProjectFile(revertEdit(theirs, start, enabled))
+    expect(reverted.editorPlugins()).toEqual(['res://addons/mine/plugin.cfg', 'res://addons/theirs/plugin.cfg'])
+    expect(reverted.autoload('Cam')).toBeUndefined()
+    expect(reverted.get('cam', 'general/smoothing')).toBe('"theirs"')
+    expect(reverted.get('display', 'window/size/viewport_width')).toBe('1920')
+  })
+
+  it('puts back a value that spans lines, with the file\'s CRLF line ends', () => {
+    const before = 'config_version=5\r\n\r\n[importer_defaults]\r\n\r\nscene={\r\n"nodes/root_type": "Node3D"\r\n}\r\n'
+    const after = edited(before, (file) => { file.set('importer_defaults', 'scene', '{"import_script/path": "res://x.gd"}') })
+    expect(after).toBe('config_version=5\r\n\r\n[importer_defaults]\r\n\r\nscene={"import_script/path": "res://x.gd"}\r\n')
+    const theirs = `${after}\r\n[display]\r\n\r\nwindow/vsync=false\r\n`
+    expect(revertEdit(theirs, before, after)).toBe(`${before}\r\n[display]\r\n\r\nwindow/vsync=false\r\n`)
   })
 })
 

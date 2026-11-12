@@ -3,9 +3,15 @@
  * switch does: the `enabled` list of `[editor_plugins]`, the add-on's `[autoload]` entries, and its project settings.
  * Every other line, comment, and value stays byte for byte; values that span lines, such as input maps, are kept
  * whole. Godot reads keys and sections in any order, so new keys go at the end of their section and new sections at
- * the end of the file.
+ * the end of the file. An edit can be undone later in the file as it is then, keeping what others changed meanwhile.
  * @module @deepseek-ai/dsh-game-addons/src/project-file
  */
+
+/** Section of the editor plugin list. */
+const PLUGINS_SECTION = 'editor_plugins'
+
+/** Key of the editor plugin list in {@link PLUGINS_SECTION}. */
+const PLUGINS_KEY = 'enabled'
 
 /** One `key=value` item with the lines its value spans. */
 interface KeySpan {
@@ -113,6 +119,28 @@ function packedStringArray(strings: readonly string[]): string {
   return `PackedStringArray(${strings.map(godotString).join(', ')})`
 }
 
+/** One key of a `project.godot` and its value text. */
+export interface ProjectKey {
+  /** Section name; empty for a key before the first section header. */
+  readonly section: string
+  /** Key within the section. */
+  readonly key: string
+  /** Value text after `=`, its lines joined with `\n`. */
+  readonly value: string
+}
+
+/** One key whose value an edit of `project.godot` changed. */
+export interface ProjectChange {
+  /** Section name; empty for a key before the first section header. */
+  readonly section: string
+  /** Key within the section. */
+  readonly key: string
+  /** Value text before the edit; undefined when the key was absent. */
+  readonly before: string | undefined
+  /** Value text after the edit; undefined when the edit removed the key. */
+  readonly after: string | undefined
+}
+
 /** A parsed `project.godot` that collects edits and renders the file again. */
 export class ProjectFile {
   private lines: string[]
@@ -149,32 +177,51 @@ export class ProjectFile {
   }
 
   /**
+   * Every key in file order, with its value; a key that appears again later keeps its first value, as {@link get}
+   * reads it.
+   * @returns the keys of every section, the part before the first header included.
+   */
+  keys(): ProjectKey[] {
+    const seen = new Set<string>()
+    const keys: ProjectKey[] = []
+    for (const section of scan(this.lines)) {
+      for (const span of section.keys) {
+        const id = `${section.name}\n${span.key}`
+        if (seen.has(id)) continue
+        seen.add(id)
+        keys.push({ section: section.name, key: span.key, value: span.value })
+      }
+    }
+    return keys
+  }
+
+  /**
    * Set one key, replacing its value where it is, or adding it at the end of its section.
    * @param section - section name; created at the end of the file when absent.
    * @param key - key within it.
-   * @param value - Godot value literal of one line.
+   * @param value - Godot value literal; a value that spans lines, as {@link get} returns one, keeps its lines.
    */
   set(section: string, key: string, value: string): void {
-    const line = `${key}=${value}`
+    const lines = `${key}=${value}`.split('\n')
     const found = this.find(section, key)
     if (found !== undefined) {
-      this.lines.splice(found.span.start, found.span.end - found.span.start, line)
+      this.lines.splice(found.span.start, found.span.end - found.span.start, ...lines)
       return
     }
     const target = scan(this.lines).find(candidate => candidate.name === section && candidate.header >= 0)
     if (target === undefined) {
       while (this.lines.length > 0 && (this.lines[this.lines.length - 1] as string).trim() === '') this.lines.pop()
       if (this.lines.length > 0) this.lines.push('')
-      this.lines.push(`[${section}]`, '', line)
+      this.lines.push(`[${section}]`, '', ...lines)
       return
     }
     const lastKey = target.keys[target.keys.length - 1]
     const at = lastKey === undefined ? target.header + 1 : lastKey.end
     if (lastKey === undefined) {
-      this.lines.splice(at, 0, '', line)
+      this.lines.splice(at, 0, '', ...lines)
       return
     }
-    this.lines.splice(at, 0, line)
+    this.lines.splice(at, 0, ...lines)
   }
 
   /**
@@ -203,7 +250,7 @@ export class ProjectFile {
    * @returns the `res://` plugin configurations in `[editor_plugins] enabled`.
    */
   editorPlugins(): string[] {
-    return packedStrings(this.get('editor_plugins', 'enabled') ?? '')
+    return packedStrings(this.get(PLUGINS_SECTION, PLUGINS_KEY) ?? '')
   }
 
   /**
@@ -214,7 +261,7 @@ export class ProjectFile {
   enablePlugin(path: string): boolean {
     const plugins = this.editorPlugins()
     if (plugins.includes(path)) return false
-    this.set('editor_plugins', 'enabled', packedStringArray([...plugins, path]))
+    this.set(PLUGINS_SECTION, PLUGINS_KEY, packedStringArray([...plugins, path]))
     return true
   }
 
@@ -227,8 +274,8 @@ export class ProjectFile {
     const plugins = this.editorPlugins()
     if (!plugins.includes(path)) return false
     const rest = plugins.filter(plugin => plugin !== path)
-    if (rest.length === 0) this.remove('editor_plugins', 'enabled')
-    else this.set('editor_plugins', 'enabled', packedStringArray(rest))
+    if (rest.length === 0) this.remove(PLUGINS_SECTION, PLUGINS_KEY)
+    else this.set(PLUGINS_SECTION, PLUGINS_KEY, packedStringArray(rest))
     return true
   }
 
@@ -261,4 +308,52 @@ export class ProjectFile {
     }
     return undefined
   }
+}
+
+/**
+ * The keys whose values differ between two texts of `project.godot`.
+ * @param before - the text before an edit.
+ * @param after - the text after it.
+ * @returns each changed key with both values: the keys of `before` in its order, then the keys new in `after`.
+ */
+export function projectChanges(before: string, after: string): ProjectChange[] {
+  const id = (item: ProjectKey): string => `${item.section}\n${item.key}`
+  const old = new ProjectFile(before).keys()
+  const next = new Map(new ProjectFile(after).keys().map(item => [id(item), item]))
+  const changes: ProjectChange[] = []
+  for (const item of old) {
+    const value = next.get(id(item))?.value
+    next.delete(id(item))
+    if (value !== item.value) changes.push({ section: item.section, key: item.key, before: item.value, after: value })
+  }
+  for (const item of next.values()) changes.push({ section: item.section, key: item.key, before: undefined, after: item.value })
+  return changes
+}
+
+/**
+ * Undo an edit of `project.godot` in the file as it is now. When nobody changed the file since the edit, the text
+ * before the edit comes back byte for byte. Otherwise only the keys that the edit changed go back, each only while it
+ * still holds the value the edit gave it, and the editor plugin list loses the plugins that the edit added and regains
+ * those it removed, whatever other plugins it holds; what others changed stays.
+ * @param current - the file's current text.
+ * @param before - the text before the edit.
+ * @param after - the text the edit wrote.
+ * @returns the text with the edit undone.
+ */
+export function revertEdit(current: string, before: string, after: string): string {
+  if (current === after) return before
+  const project = new ProjectFile(current)
+  for (const change of projectChanges(before, after).reverse()) {
+    if (change.section === PLUGINS_SECTION && change.key === PLUGINS_KEY) {
+      const old = packedStrings(change.before ?? '')
+      const edited = packedStrings(change.after ?? '')
+      for (const plugin of edited) if (!old.includes(plugin)) project.disablePlugin(plugin)
+      for (const plugin of old) if (!edited.includes(plugin)) project.enablePlugin(plugin)
+      continue
+    }
+    if (project.get(change.section, change.key) !== change.after) continue
+    if (change.before === undefined) project.remove(change.section, change.key)
+    else project.set(change.section, change.key, change.before)
+  }
+  return project.toString()
 }

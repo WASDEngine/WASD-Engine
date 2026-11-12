@@ -151,7 +151,8 @@ export default class GameAddons extends TypertRemoteService {
    * Install an add-on that the user chose in the Add-ons dialog.
    * @param directory - absolute folder of the game project, or up to three levels above it.
    * @param id - catalog id.
-   * @param signal - cancellation; a cancelled installation leaves the project as it was.
+   * @param signal - cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops
+   *   only the import of the project.
    * @returns the installation.
    */
   @Remote
@@ -163,7 +164,7 @@ export default class GameAddons extends TypertRemoteService {
    * Remove an add-on that the user chose in the Add-ons dialog.
    * @param directory - absolute folder of the game project, or up to three levels above it.
    * @param id - catalog id.
-   * @param signal - cancellation before files are deleted.
+   * @param signal - cancellation before the removal changes the project.
    * @returns the removal.
    */
   @Remote

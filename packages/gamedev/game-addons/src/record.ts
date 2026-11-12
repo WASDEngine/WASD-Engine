@@ -3,7 +3,9 @@
  * holds `project.godot`, beside the `game.json` of WASD Engine Plugins. The record names what an installation created,
  * and a removal takes out those paths when they lie in the add-on's own folder. The project can carry a record that
  * someone else wrote, so a path counts only when it is relative, with `/` separators, and names nothing another
- * platform reads as a separator or a drive. Writers hold the record's file lock and replace the file atomically.
+ * platform reads as a separator or a drive. Writers hold the record's file lock and replace the file atomically; an
+ * installation or removal holds the lock while it changes the project's files, so the changes of one project never
+ * interleave, in this process or another.
  * @module @deepseek-ai/dsh-game-addons/src/record
  */
 import { readFile } from 'node:fs/promises'
@@ -23,7 +25,7 @@ export const RECORD_FILE = 'addons.json'
 /** Version of the record's format. */
 export const RECORD_FORMAT = 1
 
-/** How long a writer waits for another writer of the same record. */
+/** How long a writer waits for another writer of the same record, whose change moves folders and rewrites small files. */
 const LOCK_WAIT_MS = 10_000
 
 const ProjectPath = z.string().min(1).refine(isProjectPath, 'must be a relative path inside the project, with / separators')
@@ -85,27 +87,34 @@ export async function readRecord(projectDir: string): Promise<InstalledGameAddon
   return parsed.data.addons
 }
 
+/** A project's record while its writer lock is held. */
+export interface HeldRecord {
+  /** The installed add-ons as the record held them when the lock was taken. */
+  readonly entries: readonly InstalledGameAddon[]
+  /**
+   * Replace the record's entries atomically.
+   * @param next - the installed add-ons, in any order; the file lists them by id.
+   */
+  write(next: readonly InstalledGameAddon[]): Promise<void>
+}
+
 /**
- * Change a project's record under its file lock.
+ * Hold a project's record lock around one change of the project: the change reads the entries, changes the project's
+ * files, and writes the record as its last step.
  * @param projectDir - absolute project folder.
- * @param change - receives the current entries and returns the next ones, or undefined to leave the file unchanged.
- * @param signal - cancellation of the lock wait.
- * @returns the entries after the change.
- * @throws {GameAddonRecordError} when the current file is not a valid record.
+ * @param change - the change; it runs to its end once the lock is held, and undoes its own steps when one fails.
+ * @param signal - cancellation of the lock wait, before the change starts.
+ * @returns the change's result.
+ * @throws {GameAddonRecordError} when the current file is not a valid record; the change does not run then.
  * @throws {GameAddonPathError} when the project's `.wasdengine` folder leads outside the project.
  */
-export async function updateRecord(
-  projectDir: string,
-  change: (current: readonly InstalledGameAddon[]) => readonly InstalledGameAddon[] | undefined,
-  signal: AbortSignal,
-): Promise<readonly InstalledGameAddon[]> {
+export async function lockRecord<T>(projectDir: string, change: (record: HeldRecord) => Promise<T>, signal: AbortSignal): Promise<T> {
   const path = join(await projectFolder(projectDir, STATE_DIR), RECORD_FILE)
-  return await withFileLock(path, async () => {
-    const current = await readRecord(projectDir)
-    const next = change(current)
-    if (next === undefined) return current
-    const sorted = [...next].sort((a, b) => a.id.localeCompare(b.id, 'en'))
-    await writeFileAtomic(path, `${JSON.stringify({ format: RECORD_FORMAT, addons: sorted }, null, 2)}\n`, { mode: 0o644 })
-    return sorted
-  }, { signal, waitMs: LOCK_WAIT_MS })
+  return await withFileLock(path, async () => await change({
+    entries: await readRecord(projectDir),
+    write: async (next) => {
+      const sorted = [...next].sort((a, b) => a.id.localeCompare(b.id, 'en'))
+      await writeFileAtomic(path, `${JSON.stringify({ format: RECORD_FORMAT, addons: sorted }, null, 2)}\n`, { mode: 0o644 })
+    },
+  }), { signal, waitMs: LOCK_WAIT_MS })
 }
