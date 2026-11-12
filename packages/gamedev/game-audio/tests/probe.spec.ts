@@ -104,7 +104,21 @@ describe('probeAudio', () => {
     expect((await probe(Uint8Array.from([...vbri, ...mp3Frame()])))?.seconds).toBe(50 * 1152 / 44_100)
     const tag = new Bytes().text('ID3').raw(3, 0, 0, 0, 0, 2, 44).zeros(300).bytes
     const plain = Uint8Array.from([...tag, ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true })])
-    expect(await probe(plain)).toEqual({ format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true })
+    expect(await probe(plain)).toEqual({
+      format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true, minSeconds: 3 * 417 * 8 / 320_000,
+    })
+  })
+
+  it('bounds an estimated MP3 length below by the highest bit rate, which a quiet first frame of a variable bit rate file does not move', async () => {
+    // MPEG-1 layer III at 44.1 kHz: bit rate index 1 is 32 kbps (104 bytes), index 11 is 192 kbps (626 bytes).
+    const frame = (header: readonly number[], bytes: number): number[] => [...header, ...new Array<number>(bytes - 4).fill(0)]
+    const file = new Uint8Array(5_700_000)
+    file.set([...frame([0xff, 0xfb, 0x10, 0x44], 104), ...frame([0xff, 0xfb, 0xb0, 0x44], 626), ...frame([0xff, 0xfb, 0xb0, 0x44], 626)])
+    const bits = 5_700_000 * 8
+    expect(await probe(file)).toMatchObject({ bitrate: 32_000, seconds: bits / 32_000, estimated: true, minSeconds: bits / 320_000 })
+    // MPEG-2 layer III at 22.05 kHz peaks at 160 kbps; its 64 kbps frames hold 208 bytes.
+    const low = Uint8Array.from([...frame([0xff, 0xf3, 0x80, 0xc4], 208), ...frame([0xff, 0xf3, 0x80, 0xc4], 504)])
+    expect(await probe(low)).toMatchObject({ sampleRate: 22_050, bitrate: 64_000, estimated: true, minSeconds: low.length * 8 / 160_000 })
   })
 
   it('reads Ogg Vorbis and Ogg Opus lengths from the last page\'s granule position', async () => {

@@ -65,7 +65,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 |---|---|
 | `audioFormatOf`, `AUDIO_EXTENSIONS` | The listed formats by lowercase extension, with the media type and whether a browser decodes the format |
 | `audioCategoryOf`, `pathWords` | The kind of a sound from its path and length |
-| `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its bit rate, and an Ogg stream's last granule position |
+| `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its first frame's bit rate with the shortest length its size allows at the format's highest bit rate, and an Ogg stream's last granule position |
 | `openAiff`, `decodeAiff` | AIFF and AIFC samples, which browsers do not decode: integer PCM of 8 to 32 bits in either byte order, unsigned 8-bit, and 32-bit and 64-bit float; `openAiff` locates them and reads one at a time without copying them, and `decodeAiff` copies them all |
 | `analyzeAudio`, `integratedLoudness`, `loopSeam`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples |
 | `drawAudioImage`, `describeAudioImage` | The picture as raw RGB, and the sentence that states its panels and grid |

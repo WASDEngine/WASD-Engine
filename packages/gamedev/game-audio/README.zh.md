@@ -65,7 +65,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 |---|---|
 | `audioFormatOf`、`AUDIO_EXTENSIONS` | 按小写扩展名列出的格式，以及媒体类型和该格式是否由浏览器解码 |
 | `audioCategoryOf`、`pathWords` | 根据路径和时长判断声音的类型 |
-| `probeAudio` | 从几个较小的字节窗口读取文件头信息：WAV 和 AIFF 的块、FLAC 的 STREAMINFO、MP3 的 Xing、Info 或 VBRI 帧数减去 LAME 编码器延迟和填充，或按比特率估算，以及 Ogg 流最后的 granule 位置 |
+| `probeAudio` | 从几个较小的字节窗口读取文件头信息：WAV 和 AIFF 的块、FLAC 的 STREAMINFO、MP3 的 Xing、Info 或 VBRI 帧数减去 LAME 编码器延迟和填充，或按第一帧的比特率估算，并给出该格式最高比特率下其大小所允许的最短长度，以及 Ogg 流最后的 granule 位置 |
 | `openAiff`、`decodeAiff` | 浏览器不解码的 AIFF 和 AIFC 采样：任一字节序的 8 到 32 位整数 PCM、无符号 8 位，以及 32 位和 64 位浮点；`openAiff` 定位采样并逐个读取而不复制，`decodeAiff` 复制全部采样 |
 | `analyzeAudio`、`integratedLoudness`、`loopSeam`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量 |
 | `drawAudioImage`、`describeAudioImage` | 原始 RGB 格式的图像，以及说明其面板和网格的句子 |

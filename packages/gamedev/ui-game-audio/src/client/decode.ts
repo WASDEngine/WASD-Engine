@@ -6,7 +6,8 @@
  * picture is the one the audio tools draw, encoded as PNG on a canvas.
  */
 import {
-  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, stereoImage, type AudioFormat, type AudioSamples, type RgbImage,
+  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, stereoImage, type AudioFormat, type AudioProbe, type AudioSamples,
+  type RgbImage,
 } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasurements, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
 
@@ -81,12 +82,25 @@ async function decodeAiffSound(data: Uint8Array<ArrayBuffer>, bounds: DecodeBoun
 /**
  * The failure of a sound longer than a window decodes.
  * @param name - what the message names: the sound's path, or its kind of file.
- * @param seconds - its length.
+ * @param seconds - its length, or the least it can be.
  * @param maxSeconds - the longest sound a window decodes.
+ * @param atLeast - whether `seconds` is the least the length can be rather than the length.
  * @returns the error, `AUDIO_TOO_LARGE`.
  */
-export function tooLong(name: string, seconds: number, maxSeconds: number): SoundError {
-  return new SoundError(`${name} is ${seconds.toFixed(1)} s long, longer than the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`, AUDIO_ERROR.tooLarge)
+export function tooLong(name: string, seconds: number, maxSeconds: number, atLeast = false): SoundError {
+  const length = `${atLeast ? 'at least ' : ''}${seconds.toFixed(1)} s`
+  return new SoundError(`${name} is ${length} long, longer than the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`, AUDIO_ERROR.tooLarge)
+}
+
+/**
+ * The length a sound's headers vouch for before it decodes: the length they state, or, for an MP3 length they only
+ * estimate from one frame's bit rate, the shortest the sound can be, so that an estimate that runs long refuses no sound
+ * the decode would take.
+ * @param probe - what the headers say.
+ * @returns the seconds the decoded sound reaches at least, or undefined when the headers do not tell.
+ */
+export function lengthBeforeDecoding(probe: AudioProbe | undefined): number | undefined {
+  return probe?.estimated === true ? probe.minSeconds : probe?.seconds
 }
 
 /**

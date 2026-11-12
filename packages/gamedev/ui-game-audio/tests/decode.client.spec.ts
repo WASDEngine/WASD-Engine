@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerMeasure } from '../src/client/agent.ts'
 import { decodeSound, measureSound, pictureOf, SoundError } from '../src/client/decode.ts'
 import { readSound, type ReadBytes, type SoundFile } from '../src/client/read.ts'
-import { aiffFile, FakeOfflineAudioContext, installWebAudio, wavFile } from './webaudio.client.ts'
+import { aiffFile, FakeAudioBuffer, FakeOfflineAudioContext, installWebAudio, vbrMp3File, wavFile } from './webaudio.client.ts'
 
 const WAV = { label: 'WAV', mediaType: 'audio/wav', decoder: 'browser' } as const
 const AIFF = { label: 'AIFF', mediaType: 'audio/aiff', decoder: 'aiff' } as const
@@ -150,6 +150,28 @@ describe('the bounds of a decode', () => {
     const decoding = decodeSound(twoSlices, AIFF, undefined, { maxSeconds: 1200, signal: stopping.signal })
     stopping.abort(new Error('the call ended'))
     await expect(decoding).rejects.toThrow('the call ended')
+  })
+
+  it('decodes an MP3 whose headers only estimate a length over the cap, and holds it to the cap once decoded', async () => {
+    // A 5.7 MB variable bit rate MP3 without a frame count: its quiet first frame, at 32 kbps, estimates 1425 s, while
+    // at 320 kbps it lasts at least 142.5 s.
+    const mp3 = vbrMp3File(5_700_000)
+    const decoded = (seconds: number) => new FakeAudioBuffer({ length: seconds * 3000, numberOfChannels: 1, sampleRate: 3000 })
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData').mockImplementation(async () => decoded(240))
+    const theme = { ...request, path: 'music/theme.mp3' }
+    const measure = (maxDecodedSeconds: number) =>
+      answerMeasure(theme, async () => file(mp3), new AbortController().signal, maxDecodedSeconds).catch((error: unknown) => error)
+    expect(await measure(1200)).toMatchObject({ measurements: { seconds: 240 } })
+    // Decoded, it is as long as it is: over a lower cap it fails as a sound whose headers state its length does.
+    expect(await measure(200)).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is 240.0 s long, longer than the 200 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    // Longer than the cap even at its highest bit rate, it is refused before decoding.
+    decode.mockClear()
+    expect(await measure(100)).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is at least 142.5 s long, longer than the 100 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    expect(decode).not.toHaveBeenCalled()
   })
 
   it('refuses an AIFF file that an AudioBuffer cannot hold, or that is too long, before copying its samples', async () => {

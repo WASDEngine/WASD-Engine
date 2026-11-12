@@ -15,8 +15,8 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { apply, inject } from '../src/client/index.ts'
-import { FakeAudioContext, installWebAudio, wavFile } from './webaudio.client.ts'
+import { apply, Config, inject } from '../src/client/index.ts'
+import { FakeAudioBuffer, FakeAudioContext, FakeOfflineAudioContext, installWebAudio, vbrMp3File, wavFile } from './webaudio.client.ts'
 
 const SESSION = 'audio-session' as SessionId
 const SHORTCUT_CATALOG: readonly never[] = []
@@ -34,6 +34,8 @@ const FILES: Readonly<Record<string, Uint8Array<ArrayBuffer>>> = {
   'audio/sfx/coin.wav': tone(0.25),
   'audio/sfx/jump.wav': tone(0.5, 1.2),
   'audio/voice/hello.wav': tone(1),
+  // Its headers estimate 75 s from its quiet first frame; at its highest bit rate it lasts at least 7.5 s.
+  'audio/music/theme.mp3': vbrMp3File(300_000),
 }
 
 /** The project: folders by workspace path; a trailing `/` marks a folder. */
@@ -88,7 +90,7 @@ afterEach(async () => {
   }
 })
 
-async function boot(project: Readonly<Record<string, readonly string[]>> = PROJECT) {
+async function boot(project: Readonly<Record<string, readonly string[]>> = PROJECT, config: Config = {}) {
   const rt = await SlotTestRuntime.create()
   runtime = rt
   rt.ctx.provide('contextMenus', { register: () => () => {}, open: vi.fn(), active: createSnapshotStore(null) } as never)
@@ -125,7 +127,7 @@ async function boot(project: Readonly<Record<string, readonly string[]>> = PROJE
     },
   }))
   await rt.mount({ inject: [...sidebarInject], apply: sidebarApply })
-  await rt.mount({ inject: [...inject], apply })
+  await rt.mount({ inject: [...inject], apply: (ctx: Parameters<typeof apply>[0]) => { apply(ctx, Config(config)) } })
   const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true })
   const openAudio = (params?: { readonly path: string }): void => {
     act(() => { rt.ctx.sidebarRight.openTab('audio', params === undefined ? {} : { params }) })
@@ -196,6 +198,22 @@ describe('Audio tab', () => {
     await waitFor(() => { expect(screen.getByRole('slider', { name: 'Position in hello.wav' })).toBeTruthy() })
     expect(screen.getByTitle('audio/voice/hello.wav').getAttribute('aria-current')).toBe('true')
     expect(FakeAudioContext.made).toEqual([])
+  })
+
+  it('plays an MP3 whose headers only estimate a length over the cap, and refuses one that decodes longer', async () => {
+    const decoded = (seconds: number) => new FakeAudioBuffer({ length: seconds * 8000, numberOfChannels: 1, sampleRate: 8000 })
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData').mockImplementation(async () => decoded(5))
+    const project = { '': ['audio/'], audio: ['music/'], 'audio/music': ['theme.mp3'] }
+    const h = await boot(project, { maxDecodedSeconds: 60 })
+    h.openAudio({ path: 'audio/music/theme.mp3' })
+    await waitFor(() => { expect(screen.getByRole('slider', { name: 'Position in theme.mp3' })).toBeTruthy() })
+    expect(decode).toHaveBeenCalledTimes(1)
+    await runtime?.dispose()
+    // Decoded past the cap, it shows the notice that a sound whose headers state such a length shows.
+    decode.mockImplementation(async () => decoded(61))
+    const longer = await boot(project, { maxDecodedSeconds: 60 })
+    longer.openAudio({ path: 'audio/music/theme.mp3' })
+    expect(await screen.findByText('This file is larger than 60 s, too large to play here.')).toBeTruthy()
   })
 
   it('says when the project has no sounds yet', async () => {

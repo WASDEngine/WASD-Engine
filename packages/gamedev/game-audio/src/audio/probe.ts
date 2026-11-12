@@ -4,7 +4,8 @@
  * the chunk headers of a WAV or AIFF file, the frame after an ID3 tag, and the last 64 KiB of an Ogg file, whose final
  * page holds the length. WAV and AIFF lengths come from their sample counts, FLAC lengths from STREAMINFO, MP3 lengths
  * from the Xing, Info, or VBRI frame count less the LAME encoder delay and padding, and Ogg lengths from the last
- * page's granule position; an MP3 without a frame count is estimated from its first frame's bit rate.
+ * page's granule position; an MP3 without a frame count is estimated from its first frame's bit rate, with the
+ * shortest length its size allows.
  *
  * @module
  */
@@ -34,6 +35,12 @@ export interface AudioProbe {
   readonly seconds?: number
   /** The length is an estimate from the bit rate of an MP3 file that states no frame count. */
   readonly estimated?: boolean
+  /**
+   * With an estimated length, the shortest the sound can be: its bytes from the first frame on at the highest bit rate
+   * of its MPEG version and layer, which no frame exceeds. An estimate from the first frame's bit rate runs long when
+   * that frame is quieter than the rest of a variable bit rate file.
+   */
+  readonly minSeconds?: number
   /** The first loop a WAV file's sampler chunk stores, in sample frames, its end inclusive. */
   readonly loop?: { readonly start: number; readonly end: number }
 }
@@ -289,6 +296,8 @@ interface MpegFrame {
   readonly layer: 1 | 2 | 3
   readonly sampleRate: number
   readonly kbps: number
+  /** Highest bit rate of the frame's version and layer. */
+  readonly maxKbps: number
   readonly channels: 1 | 2
   readonly samplesPerFrame: number
   readonly bytes: number
@@ -304,13 +313,15 @@ function mpegFrame(bytes: Uint8Array, offset: number): MpegFrame | undefined {
   const mpeg1 = version === 3
   const layer = (4 - layerBits) as 1 | 2 | 3
   const sampleRate = MPEG_RATES[version]?.[rateIndex] ?? 0
-  const kbps = MPEG_BITRATES[mpeg1 ? layer - 1 : layer === 1 ? 3 : 4]?.[bitrateIndex] ?? 0
+  const bitrates = MPEG_BITRATES[mpeg1 ? layer - 1 : layer === 1 ? 3 : 4] ?? []
+  const kbps = bitrates[bitrateIndex] ?? 0
   const padding = (byte(bytes, offset + 2) >> 1) & 1
   const samplesPerFrame = layer === 1 ? 384 : layer === 2 || mpeg1 ? 1152 : 576
   const frameBytes = layer === 1
     ? (Math.floor(12 * kbps * 1000 / sampleRate) + padding) * 4
     : Math.floor(samplesPerFrame / 8 * kbps * 1000 / sampleRate) + padding
-  return { mpeg1, layer, sampleRate, kbps, channels: byte(bytes, offset + 3) >> 6 === 3 ? 1 : 2, samplesPerFrame, bytes: frameBytes }
+  const channels = byte(bytes, offset + 3) >> 6 === 3 ? 1 : 2
+  return { mpeg1, layer, sampleRate, kbps, maxKbps: bitrates.at(-1) ?? kbps, channels, samplesPerFrame, bytes: frameBytes }
 }
 
 /** The frame count and encoder offsets of a Xing, Info, or VBRI frame. */
@@ -366,8 +377,11 @@ function probeMpeg(first: Uint8Array, start: number, size: number): AudioProbe |
         ...seconds > 0 ? { bitrate: Math.round(audioBytes * 8 / seconds) } : {},
       }
     }
-    const seconds = (size - start - offset) * 8 / (frame.kbps * 1000)
-    return { format: label, sampleRate: frame.sampleRate, channels: frame.channels, bitrate: frame.kbps * 1000, seconds, estimated: true }
+    const bits = (size - start - offset) * 8
+    return {
+      format: label, sampleRate: frame.sampleRate, channels: frame.channels, bitrate: frame.kbps * 1000,
+      seconds: bits / (frame.kbps * 1000), estimated: true, minSeconds: bits / (frame.maxKbps * 1000),
+    }
   }
   return undefined
 }
