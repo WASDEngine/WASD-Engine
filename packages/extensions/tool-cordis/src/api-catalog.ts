@@ -5885,7 +5885,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountAutoRecharge',
-    declaration: 'export interface AccountAutoRecharge {\n    readonly enabled: boolean;\n    readonly chargeUsd: number;\n    readonly failure?: string;\n}',
+    declaration: 'export interface AccountAutoRecharge {\n    readonly enabled: boolean;\n    readonly failure?: string;\n}',
   },
   {
     name: 'AccountAutoRechargeChange',
@@ -5897,7 +5897,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountDetails',
-    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n        readonly allowance?: AccountAllowance;\n    } | {\n        readonly status: \'failed\';\n    };\n}',
+    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n        readonly allowance?: AccountAllowance;\n        readonly referral?: AccountReferral;\n    } | {\n        readonly status: \'failed\';\n    };\n}',
   },
   {
     name: 'AccountLinks',
@@ -5926,6 +5926,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AccountProfile',
     declaration: 'export interface AccountProfile {\n    readonly id: AccountUserId | null;\n    readonly name: string | null;\n    readonly contact: string | null;\n    readonly avatarUrl?: string | null;\n}',
+  },
+  {
+    name: 'AccountReferral',
+    declaration: 'export interface AccountReferral {\n    readonly url: string;\n    readonly joined: number;\n}',
   },
   {
     name: 'AccountUpdate',

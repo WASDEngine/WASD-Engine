@@ -10,7 +10,7 @@ import { formatBalance } from './formatBalance.ts'
 import { AccountAvatar } from './AccountAvatar.tsx'
 import type { AccountAvatarSnapshot } from './account-avatar.ts'
 import { authorizeUrlWithTheme } from './authorize-url.ts'
-import { allowancePercent, WasdengineAllowanceMeter, WasdengineAutoRecharge } from './wasdengine-allowance.tsx'
+import { allowancePercent, WasdengineAllowanceMeter, WasdengineAutoRecharge, WasdengineReferral } from './wasdengine-allowance.tsx'
 import css from './AccountSection.module.css'
 
 /** Safe account snapshot shared by the settings page and launcher. */
@@ -112,6 +112,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
     && ['initializing', 'waiting-browser', 'exchanging', 'committing'].includes(attempt.phase)
   const signedIn = state?.status === 'credential-stored'
   const allowance = signedIn && details?.balance?.status === 'ready' ? details.balance.allowance : undefined
+  const referral = signedIn && details?.balance?.status === 'ready' ? details.balance.referral : undefined
   useEffect(() => () => { releasePage.current?.(); releasePage.current = undefined }, [])
   useEffect(() => {
     if (signedIn) return
@@ -204,6 +205,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
         {allowance !== undefined && <WasdengineAllowanceMeter allowance={allowance} t={t} />}
         {allowance?.autoRecharge !== undefined && setAutoRecharge !== undefined && <WasdengineAutoRecharge
           recharge={allowance.autoRecharge} t={t} setAutoRecharge={setAutoRecharge} refreshAccount={refreshAccount} />}
+        {referral !== undefined && <WasdengineReferral referral={referral} t={t} />}
         {signedIn && showBonusRow && <>
           <div className={css.divider} />
           <div className={css.row}>

@@ -1,29 +1,33 @@
 /**
- * WASD Engine's allowance and auto recharge (fork-owned; `wasdengine/FORK.md` lists the fork changes). The WASD Engine
- * account service reports beside the wallets how much of the plan's monthly AI usage is left, the auto recharge
- * credits left, the auto recharge switch, and whether the account is on the Unlimited tier, and switches auto recharge
- * at `set_auto_recharge`. A malformed report is dropped, so it never fails the wallet read.
+ * WASD Engine's allowance, auto recharge, and referral link (fork-owned; `wasdengine/FORK.md` lists the fork changes).
+ * The WASD Engine account service reports beside the wallets how much of the plan's monthly AI usage is left, the
+ * credits left as a share of that allowance, the auto recharge switch, whether the account is on the Unlimited tier,
+ * and the account's referral link, never a dollar amount; and it switches auto recharge at `set_auto_recharge`. A
+ * malformed report is dropped, so it never fails the wallet read.
  */
 import { z } from 'zod'
-import type { AccountAllowance, AccountAutoRechargeChange } from './types.ts'
+import type { AccountAllowance, AccountAutoRechargeChange, AccountReferral } from './types.ts'
 import { browserUrl, PlatformAuthError } from './protocol.ts'
 
 /** Path of the account service's page that sends the browser on to the page that saves a card. */
 export const CARD_PAGE_PATH = '/billing/checkout'
+/** Path of a referral link: the account service's front page, which keeps the link's code for its sign-up form. */
+export const REFERRAL_PAGE_PATH = '/'
 
-const autoRecharge = z.object({
-  enabled: z.boolean(), charge_usd: z.number().int().positive(), failure: z.string().nullable(),
-}).optional().catch(undefined)
+const autoRecharge = z.object({ enabled: z.boolean(), failure: z.string().nullable() }).optional().catch(undefined)
 
 /** The `allowance` of a user summary; a malformed one parses as absent, and so does a malformed optional member. */
 export const allowance = z.object({
   remaining_percent: z.number().int().min(0).max(100),
   remaining_share: z.number().min(0).max(1),
   refreshes_at: z.iso.datetime({ offset: true }),
-  credits_percent: z.number().int().min(0).optional().catch(undefined),
+  credits_allowance_percent: z.number().int().min(0).optional().catch(undefined),
   auto_recharge: autoRecharge,
   unlimited: z.boolean().optional().catch(undefined),
 }).optional().catch(undefined)
+
+/** The `referral` of a user summary; a malformed one parses as absent. {@link projectReferral} checks its link. */
+export const referral = z.object({ url: z.string(), joined: z.number().int().min(0) }).optional().catch(undefined)
 
 /**
  * Project a parsed `allowance` for account UI consumers.
@@ -34,13 +38,27 @@ export function projectAllowance(left: Exclude<z.infer<typeof allowance>, undefi
   const recharge = left.auto_recharge
   return {
     remainingPercent: left.remaining_percent, remainingShare: left.remaining_share, refreshesAt: left.refreshes_at,
-    ...(left.credits_percent === undefined ? {} : { creditsPercent: left.credits_percent }),
+    ...(left.credits_allowance_percent === undefined ? {} : { creditsPercent: left.credits_allowance_percent }),
     ...(recharge === undefined ? {} : { autoRecharge: {
-      enabled: recharge.enabled, chargeUsd: recharge.charge_usd,
-      ...(recharge.failure === null ? {} : { failure: recharge.failure }),
+      enabled: recharge.enabled, ...(recharge.failure === null ? {} : { failure: recharge.failure }),
     } }),
     ...(left.unlimited === true ? { unlimited: true as const } : {}),
   }
+}
+
+/**
+ * Project a parsed `referral` for account UI consumers, keeping it only when its link is the account service's own
+ * front page on `origin` with a `ref` code, so the shared link cannot point anywhere else.
+ * @param shared - the parsed referral.
+ * @param origin - configured account service origin.
+ * @returns the referral, or undefined when its link is another page or another site's.
+ */
+export function projectReferral(shared: Exclude<z.infer<typeof referral>, undefined>, origin: string): AccountReferral | undefined {
+  let url: string
+  try { url = browserUrl(shared.url, origin, REFERRAL_PAGE_PATH) } catch { return undefined }
+  const search = new URL(url).searchParams
+  if ([...search.keys()].join() !== 'ref' || !/^[a-z0-9]{1,32}$/u.test(search.get('ref') ?? '')) return undefined
+  return { url, joined: shared.joined }
 }
 
 const change = z.object({ enabled: z.boolean(), card_url: z.string().nullable() })
