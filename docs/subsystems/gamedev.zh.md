@@ -355,6 +355,27 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 **设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
 
+<a id="agents-browser"></a>
+## 智能体的浏览器
+
+在桌面配置中，`wasd-plugins` 行设置 `browser`，[`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.zh.md#the-agents-browser) 为会话的智能体提供 `browser_*` 工具，这些工具在右侧边栏的浏览器标签页中操作。浏览器标签页位于窗口中，因此每次工具调用都会成为一条由 Host 排队、由窗口执行的命令：
+
+1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs` 和 `screenshotWidth`。
+2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表。
+3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
+4. 窗口通过 [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.zh.md) 的 `sidebarBrowserAutomation` 服务执行操作，该服务只由桌面载体提供：在页面主环境中运行脚本、发送可信输入、输入文本，以及截取 `<webview>` guest 的画面。
+5. 窗口用 `wasdPlugins.settleBrowserRequest` 和一个 `WasdBrowserOutcome` 结束该请求。
+
+| `command.kind` | 字段 | 窗口的操作 |
+|---|---|---|
+| `open` | `url` | 把地址加载到该会话的智能体标签页（必要时先在显示中的会话里打开一个），显示该标签页，并返回页面 |
+| `read` | 无 | 返回智能体标签页的页面，或用户打开的浏览器标签页的页面 |
+| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 点击该控件或该点，并返回页面 |
+| `type` | `element`、`text`、`submit` | 填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面 |
+| `screenshot` | `element` | 截取页面的可见部分；给出控件时先把它滚动到视野中 |
+
+`WasdBrowserOutcome` 要么是 `{ ok: true, page, note?, image? }`，要么是 `{ ok: false, message }`。`page` 包含页面的 `url`、`title` 和 `text`、文本是否被截断（`truncated`）、页面是否仍在加载（`loading`），以及可选的加载错误 `error`；`note` 说明窗口如何执行了该命令，例如通过脚本点击；`image` 包含截图的 base64 `data`、`mediaType`、`width` 和 `height`，以及它所显示视口的 CSS 像素尺寸 `viewportWidth` 与 `viewportHeight`，工具据此把截图像素换算回页面坐标。Host 拒绝文本超过 `maxChars` 或图像数据超过 32 MiB 的结果。[LiveShare](liveshare.zh.md) 把这三个端点都归为仅所有者可用，并且从不向共享观看者提供 `wasdPlugins` 命名空间。
+
 ## Remote 类型
 
 `godot` Remote 方法列在生成的 Cordis API 一节中；它们的第一个参数是普通的 `SessionId`，不需要存活的 Agent：`follow`、`stop`、`control` 与 `input` 作用于该 Session 的当前运行，`godot.run` 则像提示词那样，通过 `ctx.sessionController.resolveAgent` 恢复没有存活 Agent 的 Session，并传递其拒绝，例如 `session/not-found` 与 `session/writer-held`；`installRuntime` 不接受 Session。这些方法的类型位于浏览器安全的 [`src/types.ts`](../../packages/gamedev/godot/src/types.ts)。[LiveShare](liveshare.zh.md) 把每个 `godot/*` 端点归类为仅限所有者（`owner-only`），并且从不向共享查看者提供 `godot` 命名空间。
@@ -602,7 +623,7 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
@@ -619,6 +640,30 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * @param signal - stream cancellation.
+ * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
+
+/**
+ * Take a Browser command for the calling window, which then carries it out and settles it.
+ * @param id - the command.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the command ended.
+ */
+@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+
+/**
+ * End a Browser command the window took, with the page afterwards or why it failed.
+ * @param id - the command.
+ * @param outcome - how it ended.
+ * @param signal - cancellation.
+ * @returns whether the outcome reached the waiting tool call; false when the call already ended.
+ */
+@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)

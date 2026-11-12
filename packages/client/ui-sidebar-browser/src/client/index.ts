@@ -9,7 +9,8 @@ import type {} from '@deepseek-ai/dsh-api-workspace-controller/client'
 import { BrowserBody, type BrowserBodyProps } from './view/BrowserBody.tsx'
 import { BrowserTitle } from './view/BrowserTitle.tsx'
 import { createBrowserControllers } from './browser/BrowserController.ts'
-import type { BrowserInjected } from './browser/BrowserController.ts'
+import type { BrowserControllers } from './browser/BrowserController.ts'
+import { applyWasdengineBrowserAutomation } from './wasdengine/automation.ts'
 import { createIframePage } from './pages.ts'
 import { createElectronPage } from './electron/pages.ts'
 import type { DesktopBrowserBridge } from '../types.ts'
@@ -20,7 +21,12 @@ import { en, ja, es, fr, de, ru, pt, zh } from './locales.ts'
 import { createBrowserStore } from './browser/store.ts'
 
 export type { BrowserBodyProps } from './view/BrowserBody.tsx'
-export type { BrowserControllerState, BrowserInjected, BrowserMountRequest } from './browser/BrowserController.ts'
+export type { BrowserControllers, BrowserControllerState, BrowserInjected, BrowserMountRequest } from './browser/BrowserController.ts'
+export { BrowserPageUnavailableError } from './wasdengine/automation.ts'
+export type {
+  BrowserAutomation, BrowserCapture, BrowserInputEvent, BrowserInputModifier, BrowserTabControllers, SidebarBrowserAutomation,
+  SidebarBrowserTab, WebviewImage,
+} from './wasdengine/automation.ts'
 export type { BrowserFrame, BrowserFrameState, BrowserLoadError, BrowserSandboxControl } from './browser/BrowserFrame.ts'
 export type { BrowserPage, BrowserPageFactory, BrowserPageOptions } from './browser/BrowserPage.ts'
 export type { BrowserPresentation } from './view/BrowserPresentation.ts'
@@ -72,8 +78,11 @@ export function apply(ctx: Context): void {
   const desktop = carrier?.protocolVersion === 1 ? carrier.browser : undefined
   ctx.effect(() => ctx.locale.register(namespace, { zh, en, ja, es, fr, de, ru, pt }), 'ui-sidebar-browser.copy')
   ctx.effect(() => ctx.sidebarRightTabs.register({ ...browserDefinition(t), keepMounted: desktop !== undefined }), 'ui-sidebar-browser.type')
-  const installFrames = (scope: Context, factory: (sessionId: BrowserBodyProps['sessionId']) => BrowserPageFactory): void => {
-    const controllers = new Map<BrowserBodyProps['sessionId'], BrowserInjected>()
+  type SessionControllers = ReadonlyMap<BrowserBodyProps['sessionId'], BrowserControllers>
+  const installFrames = (
+    scope: Context, factory: (sessionId: BrowserBodyProps['sessionId']) => BrowserPageFactory,
+  ): SessionControllers => {
+    const controllers = new Map<BrowserBodyProps['sessionId'], BrowserControllers>()
     scope.effect(() => async () => {
       const pending = [...controllers.values()].map(controller => controller.dispose())
       controllers.clear()
@@ -93,11 +102,12 @@ export function apply(ctx: Context): void {
         return controller
       },
     }, BrowserBody)), 'ui-sidebar-browser.body')
+    return controllers
   }
   if (desktop === undefined) installFrames(ctx, () => createIframePage)
   else ctx.inject(['workspaces'], (scope) => {
-    installFrames(scope, sessionId => options => createElectronPage(options, desktop,
-      signal => browserWorkspace(scope.workspaces.list, sessionId, signal)))
+    applyWasdengineBrowserAutomation(scope, installFrames(scope, sessionId => options => createElectronPage(options, desktop,
+      signal => browserWorkspace(scope.workspaces.list, sessionId, signal))))
   })
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab.title', key: BROWSER_ID, store,

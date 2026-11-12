@@ -5092,14 +5092,29 @@ export type ApprovalPolicy = 'ask' | 'never'
 
 ## `@deepseek-ai/dsh-wasd-plugins`
 
-- `inject`: `tools` · `godot` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:28`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `inject`: `tools` · `workingDirectory` · `typert`
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:35`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
+  /**
+   * Give the Session's agent the `browser_*` tools, which a window carries out on a Browser tab in the right Sidebar;
+   * the Desktop app's Browser tabs are the ones a window can drive.
+   */
+  browser: boolean
+  /** Cooperative timeout budget of each `browser_*` call, in milliseconds. */
+  browserTimeoutMs: number
+  /** How long a `browser_*` call waits for a window to take it, in milliseconds. */
+  browserClaimTimeoutMs: number
+  /** Longest wait for a page to finish loading after a `browser_*` call acted on it, in milliseconds. */
+  browserLoadTimeoutMs: number
+  /** Most characters of page text in a `browser_*` result. */
+  browserMaxChars: number
+  /** Largest width in pixels of a `browser_screenshot` image. */
+  browserScreenshotWidth: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->

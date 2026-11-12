@@ -11,9 +11,11 @@
 # page's Game tools tab writes. `ui-game-tools` mounts the tabs' browser half. `game-mcp` listens on
 # 127.0.0.1:9273 and keeps its token and the connected agents' Sessions under `dataRoot`; `ui-game-mcp` mounts its
 # browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
-# the Web export and release tools, the Release button, and Explore Games. The plugin manager refuses to switch it off
-# (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it. `ui-game-assets` is the right Sidebar's
-# Assets tab, which finds the game project's 2D and 3D art and shows images and models.
+# the Web export and release tools, the Release button, Explore Games, and, in the Desktop profile, whose Browser tabs
+# the window can drive (the `ui-sidebar-browser` row's condition), the agent's `browser_*` tools. The plugin manager
+# refuses to switch it off (official-bundles PROTECTED_PLUGINS), so no Game tools switch offers it.
+# `ui-game-assets` is the right Sidebar's Assets tab, which finds the game project's 2D and 3D art and shows images and
+# models.
 - insert:
     - id: blender
       name: '@deepseek-ai/dsh-blender'
@@ -57,3 +59,5 @@
       name: '@deepseek-ai/dsh-client-ui-game-mcp'
     - id: wasd-plugins
       name: '@deepseek-ai/dsh-wasd-plugins'
+      config:
+        browser: !!js "ctx.get('profileContext')?.name === 'desktop'"

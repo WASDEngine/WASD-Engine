@@ -3,7 +3,7 @@ import clsx from 'clsx'
 import {
   CodeBlock, DiffBlock, DisclosureRow, IconInspectOutlineRegular, ReadBlock, SearchBlock,
   TerminalBlock, TextShimmer, WebBlock,
-  diffTotals,
+  diffTotals, useMarkdownDelegate,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ContextMenuTriggerProps } from '@deepseek-ai/dsh-client-ui-context-menu/client'
 import type { PropsRenderSlots, TranslateNS } from '@deepseek-ai/dsh-client-ui-slots'
@@ -117,6 +117,27 @@ function stopLinkClick(event: MouseEvent<HTMLAnchorElement>): void {
   event.stopPropagation()
 }
 
+/**
+ * The summary link's click handler (WASD Engine): an unmodified primary click goes to the nearest Markdown owner's
+ * `openExternalLink`, as a message link does, so the Chat opens it where its link preference says; other clicks keep
+ * the anchor's native behavior. Every click stays out of the row's toggle.
+ * @param href - the link's address.
+ * @param open - the owner's handler, absent outside an owner.
+ * @returns the handler.
+ */
+function summaryLinkClick(
+  href: string | undefined,
+  open: ((href: string) => void) | undefined,
+): (event: MouseEvent<HTMLAnchorElement>) => void {
+  return (event) => {
+    stopLinkClick(event)
+    if (href === undefined || open === undefined) return
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    open(href)
+  }
+}
+
 interface FileTargetLinkProps {
   label: string
   path: string
@@ -194,6 +215,7 @@ export const ToolRow = memo(function ToolRow({
   useDisclosure,
 }: ToolRowProps) {
   const { expanded, toggle: toggleExpand } = useDisclosure()
+  const { openExternalLink } = useMarkdownDelegate()
   const terminalLabels = useMemo(() => terminalBlockLabels(t), [t])
   const diffLabels = useMemo(() => diffBlockLabels(t), [t])
   const readLabels = useMemo(() => readBlockLabels(t), [t])
@@ -298,7 +320,7 @@ export const ToolRow = memo(function ToolRow({
           {...urlContextMenuProps}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={stopLinkClick}
+          onClick={summaryLinkClick(linkHref, openExternalLink)}
           onKeyDown={(event) => {
             summaryLinkKeyDown(event)
             urlContextMenuProps?.onKeyDown?.(event)
