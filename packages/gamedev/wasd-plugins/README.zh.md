@@ -70,7 +70,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 输入框推理等级选择器旁的卡片建议游戏首次构建时使用 Max 推理等级并启用智能体团队协作。卡片在以下条件同时满足时出现：会话的工作目录（游戏项目文件夹或其 worktree）中除隐藏条目外没有任何内容，例如新游戏项目的 `.git` 文件夹，以及 Windows 的 `Thumbs.db` 与 `desktop.ini` 文件；会话处于空闲状态；会话的推理等级低于 Max 或未启用智能体团队协作。它要求会话是游戏项目的根会话、所选模型提供 Max 推理等级、组合中包含智能体团队，并且 Peer 可以调用 `session/selectModel` 和 `agentTeams/setEnabled`。模型菜单打开或输入框锁定时，以及模型选择器未显示或位于 inert 区域（例如打开的侧边栏抽屉之后）时，卡片隐藏。卡片紧贴在输入框下方，右边缘与推理等级选择器对齐，箭头指向该选择器；窗口下方空间不足时移到输入框正上方，不遮挡草稿，箭头随之调整。
 
-“使用 Max + 团队协作”为会话的模型选择 Max 推理等级并启用智能体团队协作，已经开启的一项会跳过；随后卡片确认两项均已开启，约三秒后消失。某项设置被拒绝时，卡片保持打开并显示原因。“暂不”，或卡片获得焦点时按 Escape，会在当前浏览器中隐藏该游戏项目的提示。提示通过 `workspaceFiles` Remote 跟踪文件夹的直接条目，文件夹一有内容就停止跟踪，因此首次构建写入的文件会让提示永久消失。它占用本分支为 [`@deepseek-ai/dsh-client-ui-model-selection`](../../client/ui-model-selection/README.zh.md) 的模型选择器添加的 `conversation.input.model.callout` 插槽。
+“使用 Max + 团队协作”为会话的模型选择 Max 推理等级并启用智能体团队协作，已经开启的一项会跳过；两项只作用于该会话，新会话仍沿用已保存的默认推理等级（选择时向 `session.selectModel` 传入 `saveDefault: false`）；随后卡片确认两项均已开启，约三秒后消失。某项设置被拒绝时，卡片保持打开并显示原因。“暂不”，或卡片获得焦点时按 Escape，会在当前浏览器中隐藏该游戏项目的提示。提示通过 `workspaceFiles` Remote 跟踪文件夹的直接条目，文件夹一有内容就停止跟踪，因此首次构建写入的文件会让提示永久消失。它占用本分支为 [`@deepseek-ai/dsh-client-ui-model-selection`](../../client/ui-model-selection/README.zh.md) 的模型选择器添加的 `conversation.input.model.callout` 插槽。
 
 <a id="the-agents-browser"></a>
 ### 智能体的浏览器

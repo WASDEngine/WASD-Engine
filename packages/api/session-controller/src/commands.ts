@@ -159,8 +159,9 @@ export class SessionCommandController {
   }
 
   /**
-   * Validate and record one Session model selection; save the default in the background.
-   * @param request - Session identity and requested model selection.
+   * Validate and record one Session model selection; save the default in the background unless the request sets
+   * `saveDefault: false`.
+   * @param request - Session identity, requested model selection, and whether it also becomes the default.
    * @returns the normalized selection recorded for the Session, without waiting for default persistence.
    */
   async selectModel(request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
@@ -177,11 +178,13 @@ export class SessionCommandController {
         }
         await this.ctx.llm.resolveCallConfig(selected)
         agent.model.select(selected)
-        void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
-          this.ctx.logger.warn(
-            `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
-          )
-        })
+        if (request.saveDefault !== false) {
+          void this.ctx.agentDefaultModel.saveSelection(selected).catch((error: unknown) => {
+            this.ctx.logger.warn(
+              `session-controller: model selection changed for the Session but the default was not saved: ${String(error)}`,
+            )
+          })
+        }
         return { selected: { ...selected } }
       } catch (error) {
         if (remoteErrorOf(error) !== undefined) throw error

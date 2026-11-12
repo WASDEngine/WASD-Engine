@@ -59,11 +59,13 @@ jobs:
           packages/credentials/deepseek-account/tests/wasdengine-allowance.spec.ts
           packages/credentials/deepseek-account/tests/wasdengine-auto-recharge.spec.ts
           packages/credentials/deepseek-account/tests/remote.spec.ts
+          packages/credentials/deepseek-account/tests/wasdengine-harness-origin.spec.ts
           apps/desktop/tests
           packages/util/home-paths/tests
           packages/shell/shell-env/tests
           packages/context/agent-instructions/tests
           scripts/verify-dsh-package-licenses.spec.ts
+          apps/cli/tests/windows-shell.spec.ts
           packages/client/ui-brand-official
           packages/client/ui-chat
           packages/client/ui-sidebar-right
@@ -78,6 +80,7 @@ jobs:
           packages/client/ui-workspace
           packages/client/ui-conversation
           packages/client/ui-model-selection
+          packages/api/session-controller/tests/session-models.host.spec.ts
           packages/client/ui-settings-models
           packages/experimental/client-ui-forge
           packages/experimental/liveshare/tests/endpoint-classification.client.spec.ts

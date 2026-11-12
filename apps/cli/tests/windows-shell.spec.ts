@@ -108,7 +108,13 @@ describe('shipped agent presets gate both shell tools by platform', () => {
 
   const definitions = presetRows.filter(row => row.name === '@deepseek-ai/dsh-agent-preset').map(row => row.config as import('@deepseek-ai/dsh-agent-preset-registry').PresetDefinition)
 
-  it.each(['standard', 'ptc', 'cordis'])('preset %s gates its shell tool rows by platform', (preset) => {
+  // WASDEngine fork (wasdengine/FORK.md): the fork ships only the gamedev and cordis presets; upstream-prune.txt
+  // deletes standard, ptc, and minimal, so their cases go with them.
+  it('ships only the gamedev and cordis presets', () => {
+    expect(definitions.map(row => row.id).sort()).toEqual(['cordis', 'gamedev'])
+  })
+
+  it.each(['gamedev', 'cordis'])('preset %s gates its shell tool rows by platform', (preset) => {
     const entries: unknown = definitions.find(row => row.id === preset)!.plugins
     if (!Array.isArray(entries)) throw new TypeError(`preset ${preset} must parse to an entry array`)
     for (const [id, win32] of [['tool-bash', true], ['tool-pwsh', false]] as const) {
@@ -122,36 +128,5 @@ describe('shipped agent presets gate both shell tools by platform', () => {
       expect(Boolean(evaluate({ process: { platform: 'win32' } }, expression)), `${id} on win32`).toBe(win32)
       expect(Boolean(evaluate({ process: { platform: 'linux' } }, expression)), `${id} on linux`).toBe(!win32)
     }
-  })
-
-  it('minimal mounts no shell tool row and gates its persistent shell stack by platform', () => {
-    const entries: unknown = definitions.find(row => row.id === 'minimal')!.plugins
-    if (!Array.isArray(entries)) throw new TypeError('minimal preset must parse to an entry array')
-    for (const id of ['tool-bash', 'tool-pwsh']) {
-      expect(entries.some(entry => (
-        typeof entry === 'object' && entry !== null && (entry as Record<string, unknown>).id === id
-      )), `${id} must be absent from minimal`).toBe(false)
-    }
-    const group = entries.find((entry): entry is Record<string, unknown> => (
-      typeof entry === 'object' && entry !== null && (entry as Record<string, unknown>).id === 'persistent-shell'
-    ))
-    if (group === undefined) throw new TypeError('minimal preset must mount persistent-shell')
-    const rows = group.config as unknown[]
-    if (!Array.isArray(rows)) throw new TypeError('persistent-shell must carry a row list')
-    const byId = new Map(rows
-      .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)
-      .map(entry => [entry.id, entry]))
-    // The bash stack (terminal-bash + persistent-bash) mounts on POSIX only; the
-    // pwsh twin (terminal-bash with shellDialect pwsh + persistent-pwsh) mounts on
-    // win32 only — exactly one persistent shell per host.
-    for (const id of ['terminal-bash', 'persistent-bash']) {
-      expect(disabledOn(byId.get(id)!, 'win32'), `${id} on win32`).toBe(true)
-      expect(disabledOn(byId.get(id)!, 'linux'), `${id} on linux`).toBe(false)
-    }
-    for (const id of ['terminal-pwsh', 'persistent-pwsh']) {
-      expect(disabledOn(byId.get(id)!, 'win32'), `${id} on win32`).toBe(false)
-      expect(disabledOn(byId.get(id)!, 'linux'), `${id} on linux`).toBe(true)
-    }
-    expect(byId.get('terminal-pwsh')?.config).toMatchObject({ shellDialect: 'pwsh' })
   })
 })

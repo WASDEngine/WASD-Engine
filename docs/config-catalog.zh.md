@@ -959,14 +959,17 @@ export interface Config {
 ## `@deepseek-ai/dsh-deepseek-account`
 
 - `inject`: `credentials` · `authorization`
-- `source`: [`packages/credentials/deepseek-account/src/index.ts:41`](../packages/credentials/deepseek-account/src/index.ts)
+- `source`: [`packages/credentials/deepseek-account/src/index.ts:42`](../packages/credentials/deepseek-account/src/index.ts)
 
 ```ts config-catalog
 /** Deployment-specific platform and request deadlines. */
 export interface Config {
   /** Platform origin serving auth-api and browser pages. */
   platformOrigin?: string
-  /** Harness API origin for account notifications. */
+  /**
+   * Harness API origin for account notifications; unset, DeepSeek's Harness API under DeepSeek's platform and the
+   * platform origin under any other (`wasdengine-harness-origin.ts`).
+   */
   harnessOrigin?: string
   /** Native desktop identity for Host API and embedded Platform requests; null identifies the client as web. */
   desktopPlatform?: 'darwin' | 'win32' | null
