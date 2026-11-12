@@ -111,7 +111,12 @@ jobs:
           python3 -B -m unittest discover --start-directory wasdengine/blender --pattern 'test_*.py'
 
       # The doc-sync gates read only the checked-out commit and its files, so the shallow checkout is enough.
+      # The macos-15 runner has 7 GB of memory, where Node's default heap (about a quarter of it) is too small for the
+      # doc graphs and the documentation build; each gate gets a 4 GB heap, and they run one at a time to fit.
       - name: Documentation checks
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          DSH_GATE_CONCURRENCY: '1'
         run: |
           node wasdengine/brand-docs.mjs --check
           pnpm run doc-sync
