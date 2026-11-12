@@ -19,7 +19,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { describeDetails, describeSearch, type ListedAsset, type ListedFolder } from './describe.ts'
 import { exportOf, formatOf, isBlendFormat, NAME_ORDER } from './formats.ts'
-import { parseDetails } from './result.ts'
+import { ANSWER_LIMITS, parseDetails } from './result.ts'
 import { scanProject, type ScanLimits } from './scan.ts'
 import type {
   AssetDetails, AssetDrawOptions, AssetRenderedImage, AssetRenderRequest, AssetRenderResult, AssetReveal, AssetViewDirection,
@@ -59,6 +59,8 @@ export const ASSET_ERROR = {
   window: 'ASSET_NO_WINDOW',
   /** The window could not draw the asset. */
   draw: 'ASSET_DRAW',
+  /** The asset, with the files it loads, is larger than a window reads. */
+  tooLarge: 'ASSET_TOO_LARGE',
 } as const
 
 /** The message of a call that no window answered. */
@@ -279,15 +281,23 @@ function callerDetails(details: AssetDetails, root: string, project: string): As
 /** Largest .gltf file whose JSON is read for the files it names; a larger one holds its data inside. */
 const MAX_GLTF_JSON_BYTES = 16 * 1024 * 1024
 
+/** Most distinct files one glTF model may name for the window to load with it. */
+export const MAX_GLTF_FILES = 1024
+
+/** Files whose sizes are read at once while summing a glTF model's files. */
+const GLTF_STAT_CONCURRENCY = 16
+
 /**
  * The total size of the files a glTF model names outside its .gltf file, its buffers and images, which the window
  * loads with it. Names resolve as the window resolves them: from the model's folder, and an absolute name by its file
- * name in that folder.
+ * name in that folder. The sizes are read {@link GLTF_STAT_CONCURRENCY} at a time.
  * @param file - absolute path of the .gltf file.
  * @param size - its size in bytes.
+ * @param signal - the call's cancellation, checked before each read.
  * @returns the total size in bytes, 0 when the file holds its data inside or is not readable JSON.
+ * @throws {HarnessError} `ASSET_TOO_LARGE` when the model names more than {@link MAX_GLTF_FILES} distinct files.
  */
-export async function gltfFilesBytes(file: string, size: number): Promise<number> {
+export async function gltfFilesBytes(file: string, size: number, signal: AbortSignal): Promise<number> {
   if (size > MAX_GLTF_JSON_BYTES) return 0
   let parsed: unknown
   try {
@@ -315,8 +325,17 @@ export async function gltfFilesBytes(file: string, size: number): Promise<number
     const slashed = name.replaceAll('\\', '/')
     return isAbsolute(name) || /^[A-Za-z]:\//u.test(slashed) ? join(folder, basename(slashed)) : resolve(folder, name)
   }))
-  const sizes = await Promise.all([...named].map(async path => (await statOf(path))?.size ?? 0))
-  return sizes.reduce((total, next) => total + next, 0)
+  if (named.size > MAX_GLTF_FILES) {
+    fail(`The glTF model names ${String(named.size)} files, more than the ${String(MAX_GLTF_FILES)} the viewer loads with one model.`, ASSET_ERROR.tooLarge)
+  }
+  const paths = [...named]
+  let total = 0
+  for (let start = 0; start < paths.length; start += GLTF_STAT_CONCURRENCY) {
+    signal.throwIfAborted()
+    const sizes = await Promise.all(paths.slice(start, start + GLTF_STAT_CONCURRENCY).map(async path => (await statOf(path))?.size ?? 0))
+    for (const next of sizes) total += next
+  }
+  return total
 }
 
 function folderOf(path: string): string {
@@ -558,7 +577,7 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
         format = exported.format
       }
       // A glTF model's buffers and images in files of their own load with it.
-      if (format.label === 'glTF') bytes += await gltfFilesBytes(absolute, bytes)
+      if (format.label === 'glTF') bytes += await gltfFilesBytes(absolute, bytes, exec.signal)
       const images = await surface.seesImages(exec)
       const root = agent.session.header.cwd
       const sent = windowPath(root, absolute)
@@ -572,6 +591,7 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
           bytes,
           maxBytes: host.maxPreviewBytes,
           maxPixels: host.maxImagePixels,
+          limits: ANSWER_LIMITS,
         }, exec.signal)
       } catch (error) {
         // The window names the asset as it reads it, which an agent working below the project folder names otherwise.

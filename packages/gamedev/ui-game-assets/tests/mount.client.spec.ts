@@ -10,6 +10,7 @@ import { Context, type Fiber } from '@deepseek-ai/cordis'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type { SidebarRightTabDefinition } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import { ANSWER_LIMITS } from '@deepseek-ai/dsh-game-assets/src/result.ts'
 import { SessionId } from '@deepseek-ai/dsh-session/types'
 import { describe, expect, it, vi } from 'vitest'
 import { AssetsTab, AssetsTabTitle, type AssetsTabInjected } from '../src/client/AssetsTab.tsx'
@@ -157,7 +158,7 @@ describe('Assets tab registration', () => {
     const render = f.listeners.get('game-assets/render')
     assert(render !== undefined)
     const next = vi.fn(async () => 'delegated')
-    const request = { path: 'hero.glb', kind: 'model', draw: { views: ['iso'], shading: 'material', skeleton: false, size: 512 }, images: true, maxBytes: 10, maxPixels: 100 }
+    const request = { path: 'hero.glb', kind: 'model', draw: { views: ['iso'], shading: 'material', skeleton: false, size: 512 }, images: true, maxBytes: 10, maxPixels: 100, limits: ANSWER_LIMITS }
     expect(await (render as (this: unknown, ...args: unknown[]) => unknown).call('unscoped', request, next)).toBe('delegated')
     // jsdom offers no WebGL, so a model goes to another window.
     expect(await (render as (this: unknown, ...args: unknown[]) => unknown).call('scoped', request, next)).toBe('delegated')
@@ -178,7 +179,7 @@ describe('Assets tab registration', () => {
       return { ok: true as const, value: { absolutePath: `/p/${path}`, version: 'v1', bytes: 3, offset: 0, data: new Uint8Array([1, 2, 3]), eof: true } }
     })
     const request = (path: string, signal?: AbortSignal) => ({
-      path, kind: 'image', draw: { views: ['iso'], shading: 'material', skeleton: false, size: 512 }, images: false, bytes: 3, maxBytes: 10, maxPixels: 100,
+      path, kind: 'image', draw: { views: ['iso'], shading: 'material', skeleton: false, size: 512 }, images: false, bytes: 3, maxBytes: 10, maxPixels: 100, limits: ANSWER_LIMITS,
       ...signal === undefined ? {} : { signal },
     })
     const next = vi.fn(async () => 'delegated')
