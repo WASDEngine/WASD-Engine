@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web and release them to the WASD Engine site as numbered versions with share links; in the Desktop app, the agent's browser_* tools, which act on a Browser tab in the right Sidebar; the wasdPlugins Remote; the Release button in the Session header and on the New Session screen; and Explore Games in the sidebar."
+description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web and release them to the WASD Engine site as numbered versions with share links; in the Desktop app, the agent's browser_* tools, which act on a Browser tab in the right Sidebar; the wasdPlugins Remote; the Release button in the Session header and on the New Session screen; Explore Games in the sidebar; and the first build tip beside the composer's effort selector."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-WASD Engine Plugins holds WASD Engine's own features and stays on in every Web and Desktop profile. It exports the user's Godot game for the Web and releases it to the WASD Engine site as the game's next numbered version, at a share link where anyone can play it, pick earlier versions, and comment. Session agents and connected agents get the same tools; the Release button asks the agent to release, and Explore Games opens the released games. In the Desktop app, the agent also browses the web in a right Sidebar Browser tab the user watches.
+WASD Engine Plugins holds WASD Engine's own always-on features for every Web and Desktop profile. It exports a Godot game for the Web and releases it to the WASD Engine site as the game's next numbered version, at a share link where anyone can play it, pick earlier versions, and comment. Session and connected agents get the same tools; the Release button asks the agent to release, and Explore Games opens the released games. In the Desktop app, the agent also browses in a Browser tab the user watches. New games get a tip suggesting Max effort with agent teamwork.
 
 ## Table of Contents
 
@@ -65,6 +65,12 @@ The Release button appears in the header of a Session that belongs to a game pro
 
 Explore Games sits above Settings at the foot of the left sidebar while the Peer may call `wasdPlugins/links`. It opens the site's Explore page with `window.open`, which the Desktop app hands to the system browser and the Web UI opens in a new tab. On the narrow rail it shows its globe alone, with its label as a tooltip.
 
+### The first build tip
+
+A card beside the composer's effort selector suggests Max effort with agent teamwork for a game's first build. It appears while the Session's working directory, the game project folder or its worktree, holds nothing but hidden entries, such as the `.git` folder of a new game project, and Windows' `Thumbs.db` and `desktop.ini` files; while the Session is idle; and while the Session runs below Max effort or without agent teamwork. It needs a root Session of a game project, a selected model that offers the Max effort, Agent Teams in the composition, and a Peer that may call `session/selectModel` and `agentTeams/setEnabled`. It hides while the model menu is open or the composer is locked, and while the model seat is not displayed or sits in an inert region, such as behind the open sidebar drawer. The card sits just below the composer, its right edge aligned with the effort selector's and its arrow pointing at it, and moves just above the composer, clear of the draft, when the window has no room below; its arrow follows.
+
+**Use Max + teamwork** selects the Max effort for the Session's model and turns on agent teamwork, skipping whichever is already on; the card then confirms that both are on and leaves after about three seconds. A refused setting keeps the card open with the reason. **Not now**, or Escape while the card has focus, hides the tip for that game project in this browser. The tip follows the folder's direct entries through the `workspaceFiles` Remote and stops once the folder holds anything, so the files of the first build remove it for good. It occupies the `conversation.input.model.callout` slot, which the fork adds to the model seat of [`@deepseek-ai/dsh-client-ui-model-selection`](../../client/ui-model-selection/README.md).
+
 <a id="the-agents-browser"></a>
 ### The agent's Browser
 
@@ -115,7 +121,7 @@ A release writes the export into a ZIP file in the system's temporary folder, st
 | [`src/client/page.ts`](src/client/page.ts) | The scripts the window runs in the page: the page text and its numbered controls, finding, clicking, and filling a control |
 | [`src/release.ts`](src/release.ts) | The site API client, the game link file, and the release flow |
 | [`src/zip.ts`](src/zip.ts) | The streaming ZIP writer of the upload |
-| [`src/client/`](src/client/) | The Release button, Explore Games, their copy, and the Remote mount |
+| [`src/client/`](src/client/) | The Release button, Explore Games, the first build tip, their copy, and the Remote mount |
 
 The Remote's `browserRequests` stream yields the whole list of untaken commands each time, so a window that reconnects sees every command that waits. The window runs each page script from its source text through the tab's `executeJavaScript`, in the page's main world; the page text keeps the numbered controls in a page property whose name is random per window, and the window checks every value a script returns, because the page can change what its scripts see. The [sidebar Browser](../../client/ui-sidebar-browser/README.md) supplies the tab's automation face over its Electron `<webview>`; the Web iframe carrier has none, so Web windows never take a command.
 
@@ -235,6 +241,7 @@ These limits define what a release covers; they are current package constraints.
 - **Browser needs the window** — the agent's first `browser_open` needs its Session on screen; subagents and Sessions the user is not looking at get the fallback message and use `web_search` and `web_fetch`.
 - **Page text from the DOM** — the page text leaves out frames, canvas drawings, and text inside images, and a page's own scripts can change what the window's scripts read; a screenshot shows what the text misses.
 - **Shared Browser storage** — the agent's tab uses the Browser storage of the Session's game project, so it sees the sites the user signed in to in that project's Browser tabs until the app quits.
+- **First build tip per browser** — Not now is kept in this browser's localStorage, so another browser or cleared site data shows the tip again in a game project that is still empty.
 
 <a id="dev-note"></a>
 ### Dev Note

@@ -1,9 +1,11 @@
 /**
  * Remote contribution and registrations of WASD Engine Plugins' browser half: the Release button after the agent preset
  * label of each Session header and in the New Session row of a blank Session, Explore Games at the foot of the left
- * sidebar, and, where the Desktop Browser tabs can be driven, the window half of the agent's Browser. The Release button
- * exists while the Peer may read the `wasdPlugins` Remote's project views, Explore Games while it may read the site
- * links, and the agent's Browser while it may follow the Browser commands; LiveShare keeps all three for the owner.
+ * sidebar, the first build tip beside the composer's model seat, and, where the Desktop Browser tabs can be driven, the
+ * window half of the agent's Browser. The Release button exists while the Peer may read the `wasdPlugins` Remote's
+ * project views, Explore Games while it may read the site links, and the agent's Browser while it may follow the
+ * Browser commands; LiveShare keeps all three for the owner. The first build tip exists while the model seat, Agent
+ * Teams, and the workspace file Remote do.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remote-access/client'
@@ -11,6 +13,7 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
@@ -22,6 +25,8 @@ import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import type { WasdBrowserRequests } from '../types.ts'
 import { followBrowserRequests } from './browser.ts'
 import { ExploreLink, type ExploreLinkInjected } from './ExploreLink.tsx'
+import { createDismissedProjects, dismissProject, FIRST_BUILD_EFFORT, watchHoldsNothing } from './first-build.ts'
+import { FirstBuildTip, type FirstBuildTipInjected } from './FirstBuildTip.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonPlacement } from './ReleaseButton.tsx'
 
@@ -90,6 +95,38 @@ function registerUi(ctx: Context): void {
       locale: NS,
       inject: injected,
     }, ExploreLink))
+  })
+  const dismissedProjects = createDismissedProjects()
+  ctx.inject(['modelDirectories', 'remote.agentTeams', 'remote.workspaceFiles'], (scope) => {
+    scope.slots.inject('conversation.input.model.callout', () => scope.slots.register({
+      name: 'conversation.input.model.callout',
+      id: 'wasd-first-build',
+      locale: NS,
+      inject: (sessionId: SessionId): FirstBuildTipInjected => {
+        const directory = scope.modelDirectories.directoryFor(sessionId)
+        return {
+          hooks: { modelDirectory: directory.store, dismissedProjects },
+          watchFolder: (folder, signal) => watchHoldsNothing(scope.remote, sessionId, folder, signal),
+          async selectMaxEffort() {
+            const current = directory.store.getSnapshot().current
+            if (current === null) return 'No model is selected.'
+            try {
+              const result = await directory.select({
+                provider: current.provider, model: current.model, reasoningEffort: FIRST_BUILD_EFFORT,
+              })
+              return result.ok ? undefined : result.error.message
+            } catch (error) {
+              return (error as Error).message
+            }
+          },
+          async enableTeamwork() {
+            const result = await scope.remote.agentTeams.setEnabled(sessionId, true)
+            return result.ok ? undefined : result.error.message
+          },
+          dismiss: (project) => { dismissProject(dismissedProjects, project) },
+        }
+      },
+    }, FirstBuildTip))
   })
   // Only the Desktop Browser plugin provides the automation service, so Web windows never take Browser commands.
   ctx.inject(['sidebarRight', 'sidebarBrowserAutomation', 'remoteAccess'], (inner) => {

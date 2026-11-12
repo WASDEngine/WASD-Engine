@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/README.md
 /:
-  en: 6adfdba2ea338291
-  zh: a303ac786c1b7d1f
+  en: 48bbc0ff1a89e6ad
+  zh: 6bc954828bb2ab4d
 /deepseek-ai-dsh-wasd-plugins:
   en: cb5ec703da430be8
   zh: d206a2431aaa3c7e
 /deepseek-ai-dsh-wasd-plugins/summary:
-  en: 2b7d72b5022f38ce
-  zh: bb4807d6279676c9
+  en: 56d3c99a9b877281
+  zh: ef03ae3904ef384c
 /deepseek-ai-dsh-wasd-plugins/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -24,8 +24,11 @@
   en: f3b69a891713ae41
   zh: 5a66f65b08afeac4
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-release-button-and-explore-games:
-  en: 9ce9ad1912b81523
-  zh: b71fc27899e04d11
+  en: a7c7653d26f30c5e
+  zh: 2cfabadecc2d36a8
+/deepseek-ai-dsh-wasd-plugins/use-this-package/the-first-build-tip:
+  en: f5068a66071e5579
+  zh: e9941e7cdc7f822d
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-agent-s-browser:
   en: baff159c4babd521
   zh: 0a8f5ea3732bafca
@@ -33,8 +36,8 @@
   en: 2ac927650495ff97
   zh: cccf5af4cd2b1799
 /deepseek-ai-dsh-wasd-plugins/understand-the-implementation:
-  en: 9eaff054b7e32612
-  zh: dc5fec21ed6a6a9a
+  en: 11437c6de9dc830d
+  zh: 4b73978a3ae0a457
 /deepseek-ai-dsh-wasd-plugins/further-exploration:
   en: 38afa95094a6f356
   zh: 65f11cc343f3ce48
@@ -105,8 +108,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: 9a6721e5562c75db
-  zh: d112555aed4d3fc1
+  en: cd348e494b37b2e8
+  zh: aeae0623b99225f0
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
   en: d36d4bfef4cd8eba
   zh: 5abb7c5e4a55ccfd
