@@ -299,6 +299,55 @@ describe('audio_review below the project folder and for subagents', () => {
 })
 
 describe('the window round-trip', () => {
+  it('sends the window one review at a time, each within its own time limit however many wait', async () => {
+    const c = await composed({ measureTimeoutMs: 1000 })
+    let open = 0
+    let most = 0
+    let previous: Promise<unknown> = Promise.resolve()
+    // The window measures one sound at a time, 400 ms each, as a WASD Engine window does: the third of three sent at once
+    // would take 1200 ms.
+    c.openWindow((request) => {
+      open += 1
+      most = Math.max(most, open)
+      const answer = previous.then(async () => {
+        await new Promise((resolve) => { setTimeout(resolve, 400) })
+        open -= 1
+        return { measurements: atLoop(JUMP, request) }
+      })
+      previous = answer
+      return answer
+    })
+    const results = await Promise.all([0, 1, 2].map(() => callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })))
+    for (const result of results) expect(result.isError, text(result)).toBeFalsy()
+    expect(c.requests).toHaveLength(3)
+    expect(most).toBe(1)
+  })
+
+  it('drops a review whose call ends while it waits, without asking the window, and runs the next', async () => {
+    const c = await composed()
+    // Each review asks whether a window is connected when it reaches the window's line.
+    let reached = 0
+    c.ctx.provide('typertGateway', { hasLiveClient: () => { reached += 1; return true } } as never)
+    const release = Promise.withResolvers<undefined>()
+    c.openWindow(async (request) => {
+      if (c.requests.length === 1) await release.promise
+      return { measurements: atLoop(JUMP, request) }
+    })
+    const first = callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })
+    await vi.waitFor(() => { expect(c.requests).toHaveLength(1) })
+    const ended = new AbortController()
+    const second = callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false }, c.agent, ended.signal)
+    await vi.waitFor(() => { expect(reached).toBe(3) })
+    // The second review waits behind the first instead of going to the window.
+    expect(c.requests).toHaveLength(1)
+    ended.abort(new Error('the turn was cancelled'))
+    expect((await second).isError).toBe(true)
+    release.resolve(undefined)
+    expect((await first).isError).toBeFalsy()
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false })).isError).toBeFalsy()
+    expect(c.requests.map(request => request.path)).toEqual(['audio/sfx/jump.wav', 'audio/sfx/coin.wav'])
+  })
+
   it('fails at once while no window is connected, and asks the window once one is', async () => {
     const c = await composed()
     c.openWindow({ measurements: JUMP })

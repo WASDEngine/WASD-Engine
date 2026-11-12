@@ -200,11 +200,17 @@ function LoadedSound(props: LoadedSoundProps): ReactNode {
   const [measured, setMeasured] = useState<AudioMeasurements>()
   useEffect(() => {
     setMeasured(undefined)
-    // The waveform shows first; measuring a long sound takes a moment. The repeat control loops the whole sound, so its
-    // seam is the one the details measure, also past the stretch they measure otherwise.
+    const controller = new AbortController()
+    // A long sound measures a slice at a time, the page free between slices. The repeat control loops the whole sound,
+    // so its seam is the one the details measure, also past the stretch they measure otherwise.
     const stretch = { start: 0, maxSeconds: maxMeasuredSeconds, loop: WHOLE_SOUND }
-    const timer = setTimeout(() => { setMeasured(measureSound(buffer, stretch).measurements) }, 0)
-    return () => { clearTimeout(timer) }
+    void measureSound(buffer, stretch, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setMeasured(result.measurements)
+    }, (error: unknown) => {
+      // The measurement ends when the sound or the tab goes; a failure of a measurement still wanted is a fault.
+      if (!controller.signal.aborted) throw error
+    })
+    return () => { controller.abort() }
   }, [buffer, maxMeasuredSeconds])
   // Leaving the sound stops it, whether another sound was chosen, the file changed, or the tab closed.
   useEffect(() => () => { playback.release(key) }, [playback, key])

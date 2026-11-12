@@ -1,10 +1,10 @@
 /** Audio measurements: levels, silence, loudness after BS.1770, the spectrum figures, the loop seam, and stereo. */
 import { describe, expect, it } from 'vitest'
 import {
-  analyzeAudio, fft, integratedLoudness, loopSeam, magnitudeSpectrum, seamClicks, seamFrames, SILENCE_THRESHOLD, stereoImage,
-  type AudioSamples,
+  analyzeAudio, analyzeAudioSteps, fft, integratedLoudness, loopSeam, magnitudeSpectrum, seamClicks, seamFrames, SILENCE_THRESHOLD,
+  STEP_FRAMES, stereoImage, stereoImageSteps, type AudioSamples, type MeasureSteps,
 } from '../src/audio/measure.ts'
-import { drawAudioImage } from '../src/audio/picture.ts'
+import { drawAudioImage, drawAudioImageSteps, IMAGE_WIDTH } from '../src/audio/picture.ts'
 import { sine, slice } from './signals.ts'
 
 describe('analyzeAudio', () => {
@@ -96,6 +96,31 @@ describe('analyzeAudio', () => {
         expect(analysis.spectralCentroid).toBeGreaterThan(0)
       }
     }
+  })
+})
+
+describe('measurements in steps', () => {
+  /** Run steps to their end, counting the pauses between them. */
+  function paused<T>(steps: MeasureSteps<T>): { readonly pauses: number; readonly value: T } {
+    for (let pauses = 0; ; pauses++) {
+      const step = steps.next()
+      if (step.done === true) return { pauses, value: step.value }
+    }
+  }
+
+  it('pause between slices of a long window and end with the figures and picture of the whole', () => {
+    const audio = sine({ frequency: 440, amplitude: 0.5, seconds: 4, sampleRate: 48_000, channels: 2 })
+    const slices = Math.ceil(audio.frames / STEP_FRAMES)
+    const analysis = paused(analyzeAudioSteps(audio))
+    // Levels, loudness for each channel, the spectrum's mean and swing, then one analysis frame a step.
+    expect(analysis.pauses).toBe(slices + 2 * slices + 2 * slices + Math.ceil(audio.frames / 4096))
+    expect(analysis.value).toEqual(analyzeAudio(audio))
+    const stereo = paused(stereoImageSteps(audio))
+    expect(stereo).toEqual({ pauses: slices, value: stereoImage(audio) })
+    // One column a step for each waveform panel and the spectrogram.
+    const picture = paused(drawAudioImageSteps(audio))
+    expect(picture.pauses).toBe(3 * (IMAGE_WIDTH - 12))
+    expect(picture.value).toEqual(drawAudioImage(audio))
   })
 })
 

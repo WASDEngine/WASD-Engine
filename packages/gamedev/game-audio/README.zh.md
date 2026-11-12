@@ -38,7 +38,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `measureTimeoutMs` | `60000` | 一次 `audio_review` 调用的时限，该调用等待窗口读取、解码并测量声音 |
+| `measureTimeoutMs` | `60000` | 窗口为 `audio_review` 读取、解码并测量一个声音的时限；调用排在其他调用的声音之后等待的时间不计在内 |
 | `maxReviewSeconds` | `300` | 一次 `audio_review` 调用测量的最长片段，单位为秒 |
 | `maxPreviewBytes` | `268435456` | 窗口为测量而读取的最大文件，256 MiB |
 | `maxFolders` | `2000` | 一次项目遍历列出的文件夹数，包括项目文件夹本身 |
@@ -71,6 +71,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `openAiff`、`decodeAiff` | 浏览器不解码的 AIFF 和 AIFC 采样：任一字节序的 8 到 32 位整数 PCM、无符号 8 位，以及 32 位和 64 位浮点；`openAiff` 定位采样并逐个读取而不复制，`decodeAiff` 复制全部采样 |
 | `analyzeAudio`、`integratedLoudness`、`loopSeam`、`seamFrames`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限；`loopSeam` 根据 `seamFrames` 给出的循环跳转两侧的帧测量循环衔接 |
 | `drawAudioImage`、`describeAudioImage` | 原始 RGB 格式的图像，以及说明其面板和网格的句子 |
+| `analyzeAudioSteps`、`stereoImageSteps`、`drawAudioImageSteps`、`finish` | 以生成器形式给出的相同测量和图像，每处理约 `STEP_FRAMES` 帧或一列图像就暂停一次：`finish` 一次运行到底，音频标签页则在页面事件之间每次运行一个分片 |
 | `AUDIO_ERROR` | 工具的错误码，窗口无法完成请求时用它作答 |
 
 -----
@@ -81,7 +82,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`，并以秒为单位指明游戏所播放的循环，作为要测量其衔接的循环。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。当 Host 可选的 `typertGateway` 报告没有已连接的窗口时，审查会立即以 `AUDIO_NO_WINDOW` 失败，而不发出请求，因为网关会把请求留给之后连接的窗口。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
+`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`，并以秒为单位指明游戏所播放的循环，作为要测量其衔接的循环。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。当 Host 可选的 `typertGateway` 报告没有已连接的窗口时，审查会立即以 `AUDIO_NO_WINDOW` 失败，而不发出请求，因为网关会把请求留给之后连接的窗口。每个窗口都会回答它可以回答的每个请求，每次测量一个声音，因此 Host 按调用到达的顺序每次只发出一个请求：调用的时限 `measureTimeoutMs` 从它的请求发出时开始计算，而不是从它排在其他调用之后开始等待时计算；在等待期间结束的调用会离开队列，不发出请求。该工具本身没有时限。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
 
 `audio_search` 在 Host 上遍历文件夹，并以每次八个的方式探测每个列出的声音；只要文件的大小和修改时间不变，插件就保留其探测结果，最多保留 `maxSounds` 个文件。
 

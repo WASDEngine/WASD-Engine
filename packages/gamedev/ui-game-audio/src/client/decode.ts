@@ -4,11 +4,12 @@
  * rate, so the samples are not resampled; AIFF files, which browsers do not decode, use the audio tools' AIFF reader,
  * which fills the AudioBuffer a slice at a time so a long file neither holds a second copy nor blocks the page. A
  * measurement covers one stretch of the decoded sound and the seam of one loop, wherever that loop lies in the whole
- * sound. The picture is the one the audio tools draw, encoded as PNG on a canvas.
+ * sound. The picture is the one the audio tools draw, encoded as PNG on a canvas. Measuring and drawing run a slice at
+ * a time, so a long sound does not block the page.
  */
 import {
-  analyzeAudio, AUDIO_ERROR, drawAudioImage, loopSeam, openAiff, seamFrames, stereoImage, type AudioFormat, type AudioProbe,
-  type AudioSamples, type RgbImage,
+  analyzeAudioSteps, AUDIO_ERROR, drawAudioImageSteps, finish, loopSeam, openAiff, seamFrames, STEP_FRAMES, stereoImageSteps,
+  type AudioFormat, type AudioProbe, type AudioSamples, type MeasureSteps, type RgbImage,
 } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioLoop, AudioMeasurements, AudioMeasureRequest, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
 
@@ -34,6 +35,9 @@ const MAX_CHANNELS = 32
 
 /** Samples, over all channels, that an AIFF decode copies before it lets the page handle its events. */
 const AIFF_SLICE_SAMPLES = 1 << 20
+
+/** Longest that measuring or drawing runs before it lets the page handle its events, in milliseconds. */
+const SLICE_MS = 10
 
 /** What a decode may cost: the longest sound it decodes, and its cancellation. */
 export interface DecodeBounds {
@@ -146,6 +150,48 @@ export async function decodeSound(
   }
 }
 
+/** Where one channel of a decoded sound goes in interleaved samples. */
+interface Interleaving {
+  readonly samples: Float32Array
+  readonly channels: number
+  /** The sound's frame that becomes the samples' first. */
+  readonly first: number
+}
+
+/**
+ * Copy one channel's frames into interleaved samples.
+ * @param plane - the channel's samples in the decoded sound.
+ * @param into - the interleaved samples.
+ * @param channel - the channel.
+ * @param from - first frame of the samples to fill.
+ * @param to - frame after the last.
+ */
+function copyChannel(plane: Float32Array, into: Interleaving, channel: number, from: number, to: number): void {
+  const { samples, channels, first } = into
+  for (let frame = from; frame < to; frame++) samples[frame * channels + channel] = plane[first + frame] ?? 0
+}
+
+/**
+ * Interleave the frames between two indices of a decoded sound, in steps.
+ * @param buffer - the decoded sound.
+ * @param first - first frame.
+ * @param last - frame after the last.
+ * @returns the steps, which end with the samples.
+ */
+function* interleaveSteps(buffer: AudioBuffer, first: number, last: number): MeasureSteps<AudioSamples> {
+  const channels = buffer.numberOfChannels
+  const frames = Math.max(0, last - first)
+  const into: Interleaving = { samples: new Float32Array(frames * channels), channels, first }
+  for (let channel = 0; channel < channels; channel++) {
+    const plane = buffer.getChannelData(channel)
+    for (let from = 0; from < frames; from += STEP_FRAMES) {
+      copyChannel(plane, into, channel, from, Math.min(frames, from + STEP_FRAMES))
+      yield
+    }
+  }
+  return { sampleRate: buffer.sampleRate, channels, frames, samples: into.samples }
+}
+
 /**
  * Interleave the frames between two indices of a decoded sound.
  * @param buffer - the decoded sound.
@@ -153,15 +199,29 @@ export async function decodeSound(
  * @param last - frame after the last.
  * @returns the samples.
  */
-export function interleave(buffer: AudioBuffer, first: number, last: number): AudioSamples {
-  const channels = buffer.numberOfChannels
-  const frames = Math.max(0, last - first)
-  const samples = new Float32Array(frames * channels)
-  for (let channel = 0; channel < channels; channel++) {
-    const plane = buffer.getChannelData(channel)
-    for (let frame = 0; frame < frames; frame++) samples[frame * channels + channel] = plane[first + frame] ?? 0
+function interleave(buffer: AudioBuffer, first: number, last: number): AudioSamples {
+  return finish(interleaveSteps(buffer, first, last))
+}
+
+/**
+ * Run measuring or drawing steps, letting the page handle its events whenever they have run for {@link SLICE_MS}.
+ * @param steps - the work.
+ * @param signal - ends the work before it starts and between slices.
+ * @returns the work's result.
+ * @throws the signal's reason when it ends the work, or what a step throws.
+ */
+async function inSlices<T>(steps: MeasureSteps<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted()
+  let since = performance.now()
+  for (;;) {
+    const step = steps.next()
+    if (step.done === true) return step.value
+    if (performance.now() - since >= SLICE_MS) {
+      await yieldToEvents()
+      signal.throwIfAborted()
+      since = performance.now()
+    }
   }
-  return { sampleRate: buffer.sampleRate, channels, frames, samples }
 }
 
 /** One measured window: its measurements and its samples, for the picture. */
@@ -204,13 +264,13 @@ function seamOf(buffer: AudioBuffer, loop: AudioLoop): AudioMeasurements['seam']
 }
 
 /**
- * Measure a stretch of a decoded sound, and the seam of a loop of the whole sound.
+ * Measure a stretch of a decoded sound, and the seam of a loop of the whole sound, in steps.
  * @param buffer - the decoded sound.
  * @param stretch - the stretch to measure and the loop.
- * @returns the measurements and the stretch's samples.
+ * @returns the steps, which end with the measurements and the stretch's samples.
  * @throws {SoundError} `AUDIO_ARGUMENT` when the stretch starts at or after the end of the sound.
  */
-export function measureSound(buffer: AudioBuffer, stretch: SoundStretch): MeasuredWindow {
+function* measureSteps(buffer: AudioBuffer, stretch: SoundStretch): MeasureSteps<MeasuredWindow> {
   const { start, end, maxSeconds, loop } = stretch
   const seconds = buffer.length / buffer.sampleRate
   if (start > 0 && start >= seconds) {
@@ -219,10 +279,10 @@ export function measureSound(buffer: AudioBuffer, stretch: SoundStretch): Measur
   const from = Math.max(0, start)
   const to = Math.min(end ?? seconds, seconds, from + maxSeconds)
   const first = Math.round(from * buffer.sampleRate)
-  const samples = interleave(buffer, first, Math.max(first, Math.round(to * buffer.sampleRate)))
-  const analysis = analyzeAudio(samples)
+  const samples = yield* interleaveSteps(buffer, first, Math.max(first, Math.round(to * buffer.sampleRate)))
+  const analysis = yield* analyzeAudioSteps(samples)
   const seam = loop === undefined ? undefined : seamOf(buffer, loop)
-  const stereo = stereoImage(samples)
+  const stereo = yield* stereoImageSteps(samples)
   const measurements: AudioMeasurements = {
     // An AIFF file may state a rate with a fraction, which the decoded samples keep; the figures name whole hertz.
     sampleRate: Math.round(buffer.sampleRate),
@@ -250,6 +310,20 @@ export function measureSound(buffer: AudioBuffer, stretch: SoundStretch): Measur
     },
   }
   return { measurements, samples }
+}
+
+/**
+ * Measure a stretch of a decoded sound, and the seam of a loop of the whole sound, a slice at a time with the page
+ * free to handle its events between slices.
+ * @param buffer - the decoded sound.
+ * @param stretch - the stretch to measure and the loop.
+ * @param signal - ends the measurement between slices.
+ * @returns the measurements and the stretch's samples.
+ * @throws {SoundError} `AUDIO_ARGUMENT` when the stretch starts at or after the end of the sound; the signal's reason
+ * when it ends the measurement.
+ */
+export function measureSound(buffer: AudioBuffer, stretch: SoundStretch, signal: AbortSignal): Promise<MeasuredWindow> {
+  return inSlices(measureSteps(buffer, stretch), signal)
 }
 
 /**
@@ -290,11 +364,15 @@ async function encodePng(image: RgbImage): Promise<Uint8Array> {
 }
 
 /**
- * Draw the waveform and spectrogram picture of measured samples.
+ * Draw the waveform and spectrogram picture of measured samples, a column at a time with the page free to handle its
+ * events between slices.
  * @param samples - the measured window.
+ * @param signal - ends the drawing between slices.
  * @returns the picture, as the agent receives it.
+ * @throws {SoundError} `AUDIO_MEASURE` when the browser cannot draw or encode it; the signal's reason when it ends the
+ * drawing.
  */
-export async function pictureOf(samples: AudioSamples): Promise<AudioPicture> {
-  const { image, layout } = drawAudioImage(samples)
+export async function pictureOf(samples: AudioSamples, signal: AbortSignal): Promise<AudioPicture> {
+  const { image, layout } = await inSlices(drawAudioImageSteps(samples), signal)
   return { data: base64(await encodePng(image)), mediaType: 'image/png', layout }
 }

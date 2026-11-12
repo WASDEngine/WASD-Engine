@@ -74,8 +74,7 @@ export async function answerMeasure(
   const buffer = await decodeSound(file.data, format, probe?.sampleRate, { maxSeconds: maxDecodedSeconds, signal })
   // Headers that did not tell the length, or only estimated it, leave the check to the decoded sound.
   if (buffer.duration > maxDecodedSeconds) throw tooLong(request.path, buffer.duration, maxDecodedSeconds)
-  const { measurements, samples } = measureSound(buffer, request)
+  const { measurements, samples } = await measureSound(buffer, request, signal)
   if (!request.picture) return { measurements }
-  signal.throwIfAborted()
-  return { measurements, picture: await pictureOf(samples) }
+  return { measurements, picture: await pictureOf(samples, signal) }
 }

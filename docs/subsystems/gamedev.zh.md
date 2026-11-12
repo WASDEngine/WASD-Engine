@@ -356,7 +356,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 声音列表 | `workspaceFiles.list`，从工作区根目录起逐层遍历，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules` | 标签页显示且上一次遍历早于 2 秒或其耗时的十倍时、用户按下刷新时，以及 agent 展示一个声音时 |
 | 时长 | 每个声音文件头的 `workspaceFiles.readBytes` 字节窗口，每次四个声音 | 每次遍历之后，针对新的或大小有变化的声音 |
 | 所选声音 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择声音时，以及其 `file` 资源每报告一个新版本时 |
-| agent 的测量 | `game-audio/measure` 请求及其答复：测量结果与一张 PNG 图像 | 每次 `audio_review` 调用，每个窗口每次处理一个 |
+| agent 的测量 | `game-audio/measure` 请求及其答复：测量结果与一张 PNG 图像 | 每次 `audio_review` 调用，Host 每次发出一个 |
 | agent 的展示 | `game-audio/reveal` 事件 | 带 `show` 的 `audio_review` 调用 |
 
 `AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`、游戏所播放的循环 `loop`（窗口从整个解码后的声音测量其衔接），以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。

@@ -39,7 +39,10 @@ export const inject = ['tools', 'workingDirectory']
 
 /** Deployment configuration of the audio tools. */
 export interface Config {
-  /** Time limit of one `audio_review` call, which waits for a window to read, decode, and measure the sound. */
+  /**
+   * Time a window has to read, decode, and measure one sound for `audio_review`; the wait behind other calls' sounds,
+   * which the windows measure one at a time, does not count.
+   */
   measureTimeoutMs: number
   /** Longest window one `audio_review` call measures, in seconds. */
   maxReviewSeconds: number
@@ -101,6 +104,27 @@ function settleBefore<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
       reject(asError(error))
     })
   })
+}
+
+/**
+ * Run work one call at a time, in the order the calls came.
+ * @returns runs one call's work once the work of every call before it settled, or rejects with the call's signal's
+ * reason, without running the work, when the signal aborts while it waits.
+ */
+function oneAtATime(): <T>(signal: AbortSignal, work: () => Promise<T>) => Promise<T> {
+  let last: Promise<unknown> = Promise.resolve()
+  return async <T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> => {
+    const ahead = last
+    const settled = Promise.withResolvers<undefined>()
+    last = ahead.then(() => settled.promise)
+    try {
+      // `ahead` never rejects, so the wait fails only when the call ends; the next call then waits for `ahead` alone.
+      await settleBefore(ahead, signal).catch(() => { signal.throwIfAborted() })
+      return await work()
+    } finally {
+      settled.resolve(undefined)
+    }
+  }
 }
 
 /** The method of the optional subagent service (`@deepseek-ai/dsh-subagent`'s `subagents`) that a reveal calls. */
@@ -174,11 +198,13 @@ export function apply(ctx: Context, config: Config): void {
     const gateway: unknown = ctx.get('typertGateway')
     return !isWindowConnections(gateway) || gateway.hasLiveClient()
   }
+  // Every window answers every review of a Session it may read, each one at a time, so the windows get one review at a
+  // time and each review's time limit covers its own measuring, not its wait behind the others.
+  const reviews = oneAtATime()
   // Probes by path, kept while the file's size and modification time stay the same; the plugin's scope owns them.
   const probes = new Map<string, { readonly key: string; readonly probe: AudioProbe | undefined }>()
   const host: AudioToolHost = {
     scanLimits: { maxFolders: config.maxFolders, maxSounds: config.maxSounds },
-    measureTimeoutMs: config.measureTimeoutMs,
     maxReviewSeconds: config.maxReviewSeconds,
     maxPreviewBytes: config.maxPreviewBytes,
     async project(exec) {
@@ -198,24 +224,28 @@ export function apply(ctx: Context, config: Config): void {
     windowConnected,
     async measure(agent, request, signal) {
       if (!windowConnected()) throw new HarnessError(NO_WINDOW_MESSAGE, AUDIO_ERROR.window)
-      // A window that went away may never answer; this bound ends the wait before the tool's time limit, so the agent
-      // hears that no window measured the sound.
-      using bounded = deadline(signal, config.measureTimeoutMs, AUDIO_ERROR.window)
-      let answer: unknown
-      try {
-        const asked = ctx.waterfall(scopeTarget(agent, agent), 'game-audio/measure', { ...request, agent, signal: bounded.signal }, noWindow)
-        answer = await settleBefore(asked, bounded.signal)
-      } catch (error) {
-        signal.throwIfAborted()
-        if (timeoutOf(bounded.signal) !== undefined) {
-          throw new HarnessError(windowTimeoutMessage(config.measureTimeoutMs), AUDIO_ERROR.window)
+      return await reviews(signal, async () => {
+        // The window may have closed while the review waited.
+        if (!windowConnected()) throw new HarnessError(NO_WINDOW_MESSAGE, AUDIO_ERROR.window)
+        // A window that went away may never answer; this bound ends the wait, so the agent hears that no window
+        // measured the sound.
+        using bounded = deadline(signal, config.measureTimeoutMs, AUDIO_ERROR.window)
+        let answer: unknown
+        try {
+          const asked = ctx.waterfall(scopeTarget(agent, agent), 'game-audio/measure', { ...request, agent, signal: bounded.signal }, noWindow)
+          answer = await settleBefore(asked, bounded.signal)
+        } catch (error) {
+          signal.throwIfAborted()
+          if (timeoutOf(bounded.signal) !== undefined) {
+            throw new HarnessError(windowTimeoutMessage(config.measureTimeoutMs), AUDIO_ERROR.window)
+          }
+          if (error instanceof HarnessError) throw error
+          // A window's failure keeps its message and code for the agent.
+          const code: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'code') : undefined
+          throw new HarnessError(error instanceof Error ? error.message : String(error), typeof code === 'string' ? code : AUDIO_ERROR.measure, { cause: error })
         }
-        if (error instanceof HarnessError) throw error
-        // A window's failure keeps its message and code for the agent.
-        const code: unknown = typeof error === 'object' && error !== null ? Reflect.get(error, 'code') : undefined
-        throw new HarnessError(error instanceof Error ? error.message : String(error), typeof code === 'string' ? code : AUDIO_ERROR.measure, { cause: error })
-      }
-      return parseMeasureResult(answer)
+        return parseMeasureResult(answer)
+      })
     },
     revealTarget(agent) {
       // The subagent service is optional, so this package relies only on the method it calls.

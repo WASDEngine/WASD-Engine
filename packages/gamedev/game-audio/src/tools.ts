@@ -37,9 +37,6 @@ export const DEFAULT_LIMIT = 50
 /** Most sounds one `audio_search` call lists. */
 export const MAX_LIMIT = 200
 
-/** Time a review's tool time limit leaves past the window's, so the window's more specific failure reaches the agent. */
-const WINDOW_GRACE_MS = 5000
-
 /** Most folders `audio_search` lists with their counts. */
 const LISTED_FOLDERS = 40
 
@@ -47,8 +44,6 @@ const LISTED_FOLDERS = 40
 export interface AudioToolHost {
   /** Caps of the project walk. */
   readonly scanLimits: SoundScanLimits
-  /** Time limit of one `audio_review` call in milliseconds. */
-  readonly measureTimeoutMs: number
   /** Longest window one `audio_review` call measures, in seconds. */
   readonly maxReviewSeconds: number
   /** Largest file a window reads to measure it, in bytes. */
@@ -72,13 +67,14 @@ export interface AudioToolHost {
    */
   windowConnected(): boolean
   /**
-   * Ask a WASD Engine window that may read the Agent's Session to decode and measure a sound.
+   * Ask a WASD Engine window that may read the Agent's Session to decode and measure a sound, once the requests of
+   * earlier calls settled: the windows measure one sound at a time, and the time limit counts from the request.
    * @param agent - the calling Agent; its Session's workspace holds the sound.
    * @param request - the sound and what to measure.
-   * @param signal - the call's cancellation.
+   * @param signal - the call's cancellation, which also ends its wait behind earlier calls.
    * @returns the window's validated answer.
-   * @throws {HarnessError} `AUDIO_NO_WINDOW` at once while no window is connected, and when no window answers; or the
-   * window's failure.
+   * @throws {HarnessError} `AUDIO_NO_WINDOW` at once while no window is connected, and when no window answers in time;
+   * or the window's failure.
    */
   measure(agent: Agent, request: AudioMeasureRequest, signal: AbortSignal): Promise<AudioMeasureResult>
   /**
@@ -410,7 +406,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
       schema: REVIEW_SCHEMA,
       render: (_args, value) => renderReview(value),
     },
-    timeoutMs: host.measureTimeoutMs + WINDOW_GRACE_MS,
+    // No tool time limit: a call may wait behind others' reviews, and the window's own time limit bounds each review.
     isConcurrencySafe: () => true,
     async execute(args, exec): Promise<ReviewValue> {
       const agent = exec.agent

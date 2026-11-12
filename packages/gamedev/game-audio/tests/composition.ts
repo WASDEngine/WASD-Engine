@@ -156,6 +156,7 @@ let calls = 0
  * @param name - tool name.
  * @param args - arguments.
  * @param agent - calling Agent; the composition's image-capable Agent by default.
+ * @param signal - the call's cancellation; none by default.
  * @returns the settled result.
  */
 export function callTool(
@@ -163,9 +164,10 @@ export function callTool(
   name: string,
   args: Record<string, unknown> = {},
   agent = composition.agent,
+  signal = new AbortController().signal,
 ): Promise<ToolExecutionResult> {
   calls += 1
-  return executeToolFixture(composition.ctx, { signal: new AbortController().signal, callId: ToolCallId(`audio-${String(calls)}`), name, arguments: args, agent })
+  return executeToolFixture(composition.ctx, { signal, callId: ToolCallId(`audio-${String(calls)}`), name, arguments: args, agent })
 }
 
 /**
