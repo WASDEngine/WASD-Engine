@@ -75,9 +75,9 @@ export interface AccountAllowance {
   /** When the allowance refreshes, as an ISO 8601 timestamp. */
   readonly refreshesAt: string
   /**
-   * Auto recharge credits left, which the account spends once the allowance is used up, as the whole percent of what
-   * one recharge adds, rounded down: 0 while less than 1% is left, above 100 while more than one recharge's credits
-   * are. Absent while none are left.
+   * Credits left, from referrals and auto recharge, which the account spends once the allowance is used up, as the
+   * whole percent of the plan's monthly allowance, rounded down: 0 while they come to less than 1% of it, above 100
+   * while they come to more than a month's allowance. Absent while none are left.
    */
   readonly creditsPercent?: number
   /** The account's auto recharge; absent while the account cannot turn it on. */
@@ -89,16 +89,24 @@ export interface AccountAllowance {
   readonly unlimited?: true
 }
 /**
- * WASD Engine: auto recharge, which charges the account's saved card a fixed amount for more credits each time its AI
- * usage and credits run out.
+ * WASD Engine: auto recharge, which charges the account's saved card for more credits each time its AI usage and
+ * credits run out. The service reports no amount: the page that saves the card states it.
  */
 export interface AccountAutoRecharge {
   /** Whether auto recharge is on. */
   readonly enabled: boolean
-  /** Whole US dollars each recharge charges. */
-  readonly chargeUsd: number
   /** Why the last recharge failed, which turned auto recharge off; absent otherwise. */
   readonly failure?: string
+}
+/**
+ * WASD Engine: the account's referral link, which earns the account free credits when people create accounts through
+ * it; the service reports no amount.
+ */
+export interface AccountReferral {
+  /** The link to share: the account service's front page with the account's referral code. */
+  readonly url: string
+  /** How many accounts that signed up through the link were let in. */
+  readonly joined: number
 }
 /** WASD Engine: the outcome of switching auto recharge on or off. */
 export interface AccountAutoRechargeChange {
@@ -113,7 +121,7 @@ export interface AccountAutoRechargeChange {
 /** Independent query outcomes allow profile and balance failures to render separately. */
 export interface AccountDetails {
   readonly profile: { readonly status: 'ready'; readonly value: AccountProfile } | { readonly status: 'failed' }
-  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[]; readonly allowance?: AccountAllowance } | { readonly status: 'failed' }
+  readonly balance: { readonly status: 'ready'; readonly value: readonly AccountWallet[]; readonly bonusWallets: readonly AccountWallet[]; readonly allowance?: AccountAllowance; readonly referral?: AccountReferral } | { readonly status: 'failed' }
 }
 
 /** Opaque string notification identity; stable across devices, sign-ins, and languages. */
