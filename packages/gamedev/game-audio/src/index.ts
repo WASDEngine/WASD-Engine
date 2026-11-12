@@ -108,6 +108,20 @@ interface SubagentTrees {
   rootOf(agent: Agent): Agent
 }
 
+/** The method of the Host's optional typert gateway (`@deepseek-ai/dsh-api-gateway`'s `typertGateway`) a review calls. */
+interface WindowConnections {
+  hasLiveClient(): boolean
+}
+
+/**
+ * Whether the optional typert gateway is present with the method a review calls.
+ * @param service - the service, or undefined.
+ * @returns true when it has `hasLiveClient`.
+ */
+function isWindowConnections(service: unknown): service is WindowConnections {
+  return typeof service === 'object' && service !== null && typeof Reflect.get(service, 'hasLiveClient') === 'function'
+}
+
 /**
  * Whether the optional subagent service is present with the method a reveal calls.
  * @param service - the service, or undefined.
@@ -154,6 +168,12 @@ function sessionPictures(ctx: Context): AudioToolSurface {
  */
 export function apply(ctx: Context, config: Config): void {
   const noWindow = (): Promise<AudioMeasureResult> => Promise.reject(new HarnessError(NO_WINDOW_MESSAGE, AUDIO_ERROR.window))
+  // The gateway keeps a request that no window answers for a window that connects later, so a review asked while no
+  // window is connected would wait out its time limit. Without the gateway the waterfall's fallback answers at once.
+  const windowConnected = (): boolean => {
+    const gateway: unknown = ctx.get('typertGateway')
+    return !isWindowConnections(gateway) || gateway.hasLiveClient()
+  }
   // Probes by path, kept while the file's size and modification time stay the same; the plugin's scope owns them.
   const probes = new Map<string, { readonly key: string; readonly probe: AudioProbe | undefined }>()
   const host: AudioToolHost = {
@@ -175,7 +195,9 @@ export function apply(ctx: Context, config: Config): void {
       probes.set(absolute, { key, probe })
       return probe
     },
+    windowConnected,
     async measure(agent, request, signal) {
+      if (!windowConnected()) throw new HarnessError(NO_WINDOW_MESSAGE, AUDIO_ERROR.window)
       // A window that went away may never answer; this bound ends the wait before the tool's time limit, so the agent
       // hears that no window measured the sound.
       using bounded = deadline(signal, config.measureTimeoutMs, AUDIO_ERROR.window)

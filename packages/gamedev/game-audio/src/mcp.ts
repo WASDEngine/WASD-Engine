@@ -19,6 +19,9 @@ export const MCP_INSTRUCTIONS = 'The audio tools list a game project\'s sound ef
   + 'its peak and loudness, clipping, silence at either end, spectrum, whether it loops without a click, its stereo channels, and how Godot imports it, with a picture of its waveform and spectrogram. '
   + 'The open WASD Engine window decodes the sound. Set show to open the sound in the user\'s Audio panel when you want them to listen to it.'
 
+/** What the provider's status says while no WASD Engine window is connected. */
+export const NO_WINDOW_STATUS = 'No WASD Engine window is open, so audio_review fails until the user opens one; audio_search works without it.'
+
 /** Description of the project folder for connected agents. */
 const PROJECT_PARAMETER = { type: 'string', description: 'Absolute path of the game project\'s folder, such as the folder that holds project.godot.' } as const
 
@@ -104,6 +107,7 @@ export function audioMcpProvider(host: AudioToolHost): GameMcpProvider {
     description: 'List a game project\'s sound effects, dialogue, and music and measure them as WASD Engine\'s Audio panel plays them, with a picture of each sound\'s waveform and spectrogram.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
-    status: () => Promise.resolve({ state: 'ready' }),
+    // The tools run either way; audio_review alone needs a window to decode the sound.
+    status: () => Promise.resolve(host.windowConnected() ? { state: 'ready' } : { state: 'ready', message: NO_WINDOW_STATUS }),
   }
 }

@@ -240,6 +240,20 @@ describe('audio_review below the project folder and for subagents', () => {
 })
 
 describe('the window round-trip', () => {
+  it('fails at once while no window is connected, and asks the window once one is', async () => {
+    const c = await composed()
+    c.openWindow({ measurements: JUMP })
+    let connected = false
+    c.ctx.provide('typertGateway', { hasLiveClient: () => connected } as never)
+    const started = performance.now()
+    expect(failure(await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' }))).toEqual({ message: NO_WINDOW_MESSAGE, code: 'AUDIO_NO_WINDOW' })
+    expect(performance.now() - started).toBeLessThan(10_000)
+    expect(c.requests).toEqual([])
+    connected = true
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' })).isError).toBeFalsy()
+    expect(c.requests).toHaveLength(1)
+  })
+
   it('ends a review whose window never answers at the time limit, also without a tool time limit', async () => {
     const c = await composed({ measureTimeoutMs: 50 })
     c.openWindow(() => new Promise<never>(() => {}))

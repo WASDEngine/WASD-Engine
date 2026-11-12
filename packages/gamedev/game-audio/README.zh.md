@@ -55,7 +55,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 审阅结果的文本会对游戏中播放效果不好的问题给出警告：达到满刻度而削波的采样、直流偏移、开头有 50 毫秒或更长静音因而播放延迟的音效或对白、在 Godot 循环处会有咔哒声的衔接、相位相反的声道，以及两个声道采样完全相同的立体声文件。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `audio` 下使用这些工具，每个工具都必须提供 `project`，即游戏项目文件夹的绝对路径；两个工具都标记为只读，在已连接 agent 于该项目中的会话里运行；即使会话属于登记在其上层的游戏项目，声音路径也从 `project` 文件夹算起；并在结果文本之后以 PNG 字节发送图像。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `audio` 下使用这些工具，每个工具都必须提供 `project`，即游戏项目文件夹的绝对路径；两个工具都标记为只读，在已连接 agent 于该项目中的会话里运行；即使会话属于登记在其上层的游戏项目，声音路径也从 `project` 文件夹算起；并在结果文本之后以 PNG 字节发送图像。`search_game_tools` 报告该提供方已就绪；没有打开的 WASD Engine 窗口时，还会说明在用户打开窗口之前 `audio_review` 都会失败。
 
 ### 音频模块
 
@@ -79,7 +79,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
+`audio_review` 在项目文件夹内解析路径，检查其格式以及文件是否存在，在 Host 上读取文件头和 Godot 导入设置，然后以会话的 Agent 为作用域发出带作用域的 waterfall 事件 `game-audio/measure`。请求从会话头部记录的文件夹命名声音，窗口也以该文件夹解析会话的路径，因此工作目录移到项目文件夹之下的 agent（例如执行 `working_directory` 之后，或在子文件夹中启动的 subagent）测量的正是它所指定的文件。远程事件允许列表把请求转发给可以读取该会话的窗口；第一个作答的浏览器插件通过 `workspaceFiles.readBytes` 读取文件、解码、测量所请求的片段并绘制图像；没有窗口作答时，插件的兜底以 `AUDIO_NO_WINDOW` 拒绝。当 Host 可选的 `typertGateway` 报告没有已连接的窗口时，审查会立即以 `AUDIO_NO_WINDOW` 失败，而不发出请求，因为网关会把请求留给之后连接的窗口。答复的每个字段在进入结果之前都会经过带边界的校验：有限数值、最多 64 个声道，以及最大 16 MiB 的 PNG。窗口自身的失败保留其消息和错误码，例如 `AUDIO_UNREADABLE`，并按 agent 指定的方式命名声音。`show` 为调用者 subagent 树的根（通过可选的 `subagents` 服务找到）发出 `game-audio/reveal`，没有存活的根时则为调用者自己的会话发出；音频标签页据此打开该声音。
 
 `audio_search` 在 Host 上遍历文件夹，并以每次八个的方式探测每个列出的声音；只要文件的大小和修改时间不变，插件就保留其探测结果，最多保留 `maxSounds` 个文件。
 
@@ -148,7 +148,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 这些限制界定了工具测量的内容和位置；它们是当前的包约束。
 
-- **由窗口解码声音** —— 没有打开的 WASD Engine 窗口时 `audio_review` 会失败，因为 MP3、Ogg 和 FLAC 由浏览器解码；`audio_search` 不需要窗口。
+- **由窗口解码声音** —— 没有打开的 WASD Engine 窗口时 `audio_review` 会立即失败，因为 MP3、Ogg 和 FLAC 由浏览器解码；`audio_search` 不需要窗口。
 - **时长** —— 窗口要解码整个声音才能测量其中一部分，因此比音频标签页解码上限更长的声音无法审阅。
 - **没有文字稿** —— 审阅会测量对白，但不会说明说了什么。
 - **固定的类型词** —— 类型取自英文路径单词和时长；文件夹以其他方式命名的项目只能按时长得到音效和音乐。

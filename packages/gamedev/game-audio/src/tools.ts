@@ -66,12 +66,18 @@ export interface AudioToolHost {
    */
   probe(absolute: string, file: Pick<SoundFile, 'bytes' | 'modified'>): Promise<AudioProbe | undefined>
   /**
+   * Whether a WASD Engine window is connected to decode sounds.
+   * @returns false when the Host knows that none is; true when one is, or when the Host cannot tell.
+   */
+  windowConnected(): boolean
+  /**
    * Ask a WASD Engine window that may read the Agent's Session to decode and measure a sound.
    * @param agent - the calling Agent; its Session's workspace holds the sound.
    * @param request - the sound and what to measure.
    * @param signal - the call's cancellation.
    * @returns the window's validated answer.
-   * @throws {HarnessError} `AUDIO_NO_WINDOW` when no window answers, or the window's failure.
+   * @throws {HarnessError} `AUDIO_NO_WINDOW` at once while no window is connected, and when no window answers; or the
+   * window's failure.
    */
   measure(agent: Agent, request: AudioMeasureRequest, signal: AbortSignal): Promise<AudioMeasureResult>
   /**
