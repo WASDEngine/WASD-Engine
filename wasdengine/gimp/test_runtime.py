@@ -135,7 +135,6 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual([entry for entry in tree if not entry.endswith("/")], sorted([
             "MacOS/gimp-console-3.2", "MacOS/python3",
             "lib/libglib-2.0.0.dylib", "lib/gimp/3.0/plug-ins/python-eval/python-eval.py",
-            "lib/gimp/3.0/extensions/wasd-engine-folder.txt",
             "etc/gimp/3.0/gimprc",
             "share/gimp/3.0/brushes/arrow#1.myb", "share/gimp/3.0/fonts/wasd-engine-folder.txt",
             "share/locale/wasd-engine-folder.txt", "Resources/wasd-engine-folder.txt",
@@ -144,8 +143,18 @@ class PrepareTest(unittest.TestCase):
             f"{library}/site-packages/sitecustomize.py",
         ]))
         self.assertIn(f"{library}/__pycache__/", tree)
+        self.assertNotIn("lib/gimp/3.0/extensions/", tree)
         self.assertNotIn(f"{library}/__pycache__/wasd-engine-folder.txt", tree)
         self.assertEqual(os.stat(os.path.join(self.contents, "MacOS", "gimp-console-3.2")).st_mode & 0o777, 0o755)
+
+    def test_remove_empty_folder_removes_only_an_empty_real_folder(self) -> None:
+        os.makedirs(os.path.join(self.contents, "empty"))
+        os.makedirs(os.path.join(self.contents, "target"))
+        self.file("full/a.txt")
+        self.link("alias", "target")
+        for name in ("empty", "full", "alias", "missing"):
+            runtime.remove_empty_folder(os.path.join(self.contents, name))
+        self.assertEqual(sorted(os.listdir(self.contents)), ["alias", "full", "target"])
 
     def test_prepare_refuses_a_link_it_does_not_know_and_a_bundle_without_gimp(self) -> None:
         self.bundle()
@@ -290,8 +299,7 @@ class WindowsTest(unittest.TestCase):
         self.assertEqual(runtime.prepare_windows(self.stage, self.installed), "3.2.8")
         self.assertEqual(self.files(), [
             "bin/gimp-console-3.2.exe", "bin/libc++.dll", "bin/libgimp-3.0-0.dll", "bin/python.exe",
-            "etc/gimp/3.0/gimprc", "lib/gimp/3.0/environ/default.env", f"lib/gimp/3.0/extensions/{runtime.KEEP_FILE}",
-            "lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
+            "etc/gimp/3.0/gimprc", "lib/gimp/3.0/environ/default.env", "lib/gimp/3.0/interpreters/gimp-script-fu-interpreter.interp",
             "lib/gimp/3.0/interpreters/pygimp.interp", f"lib/gimp/3.0/modules/{runtime.KEEP_FILE}", "lib/gimp/3.0/plug-ins/file-png/file-png.exe",
             "lib/python3.12/site-packages/gi/__init__.py", "share/gimp/3.0/brushes/arrow#1.myb", f"share/locale/{runtime.KEEP_FILE}",
         ])
@@ -301,6 +309,7 @@ class WindowsTest(unittest.TestCase):
         with open(os.path.join(self.stage, "lib", "gimp", "3.0", "interpreters", "pygimp.interp"), encoding="utf-8") as stream:
             self.assertEqual(stream.read(), "python=python.exe\n/usr/bin/python3=python.exe\n:Python:E::py::python3:\n")
         self.assertEqual(runtime.unresolved_imports(self.stage, ("bin",)), [])
+        self.assertFalse(os.path.exists(os.path.join(self.stage, *runtime.EXTENSIONS.split("/"))))
 
     def test_prepare_windows_refuses_another_install_and_files_that_name_the_install_folder(self) -> None:
         with self.assertRaisesRegex(runtime.RuntimeToolError, "holds 0 versioned gimp-console programs"):

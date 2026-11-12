@@ -11,9 +11,9 @@ plug-ins also read. While GIMP runs, the test asks lsappinfo whether macOS lists
 an application for the process, which would put GIMP in the Dock, or, on
 Windows, looks for a visible window of any process that GIMP started, which
 would also put GIMP on the taskbar. The test passes when GIMP exits with status
-0, says that the batch command succeeded, prints no catalog, CRITICAL, or
-WARNING line, saved the PNG, reports the runtime's data folder, and showed
-nothing. It needs only the standard library of Python 3.8 or newer, prints one
+0, says that the batch command succeeded, prints no catalog, extension
+folder, CRITICAL, or WARNING line, saved the PNG, reports the runtime's data
+folder, and showed nothing. It needs only the standard library of Python 3.8 or newer, prints one
 "smoke.py:" line, and exits with status 1 on failure, after printing GIMP's
 output.
 
@@ -31,7 +31,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 TIMEOUT_SECONDS = 300
 # Seconds the batch command waits after its work, so lsappinfo can look at a running GIMP.
@@ -42,8 +42,9 @@ DEFAULT_FOLDERS = {"dataDir": "Contents/share/gimp/3.0", "localeDir": "Contents/
 WINDOWS_FOLDERS = {"dataDir": "share/gimp/3.0", "localeDir": "share/locale", "sysconfDir": "etc/gimp/3.0"}
 # Seconds between two looks at the windows of GIMP's processes on Windows.
 POLL_SECONDS = 0.2
-# Lines that a healthy start prints none of: missing translation catalogs and GLib criticals or warnings.
-FORBIDDEN_OUTPUT = ("catalog directory does not exist", "-CRITICAL", "-WARNING")
+# Lines that a healthy start prints none of: missing translation catalogs, files in an extension folder that are no
+# extension, and GLib criticals or warnings.
+FORBIDDEN_OUTPUT = ("catalog directory does not exist", "Skipping unknown file", "-CRITICAL", "-WARNING")
 REDIRECTING_VARIABLES = ("PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "VIRTUAL_ENV", "ELECTRON_RUN_AS_NODE")
 
 
@@ -164,6 +165,38 @@ def application_entry(pid: int) -> str:
     return subprocess.run([lsappinfo, "find", f"pid={pid}"], capture_output=True, text=True, check=False).stdout
 
 
+def process_tree(root: int, parents: Dict[int, int], created: Callable[[int], Optional[int]]) -> Set[int]:
+    """Collect a process and every process that it started, directly or through others.
+
+    A process joins when its recorded parent is in the collection and was created no later than it: Windows reuses process
+    ids, so a process whose parent has exited can name an id that a later, unrelated process holds.
+
+    @param root: process id of the first process.
+    @param parents: the recorded parent id of every process.
+    @param created: a process's creation time, or None when it cannot be read; such a process never joins.
+    @returns: the ids of root and its descendants.
+    """
+    tree = {root}
+    times: Dict[int, Optional[int]] = {}
+
+    def time_of(process: int) -> Optional[int]:
+        if process not in times:
+            times[process] = created(process)
+        return times[process]
+
+    grown = True
+    while grown:
+        grown = False
+        for process, parent in parents.items():
+            if parent not in tree or process in tree or process == parent:
+                continue
+            child, origin = time_of(process), time_of(parent)
+            if child is not None and origin is not None and child >= origin:
+                tree.add(process)
+                grown = True
+    return tree
+
+
 def visible_windows(root: int) -> List[str]:
     """List the visible top-level windows of a Windows process and every process it started, which the taskbar shows.
 
@@ -188,6 +221,22 @@ def visible_windows(root: int) -> List[str]:
     kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
     kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+
+    def created(process: int) -> Optional[int]:
+        handle = kernel32.OpenProcess(0x1000, False, process)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return None
+        try:
+            times = [wintypes.FILETIME() for _ in range(4)]
+            if not kernel32.GetProcessTimes(handle, *(ctypes.byref(time) for time in times)):
+                return None
+            return times[0].dwHighDateTime << 32 | times[0].dwLowDateTime
+        finally:
+            kernel32.CloseHandle(handle)
+
     parents: Dict[int, int] = {}
     programs: Dict[int, str] = {}
     snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
@@ -203,14 +252,7 @@ def visible_windows(root: int) -> List[str]:
             more = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
     finally:
         kernel32.CloseHandle(snapshot)
-    tree = {root}
-    grown = True
-    while grown:
-        grown = False
-        for process, parent in parents.items():
-            if parent in tree and process not in tree and process != parent:
-                tree.add(process)
-                grown = True
+    tree = process_tree(root, parents, created)
 
     found: List[str] = []
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)

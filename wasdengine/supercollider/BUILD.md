@@ -110,7 +110,7 @@ The macOS arm64 runtime is about 18 MB unpacked and 5.3 MB as an archive; the Li
 python3 -B -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py'
 ```
 
-`build.sh` runs `smoke.py` on the staged runtime before it packs it. `smoke.py` starts sclang as the plugin's bridge does, with the class library configuration named relative to its working directory, and on Windows without a console window. It gives scsynth a copy of the plugin folder in a folder whose path, made of characters outside ASCII, is longer than 255 bytes but shorter than Windows' 260-character limit, and checks the tone's peak, so it fails with an scsynth that lacks the source change; on Windows it also fails when any process that sclang started shows a visible window. To smoke-test an installed runtime:
+`build.sh` runs `smoke.py` on the staged runtime before it packs it. `smoke.py` starts sclang as the plugin's bridge does, with the class library configuration named relative to its working directory, and on Windows without a console window. It gives scsynth a copy of the plugin folder in a folder whose path, made of characters outside ASCII, is longer than 255 bytes but shorter than Windows' 260-character limit, and checks the tone's peak, so it fails with an scsynth that lacks the source change; on Windows it also fails when any process that sclang started shows a visible window. A process counts as started by sclang when its recorded parent is sclang or another such process and was created no later than it, because Windows reuses the ids of exited processes. To smoke-test an installed runtime:
 
 ```sh
 python3 -I wasdengine/supercollider/smoke.py --runtime packages/gamedev/supercollider/runtime/darwin-arm64 --work /tmp/supercollider-smoke
