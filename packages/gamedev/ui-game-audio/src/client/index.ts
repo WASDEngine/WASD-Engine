@@ -51,8 +51,8 @@ export const REVEAL_WAIT_MS = 10_000
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
-    /** The sound to select. */
-    audio: { readonly path?: string }
+    /** The sound to select, by its workspace path; a tab opened without parameters selects none. */
+    audio: { readonly path: string }
   }
 }
 
