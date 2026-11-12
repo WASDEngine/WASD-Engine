@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-This package keeps the agent from stopping partway through a request. When the model ends a turn with a reply while the todo list it wrote in that turn still has pending or in-progress items, the plugin adds one reminder naming them, and the turn continues: the model finishes the items, marks finished ones completed, or says what it needs from the user. Each distinct unfinished list is reminded once, and a configured cap bounds one turn's reminders. Subagent Sessions, turns that a tool ended or the user interrupted, turns that the model's output limit cut short, and turns in plan mode are left alone. The `gamedev` preset caps it at five.
+This package keeps the agent from stopping partway through a request. When the model ends a turn with a reply while that turn's todo list still has pending or in-progress items, the plugin adds one reminder naming them, and the turn continues: the model finishes the items, marks finished ones completed, or says what it needs from the user. Each distinct unfinished list is reminded once, up to a configured cap per turn. Subagent Sessions, plan mode, and turns cut short by a tool, the user, or the output limit are left alone. The `gamedev` preset caps it at five.
 
 ## Table of Contents
 
