@@ -1,13 +1,15 @@
 /**
  * WASD Engine's automatic update downloads (fork-owned; `wasdengine/FORK.md` lists the fork changes). Upstream
  * downloads an update only after the user asks for it from the sidebar's update indicator. WASD Engine downloads every
- * update as soon as a check finds it and retries a failed download in the background a bounded number of times. The
- * indicator stays hidden while that work runs; it offers Restart to Update, which installs the downloaded update after
- * upstream's confirmation, and upstream's Retry update once the automatic attempts have stopped.
+ * update that fits on the disk as soon as a check finds it and retries a failed download in the background a bounded
+ * number of times. The indicator stays hidden while that work runs; it offers Restart to Update, which installs the
+ * downloaded update after upstream's confirmation, and upstream's Retry update once the automatic attempts have stopped
+ * or the update does not fit.
  */
 import type { DesktopUpdateState } from './ipc.ts'
 import type { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import type { DesktopUpdateScheduleConfig } from './update-schedule.ts'
+import type { WasdengineUpdateSpace } from './wasdengine-update-space.ts'
 
 /**
  * Automatic downloads of one version in one run of the application, the first included. Each attempt fetches the
@@ -18,11 +20,12 @@ export const WASDENGINE_UPDATE_DOWNLOAD_ATTEMPTS = 3
 
 /**
  * Starts the download of each update that the coordinator publishes as available, retries a failed download with a
- * fresh feed check, and selects what the update indicator presents. A retry runs after the check interval, doubled
- * after each further failure up to the maximum backoff, until one version has failed `attempts` times in this run. A
- * full disk stops the retries at once, because another attempt would fill the disk again; every other failure, an
- * unwritable or locked cache file included, retries. A successful download or a check that finds no update resets the
- * count and the backoff, and a failure of another version starts its own count.
+ * fresh feed check, and selects what the update indicator presents. An update whose download, with a reserve, does not
+ * fit on the updater cache's volume does not start; each later check that publishes it measures again. A retry runs
+ * after the check interval, doubled after each further failure up to the maximum backoff, until one version has failed
+ * `attempts` times in this run. A full disk stops the retries at once, because another attempt would fill the disk
+ * again; every other failure, an unwritable or locked cache file included, retries. A successful download or a check
+ * that finds no update resets the count and the backoff, and a failure of another version starts its own count.
  */
 export class WasdengineUpdateDownloads {
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -30,6 +33,8 @@ export class WasdengineUpdateDownloads {
   private failedVersion: string | undefined
   /** The failed download after which the automatic attempts stopped; the indicator offers its Retry update. */
   private stopped: DesktopUpdateState | undefined
+  /** The available version whose automatic download does not fit on the disk; the indicator offers its Retry update. */
+  private unfit: string | undefined
   private disposed = false
   private last: DesktopUpdateState | undefined
 
@@ -44,6 +49,8 @@ export class WasdengineUpdateDownloads {
    *   failed download; an explicit one passes that hold, and the `available` state it publishes restarts the download.
    *   Once the retries stop, nothing passes the hold until the user's Retry update, their own Check for Updates…, or
    *   the next launch.
+   * @param space - Measures whether an automatic download of a version fits on the updater cache's volume; this object
+   *   owns it and disposes it in {@link dispose}.
    * @param random - Uniform sample in [0, 1) for the jitter.
    * @param attempts - Automatic downloads of one version in this run, the first included; a positive integer.
    * @throws {RangeError} When `attempts` is not a positive integer.
@@ -53,6 +60,7 @@ export class WasdengineUpdateDownloads {
     private readonly config: DesktopUpdateScheduleConfig,
     private readonly allowed: () => boolean,
     private readonly recheck: () => Promise<DesktopUpdateState>,
+    private readonly space: Pick<WasdengineUpdateSpace, 'measure' | 'dispose'>,
     private readonly random: () => number = Math.random,
     private readonly attempts: number = WASDENGINE_UPDATE_DOWNLOAD_ATTEMPTS,
   ) {
@@ -62,18 +70,20 @@ export class WasdengineUpdateDownloads {
   }
 
   /**
-   * React to one published state. An available update starts downloading after the current task, once the operation
-   * that published it, such as a channel switch, has settled; a failed download schedules its retry unless its version
-   * has used its attempts or the disk is full. The same state object published again, as the shell does once its main
-   * window exists, changes nothing. The shell calls this before it presents the state, so the indicator sees whether
-   * the failure stopped the retries.
+   * React to one published state. An available update that fits on the disk starts downloading after the current
+   * task, once the operation that published it, such as a channel switch, has settled; a failed download schedules its
+   * retry unless its version has used its attempts or the disk is full. The same state object published again, as the
+   * shell does once its main window exists, changes nothing. The shell calls this before it presents the state, so the
+   * indicator sees whether the update fits and whether a failure stopped the retries.
    * @param state - State that the coordinator just published.
    */
   published(state: DesktopUpdateState): void {
     if (this.disposed || state === this.last) return
     this.last = state
     if (state.phase === 'available') {
-      this.arm(0, () => { this.download() })
+      this.unfit = state.version !== undefined && this.lacksSpace(state.version) ? state.version : undefined
+      if (this.unfit === undefined) this.arm(0, () => { this.download() })
+      else this.clear()
     } else if (state.phase === 'error' && state.failedOperation === 'download') {
       if (state.version !== this.failedVersion) {
         this.failures = 0
@@ -89,6 +99,7 @@ export class WasdengineUpdateDownloads {
     } else if (state.phase === 'ready' || state.phase === 'idle') {
       this.failures = 0
       this.failedVersion = undefined
+      this.unfit = undefined
       this.clear()
     } else if (state.phase === 'installing' || state.phase === 'error') {
       this.clear()
@@ -100,12 +111,16 @@ export class WasdengineUpdateDownloads {
    * @param state - Main-process updater state, after {@link published} has seen it.
    * @returns `ready` and `installing` unchanged; a failed installation as `ready`, because its dialog has explained the
    *   failure and the downloaded update stays installable; a configuration failure unchanged, because Settings sends the
-   *   user to the indicator for its details; a failed download unchanged once it stopped the automatic attempts, so the
-   *   indicator offers upstream's Retry update with the failure's reason; every other state as `idle`, which hides the
-   *   indicator, a failed download whose automatic retry is pending included.
+   *   user to the indicator for its details; a failed download unchanged once it stopped the automatic attempts, and an
+   *   available update that does not fit on the disk as a download that a full disk failed, so the indicator offers
+   *   upstream's Retry update with the failure's reason; every other state as `idle`, which hides the indicator, a
+   *   failed download whose automatic retry is pending included.
    */
   indicator(state: DesktopUpdateState): DesktopUpdateState {
     if (state.phase === 'ready' || state.phase === 'installing') return state
+    if (state.phase === 'available' && state.version !== undefined && state.version === this.unfit) {
+      return { phase: 'error', failedOperation: 'download', version: state.version, downloadFailure: 'space' }
+    }
     if (state.phase !== 'error') return { phase: 'idle' }
     if (state.failedOperation === 'configuration') return state
     if (state.failedOperation === 'download') return state === this.stopped ? state : { phase: 'idle' }
@@ -114,10 +129,16 @@ export class WasdengineUpdateDownloads {
       : { phase: 'idle' }
   }
 
-  /** Cancel a pending start or retry; a download already running stays with the coordinator. */
+  /** Cancel a pending start or retry and stop measuring space; a download already running stays with the coordinator. */
   dispose(): void {
     this.disposed = true
     this.clear()
+    this.space.dispose()
+  }
+
+  private lacksSpace(version: string): boolean {
+    const space = this.space.measure(version)
+    return space !== undefined && space.free < space.needed
   }
 
   private arm(delay: number, run: () => void): void {

@@ -167,6 +167,11 @@ vi.mock('../src/update-coordinator.ts', () => ({ DesktopUpdateCoordinator: class
   check = vi.fn(async () => this.state)
   dispose = vi.fn()
 } }))
+// WASD Engine: like the coordinator, the free-space check of automatic downloads listens to electron-updater's updater.
+vi.mock('../src/wasdengine-update-space.ts', () => ({ WasdengineUpdateSpace: class {
+  measure() { return undefined }
+  dispose() {}
+} }))
 vi.mock('../src/welcome-window.ts', () => ({
   openWelcomeWindow: async (locale: DesktopLocale, operations: WelcomeOperations) => {
     state.welcomeLocale = locale

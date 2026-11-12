@@ -69,6 +69,7 @@ import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
 import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
+import { WasdengineUpdateSpace } from './wasdengine-update-space.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
@@ -713,7 +714,7 @@ async function main(): Promise<void> {
   const updateChannel = initialChannel.kind === 'ready' ? initialChannel.channel : packagedChannel
   const updateScheduleConfig = resolveDesktopUpdateScheduleConfig(process.env)
   const automaticDownloads = new WasdengineUpdateDownloads(() => updates, updateScheduleConfig,
-    () => !quitting && !shuttingDown && !isMandatory(), () => updateSchedule.check(true))
+    () => !quitting && !shuttingDown && !isMandatory(), () => updateSchedule.check(true), new WasdengineUpdateSpace())
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
     async () => {
