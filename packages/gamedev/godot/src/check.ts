@@ -173,8 +173,9 @@ export async function selectScripts(
 }
 
 /**
- * Select the problems a script's author can act on: those located in `res://` files, else the first engine
- * error (for example a missing file), attributed to the script.
+ * Select the problems a script's author can act on: those located in `res://` files, each once, else the first
+ * engine error (for example a missing file), attributed to the script. A located problem can be logged twice when
+ * the add-on plugin script that the check loads first compiles the checked script before the checked script's own load.
  * @param path - checked script.
  * @param errors - errors logged while it loaded.
  * @returns the issues.
@@ -182,7 +183,8 @@ export async function selectScripts(
 function issuesOf(path: string, errors: CheckLine['errors']): CheckIssue[] {
   const located = errors.filter(error => error.file.startsWith('res://'))
   if (located.length > 0) {
-    return located.map(error => ({
+    const distinct = new Map(located.map(error => [JSON.stringify([error.level, error.file, error.line, error.message]), error]))
+    return [...distinct.values()].map(error => ({
       level: error.level, file: error.file, ...error.line > 0 ? { line: error.line } : {}, message: error.message,
     }))
   }

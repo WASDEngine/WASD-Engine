@@ -1,10 +1,12 @@
 /**
  * Game add-ons: a curated catalog of third-party Godot add-ons and Blender add-ons, each pinned to an archive and a
- * SHA-256 and verified with WASD Engine's Godot and Blender, offered to the agent through one `game_addons` tool.
- * Installing one unpacks it into the game project (Godot) or the shared Blender add-on store, records it in the
- * project's `.wasdengine/addons.json`, and makes its usage guide a skill of the Sessions in that project; projects
- * without it never list the guide. The `gameAddons` Remote serves the Session header's Add-ons dialog, and agents
- * connected through WASD Engine's MCP server get the same tool.
+ * SHA-256 and verified with WASD Engine's Godot and Blender, offered to the agent through one `game_addons` tool. The
+ * `game-addons` system prompt section lists every add-on with the stages at which it helps and when to use it, and the
+ * agent installs one when it decides that the game needs it, without asking the user. Installing one unpacks it into
+ * the game project (Godot) or the shared Blender add-on store, records it in the project's `.wasdengine/addons.json`,
+ * and makes its usage guide a skill of the Sessions in that project; projects without it never list the guide. The
+ * `gameAddons` Remote serves the Session header's Add-ons dialog, and agents connected through WASD Engine's MCP server
+ * get the same tool, with the catalog in the server's instructions.
  * @module @deepseek-ai/dsh-game-addons
  */
 import { isAbsolute, join, resolve } from 'node:path'
@@ -13,6 +15,7 @@ import z from '@deepseek-ai/schemastery'
 import { resolveGodotProject } from '@deepseek-ai/dsh-godot'
 import type {} from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-skill'
+import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
@@ -20,8 +23,9 @@ import type {} from '@deepseek-ai/dsh-working-directory'
 import { loadCatalog } from './catalog.ts'
 import { addonView, GameAddonManager, type ImportReport } from './manager.ts'
 import { gameAddonMcpProvider } from './mcp.ts'
+import { PROMPT_SECTION, sessionPrompt } from './prompt.ts'
 import { gameAddonSkillProvider } from './skills.ts'
-import { gameAddonToolDefinition, projectLabel, registerApproval, SESSION_WORDING, type GameAddonToolHost } from './tools.ts'
+import { gameAddonToolDefinition, SESSION_WORDING, type GameAddonToolHost } from './tools.ts'
 import type { GameAddonInstallResult, GameAddonRemoveResult, GameAddonsProjectView } from './types.ts'
 
 export type * from './types.ts'
@@ -52,9 +56,12 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-/** Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote. */
+/**
+ * Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides'
+ * skill provider, and the `gameAddons` Remote.
+ */
 export default class GameAddons extends TypertRemoteService {
-  static inject = ['tools', 'workingDirectory', 'skills', 'typert']
+  static inject = ['tools', 'systemPrompt', 'workingDirectory', 'skills', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'catalogDir' | 'dataRoot' | 'blenderStore'>, Config> = z.object({
     catalogDir: z.string().required(),
     dataRoot: z.string().required(),
@@ -76,7 +83,7 @@ export default class GameAddons extends TypertRemoteService {
     }
   }
 
-  /** Load the catalog, so an invalid one stops the plugin, then register the tool, the guides, and the approval. */
+  /** Load the catalog, so an invalid one stops the plugin, then register the tool, the prompt section, and the guides. */
   protected async [Service.init](): Promise<void> {
     const ctx = this.ctx
     const catalog = await loadCatalog(this.config.catalogDir)
@@ -99,13 +106,8 @@ export default class GameAddons extends TypertRemoteService {
       project: async (requested, exec) => (await resolveGodotProject(await this.base(requested, exec), requested, exec.signal)).dir,
     }
     ctx.tools.register(gameAddonToolDefinition(host, SESSION_WORDING))
-    registerApproval(ctx, this.manager, async (call, exec) => {
-      if (exec.agent === undefined) return undefined
-      const base = call.project !== undefined && isAbsolute(call.project)
-        ? call.project
-        : await ctx.workingDirectory.ensure(exec.agent, exec.signal)
-      return projectLabel((await resolveGodotProject(base, call.project, exec.signal)).dir)
-    })
+    // The Godot games section's slot. The text changes only with the shipped catalog, so it stays in the cached prefix.
+    ctx.systemPrompt.section({ name: PROMPT_SECTION, order: ctx.systemPrompt.getSectionOrder('TOOL_COMPUTER_USE'), text: sessionPrompt(catalog.entries), interpolate: false })
     ctx.skills.registerProvider((control) => {
       invalidate = control.invalidate
       return gameAddonSkillProvider(this.manager, async (cwd, signal) => {

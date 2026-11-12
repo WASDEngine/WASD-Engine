@@ -227,7 +227,7 @@ The game process's output becomes `process` entries when a start fails and for o
 
 Scripts resolve `class_name` classes, `uid://` paths, and imported assets through the project's import data, so `godot_check` first runs the import step of a run, `--headless --path <project> --import` within `importTimeoutMs`, when that data may be older than the project's files: when no import of the project that exited with code 0 began since the plugin loaded, when the class cache `global_script_class_cache.cfg` is missing from the project's data folder, or when a file that the import reads has a modification or status change time after the start of the last such import. The walk over the project skips what Godot's import skips, as the [package README](../../packages/gamedev/godot/README.md#tools) lists. An import that exits abnormally or runs out of time puts a warning at the start of the result instead of failing the check. `ctx.godot` runs the import steps, checks, and Web exports of one project one at a time and keeps the start times in memory.
 
-The check then loads the scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
+The check then loads the scripts without running the game, in one headless process: `--headless --path <project> --script <wasd_check.gd> -- <res:// paths>`, for at most 400 scripts, within `importTimeoutMs`. [`wasd_check.gd`](../../packages/gamedev/godot/runtime/wasd_check.gd) loads each script with the resource cache bypassed, after the script that `plugin.cfg` names when the script lies in a folder under `res://addons/`, as the editor loads an add-on's plugin first, and prints one line for it, and `ctx.godot` reads the lines that start with the marker:
 
 ```text
 WASD_CHECK {"path": "<res path>", "loaded": <boolean>, "errors": [{"level": "<level>", "message": "<text>", "file": "<res path>", "line": <line>, "function": "<name>"}]}
@@ -306,12 +306,12 @@ Each tool package names `icon.svg` in the `icon` field of its `package.json`, so
 <a id="game-add-ons"></a>
 ## Game add-ons
 
-The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, whatever its project holds, so the tool prefix stays cached; the guides reach the model only as skills of the projects that use them.
+The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, and one fixed system prompt section, `game-addons`, whatever its project holds, so the cached prefix stays the same; the guides reach the model only as skills of the projects that use them.
 
 | Step | What happens |
 |---|---|
-| Discovery | `game_addons` `search` ranks the catalog for the game's need; `guide` returns a guide before installation |
-| Approval | Under the Session's `ask` approval policy a `tools/pre-execute` listener asks the user before `install` and `remove`, naming the add-on, its license, its download, and the project |
+| Discovery | The `game-addons` section lists every catalog add-on with the stages at which it helps and when to use it; `game_addons` `search` ranks the catalog for the game's need and shows sizes, conflicts, and when to skip each one; `guide` returns a guide before installation |
+| Decision | The agent installs or removes an add-on when it decides that the game needs it, without asking the user under any approval policy; the section tells it when an add-on is worth installing and to tell the user what it added, with the license |
 | Godot installation | The archive downloads once into `<dataRoot>/archives/<sha256>.zip` and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
 | Blender installation | The extension unpacks once into `<blenderStore>/<module>/` and its asset pack, if any, into `<dataRoot>/blender-assets/<id>/`, the store's `catalog.json` lists every catalog Blender add-on with its setup script and asset folder, and the project's record lists it; a worker's `wasd_addons.enable("<id>")` enables it and runs its setup script, and does both again after factory settings load |
 | Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
@@ -436,7 +436,7 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**

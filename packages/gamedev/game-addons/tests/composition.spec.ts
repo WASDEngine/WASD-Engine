@@ -1,8 +1,9 @@
 /**
- * The game add-ons plugin loaded into a Host composition with the real tool runtime, executor, Agent registry, skill
- * registry, `skill` tool, and Remote registry: a Session in a game project sees an add-on's guide only once the add-on
- * is installed, loads it through the `skill` tool, and the plugin's tool, approval listener, and guides leave with its
- * fiber.
+ * The game add-ons plugin loaded into a Host composition with the real system prompt, tool runtime, executor, Agent
+ * registry, skill registry, `skill` tool, and Remote registry: the system prompt lists the catalog, the Session's agent
+ * installs and removes add-ons under the `ask` approval policy without a question to the user, a Session in a game
+ * project sees an add-on's guide only once the add-on is installed and loads it through the `skill` tool, and the
+ * plugin's tool, prompt section, guides, and game MCP provider leave with its fiber.
  */
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -19,8 +20,11 @@ import * as ToolSkill from '@deepseek-ai/dsh-tool-skill'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { loadCatalog } from '../src/catalog.ts'
 import GameAddons, { STORE_INDEX, TOOL_NAME } from '../src/index.ts'
+import { PROMPT_SECTION, sessionPrompt } from '../src/prompt.ts'
 import { editableCatalogEntries, fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -53,7 +57,8 @@ async function compose(catalogDir?: string) {
   await ctx.plugin(ToolSkill)
   const imports: string[] = []
   ctx.provide('godot', { importProject: (projectDir: string) => { imports.push(projectDir); return Promise.resolve({ issues: [] }) } } as never)
-  ctx.provide('approval', { config: { policy: 'never' }, overrideOf: () => undefined, request: () => Promise.resolve('rejected') } as never)
+  const asked: ApprovalRequest[] = []
+  ctx.provide('approval', { config: { policy: 'ask' }, overrideOf: () => undefined, request: (request: ApprovalRequest) => { asked.push(request); return Promise.resolve('rejected') } } as never)
   const providers: string[] = []
   ctx.provide('gameMcp', { provide: (provider: { id: string }) => { providers.push(provider.id); return () => { providers.splice(providers.indexOf(provider.id), 1) } } } as never)
   const config = { catalogDir: catalogDir ?? await writeCatalog(dir.root), dataRoot: join(dir.root, 'data'), blenderStore: join(dir.root, 'data', 'blender') }
@@ -69,7 +74,12 @@ async function compose(catalogDir?: string) {
     whenIdle: () => Promise.resolve(),
   }
   await ctx.agents.register(agent)
-  return { ctx, fiber, project, agent, downloads, imports, config, providers }
+  return { ctx, fiber, project, agent, downloads, imports, config, providers, asked }
+}
+
+/** The text of the plugin's system prompt section, or undefined when the prompt has none. */
+async function promptSection(context: Context): Promise<string | undefined> {
+  return (await context.systemPrompt.assemble()).sections.find(section => section.name === PROMPT_SECTION)?.text
 }
 
 let calls = 0
@@ -88,8 +98,13 @@ async function guideNames(context: Context, project: string, agent: Agent): Prom
 }
 
 describe('game add-ons plugin', () => {
-  it('lists an add-on\'s guide only after installation, loads it through the skill tool, and drops it on removal', async () => {
-    const { ctx: context, project, agent, downloads, imports, config } = await compose()
+  it('lists the whole catalog in the system prompt', async () => {
+    const { ctx: context, config } = await compose()
+    expect(await promptSection(context)).toBe(sessionPrompt((await loadCatalog(config.catalogDir)).entries))
+  })
+
+  it('lists an add-on\'s guide only after an installation that asked nobody, loads it through the skill tool, and drops it on removal', async () => {
+    const { ctx: context, project, agent, downloads, imports, config, asked } = await compose()
     expect(context.tools.get(TOOL_NAME)).toBeDefined()
     expect((JSON.parse(await readFile(join(config.blenderStore, STORE_INDEX), 'utf8')) as { addons: Record<string, unknown> }).addons['test-rig']).toEqual({ module: 'rigify', kind: 'core', version: '5.2.3' })
     expect(await guideNames(context, project, agent)).toEqual([])
@@ -104,6 +119,7 @@ describe('game add-ons plugin', () => {
     expect(guide).toContain('Use it like this.')
     expect((await call(context, agent, TOOL_NAME, { action: 'remove', id: 'test-camera' })).isError).toBe(false)
     expect(await guideNames(context, project, agent)).toEqual([])
+    expect(asked).toEqual([])
   })
 
   it('serves the Add-ons dialog: the catalog with presence, installation, and removal by Workspace folder', async () => {
@@ -120,13 +136,15 @@ describe('game add-ons plugin', () => {
     await expect(context.gameAddons.project('relative', signal)).rejects.toThrow(/absolute path/u)
   })
 
-  it('withdraws its tool, guides, and game MCP provider with its fiber', async () => {
+  it('withdraws its tool, prompt section, guides, and game MCP provider with its fiber', async () => {
     const { ctx: context, fiber, project, agent, providers } = await compose()
     expect(providers).toEqual(['game'])
     await call(context, agent, TOOL_NAME, { action: 'install', id: 'test-rig' })
     expect(await guideNames(context, project, agent)).toEqual(['test-rig'])
+    expect(await promptSection(context)).toBeDefined()
     await fiber.dispose()
     expect(context.tools.get(TOOL_NAME)).toBeUndefined()
+    expect(await promptSection(context)).toBeUndefined()
     expect(await guideNames(context, project, agent)).toEqual([])
     expect(providers).toEqual([])
   })

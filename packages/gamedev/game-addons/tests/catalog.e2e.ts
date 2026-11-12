@@ -1,9 +1,11 @@
 /**
  * Every add-on of the shipped catalog, end to end: the manager downloads its pinned archive, installs it into a fresh
- * Godot project and imports the project with the LibGodot runtime, or unpacks it into the Blender add-on store, then the
- * add-on's smoke test runs on Godot 4.7.2 (headless, or rendering without a window) or in a real Blender worker after
- * `wasd_addons.enable`, and a removal takes the add-on's plugin, autoloads, and settings out of `project.godot` again
- * (Godot rewrites the file when an editor plugin saves project settings during the import, so its bytes may differ).
+ * Godot project and imports the project with the LibGodot runtime, or unpacks it into the Blender add-on store; every
+ * script of a Godot add-on passes `godot_check`'s script loader in the order that a whole-project check uses and in the
+ * reverse one; then the add-on's smoke test runs on Godot 4.7.2 (headless, or rendering without a window) or in a real
+ * Blender worker after `wasd_addons.enable`, and a removal takes the add-on's plugin, autoloads, and settings out of
+ * `project.godot` again (Godot rewrites the file when an editor plugin saves project settings during the import, so its
+ * bytes may differ).
  * Godot add-ons need `WASD_LIBGODOT_DIR`, an installed runtime folder; Blender add-ons need uv's cached bpy 5.2.3; the
  * archives download from their pinned URLs, into `WASD_ADDON_ARCHIVES` when it is set so that later runs reuse them.
  */
@@ -16,7 +18,10 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, describe, expect, it } from 'vitest'
 import { JsonLineWorker } from '@deepseek-ai/dsh-app-mcp'
 import { ADDON_STORE_VARIABLE, childEnvironment, findUv, nodeBlenderSetupHost } from '@deepseek-ai/dsh-blender/src/environment.ts'
+import { CHECK_SCRIPT_LIMIT } from '@deepseek-ai/dsh-godot/src/check.ts'
 import { parseEngineOutput } from '@deepseek-ai/dsh-godot/src/output.ts'
+import { listProjectFiles, toResPath } from '@deepseek-ai/dsh-godot/src/project.ts'
+import { parseGodotJson } from '@deepseek-ai/dsh-godot/src/protocol.ts'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { loadCatalog } from '../src/catalog.ts'
 import { GameAddonManager, type ImportReport } from '../src/manager.ts'
@@ -31,6 +36,7 @@ const runner = runtimeDir === undefined ? undefined : join(runtimeDir, 'godot_ru
 const godotReady = process.platform === 'darwin' && runner !== undefined && library !== undefined && existsSync(runner) && existsSync(library)
 
 const WORKER = fileURLToPath(new URL('../../blender/py/wasd_blender_worker.py', import.meta.url))
+const CHECK_SCRIPT = fileURLToPath(new URL('../../godot/runtime/wasd_check.gd', import.meta.url))
 const uv = await findUv({ uvPath: '' }, nodeBlenderSetupHost(64 * 1024))
 const uvRun = (uvPath: string): string[] => [uvPath, 'run', '--offline', '--python', '3.13', '--no-project', '--with', 'bpy==5.2.3', 'python', '-I']
 const bpyReady = uv !== undefined && spawnSync(uv, [...uvRun(uv).slice(1), '-c', 'import bpy'], { stdio: 'ignore', timeout: 300_000 }).status === 0
@@ -91,6 +97,18 @@ async function importProject(projectDir: string): Promise<ImportReport> {
   return { issues }
 }
 
+/**
+ * Load scripts with `godot_check`'s script loader.
+ * @returns each script that logged an error, with its first error.
+ */
+async function checkErrors(projectDir: string, paths: readonly string[]): Promise<string[]> {
+  const ran = await godot(['--headless', '--path', projectDir, '--script', CHECK_SCRIPT, '--', ...paths], projectDir, 300_000)
+  const reports = ran.output.split('\n').filter(line => line.startsWith('WASD_CHECK '))
+    .map(line => parseGodotJson(line.slice('WASD_CHECK '.length)) as { path: string; errors: { level: string; message: string }[] })
+  expect(reports.map(report => report.path), `checked scripts\n${ran.output.slice(-2000)}`).toEqual(paths)
+  return reports.flatMap(report => report.errors.filter(error => error.level !== 'warning').slice(0, 1).map(error => `${report.path}: ${error.message}`))
+}
+
 function manager(): GameAddonManager {
   return new GameAddonManager({
     catalog,
@@ -131,6 +149,8 @@ describe('the shipped catalog on Godot 4.7.2', () => {
         autoloads: (entry.godot?.autoloads ?? []).map(() => true),
         settings: (entry.godot?.settings ?? []).map(() => true),
       })
+      const scripts = (await listProjectFiles(project, '.gd', CHECK_SCRIPT_LIMIT, signal)).files.map(file => toResPath(project, file))
+      for (const order of [scripts, [...scripts].reverse()]) expect(await checkErrors(project, order), `${entry.id} godot_check errors`).toEqual([])
       await cp(join(SMOKE_DIR, entry.id, 'files'), project, { recursive: true })
       const passes = spec.importTwice === true || entry.godot?.importTwice === true ? 2 : 1
       for (let pass = 0; pass < passes; pass += 1) await importProject(project)

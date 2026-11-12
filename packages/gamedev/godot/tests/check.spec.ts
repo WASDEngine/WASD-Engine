@@ -131,13 +131,19 @@ posix('checkProject', () => {
 })
 
 posix('checkScripts', () => {
-  it('keeps located problems and attributes an unlocated failure to its script', async () => {
+  it('keeps located problems once each and attributes an unlocated failure to its script', async () => {
     const result = await check({
       check: {
         errors: {
           'res://a.gd': [
             { level: 'script_error', message: 'Parse Error', file: 'res://a.gd', line: 0, function: 'GDScript::reload' },
             { level: 'error', message: 'Failed to load', file: 'modules/x.cpp', line: 4, function: 'load' },
+          ],
+          // The add-on plugin's load and the view script's own load both compile the view script.
+          'res://addons/v/view.gd': [
+            { level: 'script_error', message: 'Cannot find member', file: 'res://addons/v/view.gd', line: 6, function: 'GDScript::reload' },
+            { level: 'script_error', message: 'Cannot find member', file: 'res://addons/v/view.gd', line: 6, function: 'GDScript::reload' },
+            { level: 'script_error', message: 'Cannot find member', file: 'res://addons/v/view.gd', line: 7, function: 'GDScript::reload' },
           ],
           'res://missing.gd': [
             { level: 'warning', message: 'just a warning', file: 'core/a.cpp', line: 1, function: 'f' },
@@ -146,9 +152,16 @@ posix('checkScripts', () => {
           'res://warned.gd': [{ level: 'warning', message: 'only a warning', file: 'core/a.cpp', line: 1, function: 'f' }],
         },
       },
-    }, ['res://a.gd', 'res://missing.gd', 'res://warned.gd', 'res://clean.gd'])
+    }, ['res://a.gd', 'res://addons/v/view.gd', 'res://missing.gd', 'res://warned.gd', 'res://clean.gd'])
     expect(result).toEqual([
       { path: 'res://a.gd', issues: [{ level: 'script_error', file: 'res://a.gd', message: 'Parse Error' }] },
+      {
+        path: 'res://addons/v/view.gd',
+        issues: [
+          { level: 'script_error', file: 'res://addons/v/view.gd', line: 6, message: 'Cannot find member' },
+          { level: 'script_error', file: 'res://addons/v/view.gd', line: 7, message: 'Cannot find member' },
+        ],
+      },
       { path: 'res://missing.gd', issues: [{ level: 'error', file: 'res://missing.gd', message: 'File not found' }] },
       { path: 'res://warned.gd', issues: [] },
       { path: 'res://clean.gd', issues: [] },

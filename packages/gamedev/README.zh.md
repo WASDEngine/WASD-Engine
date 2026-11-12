@@ -32,7 +32,7 @@ kind: "package-group"
 | [`game-mcp/`](game-mcp/README.zh.md) | 供这台电脑上其他智能体使用的 WASD Engine MCP 服务器：通过带令牌的回环 Streamable HTTP 提供游戏工具及其搜索、已连接智能体的游戏所在的会话，以及设置提示词 |
 | [`gimp/`](gimp/README.zh.md) | 通过 MCP 提供的 GIMP 3 工具，由 `gimp-console` 支撑 |
 | [`godot/`](godot/README.zh.md) | 通过 LibGodot 运行 Godot 游戏：`godot_*` 工具、`godot` Remote、画面路由与 Game 标签页 |
-| [`game-addons/`](game-addons/README.zh.md) | 游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、在用户同意后搜索目录并把扩展安装到游戏项目中或从中移除的 `game_addons` 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框 |
+| [`game-addons/`](game-addons/README.zh.md) | 游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、列出该目录的系统提示词部分、搜索目录并在智能体判断游戏需要时把扩展安装到游戏项目中或从中移除的 `game_addons` 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框 |
 | [`polyhaven/`](polyhaven/README.zh.md) | Poly Haven 工具：搜索 Poly Haven 中 CC0 的 HDRI、纹理和 3D 模型资源库，显示素材的文件与预览图，并把一种格式和分辨率下载到游戏项目中，每个文件的摘要都经过校验 |
 | [`supercollider/`](supercollider/README.zh.md) | 通过 MCP 提供的 SuperCollider 工具：用 scsynth 离线渲染由 sclang 代码描述的声音与音乐，并为智能体提供电平、响度以及波形与声谱图图像；Desktop 应用自带不含 GUI 的 SuperCollider |
 | [`ui-game-assets/`](ui-game-assets/README.zh.md) | 右侧栏的「素材」标签页：在按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表中列出游戏项目的图片与模型，提供可缩放的图片视图、带动画的 three.js 模型视图，并通过导出的模型显示 Blender 文件 |

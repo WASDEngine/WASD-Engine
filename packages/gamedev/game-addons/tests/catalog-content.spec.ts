@@ -2,13 +2,14 @@
  * The add-on catalog that WASD Engine ships, beside the gamedev preset in the Web app bundle: every entry loads, was
  * verified with the shipped runtimes, has a smoke test for the end-to-end suite, an icon for the Add-ons dialog, and a
  * guide whose skill tool result fits under the gamedev preset's tool-result pruner threshold, so a long Session never
- * trims a guide.
+ * trims a guide. The system prompt section that lists the entries stays within its budget.
  */
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import { describe, expect, it } from 'vitest'
 import { GUIDE_FILE, loadCatalog, parseGuide } from '../src/catalog.ts'
+import { sessionPrompt } from '../src/prompt.ts'
 import { BUNDLED_SKILLS_DIR, CATALOG_DIR, ICON_NOTICES, SMOKE_DIR, SmokeSpec } from './shipped-catalog.ts'
 
 /** The catalog folder inside the installed macOS app, which the skill tool result names. */
@@ -17,6 +18,8 @@ const INSTALLED_CATALOG = '/Applications/WASD Engine.app/Contents/Resources/app.
 const PRUNER_THRESHOLD = 8192
 /** Longest skill description the Session catalog shows (`dsh-tool-skill`'s `catalogDescriptionMaxLength`). */
 const DESCRIPTION_LIMIT = 500
+/** Characters of the Game add-ons section that every request carries; a catalog past it needs a shorter listing. */
+const SECTION_BUDGET = 8000
 
 describe('the shipped add-on catalog', () => {
   it('loads, with each entry verified on Godot 4.7.2 or bpy 5.2.3 and a smoke test of its own', async () => {
@@ -68,5 +71,12 @@ describe('the shipped add-on catalog', () => {
       // The pruner trims only a result longer than the threshold, counted in code points.
       expect(Array.from(result).length, `${entry.id} skill tool result`).toBeLessThanOrEqual(PRUNER_THRESHOLD)
     }
+  })
+
+  it('lists every entry in the system prompt section within its budget', async () => {
+    const catalog = await loadCatalog(CATALOG_DIR)
+    const section = sessionPrompt(catalog.entries)
+    for (const entry of catalog.entries) expect(section, entry.id).toContain(`\n- ${entry.id} (`)
+    expect(section.length).toBeLessThanOrEqual(SECTION_BUDGET)
   })
 })

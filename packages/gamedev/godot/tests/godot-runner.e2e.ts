@@ -113,6 +113,21 @@ const CLASS_PROJECT = {
   'player.gd': ['class_name Player', 'extends Node2D', '', 'var tint: Color = Art.tint()', ''].join('\n'),
 }
 
+/**
+ * An add-on laid out like Dialogue Manager's editor: the plugin preloads a view scene that holds a scene whose script
+ * uses the plugin's class, so the view script loads only after the plugin; and a scene that names a missing script.
+ */
+const ADDON_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="AddonTest"\nconfig/features=PackedStringArray("4.7")\n\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/views/plugin.cfg")\n',
+  'addons/views/plugin.cfg': '[plugin]\n\nname="Views"\ndescription="Views"\nauthor="Test"\nversion="1.0"\nscript="views_plugin.gd"\n',
+  'addons/views/views_plugin.gd': ['@tool', 'class_name ViewsPlugin', 'extends EditorPlugin', '', 'const View: PackedScene = preload("./view.tscn")', ''].join('\n'),
+  'addons/views/code_edit.gd': ['@tool', 'class_name ViewsCodeEdit', 'extends Control', '', 'func host() -> void:', '\tprint(ViewsPlugin)', ''].join('\n'),
+  'addons/views/code_edit.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://addons/views/code_edit.gd" id="1_edit"]\n\n[node name="CodeEdit" type="Control"]\nscript = ExtResource("1_edit")\n',
+  'addons/views/view.tscn': '[gd_scene format=3]\n\n[ext_resource type="PackedScene" path="res://addons/views/code_edit.tscn" id="1_edit"]\n\n[node name="View" type="Control"]\n\n[node name="CodeEdit" parent="." instance=ExtResource("1_edit")]\n',
+  'addons/views/lost_view.gd': ['@tool', 'extends Control', '', 'const Lost: PackedScene = preload("./lost.tscn")', ''].join('\n'),
+  'addons/views/lost.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://addons/views/lost.gd" id="1_lost"]\n\n[node name="Lost" type="Control"]\nscript = ExtResource("1_lost")\n',
+}
+
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** The file format of a frame record's image. */
@@ -240,6 +255,30 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const broken = await callTool(c, 'godot_check', { project: 'named-classes' })
     expect(text(broken)).toBe(`Checked 3 scripts in ${dir}; 1 have problems:\n[script_error] res://enemy.gd:5: Parse Error: Identifier "Artt" not declared in the current scope.`)
     expect(await readFile(cache, 'utf8')).toContain('"class": &"Enemy"')
+  }, 240_000)
+
+  it('checks an add-on\'s scripts after its editor plugin, and still reports a missing script and a broken plugin', async () => {
+    // The folder sorts after game/, so the calls without project that follow still find the main test project first.
+    const dir = join(c.dir.root, 'work', 'with-addon')
+    for (const [name, content] of Object.entries(ADDON_PROJECT)) {
+      await mkdir(join(dir, name, '..'), { recursive: true })
+      await writeFile(join(dir, name), content)
+    }
+    // The view script alone: loaded first, it would meet its own scene through the plugin's preload.
+    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toBe(`Checked 1 scripts in ${dir}: no errors.`)
+    const whole = await callTool(c, 'godot_check', { project: 'with-addon' })
+    expect(text(whole)).toBe(`Checked 3 scripts in ${dir}; 1 have problems:\n[error] res://addons/views/lost_view.gd: Attempt to open script 'res://addons/views/lost.gd' resulted in error 'File not found'.`)
+    // An error in the view script shows once, though the plugin's load and the view script's own load both meet it.
+    await writeFile(join(dir, 'addons', 'views', 'code_edit.gd'), ADDON_PROJECT['addons/views/code_edit.gd'].replace('print(ViewsPlugin)', 'print(ViewsPlugin.missing_member)'))
+    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toBe(
+      `Checked 1 scripts in ${dir}; 1 have problems:\n[script_error] res://addons/views/code_edit.gd:6: Parse Error: Cannot find member "missing_member" in base "ViewsPlugin".`,
+    )
+    // A broken plugin shows with the view script whose check loaded it, and with its own check.
+    await writeFile(join(dir, 'addons', 'views', 'code_edit.gd'), ADDON_PROJECT['addons/views/code_edit.gd'])
+    await writeFile(join(dir, 'addons', 'views', 'views_plugin.gd'), [...ADDON_PROJECT['addons/views/views_plugin.gd'].split('\n').slice(0, -1), '', 'func _enter_tree() -> void:', '\tundefined_call()', ''].join('\n'))
+    const plugin = '[script_error] res://addons/views/views_plugin.gd:8: Parse Error: Function "undefined_call()" not found in base self.'
+    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toContain(plugin)
+    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/views_plugin.gd'] }))).toContain(plugin)
   }, 240_000)
 
   it('runs the game windowless and reports startup facts', async () => {
