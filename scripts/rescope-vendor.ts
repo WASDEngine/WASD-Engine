@@ -182,6 +182,7 @@ const GENERIC_SKIPS: readonly GenericSkip[] = [
   { file: 'docs/upgrade-guide/v0.2.2-rc.1/subagent-interrupt-default/guide.md', upstream: ['cordis'] },
   { file: 'docs/upgrade-guide/v0.2.2-rc.1/subagent-interrupt-default/guide.zh.md', upstream: ['cordis'] },
   { file: 'packages/bundle/web-app/tests/wasdengine-overlay.spec.ts', upstream: ['cordis'] },
+  { file: 'packages/bundle/web-app/tests/wasdengine-preset-rows.spec.ts', upstream: ['cordis'] },
   { file: 'packages/bundle/web-app/wasdengine/gamedev.cordis.patch.yml', upstream: ['cordis'] },
   { file: 'packages/client/ui-agent-preset/tests/wasdengine-presets.client.spec.ts', upstream: ['cordis'] },
 ]
