@@ -70,6 +70,8 @@ Web 记录 toolbar 提交和 typed tab 打开。导航状态机把每个受控 r
 
 Desktop 主进程批准 guest 租约，并执行挂载、导航和权限策略。preload 只暴露限定范围的 Browser 操作。共享声明通过标准 `/types` 出口配合 `import type` 引入；Host 与 Client 使用独立 tsconfig 编译。Desktop Browser tab 声明 `keepMounted`，Sidebar 因而在切 tab、切 Session、收起与浮动期间保留其 DOM。
 
+在 WASD Engine 中，`ElectronWebViewImpl` 还为其页面提供基于 `<webview>` 的 `automation` 接口：`evaluate` 在页面主环境中运行脚本，`capture` 返回按宽度缩放的可见部分 PNG，`sendInput` 以视口 CSS 像素发送可信的鼠标与键盘输入，`insertText` 在页面焦点处输入文本；guest 就绪之前，每个操作都以 `BrowserPageUnavailableError` 拒绝。Desktop 载体提供 `sidebarBrowserAutomation` 服务，其 `tab(sessionId, tabId)` 返回已挂载 tab 的导航状态、执行地址栏校验的 `load` 以及该接口；[WASD Engine 插件](../../gamedev/wasd-plugins/README.zh.md#the-agents-browser)通过它操作智能体的 Browser tab。iframe 载体没有该接口，因此 Web 不提供该服务。
+
 页面刷新快捷键调用工具栏使用的同一重载操作。其 Tooltip 和 ARIA 组合随有效绑定更新。Desktop 通过所属窗口路由已批准 guest 中的有效快捷键；获焦 webview 必须仍持有该 guest 的租约。Web 保留浏览器专用组合。
 
 </details>

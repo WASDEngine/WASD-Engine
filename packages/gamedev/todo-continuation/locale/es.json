@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Continuación de tareas",
+    "description": "Mantiene al agente trabajando mientras la lista de tareas que creó para una solicitud tenga elementos sin terminar, en lugar de detenerse a medias."
+  }
+}

@@ -347,6 +347,7 @@ flowchart TD
     pkg_godot["godot"]
     pkg_polyhaven["polyhaven"]
     pkg_supercollider["supercollider"]
+    pkg_todo_continuation["todo-continuation"]
     pkg_wasd_plugins["wasd-plugins"]
   end
   subgraph group_guard["packages/guard"]
@@ -1180,6 +1181,9 @@ flowchart TD
   pkg_tool_cordis --> pkg_tools
   pkg_game_addons --> pkg_godot
   pkg_game_addons --> pkg_tools
+  pkg_todo_continuation --> pkg_agent
+  pkg_todo_continuation --> pkg_session
+  pkg_todo_continuation --> pkg_tool_todo
   pkg_wasd_plugins --> pkg_godot
   pkg_wasd_plugins --> pkg_tools
   pkg_host_plugin_inventory --> pkg_agent_preset_registry
@@ -1910,6 +1914,7 @@ flowchart TD
 | [`webhook`](../packages/experimental/webhook) | `experimental` | [`agent`](../packages/core/agent), [`agent-default-model`](../packages/core/agent-default-model), [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`llm`](../packages/llm/llm), [`permission-presets`](../packages/interaction/permission-presets), [`session`](../packages/core/session), [`session-title`](../packages/session/session-title), [`workspace`](../packages/workspace/workspace) |
 | [`tool-cordis`](../packages/extensions/tool-cordis) | `extensions` | [`agent`](../packages/core/agent), [`app-boot`](../packages/boot/app-boot), [`cordis-host-runner`](../packages/extensions/cordis-host-runner), [`tools`](../packages/core/tools) |
 | [`game-addons`](../packages/gamedev/game-addons) | `gamedev` | [`godot`](../packages/gamedev/godot), [`tools`](../packages/core/tools) |
+| [`todo-continuation`](../packages/gamedev/todo-continuation) | `gamedev` | [`agent`](../packages/core/agent), [`session`](../packages/core/session), [`tool-todo`](../packages/todo/tool-todo) |
 | [`wasd-plugins`](../packages/gamedev/wasd-plugins) | `gamedev` | [`godot`](../packages/gamedev/godot), [`tools`](../packages/core/tools) |
 | [`host-plugin-inventory`](../packages/host/plugin-inventory) | `host` | [`agent-preset-registry`](../packages/preset/agent-preset-registry), [`brand`](../packages/util/brand), [`typert-protocol`](../packages/typert/protocol) |
 | [`mcp-client`](../packages/mcp/mcp-client) | `mcp` | [`attachment`](../packages/attachment/attachment), [`credentials`](../packages/credentials/credentials), [`llm`](../packages/llm/llm), [`mcp-resources`](../packages/mcp/mcp-resources), [`scope`](../packages/core/scope), [`subprocess`](../packages/subprocess/subprocess), [`system-prompt`](../packages/core/system-prompt), [`timeout`](../packages/util/timeout), [`tools`](../packages/core/tools) |

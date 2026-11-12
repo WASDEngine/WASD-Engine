@@ -227,6 +227,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   resources: 'client-side resource model (protocol providers, pins, live sources) — packages/client/resources/README.md owns the API',
   sidebarRight: 'client-side right-Sidebar navigation face — packages/client/ui-sidebar-right/README.md owns the API',
   sidebarRightTabs: 'client-side right-Sidebar tab-type registry — packages/client/ui-sidebar-right/README.md owns the API',
+  sidebarBrowserAutomation: 'client-side Desktop Browser tab automation (WASD Engine) — packages/client/ui-sidebar-browser/README.md owns the API',
   documentPreviews: 'client-side document renderer registry — docs/subsystems/sidebar-right.md owns the API',
 }
 
@@ -861,6 +862,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotWebExportRequest: 'gamedev.md',
   WasdProjectView: 'gamedev.md',
   WasdSiteLinks: 'gamedev.md',
+  WasdBrowserRequests: 'gamedev.md',
+  WasdBrowserOutcome: 'gamedev.md',
   GameAddonsProjectView: 'gamedev.md',
   GameAddonInstallResult: 'gamedev.md',
   GameAddonRemoveResult: 'gamedev.md',

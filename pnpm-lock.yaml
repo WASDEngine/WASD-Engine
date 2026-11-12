@@ -3319,6 +3319,9 @@ importers:
       '@deepseek-ai/dsh-time-context':
         specifier: workspace:*
         version: link:../../context/time-context
+      '@deepseek-ai/dsh-todo-continuation':
+        specifier: workspace:*
+        version: link:../../gamedev/todo-continuation
       '@deepseek-ai/dsh-tool-ask-user':
         specifier: workspace:*
         version: link:../../interaction/tool-ask-user
@@ -13215,6 +13218,43 @@ importers:
         specifier: 2.2.0
         version: 2.2.0
 
+  packages/gamedev/todo-continuation:
+    dependencies:
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-agent':
+        specifier: workspace:*
+        version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-loop':
+        specifier: workspace:*
+        version: link:../../core/agent-loop
+      '@deepseek-ai/dsh-agent-loop-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:*
+        version: link:../../session/session-projection
+      '@deepseek-ai/dsh-tool-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/tool-testkit
+      '@deepseek-ai/dsh-tool-todo':
+        specifier: workspace:*
+        version: link:../../todo/tool-todo
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+
   packages/gamedev/ui-game-assets:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -13487,6 +13527,9 @@ importers:
 
   packages/gamedev/wasd-plugins:
     dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
       '@deepseek-ai/dsh-typert-protocol':
         specifier: workspace:*
         version: link:../../typert/protocol
@@ -13503,6 +13546,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: workspace:*
         version: link:../../core/agent
+      '@deepseek-ai/dsh-agent-loop-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/agent-loop-testkit
       '@deepseek-ai/dsh-api-remote-access':
         specifier: workspace:*
         version: link:../../api/remote-access
@@ -13515,9 +13561,9 @@ importers:
       '@deepseek-ai/dsh-api-workspace-controller':
         specifier: workspace:*
         version: link:../../api/workspace-controller
-      '@deepseek-ai/dsh-brand':
+      '@deepseek-ai/dsh-attachment':
         specifier: workspace:*
-        version: link:../../util/brand
+        version: link:../../attachment/attachment
       '@deepseek-ai/dsh-client-locale':
         specifier: workspace:*
         version: link:../../client/locale
@@ -13530,6 +13576,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: workspace:*
         version: link:../../client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-dockkit':
+        specifier: workspace:*
+        version: link:../../client/ui-dockkit
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:*
         version: link:../../client/ui-primitives
@@ -13539,6 +13588,12 @@ importers:
       '@deepseek-ai/dsh-client-ui-sidebar':
         specifier: workspace:*
         version: link:../../client/ui-sidebar
+      '@deepseek-ai/dsh-client-ui-sidebar-browser':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar-browser
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar-right
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: workspace:*
         version: link:../../client/ui-slots
@@ -13554,9 +13609,24 @@ importers:
       '@deepseek-ai/dsh-godot':
         specifier: workspace:*
         version: link:../godot
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
       '@deepseek-ai/dsh-session':
         specifier: workspace:*
         version: link:../../core/session
+      '@deepseek-ai/dsh-session-projection':
+        specifier: workspace:*
+        version: link:../../session/session-projection
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@deepseek-ai/dsh-tool-executor-native':
+        specifier: workspace:*
+        version: link:../../core/tool-executor-native
+      '@deepseek-ai/dsh-tool-testkit':
+        specifier: workspace:*
+        version: link:../../test-support/tool-testkit
       '@deepseek-ai/dsh-tools':
         specifier: workspace:*
         version: link:../../core/tools

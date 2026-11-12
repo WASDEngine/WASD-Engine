@@ -291,7 +291,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 - **关闭标签页。** 插件为 `godot` 类型注册右侧 Sidebar 的关闭处理器：用户关闭标签页或新内容取代它时，处理器为该标签页的 Session 调用 `godot.stop`，不等待游戏结束。没有运行的 Session 收到的 `godot/not-running` 拒绝会被忽略；其他失败写入浏览器日志，游戏继续运行。折叠侧栏、切换 Session 和卸载插件不会运行关闭处理器。
 - **图层。** 画面调用 `dshDesktop.gameLayer.show` 显示运行的图层，传入 CAContext id、以点为单位的图层尺寸（窗口尺寸除以 `layer.scale`），以及在画面边框内居中、具有图层宽高比且边缘对齐设备像素的矩形，单位为布局视口的 CSS 像素。桌面应用回复 true 后，插件用遮罩从 `#root` 中挖去该矩形：一个覆盖根元素的遮罩层减去每个显示中图层的矩形对应的一层，使页面在那里透明，后面的图层得以显示，而其下的画面仍能接收指针（裁剪路径会使其收不到指针）；最后一个图层结束时以及插件卸载时，它恢复根元素原先的遮罩。焦点环与提示若在根元素内会随挖空区域一起被裁掉，因此由 portal 到 `document.body`、覆盖在画面上的一个框绘制。画面或窗口尺寸改变后，或指针拖动期间，画面在每个动画帧重新放置图层与挖空区域，直到其边框连续 10 帧保持不变；此外每 500 ms 检查一次边框。回复 false 或调用失败时，图层结束，并开始推流该运行的帧；下一次运行会再次尝试图层。[fork 的桌面说明](../../wasdengine/FORK.md#game-layer-in-the-desktop-app)介绍主进程一侧。
 - **帧。** 读取方在字节到达时解析记录，并把声明零字节、宽度或高度为零，或超过 32 MiB 的记录视为损坏。响应失败、被拒绝、损坏或结束后，它在 250 ms 后重新打开；尝试一直没有交付记录时，延迟逐次加倍，至多 4 s。同一时间只用 `createImageBitmap` 解码一张图像：以 PNG 文件签名开头时按 PNG 解码，否则按 JPEG 解码；较新的记录会替换正在等待的记录，最新解码的帧在下一个动画帧绘制到保持帧宽高比的 canvas 上。
-- **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件；鼠标位于 canvas 上方时，发送鼠标事件。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
+- **输入。** 游戏视图获得焦点时（点击该视图即可使其获得焦点），标签页发送键盘事件，以及 canvas 上方的鼠标事件；没有焦点时，指针移动只更新下一次移动的起点。它按 Godot Web 平台的方式把 `KeyboardEvent.code` 映射为 Godot 键名，Alt 与 Meta 以 keycode 发送，并把与 Meta 组合的按键留给浏览器。Shift+Escape 从不送达游戏：它使视图失去焦点。单字符按键以 `unicode` 携带其文本，除非按住了 Ctrl 而未按住 Alt，因此 AltGr 字符保留其文本。在 Windows Desktop 上，视图获得焦点期间持有快捷键服务的录制状态。指针位置从绘制的帧（不含其周围的黑边）映射到窗口像素；一次滚轮滚动成为一次滚轮按钮的按下与释放；游戏的鼠标模式为捕获（2）时，按下会锁定指针，移动则发送位移；模式仍为捕获时结束的锁定（例如按下 Esc）会使视图失去焦点。事件每个动画帧发送一次，每批至多 256 个，连续的移动会合并，同一时间只发送一批。失去焦点时，释放所有按住的键与按钮并结束指针锁定。一批输入因运行已结束以外的原因失败时，其中的按键与鼠标按钮释放会排在下一批的最前面，由新的事件或失去焦点时的释放发送。
 - **操作。** 「运行」以最近一次运行的项目调用 `godot.run`；首次运行之前不带项目，由 `ctx.godot` 查找最近的项目。运行进行中时代替「运行」显示的「重新运行」还会传入该运行 `launch` 中的场景与窗口尺寸。「停止」、「暂停」、「继续」、「前进一帧」与「安装 Godot」（运行时缺失或失败时显示）调用对应的方法。被拒绝的操作会显示其 Remote 错误码对应的文案，包括 `session/writer-held`。
 
 <a id="game-tools-tabs"></a>
@@ -372,6 +372,27 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
 **设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+
+<a id="agents-browser"></a>
+## 智能体的浏览器
+
+在桌面配置中，`wasd-plugins` 行设置 `browser`，[`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.zh.md#the-agents-browser) 为会话的智能体提供 `browser_*` 工具，这些工具在右侧边栏的浏览器标签页中操作。浏览器标签页位于窗口中，因此每次工具调用都会成为一条由 Host 排队、由窗口执行的命令：
+
+1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs` 和 `screenshotWidth`。
+2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表。
+3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
+4. 窗口通过 [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.zh.md) 的 `sidebarBrowserAutomation` 服务执行操作，该服务只由桌面载体提供：在页面主环境中运行脚本、发送可信输入、输入文本，以及截取 `<webview>` guest 的画面。
+5. 窗口用 `wasdPlugins.settleBrowserRequest` 和一个 `WasdBrowserOutcome` 结束该请求。
+
+| `command.kind` | 字段 | 窗口的操作 |
+|---|---|---|
+| `open` | `url` | 把地址加载到该会话的智能体标签页（必要时先在显示中的会话里打开一个），显示该标签页，并返回页面 |
+| `read` | 无 | 返回智能体标签页的页面，或用户打开的浏览器标签页的页面 |
+| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 点击该控件或该点，并返回页面 |
+| `type` | `element`、`text`、`submit` | 填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面 |
+| `screenshot` | `element` | 截取页面的可见部分；给出控件时先把它滚动到视野中 |
+
+`WasdBrowserOutcome` 要么是 `{ ok: true, page, note?, image? }`，要么是 `{ ok: false, message }`。`page` 包含页面的 `url`、`title` 和 `text`、文本是否被截断（`truncated`）、页面是否仍在加载（`loading`），以及可选的加载错误 `error`；`note` 说明窗口如何执行了该命令，例如通过脚本点击；`image` 包含截图的 base64 `data`、`mediaType`、`width` 和 `height`，以及它所显示视口的 CSS 像素尺寸 `viewportWidth` 与 `viewportHeight`，工具据此把截图像素换算回页面坐标。Host 拒绝文本超过 `maxChars` 或图像数据超过 32 MiB 的结果。[LiveShare](liveshare.zh.md) 把这三个端点都归为仅所有者可用，并且从不向共享观看者提供 `wasdPlugins` 命名空间。
 
 ## Remote 类型
 
@@ -620,7 +641,7 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
@@ -637,6 +658,30 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * @param signal - stream cancellation.
+ * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
+
+/**
+ * Take a Browser command for the calling window, which then carries it out and settles it.
+ * @param id - the command.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the command ended.
+ */
+@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+
+/**
+ * End a Browser command the window took, with the page afterwards or why it failed.
+ * @param id - the command.
+ * @param outcome - how it ended.
+ * @param signal - cancellation.
+ * @returns whether the outcome reached the waiting tool call; false when the call already ended.
+ */
+@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)

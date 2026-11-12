@@ -291,7 +291,7 @@ The package's `./client` export, a Web platform plugin, mounts the generated `go
 - **Closing the tab.** The plugin registers the right sidebar's close handler for the `godot` kind, which calls `godot.stop` for the tab's Session when the user closes the tab or new content replaces it, without waiting for the game to end. A `godot/not-running` refusal, which a Session without a run receives, is ignored; another failure goes to the browser log, and the game keeps running. Collapsing the sidebar, switching Sessions, and unloading the plugin run no close handler.
 - **Layer.** The view asks `dshDesktop.gameLayer.show` to show the run's layer, with the CAContext id, the layer's size in points (the window size divided by `layer.scale`), and the rectangle with the layer's aspect ratio centered in the view's box, its edges on device pixels, in CSS pixels of the layout viewport. Once the Desktop app answers true, the plugin masks that rectangle out of `#root`, with a mask layer that covers the root and subtracts one layer per shown layer's rectangle, so the page is transparent there and the layer behind it shows, while the view under it still receives the pointer, which a clip path would take away; it restores the root's earlier mask when the last layer ends and when the plugin unloads. A frame portaled to `document.body` over the view draws the focus ring and the hints, which inside the root would be cut away with the hole. The view places the layer and the hole again on every animation frame after a resize of the view or the window, or during a pointer drag, until its box stays still for 10 frames, and checks the box every 500 ms. An answer of false, or a failed call, ends the layer and starts the frame stream for that run; the next run tries a layer again. The [fork's Desktop notes](../../wasdengine/FORK.md#game-layer-in-the-desktop-app) describe the main process side.
 - **Frames.** The reader parses records as bytes arrive, treating a record that announces no bytes, a zero width or height, or more than 32 MiB as corrupt. It reopens a failed, refused, corrupt, or ended response after 250 ms, doubling the delay up to 4 s while attempts deliver no record. One image decodes at a time with `createImageBitmap`, as a PNG when it starts with the PNG file signature and as a JPEG otherwise, a newer record replaces one that waits, and the newest decoded frame is drawn on the next animation frame onto a canvas that keeps the frame's aspect ratio.
-- **Input.** The tab sends keyboard events while the game view has focus, which a click on the view gives it, and mouse events over the canvas. It maps `KeyboardEvent.code` to Godot key names as Godot's web platform does, sending Alt and Meta as keycodes, and leaves key presses combined with Meta to the browser. Shift+Escape never reaches the game: it removes focus from the view. A one-character key carries its text as `unicode` unless Ctrl is held without Alt, so AltGr characters keep their text. On Windows Desktop the view holds the shortcut service's recording state while it has focus. Pointer positions map from the drawn frame, excluding the bars around it, to window pixels; a wheel step becomes a wheel button press and release; and while the game's mouse mode is captured (2), a press locks the pointer and motion sends deltas. Events go out once per animation frame, in batches of at most 256 with consecutive motions merged, one batch at a time. Losing focus releases every held key and button. When a batch fails other than for an ended run, its key and mouse button releases go first in the next batch, which a new event or the release on focus loss sends.
+- **Input.** The tab sends keyboard events, and mouse events over the canvas, while the game view has focus, which a click on the view gives it; without focus, pointer motion only updates the position that the next motion starts from. It maps `KeyboardEvent.code` to Godot key names as Godot's web platform does, sending Alt and Meta as keycodes, and leaves key presses combined with Meta to the browser. Shift+Escape never reaches the game: it removes focus from the view. A one-character key carries its text as `unicode` unless Ctrl is held without Alt, so AltGr characters keep their text. On Windows Desktop the view holds the shortcut service's recording state while it has focus. Pointer positions map from the drawn frame, excluding the bars around it, to window pixels; a wheel step becomes a wheel button press and release; and while the game's mouse mode is captured (2), a press locks the pointer and motion sends deltas; a lock that ends while the mode is still captured, as on Esc, removes focus from the view. Events go out once per animation frame, in batches of at most 256 with consecutive motions merged, one batch at a time. Losing focus releases every held key and button and ends the pointer lock. When a batch fails other than for an ended run, its key and mouse button releases go first in the next batch, which a new event or the release on focus loss sends.
 - **Actions.** Play calls `godot.run` with the last run's project, or with no project before the first run so that `ctx.godot` searches for the nearest one; Restart, which replaces Play while a run is active, also passes the run's `launch` scene and window size. Stop, Pause, Resume, Step one frame, and Install Godot, which shows while the runtime is missing or failed, call the matching methods. A refused action shows the copy for its Remote error code, `session/writer-held` included.
 
 <a id="game-tools-tabs"></a>
@@ -372,6 +372,27 @@ A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, an
 **The window.** `godot_run` emits the Host event `game-mcp/reveal` with the Session id. The Remote events allowlist forwards it to every window that may read the Session, and the `ui-game-mcp` row's browser plugin, [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.md), opens the Session there; the Game tab then opens for the run, as for any run an agent starts.
 
 **Setup.** Every user signs in to WASD Engine first, and the server refuses tool calls while the account plugin reports no stored sign-in. The same browser plugin then offers Set up with another agent in two places: the Desktop introduction's last step, `settings.account.onboarding.agents`, and the Other agents section of Settings. Both show the AI agents' logos and follow the `gameMcp.watch` stream while they show: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
+
+<a id="agents-browser"></a>
+## Agent's Browser
+
+In the Desktop profile, the `wasd-plugins` row sets `browser`, and [`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.md#the-agents-browser) gives the Session's agent the `browser_*` tools, which act on a Browser tab of the right sidebar. The Browser tabs live in the window, so each tool call becomes a command that the Host queues and a window carries out:
+
+1. The tool call queues a `WasdBrowserRequest`: an `id`, the calling `sessionId`, the `command`, and the `limits` from the row's configuration: `maxChars`, `loadTimeoutMs`, and `screenshotWidth`.
+2. Every window whose Peer may call the endpoint follows `wasdPlugins.browserRequests`, which yields the whole list of untaken requests again after each change.
+3. A window takes a request with `wasdPlugins.claimBrowserRequest` while the request's Session is on screen in it, or while it holds that Session's agent tab; only the first claim succeeds. A request that no window takes within `browserClaimTimeoutMs` fails its tool call.
+4. The window acts through the `sidebarBrowserAutomation` service of [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.md), which only the Desktop carrier provides: scripts in the page's main world, trusted input, typed text, and captures of the `<webview>` guest.
+5. The window ends the request with `wasdPlugins.settleBrowserRequest` and a `WasdBrowserOutcome`.
+
+| `command.kind` | Fields | The window |
+|---|---|---|
+| `open` | `url` | Loads the address into the Session's agent tab, opening one first in the Session on screen, shows the tab, and returns the page |
+| `read` | None | Returns the page of the agent tab, or of the Browser tab the user has open |
+| `click` | `element`, or `x` and `y` in CSS pixels of the viewport | Clicks the control or the point, and returns the page |
+| `type` | `element`, `text`, `submit` | Fills the field or chooses the option, presses Enter when `submit` is true, and returns the page |
+| `screenshot` | `element` | Captures the visible part of the page, after scrolling the control into view when given |
+
+A `WasdBrowserOutcome` is either `{ ok: true, page, note?, image? }` or `{ ok: false, message }`. `page` holds the page's `url`, `title`, and `text`, whether the text was `truncated`, whether the page was still `loading`, and an optional load `error`; `note` says how the window carried out the command, such as a click by script; `image` holds a screenshot's base64 `data`, its `mediaType`, `width`, and `height`, and the `viewportWidth` and `viewportHeight` in CSS pixels that it shows, from which the tools map screenshot pixels back to the page. The Host refuses an outcome whose text exceeds `maxChars` or whose image data exceeds 32 MiB. [LiveShare](liveshare.md) classifies the three endpoints as owner-only and never offers the `wasdPlugins` namespace to share viewers.
 
 ## Remote types
 
@@ -620,7 +641,7 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export and release tools and of the `wasdPlugins` Remote.
+Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
@@ -637,6 +658,30 @@ Owner of the Web export and release tools and of the `wasdPlugins` Remote.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * Follow the agents' Browser commands that no window has taken yet, for a window that can drive Browser tabs.
+ * @param signal - stream cancellation.
+ * @returns the waiting commands, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
+
+/**
+ * Take a Browser command for the calling window, which then carries it out and settles it.
+ * @param id - the command.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the command ended.
+ */
+@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+
+/**
+ * End a Browser command the window took, with the page afterwards or why it failed.
+ * @param id - the command.
+ * @param outcome - how it ended.
+ * @param signal - cancellation.
+ * @returns whether the outcome reached the waiting tool call; false when the call already ended.
+ */
+@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean
 ```
 
 Source: [`packages/gamedev/wasd-plugins/src/index.ts`](../../packages/gamedev/wasd-plugins/src/index.ts)

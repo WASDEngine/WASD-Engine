@@ -45,8 +45,8 @@
   en: 475c15c349002e4d
   zh: d9c2759956ef57ed
 /game-tools/game-tab:
-  en: 37c2ae4b99db8874
-  zh: 447226ced323b267
+  en: b9fdad3e25e23647
+  zh: d4808f55da2a4e12
 /game-tools/game-tools-tabs:
   en: f03b34a167deab64
   zh: d91819c45eb46021
@@ -60,8 +60,11 @@
   en: 2a7c3cc1d91f78f6
   zh: 297cde5459838c6b
 /game-tools/mcp-server-for-other-agents:
-  en: da5c363f5ad87a70
-  zh: d31b74640684a42d
+  en: f9e3ce581ce35be6
+  zh: 01ea84c08ef7cc1c
+/game-tools/agent-s-browser:
+  en: 8c5498309cf9607a
+  zh: 67a9b66419e1fe5d
 /game-tools/remote-types:
   en: 392eec73efb81160
   zh: b9e684bb0121f09e

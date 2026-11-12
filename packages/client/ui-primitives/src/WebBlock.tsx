@@ -1,5 +1,6 @@
 import clsx from 'clsx'
 import { MarkdownText, type MarkdownLabels } from './markdown/MarkdownText.tsx'
+import { useMarkdownDelegate } from './markdown/MarkdownDelegate.tsx'
 import { LinkIconMedium } from './LinkIcon.tsx'
 import css from './WebBlock.module.css'
 
@@ -101,17 +102,25 @@ function linkLabel(url: string, title: string | undefined): string {
 
 /**
  * A single URL rendered as a safe external anchor, or as plain text when the
- * URL is not an http(s) link.
+ * URL is not an http(s) link. An unmodified primary click goes to the nearest
+ * Markdown owner's `openExternalLink`, as a message link does (WASD Engine), so
+ * the Chat opens it where its link preference says; outside an owner, and for
+ * modified clicks, the anchor keeps its native behavior.
  * @param props.url - the URL to render.
  * @param props.label - the visible label.
  * @param props.className - class for the anchor or the plain span.
  * @returns the anchor or span element.
  */
 function SafeLink({ url, label, className }: { url: string; label: string; className?: string | undefined }) {
+  const { openExternalLink } = useMarkdownDelegate()
   const href = safeHref(url)
   if (href === undefined) return <span className={className}>{label}</span>
   return (
-    <a className={className} href={href} target="_blank" rel="noopener noreferrer">
+    <a className={className} href={href} target="_blank" rel="noopener noreferrer" onClick={openExternalLink === undefined ? undefined : (event) => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      event.preventDefault()
+      openExternalLink(href)
+    }}>
       <LinkIconMedium kind="url" href={href} className={css.linkIcon} />
       {label}
     </a>

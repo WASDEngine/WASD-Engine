@@ -8,8 +8,8 @@
  * for one, the game tool rows, the row of their Game tools tabs, the row of the Assets tab, and the rows of the Audio
  * tab and its audio tools must mount from web-app dependencies, each tool package must resolve the title, description,
  * and logo the tabs show, and the `gamedev` preset must be the default
- * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona and bundled skill root,
- * whose skills the `skill` tool returns within the tool-result pruner threshold.
+ * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona, bundled skill root, and
+ * todo continuation, whose skills the `skill` tool returns within the tool-result pruner threshold.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -27,6 +27,7 @@ import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } fro
 import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
 import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
+import * as TodoContinuation from '@deepseek-ai/dsh-todo-continuation'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
 const repoRoot = resolve(webAppDir, '../../..')
@@ -323,10 +324,16 @@ describe('WASDEngine overlay', () => {
       .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
-  it('mounts WASD Engine Plugins from a web-app dependency without config, and the plugin manager keeps it on', () => {
+  it('mounts WASD Engine Plugins from a web-app dependency, with the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
     const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === WASD_PLUGINS.id)
     expect(entry?.name).toBe(WASD_PLUGINS.name)
-    expect(entry?.config).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['browser'])
+    const browser = expression(configOf(entry).browser, 'wasd-plugins.browser')
+    expect(expression(row(profile('web').fork.rows, 'ui-sidebar-browser')?.disabled, 'ui-sidebar-browser.disabled')).toBe(browser.replace('===', '!=='))
+    for (const name of ['desktop', 'web', undefined]) {
+      const profile = name === undefined ? undefined : { name }
+      expect(evaluate({ get: (service: string) => service === 'profileContext' ? profile : undefined }, browser), String(name)).toBe(name === 'desktop')
+    }
     expect(entry?.disabled).toBeUndefined()
     expect(manifest(webAppDir).dependencies?.[WASD_PLUGINS.name]).toBe('workspace:*')
     expect(PROTECTED_PLUGINS.has(WASD_PLUGINS.name)).toBe(true)
@@ -685,6 +692,16 @@ describe('gamedev preset', () => {
     expect(prefix).toBeTypeOf('string')
     expect(String(prefix)).toContain('{{model}}')
     expect(String(prefix).replaceAll(/\{\{(?:model|provider)\}\}/gu, '')).not.toMatch(/\{\{|\}\}/u)
+  })
+
+  it('mounts the todo continuation right after todo_write, with a cap its schema accepts, behind a persona that asks for the list', () => {
+    const ids = gameRows.map(entry => entry.id)
+    expect(ids.indexOf('todo-continuation')).toBe(ids.indexOf('tool-todo') + 1)
+    expect(gameRow('todo-continuation').name).toBe('@deepseek-ai/dsh-todo-continuation')
+    const own = configOf(gameRow('todo-continuation'))
+    expect(own).toEqual({ maxRemindersPerTurn: 5 })
+    expect(TodoContinuation.Config({ maxRemindersPerTurn: 5 })).toEqual(own)
+    expect(String(configOf(gameRow('persona')).prefix)).toContain('list every one with todo_write before you start')
   })
 
   it('resolves its bundled skill root to valid skills inside this package', () => {

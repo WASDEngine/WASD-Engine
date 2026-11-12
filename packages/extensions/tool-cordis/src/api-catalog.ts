@@ -4670,8 +4670,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'wasdPlugins',
-    summary: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
-    description: 'Owner of the Web export and release tools and of the `wasdPlugins` Remote.',
+    summary: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
+    description: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
     methods: [
       {
         signature: '@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>',
@@ -4684,6 +4684,24 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Pages of the WASD Engine site the app is signed in to, or would sign in to.',
         parameters: [{ name: 'signal', description: 'cancellation.' }],
         returns: 'the Explore page.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>',
+        description: 'Follow the agents\' Browser commands that no window has taken yet, for a window that can drive Browser tabs.',
+        parameters: [{ name: 'signal', description: 'stream cancellation.' }],
+        returns: 'the waiting commands, then again after each change, until cancelled or the plugin is disposed.',
+      },
+      {
+        signature: '@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean',
+        description: 'Take a Browser command for the calling window, which then carries it out and settles it.',
+        parameters: [{ name: 'id', description: 'the command.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the window took it; false when another window did or the command ended.',
+      },
+      {
+        signature: '@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean',
+        description: 'End a Browser command the window took, with the page afterwards or why it failed.',
+        parameters: [{ name: 'id', description: 'the command.' }, { name: 'outcome', description: 'how it ended.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the outcome reached the waiting tool call; false when the call already ended.',
       },
     ],
   },
@@ -5901,7 +5919,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountAutoRecharge',
-    declaration: 'export interface AccountAutoRecharge {\n    readonly enabled: boolean;\n    readonly chargeUsd: number;\n    readonly failure?: string;\n}',
+    declaration: 'export interface AccountAutoRecharge {\n    readonly enabled: boolean;\n    readonly failure?: string;\n}',
   },
   {
     name: 'AccountAutoRechargeChange',
@@ -5913,7 +5931,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AccountDetails',
-    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n        readonly allowance?: AccountAllowance;\n    } | {\n        readonly status: \'failed\';\n    };\n}',
+    declaration: 'export interface AccountDetails {\n    readonly profile: {\n        readonly status: \'ready\';\n        readonly value: AccountProfile;\n    } | {\n        readonly status: \'failed\';\n    };\n    readonly balance: {\n        readonly status: \'ready\';\n        readonly value: readonly AccountWallet[];\n        readonly bonusWallets: readonly AccountWallet[];\n        readonly allowance?: AccountAllowance;\n        readonly referral?: AccountReferral;\n    } | {\n        readonly status: \'failed\';\n    };\n}',
   },
   {
     name: 'AccountLinks',
@@ -5942,6 +5960,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AccountProfile',
     declaration: 'export interface AccountProfile {\n    readonly id: AccountUserId | null;\n    readonly name: string | null;\n    readonly contact: string | null;\n    readonly avatarUrl?: string | null;\n}',
+  },
+  {
+    name: 'AccountReferral',
+    declaration: 'export interface AccountReferral {\n    readonly url: string;\n    readonly joined: number;\n}',
   },
   {
     name: 'AccountUpdate',
@@ -10882,6 +10904,34 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ViewerPluginPolicy',
     declaration: 'export interface ViewerPluginPolicy {\n    readonly plugin: string;\n    readonly mode: \'all\' | \'none\' | \'selected\';\n    readonly endpoints?: readonly string[];\n}',
+  },
+  {
+    name: 'WasdBrowserCommand',
+    declaration: 'export type WasdBrowserCommand = {\n    readonly kind: \'open\';\n    readonly url: string;\n} | {\n    readonly kind: \'read\';\n} | {\n    readonly kind: \'click\';\n    readonly element?: number;\n    readonly x?: number;\n    readonly y?: number;\n} | {\n    readonly kind: \'type\';\n    readonly element: number;\n    readonly text: string;\n    readonly submit: boolean;\n} | {\n    readonly kind: \'screenshot\';\n    readonly element?: number;\n};',
+  },
+  {
+    name: 'WasdBrowserImage',
+    declaration: 'export interface WasdBrowserImage {\n    readonly data: string;\n    readonly mediaType: \'image/jpeg\' | \'image/png\';\n    readonly width: number;\n    readonly height: number;\n    readonly viewportWidth: number;\n    readonly viewportHeight: number;\n}',
+  },
+  {
+    name: 'WasdBrowserLimits',
+    declaration: 'export interface WasdBrowserLimits {\n    readonly maxChars: number;\n    readonly loadTimeoutMs: number;\n    readonly screenshotWidth: number;\n}',
+  },
+  {
+    name: 'WasdBrowserOutcome',
+    declaration: 'export type WasdBrowserOutcome = {\n    readonly ok: true;\n    readonly page: WasdBrowserPage;\n    readonly note?: string;\n    readonly image?: WasdBrowserImage;\n} | {\n    readonly ok: false;\n    readonly message: string;\n};',
+  },
+  {
+    name: 'WasdBrowserPage',
+    declaration: 'export interface WasdBrowserPage {\n    readonly url: string;\n    readonly title: string;\n    readonly text: string;\n    readonly truncated: boolean;\n    readonly loading: boolean;\n    readonly error?: string;\n}',
+  },
+  {
+    name: 'WasdBrowserRequest',
+    declaration: 'export interface WasdBrowserRequest {\n    readonly id: string;\n    readonly sessionId: SessionId;\n    readonly command: WasdBrowserCommand;\n    readonly limits: WasdBrowserLimits;\n}',
+  },
+  {
+    name: 'WasdBrowserRequests',
+    declaration: 'export interface WasdBrowserRequests {\n    readonly requests: readonly WasdBrowserRequest[];\n}',
   },
   {
     name: 'WasdProjectView',

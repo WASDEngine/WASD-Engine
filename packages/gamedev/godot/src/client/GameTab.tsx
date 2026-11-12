@@ -110,7 +110,7 @@ const EMPTY_SIZE: PixelSize = { width: 0, height: 0 }
  * Render the Game tab of one Session. The game's picture and input capture run
  * only while the follow stream delivers, the tab is visible, and the game is
  * running or paused, and while the picture shows, the tab holds a view of the
- * run; keys reach the game only while the game view has focus.
+ * run; keys and pointer input reach the game only while the game view has focus.
  * The picture is the run's layer behind the page when the run reports one and
  * the shell shows layers, and the frame stream otherwise or once the shell
  * refuses the run's layer.
