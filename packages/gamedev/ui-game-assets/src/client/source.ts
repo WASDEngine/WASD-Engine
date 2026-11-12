@@ -6,6 +6,7 @@
  */
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
+import type { AssetGrid } from '@deepseek-ai/dsh-game-assets/types'
 import { scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
 import type { KindFilter } from './tree.ts'
 
@@ -29,6 +30,19 @@ export interface ViewState {
   readonly open: readonly string[] | undefined
   /** Which kinds the picker shows. */
   readonly filter: KindFilter
+  /** What an agent asked the viewer to show with the selected asset; the viewer applies each request once. */
+  readonly asked?: ViewRequest & { readonly path: string }
+}
+
+/** What to show with an asset: a clip or 2D animation to play, and a sprite grid to read an image as. */
+export interface ViewAsk {
+  readonly animation?: string
+  readonly grid?: AssetGrid
+}
+
+/** One ask, numbered so that the viewer applies it once. */
+export interface ViewRequest extends ViewAsk {
+  readonly request: number
 }
 
 /**
@@ -41,6 +55,15 @@ export const FRESH_SCAN_MS = 2000
 /** How many times its own duration a scan stays fresh. */
 const FRESH_SCAN_FACTOR = 10
 
+/**
+ * How long a scan stays fresh.
+ * @param durationMs - how long the scan took, in milliseconds.
+ * @returns {@link FRESH_SCAN_MS}, or ten times the scan's duration when that is longer.
+ */
+export function freshScanMs(durationMs: number): number {
+  return Math.max(FRESH_SCAN_MS, durationMs * FRESH_SCAN_FACTOR)
+}
+
 /** One Session's Assets tab state. */
 export class AssetsSource {
   /** The project scan. */
@@ -49,6 +72,9 @@ export class AssetsSource {
   readonly view: SnapshotStore<ViewState> = createSnapshotStore<ViewState>({ selected: undefined, open: undefined, filter: 'all' })
   private running: AbortController | undefined
   private closed = false
+  private requests = 0
+  /** The latest navigation revision each tab acted on. */
+  private readonly navigations = new Map<string, number>()
   /** How long the latest settled scan took, in milliseconds. */
   private lastDuration = 0
 
@@ -90,17 +116,32 @@ export class AssetsSource {
   /** Scan unless the latest scan is fresh, by {@link FRESH_SCAN_MS} or ten times its duration, or one runs. */
   refresh(): void {
     const settledAt = this.scanState.getSnapshot().settledAt
-    const fresh = Math.max(FRESH_SCAN_MS, this.lastDuration * FRESH_SCAN_FACTOR)
-    if (settledAt !== undefined && this.now() - settledAt < fresh) return
+    if (settledAt !== undefined && this.now() - settledAt < freshScanMs(this.lastDuration)) return
     this.rescan()
+  }
+
+  /**
+   * The latest scan while it is fresh, by {@link FRESH_SCAN_MS} or ten times its duration.
+   * @returns the scan, or undefined when there is none or it is older.
+   */
+  freshScan(): AssetScan | undefined {
+    const { scan, settledAt } = this.scanState.getSnapshot()
+    return settledAt !== undefined && this.now() - settledAt < freshScanMs(this.lastDuration) ? scan : undefined
   }
 
   /**
    * Select an asset.
    * @param path - workspace path of the asset, or undefined to clear the selection.
+   * @param ask - the clip or 2D animation to play and the grid to read an image as, when the viewer shows it.
    */
-  select(path: string | undefined): void {
-    this.view.set({ ...this.view.getSnapshot(), selected: path })
+  select(path: string | undefined, ask?: ViewAsk): void {
+    const { asked: _previous, ...rest } = this.view.getSnapshot()
+    if (path === undefined || ask === undefined || (ask.animation === undefined && ask.grid === undefined)) {
+      this.view.set({ ...rest, selected: path })
+      return
+    }
+    this.requests += 1
+    this.view.set({ ...rest, selected: path, asked: { ...ask, path, request: this.requests } })
   }
 
   /**
@@ -117,6 +158,19 @@ export class AssetsSource {
    */
   setFilter(filter: KindFilter): void {
     this.view.set({ ...this.view.getSnapshot(), filter })
+  }
+
+  /**
+   * Note that a tab acts on one of its navigations.
+   * @param tabId - the tab.
+   * @param revision - the navigation's revision; 0 names no navigation.
+   * @returns true the first time the tab reaches this revision, so each navigation applies once however often its
+   * body mounts.
+   */
+  takeNavigation(tabId: string, revision: number): boolean {
+    if (revision === 0 || this.navigations.get(tabId) === revision) return false
+    this.navigations.set(tabId, revision)
+    return true
   }
 
   /** Stop the running scan; later requests do nothing. */

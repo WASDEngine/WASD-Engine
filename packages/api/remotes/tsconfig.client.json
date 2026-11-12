@@ -119,6 +119,12 @@
       "path": "../../web/web"
     },
     {
+      "path": "../../gamedev/game-assets"
+    },
+    {
+      "path": "../../gamedev/game-audio"
+    },
+    {
       "path": "../../gamedev/game-mcp"
     }
   ]

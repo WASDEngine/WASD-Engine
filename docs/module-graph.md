@@ -334,10 +334,13 @@ flowchart TD
     pkg_app_mcp["app-mcp"]
     pkg_blender["blender"]
     pkg_client_ui_game_assets["client-ui-game-assets"]
+    pkg_client_ui_game_audio["client-ui-game-audio"]
     pkg_client_ui_game_mcp["client-ui-game-mcp"]
     pkg_client_ui_game_tools["client-ui-game-tools"]
     pkg_elevenlabs["elevenlabs"]
     pkg_game_addons["game-addons"]
+    pkg_game_assets["game-assets"]
+    pkg_game_audio["game-audio"]
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
@@ -1037,6 +1040,7 @@ flowchart TD
   pkg_message_feedback --> pkg_session_persistence
   pkg_message_feedback --> pkg_typert_protocol
   pkg_elevenlabs --> pkg_tools
+  pkg_game_audio --> pkg_tools
   pkg_godot --> pkg_tools
   pkg_polyhaven --> pkg_tools
   pkg_repeat_tool_reminder --> pkg_agent
@@ -1482,6 +1486,8 @@ flowchart TD
   pkg_tool_ralph --> pkg_workflow
   pkg_app_mcp --> pkg_mcp_manager
   pkg_blender --> pkg_mcp_manager
+  pkg_game_assets --> pkg_subagent
+  pkg_game_assets --> pkg_tools
   pkg_gimp --> pkg_mcp_manager
   pkg_supercollider --> pkg_mcp_manager
   pkg_sdk_protocol --> pkg_commands
@@ -1710,6 +1716,7 @@ flowchart TD
 | [`client-ui-cordis`](../packages/extensions/ui-cordis) | `extensions` | — |
 | [`cordis-client-runner`](../packages/extensions/cordis-client-runner) | `extensions` | — |
 | [`client-ui-game-assets`](../packages/gamedev/ui-game-assets) | `gamedev` | — |
+| [`client-ui-game-audio`](../packages/gamedev/ui-game-audio) | `gamedev` | — |
 | [`client-ui-game-mcp`](../packages/gamedev/ui-game-mcp) | `gamedev` | — |
 | [`client-ui-game-tools`](../packages/gamedev/ui-game-tools) | `gamedev` | — |
 | [`game-mcp`](../packages/gamedev/game-mcp) | `gamedev` | — |
@@ -1878,6 +1885,7 @@ flowchart TD
 | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | `extensions` | [`agent`](../packages/core/agent), [`brand`](../packages/util/brand), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |
 | [`message-feedback`](../packages/feedback/message-feedback) | `feedback` | [`brand`](../packages/util/brand), [`command-feedback`](../packages/feedback/command-feedback), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`typert-protocol`](../packages/typert/protocol) |
 | [`elevenlabs`](../packages/gamedev/elevenlabs) | `gamedev` | [`tools`](../packages/core/tools) |
+| [`game-audio`](../packages/gamedev/game-audio) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`godot`](../packages/gamedev/godot) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`polyhaven`](../packages/gamedev/polyhaven) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`repeat-tool-reminder`](../packages/guard/repeat-tool-reminder) | `guard` | [`agent`](../packages/core/agent), [`tools`](../packages/core/tools) |
@@ -1953,6 +1961,7 @@ flowchart TD
 | [`tool-ralph`](../packages/experimental/tool-ralph) | `experimental` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`subagent`](../packages/subagent/subagent), [`system-prompt`](../packages/core/system-prompt), [`tools`](../packages/core/tools), [`workflow`](../packages/workflow/workflow) |
 | [`app-mcp`](../packages/gamedev/app-mcp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`blender`](../packages/gamedev/blender) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
+| [`game-assets`](../packages/gamedev/game-assets) | `gamedev` | [`subagent`](../packages/subagent/subagent), [`tools`](../packages/core/tools) |
 | [`gimp`](../packages/gamedev/gimp) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`supercollider`](../packages/gamedev/supercollider) | `gamedev` | [`mcp-manager`](../packages/mcp/mcp-manager) |
 | [`sdk-protocol`](../packages/sdk/protocol) | `sdk` | [`commands`](../packages/interaction/commands), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`user-questions`](../packages/interaction/user-questions) |

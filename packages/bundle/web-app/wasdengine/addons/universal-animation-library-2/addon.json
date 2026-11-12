@@ -1,0 +1,48 @@
+{
+  "id": "universal-animation-library-2",
+  "title": "Universal Animation Library 2",
+  "host": "godot",
+  "version": "2026.01.22",
+  "summary": "42 more humanoid clips by Quaternius: sword and shield combos, climbing, sliding, ninja jumps, throwing, farming, chopping, carrying, zombie moves; retargeted like universal-animation-library.",
+  "useWhen": "Humanoid 3D characters need actions beyond walking and running: melee combos, shield blocks, parkour (climb, slide, jumps), work animations such as farming and chopping, carrying, or zombie movement.",
+  "avoidWhen": "The game needs only idle, walk, run, and jump clips, which universal-animation-library has, or its characters are not humanoid.",
+  "tags": [
+    "animation",
+    "character",
+    "humanoid",
+    "retargeting",
+    "combat",
+    "parkour",
+    "zombie",
+    "3d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "Animations by Quaternius; the import settings, bone maps, and retarget.gd that WASD Engine adds are also CC0-1.0",
+  "homepage": "https://quaternius.com/packs/universalanimationlibrary2.html",
+  "archive": {
+    "url": "https://opengameart.org/sites/default/files/universal_animation_library_2standard.zip",
+    "sha256": "ec0e40d6d78fe9aaad59e322f40865a8675c22f0745e291622e54520391a9217",
+    "bytes": 10257419,
+    "root": "Universal Animation Library 2 [Standard]/Unreal-Godot",
+    "license": "Universal Animation Library 2 [Standard]/License.txt"
+  },
+  "godot": {
+    "addonDir": "universal_animation_library_2",
+    "overlay": [
+      "universal-animation-library-2/overlay",
+      "humanoid-retarget"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://opengameart.org/sites/default/files/ual2.png",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-11"
+  }
+}

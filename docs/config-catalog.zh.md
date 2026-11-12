@@ -1775,6 +1775,60 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-assets -->
+<a id="deepseek-aidsh-game-assets"></a>
+
+## `@deepseek-ai/dsh-game-assets`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/game-assets/src/index.ts:38`](../packages/gamedev/game-assets/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the asset tools. */
+export interface Config {
+  /** Time limit of one `asset_view` call, which waits for a window to read and draw the asset. */
+  renderTimeoutMs: number
+  /** Longest edge in pixels of the image `asset_view` returns when the call names no size. */
+  imageEdge: number
+  /** Largest longest edge in pixels a call may ask for. */
+  maxImageEdge: number
+  /** Largest area in pixels of one returned image. */
+  maxImagePixels: number
+  /** Largest file a window reads to draw it, in bytes. */
+  maxPreviewBytes: number
+  /** Folders one project walk lists, the project folder included. */
+  maxFolders: number
+  /** Assets one project walk collects. */
+  maxAssets: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-assets -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-audio -->
+<a id="deepseek-aidsh-game-audio"></a>
+
+## `@deepseek-ai/dsh-game-audio`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/game-audio/src/index.ts:40`](../packages/gamedev/game-audio/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the audio tools. */
+export interface Config {
+  /** Time limit of one `audio_review` call, which waits for a window to read, decode, and measure the sound. */
+  measureTimeoutMs: number
+  /** Longest window one `audio_review` call measures, in seconds. */
+  maxReviewSeconds: number
+  /** Largest file a window reads to measure it, in bytes. */
+  maxPreviewBytes: number
+  /** Folders one project walk lists, the project folder included. */
+  maxFolders: number
+  /** Sounds one project walk collects. */
+  maxSounds: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-audio -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
 <a id="deepseek-aidsh-game-mcp"></a>
 
@@ -5114,14 +5168,29 @@ export type ApprovalPolicy = 'ask' | 'never'
 
 ## `@deepseek-ai/dsh-wasd-plugins`
 
-- `inject`: `tools` · `godot` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:28`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `inject`: `tools` · `workingDirectory` · `typert`
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:35`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
+  /**
+   * Give the Session's agent the `browser_*` tools, which a window carries out on a Browser tab in the right Sidebar;
+   * the Desktop app's Browser tabs are the ones a window can drive.
+   */
+  browser: boolean
+  /** Cooperative timeout budget of each `browser_*` call, in milliseconds. */
+  browserTimeoutMs: number
+  /** How long a `browser_*` call waits for a window to take it, in milliseconds. */
+  browserClaimTimeoutMs: number
+  /** Longest wait for a page to finish loading after a `browser_*` call acted on it, in milliseconds. */
+  browserLoadTimeoutMs: number
+  /** Most characters of page text in a `browser_*` result. */
+  browserMaxChars: number
+  /** Largest width in pixels of a `browser_screenshot` image. */
+  browserScreenshotWidth: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->
@@ -5421,6 +5490,7 @@ export interface Config {
 | `@deepseek-ai/dsh-client-ui-file-actions` | — | [`packages/client/ui-file-actions/src/index.ts`](../packages/client/ui-file-actions/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-file-drag` | — | [`packages/client/ui-file-drag/src/index.ts`](../packages/client/ui-file-drag/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-assets` | — | [`packages/gamedev/ui-game-assets/src/index.ts`](../packages/gamedev/ui-game-assets/src/index.ts) |
+| `@deepseek-ai/dsh-client-ui-game-audio` | — | [`packages/gamedev/ui-game-audio/src/index.ts`](../packages/gamedev/ui-game-audio/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-mcp` | — | [`packages/gamedev/ui-game-mcp/src/index.ts`](../packages/gamedev/ui-game-mcp/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-game-tools` | — | [`packages/gamedev/ui-game-tools/src/index.ts`](../packages/gamedev/ui-game-tools/src/index.ts) |
 | `@deepseek-ai/dsh-client-ui-goal` | — | [`packages/client/ui-goal/src/index.ts`](../packages/client/ui-goal/src/index.ts) |

@@ -227,6 +227,7 @@ export const SERVICE_WALK_EXEMPTIONS: Record<string, string> = {
   resources: 'client-side resource model (protocol providers, pins, live sources) — packages/client/resources/README.md owns the API',
   sidebarRight: 'client-side right-Sidebar navigation face — packages/client/ui-sidebar-right/README.md owns the API',
   sidebarRightTabs: 'client-side right-Sidebar tab-type registry — packages/client/ui-sidebar-right/README.md owns the API',
+  sidebarBrowserAutomation: 'client-side Desktop Browser tab automation (WASD Engine) — packages/client/ui-sidebar-browser/README.md owns the API',
   documentPreviews: 'client-side document renderer registry — docs/subsystems/sidebar-right.md owns the API',
 }
 
@@ -276,8 +277,11 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'webserver': 'web-server.md',
   'workflow': 'workflow.md',
   'workspace': 'workspace.md',
-  // WASDEngine fork: the game MCP server's request to show a Session (wasdengine/FORK.md).
+  // WASDEngine fork: the game MCP server's request to show a Session, the asset tools' render request and asset reveal,
+  // and the audio tools' measure request and sound reveal (wasdengine/FORK.md).
   'game-mcp': 'gamedev.md',
+  'game-assets': 'gamedev.md',
+  'game-audio': 'gamedev.md',
   'working-directory': 'working-directory.md',
   'worktree': 'worktrees.md',
 }
@@ -852,14 +856,22 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotViewItem: 'gamedev.md',
   GameMcpView: 'gamedev.md',
   GameMcpProvider: 'gamedev.md',
+  AudioMeasureEvent: 'gamedev.md',
+  AudioMeasureResult: 'gamedev.md',
+  AudioReveal: 'gamedev.md',
   GodotWebExport: 'gamedev.md',
   GodotWebExportRequest: 'gamedev.md',
   WasdProjectView: 'gamedev.md',
   WasdSiteLinks: 'gamedev.md',
+  WasdBrowserRequests: 'gamedev.md',
+  WasdBrowserOutcome: 'gamedev.md',
   GameAddonsProjectView: 'gamedev.md',
   GameAddonInstallResult: 'gamedev.md',
   GameAddonRemoveResult: 'gamedev.md',
   GodotImportReport: 'gamedev.md',
+  AssetRenderEvent: 'gamedev.md',
+  AssetRenderResult: 'gamedev.md',
+  AssetReveal: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

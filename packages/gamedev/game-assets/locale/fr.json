@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Ressources pour l'agent",
+    "description": "Permet à l'agent et aux agents connectés de trouver les illustrations 2D et 3D du projet de jeu et de les voir comme l'onglet Ressources : vues, squelettes, images d'animation et détails."
+  }
+}

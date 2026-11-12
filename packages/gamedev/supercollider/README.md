@@ -177,13 +177,13 @@ The bridge leads the worker's process group and keeps sclang in it, and sclang r
 | [`src/sclang-bridge.ts`](src/sclang-bridge.ts) | The bridge: the plan, sclang's environment, request files and commands, and protocol replies |
 | [`src/sclang-output.ts`](src/sclang-output.ts) | Reply lines in sclang's post output, and the bounded output between them |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, the analysis report, and help text |
-| [`src/audio.ts`](src/audio.ts) | Float WAV reading, levels, BS.1770 loudness, silence, the FFT, and the average spectrum |
-| [`src/image.ts`](src/image.ts), [`src/png.ts`](src/png.ts) | The waveform and spectrogram image, its description, and PNG encoding |
+| [`src/audio.ts`](src/audio.ts) | Float WAV reading and the gain of a normalized render |
+| [`src/png.ts`](src/png.ts) | PNG encoding of the waveform and spectrogram image |
 | [`src/schelp.ts`](src/schelp.ts) | Plain text of SCDoc help files |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | Worker class: boot, dispatch, JSON replies, one handler per method, and the `Server:boot` override |
 
-The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, and the setup host.
+The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, and the setup host. The levels, BS.1770 loudness, silence, FFT, average spectrum, and the waveform and spectrogram image with its description come from the `./audio` module of [`dsh-game-audio`](../game-audio/README.md), which the Audio tab and the audio tools share.
 
 ### Verify against real SuperCollider
 

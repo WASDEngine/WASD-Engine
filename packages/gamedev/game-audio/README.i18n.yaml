@@ -1,0 +1,67 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/game-audio/README.md
+/:
+  en: 27fdc692c372e1d6
+  zh: 45b8c7ff7b9c76d6
+/deepseek-ai-dsh-game-audio:
+  en: bfb2c91d83c59d37
+  zh: d553c97bac76d092
+/deepseek-ai-dsh-game-audio/summary:
+  en: 39282d4e7f6d9fbd
+  zh: d2c9b6161b046478
+/deepseek-ai-dsh-game-audio/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-game-audio/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-game-audio/use-this-package/default-composition:
+  en: 540cadfaa4fe038c
+  zh: 1dadcc81900ead09
+/deepseek-ai-dsh-game-audio/use-this-package/the-tools:
+  en: aec24c6cd82cb872
+  zh: d485be7fd2f81bb9
+/deepseek-ai-dsh-game-audio/use-this-package/the-audio-module:
+  en: 4bf1f475da2e505e
+  zh: 623a1dcc29a40c76
+/deepseek-ai-dsh-game-audio/understand-the-implementation:
+  en: 4361753aec206b92
+  zh: c29adc49ff7e6b90
+/deepseek-ai-dsh-game-audio/further-exploration:
+  en: 9a5d664327576012
+  zh: 4e6b39bad1097a0f
+/deepseek-ai-dsh-game-audio/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-game-audio/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-game-audio/model-experience/tool-declarations/what-the-model-sees:
+  en: 5dedb1e1bc9fa283
+  zh: db6a5bb8d32535b7
+/deepseek-ai-dsh-game-audio/model-experience/tool-declarations/token-effect:
+  en: 85ec315d939b716e
+  zh: ae678f889c7c8b5f
+/deepseek-ai-dsh-game-audio/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 55ed30e870b00f33
+/deepseek-ai-dsh-game-audio/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-game-audio/model-experience/tool-results/what-the-model-sees:
+  en: 4a93b27fdce1ad34
+  zh: ce0c196162b7d458
+/deepseek-ai-dsh-game-audio/model-experience/tool-results/token-effect:
+  en: 1f0b2aa708337413
+  zh: 5f81acd58b59a2c2
+/deepseek-ai-dsh-game-audio/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: b5fe15ad16d14009
+/deepseek-ai-dsh-game-audio/known-limitations-and-deferred-work:
+  en: fa8e79c8b7d3b75a
+  zh: 08925ead05b1c126
+/deepseek-ai-dsh-game-audio/known-limitations-and-deferred-work/dev-note:
+  en: e8b6952ff255489d
+  zh: 661cd66f8b40c9ea

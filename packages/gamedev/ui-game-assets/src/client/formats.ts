@@ -2,36 +2,16 @@
  * The art formats the Assets tab lists, by lowercase file extension, and how the viewer decodes each one. Images the
  * browser decodes show as they are; TGA, Radiance HDR, and OpenEXR images and every model are decoded by three.js in
  * the viewer's lazily loaded chunk. A Blender file is listed but has no decoder: the viewer shows a model exported
- * from it instead.
+ * from it instead. The agent's asset tools read the same table from `@deepseek-ai/dsh-game-assets/formats`; the
+ * browser half keeps this copy because a plugin's browser bundle imports no other plugin's values, and a spec keeps
+ * the two equal.
  */
+import type { AssetFormat } from '@deepseek-ai/dsh-game-assets/formats'
 
-/** Whether an asset is a picture or a model. */
-export type AssetKind = 'image' | 'model'
+export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from '@deepseek-ai/dsh-game-assets/formats'
 
-/** How an image is decoded: by the browser from its media type, or by a three.js loader. */
-export type ImageDecoder = 'browser' | 'tga' | 'hdr' | 'exr'
-
-/** The three.js loader that reads a model. */
-export type ModelDecoder = 'gltf' | 'obj' | 'fbx' | 'dae' | 'stl' | 'ply' | 'vox'
-
-/** One listed format. */
-export type AssetFormat =
-  | {
-    readonly kind: 'image'
-    /** Format name shown beside the asset, the same in every language. */
-    readonly label: string
-    readonly decoder: ImageDecoder
-    /** Media type of the Blob the browser decodes; present for `browser` images. */
-    readonly mediaType?: string
-  }
-  | {
-    readonly kind: 'model'
-    readonly label: string
-    /** The loader, or `blend` for a Blender file, which the viewer shows through a model exported from it. */
-    readonly decoder: ModelDecoder | 'blend'
-  }
-
-const FORMATS: Readonly<Record<string, AssetFormat>> = {
+/** Every listed format by lowercase extension, images first, in the order the tools name them. */
+export const ASSET_FORMATS: Readonly<Record<string, AssetFormat>> = {
   png: { kind: 'image', label: 'PNG', decoder: 'browser', mediaType: 'image/png' },
   jpg: { kind: 'image', label: 'JPEG', decoder: 'browser', mediaType: 'image/jpeg' },
   jpeg: { kind: 'image', label: 'JPEG', decoder: 'browser', mediaType: 'image/jpeg' },
@@ -73,5 +53,14 @@ export function extensionOf(name: string): string {
  */
 export function formatOf(name: string): AssetFormat | undefined {
   const extension = extensionOf(name)
-  return Object.hasOwn(FORMATS, extension) ? FORMATS[extension] : undefined
+  return Object.hasOwn(ASSET_FORMATS, extension) ? ASSET_FORMATS[extension] : undefined
+}
+
+/**
+ * Whether a format is a Blender file, which the viewer shows through a model exported from it.
+ * @param format - a listed format.
+ * @returns true for `.blend`.
+ */
+export function isBlendFormat(format: AssetFormat): boolean {
+  return format.kind === 'model' && format.decoder === 'blend'
 }

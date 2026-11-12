@@ -63,6 +63,8 @@ function containing(workspaces: readonly Workspace[], path: string): Workspace |
 export class ExternalSessions {
   private bindings: Promise<Map<string, Binding>> | undefined
   private readonly queues = new Map<string, Promise<unknown>>()
+  /** The latest write of the bindings file. */
+  private saving: Promise<void> = Promise.resolve()
 
   /**
    * @param ctx - Host context with the optional Workspace registry and Session controller.
@@ -161,8 +163,18 @@ export class ExternalSessions {
     return this.bindings
   }
 
-  private async save(bindings: Map<string, Binding>): Promise<void> {
-    const sessions = [...bindings.values()].map(({ workspaceId, client, sessionId }) => ({ workspaceId, client, sessionId }))
-    await writeFileAtomic(this.file, `${JSON.stringify({ version: FILE_VERSION, sessions }, null, 2)}\n`, { mode: 0o600 })
+  /**
+   * Write the bindings after the earlier writes settle, as they are when the write starts, so a write that two
+   * agents' first calls start together cannot replace a later one with an older list.
+   */
+  private save(bindings: Map<string, Binding>): Promise<void> {
+    const write = this.saving.then(async () => {
+      const sessions = [...bindings.values()].map(({ workspaceId, client, sessionId }) => ({ workspaceId, client, sessionId }))
+      await writeFileAtomic(this.file, `${JSON.stringify({ version: FILE_VERSION, sessions }, null, 2)}\n`, { mode: 0o600 })
+    })
+    this.saving = write.catch(() => {
+      // The caller receives the failure; the chain only orders the writes.
+    })
+    return write
   }
 }

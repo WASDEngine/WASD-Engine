@@ -1,5 +1,5 @@
 /** Loading and searching the add-on catalog. */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { GameAddonCatalogError, loadCatalog, MAX_ICON_BYTES, parseGuide, searchCatalog } from '../src/catalog.ts'
@@ -60,8 +60,28 @@ describe('loadCatalog', () => {
       archive.license = 'LICENSE'
     }, /archive\.license applies only to Godot add-ons/u],
     ['a Blender add-on without its bpy version', (entries: Record<string, Record<string, unknown>>) => { (entries['test-trees'] as Record<string, unknown>).verified = { date: '2026-11-11' } }, /verified\.bpy is missing/u],
+    ['an overlay folder that the catalog lacks', (entries: Record<string, Record<string, unknown>>) => {
+      ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).overlay = ['test-camera/overlay']
+    }, /Cannot read the overlay folder of test-camera at .*test-camera\/overlay/u],
+    ['an overlay path with ..', (entries: Record<string, Record<string, unknown>>) => {
+      ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).overlay = ['../outside']
+    }, /not a valid add-on entry/u],
   ])('rejects %s', async (_case, change, message) => {
     await expect(loadCatalog(await catalogWith(change))).rejects.toThrow(message)
+  })
+
+  it('loads overlay folders, in the entry\'s folder or beside the entries, and rejects one that is a file', async () => {
+    const path = await catalogWith((entries) => {
+      ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).overlay = ['test-camera/overlay', 'shared-overlay']
+    })
+    await mkdir(join(path, 'test-camera', 'overlay'), { recursive: true })
+    await mkdir(join(path, 'shared-overlay'))
+    const catalog = await loadCatalog(path)
+    expect(catalog.get('test-camera')?.godot?.overlay).toEqual(['test-camera/overlay', 'shared-overlay'])
+    expect(catalog.entries).toHaveLength(4)
+    await rm(join(path, 'shared-overlay'), { recursive: true })
+    await writeFile(join(path, 'shared-overlay'), 'not a folder')
+    await expect(loadCatalog(path)).rejects.toThrow(/The overlay .*shared-overlay of test-camera is not a folder/u)
   })
 
   it('reads an icon as a data URL, and refuses a missing, oversized, or scripted one', async () => {

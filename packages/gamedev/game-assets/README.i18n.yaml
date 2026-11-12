@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/game-assets/README.md
+/:
+  en: 386a307b40bbec31
+  zh: cd4b725a0d0e0678
+/deepseek-ai-dsh-game-assets:
+  en: cbf08ce5e61b0e83
+  zh: 3955d09669a27d72
+/deepseek-ai-dsh-game-assets/summary:
+  en: 7a553f2f0c543781
+  zh: 278bec67e8040b29
+/deepseek-ai-dsh-game-assets/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-game-assets/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-game-assets/use-this-package/default-composition:
+  en: ba3a159c7c838dde
+  zh: 42f0572c58dec3f0
+/deepseek-ai-dsh-game-assets/use-this-package/the-tools:
+  en: c254cb148228baae
+  zh: 83ac55b39e975d5f
+/deepseek-ai-dsh-game-assets/understand-the-implementation:
+  en: a8a0582f8c08ecda
+  zh: 99a0bfb15de7cb6a
+/deepseek-ai-dsh-game-assets/further-exploration:
+  en: d4bc178c1fc5bbdd
+  zh: b83467d49685da5a
+/deepseek-ai-dsh-game-assets/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-game-assets/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-game-assets/model-experience/tool-declarations/what-the-model-sees:
+  en: 8d982519ce007519
+  zh: 11ff1fa5cd84a944
+/deepseek-ai-dsh-game-assets/model-experience/tool-declarations/token-effect:
+  en: b1da14a32a0df1b9
+  zh: 681d15f7b40cd161
+/deepseek-ai-dsh-game-assets/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 55ed30e870b00f33
+/deepseek-ai-dsh-game-assets/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-game-assets/model-experience/tool-results/what-the-model-sees:
+  en: ce32d34ed530806d
+  zh: 3b28c818d5657b21
+/deepseek-ai-dsh-game-assets/model-experience/tool-results/token-effect:
+  en: a66e06a14a2d3ee8
+  zh: 3d242ccb698bdfda
+/deepseek-ai-dsh-game-assets/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: 9c36aea51ad3bba1
+/deepseek-ai-dsh-game-assets/known-limitations-and-deferred-work:
+  en: 7bab98522c04d141
+  zh: 14856b94550efd94
+/deepseek-ai-dsh-game-assets/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: e88aeb617ffb74ea

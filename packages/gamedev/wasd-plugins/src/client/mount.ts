@@ -1,9 +1,11 @@
 /**
  * Remote contribution and registrations of WASD Engine Plugins' browser half: the Release button after the agent preset
  * label of each Session header and in the New Session row of a blank Session, Explore Games at the foot of the left
- * sidebar, and the first build tip beside the composer's model seat. The Release button exists while the Peer may read
- * the `wasdPlugins` Remote's project views, and Explore Games while it may read the site links; LiveShare keeps both
- * for the owner. The first build tip exists while the model seat, Agent Teams, and the workspace file Remote do.
+ * sidebar, the first build tip beside the composer's model seat, and, where the Desktop Browser tabs can be driven, the
+ * window half of the agent's Browser. The Release button exists while the Peer may read the `wasdPlugins` Remote's
+ * project views, Explore Games while it may read the site links, and the agent's Browser while it may follow the
+ * Browser commands; LiveShare keeps all three for the owner. The first build tip exists while the model seat, Agent
+ * Teams, and the workspace file Remote do.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remote-access/client'
@@ -14,10 +16,14 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-browser/client'
+import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-wasd-plugins/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
+import type { WasdBrowserRequests } from '../types.ts'
+import { followBrowserRequests } from './browser.ts'
 import { ExploreLink, type ExploreLinkInjected } from './ExploreLink.tsx'
 import { createDismissedProjects, dismissProject, FIRST_BUILD_EFFORT, watchHoldsNothing } from './first-build.ts'
 import { FirstBuildTip, type FirstBuildTipInjected } from './FirstBuildTip.tsx'
@@ -121,6 +127,28 @@ function registerUi(ctx: Context): void {
         }
       },
     }, FirstBuildTip))
+  })
+  // Only the Desktop Browser plugin provides the automation service, so Web windows never take Browser commands.
+  ctx.inject(['sidebarRight', 'sidebarBrowserAutomation', 'remoteAccess'], (inner) => {
+    inner.remoteAccess.whenAccess('wasdPlugins/browserRequests', () => followBrowserRequests({
+      // The Gateway's logical stream reopens the command stream after a carrier loss.
+      follow: () => ctx.remote.$stream<WasdBrowserRequests>({
+        name: 'WASD Engine Browser commands',
+        open: signal => remote.browserRequests(signal),
+        ended: () => new Error('the WASD Engine Browser command stream ended'),
+      }),
+      claim: async (id) => {
+        const result = await remote.claimBrowserRequest(id)
+        return result.ok && result.value
+      },
+      settle: async (id, outcome) => {
+        const result = await remote.settleBrowserRequest(id, outcome)
+        if (!result.ok) throw result.error
+      },
+      sidebar: inner.sidebarRight,
+      automation: inner.sidebarBrowserAutomation,
+      warn: (message, error) => { ctx.logger.warn(message, error) },
+    }))
   })
 }
 

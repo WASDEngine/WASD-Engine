@@ -1,5 +1,5 @@
 /** Test audio: interleaved samples of sines and silence, and 32-bit float WAV files as libsndfile writes them. */
-import type { AudioSamples } from '../src/audio.ts'
+import type { AudioSamples } from '@deepseek-ai/dsh-game-audio/audio'
 
 /** Options of {@link floatWav}. */
 export interface FloatWavOptions {

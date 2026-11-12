@@ -1,9 +1,10 @@
 /** Electron tag DOM inside a Sidebar-owned, stable content container. */
 import type { DesktopBrowserReservation } from '../../types.ts'
 import type { BrowserPresentation } from '../view/BrowserPresentation.ts'
+import type { BrowserInputEvent, WebviewImage } from '../wasdengine/automation.ts'
 import css from '../view/Browser.module.css'
 
-/** The Electron tag API used by its navigation provider. */
+/** The Electron tag API used by its navigation provider, and by the automation face (WASD Engine) when present. */
 export interface WebviewElement extends HTMLElement {
   loadURL(url: string): Promise<void>
   getURL(): string
@@ -15,6 +16,10 @@ export interface WebviewElement extends HTMLElement {
   goForward(): void
   reload(): void
   isLoading(): boolean
+  executeJavaScript?(code: string): Promise<unknown>
+  capturePage?(): Promise<WebviewImage>
+  sendInputEvent?(event: BrowserInputEvent): Promise<void>
+  insertText?(text: string): Promise<void>
 }
 
 /** Physical attachment notifications; hiding a retained Sidebar body emits neither. */

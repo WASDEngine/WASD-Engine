@@ -1,0 +1,12 @@
+{
+  "run": "script",
+  "path": "res://wasd_smoke/smoke.gd",
+  "args": ["universal-animation-library-2", "res://addons/universal_animation_library_2/UAL2_Standard.glb", "43"],
+  "files": "universal-animation-library",
+  "prepare": {
+    "path": "res://addons/universal_animation_library_2/retarget.gd",
+    "args": ["res://wasd_smoke/mpfb_game_engine.glb", "res://wasd_smoke/mpfb_mixamo.glb", "res://wasd_smoke/rigify_basic_human.glb"]
+  },
+  "expect": ["SMOKE_PASS universal-animation-library-2"],
+  "timeoutSeconds": 180
+}

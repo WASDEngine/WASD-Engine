@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: a2022ede0b5b5b16
-  zh: 352cb3daa4aa97c2
+  en: 3704bd413971aab5
+  zh: 420c635cd6da54fc
 /game-tools/composition:
-  en: dff509f175eb257e
-  zh: a753d3176d2c61b2
+  en: 615d8d0f65b9ab7f
+  zh: d9599908b2752b4d
 /game-tools/application-mcp-servers:
   en: 580c70a2e4dc2335
   zh: a5f54718ee5fa960
@@ -51,14 +51,20 @@
   en: f03b34a167deab64
   zh: d91819c45eb46021
 /game-tools/game-add-ons:
-  en: bef5f7c0e1dd4060
-  zh: 0d15bdf36bc10139
+  en: e10786a110e87f99
+  zh: 5f37b094d2fee208
 /game-tools/assets-tab:
-  en: ba25a8936c726f29
-  zh: 8812820379f94720
+  en: 9928fe8a679fec67
+  zh: 26754e3e32f1fc15
+/game-tools/audio-tab-and-audio-tools:
+  en: 2a7c3cc1d91f78f6
+  zh: 297cde5459838c6b
 /game-tools/mcp-server-for-other-agents:
-  en: 654a0d4badfa3ef1
-  zh: 106ded2649c3c8ce
+  en: 3121e5b69c7a02e9
+  zh: 87af3d0c399e3362
+/game-tools/agent-s-browser:
+  en: 8c5498309cf9607a
+  zh: 67a9b66419e1fe5d
 /game-tools/remote-types:
   en: 392eec73efb81160
   zh: b9e684bb0121f09e

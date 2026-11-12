@@ -3094,6 +3094,64 @@ describe('desktop main startup', () => {
     expect(window.urls).toEqual(['dsh-app://app/'])
     expect(harness.windows).toHaveLength(1)
   })
+
+  // WASD Engine: updates download in the background, and the indicator offers only Restart to Update.
+  it('downloads an update as soon as a check publishes it and presents only Restart to Update', async () => {
+    await readyForUpdate()
+    harness.dialog.showMessageBox.mockClear()
+    const window = harness.windows[0]!
+    const presented = () => window.webContents.send.mock.calls
+      .filter(([channel]) => channel === DESKTOP_IPC.updatesPresentation).at(-1)?.[1]
+    harness.updateState = { phase: 'available', version: '1.0.1' }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'idle' })
+    expect(harness.updateDownload).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
+    harness.updateState = { phase: 'downloading', version: '1.0.1', percent: 40 }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'idle' })
+    harness.updateState = { phase: 'ready', version: '1.0.1' }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'ready', version: '1.0.1' })
+    expect(await invoke(DESKTOP_IPC.updatesStatus, 'app')).toEqual({ phase: 'ready', version: '1.0.1' })
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+  })
+
+  it('keeps a failed background download silent and retries it with a fresh check', async () => {
+    vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_JITTER', '0')
+    await readyForUpdate()
+    await vi.advanceTimersByTimeAsync(0)
+    harness.dialog.showMessageBox.mockClear()
+    harness.updateCheck.mockClear()
+    harness.updateState = { phase: 'error', failedOperation: 'download', version: '1.0.1', message: 'net::ERR_CONNECTION_RESET' }
+    harness.publishUpdate(harness.updateState)
+    await vi.advanceTimersByTimeAsync(600_000 - 1)
+    expect(harness.updateCheck).not.toHaveBeenCalledWith(true)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(harness.updateCheck).toHaveBeenCalledWith(true)
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+  })
+
+  it('answers Check for Updates… with the background download and reports a failed one', async () => {
+    await readyForUpdate()
+    harness.dialog.showMessageBox.mockClear()
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 0 })
+    harness.updateCheck.mockResolvedValueOnce({ phase: 'available', version: '1.0.1' })
+    harness.updateDownload.mockResolvedValueOnce({ phase: 'error', failedOperation: 'download', version: '1.0.1',
+      message: 'ENOSPC: no space left on device', downloadFailure: 'space' })
+    const check = applicationMenuItems().find(item => item.label === en.checkUpdatesMenu)!.click as () => void
+    check()
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    const shown = harness.dialog.showMessageBox.mock.calls.map(call => call.at(-1) as Electron.MessageBoxOptions)
+    expect(shown.map(options => options.message)).toEqual([en.updateChecking, 'New version available: 1.0.1', en.updateDownloadSpaceFailed])
+    expect(shown[1]).toMatchObject({ detail: en.updateDetail })
+    expect(shown[1]!.buttons).toBeUndefined()
+    expect(en.updateDetail).toContain('Restart to Update')
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
+    expect(harness.updateInstall).not.toHaveBeenCalled()
+  })
 })
 
 it.each(['failed', 'expired'] as const)('focuses DSH once when browser authorization becomes %s', async (phase) => {

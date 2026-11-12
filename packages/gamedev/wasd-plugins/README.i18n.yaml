@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/README.md
 /:
-  en: a5e7adbf72e2dd53
-  zh: 1e1e253f7d61a377
+  en: 48bbc0ff1a89e6ad
+  zh: 6bc954828bb2ab4d
 /deepseek-ai-dsh-wasd-plugins:
   en: cb5ec703da430be8
   zh: d206a2431aaa3c7e
 /deepseek-ai-dsh-wasd-plugins/summary:
-  en: 704970520830ab65
-  zh: e685f1115ee2dfd6
+  en: 56d3c99a9b877281
+  zh: ef03ae3904ef384c
 /deepseek-ai-dsh-wasd-plugins/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,8 +18,8 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-wasd-plugins/use-this-package/default-composition:
-  en: 4dcfd7b4e6a875ca
-  zh: 27aa1a05cfd3e32e
+  en: b60384a7c34106d5
+  zh: c20c6a8c23454149
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-tools:
   en: f3b69a891713ae41
   zh: 5a66f65b08afeac4
@@ -27,17 +27,20 @@
   en: a7c7653d26f30c5e
   zh: 2cfabadecc2d36a8
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-first-build-tip:
-  en: 36590f00a7c88e95
-  zh: 8c45a9994183b4f7
+  en: f5068a66071e5579
+  zh: e9941e7cdc7f822d
+/deepseek-ai-dsh-wasd-plugins/use-this-package/the-agent-s-browser:
+  en: baff159c4babd521
+  zh: 0a8f5ea3732bafca
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-wasdplugins-remote:
-  en: 8a5c8ccf1d1de8ef
-  zh: 40be99467e540446
+  en: 2ac927650495ff97
+  zh: cccf5af4cd2b1799
 /deepseek-ai-dsh-wasd-plugins/understand-the-implementation:
-  en: 59d663192fc69459
-  zh: caa5204754ee41ca
+  en: 11437c6de9dc830d
+  zh: 4b73978a3ae0a457
 /deepseek-ai-dsh-wasd-plugins/further-exploration:
-  en: 754488cb3b264a46
-  zh: 8110d7b834ae7517
+  en: 38afa95094a6f356
+  zh: 65f11cc343f3ce48
 /deepseek-ai-dsh-wasd-plugins/model-experience:
   en: 215e7ba838619b7b
   zh: a311da3843709f90
@@ -65,6 +68,33 @@
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-declarations-and-the-browser-section:
+  en: 29414dec1993c184
+  zh: a87a5d7dc4654cd6
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-declarations-and-the-browser-section/what-the-model-sees:
+  en: 2b5ffe9a0ab7a55c
+  zh: 8592b279c26ef7f1
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-declarations-and-the-browser-section/what-the-model-sees/the-browser-section:
+  en: 778c14075d672e0b
+  zh: 4100bdf14d161b6d
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-declarations-and-the-browser-section/token-effect:
+  en: 8226c81dc1cdcf6e
+  zh: 11224efa00b97a44
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-declarations-and-the-browser-section/kv-cache-effect:
+  en: 25b370f185d3a6ff
+  zh: bab4aa2d42dba3db
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-results:
+  en: d548120dafda9a91
+  zh: 126b8b28b66fee09
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-results/what-the-model-sees:
+  en: 6eb1b0140b2bcd99
+  zh: 0272668b37bd8f07
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-results/token-effect:
+  en: 7a887799d3c2b4ba
+  zh: acb397404225d361
+/deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: b5fe15ad16d14009
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-release-prompt:
   en: f6957a8dc097416f
   zh: 3bc145956a1e91ff
@@ -78,8 +108,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: f54bd89721db27be
-  zh: 1baa4b4d0d9521fd
+  en: cd348e494b37b2e8
+  zh: aeae0623b99225f0
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
   en: d36d4bfef4cd8eba
   zh: 5abb7c5e4a55ccfd

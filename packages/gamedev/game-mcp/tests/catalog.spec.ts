@@ -162,6 +162,31 @@ describe('GameToolCatalog.run', () => {
       .toEqual({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }] })
   })
 
+  it('ends a call at its tool\'s time limit, as a Session\'s call ends, and tells the agent', async () => {
+    const seen: AbortSignal[] = []
+    const slow = defineTool({
+      name: 'slow',
+      description: 'Waits until it is cancelled.',
+      parameters: {},
+      output: { schema: { type: 'object', additionalProperties: false, properties: {} }, render: () => [] },
+      timeoutMs: 20,
+      execute: async (_args, exec) => {
+        seen.push(exec.signal)
+        await new Promise<void>((resolve) => { exec.signal.addEventListener('abort', () => { resolve() }, { once: true }) })
+        throw exec.signal.reason
+      },
+    })
+    const catalog = new GameToolCatalog(() => [], () => {})
+    const entry = { provider: provider('alpha', []), tool: { name: 'alpha_slow', definition: slow } }
+    expect(await catalog.run(entry, {}, call())).toEqual({ isError: true, content: [{ type: 'text', text: 'tool call timed out after 20ms' }] })
+    expect(seen[0]?.aborted).toBe(true)
+    // The agent's own cancellation is not a timeout.
+    const stopped = new AbortController()
+    const running = catalog.run(entry, {}, call({ signal: stopped.signal }))
+    stopped.abort(new Error('the agent stopped the call'))
+    expect(await running).toEqual({ isError: true, content: [{ type: 'text', text: 'the agent stopped the call' }] })
+  })
+
   it('cuts a very long text and notes the cut', async () => {
     const catalog = new GameToolCatalog(() => [], () => {})
     const result = await catalog.run({ provider: provider('alpha', []), tool: { name: 'alpha_echo', definition: echoDefinition() } }, { text: 'x'.repeat(200_000) }, call())

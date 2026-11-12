@@ -61,6 +61,15 @@
     },
     {
       "path": "../../typert/protocol"
+    },
+    {
+      "path": "../../client/ui-dockkit"
+    },
+    {
+      "path": "../../client/ui-sidebar-browser/tsconfig.client.json"
+    },
+    {
+      "path": "../../client/ui-sidebar-right"
     }
   ]
 }

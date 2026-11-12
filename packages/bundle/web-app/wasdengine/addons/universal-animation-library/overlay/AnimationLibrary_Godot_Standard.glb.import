@@ -1,0 +1,23 @@
+; SPDX-License-Identifier: CC0-1.0
+; Imports the pack's clips as one AnimationLibrary retargeted to Godot's SkeletonProfileHumanoid: the tracks name the
+; profile's bones on the unique skeleton %GeneralSkeleton, so they play on any humanoid model imported the same way.
+
+[remap]
+
+importer="animation_library"
+importer_version=1
+
+[params]
+
+_subresources={
+"nodes": {
+"PATH:Rig/Skeleton3D": {
+"retarget/bone_map": Resource("res://addons/universal_animation_library/bone_maps/quaternius_ual1.tres"),
+"retarget/bone_renamer/rename_bones": true,
+"retarget/bone_renamer/unique_node/make_unique": true,
+"retarget/bone_renamer/unique_node/skeleton_name": "GeneralSkeleton",
+"retarget/remove_tracks/unmapped_bones": true,
+"retarget/rest_fixer/fix_silhouette/enable": true
+}
+}
+}
