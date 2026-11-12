@@ -98,6 +98,19 @@ describe('answerMeasure', () => {
     expect(FakeOfflineAudioContext.rates).toEqual([8000])
   })
 
+  it('answers for a constant sound and a sine on a DC offset with figures the audio tools accept', async () => {
+    const request = { path: 'sfx/hum.wav', start: 0, maxSeconds: 300, picture: false, maxBytes: 1 << 20 }
+    const measure = (samples: number[]) =>
+      answerMeasure(request, async () => file(wavFile({ sampleRate: 8000, channels: 1, samples })), new AbortController().signal, 1200)
+    const constant = await measure(new Array<number>(8000).fill(0.5))
+    expect(constant.measurements.dominantFrequency).toBeUndefined()
+    expect(constant.measurements.channelLevels[0]?.dcOffset).toBeCloseTo(0.5, 3)
+    expect(parseMeasureResult(constant).measurements).toEqual(constant.measurements)
+    const hum = await measure(Array.from({ length: 8000 }, (_, frame) => 0.4 + 0.05 * Math.sin(2 * Math.PI * 60 * frame / 8000)))
+    expect(hum.measurements.dominantFrequency).toBeCloseTo(60, -1)
+    expect(parseMeasureResult(hum).measurements.dominantFrequency).toBeGreaterThan(0)
+  })
+
   it('names a sound that is not audio, gone, too large, or unreadable', async () => {
     const fail = (read: Parameters<typeof answerMeasure>[1], path = 'sfx/boom.wav') => answerMeasure({ path, start: 0, maxSeconds: 300, picture: false, maxBytes: 2048 }, read, new AbortController().signal, 1200).catch((error: unknown) => error)
     expect(await fail(async () => file(new Uint8Array(0)), 'notes.txt')).toMatchObject({ code: AUDIO_ERROR.format })

@@ -50,9 +50,12 @@ export interface AudioAnalysis {
   readonly leadingSilence: number
   /** Seconds after the last sample above {@link SILENCE_THRESHOLD}; the whole window when it is silent. */
   readonly trailingSilence: number
-  /** Frequency in Hz of the strongest component of the average spectrum; undefined for a silent window. */
+  /**
+   * Frequency in Hz, above 0, of the strongest component of the average spectrum without the DC offset; undefined for a
+   * silent window and for one that holds nothing but its DC offset, such as a constant signal.
+   */
   readonly dominantFrequency: number | undefined
-  /** Amplitude-weighted mean frequency in Hz of the average spectrum; undefined for a silent window. */
+  /** Amplitude-weighted mean frequency in Hz of the same spectrum; undefined when `dominantFrequency` is. */
   readonly spectralCentroid: number | undefined
 }
 
@@ -253,18 +256,18 @@ const SPECTRUM_FRAMES = 64
  * @param audio - interleaved samples.
  * @param center - frame at the middle of the analysis window.
  * @param size - FFT size, a power of two.
+ * @param level - subtracted from the mix before the window applies, such as the mix's mean, so that a DC offset
+ * neither fills bin 0 nor leaks into the bins beside it; 0 by default.
  * @returns `size / 2 + 1` magnitudes; a full-scale sine reaches about `size / 4`.
  */
-export function magnitudeSpectrum(audio: AudioSamples, center: number, size: number): Float64Array {
+export function magnitudeSpectrum(audio: AudioSamples, center: number, size: number, level = 0): Float64Array {
   const real = new Float64Array(size)
   const imaginary = new Float64Array(size)
   const start = center - size / 2
   for (let index = 0; index < size; index++) {
     const frame = start + index
     if (frame < 0 || frame >= audio.frames) continue
-    let mix = 0
-    for (let channel = 0; channel < audio.channels; channel++) mix += audio.samples[frame * audio.channels + channel] ?? 0
-    real[index] = mix / audio.channels * (0.5 - 0.5 * Math.cos(2 * Math.PI * index / size))
+    real[index] = (mixAt(audio, frame) - level) * (0.5 - 0.5 * Math.cos(2 * Math.PI * index / size))
   }
   fft(real, imaginary)
   const magnitudes = new Float64Array(size / 2 + 1)
@@ -272,12 +275,36 @@ export function magnitudeSpectrum(audio: AudioSamples, center: number, size: num
   return magnitudes
 }
 
-/** Strongest component and centroid of the spectrum averaged over evenly spread frames. */
+/**
+ * The mean of the channels at one frame.
+ * @param audio - interleaved samples.
+ * @param frame - frame index.
+ * @returns the channel mix.
+ */
+function mixAt(audio: AudioSamples, frame: number): number {
+  let mix = 0
+  for (let channel = 0; channel < audio.channels; channel++) mix += audio.samples[frame * audio.channels + channel] ?? 0
+  return mix / audio.channels
+}
+
+/**
+ * Strongest component and centroid of the spectrum averaged over evenly spread frames. The mix's DC offset carries no
+ * pitch, so its mean is removed first, and a mix that never moves more than {@link SILENCE_THRESHOLD} from its mean,
+ * such as a constant signal, has no spectrum to report.
+ * @param audio - interleaved samples.
+ * @returns the dominant frequency and the centroid in Hz, both positive; undefined without sound beside the offset.
+ */
 function averageSpectrum(audio: AudioSamples): { dominant: number; centroid: number } | undefined {
+  let sumOfMix = 0
+  for (let frame = 0; frame < audio.frames; frame++) sumOfMix += mixAt(audio, frame)
+  const mean = audio.frames === 0 ? 0 : sumOfMix / audio.frames
+  let swing = 0
+  for (let frame = 0; frame < audio.frames; frame++) swing = Math.max(swing, Math.abs(mixAt(audio, frame) - mean))
+  if (swing <= SILENCE_THRESHOLD) return undefined
   const count = Math.max(1, Math.min(SPECTRUM_FRAMES, Math.ceil(audio.frames / (SPECTRUM_SIZE / 2))))
   const sum = new Float64Array(SPECTRUM_SIZE / 2 + 1)
   for (let index = 0; index < count; index++) {
-    const spectrum = magnitudeSpectrum(audio, Math.round((index + 0.5) * audio.frames / count), SPECTRUM_SIZE)
+    const spectrum = magnitudeSpectrum(audio, Math.round((index + 0.5) * audio.frames / count), SPECTRUM_SIZE, mean)
     for (let bin = 0; bin < sum.length; bin++) sum[bin] = (sum[bin] ?? 0) + (spectrum[bin] ?? 0)
   }
   const resolution = audio.sampleRate / SPECTRUM_SIZE
@@ -292,12 +319,14 @@ function averageSpectrum(audio: AudioSamples): { dominant: number; centroid: num
     total += magnitude
   }
   if (total === 0) return undefined
-  // A parabola through the strongest bin and its neighbors places the peak between bins.
+  // A parabola through the strongest bin and its neighbors places a peak between bins. It applies only where that bin
+  // rises above both neighbors, and moves the peak at most half a bin, so the frequency stays above 0.
   const left = sum[strongest - 1] ?? 0
   const right = sum[strongest + 1] ?? 0
   const middle = sum[strongest] ?? 0
   const curvature = left - 2 * middle + right
-  const shift = curvature === 0 ? 0 : 0.5 * (left - right) / curvature
+  const peak = middle >= left && middle >= right && curvature < 0
+  const shift = peak ? Math.min(0.5, Math.max(-0.5, 0.5 * (left - right) / curvature)) : 0
   return { dominant: (strongest + shift) * resolution, centroid: weighted / total }
 }
 

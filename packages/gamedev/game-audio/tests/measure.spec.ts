@@ -37,10 +37,29 @@ describe('analyzeAudio', () => {
     expect(empty.channels).toEqual([{ peak: 0, rms: 0, dcOffset: 0, clipped: 0 }, { peak: 0, rms: 0, dcOffset: 0, clipped: 0 }])
   })
 
-  it('measures the DC offset of a constant signal', () => {
-    const dc = analyzeAudio({ sampleRate: 8000, channels: 1, frames: 8000, samples: new Float32Array(8000).fill(0.5) })
-    expect(dc.dominantFrequency).toBeDefined()
-    expect(dc.channels[0]?.dcOffset).toBeCloseTo(0.5, 5)
+  it('measures the DC offset of a constant signal, which has no spectrum beside it', () => {
+    for (const sampleRate of [8000, 22_254.545_454_545_45, 44_100]) {
+      const frames = Math.round(sampleRate)
+      for (const level of [0.5, -0.25]) {
+        const dc = analyzeAudio({ sampleRate, channels: 2, frames, samples: new Float32Array(frames * 2).fill(level) })
+        expect(dc.channels[0]?.dcOffset).toBeCloseTo(level, 5)
+        expect(dc).toMatchObject({ dominantFrequency: undefined, spectralCentroid: undefined })
+        expect(dc.leadingSilence).toBe(0)
+      }
+    }
+  })
+
+  it('names the pitch of a sine on a DC offset, also where the offset outweighs a quiet, low sine', () => {
+    for (const sampleRate of [8000, 22_050, 48_000]) {
+      const signals = [{ frequency: 440, amplitude: 0.3, offset: 0.5 }, { frequency: 50, amplitude: 0.02, offset: 0.6 }]
+      for (const { frequency, amplitude, offset } of signals) {
+        const analysis = analyzeAudio(sine({ frequency, amplitude, seconds: 1.5, sampleRate, offset }))
+        expect(analysis.channels[0]?.dcOffset).toBeCloseTo(offset, 2)
+        expect(analysis.dominantFrequency).toBeCloseTo(frequency, -1)
+        expect(analysis.dominantFrequency).toBeGreaterThan(0)
+        expect(analysis.spectralCentroid).toBeGreaterThan(0)
+      }
+    }
   })
 })
 
