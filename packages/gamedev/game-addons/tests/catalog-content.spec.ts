@@ -33,6 +33,7 @@ describe('the shipped add-on catalog', () => {
       const spec = SmokeSpec.parse(JSON.parse(await readFile(join(SMOKE_DIR, entry.id, 'smoke.json'), 'utf8')))
       expect(spec.run === 'blender', `${entry.id} smoke runner`).toBe(entry.host === 'blender')
       expect(spec.expect.join('\n'), `${entry.id} smoke markers`).toContain(`SMOKE_PASS ${entry.id}`)
+      if (spec.files !== undefined) expect(smokes.has(spec.files), `${entry.id} smoke files from ${spec.files}`).toBe(true)
     }
     expect([...smokes].filter(id => catalog.get(id) === undefined), 'smoke tests without an entry').toEqual([])
   })

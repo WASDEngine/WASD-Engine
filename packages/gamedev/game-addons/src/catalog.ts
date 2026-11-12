@@ -1,11 +1,12 @@
 /**
  * The curated add-on catalog: one folder per add-on under the catalog folder, holding `addon.json`, the entry, and
- * `SKILL.md`, its usage guide. Loading validates every entry, its archive pin, and its guide's frontmatter, and
- * rejects a catalog whose entries name unknown conflicts. Search ranks entries by query words against their ids,
+ * `SKILL.md`, its usage guide, beside folders without an entry that Godot add-ons name as overlays. Loading validates
+ * every entry, its archive pin, its setup script and overlay folders, and its guide's frontmatter, and rejects a
+ * catalog whose entries name unknown conflicts. Search ranks entries by query words against their ids,
  * titles, tags, and descriptions.
  * @module @deepseek-ai/dsh-game-addons/src/catalog
  */
-import { access, readdir, readFile } from 'node:fs/promises'
+import { access, readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
@@ -61,6 +62,7 @@ const Entry = z.strictObject({
     })).min(1).exactOptional(),
     settings: z.array(z.strictObject({ section: z.string().regex(GODOT_NAME), key: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_./-]*$/u), value: z.string().min(1).refine(value => !value.includes('\n'), 'must be one line') })).min(1).exactOptional(),
     importTwice: z.boolean().exactOptional(),
+    overlay: z.array(ArchivePath.min(1)).min(1).exactOptional(),
   }).exactOptional(),
   assets: z.strictObject({
     url: z.url({ protocol: /^https$/u }),
@@ -283,6 +285,16 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
       } catch (error) {
         throw new GameAddonCatalogError(`Cannot read the setup script of ${entry.id} at ${join(dir, folder, setup)}: ${(error as Error).message}`)
       }
+    }
+    for (const overlay of entry.godot?.overlay ?? []) {
+      const overlayPath = join(dir, ...overlay.split('/'))
+      let isFolder: boolean
+      try {
+        isFolder = (await stat(overlayPath)).isDirectory()
+      } catch (error) {
+        throw new GameAddonCatalogError(`Cannot read the overlay folder of ${entry.id} at ${overlayPath}: ${(error as Error).message}`)
+      }
+      if (!isFolder) throw new GameAddonCatalogError(`The overlay ${overlayPath} of ${entry.id} is not a folder.`)
     }
     const guide = parseGuide(guideText, guidePath)
     if (guide.name !== entry.id) throw new GameAddonCatalogError(`${guidePath}: name ${guide.name} must equal the add-on id ${entry.id}.`)

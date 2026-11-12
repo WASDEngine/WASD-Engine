@@ -1,15 +1,17 @@
 /**
  * Installation and removal of catalog add-ons, and what a project has. A Godot add-on unpacks from its checked
- * archive into a staging folder inside the project, then takes its place in `res://addons/<folder>/`; the installer
- * enables it in `project.godot` the way the editor's plugin switch does, writes its license into the project's
- * notices, records it in `.wasdengine/addons.json`, and imports the project so the add-on's errors show at once. A
- * failure before the record is written puts the previous folder and `project.godot` back. A Blender extension unpacks
- * once into the shared add-on store, where every Blender worker enables it by id, and its asset pack, if it has one,
- * into the asset folder beside the store; its project keeps only the record. Their archives then leave the cache.
+ * archive into a staging folder inside the project, gains the files of its catalog overlay folders, then takes its
+ * place in `res://addons/<folder>/`; the installer enables it in `project.godot` the way the editor's plugin switch
+ * does, writes its license into the project's notices, records it in `.wasdengine/addons.json`, and imports the
+ * project so the add-on's errors show at once. A failure before the record is written puts the previous folder and
+ * `project.godot` back. A Blender extension unpacks once into the shared add-on store, where every Blender worker
+ * enables it by id, and its asset pack, if it has one, into the asset folder beside the store; its project keeps only
+ * the record. Their archives then leave the cache.
  * @module @deepseek-ai/dsh-game-addons/src/manager
  */
 import { randomUUID } from 'node:crypto'
-import { lstat, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { copyFile, lstat, mkdir, readdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads } from './archive.ts'
@@ -346,6 +348,7 @@ export class GameAddonManager {
         if (licenseOutside && licenseText !== undefined && !files.some(file => LICENSE_NAMES.test(file))) {
           await writeFile(join(staging, 'LICENSE'), licenseText, { flag: 'wx' })
         }
+        for (const overlay of godot.overlay ?? []) await this.addOverlay(addon, overlay, staging, signal)
         signal.throwIfAborted()
         await mkdir(join(projectDir, 'addons'), { recursive: true })
         if (await exists(folder)) {
@@ -518,6 +521,26 @@ export class GameAddonManager {
       }
       await rm(archivePath, { force: true })
     }, { signal, waitMs: 120_000 })
+  }
+
+  /**
+   * Copy the files of one catalog overlay folder into an unpacked add-on folder, keeping their relative paths.
+   * @throws {GameAddonError} when a file would replace one that the archive put there.
+   */
+  private async addOverlay(addon: GameAddon, overlay: string, target: string, signal: AbortSignal): Promise<void> {
+    const source = join(this.catalog.dir, ...overlay.split('/'))
+    for (const entry of await readdir(source, { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || entry.name === '.DS_Store') continue
+      signal.throwIfAborted()
+      const path = relative(source, join(entry.parentPath, entry.name))
+      await mkdir(join(target, dirname(path)), { recursive: true })
+      try {
+        await copyFile(join(entry.parentPath, entry.name), join(target, path), constants.COPYFILE_EXCL)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+        throw new GameAddonError(`The catalog file ${overlay}/${path.split(sep).join('/')} would replace a file of the ${addon.title} archive.`)
+      }
+    }
   }
 
   /**

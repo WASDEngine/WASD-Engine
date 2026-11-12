@@ -20,12 +20,17 @@ export const SMOKE_DIR = fileURLToPath(new URL('./smoke/', import.meta.url))
 /**
  * How the end-to-end suite runs one add-on's smoke test: a `scene` headless, a `scene` rendered without a window
  * (`render`), a SceneTree `script` with user arguments, or a `blender` Python file in a worker that enabled the add-on.
- * The run must print every `expect` marker, no `SMOKE_FAIL`, and end with `exitCode` (default 0).
+ * A Godot smoke test copies the `files/` folder of its own smoke folder, or of the one `files` names, into the project.
+ * Its `prepare` script, such as a helper of the add-on that an agent runs with `godot_script`, runs with its arguments
+ * after an import of those files and before the next one. The run must print every `expect` marker, no `SMOKE_FAIL`,
+ * and end with `exitCode` (default 0).
  */
 export const SmokeSpec = z.strictObject({
   run: z.enum(['scene', 'render', 'script', 'blender']),
   path: z.string().min(1),
   args: z.array(z.string()).exactOptional(),
+  files: z.string().min(1).exactOptional(),
+  prepare: z.strictObject({ path: z.string().min(1), args: z.array(z.string()) }).exactOptional(),
   expect: z.array(z.string().min(1)).min(1),
   exitCode: z.number().int().exactOptional(),
   timeoutSeconds: z.number().int().min(1).max(600),

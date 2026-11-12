@@ -1,14 +1,14 @@
 /** Installing, reinstalling, and removing add-ons in a game project, and the Blender add-on store. */
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import { addonView, GameAddonManager, STORE_INDEX, STORE_MARKER, type ImportReport } from '../src/manager.ts'
 import { NOTICES_FILE } from '../src/notices.ts'
 import { readRecord } from '../src/record.ts'
 import {
-  catalogEntries, entriesWithTreeAssets, fakeDownloads, PROJECT_GODOT, scratch, TREE_ASSETS_ARCHIVE, TREES_ARCHIVE, URLS, writeCatalog,
-  writeProject, type FakeDownloads, type Scratch,
+  catalogEntries, editableCatalogEntries, entriesWithTreeAssets, fakeDownloads, PROJECT_GODOT, scratch, TREE_ASSETS_ARCHIVE, TREES_ARCHIVE,
+  URLS, writeCatalog, writeProject, type FakeDownloads, type Scratch,
 } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -40,7 +40,10 @@ async function setup(
 ): Promise<Setup> {
   dir = await scratch('manager')
   const catalogDir = await writeCatalog(dir.root, entries)
-  for (const [path, text] of Object.entries(files)) await writeFile(join(catalogDir, path), text)
+  for (const [path, text] of Object.entries(files)) {
+    await mkdir(dirname(join(catalogDir, path)), { recursive: true })
+    await writeFile(join(catalogDir, path), text)
+  }
   const catalog = await loadCatalog(catalogDir)
   const project = await writeProject(join(dir.root, 'game'))
   const store = join(dir.root, 'store')
@@ -60,6 +63,17 @@ async function setup(
     changed: (projectDir) => { changed.push(projectDir) },
   })
   return { manager, project, store, downloads, imports, changed }
+}
+
+/** Catalog files of the camera add-on's two overlay folders: one in its own folder, one beside the entries. */
+const OVERLAY_FILES = { 'test-camera/overlay/rig.gd.import': '[remap]\n', 'camera-tools/tools/framing.gd': 'extends SceneTree\n' }
+
+/** The test catalog's entries with the camera add-on naming both overlay folders. */
+function overlayEntries(): Record<string, Record<string, unknown>> {
+  const entries = editableCatalogEntries()
+  const godot = (entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>
+  godot.overlay = ['test-camera/overlay', 'camera-tools']
+  return entries
 }
 
 async function tree(root: string): Promise<string[]> {
@@ -87,6 +101,22 @@ describe('GameAddonManager.install for Godot', () => {
     expect(downloads.requests).toEqual([URLS.camera])
     // No staging or trash folders are left behind.
     expect(await readdir(join(project, '.wasdengine'))).toEqual(['addons.json'])
+  })
+
+  it('adds the files of its catalog overlay folders to the add-on folder', async () => {
+    const { manager, project } = await setup(undefined, overlayEntries(), OVERLAY_FILES)
+    await manager.install(project, 'test-camera', {}, signal)
+    expect(await tree(join(project, 'addons', 'test_camera'))).toEqual(['LICENSE', 'manager.gd', 'nodes/rig.gd', 'plugin.cfg', 'plugin.gd', 'rig.gd.import', 'tools/framing.gd'])
+    expect(await readFile(join(project, 'addons', 'test_camera', 'tools', 'framing.gd'), 'utf8')).toBe('extends SceneTree\n')
+  })
+
+  it('refuses an overlay file that would replace a file of the archive, leaving the project as it was', async () => {
+    const { manager, project } = await setup(undefined, overlayEntries(), { ...OVERLAY_FILES, 'camera-tools/plugin.cfg': '[plugin]\n' })
+    await expect(manager.install(project, 'test-camera', {}, signal))
+      .rejects.toThrow('The catalog file camera-tools/plugin.cfg would replace a file of the Test Camera archive.')
+    expect(await readdir(project)).toEqual(['.wasdengine', 'project.godot'])
+    expect(await readdir(join(project, '.wasdengine'))).toEqual([])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
   })
 
   it('reinstalls at the same version without downloading, repairing project.godot entries a user deleted', async () => {
