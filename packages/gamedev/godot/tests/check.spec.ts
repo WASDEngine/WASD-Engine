@@ -194,6 +194,9 @@ describe('selectScripts', () => {
     await mkdir(join(project, 'levels'), { recursive: true })
     await writeFile(join(project, 'main.gd'), '')
     await writeFile(join(project, 'levels', 'one.gd'), '')
+    // The backup of a removed add-on is WASD Engine's project state, not a script of the game.
+    await mkdir(join(project, '.wasdengine', 'backups', 'gut', 'addons', 'gut'), { recursive: true })
+    await writeFile(join(project, '.wasdengine', 'backups', 'gut', 'addons', 'gut', 'gut.gd'), '')
     expect(await selectScripts(project, dir.root, undefined, signal)).toEqual({ paths: ['res://levels/one.gd', 'res://main.gd'], total: 2 })
     expect(await selectScripts(project, dir.root, ['game/levels', 'res://levels/one.gd', join(project, 'main.gd')], signal))
       .toEqual({ paths: ['res://levels/one.gd', 'res://main.gd'], total: 3 })

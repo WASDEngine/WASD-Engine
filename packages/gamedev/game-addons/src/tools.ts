@@ -104,7 +104,7 @@ const OUTPUT_SCHEMA = {
         notes: STRINGS,
       },
     },
-    remove: { type: 'object', additionalProperties: false, properties: { id: STRING, removed: STRINGS, references: STRINGS } },
+    remove: { type: 'object', additionalProperties: false, properties: { id: STRING, removed: STRINGS, backup: { type: 'string' }, references: STRINGS } },
   },
 } as const
 
@@ -207,7 +207,8 @@ function render(value: ToolValue): string {
     case 'remove': {
       const removed = value.remove
       if (removed === undefined) return 'Nothing was removed.'
-      const lines = [`Removed ${removed.id}${removed.removed.length === 0 ? '' : `: deleted ${removed.removed.join(', ')}`}, and its project.godot entries and notice.`]
+      const moved = removed.backup === undefined || removed.removed.length === 0 ? '' : ` Its files moved to the backup ${removed.backup}: ${removed.removed.join(', ')}.`
+      const lines = [`Removed ${removed.id} and its project.godot entries and notice.${moved}`]
       if (removed.references.length > 0) lines.push(`These files still use it and need changes:\n${removed.references.map(path => `- ${path}`).join('\n')}`)
       return lines.join('\n')
     }
@@ -233,7 +234,7 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
   return defineTool({
     name: TOOL_NAME,
     description: 'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
-      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove deletes one; list shows the project\'s add-ons. '
+      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     parameters: {
       action: { type: 'string', enum: ACTIONS, required: true, description: 'search, guide, install, remove, or list.' },
@@ -305,7 +306,7 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
           const id = requireId(args.id, 'remove')
           const projectDir = await host.project(args.project, exec)
           const result = await manager.remove(projectDir, id, exec.signal)
-          return { action: 'remove', projectDir, remove: { id: result.id, removed: [...result.removed], references: [...result.references] } }
+          return { action: 'remove', projectDir, remove: { id: result.id, removed: [...result.removed], ...result.backup === undefined ? {} : { backup: result.backup }, references: [...result.references] } }
         }
       }
     },

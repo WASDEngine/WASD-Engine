@@ -1,15 +1,17 @@
 /**
  * A game project's record of the add-ons installed through WASD Engine: `.wasdengine/addons.json` in the folder that
- * holds `project.godot`, beside the `game.json` of WASD Engine Plugins. The record is the source of truth for what
- * an installation created, so a removal deletes exactly those paths. Writers hold the record's file lock and replace
- * the file atomically.
+ * holds `project.godot`, beside the `game.json` of WASD Engine Plugins. The record names what an installation created,
+ * and a removal takes out those paths when they lie in the add-on's own folder. The project can carry a record that
+ * someone else wrote, so a path counts only when it is relative, with `/` separators, and names nothing another
+ * platform reads as a separator or a drive. Writers hold the record's file lock and replace the file atomically.
  * @module @deepseek-ai/dsh-game-addons/src/record
  */
-import { mkdir, readFile } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
 import { ADDON_ID_PATTERN } from './catalog.ts'
+import { isProjectPath, projectFolder } from './paths.ts'
 import type { InstalledGameAddon } from './types.ts'
 
 /** Folder of WASD Engine's per-project state, relative to the project folder. */
@@ -24,7 +26,7 @@ export const RECORD_FORMAT = 1
 /** How long a writer waits for another writer of the same record. */
 const LOCK_WAIT_MS = 10_000
 
-const ProjectPath = z.string().min(1).refine(path => !path.startsWith('/') && !path.split('/').some(segment => segment === '' || segment === '.' || segment === '..'), 'must be a relative path inside the project')
+const ProjectPath = z.string().min(1).refine(isProjectPath, 'must be a relative path inside the project, with / separators')
 
 const Installed = z.strictObject({
   id: z.string().regex(ADDON_ID_PATTERN),
@@ -90,14 +92,14 @@ export async function readRecord(projectDir: string): Promise<InstalledGameAddon
  * @param signal - cancellation of the lock wait.
  * @returns the entries after the change.
  * @throws {GameAddonRecordError} when the current file is not a valid record.
+ * @throws {GameAddonPathError} when the project's `.wasdengine` folder leads outside the project.
  */
 export async function updateRecord(
   projectDir: string,
   change: (current: readonly InstalledGameAddon[]) => readonly InstalledGameAddon[] | undefined,
   signal: AbortSignal,
 ): Promise<readonly InstalledGameAddon[]> {
-  const path = recordPath(projectDir)
-  await mkdir(join(projectDir, STATE_DIR), { recursive: true })
+  const path = join(await projectFolder(projectDir, STATE_DIR), RECORD_FILE)
   return await withFileLock(path, async () => {
     const current = await readRecord(projectDir)
     const next = change(current)

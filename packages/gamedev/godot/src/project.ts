@@ -10,8 +10,11 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 /** How many directory levels below the working directory the search for the nearest `project.godot` descends. */
 export const PROJECT_SEARCH_DEPTH = 3
 
-/** Directories never searched: version control data, dependencies, Godot's import cache, and agent state. */
-const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['.git', 'node_modules', '.godot', '.agents'])
+/**
+ * Directories never searched: version control data, dependencies, Godot's import cache, agent state, and WASD Engine's
+ * project state, which holds the backups of removed add-ons.
+ */
+const SKIPPED_DIRECTORIES: ReadonlySet<string> = new Set(['.git', 'node_modules', '.godot', '.agents', '.wasdengine'])
 
 const PROJECT_FILE = 'project.godot'
 

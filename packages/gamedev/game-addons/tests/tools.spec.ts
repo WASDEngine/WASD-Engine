@@ -105,7 +105,7 @@ describe('game_addons', () => {
     await setup()
     expect(ctx!.tools.get(TOOL_NAME)?.description).toBe(
       'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
-      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove deletes one; list shows the project\'s add-ons. '
+      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     )
   })
@@ -151,7 +151,7 @@ describe('game_addons', () => {
     expect(state.downloads).toEqual([URLS.camera])
     expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; each one's guide is listed as the skill of its id:\n- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed]`)
     const removed = await call(state, { action: 'remove', id: 'test-camera' })
-    expect(text(removed)).toBe('Removed test-camera: deleted addons/test_camera, and its project.godot entries and notice.')
+    expect(text(removed)).toBe('Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera: addons/test_camera.')
     expect((await state.manager.presence(state.project)).get('test-camera')).toEqual({ state: 'absent' })
     expect(state.asked).toEqual([])
   })
