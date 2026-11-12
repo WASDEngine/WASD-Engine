@@ -115,7 +115,9 @@ const CLASS_PROJECT = {
 
 /**
  * An add-on laid out like Dialogue Manager's editor: the plugin preloads a view scene that holds a scene whose script
- * uses the plugin's class, so the view script loads only after the plugin; and a scene that names a missing script.
+ * uses the plugin's class, so the view script loads only after the plugin; and a scene that names a missing script. A
+ * second add-on with the same layout sits one folder deeper, in `addons/vendor/nested/`, where the editor's plugin
+ * search also finds its `plugin.cfg`.
  */
 const ADDON_PROJECT = {
   'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="AddonTest"\nconfig/features=PackedStringArray("4.7")\n\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/views/plugin.cfg")\n',
@@ -126,6 +128,11 @@ const ADDON_PROJECT = {
   'addons/views/view.tscn': '[gd_scene format=3]\n\n[ext_resource type="PackedScene" path="res://addons/views/code_edit.tscn" id="1_edit"]\n\n[node name="View" type="Control"]\n\n[node name="CodeEdit" parent="." instance=ExtResource("1_edit")]\n',
   'addons/views/lost_view.gd': ['@tool', 'extends Control', '', 'const Lost: PackedScene = preload("./lost.tscn")', ''].join('\n'),
   'addons/views/lost.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://addons/views/lost.gd" id="1_lost"]\n\n[node name="Lost" type="Control"]\nscript = ExtResource("1_lost")\n',
+  'addons/vendor/nested/plugin.cfg': '[plugin]\n\nname="Nested"\ndescription="Nested"\nauthor="Test"\nversion="1.0"\nscript="nested_plugin.gd"\n',
+  'addons/vendor/nested/nested_plugin.gd': ['@tool', 'class_name NestedPlugin', 'extends EditorPlugin', '', 'const View: PackedScene = preload("./view.tscn")', ''].join('\n'),
+  'addons/vendor/nested/code_edit.gd': ['@tool', 'class_name NestedCodeEdit', 'extends Control', '', 'func host() -> void:', '\tprint(NestedPlugin)', ''].join('\n'),
+  'addons/vendor/nested/code_edit.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://addons/vendor/nested/code_edit.gd" id="1_edit"]\n\n[node name="CodeEdit" type="Control"]\nscript = ExtResource("1_edit")\n',
+  'addons/vendor/nested/view.tscn': '[gd_scene format=3]\n\n[ext_resource type="PackedScene" path="res://addons/vendor/nested/code_edit.tscn" id="1_edit"]\n\n[node name="View" type="Control"]\n\n[node name="CodeEdit" parent="." instance=ExtResource("1_edit")]\n',
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -266,20 +273,29 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     }
     // The view script alone: loaded first, it would meet its own scene through the plugin's preload.
     expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toBe(`Checked 1 scripts in ${dir}: no errors.`)
+    // The same for the add-on whose plugin.cfg sits one folder deeper.
+    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/vendor/nested/code_edit.gd'] }))).toBe(`Checked 1 scripts in ${dir}: no errors.`)
     const whole = await callTool(c, 'godot_check', { project: 'with-addon' })
-    expect(text(whole)).toBe(`Checked 3 scripts in ${dir}; 1 have problems:\n[error] res://addons/views/lost_view.gd: Attempt to open script 'res://addons/views/lost.gd' resulted in error 'File not found'.`)
+    expect(text(whole)).toBe(`Checked 5 scripts in ${dir}; 1 have problems:\n[error] res://addons/views/lost_view.gd: Attempt to open script 'res://addons/views/lost.gd' resulted in error 'File not found'.`)
     // An error in the view script shows once, though the plugin's load and the view script's own load both meet it.
     await writeFile(join(dir, 'addons', 'views', 'code_edit.gd'), ADDON_PROJECT['addons/views/code_edit.gd'].replace('print(ViewsPlugin)', 'print(ViewsPlugin.missing_member)'))
     expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toBe(
       `Checked 1 scripts in ${dir}; 1 have problems:\n[script_error] res://addons/views/code_edit.gd:6: Parse Error: Cannot find member "missing_member" in base "ViewsPlugin".`,
     )
-    // A broken plugin shows with the view script whose check loaded it, and with its own check.
+    // A broken plugin shows once, against the plugin script: after the view script whose check loaded it, in its own
+    // check, and in a check of the whole project.
     await writeFile(join(dir, 'addons', 'views', 'code_edit.gd'), ADDON_PROJECT['addons/views/code_edit.gd'])
     await writeFile(join(dir, 'addons', 'views', 'views_plugin.gd'), [...ADDON_PROJECT['addons/views/views_plugin.gd'].split('\n').slice(0, -1), '', 'func _enter_tree() -> void:', '\tundefined_call()', ''].join('\n'))
     const plugin = '[script_error] res://addons/views/views_plugin.gd:8: Parse Error: Function "undefined_call()" not found in base self.'
-    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))).toContain(plugin)
-    expect(text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/views_plugin.gd'] }))).toContain(plugin)
-  }, 240_000)
+    const once = (output: string): number => output.split('\n').filter(line => line === plugin).length
+    const viewOnly = text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/code_edit.gd'] }))
+    expect(viewOnly, viewOnly).toMatch(/^Checked 2 scripts in .*; 1 have problems:\n/u)
+    expect(once(viewOnly), viewOnly).toBe(1)
+    const pluginOnly = text(await callTool(c, 'godot_check', { project: 'with-addon', paths: ['res://addons/views/views_plugin.gd'] }))
+    expect(once(pluginOnly), pluginOnly).toBe(1)
+    const wholeBroken = text(await callTool(c, 'godot_check', { project: 'with-addon' }))
+    expect(once(wholeBroken), wholeBroken).toBe(1)
+  }, 480_000)
 
   it('runs the game windowless and reports startup facts', async () => {
     const result = await callTool(c, 'godot_run', { width: 640, height: 360 })

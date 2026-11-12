@@ -2,7 +2,9 @@
  * Static GDScript check: one headless Godot process loads each script through `runtime/wasd_check.gd` and
  * reports the errors logged while it loaded, without running the game. Scripts resolve `class_name` classes,
  * `uid://` paths, and imported assets through the project's import data, so a check first imports a project whose
- * import data may be older than its files.
+ * import data may be older than its files. Before the first script of an add-on folder the process loads the
+ * add-on's editor plugin, and each error of that load counts against the checked script it is in, else against the
+ * plugin script.
  * @module @deepseek-ai/dsh-godot/src/check
  */
 import { stat } from 'node:fs/promises'
@@ -24,6 +26,8 @@ const MARKER = 'WASD_CHECK '
 const CheckLine = z.object({
   path: z.string(),
   loaded: z.boolean(),
+  /** Set on the line of an add-on plugin script that the process loaded before a checked script of its add-on. */
+  plugin: z.literal(true).optional(),
   errors: z.array(z.object({
     level: z.enum(['warning', 'error', 'script_error', 'shader_error']),
     message: z.string(),
@@ -95,7 +99,10 @@ export interface ProjectCheckOptions extends CheckOptions {
 
 /** The scripts that {@link checkProject} checked. */
 export interface ProjectCheck {
-  /** Checked scripts in request order. */
+  /**
+   * Checked scripts in request order, then each add-on plugin script outside the request that the check loaded before
+   * a script of its add-on and whose load reported a problem.
+   */
   readonly scripts: readonly CheckedScript[]
   /**
    * Set when the import step before the check did not end normally, so that errors about `class_name` classes or
@@ -108,7 +115,7 @@ export interface ProjectCheck {
 export interface CheckReport {
   /** Checked project folder. */
   readonly projectDir: string
-  /** Checked scripts in request order. */
+  /** Checked scripts as {@link ProjectCheck} orders them. */
   readonly scripts: readonly CheckedScript[]
   /** Scripts the request named, including those beyond {@link CHECK_SCRIPT_LIMIT}. */
   readonly total: number
@@ -174,10 +181,10 @@ export async function selectScripts(
 
 /**
  * Select the problems a script's author can act on: those located in `res://` files, each once, else the first
- * engine error (for example a missing file), attributed to the script. A located problem can be logged twice when
- * the add-on plugin script that the check loads first compiles the checked script before the checked script's own load.
+ * engine error (for example a missing file), attributed to the script. A located problem can arrive twice when the
+ * add-on plugin script that the check loads first compiles the checked script before the checked script's own load.
  * @param path - checked script.
- * @param errors - errors logged while it loaded.
+ * @param errors - errors logged while it loaded, and the errors of plugin loads that belong to it.
  * @returns the issues.
  */
 function issuesOf(path: string, errors: CheckLine['errors']): CheckIssue[] {
@@ -205,9 +212,56 @@ function parseLine(text: string): CheckLine | undefined {
 }
 
 /**
+ * The errors of one load that its scripts' authors can act on: those located in `res://` files, else the first engine
+ * error, which a failed load of a located problem elsewhere would otherwise repeat.
+ * @param errors - errors logged during the load.
+ * @returns the located errors, else the first error that is not a warning, else none.
+ */
+function actionable(errors: CheckLine['errors']): CheckLine['errors'] {
+  const located = errors.filter(error => error.file.startsWith('res://'))
+  if (located.length > 0) return located
+  const first = errors.find(error => error.level !== 'warning')
+  return first === undefined ? [] : [first]
+}
+
+/**
+ * Give each error to the script it counts against. Of a plugin's load, a located error in a checked script counts
+ * against that script, and every other error against the plugin script; of a checked script's own load, a located
+ * error in a plugin script that the check loaded first counts against that plugin script, and every other error
+ * against the script. A load counts only its {@link actionable} errors, so a clean script never carries its plugin's
+ * problems, and a problem that several loads log shows once.
+ * @param paths - checked scripts in request order.
+ * @param own - errors of each checked script's own load.
+ * @param pluginLoads - the plugin loads that the process reported.
+ * @returns every checked script in request order, then each plugin script outside the request whose load reported a
+ *   problem.
+ */
+function attribute(paths: readonly string[], own: ReadonlyMap<string, CheckLine['errors']>, pluginLoads: readonly CheckLine[]): CheckedScript[] {
+  const requested = new Set(paths)
+  const plugins = new Set(pluginLoads.map(load => load.path))
+  const owned = new Map<string, CheckLine['errors']>()
+  const give = (owner: string, error: CheckLine['errors'][number]): void => {
+    owned.set(owner, [...owned.get(owner) ?? [], error])
+  }
+  for (const load of pluginLoads) {
+    for (const error of actionable(load.errors)) give(requested.has(error.file) ? error.file : load.path, error)
+  }
+  for (const path of paths) {
+    for (const error of actionable(own.get(path) ?? [])) give(plugins.has(error.file) ? error.file : path, error)
+  }
+  const checked = paths.map(path => ({ path, issues: issuesOf(path, owned.get(path) ?? []) }))
+  const outside = [...plugins]
+    .filter(path => !requested.has(path))
+    .map(path => ({ path, issues: issuesOf(path, owned.get(path) ?? []) }))
+    .filter(script => script.issues.length > 0)
+  return [...checked, ...outside]
+}
+
+/**
  * Check scripts in one headless process.
  * @param options - process parameters and scripts.
- * @returns every checked script in request order.
+ * @returns every checked script in request order, then each add-on plugin script outside the request whose load before
+ *   a script of its add-on reported a problem.
  * @throws {GodotCheckError} when the process ends or times out before reporting a script.
  */
 export async function checkScripts(options: CheckOptions): Promise<CheckedScript[]> {
@@ -217,19 +271,22 @@ export async function checkScripts(options: CheckOptions): Promise<CheckedScript
     cwd: options.projectDir,
   })
   options.signal.throwIfAborted()
-  const reported = new Map<string, CheckedScript>()
+  const own = new Map<string, CheckLine['errors']>()
+  const pluginLoads: CheckLine[] = []
   for (const line of consoleLines(stdout)) {
     const parsed = line.startsWith(MARKER) ? parseLine(line.slice(MARKER.length)) : undefined
-    if (parsed !== undefined) reported.set(parsed.path, { path: parsed.path, issues: issuesOf(parsed.path, parsed.errors) })
+    if (parsed === undefined) continue
+    if (parsed.plugin === true) pluginLoads.push(parsed)
+    else own.set(parsed.path, parsed.errors)
   }
-  const missing = options.paths.filter(path => !reported.has(path))
+  const missing = options.paths.filter(path => !own.has(path))
   if (missing.length > 0) {
     const cause = timedOut ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(exit)})`
     const others = missing.length > 1 ? ` and ${missing.length - 1} more scripts` : ''
     const tail = lastLines(stderr, FAILURE_OUTPUT_LINES) || lastLines(stdout, FAILURE_OUTPUT_LINES)
     throw new GodotCheckError(`The Godot check ${cause} before checking ${missing[0] as string}${others}.${tail === '' ? '' : `\nLast output:\n${tail}`}`)
   }
-  return options.paths.map(path => reported.get(path) as CheckedScript)
+  return attribute(options.paths, own, pluginLoads)
 }
 
 /**
@@ -259,7 +316,7 @@ async function importBeforeCheck(options: ProjectCheckOptions): Promise<string |
  * Check scripts as they load in the game: import the project first when its import data may be older than its files,
  * then load the scripts in one headless process. The project's import steps and checks run one at a time.
  * @param options - process parameters, scripts, and the plugin's import steps.
- * @returns every checked script in request order, and a warning when the import did not end normally.
+ * @returns the checked scripts as {@link checkScripts} orders them, and a warning when the import did not end normally.
  * @throws {GodotCheckError} when the import cannot start, or when the check process ends or times out before reporting a script.
  */
 export async function checkProject(options: ProjectCheckOptions): Promise<ProjectCheck> {

@@ -168,6 +168,43 @@ posix('checkScripts', () => {
     ])
   })
 
+  it('reports each problem of an add-on plugin\'s load once, against the file it is in', async () => {
+    const pluginError = { level: 'script_error', message: 'Function "missing()" not found', file: 'res://addons/v/plugin.gd', line: 8, function: 'GDScript::reload' }
+    const viewError = { level: 'script_error', message: 'Cannot find member', file: 'res://addons/v/view.gd', line: 6, function: 'GDScript::reload' }
+    const nestedError = { level: 'error', message: 'Failed loading resource', file: 'core/io/resource_loader.cpp', line: 300, function: 'load' }
+    const config = {
+      check: {
+        plugins: {
+          // The plugin's load meets an error in itself and one in a checked view script of its add-on.
+          'res://addons/v/a.gd': { path: 'res://addons/v/plugin.gd', errors: [pluginError, viewError] },
+          // A nested add-on's plugin fails without a located error.
+          'res://addons/vendor/n/b.gd': { path: 'res://addons/vendor/n/plugin.gd', errors: [nestedError] },
+        },
+        // The script whose check loaded the plugin meets the plugin's error again in its own load.
+        errors: { 'res://addons/v/a.gd': [pluginError], 'res://addons/v/plugin.gd': [pluginError], 'res://addons/v/view.gd': [viewError] },
+      },
+    }
+    // Checked with its plugin: the plugin's problem shows once, against the plugin, and the script that loaded it is clean.
+    expect(await check(config, ['res://addons/v/a.gd', 'res://addons/v/plugin.gd', 'res://addons/v/view.gd', 'res://addons/vendor/n/b.gd'])).toEqual([
+      { path: 'res://addons/v/a.gd', issues: [] },
+      { path: 'res://addons/v/plugin.gd', issues: [{ level: 'script_error', file: 'res://addons/v/plugin.gd', line: 8, message: 'Function "missing()" not found' }] },
+      { path: 'res://addons/v/view.gd', issues: [{ level: 'script_error', file: 'res://addons/v/view.gd', line: 6, message: 'Cannot find member' }] },
+      { path: 'res://addons/vendor/n/b.gd', issues: [] },
+      { path: 'res://addons/vendor/n/plugin.gd', issues: [{ level: 'error', file: 'res://addons/vendor/n/plugin.gd', message: 'Failed loading resource' }] },
+    ])
+    // Checked alone: the problems go to the plugin script, which follows the checked script.
+    expect(await check(config, ['res://addons/v/a.gd'])).toEqual([
+      { path: 'res://addons/v/a.gd', issues: [] },
+      {
+        path: 'res://addons/v/plugin.gd',
+        issues: [
+          { level: 'script_error', file: 'res://addons/v/plugin.gd', line: 8, message: 'Function "missing()" not found' },
+          { level: 'script_error', file: 'res://addons/v/view.gd', line: 6, message: 'Cannot find member' },
+        ],
+      },
+    ])
+  }, PROCESSES_TIMEOUT)
+
   it.each([
     [{ check: { omit: ['res://b.gd'], stderr: 'fatal\n', exitCode: 1 } }, ['res://b.gd'], 'The Godot check ended (exit code 1) before checking res://b.gd.\nLast output:\nfatal'],
     [{ check: { garbage: ['res://b.gd'], invalid: ['res://c.gd'] } }, ['res://b.gd', 'res://c.gd'], 'The Godot check ended (exit code 0) before checking res://b.gd and 1 more scripts.'],

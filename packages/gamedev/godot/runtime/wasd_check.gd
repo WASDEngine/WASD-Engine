@@ -13,12 +13,15 @@ extends SceneTree
 ## Loading a script runs its static initializers. As in a game, Godot creates the custom resource loaders and
 ## savers that the project declares as global classes, so scripts can preload the resources those loaders read.
 ##
-## Before the first script of a folder under `res://addons/`, the check loads the script that the folder's
-## `plugin.cfg` names, as the editor loads an editor plugin before the rest of its add-on; the errors of that load
-## belong to the script whose check started it. Add-ons rely on that order: a view script that uses its plugin's
-## class, while the plugin preloads the view's scene, loads only after the plugin, because loading the view's
-## script first reaches the view's scene while that script is still loading, and Godot reports the script as a
-## non-existent resource.
+## Before the first script of an add-on folder, the check loads the script that the folder's `plugin.cfg` names, as
+## the editor loads an editor plugin before the rest of its add-on. The add-on folder is the first folder below
+## `res://addons/` on the script's path that holds `plugin.cfg`, where the editor's plugin search stops; the search
+## enters no hidden folder. The errors of that load go on a line of their own before the script's line,
+## {"path": <plugin script>, "plugin": true, "loaded": <bool>, "errors": [...]}, so that the Host reports each
+## against the file it is in rather than against the script whose check started the load. Add-ons rely on that
+## order: a view script that uses its plugin's class, while the plugin preloads the view's scene, loads only after
+## the plugin, because loading the view's script first reaches the view's scene while that script is still
+## loading, and Godot reports the script as a non-existent resource.
 
 const MARKER := "WASD_CHECK "
 const AUTOLOAD_PREFIXES: Array[String] = ["autoload/", "autoload_prepend/"]
@@ -88,7 +91,10 @@ func _initialize() -> void:
 	OS.add_logger(logger)
 	for path in OS.get_cmdline_user_args():
 		logger.take()
-		_load_plugin_of(path)
+		var plugin := _plugin_to_load(path)
+		if not plugin.is_empty():
+			var loaded := ResourceLoader.load(plugin)
+			print(MARKER + JSON.stringify({"path": plugin, "plugin": true, "loaded": loaded is Script, "errors": logger.take()}))
 		var resource := ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_IGNORE)
 		var errors := logger.take()
 		print(MARKER + JSON.stringify({"path": path, "loaded": resource is Script, "errors": errors}))
@@ -96,28 +102,40 @@ func _initialize() -> void:
 	quit()
 
 
-## Load the editor plugin script of the add-on folder that holds `path`, the first time the check reaches that
-## folder, unless `path` is that plugin script, whose own check loads it. A folder without `plugin.cfg`, or whose
-## `plugin.cfg` names no script, loads nothing.
-func _load_plugin_of(path: String) -> void:
-	if not path.begins_with(ADDONS) or not path.trim_prefix(ADDONS).contains("/"):
-		return
-	var folder := ADDONS + path.trim_prefix(ADDONS).get_slice("/", 0)
-	if _plugin_folders.has(folder):
-		return
+## The editor plugin script to load before `path`: the script that `plugin.cfg` names in the add-on folder that holds
+## `path`, the first time the check reaches that folder, unless `path` is that plugin script, whose own check loads
+## it. Empty when there is none: outside an add-on folder, or when its `plugin.cfg` names no script.
+func _plugin_to_load(path: String) -> String:
+	var folder := _addon_folder_of(path)
+	if folder.is_empty() or _plugin_folders.has(folder):
+		return ""
 	_plugin_folders[folder] = true
-	var settings := folder.path_join("plugin.cfg")
-	if not FileAccess.file_exists(settings):
-		return
 	var config := ConfigFile.new()
-	if config.load(settings) != OK:
-		return
+	if config.load(folder.path_join("plugin.cfg")) != OK:
+		return ""
 	var script := str(config.get_value("plugin", "script", ""))
 	if script.is_empty():
-		return
+		return ""
 	var plugin := (script if script.begins_with("res://") else folder.path_join(script)).simplify_path()
-	if plugin != path:
-		ResourceLoader.load(plugin)
+	return "" if plugin == path else plugin
+
+
+## The add-on folder that holds `path` as the editor's plugin search finds it: the first folder below `res://addons/`
+## on the way to `path` that holds `plugin.cfg`, because the search looks no deeper below such a folder and enters no
+## hidden folder. Empty when no folder on the way holds one.
+func _addon_folder_of(path: String) -> String:
+	if not path.begins_with(ADDONS):
+		return ""
+	var parts := path.trim_prefix(ADDONS).split("/")
+	var folder := ADDONS.trim_suffix("/")
+	for index in parts.size() - 1:
+		var part: String = parts[index]
+		if part.begins_with("."):
+			return ""
+		folder = folder.path_join(part)
+		if FileAccess.file_exists(folder.path_join("plugin.cfg")):
+			return folder
+	return ""
 
 
 ## Point the autoload settings back at their scripts and scenes, so the GDScript analyzer types singleton names
