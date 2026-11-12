@@ -17,6 +17,7 @@ import { profile, readAccountDetail } from './details.ts'
 import { readNotificationContent, readNotifications, sendNotificationEvent } from './notifications.ts'
 import { revokeAccount, type LogoutRetryPolicy } from './logout.ts'
 import { AccountUnauthorizedError, PlatformAuthError, platformHeaders, platformOrigin, browserUrl, requestPlatform, initialization, exchange, loginOrigin, requestAutoRecharge } from './protocol.ts'
+import { harnessOriginFor } from './wasdengine-harness-origin.ts'
 import { autoRechargeChange } from './wasdengine-allowance.ts'
 
 export type * from './types.ts'
@@ -41,7 +42,10 @@ const device = z.object({ id: z.uuid() })
 export interface Config {
   /** Platform origin serving auth-api and browser pages. */
   platformOrigin?: string
-  /** Harness API origin for account notifications. */
+  /**
+   * Harness API origin for account notifications; unset, DeepSeek's Harness API under DeepSeek's platform and the
+   * platform origin under any other (`wasdengine-harness-origin.ts`).
+   */
   harnessOrigin?: string
   /** Native desktop identity for Host API and embedded Platform requests; null identifies the client as web. */
   desktopPlatform?: 'darwin' | 'win32' | null
@@ -73,7 +77,7 @@ export interface Config {
 /** Validated deployment choices. */
 const Config = Schema.object({
   platformOrigin: Schema.string().default('https://platform.deepseek.com'),
-  harnessOrigin: Schema.string().default('https://harness.deepseek.com'),
+  harnessOrigin: Schema.string(),
   desktopPlatform: Schema.union([Schema.const('darwin'), Schema.const('win32'), Schema.const(null)]).default(null),
   embeddedPageDist: Schema.string().default(''),
   inferenceOrigin: Schema.string().default('https://api.deepseek.com'),
@@ -139,7 +143,7 @@ export class DeepSeekAccount extends TypertRemoteService {
     const resolved = Config(config)
     this.embeddedPageDist = resolved.embeddedPageDist
     this.origin = platformOrigin(resolved.platformOrigin, resolved.allowLoopbackHttp, 'platformOrigin')
-    this.harnessOrigin = platformOrigin(resolved.harnessOrigin, resolved.allowLoopbackHttp, 'harnessOrigin')
+    this.harnessOrigin = harnessOriginFor(this.origin, config.harnessOrigin, resolved.allowLoopbackHttp)
     const inference = new URL(resolved.inferenceOrigin)
     if (!['http:', 'https:'].includes(inference.protocol) || inference.username || inference.password
       || inference.pathname !== '/' || inference.search || inference.hash) {

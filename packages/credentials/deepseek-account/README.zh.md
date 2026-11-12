@@ -50,7 +50,7 @@ getNotifications 读取 `GET /api/v0/users/notifications/list`；getNotification
 
 余额请求使用 balanceTimeoutMs（默认 30,000ms）；超时返回失败结果，不清除账号，也不制造零余额。在插件行配置 platformOrigin、allowLoopbackHttp、requestTimeoutMs、balanceTimeoutMs 和 attemptTimeoutMs。HTTP 仅用于显式启用的本机开发。服务先在现有 Host webServer 注册 /oauth/callback，再调用 auth_init；校验 state、使用 S256 PKCE 授权码兑换一次，并在跳转 auth_exchange.biz_data.authorized_url 前提交授权记录。浏览器地址默认要求匹配配置的平台来源，并始终要求固定的 /dsh/authorize 或 /dsh/authorized 路径。完成页地址将 `login_source` 设为发起登录的客户端类型（`web` 或 `desktop`），并保留平台返回的其他查询参数。设备标识是独立的随机 UUID 记录，由使用同一凭证存储的进程共享；device_model 报告操作系统和架构。
 
-platformOrigin 默认为 `https://platform.deepseek.com`，用于登录、资料、余额、退出登录、外部导航和原生内嵌页面。harnessOrigin 默认为 `https://harness.deepseek.com`，仅用于通知 list、content 和 events 接口。私有部署需显式设置 harnessOrigin。二者均接受 HTTPS；启用 allowLoopbackHttp 后也接受回环 HTTP。模型和文件 token 目标使用 inferenceOrigin。
+platformOrigin 默认为 `https://platform.deepseek.com`，用于登录、资料、余额、退出登录、外部导航和原生内嵌页面。harnessOrigin 仅用于通知 list、content 和 events 接口；未设置时，platformOrigin 为 DeepSeek 平台则取 `https://harness.deepseek.com`，否则取 platformOrigin 本身（WASDEngine 分支，`src/wasdengine-harness-origin.ts`）；在其他 platformOrigin 下配置 DeepSeek 的 harnessOrigin 会使初始化失败，因为通知请求携带平台的 token。二者均接受 HTTPS；启用 allowLoopbackHttp 后也接受回环 HTTP。模型和文件 token 目标使用 inferenceOrigin。
 
 `requestHeaders` 为 Platform 和通知 API 请求添加仅 Host 使用的请求头。`accountRequestHeaders` 为资料、余额、通知和原生内嵌页面覆盖这些请求头；Cookie 按名称合并。请求头值属于敏感配置，不包含在账号 UI 状态中。Authorization、X-DSH-Auth-Token、Host、Content-Type 及连接和消息分帧请求头由服务保留。客户端身份请求头覆盖部署配置中的同名请求头。重定向会失败，不会转发请求头。开发环境 Cookie 应保存在私有配置或环境变量中；不会自动收集浏览器 Cookie。
 
