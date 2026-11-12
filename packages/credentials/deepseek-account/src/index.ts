@@ -17,7 +17,7 @@ import { profile, readAccountDetail } from './details.ts'
 import { readNotificationContent, readNotifications, sendNotificationEvent } from './notifications.ts'
 import { revokeAccount, type LogoutRetryPolicy } from './logout.ts'
 import { AccountUnauthorizedError, PlatformAuthError, platformHeaders, platformOrigin, browserUrl, requestPlatform, initialization, exchange, loginOrigin, requestAutoRecharge } from './protocol.ts'
-import { harnessOriginFor } from './wasdengine-harness-origin.ts'
+import { carriesForeignGrantToDeepSeek, harnessOriginFor, inferenceOriginFor } from './wasdengine-harness-origin.ts'
 import { autoRechargeChange } from './wasdengine-allowance.ts'
 
 export type * from './types.ts'
@@ -51,7 +51,10 @@ export interface Config {
   desktopPlatform?: 'darwin' | 'win32' | null
   /** Optional frontend deployment selector for embedded Usage and Top-up pages. */
   embeddedPageDist?: string
-  /** Exact HTTP(S) origin allowed to receive account tokens for inference and files. */
+  /**
+   * Exact HTTP(S) origin allowed to receive account tokens for inference and files; unset, DeepSeek's API under
+   * DeepSeek's platform and the platform origin under any other (`wasdengine-harness-origin.ts`).
+   */
   inferenceOrigin?: string
   /** Allow HTTP only on loopback for the development Mock. */
   allowLoopbackHttp?: boolean
@@ -80,7 +83,7 @@ const Config = Schema.object({
   harnessOrigin: Schema.string(),
   desktopPlatform: Schema.union([Schema.const('darwin'), Schema.const('win32'), Schema.const(null)]).default(null),
   embeddedPageDist: Schema.string().default(''),
-  inferenceOrigin: Schema.string().default('https://api.deepseek.com'),
+  inferenceOrigin: Schema.string(),
   allowLoopbackHttp: Schema.boolean().default(false),
   rewriteBrowserOrigin: Schema.boolean().default(false),
   requestHeaders: Schema.dict(Schema.string().role('secret')).default({}),
@@ -144,7 +147,7 @@ export class DeepSeekAccount extends TypertRemoteService {
     this.embeddedPageDist = resolved.embeddedPageDist
     this.origin = platformOrigin(resolved.platformOrigin, resolved.allowLoopbackHttp, 'platformOrigin')
     this.harnessOrigin = harnessOriginFor(this.origin, config.harnessOrigin, resolved.allowLoopbackHttp)
-    const inference = new URL(resolved.inferenceOrigin)
+    const inference = new URL(inferenceOriginFor(this.origin, config.inferenceOrigin))
     if (!['http:', 'https:'].includes(inference.protocol) || inference.username || inference.password
       || inference.pathname !== '/' || inference.search || inference.hash) {
       throw new Error('account: inferenceOrigin must be an HTTP(S) origin without credentials, path, query or fragment')
@@ -493,6 +496,8 @@ export class DeepSeekAccount extends TypertRemoteService {
     // Development grants cannot authenticate production model or file requests.
     const issuer = new URL(result.data.issuer)
     if (result.data.token.startsWith('dsh_mock_')) return undefined
+    // WASD Engine: DeepSeek never receives another platform's token (`wasdengine-harness-origin.ts`).
+    if (carriesForeignGrantToDeepSeek(destination, issuer)) return undefined
     if (this.inferenceOrigin === 'https://api.deepseek.com') {
       if (['localhost', '127.0.0.1', '[::1]'].includes(issuer.hostname)) return undefined
     } else if (issuer.origin !== this.origin) return undefined
