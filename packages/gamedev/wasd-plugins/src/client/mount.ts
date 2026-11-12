@@ -111,9 +111,10 @@ function registerUi(ctx: Context): void {
             const current = directory.store.getSnapshot().current
             if (current === null) return 'No model is selected.'
             try {
+              // This Session only: the saved default for new Sessions keeps the user's own effort.
               const result = await directory.select({
                 provider: current.provider, model: current.model, reasoningEffort: FIRST_BUILD_EFFORT,
-              })
+              }, { saveDefault: false })
               return result.ok ? undefined : result.error.message
             } catch (error) {
               return (error as Error).message

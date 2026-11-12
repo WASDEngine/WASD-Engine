@@ -309,8 +309,9 @@ export class SessionController extends TypertRemoteService {
   }
 
   /**
-   * Select one Session-local model after explicitly resuming the Session; save the default in the background.
-   * @param request - Session identity and requested model selection.
+   * Select one Session-local model after explicitly resuming the Session; save the default in the background unless
+   * the request sets `saveDefault: false`.
+   * @param request - Session identity, requested model selection, and whether it also becomes the default.
    * @returns the normalized selection installed for the Session, without waiting for default persistence.
    */
   @Remote('selectModel')

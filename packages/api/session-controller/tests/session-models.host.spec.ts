@@ -686,6 +686,29 @@ describe('Web session model selection', () => {
     await ctx.fiber.dispose()
   })
 
+  // WASDEngine fork (wasdengine/FORK.md): the first build tip selects Max effort for one Session only.
+  it('keeps the saved default when a selection asks for this Session only', async () => {
+    const { ctx, sessionId } = await harness()
+    const saved: unknown[] = []
+    const remote = await createSessionTestRemote(ctx, {
+      defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }),
+      saveDefaultModelSelection: (selection) => {
+        saved.push(selection)
+        return Promise.resolve()
+      },
+      cwd: '/tmp',
+    })
+
+    const selected = { provider: 'deepseek-official', model: 'deepseek-reasoner', reasoningEffort: 'max' }
+    expect(expectValue(await remote.selectModel(request({ sessionId, ...selected, saveDefault: false }))).selected)
+      .toEqual(selected)
+    expect(currentSelection(ctx, sessionId)).toEqual(selected)
+    expect(saved).toEqual([])
+    expectValue(await remote.selectModel(request({ sessionId, ...selected, saveDefault: true })))
+    expect(saved).toEqual([selected])
+    await ctx.fiber.dispose()
+  })
+
   it('admits saved selections without querying the advisory model catalog', async () => {
     const { ctx, sessionId, agent } = await harness()
     const followup = vi.fn()

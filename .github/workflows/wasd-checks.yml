@@ -78,6 +78,7 @@ jobs:
           packages/client/ui-workspace
           packages/client/ui-conversation
           packages/client/ui-model-selection
+          packages/api/session-controller/tests/session-models.host.spec.ts
           packages/client/ui-settings-models
           packages/experimental/client-ui-forge
           packages/experimental/liveshare/tests/endpoint-classification.client.spec.ts
