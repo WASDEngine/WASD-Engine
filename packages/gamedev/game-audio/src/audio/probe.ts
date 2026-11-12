@@ -77,7 +77,7 @@ function u32be(bytes: Uint8Array, offset: number): number {
  * Read an IEEE 754 80-bit extended number, as AIFF stores its sample rate.
  * @param bytes - the bytes.
  * @param offset - first of the ten bytes, big-endian.
- * @returns the value; undefined for infinity and NaN.
+ * @returns the value; undefined for infinity, NaN, and a value beyond the range of a double.
  */
 export function readExtended(bytes: Uint8Array, offset: number): number | undefined {
   const exponent = ((byte(bytes, offset) & 0x7f) << 8) | byte(bytes, offset + 1)
@@ -86,8 +86,12 @@ export function readExtended(bytes: Uint8Array, offset: number): number | undefi
   if (exponent === 0x7fff) return undefined
   if (exponent === 0 && high === 0 && low === 0) return 0
   const sign = (byte(bytes, offset) & 0x80) === 0 ? 1 : -1
-  return sign * (high * 2 ** (exponent - 16_383 - 31) + low * 2 ** (exponent - 16_383 - 63))
+  const value = sign * (high * 2 ** (exponent - 16_383 - 31) + low * 2 ** (exponent - 16_383 - 63))
+  return Number.isFinite(value) ? value : undefined
 }
+
+/** Sample rates an AIFF header may state, in hertz; a rate outside them marks a damaged header. */
+const AIFF_RATES = { lowest: 1, highest: 10_000_000 } as const
 
 /** The format chunk of an AIFF file. */
 export interface AiffFormat {
@@ -103,12 +107,13 @@ export interface AiffFormat {
  * Read an AIFF or AIFC `COMM` chunk.
  * @param body - the chunk's body.
  * @param aifc - whether the file is AIFC, whose chunk names a compression type.
- * @returns the format, or undefined for a chunk too short or without a usable sample rate.
+ * @returns the format, or undefined for a chunk too short or without a usable sample rate: a number from 1 Hz to
+ * 10 MHz, which keeps the length its frames give finite.
  */
 export function readAiffFormat(body: Uint8Array, aifc: boolean): AiffFormat | undefined {
   if (body.length < 18) return undefined
   const sampleRate = readExtended(body, 8)
-  if (sampleRate === undefined || sampleRate <= 0) return undefined
+  if (sampleRate === undefined || !(sampleRate >= AIFF_RATES.lowest && sampleRate <= AIFF_RATES.highest)) return undefined
   return {
     channels: u16be(body, 0),
     frames: u32be(body, 2),

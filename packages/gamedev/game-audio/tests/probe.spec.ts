@@ -54,6 +54,30 @@ describe('probeAudio', () => {
     expect((await probe(aiff({ sampleRate: 48_000, channels: 2, bits: 32, frames: 0, compression: 'fl32', samples: [] })))?.encoding).toBe('32-bit float')
   })
 
+  it('reads nothing from an AIFF header whose rate is beyond a double, NaN, or so small that the length is infinite', async () => {
+    const damaged = [
+      // The largest finite exponent: with the integer bit set the value overflows, without it the product is NaN.
+      [0x7f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      [0x7f, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0],
+      // About 1e-308 Hz, which makes 100 frames last longer than a double holds.
+      [0x3c, 0x00, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      // Half a hertz and 20 MHz: finite, but no recording's rate.
+      [0x3f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      extended(20_000_000),
+    ]
+    for (const rateBytes of damaged) {
+      const file = aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples: new Array<number>(200).fill(0), rateBytes })
+      expect(await probe(file), rateBytes.join(' ')).toBeUndefined()
+      expect(() => decodeAiff(file)).toThrow('no usable format chunk')
+    }
+    expect(readExtended(Uint8Array.from(damaged[0] ?? []), 0)).toBeUndefined()
+    expect(readExtended(Uint8Array.from(damaged[1] ?? []), 0)).toBeUndefined()
+    // The lowest and highest rates the header may state still read.
+    const edge = (sampleRate: number) => aiff({ sampleRate, channels: 1, bits: 16, frames: 2, samples: [0, 0, 0, 0] })
+    expect((await probe(edge(1)))?.seconds).toBe(2)
+    expect((await probe(edge(10_000_000)))?.sampleRate).toBe(10_000_000)
+  })
+
   it('reads FLAC STREAMINFO, also after an ID3 tag', async () => {
     const info = (44_100n << 44n) | (1n << 41n) | (15n << 36n) | 441_000n
     const packed: number[] = []

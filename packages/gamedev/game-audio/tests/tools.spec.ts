@@ -4,6 +4,7 @@
  * request, validates the answer, stores the picture for a model that accepts images, reports the figures with how
  * Godot imports the sound, and opens it in the Audio tab.
  */
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -12,6 +13,7 @@ import { describeAudioImage } from '../src/audio/picture.ts'
 import { Config } from '../src/index.ts'
 import { NO_WINDOW_MESSAGE, windowPath } from '../src/tools.ts'
 import { callTool, compose, fakeAgent, JUMP, PIXEL_PNG, text, type Composition } from './composition.ts'
+import { aiff } from './signals.ts'
 
 let composition: Composition | undefined
 
@@ -75,6 +77,23 @@ describe('audio_search', () => {
   it('says when the walk stopped at its caps', async () => {
     const c = await composed({ maxSounds: 2 })
     expect(text(await callTool(c, 'audio_search'))).toContain('some sounds are missing; narrow it with folder.')
+  })
+
+  it('lists AIFF files whose headers state no usable rate without their header facts, and the other sounds as before', async () => {
+    const c = await composed()
+    const samples = new Array<number>(200).fill(0)
+    // A rate beyond a double, which reads as NaN, and one so small that 100 frames last forever.
+    await writeFile(join(c.work, 'audio/sfx/overflow.aif'), aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples, rateBytes: [0x7f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0] }))
+    await writeFile(join(c.work, 'audio/sfx/tiny.aif'), aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples, rateBytes: [0x3c, 0x00, 0x80, 0, 0, 0, 0, 0, 0, 0] }))
+    const result = await callTool(c, 'audio_search', { folder: 'audio/sfx' })
+    expect(result.isError, text(result)).toBeFalsy()
+    expect(text(result).split('\n').slice(0, 5)).toEqual([
+      `4 sounds in audio/sfx in ${c.work}: 4 sound effects.`,
+      '- audio/sfx/coin.wav: sound effect; WAV, 16-bit PCM, stereo, 44.1 kHz, 0.400 s, 68.9 KB',
+      '- audio/sfx/jump.wav: sound effect; WAV, 16-bit PCM, mono, 48 kHz, 0.620 s, 58.2 KB',
+      '- audio/sfx/overflow.aif: sound effect; AIFF, 254 B',
+      '- audio/sfx/tiny.aif: sound effect; AIFF, 254 B',
+    ])
   })
 })
 
