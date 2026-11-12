@@ -51,7 +51,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 目录
 
-每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。Blender 条目给出它的 Python 模块，以及它是从压缩包下载的扩展还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。
+每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。它还可以指定叠加文件夹（`godot.overlay`）：目录中的文件夹，可位于它自己的目录文件夹中，也可位于各条目旁边；安装程序会把其中的文件加入扩展文件夹，但不会替换压缩包中的文件。两个 Universal Animation Library 条目（Quaternius 的 CC0 动画包）以这种方式加入导入设置，把每个动画包导入为重定向到 Godot 人形骨架的 `AnimationLibrary`；二者都会加入 `humanoid-retarget/`，其中有骨骼映射和 `retarget.gd`，后者用来设置模型的导入，使其能播放这些片段。叠加文件会进入游戏，因此 WASD Engine 把它们贡献到公有领域（CC0-1.0），通知中的版权行也这样说明。Blender 条目给出它的 Python 模块，以及它是从压缩包下载的扩展还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。
 
 ### 工具
 
@@ -66,7 +66,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 `project` 指定包含 `project.godot` 的文件夹，相对于工作目录；省略时会像 Godot 工具那样使用最近的项目。一次 Godot 安装依次执行以下步骤：
 
 1. 若缓存中没有固定的压缩包则下载，并检查其大小和 SHA-256。
-2. 把扩展的文件夹解压到 `.wasdengine/` 下的暂存文件夹中；若许可证文件在压缩包中位于该文件夹之外，则一并加入。
+2. 把扩展的文件夹解压到 `.wasdengine/` 下的暂存文件夹中；若许可证文件在压缩包中位于该文件夹之外，则一并加入，并加入条目叠加文件夹中的文件。
 3. 把文件夹移动到 `res://addons/<folder>/`。
 4. 启用编辑器插件，并把其自动加载和设置写入 `project.godot`，其他行保持不变。
 5. 在 `THIRD_PARTY_NOTICES.md` 中添加一个带有许可证文本的标记段落。
@@ -167,7 +167,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token 影响
 
-随附目录有 22 个扩展，该部分约 6,100 个字符，约 1,500 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符；随附目录测试会把该部分限制在 8,000 个字符以内。
+随附目录有 24 个扩展，该部分约 6,600 个字符，约 1,650 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符；随附目录测试会把该部分限制在 8,000 个字符以内。
 
 #### KV Cache 影响
 
@@ -181,7 +181,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token 影响
 
-该声明约为 2,300 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 6,500 个字符，其中大部分是目录各行。
+该声明约为 2,300 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 6,800 个字符，其中大部分是目录各行。
 
 #### KV Cache 影响
 
@@ -209,7 +209,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token 影响
 
-搜索整个目录的结果约为 9,000 个字符；指南结果即指南本身；其他结果为几百个字符。
+搜索整个目录的结果约为 13,700 个字符；指南结果即指南本身；其他结果为几百个字符。
 
 #### KV Cache 影响
 
@@ -235,6 +235,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 - **资源包很大** — MPFB 附带 MakeHuman 的系统资源：与扩展一起下载 312 MB，在扩展存储和资源文件夹中占用 358 MB；所有项目共用它们，移除扩展时会保留。
 - **字母方块** — Extra Import Hints、GdUnit4 和 YATI 只有以 Godot 或 Blender 标志改作的图标，而商标条款禁止把这些标志用作其他项目的标志；VRM 的列表图标没有许可证。这四个扩展显示字母方块。
 - **AGPL 图标** — MPFB 的图标是采用 AGPL-3.0-or-later 的 MakeHuman 标志，因此 `ICONS.md` 旁随附 `LICENSE-AGPL-3.0.txt`，其中是该许可证的全文。
+- **只适用于人形的片段** — Universal Animation Library 的片段可在骨骼映射所列出的人形骨架上播放；`retarget.gd` 随附 MPFB 的 `game_engine` 与 `mixamo` 骨架、Rigify 的游戏骨架、Mixamo 下载的模型以及 Quaternius 人体模型的映射，其他骨架则由智能体编写映射。在这些骨架上，四肢方向与片段的偏差约在 10 度以内；MPFB 的 `game_engine` 躯干在大幅弯曲时偏差可达约 23 度。
 - **扩展偏好设置会被重置** — 出厂设置会重置 Blender 扩展的偏好设置；工作进程会再次运行每个扩展的设置脚本，从而恢复目录设定的内容（例如 MPFB 的资源文件夹），但不会恢复智能体自己设置的偏好。
 
 <a id="dev-note"></a>
@@ -243,6 +244,6 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 <details>
 <summary>维护者工作背景 — 点击展开</summary>
 
-添加或更新条目时，先固定发布版本的压缩包与 SHA-256，再阅读其 `plugin.gd`，了解 `_enable_plugin()` 添加了什么。指南须在目录内容测试检查的大小之内，并在 `tests/smoke/<id>/` 下添加冒烟测试。设置 `WASD_LIBGODOT_DIR` 为已安装的运行时文件夹并缓存 uv 的 bpy 5.2.3 后，运行 `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts`；`WASD_ADDON_ARCHIVES` 可在多次运行之间保留下载的文件。
+添加或更新条目时，先固定发布版本的压缩包与 SHA-256，再阅读其 `plugin.gd`，了解 `_enable_plugin()` 添加了什么。指南须在目录内容测试检查的大小之内，并在 `tests/smoke/<id>/` 下添加冒烟测试。设置 `WASD_LIBGODOT_DIR` 为已安装的运行时文件夹并缓存 uv 的 bpy 5.2.3 后，运行 `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts`；`WASD_ADDON_ARCHIVES` 可在多次运行之间保留下载的文件。冒烟测试可以复制另一个冒烟测试文件夹中的文件（`files`），并在两次导入之间运行一个 `prepare` 脚本，就像动画包运行 `retarget.gd` 那样；`tests/smoke/universal-animation-library/rigs.py` 用 MPFB 和 Rigify 生成它们的骨架。条目的叠加文件改变时，请修改其 `version`，因为再次安装同一版本不会更新项目中的副本。
 
 </details>

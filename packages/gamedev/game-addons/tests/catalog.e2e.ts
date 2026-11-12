@@ -2,7 +2,8 @@
  * Every add-on of the shipped catalog, end to end: the manager downloads its pinned archive, installs it into a fresh
  * Godot project and imports the project with the LibGodot runtime, or unpacks it into the Blender add-on store; every
  * script of a Godot add-on passes `godot_check`'s script loader in the order that a whole-project check uses and in the
- * reverse one; then the add-on's smoke test runs on Godot 4.7.2 (headless, or rendering without a window) or in a real
+ * reverse one; then the add-on's smoke test runs on Godot 4.7.2 (headless, or rendering without a window, after its
+ * prepare script between two imports of its files when it has one) or in a real
  * Blender worker after `wasd_addons.enable`, and a removal takes the add-on's plugin, autoloads, and settings out of
  * `project.godot` again (Godot rewrites the file when an editor plugin saves project settings during the import, so its
  * bytes may differ).
@@ -151,10 +152,15 @@ describe('the shipped catalog on Godot 4.7.2', () => {
       })
       const scripts = (await listProjectFiles(project, '.gd', CHECK_SCRIPT_LIMIT, signal)).files.map(file => toResPath(project, file))
       for (const order of [scripts, [...scripts].reverse()]) expect(await checkErrors(project, order), `${entry.id} godot_check errors`).toEqual([])
-      await cp(join(SMOKE_DIR, entry.id, 'files'), project, { recursive: true })
+      await cp(join(SMOKE_DIR, spec.files ?? entry.id, 'files'), project, { recursive: true })
+      const timeoutMs = spec.timeoutSeconds * 1000
+      if (spec.prepare !== undefined) {
+        await importProject(project)
+        const prepared = await godot(['--headless', '--path', project, '--script', spec.prepare.path, '--', ...spec.prepare.args], project, timeoutMs)
+        expect(prepared.output, `${entry.id} prepare output`).not.toMatch(/SCRIPT ERROR|_FAILED /u)
+      }
       const passes = spec.importTwice === true || entry.godot?.importTwice === true ? 2 : 1
       for (let pass = 0; pass < passes; pass += 1) await importProject(project)
-      const timeoutMs = spec.timeoutSeconds * 1000
       const ran = spec.run === 'script'
         ? await godot(['--headless', '--path', project, '--script', spec.path, ...spec.args === undefined || spec.args.length === 0 ? [] : ['--', ...spec.args]], project, timeoutMs)
         : spec.run === 'render'

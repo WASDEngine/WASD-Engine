@@ -51,7 +51,7 @@ The plugin loads and checks the whole catalog when it starts, so an invalid entr
 
 ### The catalog
 
-Each entry pins one release: its archive URL, SHA-256, and size, the folder inside the archive to install, its SPDX license, copyright line, and any credit the license requires. It also records the application it extends, when to use it and when Godot or Blender alone is enough, search tags, the development stages at which it helps (`prototype`, `content`, `polish`, `ship`), the add-ons it conflicts with, and the runtime versions it was verified with. A Godot entry names its folder under `res://addons/`, its editor plugin, and the autoloads and project settings that its `_enable_plugin()` adds, because the installer cannot click the editor's plugin switch. A Blender entry names its Python module and whether it is an extension downloaded from its archive or an add-on that ships inside Blender. It may also pin an asset pack (`assets`: URL, SHA-256, size, folder, SPDX license, and page) and name a setup script (`blender.setup`) in its catalog folder, whose `setup(module, assets)` the Blender worker calls after it enables the add-on; MPFB's script points MPFB at MakeHuman's CC0 system assets. The shipped catalog lists only GDScript Godot add-ons, so Web releases keep working, and Blender add-ons whose operators run without a window. Each entry has a smoke test in [`tests/smoke/`](tests/smoke/) that the end-to-end suite runs, and the suite loads every script of a Godot entry with `godot_check`'s script loader, in a whole-project check's order and in the reverse one, which must report no errors.
+Each entry pins one release: its archive URL, SHA-256, and size, the folder inside the archive to install, its SPDX license, copyright line, and any credit the license requires. It also records the application it extends, when to use it and when Godot or Blender alone is enough, search tags, the development stages at which it helps (`prototype`, `content`, `polish`, `ship`), the add-ons it conflicts with, and the runtime versions it was verified with. A Godot entry names its folder under `res://addons/`, its editor plugin, and the autoloads and project settings that its `_enable_plugin()` adds, because the installer cannot click the editor's plugin switch. It may also name overlay folders (`godot.overlay`): folders of the catalog, in its own catalog folder or beside the entries, whose files the installer adds to the add-on folder without replacing a file of the archive. The two Universal Animation Library entries, Quaternius's CC0 animation packs, add their import settings this way, which import each pack as an `AnimationLibrary` retargeted to Godot's humanoid skeleton, and both add `humanoid-retarget/`, which holds the bone maps and `retarget.gd`, the script that prepares a model's import to play the clips. Overlay files enter the game, so WASD Engine dedicates them to the public domain (CC0-1.0), as the notice's copyright line says. A Blender entry names its Python module and whether it is an extension downloaded from its archive or an add-on that ships inside Blender. It may also pin an asset pack (`assets`: URL, SHA-256, size, folder, SPDX license, and page) and name a setup script (`blender.setup`) in its catalog folder, whose `setup(module, assets)` the Blender worker calls after it enables the add-on; MPFB's script points MPFB at MakeHuman's CC0 system assets. The shipped catalog lists only GDScript Godot add-ons, so Web releases keep working, and Blender add-ons whose operators run without a window. Each entry has a smoke test in [`tests/smoke/`](tests/smoke/) that the end-to-end suite runs, and the suite loads every script of a Godot entry with `godot_check`'s script loader, in a whole-project check's order and in the reverse one, which must report no errors.
 
 ### The tool
 
@@ -66,7 +66,7 @@ Each entry pins one release: its archive URL, SHA-256, and size, the folder insi
 `project` names the folder that holds `project.godot`, relative to the working directory; without it, the nearest project is used, as the Godot tools find it. A Godot installation runs these steps:
 
 1. Download the pinned archive into the cache unless it is there, checking its size and SHA-256.
-2. Unpack the add-on's folder into a staging folder under `.wasdengine/`, adding the license file when it lies outside that folder in the archive.
+2. Unpack the add-on's folder into a staging folder under `.wasdengine/`, adding the license file when it lies outside that folder in the archive, and the files of the entry's overlay folders.
 3. Move the folder into `res://addons/<folder>/`.
 4. Enable the editor plugin and add its autoloads and settings to `project.godot`, keeping every other line.
 5. Add a marked section with the license text to `THIRD_PARTY_NOTICES.md`.
@@ -167,7 +167,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token effect
 
-With the 22 add-ons of the shipped catalog the section comes to about 6,100 characters, about 1,500 tokens, in every request of every Session, with or without a Godot project. Each added entry adds one line of about 180 to 270 characters; the shipped catalog spec keeps the section within 8,000 characters.
+With the 24 add-ons of the shipped catalog the section comes to about 6,600 characters, about 1,650 tokens, in every request of every Session, with or without a Godot project. Each added entry adds one line of about 180 to 270 characters; the shipped catalog spec keeps the section within 8,000 characters.
 
 #### KV Cache effect
 
@@ -181,7 +181,7 @@ The Session's agent sees `game_addons` with `action` (`search`, `guide`, `instal
 
 #### Token effect
 
-The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 6,500 characters to the MCP server's instructions, most of them the catalog lines.
+The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 6,800 characters to the MCP server's instructions, most of them the catalog lines.
 
 #### KV Cache effect
 
@@ -209,7 +209,7 @@ A search lists matching add-ons, about 300 to 600 characters each. An installati
 
 #### Token effect
 
-A search of the whole catalog is about 9,000 characters; a guide result is the guide; other results are a few hundred characters.
+A search of the whole catalog is about 13,700 characters; a guide result is the guide; other results are a few hundred characters.
 
 #### KV Cache effect
 
@@ -235,6 +235,7 @@ These limits define what the plugin offers; they are current package constraints
 - **Large asset packs** — MPFB comes with MakeHuman's system assets: 312 MB to download with the add-on, and 358 MB in the store and asset folder, which every project shares and a removal keeps.
 - **Letter tiles** — Extra Import Hints, GdUnit4, and YATI have only icons built from the Godot or Blender logos, which the trademark terms forbid as another project's logo, and VRM's listing icon has no license. These four show a letter tile.
 - **An AGPL icon** — MPFB's icon is MakeHuman's logo under AGPL-3.0-or-later, so `LICENSE-AGPL-3.0.txt` ships beside `ICONS.md` with that license's text.
+- **Humanoid clips only** — the Universal Animation Library clips play on humanoid rigs that a bone map names; `retarget.gd` ships maps for MPFB's `game_engine` and `mixamo` rigs, Rigify's game skeleton, Mixamo downloads, and Quaternius's mannequins, and the agent writes a map for another rig. Limb directions follow the clips within about 10 degrees on those rigs, and MPFB's `game_engine` torso up to about 23 degrees in deep bends.
 - **Add-on preferences reset** — factory settings reset Blender add-on preferences; the worker runs each add-on's setup script again, which restores what the catalog sets, such as MPFB's asset folder, but not preferences the agent set.
 
 <a id="dev-note"></a>
@@ -243,6 +244,6 @@ These limits define what the plugin offers; they are current package constraints
 <details>
 <summary>Working context for maintainers — click to expand</summary>
 
-To add or update an entry, pin the release's archive and SHA-256, then read its `plugin.gd` for what `_enable_plugin()` adds. Write the guide within the size the catalog content spec checks, and add a smoke test under `tests/smoke/<id>/`. Run `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts` with `WASD_LIBGODOT_DIR` set to an installed runtime folder and uv's bpy 5.2.3 cached; `WASD_ADDON_ARCHIVES` keeps the downloads between runs.
+To add or update an entry, pin the release's archive and SHA-256, then read its `plugin.gd` for what `_enable_plugin()` adds. Write the guide within the size the catalog content spec checks, and add a smoke test under `tests/smoke/<id>/`. Run `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts` with `WASD_LIBGODOT_DIR` set to an installed runtime folder and uv's bpy 5.2.3 cached; `WASD_ADDON_ARCHIVES` keeps the downloads between runs. A smoke test may copy another smoke folder's files (`files`) and run a `prepare` script between two imports, as the animation packs run `retarget.gd`; `tests/smoke/universal-animation-library/rigs.py` makes their rigs with MPFB and Rigify. Change an entry's `version` when its overlay files change, because installing the same version again leaves a project's copies as they are.
 
 </details>

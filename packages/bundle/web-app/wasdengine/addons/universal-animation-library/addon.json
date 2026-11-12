@@ -1,0 +1,48 @@
+{
+  "id": "universal-animation-library",
+  "title": "Universal Animation Library",
+  "host": "godot",
+  "version": "2025.03.25",
+  "summary": "45 humanoid clips by Quaternius (idle, walk, jog, sprint, crouch, jump, roll, swim, sit, punch, sword, pistol, spell, hit, death) and a script that retargets MPFB, Rigify, and Mixamo rigs to them.",
+  "useWhen": "Humanoid 3D characters (from MPFB, Rigify, a Mixamo download, or another humanoid rig) need idle, locomotion, or combat animations, and animating each clip by hand in Blender would take too long.",
+  "avoidWhen": "Non-humanoid creatures, 2D games, or a character whose model already holds the clips the game needs.",
+  "tags": [
+    "animation",
+    "character",
+    "humanoid",
+    "retargeting",
+    "locomotion",
+    "combat",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "Animations by Quaternius; the import settings, bone maps, and retarget.gd that WASD Engine adds are also CC0-1.0",
+  "homepage": "https://quaternius.com/packs/universalanimationlibrary.html",
+  "archive": {
+    "url": "https://opengameart.org/sites/default/files/universal_animation_librarystandard.zip",
+    "sha256": "18ff1a7215f4852b320203e8aaf02a1578b5c8eef9027fbaedfcedc7b85a3ac2",
+    "bytes": 14541205,
+    "root": "Animation Library[Standard]/Godot",
+    "license": "Animation Library[Standard]/License.txt"
+  },
+  "godot": {
+    "addonDir": "universal_animation_library",
+    "overlay": [
+      "universal-animation-library/overlay",
+      "humanoid-retarget"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://opengameart.org/sites/default/files/preview_1323.png",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-11"
+  }
+}

@@ -1,6 +1,6 @@
 # Add-on icons
 
-The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is the add-on's own image, or, for Rigify and A.N.T. Landscape, an icon from Blender's source; it was downloaded from the source below and is shared under the license and with the copyright line given there. Add-ons without an icon of their own that may be used here show a letter tile instead.
+The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is the add-on's own image, or, for Rigify and A.N.T. Landscape, an icon from Blender's source; it was downloaded from the source below and is shared under the license and with the copyright line given there. The two Universal Animation Library icons are 64-pixel crops of their packs' preview images. Add-ons without an icon of their own that may be used here show a letter tile instead.
 
 | Add-on | File | License | Copyright | Source |
 |---|---|---|---|---|
@@ -22,6 +22,8 @@ The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is t
 | Shaker | `shaker/icon.png` | MIT | Copyright (c) 2024 Enes Kaplan | <https://raw.githubusercontent.com/Eneskp3441/Shaker/v1.0.7/addons/shaker/assets/icon.png> |
 | Sky3D | `sky3d/icon.png` | MIT | Copyright (c) 2023-2025 Cory Petkovsek and Contributors, (c) 2021 J. Cuéllar | <https://raw.githubusercontent.com/TokisanGames/Sky3D/v2.1.0/icon.png> |
 | SmartShape2D | `smartshape2d/icon.png` | MIT | Copyright (c) 2018 Robert Morse | <https://raw.githubusercontent.com/SirRamEsq/SmartShape2D/3.3.2/addons/rmsmartshape/assets/icon.png> |
+| Universal Animation Library | `universal-animation-library/icon.png` | CC0-1.0 | — | <https://opengameart.org/sites/default/files/preview_1323.png> |
+| Universal Animation Library 2 | `universal-animation-library-2/icon.png` | CC0-1.0 | — | <https://opengameart.org/sites/default/files/ual2.png> |
 
 ## MIT License
 

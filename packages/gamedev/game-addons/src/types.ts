@@ -82,6 +82,12 @@ export interface GodotAddonSpec {
   readonly settings?: readonly GodotProjectSetting[]
   /** Whether resources of the add-on's formats import fully only on a second import pass. */
   readonly importTwice?: boolean
+  /**
+   * Folders of the catalog, relative to the catalog folder, whose files the installer adds to the add-on folder after
+   * unpacking it, such as import settings and scripts that WASD Engine ships with an asset pack; none may replace a file
+   * of the archive.
+   */
+  readonly overlay?: readonly string[]
 }
 
 /** How a Blender add-on is enabled in the Blender worker. */
