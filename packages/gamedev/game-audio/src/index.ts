@@ -161,7 +161,8 @@ export function apply(ctx: Context, config: Config): void {
       return probe
     },
     async measure(agent, request, signal) {
-      // A window that went away may never answer, and an MCP call has no tool time limit, so the plugin bounds the wait.
+      // A window that went away may never answer; this bound ends the wait before the tool's time limit, so the agent
+      // hears that no window measured the sound.
       using bounded = deadline(signal, config.measureTimeoutMs, AUDIO_ERROR.window)
       let answer: unknown
       try {

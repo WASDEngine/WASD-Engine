@@ -68,8 +68,10 @@ const GAME_TOOLS_UI = { id: 'ui-game-tools', name: '@deepseek-ai/dsh-client-ui-g
 
 /** The row the fork inserts after the Game tools tabs: the right Sidebar's Assets tab, which shows the project's 2D and 3D art. */
 const GAME_ASSETS_UI = { id: 'ui-game-assets', name: '@deepseek-ai/dsh-client-ui-game-assets' } as const
+/** The agent's asset tools, whose pictures the Assets tab draws. */
+const GAME_ASSETS = { id: 'game-assets', name: '@deepseek-ai/dsh-game-assets' } as const
 
-/** The row the fork inserts after the Assets tab: the right Sidebar's Audio tab, which plays the project's sounds. */
+/** The row the fork inserts after the asset tools: the right Sidebar's Audio tab, which plays the project's sounds. */
 const GAME_AUDIO_UI = { id: 'ui-game-audio', name: '@deepseek-ai/dsh-client-ui-game-audio' } as const
 
 /** The row the fork inserts after the Audio tab: the agent's audio tools, whose measurements the Audio tab makes. */
@@ -318,10 +320,10 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets and Audio tabs, the audio tools, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
   it('mounts WASD Engine Plugins from a web-app dependency, with the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
@@ -417,6 +419,20 @@ describe('WASDEngine overlay', () => {
     expect(meta?.error).toBeUndefined()
     const title = meta?.title
     expect(typeof title === 'object' ? title.en : title).toBe('Assets tab')
+  })
+
+  it('mounts the asset tools after the Assets tab from a web-app dependency, without config', () => {
+    const rows = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? [])
+    const entry = rows.find(row => row.id === GAME_ASSETS.id)
+    expect(entry?.name).toBe(GAME_ASSETS.name)
+    expect(entry?.config).toBeUndefined()
+    expect(entry?.disabled).toBeUndefined()
+    expect(rows.findIndex(row => row.id === GAME_ASSETS.id)).toBe(rows.findIndex(row => row.id === GAME_ASSETS_UI.id) + 1)
+    expect(manifest(webAppDir).dependencies?.[GAME_ASSETS.name]).toBe('workspace:*')
+    const meta = readPluginMeta(GAME_ASSETS.name, pathToFileURL(join(webAppDir, 'package.json')).href)
+    expect(meta?.error).toBeUndefined()
+    const title = meta?.title
+    expect(typeof title === 'object' ? title.en : title).toBe('Assets for the agent')
   })
 
   it('mounts the Audio tab and the audio tools from web-app dependencies by their bare package names, with their default caps', () => {

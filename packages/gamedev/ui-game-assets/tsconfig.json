@@ -20,10 +20,12 @@
     { "path": "../../client/ui-renderer" },
     { "path": "../../client/ui-sidebar-right" },
     { "path": "../../client/ui-slots" },
+    { "path": "../../client/ui-workspace" },
     { "path": "../../core/session" },
     { "path": "../../typert/protocol" },
     { "path": "../../util/brand" },
     { "path": "../../util/values" },
-    { "path": "../../util/workspace-path" }
+    { "path": "../../util/workspace-path" },
+    { "path": "../game-assets" }
   ]
 }

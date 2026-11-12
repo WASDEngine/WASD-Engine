@@ -119,6 +119,9 @@
       "path": "../../web/web"
     },
     {
+      "path": "../../gamedev/game-assets"
+    },
+    {
       "path": "../../gamedev/game-audio"
     },
     {

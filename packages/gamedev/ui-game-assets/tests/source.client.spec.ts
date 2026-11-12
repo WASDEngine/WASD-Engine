@@ -64,6 +64,20 @@ describe('AssetsSource', () => {
     expect(list).toHaveBeenCalledTimes(2)
   })
 
+  it('offers its latest scan only while it is fresh', async () => {
+    let now = 0
+    const { list, pending } = controlled()
+    const source = new AssetsSource(list, { maxFolders: 10, maxAssets: 10 }, () => now, vi.fn())
+    expect(source.freshScan()).toBeUndefined()
+    source.rescan()
+    pending[0]?.settle(listing('a.png'))
+    await settled()
+    expect(source.freshScan()?.assets.map(asset => asset.path)).toEqual(['a.png'])
+    now = FRESH_SCAN_MS
+    expect(source.freshScan()).toBeUndefined()
+    expect(source.scanState.getSnapshot().scan?.assets.map(asset => asset.path)).toEqual(['a.png'])
+  })
+
   it('keeps a slow scan fresh for ten times its duration', async () => {
     let now = 0
     const { list, pending } = controlled()
