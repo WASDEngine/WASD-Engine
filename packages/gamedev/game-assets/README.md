@@ -145,7 +145,7 @@ These limits define what the tools offer; they are current package constraints.
 - **Calls wait for the window** — a call's `renderTimeoutMs` includes the time its request waits behind other agents' pictures in the window.
 - **No Blender files** — a Blender file shows only through a model exported from it, as in the Assets tab.
 - **One window answers** — every owner window that may read the Session starts drawing, and the first answer is used.
-- **Godot animations by name** — a Sprite2D's `frame` track is matched by the node's name, and Godot files over 1 MiB, or beyond the first 400, are not read.
+- **Godot animations by name** — a sprite's `frame` or `frame_coords` track is matched by the node's name, and Godot files over 1 MiB, or beyond the first 400, are not read.
 
 <a id="dev-note"></a>
 ### Dev Note

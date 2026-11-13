@@ -145,7 +145,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 - **调用等待窗口** — 调用的 `renderTimeoutMs` 包括其请求在窗口中排在其他 agent 的图片之后等待的时间。
 - **不读取 Blender 文件** — 与素材标签页一样，Blender 文件只能通过由它导出的模型显示。
 - **一个窗口答复** — 每个可以读取该会话的 owner 窗口都会开始绘制，使用第一个答复。
-- **按名称匹配 Godot 动画** — Sprite2D 的 `frame` 轨道按节点名称匹配，超过 1 MiB 或排在前 400 个之后的 Godot 文件不会被读取。
+- **按名称匹配 Godot 动画** — 精灵节点的 `frame` 或 `frame_coords` 轨道按节点名称匹配，超过 1 MiB 或排在前 400 个之后的 Godot 文件不会被读取。
 
 <a id="dev-note"></a>
 ### 开发备注

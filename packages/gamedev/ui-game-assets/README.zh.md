@@ -68,7 +68,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 底栏的动画菜单列出该图片播放或参与的 2D 动画，它们在图片显示时被找出：
 
 - **自身的帧**：动画 GIF、WebP 或 PNG 的帧，用浏览器的 `ImageDecoder` 按各自的时长解码，命名为 `frames`。
-- **Godot 动画**：来自名称引用该图片的场景与资源，包括 SpriteFrames 动画（嵌入在场景中供 AnimatedSprite2D 使用，或保存为 `.tres`），其帧是该图片或图片的区域（AtlasTexture）；还有 Sprite2D 的帧网格（`hframes` × `vframes`），由 AnimationPlayer 的动画的 `frame` 轨道驱动，没有轨道时则逐格播放。Godot 4 与 Godot 3 的文本格式都能读取；`res://` 路径相对于含有 `project.godot` 的文件夹解析。
+- **Godot 动画**：来自名称引用该图片的场景与资源，包括 SpriteFrames 动画（嵌入在场景中供 AnimatedSprite2D 使用，或保存为 `.tres`），其帧是该图片或图片的区域（AtlasTexture）；还有 Sprite2D 节点与 Godot 3 Sprite 节点的帧网格（`hframes` × `vframes`），覆盖整张纹理，或在开启 `region_enabled` 时覆盖其 `region_rect`，并像 Godot 一样切分为格子，由 AnimationPlayer 的动画的 `frame` 与 `frame_coords` 轨道驱动，没有轨道时则逐格播放。Godot 4 与 Godot 3 的文本格式都能读取；`res://` 路径相对于含有 `project.godot` 的文件夹解析，且绝不会走出该文件夹，会走出的帧被省去。
 - **精灵表 JSON**：图片旁同名的文件，如 Aseprite 与 TexturePacker 所写：每个帧标签是一个动画，可正向、反向或往返（ping-pong）播放，没有标签的文件播放所有帧。
 - **编号图片**：它旁边的图片，如 `walk_01.png` 到 `walk_12.png`，按编号顺序以每秒 12 帧播放。
 
@@ -111,7 +111,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 2D 视图与 agent 的图片在解码图片之前先读取其文件头（[`src/client/image-size.ts`](src/client/image-size.ts)）：PNG、JPEG、GIF、WebP、BMP、ICO、AVIF、TGA、HDR 与 EXR 在文件头中给出尺寸；SVG 没有尺寸，其图片按显示的大小绘制。浏览器支持的格式解码到图片元素中，2D 视图自身的元素通过同一个对象 URL 与之共用。图片的动画在其解码完成后查找：自身的帧通过 `ImageDecoder` 得到，它为取得时长把每一帧解码一次，绘制该帧时再解码一次；最近一次扫描中名称引用其文件的 Godot 文件，每次读取六个，最多 400 个，每个最大 1 MiB；其文件夹列表中同名的精灵表 JSON；以及该列表中的编号图片。Godot 读取器解析区段标题、属性及其值的变体语法，然后按 id 解析 SpriteFrames、AtlasTexture、Sprite2D、Animation 与 AnimationLibrary 资源。
 
-three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载，且该分块中没有任何内容导入浏览器半区的其他模块。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表是 `@deepseek-ai/dsh-game-assets/formats` 的副本，因为插件的浏览器包不能导入其他插件的值；[`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) 保证两者一致。
+three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载；该分块中没有任何内容导入浏览器半区的其他模块，浏览器半区的其他模块也不导入该分块同样导入的值（例如 `@deepseek-ai/dsh-util-values` 的 `assertNever`），否则打包器会把它移入第三个分块，而查看器分块需要这个分块。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表是 `@deepseek-ai/dsh-game-assets/formats` 的副本，因为插件的浏览器包不能导入其他插件的值；[`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) 保证两者一致。
 
 | 文件 | 作用 |
 |---|---|
