@@ -782,4 +782,15 @@ describe('gamedev preset', () => {
     expect(text).toContain('A new `project.godot` also sets `3d/physics_engine="Jolt Physics"` under `[physics]`')
     expect(text).toContain('Keep an existing project\'s physics engine')
   })
+
+  it('has godot-project export for the Web, Windows, and macOS with the built-in Godot before the editor command line', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    const section = text.indexOf('## Export')
+    const editor = text.indexOf('--export-release')
+    expect(section).toBeGreaterThan(0)
+    for (const route of ['`wasd_export_web` (Web)', '`wasd_export_desktop` (Windows, macOS)', '`wasd_release_game` publishes']) {
+      expect(text.indexOf(route), route).toBeGreaterThan(section)
+      expect(text.indexOf(route), route).toBeLessThan(editor)
+    }
+  })
 })
