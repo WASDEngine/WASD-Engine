@@ -60,7 +60,7 @@ describe('setupPrompt', () => {
     expect(prompt).toContain(`Header: Authorization: Bearer ${token()}`)
     expect(prompt).toContain(`claude mcp add-json wasd-engine '{"type":"http","url":"http://127.0.0.1:9273/mcp","headers":{"Authorization":"Bearer ${token()}"}}' --scope user`)
     expect(prompt).toContain('[mcp_servers.wasd-engine]\n  url = "http://127.0.0.1:9273/mcp"')
-    expect(prompt).toContain(`http_headers = { "Authorization" = "Bearer ${token()}" }`)
+    expect(prompt).toContain(`http_headers = { "Authorization" = "Bearer ${token()}" }\n  tool_timeout_sec = 1800`)
     expect(prompt).toContain('search_game_tools')
   })
 

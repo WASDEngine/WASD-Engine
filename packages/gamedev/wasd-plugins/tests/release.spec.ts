@@ -11,8 +11,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { ReleaseFolders } from '../src/folders.ts'
 import {
-  accountKey, copyQuestion, LINK_FILE, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, type ReleaseDependencies,
-  type SiteAccess,
+  accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView, releaseGame, ReleaseError, STATE_DIR,
+  type ReleaseDependencies, type SiteAccess,
 } from '../src/release.ts'
 
 const ORIGIN = 'https://site.test'
@@ -25,7 +25,6 @@ function site(...tokens: string[]) {
   const accounts = tokens.length === 0 ? ['wasd_token'] : tokens
   const games = new Map<string, SiteGame>()
   const calls: { method: string; path: string; token: string; notes: string | null; files?: string[] }[] = []
-  const state = { failedUploads: 0 }
   let next = 1
   const gameJson = (game: SiteGame) => ({ id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -53,10 +52,6 @@ function site(...tokens: string[]) {
       return json(200, { game: gameJson(game) })
     }
     if (method === 'POST' && game !== undefined && match?.[2] === '/releases') {
-      if (state.failedUploads > 0) {
-        state.failedUploads--
-        return json(502, { error: { message: 'Storing the build failed. Try again.' } })
-      }
       const archive = unzipSync(new Uint8Array(await (init?.body as Blob).arrayBuffer()))
       calls.at(-1)!.files = Object.keys(archive).sort()
       game.versions++
@@ -70,7 +65,7 @@ function site(...tokens: string[]) {
     }
     return json(404, { error: { message: 'Not found' } })
   }
-  return { games, calls, state, fetch: fetchSite }
+  return { games, calls, fetch: fetchSite }
 }
 
 const folders: string[] = []
@@ -172,20 +167,6 @@ describe('releaseGame', () => {
     expect((await link(dir)).accounts?.[ORIGIN]?.map(entry => entry.id)).toEqual(['game-2'])
   })
 
-  it('links the project to its new game before the upload, so the release after a failed upload adds to that game', async () => {
-    const dir = await project()
-    const server = site()
-    const deps = dependencies(server.fetch)
-    server.state.failedUploads = 1
-    await expect(releaseGame({ projectDir: dir }, deps, signal)).rejects.toThrow('WASD Engine could not store the release (HTTP 502). Try again later.')
-    expect((await link(dir)).accounts?.[ORIGIN]).toEqual([expect.objectContaining({ account: 'account-1', id: 'game-1', version: 0 })])
-    // A game without a released version is not one the Release button names.
-    expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true })
-    const retried = await releaseGame({ projectDir: dir }, deps, signal)
-    expect(retried).toMatchObject({ version: 1, gameUrl: gameUrl(1) })
-    expect(server.games.size).toBe(1)
-  })
-
   it('keeps one game per account on a site: each account adds to its own game and never reads the other\'s', async () => {
     const dir = await project()
     const server = site('token-a', 'token-b')
@@ -279,6 +260,41 @@ describe('releaseGame', () => {
     // The original now releases another game, so the copy is the only folder of the first one.
     await releaseGame({ projectDir: copy, newGame: true }, deps, signal)
     expect(await releaseGame({ projectDir: another }, deps, signal)).toMatchObject({ version: 4, gameUrl: gameUrl(1) })
+  })
+
+  it('remembers a new game before the upload, so releases after a refused or cut-off upload add versions to it', async () => {
+    const dir = await project()
+    const server = site()
+    let upload: 'refuse' | 'cut off' | 'store' = 'refuse'
+    const cut = new AbortController()
+    const deps = dependencies(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input)
+      if (!url.pathname.endsWith('/releases') || upload === 'store') return server.fetch(input, init)
+      if (upload === 'refuse') {
+        return new Response(JSON.stringify({ error: { message: 'A release may be at most 512 MB zipped.' } }), { status: 413, headers: { 'content-type': 'application/json' } })
+      }
+      // The site stores the build, but the call ends before the site's answer arrives.
+      await server.fetch(input, init)
+      cut.abort()
+      throw cut.signal.reason
+    })
+    const game = { id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: `${ORIGIN}/games/defenders-of-the-wall-1` }
+
+    await expect(releaseGame({ projectDir: dir }, deps, signal)).rejects.toThrow('WASD Engine could not store the release: A release may be at most 512 MB zipped.')
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0 })
+    // A game without a released version is not one the Release button names.
+    expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true })
+
+    upload = 'cut off'
+    await expect(releaseGame({ projectDir: dir }, deps, cut.signal)).rejects.toThrow()
+    expect(server.games.get('game-1')?.versions).toBe(1)
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0 })
+
+    upload = 'store'
+    expect(await releaseGame({ projectDir: dir }, deps, signal)).toMatchObject({ version: 2, gameUrl: game.url })
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 2 })
+    expect(server.games.size).toBe(1)
+    expect(server.calls.filter(call => call.method === 'POST' && call.path === '/api/v1/games')).toHaveLength(1)
   })
 
   it('refuses while signed out, and explains an expired sign-in', async () => {

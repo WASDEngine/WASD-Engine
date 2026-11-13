@@ -4,10 +4,10 @@
  * holds comments. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
  * and never follow redirects. A project remembers each account's game per site in `.wasdengine/game.json` from the
  * moment the site creates the game, before the upload, so later releases add versions to the same game, also after a
- * release whose upload failed; when the site no longer has that game, the release creates a new one, and another
- * account signed in to the same site gets a game of its own. A copy of a project folder carries that link, so a
- * release from a folder that shares its game with another folder on this computer asks first (`folders.ts`). The Web
- * build itself goes to `.wasdengine/web/`, which Godot does not import because the folder is hidden.
+ * release whose upload failed or was cut off; when the site no longer has that game, the release creates a new one,
+ * and another account signed in to the same site gets a game of its own. A copy of a project folder carries that link,
+ * so a release from a folder that shares its game with another folder on this computer asks first (`folders.ts`). The
+ * Web build itself goes to `.wasdengine/web/`, which Godot does not import because the folder is hidden.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
 import { createHash, randomUUID } from 'node:crypto'
