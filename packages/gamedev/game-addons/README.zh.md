@@ -96,7 +96,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### “扩展”对话框
 
-浏览器端会在工作区中每个会话标题栏的“发布”按钮之后注册一个“扩展”按钮。它的对话框列出目录中的 Godot 与 Blender 扩展，以及各自的图标、版本、许可证、大小、资源包、摘要、用途、要求的署名和会话项目中是否已有它。每个图标是条目目录文件夹中不超过 16 KiB 的 `icon.png` 或 `icon.svg`，由条目的 `icon` 指定，并记录其来源 URL、许可证和版权行；目录各文件夹旁的 `ICONS.md` 列出所有图标及许可证全文。目录只读取一次每个图标并转换为 data URL，拒绝含脚本或外部引用的 SVG；`project` Remote 把图标与视图并列返回，因此工具结果从不包含图标。没有图标的扩展显示一个带有其标题首字母的方块。点击即可安装，确认后即可移除；这些操作通过 `gameAddons` Remote 的 `project`、`installAddon` 和 `removeAddon` 方法完成，它们接收工作区文件夹。LiveShare 把这三个端点归类为仅所有者可用。
+浏览器端会在工作区中每个会话标题栏的“导出 / 分享”按钮之后注册一个“扩展”按钮。它的对话框列出目录中的 Godot 与 Blender 扩展，以及各自的图标、版本、许可证、大小、资源包、摘要、用途、要求的署名和会话项目中是否已有它。每个图标是条目目录文件夹中不超过 16 KiB 的 `icon.png` 或 `icon.svg`，由条目的 `icon` 指定，并记录其来源 URL、许可证和版权行；目录各文件夹旁的 `ICONS.md` 列出所有图标及许可证全文。目录只读取一次每个图标并转换为 data URL，拒绝含脚本或外部引用的 SVG；`project` Remote 把图标与视图并列返回，因此工具结果从不包含图标。没有图标的扩展显示一个带有其标题首字母的方块。点击即可安装，确认后即可移除；这些操作通过 `gameAddons` Remote 的 `project`、`installAddon` 和 `removeAddon` 方法完成，它们接收工作区文件夹。LiveShare 把这三个端点归类为仅所有者可用。
 
 <a id="plugin-icon"></a>
 ### 插件图标

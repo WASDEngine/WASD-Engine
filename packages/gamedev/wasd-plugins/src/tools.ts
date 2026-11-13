@@ -1,7 +1,8 @@
 /**
  * The model-facing tools of WASD Engine Plugins: `wasd_export_web` builds a Godot project for the Web,
- * `wasd_record_preview` records the game's preview, an animated GIF and a still, and `wasd_release_game` builds the
- * project and publishes the build as the next version of its game on the WASD Engine site, with the preview. The same
+ * `wasd_export_desktop` builds it for Windows and macOS, `wasd_record_preview` records the game's preview, an animated
+ * GIF and a still, and `wasd_release_game` builds the project and publishes the build as the next version of its game
+ * on the WASD Engine site, public or private, with the preview and, when asked, desktop downloads. The same
  * definitions serve the Session's own agent, which may name the project relative to its working directory, and agents
  * connected through WASD Engine's MCP server, which name it by absolute path and run the game in a Session of theirs.
  * @module @deepseek-ai/dsh-wasd-plugins/src/tools
@@ -14,8 +15,8 @@ import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
-import { MAX_NOTES, MAX_TITLE, type ReleaseRequest } from './release.ts'
-import type { WasdRelease } from './types.ts'
+import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
+import type { WasdDesktopExport, WasdDesktopPlatform, WasdRelease } from './types.ts'
 
 /** What a preview recording asks for. */
 export interface PreviewRequest {
@@ -94,6 +95,15 @@ export interface WasdToolHost {
    */
   exportWeb(projectDir: string, signal: AbortSignal): Promise<GodotWebExport>
   /**
+   * Export a project for desktop platforms into its `.wasdengine/desktop/<platform>` folders, one platform after the
+   * other.
+   * @param projectDir - absolute project folder.
+   * @param platforms - the platforms, in the order they build.
+   * @param signal - cancellation.
+   * @returns the builds.
+   */
+  exportDesktop(projectDir: string, platforms: readonly WasdDesktopPlatform[], signal: AbortSignal): Promise<WasdDesktopExport>
+  /**
    * Record the game's preview in the Session of the call's Agent and save it in the project's preview folder.
    * @param request - project, length, input, and the still's moment.
    * @param exec - the call's execution.
@@ -155,6 +165,30 @@ function size(bytes: number): string {
   return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : megabytes(bytes)
 }
 
+/** What each platform's build holds and where it runs, as results describe it. */
+const BUILD_CONTENTS: Readonly<Record<WasdDesktopPlatform, string>> = {
+  windows: 'a ZIP file with one .exe that holds the whole game, for 64-bit Windows',
+  macos: 'a ZIP file with the game\'s Mac app, for Intel and Apple silicon Macs',
+}
+
+/** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
+const FIRST_OPEN = 'Neither build is signed by a publisher, so a downloaded copy asks before it first runs: on Windows, SmartScreen\'s "Windows protected your PC" needs More info, then Run anyway; on a Mac, Gatekeeper blocks the first open until the user chooses Open Anyway in System Settings > Privacy & Security.'
+
+const PLATFORMS_SCHEMA = { type: 'array', items: { type: 'string', enum: DESKTOP_PLATFORMS } } as const
+
+/**
+ * The platforms of a call, each once, in build order.
+ * @param requested - the call's platforms; undefined picks every platform.
+ * @returns the platforms.
+ */
+function platformsOf(requested: readonly string[] | undefined): WasdDesktopPlatform[] {
+  if (requested === undefined) return [...DESKTOP_PLATFORMS]
+  for (const platform of requested) {
+    if (!(DESKTOP_PLATFORMS as readonly string[]).includes(platform)) throw new Error(`platforms are ${DESKTOP_PLATFORMS.map(item => `"${item}"`).join(' and ')}, not ${JSON.stringify(platform)}.`)
+  }
+  return DESKTOP_PLATFORMS.filter(platform => requested.includes(platform))
+}
+
 function withWarnings(text: string, warnings: readonly string[]): string {
   return warnings.length === 0 ? text : `${text}\nNotes:\n${warnings.map(warning => `- ${warning}`).join('\n')}`
 }
@@ -205,6 +239,38 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       return { ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings] }
     },
   }), defineTool({
+    name: 'wasd_export_desktop',
+    description: 'Export the Godot game for desktop computers with the built-in Godot, one ZIP file per platform in the project\'s .wasdengine/desktop folder: windows holds one .exe with the whole game for 64-bit Windows, and macos holds the game\'s Mac app for Intel and Apple silicon Macs, signed ad hoc. The user can share the files or upload them anywhere. The first export for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. To offer the builds as downloads on the game\'s WASD Engine page, pass desktop to wasd_release_game instead.',
+    parameters: {
+      project: PROJECT,
+      platforms: { ...PLATFORMS_SCHEMA, description: 'The platforms to build for. Default: both, ["windows", "macos"].' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectDir: STRING,
+          builds: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, file: STRING, bytes: INTEGER } } },
+          warnings: WARNINGS,
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: withWarnings([
+          `Exported ${value.projectDir} for desktop computers:`,
+          ...value.builds.map(build => `- ${PLATFORM_NAMES[build.platform as WasdDesktopPlatform]}: ${build.file} (${megabytes(build.bytes)}), ${BUILD_CONTENTS[build.platform as WasdDesktopPlatform]}.`),
+          FIRST_OPEN,
+        ].join('\n'), value.warnings),
+      }],
+    },
+    async execute(args, exec) {
+      const platforms = platformsOf(args.platforms)
+      if (platforms.length === 0) throw new Error('platforms must name at least one of "windows" and "macos".')
+      const exported = await host.exportDesktop(await host.project(args.project, exec), platforms, exec.signal)
+      return { projectDir: exported.projectDir, builds: exported.builds.map(build => ({ ...build })), warnings: [...exported.warnings] }
+    },
+  }), defineTool({
     name: 'wasd_record_preview',
     description: 'Record the game\'s preview for WASD Engine: an animated GIF of a few seconds of the running game and a still image, which Explore and the game\'s share link show once wasd_release_game uploads them. First start the game with godot_run and bring it to its gameplay, such as past its title menu; events then play from the start of the recording, as godot_input takes them, so the clip shows the game in action. Without a running game, the recording starts the game and records its first seconds. The result shows the still: when it does not show the game well, record again. Each recording replaces the project\'s previous preview in its .wasdengine/preview folder.',
     parameters: {
@@ -241,7 +307,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
     },
   }), defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
@@ -249,6 +315,8 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
       preview_gif: { type: 'string', description: 'Animated GIF that Explore plays on hover and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
+      visibility: { type: 'string', enum: ['public', 'private'], description: 'public lists the game on WASD Engine\'s Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game\'s current visibility; a new game is public.' },
+      desktop: { ...PLATFORMS_SCHEMA, description: 'Also build the game for these desktop platforms and offer each build as a download of this version on the game\'s page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.' },
     },
     output: {
       schema: {
@@ -263,6 +331,8 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           totalBytes: INTEGER,
           imageLink: { type: 'string' },
           gifLink: { type: 'string' },
+          visibility: STRING,
+          downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER } } },
           warnings: WARNINGS,
         },
       },
@@ -270,11 +340,16 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
         type: 'text',
         text: withWarnings([
           `Released ${value.title} version ${value.version} (${megabytes(value.totalBytes)}).`,
+          value.visibility === 'private'
+            ? 'The game is private: Explore does not list it, so only people with its link can find it.'
+            : 'The game is public: Explore lists it.',
           `Share link: ${value.gameUrl}`,
           `This version: ${value.url}`,
           ...value.gifLink === undefined ? [] : [`GIF link: ${value.gifLink}`],
           ...value.imageLink === undefined ? [] : [`Image link: ${value.imageLink}`],
+          ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)})`),
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
+          ...value.downloads.length === 0 ? [] : [`The share page offers the downloads. ${FIRST_OPEN}`],
           ...value.gifLink === undefined
             ? []
             : ['Posted on Reddit, Discord, Slack, Telegram, or iMessage, the share link and the GIF link show the GIF; opened in a browser, both play the game.'],
@@ -292,8 +367,10 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
         ...previewImage === undefined ? {} : { previewImage },
         ...previewGif === undefined ? {} : { previewGif },
         ...args.new_game === undefined ? {} : { newGame: args.new_game },
+        ...args.visibility === undefined ? {} : { visibility: args.visibility },
+        ...args.desktop === undefined ? {} : { desktop: platformsOf(args.desktop) },
       }, exec)
-      return { ...released, warnings: [...released.warnings] }
+      return { ...released, downloads: released.downloads.map(download => ({ ...download })), warnings: [...released.warnings] }
     },
   })]
 }
@@ -301,6 +378,9 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
 /** Absolute-path arguments of the tools offered to connected agents, by tool. */
 const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type: 'string'; readonly description: string }>>>> = {
   wasd_export_web: {
+    project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
+  },
+  wasd_export_desktop: {
     project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
   },
   wasd_record_preview: {
@@ -382,8 +462,8 @@ export function wasdMcpProvider(definitions: readonly ToolDefinition[]): GameMcp
   return {
     id: 'wasd',
     title: 'WASD Engine',
-    description: 'Export the user\'s Godot game for the Web, record its preview, and release it on WASD Engine with a share link.',
-    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder. wasd_record_preview records the game\'s preview, a short GIF and a still of the running game, which Explore and the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone can play the game, pick earlier versions, and comment. Each release is public: release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
+    description: 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.',
+    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short GIF and a still of the running game, which Explore and the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

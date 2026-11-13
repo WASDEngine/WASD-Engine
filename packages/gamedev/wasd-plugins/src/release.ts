@@ -1,7 +1,11 @@
 /**
  * Releases: a Godot project's Web build, uploaded to the WASD Engine site the app is signed in to as the next
  * numbered version (1, 2, 3, ...) of the project's game, where its share page plays it, offers earlier versions, and
- * holds comments. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
+ * holds comments. A game is public, on the site's Explore page, or private, reachable only through its link; a release
+ * may change that, and the site applies the change as the version goes live. A release can also build the game for
+ * Windows and macOS and upload each build as a download of that version, which the share page offers; those builds go
+ * to `.wasdengine/desktop/<platform>/` and are exported before anything reaches the site, so a failed build publishes
+ * nothing. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
  * and never follow redirects. A project remembers each account's game per site in `.wasdengine/game.json` from the
  * moment the site creates the game, before the upload, so later releases add versions to the same game, also after a
  * release whose upload failed or was cut off; when the site no longer has that game, the release creates a new one,
@@ -20,12 +24,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
-import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
 import { folderOf, type ReleaseFolders } from './folders.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR } from './state.ts'
-import type { WasdProjectView, WasdRelease } from './types.ts'
+import type { WasdDownload, WasdProjectView, WasdRelease, WasdVisibility } from './types.ts'
 import { writeZip } from './zip.ts'
 
 export { STATE_DIR }
@@ -35,6 +39,15 @@ export const WEB_BUILD_DIR = 'web'
 
 /** The game link file inside {@link STATE_DIR}. */
 export const LINK_FILE = 'game.json'
+
+/** The desktop builds' folder inside {@link STATE_DIR}, which holds one folder per platform. */
+export const DESKTOP_BUILD_DIR = 'desktop'
+
+/** The desktop platforms a release or an export builds for, in the order they build. */
+export const DESKTOP_PLATFORMS: readonly GodotDesktopPlatform[] = ['windows', 'macos']
+
+/** The desktop platforms' names as results write them. */
+export const PLATFORM_NAMES: Readonly<Record<GodotDesktopPlatform, string>> = { windows: 'Windows', macos: 'macOS' }
 
 /** Longest release notes the site keeps; they travel in the upload's query string. */
 export const MAX_NOTES = 1000
@@ -62,9 +75,16 @@ export class ReleaseError extends Error {
 
 const GameRecord = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), version: z.number().int().min(0) })
 type GameRecord = z.infer<typeof GameRecord>
-// One account's game on one site; `account` is absent when the release did not know its account, and `image` and `gif`
-// are the SHA-256 digests of the preview files the project last uploaded for the game.
-const AccountGame = GameRecord.extend({ account: z.string().optional(), image: z.string().optional(), gif: z.string().optional() })
+// One account's game on one site; `account` is absent when the release did not know its account, `image` and `gif` are
+// the SHA-256 digests of the preview files the project last uploaded for the game, and `visibility` is the game's as the
+// site answered the project's latest release; absent before releases knew visibility, which made every game public.
+const Visibility = z.enum(['public', 'private'])
+const AccountGame = GameRecord.extend({
+  account: z.string().optional(),
+  image: z.string().optional(),
+  gif: z.string().optional(),
+  visibility: Visibility.optional(),
+})
 type AccountGame = z.infer<typeof AccountGame>
 const LinkFile = z.object({
   format: z.literal(1),
@@ -85,11 +105,17 @@ const GameJson = z.object({
   gif_url: z.string().nullish(),
   image_link: z.string().nullish(),
   gif_link: z.string().nullish(),
+  // Absent from sites that keep every game public.
+  visibility: Visibility.optional(),
 })
 type GameJson = z.infer<typeof GameJson>
 const ReleaseJson = z.object({
   game: GameJson,
   release: z.object({ version: z.number().int(), url: z.string(), play_url: z.string(), total_bytes: z.number().int() }),
+})
+const DownloadJson = z.object({
+  game: GameJson,
+  download: z.object({ platform: z.enum(['windows', 'macos']), version: z.number().int(), url: z.string(), bytes: z.number().int() }),
 })
 const ErrorJson = z.object({ error: z.object({ message: z.string() }) })
 
@@ -191,7 +217,7 @@ export function projectName(text: string): string | undefined {
 }
 
 /**
- * What the Release button shows for a project folder.
+ * What the Export / Share button shows for a project folder.
  * @param projectDir - absolute folder.
  * @param origin - site origin the app is signed in to, or would sign in to.
  * @param folders - which folders on this computer released each game.
@@ -205,10 +231,14 @@ export async function projectView(projectDir: string, origin: string, folders: R
   } catch {
     // A folder without project.godot is not a Godot project.
   }
-  const game = await linkedGame(projectDir, origin, account)
+  const game = accountGame(siteGames(await readLinks(projectDir), origin), account)
   if (game === undefined || game.version === 0) return { godot }
   const other = await folders.sharedWith(origin, game.id, await folderOf(projectDir), dir => linksTo(dir, origin, game.id))
-  return { godot, game: { title: game.title, url: game.url, version: game.version }, ...other === undefined ? {} : { sharedWith: other } }
+  return {
+    godot,
+    game: { title: game.title, url: game.url, version: game.version, visibility: game.visibility ?? 'public' },
+    ...other === undefined ? {} : { sharedWith: other },
+  }
 }
 
 /**
@@ -271,8 +301,8 @@ class SiteApi {
     return (await this.json(response, z.object({ game: GameJson }), 'read the game')).game
   }
 
-  async create(title: string): Promise<GameJson> {
-    const response = await this.call('POST', '/api/v1/games', { data: JSON.stringify({ title }), type: 'application/json' })
+  async create(title: string, visibility: WasdVisibility): Promise<GameJson> {
+    const response = await this.call('POST', '/api/v1/games', { data: JSON.stringify({ title, visibility }), type: 'application/json' })
     return (await this.json(response, z.object({ game: GameJson }), 'create the game')).game
   }
 
@@ -281,8 +311,11 @@ class SiteApi {
     return (await this.json(response, z.object({ game: GameJson }), 'rename the game')).game
   }
 
-  async release(id: string, archive: string, notes: string): Promise<z.infer<typeof ReleaseJson> | undefined> {
-    const query = notes === '' ? '' : `?${new URLSearchParams({ notes }).toString()}`
+  async release(
+    id: string, archive: string, notes: string, visibility: WasdVisibility | undefined,
+  ): Promise<z.infer<typeof ReleaseJson> | undefined> {
+    const params = new URLSearchParams({ ...notes === '' ? {} : { notes }, ...visibility === undefined ? {} : { visibility } })
+    const query = params.size === 0 ? '' : `?${params.toString()}`
     const response = await this.call('POST', `/api/v1/games/${encodeURIComponent(id)}/releases${query}`, { data: await openAsBlob(archive), type: 'application/zip' })
     if (response.status === 404) {
       await response.body?.cancel()
@@ -300,6 +333,12 @@ class SiteApi {
   async gif(id: string, gif: string): Promise<GameJson> {
     const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/gif`, { data: await openAsBlob(gif), type: 'image/gif' })
     return (await this.json(response, z.object({ game: GameJson }), 'store the preview GIF')).game
+  }
+
+  async download(id: string, version: number, platform: GodotDesktopPlatform, file: string): Promise<z.infer<typeof DownloadJson>> {
+    const path = `/api/v1/games/${encodeURIComponent(id)}/releases/${version}/downloads/${platform}`
+    const response = await this.call('PUT', path, { data: await openAsBlob(file), type: 'application/zip' })
+    return await this.json(response, DownloadJson, `store the ${PLATFORM_NAMES[platform]} download`)
   }
 }
 
@@ -338,6 +377,13 @@ export interface ReleaseRequest {
    * user decides.
    */
   readonly newGame?: boolean
+  /**
+   * Who can find the game from this version on: `public` lists it on the site's Explore page, `private` keeps it off
+   * Explore, reachable through its link. Undefined keeps the game's visibility; a new game is then public.
+   */
+  readonly visibility?: WasdVisibility
+  /** Desktop platforms to build the game for and offer as downloads of this version. Default: none. */
+  readonly desktop?: readonly GodotDesktopPlatform[]
 }
 
 /** What a release needs from its Host. */
@@ -352,6 +398,17 @@ export interface ReleaseDependencies {
    * @returns the exported files.
    */
   readonly exportWeb: (projectDir: string, outputDir: string, signal: AbortSignal) => Promise<GodotWebExport>
+  /**
+   * Export the project for one desktop platform.
+   * @param projectDir - absolute project folder.
+   * @param platform - the platform.
+   * @param outputDir - absolute folder the export fills with the build's ZIP file.
+   * @param signal - cancellation.
+   * @returns the exported ZIP file.
+   */
+  readonly exportDesktop: (
+    projectDir: string, platform: GodotDesktopPlatform, outputDir: string, signal: AbortSignal,
+  ) => Promise<GodotDesktopExport>
   /** HTTP client of the site calls. */
   readonly fetch: typeof fetch
   /** Which folders on this computer released each game. */
@@ -422,14 +479,55 @@ async function uploadPreview(
 }
 
 /**
- * Export a project for the Web and release the build as the next version of the signed-in account's game, or as the
- * first version of a new game.
- * @param request - project, notes, title, preview files, and whether to start a new game.
- * @param dependencies - sign-in, export, HTTP, release folders, temporary files, and the preview recording.
+ * Upload the desktop builds as downloads of a released version. A failed upload becomes a warning, because the version
+ * is released already.
+ * @param api - the site.
+ * @param game - the released game.
+ * @param version - the released version.
+ * @param builds - the builds, in platform order.
+ * @param warnings - collects failures.
+ * @param signal - cancellation.
+ * @returns the stored downloads.
+ */
+async function uploadDownloads(
+  api: SiteApi, game: GameJson, version: number, builds: readonly GodotDesktopExport[], warnings: string[], signal: AbortSignal,
+): Promise<WasdDownload[]> {
+  const stored: WasdDownload[] = []
+  for (const build of builds) {
+    try {
+      const { download } = await api.download(game.id, version, build.platform, join(build.outputDir, build.entry))
+      stored.push({ platform: download.platform, url: download.url, bytes: download.bytes })
+    } catch (error) {
+      signal.throwIfAborted()
+      warnings.push(`The version is released, but its ${PLATFORM_NAMES[build.platform]} download was not stored: ${(error as Error).message}`)
+    }
+  }
+  return stored
+}
+
+/**
+ * The refusal of a private release on a site that keeps every game public, before anything is uploaded.
+ * @param game - the game the release would go to, as the site answered.
+ * @param visibility - the requested visibility.
+ * @throws {ReleaseError} when the release asks for a private game and the site's answer names no visibility.
+ */
+function requireVisibility(game: GameJson, visibility: WasdVisibility | undefined): void {
+  if (visibility === 'private' && game.visibility === undefined) {
+    throw new ReleaseError('This WASD Engine site does not keep games private yet, so a private release would be public. Release it with visibility "public", or try again once the site supports private links.')
+  }
+}
+
+/**
+ * Export a project for the Web, and for the desktop platforms the request names, and release the build as the next
+ * version of the signed-in account's game, or as the first version of a new game, with the desktop builds as its
+ * downloads.
+ * @param request - project, notes, title, preview files, whether to start a new game, visibility, and desktop platforms.
+ * @param dependencies - sign-in, exports, HTTP, release folders, temporary files, and the preview recording.
  * @param signal - cancellation; a version the site already stored stays released.
- * @returns the release and its share links.
+ * @returns the release, its share links, and its downloads.
  * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
- * and has not said which game it releases ({@link copyQuestion}, before the export), and when the site refuses or fails.
+ * and has not said which game it releases ({@link copyQuestion}, before the export), for a private release to a site
+ * without private games (before the upload), and when the site refuses or fails.
  */
 export async function releaseGame(request: ReleaseRequest, dependencies: ReleaseDependencies, signal: AbortSignal): Promise<WasdRelease> {
   const notes = (request.notes ?? '').trim()
@@ -452,6 +550,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   const siteLinks = siteGames(await readLinks(request.projectDir), access.origin)
   let game = request.newGame === true ? undefined : await ownedGame(api, siteLinks, access.account)
   if (game !== undefined) {
+    requireVisibility(game, request.visibility)
     const id = game.id
     const other = request.newGame === false
       ? undefined
@@ -460,6 +559,12 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     await dependencies.folders.add(access.origin, id, here)
   }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
+  // Desktop builds come before anything reaches the site, so a build that fails publishes nothing.
+  const builds: GodotDesktopExport[] = []
+  for (const platform of DESKTOP_PLATFORMS.filter(platform => request.desktop?.includes(platform) === true)) {
+    const outputDir = join(request.projectDir, STATE_DIR, DESKTOP_BUILD_DIR, platform)
+    builds.push(await dependencies.exportDesktop(request.projectDir, platform, outputDir, signal))
+  }
   const archive = join(dependencies.tempDir, `wasd-release-${randomUUID()}.zip`)
   try {
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
@@ -470,14 +575,16 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
         id: linked.id, slug: linked.slug, title: linked.title, url: linked.url, version,
         ...digests.image === undefined ? {} : { image: digests.image },
         ...digests.gif === undefined ? {} : { gif: digests.gif },
+        ...linked.visibility === undefined ? {} : { visibility: linked.visibility },
       })
     }
     const create = async (): Promise<GameJson> => {
-      const created = await api.create(name.slice(0, MAX_TITLE))
+      const created = await api.create(name.slice(0, MAX_TITLE), request.visibility ?? 'public')
       // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
       // next release adds its version to this game instead of creating another.
       await remember(created, created.latest_version)
       await dependencies.folders.add(access.origin, created.id, here)
+      requireVisibility(created, request.visibility)
       return created
     }
     if (game !== undefined && title !== undefined && game.title !== title) game = await api.rename(game.id, title)
@@ -499,17 +606,18 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
         warnings.push(`The game has no preview GIF: recording one failed: ${(error as Error).message}`)
       }
     }
-    let released = await api.release(game.id, archive, notes)
+    let released = await api.release(game.id, archive, notes, request.visibility)
     if (released === undefined) {
       // The game was removed between the lookup and the upload: release to a new one.
       game = await create()
-      released = await api.release(game.id, archive, notes)
+      released = await api.release(game.id, archive, notes, request.visibility)
       if (released === undefined) throw new ReleaseError('WASD Engine could not store the release: the new game disappeared. Try again.')
     }
     // Digests describe what this project uploaded to the game they name; a different game has none of its files.
     const prior = siteLinks.find(entry => entry.id === released.game.id)
     const uploaded: PreviewDigests = prior === undefined ? {} : { image: prior.image, gif: prior.gif }
     await remember(released.game, released.release.version, uploaded)
+    const downloads = await uploadDownloads(api, released.game, released.release.version, builds, warnings, signal)
     const preview = await uploadPreview(api, released.game, files, uploaded, warnings, signal)
     if (preview.image !== uploaded.image || preview.gif !== uploaded.gif) await remember(released.game, released.release.version, preview)
     return {
@@ -519,6 +627,8 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       gameUrl: released.game.url,
       playUrl: released.release.play_url,
       totalBytes: released.release.total_bytes,
+      visibility: released.game.visibility ?? 'public',
+      downloads,
       ...preview.game.image_link === undefined || preview.game.image_link === null ? {} : { imageLink: preview.game.image_link },
       ...preview.game.gif_link === undefined || preview.game.gif_link === null ? {} : { gifLink: preview.game.gif_link },
       warnings,

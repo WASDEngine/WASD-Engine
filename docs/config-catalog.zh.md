@@ -1967,9 +1967,9 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
-  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
-  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**
    * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
@@ -1991,7 +1991,23 @@ export interface Config {
   webTemplateSha256: string
   /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
   webTemplatePath: string
-  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  /** Godot export templates archive of the runtime's Godot version, from which a Windows export downloads only its template. */
+  windowsTemplateArchiveUrl: string
+  /** Path of the 64-bit x86 Windows release template inside that archive. */
+  windowsTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  windowsTemplateSha256: string
+  /** Absolute Windows release template `.exe` to use instead of the download; empty downloads it. */
+  windowsTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which a macOS export downloads only its template. */
+  macosTemplateArchiveUrl: string
+  /** Path of the macOS template ZIP inside that archive. */
+  macosTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  macosTemplateSha256: string
+  /** Absolute macOS template ZIP to use instead of the download; empty downloads it. */
+  macosTemplatePath: string
+  /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
 }
 ```
@@ -5183,7 +5199,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:44`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:45`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */

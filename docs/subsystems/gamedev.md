@@ -375,7 +375,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
-| `wasd_export_web`, `wasd_record_preview`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The export needs no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to |
+| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images |
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
@@ -633,6 +633,23 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 
 /**
+ * Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the
+ * 64-bit x86 Windows executable with the game's pack embedded, or the universal macOS application bundle signed ad
+ * hoc. The first export for a platform downloads its template, about 38 MB for Windows and 123 MB for macOS. While
+ * the export runs, the project imports the VRAM compression formats the platform needs. The export, which imports the
+ * project, waits until the project's import steps and checks in this Host have ended. For other plugins on the Host;
+ * the Game tab does not call it.
+ * @param request - absolute project folder, platform, and output folder.
+ * @param signal - cancellation; it stops the export process.
+ * @returns the exported ZIP file.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
+ * @throws {GodotExportError} when the export writes no ZIP file.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+ */
+async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>
+
+/**
  * Record the Session's game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady
  * interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or
  * a game of another project, the recording first starts the project's game as `godot_run` does, muted as
@@ -673,11 +690,11 @@ Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src
 
 ### `ctx.wasdPlugins` — `WasdPlugins`
 
-Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.
+Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote.
 
 ```ts cordis-catalog
 /**
- * What a project folder released, for the Release button.
+ * What a project folder released, for the Export / Share button.
  * @param projectDir - absolute folder of a game project.
  * @param signal - cancellation.
  * @returns whether it is a Godot project, the signed-in account's game on the site the app is signed in to, and

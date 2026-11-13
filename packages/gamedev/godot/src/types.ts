@@ -291,3 +291,35 @@ export interface GodotWebExport {
   /** How the Web build differs from desktop runs, then Godot's export warnings; at most 10. */
   readonly warnings: readonly string[]
 }
+
+/** A desktop platform a desktop export builds for: `windows`, 64-bit x86 Windows, or `macos`, Intel and Apple silicon Macs. */
+export type GodotDesktopPlatform = 'windows' | 'macos'
+
+/** What a desktop export builds, and where. */
+export interface GodotDesktopExportRequest {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The platform to build for. */
+  readonly platform: GodotDesktopPlatform
+  /** Absolute folder the export empties and fills with the build's ZIP file. */
+  readonly outputDir: string
+}
+
+/**
+ * A finished desktop export: one ZIP file named after the game, which holds the Windows executable with the game's pack
+ * embedded, or the macOS application bundle, signed ad hoc.
+ */
+export interface GodotDesktopExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The platform it builds for. */
+  readonly platform: GodotDesktopPlatform
+  /** Absolute folder holding the ZIP file. */
+  readonly outputDir: string
+  /** The ZIP file's name inside `outputDir`, such as `Tiny Farm.zip`. */
+  readonly entry: string
+  /** The ZIP file's size in bytes. */
+  readonly bytes: number
+  /** Godot's export warnings; at most 10. */
+  readonly warnings: readonly string[]
+}

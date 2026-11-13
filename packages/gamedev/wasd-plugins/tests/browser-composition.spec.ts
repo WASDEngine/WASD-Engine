@@ -24,7 +24,7 @@ import { UNCLAIMED_MESSAGE } from '../src/browser.ts'
 import { accountKey } from '../src/release.ts'
 
 const BROWSER_TOOLS = ['browser_click', 'browser_open', 'browser_read', 'browser_screenshot', 'browser_type']
-const RELEASE_TOOLS = ['wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
+const RELEASE_TOOLS = ['wasd_export_desktop', 'wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
 const cleanups: (() => Promise<void>)[] = []
 
 afterEach(async () => {
@@ -67,26 +67,36 @@ const SITE = 'https://site.test'
 
 /** The site's games API for one account, as releases call it. */
 function gamesSite(token: string) {
-  const games = new Map<string, { slug: string; title: string; versions: number }>()
+  const games = new Map<string, { slug: string; title: string; versions: number; visibility: string; downloads: string[] }>()
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const gameJson = (id: string) => {
     const game = games.get(id)!
-    return { id, slug: game.slug, title: game.title, url: `${SITE}/games/${game.slug}`, latest_version: game.versions }
+    return { id, slug: game.slug, title: game.title, url: `${SITE}/games/${game.slug}`, latest_version: game.versions, visibility: game.visibility }
   }
   const fetchSite = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const url = new URL(input instanceof Request ? input.url : input)
     if (new Headers(init?.headers).get('x-dsh-auth-token') !== token) return json(401, { error: { message: 'Missing, invalid, or expired WASD Engine token.' } })
+    const download = /^\/api\/v1\/games\/([^/]+)\/releases\/(\d+)\/downloads\/([a-z]+)$/u.exec(url.pathname)
+    if (download !== null && init?.method === 'PUT') {
+      const [, id, version, platform] = download as unknown as [string, string, string, string]
+      const target = games.get(id)
+      if (target === undefined) return json(404, { error: { message: 'No such release.' } })
+      const bytes = (await (init.body as Blob).arrayBuffer()).byteLength
+      target.downloads.push(`${platform} ${version}`)
+      return json(200, { game: gameJson(id), download: { platform, version: Number(version), url: `${SITE}/games/${target.slug}/download/${platform}?v=${version}`, bytes } })
+    }
     const [, id, part] = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases)?$/u.exec(url.pathname) ?? []
     if (id === undefined && init?.method === 'POST') {
-      const { title } = JSON.parse(init.body as string) as { title: string }
+      const { title, visibility } = JSON.parse(init.body as string) as { title: string; visibility: string }
       const created = `game-${games.size + 1}`
-      games.set(created, { slug: `${title.toLowerCase().replaceAll(' ', '-')}-${games.size + 1}`, title, versions: 0 })
+      games.set(created, { slug: `${title.toLowerCase().replaceAll(' ', '-')}-${games.size + 1}`, title, versions: 0, visibility, downloads: [] })
       return json(201, { game: gameJson(created) })
     }
     const game = id === undefined ? undefined : games.get(id)
     if (id === undefined || game === undefined) return json(404, { error: { message: 'No such game.' } })
     if (part === undefined) return json(200, { game: gameJson(id) })
     game.versions++
+    game.visibility = url.searchParams.get('visibility') ?? game.visibility
     return json(201, {
       game: gameJson(id),
       release: { version: game.versions, url: `${SITE}/games/${game.slug}?v=${game.versions}`, play_url: `${SITE}/game-files/${id}/${game.versions}/index.html`, total_bytes: 4 },
@@ -109,7 +119,7 @@ describe('WASD Engine Plugins composition', () => {
     await expect(compose({ dataRoot: 'wasd-plugins' })).rejects.toThrow('wasd-plugins: dataRoot must be an absolute path, got "wasd-plugins"')
   })
 
-  it('releases through the tool to the signed-in account\'s game, and asks before a copied project folder adds to it', async () => {
+  it('releases through the tool to the signed-in account\'s game, asks before a copied project folder adds to it, and shares privately with downloads', async () => {
     const { ctx, root, toolNames, call } = await compose({})
     const site = gamesSite('token-1')
     vi.stubGlobal('fetch', site.fetch)
@@ -123,6 +133,12 @@ describe('WASD Engine Plugins composition', () => {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), 'game')
         return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+      },
+      async exportDesktop(request: { readonly projectDir: string; readonly platform: string; readonly outputDir: string }) {
+        const { projectDir, platform, outputDir } = request
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(join(outputDir, 'Space Game.zip'), `${platform} zip`)
+        return { projectDir, platform, outputDir, entry: 'Space Game.zip', bytes: `${platform} zip`.length, warnings: [] }
       },
     } as never)
     await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
@@ -142,13 +158,23 @@ describe('WASD Engine Plugins composition', () => {
     expect(refused.isError).toBe(true)
     expect(text(refused)).toContain(`This project folder and ${original} release the same game, "Space Game" (${SITE}/games/space-game-1), as happens when one is a copy of the other.`)
     expect(await ctx.wasdPlugins.project(join(root, 'space copy'), new AbortController().signal))
-      .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 1 }, sharedWith: original })
+      .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 1, visibility: 'public' }, sharedWith: original })
     const confirmed = await call('wasd_release_game', { project: 'space copy', new_game: false })
     expect(text(confirmed)).toContain('Released Space Game version 2')
     const separate = await call('wasd_release_game', { project: 'space copy', new_game: true })
     expect(text(separate)).toContain('Released Space Game version 1')
     expect(text(separate)).toContain(`${SITE}/games/space-game-2`)
     expect(site.games.size).toBe(2)
+
+    const privately = await call('wasd_release_game', { project: 'space', visibility: 'private', desktop: ['windows'] })
+    expect(text(privately)).toContain('Released Space Game version 3')
+    expect(text(privately)).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
+    expect(text(privately)).toContain(`Windows download: ${SITE}/games/space-game-1/download/windows?v=3`)
+    expect(site.games.get('game-1')).toMatchObject({ visibility: 'private', downloads: ['windows 3'] })
+    expect(await ctx.wasdPlugins.project(join(root, 'space'), new AbortController().signal))
+      .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })
+    const exported = await call('wasd_export_desktop', { project: 'space', platforms: ['macos'] })
+    expect(text(exported)).toContain(`- macOS: ${join(root, 'space', '.wasdengine', 'desktop', 'macos', 'Space Game.zip')}`)
   })
 
   it('leaves the Browser tools out when browser is off', async () => {

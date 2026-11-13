@@ -61,7 +61,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath` 或 `webTemplatePath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 或 `webTemplateArchiveUrl` 不是 http 或 https URL 时，加载失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath`、`webTemplatePath`、`windowsTemplatePath` 或 `macosTemplatePath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl`、`webTemplateArchiveUrl`、`windowsTemplateArchiveUrl` 或 `macosTemplateArchiveUrl` 不是 http 或 https URL 时，加载失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -84,8 +84,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `maxRuns` | `4` | 在任何电脑上所有 Session 合计可同时运行的游戏数上限，每个游戏在其进程结束前一直计入；电脑的[运行上限](#game-runs)可能更低 |
 | `runMemoryBytes` | `8589934592`（8 GiB） | 每个游戏所需的电脑物理内存：运行上限至多为电脑内存除以此值并四舍五入到整数；`0` 表示不考虑内存 |
 | `runCores` | `4` | 每个游戏所需的逻辑处理器数：运行上限至多为电脑的逻辑处理器数除以此值并向下取整；`0` 表示不考虑处理器 |
-| `maxHeadlessProcesses` | `2` | 同时运行的 `godot_check` 进程、`godot_script` 运行、供其他插件使用的导入与 Web 导出数上限；之后的按顺序等待，直到有一个结束 |
-| `minAvailableMemoryBytes` | `1073741824`（1 GiB） | 启动游戏、`godot_check` 进程或 Web 导出时电脑必须有的可用内存；`0` 关闭此检查 |
+| `maxHeadlessProcesses` | `2` | 同时运行的 `godot_check` 进程、`godot_script` 运行、供其他插件使用的导入与导出数上限；之后的按顺序等待，直到有一个结束 |
+| `minAvailableMemoryBytes` | `1073741824`（1 GiB） | 启动游戏、`godot_check` 进程或导出时电脑必须有的可用内存；`0` 关闭此检查 |
 | `hiddenFps` | `10` | [无人显示或使用的无窗口游戏](#game-runs)的每秒帧数，取值 0 到 60；`0` 让所有游戏保持自身帧率 |
 | `hiddenDelayMs` | `30000` | 游戏连接后、最后一个“游戏”标签页不再显示它后，或其最后一个请求结束后，经过多长时间开始应用 `hiddenFps` |
 | `agentRunsMuted` | `true` | agent 启动的运行是否默认无音频，除非 `godot_run` 另行指定 |
@@ -93,7 +93,15 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
 | `webTemplateSha256` | `d3ee2f08…4032a0` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
 | `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
-| `exportTimeoutMs` | `600000` | 一次 Web 导出（包括它启动的资源导入）的截止时间 |
+| `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Windows 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
+| `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | 64 位 x86 Windows 发布模板在该归档中的路径 |
+| `windowsTemplateSha256` | `d34d36f3…4b0562` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `windowsTemplatePath` | `''` | 用来代替下载的绝对路径 Windows 发布模板 `.exe` |
+| `macosTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；macOS 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
+| `macosTemplateEntry` | `templates/macos.zip` | macOS 模板 ZIP 在该归档中的路径 |
+| `macosTemplateSha256` | `88df5e2e…558a4792` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `macosTemplatePath` | `''` | 用来代替下载的绝对路径 macOS 模板 ZIP |
+| `exportTimeoutMs` | `600000` | 一次导出（包括它启动的资源导入）的截止时间 |
 
 <a id="runtime"></a>
 ### Godot 运行时
@@ -256,6 +264,15 @@ Godot 的网页运行时不绘制启动画面；只有页面的加载界面会�
 
 Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
 
+<a id="desktop-export"></a>
+### 桌面版导出
+
+`ctx.godot.exportDesktop({ projectDir, platform, outputDir }, signal)` 为其他 Host 插件把项目导出为 `windows` 或 `macos` 版本，例如 WASD Engine 插件，其 `wasd_export_desktop` 与 `wasd_release_game` 工具会调用它。一个无窗口的 Godot 进程以预设 `WASD Engine Windows` 或 `WASD Engine macOS` 运行 `--export-release`，并在 `outputDir` 中写入一个 ZIP 文件，以去掉文件系统不接受字符的 `application/config/name` 命名，否则为 `Game.zip`：Windows 版是一个嵌入了游戏数据包并带有项目图标的 64 位 x86 `.exe`；macOS 版是游戏的通用应用包，适用于 Intel 与 Apple 芯片，经过临时签名、未经公证，其 bundle identifier 为 `com.wasdengine.game.<name>`，由游戏名称中的小写 ASCII 字母、数字和连字符组成。预设文件、输出文件夹、`maxHeadlessProcesses` 位置、内存检查和错误行都与 Web 导出相同。
+
+桌面版构建只打包项目已导入的 VRAM 压缩纹理格式，而编辑器在 macOS 和 x86 主机上只导入 S3TC/BPTC，除非 `project.godot` 要求更多格式；Windows 构建需要 S3TC/BPTC，通用 Mac 构建同时需要 S3TC/BPTC 与 ETC2/ASTC。因此导出在运行期间把 `project.godot` 中的 `rendering/textures/vram_compression/import_s3tc_bptc`（macOS 还有 `import_etc2_astc`）设为 `true`，让其导入步骤补上缺少的格式，之后恢复这些设置；即使 `project.godot` 在导出期间被修改，也只把这些设置恢复为原来的值。补上的格式的导入文件留在项目的 `.godot` 文件夹中，可以省去下一次导出的工作。
+
+每个平台的第一次导出会像 Web 导出下载自己的模板一样下载其模板：`windowsTemplateEntry` 约 38 MB，以 `templates/<sha256>.exe` 发布；`macosTemplateEntry` 约 123 MB，以 `templates/<sha256>.zip` 发布。
+
 ### 供其他插件使用的录制
 
 `ctx.godot.record(agent, request, signal)` 为其他 Host 插件录制某个 Agent 所在会话的游戏，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)的预览；“游戏”标签页和 `godot_*` 工具不会调用它。它在 `seconds` 秒的真实时间内（最多 30 秒）每隔 `frameMs` 毫秒截取一次窗口，每张宽度最多 `maxWidth`，同时从录制开始播放 `events`，并像 `godot_input` 一样校验这些事件；录制结束时仍在播放的事件会被取消，游戏会松开它们按住的输入。如果一次截取在下一个间隔开始之后才结束，紧接着就截取最新间隔的画面，因此各帧保持真实时间，并带有各自的截取时间。另一张宽度最多 `stillWidth` 的截图会作为 `stillAt` 秒处的静态图，除非某一帧已经足够宽。录制会计为该运行的一次查看，因此无窗口的游戏保持自身的帧率，“游戏”标签页的帧流保持不变。当会话没有运行游戏，或运行的是 `project` 之外另一个项目的游戏时，录制会像 `godot_run` 一样先启动该项目的游戏（按 `agentRunsMuted` 决定是否静音），并让它运行 `startSeconds` 秒；设置 `stopStarted` 时，录制结束后会停止该游戏。结果包含 PNG 帧、静态图、窗口尺寸、录制是否启动了游戏，以及游戏是否在每一帧中都处于暂停状态。除非 `coordinateSpace` 为 `window`，指针坐标都是会话对运行中游戏的最近一张截图中的像素，因此需要启动游戏的录制会在启动之前拒绝这类坐标。
@@ -276,10 +293,10 @@ Godot 的 Blender 场景导入器通过运行编辑器设置所指定的 Blender
 | `payload/<hash>/wasd_harness.gd`、`payload/<hash>/wasd_check.gd` | harness 与检查脚本在 Desktop 应用归档之外的副本；`<hash>` 是脚本 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；旧版本保留 |
 | `runtime/<runtimeVersion>/` | 托管运行时：runner、LibGodot 库和 `runtime.json` | 保留；新的 `runtimeVersion` 会安装在它旁边 |
 | `runtime/.download-<id>.tar.gz`、`runtime/.staging-<id>/`、`runtime/<runtimeVersion>.lock` | 进行中安装的归档、解压出的文件和写入锁 | 安装结束时删除 |
-| `templates/<sha256>.zip` | 下载的 Web 导出模板，以其固定的 SHA-256 命名 | 保留；新的 `webTemplateSha256` 会在旁边另行下载 |
-| `templates/.download-<id>.zip`、`templates/<sha256>.zip.lock` | 进行中的模板下载及其写入锁 | 下载结束时删除 |
+| `templates/<sha256>.zip`、`templates/<sha256>.exe` | 下载的 Web、macOS 和 Windows 导出模板，各自以其固定的 SHA-256 命名 | 保留；新的 SHA-256 会在旁边另行下载 |
+| `templates/.download-<id>.zip`、`templates/.download-<id>.exe`、`templates/<sha256>.<ext>.lock` | 进行中的模板下载及其写入锁 | 下载结束时删除 |
 
-插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储，Web 导出写入调用方指定的文件夹。
+插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储，导出写入调用方指定的文件夹。
 
 <a id="plugin-icon"></a>
 ### 插件图标
@@ -444,7 +461,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **“游戏”标签页的输入排在 agent 的输入之后** — 游戏一次只执行一个输入序列，因此 agent 的序列（例如 `{ "wait": 30 }`）执行期间，来自“游戏”标签页的按键和点击要等该序列结束才送达游戏，最迟在其实际时间时限结束时。
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。
-- **仅支持 Web 导出** — [`exportWeb`](#web-export) 通过 WASD Engine 插件的工具导出网页版；`godot_*` 工具不导出任何内容，桌面与移动端导出需要同一版本的 Godot 编辑器及其导出模板，由 Agent 在 shell 中运行。
+- **仅支持 Web、Windows 与 macOS 导出** — [`exportWeb`](#web-export) 与 [`exportDesktop`](#desktop-export) 通过 WASD Engine 插件的工具导出网页版、64 位 x86 Windows 版和 Mac 版；`godot_*` 工具不导出任何内容，Linux、ARM 版 Windows 与移动端导出需要同一版本的 Godot 编辑器及其导出模板，由 Agent 在 shell 中运行，桌面版构建也没有发布者签名。
 - **不检查配置的运行时的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类并读取 `ScriptBacktrace` 帧；`runnerPath` 与 `libgodotPath` 指定的 LibGodot 构建若缺少这些类，则无法启动运行。
 - **harness 会替换自定义主循环** — 运行通过 `--script` 传入 harness，因此 `application/run/main_loop_type` 指定了自有 `SceneTree` 或 `MainLoop` 类的项目会改由 harness 运行。
 - **“游戏”标签页可能显示过时的运行时状态** — 标签页在开始跟随某个 Session 时以及安装之后解析运行时，因此标签页打开期间手动添加或删除的运行时目录，要等标签页再次跟随某个 Session 后才会反映出来，例如刷新页面后。

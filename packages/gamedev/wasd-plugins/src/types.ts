@@ -4,6 +4,12 @@
  */
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
+/** Who can find a released game: `public`, on the site's Explore page, or `private`, only through its link. */
+export type WasdVisibility = 'public' | 'private'
+
+/** A desktop platform a game builds for: `windows`, 64-bit x86 Windows, or `macos`, Intel and Apple silicon Macs. */
+export type WasdDesktopPlatform = 'windows' | 'macos'
+
 /** The game a project released to on the WASD Engine site it is signed in to. */
 export interface WasdReleasedGame {
   /** Game title as the site shows it. */
@@ -12,9 +18,11 @@ export interface WasdReleasedGame {
   readonly url: string
   /** The latest version this project released, from 1. */
   readonly version: number
+  /** Who can find the game, as the site answered this project's latest release. */
+  readonly visibility: WasdVisibility
 }
 
-/** A project folder as the Release button sees it. */
+/** A project folder as the Export / Share button sees it. */
 export interface WasdProjectView {
   /** Whether the folder holds `project.godot`: Release supports Godot projects only. */
   readonly godot: boolean
@@ -61,7 +69,41 @@ export interface WasdRelease {
    * page in a browser; absent while the game has no GIF.
    */
   readonly gifLink?: string
-  /** How the Web build differs from desktop runs, the export's warnings, and what happened to the preview. */
+  /** Who can find the game from this version on. */
+  readonly visibility: WasdVisibility
+  /** The desktop builds the site stored as downloads of this version, in platform order. */
+  readonly downloads: readonly WasdDownload[]
+  /** How the Web build differs from desktop runs, the export's warnings, and what happened to the preview and downloads. */
+  readonly warnings: readonly string[]
+}
+
+/** A desktop build the site offers as a download of a released version. */
+export interface WasdDownload {
+  /** The platform it runs on. */
+  readonly platform: WasdDesktopPlatform
+  /** The site's download link of this build, which counts the download and sends the file. */
+  readonly url: string
+  /** The build's ZIP file size in bytes. */
+  readonly bytes: number
+}
+
+/** One desktop build an export wrote into the project's `.wasdengine/desktop/<platform>/` folder. */
+export interface WasdDesktopBuild {
+  /** The platform it runs on. */
+  readonly platform: WasdDesktopPlatform
+  /** Absolute path of the build's ZIP file. */
+  readonly file: string
+  /** The ZIP file's size in bytes. */
+  readonly bytes: number
+}
+
+/** A finished desktop export. */
+export interface WasdDesktopExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The builds, in platform order. */
+  readonly builds: readonly WasdDesktopBuild[]
+  /** The exports' warnings. */
   readonly warnings: readonly string[]
 }
 

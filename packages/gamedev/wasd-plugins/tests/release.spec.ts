@@ -1,6 +1,7 @@
 /**
- * Releases export the project, create or reuse the signed-in account's game on the site, upload the build and its
- * preview, and remember the game per account; a copied project folder asks before it adds to the game of its original.
+ * Releases export the project, create or reuse the signed-in account's game on the site, upload the build, its desktop
+ * downloads, and its preview, set whether the game is public or private, and remember the game per account; a copied
+ * project folder asks before it adds to the game of its original.
  */
 import { mkdtempSync } from 'node:fs'
 import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
@@ -8,7 +9,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { ReleaseFolders } from '../src/folders.ts'
 import { PREVIEW_DIR } from '../src/preview.ts'
 import {
@@ -19,13 +20,35 @@ import {
 const ORIGIN = 'https://site.test'
 const ACCESS: SiteAccess = { origin: ORIGIN, token: 'wasd_token', account: 'account-1' }
 
-interface SiteGame { id: string; slug: string; title: string; owner: string; versions: number; cover?: string; gif?: string }
+interface SiteGame {
+  id: string
+  slug: string
+  title: string
+  owner: string
+  versions: number
+  visibility: 'public' | 'private'
+  cover?: string
+  gif?: string
+  downloads: { platform: string; version: number; bytes: number }[]
+}
+
+/** How a test's site differs from the current one. */
+interface SiteOptions {
+  /** Answer like a site from before private games: no visibility in game answers, and none taken from requests. */
+  readonly legacy?: boolean
+  /** Refuse the download uploads of these platforms. */
+  readonly refuseDownloads?: readonly string[]
+}
 
 /** An in-memory WASD Engine site: the games API as releases call it, for the accounts of `tokens`. */
 function site(...tokens: string[]) {
+  return siteWith({}, ...tokens)
+}
+
+function siteWith(options: SiteOptions, ...tokens: string[]) {
   const accounts = tokens.length === 0 ? ['wasd_token'] : tokens
   const games = new Map<string, SiteGame>()
-  const calls: { method: string; path: string; token: string; notes: string | null; files?: string[] }[] = []
+  const calls: { method: string; path: string; token: string; notes: string | null; visibility: string | null; files?: string[] }[] = []
   let next = 1
   const gameJson = (game: SiteGame) => ({
     id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions,
@@ -33,6 +56,7 @@ function site(...tokens: string[]) {
     gif_url: game.gif === undefined ? null : `https://files.test/${game.gif}`,
     image_link: game.cover === undefined ? null : `${ORIGIN}/games/${game.slug}.png`,
     gif_link: game.gif === undefined ? null : `${ORIGIN}/games/${game.slug}.gif`,
+    ...options.legacy === true ? {} : { visibility: game.visibility },
   })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const fetchSite: typeof fetch = async (input, init) => {
@@ -40,15 +64,34 @@ function site(...tokens: string[]) {
     const method = init?.method ?? 'GET'
     const headers = new Headers(init?.headers)
     const token = headers.get('x-dsh-auth-token') ?? ''
-    calls.push({ method, path: url.pathname, token, notes: url.searchParams.get('notes') })
+    calls.push({ method, path: url.pathname, token, notes: url.searchParams.get('notes'), visibility: url.searchParams.get('visibility') })
     expect(init?.redirect).toBe('error')
     if (!accounts.includes(token)) return json(401, { error: { message: 'Missing, invalid, or expired WASD Engine token.' } })
+    const download = /^\/api\/v1\/games\/([^/]+)\/releases\/(\d+)\/downloads\/([a-z]+)$/u.exec(url.pathname)
+    if (download !== null && options.legacy !== true) {
+      const target = games.get(download[1] as string)
+      const version = Number(download[2])
+      if (method !== 'PUT' || target === undefined || target.owner !== token || version > target.versions) return json(404, { error: { message: 'No such release.' } })
+      const platform = download[3] as string
+      if (options.refuseDownloads?.includes(platform)) return json(413, { error: { message: 'A download may be at most 1024 MB.' } })
+      expect(headers.get('content-type')).toBe('application/zip')
+      const bytes = (await (init?.body as Blob).arrayBuffer()).byteLength
+      const others = target.downloads.filter(item => item.platform !== platform || item.version !== version)
+      target.downloads = [...others, { platform, version, bytes }]
+      return json(200, {
+        game: gameJson(target),
+        download: { platform, version, url: `${ORIGIN}/games/${target.slug}/download/${platform}?v=${version}`, file_url: `https://files.test/${platform}.zip`, filename: `${platform}.zip`, bytes, uploaded_at: '2026-11-12T00:00:00Z' },
+      })
+    }
     const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif)?$/u.exec(url.pathname)
     const game = match?.[1] === undefined ? undefined : games.get(match[1])
     if (match?.[1] !== undefined && (game === undefined || game.owner !== token)) return json(404, { error: { message: 'No such game.' } })
     if (method === 'POST' && match?.[1] === undefined) {
-      const { title } = JSON.parse(init?.body as string) as { title: string }
-      const created = { id: `game-${next}`, slug: `${title.toLowerCase().replaceAll(' ', '-')}-${next}`, title, owner: token, versions: 0 }
+      const { title, visibility } = JSON.parse(init?.body as string) as { title: string; visibility?: 'public' | 'private' }
+      const created: SiteGame = {
+        id: `game-${next}`, slug: `${title.toLowerCase().replaceAll(' ', '-')}-${next}`, title, owner: token, versions: 0,
+        visibility: options.legacy === true ? 'public' : visibility ?? 'public', downloads: [],
+      }
       next++
       games.set(created.id, created)
       return json(201, { game: gameJson(created) })
@@ -62,6 +105,8 @@ function site(...tokens: string[]) {
       const archive = unzipSync(new Uint8Array(await (init?.body as Blob).arrayBuffer()))
       calls.at(-1)!.files = Object.keys(archive).sort()
       game.versions++
+      const visibility = url.searchParams.get('visibility')
+      if (options.legacy !== true && (visibility === 'public' || visibility === 'private')) game.visibility = visibility
       return json(201, {
         game: gameJson(game),
         release: { version: game.versions, url: `${ORIGIN}/games/${game.slug}?v=${game.versions}`, play_url: `${ORIGIN}/game-files/${game.id}/${game.versions}/index.html`, total_bytes: 12 },
@@ -109,10 +154,17 @@ function releaseFolders(): ReleaseFolders {
 
 function dependencies(
   fetchSite: typeof fetch, access: SiteAccess | null = ACCESS, releasedFrom = releaseFolders(),
-): ReleaseDependencies & { exports: string[]; folders: ReleaseFolders } {
+): ReleaseDependencies & { exports: string[]; folders: ReleaseFolders; failDesktop?: GodotDesktopPlatform } {
   const exports: string[] = []
   return {
     exports,
+    async exportDesktop(projectDir, platform, outputDir): Promise<GodotDesktopExport> {
+      exports.push(outputDir)
+      if (this.failDesktop === platform) throw new Error(`The Godot ${platform} export ended (exit code 1) without writing Defenders of the Wall.zip.`)
+      await mkdir(outputDir, { recursive: true })
+      await writeFile(join(outputDir, 'Defenders of the Wall.zip'), `${platform} build`)
+      return { projectDir, platform, outputDir, entry: 'Defenders of the Wall.zip', bytes: `${platform} build`.length, warnings: [] }
+    },
     access: () => Promise.resolve(access ?? undefined),
     async exportWeb(projectDir, outputDir): Promise<GodotWebExport> {
       exports.push(outputDir)
@@ -140,7 +192,7 @@ async function link(dir: string): Promise<Link> {
 
 const signal = new AbortController().signal
 const gameUrl = (n: number) => `${ORIGIN}/games/defenders-of-the-wall-${n}`
-const game = (n: number, version: number) => ({ title: 'Defenders of the Wall', url: gameUrl(n), version })
+const game = (n: number, version: number, visibility: 'public' | 'private' = 'public') => ({ title: 'Defenders of the Wall', url: gameUrl(n), version, visibility })
 
 describe('releaseGame', () => {
   it('creates the game on the first release, numbers later releases, and remembers the game', async () => {
@@ -161,10 +213,78 @@ describe('releaseGame', () => {
     expect(server.calls.filter(call => call.method === 'POST' && call.path === '/api/v1/games')).toHaveLength(1)
     const linked = await link(dir)
     expect(linked.games[ORIGIN]).toEqual({ id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: gameUrl(1), version: 2 })
-    expect(linked.accounts?.[ORIGIN]).toEqual([{ account: 'account-1', id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: gameUrl(1), version: 2 }])
+    expect(linked.accounts?.[ORIGIN]).toEqual([{ account: 'account-1', id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: gameUrl(1), version: 2, visibility: 'public' }])
     expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true, game: game(1, 2) })
     expect(await projectView(dir, 'https://other.test', deps.folders, 'account-1')).toEqual({ godot: true })
     expect((await readdir(tmpdir())).filter(name => name.startsWith('wasd-release-'))).toEqual([])
+  })
+
+  it('releases a private game, keeps its visibility when a release names none, and makes it public with a release', async () => {
+    const dir = await project()
+    const server = site()
+    const deps = dependencies(server.fetch)
+    expect(await releaseGame({ projectDir: dir, visibility: 'private' }, deps, signal)).toMatchObject({ version: 1, visibility: 'private', downloads: [] })
+    expect(server.games.get('game-1')?.visibility).toBe('private')
+    const uploads = () => server.calls.filter(call => call.path.endsWith('/releases'))
+    expect(uploads().map(call => call.visibility)).toEqual(['private'])
+    expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true, game: game(1, 1, 'private') })
+
+    expect(await releaseGame({ projectDir: dir }, deps, signal)).toMatchObject({ version: 2, visibility: 'private' })
+    expect(uploads().at(-1)?.visibility).toBeNull()
+    expect(await releaseGame({ projectDir: dir, visibility: 'public' }, deps, signal)).toMatchObject({ version: 3, visibility: 'public' })
+    expect(server.games.get('game-1')?.visibility).toBe('public')
+    expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true, game: game(1, 3, 'public') })
+    expect((await link(dir)).accounts?.[ORIGIN]).toEqual([expect.objectContaining({ id: 'game-1', version: 3, visibility: 'public' })])
+  })
+
+  it('builds the desktop downloads before anything reaches the site, then uploads them as downloads of the version', async () => {
+    const dir = await project()
+    const server = site()
+    const deps = dependencies(server.fetch)
+    const released = await releaseGame({ projectDir: dir, desktop: ['macos', 'windows'] }, deps, signal)
+    expect(deps.exports).toEqual([join(dir, STATE_DIR, 'web'), join(dir, STATE_DIR, 'desktop', 'windows'), join(dir, STATE_DIR, 'desktop', 'macos')])
+    expect(released.downloads).toEqual([
+      { platform: 'windows', url: `${gameUrl(1)}/download/windows?v=1`, bytes: 'windows build'.length },
+      { platform: 'macos', url: `${gameUrl(1)}/download/macos?v=1`, bytes: 'macos build'.length },
+    ])
+    const order = server.calls.map(call => `${call.method} ${call.path}`)
+    expect(order.indexOf('PUT /api/v1/games/game-1/releases/1/downloads/windows')).toBeGreaterThan(order.indexOf('POST /api/v1/games/game-1/releases'))
+    expect(server.games.get('game-1')?.downloads).toEqual([
+      { platform: 'windows', version: 1, bytes: 'windows build'.length },
+      { platform: 'macos', version: 1, bytes: 'macos build'.length },
+    ])
+
+    const other = await project()
+    const quiet = site()
+    const failing = dependencies(quiet.fetch)
+    failing.failDesktop = 'macos'
+    await expect(releaseGame({ projectDir: other, desktop: ['windows', 'macos'] }, failing, signal)).rejects.toThrow(/macos export ended/u)
+    expect(quiet.calls).toEqual([])
+    expect(quiet.games.size).toBe(0)
+  })
+
+  it('keeps a release whose download the site refused, and says which one', async () => {
+    const dir = await project()
+    const server = siteWith({ refuseDownloads: ['macos'] })
+    const released = await releaseGame({ projectDir: dir, desktop: ['windows', 'macos'] }, dependencies(server.fetch), signal)
+    expect(released.version).toBe(1)
+    expect(released.downloads.map(download => download.platform)).toEqual(['windows'])
+    expect(released.warnings).toContain('The version is released, but its macOS download was not stored: WASD Engine could not store the macOS download: A download may be at most 1024 MB.')
+  })
+
+  it('refuses a private release before uploading to a site that keeps every game public', async () => {
+    const dir = await project()
+    const server = siteWith({ legacy: true })
+    const deps = dependencies(server.fetch)
+    await expect(releaseGame({ projectDir: dir, visibility: 'private' }, deps, signal)).rejects.toThrow(/does not keep games private yet/u)
+    expect(server.calls.some(call => call.path.endsWith('/releases'))).toBe(false)
+    const released = await releaseGame({ projectDir: dir, desktop: ['windows'] }, deps, signal)
+    expect(released).toMatchObject({ version: 1, visibility: 'public', downloads: [] })
+    expect(released.warnings).toContain('The version is released, but its Windows download was not stored: WASD Engine could not store the Windows download: Not found')
+    const exported = deps.exports.length
+    await expect(releaseGame({ projectDir: dir, visibility: 'private' }, deps, signal)).rejects.toThrow(/does not keep games private yet/u)
+    expect(deps.exports).toHaveLength(exported)
+    expect(server.games.get('game-1')?.versions).toBe(1)
   })
 
   it('renames the game when a title is given, and creates a new game when the site no longer has the old one', async () => {
@@ -295,18 +415,18 @@ describe('releaseGame', () => {
     const game = { id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: `${ORIGIN}/games/defenders-of-the-wall-1` }
 
     await expect(releaseGame({ projectDir: dir }, deps, signal)).rejects.toThrow('WASD Engine could not store the release: A release may be at most 512 MB zipped.')
-    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0 })
-    // A game without a released version is not one the Release button names.
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0, visibility: 'public' })
+    // A game without a released version is not one the Export / Share button names.
     expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true })
 
     upload = 'cut off'
     await expect(releaseGame({ projectDir: dir }, deps, cut.signal)).rejects.toThrow()
     expect(server.games.get('game-1')?.versions).toBe(1)
-    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0 })
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 0, visibility: 'public' })
 
     upload = 'store'
     expect(await releaseGame({ projectDir: dir }, deps, signal)).toMatchObject({ version: 2, gameUrl: game.url })
-    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 2 })
+    expect(await linkedGame(dir, ORIGIN, 'account-1')).toEqual({ ...game, account: 'account-1', version: 2, visibility: 'public' })
     expect(server.games.size).toBe(1)
     expect(server.calls.filter(call => call.method === 'POST' && call.path === '/api/v1/games')).toHaveLength(1)
   })
