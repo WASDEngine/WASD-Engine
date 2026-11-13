@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-client-ui-game-mcp",
   "description": "Set up WASD Engine with another agent after sign-in, as the Desktop introduction's last step and in Settings, with the prompt that connects an agent to its MCP server, and the window opening the Sessions of connected agents' games",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publishConfig": {
     "access": "public"
   },

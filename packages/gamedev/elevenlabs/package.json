@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-elevenlabs",
   "description": "ElevenLabs for the agent: character voices, sound effects, and music saved into the game project, charged to the WASD Engine plan",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"

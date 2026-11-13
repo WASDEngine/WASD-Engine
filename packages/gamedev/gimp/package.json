@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-gimp",
   "description": "Headless GIMP 3 for the agent: an MCP server backed by gimp-console",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
