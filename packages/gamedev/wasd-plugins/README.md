@@ -58,7 +58,7 @@ The plugin manager lists the package in `WASD_ENGINE_PLUGINS`, which [`@deepseek
 
 In a Session, `project` and `cover_image` are relative to the working directory, and without `project` the tools use the nearest `project.godot`. Agents connected through WASD Engine's MCP server reach the tools under the provider `wasd` and must pass absolute paths. Releasing needs a signed-in WASD Engine: signed out, the tool fails with a message that asks the user to sign in, and an expired sign-in fails with a message that asks the user to sign in again.
 
-A project remembers its game per site in `.wasdengine/game.json`, so later releases from the same folder add versions to the same game. When the site no longer has that game, or another account owns it, the release creates a new game. A `title` renames an existing game. The site numbers versions without gaps and keeps every earlier version playable.
+A project remembers its game per site in `.wasdengine/game.json`, so later releases from the same folder add versions to the same game. The release writes the file as soon as the site creates the game, before the upload, so a release whose upload fails, such as one the site refuses as too large, or whose call ends while the site still stores the build, leaves the project linked, and the next release adds its version to that game instead of creating another. When the site no longer has that game, or another account owns it, the release creates a new game. A `title` renames an existing game. The site numbers versions without gaps and keeps every earlier version playable.
 
 ### The Release button and Explore Games
 

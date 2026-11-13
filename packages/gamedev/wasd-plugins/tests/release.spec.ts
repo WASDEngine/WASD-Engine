@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
-import { LINK_FILE, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, type ReleaseDependencies } from '../src/release.ts'
+import { LINK_FILE, linkedGame, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, type ReleaseDependencies } from '../src/release.ts'
 
 const ORIGIN = 'https://site.test'
 
@@ -125,6 +125,40 @@ describe('releaseGame', () => {
     const fresh = await releaseGame({ projectDir: dir }, deps, signal)
     expect(fresh).toMatchObject({ title: 'Defenders of the Wall', version: 1 })
     expect(fresh.gameUrl).toContain('-2')
+  })
+
+  it('remembers a new game before the upload, so releases after a refused or cut-off upload add versions to it', async () => {
+    const dir = await project()
+    const server = site()
+    let upload: 'refuse' | 'cut off' | 'store' = 'refuse'
+    const cut = new AbortController()
+    const deps = dependencies(async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input)
+      if (!url.pathname.endsWith('/releases') || upload === 'store') return server.fetch(input, init)
+      if (upload === 'refuse') {
+        return new Response(JSON.stringify({ error: { message: 'A release may be at most 512 MB zipped.' } }), { status: 413, headers: { 'content-type': 'application/json' } })
+      }
+      // The site stores the build, but the call ends before the site's answer arrives.
+      await server.fetch(input, init)
+      cut.abort()
+      throw cut.signal.reason
+    })
+    const game = { id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: `${ORIGIN}/games/defenders-of-the-wall-1` }
+
+    await expect(releaseGame({ projectDir: dir }, deps, signal)).rejects.toThrow('WASD Engine could not store the release: A release may be at most 512 MB zipped.')
+    expect(await linkedGame(dir, ORIGIN)).toEqual({ ...game, version: 0 })
+    expect(await projectView(dir, ORIGIN)).toEqual({ godot: true })
+
+    upload = 'cut off'
+    await expect(releaseGame({ projectDir: dir }, deps, cut.signal)).rejects.toThrow()
+    expect(server.games.get('game-1')?.versions).toBe(1)
+    expect(await linkedGame(dir, ORIGIN)).toEqual({ ...game, version: 0 })
+
+    upload = 'store'
+    expect(await releaseGame({ projectDir: dir }, deps, signal)).toMatchObject({ version: 2, gameUrl: game.url })
+    expect(await linkedGame(dir, ORIGIN)).toEqual({ ...game, version: 2 })
+    expect(server.games.size).toBe(1)
+    expect(server.calls.filter(call => call.method === 'POST' && call.path === '/api/v1/games')).toHaveLength(1)
   })
 
   it('refuses while signed out, and explains an expired sign-in', async () => {
