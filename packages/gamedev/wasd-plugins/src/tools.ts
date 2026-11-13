@@ -38,7 +38,7 @@ export interface WasdToolHost {
   exportWeb(projectDir: string, signal: AbortSignal): Promise<GodotWebExport>
   /**
    * Export a project for the Web and release the build.
-   * @param request - project, notes, title, and cover.
+   * @param request - project, notes, title, cover, and whether to start a new game.
    * @param signal - cancellation.
    * @returns the release.
    */
@@ -99,12 +99,13 @@ export function wasdToolDefinitions(host: WasdToolHost): ToolDefinition[] {
     },
   }), defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...), and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...), and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
       title: { type: 'string', description: `Game title for the first release, or a new title for the game; at most ${MAX_TITLE} characters. Default: the project's name.` },
       cover_image: { type: 'string', description: 'PNG, JPEG, or WebP image the Explore page shows for the game, relative to the working directory; 16:9 fits best.' },
+      new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
     },
     output: {
       schema: {
@@ -136,6 +137,7 @@ export function wasdToolDefinitions(host: WasdToolHost): ToolDefinition[] {
         ...args.notes === undefined ? {} : { notes: args.notes },
         ...args.title === undefined ? {} : { title: args.title },
         ...coverImage === undefined ? {} : { coverImage },
+        ...args.new_game === undefined ? {} : { newGame: args.new_game },
       }, exec.signal)
       return { ...released, warnings: [...released.warnings] }
     },

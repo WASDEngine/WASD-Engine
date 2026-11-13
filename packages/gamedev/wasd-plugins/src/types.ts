@@ -18,8 +18,17 @@ export interface WasdReleasedGame {
 export interface WasdProjectView {
   /** Whether the folder holds `project.godot`: Release supports Godot projects only. */
   readonly godot: boolean
-  /** The game the project released to on the site the app is signed in to; absent before its first release. */
+  /**
+   * The game the signed-in account released the project to on the site the app is signed in to; absent before the
+   * account's first release there.
+   */
   readonly game?: WasdReleasedGame
+  /**
+   * Another folder on this computer that released the same game and still links to it, while this folder never
+   * released it, as when this folder is a copy of that one; a release from here then needs to say whether it adds to
+   * that game.
+   */
+  readonly sharedWith?: string
 }
 
 /** Pages of the WASD Engine site the app is signed in to, or would sign in to. */

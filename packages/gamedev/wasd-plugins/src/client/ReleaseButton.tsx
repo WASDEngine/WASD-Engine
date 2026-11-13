@@ -1,12 +1,13 @@
 /**
  * The Release button of a game project's Session: in the Session header after the agent preset label, and in the New
  * Session row before the branch controls while the Session is blank, since the header shows no actions until the
- * first prompt. It opens a dialog that names the project's last release, takes optional release notes, and on Release
- * asks the Session's agent to release the game, so the export and upload run as a turn the user watches in the chat.
- * It shows only for a Session of a game project whose Peer may prompt it.
+ * first prompt. It opens a dialog that names the project's last release, takes optional release notes, offers to
+ * release as a new game once the project has a game, says when the folder releases the same game as another folder, as
+ * a copy does, and on Release asks the Session's agent to release the game, so the export and upload run as a turn the
+ * user watches in the chat. It shows only for a Session of a game project whose Peer may prompt it.
  */
 import { useId, useState } from 'react'
-import { Button, IconLoadingOutlineRegular, IconShareOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Checkbox, IconLoadingOutlineRegular, IconShareOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -17,6 +18,12 @@ import css from './ReleaseButton.module.css'
 
 /** Longest release notes the dialog takes; the release tool keeps at most 1000 characters. */
 export const NOTES_LIMIT = 1000
+
+/**
+ * Which game a release from the dialog goes to: `linked`, the project's game, or a new game for a project without one;
+ * `same`, the project's game, chosen for a folder that shares it with another folder; `new`, a new game.
+ */
+export type ReleaseTarget = 'linked' | 'same' | 'new'
 
 /**
  * Where a Release button registration sits: `header` among the Session header actions, or `newSession` in the New
@@ -38,9 +45,10 @@ export interface ReleaseButtonInjected {
    * Ask the Session's agent to release the game.
    * @param sessionId - the Session.
    * @param notes - release notes; empty asks the agent to write them.
+   * @param target - which game the release goes to.
    * @returns undefined once the prompt is queued, else why it was not.
    */
-  readonly startRelease: (sessionId: SessionId, notes: string) => Promise<string | undefined>
+  readonly startRelease: (sessionId: SessionId, notes: string, target: ReleaseTarget) => Promise<string | undefined>
 }
 
 /** Props of {@link ReleaseButton}; the New Session options pass the same Session props as the header actions. */
@@ -63,6 +71,7 @@ export function ReleaseButton({
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
   const [notes, setNotes] = useState('')
+  const [newGame, setNewGame] = useState(false)
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState<string>()
   const notesId = useId()
@@ -71,6 +80,7 @@ export function ReleaseButton({
   const show = (): void => {
     setOpen(true)
     setFailure(undefined)
+    setNewGame(false)
     setLoaded({ state: 'loading' })
     void readProject(projectDir).then((result) => {
       setLoaded('view' in result ? { state: 'ready', view: result.view } : { state: 'failed', message: result.error })
@@ -82,7 +92,9 @@ export function ReleaseButton({
   const release = async (): Promise<void> => {
     setSending(true)
     setFailure(undefined)
-    const refused = await startRelease(sessionId, notes.trim())
+    const view = loaded.state === 'ready' ? loaded.view : undefined
+    const target: ReleaseTarget = view?.game === undefined ? 'linked' : newGame ? 'new' : view.sharedWith === undefined ? 'linked' : 'same'
+    const refused = await startRelease(sessionId, notes.trim(), target)
     setSending(false)
     if (refused !== undefined) {
       setFailure(t('release.failed', { message: refused }))
@@ -93,6 +105,7 @@ export function ReleaseButton({
   }
   const notGodot = loaded.state === 'ready' && !loaded.view.godot
   const game = loaded.state === 'ready' ? loaded.view.game : undefined
+  const sharedWith = loaded.state === 'ready' ? loaded.view.sharedWith : undefined
 
   return (
     <>
@@ -131,6 +144,7 @@ export function ReleaseButton({
               <a href={game.url} target="_blank" rel="noreferrer noopener">{t('release.open')}</a>
             </p>
           )}
+          {game !== undefined && sharedWith !== undefined && <p className={css.warning}>{t('release.copy', { folder: sharedWith })}</p>}
           <div className={css.field}>
             <label className={css.label} htmlFor={notesId}>{t('release.notes')}</label>
             <textarea
@@ -147,6 +161,12 @@ export function ReleaseButton({
             />
             <span id={`${notesId}-hint`} className={css.hint}>{t('release.notesHint')}</span>
           </div>
+          {game !== undefined && (
+            <div className={css.field}>
+              <Checkbox checked={newGame} onChange={setNewGame} label={t('release.newGame')} disabled={sending || notGodot} />
+              <span className={css.hint}>{t('release.newGameHint', { title: game.title })}</span>
+            </div>
+          )}
           {failure !== undefined && <p className={css.warning} role="alert">{failure}</p>}
         </div>
       </Modal>
