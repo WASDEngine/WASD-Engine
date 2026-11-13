@@ -2,18 +2,21 @@
  * Releases: a Godot project's Web build, uploaded to the WASD Engine site the app is signed in to as the next
  * numbered version (1, 2, 3, ...) of the project's game, where its share page plays it, offers earlier versions, and
  * holds comments. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
- * and never follow redirects. A project remembers its game per site in `.wasdengine/game.json`, so later releases
- * add versions to the same game; when the site no longer has that game, or another account owns it, the release
- * creates a new one. The Web build itself goes to `.wasdengine/web/`, which Godot does not import because the folder
- * is hidden.
+ * and never follow redirects. A project remembers each account's game per site in `.wasdengine/game.json` from the
+ * moment the site creates the game, before the upload, so later releases add versions to the same game, also after a
+ * release whose upload failed; when the site no longer has that game, the release creates a new one, and another
+ * account signed in to the same site gets a game of its own. A copy of a project folder carries that link, so a
+ * release from a folder that shares its game with another folder on this computer asks first (`folders.ts`). The Web
+ * build itself goes to `.wasdengine/web/`, which Godot does not import because the folder is hidden.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
+import { folderOf, type ReleaseFolders } from './folders.ts'
 import type { WasdProjectView, WasdRelease } from './types.ts'
 import { writeZip } from './zip.ts'
 
@@ -41,6 +44,8 @@ export interface SiteAccess {
   readonly origin: string
   /** The signed-in account's token. */
   readonly token: string
+  /** {@link accountKey} of the signed-in account, when the app knows the account's ID. */
+  readonly account?: string
 }
 
 /** A release that could not finish; the message says what the user or the agent can do. */
@@ -50,7 +55,16 @@ export class ReleaseError extends Error {
 
 const GameRecord = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), version: z.number().int().min(0) })
 type GameRecord = z.infer<typeof GameRecord>
-const LinkFile = z.object({ format: z.literal(1), games: z.record(z.string(), GameRecord) })
+// One account's game on one site; `account` is absent when the release did not know its account.
+const AccountGame = GameRecord.extend({ account: z.string().optional() })
+type AccountGame = z.infer<typeof AccountGame>
+const LinkFile = z.object({
+  format: z.literal(1),
+  // The game of each site's latest release: what versions before per-account links read and write.
+  games: z.record(z.string(), GameRecord),
+  // Each account's game on each site, the latest release first.
+  accounts: z.record(z.string(), z.array(AccountGame)).optional(),
+})
 type LinkFile = z.infer<typeof LinkFile>
 
 const GameJson = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), latest_version: z.number().int() })
@@ -84,19 +98,59 @@ async function readLinks(projectDir: string): Promise<LinkFile> {
 }
 
 /**
+ * The fingerprint of an account in the link file, which a project may share through version control, so the file
+ * holds no account ID.
+ * @param userId - the account's ID on the site.
+ * @returns the first 24 hexadecimal digits of the ID's SHA-256 digest.
+ */
+export function accountKey(userId: string): string {
+  return createHash('sha256').update(userId).digest('hex').slice(0, 24)
+}
+
+// A link file written before per-account links holds one game per site, without its account.
+function siteGames(links: LinkFile, origin: string): AccountGame[] {
+  const latest = links.games[origin]
+  return links.accounts?.[origin] ?? (latest === undefined ? [] : [latest])
+}
+
+// One account's game without asking the site: its own, else one whose release did not know its account; the latest
+// release's game when the account is unknown.
+function accountGame(games: readonly AccountGame[], account: string | undefined): AccountGame | undefined {
+  return account === undefined ? games[0] : games.find(game => game.account === account) ?? games.find(game => game.account === undefined)
+}
+
+/**
  * The game a project released to on one site.
  * @param projectDir - absolute project folder.
  * @param origin - site origin.
- * @returns the remembered game, or undefined before the project's first release there.
+ * @param account - {@link accountKey} of the account; undefined picks the game of the latest release.
+ * @returns the remembered game, or undefined before the account's first release there.
  */
-export async function linkedGame(projectDir: string, origin: string): Promise<GameRecord | undefined> {
-  return (await readLinks(projectDir)).games[origin]
+export async function linkedGame(projectDir: string, origin: string, account?: string): Promise<GameRecord | undefined> {
+  return accountGame(siteGames(await readLinks(projectDir), origin), account)
 }
 
-async function rememberGame(projectDir: string, origin: string, record: GameRecord): Promise<void> {
+async function linksTo(projectDir: string, origin: string, gameId: string): Promise<boolean> {
+  try {
+    return siteGames(await readLinks(projectDir), origin).some(game => game.id === gameId)
+  } catch {
+    // An unreadable link file links to no game.
+    return false
+  }
+}
+
+// The account's game becomes the site's latest and replaces the account's earlier game and the game's earlier entry.
+async function rememberGame(projectDir: string, origin: string, record: AccountGame): Promise<void> {
   const links = await readLinks(projectDir)
+  const replaces = (game: AccountGame) => game.id === record.id || (record.account !== undefined && game.account === record.account)
+  const others = siteGames(links, origin).filter(game => !replaces(game))
+  const latest: GameRecord = { id: record.id, slug: record.slug, title: record.title, url: record.url, version: record.version }
   await mkdir(join(projectDir, STATE_DIR), { recursive: true })
-  await writeFile(linkPath(projectDir), `${JSON.stringify({ format: 1, games: { ...links.games, [origin]: record } }, null, 2)}\n`)
+  await writeFile(linkPath(projectDir), `${JSON.stringify({
+    format: 1,
+    games: { ...links.games, [origin]: latest },
+    accounts: { ...links.accounts, [origin]: [record, ...others] },
+  }, null, 2)}\n`)
 }
 
 /**
@@ -122,17 +176,32 @@ export function projectName(text: string): string | undefined {
  * What the Release button shows for a project folder.
  * @param projectDir - absolute folder.
  * @param origin - site origin the app is signed in to, or would sign in to.
- * @returns whether it is a Godot project, and its game on that site.
+ * @param folders - which folders on this computer released each game.
+ * @param account - {@link accountKey} of the signed-in account; undefined shows the game of the latest release.
+ * @returns whether it is a Godot project, the account's game on that site, and the folder this one shares it with.
  */
-export async function projectView(projectDir: string, origin: string): Promise<WasdProjectView> {
+export async function projectView(projectDir: string, origin: string, folders: ReleaseFolders, account?: string): Promise<WasdProjectView> {
   let godot = false
   try {
     godot = (await stat(join(projectDir, 'project.godot'))).isFile()
   } catch {
     // A folder without project.godot is not a Godot project.
   }
-  const game = await linkedGame(projectDir, origin)
-  return { godot, ...game === undefined || game.version === 0 ? {} : { game: { title: game.title, url: game.url, version: game.version } } }
+  const game = await linkedGame(projectDir, origin, account)
+  if (game === undefined || game.version === 0) return { godot }
+  const other = await folders.sharedWith(origin, game.id, await folderOf(projectDir), dir => linksTo(dir, origin, game.id))
+  return { godot, game: { title: game.title, url: game.url, version: game.version }, ...other === undefined ? {} : { sharedWith: other } }
+}
+
+/**
+ * The failure of a release from a project folder that shares its game with another folder, as a copy does, and has not
+ * said which game it releases.
+ * @param other - the other folder.
+ * @param game - the game both folders link to.
+ * @returns the question for the model to ask the user, and how to answer it.
+ */
+export function copyQuestion(other: string, game: { readonly title: string; readonly url: string }): string {
+  return `This project folder and ${other} release the same game, "${game.title}" (${game.url}), as happens when one is a copy of the other. Ask the user whether this folder should release the next version of that game or start a new game, then call wasd_release_game again with new_game false for the next version of that game, or new_game true for a new game.`
 }
 
 /** The site's games API as one release calls it. */
@@ -212,6 +281,22 @@ class SiteApi {
   }
 }
 
+/**
+ * The game the signed-in account released a project to, as the site has it. The site answers only for the account's
+ * own games, so the first linked game it answers for is the account's.
+ */
+async function ownedGame(api: SiteApi, games: readonly AccountGame[], account: string | undefined): Promise<GameJson | undefined> {
+  // The account's own game first, then games whose release did not know their account; another account's would 404.
+  const candidates = account === undefined
+    ? games
+    : [...games.filter(game => game.account === account), ...games.filter(game => game.account === undefined)]
+  for (const linked of candidates) {
+    const game = await api.game(linked.id)
+    if (game !== undefined) return game
+  }
+  return undefined
+}
+
 /** What a release reads and changes. */
 export interface ReleaseRequest {
   /** Absolute folder holding `project.godot`. */
@@ -222,6 +307,13 @@ export interface ReleaseRequest {
   readonly title?: string
   /** Absolute path of a PNG, JPEG, or WebP cover image. */
   readonly coverImage?: string
+  /**
+   * `true` releases the build as version 1 of a new game, which the project releases to from then on; `false` adds it
+   * to the account's game the project released to before, also when another folder on this computer releases that
+   * game, as a copy does. Undefined adds it to that game, but refuses such a folder with {@link copyQuestion}, so the
+   * user decides.
+   */
+  readonly newGame?: boolean
 }
 
 /** What a release needs from its Host. */
@@ -238,17 +330,21 @@ export interface ReleaseDependencies {
   readonly exportWeb: (projectDir: string, outputDir: string, signal: AbortSignal) => Promise<GodotWebExport>
   /** HTTP client of the site calls. */
   readonly fetch: typeof fetch
+  /** Which folders on this computer released each game. */
+  readonly folders: ReleaseFolders
   /** Absolute folder for the temporary upload archive. */
   readonly tempDir: string
 }
 
 /**
- * Export a project for the Web and release the build as the next version of its game.
- * @param request - project, notes, title, and cover.
- * @param dependencies - sign-in, export, HTTP, and temporary files.
+ * Export a project for the Web and release the build as the next version of the signed-in account's game, or as the
+ * first version of a new game.
+ * @param request - project, notes, title, cover, and whether to start a new game.
+ * @param dependencies - sign-in, export, HTTP, release folders, and temporary files.
  * @param signal - cancellation; a version the site already stored stays released.
  * @returns the release and its share links.
- * @throws {ReleaseError} while signed out, for unusable arguments, and when the site refuses or fails.
+ * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
+ * and has not said which game it releases ({@link copyQuestion}, before the export), and when the site refuses or fails.
  */
 export async function releaseGame(request: ReleaseRequest, dependencies: ReleaseDependencies, signal: AbortSignal): Promise<WasdRelease> {
   const notes = (request.notes ?? '').trim()
@@ -260,26 +356,45 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   }
   const access = await dependencies.access()
   if (access === undefined) throw new ReleaseError('WASD Engine is signed out, and releasing a game needs a signed-in account. Ask the user to sign in to WASD Engine, then release again.')
+  const api = new SiteApi(access, dependencies.fetch, signal)
+  const here = await folderOf(request.projectDir)
+  const siteLinks = siteGames(await readLinks(request.projectDir), access.origin)
+  let game = request.newGame === true ? undefined : await ownedGame(api, siteLinks, access.account)
+  if (game !== undefined) {
+    const id = game.id
+    const other = request.newGame === false
+      ? undefined
+      : await dependencies.folders.sharedWith(access.origin, id, here, dir => linksTo(dir, access.origin, id))
+    if (other !== undefined) throw new ReleaseError(copyQuestion(other, game))
+    await dependencies.folders.add(access.origin, id, here)
+  }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
   const archive = join(dependencies.tempDir, `wasd-release-${randomUUID()}.zip`)
   try {
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
-    const api = new SiteApi(access, dependencies.fetch, signal)
     const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
-    const linked = await linkedGame(request.projectDir, access.origin)
-    let game = linked === undefined ? undefined : await api.game(linked.id)
+    const remember = (linked: GameJson, version: number): Promise<void> => rememberGame(request.projectDir, access.origin, {
+      ...access.account === undefined ? {} : { account: access.account },
+      id: linked.id, slug: linked.slug, title: linked.title, url: linked.url, version,
+    })
+    const create = async (): Promise<GameJson> => {
+      const created = await api.create(name.slice(0, MAX_TITLE))
+      // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
+      // next release adds its version to this game instead of creating another.
+      await remember(created, created.latest_version)
+      await dependencies.folders.add(access.origin, created.id, here)
+      return created
+    }
     if (game !== undefined && title !== undefined && game.title !== title) game = await api.rename(game.id, title)
-    game ??= await api.create(name.slice(0, MAX_TITLE))
+    game ??= await create()
     let released = await api.release(game.id, archive, notes)
     if (released === undefined) {
       // The game was removed between the lookup and the upload: release to a new one.
-      game = await api.create(name.slice(0, MAX_TITLE))
+      game = await create()
       released = await api.release(game.id, archive, notes)
       if (released === undefined) throw new ReleaseError('WASD Engine could not store the release: the new game disappeared. Try again.')
     }
-    await rememberGame(request.projectDir, access.origin, {
-      id: released.game.id, slug: released.game.slug, title: released.game.title, url: released.game.url, version: released.release.version,
-    })
+    await remember(released.game, released.release.version)
     const warnings = [...exported.warnings]
     if (request.coverImage !== undefined) {
       try {

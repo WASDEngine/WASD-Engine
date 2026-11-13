@@ -35,6 +35,20 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('- Note one.')
   })
 
+  it('passes the choice between the project\'s game and a new game on to the release', async () => {
+    const stub = host()
+    const release = wasdToolDefinitions(stub).find(definition => definition.name === 'wasd_release_game')!
+    expect(release.parameters).toMatchObject({ properties: { new_game: { type: 'boolean' } } })
+    await release.execute({ new_game: true }, exec)
+    await release.execute({ new_game: false }, exec)
+    await release.execute({}, exec)
+    expect(stub.calls).toEqual([
+      ['release', { projectDir: '/work/game', newGame: true }],
+      ['release', { projectDir: '/work/game', newGame: false }],
+      ['release', { projectDir: '/work/game' }],
+    ])
+  })
+
   it('exports the nearest project and names the folder to serve', async () => {
     const stub = host()
     const exporter = wasdToolDefinitions(stub).find(definition => definition.name === 'wasd_export_web')!
@@ -57,6 +71,8 @@ describe('wasdMcpProvider', () => {
     await expect(release.prepare!({ project: 'relative' }, call)).rejects.toThrow(/project must be an absolute path/u)
     await expect(release.prepare!({ project: '/game', cover_image: 'cover.png' }, call)).rejects.toThrow(/cover_image must be an absolute path/u)
     expect(await release.prepare!({ project: '/game', notes: 'n' }, call)).toEqual({ args: { project: '/game', notes: 'n' } })
+    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' } })
+    expect(await release.prepare!({ project: '/game', new_game: true }, call)).toEqual({ args: { project: '/game', new_game: true } })
     expect(call.session).not.toHaveBeenCalled()
     expect(await provider.status(new AbortController().signal)).toEqual({ state: 'ready' })
   })

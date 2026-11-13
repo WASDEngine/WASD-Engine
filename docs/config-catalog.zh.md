@@ -5178,11 +5178,13 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:35`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:38`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
+  /** Absolute folder of the plugin's data on this computer: which project folders released each game. */
+  dataRoot: string
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
   /**

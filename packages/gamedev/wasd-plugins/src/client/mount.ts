@@ -27,8 +27,8 @@ import { followBrowserRequests } from './browser.ts'
 import { ExploreLink, type ExploreLinkInjected } from './ExploreLink.tsx'
 import { createDismissedProjects, dismissProject, FIRST_BUILD_EFFORT, watchHoldsNothing } from './first-build.ts'
 import { FirstBuildTip, type FirstBuildTipInjected } from './FirstBuildTip.tsx'
-import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
-import { ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonPlacement } from './ReleaseButton.tsx'
+import { de, en, es, fr, ja, NS, pt, ru, zh, type WasdPluginsUiKey } from './locales.ts'
+import { ReleaseButton, type ReleaseButtonInjected, type ReleaseButtonPlacement, type ReleaseTarget } from './ReleaseButton.tsx'
 
 /** Services required before the Remote contribution mounts. */
 export const inject = ['remote', 'slots', 'locale', 'remoteAccess', 'sessions']
@@ -38,6 +38,13 @@ export const inject = ['remote', 'slots', 'locale', 'remoteAccess', 'sessions']
  * and New worktree controls (0) in the New Session options.
  */
 export const RELEASE_ORDER = -9
+
+/** The release prompt of each target, without and with the user's notes. */
+const RELEASE_PROMPTS = {
+  linked: ['release.prompt', 'release.promptWithNotes'],
+  same: ['release.promptSameGame', 'release.promptSameGameWithNotes'],
+  new: ['release.promptNewGame', 'release.promptNewGameWithNotes'],
+} as const satisfies Record<ReleaseTarget, readonly [WasdPluginsUiKey, WasdPluginsUiKey]>
 
 function registerUi(ctx: Context): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'wasd-plugins: dictionaries')
@@ -50,10 +57,11 @@ function registerUi(ctx: Context): void {
         const result = await remote.project(projectDir)
         return result.ok ? { view: result.value } : { error: result.error.message }
       },
-      async startRelease(sessionId: SessionId, notes: string) {
+      async startRelease(sessionId: SessionId, notes: string, target: ReleaseTarget) {
         const conversation = ctx.sessions.scope(sessionId)?.get('conversation')
         if (conversation === undefined) return 'The Session is not open.'
-        const text = notes === '' ? t('release.prompt') : t('release.promptWithNotes', { notes })
+        const [prompt, withNotes] = RELEASE_PROMPTS[target]
+        const text = notes === '' ? t(prompt) : t(withNotes, { notes })
         try {
           await conversation.send(text)
           return undefined
