@@ -1,0 +1,196 @@
+diff --git a/drivers/gles3/shaders/particles.glsl b/drivers/gles3/shaders/particles.glsl
+index 03c94e5..fb49fb9 100644
+--- a/drivers/gles3/shaders/particles.glsl
++++ b/drivers/gles3/shaders/particles.glsl
+@@ -99,9 +99,19 @@ layout(std140) uniform FrameData { //ubo:0
+ #define PARTICLE_FLAG_ACTIVE uint(1)
+ #define PARTICLE_FLAG_STARTED uint(2)
+ #define PARTICLE_FLAG_TRAILED uint(4)
++// Set by ParticlesStorage::_particles_write_emissions() on a particle that takes an emit_particle() request; the
++// request's flags (RS::ParticlesEmitFlags) follow from bit PARTICLE_EMISSION_SHIFT.
++#define PARTICLE_FLAG_EMITTED uint(8)
++#define PARTICLE_EMISSION_SHIFT uint(8)
+ #define PARTICLE_FRAME_MASK uint(0xFFFF)
+ #define PARTICLE_FRAME_SHIFT uint(16)
+ 
++#define EMISSION_FLAG_HAS_POSITION uint(1)
++#define EMISSION_FLAG_HAS_ROTATION_SCALE uint(2)
++#define EMISSION_FLAG_HAS_VELOCITY uint(4)
++#define EMISSION_FLAG_HAS_COLOR uint(8)
++#define EMISSION_FLAG_HAS_CUSTOM uint(16)
++
+ // ParticleData
+ layout(location = 0) in highp vec4 color;
+ layout(location = 1) in highp vec4 velocity_flags;
+@@ -204,7 +214,8 @@ void main() {
+ 	mat4 xform = mat4(1.0);
+ 	uint flags = 0u;
+ 
+-	if (clear) {
++	// A clear keeps a particle that holds an emit_particle() request.
++	if (clear && !bool(floatBitsToUint(velocity_flags.w) & PARTICLE_FLAG_EMITTED)) {
+ 		out_color = vec4(1.0);
+ 		out_custom = vec4(0.0);
+ 		out_velocity_flags = vec4(0.0);
+@@ -255,7 +266,35 @@ void main() {
+ 	}
+ #endif
+ 	uint index = uint(gl_VertexID);
+-	if (emitting) {
++	if (bool(flags & PARTICLE_FLAG_EMITTED)) {
++		// Start the particle from the values that the request supplied. The others take the RenderingDevice
++		// renderers' defaults, and their RESTART_* built-ins tell the start() code to set them.
++		uint emission = (flags >> PARTICLE_EMISSION_SHIFT) & uint(0xFF);
++		if (!bool(emission & EMISSION_FLAG_HAS_POSITION)) {
++			xform[3] = vec4(0.0, 0.0, 0.0, 1.0);
++			restart_position = true;
++		}
++		if (!bool(emission & EMISSION_FLAG_HAS_ROTATION_SCALE)) {
++			xform[0] = vec4(1.0, 0.0, 0.0, 0.0);
++			xform[1] = vec4(0.0, 1.0, 0.0, 0.0);
++			xform[2] = vec4(0.0, 0.0, 1.0, 0.0);
++			restart_rotation_scale = true;
++		}
++		if (!bool(emission & EMISSION_FLAG_HAS_VELOCITY)) {
++			out_velocity_flags.xyz = vec3(0.0);
++			restart_velocity = true;
++		}
++		if (!bool(emission & EMISSION_FLAG_HAS_COLOR)) {
++			out_color = vec4(1.0);
++			restart_color = true;
++		}
++		if (!bool(emission & EMISSION_FLAG_HAS_CUSTOM)) {
++			out_custom = vec4(0.0);
++			restart_custom = true;
++		}
++		flags = PARTICLE_FLAG_ACTIVE | PARTICLE_FLAG_STARTED | (cycle << PARTICLE_FRAME_SHIFT);
++		restart = true;
++	} else if (emitting) {
+ 		float restart_phase = float(index) / float(total_particles);
+ 
+ 		if (randomness > 0.0) {
+diff --git a/drivers/gles3/storage/particles_storage.cpp b/drivers/gles3/storage/particles_storage.cpp
+index 48f5d4e..986a9ba 100644
+--- a/drivers/gles3/storage/particles_storage.cpp
++++ b/drivers/gles3/storage/particles_storage.cpp
+@@ -389,7 +389,79 @@ void ParticlesStorage::particles_set_subemitter(RID p_particles, RID p_subemitte
+ }
+ 
+ void ParticlesStorage::particles_emit(RID p_particles, const Transform3D &p_transform, const Vector3 &p_velocity, const Color &p_color, const Color &p_custom, uint32_t p_emit_flags) {
+-	WARN_PRINT_ONCE_ED("The Compatibility renderer does not support manually emitting particles.");
++	Particles *particles = particles_owner.get_or_null(p_particles);
++	ERR_FAIL_NULL(particles);
++	ERR_FAIL_COND(particles->amount == 0);
++
++	// As in the RenderingDevice renderers, emitting by hand ends the system's own emission.
++	if (particles->emitting) {
++		particles->clear = true;
++		particles->emitting = false;
++	}
++
++	particles->inactive = false;
++	particles->inactive_time = 0;
++
++	if (particles->emissions.size() < uint32_t(particles->amount)) {
++		Particles::Emission emission;
++		emission.transform = p_transform;
++		emission.velocity = p_velocity;
++		emission.color = p_color;
++		emission.custom = p_custom;
++		emission.flags = p_emit_flags;
++		particles->emissions.push_back(emission);
++	}
++}
++
++// Bits of a particle's flags that drivers/gles3/shaders/particles.glsl reads as PARTICLE_FLAG_EMITTED and
++// PARTICLE_EMISSION_SHIFT.
++static constexpr uint32_t PARTICLE_FLAG_EMITTED = 8;
++static constexpr uint32_t PARTICLE_EMISSION_SHIFT = 8;
++
++void ParticlesStorage::_particles_write_emissions(Particles *p_particles) {
++	if (p_particles->emissions.is_empty() || p_particles->amount <= 0 || p_particles->back_process_buffer == 0) {
++		return;
++	}
++
++	// Each request overwrites the color, velocity and flags, custom data, and transform rows of one particle in the
++	// buffer that the process step reads, and flags it PARTICLE_FLAG_EMITTED; the process shader then starts that
++	// particle from the supplied values, as the RenderingDevice renderers start an inactive particle from their
++	// emission buffer. This renderer has no atomics to find inactive particles, so requests take the slots in turn:
++	// a request restarts the particle of the request `amount` before it, even when that one is still active.
++	const uint32_t rows = p_particles->mode == RSE::PARTICLES_MODE_2D ? 2 : 3;
++	const uint32_t amount = uint32_t(p_particles->amount);
++	const uint32_t count = MIN(p_particles->emissions.size(), amount);
++	float data[4 * 6];
++
++	glBindBuffer(GL_ARRAY_BUFFER, p_particles->back_process_buffer);
++	for (uint32_t i = 0; i < count; i++) {
++		const Particles::Emission &emission = p_particles->emissions[i];
++		data[0] = emission.color.r;
++		data[1] = emission.color.g;
++		data[2] = emission.color.b;
++		data[3] = emission.color.a;
++		data[4] = emission.velocity.x;
++		data[5] = emission.velocity.y;
++		data[6] = emission.velocity.z;
++		const uint32_t flags = PARTICLE_FLAG_EMITTED | (emission.flags << PARTICLE_EMISSION_SHIFT);
++		memcpy(&data[7], &flags, sizeof(flags));
++		data[8] = emission.custom.r;
++		data[9] = emission.custom.g;
++		data[10] = emission.custom.b;
++		data[11] = emission.custom.a;
++		for (uint32_t row = 0; row < rows; row++) {
++			data[12 + row * 4 + 0] = emission.transform.basis.rows[row][0];
++			data[12 + row * 4 + 1] = emission.transform.basis.rows[row][1];
++			data[12 + row * 4 + 2] = emission.transform.basis.rows[row][2];
++			data[12 + row * 4 + 3] = emission.transform.origin[row];
++		}
++		const uint32_t slot = p_particles->emission_slot % amount;
++		glBufferSubData(GL_ARRAY_BUFFER, slot * p_particles->process_buffer_stride_cache, sizeof(float) * 4 * (3 + rows), data);
++		p_particles->emission_slot = slot + 1;
++	}
++	glBindBuffer(GL_ARRAY_BUFFER, 0);
++
++	p_particles->emissions.clear();
+ }
+ 
+ void ParticlesStorage::particles_request_process(RID p_particles) {
+@@ -788,6 +860,8 @@ void ParticlesStorage::_particles_process(Particles *p_particles, double p_delta
+ 
+ 	p_particles->has_collision_cache = m->shader_data->uses_collision;
+ 
++	_particles_write_emissions(p_particles);
++
+ 	glBindVertexArray(p_particles->back_vertex_array);
+ 
+ 	glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, p_particles->front_process_buffer);
+diff --git a/drivers/gles3/storage/particles_storage.h b/drivers/gles3/storage/particles_storage.h
+index c31d342..3a08c36 100644
+--- a/drivers/gles3/storage/particles_storage.h
++++ b/drivers/gles3/storage/particles_storage.h
+@@ -242,6 +242,18 @@ private:
+ 		Vector3 emitter_velocity;
+ 		float interp_to_end = 0.0;
+ 
++		// emit_particle() requests that the next process step starts, at most `amount`, and the particle slot that
++		// the next request takes.
++		struct Emission {
++			Transform3D transform;
++			Vector3 velocity;
++			Color color;
++			Color custom;
++			uint32_t flags = 0;
++		};
++		LocalVector<Emission> emissions;
++		uint32_t emission_slot = 0;
++
+ 		HashSet<RID> collisions;
+ 
+ 		Dependency dependency;
+@@ -256,6 +268,7 @@ private:
+ 	};
+ 
+ 	void _particles_process(Particles *p_particles, double p_delta);
++	void _particles_write_emissions(Particles *p_particles);
+ 	void _particles_free_data(Particles *particles);
+ 	void _particles_update_buffers(Particles *particles);
+ 	void _particles_allocate_history_buffers(Particles *particles);

@@ -127,8 +127,9 @@ export interface Config {
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
-   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
-   * Web template with HTTP range requests.
+   * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
+   * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD
+   * Engine's build of the template (`wasdengine/web-template/BUILD.md`).
    */
   webTemplateArchiveUrl: string
   /** Path of the single-threaded Web release template inside that archive. */
@@ -320,9 +321,9 @@ export default class GodotController extends TypertRemoteService {
     hiddenFps: z.number().step(1).min(0).max(60).default(10),
     hiddenDelayMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(30_000),
     agentRunsMuted: z.boolean().default(true),
-    webTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    webTemplateArchiveUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz'),
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
-    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0'),
+    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a'),
     webTemplatePath: z.string().default(''),
     windowsTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
     windowsTemplateEntry: z.string().default('templates/windows_release_x86_64.exe'),

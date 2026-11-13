@@ -1,0 +1,189 @@
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index 3f51a57..282c206 100644
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -52,6 +52,10 @@
+ #include "servers/rendering/rendering_server_types.h"
+ #include "servers/rendering/storage/ltc_lut.gen.h"
+ 
++#ifdef WEB_ENABLED
++#include <emscripten/html5.h>
++#endif
++
+ RasterizerSceneGLES3 *RasterizerSceneGLES3::singleton = nullptr;
+ 
+ RenderGeometryInstance *RasterizerSceneGLES3::geometry_instance_create(RID p_base) {
+@@ -4616,6 +4620,11 @@ RasterizerSceneGLES3::RasterizerSceneGLES3() {
+ 			global_defines += "\n#define SPECULAR_OCCLUSION_DISABLED\n";
+ 		}
+ 		material_storage->shaders.scene_shader.initialize(global_defines);
++#ifdef WEB_ENABLED
++		// Compile 3D material programs in the browser's background compiler: a draw whose program is still
++		// compiling is skipped instead of blocking the page until the driver has compiled it.
++		material_storage->shaders.scene_shader.set_async_compile(emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "KHR_parallel_shader_compile"));
++#endif
+ 		scene_globals.shader_default_version = material_storage->shaders.scene_shader.version_create();
+ 		material_storage->shaders.scene_shader.version_bind_shader(scene_globals.shader_default_version, SceneShaderGLES3::MODE_COLOR);
+ 	}
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index b745fa3..da0d011 100644
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -40,6 +40,11 @@
+ #ifndef WEB_ENABLED
+ #include "core/io/file_access.h"
+ #endif
++#include "servers/rendering/rendering_server_default.h"
++
++#ifndef GL_COMPLETION_STATUS_KHR
++#define GL_COMPLETION_STATUS_KHR 0x91B1
++#endif
+ 
+ static String _mkid(const String &p_id) {
+ 	String id = "m_" + p_id.replace("__", "_dus_");
+@@ -469,6 +474,103 @@ void ShaderGLES3::_compile_specialization(Version::Specialization &spec, uint32_
+ 	spec.ok = true;
+ }
+ 
++void ShaderGLES3::_start_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization) {
++	// Queue both compiles and the link without asking for their status, which would wait for the driver.
++	spec.id = glCreateProgram();
++	spec.ok = false;
++	for (int stage = 0; stage < 2; stage++) {
++		StringBuilder builder;
++		_build_variant_code(builder, p_variant, p_version, stage == 0 ? STAGE_TYPE_VERTEX : STAGE_TYPE_FRAGMENT, p_specialization);
++		CharString cs = builder.as_string().utf8();
++		const char *cstr = cs.ptr();
++		GLint cstr_len = cs.length();
++		GLuint shader_id = glCreateShader(stage == 0 ? GL_VERTEX_SHADER : GL_FRAGMENT_SHADER);
++		glShaderSource(shader_id, 1, &cstr, &cstr_len);
++		glCompileShader(shader_id);
++		glAttachShader(spec.id, shader_id);
++		(stage == 0 ? spec.vert_id : spec.frag_id) = shader_id;
++	}
++
++	if (feedback_count) {
++		Vector<const char *> feedback;
++		for (int i = 0; i < feedback_count; i++) {
++			if (feedbacks[i].specialization == 0 || (feedbacks[i].specialization & p_specialization)) {
++				feedback.push_back(feedbacks[i].name);
++			}
++		}
++		if (feedback.size()) {
++			glTransformFeedbackVaryings(spec.id, feedback.size(), feedback.ptr(), GL_INTERLEAVED_ATTRIBS);
++		}
++	}
++
++	glLinkProgram(spec.id);
++}
++
++void ShaderGLES3::_finish_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization) {
++	GLint status = GL_FALSE;
++	glGetProgramiv(spec.id, GL_LINK_STATUS, &status);
++	if (status == GL_FALSE) {
++		// Report the stage that did not compile, with its code, or else the link log.
++		String error;
++		String code;
++		for (int stage = 0; stage < 2 && error.is_empty(); stage++) {
++			GLuint shader_id = stage == 0 ? spec.vert_id : spec.frag_id;
++			GLint compiled = GL_FALSE;
++			glGetShaderiv(shader_id, GL_COMPILE_STATUS, &compiled);
++			if (compiled == GL_FALSE) {
++				GLint length = 0;
++				glGetShaderiv(shader_id, GL_INFO_LOG_LENGTH, &length);
++				CharString log;
++				log.resize_uninitialized(MAX(length, 1));
++				glGetShaderInfoLog(shader_id, MAX(length, 1), nullptr, log.ptrw());
++				error = name + (stage == 0 ? ": Vertex" : ": Fragment") + " shader compilation failed:\n" + String::utf8(log.get_data());
++				StringBuilder builder;
++				_build_variant_code(builder, p_variant, p_version, stage == 0 ? STAGE_TYPE_VERTEX : STAGE_TYPE_FRAGMENT, p_specialization);
++				code = builder.as_string();
++			}
++		}
++		if (error.is_empty()) {
++			GLint length = 0;
++			glGetProgramiv(spec.id, GL_INFO_LOG_LENGTH, &length);
++			CharString log;
++			log.resize_uninitialized(MAX(length, 1));
++			glGetProgramInfoLog(spec.id, MAX(length, 1), nullptr, log.ptrw());
++			error = name + ": Program linking failed:\n" + String::utf8(log.get_data());
++		}
++		_display_error_with_code(error, code);
++		glDeleteShader(spec.vert_id);
++		glDeleteShader(spec.frag_id);
++		glDeleteProgram(spec.id);
++		spec.id = 0;
++		return;
++	}
++
++	_get_uniform_locations(spec, p_version);
++	spec.ok = true;
++}
++
++ShaderGLES3::Version::Specialization *ShaderGLES3::_get_async_specialization(Version *p_version, int p_variant, uint64_t p_specialization) {
++	Version::Specialization *spec = p_version->variants[p_variant].getptr(p_specialization);
++	if (!spec) {
++		Version::Specialization started;
++		_start_specialization(started, p_variant, p_version, p_specialization);
++		started.build_queued = true;
++		p_version->variants[p_variant].insert(p_specialization, started);
++		spec = p_version->variants[p_variant].getptr(p_specialization);
++	}
++	// A completion query never waits: draws skip the program until the browser's compiler threads finish it, so
++	// programs that several draws need compile at the same time instead of one after another on the main thread.
++	GLint done = GL_FALSE;
++	glGetProgramiv(spec->id, GL_COMPLETION_STATUS_KHR, &done);
++	if (done == GL_FALSE) {
++		RenderingServerDefault::redraw_request();
++		return nullptr;
++	}
++	spec->build_queued = false;
++	_finish_specialization(*spec, p_variant, p_version, p_specialization);
++	return spec;
++}
++
+ RenderingServerTypes::ShaderNativeSourceCode ShaderGLES3::version_get_native_source_code(RID p_version) {
+ 	Version *version = version_owner.get_or_null(p_version);
+ 	RenderingServerTypes::ShaderNativeSourceCode source_code;
+diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
+index 4ff35c1..86ed962 100644
+--- a/drivers/gles3/shader_gles3.h
++++ b/drivers/gles3/shader_gles3.h
+@@ -107,6 +107,11 @@ private:
+ 
+ 	void _get_uniform_locations(Version::Specialization &spec, Version *p_version);
+ 	void _compile_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization);
++	void _start_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization);
++	void _finish_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization);
++	Version::Specialization *_get_async_specialization(Version *p_version, int p_variant, uint64_t p_specialization);
++
++	bool async_compile = false;
+ 
+ 	void _clear_version(Version *p_version);
+ 	void _initialize_version(Version *p_version);
+@@ -191,7 +196,12 @@ protected:
+ 		}
+ 
+ 		Version::Specialization *spec = version->variants[p_variant].getptr(p_specialization);
+-		if (!spec) {
++		if (async_compile && (!spec || spec->build_queued)) {
++			spec = _get_async_specialization(version, p_variant, p_specialization);
++			if (!spec) {
++				return false; // Still compiling: the caller skips this draw.
++			}
++		} else if (!spec) {
+ 			if (false) {
+ 				// Queue load this specialization and use defaults in the meantime (TODO)
+ 
+@@ -241,6 +251,11 @@ public:
+ 
+ 	bool version_is_valid(RID p_version);
+ 
++	// With p_enable, a bind of a specialization that is not compiled yet starts compiling it and returns false, as
++	// do later binds until the driver reports it compiled (GL_COMPLETION_STATUS_KHR), and the caller skips the draw;
++	// otherwise a bind compiles it and waits. Needs KHR_parallel_shader_compile.
++	void set_async_compile(bool p_enable) { async_compile = p_enable; }
++
+ 	bool version_free(RID p_version);
+ 
+ 	static void set_shader_cache_dir(const String &p_dir);

@@ -89,9 +89,9 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `hiddenFps` | `10` | [无人显示或使用的无窗口游戏](#game-runs)的每秒帧数，取值 0 到 60；`0` 让所有游戏保持自身帧率 |
 | `hiddenDelayMs` | `30000` | 游戏连接后、最后一个“游戏”标签页不再显示它后，或其最后一个请求结束后，经过多长时间开始应用 `hiddenFps` |
 | `agentRunsMuted` | `true` | agent 启动的运行是否默认无音频，除非 `godot_run` 另行指定 |
-| `webTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；[Web 导出](#web-export)只从中下载 Web 模板；须为 http 或 https URL |
+| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz` | 包含运行时 Godot 版本 Web 模板的导出模板归档；[Web 导出](#web-export)只从中下载该模板；须为 http 或 https URL。默认值是 WASD Engine 构建的模板 |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
-| `webTemplateSha256` | `d3ee2f08…4032a0` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `webTemplateSha256` | `13e81eb1…e6d05a` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
 | `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
 | `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Windows 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
 | `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | 64 位 x86 Windows 发布模板在该归档中的路径 |
@@ -268,7 +268,7 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 Godot 的网页运行时不绘制启动画面；只有页面的加载界面会在进度条上方显示启动图片，除非项目的 `application/boot_splash/image` 指定了自己的图片，否则该图片是 Godot 的标志。对于没有自己图片的项目，预设的 `html/head_include` 会加入一段隐藏该图片的样式，因此加载界面只在项目的 `application/boot_splash/bg_color` 背景上显示进度条；有自己图片的项目保留其图片。
 
-Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了 Forward+ 游戏在 Web 上遇到的 Compatibility 渲染器限制：超过约 60 个物体时的实例 uniform、未过滤的 `SOFT_VERY_LOW` 阴影、`emit_particle()`，以及主线程等待着色器编译和帧缓冲检查（[构建说明](../../../wasdengine/web-template/BUILD.md)）。它的导出模板归档只包含该模板。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布（约 40 MB，因为模板以不压缩方式存储，其摘要只取决于其中的文件）；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
 
 <a id="web-check"></a>
 ### Web 检查
