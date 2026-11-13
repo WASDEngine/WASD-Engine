@@ -11,7 +11,7 @@ When the `godot_*` tools are available, Godot is built in: `godot_check` and `go
 
 Without the `godot_*` tools, run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one.
 
-Write code for the Godot 4 release in use, and name that release first in `config/features` of `project.godot`, as in `config/features=PackedStringArray("4.7", "Forward Plus")` for Godot 4.7; when an existing project names an older release there, change it to the release in use. The built-in runtime runs GDScript, not C#: a project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
+Write code for the Godot 4 release in use, and name that release first in `config/features` of `project.godot`, as in `config/features=PackedStringArray("4.7", "GL Compatibility")` for Godot 4.7; when an existing project names an older release there, change it to the release in use. The built-in runtime runs GDScript, not C#: a project with a `.csproj` needs the Godot .NET editor, and its C# builds with `dotnet build`.
 
 ## Project layout
 

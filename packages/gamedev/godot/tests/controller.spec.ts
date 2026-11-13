@@ -88,6 +88,7 @@ describe('configuration', () => {
       macosTemplateSha256: '88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792',
       macosTemplatePath: '',
       exportTimeoutMs: 600_000,
+      webCheckCommand: [], webCheckSeconds: 20, webCheckStartTimeoutMs: 180_000, webCheckTimeoutMs: 300_000,
     })
   })
 })

@@ -18,7 +18,7 @@ The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.md) | Native `polyhaven_search`, `polyhaven_asset`, and `polyhaven_download` | None: the Host requests the Poly Haven API and writes the downloaded files |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.md) | `mcp__wasd_supercollider__<tool>`, from the MCP server `wasd_supercollider` | For each calling Session, one bridge process with one sclang, which runs scsynth offline for each render: the runtime that the Desktop app ships, or a headless sclang that `sclangPath` names |
 
-Activation installs, downloads, and starts no application. The Blender, GIMP, and SuperCollider rows start only their MCP server process, which starts the application at the first tool call, and the Godot row starts a game only when a tool or the Game tab asks for one, and the Poly Haven and ElevenLabs rows make their first request at their first tool call, and the game add-ons row downloads an add-on only when one is installed; a call that needs a missing application fails with installation steps, and an ElevenLabs call while signed out asks for a sign-in. The three MCP servers are built on the library [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md). Its `materializePayload` copies each script that a package hands to an application to `<dataRoot>/payload/<digest>/<file name>`, where `<digest>` is the first 16 hexadecimal digits of the content's SHA-256. The copy is needed because a packaged Desktop app keeps package files inside `app.asar`, which only Electron's `fs` can read; the Godot package uses the function for its two GDScript files. The MCP server names carry a `wasd_` prefix so that they stay apart from `blender`, `gimp`, or `supercollider` servers that a user configures. The fork's bundled `godot-project` skill directs the agent to the `godot_*`, `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, `mcp__wasd_supercollider__*`, `polyhaven_*`, `elevenlabs_*`, `game_addons`, and `godot_script` tools when they are present.
+Activation installs, downloads, and starts no application. The Blender, GIMP, and SuperCollider rows start only their MCP server process, which starts the application at the first tool call, and the Godot row starts a game only when a tool or the Game tab asks for one, and the Poly Haven and ElevenLabs rows make their first request at their first tool call, and the game add-ons row downloads an add-on only when one is installed; a call that needs a missing application fails with installation steps, and an ElevenLabs call while signed out asks for a sign-in. The three MCP servers are built on the library [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md). Its `materializePayload` copies each script that a package hands to an application to `<dataRoot>/payload/<digest>/<file name>`, where `<digest>` is the first 16 hexadecimal digits of the content's SHA-256. The copy is needed because a packaged Desktop app keeps package files inside `app.asar`, which only Electron's `fs` can read; the Godot package uses the function for its two GDScript files. The MCP server names carry a `wasd_` prefix so that they stay apart from `blender`, `gimp`, or `supercollider` servers that a user configures. The fork's bundled `godot-web` skill says how a Godot game looks and runs in browsers, where WASD Engine releases play it, and its `godot-project` skill directs the agent to the `godot_*`, `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, `mcp__wasd_supercollider__*`, `polyhaven_*`, `elevenlabs_*`, `game_addons`, and `godot_script` tools when they are present.
 
 | Process | Started by | Ends | Talks to |
 |---|---|---|---|
@@ -125,11 +125,11 @@ A start through `godot_run` or `godot.run` takes these steps; `godot.run` first 
 6. Within `startTimeoutMs`, the harness script connects and authenticates as the [harness protocol](#harness-protocol) describes, and the run becomes `running`.
 
 ```text
---path <project> [--embedded] --script <wasd_harness.gd> [--audio-driver Dummy] [--resolution <width>x<height>]
+--path <project> [--embedded] --script <wasd_harness.gd> [--audio-driver Dummy] [--rendering-method gl_compatibility] [--resolution <width>x<height>]
   -- --wasd-port=<port> --wasd-token=<token> [--wasd-scene=<scene>]
 ```
 
-`--audio-driver Dummy` mutes a run. A run that the agent starts is muted unless the call says otherwise or `agentRunsMuted` is off; a run that the Game tab starts plays audio unless its request sets `muted`.
+`--audio-driver Dummy` mutes a run. A run that the agent starts is muted unless the call says otherwise or `agentRunsMuted` is off; a run that the Game tab starts plays audio unless its request sets `muted`. `--rendering-method gl_compatibility` renders a request with `web` set with the Compatibility renderer that the game's Web builds use, whatever the project's renderer.
 
 `godot_stop`, `godot.stop`, a restart, and disposal stop a run the same way: `ctx.godot` sends `quit`, waits up to `stopGraceMs` for the process to exit, then aborts the process, which makes the subprocess service terminate it, and settles once the process is gone.
 
@@ -249,7 +249,7 @@ Blender, GIMP, and SuperCollider workers and Godot games are whole application p
 | 18 GiB, 12 logical processors | 2 |
 | 32 GiB, 16 logical processors | 4 |
 
-Before each start of a worker, a game, a script check, a script, an import for another plugin, or a Web export, the starter reads the memory that the operating system reports available, `process.availableMemory()`. While that is less than `minAvailableMemoryBytes`, 1 GiB by default, an application server stops the idle workers of other Sessions of its application, least recently used first, and the start fails with `LOW_MEMORY` or `godot/low-memory` when that does not free enough. The reading covers the whole computer, so the processes of every game tool and of other programs count against it, while the limits are per application. Godot runs at most `maxHeadlessProcesses` script checks and Web exports at once; later ones wait in order for one to end.
+Before each start of a worker, a game, a script check, a script, an import for another plugin, or a Web export, the starter reads the memory that the operating system reports available, `process.availableMemory()`. While that is less than `minAvailableMemoryBytes`, 1 GiB by default, an application server stops the idle workers of other Sessions of its application, least recently used first, and the start fails with `LOW_MEMORY` or `godot/low-memory` when that does not free enough. The reading covers the whole computer, so the processes of every game tool and of other programs count against it, while the limits are per application. Godot runs at most `maxHeadlessProcesses` script checks, Web exports, and Web checks at once; later ones wait in order for one to end. A Web check runs the Desktop app's own Electron in its Web check mode, which the Godot package README's [Web check](../../packages/gamedev/godot/README.md#web-check) describes; the memory check counts it like an export.
 
 Every caller is held to the same limits: the Host's Sessions, subagents, which count as Sessions of their own, and the agents connected through the [MCP server for other agents](#mcp-server-for-other-agents), whose calls reach the same worker pools and the same `ctx.godot`. The [app-mcp README](../../packages/gamedev/app-mcp/README.md#one-worker-per-session) and the [Godot README](../../packages/gamedev/godot/README.md#game-runs) own the fields and refusals.
 
@@ -419,6 +419,7 @@ The `godot` Remote methods, listed in the generated Cordis API section, take the
 | `scene` | `res://` or `uid://` scene to run instead of the main scene |
 | `width`, `height` | Window size in pixels, given together, each an integer from 1 to 16,384 |
 | `muted` | Run with the Dummy audio driver; `godot.run` defaults to false |
+| `web` | Render with the Compatibility renderer, as the game's Web builds do, instead of the project's renderer; defaults to false |
 
 `GodotControlRequest` carries an `action`, `pause`, `resume`, or `step`, and for `step` the number of `frames`, an integer from 1 to 100,000 that defaults to 1.
 
@@ -430,7 +431,7 @@ The `godot` Remote methods, listed in the generated Cordis API section, take the
 | `phase` | Phase from the [run lifecycle](#run-lifecycle) |
 | `startedBy` | `agent` or `user` |
 | `projectDir`, `projectName` | Project folder and its `application/config/name`, when set |
-| `launch` | Scene and window size of the start request: `scene`, `width`, and `height`, each absent when the request had none; Restart passes them again |
+| `launch` | Scene, window size, and renderer of the start request: `scene`, `width`, and `height`, each absent when the request had none, and `web: true` for a request with `web` set; Restart passes them again |
 | `scene` | `res://` path of the running scene, when known |
 | `width`, `height` | Game window size, once the game reports it |
 | `fps`, `frame`, `mouseMode` | Values of the latest `status` message; `mouseMode` is Godot's `Input.MouseMode`: 0 visible, 1 hidden, 2 captured, 3 confined, 4 confined hidden |
@@ -631,6 +632,20 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
+
+/**
+ * Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that
+ * `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and
+ * report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed,
+ * and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For
+ * other plugins on the Host; the Game tab does not call it.
+ * @param request - the export folder and its page.
+ * @param signal - cancellation; it stops the browser.
+ * @returns what the check saw.
+ * @throws {GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.
+ */
+async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck>
 
 /**
  * Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the

@@ -243,6 +243,7 @@ export default class WasdPlugins extends TypertRemoteService {
           const outputDir = resolve(projectDir, STATE_DIR, WEB_BUILD_DIR)
           return scope.godot.exportWeb({ projectDir, outputDir }, signal)
         },
+        checkWeb: (outputDir, signal) => scope.godot.checkWeb({ outputDir }, signal),
         exportDesktop: async (projectDir, platforms, signal) => {
           const builds = []
           const warnings = []
@@ -285,6 +286,7 @@ export default class WasdPlugins extends TypertRemoteService {
           return releaseGame(request, {
             access: () => this.access(),
             exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
+            checkWeb: (outputDir, checkSignal) => scope.godot.checkWeb({ outputDir }, checkSignal),
             exportDesktop: (projectDir, platform, outputDir, exportSignal) => {
               return scope.godot.exportDesktop({ projectDir, platform, outputDir }, exportSignal)
             },

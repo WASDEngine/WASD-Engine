@@ -1912,7 +1912,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:61`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:65`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2009,6 +2009,17 @@ export interface Config {
   macosTemplatePath: string
   /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
+  /**
+   * Command line that starts the browser of Web checks, without its argument: the Desktop app's executable, and the
+   * application folder when Electron runs it from one. Empty, as outside the Desktop app, turns Web checks off.
+   */
+  webCheckCommand: string[]
+  /** Seconds a Web check watches the game after it started. */
+  webCheckSeconds: number
+  /** Milliseconds a Web check waits for the game to start. */
+  webCheckStartTimeoutMs: number
+  /** Deadline of one Web check, its browser's start and the game's loading included, in milliseconds. */
+  webCheckTimeoutMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->

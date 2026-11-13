@@ -21,8 +21,8 @@
   en: 01252f44171c53fb
   zh: 11000da0eb59795f
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-tools:
-  en: ac4dc291f35393e5
-  zh: 6689b45befc3e1d7
+  en: a5177a4b147dc0ac
+  zh: ac882d08a76eaddc
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-export-share-button-and-explore-games:
   en: 6cbaa4be5dbb4336
   zh: 1c1a58b33b0f3015
@@ -48,11 +48,11 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/what-the-model-sees:
-  en: 6d4e5fcf8a106d98
-  zh: dedbc90b6b2412e5
+  en: 531c1d2df32ba0e6
+  zh: aaddbeb4dfa2ef55
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/token-effect:
-  en: 5172cb4e7f8f108a
-  zh: 38bf7dc091a1140e
+  en: da6099d32f8a316f
+  zh: e1867ad5c38eded1
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/kv-cache-effect:
   en: 206f2b3c2d289a21
   zh: f5084c9373791a6d
@@ -60,11 +60,11 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/what-the-model-sees:
-  en: bad55e9a819c3657
-  zh: 0c87cfa047f56fee
+  en: 96404b8882669086
+  zh: 14871c54d5de9d3a
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/token-effect:
-  en: f31cbb862d6513aa
-  zh: 56e0d4ecc254f967
+  en: 4ba023a6296ef4ba
+  zh: acc38725fcb38f30
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009
@@ -108,8 +108,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: f528900387b7415e
-  zh: 60de7d74cbd5ff7c
+  en: 27ca0a6ac10175b9
+  zh: d34532194b8136d2
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
   en: f6b8b1289843a15c
   zh: 512ae8d91fa0cf53

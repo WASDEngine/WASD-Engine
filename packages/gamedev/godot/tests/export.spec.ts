@@ -4,7 +4,8 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, exportDesktop, exportWeb, GodotExportError, HIDE_SPLASH_HEAD,
-  textureImports, WEB_EXPORT_PRESET, webNotes, withDesktopPreset, withTextureImports, withWebPreset, type WebExportOptions,
+  LARGE_PACK_BYTES, packNotes, textureImports, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, webNotes, withDesktopPreset, withTextureImports,
+  withWebPreset, type WebExportOptions,
 } from '../src/export.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
 import { fakeLog, scratch, subprocessFixture, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
@@ -85,11 +86,22 @@ describe('customBootSplash', () => {
 })
 
 describe('webNotes', () => {
-  it('names the Compatibility renderer for Forward+ and Mobile projects only', () => {
-    expect(webNotes('[rendering]\nrenderer/rendering_method="forward_plus"\n')[0]).toContain('Compatibility renderer')
-    expect(webNotes('[rendering]\nrenderer/rendering_method="mobile"\n')).toHaveLength(1)
+  it('names the Compatibility renderer for every project that does not render with it', () => {
+    expect(webNotes('[rendering]\nrenderer/rendering_method="forward_plus"\n')).toEqual([WEB_RENDERER_NOTE])
+    expect(webNotes('[rendering]\nrenderer/rendering_method="mobile"\n')).toEqual([WEB_RENDERER_NOTE])
+    // Without a rendering method, the project renders with Forward+, Godot 4's default.
+    expect(webNotes('[application]\nconfig/name="x"\n')).toEqual([WEB_RENDERER_NOTE])
     expect(webNotes('[rendering]\nrenderer/rendering_method="gl_compatibility"\n')).toEqual([])
-    expect(webNotes('[application]\nconfig/name="x"\n')).toEqual([])
+  })
+})
+
+describe('packNotes', () => {
+  it('notes a pack larger than 100 MB', () => {
+    expect(packNotes([{ path: 'index.pck', bytes: LARGE_PACK_BYTES }, { path: 'index.wasm', bytes: 1 }])).toEqual([])
+    expect(packNotes([{ path: 'index.wasm', bytes: 2 * LARGE_PACK_BYTES }])).toEqual([])
+    expect(packNotes([{ path: 'index.pck', bytes: 373 * 1024 * 1024 }])).toEqual([
+      'The game\'s pack is 373 MB, and players download all of it before the game starts. Textures are most of most packs: lower the size limit of large ones (process/size_limit in their .import files), reuse textures, and keep sounds compressed.',
+    ])
   })
 })
 
@@ -105,7 +117,8 @@ posix('exportWeb', () => {
     expect(exported.outputDir).toBe(outputDir)
     expect(exported.files.map(file => file.path)).toEqual(['index.html', 'index.js', 'index.pck', 'index.png', 'index.wasm'])
     expect(exported.totalBytes).toBe(Object.values(BUILD).join('').length)
-    expect(exported.warnings).toEqual(['Screen-space AA is only available when using the Forward+ or Mobile renderer.'])
+    // The fixture project sets no rendering method, so it renders with Forward+ on desktop.
+    expect(exported.warnings).toEqual([WEB_RENDERER_NOTE, 'Screen-space AA is only available when using the Forward+ or Mobile renderer.'])
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
     const log = await fakeLog(project)
     const exportEntry = log.find(entry => entry.preset !== undefined) as { preset: string; presets: string }

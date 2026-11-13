@@ -26,7 +26,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
-import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
 import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
@@ -406,6 +406,8 @@ export interface ReleaseRequest {
   readonly visibility?: WasdVisibility
   /** Desktop platforms to build the game for and offer as downloads of this version. Default: none. */
   readonly desktop?: readonly GodotDesktopPlatform[]
+  /** `false` skips the Web check of the build. Default: the check runs, while the release builds and uploads. */
+  readonly check?: boolean
 }
 
 /** What a release needs from its Host. */
@@ -431,6 +433,13 @@ export interface ReleaseDependencies {
   readonly exportDesktop: (
     projectDir: string, platform: GodotDesktopPlatform, outputDir: string, signal: AbortSignal,
   ) => Promise<GodotDesktopExport>
+  /**
+   * Check a Web build in a browser; absent where Web checks are off.
+   * @param outputDir - absolute folder of the Web build.
+   * @param signal - cancellation.
+   * @returns what the check saw.
+   */
+  readonly checkWeb?: (outputDir: string, signal: AbortSignal) => Promise<GodotWebCheck>
   /** HTTP client of the site calls. */
   readonly fetch: typeof fetch
   /** Which folders on this computer released each game. */
@@ -616,14 +625,19 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     await dependencies.folders.add(access.origin, id, here)
   }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
-  // Desktop builds come before anything reaches the site, so a build that fails publishes nothing.
-  const builds: GodotDesktopExport[] = []
-  for (const platform of DESKTOP_PLATFORMS.filter(platform => request.desktop?.includes(platform) === true)) {
-    const outputDir = join(request.projectDir, STATE_DIR, DESKTOP_BUILD_DIR, platform)
-    builds.push(await dependencies.exportDesktop(request.projectDir, platform, outputDir, signal))
-  }
+  // The Web check watches the build while the release builds and uploads; a release that fails stops it.
+  const stopCheck = new AbortController()
+  const checking = request.check === false || dependencies.checkWeb === undefined
+    ? undefined
+    : webCheckOutcome(dependencies.checkWeb(exported.outputDir, AbortSignal.any([signal, stopCheck.signal])))
   const archive = join(dependencies.tempDir, `wasd-release-${randomUUID()}.zip`)
   try {
+    // Desktop builds come before anything reaches the site, so a build that fails publishes nothing.
+    const builds: GodotDesktopExport[] = []
+    for (const platform of DESKTOP_PLATFORMS.filter(platform => request.desktop?.includes(platform) === true)) {
+      const outputDir = join(request.projectDir, STATE_DIR, DESKTOP_BUILD_DIR, platform)
+      builds.push(await dependencies.exportDesktop(request.projectDir, platform, outputDir, signal))
+    }
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
     const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
     const remember = (linked: GameJson, version: number, digests: PreviewDigests = {}): Promise<void> => {
@@ -697,8 +711,26 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       downloads,
       ...credited === undefined ? {} : { credits: creditNames(credited) },
       warnings,
+      ...checking === undefined ? {} : await checking,
     }
   } finally {
+    stopCheck.abort()
     await rm(archive, { force: true })
+  }
+}
+
+/** A Web check's report, or why it could not run. */
+type WebCheckOutcome = { readonly webCheck: GodotWebCheck } | { readonly webCheckError: string }
+
+/**
+ * Settle a Web check into its report or its failure, so a check that fails never fails the release.
+ * @param check - the running check.
+ * @returns the outcome.
+ */
+async function webCheckOutcome(check: Promise<GodotWebCheck>): Promise<WebCheckOutcome> {
+  try {
+    return { webCheck: await check }
+  } catch (error) {
+    return { webCheckError: (error as Error).message }
   }
 }

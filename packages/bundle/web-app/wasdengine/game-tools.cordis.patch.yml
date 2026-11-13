@@ -20,7 +20,9 @@
 # `asset_search` and `asset_view`, whose pictures the Assets tab's browser half draws. `ui-game-audio` is the right
 # Sidebar's Audio tab, which lists the project's sound effects, dialogue, and music and plays them with their waveform
 # and details; `game-audio` gives the agent and connected agents `audio_search` and `audio_review`, whose measurements
-# and picture the Audio tab's browser half makes.
+# and picture the Audio tab's browser half makes. `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`,
+# which the Desktop app sets for its Host to the command that starts the app's Web check mode; without it, as in the
+# Web profile, Web checks are off.
 - insert:
     - id: blender
       name: '@deepseek-ai/dsh-blender'
@@ -46,6 +48,8 @@
       name: '@deepseek-ai/dsh-godot'
       config:
         dataRoot: !!js dshHomePath('godot')
+        webCheckCommand: !!js >-
+          JSON.parse(ctx.get('launchEnvironment')?.getFrom('WASD_WEB_CHECK_COMMAND', ['process'])?.value || '[]')
     - id: polyhaven
       name: '@deepseek-ai/dsh-polyhaven'
     - id: supercollider

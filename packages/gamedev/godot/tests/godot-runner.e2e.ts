@@ -565,6 +565,15 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 
+  it('runs a Forward+ project with the Compatibility renderer of its Web builds', async () => {
+    const started = await callTool(c, 'godot_run', { width: 640, height: 360, web: true })
+    expect(started.isError, text(started)).toBe(false)
+    expect(started.value).toMatchObject({ web: true, renderer: expect.stringContaining('gl_compatibility') as string })
+    expect(text(started)).toMatch(/renderer [^,]+ \/ gl_compatibility as on the Web,/u)
+    await callTool(c, 'godot_wait', { frames: 5 })
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
   it('keeps streaming JPEG frames of a scene whose PNG encoding cannot keep up with the frame rate', async () => {
     const dir = join(c.dir.root, 'work', 'noise')
     await mkdir(dir, { recursive: true })

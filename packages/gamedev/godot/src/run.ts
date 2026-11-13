@@ -47,6 +47,9 @@ export const MAX_INPUT_EVENTS = 256
  */
 export const LIMIT_FPS = 10
 
+/** The rendering method of Godot's Web builds, which a Web run (`GodotRunSpec.web`) passes as `--rendering-method`. */
+export const WEB_RENDERING_METHOD = 'gl_compatibility'
+
 // The Desktop Host runs as Electron with ELECTRON_RUN_AS_NODE; Godot children must not inherit it.
 const CHILD_ENV = { ELECTRON_RUN_AS_NODE: undefined }
 
@@ -76,6 +79,8 @@ export interface GodotRunSpec {
   readonly size?: { readonly width: number; readonly height: number }
   /** Run with the Dummy audio driver. */
   readonly muted: boolean
+  /** Render with the Compatibility renderer, as the game's Web build does, instead of the project's renderer. */
+  readonly web: boolean
   /** Runtime to launch. */
   readonly runtime: ResolvedGodotRuntime
   /** Pass `--embedded` (macOS LibGodot only). */
@@ -279,6 +284,7 @@ export function gameArgv(spec: GodotRunSpec, port: number, token: string): strin
     ...spec.windowless ? ['--embedded'] : [],
     '--script', spec.harnessPath,
     ...spec.muted ? ['--audio-driver', 'Dummy'] : [],
+    ...spec.web ? ['--rendering-method', WEB_RENDERING_METHOD] : [],
     ...spec.size === undefined ? [] : ['--resolution', `${spec.size.width}x${spec.size.height}`],
     '--', `--wasd-port=${port}`, `--wasd-token=${token}`,
     ...spec.scene === undefined ? [] : [`--wasd-scene=${spec.scene}`],
@@ -448,6 +454,7 @@ export class GodotRun {
       launch: {
         ...this.spec.scene === undefined ? {} : { scene: this.spec.scene },
         ...this.spec.size,
+        ...this.spec.web ? { web: true } : {},
       },
       ...scene === undefined ? {} : { scene },
       ...this.window,

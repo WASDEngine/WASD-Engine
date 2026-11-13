@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
+import { formatWebCheck, type GodotWebCheck, type GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
@@ -106,6 +106,14 @@ export interface WasdToolHost {
    */
   exportWeb(projectDir: string, signal: AbortSignal): Promise<GodotWebExport>
   /**
+   * Check a Web build in a browser: watch the game start and run without input.
+   * @param outputDir - absolute folder of the Web build.
+   * @param signal - cancellation.
+   * @returns what the check saw.
+   * @throws {Error} with the reason when the check cannot run.
+   */
+  checkWeb(outputDir: string, signal: AbortSignal): Promise<GodotWebCheck>
+  /**
    * Export a project for desktop platforms into its `.wasdengine/desktop/<platform>` folders, one platform after the
    * other.
    * @param projectDir - absolute project folder.
@@ -162,6 +170,77 @@ const PROJECT = {
   type: 'string',
   description: 'Folder containing project.godot, relative to the working directory. Default: the nearest one.',
 } as const
+
+const CHECK = {
+  type: 'boolean',
+  description: 'false skips the Web check, which opens the exported build in a browser of WASD Engine\'s own, watches the game start and run for a short while without input, and reports how long it took to start, how long the page froze, its frame rate and draw calls, and the errors and warnings it printed, with what they mean for players. Default: true.',
+} as const
+
+const WEB_CHECK_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    seconds: NUMBER,
+    started: BOOLEAN,
+    startSeconds: { type: 'number' },
+    readySeconds: { type: 'number' },
+    longestFreezeSeconds: NUMBER,
+    freezes: INTEGER,
+    fps: { type: 'number' },
+    slowestFrameMs: { type: 'number' },
+    drawCalls: { type: 'object', additionalProperties: false, properties: { median: NUMBER, max: NUMBER } },
+    programs: INTEGER,
+    messages: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { level: STRING, text: STRING, count: INTEGER } } },
+    moreMessages: INTEGER,
+    findings: { type: 'array', required: true, items: { type: 'string' } },
+    crashed: { type: 'string' },
+  },
+} as const
+
+/**
+ * Describe a tool's Web check, or why it could not run.
+ * @param value - the result's check fields.
+ * @returns the paragraphs to add, none when the call skipped the check.
+ */
+function webCheckText(value: { readonly webCheck?: WebCheckValue; readonly webCheckError?: string }): string[] {
+  if (value.webCheck !== undefined) return [formatWebCheck(value.webCheck)]
+  return value.webCheckError === undefined ? [] : [`Web check: it could not run: ${value.webCheckError}`]
+}
+
+/**
+ * Run a Web check for a tool call and settle it into the result's check fields; a check that cannot run never fails the call.
+ * @param host - plugin operations.
+ * @param outputDir - absolute folder of the Web build.
+ * @param signal - the call's cancellation, which still cancels the call.
+ * @returns the check's report, or why it could not run.
+ */
+async function webCheckFields(
+  host: WasdToolHost, outputDir: string, signal: AbortSignal,
+): Promise<{ webCheck: WebCheckValue } | { webCheckError: string }> {
+  try {
+    return { webCheck: copyWebCheck(await host.checkWeb(outputDir, signal)) }
+  } catch (error) {
+    signal.throwIfAborted()
+    return { webCheckError: (error as Error).message }
+  }
+}
+
+/** A Web check as tool results carry it. */
+type WebCheckValue = InferValue<typeof WEB_CHECK_SCHEMA>
+
+/**
+ * Copy a Web check into a tool result's value.
+ * @param check - the report.
+ * @returns the copy.
+ */
+function copyWebCheck(check: GodotWebCheck): WebCheckValue {
+  return {
+    ...check,
+    ...check.drawCalls === undefined ? {} : { drawCalls: { ...check.drawCalls } },
+    messages: check.messages.map(message => ({ ...message })),
+    findings: [...check.findings],
+  }
+}
 
 const RECORDING_SCHEMA = {
   type: 'object',
@@ -273,8 +352,8 @@ function describeRecording(value: RecordedPreviewValue): string {
 export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths, audience: WasdToolAudience = 'session'): ToolDefinition[] {
   return [defineTool({
     name: 'wasd_export_web',
-    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve. The Web build renders with the Compatibility renderer. The first export downloads Godot\'s Web template, about 10 MB. To publish the game for others to play, call wasd_release_game instead.',
-    parameters: { project: PROJECT },
+    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve. The Web build renders with the Compatibility renderer. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, and the errors the build printed. The first export downloads Godot\'s Web template, about 10 MB. To publish the game for others to play, call wasd_release_game instead.',
+    parameters: { project: PROJECT, check: CHECK },
     output: {
       schema: {
         type: 'object',
@@ -286,19 +365,25 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           files: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { path: STRING, bytes: INTEGER } } },
           totalBytes: INTEGER,
           warnings: WARNINGS,
+          webCheck: WEB_CHECK_SCHEMA,
+          webCheckError: { type: 'string' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
         text: withWarnings(
-          `Exported ${value.projectDir} for the Web into ${value.outputDir}: ${value.files.map(file => file.path).join(', ')} (${megabytes(value.totalBytes)}). Open ${value.entry} through a web server, not from the file system.`,
+          [
+            `Exported ${value.projectDir} for the Web into ${value.outputDir}: ${value.files.map(file => file.path).join(', ')} (${megabytes(value.totalBytes)}). Open ${value.entry} through a web server, not from the file system.`,
+            ...webCheckText(value),
+          ].join('\n'),
           value.warnings,
         ),
       }],
     },
     async execute(args, exec) {
       const exported = await host.exportWeb(await host.project(args.project, exec), exec.signal)
-      return { ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings] }
+      const checked = args.check === false ? {} : await webCheckFields(host, exported.outputDir, exec.signal)
+      return { ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings], ...checked }
     },
   }), defineTool({
     name: 'wasd_export_desktop',
@@ -392,6 +477,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
       visibility: { type: 'string', enum: ['public', 'private'], description: 'public lists the game on WASD Engine\'s Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game\'s current visibility; a new game is public.' },
       desktop: { ...PLATFORMS_SCHEMA, description: 'Also build the game for these desktop platforms and offer each build as a download of this version on the game\'s page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.' },
+      check: CHECK,
       ...audience === 'connected' ? { model: { type: 'string', description: MODEL_ARGUMENT } } : {},
     },
     output: {
@@ -409,6 +495,8 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER, status: STRING } } },
           credits: { type: 'array', items: { type: 'string' } },
           warnings: WARNINGS,
+          webCheck: WEB_CHECK_SCHEMA,
+          webCheckError: { type: 'string' },
         },
       },
       render: (_args, value) => [{
@@ -425,6 +513,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
           ...value.downloads.length === 0 ? [] : [downloadsNote(value.downloads.map(download => download.status as WasdDownloadStatus))],
           'Sent in Messages or posted on Reddit, Discord, Slack, or Telegram, the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.',
+          ...webCheckText(value),
         ].join('\n'), value.warnings),
       }],
     },
@@ -441,12 +530,16 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         ...args.new_game === undefined ? {} : { newGame: args.new_game },
         ...args.visibility === undefined ? {} : { visibility: args.visibility },
         ...args.desktop === undefined ? {} : { desktop: platformsOf(args.desktop) },
+        ...args.check === undefined ? {} : { check: args.check },
       }, exec, audience === 'session' ? { kind: 'session' } : namedModel(args))
+      const { webCheck, webCheckError, ...rest } = released
       return {
-        ...released,
-        downloads: released.downloads.map(download => ({ ...download })),
+        ...rest,
+        downloads: rest.downloads.map(download => ({ ...download })),
         ...credits === undefined ? {} : { credits: [...credits] },
         warnings: [...warnings],
+        ...webCheck === undefined ? {} : { webCheck: copyWebCheck(webCheck) },
+        ...webCheckError === undefined ? {} : { webCheckError },
       }
     },
   })

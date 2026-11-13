@@ -87,7 +87,7 @@ const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-
 const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
-const SKILLS = ['game-design-doc', 'godot-project'] as const
+const SKILLS = ['game-design-doc', 'godot-project', 'godot-web'] as const
 
 /**
  * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's
@@ -392,6 +392,11 @@ describe('WASDEngine overlay', () => {
       } else if (id === 'blender') {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'addonStore'])
         expect(expression(configOf(entry).addonStore, `${id}.addonStore`), `${id}.addonStore`).toBe(store)
+      } else if (id === 'godot') {
+        // The Desktop app sets WASD_WEB_CHECK_COMMAND for its Host; without it Web checks are off.
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'webCheckCommand'])
+        expect(expression(configOf(entry).webCheckCommand, `${id}.webCheckCommand`), `${id}.webCheckCommand`)
+          .toBe("JSON.parse(ctx.get('launchEnvironment')?.getFrom('WASD_WEB_CHECK_COMMAND', ['process'])?.value || '[]')")
       } else {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
       }

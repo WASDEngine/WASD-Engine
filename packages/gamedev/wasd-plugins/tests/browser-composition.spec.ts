@@ -134,6 +134,7 @@ describe('WASD Engine Plugins composition', () => {
 
   it('releases through the tool to the signed-in account\'s game, asks before a copied project folder adds to it, and shares privately with downloads', async () => {
     const { ctx, root, toolNames, call } = await compose({})
+    const checked: string[] = []
     const site = gamesSite('token-1')
     vi.stubGlobal('fetch', site.fetch)
     cleanups.push(async () => { vi.unstubAllGlobals() })
@@ -153,6 +154,14 @@ describe('WASD Engine Plugins composition', () => {
         await writeFile(join(outputDir, 'Space Game.zip'), `${platform} zip`)
         return { projectDir, platform, outputDir, entry: 'Space Game.zip', bytes: `${platform} zip`.length, warnings: [] }
       },
+      checkWeb({ outputDir }: { readonly outputDir: string }) {
+        checked.push(outputDir)
+        return Promise.resolve({
+          seconds: 20, started: true, startSeconds: 2, readySeconds: 2.5, longestFreezeSeconds: 0.3, freezes: 0, fps: 60,
+          slowestFrameMs: 18,
+          drawCalls: { median: 40, max: 50 }, programs: 12, messages: [], moreMessages: 0, findings: [],
+        })
+      },
     } as never)
     await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
     const text = (result: Awaited<ReturnType<typeof call>>) => result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
@@ -161,6 +170,8 @@ describe('WASD Engine Plugins composition', () => {
 
     const first = await call('wasd_release_game', { project: 'space' })
     expect(text(first)).toContain('Released Space Game version 1')
+    expect(text(first)).toContain('Web check: a browser opened the build, Godot started the game after 2 s, it drew frames steadily from 2.5 s on, and the check watched it run for 20 s without input: longest freeze 0.3 s; 60 fps, slowest frame 18 ms; 40 draw calls per frame (median, up to 50); 12 shader programs.\nThe build printed no errors or warnings.')
+    expect(checked).toEqual([join(root, 'space', '.wasdengine', 'web')])
     const linked = JSON.parse(await readFile(join(root, 'space', '.wasdengine', 'game.json'), 'utf8')) as { accounts: Record<string, { account: string; id: string }[]> }
     expect(linked.accounts[SITE]).toEqual([expect.objectContaining({ account: accountKey('user-1'), id: 'game-1' })])
     expect(await readdir(join(root, 'data', 'release-folders'))).toHaveLength(1)
@@ -172,8 +183,10 @@ describe('WASD Engine Plugins composition', () => {
     expect(text(refused)).toContain(`This project folder and ${original} release the same game, "Space Game" (${SITE}/games/space-game-1), as happens when one is a copy of the other.`)
     expect(await ctx.wasdPlugins.project(join(root, 'space copy'), new AbortController().signal))
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 1, visibility: 'public' }, sharedWith: original })
-    const confirmed = await call('wasd_release_game', { project: 'space copy', new_game: false })
+    const confirmed = await call('wasd_release_game', { project: 'space copy', new_game: false, check: false })
     expect(text(confirmed)).toContain('Released Space Game version 2')
+    expect(text(confirmed)).not.toContain('Web check')
+    expect(checked).toHaveLength(1)
     const separate = await call('wasd_release_game', { project: 'space copy', new_game: true })
     expect(text(separate)).toContain('Released Space Game version 1')
     expect(text(separate)).toContain(`${SITE}/games/space-game-2`)
@@ -206,6 +219,7 @@ describe('WASD Engine Plugins composition', () => {
         await writeFile(join(outputDir, 'index.html'), 'game')
         return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
       },
+      checkWeb: () => Promise.reject(new Error('The Web check runs in the WASD Engine Desktop app.')),
     } as never)
     await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
     const game = join(root, 'space')
@@ -232,8 +246,10 @@ describe('WASD Engine Plugins composition', () => {
     ctx.emit('game-mcp/tool-result', { provider: 'polyhaven', tool: 'polyhaven_download', args: {}, client, isError: true })
     const released = await call('wasd_release_game', { project: 'space' })
     expect(released.isError).toBe(false)
-    expect(released.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
-      .toContain('Made with, as the game\'s page credits it: vision, Godot with Phantom Camera, GIMP.')
+    const releasedText = released.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+    expect(releasedText).toContain('Made with, as the game\'s page credits it: vision, Godot with Phantom Camera, GIMP.')
+    // A check that cannot run never fails the release.
+    expect(releasedText).toContain('Web check: it could not run: The Web check runs in the WASD Engine Desktop app.')
     expect([...site.games.values()][0]?.credits).toEqual({
       models: [{ name: 'vision' }], tools: ['godot', 'gimp'], addons: [{ id: 'phantom-camera', title: 'Phantom Camera', host: 'godot' }],
     })
