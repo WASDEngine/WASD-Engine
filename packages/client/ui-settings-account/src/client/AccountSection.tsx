@@ -55,6 +55,8 @@ export interface AccountSectionInjected {
   apiKeyEntry?: boolean
   /** WASD Engine: whether every user must sign in, so the sign-in dialogs cannot be closed; absent, they can. */
   signInRequired?: boolean
+  /** WASD Engine: whether the More row offers View usage beside Top up; absent, it does. */
+  usageLink?: boolean
   /**
    * WASD Engine: turn auto recharge on or off, then re-read the balance; absent, the AI usage row offers no switch.
    * @param enabled - whether auto recharge should be on.
@@ -94,7 +96,7 @@ export type AccountSectionProps =
   PropsRuntime<'settings.section'> & PropsLocale<'settings.account'> & InjectFace<AccountSectionInjected>
 /** @param props - localized actions, account subscription, and the shared Platform page channel. @returns account settings UI. */
 export function AccountSection({ t, useAccount, useTheme, start, cancel, openPlatformPage, avatarFailed,
-  setAutoRecharge, refreshAccount }: AccountSectionProps) {
+  setAutoRecharge, refreshAccount, usageLink }: AccountSectionProps) {
   const { view: state, details, avatar, failed: streamFailed } = useAccount(value => value)
   const colorScheme = useTheme(snapshot => snapshot.active.colorScheme)
   // The shared host owns the native view; this page holds only its own request,
@@ -225,7 +227,7 @@ export function AccountSection({ t, useAccount, useTheme, start, cancel, openPla
         <div className={css.row}>
           <span className={css.secondary}>{t('more')}</span>
           <div className={css.links}>
-            {platformLink(t('usage'), css.linkButton)}
+            {usageLink !== false && platformLink(t('usage'), css.linkButton)}
             <a className={`${css.linkButton} ${css.primary}`} href={state?.links.topUpUrl} aria-disabled={state === undefined}
               target="_blank" rel="noreferrer"
               onClick={(event) => { if (openPlatformPage !== undefined && signedIn) { event.preventDefault(); showPage(openPlatformPage, 'top-up') } }}>{t('topUp')}</a>

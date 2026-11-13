@@ -5,7 +5,8 @@
  * exact share left, the day it refreshes, and the credits left as a share of a month's usage, and no dollar amount;
  * without it, the row keeps upstream's wallets. While the account can use auto recharge, a row has its switch, which
  * names no amount and opens the card page in the browser when a card is needed; while the account has a referral link,
- * a row shares it with a copy button. The registered dictionaries carry WASD Engine's own messages in every language.
+ * a row shares it with a copy button. With the `usageLink` option off, the More row offers Upgrade without View usage.
+ * The registered dictionaries carry WASD Engine's own messages in every language.
  */
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -259,6 +260,24 @@ describe('WASD Engine referral row', () => {
     mount(ready(allowance(38, 0.383)))
     expect(screen.queryByText('Refer friends')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull()
+  })
+})
+
+describe('WASD Engine More row', () => {
+  const links = () => screen.getByText(branded.en.more).nextElementSibling?.querySelectorAll('a') ?? []
+
+  it('offers View usage beside Upgrade unless the usage link is off', () => {
+    mount(ready(allowance(38, 0.383)))
+    expect([...links()].map(link => [link.textContent, link.getAttribute('href')])).toEqual([
+      [branded.en.usage, 'http://localhost:8081/usage'],
+      ['Upgrade', 'http://localhost:8081/top_up'],
+    ])
+    cleanup()
+    mount(ready(allowance(38, 0.383)), 'en', { usageLink: false })
+    expect([...links()].map(link => [link.textContent, link.getAttribute('href')])).toEqual([
+      ['Upgrade', 'http://localhost:8081/top_up'],
+    ])
+    expect(screen.queryByRole('link', { name: branded.en.usage })).toBeNull()
   })
 })
 

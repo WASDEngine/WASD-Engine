@@ -724,6 +724,8 @@ export interface ContactConfig {
    * started dialog again, in any view.
    */
   signInRequired: boolean
+  /** Offer the Platform usage page as Settings › Account's View usage link beside Top up; false leaves Top up alone. */
+  usageLink: boolean
 }
 
 /** Persisted steps; a native top-up page leaves the durable step at credit. WASD Engine adds `agents`, its last step. */
