@@ -722,6 +722,8 @@ export interface ContactConfig {
    * started dialog again, in any view.
    */
   signInRequired: boolean
+  /** Offer the Platform usage page as Settings › Account's View usage link beside Top up; false leaves Top up alone. */
+  usageLink: boolean
 }
 
 /** Persisted steps; a native top-up page leaves the durable step at credit. WASD Engine adds `agents`, its last step. */
@@ -1842,7 +1844,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:35`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:36`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1965,9 +1967,9 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
-  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
-  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**
    * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
@@ -1989,7 +1991,23 @@ export interface Config {
   webTemplateSha256: string
   /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
   webTemplatePath: string
-  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  /** Godot export templates archive of the runtime's Godot version, from which a Windows export downloads only its template. */
+  windowsTemplateArchiveUrl: string
+  /** Path of the 64-bit x86 Windows release template inside that archive. */
+  windowsTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  windowsTemplateSha256: string
+  /** Absolute Windows release template `.exe` to use instead of the download; empty downloads it. */
+  windowsTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which a macOS export downloads only its template. */
+  macosTemplateArchiveUrl: string
+  /** Path of the macOS template ZIP inside that archive. */
+  macosTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  macosTemplateSha256: string
+  /** Absolute macOS template ZIP to use instead of the download; empty downloads it. */
+  macosTemplatePath: string
+  /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
 }
 ```
@@ -5181,7 +5199,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:44`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:58`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5228,6 +5246,11 @@ export interface Config {
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */
   previewStartSeconds: number
+  /**
+   * Model providers whose models are WASD Engine's built-in AI, which a game's credits name as such rather than by the
+   * model's own name.
+   */
+  builtinModelProviders: string[]
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->

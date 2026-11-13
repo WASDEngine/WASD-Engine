@@ -4,8 +4,9 @@
 // line it received to `.fake-godot.log` there; the names are hidden, as Godot's import skips hidden files, so they never
 // count as project changes. Modes follow the Host's command lines: `--import` runs the import step, which writes the
 // class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
-// `--export-release` writes the configured export files next to the requested page, records the export presets it saw,
-// and records `exported` at its end, `--headless ... --script` runs the `script` section, which records `scripted` at
+// `--export-release` writes the configured export files next to the requested page, records the export presets and
+// the `project.godot` it saw, appends the configured `appendProject` text to `project.godot` when there is one, and
+// records `exported` at its end, `--headless ... --script` runs the `script` section, which records `scripted` at
 // its end, when the config has one and the static check, which records `checked` at its end, otherwise, and anything
 // else runs a game that speaks the wasd_harness.gd protocol on the loopback port the Host passes.
 import { spawn } from 'node:child_process'
@@ -340,7 +341,12 @@ async function runGame(section) {
 async function runExport(section) {
   const page = args[args.indexOf('--export-release') + 2]
   const presets = join(project, 'export_presets.cfg')
-  record({ preset: args[args.indexOf('--export-release') + 1], presets: existsSync(presets) ? readFileSync(presets, 'utf8') : null })
+  record({
+    preset: args[args.indexOf('--export-release') + 1],
+    presets: existsSync(presets) ? readFileSync(presets, 'utf8') : null,
+    project: readFileSync(join(project, 'project.godot'), 'utf8'),
+  })
+  if (section.appendProject !== undefined) appendFileSync(join(project, 'project.godot'), section.appendProject)
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
   for (const [name, text] of Object.entries(section.files ?? {})) writeFileSync(join(dirname(page), name), text)

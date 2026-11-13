@@ -1,8 +1,10 @@
 /**
  * What a game tool plugin contributes to WASD Engine's MCP server through `ctx.gameMcp.provide()`: its identity, its
- * readiness, and its tools, each backed by a harness tool definition that the server runs for connected agents.
+ * readiness, and its tools, each backed by a harness tool definition that the server runs for connected agents; and the
+ * `game-mcp/tool-result` event, which reports each finished call of those tools.
  * @module @deepseek-ai/dsh-game-mcp/src/provider
  */
+import type {} from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
@@ -115,4 +117,32 @@ export interface GameMcpProvider {
    * @returns the readiness now.
    */
   status(signal: AbortSignal): Promise<GameMcpProviderStatus>
+}
+
+/** One finished call of a provider's tool by a connected agent, as the `game-mcp/tool-result` event reports it. */
+export interface GameMcpToolResult {
+  /** Id of the provider that offers the tool, such as `blender`. */
+  readonly provider: string
+  /** Name the agent called, such as `blender_execute_python`. */
+  readonly tool: string
+  /** Arguments the tool definition received. */
+  readonly args: JsonObject
+  /** The calling agent. */
+  readonly client: GameMcpClient
+  /** Agent of the Session the call ran in; absent for a tool that needs no Session and for a call whose preparation failed. */
+  readonly agent?: Agent
+  /** Whether the agent received an error result. */
+  readonly isError: boolean
+}
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /**
+     * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused
+     * call, and a call of an unknown tool do not emit it.
+     * @mode emit
+     * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
+     */
+    'game-mcp/tool-result'(result: GameMcpToolResult): void
+  }
 }

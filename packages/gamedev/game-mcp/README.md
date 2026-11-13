@@ -1,5 +1,5 @@
 ---
-description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the game tool plugins and WASD Engine Plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote and the game-mcp/reveal event, the setup prompt that the Desktop introduction and Settings show, and the refusal of tool calls while WASD Engine is signed out."
+description: "Serve WASD Engine's game tools to other agents on the same computer, such as Claude Code or Codex: the loopback Streamable HTTP endpoint and its token, the provider registry that the game tool plugins and WASD Engine Plugins fill, the search and call tools, the Sessions that connected agents' games run in, the gameMcp Remote, the game-mcp/reveal and game-mcp/tool-result events, the setup prompt that the Desktop introduction and Settings show, and the refusal of tool calls while WASD Engine is signed out."
 kind: "package-reference"
 ---
 
@@ -86,7 +86,7 @@ A Godot call names its project by absolute path: the folder that holds `project.
 
 ### Provide tools
 
-`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents.
+`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents. Once a provider tool's result is made, the server emits `game-mcp/tool-result` with the provider id, the tool name, the prepared arguments, the calling agent, the Session the call ran in, if any, and whether the agent got an error result; a listener's failure is logged and leaves the result alone. [WASD Engine Plugins](../wasd-plugins/README.md) credits a game with the tools that connected agents used on it from this event.
 
 ### Long calls
 
@@ -113,7 +113,7 @@ Stateless serving keeps no connection, so the server names each request's agent 
 | [`src/clients.ts`](src/clients.ts) | Agent identities and the agents seen |
 | [`src/sessions.ts`](src/sessions.ts) | The connected agents' Sessions and `sessions.json` |
 | [`src/token.ts`](src/token.ts), [`src/prompt.ts`](src/prompt.ts) | The token file and check, and the setup prompt |
-| [`src/provider.ts`](src/provider.ts), [`src/types.ts`](src/types.ts) | The provider contract, the browser-safe view types, and the `game-mcp/reveal` event |
+| [`src/provider.ts`](src/provider.ts), [`src/types.ts`](src/types.ts) | The provider contract with the `game-mcp/tool-result` event, the browser-safe view types, and the `game-mcp/reveal` event |
 
 </details>
 

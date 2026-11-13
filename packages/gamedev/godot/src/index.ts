@@ -24,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
-import { exportWeb } from './export.ts'
+import { exportDesktop, exportWeb } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
@@ -42,16 +42,16 @@ import { ProcessSlots } from './slots.ts'
 import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
 import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
 import type {
-  GodotControlRequest, GodotFollowItem, GodotInputEvent, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView,
-  GodotViewItem, GodotWebExport, GodotWebExportRequest,
+  GodotControlRequest, GodotDesktopExport, GodotDesktopExportRequest, GodotDesktopPlatform, GodotFollowItem, GodotInputEvent,
+  GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView, GodotViewItem, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
-import { WebTemplateManager } from './web-template.ts'
+import { ExportTemplateManager } from './export-template.ts'
 
 export type * from './types.ts'
 export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
-export { GodotTemplateError } from './web-template.ts'
+export { GodotTemplateError } from './export-template.ts'
 export { GodotScriptError } from './script.ts'
 export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
 export type { GodotScriptRequest } from './tools.ts'
@@ -109,9 +109,9 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
-  /** Most script checks and Web exports that run at once; later ones wait for one to end. */
+  /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
-  /** Bytes of memory that the computer must have available to start a game, a script check, or a Web export; 0 turns the check off. */
+  /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**
    * Frames per second of a windowless game that no Game tab shows and no tool or tab request uses; 0 leaves every game
@@ -133,7 +133,23 @@ export interface Config {
   webTemplateSha256: string
   /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
   webTemplatePath: string
-  /** Deadline of one Web export, the asset import it starts included, in milliseconds. */
+  /** Godot export templates archive of the runtime's Godot version, from which a Windows export downloads only its template. */
+  windowsTemplateArchiveUrl: string
+  /** Path of the 64-bit x86 Windows release template inside that archive. */
+  windowsTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  windowsTemplateSha256: string
+  /** Absolute Windows release template `.exe` to use instead of the download; empty downloads it. */
+  windowsTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which a macOS export downloads only its template. */
+  macosTemplateArchiveUrl: string
+  /** Path of the macOS template ZIP inside that archive. */
+  macosTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  macosTemplateSha256: string
+  /** Absolute macOS template ZIP to use instead of the download; empty downloads it. */
+  macosTemplatePath: string
+  /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
 }
 
@@ -195,12 +211,46 @@ function validateConfig(config: Config): void {
   if (!URL.canParse(config.runtimeManifestUrl) || !/^https?:$/u.test(new URL(config.runtimeManifestUrl).protocol)) {
     throw new Error(`Godot plugin: runtimeManifestUrl must be an http or https URL, got ${JSON.stringify(config.runtimeManifestUrl)}.`)
   }
-  if (!URL.canParse(config.webTemplateArchiveUrl) || !/^https?:$/u.test(new URL(config.webTemplateArchiveUrl).protocol)) {
-    throw new Error(`Godot plugin: webTemplateArchiveUrl must be an http or https URL, got ${JSON.stringify(config.webTemplateArchiveUrl)}.`)
+  for (const field of TEMPLATE_FIELDS) {
+    const archive = config[`${field}ArchiveUrl`]
+    if (!URL.canParse(archive) || !/^https?:$/u.test(new URL(archive).protocol)) {
+      throw new Error(`Godot plugin: ${field}ArchiveUrl must be an http or https URL, got ${JSON.stringify(archive)}.`)
+    }
+    const path = config[`${field}Path`]
+    if (path !== '' && !isAbsolute(path)) throw new Error(`Godot plugin: ${field}Path must be an absolute path, got ${JSON.stringify(path)}.`)
   }
-  if (config.webTemplatePath !== '' && !isAbsolute(config.webTemplatePath)) {
-    throw new Error(`Godot plugin: webTemplatePath must be an absolute path, got ${JSON.stringify(config.webTemplatePath)}.`)
-  }
+}
+
+/** The export templates the configuration names, by the prefix of their fields. */
+const TEMPLATE_FIELDS = ['webTemplate', 'windowsTemplate', 'macosTemplate'] as const
+
+/** Each desktop platform's template: the prefix of its configuration fields, the name messages use, and its file extension. */
+const DESKTOP_TEMPLATES: Readonly<Record<GodotDesktopPlatform, { readonly field: 'windowsTemplate' | 'macosTemplate'; readonly platform: string; readonly extension: string }>> = {
+  windows: { field: 'windowsTemplate', platform: 'Windows', extension: '.exe' },
+  macos: { field: 'macosTemplate', platform: 'macOS', extension: '.zip' },
+}
+
+/**
+ * One export template's manager from the plugin configuration.
+ * @param config - validated configuration.
+ * @param field - the prefix of the template's fields.
+ * @param platform - the platform as messages name it.
+ * @param extension - the downloaded file's extension.
+ * @returns the manager.
+ */
+function templateManager(
+  config: Config, field: typeof TEMPLATE_FIELDS[number], platform: string, extension: string,
+): ExportTemplateManager {
+  return new ExportTemplateManager({
+    dataRoot: config.dataRoot,
+    platform,
+    field,
+    archiveUrl: config[`${field}ArchiveUrl`],
+    entry: config[`${field}Entry`],
+    sha256: config[`${field}Sha256`],
+    path: config[`${field}Path`],
+    extension,
+  }, (url, init) => fetch(url, { headers: init.headers, signal: init.signal }))
 }
 
 /** @returns the refusal of a request for a run that the Session does not have, or that does not accept requests. */
@@ -257,6 +307,14 @@ export default class GodotController extends TypertRemoteService {
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
     webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0'),
     webTemplatePath: z.string().default(''),
+    windowsTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    windowsTemplateEntry: z.string().default('templates/windows_release_x86_64.exe'),
+    windowsTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d34d36f3be1a6c49c56525ae86469b92e4f417ddf0b43cf00dd80c385c4b0562'),
+    windowsTemplatePath: z.string().default(''),
+    macosTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    macosTemplateEntry: z.string().default('templates/macos.zip'),
+    macosTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792'),
+    macosTemplatePath: z.string().default(''),
     exportTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(600_000),
   })
 
@@ -264,10 +322,11 @@ export default class GodotController extends TypertRemoteService {
   private readonly machine: MachineResources = nodeMachine()
   private readonly imports = new ProjectImports()
   private readonly sessions: GodotSessions
-  /** Slots of the Godot processes that run without a game: script checks and Web exports. */
+  /** Slots of the Godot processes that run without a game: script checks and exports. */
   private readonly headless: ProcessSlots
   private readonly runtime: GodotRuntimeManager
-  private readonly templates: WebTemplateManager
+  private readonly templates: ExportTemplateManager
+  private readonly desktopTemplates: Readonly<Record<GodotDesktopPlatform, ExportTemplateManager>>
   private readonly runtimeWatchers = new Set<() => void>()
   private payload: Promise<{ readonly harness: string; readonly check: string }> | undefined
 
@@ -287,7 +346,11 @@ export default class GodotController extends TypertRemoteService {
     this.runtime = new GodotRuntimeManager({ ...config, bundledRoot }, host, () => {
       for (const watcher of [...this.runtimeWatchers]) watcher()
     })
-    this.templates = new WebTemplateManager(config, (url, init) => fetch(url, { headers: init.headers, signal: init.signal }))
+    this.templates = templateManager(config, 'webTemplate', 'Web', '.zip')
+    const desktopTemplate = ({ field, platform, extension }: typeof DESKTOP_TEMPLATES[GodotDesktopPlatform]) => {
+      return templateManager(config, field, platform, extension)
+    }
+    this.desktopTemplates = { windows: desktopTemplate(DESKTOP_TEMPLATES.windows), macos: desktopTemplate(DESKTOP_TEMPLATES.macos) }
     ctx.effect(() => async () => {
       this.runtime.dispose()
       this.headless.close(new Error('The Godot plugin stopped before the check or export could start.'))
@@ -477,6 +540,43 @@ export default class GodotController extends TypertRemoteService {
         runtime,
         projectDir: project.dir,
         outputDir: request.outputDir,
+        template,
+        hostPid: process.pid,
+        timeoutMs: this.config.exportTimeoutMs,
+        graceMs: this.config.stopGraceMs,
+        outputBytes: this.config.processOutputBytes,
+        signal,
+      }), signal)
+    })
+  }
+
+  /**
+   * Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the
+   * 64-bit x86 Windows executable with the game's pack embedded, or the universal macOS application bundle signed ad
+   * hoc. The first export for a platform downloads its template, about 38 MB for Windows and 123 MB for macOS. While
+   * the export runs, the project imports the VRAM compression formats the platform needs. The export, which imports the
+   * project, waits until the project's import steps and checks in this Host have ended. For other plugins on the Host;
+   * the Game tab does not call it.
+   * @param request - absolute project folder, platform, and output folder.
+   * @param signal - cancellation; it stops the export process.
+   * @returns the exported ZIP file.
+   * @throws {GodotProjectError} without `project.godot` in the project folder.
+   * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
+   * @throws {GodotExportError} when the export writes no ZIP file.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+   */
+  async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport> {
+    const project = await resolveGodotProject(request.projectDir, '.', signal)
+    const runtime = await this.requireRuntime(signal)
+    const template = await this.desktopTemplates[request.platform].resolve(signal)
+    return await this.headless.run(signal, async () => {
+      this.requireMemory(`a Godot ${DESKTOP_TEMPLATES[request.platform].platform} export`)
+      return await this.imports.exclusive(project.dir, () => exportDesktop({
+        subprocess: this.ctx.subprocess,
+        runtime,
+        projectDir: project.dir,
+        outputDir: request.outputDir,
+        platform: request.platform,
         template,
         hostPid: process.pid,
         timeoutMs: this.config.exportTimeoutMs,

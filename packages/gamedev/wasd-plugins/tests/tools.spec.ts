@@ -1,4 +1,4 @@
-/** The release tools, as the Session's agent and connected agents call them. */
+/** The export and release tools, as the Session's agent and connected agents call them. */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,19 +6,29 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { wasdMcpProvider, wasdToolDefinitions, type RecordedPreview, type WasdToolHost } from '../src/tools.ts'
+import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type ReleaseModel, type WasdToolHost } from '../src/tools.ts'
 
 const LENGTHS = { seconds: 4, maxSeconds: 10 }
 
-function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: unknown[] } {
+function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: unknown[]; models: ReleaseModel[] } {
   const calls: unknown[] = []
+  const models: ReleaseModel[] = []
   return {
     calls,
+    models,
     project: requested => Promise.resolve(requested === undefined ? '/work/game' : `/work/${requested}`),
     file: requested => Promise.resolve(requested.startsWith('/') ? requested : `/work/${requested}`),
     exportWeb: (projectDir) => {
       calls.push(['export', projectDir])
       return Promise.resolve({ projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024, warnings: [] })
+    },
+    exportDesktop: (projectDir, platforms) => {
+      calls.push(['desktop', projectDir, platforms])
+      return Promise.resolve({
+        projectDir,
+        builds: platforms.map(platform => ({ platform, file: `${projectDir}/.wasdengine/desktop/${platform}/Neon Drift.zip`, bytes: (platform === 'windows' ? 39 : 61) * 1024 * 1024 })),
+        warnings: ['Code signing: Using ad-hoc signature.'],
+      })
     },
     recordPreview: (request) => {
       calls.push(['record', request])
@@ -30,14 +40,22 @@ function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: u
         started: false, paused: false, ...preview,
       })
     },
-    release: (request) => {
+    release: (request, _exec, model) => {
       calls.push(['release', request])
+      models.push(model)
       return Promise.resolve({
         title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
         totalBytes: 50 * 1024 * 1024, warnings: ['Note one.'],
+        credits: ['WASD Engine\'s built-in AI', 'Godot', 'Blender with MPFB (MakeHuman)'],
+        visibility: request.visibility ?? 'public',
+        downloads: (request.desktop ?? []).map(platform => ({ platform, url: `https://site.test/games/neon/download/${platform}?v=3`, bytes: 40 * 1024 * 1024 })),
       })
     },
   }
+}
+
+function credits(): ConnectedCredits & { claim: ReturnType<typeof vi.fn> } {
+  return { claim: vi.fn(() => Promise.resolve()) }
 }
 
 const exec = { signal: new AbortController().signal } as ToolRunContext
@@ -64,7 +82,36 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('Share link: https://site.test/games/neon')
     expect(text).not.toMatch(/GIF link|Image link/u)
     expect(text).toContain('the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.')
+    expect(text).toContain('Made with, as the game\'s page credits it: WASD Engine\'s built-in AI, Godot, Blender with MPFB (MakeHuman).')
+    expect(text).toContain('The game is public: Explore lists it.')
+    expect(text).not.toContain('download')
     expect(text).toContain('- Note one.')
+    expect(stub.models).toEqual([{ kind: 'session' }])
+    expect(release.parameters).not.toHaveProperty('properties.model')
+  })
+
+  it('credits the model a connected agent names, cleaned, and no model when it names none', async () => {
+    const stub = host()
+    const release = wasdToolDefinitions(stub, LENGTHS, 'connected').find(definition => definition.name === 'wasd_release_game')!
+    expect(release.parameters).toMatchObject({ properties: { model: { type: 'string' } } })
+    await release.execute({ project: '/work/neon', model: '  Claude\tOpus   5.5 ' }, exec)
+    await release.execute({ project: '/work/neon', model: '   ' }, exec)
+    await release.execute({ project: '/work/neon' }, exec)
+    expect(stub.models).toEqual([{ kind: 'named', name: 'Claude Opus 5.5' }, { kind: 'named' }, { kind: 'named' }])
+  })
+
+  it('passes visibility and desktop platforms on, each platform once in build order, and renders the downloads', async () => {
+    const stub = host()
+    const release = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    expect(release.parameters).toMatchObject({ properties: { visibility: { enum: ['public', 'private'] }, desktop: { type: 'array', items: { enum: ['windows', 'macos'] } } } })
+    const value = await release.execute({ visibility: 'private', desktop: ['macos', 'windows', 'macos'] }, exec) as JsonValue
+    expect(stub.calls).toEqual([['release', { projectDir: '/work/game', visibility: 'private', desktop: ['windows', 'macos'] }]])
+    const text = textOf(release.output.render({}, value))
+    expect(text).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
+    expect(text).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB)')
+    expect(text).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB)')
+    expect(text).toContain('SmartScreen')
+    await expect(release.execute({ desktop: ['linux'] }, exec)).rejects.toThrow(/invalid arguments: "desktop\[0\]"/u)
   })
 
   it('passes the choice between the project\'s game and a new game on to the release', async () => {
@@ -79,6 +126,21 @@ describe('wasdToolDefinitions', () => {
       ['release', { projectDir: '/work/game', newGame: false }],
       ['release', { projectDir: '/work/game' }],
     ])
+  })
+
+  it('exports the project for desktop computers, both platforms unless the call names some, and says how the builds open', async () => {
+    const stub = host()
+    const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_desktop')!
+    const value = await exporter.execute({}, exec) as JsonValue
+    await exporter.execute({ project: 'neon', platforms: ['macos'] }, exec)
+    expect(stub.calls).toEqual([['desktop', '/work/game', ['windows', 'macos']], ['desktop', '/work/neon', ['macos']]])
+    const text = textOf(exporter.output.render({}, value))
+    expect(text).toContain('Exported /work/game for desktop computers:')
+    expect(text).toContain('- Windows: /work/game/.wasdengine/desktop/windows/Neon Drift.zip (39.0 MB), a ZIP file with one .exe that holds the whole game, for 64-bit Windows.')
+    expect(text).toContain('- macOS: /work/game/.wasdengine/desktop/macos/Neon Drift.zip (61.0 MB), a ZIP file with the game\'s Mac app, for Intel and Apple silicon Macs.')
+    expect(text).toContain('Open Anyway in System Settings > Privacy & Security')
+    expect(text).toContain('- Code signing: Using ad-hoc signature.')
+    await expect(exporter.execute({ platforms: [] }, exec)).rejects.toThrow('platforms must name at least one')
   })
 
   it('exports the nearest project and names the folder to serve', async () => {
@@ -119,11 +181,14 @@ describe('wasdToolDefinitions', () => {
 
 describe('wasdMcpProvider', () => {
   it('offers the tools under the wasd prefix and requires absolute paths from connected agents', async () => {
-    const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS))
+    const ledger = credits()
+    const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), ledger)
     expect(provider.id).toBe('wasd')
     const tools = provider.tools()
-    expect(tools.map(tool => tool.name)).toEqual(['wasd_export_web', 'wasd_record_preview', 'wasd_release_game'])
-    const [exporter, recorder, release] = tools as [typeof tools[number], typeof tools[number], typeof tools[number]]
+    expect(tools.map(tool => tool.name)).toEqual(['wasd_export_web', 'wasd_export_desktop', 'wasd_record_preview', 'wasd_release_game'])
+    type Tool = typeof tools[number]
+    const [exporter, desktop, recorder, release] = tools as [Tool, Tool, Tool, Tool]
+    await expect(desktop.prepare!({ project: 'relative' }, { session: vi.fn() } as never)).rejects.toThrow(/project must be an absolute path/u)
     expect(release.inputSchema?.required).toEqual(['project'])
     const agent = { id: 'session' }
     const call = { client: { id: 'claude-code', title: 'Claude Code' }, signal: new AbortController().signal, session: vi.fn(() => Promise.resolve(agent)), reveal: vi.fn() }
@@ -131,14 +196,18 @@ describe('wasdMcpProvider', () => {
     await expect(release.prepare!({ project: '/game', preview_image: 'cover.png' }, call as never)).rejects.toThrow(/preview_image must be an absolute path/u)
     await expect(release.prepare!({ project: '/game', preview_gif: 'clip.gif' }, call as never)).rejects.toThrow(/preview_gif must be an absolute path/u)
     expect(await exporter.prepare!({ project: '/game' }, call as never)).toEqual({ args: { project: '/game' } })
+    expect(await desktop.prepare!({ project: '/game', platforms: ['windows'] }, call as never)).toEqual({ args: { project: '/game', platforms: ['windows'] } })
     expect(call.session).not.toHaveBeenCalled()
-    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n' }, agent })
-    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' } })
-    expect(await release.prepare!({ project: '/game', new_game: true }, call as never)).toEqual({ args: { project: '/game', new_game: true }, agent })
+    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n', model: 'Claude Code' }, agent })
+    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' }, model: { type: 'string' } })
+    expect(await release.prepare!({ project: '/game', new_game: true, model: ' Claude Opus 5.5 ' }, call as never))
+      .toEqual({ args: { project: '/game', new_game: true, model: 'Claude Opus 5.5' }, agent })
+    expect(ledger.claim.mock.calls).toEqual([['claude-code', '/game', call.signal], ['claude-code', '/game', call.signal]])
     expect(await recorder.prepare!({ project: '/game', seconds: 3 }, call as never)).toEqual({ args: { project: '/game', seconds: 3 }, agent })
     expect(call.session.mock.calls).toEqual([['/game'], ['/game'], ['/game']])
-    const refusing = { ...call, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
+    const refusing = { ...call, client: { id: 'agent', title: 'Connected agent' }, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
     expect(await release.prepare!({ project: '/game' }, refusing as never)).toEqual({ args: { project: '/game' } })
+    await expect(release.prepare!({ project: '/game', model: 5 }, call as never)).rejects.toThrow('model must be a string.')
     await expect(recorder.prepare!({ project: '/game' }, refusing as never)).rejects.toThrow('cannot create the Session')
     expect(await provider.status(new AbortController().signal)).toEqual({ state: 'ready' })
   })
@@ -147,7 +216,7 @@ describe('wasdMcpProvider', () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-tools-'))
     folders.push(dir)
     await writeFile(join(dir, 'preview.jpg'), 'JPEG')
-    const recorder = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS)).tools()[1]!
+    const recorder = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits()).tools().find(tool => tool.name === 'wasd_record_preview')!
     const content = await recorder.content!({
       gif: join(dir, 'preview.gif'), image: join(dir, 'preview.jpg'), frames: 2, seconds: 1, width: 64, height: 36, gifBytes: 10, imageWidth: 64, imageHeight: 36, imageBytes: 4, started: false, paused: false,
     }, {}, exec)

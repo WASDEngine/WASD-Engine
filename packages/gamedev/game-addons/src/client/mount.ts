@@ -1,6 +1,6 @@
 /**
- * Remote contribution and registration of the game add-ons' browser half: the Add-ons button after the Release
- * button of each Session header. It exists while the Peer may read the `gameAddons` Remote's project view; LiveShare
+ * Remote contribution and registration of the game add-ons' browser half: the Add-ons button after the Export /
+ * Share button of each Session header. It exists while the Peer may read the `gameAddons` Remote's project view; LiveShare
  * keeps it for the owner.
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -18,7 +18,7 @@ import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 /** Services required before the Remote contribution mounts. */
 export const inject = ['remote', 'slots', 'locale', 'remoteAccess']
 
-/** Order of the Add-ons button in the header actions: right after the Release button (-9). */
+/** Order of the Add-ons button in the header actions: right after the Export / Share button (-9). */
 export const ADDONS_ORDER = -8
 
 type RemoteResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: { readonly message: string } }

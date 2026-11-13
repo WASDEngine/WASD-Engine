@@ -5,7 +5,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, vi } from 'vitest'
 import { CALL_TOOL, GameToolCatalog, SEARCH_TOOL } from '../src/catalog.ts'
-import type { GameMcpCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool } from '../src/provider.ts'
+import type { GameMcpCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, GameMcpToolResult } from '../src/provider.ts'
 
 function echoDefinition(name = 'echo'): ToolDefinition {
   return defineTool({
@@ -160,6 +160,22 @@ describe('GameToolCatalog.run', () => {
       .toEqual({ isError: true, content: [{ type: 'text', text: 'no project' }] })
     expect(await catalog.run({ provider: alpha, tool: { name: 'alpha_fail', definition: failing } }, {}, call()))
       .toEqual({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }] })
+  })
+
+  it('reports each finished call with its provider, prepared arguments, Session, and whether it failed', async () => {
+    const agent = { id: brandString<SessionId>('session-1') } as Agent
+    const finished: GameMcpToolResult[] = []
+    const catalog = new GameToolCatalog(() => [], () => {}, (result) => { finished.push(result) })
+    const alpha = provider('alpha', [])
+    await catalog.run({ provider: alpha, tool: { name: 'alpha_echo', definition: echoDefinition(), prepare: async () => ({ args: { text: 'prepared' }, agent }) } }, { text: 'hi' }, call())
+    await catalog.run({ provider: alpha, tool: { name: 'alpha_fail', definition: failing } }, {}, call())
+    await catalog.run({ provider: alpha, tool: { name: 'alpha_echo', definition: echoDefinition(), prepare: () => Promise.reject(new Error('no project')) } }, { text: 'x' }, call())
+    const client = { id: 'claude-code', title: 'Claude Code' }
+    expect(finished).toEqual([
+      { provider: 'alpha', tool: 'alpha_echo', args: { text: 'prepared' }, client, agent, isError: false },
+      { provider: 'alpha', tool: 'alpha_fail', args: {}, client, isError: true },
+      { provider: 'alpha', tool: 'alpha_echo', args: { text: 'x' }, client, isError: true },
+    ])
   })
 
   it('ends a call at its tool\'s time limit, as a Session\'s call ends, and tells the agent', async () => {

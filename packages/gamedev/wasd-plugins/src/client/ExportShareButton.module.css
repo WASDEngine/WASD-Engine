@@ -1,5 +1,6 @@
-/* Release button in the WASD Engine purple: a compact control after the agent preset label in the Session header, and
-   a control of the New Session row's 28px height before its branch controls. */
+/* Export / Share button in the WASD Engine purple: a compact control after the agent preset label in the Session
+   header, and a control of the New Session row's 28px height before its branch controls. Its dialog lists the three
+   choices as selectable rows, then the fields of the selected one. */
 
 .trigger {
   display: inline-flex;
@@ -52,8 +53,77 @@
   gap: 12px;
 }
 
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.choice {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 30%));
+  border-radius: var(--dsw-radius-sm);
+  cursor: pointer;
+}
+
+.choice[data-selected] {
+  border-color: #8e63ff;
+  background: rgb(142 99 255 / 8%);
+  box-shadow: inset 0 0 0 0.5px #8e63ff;
+}
+
+@media (hover: hover) {
+  .choice:not([data-selected]):hover {
+    background: var(--dsw-alias-fill-secondary, rgb(127 127 127 / 8%));
+  }
+}
+
+/* The native radio keeps the keyboard behavior of a radio group; the row shows the selection. */
+.radio {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.choice:has(.radio:focus-visible) {
+  outline: 2px solid #8e63ff;
+  outline-offset: 1px;
+}
+
+.choiceIcon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.choice[data-selected] .choiceIcon {
+  color: #8e63ff;
+}
+
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choiceLabel {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .status {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   margin: 0;
@@ -63,6 +133,12 @@
 
 .status a {
   color: #8e63ff;
+}
+
+.notice {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
 }
 
 .warning {
@@ -77,9 +153,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 .label {
+  padding: 0;
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   font-weight: 500;
@@ -88,7 +169,7 @@
 .notes {
   box-sizing: border-box;
   width: 100%;
-  min-height: 84px;
+  min-height: 68px;
   padding: 8px 10px;
   border: 0.5px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 30%));
   border-radius: var(--dsw-radius-sm);
@@ -103,6 +184,30 @@
 .notes:focus-visible {
   outline: 2px solid #8e63ff;
   outline-offset: 0;
+}
+
+.platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.platformList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Each platform's hint sits under its label: the checkbox's 16px box and 6px gap indent it. */
+.platformRow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.platformRow > .hint {
+  padding-left: 22px;
 }
 
 .hint {

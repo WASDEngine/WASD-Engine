@@ -17,7 +17,7 @@ it('injects configured contact options and removes the listener on disposal', as
   ctx.emit('webserver/index-inject', table, PAGE_PEER)
   expect(table).toEqual([{ kind: 'global', name: CONTACT_CONFIG_GLOBAL, value: {
     contactFormUrl: config.contactFormUrl, contactSource: config.contactSource,
-    apiKeyEntry: true, signInRequired: false,
+    apiKeyEntry: true, signInRequired: false, usageLink: true,
   } }])
   await ctx.fiber.dispose()
   table.length = 0

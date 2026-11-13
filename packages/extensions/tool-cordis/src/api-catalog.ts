@@ -1942,6 +1942,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
+        signature: 'async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>',
+        description: 'Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the 64-bit x86 Windows executable with the game\'s pack embedded, or the universal macOS application bundle signed ad hoc. The first export for a platform downloads its template, about 38 MB for Windows and 123 MB for macOS. While the export runs, the project imports the VRAM compression formats the platform needs. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'absolute project folder, platform, and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
+        returns: 'the exported ZIP file.',
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no ZIP file.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
+      },
+      {
         signature: 'async record(agent: Agent, request: GodotRecordRequest, signal: AbortSignal): Promise<GodotRecording>',
         description: 'Record the Session\'s game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or a game of another project, the recording first starts the project\'s game as `godot_run` does, muted as `agentRunsMuted` says, and lets it run `startSeconds`; the Game tab shows that run like any other. The Game tab\'s frame stream stays as it is, because every frame is a screenshot request.',
         parameters: [{ name: 'agent', description: 'the Session\'s live Agent.' }, { name: 'request', description: 'project, duration, sizes, still, input, and whether to stop a game the recording started.' }, { name: 'signal', description: 'cancellation; it cancels the input too, and stops a game the recording started when `stopStarted` is set.' }],
@@ -4677,12 +4684,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'wasdPlugins',
-    summary: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
-    description: 'Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote.',
+    summary: 'Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote.',
+    description: 'Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote.',
     methods: [
       {
         signature: '@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>',
-        description: 'What a project folder released, for the Release button.',
+        description: 'What a project folder released, for the Export / Share button.',
         parameters: [{ name: 'projectDir', description: 'absolute folder of a game project.' }, { name: 'signal', description: 'cancellation.' }],
         returns: 'whether it is a Godot project, the signed-in account\'s game on the site the app is signed in to, and another folder on this computer that releases the same game.',
       },
@@ -5515,6 +5522,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     summary: 'A connected agent\'s call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.',
     description: 'A connected agent\'s call asked the WASD Engine window to show a Session, such as the one whose game it started; the Host forwards it to the windows that may read the Session.',
     parameters: [{ name: 'sessionId', description: 'Session to show.' }],
+  },
+  {
+    name: 'game-mcp/tool-result',
+    mode: 'emit',
+    signature: '\'game-mcp/tool-result\'(result: GameMcpToolResult): void',
+    summary: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
+    description: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
+    parameters: [{ name: 'result', description: 'the provider, tool, arguments, calling agent, Session, and whether the call failed.' }],
   },
   {
     name: 'goal/activation-changed',
@@ -7437,6 +7452,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n}',
   },
   {
+    name: 'GameMcpToolResult',
+    declaration: 'export interface GameMcpToolResult {\n    readonly provider: string;\n    readonly tool: string;\n    readonly args: JsonObject;\n    readonly client: GameMcpClient;\n    readonly agent?: Agent;\n    readonly isError: boolean;\n}',
+  },
+  {
     name: 'GameMcpView',
     declaration: 'export interface GameMcpView {\n    readonly state: GameMcpServerState;\n    readonly url?: string;\n    readonly prompt?: string;\n    readonly message?: string;\n    readonly clients: readonly GameMcpClientView[];\n}',
   },
@@ -7511,6 +7530,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotControlRequest',
     declaration: 'export interface GodotControlRequest {\n    readonly action: \'pause\' | \'resume\' | \'step\';\n    readonly frames?: number;\n}',
+  },
+  {
+    name: 'GodotDesktopExport',
+    declaration: 'export interface GodotDesktopExport {\n    readonly projectDir: string;\n    readonly platform: GodotDesktopPlatform;\n    readonly outputDir: string;\n    readonly entry: string;\n    readonly bytes: number;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GodotDesktopExportRequest',
+    declaration: 'export interface GodotDesktopExportRequest {\n    readonly projectDir: string;\n    readonly platform: GodotDesktopPlatform;\n    readonly outputDir: string;\n}',
+  },
+  {
+    name: 'GodotDesktopPlatform',
+    declaration: 'export type GodotDesktopPlatform = \'windows\' | \'macos\';',
   },
   {
     name: 'GodotFollowItem',
@@ -11070,11 +11101,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WasdReleasedGame',
-    declaration: 'export interface WasdReleasedGame {\n    readonly title: string;\n    readonly url: string;\n    readonly version: number;\n}',
+    declaration: 'export interface WasdReleasedGame {\n    readonly title: string;\n    readonly url: string;\n    readonly version: number;\n    readonly visibility: WasdVisibility;\n}',
   },
   {
     name: 'WasdSiteLinks',
     declaration: 'export interface WasdSiteLinks {\n    readonly explore: string;\n}',
+  },
+  {
+    name: 'WasdVisibility',
+    declaration: 'export type WasdVisibility = \'public\' | \'private\';',
   },
   {
     name: 'WebBootBatch',
