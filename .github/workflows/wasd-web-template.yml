@@ -1,0 +1,196 @@
+# Build WASD Engine's Godot Web export template (wasdengine/web-template/BUILD.md)
+# and, when run on the default branch, publish it as the GitHub release
+# web-template-<version>, from whose export templates archive the Godot plugin
+# downloads the template that its webTemplateSha256 default pins. A run on
+# another branch builds and uploads a workflow artifact only. Runs on manual
+# dispatch only.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: Web export template
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Template version; the release is tagged web-template-<version>
+        required: true
+        default: 4.7.2-wasd.1
+        type: string
+      godot_ref:
+        description: Godot tag or branch to build
+        required: true
+        default: 4.7.2-stable
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: wasd-web-template-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check the build scripts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the template sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/web-template
+
+      - name: Lint build.sh
+        run: |
+          bash -n wasdengine/web-template/build.sh
+          shellcheck wasdengine/web-template/build.sh
+
+      - name: Test template.py
+        run: python3 -B -I -m unittest discover --start-directory wasdengine/web-template --pattern 'test_*.py' --verbose
+
+  build:
+    name: Build the template
+    needs: check
+    # The arm64 macOS runner is the platform of the development machines whose builds pin the template.
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+      GODOT_REF: ${{ inputs.godot_ref }}
+    steps:
+      - name: Check out the template sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: wasdengine/web-template
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          enable-cache: false
+
+      # The key holds the Godot ref, so the cache keeps objects of one Godot
+      # version; each run saves a new entry that the next run restores.
+      - name: Restore the SCons cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scons-cache
+          key: web-template-scons-${{ inputs.godot_ref }}-${{ github.run_id }}
+          restore-keys: web-template-scons-${{ inputs.godot_ref }}-
+
+      - name: Build the template
+        id: build
+        run: >-
+          wasdengine/web-template/build.sh
+          --godot-ref "$GODOT_REF" --version "$VERSION" --repository "$GITHUB_REPOSITORY"
+          --out "$RUNNER_TEMP/web-template-out" --scons-cache "$RUNNER_TEMP/scons-cache"
+
+      # Saved after a failed build too, so a rerun resumes from the objects built so far.
+      - name: Save the SCons cache
+        if: always() && steps.build.outcome != 'skipped'
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/scons-cache
+          key: web-template-scons-${{ inputs.godot_ref }}-${{ github.run_id }}
+
+      - name: Report the template digest
+        run: |
+          out="$RUNNER_TEMP/web-template-out"
+          python3 -I wasdengine/web-template/template.py verify --manifest "$out/manifest.json" --dir "$out" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/web-template-$VERSION/"
+          digest=$(jq -j .template.sha256 "$out/manifest.json")
+          echo "Web template $VERSION: SHA-256 \`$digest\`" >>"$GITHUB_STEP_SUMMARY"
+          cat "$out/manifest.json"
+
+      - name: Upload the template
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: web-template
+          path: |
+            ${{ runner.temp }}/web-template-out/web-template-*.tpz
+            ${{ runner.temp }}/web-template-out/web_nothreads_release.zip
+            ${{ runner.temp }}/web-template-out/manifest.json
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  release:
+    name: Publish web-template-${{ inputs.version }}
+    needs: build
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Check out the template sources and the Godot plugin configuration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            wasdengine/web-template
+            packages/gamedev/godot/src
+
+      - name: Download the template
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: web-template
+          path: ${{ runner.temp }}/release
+
+      # The plugin downloads the template only when its SHA-256 matches webTemplateSha256, so a
+      # release that the plugin does not pin would fail every Web export.
+      - name: Check the template against manifest.json and the plugin's pin
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          python3 -I wasdengine/web-template/template.py verify --manifest "$release_dir/manifest.json" --dir "$release_dir" \
+            --version "$VERSION" --base-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/web-template-$VERSION/"
+          python3 -I wasdengine/web-template/template.py pin --manifest "$release_dir/manifest.json" \
+            --plugin-source packages/gamedev/godot/src/index.ts
+
+      # The release starts as a draft, which stays hidden until its assets are
+      # attached; publishing it creates the tag at this run's commit. A draft
+      # that an earlier failed run left is moved to this run's commit and its
+      # assets are replaced. A published release is never changed, because the
+      # plugin pins the template's digest. The release is published as a
+      # pre-release so that it never becomes the repository's latest release,
+      # which serves the Desktop update feed and the front page's Download link.
+      - name: Create and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          release_dir="$RUNNER_TEMP/release"
+          tag="web-template-$VERSION"
+          godot=$(jq -j .godot "$release_dir/manifest.json")
+          emscripten=$(jq -j .emscripten "$release_dir/manifest.json")
+          digest=$(jq -j .template.sha256 "$release_dir/manifest.json")
+          title="Web export template $VERSION"
+          notes="WASD Engine Web export template $VERSION: Godot $godot's single-threaded Web release template, built with Emscripten $emscripten and the patches in wasdengine/web-template/patches. web-template-$VERSION.tpz holds templates/web_nothreads_release.zip (SHA-256 $digest), which the Godot plugin downloads for Web exports; wasdengine/web-template/BUILD.md describes the files. Built by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" != true ]; then
+              echo "::error::The release $tag is already published and must not change; dispatch a new template version."
+              exit 1
+            fi
+            gh release edit "$tag" --target "$GITHUB_SHA"
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+          fi
+          gh release upload "$tag" "$release_dir"/web-template-*.tpz "$release_dir/web_nothreads_release.zip" --clobber
+          gh release upload "$tag" "$release_dir/manifest.json" --clobber
+          gh release edit "$tag" --draft=false --prerelease --title "$title" --notes "$notes"

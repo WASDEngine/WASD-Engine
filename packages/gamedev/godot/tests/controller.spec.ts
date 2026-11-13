@@ -75,9 +75,9 @@ describe('configuration', () => {
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
-      webTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
-      webTemplateSha256: 'd3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0',
+      webTemplateSha256: '13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a',
       webTemplatePath: '',
       windowsTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
       windowsTemplateEntry: 'templates/windows_release_x86_64.exe',
@@ -88,6 +88,7 @@ describe('configuration', () => {
       macosTemplateSha256: '88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792',
       macosTemplatePath: '',
       exportTimeoutMs: 600_000,
+      webCheckCommand: [], webCheckSeconds: 20, webCheckStartTimeoutMs: 180_000, webCheckTimeoutMs: 300_000,
     })
   })
 })

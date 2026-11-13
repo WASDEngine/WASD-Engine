@@ -6,8 +6,8 @@
   en: 3704bd413971aab5
   zh: 420c635cd6da54fc
 /game-tools/composition:
-  en: 615d8d0f65b9ab7f
-  zh: d9599908b2752b4d
+  en: 6ed72dc55ce96444
+  zh: 7fc2188e0beefb43
 /game-tools/application-mcp-servers:
   en: 580c70a2e4dc2335
   zh: a5f54718ee5fa960
@@ -24,8 +24,8 @@
   en: d6979e6ce4574993
   zh: 86c94652b18e443a
 /game-tools/godot-runs/run-lifecycle:
-  en: 6e617f3265bf3a5e
-  zh: 1a4dd61483eae899
+  en: 8ece884d6497a6c9
+  zh: fdf3b24cd1ef846f
 /game-tools/godot-runs/harness-protocol:
   en: 9ae98d7100062148
   zh: 68781cc4f5b88d05
@@ -39,8 +39,8 @@
   en: b79fff5eadd29b29
   zh: 3315350f812c5ebb
 /game-tools/process-limits:
-  en: 44d0ed085d2618aa
-  zh: ce7e888a48b2c2bc
+  en: c07c74306a6256dd
+  zh: a175ad12ac30824e
 /game-tools/frame-stream:
   en: 475c15c349002e4d
   zh: d9c2759956ef57ed
@@ -66,5 +66,5 @@
   en: f5bb3430cfa3433f
   zh: 84102920f1c0753b
 /game-tools/remote-types:
-  en: 392eec73efb81160
-  zh: b9e684bb0121f09e
+  en: 7f9c5758601d5fa8
+  zh: 3f44d9f759c1cf34

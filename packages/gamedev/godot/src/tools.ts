@@ -29,6 +29,10 @@ export const TEXT_BUDGET = 6000
 /** Most error entries listed in a result's new-error report. */
 export const DIGEST_ENTRIES = 10
 
+/** The `web` parameter of `godot_run`. */
+export const WEB_RUN_DESCRIPTION = 'true runs the game as its Web build plays: with the Compatibility renderer (WebGL 2 in browsers), whose shading, '
+  + 'shadows, and limits differ from Forward+, so what you see is what players of the released game see. Default: false, the project\'s renderer.'
+
 /** Most errors and warnings listed in a `godot_run` result. */
 export const STARTUP_ENTRIES = 20
 
@@ -518,6 +522,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       width: { type: 'integer', description: 'Game window width in pixels; give height too.' },
       height: { type: 'integer', description: 'Game window height in pixels; give width too.' },
       muted: { type: 'boolean', description: `Run without audio. Default: ${String(host.agentRunsMuted)}.` },
+      web: { type: 'boolean', description: WEB_RUN_DESCRIPTION },
     },
     output: {
       schema: {
@@ -535,6 +540,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           godot: STRING,
           windowless: BOOLEAN,
           muted: BOOLEAN,
+          web: { type: 'boolean' },
           issues: { type: 'array', items: ENTRY_SCHEMA, required: true },
           moreIssues: INTEGER,
           ...DIGEST_SCHEMA,
@@ -544,7 +550,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         const facts = [
           ...value.scene === undefined ? [] : [`scene ${value.scene}`],
           `window ${value.width}x${value.height}`,
-          `renderer ${value.renderer}`,
+          `renderer ${value.renderer}${value.web === true ? ' as on the Web' : ''}`,
           `Godot ${value.godot}`,
           ...value.windowless ? ['windowless'] : [],
           ...value.muted ? ['muted'] : [],
@@ -564,6 +570,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...args.scene === undefined ? {} : { scene: args.scene },
           ...size,
           muted: args.muted ?? host.agentRunsMuted,
+          ...args.web === true ? { web: true } : {},
         }, exec.signal)
         let timer: NodeJS.Timeout | undefined
         await Promise.race([run.whenEnded(), new Promise<void>((resolve) => { timer = setTimeout(resolve, STARTUP_LOG_WINDOW_MS) })])
@@ -589,6 +596,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           godot: run.godotVersion as string,
           windowless: view.windowless,
           muted: view.muted,
+          ...view.launch.web === true ? { web: true } : {},
           issues: issues.slice(0, STARTUP_ENTRIES),
           moreIssues: Math.max(0, issues.length - STARTUP_ENTRIES),
         }

@@ -2,6 +2,7 @@
  * Types WASD Engine Plugins shares between its Host service and its browser half.
  * @module @deepseek-ai/dsh-wasd-plugins/types
  */
+import type { GodotWebCheck } from '@deepseek-ai/dsh-godot/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 
 /** Who can find a released game: `public`, on the site's Explore page, or `private`, only through its link. */
@@ -73,6 +74,10 @@ export interface WasdRelease {
    * and credits.
    */
   readonly warnings: readonly string[]
+  /** What the Web check saw in the released build; absent when the release skipped the check or it could not run. */
+  readonly webCheck?: GodotWebCheck
+  /** Why the Web check could not run; absent when it ran or the release skipped it. */
+  readonly webCheckError?: string
 }
 
 /**

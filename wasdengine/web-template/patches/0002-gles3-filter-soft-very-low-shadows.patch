@@ -1,0 +1,24 @@
+diff --git a/drivers/gles3/rasterizer_scene_gles3.cpp b/drivers/gles3/rasterizer_scene_gles3.cpp
+index bf41012..3f51a57 100644
+--- a/drivers/gles3/rasterizer_scene_gles3.cpp
++++ b/drivers/gles3/rasterizer_scene_gles3.cpp
+@@ -3644,7 +3644,8 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
+ 
+ 						if (scene_state.positional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_HIGH) {
+ 							spec_constants |= SceneShaderGLES3::SHADOW_MODE_PCF_13;
+-						} else if (scene_state.positional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_LOW) {
++						} else if (scene_state.positional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_VERY_LOW) {
++							// SOFT_VERY_LOW filters too: Forward+ smooths its one sample with TAA, which this renderer lacks.
+ 							spec_constants |= SceneShaderGLES3::SHADOW_MODE_PCF_5;
+ 						}
+ 					} else {
+@@ -3673,7 +3674,8 @@ void RasterizerSceneGLES3::_render_list_template(RenderListParameters *p_params,
+ 
+ 						if (scene_state.directional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_HIGH) {
+ 							spec_constants |= SceneShaderGLES3::SHADOW_MODE_PCF_13;
+-						} else if (scene_state.directional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_LOW) {
++						} else if (scene_state.directional_shadow_quality >= RSE::SHADOW_QUALITY_SOFT_VERY_LOW) {
++							// SOFT_VERY_LOW filters too: Forward+ smooths its one sample with TAA, which this renderer lacks.
+ 							spec_constants |= SceneShaderGLES3::SHADOW_MODE_PCF_5;
+ 						}
+ 					}

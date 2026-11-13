@@ -68,6 +68,7 @@ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.t
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
+import { runWebCheckMode, webCheckCommand, webCheckRequest } from './wasdengine-web-check.ts'
 import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
 import { WasdengineUpdateSpace } from './wasdengine-update-space.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
@@ -542,7 +543,11 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, {
+        ...hostEnvironment,
+        DSH_CLIENT_VERSION: desktopClientVersion(),
+        WASD_WEB_CHECK_COMMAND: JSON.stringify(webCheckCommand(process.execPath, app.getAppPath(), process.defaultApp)),
+      }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
@@ -1621,7 +1626,10 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
-const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
+// WASD Engine: `--wasd-web-check=` starts the Godot plugin's Web check instead of the Desktop app.
+const webCheck = webCheckRequest(process.argv)
+if (webCheck !== undefined) runWebCheckMode(app, BrowserWindow, webCheck)
+const ownsDesktopInstance = webCheck === undefined && claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
 
 if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)

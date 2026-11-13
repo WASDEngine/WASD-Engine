@@ -1942,6 +1942,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
+        signature: 'async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck>',
+        description: 'Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed, and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'the export folder and its page.' }, { name: 'signal', description: 'cancellation; it stops the browser.' }],
+        returns: 'what the check saw.',
+        throws: ['{GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.'],
+      },
+      {
         signature: 'async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>',
         description: 'Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the 64-bit x86 Windows executable with the game\'s pack embedded, or the universal macOS application bundle signed ad hoc. The first export for a platform downloads its template, about 38 MB for Windows and 123 MB for macOS. While the export runs, the project imports the VRAM compression formats the platform needs. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder, platform, and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
@@ -7585,7 +7592,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunLaunch',
-    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n}',
+    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly web?: true;\n}',
   },
   {
     name: 'GodotRunLayer',
@@ -7597,7 +7604,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunRequest',
-    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n}',
+    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n    readonly web?: boolean;\n}',
   },
   {
     name: 'GodotRunStarter',
@@ -7622,6 +7629,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotViewItem',
     declaration: 'export interface GodotViewItem {\n    readonly type: \'shown\';\n}',
+  },
+  {
+    name: 'GodotWebCheck',
+    declaration: 'export interface GodotWebCheck {\n    readonly seconds: number;\n    readonly started: boolean;\n    readonly startSeconds?: number;\n    readonly readySeconds?: number;\n    readonly longestFreezeSeconds: number;\n    readonly freezes: number;\n    readonly fps?: number;\n    readonly slowestFrameMs?: number;\n    readonly drawCalls?: {\n        readonly median: number;\n        readonly max: number;\n    };\n    readonly programs: number;\n    readonly messages: readonly GodotWebCheckMessage[];\n    readonly moreMessages: number;\n    readonly findings: readonly string[];\n    readonly crashed?: string;\n}',
+  },
+  {
+    name: 'GodotWebCheckMessage',
+    declaration: 'export interface GodotWebCheckMessage {\n    readonly level: \'error\' | \'warning\';\n    readonly text: string;\n    readonly count: number;\n}',
+  },
+  {
+    name: 'GodotWebCheckRequest',
+    declaration: 'export interface GodotWebCheckRequest {\n    readonly outputDir: string;\n    readonly entry?: string;\n}',
   },
   {
     name: 'GodotWebExport',
