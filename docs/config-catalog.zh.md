@@ -1983,8 +1983,9 @@ export interface Config {
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
-   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
-   * Web template with HTTP range requests.
+   * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
+   * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD
+   * Engine's build of the template (`wasdengine/web-template/BUILD.md`).
    */
   webTemplateArchiveUrl: string
   /** Path of the single-threaded Web release template inside that archive. */

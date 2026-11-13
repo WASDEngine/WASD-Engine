@@ -1,0 +1,194 @@
+diff --git a/drivers/gles3/storage/material_storage.cpp b/drivers/gles3/storage/material_storage.cpp
+index de059cc..0e3e49d 100644
+--- a/drivers/gles3/storage/material_storage.cpp
++++ b/drivers/gles3/storage/material_storage.cpp
+@@ -2094,12 +2094,13 @@ GLuint MaterialStorage::global_shader_parameters_get_uniform_buffer() const {
+ 	return global_shader_uniforms.buffer;
+ }
+ 
+-int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance) {
++int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) {
+ 	ERR_FAIL_COND_V(global_shader_uniforms.instance_buffer_pos.has(p_instance), -1);
+-	int32_t pos = _global_shader_uniform_allocate(ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
+-	global_shader_uniforms.instance_buffer_pos[p_instance] = pos; //save anyway
++	ERR_FAIL_COND_V(p_elements == 0 || p_elements > ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES, -1);
++	int32_t pos = _global_shader_uniform_allocate(p_elements);
+ 	ERR_FAIL_COND_V_MSG(pos < 0, -1, vformat("Too many instances using shader instance variables. Consider increasing rendering/limits/global_shader_variables/buffer_size in the Project Settings. Maximum items supported by this hardware is: %d.", Config::get_singleton()->max_uniform_buffer_size / sizeof(GlobalShaderUniforms::Value)));
+-	global_shader_uniforms.buffer_usage[pos].elements = ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES;
++	global_shader_uniforms.instance_buffer_pos[p_instance] = pos;
++	global_shader_uniforms.buffer_usage[pos].elements = p_elements;
+ 	return pos;
+ }
+ 
+@@ -2121,7 +2122,7 @@ void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, i
+ 	if (pos < 0) {
+ 		return; //again, not allocated, ignore
+ 	}
+-	ERR_FAIL_INDEX(p_index, ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
++	ERR_FAIL_INDEX(p_index, int(global_shader_uniforms.buffer_usage[pos].elements));
+ 
+ 	Variant::Type value_type = p_value.get_type();
+ 	ERR_FAIL_COND_MSG(p_value.get_type() > Variant::COLOR, "Unsupported variant type for instance parameter: " + Variant::get_type_name(value_type)); //anything greater not supported
+diff --git a/drivers/gles3/storage/material_storage.h b/drivers/gles3/storage/material_storage.h
+index 982e7b2..9ede9a3 100644
+--- a/drivers/gles3/storage/material_storage.h
++++ b/drivers/gles3/storage/material_storage.h
+@@ -635,7 +635,7 @@ public:
+ 	virtual void global_shader_parameters_load_settings(bool p_load_textures = true) override;
+ 	virtual void global_shader_parameters_clear() override;
+ 
+-	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance) override;
++	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) override;
+ 	virtual void global_shader_parameters_instance_free(RID p_instance) override;
+ 	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) override;
+ 
+diff --git a/servers/rendering/dummy/storage/material_storage.h b/servers/rendering/dummy/storage/material_storage.h
+index 3d7e5a9..a6afb8d 100644
+--- a/servers/rendering/dummy/storage/material_storage.h
++++ b/servers/rendering/dummy/storage/material_storage.h
+@@ -82,7 +82,7 @@ public:
+ 	virtual void global_shader_parameters_load_settings(bool p_load_textures = true) override;
+ 	virtual void global_shader_parameters_clear() override {}
+ 
+-	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance) override { return 0; }
++	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) override { return 0; }
+ 	virtual void global_shader_parameters_instance_free(RID p_instance) override {}
+ 	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) override {}
+ 
+diff --git a/servers/rendering/instance_uniforms.cpp b/servers/rendering/instance_uniforms.cpp
+index 425e359..ac23977 100644
+--- a/servers/rendering/instance_uniforms.cpp
++++ b/servers/rendering/instance_uniforms.cpp
+@@ -38,6 +38,7 @@ void InstanceUniforms::free(RID p_self) {
+ 	if (is_allocated()) {
+ 		RSG::material_storage->global_shader_parameters_instance_free(p_self);
+ 		_location = -1;
++		_allocated_elements = 0;
+ 	}
+ 
+ 	_invalidate_items();
+@@ -45,6 +46,7 @@ void InstanceUniforms::free(RID p_self) {
+ 
+ void InstanceUniforms::materials_start() {
+ 	_invalidate_items();
++	_needed_elements = 0;
+ }
+ 
+ void InstanceUniforms::materials_append(RID p_material) {
+@@ -54,6 +56,10 @@ void InstanceUniforms::materials_append(RID p_material) {
+ 	RSG::material_storage->material_get_instance_shader_parameters(p_material, &params);
+ 
+ 	for (const RendererMaterialStorage::InstanceShaderParam &srcp : params) {
++		if (srcp.index >= 0) {
++			// Every index a shader reads counts, also one that another material exports under a different index.
++			_needed_elements = MAX(_needed_elements, uint32_t(srcp.index) + 1);
++		}
+ 		StringName name = srcp.info.name;
+ 		if (Item *ptr = _parameters.getptr(name); ptr) {
+ 			if (!ptr->is_valid()) {
+@@ -76,7 +82,7 @@ void InstanceUniforms::materials_append(RID p_material) {
+ bool InstanceUniforms::materials_finish(RID p_self) {
+ 	ERR_FAIL_COND_V(p_self.is_null(), false);
+ 
+-	if (_parameters.is_empty()) {
++	if (_parameters.is_empty() || _needed_elements == 0) {
+ 		if (is_allocated()) {
+ 			free(p_self);
+ 			return true;
+@@ -84,10 +90,21 @@ bool InstanceUniforms::materials_finish(RID p_self) {
+ 		return false;
+ 	}
+ 
+-	const bool should_alloc = !is_allocated();
++	bool should_alloc = !is_allocated();
++
++	if (!should_alloc && _allocated_elements < _needed_elements) {
++		// The materials now read more instance uniform indices than the allocation holds: move to a larger one.
++		RSG::material_storage->global_shader_parameters_instance_free(p_self);
++		_location = -1;
++		_allocated_elements = 0;
++		should_alloc = true;
++	}
+ 
+ 	if (should_alloc) {
+-		_location = RSG::material_storage->global_shader_parameters_instance_allocate(p_self);
++		// Reserve only the slots the materials' indices reach rather than ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES:
++		// the Compatibility renderer's buffer holds max_uniform_buffer_size / 16 slots, 1024 on WebGL 2 with 16 KiB blocks.
++		_location = RSG::material_storage->global_shader_parameters_instance_allocate(p_self, _needed_elements);
++		_allocated_elements = is_allocated() ? _needed_elements : 0;
+ 	}
+ 
+ 	for (KeyValue<StringName, Item> &kv : _parameters) {
+diff --git a/servers/rendering/instance_uniforms.h b/servers/rendering/instance_uniforms.h
+index 4682c31..bbf97e7 100644
+--- a/servers/rendering/instance_uniforms.h
++++ b/servers/rendering/instance_uniforms.h
+@@ -63,6 +63,9 @@ private:
+ 		inline bool is_valid() const { return index != -1; }
+ 	};
+ 	int32_t _location = -1;
++	// Buffer slots that the instance uniform indices of the current materials reach, and the slots allocated at _location.
++	uint32_t _needed_elements = 0;
++	uint32_t _allocated_elements = 0;
+ 	HashMap<StringName, Item> _parameters;
+ 
+ 	void _init_param(Item &r_item, const RendererMaterialStorage::InstanceShaderParam &p_param) const;
+diff --git a/servers/rendering/renderer_rd/storage_rd/material_storage.cpp b/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
+index d4906c9..38215ac 100644
+--- a/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
++++ b/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
+@@ -2024,12 +2024,13 @@ RID MaterialStorage::global_shader_uniforms_get_storage_buffer() const {
+ 	return global_shader_uniforms.buffer;
+ }
+ 
+-int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance) {
++int32_t MaterialStorage::global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) {
+ 	ERR_FAIL_COND_V(global_shader_uniforms.instance_buffer_pos.has(p_instance), -1);
+-	int32_t pos = _global_shader_uniform_allocate(ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
+-	global_shader_uniforms.instance_buffer_pos[p_instance] = pos; //save anyway
++	ERR_FAIL_COND_V(p_elements == 0 || p_elements > ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES, -1);
++	int32_t pos = _global_shader_uniform_allocate(p_elements);
+ 	ERR_FAIL_COND_V_MSG(pos < 0, -1, "Too many instances using shader instance variables. Increase buffer size in Project Settings.");
+-	global_shader_uniforms.buffer_usage[pos].elements = ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES;
++	global_shader_uniforms.instance_buffer_pos[p_instance] = pos;
++	global_shader_uniforms.buffer_usage[pos].elements = p_elements;
+ 	return pos;
+ }
+ 
+@@ -2051,7 +2052,7 @@ void MaterialStorage::global_shader_parameters_instance_update(RID p_instance, i
+ 	if (pos < 0) {
+ 		return; //again, not allocated, ignore
+ 	}
+-	ERR_FAIL_INDEX(p_index, ShaderLanguage::MAX_INSTANCE_UNIFORM_INDICES);
++	ERR_FAIL_INDEX(p_index, int(global_shader_uniforms.buffer_usage[pos].elements));
+ 
+ 	Variant::Type value_type = p_value.get_type();
+ 	ERR_FAIL_COND_MSG(p_value.get_type() > Variant::COLOR, "Unsupported variant type for instance parameter: " + Variant::get_type_name(value_type)); //anything greater not supported
+diff --git a/servers/rendering/renderer_rd/storage_rd/material_storage.h b/servers/rendering/renderer_rd/storage_rd/material_storage.h
+index 46c7352..72dc026 100644
+--- a/servers/rendering/renderer_rd/storage_rd/material_storage.h
++++ b/servers/rendering/renderer_rd/storage_rd/material_storage.h
+@@ -450,7 +450,7 @@ public:
+ 	virtual void global_shader_parameters_load_settings(bool p_load_textures = true) override;
+ 	virtual void global_shader_parameters_clear() override;
+ 
+-	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance) override;
++	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) override;
+ 	virtual void global_shader_parameters_instance_free(RID p_instance) override;
+ 	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) override;
+ 
+diff --git a/servers/rendering/storage/material_storage.h b/servers/rendering/storage/material_storage.h
+index 2c30cad..1352dd5 100644
+--- a/servers/rendering/storage/material_storage.h
++++ b/servers/rendering/storage/material_storage.h
+@@ -51,7 +51,9 @@ public:
+ 	virtual void global_shader_parameters_load_settings(bool p_load_textures = true) = 0;
+ 	virtual void global_shader_parameters_clear() = 0;
+ 
+-	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance) = 0;
++	// Reserves p_elements consecutive buffer slots for the instance uniforms of p_instance, one slot per
++	// instance uniform index; returns the first slot, or -1 when the buffer has no room.
++	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance, uint32_t p_elements) = 0;
+ 	virtual void global_shader_parameters_instance_free(RID p_instance) = 0;
+ 	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) = 0;
+ 

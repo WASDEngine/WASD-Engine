@@ -1,0 +1,31 @@
+diff --git a/drivers/gles3/storage/render_scene_buffers_gles3.cpp b/drivers/gles3/storage/render_scene_buffers_gles3.cpp
+index 296206a..921d701 100644
+--- a/drivers/gles3/storage/render_scene_buffers_gles3.cpp
++++ b/drivers/gles3/storage/render_scene_buffers_gles3.cpp
+@@ -308,7 +308,8 @@ void RenderSceneBuffersGLES3::_check_render_buffers() {
+ 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msaa3d.color);
+ 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, msaa3d.depth);
+ 
+-			GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
++			// Parenthesized to query the driver even where platform_gl.h skips the query: this check falls back to no MSAA.
++			GLenum status = (glCheckFramebufferStatus)(GL_FRAMEBUFFER);
+ 			if (status != GL_FRAMEBUFFER_COMPLETE) {
+ 				_clear_msaa3d_buffers();
+ 				msaa3d.mode = RSE::VIEWPORT_MSAA_DISABLED;
+diff --git a/platform/web/platform_gl.h b/platform/web/platform_gl.h
+index ebbcd92..9ea9821 100644
+--- a/platform/web/platform_gl.h
++++ b/platform/web/platform_gl.h
+@@ -39,3 +39,12 @@
+ #define eglGetProcAddress(n) static_assert(false, "Usage of eglGetProcessAddress() on the web is a bug.")
+ 
+ #include "platform/web/godot_webgl2.h" // IWYU pragma: export.
++
++#ifndef DEBUG_ENABLED
++// A release build reports every framebuffer as complete without asking WebGL. The browser answers
++// checkFramebufferStatus() only after its GPU process has run every command queued before the call, so each query
++// blocks the main thread behind pending texture uploads and shader compiles. The Compatibility renderer uses the
++// answer to print an error and drop the framebuffer, except where it falls back; those callers write
++// (glCheckFramebufferStatus)(...), which this function-like macro leaves alone.
++#define glCheckFramebufferStatus(m_target) ((GLenum)GL_FRAMEBUFFER_COMPLETE)
++#endif
