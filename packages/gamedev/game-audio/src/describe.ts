@@ -6,7 +6,7 @@
  * @module @deepseek-ai/dsh-game-audio/src/describe
  */
 import type { AudioCategory, AudioCategorySource } from './audio/formats.ts'
-import { LATE_START_SECONDS, seamClicks } from './audio/measure.ts'
+import { FAR_BEYOND_FULL_SCALE, LATE_START_SECONDS, seamClicks } from './audio/measure.ts'
 import { describeAudioImage } from './audio/picture.ts'
 import type { AudioProbe } from './audio/probe.ts'
 import type { GodotImport } from './files.ts'
@@ -68,9 +68,6 @@ export interface ReviewFacts {
   readonly pictureOmitted?: boolean
   readonly shown: boolean
 }
-
-/** A peak far beyond full scale, +40 dBFS, which no recording or mix reaches but an unstable filter or a wrong gain does. */
-const FAR_BEYOND_FULL_SCALE = 100
 
 /** How the kinds read in text, one and many. */
 const KIND_NAMES: Readonly<Record<AudioCategory, readonly [string, string]>> = {

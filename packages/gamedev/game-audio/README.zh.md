@@ -69,7 +69,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `audioCategoryOf`、`pathWords` | 根据路径和时长判断声音的类型 |
 | `probeAudio` | 从几个较小的字节窗口读取文件头信息：WAV 和 AIFF 的块、FLAC 的 STREAMINFO、MP3 的 Xing、Info 或 VBRI 帧数减去 LAME 编码器延迟和填充，或按第一帧的比特率估算，并给出该格式最高比特率下其大小所允许的最短长度，以及 Ogg 流最后的 granule 位置 |
 | `openAiff`、`decodeAiff` | 浏览器不解码的 AIFF 和 AIFC 采样：任一字节序的 8 到 32 位整数 PCM、无符号 8 位，以及 32 位和 64 位浮点；`openAiff` 定位采样并逐个读取而不复制，`decodeAiff` 复制全部采样 |
-| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`seamFrames`、`stereoImage`、`seamClicks` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限；`loopSeam` 根据 `seamFrames` 给出的循环跳转两侧的帧测量循环衔接 |
+| `analyzeAudio`、`integratedLoudness`、`loopSeam`、`seamFrames`、`stereoImage`、`seamClicks`、`FAR_BEYOND_FULL_SCALE` | 对交错浮点采样的测量；为 NaN 或无穷大的采样会被计数并按静音读取，因此各项数值都保持有限；`loopSeam` 根据 `seamFrames` 给出的循环跳转两侧的帧测量循环衔接；`FAR_BEYOND_FULL_SCALE` 即 +40 dBFS 的峰值，音频工具和 SuperCollider 的分析从这里起警告这是故障而非电平问题 |
 | `drawAudioImage`、`describeAudioImage` | 原始 RGB 格式的图像，以及说明其面板和网格的句子 |
 | `analyzeAudioSteps`、`stereoImageSteps`、`drawAudioImageSteps`、`finish` | 以生成器形式给出的相同测量和图像，每处理约 `STEP_FRAMES` 帧或一列图像就暂停一次：`finish` 一次运行到底，音频标签页则在页面事件之间每次运行一个分片 |
 | `AUDIO_ERROR` | 工具的错误码，窗口无法完成请求时用它作答 |

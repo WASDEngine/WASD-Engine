@@ -292,4 +292,28 @@ describe('describeAnalysis', () => {
     expect(quiet[0]).toContain('loudness not measured (no sound above the gate).')
     expect(decibels(0)).toBe('-inf dBFS')
   })
+
+  it('warns of NaN or infinite samples, which the figures count as silence, and of a peak far beyond full scale', () => {
+    const broken = describeAnalysis({
+      seconds: 1, channels: [{ peak: 0, rms: 0, dcOffset: 0, clipped: 0, nonFinite: 48000 }], peak: 0, rms: 0,
+      loudness: undefined, leadingSilence: 1, trailingSilence: 1, dominantFrequency: undefined, spectralCentroid: undefined,
+    })
+    expect(broken).toEqual([
+      'Levels: peak -inf dBFS, RMS -inf dBFS, loudness not measured (no sound above the gate).',
+      'Silence: every sample is 0, NaN, or infinite.',
+      'Warning: 48000 samples are NaN or infinite, as an unstable filter or a division by zero makes, and the figures count them as silence; find the UGen that makes them, for example with CheckBadValues.ar, and render again.',
+    ])
+    const blownUp = describeAnalysis({
+      seconds: 1,
+      channels: [
+        { peak: 0.5, rms: 0.2, dcOffset: 0, clipped: 0, nonFinite: 0 },
+        { peak: 1000, rms: 300, dcOffset: 0, clipped: 4000, nonFinite: 3 },
+      ],
+      peak: 1000, rms: 212, loudness: -1, leadingSilence: 0, trailingSilence: 0, dominantFrequency: undefined, spectralCentroid: undefined,
+    })
+    expect(blownUp.filter(line => line.startsWith('Warning:'))).toEqual([
+      'Warning: 3 samples of right are NaN or infinite, as an unstable filter or a division by zero makes, and the figures count them as silence; find the UGen that makes them, for example with CheckBadValues.ar, and render again.',
+      'Warning: the samples of right peak at 60.0 dBFS, far beyond full scale, as an unstable filter or a wrong gain makes; find the cause rather than lowering the level.',
+    ])
+  })
 })

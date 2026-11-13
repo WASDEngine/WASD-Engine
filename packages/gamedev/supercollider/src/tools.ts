@@ -8,7 +8,9 @@ import { extname, isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { defineAppTool, formatBytes, replyParser, withSetupNotes, workerParams } from '@deepseek-ai/dsh-app-mcp'
 import type { AppTool, AppToolDependencies } from '@deepseek-ai/dsh-app-mcp'
-import { analyzeAudio, describeAudioImage, drawAudioImage, type AudioAnalysis, type AudioSamples } from '@deepseek-ai/dsh-game-audio/audio'
+import {
+  analyzeAudio, describeAudioImage, drawAudioImage, FAR_BEYOND_FULL_SCALE, type AudioAnalysis, type AudioSamples,
+} from '@deepseek-ai/dsh-game-audio/audio'
 import { applyGain, readFloatWav } from './audio.ts'
 import { encodePng } from './png.ts'
 import { condenseHelp, helpSummary } from './schelp.ts'
@@ -143,7 +145,8 @@ function channelCount(count: number): string {
 }
 
 /**
- * The lines that report an analysis: levels, loudness, silence, spectrum, and warnings about clipping and DC offset.
+ * The lines that report an analysis: levels, loudness, silence, spectrum, and warnings about NaN or infinite samples,
+ * which the figures count as silence, a peak far beyond full scale, clipping, and DC offset.
  * @param analysis - the measurements.
  * @returns lines of text.
  */
@@ -156,7 +159,10 @@ export function describeAnalysis(analysis: AudioAnalysis): string[] {
     ? analysis.seconds < 0.4 ? 'loudness not measured (shorter than 0.4 s)' : 'loudness not measured (no sound above the gate)'
     : `loudness ${analysis.loudness.toFixed(1)} LUFS`
   lines.push(`Levels: peak ${decibels(analysis.peak)}, RMS ${decibels(analysis.rms)}${perChannel}, ${loudness}.`)
-  if (analysis.peak === 0) lines.push('Silence: the audio is completely silent.')
+  const silent = analysis.channels.some(level => level.nonFinite > 0)
+    ? 'Silence: every sample is 0, NaN, or infinite.'
+    : 'Silence: the audio is completely silent.'
+  if (analysis.peak === 0) lines.push(silent)
   else if (analysis.leadingSilence >= analysis.seconds) lines.push('Silence: every sample is below -60 dBFS.')
   else lines.push(`Silence below -60 dBFS: ${seconds(analysis.leadingSilence)} at the start, ${seconds(analysis.trailingSilence)} at the end.`)
   if (analysis.dominantFrequency !== undefined && analysis.spectralCentroid !== undefined) {
@@ -164,7 +170,13 @@ export function describeAnalysis(analysis: AudioAnalysis): string[] {
   }
   analysis.channels.forEach((level, index) => {
     const count = analysis.channels.length
-    if (level.clipped > 0) {
+    if (level.nonFinite > 0) {
+      lines.push(`Warning: ${String(level.nonFinite)} ${samplesOf(index, count)} are NaN or infinite, as an unstable filter or a division by zero makes, and the figures count them as silence; find the UGen that makes them, for example with CheckBadValues.ar, and render again.`)
+    }
+    // A peak this far beyond full scale comes from a fault that lowering the level hides rather than fixes.
+    if (level.peak >= FAR_BEYOND_FULL_SCALE) {
+      lines.push(`Warning: the ${samplesOf(index, count)} peak at ${decibels(level.peak)}, far beyond full scale, as an unstable filter or a wrong gain makes; find the cause rather than lowering the level.`)
+    } else if (level.clipped > 0) {
       lines.push(`Warning: ${String(level.clipped)} ${samplesOf(index, count)} reach full scale and clip in integer formats; lower the level or use normalize_db.`)
     }
     if (Math.abs(level.dcOffset) >= 0.01) {

@@ -123,7 +123,7 @@ The analysis reads the samples of the float copy of the render that `path` recei
 - Integrated loudness after ITU-R BS.1770-4 in LUFS, with every channel weighted 1; windows shorter than one 400 ms block, or without blocks above the gates, are not measured.
 - Silence below -60 dBFS at the start and at the end.
 - The frequency of the strongest component of the spectrum averaged over up to 64 frames of 8,192 samples, and the spectral centroid.
-- Warnings for samples that reach full scale, and for a DC offset of 0.01 or more.
+- Warnings for NaN or infinite samples, which an unstable filter or a division by zero makes and the figures count as silence, for a peak of +40 dBFS or more, far beyond full scale, in place of the clipping warning, for samples that reach full scale, and for a DC offset of 0.01 or more.
 
 The image is a 1,024-pixel-wide PNG: the waveform of each channel (of the channel mix for more than two channels) on top, with columns that reach full scale in red, and a spectrogram of the channel mix below, from 20 Hz to the Nyquist frequency on a logarithmic axis with dotted lines at 100 Hz, 1 kHz, and 10 kHz, over a 90 dB range. Dotted vertical lines mark a time step that draws at most 12 lines. The result text describes the image the same way.
 

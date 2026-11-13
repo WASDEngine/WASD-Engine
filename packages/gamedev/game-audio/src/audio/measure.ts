@@ -23,6 +23,9 @@ export const SILENCE_THRESHOLD = 0.001
 /** Samples at or above full scale, which integer formats clip. */
 const CLIP_LEVEL = 1
 
+/** A peak far beyond full scale, +40 dBFS, which no recording or mix reaches but an unstable filter or a wrong gain does. */
+export const FAR_BEYOND_FULL_SCALE = 100
+
 /** Frames one step of a measurement reads, about a millisecond's work, before it offers a pause. */
 export const STEP_FRAMES = 1 << 16
 
