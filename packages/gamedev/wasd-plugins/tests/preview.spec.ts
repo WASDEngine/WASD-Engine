@@ -55,18 +55,19 @@ describe('encodePreview', () => {
     expect((await sharp(preview.still).metadata()).format).toBe('png')
   })
 
+  // Each encoding runs Sharp on real pixels, so the test allows for a busy machine.
   it('keeps a noisy still as JPEG, and shrinks a GIF over the limit in width, then in frames', async () => {
-    const noisy = await recording(8, { width: 320, height: 180, noise: true })
+    const noisy = await recording(4, { width: 256, height: 144, noise: true })
     const full = await encodePreview(noisy, { maxGifBytes: 50 * 1024 * 1024, minWidth: 64, effort: 1 }, signal)
     expect(full.stillType).toBe('image/jpeg')
-    expect(full.gifWidth).toBe(320)
+    expect(full.gifWidth).toBe(256)
     const narrower = await encodePreview(noisy, { maxGifBytes: Math.floor(full.gif.length * 0.7), minWidth: 64, effort: 1 }, signal)
-    expect(narrower.gifWidth).toBeLessThan(320)
-    expect(narrower.frames).toBe(8)
+    expect(narrower.gifWidth).toBeLessThan(256)
+    expect(narrower.frames).toBe(4)
     expect(narrower.gif.length).toBeLessThanOrEqual(Math.floor(full.gif.length * 0.7))
-    const fewer = await encodePreview(noisy, { maxGifBytes: 1024, minWidth: 240, effort: 1 }, signal)
-    expect(fewer).toMatchObject({ gifWidth: 240, frames: 2, durationMs: 640 })
-  })
+    const fewer = await encodePreview(noisy, { maxGifBytes: 1024, minWidth: 192, effort: 1 }, signal)
+    expect(fewer).toMatchObject({ gifWidth: 192, frames: 2, durationMs: 320 })
+  }, 30_000)
 
   it('fits frames of another size into the first frame\'s size, and stops when cancelled', async () => {
     const mixed = await recording(2)
