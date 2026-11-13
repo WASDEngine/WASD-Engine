@@ -54,11 +54,11 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 详细信息
 
-播放器下方显示声音的类型、格式及其编码、采样率和声道、时长、大小、以 LUFS 表示的响度，以及以 dBFS 表示的峰值；这些数值由 agent 的 `audio_review` 使用的同一组函数测量。提示会指出削波的采样、音效或对白开头 50 毫秒或更长的静音、循环控件开启时声音循环处的咔哒声、两个声道内容相同、直流偏移，以及超过详细信息测量长度的声音。
+播放器下方显示声音的类型、格式及其编码、采样率和声道、时长、大小、以 LUFS 表示的响度，以及以 dBFS 表示的峰值；这些数值由 agent 的 `audio_review` 使用的同一组函数测量。提示会指出削波的采样、音效或对白开头 50 毫秒或更长的静音、循环控件开启时声音结尾与开头衔接处的咔哒声（即使该处超出详细信息测量的片段也会在衔接处测量）、两个声道内容相同、直流偏移，以及超过详细信息测量长度的声音。
 
 ### 对 agent 的答复
 
-对于窗口可以读取的会话发出的 `game-audio/measure` 请求，插件读取声音，以其自身的采样率解码，测量所请求的片段，并在请求需要时在 canvas 上把波形与频谱图绘制为 PNG，每次处理一个请求。按文件头（文件头未给出时按解码结果）长于 `maxDecodedSeconds` 的声音以 `AUDIO_TOO_LARGE` 失败，与标签页拒绝它的方式一致。在等待期间调用已结束的请求轮到时会被丢弃，正在处理的请求在下一步停止，AIFF 解码在下一个分片停止；浏览器的解码无法中止，会运行到结束。由于 AIFF 文件可能给出带小数的采样率，测量结果以整数赫兹表示采样率。其他作用域的请求交给下一个窗口。对于 `game-audio/reveal`，插件会在该会话的音频标签页中打开声音；如果屏幕上是另一个会话，会先显示该会话。
+对于窗口可以读取的会话发出的 `game-audio/measure` 请求，插件读取声音，以其自身的采样率解码，测量所请求的片段，并从整个解码后声音中循环跳转两侧的采样测量所请求循环的衔接，在请求需要时在 canvas 上把波形与频谱图绘制为 PNG，每次处理一个请求。测量和绘制以约 10 毫秒的分片运行，分片之间页面可以处理其事件，因此长声音既不会让窗口卡住，在隐藏窗口中也不会等待被节流的计时器。长于 `maxDecodedSeconds` 的声音以 `AUDIO_TOO_LARGE` 失败，与标签页拒绝它的方式一致：文件头给出的长度更长时，或文件头只估算长度的 MP3 即使按该格式的最高比特率也更长时，在解码前拒绝；其他情况在解码后拒绝。在等待期间调用已结束的请求轮到时会被丢弃，正在处理的请求在下一步停止，AIFF 解码在下一个分片停止；浏览器的解码无法中止，会运行到结束。由于 AIFF 文件可能给出带小数的采样率，测量结果以整数赫兹表示采样率。其他作用域的请求交给下一个窗口。对于 `game-audio/reveal`，插件会在该会话的音频标签页中打开声音；如果屏幕上是另一个会话，会先显示该会话。
 
 -----
 
@@ -68,7 +68,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
+该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件；解码通过发给页面自身的消息等待这些事件，Chromium 会在隐藏窗口中节流计时器，但不会节流消息。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
 
 | 文件 | 作用 |
 |---|---|

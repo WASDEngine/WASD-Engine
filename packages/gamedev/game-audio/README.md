@@ -38,7 +38,7 @@ The plugin needs the `tools` and `workingDirectory` services. With the `attachme
 
 | Field | Default | Meaning |
 |---|---|---|
-| `measureTimeoutMs` | `60000` | Time limit of one `audio_review` call, which waits for a window to read, decode, and measure the sound |
+| `measureTimeoutMs` | `60000` | Time a window has to read, decode, and measure one sound for `audio_review`; a call's wait behind other calls' sounds does not count |
 | `maxReviewSeconds` | `300` | Longest stretch one `audio_review` call measures, in seconds |
 | `maxPreviewBytes` | `268435456` | Largest file a window reads to measure it, 256 MiB |
 | `maxFolders` | `2000` | Folders one project walk lists, the project folder included |
@@ -49,13 +49,15 @@ The plugin needs the `tools` and `workingDirectory` services. With the `attachme
 | Tool | What it does |
 |---|---|
 | `audio_search` | Walks the project folder for WAV, MP3, Ogg Vorbis and Opus, FLAC, and AIFF files, skipping hidden folders and `node_modules`, reads each one's headers, and lists the sounds with their kind, format, encoding, channels, sample rate, length, and size, and how many of each kind each folder holds. `query` ranks names that start with it, then names and paths that contain it, then paths that hold its letters in order; `kind` (`effect`, `dialogue`, or `music`) and `folder` narrow the list; `limit` (1 to 200, default 50) and `offset` page it |
-| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid of the sound without its DC offset (none for a sound that holds nothing else), where the end meets the start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture unless `picture` is false or the model takes text only, and with `show` opens the sound in the Audio tab of the Session the user follows: a subagent's or teammate's opens in its lead's. `start` and `end` measure part of a long track, at most `maxReviewSeconds`; a sound longer than the Audio tab decodes (its `maxDecodedSeconds`, 20 minutes by default) fails with `AUDIO_TOO_LARGE` |
+| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid of the sound without its DC offset (none for a sound that holds nothing else), where the loop the game plays meets its own start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture unless `picture` is false or the model takes text only, and with `show` opens the sound in the Audio tab of the Session the user follows: a subagent's or teammate's opens in its lead's. `start` and `end` measure part of a long track, at most `maxReviewSeconds`; a sound longer than the Audio tab decodes (its `maxDecodedSeconds`, 20 minutes by default) fails with `AUDIO_TOO_LARGE` |
 
 A sound's kind comes from the first word of its file name, or of its folders from the nearest, that names one: `sfx`, `fx`, `sound`, `foley`, `ui`, or `ambience` for sound effects, `voice`, `vo`, `dialogue`, `speech`, `narrator`, or `bark` for dialogue, and `music`, `bgm`, `ost`, `soundtrack`, `song`, or `jingle` for music. A path without such a word is music from 30 seconds on and a sound effect otherwise.
 
-The review's text warns about what a game plays badly: samples that reach full scale and clip, a DC offset, a sound effect or line that starts with 50 ms or more of silence and so plays late, a seam that clicks where Godot loops the sound, channels in opposite phase, and stereo files whose channels hold the same samples.
+The review's text warns about what a game plays badly: samples that reach full scale and clip, samples that are NaN or infinite, which the figures count as silence, a peak 40 dB or more above full scale, as an unstable filter makes, a DC offset, a sound effect or line that starts with 50 ms or more of silence and so plays late, a seam that clicks where Godot loops the sound, channels in opposite phase, and stereo files whose channels hold the same samples.
 
-Agents connected through WASD Engine's MCP server reach the tools under the provider `audio`, each with a required `project`, the absolute path of the game project's folder; both are marked read-only, run in the connected agent's Session of that project, take sound paths from the `project` folder also when a game project registered above it holds the Session, and send the picture as PNG bytes after the result's text.
+The seam is that of the loop the game plays, measured from the samples on either side of its jump in the whole decoded sound, wherever the measured stretch lies: between the loop points of Godot's import, a WAV import's in sample frames and an Ogg or MP3 import's from its offset to the end of the sound, or between those a WAV file's sampler chunk stores, which Godot follows by default; a sound that nothing loops repeats whole. A ping-pong loop has no seam, and the review says when a loop lies outside the sound or its points cannot be placed, instead of measuring another seam.
+
+Agents connected through WASD Engine's MCP server reach the tools under the provider `audio`, each with a required `project`, the absolute path of the game project's folder; both are marked read-only, run in the connected agent's Session of that project, take sound paths from the `project` folder also when a game project registered above it holds the Session, and send the picture as PNG bytes after the result's text. `search_game_tools` reports the provider ready, adding while no WASD Engine window is open that `audio_review` fails until the user opens one.
 
 ### The audio module
 
@@ -65,10 +67,11 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 |---|---|
 | `audioFormatOf`, `AUDIO_EXTENSIONS` | The listed formats by lowercase extension, with the media type and whether a browser decodes the format |
 | `audioCategoryOf`, `pathWords` | The kind of a sound from its path and length |
-| `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its bit rate, and an Ogg stream's last granule position |
+| `probeAudio` | What a file's headers say, from a few small byte windows: WAV and AIFF chunks, FLAC STREAMINFO, an MP3's Xing, Info, or VBRI frame count less the LAME encoder delay and padding, or an estimate from its first frame's bit rate with the shortest length its size allows at the format's highest bit rate, and an Ogg stream's last granule position |
 | `openAiff`, `decodeAiff` | AIFF and AIFC samples, which browsers do not decode: integer PCM of 8 to 32 bits in either byte order, unsigned 8-bit, and 32-bit and 64-bit float; `openAiff` locates them and reads one at a time without copying them, and `decodeAiff` copies them all |
-| `analyzeAudio`, `integratedLoudness`, `loopSeam`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples |
+| `analyzeAudio`, `integratedLoudness`, `loopSeam`, `seamFrames`, `stereoImage`, `seamClicks` | The measurements of interleaved float samples, which count each NaN or infinite sample and read it as silence, so every figure stays finite; `loopSeam` measures a loop's seam from the frames that `seamFrames` names on either side of its jump |
 | `drawAudioImage`, `describeAudioImage` | The picture as raw RGB, and the sentence that states its panels and grid |
+| `analyzeAudioSteps`, `stereoImageSteps`, `drawAudioImageSteps`, `finish` | The same measurements and picture as generators that pause after about `STEP_FRAMES` frames or one picture column: `finish` runs one to its end at once, and the Audio tab runs them a slice at a time between the page's events |
 | `AUDIO_ERROR` | The tools' error codes, with which a window answers a request it cannot fulfil |
 
 -----
@@ -79,7 +82,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-`audio_review` resolves the path inside the project folder, checks its format and that a file is there, reads its headers and Godot import on the Host, and emits the scoped waterfall event `game-audio/measure` with the Session's Agent as scope. The request names the sound from the folder in the Session's header, against which the window resolves the Session's paths, so an agent whose working directory moved below the project folder, as after `working_directory` or for a subagent started in a subfolder, measures the file it named. The Remote events allowlist forwards the request to the windows that may read the Session; the first browser plugin that answers reads the file through `workspaceFiles.readBytes`, decodes it, measures the window, and draws the picture, and the plugin's fallback rejects with `AUDIO_NO_WINDOW` when no window answers. The Host validates every field of the answer with bounds before it reaches a result: finite numbers, at most 64 channels, and a PNG of at most 16 MiB. A window's own failure keeps its message and code, such as `AUDIO_UNREADABLE`, and names the sound as the agent named it. `show` emits `game-audio/reveal` for the root of the caller's subagent tree, found through the optional `subagents` service, or for the caller's own Session when it has no live root; the Audio tab answers by opening the sound.
+`audio_review` resolves the path inside the project folder, checks its format and that a file is there, reads its headers and Godot import on the Host, and emits the scoped waterfall event `game-audio/measure` with the Session's Agent as scope, naming the loop the game plays, in seconds, as the loop whose seam to measure. The request names the sound from the folder in the Session's header, against which the window resolves the Session's paths, so an agent whose working directory moved below the project folder, as after `working_directory` or for a subagent started in a subfolder, measures the file it named. The Remote events allowlist forwards the request to the windows that may read the Session; the first browser plugin that answers reads the file through `workspaceFiles.readBytes`, decodes it, measures the window, and draws the picture, and the plugin's fallback rejects with `AUDIO_NO_WINDOW` when no window answers. While the Host's optional `typertGateway` reports no window connected, a review fails with `AUDIO_NO_WINDOW` at once instead of emitting the request, which the gateway would keep for a window that connects later. Every window answers every request it may, one sound at a time, so the Host sends one request at a time, in the order the calls came: a call's time limit, `measureTimeoutMs`, counts from its request, not from the start of its wait behind other calls, and a call that ends while it waits leaves the line without a request. The tool has no time limit of its own. The Host validates every field of the answer with bounds before it reaches a result: finite numbers, at most 64 channels, and a PNG of at most 16 MiB. A window's own failure keeps its message and code, such as `AUDIO_UNREADABLE`, and names the sound as the agent named it. `show` emits `game-audio/reveal` for the root of the caller's subagent tree, found through the optional `subagents` service, or for the caller's own Session when it has no live root; the Audio tab answers by opening the sound.
 
 `audio_search` walks the folder on the Host and probes every listed sound, eight at a time; the plugin keeps each probe while the file's size and modification time stay the same, for as many files as `maxSounds`.
 
@@ -88,6 +91,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 | [`src/index.ts`](src/index.ts) | Config, the probe cache, the measure request and its fallback, the Session's picture attachments, tool registration, and the game MCP provider |
 | [`src/tools.ts`](src/tools.ts) | The tool definitions, their arguments, and their values |
 | [`src/describe.ts`](src/describe.ts) | The text of the results |
+| [`src/loop.ts`](src/loop.ts) | The loop the game plays, from the Godot import and the WAV file's sampler chunk |
 | [`src/scan.ts`](src/scan.ts) | The project walk |
 | [`src/files.ts`](src/files.ts) | Header probes over a file handle and the Godot import reader |
 | [`src/result.ts`](src/result.ts) | Validation of a window's answer and of a stored result's fields |
@@ -148,12 +152,12 @@ Append-only in the conversation.
 
 These limits define what the tools measure and where; they are current package constraints.
 
-- **A window decodes the sound** — `audio_review` fails while no WASD Engine window is open, because the browser decodes MP3, Ogg, and FLAC; `audio_search` works without one.
+- **A window decodes the sound** — `audio_review` fails at once while no WASD Engine window is open, because the browser decodes MP3, Ogg, and FLAC; `audio_search` works without one.
 - **Length** — a window decodes a whole sound to measure part of it, so a sound longer than the Audio tab decodes cannot be reviewed.
 - **No transcript** — a review measures dialogue but does not say what is spoken.
 - **Fixed kind words** — the kinds come from English path words and length; a project that names its folders otherwise gets sound effects and music by length.
 - **No loudness targets** — a review reports loudness and peak but does not compare sounds with each other or with a target level.
-- **Formats** — M4A, AAC, WebM, and tracker modules are not listed, and only the first loop of a WAV sampler chunk is read.
+- **Formats** — M4A, AAC, WebM, and tracker modules are not listed, and only the first loop of a WAV sampler chunk is read, as a forward loop: a review measures a seam for a ping-pong sampler loop, which Godot plays back and forth without one.
 - **Generic conversation rows** — the Web UI shows the tool calls in the generic tool row.
 
 <a id="dev-note"></a>

@@ -17,7 +17,14 @@ const MAX_PICTURE_BASE64 = Math.ceil((16 * 1024 * 1024) / 3) * 4
 /** Most channels a measurement lists. */
 const MAX_CHANNELS = 64
 
-const level = z.number().min(0).max(1e6)
+/**
+ * Largest amplitude that a measurement of 32-bit float samples reaches: the distance between the largest samples of
+ * either sign, for a float file whose samples run far beyond full scale.
+ */
+const MAX_AMPLITUDE = 2 * 3.4028234663852886e38
+
+const level = z.number().min(0).max(MAX_AMPLITUDE)
+const offset = z.number().min(-MAX_AMPLITUDE).max(MAX_AMPLITUDE)
 const seconds = z.number().min(0).max(1e9)
 const finite = z.number().min(-1e9).max(1e9)
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
@@ -35,8 +42,8 @@ const measurements = z.strictObject({
   trailingSilence: seconds,
   dominantFrequency: seconds.exactOptional(),
   spectralCentroid: seconds.exactOptional(),
-  channelLevels: z.array(z.strictObject({ peak: level, rms: level, dcOffset: finite, clipped: count })).max(MAX_CHANNELS),
-  seam: z.strictObject({ jump: level, step: level, levelChange: finite.exactOptional() }).exactOptional(),
+  channelLevels: z.array(z.strictObject({ peak: level, rms: level, dcOffset: offset, clipped: count, nonFinite: count })).max(MAX_CHANNELS),
+  seam: z.strictObject({ start: seconds, end: seconds, jump: level, step: level, levelChange: finite.exactOptional() }).exactOptional(),
   stereo: z.strictObject({
     correlation: z.number().min(-1.000_001).max(1.000_001).exactOptional(),
     balance: finite.exactOptional(),

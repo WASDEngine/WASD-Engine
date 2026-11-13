@@ -11,8 +11,11 @@ export {
   type AudioCategory, type AudioCategoryResult, type AudioCategorySource, type AudioDecoder, type AudioFormat,
 } from './formats.ts'
 export {
-  analyzeAudio, fft, integratedLoudness, LATE_START_SECONDS, loopSeam, magnitudeSpectrum, seamClicks, SILENCE_THRESHOLD, stereoImage,
-  type AudioAnalysis, type AudioSamples, type ChannelLevels, type LoopSeam, type StereoImage,
+  analyzeAudio, analyzeAudioSteps, fft, finish, integratedLoudness, LATE_START_SECONDS, loopSeam, magnitudeSpectrum, seamClicks,
+  seamFrames, SILENCE_THRESHOLD, STEP_FRAMES, stereoImage, stereoImageSteps, type AudioAnalysis, type AudioSamples, type ChannelLevels,
+  type LoopSeam, type MeasureSteps, type SeamFrames, type StereoImage,
 } from './measure.ts'
-export { describeAudioImage, drawAudioImage, IMAGE_WIDTH, type AudioImageLayout, type RgbImage } from './picture.ts'
+export {
+  describeAudioImage, drawAudioImage, drawAudioImageSteps, IMAGE_WIDTH, type AudioImage, type AudioImageLayout, type RgbImage,
+} from './picture.ts'
 export { PROBE_HEAD_BYTES, PROBE_TAIL_BYTES, probeAudio, readAiffFormat, readExtended, type AiffFormat, type AudioProbe, type ByteReader } from './probe.ts'

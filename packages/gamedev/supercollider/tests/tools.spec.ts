@@ -272,7 +272,8 @@ describe('class_info', () => {
 describe('describeAnalysis', () => {
   it('reports mono levels, unmeasurable loudness, silence below the threshold, and DC offset', () => {
     const lines = describeAnalysis({
-      seconds: 0.2, channels: [{ peak: 0.0005, rms: 0.0002, dcOffset: 0.02, clipped: 2 }], peak: 0.0005, rms: 0.0002, loudness: undefined,
+      seconds: 0.2, channels: [{ peak: 0.0005, rms: 0.0002, dcOffset: 0.02, clipped: 2, nonFinite: 0 }], peak: 0.0005, rms: 0.0002,
+      loudness: undefined,
       leadingSilence: 0.2, trailingSilence: 0.2, dominantFrequency: 1500, spectralCentroid: 900,
     })
     expect(lines).toEqual([
@@ -283,7 +284,7 @@ describe('describeAnalysis', () => {
       'Warning: the samples have a DC offset of 0.020; remove it with LeakDC.ar.',
     ])
     const quiet = describeAnalysis({
-      seconds: 2, channels: [0, 1, 2].map(() => ({ peak: 0.1, rms: 0.05, dcOffset: 0, clipped: 0 })),
+      seconds: 2, channels: [0, 1, 2].map(() => ({ peak: 0.1, rms: 0.05, dcOffset: 0, clipped: 0, nonFinite: 0 })),
       peak: 0.1, rms: 0.05, loudness: undefined,
       leadingSilence: 0, trailingSilence: 0, dominantFrequency: undefined, spectralCentroid: undefined,
     })

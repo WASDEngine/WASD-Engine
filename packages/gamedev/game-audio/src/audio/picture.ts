@@ -1,12 +1,12 @@
 /**
  * The picture of a sound that the audio tools return to agents: the waveform of each channel above a spectrogram of
  * the channel mix, on a dark background, with grid lines whose spacing {@link describeAudioImage} states. The image is
- * raw RGB, which the Host encodes as PNG and a browser draws on a canvas.
+ * raw RGB, which the Host encodes as PNG and a browser draws on a canvas, also in steps of one column each.
  *
  * @module
  */
 
-import { magnitudeSpectrum, type AudioSamples } from './measure.ts'
+import { finish, finiteSample, magnitudeSpectrum, type AudioSamples, type MeasureSteps } from './measure.ts'
 
 /** An 8-bit RGB image: `width * height` pixels of 3 bytes each, rows from top to bottom. */
 export interface RgbImage {
@@ -102,84 +102,138 @@ function heat(level: number): Color {
   return [mix(low[0], high[0]), mix(low[1], high[1]), mix(low[2], high[2])]
 }
 
-/** Sample value of a waveform panel: one channel, or the mean of all channels. */
+/** Sample value of a waveform panel: one channel, or the mean of all channels; a NaN or infinite sample counts as 0. */
 function sampleAt(audio: AudioSamples, frame: number, channel: number | undefined): number {
-  if (channel !== undefined) return audio.samples[frame * audio.channels + channel] ?? 0
+  if (channel !== undefined) return finiteSample(audio.samples[frame * audio.channels + channel])
   let mix = 0
-  for (let index = 0; index < audio.channels; index++) mix += audio.samples[frame * audio.channels + index] ?? 0
+  for (let index = 0; index < audio.channels; index++) mix += finiteSample(audio.samples[frame * audio.channels + index])
   return mix / audio.channels
 }
 
-function drawWaveform(canvas: Canvas, audio: AudioSamples, top: number, channel: number | undefined): void {
+/**
+ * Draw one column of a waveform panel: the range of the panel's samples that the column covers, red where it reaches
+ * full scale.
+ * @param canvas - the image.
+ * @param audio - interleaved samples.
+ * @param middle - the panel's middle row.
+ * @param column - the column, from the panel's left edge.
+ * @param channel - the panel's channel, or undefined for the channel mix.
+ */
+function drawWaveformColumn(canvas: Canvas, audio: AudioSamples, middle: number, column: number, channel: number | undefined): void {
+  const width = canvas.width - 2 * GAP
+  const scale = WAVEFORM_HEIGHT / 2 - 1
+  const start = Math.floor(column * audio.frames / width)
+  const end = Math.max(start + 1, Math.floor((column + 1) * audio.frames / width))
+  if (start >= audio.frames) return
+  let low = Infinity
+  let high = -Infinity
+  let clipped = false
+  for (let frame = start; frame < Math.min(end, audio.frames); frame++) {
+    const value = sampleAt(audio, frame, channel)
+    low = Math.min(low, value)
+    high = Math.max(high, value)
+    if (Math.abs(value) >= 1) clipped = true
+  }
+  const color = clipped ? CLIP : WAVE
+  const y1 = middle - Math.round(Math.min(1, high) * scale)
+  const y2 = middle - Math.round(Math.max(-1, low) * scale)
+  for (let y = y1; y <= y2; y++) canvas.set(GAP + column, y, color)
+}
+
+/**
+ * Draw a waveform panel, one column a step.
+ * @param canvas - the image.
+ * @param audio - interleaved samples.
+ * @param top - the panel's top row.
+ * @param channel - the panel's channel, or undefined for the channel mix.
+ * @returns the steps.
+ */
+function* drawWaveformSteps(canvas: Canvas, audio: AudioSamples, top: number, channel: number | undefined): MeasureSteps<undefined> {
   const width = canvas.width - 2 * GAP
   canvas.fill(GAP, top, width, WAVEFORM_HEIGHT, PANEL)
   const middle = top + Math.floor(WAVEFORM_HEIGHT / 2)
-  const scale = WAVEFORM_HEIGHT / 2 - 1
   for (let column = 0; column < width; column++) canvas.set(GAP + column, middle, GRID)
   for (let column = 0; column < width; column++) {
-    const start = Math.floor(column * audio.frames / width)
-    const end = Math.max(start + 1, Math.floor((column + 1) * audio.frames / width))
-    if (start >= audio.frames) break
-    let low = Infinity
-    let high = -Infinity
-    let clipped = false
-    for (let frame = start; frame < Math.min(end, audio.frames); frame++) {
-      const value = sampleAt(audio, frame, channel)
-      low = Math.min(low, value)
-      high = Math.max(high, value)
-      if (Math.abs(value) >= 1) clipped = true
-    }
-    const color = clipped ? CLIP : WAVE
-    const y1 = middle - Math.round(Math.min(1, high) * scale)
-    const y2 = middle - Math.round(Math.max(-1, low) * scale)
-    for (let y = y1; y <= y2; y++) canvas.set(GAP + column, y, color)
+    drawWaveformColumn(canvas, audio, middle, column, channel)
+    yield
   }
+  return undefined
 }
 
-function drawSpectrogram(canvas: Canvas, audio: AudioSamples, top: number): void {
+/** The bins of the spectrogram's rows: each row covers a band of the logarithmic axis, from its first bin to its last. */
+type SpectrogramRows = readonly { readonly first: number; readonly last: number }[]
+
+/**
+ * Draw one column of the spectrogram: in each row the strongest bin inside its band, or the nearest bin.
+ * @param canvas - the image.
+ * @param audio - interleaved samples.
+ * @param top - the panel's top row.
+ * @param rows - the bins of each row.
+ * @param column - the column, from the panel's left edge.
+ */
+function drawSpectrogramColumn(canvas: Canvas, audio: AudioSamples, top: number, rows: SpectrogramRows, column: number): void {
+  const width = canvas.width - 2 * GAP
+  const full = SPECTROGRAM_SIZE / 4
+  const spectrum = magnitudeSpectrum(audio, Math.floor((column + 0.5) * audio.frames / width), SPECTROGRAM_SIZE)
+  rows.forEach(({ first, last }, row) => {
+    let magnitude = 0
+    for (let bin = first; bin <= last; bin++) magnitude = Math.max(magnitude, spectrum[bin] ?? 0)
+    const level = magnitude <= 0 ? 0 : 1 + 20 * Math.log10(magnitude / full) / RANGE_DB
+    canvas.set(GAP + column, top + row, heat(level))
+  })
+}
+
+/**
+ * Draw the spectrogram panel of the channel mix, one column a step, then its frequency lines.
+ * @param canvas - the image.
+ * @param audio - interleaved samples.
+ * @param top - the panel's top row.
+ * @returns the steps.
+ */
+function* drawSpectrogramSteps(canvas: Canvas, audio: AudioSamples, top: number): MeasureSteps<undefined> {
   const width = canvas.width - 2 * GAP
   const nyquist = audio.sampleRate / 2
   const binWidth = audio.sampleRate / SPECTROGRAM_SIZE
-  const full = SPECTROGRAM_SIZE / 4
   const span = Math.log(nyquist / LOWEST_FREQUENCY)
-  // Each row covers a band of the logarithmic axis; it shows the strongest bin inside the band, or the nearest bin.
-  const rows = Array.from({ length: SPECTROGRAM_HEIGHT }, (_, row) => {
+  const rows: SpectrogramRows = Array.from({ length: SPECTROGRAM_HEIGHT }, (_, row) => {
     const upper = LOWEST_FREQUENCY * Math.exp(span * (1 - row / SPECTROGRAM_HEIGHT))
     const lower = LOWEST_FREQUENCY * Math.exp(span * (1 - (row + 1) / SPECTROGRAM_HEIGHT))
     const first = Math.round(lower / binWidth)
     return { first, last: Math.max(first, Math.round(upper / binWidth)) }
   })
   for (let column = 0; column < width; column++) {
-    const spectrum = magnitudeSpectrum(audio, Math.floor((column + 0.5) * audio.frames / width), SPECTROGRAM_SIZE)
-    rows.forEach(({ first, last }, row) => {
-      let magnitude = 0
-      for (let bin = first; bin <= last; bin++) magnitude = Math.max(magnitude, spectrum[bin] ?? 0)
-      const level = magnitude <= 0 ? 0 : 1 + 20 * Math.log10(magnitude / full) / RANGE_DB
-      canvas.set(GAP + column, top + row, heat(level))
-    })
+    drawSpectrogramColumn(canvas, audio, top, rows, column)
+    yield
   }
   for (const frequency of FREQUENCY_LINES) {
     if (frequency >= nyquist) continue
     const row = Math.round(SPECTROGRAM_HEIGHT * (1 - Math.log(frequency / LOWEST_FREQUENCY) / span))
     for (let column = 0; column < width; column += 4) canvas.set(GAP + column, top + row, GRID)
   }
+  return undefined
+}
+
+/** A drawn picture: the RGB image and what it shows. */
+export interface AudioImage {
+  readonly image: RgbImage
+  readonly layout: AudioImageLayout
 }
 
 /**
- * Draw the waveform and spectrogram of an audio window.
+ * Draw the waveform and spectrogram of an audio window in steps, one column of a panel each.
  * @param audio - interleaved samples.
- * @returns the RGB image and what it shows.
+ * @returns the steps, which end with the picture.
  */
-export function drawAudioImage(audio: AudioSamples): { readonly image: RgbImage; readonly layout: AudioImageLayout } {
+export function* drawAudioImageSteps(audio: AudioSamples): MeasureSteps<AudioImage> {
   const panels = audio.channels <= MAX_WAVEFORM_PANELS ? audio.channels : 1
   const height = GAP + panels * (WAVEFORM_HEIGHT + GAP) + SPECTROGRAM_HEIGHT + GAP
   const canvas = new Canvas(IMAGE_WIDTH, height)
   canvas.fill(0, 0, IMAGE_WIDTH, height, BACKGROUND)
   for (let panel = 0; panel < panels; panel++) {
-    drawWaveform(canvas, audio, GAP + panel * (WAVEFORM_HEIGHT + GAP), panels === audio.channels ? panel : undefined)
+    yield* drawWaveformSteps(canvas, audio, GAP + panel * (WAVEFORM_HEIGHT + GAP), panels === audio.channels ? panel : undefined)
   }
   const spectrogramTop = GAP + panels * (WAVEFORM_HEIGHT + GAP)
-  drawSpectrogram(canvas, audio, spectrogramTop)
+  yield* drawSpectrogramSteps(canvas, audio, spectrogramTop)
   const seconds = audio.frames / audio.sampleRate
   const step = timeStep(seconds)
   const width = IMAGE_WIDTH - 2 * GAP
@@ -191,6 +245,15 @@ export function drawAudioImage(audio: AudioSamples): { readonly image: RgbImage;
     image: { width: IMAGE_WIDTH, height, pixels: canvas.pixels },
     layout: { width: IMAGE_WIDTH, height, waveformPanels: panels === audio.channels ? 'channels' : 'mix', timeStep: step, nyquist: audio.sampleRate / 2 },
   }
+}
+
+/**
+ * Draw the waveform and spectrogram of an audio window.
+ * @param audio - interleaved samples.
+ * @returns the RGB image and what it shows.
+ */
+export function drawAudioImage(audio: AudioSamples): AudioImage {
+  return finish(drawAudioImageSteps(audio))
 }
 
 function formatFrequency(hertz: number): string {

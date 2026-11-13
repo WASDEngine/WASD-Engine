@@ -4,6 +4,7 @@
  * request, validates the answer, stores the picture for a model that accepts images, reports the figures with how
  * Godot imports the sound, and opens it in the Audio tab.
  */
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -11,7 +12,8 @@ import type { ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import { describeAudioImage } from '../src/audio/picture.ts'
 import { Config } from '../src/index.ts'
 import { NO_WINDOW_MESSAGE, windowPath } from '../src/tools.ts'
-import { callTool, compose, fakeAgent, JUMP, PIXEL_PNG, text, type Composition } from './composition.ts'
+import { atLoop, callTool, compose, fakeAgent, JUMP, PIXEL_PNG, text, type Composition } from './composition.ts'
+import { aiff, pcmWav } from './signals.ts'
 
 let composition: Composition | undefined
 
@@ -76,16 +78,36 @@ describe('audio_search', () => {
     const c = await composed({ maxSounds: 2 })
     expect(text(await callTool(c, 'audio_search'))).toContain('some sounds are missing; narrow it with folder.')
   })
+
+  it('lists AIFF files whose headers state no usable rate without their header facts, and the other sounds as before', async () => {
+    const c = await composed()
+    const samples = new Array<number>(200).fill(0)
+    // A rate beyond a double, which reads as NaN, and one so small that 100 frames last forever.
+    await writeFile(join(c.work, 'audio/sfx/overflow.aif'), aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples, rateBytes: [0x7f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0] }))
+    await writeFile(join(c.work, 'audio/sfx/tiny.aif'), aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples, rateBytes: [0x3c, 0x00, 0x80, 0, 0, 0, 0, 0, 0, 0] }))
+    const result = await callTool(c, 'audio_search', { folder: 'audio/sfx' })
+    expect(result.isError, text(result)).toBeFalsy()
+    expect(text(result).split('\n').slice(0, 5)).toEqual([
+      `4 sounds in audio/sfx in ${c.work}: 4 sound effects.`,
+      '- audio/sfx/coin.wav: sound effect; WAV, 16-bit PCM, stereo, 44.1 kHz, 0.400 s, 68.9 KB',
+      '- audio/sfx/jump.wav: sound effect; WAV, 16-bit PCM, mono, 48 kHz, 0.620 s, 58.2 KB',
+      '- audio/sfx/overflow.aif: sound effect; AIFF, 254 B',
+      '- audio/sfx/tiny.aif: sound effect; AIFF, 254 B',
+    ])
+  })
 })
 
 describe('audio_review', () => {
   it('asks the window to measure the sound and reports its figures, warnings, Godot import, and picture', async () => {
     const c = await composed()
-    c.openWindow({ measurements: JUMP, picture: { data: PIXEL_PNG, mediaType: 'image/png', layout: LAYOUT } })
+    c.openWindow(request => ({ measurements: atLoop(JUMP, request), picture: { data: PIXEL_PNG, mediaType: 'image/png', layout: LAYOUT } }))
     const result = await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav' })
     expect(result.isError, JSON.stringify(result.content)).toBeFalsy()
     expect(c.requests).toHaveLength(1)
-    expect(c.requests[0]).toMatchObject({ path: 'audio/sfx/coin.wav', start: 0, maxSeconds: 300, picture: true, maxBytes: 256 * 1024 * 1024 })
+    // Godot loops the sound from frame 441, at 44.1 kHz, to its end.
+    expect(c.requests[0]).toMatchObject({
+      path: 'audio/sfx/coin.wav', start: 0, maxSeconds: 300, picture: true, maxBytes: 256 * 1024 * 1024, loop: { start: 0.01 },
+    })
     expect(c.requests[0]?.end).toBeUndefined()
     expect(c.requests[0]?.agent?.id).toBe('owner')
     expect(text(result)).toBe([
@@ -96,8 +118,8 @@ describe('audio_review', () => {
       'Silence below -60 dBFS: 0.080 s at the start, 0.020 s at the end.',
       'Warning: the sound starts 0.080 s into the file, so it plays late when the game triggers it; trim the start.',
       'Spectrum: strongest component 440.0 Hz, centroid 2.31 kHz.',
-      'Loop seam: the end meets the start with a step of 0.420 of full scale, 14 times the usual step between samples, so it clicks at every repeat.',
-      'The last 50 ms are 9.5 dB quieter than the first 50 ms, so a repeat jumps up in level.',
+      'Loop seam: the loop\'s end at 0.400 s meets its start at 0.010 s with a step of 0.420 of full scale, 14 times the usual step between samples there, so it clicks at every repeat.',
+      'The loop\'s last 50 ms are 9.5 dB quieter than its first 50 ms, so a repeat jumps up in level.',
       'Warning: Godot loops this sound, so the click plays in the game; cross-fade the ends or cut at zero crossings.',
       'Stereo: correlation -0.60, 6.0 dB louder on the left. Warning: the channels are largely out of phase, so the sound cancels itself when mixed to mono.',
       'Warning: 12 samples of the left channel reach full scale and clip; lower the level and export it again.',
@@ -114,7 +136,7 @@ describe('audio_review', () => {
     const c = await composed({ maxReviewSeconds: 60 })
     const silent = {
       ...JUMP, channels: 1, peak: 0, rms: 0, leadingSilence: 0.4, trailingSilence: 0.4,
-      channelLevels: [{ peak: 0, rms: 0, dcOffset: 0, clipped: 0 }],
+      channelLevels: [{ peak: 0, rms: 0, dcOffset: 0, clipped: 0, nonFinite: 0 }],
     }
     const { loudness: _loudness, dominantFrequency: _dominant, spectralCentroid: _centroid, seam: _seam, stereo: _stereo, ...plain } =
       silent
@@ -136,12 +158,68 @@ describe('audio_review', () => {
 
   it('says when a WAV import follows loop points the file lacks, and leaves the seam\'s level change out for a one-shot sound', async () => {
     const c = await composed()
-    c.openWindow({ measurements: JUMP })
+    c.openWindow(request => ({ measurements: atLoop(JUMP, request) }))
     const text_ = text(await callTool(c, 'audio_review', { path: 'audio/voice/hero_hello.wav', picture: false }))
+    expect(c.requests[0]?.loop).toEqual({ start: 0 })
     expect(text_).toContain('Godot imports it (wav) to follow the file\'s own loop points, and the file stores none, so it plays once.')
     expect(text_).toContain('Loop seam: the end meets the start with a step of 0.420 of full scale')
     expect(text_).not.toContain('The last 50 ms are')
     expect(text_).not.toContain('Warning: Godot loops this sound')
+  })
+
+  it('measures the seam of the loop that plays, wherever the measured stretch lies, or says why it has none', async () => {
+    const c = await composed()
+    // A six-minute track reviewed for its first five minutes: the seam is still where the track's end meets its start.
+    const track = { ...JUMP, seconds: 360, start: 0, end: 300, seam: { start: 0, end: 360, jump: 0.01, step: 0.02 } }
+    c.openWindow(request => ({ measurements: atLoop(track, request) }))
+    const review = async (path: string, importFile?: string): Promise<string> => {
+      if (importFile !== undefined) await writeFile(join(c.work, `${path}.import`), `[remap]\nimporter="${importFile.split('\n')[0] ?? ''}"\n[params]\n${importFile.split('\n').slice(1).join('\n')}\n`)
+      const result = await callTool(c, 'audio_review', { path, picture: false })
+      expect(result.isError, text(result)).toBeFalsy()
+      return text(result).split('\n').filter(line => line.startsWith('Loop seam') || line.includes('Godot loops')).join('\n')
+    }
+    await writeFile(join(c.work, 'audio/theme.ogg'), 'OggS')
+    expect(await review('audio/theme.ogg', 'oggvorbisstr\nloop=true')).toBe('Loop seam: the end meets the start without a click.')
+    expect(c.requests.at(-1)?.loop).toEqual({ start: 0 })
+    // Godot's loop offset: from 12 s to the end.
+    expect(await review('audio/theme.ogg', 'oggvorbisstr\nloop=true\nloop_offset=12.0'))
+      .toBe('Loop seam: the loop\'s end at 6:00.0 meets its start at 12.000 s without a click.')
+    expect(c.requests.at(-1)?.loop).toEqual({ start: 12 })
+    // An offset past the end of the track has no seam to measure.
+    expect(await review('audio/theme.ogg', 'oggvorbisstr\nloop=true\nloop_offset=400.0'))
+      .toBe('Loop seam: not measured, since the loop Godot imports starts at 6:40.0, not before its end at 6:00.0.')
+    // A WAV import's loop end past the end of the sound, in frames at 48 kHz.
+    expect(await review('audio/sfx/jump.wav', 'wav\nedit/loop_mode=2\nedit/loop_begin=4800\nedit/loop_end=24000000'))
+      .toBe('Loop seam: not measured, since the loop Godot imports ends at 8:20.0, past the end of the sound at 6:00.0.')
+    expect(c.requests.at(-1)?.loop).toEqual({ start: 0.1, end: 500 })
+    // A ping-pong loop turns at its ends without a jump, so the window measures none.
+    expect(await review('audio/sfx/jump.wav', 'wav\nedit/loop_mode=3\nedit/loop_begin=4800'))
+      .toBe('Loop seam: none, since Godot plays the loop forward and then backward, turning at its ends without a jump.')
+    expect(c.requests.at(-1)?.loop).toBeUndefined()
+    // The loop a WAV file's sampler chunk stores, which Godot follows by default.
+    await writeFile(join(c.work, 'audio/sfx/hum.wav'), pcmWav({ sampleRate: 48_000, frames: 48_000, loop: [24_000, 47_999] }))
+    expect(await review('audio/sfx/hum.wav')).toBe('Loop seam: the loop\'s end at 1.000 s meets its start at 0.500 s without a click.')
+    expect(c.requests.at(-1)?.loop).toEqual({ start: 0.5, end: 47_999 / 48_000 })
+  })
+
+  it('warns of samples that are NaN, infinite, or far beyond full scale, which a window measures as finite figures', async () => {
+    const c = await composed()
+    // A float render from a filter that blew up: two NaN samples and one far over full scale on the left, one clipped
+    // sample on the right.
+    const left = { peak: 2e6, rms: 900, dcOffset: 250, clipped: 40, nonFinite: 2 }
+    const right = { peak: 1.5, rms: 0.1, dcOffset: 0, clipped: 1, nonFinite: 1 }
+    c.openWindow({ measurements: { ...JUMP, peak: 2e6, rms: 640, channelLevels: [left, right] } })
+    const result = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })
+    expect(result.isError, text(result)).toBeFalsy()
+    const lines = text(result).split('\n')
+    expect(lines).toContain('Levels: peak 126.0 dBFS (left 126.0 dBFS peak, right 3.5 dBFS peak), RMS 56.1 dBFS, loudness -14.3 LUFS.')
+    expect(lines.filter(line => line.startsWith('Warning: ') && !line.includes('late') && !line.includes('Godot'))).toEqual([
+      'Warning: 2 samples of the left channel are NaN or infinite, which no player can play; the figures count them as silence. Fix what made them, such as an unstable filter, and export the sound again.',
+      'Warning: the left channel peaks at 126.0 dBFS, far beyond full scale, as an unstable filter or a wrong gain makes; find the cause and export the sound again.',
+      'Warning: the samples of the left channel have a DC offset of 250.000, which thumps when the sound starts and stops; filter it out with a high-pass.',
+      'Warning: 1 sample of the right channel is NaN or infinite, which no player can play; the figures count it as silence. Fix what made it, such as an unstable filter, and export the sound again.',
+      'Warning: 1 sample of the right channel reaches full scale and clips; lower the level and export it again.',
+    ])
   })
 
   it('names the sound\'s place in the project, its format, and its existence before asking a window', async () => {
@@ -221,6 +299,69 @@ describe('audio_review below the project folder and for subagents', () => {
 })
 
 describe('the window round-trip', () => {
+  it('sends the window one review at a time, each within its own time limit however many wait', async () => {
+    const c = await composed({ measureTimeoutMs: 1000 })
+    let open = 0
+    let most = 0
+    let previous: Promise<unknown> = Promise.resolve()
+    // The window measures one sound at a time, 400 ms each, as a WASD Engine window does: the third of three sent at once
+    // would take 1200 ms.
+    c.openWindow((request) => {
+      open += 1
+      most = Math.max(most, open)
+      const answer = previous.then(async () => {
+        await new Promise((resolve) => { setTimeout(resolve, 400) })
+        open -= 1
+        return { measurements: atLoop(JUMP, request) }
+      })
+      previous = answer
+      return answer
+    })
+    const results = await Promise.all([0, 1, 2].map(() => callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })))
+    for (const result of results) expect(result.isError, text(result)).toBeFalsy()
+    expect(c.requests).toHaveLength(3)
+    expect(most).toBe(1)
+  })
+
+  it('drops a review whose call ends while it waits, without asking the window, and runs the next', async () => {
+    const c = await composed()
+    // Each review asks whether a window is connected when it reaches the window's line.
+    let reached = 0
+    c.ctx.provide('typertGateway', { hasLiveClient: () => { reached += 1; return true } } as never)
+    const release = Promise.withResolvers<undefined>()
+    c.openWindow(async (request) => {
+      if (c.requests.length === 1) await release.promise
+      return { measurements: atLoop(JUMP, request) }
+    })
+    const first = callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })
+    await vi.waitFor(() => { expect(c.requests).toHaveLength(1) })
+    const ended = new AbortController()
+    const second = callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false }, c.agent, ended.signal)
+    await vi.waitFor(() => { expect(reached).toBe(3) })
+    // The second review waits behind the first instead of going to the window.
+    expect(c.requests).toHaveLength(1)
+    ended.abort(new Error('the turn was cancelled'))
+    expect((await second).isError).toBe(true)
+    release.resolve(undefined)
+    expect((await first).isError).toBeFalsy()
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: false })).isError).toBeFalsy()
+    expect(c.requests.map(request => request.path)).toEqual(['audio/sfx/jump.wav', 'audio/sfx/coin.wav'])
+  })
+
+  it('fails at once while no window is connected, and asks the window once one is', async () => {
+    const c = await composed()
+    c.openWindow({ measurements: JUMP })
+    let connected = false
+    c.ctx.provide('typertGateway', { hasLiveClient: () => connected } as never)
+    const started = performance.now()
+    expect(failure(await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' }))).toEqual({ message: NO_WINDOW_MESSAGE, code: 'AUDIO_NO_WINDOW' })
+    expect(performance.now() - started).toBeLessThan(10_000)
+    expect(c.requests).toEqual([])
+    connected = true
+    expect((await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' })).isError).toBeFalsy()
+    expect(c.requests).toHaveLength(1)
+  })
+
   it('ends a review whose window never answers at the time limit, also without a tool time limit', async () => {
     const c = await composed({ measureTimeoutMs: 50 })
     c.openWindow(() => new Promise<never>(() => {}))

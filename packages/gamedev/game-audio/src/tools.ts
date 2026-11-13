@@ -1,10 +1,10 @@
 /**
  * The model-facing audio tools: `audio_search` lists the game project's sound effects, dialogue, and music with what
  * their headers say, and `audio_review` has a WASD Engine window decode one sound as its Audio tab plays it, then
- * reports its levels, loudness, silence, spectrum, loop seam, and stereo image with a picture of its waveform and
- * spectrogram, how Godot imports it, and, when asked, opens it in the user's Audio tab. One set of definitions serves
- * one {@link AudioToolSurface}: the Session's own agent, whose picture becomes an attachment for its model, or agents
- * connected through WASD Engine's MCP server, whose picture travels as image bytes.
+ * reports its levels, loudness, silence, spectrum, the seam of the loop the game plays, and stereo image with a picture
+ * of its waveform and spectrogram, how Godot imports it, and, when asked, opens it in the user's Audio tab. One set of
+ * definitions serves one {@link AudioToolSurface}: the Session's own agent, whose picture becomes an attachment for its
+ * model, or agents connected through WASD Engine's MCP server, whose picture travels as image bytes.
  * @module @deepseek-ai/dsh-game-audio/src/tools
  */
 import type { Stats } from 'node:fs'
@@ -22,6 +22,7 @@ import type { AudioProbe } from './audio/probe.ts'
 import { describeReview, describeSearch, type ListedFolder, type ListedSound } from './describe.ts'
 import { AUDIO_ERROR } from './audio/errors.ts'
 import { mapLimited, PROBE_CONCURRENCY, readGodotImport } from './files.ts'
+import { playedLoop } from './loop.ts'
 import { parseReviewJson } from './result.ts'
 import { NAME_ORDER, scanSounds, type SoundFile, type SoundScanLimits } from './scan.ts'
 import type { AudioMeasureRequest, AudioMeasureResult, AudioPicture, AudioReveal } from './types.ts'
@@ -36,9 +37,6 @@ export const DEFAULT_LIMIT = 50
 /** Most sounds one `audio_search` call lists. */
 export const MAX_LIMIT = 200
 
-/** Time a review's tool time limit leaves past the window's, so the window's more specific failure reaches the agent. */
-const WINDOW_GRACE_MS = 5000
-
 /** Most folders `audio_search` lists with their counts. */
 const LISTED_FOLDERS = 40
 
@@ -46,8 +44,6 @@ const LISTED_FOLDERS = 40
 export interface AudioToolHost {
   /** Caps of the project walk. */
   readonly scanLimits: SoundScanLimits
-  /** Time limit of one `audio_review` call in milliseconds. */
-  readonly measureTimeoutMs: number
   /** Longest window one `audio_review` call measures, in seconds. */
   readonly maxReviewSeconds: number
   /** Largest file a window reads to measure it, in bytes. */
@@ -66,12 +62,19 @@ export interface AudioToolHost {
    */
   probe(absolute: string, file: Pick<SoundFile, 'bytes' | 'modified'>): Promise<AudioProbe | undefined>
   /**
-   * Ask a WASD Engine window that may read the Agent's Session to decode and measure a sound.
+   * Whether a WASD Engine window is connected to decode sounds.
+   * @returns false when the Host knows that none is; true when one is, or when the Host cannot tell.
+   */
+  windowConnected(): boolean
+  /**
+   * Ask a WASD Engine window that may read the Agent's Session to decode and measure a sound, once the requests of
+   * earlier calls settled: the windows measure one sound at a time, and the time limit counts from the request.
    * @param agent - the calling Agent; its Session's workspace holds the sound.
    * @param request - the sound and what to measure.
-   * @param signal - the call's cancellation.
+   * @param signal - the call's cancellation, which also ends its wait behind earlier calls.
    * @returns the window's validated answer.
-   * @throws {HarnessError} `AUDIO_NO_WINDOW` when no window answers, or the window's failure.
+   * @throws {HarnessError} `AUDIO_NO_WINDOW` at once while no window is connected, and when no window answers in time;
+   * or the window's failure.
    */
   measure(agent: Agent, request: AudioMeasureRequest, signal: AbortSignal): Promise<AudioMeasureResult>
   /**
@@ -390,8 +393,8 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
     },
   }), defineTool({
     name: 'audio_review',
-    description: 'Measure one sound of the game project as the user hears it in WASD Engine\'s Audio panel, since you cannot listen to it: its length and format, peak and RMS levels, loudness in LUFS, clipping, DC offset, silence at the start and end, strongest frequency and spectral centroid, whether its end joins its start without a click when it repeats, how its stereo channels relate, and how Godot imports it, with a picture of its waveform and spectrogram. '
-      + `Pass start and end to measure part of a long track; one call measures at most ${String(host.maxReviewSeconds)} seconds. Set show to open the sound in the user's Audio panel so they can listen to it.`,
+    description: 'Measure one sound of the game project as the user hears it in WASD Engine\'s Audio panel, since you cannot listen to it: its length and format, peak and RMS levels, loudness in LUFS, clipping, DC offset, silence at the start and end, strongest frequency and spectral centroid, whether it clicks where it repeats, at the loop points Godot plays or else where its end meets its start, how its stereo channels relate, and how Godot imports it, with a picture of its waveform and spectrogram. '
+      + `Pass start and end to measure part of a long track; one call measures at most ${String(host.maxReviewSeconds)} seconds, and the loop is measured wherever it lies. Set show to open the sound in the user's Audio panel so they can listen to it.`,
     parameters: {
       path: { type: 'string', required: true, description: 'The sound, relative to the project folder or absolute inside it, such as "audio/sfx/jump.wav".' },
       start: { type: 'number', description: 'Seconds into the sound where the measurement starts. Default: 0.' },
@@ -403,7 +406,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
       schema: REVIEW_SCHEMA,
       render: (_args, value) => renderReview(value),
     },
-    timeoutMs: host.measureTimeoutMs + WINDOW_GRACE_MS,
+    // No tool time limit: a call may wait behind others' reviews, and the window's own time limit bounds each review.
     isConcurrencySafe: () => true,
     async execute(args, exec): Promise<ReviewValue> {
       const agent = exec.agent
@@ -424,6 +427,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
         args.picture === false ? Promise.resolve(false) : surface.seesImages(exec),
       ])
       const sent = windowPath(agent.session.header.cwd, target.absolute)
+      const loop = playedLoop(godot, probe)
       let answer: AudioMeasureResult
       try {
         answer = await host.measure(agent, {
@@ -432,6 +436,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
           maxSeconds: host.maxReviewSeconds,
           picture: images,
           maxBytes: host.maxPreviewBytes,
+          ...loop.kind === 'jump' ? { loop: loop.stretch } : {},
         }, exec.signal)
       } catch (error) {
         // The window names the sound as it reads it, which an agent working below the project folder names otherwise.

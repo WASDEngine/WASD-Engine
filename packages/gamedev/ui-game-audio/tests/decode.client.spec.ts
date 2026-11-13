@@ -10,15 +10,18 @@ import type { WorkspaceFileBytes } from '@deepseek-ai/dsh-api-workspace-files/ty
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerMeasure } from '../src/client/agent.ts'
-import { decodeSound, measureSound, pictureOf, SoundError } from '../src/client/decode.ts'
+import { decodeSound, measureSound, pictureOf, SoundError, WHOLE_SOUND } from '../src/client/decode.ts'
 import { readSound, type ReadBytes, type SoundFile } from '../src/client/read.ts'
-import { aiffFile, FakeOfflineAudioContext, installWebAudio, wavFile } from './webaudio.client.ts'
+import { aiffFile, FakeAudioBuffer, FakeOfflineAudioContext, installWebAudio, vbrMp3File, wavFile } from './webaudio.client.ts'
 
 const WAV = { label: 'WAV', mediaType: 'audio/wav', decoder: 'browser' } as const
 const AIFF = { label: 'AIFF', mediaType: 'audio/aiff', decoder: 'aiff' } as const
 
 /** A decode that may run as long as the Audio tab's default and is never cancelled. */
 const BOUNDS = { maxSeconds: 1200, signal: new AbortController().signal }
+
+/** The signal of a measurement or drawing that is never cancelled. */
+const SIGNAL = BOUNDS.signal
 
 /** A 100 Hz tone at half scale, 0.5 s at 8 kHz in two identical channels. */
 function tone(): number[] {
@@ -43,16 +46,39 @@ describe('decodeSound and measureSound', () => {
   it('decodes at the rate the headers name and measures what audio_review reports', async () => {
     const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
     expect(FakeOfflineAudioContext.rates).toEqual([8000])
-    const { measurements, samples } = measureSound(buffer, 0, undefined, 300)
+    const { measurements, samples } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
     expect(samples).toMatchObject({ sampleRate: 8000, channels: 2, frames: 4000 })
     expect(measurements).toMatchObject({ sampleRate: 8000, channels: 2, seconds: 0.5, start: 0, end: 0.5, stereo: { identical: true } })
     expect(measurements.peak).toBeCloseTo(0.5, 3)
     expect(measurements.dominantFrequency).toBeCloseTo(100, 0)
     expect(measurements.loudness).toBeDefined()
+    expect(measurements.seam).toMatchObject({ start: 0, end: 0.5 })
     expect(measurements.seam?.jump).toBeLessThan(0.05)
-    expect(measureSound(buffer, 0.1, 0.2, 300).measurements).toMatchObject({ start: 0.1, end: 0.2 })
-    expect(measureSound(buffer, 0, undefined, 0.25).measurements.end).toBe(0.25)
-    expect(() => measureSound(buffer, 0.5, undefined, 300)).toThrow(SoundError)
+    const middle = await measureSound(buffer, { start: 0.1, end: 0.2, maxSeconds: 300 }, SIGNAL)
+    expect(middle.measurements).toMatchObject({ start: 0.1, end: 0.2 })
+    expect((await measureSound(buffer, { start: 0, maxSeconds: 0.25 }, SIGNAL)).measurements.end).toBe(0.25)
+    await expect(measureSound(buffer, { start: 0.5, maxSeconds: 300 }, SIGNAL)).rejects.toThrow(SoundError)
+  })
+
+  it('measures the seam where the requested loop meets its start in the whole sound, whatever stretch it measures', async () => {
+    // A second of 100 Hz at 8 kHz, whole cycles, whose last 10 ms hold 0.8: the sound clicks where it repeats whole,
+    // while its first half alone would meet its own start without one.
+    const buffer = new FakeAudioBuffer({ length: 8000, numberOfChannels: 1, sampleRate: 8000 })
+    const plane = buffer.getChannelData(0)
+    for (let frame = 0; frame < 8000; frame++) plane[frame] = frame >= 7920 ? 0.8 : 0.5 * Math.sin(2 * Math.PI * 100 * frame / 8000)
+    const firstHalf = { start: 0, maxSeconds: 0.5 }
+    const seamOf = async (stretch: Parameters<typeof measureSound>[1]) => (await measureSound(buffer, stretch, SIGNAL)).measurements
+    const whole = await seamOf({ ...firstHalf, loop: WHOLE_SOUND })
+    expect(whole).toMatchObject({ start: 0, end: 0.5, seam: { start: 0, end: 1 } })
+    expect(whole.seam?.jump).toBeCloseTo(0.8, 5)
+    // A loop inside the sound, from 0.25 s to 0.75 s: whole cycles, so its ends meet without a jump.
+    const inner = await seamOf({ start: 0.9, end: 1, maxSeconds: 300, loop: { start: 0.25, end: 0.75 } })
+    expect(inner.seam).toMatchObject({ start: 0.25, end: 0.75 })
+    expect(inner.seam?.jump).toBeLessThan(0.05)
+    // No seam for no loop, a loop past the end of the sound, or one of fewer than two frames.
+    expect((await seamOf(firstHalf)).seam).toBeUndefined()
+    expect((await seamOf({ ...firstHalf, loop: { start: 0.5, end: 2 } })).seam).toBeUndefined()
+    expect((await seamOf({ ...firstHalf, loop: { start: 0.5, end: 0.5001 } })).seam).toBeUndefined()
   })
 
   it('decodes at 48 kHz without a rate, AIFF with its own reader, and names a file that does not decode', async () => {
@@ -71,6 +97,21 @@ describe('decodeSound and measureSound', () => {
     expect(String(failure)).toContain('The WAV file could not be decoded (Unable to decode audio data)')
   })
 
+  it('measures NaN, infinite, and far over full scale samples as finite figures that the audio tools accept', async () => {
+    // A float render from a filter that blew up: a tone with a NaN, an infinite, and a huge sample.
+    const buffer = new FakeAudioBuffer({ length: 8000, numberOfChannels: 1, sampleRate: 8000 })
+    const plane = buffer.getChannelData(0)
+    for (let frame = 0; frame < 8000; frame++) plane[frame] = 0.5 * Math.sin(2 * Math.PI * 100 * frame / 8000)
+    plane[100] = Number.NaN
+    plane[200] = Number.POSITIVE_INFINITY
+    plane[300] = 2e6
+    const { measurements } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
+    expect(measurements.channelLevels[0]).toMatchObject({ nonFinite: 2, peak: 2e6 })
+    // The answer crosses the Remote as JSON, which holds no NaN or infinity.
+    expect(JSON.parse(JSON.stringify(measurements))).toEqual(measurements)
+    expect(parseMeasureResult({ measurements }).measurements).toEqual(measurements)
+  })
+
   it('draws the picture as a PNG with its layout', async () => {
     const drawn: number[] = []
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
@@ -79,21 +120,53 @@ describe('decodeSound and measureSound', () => {
     }) as never)
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => { done(new Blob([Uint8Array.of(0x89, 0x50, 0x4e, 0x47)])) })
     const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
-    const picture = await pictureOf(measureSound(buffer, 0, undefined, 300).samples)
+    const picture = await pictureOf((await measureSound(buffer, { start: 0, maxSeconds: 300 }, SIGNAL)).samples, SIGNAL)
     expect(picture).toEqual({ data: 'iVBORw==', mediaType: 'image/png', layout: { width: 1024, height: 536, waveformPanels: 'channels', timeStep: 0.05, nyquist: 4000 } })
     expect(drawn).toEqual([255])
+  })
+
+  it('lets the page handle its events between slices of measuring and drawing, and stops between them when asked', async () => {
+    // Every step finds its slice used up, so the window lets the page handle its events after each.
+    let now = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => (now += 20))
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => ({
+      createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
+      putImageData: () => {},
+    }) as never)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => { done(new Blob([Uint8Array.of(0x89, 0x50, 0x4e, 0x47)])) })
+    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
+    const page = new MessageChannel()
+    const handled: string[] = []
+    let doing = 'measuring'
+    page.port1.onmessage = () => { handled.push(doing) }
+    try {
+      page.port2.postMessage(undefined)
+      const { samples } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
+      doing = 'drawing'
+      page.port2.postMessage(undefined)
+      await pictureOf(samples, SIGNAL)
+      doing = 'done'
+      expect(handled).toEqual(['measuring', 'drawing'])
+    } finally {
+      page.port1.close()
+    }
+    const ended = new AbortController()
+    const measuring = measureSound(buffer, { start: 0, maxSeconds: 300 }, ended.signal)
+    ended.abort(new Error('the call ended'))
+    await expect(measuring).rejects.toThrow('the call ended')
   })
 })
 
 describe('answerMeasure', () => {
   const file = (data: Uint8Array<ArrayBuffer>): RemoteResult<SoundFile> => ({ ok: true, value: { data, version: 'v1' } })
 
-  it('reads, decodes, and measures the requested window, with the picture only when asked', async () => {
+  it('reads, decodes, and measures the requested window and loop, with the picture only when asked', async () => {
     const read = vi.fn(async () => file(wavFile({ sampleRate: 8000, channels: 2, samples: tone() })))
-    const answer = await answerMeasure({ path: 'sfx/tone.wav', start: 0, maxSeconds: 300, picture: false, maxBytes: 1000 }, read, new AbortController().signal, 1200)
+    const request = { path: 'sfx/tone.wav', start: 0, maxSeconds: 300, picture: false, maxBytes: 1000, loop: { start: 0.1 } }
+    const answer = await answerMeasure(request, read, new AbortController().signal, 1200)
     expect(read).toHaveBeenCalledWith('sfx/tone.wav', 1000, expect.any(AbortSignal))
     expect(answer.picture).toBeUndefined()
-    expect(answer.measurements).toMatchObject({ sampleRate: 8000, seconds: 0.5 })
+    expect(answer.measurements).toMatchObject({ sampleRate: 8000, seconds: 0.5, seam: { start: 0.1, end: 0.5 } })
     // The rate comes from the file's own headers.
     expect(FakeOfflineAudioContext.rates).toEqual([8000])
   })
@@ -152,6 +225,40 @@ describe('the bounds of a decode', () => {
     await expect(decoding).rejects.toThrow('the call ended')
   })
 
+  it('decodes an MP3 whose headers only estimate a length over the cap, and holds it to the cap once decoded', async () => {
+    // A 5.7 MB variable bit rate MP3 without a frame count: its quiet first frame, at 32 kbps, estimates 1425 s, while
+    // at 320 kbps it lasts at least 142.5 s.
+    const mp3 = vbrMp3File(5_700_000)
+    const decoded = (seconds: number) => new FakeAudioBuffer({ length: seconds * 3000, numberOfChannels: 1, sampleRate: 3000 })
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData').mockImplementation(async () => decoded(240))
+    const theme = { ...request, path: 'music/theme.mp3' }
+    const measure = (maxDecodedSeconds: number) =>
+      answerMeasure(theme, async () => file(mp3), new AbortController().signal, maxDecodedSeconds).catch((error: unknown) => error)
+    expect(await measure(1200)).toMatchObject({ measurements: { seconds: 240 } })
+    // Decoded, it is as long as it is: over a lower cap it fails as a sound whose headers state its length does.
+    expect(await measure(200)).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is 240.0 s long, longer than the 200 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    // Longer than the cap even at its highest bit rate, it is refused before decoding.
+    decode.mockClear()
+    expect(await measure(100)).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is at least 142.5 s long, longer than the 100 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    expect(decode).not.toHaveBeenCalled()
+  })
+
+  it('decodes a long AIFF file in a hidden window, whose timers Chromium throttles', async () => {
+    // A hidden window runs its timers late; these never run, and the decode still lets the page handle its events.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
+    try {
+      const frames = (1 << 20) * 2 + 10
+      const decoded = await decodeSound(aiffFile({ sampleRate: 48_000, channels: 1, frames }), AIFF, undefined, BOUNDS)
+      expect(decoded.length).toBe(frames)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('refuses an AIFF file that an AudioBuffer cannot hold, or that is too long, before copying its samples', async () => {
     const decode = (data: Uint8Array<ArrayBuffer>, maxSeconds = 1200) =>
       decodeSound(data, AIFF, undefined, { maxSeconds, signal: new AbortController().signal }).catch((error: unknown) => error)
@@ -170,7 +277,7 @@ describe('the bounds of a decode', () => {
     const data = aiffFile({ sampleRate: rate, channels: 1, frames: 22_254, sample: tone })
     const buffer = await decodeSound(data, AIFF, undefined, BOUNDS)
     expect(buffer.sampleRate).toBeCloseTo(rate, 6)
-    const { measurements } = measureSound(buffer, 0, undefined, 300)
+    const { measurements } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
     expect(measurements.sampleRate).toBe(22_255)
     expect(measurements.seconds).toBeCloseTo(22_254 / rate, 9)
     expect(parseMeasureResult({ measurements }).measurements.sampleRate).toBe(22_255)

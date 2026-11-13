@@ -122,6 +122,19 @@ export function aiffFile(options: {
   return new Uint8Array(view.buffer)
 }
 
+/**
+ * The bytes of a variable bit rate MP3 file without a Xing, Info, or VBRI frame, whose first frame is a quiet 32 kbps
+ * one: MPEG-1 layer III at 44.1 kHz, a 104-byte frame at 32 kbps and two 626-byte frames at 192 kbps, then zeros.
+ * @param bytes - the file's size.
+ * @returns the file bytes, which the stand-in decoder does not decode.
+ */
+export function vbrMp3File(bytes: number): Uint8Array<ArrayBuffer> {
+  const frame = (index: number, size: number): number[] => [0xff, 0xfb, index << 4, 0x44, ...new Array<number>(size - 4).fill(0)]
+  const data = new Uint8Array(bytes)
+  data.set([...frame(1, 104), ...frame(11, 626), ...frame(11, 626)])
+  return data
+}
+
 /** Decode a 16-bit PCM WAV file as the stand-in decoder does: at its own rate, or reject. */
 function decodeWav(data: ArrayBuffer): FakeAudioBuffer {
   const view = new DataView(data)

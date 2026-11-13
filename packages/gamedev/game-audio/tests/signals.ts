@@ -30,6 +30,17 @@ export function sine(options: {
   return { sampleRate, channels, frames, samples }
 }
 
+/**
+ * Frames of interleaved samples between two indices.
+ * @param audio - the samples.
+ * @param first - first frame.
+ * @param end - frame after the last.
+ * @returns the frames, as samples of their own.
+ */
+export function slice(audio: AudioSamples, first: number, end: number): AudioSamples {
+  return { ...audio, frames: end - first, samples: audio.samples.slice(first * audio.channels, end * audio.channels) }
+}
+
 /** A little-endian or big-endian byte writer for test files. */
 export class Bytes {
   private readonly parts: number[] = []
@@ -145,7 +156,8 @@ export function extended(value: number): number[] {
 
 /**
  * An AIFF or AIFC file.
- * @param options - rate, channels, bits, the compression type of an AIFC file, and the stored sample bytes.
+ * @param options - rate, channels, bits, the compression type of an AIFC file, the stored sample bytes, and the ten
+ * bytes to store as the rate instead of the encoding of `sampleRate`, as a damaged header holds.
  * @returns the file bytes.
  */
 export function aiff(options: {
@@ -155,9 +167,10 @@ export function aiff(options: {
   readonly frames: number
   readonly compression?: string
   readonly samples: readonly number[]
+  readonly rateBytes?: readonly number[]
 }): Uint8Array<ArrayBuffer> {
   const comm = new Bytes().int(options.channels, 2, true).int(options.frames, 4, true).int(options.bits, 2, true)
-    .append(extended(options.sampleRate))
+    .append(options.rateBytes ?? extended(options.sampleRate))
   if (options.compression !== undefined) comm.text(options.compression).raw(0, 0)
   const sound = new Bytes().int(0, 4, true).int(0, 4, true).append(options.samples)
   const body = new Bytes().text(options.compression === undefined ? 'AIFF' : 'AIFC')

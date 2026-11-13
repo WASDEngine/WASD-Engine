@@ -12,7 +12,7 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import { Button, fileSizeText, IconPauseOutlineRegular, IconPlayOutlineRegular, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RemoteError, type RemoteFailure, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { decodeSound, measureSound, SoundError } from './decode.ts'
+import { decodeSound, lengthBeforeDecoding, measureSound, SoundError, WHOLE_SOUND } from './decode.ts'
 import { clockText, decibelText, kilohertzText, lengthValue } from './format.ts'
 import { AudioGlyph, RepeatGlyph } from './icon.tsx'
 import type { NS } from './locales.ts'
@@ -122,10 +122,13 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
       const file = await read(path, controller.signal)
       if (!file.ok) return { kind: 'failed', failure: file.error }
       const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
-      if (probe?.seconds !== undefined && probe.seconds > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
+      const vouched = lengthBeforeDecoding(probe)
+      if (vouched !== undefined && vouched > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
       try {
         const bounds = { maxSeconds: maxDecodedSeconds, signal: controller.signal }
         const buffer = await decodeSound(file.value.data, format, probe?.sampleRate, bounds)
+        // Headers that did not tell the length, or only estimated it, leave the cap to the decoded sound.
+        if (buffer.duration > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
         return { kind: 'ready', buffer, probe, bytes: file.value.data.byteLength, version: file.value.version }
       } catch (error) {
         if (!(error instanceof SoundError)) throw error
@@ -197,9 +200,17 @@ function LoadedSound(props: LoadedSoundProps): ReactNode {
   const [measured, setMeasured] = useState<AudioMeasurements>()
   useEffect(() => {
     setMeasured(undefined)
-    // The waveform shows first; measuring a long sound takes a moment.
-    const timer = setTimeout(() => { setMeasured(measureSound(buffer, 0, undefined, maxMeasuredSeconds).measurements) }, 0)
-    return () => { clearTimeout(timer) }
+    const controller = new AbortController()
+    // A long sound measures a slice at a time, the page free between slices. The repeat control loops the whole sound,
+    // so its seam is the one the details measure, also past the stretch they measure otherwise.
+    const stretch = { start: 0, maxSeconds: maxMeasuredSeconds, loop: WHOLE_SOUND }
+    void measureSound(buffer, stretch, controller.signal).then((result) => {
+      if (!controller.signal.aborted) setMeasured(result.measurements)
+    }, (error: unknown) => {
+      // The measurement ends when the sound or the tab goes; a failure of a measurement still wanted is a fault.
+      if (!controller.signal.aborted) throw error
+    })
+    return () => { controller.abort() }
   }, [buffer, maxMeasuredSeconds])
   // Leaving the sound stops it, whether another sound was chosen, the file changed, or the tab closed.
   useEffect(() => () => { playback.release(key) }, [playback, key])

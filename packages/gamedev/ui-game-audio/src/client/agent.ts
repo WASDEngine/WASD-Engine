@@ -1,14 +1,14 @@
 /**
  * This window's answer to an agent's `game-audio/measure` request: it reads the sound from the calling Session's
  * workspace, decodes it at its own sample rate as the Audio tab plays it, measures the requested window as the tab's
- * details do, and draws the waveform and spectrogram picture when asked. A failure rejects with a {@link SoundError}
- * whose code and message the agent receives.
+ * details do and the seam of the requested loop, and draws the waveform and spectrogram picture when asked. A failure
+ * rejects with a {@link SoundError} whose code and message the agent receives.
  */
 import { AUDIO_ERROR, audioFormatOf, probeAudio } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasureRequest, AudioMeasureResult } from '@deepseek-ai/dsh-game-audio/types'
 import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { decodeSound, measureSound, pictureOf, SoundError, tooLong } from './decode.ts'
+import { decodeSound, lengthBeforeDecoding, measureSound, pictureOf, SoundError, tooLong } from './decode.ts'
 import { memoryReader, type SoundFile } from './read.ts'
 
 /**
@@ -43,8 +43,9 @@ async function readOrFail(read: ReadSound, request: AudioMeasureRequest, signal:
 }
 
 /**
- * Answer one measure request. The sound must be no longer than the Audio tab decodes, as its headers tell before the
- * decode and as decoded when they do not tell; the signal ends the work at each step.
+ * Answer one measure request. The sound must be no longer than the Audio tab decodes: as its headers vouch before the
+ * decode, by the length they state or the least an estimated MP3 length allows, and as decoded otherwise; the signal
+ * ends the work at each step.
  * @param request - the sound, the window, and the bounds.
  * @param read - reads sounds of the calling Session's workspace.
  * @param signal - the call's cancellation.
@@ -66,12 +67,14 @@ export async function answerMeasure(
   signal.throwIfAborted()
   const probe = await probeAudio(memoryReader(file.data), file.data.byteLength)
   signal.throwIfAborted()
-  if (probe?.seconds !== undefined && probe.seconds > maxDecodedSeconds) throw tooLong(request.path, probe.seconds, maxDecodedSeconds)
+  const vouched = lengthBeforeDecoding(probe)
+  if (vouched !== undefined && vouched > maxDecodedSeconds) {
+    throw tooLong(request.path, vouched, maxDecodedSeconds, probe?.estimated === true)
+  }
   const buffer = await decodeSound(file.data, format, probe?.sampleRate, { maxSeconds: maxDecodedSeconds, signal })
-  // Headers that did not tell the length leave the check to the decoded sound.
+  // Headers that did not tell the length, or only estimated it, leave the check to the decoded sound.
   if (buffer.duration > maxDecodedSeconds) throw tooLong(request.path, buffer.duration, maxDecodedSeconds)
-  const { measurements, samples } = measureSound(buffer, request.start, request.end, request.maxSeconds)
+  const { measurements, samples } = await measureSound(buffer, request, signal)
   if (!request.picture) return { measurements }
-  signal.throwIfAborted()
-  return { measurements, picture: await pictureOf(samples) }
+  return { measurements, picture: await pictureOf(samples, signal) }
 }

@@ -12,7 +12,8 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MCP_INSTRUCTIONS } from '../src/mcp.ts'
+import { MCP_INSTRUCTIONS, NO_WINDOW_STATUS } from '../src/mcp.ts'
+import { NO_WINDOW_MESSAGE } from '../src/tools.ts'
 import { compose, fakeAgent, JUMP, PIXEL_PNG, type Composition } from './composition.ts'
 import { pcmWav } from './signals.ts'
 
@@ -89,6 +90,22 @@ describe('the audio tools over WASD Engine\'s MCP server', () => {
     expect(tools.map(tool => [tool.name, tool.annotations?.readOnlyHint ?? false])).toEqual([['audio_search', true], ['audio_review', true]])
     expect(tools.map(tool => tool.inputSchema.required)).toEqual([['project'], ['project', 'path']])
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'audio' } }))).toContain('- Audio (audio_*, ready, 2 tools)')
+  }, TIMEOUT)
+
+  it('says while no window is connected that audio_review needs one, and fails it at once', async () => {
+    const { client, ctx, work, requests } = await connected()
+    let open = false
+    ctx.provide('typertGateway', { hasLiveClient: () => open } as never)
+    const listed = text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'audio' } }))
+    const line = listed.split('\n').find(entry => entry.startsWith('- Audio ('))
+    expect(line).toMatch(/^- Audio \(audio_\*, ready, 2 tools\): /u)
+    expect(line?.endsWith(` ${NO_WINDOW_STATUS}`)).toBe(true)
+    const review = await client.callTool({ name: 'call_game_tool', arguments: { name: 'audio_review', arguments: { project: work, path: 'audio/sfx/jump.wav' } } })
+    expect(review.isError).toBe(true)
+    expect(text(review)).toContain(NO_WINDOW_MESSAGE)
+    expect(requests).toEqual([])
+    open = true
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'audio' } }))).not.toContain(NO_WINDOW_STATUS)
   }, TIMEOUT)
 
   it('searches the project the agent names, and refuses a relative project', async () => {

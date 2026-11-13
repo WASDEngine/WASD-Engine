@@ -1,7 +1,9 @@
 /**
  * Measurements of decoded audio for agents, which cannot listen: levels, loudness, clipping, silence, spectrum, how a
  * sound joins its own start when it loops, and how its two channels relate. Every measurement reads interleaved 32-bit
- * float samples, whether SuperCollider wrote them or a browser decoded them.
+ * float samples, whether SuperCollider wrote them or a browser decoded them, and counts a NaN or infinite sample, which
+ * no player can play, as silence, so every figure stays finite. The measurements of a whole window also run in steps,
+ * which a browser runs a slice at a time between the page's events.
  *
  * @module
  */
@@ -21,6 +23,36 @@ export const SILENCE_THRESHOLD = 0.001
 /** Samples at or above full scale, which integer formats clip. */
 const CLIP_LEVEL = 1
 
+/** Frames one step of a measurement reads, about a millisecond's work, before it offers a pause. */
+export const STEP_FRAMES = 1 << 16
+
+/**
+ * A measurement in steps: a generator that yields between slices of its work, each of about {@link STEP_FRAMES}
+ * frames or one picture column, and returns its result. {@link finish} runs one to its end at once.
+ */
+export type MeasureSteps<T> = Generator<undefined, T, undefined>
+
+/**
+ * Run a measurement's steps to their end.
+ * @param steps - the measurement.
+ * @returns its result.
+ */
+export function finish<T>(steps: MeasureSteps<T>): T {
+  for (;;) {
+    const step = steps.next()
+    if (step.done === true) return step.value
+  }
+}
+
+/**
+ * A sample as the measurements read it.
+ * @param value - the stored sample; undefined past the end of the samples.
+ * @returns the sample, or 0 for a NaN or infinite one.
+ */
+export function finiteSample(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) ? value : 0
+}
+
 /** Levels of one channel, as linear amplitudes. */
 export interface ChannelLevels {
   /** Largest absolute sample. */
@@ -31,6 +63,8 @@ export interface ChannelLevels {
   readonly dcOffset: number
   /** Samples whose absolute value reaches full scale. */
   readonly clipped: number
+  /** Samples that are NaN or infinite, which the other figures count as silence. */
+  readonly nonFinite: number
 }
 
 /** What the agent learns about one audio window. */
@@ -59,23 +93,35 @@ export interface AudioAnalysis {
   readonly spectralCentroid: number | undefined
 }
 
+/** Running sums of the level measurement, by channel, and the first and last frame with sound, -1 before one. */
+interface LevelSums {
+  readonly peaks: Float64Array
+  readonly squares: Float64Array
+  readonly totals: Float64Array
+  readonly clipped: Float64Array
+  readonly nonFinite: Float64Array
+  first: number
+  last: number
+}
+
 /**
- * Measure an audio window.
+ * Add the frames between two indices to the level sums.
  * @param audio - interleaved samples.
- * @returns levels, loudness, silence, and spectrum figures.
+ * @param from - first frame.
+ * @param to - frame after the last.
+ * @param sums - the sums so far, which this updates.
  */
-export function analyzeAudio(audio: AudioSamples): AudioAnalysis {
-  const { channels, frames, samples, sampleRate } = audio
-  const peaks = new Float64Array(channels)
-  const squares = new Float64Array(channels)
-  const totals = new Float64Array(channels)
-  const clipped = new Float64Array(channels)
-  let first = -1
-  let last = -1
-  for (let frame = 0; frame < frames; frame++) {
+function addLevels(audio: AudioSamples, from: number, to: number, sums: LevelSums): void {
+  const { channels, samples } = audio
+  const { peaks, squares, totals, clipped, nonFinite } = sums
+  for (let frame = from; frame < to; frame++) {
     let loud = false
     for (let channel = 0; channel < channels; channel++) {
       const value = samples[frame * channels + channel] ?? 0
+      if (!Number.isFinite(value)) {
+        nonFinite[channel] = (nonFinite[channel] ?? 0) + 1
+        continue
+      }
       const magnitude = Math.abs(value)
       if (magnitude > (peaks[channel] ?? 0)) peaks[channel] = magnitude
       squares[channel] = (squares[channel] ?? 0) + value * value
@@ -84,30 +130,59 @@ export function analyzeAudio(audio: AudioSamples): AudioAnalysis {
       if (magnitude > SILENCE_THRESHOLD) loud = true
     }
     if (loud) {
-      if (first < 0) first = frame
-      last = frame
+      if (sums.first < 0) sums.first = frame
+      sums.last = frame
     }
   }
+}
+
+/**
+ * Measure an audio window in steps.
+ * @param audio - interleaved samples.
+ * @returns the steps, which end with the levels, loudness, silence, and spectrum figures.
+ */
+export function* analyzeAudioSteps(audio: AudioSamples): MeasureSteps<AudioAnalysis> {
+  const { channels, frames, sampleRate } = audio
+  const sums: LevelSums = {
+    peaks: new Float64Array(channels), squares: new Float64Array(channels), totals: new Float64Array(channels),
+    clipped: new Float64Array(channels), nonFinite: new Float64Array(channels), first: -1, last: -1,
+  }
+  for (let from = 0; from < frames; from += STEP_FRAMES) {
+    addLevels(audio, from, Math.min(frames, from + STEP_FRAMES), sums)
+    yield
+  }
+  const { peaks, squares, totals, clipped, nonFinite, first, last } = sums
   const levels = Array.from({ length: channels }, (_, channel) => ({
     peak: peaks[channel] ?? 0,
     rms: frames === 0 ? 0 : Math.sqrt((squares[channel] ?? 0) / frames),
     dcOffset: frames === 0 ? 0 : (totals[channel] ?? 0) / frames,
     clipped: clipped[channel] ?? 0,
+    nonFinite: nonFinite[channel] ?? 0,
   }))
   const seconds = frames / sampleRate
   const squareSum = squares.reduce((total, value) => total + value, 0)
-  const spectrum = first < 0 ? undefined : averageSpectrum(audio)
+  const loudness = yield* integratedLoudnessSteps(audio)
+  const spectrum = first < 0 ? undefined : yield* averageSpectrumSteps(audio)
   return {
     seconds,
     channels: levels,
     peak: Math.max(0, ...levels.map(level => level.peak)),
     rms: frames === 0 ? 0 : Math.sqrt(squareSum / (frames * channels)),
-    loudness: integratedLoudness(audio),
+    loudness,
     leadingSilence: first < 0 ? seconds : first / sampleRate,
     trailingSilence: first < 0 ? seconds : (frames - 1 - last) / sampleRate,
     dominantFrequency: spectrum?.dominant,
     spectralCentroid: spectrum?.centroid,
   }
+}
+
+/**
+ * Measure an audio window.
+ * @param audio - interleaved samples.
+ * @returns levels, loudness, silence, and spectrum figures.
+ */
+export function analyzeAudio(audio: AudioSamples): AudioAnalysis {
+  return finish(analyzeAudioSteps(audio))
 }
 
 /** Second-order IIR filter coefficients, normalized so that a0 is 1. */
@@ -144,47 +219,78 @@ function kWeighting(sampleRate: number): readonly [Biquad, Biquad] {
   return [shelf, pass]
 }
 
-function filter(input: Float64Array, stage: Biquad): Float64Array {
-  const output = new Float64Array(input.length)
-  let x1 = 0
-  let x2 = 0
-  let y1 = 0
-  let y2 = 0
-  for (let index = 0; index < input.length; index++) {
-    const x = input[index] ?? 0
-    const y = stage.b0 * x + stage.b1 * x1 + stage.b2 * x2 - stage.a1 * y1 - stage.a2 * y2
+/** One filter stage's last two inputs and outputs, carried from one step to the next. */
+interface FilterState {
+  x1: number
+  x2: number
+  y1: number
+  y2: number
+}
+
+/**
+ * K-weight one channel's frames between two indices and extend the running sums of their squares.
+ * @param audio - interleaved samples.
+ * @param channel - the channel.
+ * @param range - the first frame and the frame after the last.
+ * @param stages - the shelf and the high-pass, in turn.
+ * @param states - each stage's state after the frames before `range`, which this updates.
+ * @param cumulative - running sums of squares: entry `frame + 1` receives the sum through `frame`.
+ */
+function weighSquares(
+  audio: AudioSamples,
+  channel: number,
+  range: readonly [number, number],
+  stages: readonly [Biquad, Biquad],
+  states: readonly [FilterState, FilterState],
+  cumulative: Float64Array,
+): void {
+  const { channels, samples } = audio
+  const [shelf, pass] = stages
+  const [first, second] = states
+  let { x1, x2, y1, y2 } = first
+  let { x1: u1, x2: u2, y1: v1, y2: v2 } = second
+  let total = cumulative[range[0]] ?? 0
+  for (let frame = range[0]; frame < range[1]; frame++) {
+    const x = finiteSample(samples[frame * channels + channel])
+    const y = shelf.b0 * x + shelf.b1 * x1 + shelf.b2 * x2 - shelf.a1 * y1 - shelf.a2 * y2
     x2 = x1
     x1 = x
     y2 = y1
     y1 = y
-    output[index] = y
+    const v = pass.b0 * y + pass.b1 * u1 + pass.b2 * u2 - pass.a1 * v1 - pass.a2 * v2
+    u2 = u1
+    u1 = y
+    v2 = v1
+    v1 = v
+    total += v * v
+    cumulative[frame + 1] = total
   }
-  return output
+  Object.assign(first, { x1, x2, y1, y2 })
+  Object.assign(second, { x1: u1, x2: u2, y1: v1, y2: v2 })
 }
 
 /**
- * Integrated loudness after ITU-R BS.1770-4: K-weighted mean squares of 400 ms blocks that overlap by 75 %, gated
- * at -70 LUFS and then 10 LU below the mean of the remaining blocks. Every channel has weight 1, the weight of the
- * front channels.
+ * Integrated loudness after ITU-R BS.1770-4 in steps: K-weighted mean squares of 400 ms blocks that overlap by 75 %,
+ * gated at -70 LUFS and then 10 LU below the mean of the remaining blocks. Every channel has weight 1, the weight of
+ * the front channels.
  * @param audio - interleaved samples.
- * @returns loudness in LUFS, or undefined without one full block or without blocks above the gates.
+ * @returns the steps, which end with the loudness in LUFS, or undefined without one full block or without blocks above
+ * the gates.
  */
-export function integratedLoudness(audio: AudioSamples): number | undefined {
-  const { channels, frames, samples, sampleRate } = audio
+function* integratedLoudnessSteps(audio: AudioSamples): MeasureSteps<number | undefined> {
+  const { channels, frames, sampleRate } = audio
   const block = Math.round(0.4 * sampleRate)
   const step = Math.round(0.1 * sampleRate)
   if (frames < block || block < 1) return undefined
-  const [shelf, pass] = kWeighting(sampleRate)
+  const stages = kWeighting(sampleRate)
   const energies = new Float64Array(Math.floor((frames - block) / step) + 1)
+  // Running sums of squares give each block's energy in constant time; each channel reuses the array.
+  const cumulative = new Float64Array(frames + 1)
   for (let channel = 0; channel < channels; channel++) {
-    const signal = new Float64Array(frames)
-    for (let frame = 0; frame < frames; frame++) signal[frame] = samples[frame * channels + channel] ?? 0
-    const weighted = filter(filter(signal, shelf), pass)
-    // Running sums of squares give each block's energy in constant time.
-    const cumulative = new Float64Array(frames + 1)
-    for (let frame = 0; frame < frames; frame++) {
-      const value = weighted[frame] ?? 0
-      cumulative[frame + 1] = (cumulative[frame] ?? 0) + value * value
+    const states: readonly [FilterState, FilterState] = [{ x1: 0, x2: 0, y1: 0, y2: 0 }, { x1: 0, x2: 0, y1: 0, y2: 0 }]
+    for (let from = 0; from < frames; from += STEP_FRAMES) {
+      weighSquares(audio, channel, [from, Math.min(frames, from + STEP_FRAMES)], stages, states, cumulative)
+      yield
     }
     for (let index = 0; index < energies.length; index++) {
       const start = index * step
@@ -197,6 +303,17 @@ export function integratedLoudness(audio: AudioSamples): number | undefined {
   const relativeGate = loudness(absolute.reduce((total, energy) => total + energy, 0) / absolute.length) - 10
   const gated = absolute.filter(energy => loudness(energy) > relativeGate)
   return loudness(gated.reduce((total, energy) => total + energy, 0) / gated.length)
+}
+
+/**
+ * Integrated loudness after ITU-R BS.1770-4: K-weighted mean squares of 400 ms blocks that overlap by 75 %, gated
+ * at -70 LUFS and then 10 LU below the mean of the remaining blocks. Every channel has weight 1, the weight of the
+ * front channels.
+ * @param audio - interleaved samples.
+ * @returns loudness in LUFS, or undefined without one full block or without blocks above the gates.
+ */
+export function integratedLoudness(audio: AudioSamples): number | undefined {
+  return finish(integratedLoudnessSteps(audio))
 }
 
 /**
@@ -283,29 +400,64 @@ export function magnitudeSpectrum(audio: AudioSamples, center: number, size: num
  */
 function mixAt(audio: AudioSamples, frame: number): number {
   let mix = 0
-  for (let channel = 0; channel < audio.channels; channel++) mix += audio.samples[frame * audio.channels + channel] ?? 0
+  for (let channel = 0; channel < audio.channels; channel++) mix += finiteSample(audio.samples[frame * audio.channels + channel])
   return mix / audio.channels
 }
 
 /**
- * Strongest component and centroid of the spectrum averaged over evenly spread frames. The mix's DC offset carries no
- * pitch, so its mean is removed first, and a mix that never moves more than {@link SILENCE_THRESHOLD} from its mean,
- * such as a constant signal, has no spectrum to report.
+ * Sum the channel mix over the frames between two indices.
  * @param audio - interleaved samples.
- * @returns the dominant frequency and the centroid in Hz, both positive; undefined without sound beside the offset.
+ * @param from - first frame.
+ * @param to - frame after the last.
+ * @returns the sum.
  */
-function averageSpectrum(audio: AudioSamples): { dominant: number; centroid: number } | undefined {
+function mixSum(audio: AudioSamples, from: number, to: number): number {
+  let sum = 0
+  for (let frame = from; frame < to; frame++) sum += mixAt(audio, frame)
+  return sum
+}
+
+/**
+ * The farthest the channel mix moves from a level over the frames between two indices.
+ * @param audio - interleaved samples.
+ * @param from - first frame.
+ * @param to - frame after the last.
+ * @param level - the level, such as the mix's mean.
+ * @returns the largest distance.
+ */
+function mixSwing(audio: AudioSamples, from: number, to: number, level: number): number {
+  let swing = 0
+  for (let frame = from; frame < to; frame++) swing = Math.max(swing, Math.abs(mixAt(audio, frame) - level))
+  return swing
+}
+
+/**
+ * Strongest component and centroid of the spectrum averaged over evenly spread frames, in steps. The mix's DC offset
+ * carries no pitch, so its mean is removed first, and a mix that never moves more than {@link SILENCE_THRESHOLD} from
+ * its mean, such as a constant signal, has no spectrum to report.
+ * @param audio - interleaved samples.
+ * @returns the steps, which end with the dominant frequency and the centroid in Hz, both positive, or undefined without
+ * sound beside the offset.
+ */
+function* averageSpectrumSteps(audio: AudioSamples): MeasureSteps<{ dominant: number; centroid: number } | undefined> {
   let sumOfMix = 0
-  for (let frame = 0; frame < audio.frames; frame++) sumOfMix += mixAt(audio, frame)
+  for (let from = 0; from < audio.frames; from += STEP_FRAMES) {
+    sumOfMix += mixSum(audio, from, Math.min(audio.frames, from + STEP_FRAMES))
+    yield
+  }
   const mean = audio.frames === 0 ? 0 : sumOfMix / audio.frames
   let swing = 0
-  for (let frame = 0; frame < audio.frames; frame++) swing = Math.max(swing, Math.abs(mixAt(audio, frame) - mean))
+  for (let from = 0; from < audio.frames; from += STEP_FRAMES) {
+    swing = Math.max(swing, mixSwing(audio, from, Math.min(audio.frames, from + STEP_FRAMES), mean))
+    yield
+  }
   if (swing <= SILENCE_THRESHOLD) return undefined
   const count = Math.max(1, Math.min(SPECTRUM_FRAMES, Math.ceil(audio.frames / (SPECTRUM_SIZE / 2))))
   const sum = new Float64Array(SPECTRUM_SIZE / 2 + 1)
   for (let index = 0; index < count; index++) {
     const spectrum = magnitudeSpectrum(audio, Math.round((index + 0.5) * audio.frames / count), SPECTRUM_SIZE, mean)
     for (let bin = 0; bin < sum.length; bin++) sum[bin] = (sum[bin] ?? 0) + (spectrum[bin] ?? 0)
+    yield
   }
   const resolution = audio.sampleRate / SPECTRUM_SIZE
   let strongest = 1
@@ -330,54 +482,102 @@ function averageSpectrum(audio: AudioSamples): { dominant: number; centroid: num
   return { dominant: (strongest + shift) * resolution, centroid: weighted / total }
 }
 
-/** Seconds at each end of a sound whose levels the loop measurement compares. */
+/** Seconds on either side of a loop's seam whose samples the seam measurement reads. */
 const SEAM_SECONDS = 0.05
 
-/** How a sound joins its own start when it repeats. */
+/** Where a loop's end meets its start each time it repeats. */
 export interface LoopSeam {
-  /** Largest step of any channel from its last sample to its first, as a fraction of full scale (0 to 2). */
+  /** Largest step of any channel from the loop's last sample to its first, as a fraction of full scale (0 to 2). */
   readonly jump: number
-  /** Root mean square of the steps between neighboring samples over the whole sound, of its busiest channel. */
+  /**
+   * Root mean square of the steps between neighboring samples on either side of the seam, up to {@link SEAM_SECONDS}
+   * each, of the busiest channel: the usual step there, which a jump must stand out from to click.
+   */
   readonly step: number
   /**
-   * RMS level of the last {@link SEAM_SECONDS} minus that of the first, in dB, over every channel; undefined when
-   * either end is silent or the sound is shorter than both ends together.
+   * RMS level of the loop's last {@link SEAM_SECONDS} minus that of its first, in dB, over every channel; undefined
+   * when either is silent or the loop is shorter than both together.
    */
   readonly levelChange: number | undefined
 }
 
+/** The frames whose samples {@link loopSeam} reads: the loop's last frames and its first, each `[first, end)`. */
+export interface SeamFrames {
+  readonly tail: readonly [number, number]
+  readonly head: readonly [number, number]
+}
+
 /**
- * Measure where a sound's end meets its start, as it does when the sound loops. A jump well above the usual step
- * between neighboring samples sounds as a click at every repeat, and a level change as a sudden swell or drop.
- * @param audio - interleaved samples.
- * @returns the seam, or undefined for fewer than two frames.
+ * The frames on either side of a loop's seam: up to {@link SEAM_SECONDS} before the frame playback jumps from and as
+ * many from the frame it jumps to, without overlapping.
+ * @param first - the loop's first frame, which playback jumps back to.
+ * @param end - the frame after its last.
+ * @param sampleRate - frames per second.
+ * @returns the frames, or undefined for a loop of fewer than two frames.
  */
-export function loopSeam(audio: AudioSamples): LoopSeam | undefined {
-  const { channels, frames, samples, sampleRate } = audio
-  if (frames < 2) return undefined
+export function seamFrames(first: number, end: number, sampleRate: number): SeamFrames | undefined {
+  if (end - first < 2) return undefined
+  const span = Math.max(1, Math.min(Math.round(SEAM_SECONDS * sampleRate), Math.floor((end - first) / 2)))
+  return { tail: [end - span, end], head: [first, first + span] }
+}
+
+/**
+ * Root mean square of one channel's samples.
+ * @param audio - interleaved samples.
+ * @param channel - the channel.
+ * @returns the level, 0 without frames.
+ */
+function channelLevel(audio: AudioSamples, channel: number): number {
+  let squares = 0
+  for (let frame = 0; frame < audio.frames; frame++) squares += finiteSample(audio.samples[frame * audio.channels + channel]) ** 2
+  return audio.frames === 0 ? 0 : Math.sqrt(squares / audio.frames)
+}
+
+/**
+ * Sum of the squared steps between one channel's neighboring samples.
+ * @param audio - interleaved samples.
+ * @param channel - the channel.
+ * @returns the sum, over `frames - 1` steps.
+ */
+function stepSquares(audio: AudioSamples, channel: number): number {
+  const { channels, frames, samples } = audio
+  let squares = 0
+  for (let frame = 1; frame < frames; frame++) {
+    const difference = finiteSample(samples[frame * channels + channel]) - finiteSample(samples[(frame - 1) * channels + channel])
+    squares += difference * difference
+  }
+  return squares
+}
+
+/**
+ * Measure where a loop's end meets its start, as each repeat plays the frame before the jump and then the frame after
+ * it. A jump well above the usual step between neighboring samples there sounds as a click at every repeat, and a
+ * level change as a sudden swell or drop.
+ * @param tail - the loop's last samples, which end with the frame playback jumps from: the {@link seamFrames} tail.
+ * @param head - its first samples, which begin with the frame playback jumps to: the {@link seamFrames} head.
+ * @returns the seam, or undefined when a stretch is empty or the two differ in channels or rate.
+ */
+export function loopSeam(tail: AudioSamples, head: AudioSamples): LoopSeam | undefined {
+  const { channels, sampleRate } = tail
+  if (tail.frames < 1 || head.frames < 1 || head.channels !== channels || head.sampleRate !== sampleRate) return undefined
+  const steps = tail.frames - 1 + head.frames - 1
   let jump = 0
   let step = 0
+  let endSquares = 0
+  let startSquares = 0
   for (let channel = 0; channel < channels; channel++) {
-    const first = samples[channel] ?? 0
-    const last = samples[(frames - 1) * channels + channel] ?? 0
+    const last = finiteSample(tail.samples[(tail.frames - 1) * channels + channel])
+    const first = finiteSample(head.samples[channel])
     jump = Math.max(jump, Math.abs(first - last))
-    let squares = 0
-    for (let frame = 1; frame < frames; frame++) {
-      const difference = (samples[frame * channels + channel] ?? 0) - (samples[(frame - 1) * channels + channel] ?? 0)
-      squares += difference * difference
-    }
-    step = Math.max(step, Math.sqrt(squares / (frames - 1)))
+    if (steps > 0) step = Math.max(step, Math.sqrt((stepSquares(tail, channel) + stepSquares(head, channel)) / steps))
+    endSquares += channelLevel(tail, channel) ** 2
+    startSquares += channelLevel(head, channel) ** 2
   }
   const span = Math.round(SEAM_SECONDS * sampleRate)
   let levelChange: number | undefined
-  if (span >= 1 && frames >= 2 * span) {
-    const level = (from: number): number => {
-      let squares = 0
-      for (let index = from * channels; index < (from + span) * channels; index++) squares += (samples[index] ?? 0) ** 2
-      return Math.sqrt(squares / (span * channels))
-    }
-    const start = level(0)
-    const end = level(frames - span)
+  if (span >= 1 && tail.frames >= span && head.frames >= span) {
+    const end = Math.sqrt(endSquares / channels)
+    const start = Math.sqrt(startSquares / channels)
     if (start > SILENCE_THRESHOLD && end > SILENCE_THRESHOLD) levelChange = 20 * Math.log10(end / start)
   }
   return { jump, step, levelChange }
@@ -396,26 +596,49 @@ export interface StereoImage {
   readonly identical: boolean
 }
 
+/** Running sums of the stereo comparison. */
+interface StereoSums {
+  leftSquares: number
+  rightSquares: number
+  products: number
+  largestDifference: number
+}
+
 /**
- * Compare the channels of a two-channel sound.
- * @param audio - interleaved samples.
- * @returns how the channels relate, or undefined unless the sound has exactly two channels.
+ * Add the frames between two indices of a two-channel sound to the stereo sums.
+ * @param audio - interleaved samples of two channels.
+ * @param from - first frame.
+ * @param to - frame after the last.
+ * @param sums - the sums so far, which this updates.
  */
-export function stereoImage(audio: AudioSamples): StereoImage | undefined {
-  if (audio.channels !== 2) return undefined
-  const { frames, samples } = audio
-  let leftSquares = 0
-  let rightSquares = 0
-  let products = 0
-  let largestDifference = 0
-  for (let frame = 0; frame < frames; frame++) {
-    const left = samples[frame * 2] ?? 0
-    const right = samples[frame * 2 + 1] ?? 0
+function addStereo(audio: AudioSamples, from: number, to: number, sums: StereoSums): void {
+  const { samples } = audio
+  let { leftSquares, rightSquares, products, largestDifference } = sums
+  for (let frame = from; frame < to; frame++) {
+    const left = finiteSample(samples[frame * 2])
+    const right = finiteSample(samples[frame * 2 + 1])
     leftSquares += left * left
     rightSquares += right * right
     products += left * right
     largestDifference = Math.max(largestDifference, Math.abs(left - right))
   }
+  Object.assign(sums, { leftSquares, rightSquares, products, largestDifference })
+}
+
+/**
+ * Compare the channels of a two-channel sound in steps.
+ * @param audio - interleaved samples.
+ * @returns the steps, which end with how the channels relate, or undefined unless the sound has exactly two channels.
+ */
+export function* stereoImageSteps(audio: AudioSamples): MeasureSteps<StereoImage | undefined> {
+  if (audio.channels !== 2) return undefined
+  const { frames } = audio
+  const sums: StereoSums = { leftSquares: 0, rightSquares: 0, products: 0, largestDifference: 0 }
+  for (let from = 0; from < frames; from += STEP_FRAMES) {
+    addStereo(audio, from, Math.min(frames, from + STEP_FRAMES), sums)
+    yield
+  }
+  const { leftSquares, rightSquares, products, largestDifference } = sums
   const leftLevel = frames === 0 ? 0 : Math.sqrt(leftSquares / frames)
   const rightLevel = frames === 0 ? 0 : Math.sqrt(rightSquares / frames)
   const silent = leftLevel <= SILENCE_THRESHOLD || rightLevel <= SILENCE_THRESHOLD
@@ -424,6 +647,15 @@ export function stereoImage(audio: AudioSamples): StereoImage | undefined {
     balance: silent ? undefined : 20 * Math.log10(leftLevel / rightLevel),
     identical: frames > 0 && largestDifference <= IDENTICAL_LEVEL,
   }
+}
+
+/**
+ * Compare the channels of a two-channel sound.
+ * @param audio - interleaved samples.
+ * @returns how the channels relate, or undefined unless the sound has exactly two channels.
+ */
+export function stereoImage(audio: AudioSamples): StereoImage | undefined {
+  return finish(stereoImageSteps(audio))
 }
 
 /** Smallest jump at a loop seam that clicks, as a fraction of full scale, however busy the sound is. */

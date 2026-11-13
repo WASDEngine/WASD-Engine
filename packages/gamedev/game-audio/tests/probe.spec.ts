@@ -54,6 +54,30 @@ describe('probeAudio', () => {
     expect((await probe(aiff({ sampleRate: 48_000, channels: 2, bits: 32, frames: 0, compression: 'fl32', samples: [] })))?.encoding).toBe('32-bit float')
   })
 
+  it('reads nothing from an AIFF header whose rate is beyond a double, NaN, or so small that the length is infinite', async () => {
+    const damaged = [
+      // The largest finite exponent: with the integer bit set the value overflows, without it the product is NaN.
+      [0x7f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      [0x7f, 0xfe, 0, 0, 0, 0, 0, 0, 0, 0],
+      // About 1e-308 Hz, which makes 100 frames last longer than a double holds.
+      [0x3c, 0x00, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      // Half a hertz and 20 MHz: finite, but no recording's rate.
+      [0x3f, 0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0],
+      extended(20_000_000),
+    ]
+    for (const rateBytes of damaged) {
+      const file = aiff({ sampleRate: 0, channels: 1, bits: 16, frames: 100, samples: new Array<number>(200).fill(0), rateBytes })
+      expect(await probe(file), rateBytes.join(' ')).toBeUndefined()
+      expect(() => decodeAiff(file)).toThrow('no usable format chunk')
+    }
+    expect(readExtended(Uint8Array.from(damaged[0] ?? []), 0)).toBeUndefined()
+    expect(readExtended(Uint8Array.from(damaged[1] ?? []), 0)).toBeUndefined()
+    // The lowest and highest rates the header may state still read.
+    const edge = (sampleRate: number) => aiff({ sampleRate, channels: 1, bits: 16, frames: 2, samples: [0, 0, 0, 0] })
+    expect((await probe(edge(1)))?.seconds).toBe(2)
+    expect((await probe(edge(10_000_000)))?.sampleRate).toBe(10_000_000)
+  })
+
   it('reads FLAC STREAMINFO, also after an ID3 tag', async () => {
     const info = (44_100n << 44n) | (1n << 41n) | (15n << 36n) | 441_000n
     const packed: number[] = []
@@ -80,7 +104,21 @@ describe('probeAudio', () => {
     expect((await probe(Uint8Array.from([...vbri, ...mp3Frame()])))?.seconds).toBe(50 * 1152 / 44_100)
     const tag = new Bytes().text('ID3').raw(3, 0, 0, 0, 0, 2, 44).zeros(300).bytes
     const plain = Uint8Array.from([...tag, ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true })])
-    expect(await probe(plain)).toEqual({ format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true })
+    expect(await probe(plain)).toEqual({
+      format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true, minSeconds: 3 * 417 * 8 / 320_000,
+    })
+  })
+
+  it('bounds an estimated MP3 length below by the highest bit rate, which a quiet first frame of a variable bit rate file does not move', async () => {
+    // MPEG-1 layer III at 44.1 kHz: bit rate index 1 is 32 kbps (104 bytes), index 11 is 192 kbps (626 bytes).
+    const frame = (header: readonly number[], bytes: number): number[] => [...header, ...new Array<number>(bytes - 4).fill(0)]
+    const file = new Uint8Array(5_700_000)
+    file.set([...frame([0xff, 0xfb, 0x10, 0x44], 104), ...frame([0xff, 0xfb, 0xb0, 0x44], 626), ...frame([0xff, 0xfb, 0xb0, 0x44], 626)])
+    const bits = 5_700_000 * 8
+    expect(await probe(file)).toMatchObject({ bitrate: 32_000, seconds: bits / 32_000, estimated: true, minSeconds: bits / 320_000 })
+    // MPEG-2 layer III at 22.05 kHz peaks at 160 kbps; its 64 kbps frames hold 208 bytes.
+    const low = Uint8Array.from([...frame([0xff, 0xf3, 0x80, 0xc4], 208), ...frame([0xff, 0xf3, 0x80, 0xc4], 504)])
+    expect(await probe(low)).toMatchObject({ sampleRate: 22_050, bitrate: 64_000, estimated: true, minSeconds: low.length * 8 / 160_000 })
   })
 
   it('reads Ogg Vorbis and Ogg Opus lengths from the last page\'s granule position', async () => {
