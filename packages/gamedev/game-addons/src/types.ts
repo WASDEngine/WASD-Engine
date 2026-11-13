@@ -83,9 +83,9 @@ export interface GodotAddonSpec {
   /** Whether resources of the add-on's formats import fully only on a second import pass. */
   readonly importTwice?: boolean
   /**
-   * Folders of the catalog, relative to the catalog folder, whose files the installer adds to the add-on folder after
-   * unpacking it, such as import settings and scripts that WASD Engine ships with an asset pack; none may replace a file
-   * of the archive.
+   * Folders of the catalog, relative to the catalog folder, whose files the installer adds to the add-on folder: after
+   * unpacking the archive, such as import settings and scripts that WASD Engine ships with an asset pack, where none may
+   * replace a file of the archive; or, for an entry without an archive, as the whole add-on that WASD Engine wrote.
    */
   readonly overlay?: readonly string[]
 }
@@ -94,8 +94,14 @@ export interface GodotAddonSpec {
 export interface BlenderAddonSpec {
   /** Python package name: the extension id of an extension, or the module of an add-on inside Blender. */
   readonly module: string
-  /** `extension`: downloaded from its archive into the add-on store; `core`: ships inside Blender. */
+  /** `extension`: placed in the add-on store from its archive or its catalog files; `core`: ships inside Blender. */
   readonly kind: 'extension' | 'core'
+  /**
+   * Folder of the catalog, relative to the catalog folder, that holds an extension WASD Engine wrote: its
+   * `blender_manifest.toml` and Python package, which the installer copies into the add-on store in place of an
+   * archive.
+   */
+  readonly files?: string
   /**
    * Python file in the entry's catalog folder whose `setup(module, assets)` the Blender worker calls after it enables
    * the add-on, and again after factory settings reset the add-on's preferences: `module` is the module the add-on
@@ -122,7 +128,7 @@ export interface GameAddon {
   readonly title: string
   /** The application it extends. */
   readonly host: GameAddonHost
-  /** Upstream version the archive holds. */
+  /** Version of the add-on: the upstream version its archive holds, or the version of an add-on WASD Engine wrote. */
   readonly version: string
   /** What it gives the game, in one sentence. */
   readonly summary: string
@@ -142,7 +148,7 @@ export interface GameAddon {
   readonly credit?: string
   /** Project page. */
   readonly homepage: string
-  /** Pinned archive; absent for a Blender add-on that ships inside Blender. */
+  /** Pinned archive; absent for a Blender add-on that ships inside Blender and for an add-on WASD Engine wrote. */
   readonly archive?: GameAddonArchive
   /** Data pack installed with a Blender add-on. */
   readonly assets?: GameAddonAssets
@@ -170,7 +176,7 @@ export interface InstalledGameAddon {
   readonly version: string
   /** SPDX license identifier. */
   readonly license: string
-  /** Archive URL it was installed from; absent for a Blender add-on that ships inside Blender. */
+  /** Archive URL it was installed from; absent for a Blender add-on that ships inside Blender and one WASD Engine wrote. */
   readonly source?: string
   /** SHA-256 of that archive. */
   readonly sha256?: string

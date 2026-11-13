@@ -40,10 +40,10 @@ describe('the shipped add-on catalog', () => {
 
   it('gives the Add-ons dialog an icon for each entry that may use one, each with its notice in ICONS.md', async () => {
     const catalog = await loadCatalog(CATALOG_DIR)
-    // Their own icons are trademark logos (Extra Import Hints, GdUnit4, YATI) or listing art without a license (VRM), so
-    // the dialog shows a letter tile for them.
+    // Their own icons are trademark logos (Extra Import Hints, GdUnit4, YATI) or listing art without a license (VRM), and
+    // WASD Engine's own add-ons (WASD Cloth) have none until a designer draws one, so the dialog shows a letter tile.
     expect(catalog.entries.filter(entry => entry.icon === undefined).map(entry => entry.id).sort())
-      .toEqual(['extra-import-hints', 'gdunit4', 'vrm', 'yati'])
+      .toEqual(['extra-import-hints', 'gdunit4', 'vrm', 'wasd-cloth', 'wasd-cloth-blender', 'yati'])
     const withIcons = catalog.entries.filter(entry => entry.icon !== undefined).map(entry => entry.id)
     expect(Object.keys(catalog.icons).sort()).toEqual(withIcons.sort())
     const notices = await readFile(join(CATALOG_DIR, ICON_NOTICES), 'utf8')

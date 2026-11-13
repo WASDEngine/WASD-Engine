@@ -1,0 +1,64 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/wasd_cloth/cloth_sheet_3d.gd" id="1_sheet"]
+[ext_resource type="Script" path="res://addons/wasd_cloth/cloth_wind_3d.gd" id="2_wind"]
+[ext_resource type="Script" path="res://addons/wasd_cloth/cloth_chains_3d.gd" id="3_chains"]
+[ext_resource type="Script" path="res://wasd_smoke/rig.gd" id="4_rig"]
+[ext_resource type="Shader" path="res://addons/wasd_cloth/flag_wind.gdshader" id="5_flag"]
+
+[sub_resource type="BoxShape3D" id="table_shape"]
+size = Vector3(1, 0.8, 1)
+
+[sub_resource type="PlaneMesh" id="banner_mesh"]
+size = Vector2(0.6, 1.6)
+subdivide_width = 10
+subdivide_depth = 24
+orientation = 2
+
+[sub_resource type="ShaderMaterial" id="banner_material"]
+shader = ExtResource("5_flag")
+shader_parameter/pinned_edge = 1
+shader_parameter/cloth_size = Vector2(1.6, 0.6)
+
+[node name="Smoke" type="Node3D"]
+
+[node name="Flag" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8, 2.45, 0)
+script = ExtResource("1_sheet")
+size = Vector2(1.5, 1)
+fabric = "canvas"
+pinned_edges = PackedStringArray("left")
+pin_rows = 2
+
+[node name="Table" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 0.4, 0)
+
+[node name="Shape" type="CollisionShape3D" parent="Table"]
+shape = SubResource("table_shape")
+
+[node name="Tablecloth" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 1, 0)
+script = ExtResource("1_sheet")
+size = Vector2(1.6, 1.6)
+facing = 1
+cell = 0.08
+pinned_edges = PackedStringArray()
+
+[node name="Hero" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 0)
+
+[node name="Skeleton3D" type="Skeleton3D" parent="Hero"]
+script = ExtResource("4_rig")
+
+[node name="Cape" type="SpringBoneSimulator3D" parent="Hero/Skeleton3D"]
+script = ExtResource("3_chains")
+
+[node name="Banner" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, -4)
+mesh = SubResource("banner_mesh")
+surface_material_override/0 = SubResource("banner_material")
+
+[node name="Wind" type="Area3D" parent="."]
+script = ExtResource("2_wind")
+direction = Vector3(1, 0, 0.35)
+speed = 6.0

@@ -1,0 +1,12 @@
+schema_version = "1.0.0"
+
+id = "wasd_cloth"
+version = "1.0.0"
+name = "WASD Cloth"
+tagline = "Cloth for Godot games: drapes, wind loops, and bone chains"
+maintainer = "WASD Engine"
+type = "add-on"
+tags = ["Physics", "Game Engine", "Animation"]
+blender_version_min = "5.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 WASD Engine contributors"]

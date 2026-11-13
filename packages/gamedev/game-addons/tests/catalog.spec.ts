@@ -41,13 +41,21 @@ describe('loadCatalog', () => {
     ['an archive path with ..', (entries: Record<string, Record<string, unknown>>) => { ((entries['test-camera'] as Record<string, unknown>).archive as Record<string, unknown>).root = 'a/../b' }, /not a valid add-on entry/u],
     ['an unknown field', (entries: Record<string, Record<string, unknown>>) => { (entries['test-camera'] as Record<string, unknown>).extra = 1 }, /not a valid add-on entry/u],
     ['an http archive', (entries: Record<string, Record<string, unknown>>) => { ((entries['test-camera'] as Record<string, unknown>).archive as Record<string, unknown>).url = 'http://example.test/a.zip' }, /not a valid add-on entry/u],
-    ['a Godot add-on without an archive', (entries: Record<string, Record<string, unknown>>) => { delete (entries['other-camera'] as Record<string, unknown>).archive }, /needs an archive/u],
+    ['a Godot add-on without an archive or overlay folders', (entries: Record<string, Record<string, unknown>>) => { delete (entries['other-camera'] as Record<string, unknown>).archive }, /needs an archive or overlay folders/u],
     ['an autoload outside the add-on folder', (entries: Record<string, Record<string, unknown>>) => {
       ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).autoloads = [{ name: 'X', path: 'res://elsewhere/x.gd' }]
     }, /must point inside res:\/\/addons\/test_camera\//u],
     ['a core Blender add-on with an archive', (entries: Record<string, Record<string, unknown>>) => {
       (entries['test-rig'] as Record<string, unknown>).archive = (entries['test-trees'] as Record<string, unknown>).archive
-    }, /core add-on has none/u],
+    }, /core add-on has neither/u],
+    ['a Blender extension with both an archive and catalog files', (entries: Record<string, Record<string, unknown>>) => {
+      (entries['test-trees'] as Record<string, unknown>).blender = { module: 'test_trees', kind: 'extension', files: 'test-trees/extension' }
+    }, /needs either an archive or blender\.files/u],
+    ['a Blender extension whose catalog files have no manifest', (entries: Record<string, Record<string, unknown>>) => {
+      const trees = entries['test-trees'] as Record<string, unknown>
+      delete trees.archive
+      trees.blender = { module: 'test_trees', kind: 'extension', files: 'test-trees/extension' }
+    }, /Cannot read the extension manifest of test-trees at .*test-trees\/extension\/blender_manifest\.toml/u],
     ['a conflict with an unknown id', (entries: Record<string, Record<string, unknown>>) => { (entries['test-trees'] as Record<string, unknown>).conflicts = ['nope'] }, /conflict nope is not another catalog add-on/u],
     ['a Godot add-on with an asset pack', (entries: Record<string, Record<string, unknown>>) => {
       (entries['test-camera'] as Record<string, unknown>).assets = { ...pin(URLS.treeAssets, TREE_ASSETS_ARCHIVE, ''), license: 'CC0-1.0', homepage: 'https://assets.example.test/' }
@@ -68,6 +76,23 @@ describe('loadCatalog', () => {
     }, /not a valid add-on entry/u],
   ])('rejects %s', async (_case, change, message) => {
     await expect(loadCatalog(await catalogWith(change))).rejects.toThrow(message)
+  })
+
+  it('loads add-ons that WASD Engine wrote: a Godot one of overlay folders alone and a Blender extension from catalog files', async () => {
+    const path = await catalogWith((entries) => {
+      const camera = entries['test-camera'] as Record<string, unknown>
+      delete camera.archive
+      ;(camera.godot as Record<string, unknown>).overlay = ['test-camera/addon']
+      const trees = entries['test-trees'] as Record<string, unknown>
+      delete trees.archive
+      trees.blender = { module: 'test_trees', kind: 'extension', files: 'test-trees/extension' }
+    })
+    await mkdir(join(path, 'test-camera', 'addon'), { recursive: true })
+    await mkdir(join(path, 'test-trees', 'extension'), { recursive: true })
+    await writeFile(join(path, 'test-trees', 'extension', 'blender_manifest.toml'), 'schema_version = "1.0.0"\n')
+    const catalog = await loadCatalog(path)
+    expect(catalog.get('test-camera')?.archive).toBeUndefined()
+    expect(catalog.get('test-trees')?.blender).toEqual({ module: 'test_trees', kind: 'extension', files: 'test-trees/extension' })
   })
 
   it('loads overlay folders, in the entry\'s folder or beside the entries, and rejects one that is a file', async () => {
