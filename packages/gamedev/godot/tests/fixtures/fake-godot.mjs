@@ -248,13 +248,14 @@ async function runGame(section) {
         return reply(message.id, { maxFps: message.maxFps })
       case 'screenshot': {
         const scale = message.maxWidth > 0 && state.width > message.maxWidth ? message.maxWidth / state.width : 1
+        const jpeg = message.format === 'jpeg'
         const meta = {
-          format: 'png', width: Math.round(state.width * scale), height: Math.round(state.height * scale),
+          format: jpeg ? 'jpeg' : 'png', width: Math.round(state.width * scale), height: Math.round(state.height * scale),
           windowWidth: state.width, windowHeight: state.height, frame: state.frame, paused: state.paused,
         }
         const id = Buffer.alloc(4)
         id.writeUInt32LE(message.id, 0)
-        const image = Buffer.concat([id, Buffer.from(section.png ?? 'PNG-BYTES', 'latin1')])
+        const image = Buffer.concat([id, Buffer.from(jpeg ? 'JPEG-BYTES' : section.png ?? 'PNG-BYTES', 'latin1')])
         if (section.imageFirst) send(3, image)
         reply(message.id, meta)
         if (!section.imageFirst) send(3, image)

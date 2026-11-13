@@ -388,7 +388,7 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
     return {
       async capture(run, maxWidth, signal) {
         const shot = await run.screenshot(maxWidth, signal)
-        const [image] = await attachments.saveImages([{ data: shot.png, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
+        const [image] = await attachments.saveImages([{ data: shot.image, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
         signal.throwIfAborted()
         const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
         return {

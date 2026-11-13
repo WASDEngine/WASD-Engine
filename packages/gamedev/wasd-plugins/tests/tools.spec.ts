@@ -34,8 +34,10 @@ function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: u
       calls.push(['record', request])
       return Promise.resolve({
         gif: `${request.projectDir}/.wasdengine/preview/preview.gif`,
+        webp: `${request.projectDir}/.wasdengine/preview/preview.webp`,
         image: `${request.projectDir}/.wasdengine/preview/preview.png`,
         frames: 50, seconds: 4, width: 480, height: 270, gifBytes: 2 * 1024 * 1024,
+        webpWidth: 960, webpHeight: 540, webpBytes: 3 * 1024 * 1024,
         imageWidth: 1280, imageHeight: 720, imageBytes: 300 * 1024,
         started: false, paused: false, ...preview,
       })
@@ -160,7 +162,7 @@ describe('wasdToolDefinitions', () => {
     const value = await recorder.execute({ seconds: 5, still_at: 3, events, coordinate_space: 'window' }, exec) as JsonValue
     expect(stub.calls).toEqual([['record', { projectDir: '/work/game', seconds: 5, stillAt: 3, events, coordinateSpace: 'window' }]])
     const blocks = recorder.output.render({}, value)
-    expect(textOf(blocks)).toContain('Recorded the game\'s preview: /work/game/.wasdengine/preview/preview.gif (50 frames, 4.0 s, 480x270, 2.0 MB) and the still /work/game/.wasdengine/preview/preview.png (1280x720, 300 KB).')
+    expect(textOf(blocks)).toContain('Recorded the game\'s preview: the animation /work/game/.wasdengine/preview/preview.webp (960x540, 3.0 MB) that Explore and the game\'s page play, the GIF /work/game/.wasdengine/preview/preview.gif (50 frames, 4.0 s, 480x270, 2.0 MB) that link previews of its share link show, and the still /work/game/.wasdengine/preview/preview.png (1280x720, 300 KB).')
     expect(textOf(blocks)).toContain('The recording started the game, which keeps running.')
     expect(blocks.at(-1)).toMatchObject({ type: 'image', attachment: { attachmentId: 'a1' } })
     await recorder.execute({}, exec)
@@ -218,7 +220,8 @@ describe('wasdMcpProvider', () => {
     await writeFile(join(dir, 'preview.jpg'), 'JPEG')
     const recorder = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits()).tools().find(tool => tool.name === 'wasd_record_preview')!
     const content = await recorder.content!({
-      gif: join(dir, 'preview.gif'), image: join(dir, 'preview.jpg'), frames: 2, seconds: 1, width: 64, height: 36, gifBytes: 10, imageWidth: 64, imageHeight: 36, imageBytes: 4, started: false, paused: false,
+      gif: join(dir, 'preview.gif'), webp: join(dir, 'preview.webp'), image: join(dir, 'preview.jpg'), frames: 2, seconds: 1, width: 64, height: 36, gifBytes: 10,
+      webpWidth: 64, webpHeight: 36, webpBytes: 8, imageWidth: 64, imageHeight: 36, imageBytes: 4, started: false, paused: false,
     }, {}, exec)
     expect(content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('Recorded the game\'s preview') as string })
     expect(content[1]).toEqual({ type: 'image', data: Buffer.from('JPEG').toString('base64'), mimeType: 'image/jpeg' })

@@ -25,6 +25,11 @@ export interface GodotRecordRequest {
   readonly frameMs: number
   /** Largest width in pixels of the frames, from 64 to 4096; smaller windows keep their size. */
   readonly maxWidth: number
+  /**
+   * JPEG quality of the frames, from 0.1 to 1, which the game encodes faster than PNG at larger widths; without it the
+   * frames are PNG. A still captured on its own is PNG either way.
+   */
+  readonly frameQuality?: number
   /** Largest width in pixels of the still, from 64 to 4096. */
   readonly stillWidth: number
   /** Seconds into the recording at which the still is captured, from 0 to `seconds`. */
@@ -55,6 +60,7 @@ export function checkRecordRequest(request: GodotRecordRequest): void {
   within('seconds', request.seconds, 0.5, MAX_RECORD_SECONDS)
   within('frameMs', request.frameMs, 10, 1000)
   within('maxWidth', request.maxWidth, 64, 4096)
+  if (request.frameQuality !== undefined) within('frameQuality', request.frameQuality, 0.1, 1)
   within('stillWidth', request.stillWidth, 64, 4096)
   within('stillAt', request.stillAt, 0, request.seconds)
   within('startSeconds', request.startSeconds, 0, 60)
@@ -62,8 +68,10 @@ export function checkRecordRequest(request: GodotRecordRequest): void {
 
 /** One captured image. */
 export interface GodotRecordedImage {
-  /** PNG bytes. */
-  readonly png: Uint8Array
+  /** Image bytes, of `type`. */
+  readonly image: Uint8Array
+  /** Image type: JPEG for a frame captured with a frame quality, else PNG. */
+  readonly type: 'image/png' | 'image/jpeg'
   /** Width in pixels. */
   readonly width: number
   /** Height in pixels. */
@@ -97,9 +105,10 @@ export interface RecordedScreenshot {
     readonly windowWidth: number
     readonly windowHeight: number
     readonly paused: boolean
+    readonly format: 'png' | 'jpeg'
   }
-  /** PNG bytes. */
-  readonly png: Uint8Array
+  /** Image bytes, of `meta.format`. */
+  readonly image: Uint8Array
 }
 
 /** What a recording uses of a run. */
@@ -108,9 +117,10 @@ export interface RecordableRun {
    * Capture the game window.
    * @param maxWidth - largest image width.
    * @param signal - cancellation.
+   * @param jpegQuality - JPEG quality from 0.1 to 1; without it, a PNG.
    * @returns the image.
    */
-  screenshot(maxWidth: number, signal: AbortSignal): Promise<RecordedScreenshot>
+  screenshot(maxWidth: number, signal: AbortSignal, jpegQuality?: number): Promise<RecordedScreenshot>
   /**
    * Play an input sequence.
    * @param events - events in window pixels.
@@ -148,6 +158,8 @@ export interface CapturePlan {
   readonly frameMs: number
   /** Largest frame width. */
   readonly maxWidth: number
+  /** JPEG quality of the frames; PNG frames without it. */
+  readonly frameQuality?: number
   /** Largest still width. */
   readonly stillWidth: number
   /** Milliseconds into the recording at which the still is captured. */
@@ -197,8 +209,8 @@ export async function captureRecording(
     for (let slot = 0; slot * plan.frameMs < plan.durationMs; slot += 1) {
       const wait = start + slot * plan.frameMs - now()
       if (wait > 0) await clock.sleep(wait, signal)
-      const shot = await run.screenshot(plan.maxWidth, signal)
-      const frame = { png: shot.png, width: shot.meta.width, height: shot.meta.height, atMs: now() - start }
+      const shot = await run.screenshot(plan.maxWidth, signal, plan.frameQuality)
+      const frame = recordedImage(shot, now() - start)
       frames.push(frame)
       window = { width: shot.meta.windowWidth, height: shot.meta.windowHeight }
       paused &&= shot.meta.paused
@@ -220,9 +232,13 @@ export async function captureRecording(
   }
 }
 
+function recordedImage(shot: RecordedScreenshot, atMs: number): GodotRecordedImage {
+  const type = shot.meta.format === 'jpeg' ? 'image/jpeg' : 'image/png'
+  return { image: shot.image, type, width: shot.meta.width, height: shot.meta.height, atMs }
+}
+
 async function captureStill(
   run: RecordableRun, width: number, start: number, now: () => number, signal: AbortSignal,
 ): Promise<GodotRecordedImage> {
-  const shot = await run.screenshot(width, signal)
-  return { png: shot.png, width: shot.meta.width, height: shot.meta.height, atMs: now() - start }
+  return recordedImage(await run.screenshot(width, signal), now() - start)
 }

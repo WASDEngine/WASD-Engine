@@ -22,6 +22,7 @@ function fakeClock(): RecordingClock & { now(): number; time: number } {
 /** A fake run whose screenshots take `captureMs` of the fake clock. */
 function fakeRun(options: { readonly captureMs?: number; readonly paused?: boolean; readonly clock?: { time: number } } = {}) {
   const shots: number[] = []
+  const qualities: (number | undefined)[] = []
   const inputs: { events: readonly GodotInputEvent[]; signal: AbortSignal }[] = []
   let views = 0
   type Input = (events: readonly GodotInputEvent[], signal: AbortSignal) => Promise<unknown>
@@ -30,13 +31,17 @@ function fakeRun(options: { readonly captureMs?: number; readonly paused?: boole
     inputSignal.addEventListener('abort', () => { reject(inputSignal.reason) }, { once: true })
   })
   const run: RecordableRun = {
-    screenshot(maxWidth): Promise<RecordedScreenshot> {
+    screenshot(maxWidth, _signal, jpegQuality): Promise<RecordedScreenshot> {
       shots.push(maxWidth)
+      qualities.push(jpegQuality)
       if (options.clock !== undefined) options.clock.time += options.captureMs ?? 0
       const width = Math.min(640, maxWidth)
       return Promise.resolve({
-        meta: { width, height: width * 9 / 16, windowWidth: 640, windowHeight: 360, paused: options.paused ?? false },
-        png: new TextEncoder().encode(`frame-${shots.length}-${width}`),
+        meta: {
+          width, height: width * 9 / 16, windowWidth: 640, windowHeight: 360, paused: options.paused ?? false,
+          format: jpegQuality === undefined ? 'png' : 'jpeg',
+        },
+        image: new TextEncoder().encode(`frame-${shots.length}-${width}`),
       })
     },
     input(events, inputSignal) {
@@ -51,6 +56,7 @@ function fakeRun(options: { readonly captureMs?: number; readonly paused?: boole
   return {
     run,
     shots,
+    qualities,
     inputs,
     views: () => views,
     failInput(error: Error) {
@@ -84,6 +90,19 @@ describe('captureRecording', () => {
     )
     expect(recording.frames.length).toBeGreaterThanOrEqual(1)
     expect(recording.frames.at(-1)?.atMs).toBeLessThan(1000)
+  })
+
+  it('captures JPEG frames at a frame quality and the wider still of its own as a PNG', async () => {
+    const fake = fakeRun()
+    const recording = await captureRecording(
+      fake.run, { durationMs: 60, frameMs: 20, maxWidth: 320, frameQuality: 0.9, stillWidth: 1280, stillAtMs: 20 },
+      signal, fakeClock(),
+    )
+    expect(fake.shots).toEqual([320, 320, 1280, 320])
+    expect(fake.qualities).toEqual([0.9, 0.9, undefined, 0.9])
+    expect(recording.frames.map(frame => frame.type)).toEqual(['image/jpeg', 'image/jpeg', 'image/jpeg'])
+    expect(recording.still).toMatchObject({ type: 'image/png', width: 640 })
+    expect(() => { checkRecordRequest({ ...request, frameQuality: 0 }) }).toThrow('frameQuality must be from 0.1 to 1.')
   })
 
   it('captures a wider still of its own after the frame at its moment, or after the last frame', async () => {

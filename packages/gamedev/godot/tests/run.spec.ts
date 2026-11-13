@@ -363,7 +363,7 @@ posix('messages and requests', () => {
     expect(run.godotVersion).toBe('4.7.2-stable (fake)')
     const waiting = run.wait({ seconds: 0.3 }, signal)
     const [shot, value] = await Promise.all([run.screenshot(320, signal), run.evaluate('position', '/root/Main/Player', signal)])
-    expect(shot.png.toString('latin1')).toBe('PNG-BYTES')
+    expect(shot.image.toString('latin1')).toBe('PNG-BYTES')
     expect(shot.meta).toMatchObject({ width: 320, height: 180, windowWidth: 640, windowHeight: 360 })
     expect(value).toEqual({ value: 'position', valueType: 'String' })
     expect(await waiting).toMatchObject({ seconds: 0.3 })

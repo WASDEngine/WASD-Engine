@@ -520,11 +520,15 @@ export class GodotRun {
    * Capture the game window.
    * @param maxWidth - largest image width; wider windows are scaled down.
    * @param signal - cancellation.
-   * @returns metadata and PNG bytes.
+   * @param jpegQuality - JPEG quality from 0.1 to 1; without it, a PNG.
+   * @returns metadata and the image bytes, of `meta.format`.
    */
-  async screenshot(maxWidth: number, signal: AbortSignal): Promise<{ readonly meta: ScreenshotReply; readonly png: Buffer }> {
-    const reply = await this.send('screenshot', { format: 'png', maxWidth }, { signal, bounded: true, image: true })
-    return { meta: ScreenshotReply.parse(reply.result), png: reply.image as Buffer }
+  async screenshot(
+    maxWidth: number, signal: AbortSignal, jpegQuality?: number,
+  ): Promise<{ readonly meta: ScreenshotReply; readonly image: Buffer }> {
+    const params = jpegQuality === undefined ? { format: 'png', maxWidth } : { format: 'jpeg', quality: jpegQuality, maxWidth }
+    const reply = await this.send('screenshot', params, { signal, bounded: true, image: true })
+    return { meta: ScreenshotReply.parse(reply.result), image: reply.image as Buffer }
   }
 
   /**

@@ -328,12 +328,25 @@ posix('recordings for other plugins', () => {
     })
     expect(recording.frames.length).toBeGreaterThanOrEqual(3)
     expect(recording.frames[0]).toMatchObject({ width: 320, height: 180 })
-    expect(Buffer.from(recording.frames[0]?.png as Uint8Array).toString('latin1')).toBe('PNG-BYTES')
+    expect(Buffer.from(recording.frames[0]?.image as Uint8Array).toString('latin1')).toBe('PNG-BYTES')
+    expect(recording.frames[0]?.type).toBe('image/png')
     const requests = await fakeRequests(c.project)
     expect(requests.filter(entry => entry.type === 'input')).toMatchObject([{ events: [{ kind: 'key', key: 'Right', pressed: true, hold: 0.1 }] }])
     expect(requests.filter(entry => entry.type === 'screenshot').map(entry => entry.maxWidth)).toContain(640)
     const launches = (await fakeLog(c.project)).filter(entry => entry.argv !== undefined && !(entry.argv as string[]).includes('--import'))
     expect(launches).toHaveLength(1)
+  })
+
+  it('captures JPEG frames at a frame quality, and the wider still on its own as a PNG', async () => {
+    const c = await setup()
+    await callTool(c, 'godot_run')
+    const recording = await c.godot.record(c.owner.agent, { ...request, frameQuality: 0.85 }, signal)
+    expect(recording.frames[0]).toMatchObject({ type: 'image/jpeg', width: 320, height: 180 })
+    expect(Buffer.from(recording.frames[0]?.image as Uint8Array).toString('latin1')).toBe('JPEG-BYTES')
+    expect(recording.still).toMatchObject({ type: 'image/png', width: 640 })
+    const shots = (await fakeRequests(c.project)).filter(entry => entry.type === 'screenshot')
+    expect(shots.filter(entry => entry.format === 'jpeg').map(entry => [entry.maxWidth, entry.quality])).toContainEqual([320, 0.85])
+    expect(shots.filter(entry => entry.format === 'png').map(entry => entry.maxWidth)).toContain(640)
   })
 
   it('starts the game when none runs, and stops it afterwards when asked', async () => {

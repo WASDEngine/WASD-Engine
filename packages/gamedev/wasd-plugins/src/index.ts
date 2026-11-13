@@ -86,14 +86,25 @@ export interface Config {
   previewMaxSeconds: number
   /** Milliseconds from one frame of a preview GIF to the next. */
   previewFrameMs: number
-  /** Largest width in pixels of a preview GIF. */
+  /** Largest width in pixels of a preview GIF, which link previews of a game's share link show. */
   previewWidth: number
-  /** Smallest width in pixels that a preview GIF over `previewMaxGifBytes` shrinks to before it drops frames. */
+  /** Largest width in pixels of a preview animation, the animated WebP that Explore and a game's page play. */
+  previewWebpWidth: number
+  /**
+   * Smallest width in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
+   * `previewMaxWebpBytes`, shrinks to before it drops frames.
+   */
   previewMinWidth: number
   /** Largest width in pixels of a preview still. */
   previewStillWidth: number
   /** Largest preview GIF in bytes. */
   previewMaxGifBytes: number
+  /** Largest preview animation in bytes. */
+  previewMaxWebpBytes: number
+  /** WebP quality of a preview animation, from 1 to 100. */
+  previewWebpQuality: number
+  /** JPEG quality, from 0.1 to 1, of the frames a preview recording captures; the still stays lossless. */
+  previewFrameQuality: number
   /** CPU effort of the preview GIF's palette and frame optimization, from 1 (fastest) to 10 (smallest). */
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */
@@ -129,9 +140,13 @@ export default class WasdPlugins extends TypertRemoteService {
     previewMaxSeconds: z.number().min(1).max(MAX_PREVIEW_SECONDS).default(10),
     previewFrameMs: z.natural().min(20).max(1000).default(80),
     previewWidth: z.natural().min(64).max(4096).default(480),
+    previewWebpWidth: z.natural().min(64).max(4096).default(960),
     previewMinWidth: z.natural().min(64).max(4096).default(240),
     previewStillWidth: z.natural().min(64).max(4096).default(1280),
     previewMaxGifBytes: z.natural().min(64 * 1024).default(5 * 1024 * 1024),
+    previewMaxWebpBytes: z.natural().min(64 * 1024).default(6 * 1024 * 1024),
+    previewWebpQuality: z.natural().min(1).max(100).default(75),
+    previewFrameQuality: z.number().min(0.1).max(1).default(0.9),
     previewEffort: z.natural().min(1).max(10).default(4),
     previewStartSeconds: z.number().min(0).max(60).default(2),
     builtinModelProviders: z.array(z.string().min(1)).default(['deepseek-account', 'deepseek-official']),
@@ -150,6 +165,7 @@ export default class WasdPlugins extends TypertRemoteService {
     super(ctx, 'wasdPlugins', { namespace: 'wasdPlugins' })
     if (config.previewSeconds > config.previewMaxSeconds) throw new TypeError('wasd-plugins: previewSeconds must be at most previewMaxSeconds')
     if (config.previewMinWidth > config.previewWidth) throw new TypeError('wasd-plugins: previewMinWidth must be at most previewWidth')
+    if (config.previewMinWidth > config.previewWebpWidth) throw new TypeError('wasd-plugins: previewMinWidth must be at most previewWebpWidth')
     if (!isAbsolute(config.dataRoot)) throw new TypeError(`wasd-plugins: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}`)
     this.folders = new ReleaseFolders(join(config.dataRoot, 'release-folders'))
     ctx.effect(() => () => { this.lifetime.abort() }, 'wasd-plugins: lifetime')
@@ -195,7 +211,9 @@ export default class WasdPlugins extends TypertRemoteService {
           project: request.projectDir,
           seconds: request.seconds,
           frameMs: config.previewFrameMs,
-          maxWidth: config.previewWidth,
+          // One capture serves both the GIF and the wider animation; JPEG frames keep up at that width.
+          maxWidth: Math.max(config.previewWidth, config.previewWebpWidth),
+          frameQuality: config.previewFrameQuality,
           stillWidth: config.previewStillWidth,
           stillAt: request.stillAt ?? request.seconds / 2,
           startSeconds: config.previewStartSeconds,
@@ -203,7 +221,15 @@ export default class WasdPlugins extends TypertRemoteService {
           ...request.events === undefined ? {} : { events: request.events },
           ...request.coordinateSpace === undefined ? {} : { coordinateSpace: request.coordinateSpace },
         }, signal)
-        const encoding = { maxGifBytes: config.previewMaxGifBytes, minWidth: config.previewMinWidth, effort: config.previewEffort }
+        const encoding = {
+          gifWidth: config.previewWidth,
+          maxGifBytes: config.previewMaxGifBytes,
+          webpWidth: config.previewWebpWidth,
+          maxWebpBytes: config.previewMaxWebpBytes,
+          webpQuality: config.previewWebpQuality,
+          minWidth: config.previewMinWidth,
+          effort: config.previewEffort,
+        }
         const encoded = await encodePreview(recording, encoding, signal)
         return { recording, encoded, files: await savePreview(request.projectDir, encoded) }
       }
@@ -236,12 +262,16 @@ export default class WasdPlugins extends TypertRemoteService {
           const view = images.kind === 'ready' ? await images.save(encoded.still, encoded.stillType, basename(files.image), exec.signal) : undefined
           return {
             gif: files.gif,
+            webp: files.webp,
             image: files.image,
             frames: encoded.frames,
             seconds: encoded.durationMs / 1000,
             width: encoded.gifWidth,
             height: encoded.gifHeight,
             gifBytes: encoded.gif.length,
+            webpWidth: encoded.webpWidth,
+            webpHeight: encoded.webpHeight,
+            webpBytes: encoded.webp.length,
             imageWidth: encoded.stillWidth,
             imageHeight: encoded.stillHeight,
             imageBytes: encoded.still.length,

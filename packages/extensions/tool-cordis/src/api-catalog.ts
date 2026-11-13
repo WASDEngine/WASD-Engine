@@ -7573,7 +7573,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRecordedImage',
-    declaration: 'export interface GodotRecordedImage {\n    readonly png: Uint8Array;\n    readonly width: number;\n    readonly height: number;\n    readonly atMs: number;\n}',
+    declaration: 'export interface GodotRecordedImage {\n    readonly image: Uint8Array;\n    readonly type: \'image/png\' | \'image/jpeg\';\n    readonly width: number;\n    readonly height: number;\n    readonly atMs: number;\n}',
   },
   {
     name: 'GodotRecording',
@@ -7581,7 +7581,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRecordRequest',
-    declaration: 'export interface GodotRecordRequest {\n    readonly project?: string;\n    readonly seconds: number;\n    readonly frameMs: number;\n    readonly maxWidth: number;\n    readonly stillWidth: number;\n    readonly stillAt: number;\n    readonly startSeconds: number;\n    readonly stopStarted: boolean;\n    readonly events?: readonly unknown[];\n    readonly coordinateSpace?: \'screenshot\' | \'window\';\n}',
+    declaration: 'export interface GodotRecordRequest {\n    readonly project?: string;\n    readonly seconds: number;\n    readonly frameMs: number;\n    readonly maxWidth: number;\n    readonly frameQuality?: number;\n    readonly stillWidth: number;\n    readonly stillAt: number;\n    readonly startSeconds: number;\n    readonly stopStarted: boolean;\n    readonly events?: readonly unknown[];\n    readonly coordinateSpace?: \'screenshot\' | \'window\';\n}',
   },
   {
     name: 'GodotRunLaunch',
