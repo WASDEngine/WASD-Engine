@@ -776,4 +776,10 @@ describe('gamedev preset', () => {
     expect(text.indexOf(fallback)).toBeGreaterThan(builtIn)
     expect(text.indexOf('godot --')).toBe(text.indexOf(fallback) + fallback.length)
   })
+
+  it('has godot-project give a new project.godot Jolt physics and keep an existing project\'s physics engine', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    expect(text).toContain('A new `project.godot` also sets `3d/physics_engine="Jolt Physics"` under `[physics]`')
+    expect(text).toContain('Keep an existing project\'s physics engine')
+  })
 })

@@ -77,10 +77,11 @@ function images(result: CallResult): Array<{ data: string; mimeType: string }> {
 }
 
 describe('the Godot tools over WASD Engine\'s MCP server', () => {
-  it('names the Godot release of the shipped or installed runtime in the instructions', async () => {
+  it('names the Godot release of the shipped or installed runtime, and Jolt for a new project, in the instructions', async () => {
     const { client } = await connected({}, { runnerPath: '', libgodotPath: '' })
     expect(client.getInstructions()).toContain(
-      `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".`)
+      `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" `
+      + 'and set 3d/physics_engine="Jolt Physics" under [physics].')
   }, TIMEOUT)
 
   it('names no Godot release in the instructions for configured runtime paths', async () => {

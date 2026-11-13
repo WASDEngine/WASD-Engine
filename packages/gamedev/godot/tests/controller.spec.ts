@@ -423,16 +423,18 @@ async function godotSection(c: Composition): Promise<string | undefined> {
 
 /** The section's first paragraph when it names no Godot release. */
 const UNVERSIONED = 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
-  + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+  + 'Do not look for one or download one. For a new game, first write project.godot, whose [physics] section sets '
+  + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.'
 
 posix('system prompt', () => {
-  it('tells the agent which Godot is built in, in the text and size that both READMEs document', async () => {
+  it('tells the agent which Godot is built in, and to give a new project Jolt, in the text and size that both READMEs document', async () => {
     // No runtime paths: the shipped or installed runtime of the default runtimeVersion runs the games.
     const c = await setup({ config: { runnerPath: '', libgodotPath: '' } })
     const text = await godotSection(c)
     const lead = '# Godot games\n\nGodot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need '
       + 'no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first '
-      + 'write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.\n\n'
+      + 'write project.godot, whose config/features starts with "4.7" and whose [physics] section sets '
+      + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.\n\n'
     expect(text?.slice(0, lead.length)).toBe(lead)
     const english = await readFile(new URL('../README.md', import.meta.url), 'utf8')
     const chinese = await readFile(new URL('../README.zh.md', import.meta.url), 'utf8')

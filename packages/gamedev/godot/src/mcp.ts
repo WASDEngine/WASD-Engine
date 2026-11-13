@@ -184,7 +184,8 @@ export function godotMcpProvider(
     description: 'Run, test, and play the user\'s Godot game inside the WASD Engine window.',
     instructions: release === undefined
       ? MCP_INSTRUCTIONS
-      : `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot ${release}: write code for it, and start config/features in a new project.godot with "${release}".`,
+      : `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot ${release}: write code for it, and in a new project.godot, start config/features `
+        + `with "${release}" and set 3d/physics_engine="Jolt Physics" under [physics].`,
     tools: () => tools,
     status: async signal => statusOf(await runtime(signal)),
   }

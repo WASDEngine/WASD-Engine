@@ -181,10 +181,12 @@ function godotRelease(config: Pick<Config, 'runtimeVersion' | 'libgodotPath'>): 
 function godotPrompt(release: string | undefined): string {
   const builtIn = release === undefined
     ? 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
-      + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+      + 'Do not look for one or download one. For a new game, first write project.godot, whose [physics] section sets '
+      + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.'
     : `Godot ${release} is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. `
       + `Do not look for one or download one. Write code for Godot ${release}. For a new game, first write project.godot, whose `
-      + `config/features starts with "${release}", a main scene, and its scripts.`
+      + `config/features starts with "${release}" and whose [physics] section sets 3d/physics_engine="Jolt Physics", a main scene, `
+      + 'and its scripts.'
   return `# Godot games
 
 ${builtIn}
