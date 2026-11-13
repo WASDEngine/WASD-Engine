@@ -2,8 +2,8 @@
  * The todo continuation plugin in a composition with the real Agent loop, tool runtime, session projections, and
  * `todo_write` tool, driven by a scripted model: a turn that ends with unfinished todos continues with one reminder,
  * an unchanged list or the per-turn cap lets the turn end, and finished lists, lists from earlier turns, turns that a
- * tool ended, turns the user stopped or sent a message during, subagent Sessions, and an unloaded plugin get no
- * reminder.
+ * tool ended, turns the user stopped or sent a message during, turns cut off at the output limit, turns in plan mode,
+ * subagent Sessions, and an unloaded plugin get no reminder.
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -11,12 +11,13 @@ import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { StreamChunk } from '@deepseek-ai/dsh-llm'
-import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
+import PlanModeController from '@deepseek-ai/dsh-plan-mode'
+import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import { afterEach, describe, expect, it } from 'vitest'
-import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
+import { maxTokensResponse, MockAdapter, textResponse, toolCallResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as TodoContinuation from '../src/index.ts'
 
 let ctx: Context | undefined
@@ -62,11 +63,12 @@ function userMessage(text: string) {
  * Boot the real loop spine, `todo_write`, a turn-ending tool, a tool through which the user queues a message while the
  * turn works, and the plugin under test.
  * @param config - the plugin's configuration.
- * @param before - registers listeners that run before the plugin's, such as an earlier `agent/turn-stopping` listener.
+ * @param before - mounts plugins and registers listeners that run before the plugin's, such as plan mode or an earlier
+ *   `agent/turn-stopping` listener.
  */
 async function compose(
   config: TodoContinuation.Config = { maxRemindersPerTurn: 3 },
-  before?: (context: Context) => void,
+  before?: (context: Context) => void | Promise<void>,
 ): Promise<Context> {
   const created = new Context()
   ctx = created
@@ -91,7 +93,7 @@ async function compose(
       return Promise.resolve([{ type: 'text', text: 'queued' }])
     },
   }))
-  before?.(created)
+  await before?.(created)
   await created.plugin(TodoContinuation, config)
   return created
 }
@@ -147,6 +149,13 @@ function reminders(agent: Agent): { text: string; source: unknown }[] {
 /** How many turns the agent's log closed. */
 function turnEnds(agent: Agent): number {
   return agent.session.snapshotEvents().filter(event => event.type === 'turn/end').length
+}
+
+/** Why each closed turn ended. */
+function turnEndReasons(agent: Agent): TurnEndReason[] {
+  return agent.session.snapshotEvents()
+    .filter((event): event is SessionEvent<'turn/end'> => event.type === 'turn/end')
+    .map(event => event.data.reason)
 }
 
 describe('a turn that ends with unfinished todos', () => {
@@ -301,6 +310,86 @@ describe('turns that get no reminder', () => {
     expect(reminders(agent)).toEqual([])
     expect(adapter.requests).toHaveLength(3)
     expect(JSON.stringify(adapter.requests[2]?.messages)).toContain('Stop after the terrain.')
+    expect(turnEnds(agent)).toBe(1)
+  })
+
+  it('leaves a turn whose reply stopped at the output limit, which would end before the model read its next tool results', async () => {
+    const context = await compose()
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      maxTokensResponse('I textured the terrain and started on the tre'),
+      writeTodos('w2', DONE_LIST),
+      textResponse('Both are textured.'),
+    ])
+    await ask(agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(2)
+    expect(turnEndReasons(agent)).toEqual([{ kind: 'max-tokens' }])
+  })
+
+  it('reminds no more in a turn after one of its steps stopped at the output limit', async () => {
+    const context = await compose()
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      textResponse('Stopping here.'),
+      writeTodos('w2', [{ content: 'Texture the terrain', status: 'completed' }, { content: 'Texture the trees', status: 'in_progress' }]),
+      maxTokensResponse('The trees use the bark textu'),
+      writeTodos('w3', DONE_LIST),
+      textResponse('Both are textured.'),
+    ])
+    await ask(agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(agent).map(reminder => reminder.source)).toEqual([{ kind: 'todo-continuation', form: 'notice', summary: '2 todos left' }])
+    expect(adapter.requests).toHaveLength(4)
+    expect(turnEndReasons(agent)).toEqual([{ kind: 'max-tokens' }])
+  })
+
+  it('leaves a turn in plan mode, which waits for the user to approve the plan, and reminds again once plan mode is off', async () => {
+    const context = await compose(undefined, async (created) => {
+      await created.plugin(PlanModeController, { section: 'You are in plan mode.' })
+    })
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      textResponse('# Texture plan\n\nTerrain first, then the trees.'),
+      writeTodos('w2', OPEN_LIST),
+      textResponse('I textured the terrain. Want me to do the trees next?'),
+      writeTodos('w3', DONE_LIST),
+      textResponse('Both are textured.'),
+    ])
+    expect(context.planMode.set(agent, true)).toBe('committed')
+    await ask(agent, 'Plan the textures.')
+
+    expect(JSON.stringify(adapter.requests[1]?.messages)).toContain('You are in plan mode.')
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(2)
+
+    expect(context.planMode.set(agent, false)).toBe('committed')
+    await ask(agent, 'Go ahead.')
+    expect(reminders(agent)).toHaveLength(1)
+    expect(adapter.requests).toHaveLength(6)
+  })
+
+  it('leaves a turn that the user switches to plan mode while it stops', async () => {
+    const hold = holdingListener()
+    const context = await compose(undefined, async (created) => {
+      await created.plugin(PlanModeController, { section: 'You are in plan mode.' })
+      hold.install(created)
+    })
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      textResponse('I textured the terrain. Want me to do the trees next?'),
+      textResponse('A reminder step must not start.'),
+    ])
+    agent.followup(userMessage('Texture the terrain and the trees.'))
+    const stopping = await hold.reached
+    // The selection waits for the next step, which a reminder would start in plan mode.
+    expect(context.planMode.set(stopping, true)).toBe('queued')
+    hold.release()
+    await agent.whenIdle()
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(2)
     expect(turnEnds(agent)).toBe(1)
   })
 

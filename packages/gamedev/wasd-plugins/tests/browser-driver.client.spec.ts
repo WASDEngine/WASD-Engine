@@ -16,6 +16,9 @@ import type { WasdBrowserCommand, WasdBrowserOutcome, WasdBrowserRequest } from 
 
 const SESSION = 'session-1' as SessionId
 const OTHER = 'session-2' as SessionId
+const NOT_OWN_TAB = 'The Browser clicks and types only in a tab you opened, and you have none now; it never acts in a tab '
+  + 'the user opened. Open the page with browser_open, which loads it in a tab of your own, signed in to the same sites '
+  + 'as the user\'s tabs, then click or type there.'
 const LIMITS = { maxChars: 10_000, loadTimeoutMs: 2000, operationTimeoutMs: 1000, screenshotWidth: 1280 } as const
 
 /** The page operations a test can hold until it lets them go on, like a page whose main thread is busy. */
@@ -83,6 +86,7 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     expanded = true
   })
   const focus = vi.fn((tabId: TabId) => { active = [...tabs.values()].flat().find(tab => tab.id === tabId) })
+  const expandIn = vi.fn((_sessionId: SessionId) => { expanded = true })
   const addTab = (sessionId: SessionId, id = `tab-${String(++sequence)}` as TabId) => {
     const tab = { id, kind: BROWSER_KIND }
     tabs.set(sessionId, [...tabs.get(sessionId) ?? [], tab])
@@ -99,8 +103,7 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     tabsIn: sessionId => tabs.get(sessionId) ?? [],
     active: () => active,
     focus,
-    isExpanded: () => expanded,
-    toggleExpanded: () => { expanded = !expanded },
+    expandIn,
   }
   const automation: SidebarBrowserAutomation = { tab: (_sessionId, tabId) => pages.get(tabId)?.face }
   const deliveries: BrowserRequestDelivery[] = []
@@ -112,12 +115,15 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     return Promise.resolve()
   })
   const outcomes = new Map<string, WasdBrowserOutcome>()
-  // The Host's queue: the commands no window claimed, and the claimed ones whose call still waits.
+  // The Host's queue: the commands no window claimed, and the claimed ones whose call still waits, and the id of the
+  // window's command stream, through which it claims.
   const queued = new Map<string, { request: WasdBrowserRequest; claimed: boolean }>()
+  let follower = 'stream-1'
   const publish = () => {
     const entries = [...queued.values()]
     deliveries.push({
       value: {
+        follower,
         requests: entries.filter(entry => !entry.claimed).map(entry => entry.request),
         claimed: entries.filter(entry => entry.claimed).map(entry => entry.request.id),
       },
@@ -125,13 +131,20 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     })
     wake?.()
   }
-  const claim = vi.fn((id: string) => {
+  // The Host decides a claim when it arrives; the answer reaches the window once `answers` lets it.
+  let answers: Promise<unknown> | undefined
+  const claim = vi.fn((id: string, through: string) => {
     const entry = queued.get(id)
-    if (entry === undefined || entry.claimed) return Promise.resolve(false)
-    entry.claimed = true
-    publish()
-    return Promise.resolve(true)
+    const took = entry !== undefined && !entry.claimed && through === follower
+    if (took) {
+      entry.claimed = true
+      publish()
+    }
+    return answers === undefined ? Promise.resolve(took) : answers.then(() => took)
   })
+  const holdAnswers = (until: Promise<unknown> | undefined) => { answers = until }
+  /** End the window's command stream before the window hears of it, as a reconnect does before the new stream delivers. */
+  const reopenQuietly = () => { follower = `stream-${String(Number(follower.slice(7)) + 1)}` }
   const warn = vi.fn()
   const stop = followBrowserRequests({
     follow: () => ({
@@ -180,7 +193,10 @@ function harness(onScreen: SessionId | undefined = SESSION) {
     for (const listener of [...listeners]) listener()
   }
   return {
-    sidebar, openTabIn, focus, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, isExpanded: () => expanded,
+    sidebar, openTabIn, focus, expandIn, pages, addTab, claim, warn, dispose, stop, send, end, outcome, outcomes, show, publish,
+    reopenQuietly, holdAnswers,
+    isExpanded: () => expanded,
+    collapse: () => { expanded = false },
   }
 }
 
@@ -219,7 +235,7 @@ describe('followBrowserRequests', () => {
     const h = start()
     const id = h.send({ kind: 'open', url: 'https://duckduckgo.com/?q=godot' })
     const result = page(await h.outcome(id))
-    expect(h.claim).toHaveBeenCalledWith(id)
+    expect(h.claim).toHaveBeenCalledWith(id, 'stream-1')
     expect(h.openTabIn).toHaveBeenCalledWith(SESSION, BROWSER_KIND)
     const [agentTab] = h.sidebar.tabsIn(SESSION)
     expect(h.pages.get(agentTab!.id)?.loads).toEqual(['https://duckduckgo.com/?q=godot'])
@@ -227,6 +243,18 @@ describe('followBrowserRequests', () => {
     expect(h.isExpanded()).toBe(true)
     expect(result.page).toMatchObject({ title: 'Results', truncated: false, loading: false })
     expect(result.page.text).toBe('# Results\n[Godot](https://godotengine.org/) [1: textbox "Search" value=""] [2: button "Go"]')
+  })
+
+  it('shows its tab again in a collapsed column through the expansion that leaves the input focus alone', async () => {
+    const h = start()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/one' })))
+    h.collapse()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/two' })))
+    expect(h.expandIn).toHaveBeenLastCalledWith(SESSION)
+    expect(h.isExpanded()).toBe(true)
+    h.collapse()
+    page(await h.outcome(h.send({ kind: 'screenshot' })))
+    expect(h.isExpanded()).toBe(true)
   })
 
   it('never loads into a tab the user opened, even after reading it, and keeps loading into its own', async () => {
@@ -241,23 +269,46 @@ describe('followBrowserRequests', () => {
     expect(h.pages.get(own.id)?.loads).toEqual(['https://example.test/one', 'https://example.test/two'])
   })
 
-  it('reads the Browser tab the user has open, then acts on it', async () => {
+  it('reads and looks at the Browser tab the user has open, but never clicks or types in it', async () => {
     const h = start()
     const user = h.addTab(SESSION, 'user-tab' as TabId)
+    const clicked = vi.fn()
+    document.querySelector('button')!.addEventListener('click', clicked)
     expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('[2: button "Go"]')
+    expect(page(await h.outcome(h.send({ kind: 'screenshot' }))).image).toBeDefined()
+    for (const command of [
+      { kind: 'click', element: 2 }, { kind: 'click', x: 10, y: 10 }, { kind: 'type', element: 1, text: 'godot', submit: true },
+    ] as const) expect(await h.outcome(h.send(command))).toEqual({ ok: false, message: NOT_OWN_TAB })
     expect(h.openTabIn).not.toHaveBeenCalled()
+    expect(h.pages.get(user.id)).toMatchObject({ inputs: [], typed: [], loads: [] })
+    expect(clicked).not.toHaveBeenCalled()
+  })
+
+  it('reads the Browser tab the user has open at each call, and keeps no hold on it once the user turns away', async () => {
+    const h = start()
+    const first = h.addTab(SESSION, 'first-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    const second = h.addTab(SESSION, 'second-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    expect([h.pages.get(first.id)?.calls, h.pages.get(second.id)?.calls]).toEqual([['evaluate'], ['evaluate']])
+    h.show(OTHER)
+    const id = h.send({ kind: 'read' })
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(h.claim.mock.calls.map(([claimed]) => claimed)).not.toContain(id)
+    expect(h.pages.get(second.id)?.calls).toEqual(['evaluate'])
+  })
+
+  it('tells the agent to open the page in a tab of its own before it clicks or types', async () => {
+    const h = start()
+    expect(await h.outcome(h.send({ kind: 'click', element: 1 }))).toEqual({ ok: false, message: NOT_OWN_TAB })
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
     page(await h.outcome(h.send({ kind: 'click', element: 2 })))
-    expect(h.pages.get(user.id)?.inputs).toEqual([
+    const [own] = h.sidebar.tabsIn(SESSION)
+    expect(h.pages.get(own!.id)?.inputs).toEqual([
       { type: 'mouseMove', x: 50, y: 10 },
       { type: 'mouseDown', x: 50, y: 10, button: 'left', clickCount: 1 },
       { type: 'mouseUp', x: 50, y: 10, button: 'left', clickCount: 1 },
     ])
-  })
-
-  it('asks for browser_open before acting without a tab of its own', async () => {
-    const h = start()
-    const failed = await h.outcome(h.send({ kind: 'click', element: 1 }))
-    expect(failed).toEqual({ ok: false, message: 'No page is open in your Browser tab; call browser_open first, or browser_read to use the Browser tab the user has open.' })
   })
 
   it('clicks a covered control by script and says so, and reports a number that is no longer on the page', async () => {
@@ -285,6 +336,15 @@ describe('followBrowserRequests', () => {
     ])
     expect(await h.outcome(h.send({ kind: 'type', element: 2, text: 'x', submit: false })))
       .toEqual({ ok: false, message: 'Element 2 is not a field you can type into.' })
+  })
+
+  it('reads password and payment fields without their values', async () => {
+    document.body.innerHTML = '<input autocomplete="current-password" aria-label="Password" value="hunter2-shown">'
+      + '<input type="tel" autocomplete="cc-number" aria-label="Card" value="4242 4242 4242 4242"><input aria-label="Name" value="Ada">'
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text)
+      .toBe('[1: textbox "Password" secret] [2: textbox "Card" secret] [3: textbox "Name" value="Ada"]')
   })
 
   it('refuses to type into a password or payment field, or where the page moves the focus to one', async () => {
@@ -348,8 +408,9 @@ describe('followBrowserRequests', () => {
 
   it('drops a command whose tool call ended while it waited behind the Session\'s earlier command', async () => {
     const h = start()
-    const user = h.addTab(SESSION, 'user-tab' as TabId)
-    const fake = h.pages.get(user.id)!
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
+    const [own] = h.sidebar.tabsIn(SESSION)
+    const fake = h.pages.get(own!.id)!
     const busy = Promise.withResolvers<undefined>()
     fake.stall.evaluate = busy.promise
     const first = h.send({ kind: 'read' })
@@ -389,6 +450,40 @@ describe('followBrowserRequests', () => {
     h.show(OTHER)
     expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('# Results')
     expect(h.claim).toHaveBeenCalledTimes(2)
+  })
+
+  it('takes a command through its latest command stream, again after a claim through a stream that ended', async () => {
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    page(await h.outcome(h.send({ kind: 'read' })))
+    expect(h.claim).toHaveBeenLastCalledWith('request-1', 'stream-1')
+    // The list offering the command comes through the old stream, which ends before the window claims through it.
+    const id = h.send({ kind: 'read' })
+    h.reopenQuietly()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.claim).toHaveBeenLastCalledWith(id, 'stream-1')
+    expect(h.outcomes.has(id)).toBe(false)
+    // The reopened stream's first list offers the command again.
+    h.publish()
+    page(await h.outcome(id))
+    expect(h.claim).toHaveBeenLastCalledWith(id, 'stream-2')
+  })
+
+  it('takes a command again at once when its stream reopened before the refusal of its claim came back', async () => {
+    const h = start()
+    h.addTab(SESSION, 'user-tab' as TabId)
+    const answer = Promise.withResolvers<undefined>()
+    h.holdAnswers(answer.promise)
+    const id = h.send({ kind: 'read' })
+    h.reopenQuietly()
+    await vi.advanceTimersByTimeAsync(0)
+    h.publish()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(h.claim.mock.calls).toEqual([[id, 'stream-1']])
+    h.holdAnswers(undefined)
+    answer.resolve(undefined)
+    page(await h.outcome(id))
+    expect(h.claim.mock.calls).toEqual([[id, 'stream-1'], [id, 'stream-2']])
   })
 
   it('stops following when disposed', async () => {

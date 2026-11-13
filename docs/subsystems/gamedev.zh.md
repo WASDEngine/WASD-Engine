@@ -392,18 +392,18 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 在桌面配置中，`wasd-plugins` 行设置 `browser`，[`@deepseek-ai/dsh-wasd-plugins`](../../packages/gamedev/wasd-plugins/README.zh.md#the-agents-browser) 为会话的智能体提供 `browser_*` 工具，这些工具在右侧边栏的浏览器标签页中操作。浏览器标签页位于窗口中，因此每次工具调用都会成为一条由 Host 排队、由窗口执行的命令：
 
 1. 工具调用排入一个 `WasdBrowserRequest`：`id`、发起调用的 `sessionId`、`command`，以及来自该行配置的 `limits`：`maxChars`、`loadTimeoutMs`、`operationTimeoutMs` 和 `screenshotWidth`。
-2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表，以及已被接手、其工具调用仍在等待的请求 id。
-3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 接手该请求；只有第一次接手成功。窗口接手请求时立即认领，并按顺序执行同一会话的请求；页面上的每个操作最多等待 `operationTimeoutMs`，当两个列表都不再包含某个请求（即其工具调用已结束）时，窗口会在该请求对页面的下一个动作之前停止它。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败。
+2. 每个其 Peer 可以调用该端点的窗口都跟随 `wasdPlugins.browserRequests`，该流在每次变化后再次给出尚未被接手的完整请求列表、已被接手且其工具调用仍在等待的请求 id，以及该流自己的 `follower` id。
+3. 当请求所属的会话显示在窗口中，或窗口持有该会话的智能体标签页时，窗口用 `wasdPlugins.claimBrowserRequest` 并给出其流的 `follower` id 来接手该请求；只有第一次接手成功。窗口接手请求时立即认领，并按顺序执行同一会话的请求；页面上的每个操作最多等待 `operationTimeoutMs`，当两个列表都不再包含某个请求（即其工具调用已结束）时，窗口会在该请求对页面的下一个动作之前停止它。在 `browserClaimTimeoutMs` 内没有窗口接手的请求会使其工具调用失败；已被接手的请求在接手它的流结束时（窗口关闭、重新加载或断开连接）会立即使其工具调用失败。
 4. 窗口通过 [`@deepseek-ai/dsh-client-ui-sidebar-browser`](../../packages/client/ui-sidebar-browser/README.zh.md) 的 `sidebarBrowserAutomation` 服务执行操作，该服务只由桌面载体提供：在页面主环境中运行脚本、发送可信输入、输入文本，以及截取 `<webview>` guest 的画面。
 5. 窗口用 `wasdPlugins.settleBrowserRequest` 和一个 `WasdBrowserOutcome` 结束该请求。
 
 | `command.kind` | 字段 | 窗口的操作 |
 |---|---|---|
 | `open` | `url` | 把地址加载到该会话的智能体标签页（必要时先在显示中的会话里打开一个），显示该标签页，并返回页面 |
-| `read` | 无 | 返回智能体标签页的页面，或用户打开的浏览器标签页的页面 |
-| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 点击该控件或该点，并返回页面 |
-| `type` | `element`、`text`、`submit` | 填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面 |
-| `screenshot` | `element` | 截取页面的可见部分；给出控件时先把它滚动到视野中 |
+| `read` | 无 | 返回智能体标签页的页面；没有智能体标签页时，返回用户此刻打开的浏览器标签页的页面 |
+| `click` | `element`，或以视口 CSS 像素表示的 `x` 与 `y` | 在智能体标签页中点击该控件或该点，并返回页面；没有智能体标签页时失败，因为窗口从不在用户打开的标签页中操作 |
+| `type` | `element`、`text`、`submit` | 在智能体标签页中填写输入框或选择选项，`submit` 为 true 时按下 Enter，并返回页面；没有智能体标签页时同点击一样失败 |
+| `screenshot` | `element` | 截取智能体标签页中页面的可见部分，没有智能体标签页时截取用户打开的浏览器标签页中页面的可见部分；给出控件时先把它滚动到视野中 |
 
 `WasdBrowserOutcome` 要么是 `{ ok: true, page, note?, image? }`，要么是 `{ ok: false, message }`。`page` 包含页面的 `url`、`title` 和 `text`、文本是否被截断（`truncated`）、页面是否仍在加载（`loading`），以及可选的加载错误 `error`；`note` 说明窗口如何执行了该命令，例如通过脚本点击；`image` 包含截图的 base64 `data`、`mediaType`、`width` 和 `height`，以及它所显示视口的 CSS 像素尺寸 `viewportWidth` 与 `viewportHeight`，工具据此把截图像素换算回页面坐标。Host 拒绝文本超过 `maxChars` 或图像数据超过 32 MiB 的结果。[LiveShare](liveshare.zh.md) 把这三个端点都归为仅所有者可用，并且从不向共享观看者提供 `wasdPlugins` 命名空间。
 

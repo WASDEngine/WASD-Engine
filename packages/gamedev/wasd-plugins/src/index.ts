@@ -165,7 +165,8 @@ export default class WasdPlugins extends TypertRemoteService {
 
   /**
    * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and
-   * the ids of taken ones whose call still waits, so a window stops a command whose call ended.
+   * the ids of taken ones whose call still waits, so a window stops a command whose call ended, with the stream's own
+   * id, through which the window takes commands; the commands taken through a stream fail once it ends.
    * @param signal - stream cancellation.
    * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
    */
@@ -175,15 +176,17 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
-   * Take a Browser command for the calling window, which then carries it out and settles it.
+   * Take a Browser command for the calling window, which then carries it out and settles it. The command fails at once
+   * if the window's command stream ends before it settles.
    * @param id - the command.
+   * @param follower - the `follower` id of the latest list the window's command stream yielded.
    * @param signal - cancellation.
-   * @returns whether the window took it; false when another window did or the command ended.
+   * @returns whether the window took it; false when another window did, the command ended, or that stream ended.
    */
   @Remote
-  claimBrowserRequest(id: string, signal: AbortSignal): boolean {
+  claimBrowserRequest(id: string, follower: string, signal: AbortSignal): boolean {
     signal.throwIfAborted()
-    return this.browserRequestQueue.claim(id)
+    return this.browserRequestQueue.claim(id, follower)
   }
 
   /**

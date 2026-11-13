@@ -6,12 +6,13 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  clickControl, focusedSecretField, locateControl, pageScript, prepareField, snapshotPage, viewportSize, type PageSnapshot,
-  type SnapshotOptions,
+  clickControl, focusedSecretField, locateControl, pageScript, prepareField, SECRET_FIELDS, snapshotPage, viewportSize,
+  type PageSnapshot, type SnapshotOptions,
 } from '../src/client/page.ts'
 
 const KEY = '__wasdBrowserControlsTest'
-const OPTIONS: SnapshotOptions = { key: KEY, maxChars: 10_000, maxElements: 10_000, layout: false }
+const OPTIONS: SnapshotOptions = { key: KEY, maxChars: 10_000, maxElements: 10_000, layout: false, secret: SECRET_FIELDS }
+const SECRET = SECRET_FIELDS
 
 afterEach(() => {
   document.body.innerHTML = ''
@@ -63,7 +64,7 @@ describe('snapshotPage', () => {
         '# Search results',
         'Found 3 results for shaders.',
         '- First [1: link "more"]',
-        'Search games [2: textbox "Search games" value="godot"] [3: password "Password"] [4: checkbox "Free only" checked] Free only [5: select "Sort" value="Newest" options=["Popular","Newest"]] [6: button "Search"]',
+        'Search games [2: textbox "Search games" value="godot"] [3: password "Password" secret] [4: checkbox "Free only" checked] Free only [5: select "Sort" value="Newest" options=["Popular","Newest"]] [6: button "Search"]',
         'Name | Size',
         'Trees | 2 MB',
         '```\nfunc _ready():\n    print("hi")\n```',
@@ -73,6 +74,36 @@ describe('snapshotPage', () => {
     const controls: unknown = Reflect.get(window, KEY)
     expect(Array.isArray(controls) ? controls.map(element => (element as Element).tagName) : controls)
       .toEqual(['A', 'INPUT', 'INPUT', 'INPUT', 'SELECT', 'BUTTON'])
+  })
+
+  it('marks every field the window refuses to fill as secret and never shows its value or options', () => {
+    document.body.innerHTML = `<form>
+      <label for="email">Email</label><input id="email" type="email" autocomplete="username" value="me@example.com">
+      <label for="shown">Password</label><input id="shown" type="text" autocomplete="current-password" value="hunter2-shown">
+      <label for="code">Code</label><input id="code" inputmode="numeric" autocomplete="one-time-code" value="481516">
+      <label for="card">Card number</label><input id="card" type="tel" autocomplete="cc-number" value="4242 4242 4242 4242">
+      <label for="cvc">CVC</label><input id="cvc" autocomplete="CC-CSC" value="737">
+      <label for="hidden">Real password</label><input id="hidden" type="password" value="hidden-pass">
+      <label for="month">Expiry month</label><select id="month" autocomplete="cc-exp-month"><option>01</option><option selected>07</option></select>
+      <label for="new">New password</label><textarea id="new" autocomplete="section-signup new-password">correct horse</textarea>
+    </form>`
+    const snapshot = fromSource(snapshotPage, OPTIONS) as PageSnapshot
+    expect(snapshot.text).toBe('Email [1: textbox "Email" value="me@example.com"] Password [2: textbox "Password" secret] '
+      + 'Code [3: textbox "Code" secret] Card number [4: textbox "Card number" secret] CVC [5: textbox "CVC" secret] '
+      + 'Real password [6: password "Real password" secret] Expiry month [7: select "Expiry month" secret] '
+      + 'New password [8: textbox "New password" secret]')
+    for (const value of ['hunter2', '481516', '4242', '737', 'hidden-pass', '07', 'correct horse']) expect(snapshot.text).not.toContain(value)
+    // The page text, typing, and the focus check name the same fields secret.
+    Object.assign(Element.prototype, { scrollIntoView: vi.fn() })
+    const secretIds = [...document.querySelectorAll<HTMLElement>('input, select, textarea')].flatMap((field, index) => {
+      const marked = new RegExp(`\\[${String(index + 1)}: [^\\]]* secret\\]`, 'u').test(snapshot.text)
+      const prepared = fromSource(prepareField, { key: KEY, element: index + 1, text: '01', secret: SECRET })
+      field.focus()
+      expect([prepared, fromSource(focusedSecretField, { secret: SECRET })], field.id)
+        .toEqual(marked ? [{ ready: false, reason: 'secret' }, true] : [{ ready: true, mode: 'insert' }, false])
+      return marked ? [field.id] : []
+    })
+    expect(secretIds).toEqual(['shown', 'code', 'card', 'cvc', 'hidden', 'month', 'new'])
   })
 
   it('stops at its character and element limits and says so', () => {
@@ -129,18 +160,18 @@ describe('control scripts', () => {
     snapshotPage(OPTIONS)
     Object.assign(Element.prototype, { scrollIntoView: vi.fn() })
     const input = document.querySelector('input')!
-    expect(prepareField({ key: KEY, element: 1, text: 'new' })).toEqual({ ready: true, mode: 'insert' })
+    expect(prepareField({ key: KEY, element: 1, text: 'new', secret: SECRET })).toEqual({ ready: true, mode: 'insert' })
     expect(document.activeElement).toBe(input)
     expect([input.selectionStart, input.selectionEnd]).toEqual([0, 3])
     const select = document.querySelector('select')!
     const changed = vi.fn()
     select.addEventListener('change', changed)
-    expect(fromSource(prepareField, { key: KEY, element: 2, text: 'newest' })).toEqual({ ready: true, mode: 'chosen', choice: 'Newest' })
+    expect(fromSource(prepareField, { key: KEY, element: 2, text: 'newest', secret: SECRET })).toEqual({ ready: true, mode: 'chosen', choice: 'Newest' })
     expect(select.value).toBe('n')
     expect(changed).toHaveBeenCalledOnce()
-    expect(prepareField({ key: KEY, element: 2, text: 'Oldest' })).toEqual({ ready: false, reason: 'no-such-option' })
-    expect(prepareField({ key: KEY, element: 3, text: 'x' })).toEqual({ ready: false, reason: 'not-a-field' })
-    expect(prepareField({ key: KEY, element: 4, text: 'x' })).toEqual({ ready: false, reason: 'missing' })
+    expect(prepareField({ key: KEY, element: 2, text: 'Oldest', secret: SECRET })).toEqual({ ready: false, reason: 'no-such-option' })
+    expect(prepareField({ key: KEY, element: 3, text: 'x', secret: SECRET })).toEqual({ ready: false, reason: 'not-a-field' })
+    expect(prepareField({ key: KEY, element: 4, text: 'x', secret: SECRET })).toEqual({ ready: false, reason: 'missing' })
   })
 
   it('refuses password and payment fields untouched, by type or by autocomplete', () => {
@@ -151,11 +182,11 @@ describe('control scripts', () => {
     snapshotPage(OPTIONS)
     Object.assign(Element.prototype, { scrollIntoView: vi.fn() })
     for (const element of [1, 2, 3, 4, 5, 7]) {
-      expect(fromSource(prepareField, { key: KEY, element, text: '02' })).toEqual({ ready: false, reason: 'secret' })
+      expect(fromSource(prepareField, { key: KEY, element, text: '02', secret: SECRET })).toEqual({ ready: false, reason: 'secret' })
     }
     expect(document.activeElement).toBe(document.body)
     expect(document.querySelector('select')!.value).toBe('1')
-    expect(prepareField({ key: KEY, element: 6, text: 'me@example.test' })).toEqual({ ready: true, mode: 'insert' })
+    expect(prepareField({ key: KEY, element: 6, text: 'me@example.test', secret: SECRET })).toEqual({ ready: true, mode: 'insert' })
   })
 
   it('tells whether the focus is on a password or payment field, inside open shadow roots too', () => {
@@ -163,13 +194,13 @@ describe('control scripts', () => {
     const [name, password] = document.querySelectorAll('input')
     const host = document.querySelector('#host')!.attachShadow({ mode: 'open' })
     host.innerHTML = '<input autocomplete="cc-csc">'
-    expect(fromSource(focusedSecretField)).toBe(false)
+    expect(fromSource(focusedSecretField, { secret: SECRET })).toBe(false)
     name!.focus()
-    expect(fromSource(focusedSecretField)).toBe(false)
+    expect(fromSource(focusedSecretField, { secret: SECRET })).toBe(false)
     password!.focus()
-    expect(fromSource(focusedSecretField)).toBe(true)
+    expect(fromSource(focusedSecretField, { secret: SECRET })).toBe(true)
     host.querySelector('input')!.focus()
-    expect(fromSource(focusedSecretField)).toBe(true)
+    expect(fromSource(focusedSecretField, { secret: SECRET })).toBe(true)
   })
 
   it('reports the viewport size', () => {

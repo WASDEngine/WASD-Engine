@@ -2,9 +2,10 @@
  * The agent's Browser in the Desktop app: the `browser_*` tools of the Session's own agent, which act on a Browser tab
  * in the right Sidebar of the WASD Engine window, and the queue through which the window carries them out. Each tool
  * call queues one command for its Session. A window that shows the Session, or holds the tab the Session's agent uses,
- * claims the command over the `wasdPlugins` Remote, acts on the page, and settles the command with the page's text or a
- * screenshot. A command that no window claims within the claim timeout fails with a message that names `web_search`
- * and `web_fetch`, which work without a window.
+ * claims the command over the `wasdPlugins` Remote, through the command stream it follows, acts on the page, and
+ * settles the command with the page's text or a screenshot. A command that no window claims within the claim timeout
+ * fails with a message that names `web_search` and `web_fetch`, which work without a window, and a claimed command fails
+ * at once when the stream of the window that claimed it ends.
  * @module @deepseek-ai/dsh-wasd-plugins/src/browser
  */
 import { randomUUID } from 'node:crypto'
@@ -33,10 +34,15 @@ export const UNCLAIMED_MESSAGE = 'The Browser opens in the right panel of the WA
   + 'no window shows this conversation now, so the Browser could not act. Ask the user to open this conversation in '
   + 'WASD Engine and try again, or use web_search and web_fetch, which work without the Browser.'
 
+/** What a claimed command fails with when the window that claimed it closes, reloads, or loses its connection. */
+export const WINDOW_GONE_MESSAGE = 'The WASD Engine window that was carrying out this Browser command closed, reloaded, or '
+  + 'lost its connection, so the command may have stopped partway. Call browser_read to see the page now.'
+
 /** One queued command and how it ends. */
 interface Pending {
   readonly request: WasdBrowserRequest
-  claimed: boolean
+  /** The command stream through which a window claimed the command; unset while no window has. */
+  claimedBy: string | undefined
   readonly settle: (outcome: WasdBrowserOutcome) => void
 }
 
@@ -44,6 +50,8 @@ interface Pending {
 export class BrowserRequestQueue {
   private readonly pending = new Map<string, Pending>()
   private readonly watchers = new Set<() => void>()
+  /** The ids of the command streams that windows follow now. */
+  private readonly followers = new Set<string>()
 
   /**
    * @param claimTimeoutMs - how long a command waits for a window to claim it.
@@ -63,18 +71,19 @@ export class BrowserRequestQueue {
    * @param signal - the tool call's cancellation; a window that claimed the command stops it once the next list it
    *   follows no longer names it, so the command takes no further action on the page.
    * @returns the page after the command.
-   * @throws {Error} with the window's message when the command failed, or {@link UNCLAIMED_MESSAGE} when no window claimed it.
+   * @throws {Error} with the window's message when the command failed, {@link UNCLAIMED_MESSAGE} when no window claimed
+   *   it, or {@link WINDOW_GONE_MESSAGE} when the window that claimed it went away.
    */
   async send(sessionId: SessionId, command: WasdBrowserCommand, limits: WasdBrowserLimits, signal: AbortSignal): Promise<WasdBrowserDone> {
     signal.throwIfAborted()
     if (this.lifetime.aborted) throw new Error('WASD Engine Plugins stopped.')
     const id = randomUUID()
     const settled = Promise.withResolvers<WasdBrowserOutcome>()
-    const entry: Pending = { request: { id, sessionId, command, limits }, claimed: false, settle: settled.resolve }
+    const entry: Pending = { request: { id, sessionId, command, limits }, claimedBy: undefined, settle: settled.resolve }
     this.pending.set(id, entry)
     this.changed()
     const timer = setTimeout(() => {
-      if (!entry.claimed) settled.resolve({ ok: false, message: UNCLAIMED_MESSAGE })
+      if (entry.claimedBy === undefined) settled.resolve({ ok: false, message: UNCLAIMED_MESSAGE })
     }, this.claimTimeoutMs)
     const abort = (): void => { settled.reject(signal.reason) }
     signal.addEventListener('abort', abort, { once: true })
@@ -91,12 +100,16 @@ export class BrowserRequestQueue {
   }
 
   /**
-   * Follow the commands for a window: the unclaimed ones, and the ids of claimed ones whose call still waits.
+   * Follow the commands for a window: the unclaimed ones, and the ids of claimed ones whose call still waits, with
+   * this stream's id, through which the window claims commands. When the stream ends, because the window closed,
+   * reloaded, or lost its connection, the commands claimed through it fail at once with {@link WINDOW_GONE_MESSAGE}.
    * @param signal - stream cancellation.
    * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
    */
   async* follow(signal: AbortSignal): AsyncIterable<WasdBrowserRequests> {
     const ended = AbortSignal.any([signal, this.lifetime])
+    const follower = randomUUID()
+    this.followers.add(follower)
     let dirty = true
     let wake = Promise.withResolvers<void>()
     const notify = (): void => {
@@ -116,25 +129,31 @@ export class BrowserRequestQueue {
         dirty = false
         const entries = [...this.pending.values()]
         yield {
-          requests: entries.filter(entry => !entry.claimed).map(entry => entry.request),
-          claimed: entries.filter(entry => entry.claimed).map(entry => entry.request.id),
+          follower,
+          requests: entries.filter(entry => entry.claimedBy === undefined).map(entry => entry.request),
+          claimed: entries.filter(entry => entry.claimedBy !== undefined).map(entry => entry.request.id),
         }
       }
     } finally {
       this.watchers.delete(notify)
       ended.removeEventListener('abort', notify)
+      this.followers.delete(follower)
+      for (const entry of [...this.pending.values()]) {
+        if (entry.claimedBy === follower) entry.settle({ ok: false, message: WINDOW_GONE_MESSAGE })
+      }
     }
   }
 
   /**
    * Claim a command for the calling window, which then carries it out.
    * @param id - the command.
-   * @returns whether this call claimed it; false when another window did, or the command ended.
+   * @param follower - the id of the command stream the window follows, from its latest list.
+   * @returns whether this call claimed it; false when another window did, the command ended, or that stream ended.
    */
-  claim(id: string): boolean {
+  claim(id: string, follower: string): boolean {
     const entry = this.pending.get(id)
-    if (entry === undefined || entry.claimed) return false
-    entry.claimed = true
+    if (entry === undefined || entry.claimedBy !== undefined || !this.followers.has(follower)) return false
+    entry.claimedBy = follower
     this.changed()
     return true
   }
@@ -148,7 +167,7 @@ export class BrowserRequestQueue {
    */
   settle(id: string, outcome: WasdBrowserOutcome): boolean {
     const entry = this.pending.get(id)
-    if (entry?.claimed !== true) return false
+    if (entry?.claimedBy === undefined) return false
     entry.settle(checkOutcome(outcome, entry.request.limits))
     return true
   }
@@ -271,19 +290,40 @@ interface ScreenshotScale {
 }
 
 /**
- * The model-facing text of a page result.
+ * The page's title and address, and the window's note, which can quote the page, as the lines after the
+ * external-content notice: the page sets all three.
+ * @param value - the page's fields.
+ * @returns the lines.
+ */
+function pageLines(value: { readonly title: string; readonly url: string; readonly note?: string | undefined }): string[] {
+  return [`Page: ${value.title === '' ? '(untitled)' : value.title}`, `URL: ${value.url}`, ...value.note === undefined ? [] : [value.note]]
+}
+
+/**
+ * The model-facing text of a page result: the window's own state, then the external-content notice, and below it
+ * everything the page controls, so nothing the page wrote precedes the notice.
  * @param value - the result.
  * @param maxChars - the text limit, named when the text was cut.
  * @returns the text.
  */
 export function formatPage(value: BrowserPageValue, maxChars: number): string {
-  const lines = [`Page: ${value.title === '' ? '(untitled)' : value.title}`, `URL: ${value.url}`]
-  if (value.error !== undefined) lines.push(`The page did not load: ${value.error}`)
-  if (value.loading) lines.push('The page was still loading when the wait ended; call browser_read to read it again.')
-  if (value.note !== undefined) lines.push(value.note)
-  lines.push('', EXTERNAL_NOTICE, '', value.text === '' ? '(The page shows no text.)' : value.text)
+  const state: string[] = []
+  if (value.error !== undefined) state.push(`The page did not load: ${value.error}`)
+  if (value.loading) state.push('The page was still loading when the wait ended; call browser_read to read it again.')
+  const lines = [...state, ...state.length === 0 ? [] : [''], EXTERNAL_NOTICE, '', ...pageLines(value), '',
+    value.text === '' ? '(The page shows no text.)' : value.text]
   if (value.truncated) lines.push('', `(The page text was cut at ${String(maxChars)} characters.)`)
   return lines.join('\n')
+}
+
+/**
+ * The model-facing text before a screenshot: its size, then the external-content notice, and below it what the page
+ * controls, as in {@link formatPage}.
+ * @param value - the result.
+ * @returns the text.
+ */
+export function formatScreenshot(value: BrowserScreenshotValue): string {
+  return [`Screenshot: ${String(value.width)}x${String(value.height)} pixels.`, '', EXTERNAL_NOTICE, '', ...pageLines(value)].join('\n')
 }
 
 function pageValue(done: WasdBrowserDone): BrowserPageValue {
@@ -328,15 +368,17 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
   }), defineTool({
     name: 'browser_read',
     description: 'Return the text of the page in your Browser tab again, after it changed or finished loading, with '
-      + 'fresh control numbers. Without a tab of your own yet, it reads the Browser tab the user has open.',
+      + 'fresh control numbers. Without a tab of your own, it reads the Browser tab the user has open at that moment, '
+      + 'which you can read but not click or type in.',
     parameters: {},
     output: pageOutput,
     timeoutMs: host.timeoutMs,
     execute: (_args, exec) => run(exec, { kind: 'read' }),
   }), defineTool({
     name: 'browser_click',
-    description: 'Click a link, button, or other control of the page in your Browser tab: give element, its number in '
-      + 'the latest page text, or x and y, pixels of the latest browser_screenshot. Returns the page\'s text afterwards.',
+    description: 'Click a link, button, or other control of the page in your Browser tab, the one browser_open opened: '
+      + 'give element, its number in the latest page text, or x and y, pixels of the latest browser_screenshot. Returns '
+      + 'the page\'s text afterwards. It never clicks in a tab the user opened; open that page with browser_open first.',
     parameters: {
       element: ELEMENT,
       x: { type: 'number', description: 'Horizontal pixel of the latest browser_screenshot; give y too.' },
@@ -364,9 +406,9 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
     },
   }), defineTool({
     name: 'browser_type',
-    description: 'Type text into a field of the page in your Browser tab, replacing what it holds, and press Enter '
-      + 'afterwards when submit is true. Returns the page\'s text afterwards. Never type passwords, payment details, or '
-      + 'other secrets.',
+    description: 'Type text into a field of the page in your Browser tab, the one browser_open opened, replacing what it '
+      + 'holds, and press Enter afterwards when submit is true. Returns the page\'s text afterwards. It never types in a '
+      + 'tab the user opened. Never type passwords, payment details, or other secrets.',
     parameters: {
       element: { ...ELEMENT, required: true },
       text: { type: 'string', required: true, description: 'The text to type.' },
@@ -377,17 +419,14 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
     execute: (args, exec) => run(exec, { kind: 'type', element: args.element, text: args.text, submit: args.submit ?? false }),
   }), defineTool({
     name: 'browser_screenshot',
-    description: 'Look at the visible part of the page in your Browser tab, such as reference art or a game\'s page, '
-      + 'after scrolling element into view when given. x and y of browser_click are pixels of this image.',
+    description: 'Look at the visible part of the page in your Browser tab, or without one the Browser tab the user has '
+      + 'open, such as reference art or a game\'s page, after scrolling element into view when given. x and y of '
+      + 'browser_click are pixels of this image.',
     parameters: { element: { ...ELEMENT, description: 'Number n of a control shown as [n: ...] to scroll into view first.' } },
     output: {
       schema: SCREENSHOT_SCHEMA,
       render: (_args, value) => [
-        {
-          type: 'text',
-          text: [`Screenshot of ${value.title === '' ? value.url : `${value.title} (${value.url})`}: ${String(value.width)}x${String(value.height)} pixels.`,
-            ...value.note === undefined ? [] : [value.note]].join('\n'),
-        },
+        { type: 'text', text: formatScreenshot(value) },
         { type: 'image', attachment: { ...value.image, attachmentId: brandString<AttachmentId>(value.image.attachmentId) } },
       ],
     },
