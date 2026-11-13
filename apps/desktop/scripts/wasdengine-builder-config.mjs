@@ -106,9 +106,11 @@ export function applyWasdengineGameLayer(config) {
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
  * names, the packaged manifest `productName` and `author`, which move Electron's data directory
- * and set the Windows publisher, the deep-link scheme, the icons, the microphone prompt, and the
- * start of the packaged file names. The application identifier stays `DSH_DESKTOP_APP_ID`; unsigned
- * local builds set the WASDEngine one.
+ * and set the Windows publisher, its `description`, which electron-builder writes as the Windows
+ * installer's and uninstaller's file description that Task Manager shows, the Start menu and desktop
+ * shortcuts' tooltip, and the uninstall entry's comments, the deep-link scheme, the icons, the
+ * microphone prompt, and the start of the packaged file names. The application identifier stays
+ * `DSH_DESKTOP_APP_ID`; unsigned local builds set the WASDEngine one.
  * @param {object} config - Configuration from `createElectronBuilderConfig`.
  * @returns {object} A new configuration that keeps every hook and packaging rule of `config`.
  * @throws {Error} When the application identifier is DeepSeek's, when the configuration embeds an
@@ -136,7 +138,13 @@ export function applyWasdengineBrand(config) {
     productName: BRAND.productName,
     artifactName: `${BRAND.artifactBase}-${config.artifactName.slice(UPSTREAM_ARTIFACT_PREFIX.length)}`,
     protocols: [{ name: BRAND.productName, schemes: [BRAND.urlScheme] }],
-    extraMetadata: { ...config.extraMetadata, name: BRAND.packageName, productName: BRAND.productName, author: { name: BRAND.publisher } },
+    extraMetadata: {
+      ...config.extraMetadata,
+      name: BRAND.packageName,
+      productName: BRAND.productName,
+      description: BRAND.productName,
+      author: { name: BRAND.publisher },
+    },
     extraResources: config.extraResources.map(resource => Object.hasOwn(resourceIcons, resource.to)
       ? { ...resource, from: resourceIcons[resource.to] }
       : resource),
