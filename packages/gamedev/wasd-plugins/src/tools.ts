@@ -102,7 +102,7 @@ export interface WasdToolHost {
   recordPreview(request: PreviewRequest, exec: ToolRunContext): Promise<RecordedPreview>
   /**
    * Export a project for the Web and release the build with the game's preview.
-   * @param request - project, notes, title, and preview files.
+   * @param request - project, notes, title, preview files, and whether to start a new game.
    * @param exec - the call's execution: its cancellation, and its Agent, whose Session can record a missing preview.
    * @returns the release.
    */
@@ -241,13 +241,14 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
     },
   }), defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
       title: { type: 'string', description: `Game title for the first release, or a new title for the game; at most ${MAX_TITLE} characters. Default: the project's name.` },
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
       preview_gif: { type: 'string', description: 'Animated GIF that Explore plays on hover and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
+      new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
     },
     output: {
       schema: {
@@ -290,6 +291,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
         ...args.title === undefined ? {} : { title: args.title },
         ...previewImage === undefined ? {} : { previewImage },
         ...previewGif === undefined ? {} : { previewGif },
+        ...args.new_game === undefined ? {} : { newGame: args.new_game },
       }, exec)
       return { ...released, warnings: [...released.warnings] }
     },

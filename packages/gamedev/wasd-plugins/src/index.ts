@@ -5,12 +5,14 @@
  * `wasd_export_web`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's MCP
  * server. The `wasdPlugins` Remote tells the window what each project released and
  * where the site's Explore page is, for the Release button of game project Sessions and Explore Games in the sidebar.
+ * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
+ * before its release adds to the game it shares with the folder it was copied from.
  * With `browser` on, as in the Desktop app, the Session's agent also gets the `browser_*` tools, which the window
  * carries out on a Browser tab in the right Sidebar through the same Remote.
  * @module @deepseek-ai/dsh-wasd-plugins
  */
 import { tmpdir } from 'node:os'
-import { basename, isAbsolute, resolve } from 'node:path'
+import { basename, isAbsolute, join, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -25,8 +27,9 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
+import { ReleaseFolders } from './folders.ts'
 import { encodePreview, savePreview } from './preview.ts'
-import { projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import { accountKey, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
 import type { WasdBrowserOutcome, WasdBrowserRequests, WasdProjectView, WasdSiteLinks } from './types.ts'
 
@@ -39,6 +42,8 @@ const MAX_PREVIEW_SECONDS = 30
 
 /** Plugin configuration. */
 export interface Config {
+  /** Absolute folder of the plugin's data on this computer: which project folders released each game. */
+  dataRoot: string
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
   /**
@@ -91,7 +96,8 @@ declare module '@deepseek-ai/cordis' {
 /** Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote. */
 export default class WasdPlugins extends TypertRemoteService {
   static inject = ['tools', 'workingDirectory', 'typert']
-  static Config: z<Partial<Config>, Config> = z.object({
+  static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
+    dataRoot: z.string().required(),
     explorePath: z.string().pattern(/^\/[A-Za-z0-9/_-]*$/u).default('/explore'),
     browser: z.boolean().default(false),
     browserTimeoutMs: z.natural().min(1).default(60_000),
@@ -113,6 +119,7 @@ export default class WasdPlugins extends TypertRemoteService {
 
   private readonly lifetime = new AbortController()
   private readonly browserRequestQueue: BrowserRequestQueue
+  private readonly folders: ReleaseFolders
 
   /**
    * @param ctx - plugin context; the tools and the Remote live as long as it.
@@ -122,6 +129,8 @@ export default class WasdPlugins extends TypertRemoteService {
     super(ctx, 'wasdPlugins', { namespace: 'wasdPlugins' })
     if (config.previewSeconds > config.previewMaxSeconds) throw new TypeError('wasd-plugins: previewSeconds must be at most previewMaxSeconds')
     if (config.previewMinWidth > config.previewWidth) throw new TypeError('wasd-plugins: previewMinWidth must be at most previewWidth')
+    if (!isAbsolute(config.dataRoot)) throw new TypeError(`wasd-plugins: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}`)
+    this.folders = new ReleaseFolders(join(config.dataRoot, 'release-folders'))
     ctx.effect(() => () => { this.lifetime.abort() }, 'wasd-plugins: lifetime')
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
     if (config.browser) {
@@ -202,6 +211,7 @@ export default class WasdPlugins extends TypertRemoteService {
             access: () => this.access(),
             exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
             fetch: (input, init) => fetch(input, init),
+            folders: this.folders,
             tempDir: tmpdir(),
             // A release runs the game for a missing preview only in a Session, which the game plays in.
             ...agent === undefined ? {} : {
@@ -225,14 +235,16 @@ export default class WasdPlugins extends TypertRemoteService {
    * What a project folder released, for the Release button.
    * @param projectDir - absolute folder of a game project.
    * @param signal - cancellation.
-   * @returns whether it is a Godot project, and its game on the site the app is signed in to.
+   * @returns whether it is a Godot project, the signed-in account's game on the site the app is signed in to, and
+   * another folder on this computer that releases the same game.
    */
   @Remote
   async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView> {
     if (!isAbsolute(projectDir)) throw new Error('projectDir must be an absolute path.')
     const origin = await this.siteOrigin()
+    const access = await this.access()
     signal.throwIfAborted()
-    return await projectView(projectDir, origin)
+    return await projectView(projectDir, origin, this.folders, access?.origin === origin ? access.account : undefined)
   }
 
   /**
@@ -302,6 +314,8 @@ export default class WasdPlugins extends TypertRemoteService {
 
   private async access(): Promise<SiteAccess | undefined> {
     const session = await this.ctx.get('deepseekAccount')?.getPlatformSession()
-    return session === null || session === undefined ? undefined : { origin: new URL(session.origin).origin, token: session.token }
+    if (session === null || session === undefined) return undefined
+    const account = session.userId === null ? {} : { account: accountKey(session.userId) }
+    return { origin: new URL(session.origin).origin, token: session.token, ...account }
   }
 }

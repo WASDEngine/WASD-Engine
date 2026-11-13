@@ -2,7 +2,7 @@
 /**
  * The Release button of the Session header and the New Session row: shown for a game project's Session the Peer may
  * prompt, in the New Session row only while the Session is blank, it opens a dialog with the last release, takes notes,
- * and asks the Session's agent to release.
+ * offers a new game once the project has one, says when the folder is a copy, and asks the Session's agent to release.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -95,8 +95,44 @@ describe('ReleaseButton', () => {
     expect(notes.getAttribute('aria-describedby')).toBeTruthy()
     fireEvent.change(notes, { target: { value: '  New boss  ' } })
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: en['release.confirm'] })) })
-    expect(startRelease).toHaveBeenCalledWith(SESSION, 'New boss')
+    expect(startRelease).toHaveBeenCalledWith(SESSION, 'New boss', 'linked')
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('offers to release as a new game once the project has a game', async () => {
+    const { startRelease } = button({ path: '/games/neon' })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['release.button'] })) })
+    expect(within(screen.getByRole('dialog')).queryByRole('checkbox')).toBeNull()
+    await act(async () => { fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en['release.confirm'] })) })
+    expect(startRelease).toHaveBeenLastCalledWith(SESSION, '', 'linked')
+    cleanup()
+
+    const view: WasdProjectView = { godot: true, game: { title: 'Neon Drift', url: 'https://site.test/games/neon', version: 3 } }
+    const released = button({ path: '/games/neon', view })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['release.button'] })) })
+    const dialog = screen.getByRole('dialog')
+    const newGame = within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['release.newGame'] })
+    expect(newGame.checked).toBe(false)
+    expect(within(dialog).getByText(t('release.newGameHint', { title: 'Neon Drift' }))).toBeTruthy()
+    fireEvent.click(newGame)
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: en['release.confirm'] })) })
+    expect(released.startRelease).toHaveBeenLastCalledWith(SESSION, '', 'new')
+    // The choice starts over each time the dialog opens.
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['release.button'] })) })
+    expect(within(screen.getByRole('dialog')).getByRole<HTMLInputElement>('checkbox', { name: en['release.newGame'] }).checked).toBe(false)
+  })
+
+  it('says when the folder shares its game with another, and sends the choice of the same game unless a new game is checked', async () => {
+    const view: WasdProjectView = { godot: true, game: { title: 'Neon Drift', url: 'https://site.test/games/neon', version: 3 }, sharedWith: '/games/neon' }
+    const { startRelease } = button({ path: '/games/neon copy', view })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['release.button'] })) })
+    expect(within(screen.getByRole('dialog')).getByText(t('release.copy', { folder: '/games/neon' }))).toBeTruthy()
+    await act(async () => { fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en['release.confirm'] })) })
+    expect(startRelease).toHaveBeenLastCalledWith(SESSION, '', 'same')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['release.button'] })) })
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: en['release.newGame'] }))
+    await act(async () => { fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en['release.confirm'] })) })
+    expect(startRelease).toHaveBeenLastCalledWith(SESSION, '', 'new')
   })
 
   it('keeps the dialog open with the reason when the prompt is refused, and refuses a project without project.godot', async () => {

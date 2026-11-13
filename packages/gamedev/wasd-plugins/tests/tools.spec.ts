@@ -68,6 +68,20 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('- Note one.')
   })
 
+  it('passes the choice between the project\'s game and a new game on to the release', async () => {
+    const stub = host()
+    const release = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    expect(release.parameters).toMatchObject({ properties: { new_game: { type: 'boolean' } } })
+    await release.execute({ new_game: true }, exec)
+    await release.execute({ new_game: false }, exec)
+    await release.execute({}, exec)
+    expect(stub.calls).toEqual([
+      ['release', { projectDir: '/work/game', newGame: true }],
+      ['release', { projectDir: '/work/game', newGame: false }],
+      ['release', { projectDir: '/work/game' }],
+    ])
+  })
+
   it('exports the nearest project and names the folder to serve', async () => {
     const stub = host()
     const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
@@ -120,8 +134,10 @@ describe('wasdMcpProvider', () => {
     expect(await exporter.prepare!({ project: '/game' }, call as never)).toEqual({ args: { project: '/game' } })
     expect(call.session).not.toHaveBeenCalled()
     expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n' }, agent })
+    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' } })
+    expect(await release.prepare!({ project: '/game', new_game: true }, call as never)).toEqual({ args: { project: '/game', new_game: true }, agent })
     expect(await recorder.prepare!({ project: '/game', seconds: 3 }, call as never)).toEqual({ args: { project: '/game', seconds: 3 }, agent })
-    expect(call.session.mock.calls).toEqual([['/game'], ['/game']])
+    expect(call.session.mock.calls).toEqual([['/game'], ['/game'], ['/game']])
     const refusing = { ...call, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
     expect(await release.prepare!({ project: '/game' }, refusing as never)).toEqual({ args: { project: '/game' } })
     await expect(recorder.prepare!({ project: '/game' }, refusing as never)).rejects.toThrow('cannot create the Session')

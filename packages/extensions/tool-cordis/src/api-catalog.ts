@@ -4684,7 +4684,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         signature: '@Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>',
         description: 'What a project folder released, for the Release button.',
         parameters: [{ name: 'projectDir', description: 'absolute folder of a game project.' }, { name: 'signal', description: 'cancellation.' }],
-        returns: 'whether it is a Godot project, and its game on the site the app is signed in to.',
+        returns: 'whether it is a Godot project, the signed-in account\'s game on the site the app is signed in to, and another folder on this computer that releases the same game.',
       },
       {
         signature: '@Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>',
@@ -11066,7 +11066,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WasdProjectView',
-    declaration: 'export interface WasdProjectView {\n    readonly godot: boolean;\n    readonly game?: WasdReleasedGame;\n}',
+    declaration: 'export interface WasdProjectView {\n    readonly godot: boolean;\n    readonly game?: WasdReleasedGame;\n    readonly sharedWith?: string;\n}',
   },
   {
     name: 'WasdReleasedGame',

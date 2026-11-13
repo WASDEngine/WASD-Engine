@@ -680,7 +680,8 @@ Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Rem
  * What a project folder released, for the Release button.
  * @param projectDir - absolute folder of a game project.
  * @param signal - cancellation.
- * @returns whether it is a Godot project, and its game on the site the app is signed in to.
+ * @returns whether it is a Godot project, the signed-in account's game on the site the app is signed in to, and
+ * another folder on this computer that releases the same game.
  */
 @Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>
 
