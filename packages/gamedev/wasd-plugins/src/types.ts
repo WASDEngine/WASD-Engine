@@ -61,7 +61,7 @@ export interface WasdRelease {
   readonly totalBytes: number
   /** Who can find the game from this version on. */
   readonly visibility: WasdVisibility
-  /** The desktop builds the site stored as downloads of this version, in platform order. */
+  /** The desktop builds the site stored as downloads of this version, in platform order, each with its scan status. */
   readonly downloads: readonly WasdDownload[]
   /**
    * What the game's page credits the game was made with, by name: AI models, then each game tool with the add-ons that
@@ -75,14 +75,23 @@ export interface WasdRelease {
   readonly warnings: readonly string[]
 }
 
-/** A desktop build the site offers as a download of a released version. */
+/**
+ * Where a desktop build stands in the site's malware scan: `pending` while the scan runs, `clean` once the scan passed
+ * it and the game's page offers it, `flagged` when the scan found malware, or `failed` when the scan could not run on
+ * it. The page never offers a `flagged` or `failed` build.
+ */
+export type WasdDownloadStatus = 'pending' | 'clean' | 'flagged' | 'failed'
+
+/** A desktop build the site stored as a download of a released version. */
 export interface WasdDownload {
   /** The platform it runs on. */
   readonly platform: WasdDesktopPlatform
-  /** The site's download link of this build, which counts the download and sends the file. */
+  /** The site's download link of this build, which counts the download and sends the file once the site offers it. */
   readonly url: string
   /** The build's ZIP file size in bytes. */
   readonly bytes: number
+  /** Where the build stands in the site's malware scan; a site that does not scan offers every build at once, as `clean`. */
+  readonly status: WasdDownloadStatus
 }
 
 /** One desktop build an export wrote into the project's `.wasdengine/desktop/<platform>/` folder. */

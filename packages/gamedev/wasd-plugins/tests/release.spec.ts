@@ -39,6 +39,8 @@ interface SiteOptions {
   readonly legacy?: boolean
   /** Refuse the download uploads of these platforms. */
   readonly refuseDownloads?: readonly string[]
+  /** Answer each stored download with this status of its malware scan, as a site that scans downloads does. */
+  readonly scanStatus?: string
 }
 
 /** An in-memory WASD Engine site: the games API as releases call it, for the accounts of `tokens`. */
@@ -79,7 +81,10 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
       target.downloads = [...others, { platform, version, bytes }]
       return json(200, {
         game: gameJson(target),
-        download: { platform, version, url: `${ORIGIN}/games/${target.slug}/download/${platform}?v=${version}`, file_url: `https://files.test/${platform}.zip`, filename: `${platform}.zip`, bytes, uploaded_at: '2026-11-12T00:00:00Z' },
+        download: {
+          platform, version, url: `${ORIGIN}/games/${target.slug}/download/${platform}?v=${version}`, file_url: `https://files.test/${platform}.zip`,
+          filename: `${platform}.zip`, bytes, uploaded_at: '2026-11-12T00:00:00Z', ...options.scanStatus === undefined ? {} : { status: options.scanStatus },
+        },
       })
     }
     const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif|\/credits)?$/u.exec(url.pathname)
@@ -249,9 +254,10 @@ describe('releaseGame', () => {
     const deps = dependencies(server.fetch)
     const released = await releaseGame({ projectDir: dir, desktop: ['macos', 'windows'] }, deps, signal)
     expect(deps.exports).toEqual([join(dir, STATE_DIR, 'web'), join(dir, STATE_DIR, 'desktop', 'windows'), join(dir, STATE_DIR, 'desktop', 'macos')])
+    // A site that names no scan status offers each download as soon as it stores it.
     expect(released.downloads).toEqual([
-      { platform: 'windows', url: `${gameUrl(1)}/download/windows?v=1`, bytes: 'windows build'.length },
-      { platform: 'macos', url: `${gameUrl(1)}/download/macos?v=1`, bytes: 'macos build'.length },
+      { platform: 'windows', url: `${gameUrl(1)}/download/windows?v=1`, bytes: 'windows build'.length, status: 'clean' },
+      { platform: 'macos', url: `${gameUrl(1)}/download/macos?v=1`, bytes: 'macos build'.length, status: 'clean' },
     ])
     const order = server.calls.map(call => `${call.method} ${call.path}`)
     expect(order.indexOf('PUT /api/v1/games/game-1/releases/1/downloads/windows')).toBeGreaterThan(order.indexOf('POST /api/v1/games/game-1/releases'))
@@ -267,6 +273,16 @@ describe('releaseGame', () => {
     await expect(releaseGame({ projectDir: other, desktop: ['windows', 'macos'] }, failing, signal)).rejects.toThrow(/macos export ended/u)
     expect(quiet.calls).toEqual([])
     expect(quiet.games.size).toBe(0)
+  })
+
+  it('names where each download stands in the site\'s malware scan', async () => {
+    const dir = await project()
+    const scanning = siteWith({ scanStatus: 'pending' })
+    const released = await releaseGame({ projectDir: dir, desktop: ['windows', 'macos'] }, dependencies(scanning.fetch), signal)
+    expect(released.downloads.map(download => [download.platform, download.status])).toEqual([['windows', 'pending'], ['macos', 'pending']])
+    expect(released.warnings.some(warning => warning.includes('download'))).toBe(false)
+    const flagged = await releaseGame({ projectDir: await project(), desktop: ['windows'] }, dependencies(siteWith({ scanStatus: 'flagged' }).fetch), signal)
+    expect(flagged.downloads).toEqual([{ platform: 'windows', url: `${gameUrl(1)}/download/windows?v=1`, bytes: 'windows build'.length, status: 'flagged' }])
   })
 
   it('keeps a release whose download the site refused, and says which one', async () => {

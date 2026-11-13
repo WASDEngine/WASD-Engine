@@ -3,8 +3,9 @@
  * numbered version (1, 2, 3, ...) of the project's game, where its share page plays it, offers earlier versions, and
  * holds comments. A game is public, on the site's Explore page, or private, reachable only through its link; a release
  * may change that, and the site applies the change as the version goes live. A release can also build the game for
- * Windows and macOS and upload each build as a download of that version, which the share page offers; those builds go
- * to `.wasdengine/desktop/<platform>/` and are exported before anything reaches the site, so a failed build publishes
+ * Windows and macOS and upload each build as a download of that version, which the share page offers once the site's
+ * malware scan passes it; the site's answer names where the build stands in that scan. Those builds go to
+ * `.wasdengine/desktop/<platform>/` and are exported before anything reaches the site, so a failed build publishes
  * nothing. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
  * and never follow redirects. A project remembers each account's game per site in `.wasdengine/game.json` from the
  * moment the site creates the game, before the upload, so later releases add versions to the same game, also after a
@@ -115,7 +116,14 @@ const ReleaseJson = z.object({
 })
 const DownloadJson = z.object({
   game: GameJson,
-  download: z.object({ platform: z.enum(['windows', 'macos']), version: z.number().int(), url: z.string(), bytes: z.number().int() }),
+  download: z.object({
+    platform: z.enum(['windows', 'macos']),
+    version: z.number().int(),
+    url: z.string(),
+    bytes: z.number().int(),
+    // Sites that offer a download as soon as they store it name no status: such a download is clean.
+    status: z.enum(['pending', 'clean', 'flagged', 'failed']).default('clean'),
+  }),
 })
 const ErrorJson = z.object({ error: z.object({ message: z.string() }) })
 
@@ -522,7 +530,7 @@ async function uploadCredits(
  * @param builds - the builds, in platform order.
  * @param warnings - collects failures.
  * @param signal - cancellation.
- * @returns the stored downloads.
+ * @returns the stored downloads with their scan status.
  */
 async function uploadDownloads(
   api: SiteApi, game: GameJson, version: number, builds: readonly GodotDesktopExport[], warnings: string[], signal: AbortSignal,
@@ -531,7 +539,7 @@ async function uploadDownloads(
   for (const build of builds) {
     try {
       const { download } = await api.download(game.id, version, build.platform, join(build.outputDir, build.entry))
-      stored.push({ platform: download.platform, url: download.url, bytes: download.bytes })
+      stored.push({ platform: download.platform, url: download.url, bytes: download.bytes, status: download.status })
     } catch (error) {
       signal.throwIfAborted()
       warnings.push(`The version is released, but its ${PLATFORM_NAMES[build.platform]} download was not stored: ${(error as Error).message}`)

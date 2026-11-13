@@ -90,7 +90,8 @@ function gamesSite(token: string) {
       if (target === undefined) return json(404, { error: { message: 'No such release.' } })
       const bytes = (await (init.body as Blob).arrayBuffer()).byteLength
       target.downloads.push(`${platform} ${version}`)
-      return json(200, { game: gameJson(id), download: { platform, version: Number(version), url: `${SITE}/games/${target.slug}/download/${platform}?v=${version}`, bytes } })
+      // The site offers a stored download once its malware scan passes.
+      return json(200, { game: gameJson(id), download: { platform, version: Number(version), url: `${SITE}/games/${target.slug}/download/${platform}?v=${version}`, bytes, status: 'pending' } })
     }
     const [, id, part] = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/credits)?$/u.exec(url.pathname) ?? []
     if (id === undefined && init?.method === 'POST') {
@@ -181,7 +182,8 @@ describe('WASD Engine Plugins composition', () => {
     const privately = await call('wasd_release_game', { project: 'space', visibility: 'private', desktop: ['windows'] })
     expect(text(privately)).toContain('Released Space Game version 3')
     expect(text(privately)).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
-    expect(text(privately)).toContain(`Windows download: ${SITE}/games/space-game-1/download/windows?v=3`)
+    expect(text(privately)).toMatch(new RegExp(`Windows download: ${SITE}/games/space-game-1/download/windows\\?v=3 \\([\\d.]+ MB, being scanned for malware\\)`, 'u'))
+    expect(text(privately)).toContain('A download being scanned appears on the share page, and its link starts working, once the scan passes')
     expect(site.games.get('game-1')).toMatchObject({ visibility: 'private', downloads: ['windows 3'] })
     expect(await ctx.wasdPlugins.project(join(root, 'space'), new AbortController().signal))
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })

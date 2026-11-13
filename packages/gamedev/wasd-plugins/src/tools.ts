@@ -18,7 +18,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME, modelName } from './credits.ts'
 import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
-import type { WasdDesktopExport, WasdDesktopPlatform, WasdRelease } from './types.ts'
+import type { WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdRelease } from './types.ts'
 
 /** What a preview recording asks for. */
 export interface PreviewRequest {
@@ -198,6 +198,30 @@ const BUILD_CONTENTS: Readonly<Record<WasdDesktopPlatform, string>> = {
 /** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
 const FIRST_OPEN = 'Neither build is signed by a publisher, so a downloaded copy asks before it first runs: on Windows, SmartScreen\'s "Windows protected your PC" needs More info, then Run anyway; on a Mac, Gatekeeper blocks the first open until the user chooses Open Anyway in System Settings > Privacy & Security.'
 
+/** What a release result adds after a download's size when the share page does not offer the download yet, or never will. */
+const SCAN_STANDING: Readonly<Record<WasdDownloadStatus, string>> = {
+  clean: '',
+  pending: ', being scanned for malware',
+  flagged: ', flagged as malware: never offered',
+  failed: ', not scannable for malware: never offered',
+}
+
+/**
+ * What a release result says about where the share page offers its downloads, with the first-run note while any of them
+ * is offered or waits on its scan.
+ * @param statuses - each download's scan status.
+ * @returns the note.
+ */
+function downloadsNote(statuses: readonly WasdDownloadStatus[]): string {
+  if (statuses.every(status => status === 'clean')) return `The share page offers the downloads. ${FIRST_OPEN}`
+  return [
+    'WASD Engine scans each download for malware before the share page offers it.',
+    ...statuses.includes('pending') ? ['A download being scanned appears on the share page, and its link starts working, once the scan passes, usually within a few minutes.'] : [],
+    ...statuses.some(status => status === 'flagged' || status === 'failed') ? ['A download the scan flagged or could not scan is never offered.'] : [],
+    ...statuses.some(status => status === 'clean' || status === 'pending') ? [FIRST_OPEN] : [],
+  ].join(' ')
+}
+
 const PLATFORMS_SCHEMA = { type: 'array', items: { type: 'string', enum: DESKTOP_PLATFORMS } } as const
 
 /**
@@ -369,7 +393,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           playUrl: STRING,
           totalBytes: INTEGER,
           visibility: STRING,
-          downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER } } },
+          downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER, status: STRING } } },
           credits: { type: 'array', items: { type: 'string' } },
           warnings: WARNINGS,
         },
@@ -383,10 +407,10 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
             : 'The game is public: Explore lists it.',
           `Share link: ${value.gameUrl}`,
           `This version: ${value.url}`,
-          ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)})`),
+          ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)}${SCAN_STANDING[download.status as WasdDownloadStatus]})`),
           ...value.credits === undefined ? [] : [`Made with, as the game's page credits it: ${value.credits.join(', ')}.`],
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
-          ...value.downloads.length === 0 ? [] : [`The share page offers the downloads. ${FIRST_OPEN}`],
+          ...value.downloads.length === 0 ? [] : [downloadsNote(value.downloads.map(download => download.status as WasdDownloadStatus))],
           'Sent in Messages or posted on Reddit, Discord, Slack, or Telegram, the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.',
         ].join('\n'), value.warnings),
       }],
