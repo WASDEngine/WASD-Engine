@@ -13,7 +13,8 @@
  * files the release names, else the project's recorded preview (`.wasdengine/preview/`). The account's entry in the
  * link file keeps the SHA-256 of the files the project last uploaded for its game, so a later release uploads a
  * preview again only when it changed or the site lost it. A game without a GIF on the site, released from a project
- * with none to upload, gets one recorded from its game first, when the release can run it.
+ * with none to upload, gets one recorded from its game first, when the release can run it. Last, the release uploads
+ * what the game was made with (`credits.ts`), which the game's page and Explore credit with their logos.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -22,6 +23,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
+import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR } from './state.ts'
@@ -301,6 +303,11 @@ class SiteApi {
     const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/gif`, { data: await openAsBlob(gif), type: 'image/gif' })
     return (await this.json(response, z.object({ game: GameJson }), 'store the preview GIF')).game
   }
+
+  async credits(id: string, credits: GameCredits): Promise<void> {
+    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/credits`, { data: JSON.stringify(credits), type: 'application/json' })
+    await this.json(response, z.object({ game: GameJson }), 'store what the game was made with')
+  }
 }
 
 /**
@@ -366,6 +373,13 @@ export interface ReleaseDependencies {
    * @returns the saved files.
    */
   readonly recordPreview?: (projectDir: string, signal: AbortSignal) => Promise<Required<PreviewFiles>>
+  /**
+   * Collect what the game was made with, which the release uploads after the build; absent, the release credits
+   * nothing.
+   * @param projectDir - absolute project folder.
+   * @returns the models, tools, and add-ons.
+   */
+  readonly credits?: (projectDir: string) => Promise<GameCredits>
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -422,12 +436,35 @@ async function uploadPreview(
 }
 
 /**
+ * Upload what a released game was made with, which replaces what the game's page credited before.
+ * @param api - the site.
+ * @param id - the game.
+ * @param collected - the credits, once collected.
+ * @param warnings - collects failures.
+ * @param signal - cancellation.
+ * @returns the credits the site stored, or undefined when collecting or storing them failed.
+ */
+async function uploadCredits(
+  api: SiteApi, id: string, collected: Promise<GameCredits>, warnings: string[], signal: AbortSignal,
+): Promise<GameCredits | undefined> {
+  try {
+    const credits = await collected
+    await api.credits(id, credits)
+    return credits
+  } catch (error) {
+    signal.throwIfAborted()
+    warnings.push(`The version is released, but what the game was made with was not stored: ${(error as Error).message}`)
+    return undefined
+  }
+}
+
+/**
  * Export a project for the Web and release the build as the next version of the signed-in account's game, or as the
  * first version of a new game.
  * @param request - project, notes, title, preview files, and whether to start a new game.
- * @param dependencies - sign-in, export, HTTP, release folders, temporary files, and the preview recording.
+ * @param dependencies - sign-in, export, HTTP, release folders, temporary files, the preview recording, and the credits.
  * @param signal - cancellation; a version the site already stored stays released.
- * @returns the release and its share links.
+ * @returns the release, its share links, and its credits.
  * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
  * and has not said which game it releases ({@link copyQuestion}, before the export), and when the site refuses or fails.
  */
@@ -512,6 +549,9 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     await remember(released.game, released.release.version, uploaded)
     const preview = await uploadPreview(api, released.game, files, uploaded, warnings, signal)
     if (preview.image !== uploaded.image || preview.gif !== uploaded.gif) await remember(released.game, released.release.version, preview)
+    const credited = dependencies.credits === undefined
+      ? undefined
+      : await uploadCredits(api, released.game.id, dependencies.credits(request.projectDir), warnings, signal)
     return {
       title: released.game.title,
       version: released.release.version,
@@ -521,6 +561,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       totalBytes: released.release.total_bytes,
       ...preview.game.image_link === undefined || preview.game.image_link === null ? {} : { imageLink: preview.game.image_link },
       ...preview.game.gif_link === undefined || preview.game.gif_link === null ? {} : { gifLink: preview.game.gif_link },
+      ...credited === undefined ? {} : { credits: creditNames(credited) },
       warnings,
     }
   } finally {

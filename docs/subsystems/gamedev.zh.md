@@ -375,7 +375,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
-| `wasd_export_web`、`wasd_record_preview`、`wasd_release_game` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站 |
+| `wasd_export_web`、`wasd_record_preview`、`wasd_release_game` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
@@ -832,4 +832,22 @@ A connected agent's call asked the WASD Engine window to show a Session, such as
 Types: [SessionId](core.zh.md)
 
 Source: [`packages/gamedev/game-mcp/src/types.ts`](../../packages/gamedev/game-mcp/src/types.ts)
+
+<a id="game-mcptool-result--emit"></a>
+
+#### `game-mcp/tool-result` — emit
+
+A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.
+
+```ts cordis-catalog
+/**
+ * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused
+ * call, and a call of an unknown tool do not emit it.
+ * @mode emit
+ * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
+ */
+'game-mcp/tool-result'(result: GameMcpToolResult): void
+```
+
+Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
 <!-- END GENERATED cordis-surface -->

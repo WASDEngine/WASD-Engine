@@ -5517,6 +5517,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'sessionId', description: 'Session to show.' }],
   },
   {
+    name: 'game-mcp/tool-result',
+    mode: 'emit',
+    signature: '\'game-mcp/tool-result\'(result: GameMcpToolResult): void',
+    summary: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
+    description: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
+    parameters: [{ name: 'result', description: 'the provider, tool, arguments, calling agent, Session, and whether the call failed.' }],
+  },
+  {
     name: 'goal/activation-changed',
     mode: 'emit',
     signature: '\'goal/activation-changed\'(payload: GoalActivationChanged): void',
@@ -7435,6 +7443,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GameMcpTool',
     declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n}',
+  },
+  {
+    name: 'GameMcpToolResult',
+    declaration: 'export interface GameMcpToolResult {\n    readonly provider: string;\n    readonly tool: string;\n    readonly args: JsonObject;\n    readonly client: GameMcpClient;\n    readonly agent?: Agent;\n    readonly isError: boolean;\n}',
   },
   {
     name: 'GameMcpView',

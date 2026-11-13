@@ -18,11 +18,11 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-wasd-plugins/use-this-package/default-composition:
-  en: afdcb1c8c17d0185
-  zh: 94029b502b17f73e
+  en: 25638371f01c6fb9
+  zh: 7a800ff1cdc442bb
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-tools:
-  en: 357f9e7e91f9170d
-  zh: 7bde958fc9264b97
+  en: 2f357eb94997d00f
+  zh: da2b5e8b6389ab0c
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-release-button-and-explore-games:
   en: 4ea7b15dd7a83165
   zh: b1c93cd3bdde46be
@@ -36,8 +36,8 @@
   en: 0b43556a621aca32
   zh: f8a0fd6e74fd0ddd
 /deepseek-ai-dsh-wasd-plugins/understand-the-implementation:
-  en: 30e861617c00371b
-  zh: 3b57041f0ca4d6d5
+  en: 1792d14be1ad9cec
+  zh: 56d52cb760c22fff
 /deepseek-ai-dsh-wasd-plugins/further-exploration:
   en: 38afa95094a6f356
   zh: 65f11cc343f3ce48
@@ -48,11 +48,11 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/what-the-model-sees:
-  en: 7e746efaaaf84872
-  zh: 07cd7df8d48a1f9d
+  en: 1b46f60583f3f777
+  zh: 23bf35ef6b73b942
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/token-effect:
-  en: 807814b662be607f
-  zh: 23305b89c22a91ca
+  en: f57fe082f5c874ce
+  zh: fb53d4b822dbeeb2
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/kv-cache-effect:
   en: 206f2b3c2d289a21
   zh: f5084c9373791a6d
@@ -60,8 +60,8 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/what-the-model-sees:
-  en: be4bf6fe3e77d547
-  zh: ee8b9e103683af72
+  en: 31e3b9981f4abba2
+  zh: b6ae95280ebdd191
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/token-effect:
   en: 39cb307926700c51
   zh: 89b32d38c7381748
@@ -108,8 +108,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: 7c3ccb5e63220176
-  zh: f1a3fb4803b7d67b
+  en: e697beefd9434290
+  zh: 2bc74f0556477671
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
   en: d36d4bfef4cd8eba
   zh: 5abb7c5e4a55ccfd

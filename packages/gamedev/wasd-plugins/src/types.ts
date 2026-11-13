@@ -61,7 +61,15 @@ export interface WasdRelease {
    * page in a browser; absent while the game has no GIF.
    */
   readonly gifLink?: string
-  /** How the Web build differs from desktop runs, the export's warnings, and what happened to the preview. */
+  /**
+   * What the game's page credits the game was made with, by name: AI models, then game tools, then add-ons; absent when
+   * the release could not store them.
+   */
+  readonly credits?: readonly string[]
+  /**
+   * How the Web build differs from desktop runs, the export's warnings, and what happened to the preview and the
+   * credits.
+   */
   readonly warnings: readonly string[]
 }
 

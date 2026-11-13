@@ -13,7 +13,7 @@ import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ToolExecutionToken, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {
-  GameMcpCall, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject,
+  GameMcpCall, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, GameMcpToolResult, JsonObject,
 } from './provider.ts'
 
 /** Name of the search tool. */
@@ -112,10 +112,12 @@ export class GameToolCatalog {
   /**
    * @param providers - the registered providers, in registration order.
    * @param warn - reports a provider tool that the catalog leaves out.
+   * @param finished - receives each call that {@link GameToolCatalog.run} finished, once its result is made.
    */
   constructor(
     private readonly providers: () => readonly GameMcpProvider[],
     private readonly warn: (message: string) => void,
+    private readonly finished: (result: GameMcpToolResult) => void = () => {},
   ) {}
 
   /**
@@ -256,19 +258,34 @@ export class GameToolCatalog {
   }
 
   /**
-   * Run one call of a provider tool.
+   * Run one call of a provider tool, then report it to the catalog's `finished` callback.
    * @param entry - the tool and its provider.
    * @param args - the agent's arguments.
    * @param call - the calling agent, cancellation, and the Session operations.
    * @returns the MCP result; a failure becomes an error result whose text says why.
    */
   async run(entry: CatalogTool, args: JsonObject, call: GameMcpCall): Promise<McpCallResult> {
+    const { result, prepared } = await this.execute(entry, args, call)
+    this.finished({
+      provider: entry.provider.id,
+      tool: entry.tool.name,
+      args: prepared?.args ?? args,
+      client: call.client,
+      ...prepared?.agent === undefined ? {} : { agent: prepared.agent },
+      isError: result.isError === true,
+    })
+    return result
+  }
+
+  private async execute(
+    entry: CatalogTool, args: JsonObject, call: GameMcpCall,
+  ): Promise<{ result: McpCallResult; prepared?: GameMcpPreparedCall }> {
     const { tool } = entry
     let prepared: GameMcpPreparedCall
     try {
       prepared = tool.prepare === undefined ? { args } : await tool.prepare(args, call)
     } catch (error) {
-      return failureResult(error)
+      return { result: failureResult(error) }
     }
     // The tool's own time limit applies as it does to a Session's call: its execution sees the expiry as cancellation,
     // and the result says the call ran out of time.
@@ -286,9 +303,9 @@ export class GameToolCatalog {
       result = failureResult(error)
     }
     if (limit !== undefined && timeoutOf(limit.signal, TIMEOUT_CODE) !== undefined) {
-      return { isError: true, content: [{ type: 'text', text: `tool call timed out after ${String(timeoutMs)}ms` }] }
+      return { result: { isError: true, content: [{ type: 'text', text: `tool call timed out after ${String(timeoutMs)}ms` }] }, prepared }
     }
-    return result
+    return { result, prepared }
   }
 }
 

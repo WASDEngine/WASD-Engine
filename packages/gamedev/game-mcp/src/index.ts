@@ -5,8 +5,9 @@
  * agent starts run in a Session of the WASD Engine window, which the server asks the window to show. Every user signs
  * in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool call with a
  * message that asks the user to sign in; a Host without the account plugin runs every call. The `gameMcp`
- * Remote streams the endpoint, the setup prompt, and the agents seen to the window, and the `game-mcp/reveal`
- * event asks the window to show a Session.
+ * Remote streams the endpoint, the setup prompt, and the agents seen to the window, the `game-mcp/reveal`
+ * event asks the window to show a Session, and the `game-mcp/tool-result` event reports each finished call of a
+ * provider tool.
  * @module @deepseek-ai/dsh-game-mcp
  */
 import { isAbsolute, join } from 'node:path'
@@ -100,7 +101,14 @@ export default class GameMcpServer extends TypertRemoteService {
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'gameMcp', { namespace: 'gameMcp' })
     if (!isAbsolute(config.dataRoot)) throw new Error(`Game MCP plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
-    this.catalog = new GameToolCatalog(() => this.providers, (message) => { ctx.logger.warn(message) })
+    this.catalog = new GameToolCatalog(() => this.providers, (message) => { ctx.logger.warn(message) }, (result) => {
+      try {
+        ctx.emit('game-mcp/tool-result', result)
+      } catch (error) {
+        // A listener's failure must not turn the agent's finished call into a failed request.
+        ctx.logger.warn(`game-mcp: a game-mcp/tool-result listener failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
+    })
     this.sessions = new ExternalSessions(ctx, join(config.dataRoot, 'sessions.json'))
     this.handler = createGameMcpHandler({
       catalog: this.catalog,

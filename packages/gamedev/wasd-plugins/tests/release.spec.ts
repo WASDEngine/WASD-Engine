@@ -19,7 +19,16 @@ import {
 const ORIGIN = 'https://site.test'
 const ACCESS: SiteAccess = { origin: ORIGIN, token: 'wasd_token', account: 'account-1' }
 
-interface SiteGame { id: string; slug: string; title: string; owner: string; versions: number; cover?: string; gif?: string }
+interface SiteGame {
+  id: string
+  slug: string
+  title: string
+  owner: string
+  versions: number
+  cover?: string
+  gif?: string
+  credits?: unknown
+}
 
 /** An in-memory WASD Engine site: the games API as releases call it, for the accounts of `tokens`. */
 function site(...tokens: string[]) {
@@ -43,7 +52,7 @@ function site(...tokens: string[]) {
     calls.push({ method, path: url.pathname, token, notes: url.searchParams.get('notes') })
     expect(init?.redirect).toBe('error')
     if (!accounts.includes(token)) return json(401, { error: { message: 'Missing, invalid, or expired WASD Engine token.' } })
-    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif)?$/u.exec(url.pathname)
+    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif|\/credits)?$/u.exec(url.pathname)
     const game = match?.[1] === undefined ? undefined : games.get(match[1])
     if (match?.[1] !== undefined && (game === undefined || game.owner !== token)) return json(404, { error: { message: 'No such game.' } })
     if (method === 'POST' && match?.[1] === undefined) {
@@ -70,6 +79,13 @@ function site(...tokens: string[]) {
     if (method === 'PUT' && game !== undefined && match?.[2] === '/cover') {
       if (headers.get('content-type') !== 'image/png') return json(415, { error: { message: 'The cover must be a PNG, JPEG, or WebP image.' } })
       game.cover = `cover-${calls.length}.png`
+      return json(200, { game: gameJson(game) })
+    }
+    if (method === 'PUT' && game !== undefined && match?.[2] === '/credits') {
+      expect(headers.get('content-type')).toBe('application/json')
+      const body = JSON.parse(init?.body as string) as { models: { name?: string }[] }
+      if (body.models.some(model => model.name === 'Refused')) return json(400, { error: { message: 'A model name is too long.' } })
+      game.credits = body
       return json(200, { game: gameJson(game) })
     }
     if (method === 'PUT' && game !== undefined && match?.[2] === '/gif') {
@@ -411,6 +427,45 @@ describe('releaseGame', () => {
     const failing = await releaseGame({ projectDir: other }, { ...deps, recordPreview: () => Promise.reject(new Error('The game did not keep running (crashed).')) }, signal)
     expect(failing.gifLink).toBeUndefined()
     expect(failing.warnings.at(-1)).toBe('The game has no preview GIF: recording one failed: The game did not keep running (crashed).')
+  })
+})
+
+describe('releaseGame credits', () => {
+  it('uploads what the game was made with after the build, and lists it by name', async () => {
+    const dir = await project()
+    const fake = site()
+    const credits = {
+      models: [{ builtin: true as const }, { name: 'Claude Opus 5.5' }],
+      tools: ['godot' as const, 'blender' as const],
+      addons: [{ id: 'mpfb', title: 'MPFB (MakeHuman)', host: 'blender' as const }],
+    }
+    const deps = { ...dependencies(fake.fetch), credits: () => Promise.resolve(credits) }
+    const released = await releaseGame({ projectDir: dir }, deps, new AbortController().signal)
+    expect(released.credits).toEqual(['WASD Engine\'s built-in AI', 'Claude Opus 5.5', 'Godot', 'Blender with MPFB (MakeHuman)'])
+    expect([...fake.games.values()][0]?.credits).toEqual(credits)
+    const paths = fake.calls.map(call => `${call.method} ${call.path}`)
+    expect(paths.indexOf('PUT /api/v1/games/game-1/credits')).toBeGreaterThan(paths.indexOf('POST /api/v1/games/game-1/releases'))
+  })
+
+  it('keeps the release when the credits cannot be collected or stored, and says so', async () => {
+    const dir = await project()
+    const fake = site()
+    const refused = await releaseGame({ projectDir: dir }, {
+      ...dependencies(fake.fetch),
+      credits: () => Promise.resolve({ models: [{ name: 'Refused' }], tools: [], addons: [] }),
+    }, new AbortController().signal)
+    expect(refused.version).toBe(1)
+    expect(refused.credits).toBeUndefined()
+    expect(refused.warnings).toContain('The version is released, but what the game was made with was not stored: WASD Engine could not store what the game was made with: A model name is too long.')
+    const failed = await releaseGame({ projectDir: dir }, {
+      ...dependencies(fake.fetch),
+      credits: () => Promise.reject(new Error('credits.json is locked')),
+    }, new AbortController().signal)
+    expect(failed.version).toBe(2)
+    expect(failed.warnings).toContain('The version is released, but what the game was made with was not stored: credits.json is locked')
+    const without = await releaseGame({ projectDir: dir }, dependencies(fake.fetch), new AbortController().signal)
+    expect(without.credits).toBeUndefined()
+    expect(fake.calls.filter(call => call.path.endsWith('/credits'))).toHaveLength(1)
   })
 })
 

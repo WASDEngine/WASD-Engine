@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-mcp/README.md
 /:
-  en: 83ab33fc5364659f
-  zh: 63a9d46e0b59002f
+  en: 842b49022d20fbb4
+  zh: 6264ce3a5a584a01
 /deepseek-ai-dsh-game-mcp:
   en: 4a67c43c872058b4
   zh: 38f22a58909bf07b
@@ -30,14 +30,14 @@
   en: 49471e4ba27b5dc0
   zh: de543f7380919a58
 /deepseek-ai-dsh-game-mcp/use-this-package/provide-tools:
-  en: e25b8cd5f2dd17f8
-  zh: 09cbe0de178e61eb
+  en: f001d1047140b39e
+  zh: f7ef136d4783c72f
 /deepseek-ai-dsh-game-mcp/use-this-package/long-calls:
   en: 4cd19e08d8a9cb9d
   zh: a5920841a15e17c9
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
-  en: ed8b6772a73c425e
-  zh: f92ab9d731f94142
+  en: 3450ebbf37a2a6f2
+  zh: 9077b9f20f2d8621
 /deepseek-ai-dsh-game-mcp/further-exploration:
   en: 1a07bf592f9be374
   zh: 51ba9e326a697e4f

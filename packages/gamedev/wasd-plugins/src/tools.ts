@@ -3,7 +3,8 @@
  * `wasd_record_preview` records the game's preview, an animated GIF and a still, and `wasd_release_game` builds the
  * project and publishes the build as the next version of its game on the WASD Engine site, with the preview. The same
  * definitions serve the Session's own agent, which may name the project relative to its working directory, and agents
- * connected through WASD Engine's MCP server, which name it by absolute path and run the game in a Session of theirs.
+ * connected through WASD Engine's MCP server, which name it by absolute path, run the game in a Session of theirs, and
+ * name their own model for the game's credits.
  * @module @deepseek-ai/dsh-wasd-plugins/src/tools
  */
 import { readFile } from 'node:fs/promises'
@@ -14,6 +15,7 @@ import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
+import { MAX_MODEL_NAME, modelName } from './credits.ts'
 import { MAX_NOTES, MAX_TITLE, type ReleaseRequest } from './release.ts'
 import type { WasdRelease } from './types.ts'
 
@@ -101,12 +103,34 @@ export interface WasdToolHost {
    */
   recordPreview(request: PreviewRequest, exec: ToolRunContext): Promise<RecordedPreview>
   /**
-   * Export a project for the Web and release the build with the game's preview.
+   * Export a project for the Web and release the build with the game's preview and what the game was made with.
    * @param request - project, notes, title, preview files, and whether to start a new game.
    * @param exec - the call's execution: its cancellation, and its Agent, whose Session can record a missing preview.
+   * @param model - the model the release credits.
    * @returns the release.
    */
-  release(request: ReleaseRequest, exec: ToolRunContext): Promise<WasdRelease>
+  release(request: ReleaseRequest, exec: ToolRunContext, model: ReleaseModel): Promise<WasdRelease>
+}
+
+/**
+ * The model a release credits: the calling Session's own model, or the model a connected agent named for itself,
+ * absent when it named none.
+ */
+export type ReleaseModel = { readonly kind: 'session' } | { readonly kind: 'named'; readonly name?: string }
+
+/** Who calls the tools: a Session's own agent, or an agent connected through WASD Engine's MCP server. */
+export type WasdToolAudience = 'session' | 'connected'
+
+/** What the MCP tools need from the plugin's credits. */
+export interface ConnectedCredits {
+  /**
+   * Credit the project that a connected agent's release names with the tools that agent used before it named a project.
+   * @param client - the connected agent's id.
+   * @param project - absolute folder holding `project.godot`, as the release names it.
+   * @param signal - cancellation.
+   * @returns once the project's credits hold those tools; a project that cannot be read credits nothing.
+   */
+  claim(client: string, project: string, signal: AbortSignal): Promise<void>
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -172,9 +196,10 @@ function describeRecording(value: RecordedPreviewValue): string {
  * Build the WASD Engine Plugins tool definitions.
  * @param host - plugin operations the tools call.
  * @param lengths - the preview lengths the recording tool offers.
+ * @param audience - who calls them: for connected agents, the release also takes the name of the agent's model.
  * @returns the definitions, not registered.
  */
-export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths): ToolDefinition[] {
+export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths, audience: WasdToolAudience = 'session'): ToolDefinition[] {
   return [defineTool({
     name: 'wasd_export_web',
     description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve. The Web build renders with the Compatibility renderer. The first export downloads Godot\'s Web template, about 10 MB. To publish the game for others to play, call wasd_release_game instead.',
@@ -239,9 +264,22 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       }, exec)
       return { ...recorded, ...recorded.view === undefined ? {} : { view: { ...recorded.view, image: { ...recorded.view.image } } } }
     },
-  }), defineTool({
+  }), releaseDefinition(host, audience)]
+}
+
+/** Description of the release's `model` argument, which only connected agents get. */
+const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5; at most ${MAX_MODEL_NAME} characters. The game's page credits it beside the game tools and add-ons that made the game. Default: your application's name.`
+
+/**
+ * Build the release tool.
+ * @param host - plugin operations the tool calls.
+ * @param audience - who calls it: a connected agent's release also takes the name of its model.
+ * @returns the definition.
+ */
+function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): ToolDefinition {
+  return defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone can play it in a browser, switch to earlier versions, and comment. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. Every call publishes a new public version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
@@ -249,6 +287,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
       preview_gif: { type: 'string', description: 'Animated GIF that Explore plays on hover and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
+      ...audience === 'connected' ? { model: { type: 'string', description: MODEL_ARGUMENT } } : {},
     },
     output: {
       schema: {
@@ -263,6 +302,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           totalBytes: INTEGER,
           imageLink: { type: 'string' },
           gifLink: { type: 'string' },
+          credits: { type: 'array', items: { type: 'string' } },
           warnings: WARNINGS,
         },
       },
@@ -274,6 +314,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           `This version: ${value.url}`,
           ...value.gifLink === undefined ? [] : [`GIF link: ${value.gifLink}`],
           ...value.imageLink === undefined ? [] : [`Image link: ${value.imageLink}`],
+          ...value.credits === undefined ? [] : [`Made with, as the game's page credits it: ${value.credits.join(', ')}.`],
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
           ...value.gifLink === undefined
             ? []
@@ -285,17 +326,27 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       const projectDir = await host.project(args.project, exec)
       const previewImage = args.preview_image === undefined ? undefined : await host.file(args.preview_image, exec)
       const previewGif = args.preview_gif === undefined ? undefined : await host.file(args.preview_gif, exec)
-      const released = await host.release({
+      const { credits, warnings, ...released } = await host.release({
         projectDir,
         ...args.notes === undefined ? {} : { notes: args.notes },
         ...args.title === undefined ? {} : { title: args.title },
         ...previewImage === undefined ? {} : { previewImage },
         ...previewGif === undefined ? {} : { previewGif },
         ...args.new_game === undefined ? {} : { newGame: args.new_game },
-      }, exec)
-      return { ...released, warnings: [...released.warnings] }
+      }, exec, audience === 'session' ? { kind: 'session' } : namedModel(args))
+      return { ...released, ...credits === undefined ? {} : { credits: [...credits] }, warnings: [...warnings] }
     },
-  })]
+  })
+}
+
+/**
+ * The model a connected agent's release names.
+ * @param args - the release's arguments; `model` is there for connected agents.
+ * @returns the named model.
+ */
+function namedModel(args: object): ReleaseModel {
+  const given = 'model' in args && typeof args.model === 'string' ? modelName(args.model) : undefined
+  return given === undefined ? { kind: 'named' } : { kind: 'named', name: given }
 }
 
 /** Absolute-path arguments of the tools offered to connected agents, by tool. */
@@ -312,6 +363,9 @@ const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type
     preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that Explore plays on hover and the share link shows. Default: the GIF that wasd_record_preview saved.' },
   },
 }
+
+/** The id WASD Engine's MCP server gives an agent whose requests name no application; its title names no model. */
+const UNNAMED_CLIENT = 'agent'
 
 /**
  * Tools that run the game in the connected agent's Session for the project: the recording, which needs the Session,
@@ -337,11 +391,14 @@ async function recordingContent(definition: ToolDefinition, value: RecordedPrevi
 }
 
 /**
- * Offer one tool to agents connected through WASD Engine's MCP server, which name paths absolutely.
- * @param definition - the tool.
+ * Offer one tool to agents connected through WASD Engine's MCP server, which name paths absolutely. A release credits
+ * the model the agent names, else the agent's application, and first credits the project with the tools the agent used
+ * before it named a project.
+ * @param definition - the tool, as {@link wasdToolDefinitions} builds it for connected agents.
+ * @param credits - the plugin's credits.
  * @returns the server tool.
  */
-function mcpTool(definition: ToolDefinition): GameMcpTool {
+function mcpTool(definition: ToolDefinition, credits: ConnectedCredits): GameMcpTool {
   const paths = MCP_PATHS[definition.name] ?? {}
   const { properties } = definition.parameters as { readonly properties: Readonly<Record<string, object>> }
   return {
@@ -359,11 +416,16 @@ function mcpTool(definition: ToolDefinition): GameMcpTool {
       if (!MCP_SESSION_TOOLS.has(definition.name)) return { args }
       // The game plays in the connected agent's Session of the project, in the WASD Engine window's Game tab.
       if (definition.name === 'wasd_record_preview') return { args, agent: await call.session(args.project as string) }
+      if (args.model !== undefined && typeof args.model !== 'string') throw new Error('model must be a string.')
+      await credits.claim(call.client.id, args.project as string, call.signal)
+      const model = (typeof args.model === 'string' ? modelName(args.model) : undefined)
+        ?? (call.client.id === UNNAMED_CLIENT ? undefined : call.client.title)
+      const released = model === undefined ? args : { ...args, model }
       try {
-        return { args, agent: await call.session(args.project as string) }
+        return { args: released, agent: await call.session(args.project as string) }
       } catch {
         // Without a Session the release still goes out; it only cannot record a missing preview.
-        return { args }
+        return { args: released }
       }
     },
     ...definition.name === 'wasd_record_preview'
@@ -374,16 +436,17 @@ function mcpTool(definition: ToolDefinition): GameMcpTool {
 
 /**
  * The WASD Engine provider of WASD Engine's MCP server.
- * @param definitions - the tool definitions.
+ * @param definitions - the tool definitions for connected agents.
+ * @param credits - the plugin's credits.
  * @returns the provider.
  */
-export function wasdMcpProvider(definitions: readonly ToolDefinition[]): GameMcpProvider {
-  const tools = definitions.map(mcpTool)
+export function wasdMcpProvider(definitions: readonly ToolDefinition[], credits: ConnectedCredits): GameMcpProvider {
+  const tools = definitions.map(definition => mcpTool(definition, credits))
   return {
     id: 'wasd',
     title: 'WASD Engine',
     description: 'Export the user\'s Godot game for the Web, record its preview, and release it on WASD Engine with a share link.',
-    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder. wasd_record_preview records the game\'s preview, a short GIF and a still of the running game, which Explore and the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone can play the game, pick earlier versions, and comment. Each release is public: release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
+    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder. wasd_record_preview records the game\'s preview, a short GIF and a still of the running game, which Explore and the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone can play the game, pick earlier versions, and comment. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Each release is public: release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

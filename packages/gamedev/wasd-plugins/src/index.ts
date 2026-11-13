@@ -6,7 +6,9 @@
  * server. The `wasdPlugins` Remote tells the window what each project released and
  * where the site's Explore page is, for the Release button of game project Sessions and Explore Games in the sidebar.
  * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
- * before its release adds to the game it shares with the folder it was copied from.
+ * before its release adds to the game it shares with the folder it was copied from. Each release also uploads what the
+ * game was made with: the AI models and game tools that worked on the project, which the plugin records in the
+ * project's `.wasdengine/credits.json` as Sessions' agents and connected agents call game tools, and its add-ons.
  * With `browser` on, as in the Desktop app, the Session's agent also gets the `browser_*` tools, which the window
  * carries out on a Browser tab in the right Sidebar through the same Remote.
  * @module @deepseek-ai/dsh-wasd-plugins
@@ -27,6 +29,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
+import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER, type ModelCredit, type ToolCredit } from './credits.ts'
 import { ReleaseFolders } from './folders.ts'
 import { encodePreview, savePreview } from './preview.ts'
 import { accountKey, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
@@ -39,6 +42,16 @@ export type { BrowserPageValue, BrowserScreenshotValue, BrowserToolHost, Screens
 
 /** Longest preview recording in seconds: the longest recording the Godot plugin's `record()` takes. */
 const MAX_PREVIEW_SECONDS = 30
+
+/**
+ * The `project` argument of a tool call.
+ * @param args - the call's arguments.
+ * @returns the argument when it is a string.
+ */
+function projectArgument(args: unknown): string | undefined {
+  if (typeof args !== 'object' || args === null || !('project' in args)) return undefined
+  return typeof args.project === 'string' ? args.project : undefined
+}
 
 /** Plugin configuration. */
 export interface Config {
@@ -84,6 +97,11 @@ export interface Config {
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */
   previewStartSeconds: number
+  /**
+   * Model providers whose models are WASD Engine's built-in AI, which a game's credits name as such rather than by the
+   * model's own name.
+   */
+  builtinModelProviders: string[]
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -115,11 +133,13 @@ export default class WasdPlugins extends TypertRemoteService {
     previewMaxGifBytes: z.natural().min(64 * 1024).default(5 * 1024 * 1024),
     previewEffort: z.natural().min(1).max(10).default(4),
     previewStartSeconds: z.number().min(0).max(60).default(2),
+    builtinModelProviders: z.array(z.string().min(1)).default(['deepseek-account', 'deepseek-official']),
   })
 
   private readonly lifetime = new AbortController()
   private readonly browserRequestQueue: BrowserRequestQueue
   private readonly folders: ReleaseFolders
+  private readonly credits = new CreditsLedger()
 
   /**
    * @param ctx - plugin context; the tools and the Remote live as long as it.
@@ -132,6 +152,19 @@ export default class WasdPlugins extends TypertRemoteService {
     if (!isAbsolute(config.dataRoot)) throw new TypeError(`wasd-plugins: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}`)
     this.folders = new ReleaseFolders(join(config.dataRoot, 'release-folders'))
     ctx.effect(() => () => { this.lifetime.abort() }, 'wasd-plugins: lifetime')
+    // A game's credits: the models and game tools that worked on each project, from the calls of Sessions' agents and
+    // of agents connected through WASD Engine's MCP server.
+    ctx.on('tools/result', (exec, result) => {
+      if (result.isError || exec.agent === undefined || exec.signal.aborted || !isGameWork(exec.name)) return
+      const requested = namesProject(exec.name) ? projectArgument(exec.arguments) : undefined
+      this.track(this.creditSession(exec.agent, requested, sessionToolCredit(exec.name)))
+    })
+    ctx.on('game-mcp/tool-result', (result) => {
+      const tool = providerToolCredit(result.provider)
+      if (result.isError || (tool === undefined && result.provider !== WASD_PROVIDER)) return
+      const requested = namesProject(result.tool) ? projectArgument(result.args) : undefined
+      this.track(this.creditConnected(result.client.id, requested, result.agent, tool))
+    })
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
     if (config.browser) {
       if (config.browserOperationTimeoutMs >= config.browserTimeoutMs) {
@@ -205,7 +238,7 @@ export default class WasdPlugins extends TypertRemoteService {
             ...view === undefined ? {} : { view },
           }
         },
-        release: (request, exec) => {
+        release: (request, exec, model) => {
           const agent = exec.agent
           return releaseGame(request, {
             access: () => this.access(),
@@ -213,6 +246,12 @@ export default class WasdPlugins extends TypertRemoteService {
             fetch: (input, init) => fetch(input, init),
             folders: this.folders,
             tempDir: tmpdir(),
+            credits: async (projectDir) => {
+              let credited: ModelCredit | undefined
+              if (model.kind === 'named') credited = model.name === undefined ? undefined : { name: model.name }
+              else credited = agent === undefined ? undefined : await this.sessionModel(agent, exec.signal)
+              return await this.credits.release(projectDir, credited)
+            },
             // A release runs the game for a missing preview only in a Session, which the game plays in.
             ...agent === undefined ? {} : {
               recordPreview: async (projectDir, signal) => {
@@ -222,11 +261,16 @@ export default class WasdPlugins extends TypertRemoteService {
           }, exec.signal)
         },
       }
-      const definitions = wasdToolDefinitions(host, { seconds: config.previewSeconds, maxSeconds: config.previewMaxSeconds })
-      for (const definition of definitions) scope.tools.register(definition)
-      // Agents connected through WASD Engine's MCP server get the same tools.
+      const lengths = { seconds: config.previewSeconds, maxSeconds: config.previewMaxSeconds }
+      for (const definition of wasdToolDefinitions(host, lengths)) scope.tools.register(definition)
+      // Agents connected through WASD Engine's MCP server get the same tools, whose release also takes their model.
+      const connected = wasdToolDefinitions(host, lengths, 'connected')
+      const claim = async (client: string, project: string, signal: AbortSignal): Promise<void> => {
+        const projectDir = await this.projectOf(project, undefined, signal)
+        if (projectDir !== undefined) await this.credits.claim(client, projectDir)
+      }
       scope.inject(['gameMcp'], (inner) => {
-        inner.effect(() => inner.gameMcp.provide(wasdMcpProvider(definitions)), 'wasd-plugins: game MCP tools')
+        inner.effect(() => inner.gameMcp.provide(wasdMcpProvider(connected, { claim })), 'wasd-plugins: game MCP tools')
       })
     })
   }
@@ -296,6 +340,73 @@ export default class WasdPlugins extends TypertRemoteService {
   settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean {
     signal.throwIfAborted()
     return this.browserRequestQueue.settle(id, outcome)
+  }
+
+  /** Run a credits change in the background; a change that fails credits nothing and leaves the call's result alone. */
+  private track(change: Promise<void>): void {
+    change.catch((error: unknown) => {
+      if (!this.lifetime.signal.aborted) this.ctx.logger.debug(`wasd-plugins: a game's credits were not updated: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }
+
+  /**
+   * The Godot project a credited call worked on.
+   * @param requested - the project the call named, absolute or relative to `base`.
+   * @param base - the calling Session's working directory; absent for a connected agent's call without a Session.
+   * @param signal - cancellation.
+   * @returns the absolute folder holding `project.godot`, or undefined when the call named none and `base` is absent,
+   * or the project cannot be found.
+   */
+  private async projectOf(requested: string | undefined, base: string | undefined, signal: AbortSignal): Promise<string | undefined> {
+    const from = requested !== undefined && isAbsolute(requested) ? requested : base
+    if (from === undefined) return undefined
+    try {
+      return (await resolveGodotProject(from, requested, signal)).dir
+    } catch {
+      // A call outside a Godot project, such as one before the project exists, credits no project.
+      return undefined
+    }
+  }
+
+  /** Credit a Session's game work to its project: the Session's model, and the tool. */
+  private async creditSession(agent: Agent, requested: string | undefined, tool: ToolCredit | undefined): Promise<void> {
+    const signal = this.lifetime.signal
+    const projectDir = await this.projectOf(requested, await this.ctx.workingDirectory.ensure(agent, signal), signal)
+    if (projectDir === undefined) return
+    const model = await this.sessionModel(agent, signal)
+    await this.credits.add(projectDir, model === undefined ? [] : [model], tool === undefined ? [] : [tool])
+  }
+
+  /**
+   * Credit a connected agent's game tool call: the tool, to the project the call named or the call's Session works in.
+   * The Session's model is the window's, not the connected agent's, so the call credits no model.
+   */
+  private async creditConnected(
+    client: string, requested: string | undefined, agent: Agent | undefined, tool: ToolCredit | undefined,
+  ): Promise<void> {
+    const signal = this.lifetime.signal
+    const base = agent === undefined ? undefined : await this.ctx.workingDirectory.ensure(agent, signal)
+    await this.credits.connected(client, await this.projectOf(requested, base, signal), tool)
+  }
+
+  /**
+   * The model a Session's agent runs on, as a game's credits name it.
+   * @param agent - the Session's agent.
+   * @param signal - cancellation.
+   * @returns WASD Engine's built-in AI for a built-in provider's model, else the model by name; undefined without a model.
+   */
+  private async sessionModel(agent: Agent, signal: AbortSignal): Promise<ModelCredit | undefined> {
+    const route = agent.model.current()
+    if (route === undefined) return undefined
+    if (this.config.builtinModelProviders.includes(route.provider)) return { builtin: true }
+    let name = route.model
+    try {
+      name = (await this.ctx.get('llm')?.resolveModelInfo(route.provider, route.model, signal))?.name ?? name
+    } catch {
+      // A provider that cannot describe the model leaves its id as the name.
+    }
+    const cleaned = modelName(name)
+    return cleaned === undefined ? undefined : { name: cleaned }
   }
 
   /** The folder a call's relative paths start from: none for an absolute path, else the Session's working directory. */

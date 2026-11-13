@@ -6,14 +6,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { wasdMcpProvider, wasdToolDefinitions, type RecordedPreview, type WasdToolHost } from '../src/tools.ts'
+import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type ReleaseModel, type WasdToolHost } from '../src/tools.ts'
 
 const LENGTHS = { seconds: 4, maxSeconds: 10 }
 
-function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: unknown[] } {
+function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: unknown[]; models: ReleaseModel[] } {
   const calls: unknown[] = []
+  const models: ReleaseModel[] = []
   return {
     calls,
+    models,
     project: requested => Promise.resolve(requested === undefined ? '/work/game' : `/work/${requested}`),
     file: requested => Promise.resolve(requested.startsWith('/') ? requested : `/work/${requested}`),
     exportWeb: (projectDir) => {
@@ -30,14 +32,20 @@ function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: u
         started: false, paused: false, ...preview,
       })
     },
-    release: (request) => {
+    release: (request, _exec, model) => {
       calls.push(['release', request])
+      models.push(model)
       return Promise.resolve({
         title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
-        totalBytes: 50 * 1024 * 1024, gifLink: 'https://site.test/games/neon.gif', imageLink: 'https://site.test/games/neon.png', warnings: ['Note one.'],
+        totalBytes: 50 * 1024 * 1024, gifLink: 'https://site.test/games/neon.gif', imageLink: 'https://site.test/games/neon.png',
+        credits: ['WASD Engine\'s built-in AI', 'Godot', 'Blender with MPFB (MakeHuman)'], warnings: ['Note one.'],
       })
     },
   }
+}
+
+function credits(): ConnectedCredits & { claim: ReturnType<typeof vi.fn> } {
+  return { claim: vi.fn(() => Promise.resolve()) }
 }
 
 const exec = { signal: new AbortController().signal } as ToolRunContext
@@ -65,7 +73,20 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('GIF link: https://site.test/games/neon.gif')
     expect(text).toContain('Image link: https://site.test/games/neon.png')
     expect(text).toContain('opened in a browser, both play the game')
+    expect(text).toContain('Made with, as the game\'s page credits it: WASD Engine\'s built-in AI, Godot, Blender with MPFB (MakeHuman).')
     expect(text).toContain('- Note one.')
+    expect(stub.models).toEqual([{ kind: 'session' }])
+    expect(release.parameters).not.toHaveProperty('properties.model')
+  })
+
+  it('credits the model a connected agent names, cleaned, and no model when it names none', async () => {
+    const stub = host()
+    const release = wasdToolDefinitions(stub, LENGTHS, 'connected').find(definition => definition.name === 'wasd_release_game')!
+    expect(release.parameters).toMatchObject({ properties: { model: { type: 'string' } } })
+    await release.execute({ project: '/work/neon', model: '  Claude\tOpus   5.5 ' }, exec)
+    await release.execute({ project: '/work/neon', model: '   ' }, exec)
+    await release.execute({ project: '/work/neon' }, exec)
+    expect(stub.models).toEqual([{ kind: 'named', name: 'Claude Opus 5.5' }, { kind: 'named' }, { kind: 'named' }])
   })
 
   it('passes the choice between the project\'s game and a new game on to the release', async () => {
@@ -120,7 +141,8 @@ describe('wasdToolDefinitions', () => {
 
 describe('wasdMcpProvider', () => {
   it('offers the tools under the wasd prefix and requires absolute paths from connected agents', async () => {
-    const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS))
+    const ledger = credits()
+    const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), ledger)
     expect(provider.id).toBe('wasd')
     const tools = provider.tools()
     expect(tools.map(tool => tool.name)).toEqual(['wasd_export_web', 'wasd_record_preview', 'wasd_release_game'])
@@ -133,13 +155,16 @@ describe('wasdMcpProvider', () => {
     await expect(release.prepare!({ project: '/game', preview_gif: 'clip.gif' }, call as never)).rejects.toThrow(/preview_gif must be an absolute path/u)
     expect(await exporter.prepare!({ project: '/game' }, call as never)).toEqual({ args: { project: '/game' } })
     expect(call.session).not.toHaveBeenCalled()
-    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n' }, agent })
-    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' } })
-    expect(await release.prepare!({ project: '/game', new_game: true }, call as never)).toEqual({ args: { project: '/game', new_game: true }, agent })
+    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n', model: 'Claude Code' }, agent })
+    expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' }, model: { type: 'string' } })
+    expect(await release.prepare!({ project: '/game', new_game: true, model: ' Claude Opus 5.5 ' }, call as never))
+      .toEqual({ args: { project: '/game', new_game: true, model: 'Claude Opus 5.5' }, agent })
+    expect(ledger.claim.mock.calls).toEqual([['claude-code', '/game', call.signal], ['claude-code', '/game', call.signal]])
     expect(await recorder.prepare!({ project: '/game', seconds: 3 }, call as never)).toEqual({ args: { project: '/game', seconds: 3 }, agent })
     expect(call.session.mock.calls).toEqual([['/game'], ['/game'], ['/game']])
-    const refusing = { ...call, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
+    const refusing = { ...call, client: { id: 'agent', title: 'Connected agent' }, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
     expect(await release.prepare!({ project: '/game' }, refusing as never)).toEqual({ args: { project: '/game' } })
+    await expect(release.prepare!({ project: '/game', model: 5 }, call as never)).rejects.toThrow('model must be a string.')
     await expect(recorder.prepare!({ project: '/game' }, refusing as never)).rejects.toThrow('cannot create the Session')
     expect(await provider.status(new AbortController().signal)).toEqual({ state: 'ready' })
   })
@@ -148,7 +173,7 @@ describe('wasdMcpProvider', () => {
     const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-tools-'))
     folders.push(dir)
     await writeFile(join(dir, 'preview.jpg'), 'JPEG')
-    const recorder = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS)).tools()[1]!
+    const recorder = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits()).tools()[1]!
     const content = await recorder.content!({
       gif: join(dir, 'preview.gif'), image: join(dir, 'preview.jpg'), frames: 2, seconds: 1, width: 64, height: 36, gifBytes: 10, imageWidth: 64, imageHeight: 36, imageBytes: 4, started: false, paused: false,
     }, {}, exec)

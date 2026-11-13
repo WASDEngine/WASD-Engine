@@ -1,5 +1,5 @@
 ---
-description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由游戏工具插件与 WASD Engine 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote 与 game-mcp/reveal 事件、桌面引导与设置显示的设置提示词，以及 WASD Engine 未登录时对工具调用的拒绝。"
+description: "把 WASD Engine 的游戏工具提供给同一台电脑上的其他 agent（智能体），例如 Claude Code 或 Codex：回环 Streamable HTTP 端点及其令牌、由游戏工具插件与 WASD Engine 插件填充的 provider 注册表、搜索与按名调用工具、已连接 agent 的游戏所在的 Session、gameMcp Remote、game-mcp/reveal 与 game-mcp/tool-result 事件、桌面引导与设置显示的设置提示词，以及 WASD Engine 未登录时对工具调用的拒绝。"
 kind: "package-reference"
 ---
 
@@ -86,7 +86,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 ### 提供工具
 
-`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。
+`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具记入该游戏的制作信息。
 
 ### 长时间调用
 
@@ -113,7 +113,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 | [`src/clients.ts`](src/clients.ts) | agent 身份与已见过的 agent |
 | [`src/sessions.ts`](src/sessions.ts) | 已连接 agent 的 Session 与 `sessions.json` |
 | [`src/token.ts`](src/token.ts)、[`src/prompt.ts`](src/prompt.ts) | 令牌文件与校验，以及设置提示词 |
-| [`src/provider.ts`](src/provider.ts)、[`src/types.ts`](src/types.ts) | provider 契约、浏览器安全的视图类型与 `game-mcp/reveal` 事件 |
+| [`src/provider.ts`](src/provider.ts)、[`src/types.ts`](src/types.ts) | provider 契约与 `game-mcp/tool-result` 事件、浏览器安全的视图类型与 `game-mcp/reveal` 事件 |
 
 </details>
 
