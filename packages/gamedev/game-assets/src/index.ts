@@ -113,10 +113,12 @@ export function apply(ctx: Context, config: Config): void {
       if (exec.agent === undefined) throw new HarnessError('The asset tools need a Session: they read its project folder.', ASSET_ERROR.window)
       return await ctx.workingDirectory.ensure(exec.agent, exec.signal)
     },
+    // Without the gateway the waterfall's fallback answers at once.
+    windowConnected: () => ctx.get('typertGateway')?.hasLiveClient() !== false,
     async render(agent, request, signal) {
       // The gateway keeps a request that no window answers for a window that connects later, so a call made while no
       // window is connected would wait out its time limit; it fails at once instead.
-      if (ctx.get('typertGateway')?.hasLiveClient() === false) throw new HarnessError(NO_WINDOW_MESSAGE, ASSET_ERROR.window)
+      if (!host.windowConnected()) throw new HarnessError(NO_WINDOW_MESSAGE, ASSET_ERROR.window)
       let answer: unknown
       try {
         answer = await ctx.waterfall(scopeTarget(agent, agent), 'game-assets/render', { ...request, agent, signal }, noWindow)

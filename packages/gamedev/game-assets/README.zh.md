@@ -63,7 +63,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 多个 agent 可以同时查看不同的素材：模型的并行调用、agent 团队的队友、子 agent，以及通过 MCP 服务器连接的 agent。每个调用都在调用方 agent 自己的会话中读取并绘制，得到它自己的图片和详细信息；窗口最多同时绘制三个（[`ui-game-assets`](../ui-game-assets/README.zh.md#for-the-agent)）。在项目下层文件夹中启动的队友从自己的工作目录给出素材路径，窗口则从会话头部记录的项目文件夹读取；结果中提到的文件（例如为图片制作动画的 Godot 资源）以及窗口的失败消息都会按该队友自己的文件夹给出。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `asset` 下使用这些工具。两个工具都需要 `project`，即游戏项目文件夹的绝对路径，并在连接的 agent 自己在包含该文件夹的已注册游戏项目中的会话里运行，服务器在首次使用时创建该会话，同一产品的所有 agent（例如 Claude Code 的子 agent）共用它；素材路径和 `folder` 相对于 `project`。两个工具都标记为只读，`asset_view` 保留其 `renderTimeoutMs`，绘制的图片以图像字节的形式跟在结果文本之后。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `asset` 下使用这些工具。两个工具都需要 `project`，即游戏项目文件夹的绝对路径，并在连接的 agent 自己在包含该文件夹的已注册游戏项目中的会话里运行，服务器在首次使用时创建该会话，同一产品的所有 agent（例如 Claude Code 的子 agent）共用它；素材路径和 `folder` 相对于 `project`。两个工具都标记为只读，`asset_view` 保留其 `renderTimeoutMs`，绘制的图片以图像字节的形式跟在结果文本之后。`search_game_tools` 报告该提供方已就绪；没有打开的 WASD Engine 窗口时，还会说明在用户打开窗口之前 `asset_view` 都会失败。
 
 -----
 

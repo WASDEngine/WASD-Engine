@@ -12,7 +12,8 @@ import { SessionId } from '@deepseek-ai/dsh-session'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { MCP_INSTRUCTIONS } from '../src/mcp.ts'
+import { MCP_INSTRUCTIONS, NO_WINDOW_STATUS } from '../src/mcp.ts'
+import { NO_WINDOW_MESSAGE } from '../src/tools.ts'
 import { compose, fakeAgent, HERO, KNIGHT, PIXEL_PNG, type Composition } from './composition.ts'
 
 const TIMEOUT = 60_000
@@ -87,6 +88,22 @@ describe('the asset tools over WASD Engine\'s MCP server', () => {
     expect(tools.map(tool => [tool.name, tool.annotations?.readOnlyHint ?? false])).toEqual([['asset_search', true], ['asset_view', true]])
     expect(tools.map(tool => tool.inputSchema.required)).toEqual([['project'], ['project', 'path']])
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'asset' } }))).toContain('- Assets (asset_*, ready, 2 tools)')
+  }, TIMEOUT)
+
+  it('says while no window is connected that asset_view needs one, and fails it at once', async () => {
+    const { client, ctx, work, requests } = await connected()
+    let open = false
+    ctx.provide('typertGateway', { hasLiveClient: () => open } as never)
+    const listed = text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'asset' } }))
+    const line = listed.split('\n').find(entry => entry.startsWith('- Assets ('))
+    expect(line).toMatch(/^- Assets \(asset_\*, ready, 2 tools\): /u)
+    expect(line?.endsWith(` ${NO_WINDOW_STATUS}`)).toBe(true)
+    const view = await client.callTool({ name: 'call_game_tool', arguments: { name: 'asset_view', arguments: { project: work, path: 'models/knight.glb' } } })
+    expect(view.isError).toBe(true)
+    expect(text(view)).toContain(NO_WINDOW_MESSAGE)
+    expect(requests).toEqual([])
+    open = true
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'asset' } }))).not.toContain(NO_WINDOW_STATUS)
   }, TIMEOUT)
 
   it('searches the project the agent names, and refuses a relative project', async () => {

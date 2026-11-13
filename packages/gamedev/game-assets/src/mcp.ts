@@ -20,6 +20,9 @@ export const MCP_INSTRUCTIONS = 'The asset tools list a game project\'s 2D art a
   + 'an image\'s pixel size, transparency, colors, and the 2D animations it plays or takes part in, with their frames. '
   + 'The open WASD Engine window draws the pictures. Set show to open the asset in the user\'s Assets panel when you want them to see it.'
 
+/** What the provider's status says while no WASD Engine window is connected. */
+export const NO_WINDOW_STATUS = 'No WASD Engine window is open, so asset_view fails until the user opens one; asset_search works without it.'
+
 /** Description of the project folder for connected agents. */
 const PROJECT_PARAMETER = { type: 'string', description: 'Absolute path of the game project\'s folder, such as the folder that holds project.godot.' } as const
 
@@ -102,6 +105,7 @@ export function assetMcpProvider(host: AssetToolHost): GameMcpProvider {
     description: 'List a game project\'s 2D art and 3D models and look at them as WASD Engine\'s Assets panel draws them, with the details needed to edit them.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
-    status: () => Promise.resolve({ state: 'ready' }),
+    // The tools run either way; asset_view alone needs a window to draw the asset.
+    status: () => Promise.resolve(host.windowConnected() ? { state: 'ready' } : { state: 'ready', message: NO_WINDOW_STATUS }),
   }
 }

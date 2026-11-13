@@ -87,6 +87,11 @@ export interface AssetToolHost {
    */
   project(exec: ToolRunContext): Promise<string>
   /**
+   * Whether a WASD Engine window is connected to draw assets.
+   * @returns false when the Host knows that none is; true when one is, or when the Host cannot tell.
+   */
+  windowConnected(): boolean
+  /**
    * Ask a WASD Engine window that may read the Agent's Session to draw an asset.
    * @param agent - the calling Agent; its Session's workspace holds the asset.
    * @param request - the asset and what to draw.
