@@ -22,7 +22,7 @@ afterEach(() => { document.body.replaceChildren() })
 /** A controller over an adopted store of {@link SESSION} on screen, whose seat renders one docked pane. */
 function harness() {
   const tabs = new SidebarRightTabRegistry(new Context())
-  tabs.register(guideDefinition(((key: string) => key) as Parameters<typeof guideDefinition>[0]))
+  tabs.register(guideDefinition((key: string) => key))
   const { controller, adopt, show } = createSidebarRightController(tabs, vi.fn(), {
     autoFullscreen: () => false,
     openWithFocus: (sessionId, open) => { openWithPaneFocus(document, sessionId, open) },
