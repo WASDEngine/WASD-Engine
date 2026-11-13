@@ -151,7 +151,13 @@ function icoSize(bytes: Bytes): PixelSize | undefined {
   return largest
 }
 
-/** The `ispe` boxes of an AVIF file's item properties: `meta`, then `iprp`, then `ipco`. */
+/** The boxes from an AVIF file's top level down to its item properties, which hold its `ispe` boxes. */
+const AVIF_PROPERTIES = ['meta', 'iprp', 'ipco'] as const
+
+/**
+ * The `ispe` boxes of an AVIF file's item properties: the top-level `meta`, then `iprp`, then `ipco`. Only that path is
+ * entered, so a file of nested boxes cannot make the walk deeper than it.
+ */
 function avifSize(bytes: Bytes): PixelSize | undefined {
   if (bytes.ascii(4, 4) !== 'ftyp') return undefined
   let largest: PixelSize | undefined
@@ -173,14 +179,11 @@ function avifSize(bytes: Bytes): PixelSize | undefined {
         size = end - at
       }
       if (size < header || at + size > end) return
-      const inside = [...path, type]
-      if (type === 'ispe' && inside.join('/') === 'meta/iprp/ipco/ispe') {
+      if (type === 'ispe' && path.length === AVIF_PROPERTIES.length) {
         largest = larger(largest, sized(bytes.u32(at + header + 4, false), bytes.u32(at + header + 8, false)))
-      } else if (type === 'meta') {
-        // A full box: four bytes of version and flags before its children.
-        walk(at + header + 4, at + size, inside)
-      } else if (type === 'iprp' || type === 'ipco') {
-        walk(at + header, at + size, inside)
+      } else if (type === AVIF_PROPERTIES[path.length]) {
+        // `meta` is a full box: four bytes of version and flags before its children.
+        walk(at + header + (type === 'meta' ? 4 : 0), at + size, [...path, type])
       }
       at += size
     }

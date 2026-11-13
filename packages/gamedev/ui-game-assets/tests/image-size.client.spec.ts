@@ -81,4 +81,22 @@ describe('imageSize', () => {
     expect(size('a.hdr', bytes('#?RADIANCE\nno resolution\n'))).toBeUndefined()
     expect(size('a.glb', png(1, 1))).toBeUndefined()
   })
+
+  it('reads an AVIF only along meta, iprp, and ipco, however deep its other boxes nest', () => {
+    // Thirty thousand nested `meta` boxes, which a walk entering every `meta` box would follow until the stack ends.
+    const ftyp = box('ftyp', 'avif', u32be(0), 'avifmif1')
+    const ispe = box('ispe', u32be(0), u32be(4096), u32be(4096))
+    const levels = 30_000
+    const deep = new Uint8Array(ftyp.length + levels * 12 + ispe.length)
+    deep.set(ftyp)
+    for (let level = 0, at = ftyp.length; level < levels; level += 1, at += 12) {
+      // Each `meta` box holds the rest of the file: its size, its type, and four bytes of version and flags.
+      deep.set([...u32be(deep.length - at), ...Array.from('meta', character => character.charCodeAt(0)), 0, 0, 0, 0], at)
+    }
+    deep.set(ispe, ftyp.length + levels * 12)
+    expect(size('deep.avif', deep)).toBeUndefined()
+    // An `ispe` box outside the item properties states no image's size.
+    const stray = bytes(box('ftyp', 'avif', u32be(0), 'avifmif1'), box('meta', u32be(0), box('ispe', u32be(0), u32be(4096), u32be(4096)), box('iprp', box('ipco', box('ispe', u32be(0), u32be(32), u32be(16))))))
+    expect(size('stray.avif', stray)).toEqual({ width: 32, height: 16 })
+  })
 })
