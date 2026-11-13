@@ -16,12 +16,17 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  fileSha256, isRecord, parseRuntimeArchive, stageRuntimeArchive, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
-  type ShippedRuntimeKind,
+  fileSha256, isRecord, parseRuntimeArchive, stageRuntimeArchive, type PinnedRuntime, type RuntimeArchive, type RuntimeTarget,
+  type ShippedRuntime, type ShippedRuntimeKind,
 } from './wasdengine-runtime-archive.ts'
 
+/** The LibGodot runtime that the Desktop app ships, pinned at the version that `wasdengine/libgodot/build.sh` builds by default. */
+export const LIBGODOT_RUNTIME: PinnedRuntime = {
+  label: 'LibGodot', environmentPrefix: 'WASD_LIBGODOT', packageName: '@deepseek-ai/dsh-godot', folder: 'libgodot', version: '4.7.2-wasd.2',
+}
+
 /** The Godot plugin's default `runtimeManifestUrl`; `wasdengine-libgodot.spec.ts` keeps the two equal. */
-export const LIBGODOT_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json'
+export const LIBGODOT_MANIFEST_URL = `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-${LIBGODOT_RUNTIME.version}/manifest.json`
 
 /** One platform's archive in a LibGodot runtime manifest. */
 interface Artifact extends RuntimeArchive {
@@ -54,13 +59,10 @@ function parseArtifact(value: unknown): Artifact | undefined {
 }
 
 const LIBGODOT: ShippedRuntimeKind<Artifact, Manifest> = {
-  label: 'LibGodot',
-  environmentPrefix: 'WASD_LIBGODOT',
+  ...LIBGODOT_RUNTIME,
   manifestUrl: LIBGODOT_MANIFEST_URL,
   remedy: 'Publish the runtime with .github/workflows/wasd-libgodot.yml, set WASD_LIBGODOT_DIR to a '
     + 'wasdengine/libgodot/build.sh --out folder, or set WASD_LIBGODOT_BUNDLE=0 to package without LibGodot.',
-  packageName: '@deepseek-ai/dsh-godot',
-  folder: 'libgodot',
   parseManifest(value, source) {
     if (!isRecord(value) || value.format !== 1 || typeof value.version !== 'string' || typeof value.godot !== 'string'
       || !isRecord(value.artifacts)) {

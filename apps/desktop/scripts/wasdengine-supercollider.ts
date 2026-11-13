@@ -18,12 +18,22 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
-  type ShippedRuntimeKind,
+  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type PinnedRuntime, type RuntimeArchive, type RuntimeTarget,
+  type ShippedRuntime, type ShippedRuntimeKind,
 } from './wasdengine-runtime-archive.ts'
 
+/**
+ * The SuperCollider runtime that the Desktop app ships, pinned at the version that `wasdengine/supercollider/build.sh`
+ * builds by default.
+ */
+export const SUPERCOLLIDER_RUNTIME: PinnedRuntime = {
+  label: 'SuperCollider', environmentPrefix: 'WASD_SUPERCOLLIDER', packageName: '@deepseek-ai/dsh-supercollider', folder: 'runtime',
+  version: '3.14.1-wasd.1',
+}
+
 /** Manifest of the SuperCollider runtime release that `wasdengine/supercollider/build.sh` builds by default. */
-export const SUPERCOLLIDER_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-3.14.1-wasd.1/manifest.json'
+export const SUPERCOLLIDER_MANIFEST_URL =
+  `https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-${SUPERCOLLIDER_RUNTIME.version}/manifest.json`
 
 /** A format 1 SuperCollider runtime manifest, as `wasdengine/supercollider/runtime.py` writes it. */
 interface Manifest {
@@ -36,13 +46,10 @@ interface Manifest {
 const NAMED_ENTRIES = ['sclang', 'scsynth', 'plugins', 'classLibrary', 'helpSource'] as const
 
 const SUPERCOLLIDER: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
-  label: 'SuperCollider',
-  environmentPrefix: 'WASD_SUPERCOLLIDER',
+  ...SUPERCOLLIDER_RUNTIME,
   manifestUrl: SUPERCOLLIDER_MANIFEST_URL,
   remedy: 'Publish the runtime with .github/workflows/wasd-supercollider.yml, set WASD_SUPERCOLLIDER_DIR to a '
     + 'wasdengine/supercollider/build.sh --out folder, or set WASD_SUPERCOLLIDER_BUNDLE=0 to package without SuperCollider.',
-  packageName: '@deepseek-ai/dsh-supercollider',
-  folder: 'runtime',
   parseManifest(value, source) {
     if (!isRecord(value) || value.format !== 1 || typeof value.version !== 'string' || typeof value.supercollider !== 'string'
       || !isRecord(value.artifacts)) {

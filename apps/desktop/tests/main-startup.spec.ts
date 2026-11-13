@@ -74,6 +74,8 @@ const harness = await vi.hoisted(async () => {
   const updateCheck = vi.fn(async (_manual?: boolean): Promise<DesktopUpdateState> => updateState)
   const updateDownload = vi.fn(async (_version: string, _revision?: number): Promise<DesktopUpdateState> => updateState)
   const updateInstall = vi.fn(async (_version: string, _revision?: number): Promise<DesktopUpdateState> => updateState)
+  // WASD Engine: what the free-space check of an automatic download measures; undefined downloads without the check.
+  const updateSpace = vi.fn<(version: string) => { needed: number; free: number } | undefined>(() => undefined)
   const popup = vi.fn<(options: { window: FakeWindow; x?: number; y?: number; callback?: () => void }) => void>()
   const menuBuilder = vi.fn<(template: MenuItemConstructorOptions[]) => { popup: typeof popup }>(() => ({ popup }))
   const menu = Object.assign(menuBuilder, { buildFromTemplate: menuBuilder, setApplicationMenu: vi.fn() })
@@ -224,7 +226,7 @@ const harness = await vi.hoisted(async () => {
     windows, views, hosts, handlers, app, FakeWindow, FakeView, FakeHost, powerMonitor, nativeTheme, analytics,
     trays, FakeTray, backgroundNotice, shellDialog,
     menu, popup, socketHeaders: vi.fn(), connectWelcome: vi.fn(), removeLegacyHostCookies: vi.fn(async () => {}), hostCookies: {},
-    loginShell, readLoginShell, updateCheck, updateDownload, updateInstall,
+    loginShell, readLoginShell, updateCheck, updateDownload, updateInstall, updateSpace,
     platformDispose,
     platformCloseAndWait,
 
@@ -287,6 +289,7 @@ const harness = await vi.hoisted(async () => {
       loginShell.mockReset().mockImplementation(base => readLoginShell(base))
       updateDownload.mockReset().mockImplementation(async () => updateState)
       updateInstall.mockReset().mockImplementation(async () => updateState)
+      updateSpace.mockReset().mockReturnValue(undefined)
       nativeTheme.removeAllListeners()
       nativeTheme.themeSource = 'system'; nativeTheme.shouldUseDarkColors = false
       preparing = deferred(); prepared = deferred(); hostStarted = deferred()
@@ -404,6 +407,10 @@ vi.mock('../src/update-coordinator.ts', () => ({ DesktopUpdateCoordinator: class
   readonly download = harness.updateDownload
   readonly install = harness.updateInstall
   readonly dispose = vi.fn()
+} }))
+vi.mock('../src/wasdengine-update-space.ts', () => ({ WasdengineUpdateSpace: class {
+  measure(version: string) { return harness.updateSpace(version) }
+  dispose() {}
 } }))
 vi.mock('../src/platform-view.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../src/platform-view.ts')>(),
@@ -3095,7 +3102,8 @@ describe('desktop main startup', () => {
     expect(harness.windows).toHaveLength(1)
   })
 
-  // WASD Engine: updates download in the background, and the indicator offers only Restart to Update.
+  // WASD Engine: updates download in the background; the indicator offers Restart to Update, and Retry update once the
+  // automatic downloads stop.
   it('downloads an update as soon as a check publishes it and presents only Restart to Update', async () => {
     await readyForUpdate()
     harness.dialog.showMessageBox.mockClear()
@@ -3132,6 +3140,70 @@ describe('desktop main startup', () => {
     await vi.advanceTimersByTimeAsync(1)
     expect(harness.updateCheck).toHaveBeenCalledWith(true)
     expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+  })
+
+  it('offers Retry update once the automatic downloads stop, and downloads when the user retries', async () => {
+    vi.stubEnv('DSH_DESKTOP_UPDATE_CHECK_JITTER', '0')
+    await readyForUpdate()
+    await vi.advanceTimersByTimeAsync(0)
+    harness.dialog.showMessageBox.mockClear()
+    const window = harness.windows[0]!
+    const presented = () => window.webContents.send.mock.calls
+      .filter(([channel]) => channel === DESKTOP_IPC.updatesPresentation).at(-1)?.[1]
+    for (const delay of [600_000, 1_200_000]) {
+      harness.updateState = { phase: 'error', failedOperation: 'download', version: '1.0.1', message: 'EPERM: operation not permitted',
+        downloadFailure: 'permission' }
+      harness.publishUpdate(harness.updateState)
+      expect(presented()).toEqual({ phase: 'idle' })
+      await vi.advanceTimersByTimeAsync(delay)
+    }
+    harness.updateState = { phase: 'error', failedOperation: 'download', version: '1.0.1', message: 'EPERM: operation not permitted',
+      downloadFailure: 'permission' }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'error', version: '1.0.1', failure: 'download-permission' })
+    expect(await invoke(DESKTOP_IPC.updatesStatus, 'app')).toEqual({ phase: 'error', version: '1.0.1', failure: 'download-permission' })
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+    harness.updateDownload.mockClear()
+    harness.dialog.showMessageBox.mockResolvedValue({ response: 0 })
+    // The user's retry downloads at once and, unlike the automatic attempts, reports its failure.
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
+    const shown = harness.dialog.showMessageBox.mock.calls.map(call => call.at(-1) as Electron.MessageBoxOptions)
+    expect(shown.map(options => options.message)).toEqual([en.updateDownloadPermissionFailed])
+  })
+
+  it('offers Retry update instead of downloading an update that does not fit on the disk', async () => {
+    await readyForUpdate()
+    harness.dialog.showMessageBox.mockClear()
+    const window = harness.windows[0]!
+    const presented = () => window.webContents.send.mock.calls
+      .filter(([channel]) => channel === DESKTOP_IPC.updatesPresentation).at(-1)?.[1]
+    harness.updateSpace.mockReturnValue({ needed: 3 * 1024 ** 3, free: 2 * 1024 ** 3 })
+    harness.updateState = { phase: 'available', version: '1.0.1' }
+    harness.publishUpdate(harness.updateState)
+    expect(harness.updateSpace).toHaveBeenCalledExactlyOnceWith('1.0.1')
+    expect(presented()).toEqual({ phase: 'error', version: '1.0.1', failure: 'download-space' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.updateDownload).not.toHaveBeenCalled()
+    expect(harness.dialog.showMessageBox).not.toHaveBeenCalled()
+    // The next check measures again and downloads once the update fits.
+    harness.updateSpace.mockReturnValue({ needed: 3 * 1024 ** 3, free: 4 * 1024 ** 3 })
+    harness.updateState = { phase: 'available', version: '1.0.1' }
+    harness.publishUpdate(harness.updateState)
+    expect(presented()).toEqual({ phase: 'idle' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
+  })
+
+  it('downloads an update that does not fit when the user retries it', async () => {
+    await readyForUpdate()
+    harness.updateSpace.mockReturnValue({ needed: 3 * 1024 ** 3, free: 2 * 1024 ** 3 })
+    harness.updateState = { phase: 'available', version: '1.0.1' }
+    harness.publishUpdate(harness.updateState)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(harness.updateDownload).not.toHaveBeenCalled()
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    expect(harness.updateDownload).toHaveBeenCalledExactlyOnceWith('1.0.1', 0)
   })
 
   it('answers Check for Updates… with the background download and reports a failed one', async () => {

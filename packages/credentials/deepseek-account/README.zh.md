@@ -71,7 +71,7 @@ Host 诊断仅在请求、响应校验或登录失败时，通过 `console.error
 
 `rewriteBrowserOrigin` 默认为 `false`，要求浏览器地址同源。私有开发 patch 可设为 `true`，将授权页和完成页地址映射到 `platformOrigin`，保留固定路径和查询字符串。原地址必须使用 HTTPS 或已匹配配置来源；仍拒绝用户名密码、片段和非预期路径。发布的 profile 保持严格同源校验。
 
-inferenceOrigin 默认为 `https://api.deepseek.com`。私有部署 patch 可将其替换为一个精确的 HTTP(S) 来源（含端口），让推理及文件请求通过 x-dsh-auth-token 认证。配置不得包含路径、URL 凭证、查询或片段。其他来源要求授权由配置的 platformOrigin 签发；仍拒绝 Mock token。本机授权不能认证官方生产 API。部署地址保存在私有 patch 中，不随默认配置发布。
+inferenceOrigin 未设置时，platformOrigin 为 DeepSeek 平台则取 `https://api.deepseek.com`，否则取 platformOrigin 本身（WASDEngine 分支，`src/wasdengine-harness-origin.ts`）。私有部署 patch 可将其替换为一个精确的 HTTP(S) 来源（含端口），让推理及文件请求通过 x-dsh-auth-token 认证。配置不得包含路径、URL 凭证、查询或片段。其他来源要求授权由配置的 platformOrigin 签发；仍拒绝 Mock token。无论 inferenceOrigin 指向何处，DeepSeek 的来源只接收 DeepSeek 平台签发的授权，因此本机授权不能认证官方生产 API，其他平台的授权也不会发往 DeepSeek（WASDEngine 分支）。部署地址保存在私有 patch 中，不随默认配置发布。
 
 服务初始化时，若有效的已存授权 issuer 与 platformOrigin 不同，会在使用方读取账号状态前删除该本地授权，以未登录态继续启动，不发送远端退登请求；API Key 和设备标识保留。存储错误仍明确报错，账号 HTTP 或响应校验失败不会删除来源匹配的授权。
 

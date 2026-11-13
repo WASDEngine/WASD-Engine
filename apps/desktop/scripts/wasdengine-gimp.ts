@@ -19,12 +19,17 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
-  type ShippedRuntimeKind,
+  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type PinnedRuntime, type RuntimeArchive, type RuntimeTarget,
+  type ShippedRuntime, type ShippedRuntimeKind,
 } from './wasdengine-runtime-archive.ts'
 
+/** The GIMP runtime that the Desktop app ships, pinned at the version that `wasdengine/gimp/build.sh` builds by default. */
+export const GIMP_RUNTIME: PinnedRuntime = {
+  label: 'GIMP', environmentPrefix: 'WASD_GIMP', packageName: '@deepseek-ai/dsh-gimp', folder: 'runtime', version: '3.2.8-wasd.2',
+}
+
 /** Manifest of the GIMP runtime release that `wasdengine/gimp/build.sh` builds by default. */
-export const GIMP_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-3.2.8-wasd.2/manifest.json'
+export const GIMP_MANIFEST_URL = `https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-${GIMP_RUNTIME.version}/manifest.json`
 
 /** A format 1 GIMP runtime manifest, as `wasdengine/gimp/runtime.py` writes it. */
 interface Manifest {
@@ -37,13 +42,10 @@ interface Manifest {
 const FOLDERS = ['dataDir', 'localeDir', 'sysconfDir'] as const
 
 const GIMP: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
-  label: 'GIMP',
-  environmentPrefix: 'WASD_GIMP',
+  ...GIMP_RUNTIME,
   manifestUrl: GIMP_MANIFEST_URL,
   remedy: 'Publish the runtime with .github/workflows/wasd-gimp.yml, set WASD_GIMP_DIR to a wasdengine/gimp/build.sh --out folder, '
     + 'or set WASD_GIMP_BUNDLE=0 to package without GIMP.',
-  packageName: '@deepseek-ai/dsh-gimp',
-  folder: 'runtime',
   parseManifest(value, source) {
     if (!isRecord(value) || value.format !== 1 || typeof value.version !== 'string' || typeof value.gimp !== 'string' || !isRecord(value.artifacts)) {
       throw new Error(`desktop runtime: the GIMP manifest ${source} is not a format 1 runtime manifest`)

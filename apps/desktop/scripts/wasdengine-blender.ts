@@ -19,12 +19,17 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type RuntimeArchive, type RuntimeTarget, type ShippedRuntime,
-  type ShippedRuntimeKind,
+  isRecord, parseRuntimeArchive, stageRuntimeArchive, verifyListedFiles, type PinnedRuntime, type RuntimeArchive, type RuntimeTarget,
+  type ShippedRuntime, type ShippedRuntimeKind,
 } from './wasdengine-runtime-archive.ts'
 
+/** The Blender runtime that the Desktop app ships, pinned at the version that `wasdengine/blender/build.sh` builds by default. */
+export const BLENDER_RUNTIME: PinnedRuntime = {
+  label: 'Blender', environmentPrefix: 'WASD_BLENDER', packageName: '@deepseek-ai/dsh-blender', folder: 'runtime', version: '5.2.3-wasd.1',
+}
+
 /** Manifest of the Blender runtime release that `wasdengine/blender/build.sh` builds by default. */
-export const BLENDER_MANIFEST_URL = 'https://github.com/WASDEngine/WASD-Engine/releases/download/blender-5.2.3-wasd.1/manifest.json'
+export const BLENDER_MANIFEST_URL = `https://github.com/WASDEngine/WASD-Engine/releases/download/blender-${BLENDER_RUNTIME.version}/manifest.json`
 
 /** A format 1 Blender runtime manifest, as `wasdengine/blender/runtime.py` writes it. */
 interface Manifest {
@@ -34,13 +39,10 @@ interface Manifest {
 }
 
 const BLENDER: ShippedRuntimeKind<RuntimeArchive, Manifest> = {
-  label: 'Blender',
-  environmentPrefix: 'WASD_BLENDER',
+  ...BLENDER_RUNTIME,
   manifestUrl: BLENDER_MANIFEST_URL,
   remedy: 'Publish the runtime with .github/workflows/wasd-blender.yml, set WASD_BLENDER_DIR to a wasdengine/blender/build.sh --out folder, '
     + 'or set WASD_BLENDER_BUNDLE=0 to package without Blender.',
-  packageName: '@deepseek-ai/dsh-blender',
-  folder: 'runtime',
   parseManifest(value, source) {
     if (!isRecord(value) || value.format !== 1 || typeof value.version !== 'string' || typeof value.bpy !== 'string' || !isRecord(value.artifacts)) {
       throw new Error(`desktop runtime: the Blender manifest ${source} is not a format 1 runtime manifest`)
