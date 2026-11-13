@@ -5,6 +5,9 @@
  * cross-origin isolation and plays in any page that frames it. Godot reads export presets only from the project's
  * `export_presets.cfg`, so the preset is written there for the export alone: the file's original bytes are restored
  * afterwards, or the file is removed when the project had none, and the project's own presets never change.
+ * Godot's Web runtime draws no boot splash; only the page's loading screen shows the splash image, Godot's logo unless
+ * the project names its own, so for a project without one the preset's head include hides that image and the loading
+ * screen shows the progress bar alone on the project's splash color.
  * @module @deepseek-ai/dsh-godot/src/export
  */
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
@@ -26,6 +29,12 @@ export const WEB_EXPORT_ENTRY = 'index.html'
 
 /** Most Godot warnings a result lists. */
 export const EXPORT_WARNINGS = 10
+
+/**
+ * Markup the Web build's page includes in its head to hide the loading screen's splash image, `#status-splash` in
+ * Godot's page template, which shows Godot's logo for a project without a boot splash image of its own.
+ */
+export const HIDE_SPLASH_HEAD = '<style>#status-splash{display:none!important}</style>'
 
 const PRESETS_FILE = 'export_presets.cfg'
 const REQUIRED_FILES = [WEB_EXPORT_ENTRY, 'index.js', 'index.wasm', 'index.pck'] as const
@@ -75,14 +84,33 @@ interface PresetSections {
 }
 
 /**
+ * Whether a project names a boot splash image of its own, which its Web build's loading screen then shows.
+ * @param projectText - `project.godot` text.
+ * @returns true when its `[application]` section sets `boot_splash/image`, or a feature override of it, to a path.
+ */
+export function customBootSplash(projectText: string): boolean {
+  let section = ''
+  for (const line of projectText.split(/\r?\n/u)) {
+    const header = /^\[([^\]]+)\]\s*$/u.exec(line)
+    if (header !== null) {
+      section = header[1] as string
+      continue
+    }
+    if (section === 'application' && /^boot_splash\/image(?:\.[\w.]+)?="[^"\s]/u.test(line)) return true
+  }
+  return false
+}
+
+/**
  * Add the Web export preset to an `export_presets.cfg` text, after the project's presets. Godot reads presets
  * from index 0 up to the first missing one, so presets are renumbered without gaps, and an earlier `WASD Engine Web`
  * preset, such as one an interrupted export left behind, is replaced.
  * @param original - the file's text, or undefined when the project has none.
  * @param template - absolute path of the Web release template.
+ * @param hideSplash - include {@link HIDE_SPLASH_HEAD} in the page, for a project without a boot splash image of its own.
  * @returns the file text for the export.
  */
-export function withWebPreset(original: string | undefined, template: string): string {
+export function withWebPreset(original: string | undefined, template: string, hideSplash: boolean): string {
   const presets = new Map<number, PresetSections>()
   const other: string[] = []
   let current: string[] = other
@@ -141,7 +169,7 @@ export function withWebPreset(original: string | undefined, template: string): s
     'vram_texture_compression/for_mobile=false',
     'html/export_icon=true',
     'html/custom_html_shell=""',
-    'html/head_include=""',
+    `html/head_include=${quote(hideSplash ? HIDE_SPLASH_HEAD : '')}`,
     'html/canvas_resize_policy=2',
     'html/focus_canvas_on_start=true',
     'html/experimental_virtual_keyboard=false',
@@ -190,7 +218,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     await mkdir(options.outputDir, { recursive: true })
     const presetsPath = join(options.projectDir, PRESETS_FILE)
     const original = await readOptional(presetsPath)
-    await writeFile(presetsPath, withWebPreset(original?.toString('utf8'), options.template))
+    await writeFile(presetsPath, withWebPreset(original?.toString('utf8'), options.template, !customBootSplash(project)))
     let stdout: string
     let stderr: string
     let ended: string

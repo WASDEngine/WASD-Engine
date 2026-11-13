@@ -304,6 +304,50 @@ posix('Remote', () => {
   })
 })
 
+posix('recordings for other plugins', () => {
+  const request = { seconds: 0.5, frameMs: 100, maxWidth: 320, stillWidth: 640, stillAt: 0.2, startSeconds: 0, stopStarted: false }
+
+  it('records the running game with its input, without starting another', async () => {
+    const c = await setup()
+    await callTool(c, 'godot_run')
+    const recording = await c.godot.record(c.owner.agent, { ...request, events: [{ kind: 'key', key: 'Right', pressed: true, hold: 0.1 }] }, signal)
+    expect(recording).toMatchObject({
+      started: false, windowWidth: 640, windowHeight: 360, paused: false, still: { width: 640, height: 360 },
+    })
+    expect(recording.frames.length).toBeGreaterThanOrEqual(3)
+    expect(recording.frames[0]).toMatchObject({ width: 320, height: 180 })
+    expect(Buffer.from(recording.frames[0]?.png as Uint8Array).toString('latin1')).toBe('PNG-BYTES')
+    const requests = await fakeRequests(c.project)
+    expect(requests.filter(entry => entry.type === 'input')).toMatchObject([{ events: [{ kind: 'key', key: 'Right', pressed: true, hold: 0.1 }] }])
+    expect(requests.filter(entry => entry.type === 'screenshot').map(entry => entry.maxWidth)).toContain(640)
+    const launches = (await fakeLog(c.project)).filter(entry => entry.argv !== undefined && !(entry.argv as string[]).includes('--import'))
+    expect(launches).toHaveLength(1)
+  })
+
+  it('starts the game when none runs, and stops it afterwards when asked', async () => {
+    const c = await setup()
+    const recording = await c.godot.record(c.owner.agent, { ...request, stopStarted: true }, signal)
+    expect(recording.started).toBe(true)
+    await expectRemote(c.godot.control(OWNER, { action: 'pause' }, signal), 'godot/not-running')
+  })
+
+  it('refuses invalid numbers, invalid events, and screenshot coordinates without a screenshot', async () => {
+    const c = await setup()
+    await expect(c.godot.record(c.owner.agent, { ...request, seconds: 100 }, signal)).rejects.toThrow('seconds must be from 0.5 to 30.')
+    await expect(c.godot.record(c.owner.agent, { ...request, events: [{ kind: 'key', pressed: true }] }, signal)).rejects.toThrow('a key event needs key or keycode')
+    const click = { kind: 'mouse_button', button: 'left', pressed: true, x: 10, y: 10 }
+    await expect(c.godot.record(c.owner.agent, { ...request, events: [click] }, signal)).rejects.toThrow('this game has no screenshot yet')
+    await expectRemote(c.godot.control(OWNER, { action: 'pause' }, signal), 'godot/not-running')
+    const windowClick = await c.godot.record(c.owner.agent, { ...request, events: [click], coordinateSpace: 'window' }, signal)
+    expect(windowClick.started).toBe(true)
+    await callTool(c, 'godot_screenshot')
+    const screenshotClick = await c.godot.record(c.owner.agent, { ...request, events: [click] }, signal)
+    expect(screenshotClick.started).toBe(false)
+    const inputs = (await fakeRequests(c.project)).filter(entry => entry.type === 'input')
+    expect(inputs.map(entry => entry.events)).toEqual([[click], [{ ...click, x: 20, y: 20 }]])
+  })
+})
+
 posix('frames route', () => {
   it('streams frame records of a live run and refuses others', async () => {
     const c = await setup()

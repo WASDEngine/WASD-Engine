@@ -2,7 +2,7 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { exportWeb, GodotExportError, WEB_EXPORT_PRESET, webNotes, withWebPreset, type WebExportOptions } from '../src/export.ts'
+import { customBootSplash, exportWeb, GodotExportError, HIDE_SPLASH_HEAD, WEB_EXPORT_PRESET, webNotes, withWebPreset, type WebExportOptions } from '../src/export.ts'
 import { fakeLog, scratch, subprocessFixture, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
@@ -35,7 +35,7 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
 describe('withWebPreset', () => {
   it('adds the preset after the project\'s own presets and quotes the template path', () => {
     const original = '[preset.0]\n\nname="Windows"\nplatform="Windows Desktop"\n\n[preset.0.options]\n\nbinary_format/embed_pck=false\n'
-    const text = withWebPreset(original, 'C:\\templates\\web "a".zip')
+    const text = withWebPreset(original, 'C:\\templates\\web "a".zip', true)
     expect(text).toContain('[preset.0]\n\nname="Windows"')
     expect(text).toContain('[preset.0.options]\n\nbinary_format/embed_pck=false')
     expect(text).toContain(`[preset.1]\n\nname="${WEB_EXPORT_PRESET}"\nplatform="Web"`)
@@ -49,7 +49,7 @@ describe('withWebPreset', () => {
       '[preset.0]', '', `name="${WEB_EXPORT_PRESET}"`, '', '[preset.0.options]', '', 'custom_template/release="/old.zip"', '',
       '[preset.1]', '', 'name="Linux"', '', '[preset.1.options]', '', 'a=1', '',
     ].join('\r\n')
-    const text = withWebPreset(original, '/new.zip')
+    const text = withWebPreset(original, '/new.zip', true)
     expect(text).not.toContain('/old.zip')
     expect(text).toContain('[preset.0]\n\nname="Linux"')
     expect(text).toContain('[preset.0.options]\n\na=1')
@@ -58,7 +58,25 @@ describe('withWebPreset', () => {
   })
 
   it('writes the preset alone for a project without presets', () => {
-    expect(withWebPreset(undefined, '/t.zip')).toMatch(/^\[preset\.0\]\n\nname="WASD Engine Web"/u)
+    expect(withWebPreset(undefined, '/t.zip', true)).toMatch(/^\[preset\.0\]\n\nname="WASD Engine Web"/u)
+  })
+
+  it('hides the loading screen\'s splash image through the page head only when asked', () => {
+    expect(withWebPreset(undefined, '/t.zip', true)).toContain(`html/head_include="${HIDE_SPLASH_HEAD}"`)
+    expect(withWebPreset(undefined, '/t.zip', false)).toContain('html/head_include=""')
+  })
+})
+
+describe('customBootSplash', () => {
+  it('finds a boot splash image path in the application section, feature overrides included', () => {
+    expect(customBootSplash('[application]\n\nconfig/name="x"\nboot_splash/image="res://splash.png"\n')).toBe(true)
+    expect(customBootSplash('[application]\r\nboot_splash/image.web="uid://b4k2"\r\n')).toBe(true)
+  })
+
+  it('ignores an empty path, other sections, and other splash settings', () => {
+    expect(customBootSplash('[application]\nboot_splash/image=""\nboot_splash/bg_color=Color(0, 0, 0, 1)\n')).toBe(false)
+    expect(customBootSplash('[display]\nboot_splash/image="res://splash.png"\n')).toBe(false)
+    expect(customBootSplash('[application]\nconfig/name="x"\n')).toBe(false)
   })
 })
 
@@ -93,6 +111,20 @@ posix('exportWeb', () => {
     const argv = (log[0] as { argv: string[] }).argv
     expect(argv.slice(0, 5)).toEqual(['--headless', '--path', project, '--export-release', WEB_EXPORT_PRESET])
     expect(argv[5]).toBe(join(outputDir, 'index.html'))
+  })
+
+  it('hides Godot\'s splash image on the loading screen unless the project names its own', async () => {
+    const plain = await prepare({ export: { files: BUILD } })
+    await plain.run()
+    const plainPresets = (await fakeLog(plain.project)).find(entry => entry.preset !== undefined) as { presets: string }
+    expect(plainPresets.presets).toContain(`html/head_include="${HIDE_SPLASH_HEAD}"`)
+    const branded = await prepare({ export: { files: BUILD } }, async (dir) => {
+      const text = await readFile(join(dir, 'project.godot'), 'utf8')
+      await writeFile(join(dir, 'project.godot'), text.replace('[application]\n', '[application]\n\nboot_splash/image="res://studio.png"\n'))
+    })
+    await branded.run()
+    const brandedPresets = (await fakeLog(branded.project)).find(entry => entry.preset !== undefined) as { presets: string }
+    expect(brandedPresets.presets).toContain('html/head_include=""')
   })
 
   it('turns off the Blender importer of a project that holds a .blend file and says so first', async () => {

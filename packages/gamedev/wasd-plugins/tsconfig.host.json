@@ -57,6 +57,9 @@
     },
     {
       "path": "../../core/session"
+    },
+    {
+      "path": "../../util/lazy-require"
     }
   ]
 }

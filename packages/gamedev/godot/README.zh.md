@@ -252,7 +252,13 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 `ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。导出占用与 `godot_check` 共享的 `maxHeadlessProcesses` 个位置之一；电脑的可用内存少于 `minAvailableMemoryBytes` 时，导出不启动 Godot 并失败。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：Forward+ 或 Mobile 项目在网页上使用兼容性渲染器，以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
 
+Godot 的网页运行时不绘制启动画面；只有页面的加载界面会在进度条上方显示启动图片，除非项目的 `application/boot_splash/image` 指定了自己的图片，否则该图片是 Godot 的标志。对于没有自己图片的项目，预设的 `html/head_include` 会加入一段隐藏该图片的样式，因此加载界面只在项目的 `application/boot_splash/bg_color` 背景上显示进度条；有自己图片的项目保留其图片。
+
 Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+
+### 供其他插件使用的录制
+
+`ctx.godot.record(agent, request, signal)` 为其他 Host 插件录制某个 Agent 所在会话的游戏，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)的预览；“游戏”标签页和 `godot_*` 工具不会调用它。它在 `seconds` 秒的真实时间内（最多 30 秒）每隔 `frameMs` 毫秒截取一次窗口，每张宽度最多 `maxWidth`，同时从录制开始播放 `events`，并像 `godot_input` 一样校验这些事件；录制结束时仍在播放的事件会被取消，游戏会松开它们按住的输入。如果一次截取在下一个间隔开始之后才结束，紧接着就截取最新间隔的画面，因此各帧保持真实时间，并带有各自的截取时间。另一张宽度最多 `stillWidth` 的截图会作为 `stillAt` 秒处的静态图，除非某一帧已经足够宽。录制会计为该运行的一次查看，因此无窗口的游戏保持自身的帧率，“游戏”标签页的帧流保持不变。当会话没有运行游戏，或运行的是 `project` 之外另一个项目的游戏时，录制会像 `godot_run` 一样先启动该项目的游戏（按 `agentRunsMuted` 决定是否静音），并让它运行 `startSeconds` 秒；设置 `stopStarted` 时，录制结束后会停止该游戏。结果包含 PNG 帧、静态图、窗口尺寸、录制是否启动了游戏，以及游戏是否在每一帧中都处于暂停状态。除非 `coordinateSpace` 为 `window`，指针坐标都是会话对运行中游戏的最近一张截图中的像素，因此需要启动游戏的录制会在启动之前拒绝这类坐标。
 
 ### 供其他插件使用的导入
 
@@ -309,6 +315,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/imports.ts`](src/imports.ts) | 运行、检查、脚本与其他插件的导入步骤，同一项目的导入步骤、检查与 Web 导出的执行顺序，以及项目自上次导入以来是否有改动 |
 | [`src/command.ts`](src/command.ts) | 运行到结束并收集输出的 Godot 命令：导入步骤、检查和 Web 导出 |
 | [`src/script.ts`](src/script.ts) | `godot_script` 运行与供其他插件使用的导入报告 |
+| [`src/record.ts`](src/record.ts) | 供其他插件使用的录制：请求、其取值范围与截取时钟 |
 | [`src/project.ts`](src/project.ts) | 项目搜索、`project.godot` 设置和 `res://` 路径 |
 | [`src/blender-import.ts`](src/blender-import.ts) | 在含有 `.blend` 文件的项目中关闭 Blender 导入器 |
 | [`src/input.ts`](src/input.ts)、[`src/logs.ts`](src/logs.ts) | 输入校验与截图坐标；日志环形缓冲区及其游标 |

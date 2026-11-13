@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-wasd-plugins",
-  "description": "WASD Engine's own features, always on: export games for the Web, release them to WASD Engine with share links, the Release button, and Explore Games",
+  "description": "WASD Engine's own features, always on: export games for the Web, record their previews, release them to WASD Engine with share links, the Release button, and Explore Games",
   "version": "0.1.2",
   "icon": "./icon.svg",
   "publishConfig": {
@@ -59,8 +59,10 @@
   "license": "GPL-3.0-only",
   "dependencies": {
     "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-lazy-require": "workspace:*",
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
     "@deepseek-ai/schemastery": "workspace:~",
+    "sharp": "0.35.5",
     "zod": "4.6.6"
   },
   "peerDependencies": {

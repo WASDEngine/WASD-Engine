@@ -38,3 +38,26 @@ export function untilSettledOrAborted(operation: Promise<unknown>, signal: Abort
     operation.then(done, done)
   })
 }
+
+/**
+ * Wait a number of milliseconds.
+ * @param milliseconds - the wait.
+ * @param signal - the caller's cancellation.
+ * @returns after the wait; rejects with the signal's reason once it aborts, and clears the timer.
+ */
+export function delay(milliseconds: number, signal: AbortSignal): Promise<void> {
+  // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Preserve the caller's cancellation reason.
+  if (signal.aborted) return Promise.reject(signal.reason)
+  return new Promise<void>((resolve, reject) => {
+    const abort = (): void => {
+      clearTimeout(timer)
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- Preserve the caller's cancellation reason.
+      reject(signal.reason)
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', abort)
+      resolve()
+    }, milliseconds)
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}

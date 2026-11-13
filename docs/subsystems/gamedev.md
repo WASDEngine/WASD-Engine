@@ -375,7 +375,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
-| `wasd_export_web`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions, which need no Session; `project` and `cover_image` are absolute paths, and a release publishes to the site WASD Engine is signed in to |
+| `wasd_export_web`, `wasd_record_preview`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The export needs no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images |
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
@@ -633,6 +633,24 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
 
 /**
+ * Record the Session's game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady
+ * interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or
+ * a game of another project, the recording first starts the project's game as `godot_run` does, muted as
+ * `agentRunsMuted` says, and lets it run `startSeconds`; the Game tab shows that run like any other. The Game tab's
+ * frame stream stays as it is, because every frame is a screenshot request.
+ * @param agent - the Session's live Agent.
+ * @param request - project, duration, sizes, still, input, and whether to stop a game the recording started.
+ * @param signal - cancellation; it cancels the input too, and stops a game the recording started when
+ *   `stopStarted` is set.
+ * @returns the frames, the still, and whether the recording started the game.
+ * @throws {GodotInputError} for a number outside its range, invalid events, or screenshot coordinates without a
+ *   screenshot of the running game.
+ * @throws {GodotProjectError} when the recording must start a game and finds no project.
+ * @throws {GodotRequestError} when the game refuses a screenshot or an input event, or does not answer in time.
+ */
+async record(agent: Agent, request: GodotRecordRequest, signal: AbortSignal): Promise<GodotRecording>
+
+/**
  * Import a project with the editor's headless import step, which also loads its enabled editor plugins, for other
  * Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it. The step
  * waits for a process slot and for the project's other import steps and checks in this Host.
@@ -647,7 +665,7 @@ async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<Go
 async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>
 ```
 
-Types: [SessionId](core.md)
+Types: [Agent](core.md) · [SessionId](core.md)
 
 Source: [`packages/gamedev/godot/src/index.ts`](../../packages/gamedev/godot/src/index.ts)
 

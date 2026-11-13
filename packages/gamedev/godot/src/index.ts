@@ -22,13 +22,13 @@ import type {} from '@deepseek-ai/dsh-subprocess'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import { untilAborted, untilSettledOrAborted } from './abort.ts'
+import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
 import { exportWeb } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
-import { GodotInputError, parseInputEvents, parseWindowSize } from './input.ts'
+import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
@@ -37,6 +37,7 @@ import { GodotSessionError, GodotSessions, LowMemoryError, TooManyRunsError } fr
 import {
   bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
 } from './runtime.ts'
+import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRecordRequest } from './record.ts'
 import { ProcessSlots } from './slots.ts'
 import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
 import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
@@ -54,6 +55,7 @@ export { GodotTemplateError } from './web-template.ts'
 export { GodotScriptError } from './script.ts'
 export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
 export type { GodotScriptRequest } from './tools.ts'
+export type { GodotRecordedImage, GodotRecording, GodotRecordRequest } from './record.ts'
 
 /** Plugin configuration. */
 export interface Config {
@@ -483,6 +485,68 @@ export default class GodotController extends TypertRemoteService {
         signal,
       }), signal)
     })
+  }
+
+  /**
+   * Record the Session's game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady
+   * interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or
+   * a game of another project, the recording first starts the project's game as `godot_run` does, muted as
+   * `agentRunsMuted` says, and lets it run `startSeconds`; the Game tab shows that run like any other. The Game tab's
+   * frame stream stays as it is, because every frame is a screenshot request.
+   * @param agent - the Session's live Agent.
+   * @param request - project, duration, sizes, still, input, and whether to stop a game the recording started.
+   * @param signal - cancellation; it cancels the input too, and stops a game the recording started when
+   *   `stopStarted` is set.
+   * @returns the frames, the still, and whether the recording started the game.
+   * @throws {GodotInputError} for a number outside its range, invalid events, or screenshot coordinates without a
+   *   screenshot of the running game.
+   * @throws {GodotProjectError} when the recording must start a game and finds no project.
+   * @throws {GodotRequestError} when the game refuses a screenshot or an input event, or does not answer in time.
+   */
+  async record(agent: Agent, request: GodotRecordRequest, signal: AbortSignal): Promise<GodotRecording> {
+    checkRecordRequest(request)
+    const events = request.events === undefined ? undefined : parseInputEvents(request.events, MAX_INPUT_EVENTS)
+    const session = this.sessions.session(agent)
+    const workingDirectory = await this.ctx.workingDirectory.ensure(agent, signal)
+    const project = await resolveGodotProject(workingDirectory, request.project, signal)
+    let run = session.run
+    const start = run === undefined || run.terminal || run.view().projectDir !== project.dir
+    let delivered = events
+    if (events !== undefined && request.coordinateSpace !== 'window' && hasPointerEvents(events)) {
+      // A game the recording starts has no screenshot yet, so its coordinates fail before it starts.
+      const frame = session.screenshot
+      if (start || frame === undefined || frame.runId !== run?.id) {
+        throw new GodotInputError('Mouse coordinates are screenshot pixels, but this game has no screenshot yet; take one with godot_screenshot first, or pass coordinate_space "window".')
+      }
+      delivered = screenshotToWindow(events, frame)
+    }
+    let started = false
+    try {
+      if (start) {
+        started = true
+        run = await this.startRun(agent, { project: project.dir, muted: this.config.agentRunsMuted }, 'agent', signal)
+        await untilAborted(run.started(), signal)
+        if (request.startSeconds > 0) await delay(request.startSeconds * 1000, signal)
+      }
+      // A run exists here: the Session had one, or the recording started one.
+      const recorded = run as GodotRun
+      if (recorded.terminal) {
+        const view = recorded.view()
+        throw new Error(`The game did not keep running (${view.phase}).${view.message === undefined ? '' : `\n${view.message}`}`)
+      }
+      if (!recorded.connected) throw new Error('The game is starting or stopping; start it with godot_run and record again.')
+      const captured = await captureRecording(recorded, {
+        durationMs: request.seconds * 1000,
+        frameMs: request.frameMs,
+        maxWidth: request.maxWidth,
+        stillWidth: request.stillWidth,
+        stillAtMs: request.stillAt * 1000,
+        ...delivered === undefined ? {} : { events: delivered },
+      }, signal)
+      return { ...captured, started }
+    } finally {
+      if (started && request.stopStarted && session.run === run) await this.sessions.stop(session)
+    }
   }
 
   /**

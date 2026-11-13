@@ -1,22 +1,29 @@
-/** Releases export the project, create or reuse its game on the site, upload the build, and remember the game. */
+/** Releases export the project, create or reuse its game on the site, upload the build and its preview, and remember the game. */
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotWebExport } from '@deepseek-ai/dsh-godot'
+import { PREVIEW_DIR } from '../src/preview.ts'
 import { LINK_FILE, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, type ReleaseDependencies } from '../src/release.ts'
 
 const ORIGIN = 'https://site.test'
 
-interface SiteGame { id: string; slug: string; title: string; owner: string; versions: number }
+interface SiteGame { id: string; slug: string; title: string; owner: string; versions: number; cover?: string; gif?: string }
 
 /** An in-memory WASD Engine site: the games API as releases call it. */
 function site(token = 'wasd_token') {
   const games = new Map<string, SiteGame>()
   const calls: { method: string; path: string; notes: string | null; files?: string[] }[] = []
   let next = 1
-  const gameJson = (game: SiteGame) => ({ id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions })
+  const gameJson = (game: SiteGame) => ({
+    id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions,
+    cover_url: game.cover === undefined ? null : `https://files.test/${game.cover}`,
+    gif_url: game.gif === undefined ? null : `https://files.test/${game.gif}`,
+    image_link: game.cover === undefined ? null : `${ORIGIN}/games/${game.slug}.png`,
+    gif_link: game.gif === undefined ? null : `${ORIGIN}/games/${game.slug}.gif`,
+  })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const fetchSite: typeof fetch = async (input, init) => {
     const url = new URL(input instanceof Request ? input.url : input)
@@ -25,7 +32,7 @@ function site(token = 'wasd_token') {
     calls.push({ method, path: url.pathname, notes: url.searchParams.get('notes') })
     expect(init?.redirect).toBe('error')
     if (headers.get('x-dsh-auth-token') !== token) return json(401, { error: { message: 'Missing, invalid, or expired WASD Engine token.' } })
-    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover)?$/u.exec(url.pathname)
+    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif)?$/u.exec(url.pathname)
     const game = match?.[1] === undefined ? undefined : games.get(match[1])
     if (match?.[1] !== undefined && (game === undefined || game.owner !== token)) return json(404, { error: { message: 'No such game.' } })
     if (method === 'POST' && match?.[1] === undefined) {
@@ -50,7 +57,14 @@ function site(token = 'wasd_token') {
       })
     }
     if (method === 'PUT' && game !== undefined && match?.[2] === '/cover') {
-      return headers.get('content-type') === 'image/png' ? json(200, { game: gameJson(game) }) : json(415, { error: { message: 'The cover must be a PNG, JPEG, or WebP image.' } })
+      if (headers.get('content-type') !== 'image/png') return json(415, { error: { message: 'The cover must be a PNG, JPEG, or WebP image.' } })
+      game.cover = `cover-${calls.length}.png`
+      return json(200, { game: gameJson(game) })
+    }
+    if (method === 'PUT' && game !== undefined && match?.[2] === '/gif') {
+      expect(headers.get('content-type')).toBe('image/gif')
+      game.gif = `gif-${calls.length}.gif`
+      return json(200, { game: gameJson(game) })
     }
     return json(404, { error: { message: 'Not found' } })
   }
@@ -135,18 +149,98 @@ describe('releaseGame', () => {
     await expect(expired).rejects.toThrow(/sign-in has expired/u)
   })
 
-  it('checks notes, title, and cover before exporting, and keeps a release whose cover the site refused', async () => {
+  it('checks notes, title, and preview files before exporting, and keeps a release whose picture the site refused', async () => {
     const dir = await project()
     const server = site()
     const deps = dependencies(server.fetch)
     await expect(releaseGame({ projectDir: dir, notes: 'x'.repeat(1001) }, deps, signal)).rejects.toThrow(/notes must be at most 1000/u)
     await expect(releaseGame({ projectDir: dir, title: ' ' }, deps, signal)).rejects.toThrow(/title must be 1 to 80/u)
-    await expect(releaseGame({ projectDir: dir, coverImage: join(dir, 'cover.gif') }, deps, signal)).rejects.toThrow(/PNG, JPEG, or WebP/u)
+    await expect(releaseGame({ projectDir: dir, previewImage: join(dir, 'cover.gif') }, deps, signal)).rejects.toThrow(/preview_image must be a PNG, JPEG, or WebP/u)
+    await expect(releaseGame({ projectDir: dir, previewGif: join(dir, 'clip.mp4') }, deps, signal)).rejects.toThrow(/preview_gif must be a GIF/u)
+    await expect(releaseGame({ projectDir: dir, previewGif: join(dir, 'missing.gif') }, deps, signal)).rejects.toThrow(/preview_gif .*missing\.gif is not a file/u)
+    await mkdir(join(dir, 'shot.png'))
+    await expect(releaseGame({ projectDir: dir, previewImage: join(dir, 'shot.png') }, deps, signal)).rejects.toThrow(/preview_image .*shot\.png is not a file/u)
     expect(deps.exports).toEqual([])
     await writeFile(join(dir, 'cover.jpg'), 'jpeg')
-    const released = await releaseGame({ projectDir: dir, coverImage: join(dir, 'cover.jpg') }, deps, signal)
+    const released = await releaseGame({ projectDir: dir, previewImage: join(dir, 'cover.jpg') }, deps, signal)
     expect(released.version).toBe(1)
-    expect(released.warnings.at(-1)).toMatch(/released, but its cover image was not stored: .*PNG, JPEG, or WebP/u)
+    expect(released.imageLink).toBeUndefined()
+    expect(released.warnings.at(-1)).toMatch(/released, but its preview image was not stored: .*PNG, JPEG, or WebP/u)
+  })
+
+  it('uploads the recorded preview, and again only once it changed or the site lost it', async () => {
+    const dir = await project()
+    const previews = join(dir, STATE_DIR, PREVIEW_DIR)
+    await mkdir(previews, { recursive: true })
+    await writeFile(join(previews, 'preview.gif'), 'GIF89a-one')
+    await writeFile(join(previews, 'preview.png'), 'PNG-one')
+    const server = site()
+    const deps = dependencies(server.fetch)
+    const uploads = () => server.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))
+    const first = await releaseGame({ projectDir: dir }, deps, signal)
+    expect(uploads()).toEqual(['cover', 'gif'])
+    expect(first).toMatchObject({ imageLink: `${ORIGIN}/games/defenders-of-the-wall-1.png`, gifLink: `${ORIGIN}/games/defenders-of-the-wall-1.gif` })
+    const link = JSON.parse(await readFile(join(dir, STATE_DIR, LINK_FILE), 'utf8')) as { games: Record<string, { image?: string; gif?: string }> }
+    const digest = expect.stringMatching(/^[0-9a-f]{64}$/u) as string
+    expect(link.games[ORIGIN]).toMatchObject({ image: digest, gif: digest })
+
+    const second = await releaseGame({ projectDir: dir }, deps, signal)
+    expect(uploads()).toEqual(['cover', 'gif'])
+    expect(second.gifLink).toBe(first.gifLink)
+    await writeFile(join(previews, 'preview.gif'), 'GIF89a-two')
+    await releaseGame({ projectDir: dir }, deps, signal)
+    expect(uploads()).toEqual(['cover', 'gif', 'gif'])
+    delete server.games.get('game-1')!.cover
+    await releaseGame({ projectDir: dir }, deps, signal)
+    expect(uploads()).toEqual(['cover', 'gif', 'gif', 'cover'])
+  })
+
+  it('uploads the files a release names instead of the recorded preview, and all of them to a new game', async () => {
+    const dir = await project()
+    const previews = join(dir, STATE_DIR, PREVIEW_DIR)
+    await mkdir(previews, { recursive: true })
+    await writeFile(join(previews, 'preview.gif'), 'GIF89a-recorded')
+    await writeFile(join(dir, 'art.png'), 'PNG-art')
+    await writeFile(join(dir, 'clip.gif'), 'GIF89a-clip')
+    const server = site()
+    const deps = dependencies(server.fetch)
+    await releaseGame({ projectDir: dir, previewImage: join(dir, 'art.png'), previewGif: join(dir, 'clip.gif') }, deps, signal)
+    await releaseGame({ projectDir: dir, previewGif: join(dir, 'clip.gif') }, deps, signal)
+    expect(server.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))).toEqual(['cover', 'gif'])
+    server.games.clear()
+    await releaseGame({ projectDir: dir, previewGif: join(dir, 'clip.gif') }, deps, signal)
+    expect(server.calls.filter(call => call.method === 'PUT').map(call => call.path)).toEqual([
+      '/api/v1/games/game-1/cover', '/api/v1/games/game-1/gif', '/api/v1/games/game-2/gif',
+    ])
+  })
+
+  it('records a preview for a game without one when the project has none, and says so', async () => {
+    const dir = await project()
+    const server = site()
+    const recorded: string[] = []
+    const deps: ReleaseDependencies = {
+      ...dependencies(server.fetch),
+      async recordPreview(projectDir) {
+        recorded.push(projectDir)
+        const folder = join(projectDir, STATE_DIR, PREVIEW_DIR)
+        await mkdir(folder, { recursive: true })
+        await writeFile(join(folder, 'preview.gif'), 'GIF89a-auto')
+        await writeFile(join(folder, 'preview.jpg'), 'JPEG-auto')
+        return { gif: join(folder, 'preview.gif'), image: join(folder, 'preview.jpg') }
+      },
+    }
+    const first = await releaseGame({ projectDir: dir }, deps, signal)
+    expect(recorded).toEqual([dir])
+    expect(first.gifLink).toBe(`${ORIGIN}/games/defenders-of-the-wall-1.gif`)
+    expect(first.warnings).toContain('The project had no preview, so the release recorded the game\'s first seconds without input. For a preview that shows gameplay, record one with wasd_record_preview before the next release.')
+    await rm(join(dir, STATE_DIR, PREVIEW_DIR), { recursive: true })
+    await releaseGame({ projectDir: dir }, deps, signal)
+    expect(recorded).toEqual([dir])
+
+    const other = await project('Other')
+    const failing = await releaseGame({ projectDir: other }, { ...deps, recordPreview: () => Promise.reject(new Error('The game did not keep running (crashed).')) }, signal)
+    expect(failing.gifLink).toBeUndefined()
+    expect(failing.warnings.at(-1)).toBe('The game has no preview GIF: recording one failed: The game did not keep running (crashed).')
   })
 })
 

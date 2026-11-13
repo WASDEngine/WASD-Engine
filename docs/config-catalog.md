@@ -1905,7 +1905,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:59`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:61`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5176,7 +5176,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:35`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:41`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5203,6 +5203,24 @@ export interface Config {
   browserMaxChars: number
   /** Largest width in pixels of a `browser_screenshot` image. */
   browserScreenshotWidth: number
+  /** Length in seconds of a preview recording that names none, and of the one a release records for a game without a preview. */
+  previewSeconds: number
+  /** Longest preview recording `wasd_record_preview` takes, in seconds; at most the Godot plugin's longest recording. */
+  previewMaxSeconds: number
+  /** Milliseconds from one frame of a preview GIF to the next. */
+  previewFrameMs: number
+  /** Largest width in pixels of a preview GIF. */
+  previewWidth: number
+  /** Smallest width in pixels that a preview GIF over `previewMaxGifBytes` shrinks to before it drops frames. */
+  previewMinWidth: number
+  /** Largest width in pixels of a preview still. */
+  previewStillWidth: number
+  /** Largest preview GIF in bytes. */
+  previewMaxGifBytes: number
+  /** CPU effort of the preview GIF's palette and frame optimization, from 1 (fastest) to 10 (smallest). */
+  previewEffort: number
+  /** Seconds that a game a preview recording starts runs before the recording begins. */
+  previewStartSeconds: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->

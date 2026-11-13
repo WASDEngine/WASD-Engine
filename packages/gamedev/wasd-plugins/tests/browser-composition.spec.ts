@@ -22,7 +22,7 @@ import WasdPlugins, { type Config } from '../src/index.ts'
 import { UNCLAIMED_MESSAGE } from '../src/browser.ts'
 
 const BROWSER_TOOLS = ['browser_click', 'browser_open', 'browser_read', 'browser_screenshot', 'browser_type']
-const RELEASE_TOOLS = ['wasd_export_web', 'wasd_release_game']
+const RELEASE_TOOLS = ['wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
 const cleanups: (() => Promise<void>)[] = []
 
 afterEach(async () => {

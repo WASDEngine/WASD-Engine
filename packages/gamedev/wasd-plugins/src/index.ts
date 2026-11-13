@@ -1,17 +1,19 @@
 /**
  * WASD Engine Plugins: WASD Engine's own features, which stay on in every profile (the plugin manager refuses to
- * switch this row off). It exports Godot games for the Web and releases them to the WASD Engine site the app is signed
- * in to, as numbered versions with share links, through the `wasd_export_web` and `wasd_release_game` tools of every
- * Session and of WASD Engine's MCP server. The `wasdPlugins` Remote tells the window what each project released and
+ * switch this row off). It exports Godot games for the Web, records their previews, and releases them to the WASD
+ * Engine site the app is signed in to, as numbered versions with share links and an animated preview, through the
+ * `wasd_export_web`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's MCP
+ * server. The `wasdPlugins` Remote tells the window what each project released and
  * where the site's Explore page is, for the Release button of game project Sessions and Explore Games in the sidebar.
  * With `browser` on, as in the Desktop app, the Session's agent also gets the `browser_*` tools, which the window
  * carries out on a Browser tab in the right Sidebar through the same Remote.
  * @module @deepseek-ai/dsh-wasd-plugins
  */
 import { tmpdir } from 'node:os'
-import { isAbsolute, resolve } from 'node:path'
+import { basename, isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import { resolveGodotProject } from '@deepseek-ai/dsh-godot'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-attachment'
@@ -22,14 +24,18 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, sessionBrowserScreenshots } from './browser.ts'
+import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
+import { encodePreview, savePreview } from './preview.ts'
 import { projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
-import { wasdMcpProvider, wasdToolDefinitions, type WasdToolHost } from './tools.ts'
+import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
 import type { WasdBrowserOutcome, WasdBrowserRequests, WasdProjectView, WasdSiteLinks } from './types.ts'
 
 export type * from './types.ts'
 export { ReleaseError } from './release.ts'
 export type { BrowserPageValue, BrowserScreenshotValue, BrowserToolHost, ScreenshotSaver, StoredScreenshot, WasdBrowserDone } from './browser.ts'
+
+/** Longest preview recording in seconds: the longest recording the Godot plugin's `record()` takes. */
+const MAX_PREVIEW_SECONDS = 30
 
 /** Plugin configuration. */
 export interface Config {
@@ -55,6 +61,24 @@ export interface Config {
   browserMaxChars: number
   /** Largest width in pixels of a `browser_screenshot` image. */
   browserScreenshotWidth: number
+  /** Length in seconds of a preview recording that names none, and of the one a release records for a game without a preview. */
+  previewSeconds: number
+  /** Longest preview recording `wasd_record_preview` takes, in seconds; at most the Godot plugin's longest recording. */
+  previewMaxSeconds: number
+  /** Milliseconds from one frame of a preview GIF to the next. */
+  previewFrameMs: number
+  /** Largest width in pixels of a preview GIF. */
+  previewWidth: number
+  /** Smallest width in pixels that a preview GIF over `previewMaxGifBytes` shrinks to before it drops frames. */
+  previewMinWidth: number
+  /** Largest width in pixels of a preview still. */
+  previewStillWidth: number
+  /** Largest preview GIF in bytes. */
+  previewMaxGifBytes: number
+  /** CPU effort of the preview GIF's palette and frame optimization, from 1 (fastest) to 10 (smallest). */
+  previewEffort: number
+  /** Seconds that a game a preview recording starts runs before the recording begins. */
+  previewStartSeconds: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -76,6 +100,15 @@ export default class WasdPlugins extends TypertRemoteService {
     browserOperationTimeoutMs: z.natural().min(1).default(10_000),
     browserMaxChars: z.natural().min(1000).default(40_000),
     browserScreenshotWidth: z.natural().min(320).default(1280),
+    previewSeconds: z.number().min(1).max(MAX_PREVIEW_SECONDS).default(4),
+    previewMaxSeconds: z.number().min(1).max(MAX_PREVIEW_SECONDS).default(10),
+    previewFrameMs: z.natural().min(20).max(1000).default(80),
+    previewWidth: z.natural().min(64).max(4096).default(480),
+    previewMinWidth: z.natural().min(64).max(4096).default(240),
+    previewStillWidth: z.natural().min(64).max(4096).default(1280),
+    previewMaxGifBytes: z.natural().min(64 * 1024).default(5 * 1024 * 1024),
+    previewEffort: z.natural().min(1).max(10).default(4),
+    previewStartSeconds: z.number().min(0).max(60).default(2),
   })
 
   private readonly lifetime = new AbortController()
@@ -87,6 +120,8 @@ export default class WasdPlugins extends TypertRemoteService {
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'wasdPlugins', { namespace: 'wasdPlugins' })
+    if (config.previewSeconds > config.previewMaxSeconds) throw new TypeError('wasd-plugins: previewSeconds must be at most previewMaxSeconds')
+    if (config.previewMinWidth > config.previewWidth) throw new TypeError('wasd-plugins: previewMinWidth must be at most previewWidth')
     ctx.effect(() => () => { this.lifetime.abort() }, 'wasd-plugins: lifetime')
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
     if (config.browser) {
@@ -109,8 +144,26 @@ export default class WasdPlugins extends TypertRemoteService {
         inner.systemPrompt.section({ name: 'browser', order: inner.systemPrompt.getSectionOrder('TOOL_WEB_FETCH'), text: BROWSER_PROMPT })
       })
     }
-    // The Web export and release tools need the Godot plugin; the Browser, the Release button, and Explore Games do not.
+    // The Web export, preview, and release tools need the Godot plugin; the Browser, the Release button, and Explore
+    // Games do not.
     ctx.inject(['godot', 'tools'], (scope) => {
+      const record = async (agent: Agent, request: PreviewRequest, stopStarted: boolean, signal: AbortSignal) => {
+        const recording = await scope.godot.record(agent, {
+          project: request.projectDir,
+          seconds: request.seconds,
+          frameMs: config.previewFrameMs,
+          maxWidth: config.previewWidth,
+          stillWidth: config.previewStillWidth,
+          stillAt: request.stillAt ?? request.seconds / 2,
+          startSeconds: config.previewStartSeconds,
+          stopStarted,
+          ...request.events === undefined ? {} : { events: request.events },
+          ...request.coordinateSpace === undefined ? {} : { coordinateSpace: request.coordinateSpace },
+        }, signal)
+        const encoding = { maxGifBytes: config.previewMaxGifBytes, minWidth: config.previewMinWidth, effort: config.previewEffort }
+        const encoded = await encodePreview(recording, encoding, signal)
+        return { recording, encoded, files: await savePreview(request.projectDir, encoded) }
+      }
       const host: WasdToolHost = {
         project: async (requested, exec) => {
           const base = await this.base(requested, exec)
@@ -121,14 +174,45 @@ export default class WasdPlugins extends TypertRemoteService {
           const outputDir = resolve(projectDir, STATE_DIR, WEB_BUILD_DIR)
           return scope.godot.exportWeb({ projectDir, outputDir }, signal)
         },
-        release: (request, signal) => releaseGame(request, {
-          access: () => this.access(),
-          exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
-          fetch: (input, init) => fetch(input, init),
-          tempDir: tmpdir(),
-        }, signal),
+        recordPreview: async (request, exec) => {
+          if (exec.agent === undefined) throw new Error('A preview recording runs the game in a Session; call it from one.')
+          const agent = exec.agent
+          const { recording, encoded, files } = await record(agent, request, false, exec.signal)
+          const images = await modelImages(ctx, exec, agent)
+          const view = images.kind === 'ready' ? await images.save(encoded.still, encoded.stillType, basename(files.image), exec.signal) : undefined
+          return {
+            gif: files.gif,
+            image: files.image,
+            frames: encoded.frames,
+            seconds: encoded.durationMs / 1000,
+            width: encoded.gifWidth,
+            height: encoded.gifHeight,
+            gifBytes: encoded.gif.length,
+            imageWidth: encoded.stillWidth,
+            imageHeight: encoded.stillHeight,
+            imageBytes: encoded.still.length,
+            started: recording.started,
+            paused: recording.paused,
+            ...view === undefined ? {} : { view },
+          }
+        },
+        release: (request, exec) => {
+          const agent = exec.agent
+          return releaseGame(request, {
+            access: () => this.access(),
+            exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
+            fetch: (input, init) => fetch(input, init),
+            tempDir: tmpdir(),
+            // A release runs the game for a missing preview only in a Session, which the game plays in.
+            ...agent === undefined ? {} : {
+              recordPreview: async (projectDir, signal) => {
+                return (await record(agent, { projectDir, seconds: config.previewSeconds }, true, signal)).files
+              },
+            },
+          }, exec.signal)
+        },
       }
-      const definitions = wasdToolDefinitions(host)
+      const definitions = wasdToolDefinitions(host, { seconds: config.previewSeconds, maxSeconds: config.previewMaxSeconds })
       for (const definition of definitions) scope.tools.register(definition)
       // Agents connected through WASD Engine's MCP server get the same tools.
       scope.inject(['gameMcp'], (inner) => {

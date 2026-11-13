@@ -245,7 +245,7 @@ const PAGE_SCHEMA = { type: 'object', additionalProperties: false, properties: P
 export type BrowserPageValue = InferValue<typeof PAGE_SCHEMA>
 
 /** The stored image: the attachment reference that the attachment store returned for it. */
-const IMAGE_SCHEMA = {
+export const IMAGE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: true,
@@ -456,6 +456,47 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
 }
 
 /**
+ * Stores one image where the calling Session's model receives it.
+ * @param data - the image bytes.
+ * @param mediaType - their type.
+ * @param name - the attachment's file name.
+ * @param signal - cancellation.
+ * @returns the stored image and the size the model sees.
+ */
+export type ModelImageSaver = (data: Buffer, mediaType: 'image/png' | 'image/jpeg', name: string, signal: AbortSignal) => Promise<StoredScreenshot>
+
+/**
+ * How the calling Session's model receives images: a saver, or why there is none, `store` without an attachment store,
+ * model service, or model route, and `blind` for a model that takes no images.
+ */
+export type ModelImages = { readonly kind: 'ready'; readonly save: ModelImageSaver } | { readonly kind: 'store' } | { readonly kind: 'blind'; readonly model: string }
+
+/**
+ * Resolve where the images of one tool call go: attachments that the Session's model receives, measured as it sees them.
+ * @param ctx - plugin context with the optional attachment and model services.
+ * @param exec - the tool call.
+ * @param agent - the calling Session's Agent.
+ * @returns the saver, or why the model receives no images.
+ */
+export async function modelImages(ctx: Context, exec: ToolRunContext, agent: Agent): Promise<ModelImages> {
+  const attachments = ctx.get('attachments')
+  const llm = ctx.get('llm')
+  const route = agent.model.current()
+  if (attachments === undefined || llm === undefined || route === undefined) return { kind: 'store' }
+  const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
+  if (info.inputModalities?.includes('image') !== true) return { kind: 'blind', model: route.model }
+  return {
+    kind: 'ready',
+    async save(data, mediaType, name, signal) {
+      const [stored] = await attachments.saveImages([{ data, mediaType, name }]) as [ImageAttachmentRef]
+      signal.throwIfAborted()
+      const seen = await attachments.readImageRequest(stored, llm.imageRequestTarget(route.provider, route.model, stored), signal)
+      return { width: seen.width, height: seen.height, image: stored }
+    },
+  }
+}
+
+/**
  * The screenshots of the Session's own tools: each image becomes an attachment that the Session's model receives,
  * measured as that model sees it.
  * @param ctx - plugin context with the optional attachment and model services.
@@ -463,23 +504,14 @@ export function browserToolDefinitions(host: BrowserToolHost): ToolDefinition[] 
  */
 export function sessionBrowserScreenshots(ctx: Context): BrowserToolHost['screenshots'] {
   return async (exec, agent) => {
-    const attachments = ctx.get('attachments')
-    const llm = ctx.get('llm')
-    const route = agent.model.current()
-    if (attachments === undefined || llm === undefined || route === undefined) {
-      throw new Error('Screenshots need an attachment store and a resolved model route, and this Session has neither.')
+    const images = await modelImages(ctx, exec, agent)
+    if (images.kind === 'store') throw new Error('Screenshots need an attachment store and a resolved model route, and this Session has neither.')
+    if (images.kind === 'blind') {
+      throw new Error(`The model "${images.model}" does not accept images, so it cannot see screenshots; read the page with browser_read instead.`)
     }
-    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-    if (info.inputModalities?.includes('image') !== true) {
-      throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; read the page with browser_read instead.`)
-    }
-    return async (image, signal) => {
-      const name = image.mediaType === 'image/png' ? 'browser-screenshot.png' : 'browser-screenshot.jpg'
-      const [stored] = await attachments.saveImages([{ data: Buffer.from(image.data, 'base64'), mediaType: image.mediaType, name }]) as [ImageAttachmentRef]
-      signal.throwIfAborted()
-      const seen = await attachments.readImageRequest(stored, llm.imageRequestTarget(route.provider, route.model, stored), signal)
-      return { width: seen.width, height: seen.height, image: stored }
-    }
+    return (image, signal) => images.save(
+      Buffer.from(image.data, 'base64'), image.mediaType, image.mediaType === 'image/png' ? 'browser-screenshot.png' : 'browser-screenshot.jpg', signal,
+    )
   }
 }
 

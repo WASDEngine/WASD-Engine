@@ -42,7 +42,17 @@ export interface WasdRelease {
   readonly playUrl: string
   /** Size of the uploaded build in bytes, unpacked. */
   readonly totalBytes: number
-  /** How the Web build differs from desktop runs, and the export's warnings. */
+  /**
+   * The game's picture as a direct image link on the site, which embeds like an image file and opens the share page
+   * in a browser; absent while the game has no picture.
+   */
+  readonly imageLink?: string
+  /**
+   * The game's preview GIF as a direct image link on the site, which embeds like an image file and opens the share
+   * page in a browser; absent while the game has no GIF.
+   */
+  readonly gifLink?: string
+  /** How the Web build differs from desktop runs, the export's warnings, and what happened to the preview. */
   readonly warnings: readonly string[]
 }
 

@@ -1942,6 +1942,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
+        signature: 'async record(agent: Agent, request: GodotRecordRequest, signal: AbortSignal): Promise<GodotRecording>',
+        description: 'Record the Session\'s game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or a game of another project, the recording first starts the project\'s game as `godot_run` does, muted as `agentRunsMuted` says, and lets it run `startSeconds`; the Game tab shows that run like any other. The Game tab\'s frame stream stays as it is, because every frame is a screenshot request.',
+        parameters: [{ name: 'agent', description: 'the Session\'s live Agent.' }, { name: 'request', description: 'project, duration, sizes, still, input, and whether to stop a game the recording started.' }, { name: 'signal', description: 'cancellation; it cancels the input too, and stops a game the recording started when `stopStarted` is set.' }],
+        returns: 'the frames, the still, and whether the recording started the game.',
+        throws: ['{GodotInputError} for a number outside its range, invalid events, or screenshot coordinates without a screenshot of the running game.', '{GodotProjectError} when the recording must start a game and finds no project.', '{GodotRequestError} when the game refuses a screenshot or an input event, or does not answer in time.'],
+      },
+      {
         signature: 'async importProject(projectDir: string, signal: AbortSignal): Promise<GodotImportReport | undefined>',
         description: 'Import a project with the editor\'s headless import step, which also loads its enabled editor plugins, for other Host plugins such as the game add-ons installer; the Game tab and the `godot_*` tools do not call it. The step waits for a process slot and for the project\'s other import steps and checks in this Host.',
         parameters: [{ name: 'projectDir', description: 'absolute folder that holds `project.godot`.' }, { name: 'signal', description: 'cancellation; it stops the import process.' }],
@@ -7532,6 +7539,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotMouseButton',
     declaration: 'export type GodotMouseButton = \'left\' | \'right\' | \'middle\' | \'wheel_up\' | \'wheel_down\' | \'wheel_left\' | \'wheel_right\';',
+  },
+  {
+    name: 'GodotRecordedImage',
+    declaration: 'export interface GodotRecordedImage {\n    readonly png: Uint8Array;\n    readonly width: number;\n    readonly height: number;\n    readonly atMs: number;\n}',
+  },
+  {
+    name: 'GodotRecording',
+    declaration: 'export interface GodotRecording {\n    readonly frames: readonly GodotRecordedImage[];\n    readonly still: GodotRecordedImage;\n    readonly windowWidth: number;\n    readonly windowHeight: number;\n    readonly started: boolean;\n    readonly paused: boolean;\n}',
+  },
+  {
+    name: 'GodotRecordRequest',
+    declaration: 'export interface GodotRecordRequest {\n    readonly project?: string;\n    readonly seconds: number;\n    readonly frameMs: number;\n    readonly maxWidth: number;\n    readonly stillWidth: number;\n    readonly stillAt: number;\n    readonly startSeconds: number;\n    readonly stopStarted: boolean;\n    readonly events?: readonly unknown[];\n    readonly coordinateSpace?: \'screenshot\' | \'window\';\n}',
   },
   {
     name: 'GodotRunLaunch',

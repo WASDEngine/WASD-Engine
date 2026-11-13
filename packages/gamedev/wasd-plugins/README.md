@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web and release them to the WASD Engine site as numbered versions with share links; in the Desktop app, the agent's browser_* tools, which act on a Browser tab in the right Sidebar; the wasdPlugins Remote; the Release button in the Session header and on the New Session screen; Explore Games in the sidebar; and the first build tip beside the composer's effort selector."
+description: "WASD Engine Plugins, WASD Engine's own always-on features: the wasd_export_web, wasd_record_preview, and wasd_release_game tools of every Session and of WASD Engine's MCP server, which export Godot games for the Web, record their preview GIF and still, and release them to the WASD Engine site as numbered versions with share links; in the Desktop app, the agent's browser_* tools, which act on a Browser tab in the right Sidebar; the wasdPlugins Remote; the Release button in the Session header and on the New Session screen; Explore Games in the sidebar; and the first build tip beside the composer's effort selector."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-WASD Engine Plugins holds WASD Engine's own always-on features for every Web and Desktop profile. It exports a Godot game for the Web and releases it to the WASD Engine site as the game's next numbered version, at a share link where anyone can play it, pick earlier versions, and comment. Session and connected agents get the same tools; the Release button asks the agent to release, and Explore Games opens the released games. In the Desktop app, the agent also browses in a Browser tab the user watches. New games get a tip suggesting Max effort with agent teamwork.
+WASD Engine Plugins holds WASD Engine's always-on features for every Web and Desktop profile. It exports Godot games for the Web and releases them to the WASD Engine site as numbered versions with a preview GIF that the agent records, at a share link where anyone can play, pick earlier versions, and comment. Session and connected agents share the tools; Release asks the agent to release, and Explore Games opens the released games. In the Desktop app, the agent also browses in a Browser tab. New games get a tip suggesting Max effort with agent teamwork.
 
 ## Table of Contents
 
@@ -46,23 +46,35 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
 | `browserOperationTimeoutMs` | `10000` | Longest wait for one operation on the page, such as a script, a screenshot, or an input event; shorter than `browserTimeoutMs`, or the plugin fails to load |
 | `browserMaxChars` | `40000` | Most characters of page text in a result |
 | `browserScreenshotWidth` | `1280` | Largest width in pixels of a `browser_screenshot` image |
+| `previewSeconds` | `4` | Length in seconds of a preview recording that names none, and of the one a release records for a game without a preview |
+| `previewMaxSeconds` | `10` | Longest `wasd_record_preview` clip in seconds; `previewSeconds` must not exceed it, or the plugin fails to load |
+| `previewFrameMs` | `80` | Milliseconds from one frame of a preview GIF to the next, 12.5 frames per second |
+| `previewWidth` | `480` | Largest width in pixels of a preview GIF |
+| `previewMinWidth` | `240` | Smallest width that a GIF over `previewMaxGifBytes` shrinks to before it drops every other frame; at most `previewWidth`, or the plugin fails to load |
+| `previewStillWidth` | `1280` | Largest width in pixels of a preview still |
+| `previewMaxGifBytes` | `5242880` (5 MiB) | Largest preview GIF the recording keeps |
+| `previewEffort` | `4` | CPU effort of the GIF's palette and frame optimization, from 1 (fastest) to 10 (smallest) |
+| `previewStartSeconds` | `2` | Seconds that a game a recording starts runs before the recording begins |
 
-The plugin manager lists the package in `WASD_ENGINE_PLUGINS`, which [`@deepseek-ai/dsh-official-bundles`](../../util/official-bundles/README.md) adds to `PROTECTED_PLUGINS`, so the Plugins page, the plugin management tools, and the `pluginManager` Remote refuse to switch the row off. The export and release tools register only while the `godot` service of [`@deepseek-ai/dsh-godot`](../godot/README.md) exists, so a profile that switches Godot off keeps the Browser tools, the Release button, and Explore Games; releases also need the `deepseekAccount` service for the site's origin and the signed-in token.
+The plugin manager lists the package in `WASD_ENGINE_PLUGINS`, which [`@deepseek-ai/dsh-official-bundles`](../../util/official-bundles/README.md) adds to `PROTECTED_PLUGINS`, so the Plugins page, the plugin management tools, and the `pluginManager` Remote refuse to switch the row off. The export, preview, and release tools register only while the `godot` service of [`@deepseek-ai/dsh-godot`](../godot/README.md) exists, so a profile that switches Godot off keeps the Browser tools, the Release button, and Explore Games; releases also need the `deepseekAccount` service for the site's origin and the signed-in token.
 
 ### The tools
 
 | Tool | What it does |
 |---|---|
 | `wasd_export_web` | Exports the Godot project into its `.wasdengine/web/` folder with `ctx.godot.exportWeb()`: a single-threaded build, `index.html` with the engine and the pack, that any static web server can serve. The first export downloads Godot's Web template, about 10 MB |
-| `wasd_release_game` | Exports the project, uploads the build to the site's games API as the game's next version (1, 2, 3, ...), and returns the share links. The first release on a site creates the game, titled from `project.godot` unless `title` names one; `notes`, at most 1,000 characters, go to the game page; `cover_image`, a PNG, JPEG, or WebP file, becomes the game's picture on the Explore page |
+| `wasd_record_preview` | Records the game's preview with `ctx.godot.record()`: `seconds` of the running game (default `previewSeconds`, at most `previewMaxSeconds`) while `events`, as `godot_input` takes them, play from the start, saved as `.wasdengine/preview/preview.gif` and a still, `preview.png` or `preview.jpg`, whichever is smaller, taken at `still_at` (default: the middle). Without a running game, it starts the game and records after `previewStartSeconds`. The result shows the still to the model, so the agent can record again |
+| `wasd_release_game` | Exports the project, uploads the build to the site's games API as the game's next version (1, 2, 3, ...) with the game's preview, and returns the share links. The first release on a site creates the game, titled from `project.godot` unless `title` names one; `notes`, at most 1,000 characters, go to the game page; `preview_image`, a PNG, JPEG, or WebP file, and `preview_gif`, a GIF, replace the recorded still and GIF. The result names the share link, the link of this version, and the GIF and image links |
 
-In a Session, `project` and `cover_image` are relative to the working directory, and without `project` the tools use the nearest `project.godot`. Agents connected through WASD Engine's MCP server reach the tools under the provider `wasd` and must pass absolute paths. Releasing needs a signed-in WASD Engine: signed out, the tool fails with a message that asks the user to sign in, and an expired sign-in fails with a message that asks the user to sign in again.
+In a Session, `project`, `preview_image`, and `preview_gif` are relative to the working directory, and without `project` the tools use the nearest `project.godot`. Agents connected through WASD Engine's MCP server reach the tools under the provider `wasd` and must pass absolute paths; `wasd_record_preview` and `wasd_release_game` run the game in the connected agent's Session of the project, whose Game tab shows it, and a recording returns its still as an image. Releasing needs a signed-in WASD Engine: signed out, the tool fails with a message that asks the user to sign in, and an expired sign-in fails with a message that asks the user to sign in again.
 
 A project remembers its game per site in `.wasdengine/game.json`, so later releases from the same folder add versions to the same game. When the site no longer has that game, or another account owns it, the release creates a new game. A `title` renames an existing game. The site numbers versions without gaps and keeps every earlier version playable.
 
+A release uploads the preview files it names, else the ones `wasd_record_preview` saved. The link file also keeps the SHA-256 of the still and GIF the project last uploaded for its game, so a later release uploads them again only after a new recording or once the site lost them, and a game keeps its preview across releases that bring none. A release to a game without a GIF on the site, from a project with none to upload, first records one without input, starting the game and stopping it afterwards, and says so in its notes; a recording that fails becomes a note too, because the release goes on without a preview. On the site, the share link answers a link preview with the GIF and a browser with the share page; see the backend README's "Share and image links".
+
 ### The Release button and Explore Games
 
-The Release button appears in the header of a Session that belongs to a game project, when the Peer may prompt the Session and call `wasdPlugins/project`. A blank Session's header shows no actions until its first prompt, so while the Session is blank the button sits on the New Session screen instead, at the right end of the row with the game project and agent preset pickers, before the branch controls. It opens a dialog that names the project's last release with a link to its page, refuses a folder without `project.godot`, and takes optional release notes. Release sends the Session a prompt, in the window's language, that asks its agent to call `wasd_release_game` with those notes, or with notes it writes from what changed, and to answer with the share link, so the export and the upload run as a turn the user watches.
+The Release button appears in the header of a Session that belongs to a game project, when the Peer may prompt the Session and call `wasdPlugins/project`. A blank Session's header shows no actions until its first prompt, so while the Session is blank the button sits on the New Session screen instead, at the right end of the row with the game project and agent preset pickers, before the branch controls. It opens a dialog that names the project's last release with a link to its page, refuses a folder without `project.godot`, and takes optional release notes. Release sends the Session a prompt, in the window's language, that asks its agent to run the game, record its preview with `wasd_record_preview` while it plays, then call `wasd_release_game` with those notes, or with notes it writes from what changed, and to answer with the share link and the GIF link, so the recording, the export, and the upload run as a turn the user watches.
 
 Explore Games sits above Settings at the foot of the left sidebar while the Peer may call `wasdPlugins/links`. It opens the site's Explore page with `window.open`, which the Desktop app hands to the system browser and the Web UI opens in a new tab. On the narrow rail it shows its globe alone, with its label as a tooltip.
 
@@ -111,7 +123,9 @@ LiveShare keeps every method for the owner, because a release publishes under th
 
 The site's origin comes from the account plugin: its account view's links name the site even while signed out, and `getPlatformSession()` names it with the token while signed in. Every site call sends the token in `x-dsh-auth-token`, refuses redirects, and maps a 401 to the expired sign-in message; the site's own message explains other refusals, and a 5xx says to try again later.
 
-A release writes the export into a ZIP file in the system's temporary folder, streaming each file through `node:zlib` and storing already compressed formats as they are, then uploads it as the request body of `POST /api/v1/games/<id>/releases` with the notes in the query string, and deletes it. A 404 from the upload, which means the game was removed meanwhile, creates a new game and uploads again. A cover the site refuses becomes a note of the result, because the version is already released.
+A release writes the export into a ZIP file in the system's temporary folder, streaming each file through `node:zlib` and storing already compressed formats as they are, then uploads it as the request body of `POST /api/v1/games/<id>/releases` with the notes in the query string, and deletes it. A 404 from the upload, which means the game was removed meanwhile, creates a new game and uploads again. The preview goes up afterwards, the still to `PUT /api/v1/games/<id>/cover` and the GIF to `PUT /api/v1/games/<id>/gif`; one the site refuses becomes a note of the result, because the version is already released.
+
+A recording comes from the Godot plugin's `record()` as PNG screenshots at `previewFrameMs` intervals, with their capture times, and a still at `previewStillWidth`. [Sharp](https://sharp.pixelplumbing.com/), loaded on the first recording, fits each frame into the first frame's size, encodes them as one looping GIF whose frame delays follow the capture times, and narrows a GIF over `previewMaxGifBytes` by quarters down to `previewMinWidth`, then drops every other frame. The still keeps PNG when that is smaller than a JPEG of it at quality 88, as for pixel art and flat colors, and becomes the JPEG otherwise.
 
 | File | Role |
 |---|---|
@@ -120,7 +134,9 @@ A release writes the export into a ZIP file in the system's temporary folder, st
 | [`src/browser.ts`](src/browser.ts) | The Browser command queue, the `browser_*` tool definitions, screenshot storage, and the `browser` prompt section |
 | [`src/client/browser.ts`](src/client/browser.ts) | The window half of the Browser: which commands a window takes, the agent's tab, and the actions on its page |
 | [`src/client/page.ts`](src/client/page.ts) | The scripts the window runs in the page: the page text and its numbered controls, finding, clicking, and filling a control |
-| [`src/release.ts`](src/release.ts) | The site API client, the game link file, and the release flow |
+| [`src/release.ts`](src/release.ts) | The site API client, the game link file, and the release flow with its preview upload |
+| [`src/preview.ts`](src/preview.ts) | The preview encoding, the preview folder, and file digests |
+| [`src/state.ts`](src/state.ts) | The project's `.wasdengine` state folder |
 | [`src/zip.ts`](src/zip.ts) | The streaming ZIP writer of the upload |
 | [`src/client/`](src/client/) | The Release button, Explore Games, the first build tip, their copy, and the Remote mount |
 
@@ -149,25 +165,25 @@ These pages cover the export, the MCP server that offers the tools to other agen
 
 #### What the model sees
 
-The Session's agent sees `wasd_export_web`, with the optional `project`, and `wasd_release_game`, with the optional `project`, `notes`, `title`, and `cover_image`. The release description asks the model to release only when the user asks, because each call publishes a public version. A connected agent sees the same tools with absolute-path parameters and the provider's instructions under `## WASD Engine`.
+The Session's agent sees `wasd_export_web`, with the optional `project`; `wasd_record_preview`, with the optional `project`, `seconds`, `events` (objects that its description says follow `godot_input`'s event format, which the Godot plugin validates), `coordinate_space`, and `still_at`; and `wasd_release_game`, with the optional `project`, `notes`, `title`, `preview_image`, and `preview_gif`. The recording description asks the model to bring the game to its gameplay first and to record again when the still does not show the game well; the release description asks it to record the preview first and to release only when the user asks, because each call publishes a public version. A connected agent sees the same tools with absolute-path parameters and the provider's instructions under `## WASD Engine`.
 
 #### Token effect
 
-The two declarations come to about 1,700 characters of JSON; the provider's instructions add about 550 characters to the MCP server's instructions.
+The three declarations come to about 4,000 characters of JSON, 1,600 of them the recording tool's; the provider's instructions add about 700 characters to the MCP server's instructions.
 
 #### KV Cache effect
 
-Both declarations are static, so they stay in the cached tool prefix.
+The declarations are static, so they stay in the cached tool prefix; the recording tool's lengths come from the configuration, which changes only with a restart.
 
 ### Tool results
 
 #### What the model sees
 
-`wasd_export_web` names the output folder, its files, and their size, and says to open `index.html` through a web server. `wasd_release_game` names the title, the version, the share link, and the link of this version, and says that the share page lists earlier versions and takes comments. Both list notes about the Web build, such as the Compatibility renderer of a Forward+ project, and the export's warnings. Failures carry the reason, such as the signed-out message or Godot's export errors.
+`wasd_export_web` names the output folder, its files, and their size, and says to open `index.html` through a web server. `wasd_record_preview` names the GIF and still files with their frames, length, sizes, and bytes, says when the recording started the game or the game was paused throughout, and shows the still as an image when the model accepts images. `wasd_release_game` names the title, the version, the share link, the link of this version, and the GIF and image links, says that the share page lists earlier versions and takes comments, and that the share link and the GIF link show the GIF in link previews and play the game in a browser. Both list notes about the Web build, such as the Compatibility renderer of a Forward+ project, and the export's warnings. Failures carry the reason, such as the signed-out message or Godot's export errors.
 
 #### Token effect
 
-A result is a few hundred characters, plus at most ten notes.
+A result is a few hundred characters, plus at most ten notes; a recording adds one image, the still, as the model's image size measures it.
 
 #### KV Cache effect
 
@@ -217,11 +233,11 @@ Append-only in the conversation.
 
 #### What the model sees
 
-The Release button sends a user message in the window's language, such as `Release this game on WASD Engine: call wasd_release_game with short release notes about what changed since the last release, then give me the share link.`, or the same request with the user's notes.
+The Release button sends a user message in the window's language, such as `Release this game on WASD Engine. First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well. Then call wasd_release_game with short release notes about what changed since the last release, and give me the share link and the GIF link.`, or the same request with the user's notes.
 
 #### Token effect
 
-One short user message.
+One user message of about 450 characters.
 
 #### KV Cache effect
 
@@ -237,6 +253,8 @@ These limits define what a release covers; they are current package constraints.
 - **Compatibility renderer** — Web builds render with WebGL 2, so Forward+ and Mobile effects are missing or look different, and the build has no threads and no GDExtensions.
 - **One template version** — the Godot plugin pins the Web template of Godot 4.7.2; another runtime version needs its template's archive URL and SHA-256 in that plugin's configuration.
 - **Public releases** — every release is public on the site's Explore page; deleting a game takes the site's API.
+- **Previews from screenshots** — each GIF frame is a screenshot request, so a preview runs at `previewFrameMs` at best and a slow game skips frames; the GIF has at most 256 colors per frame and no sound.
+- **A recorded fallback without input** — the preview a release records for a game without one shows the game's first seconds as they play by themselves, often a title screen; a recording with `events` shows gameplay.
 - **Site per sign-in** — a project releases to the site the app is signed in to; signing in to another site creates another game there.
 - **Browser in the Desktop app only** — the Web UI's Browser tabs are iframes, whose cross-origin pages the window cannot read, so the Web profile leaves `browser` off.
 - **Browser needs the window** — the agent's first `browser_open` needs its Session on screen; subagents and Sessions the user is not looking at get the fallback message and use `web_search` and `web_fetch`.
