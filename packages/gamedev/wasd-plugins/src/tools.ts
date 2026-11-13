@@ -16,7 +16,7 @@ import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
-import type { WasdDesktopExport, WasdDesktopPlatform, WasdRelease } from './types.ts'
+import type { WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdRelease } from './types.ts'
 
 /** What a preview recording asks for. */
 export interface PreviewRequest {
@@ -173,6 +173,30 @@ const BUILD_CONTENTS: Readonly<Record<WasdDesktopPlatform, string>> = {
 
 /** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
 const FIRST_OPEN = 'Neither build is signed by a publisher, so a downloaded copy asks before it first runs: on Windows, SmartScreen\'s "Windows protected your PC" needs More info, then Run anyway; on a Mac, Gatekeeper blocks the first open until the user chooses Open Anyway in System Settings > Privacy & Security.'
+
+/** What a release result adds after a download's size when the share page does not offer the download yet, or never will. */
+const SCAN_STANDING: Readonly<Record<WasdDownloadStatus, string>> = {
+  clean: '',
+  pending: ', being scanned for malware',
+  flagged: ', flagged as malware: never offered',
+  failed: ', not scannable for malware: never offered',
+}
+
+/**
+ * What a release result says about where the share page offers its downloads, with the first-run note while any of them
+ * is offered or waits on its scan.
+ * @param statuses - each download's scan status.
+ * @returns the note.
+ */
+function downloadsNote(statuses: readonly WasdDownloadStatus[]): string {
+  if (statuses.every(status => status === 'clean')) return `The share page offers the downloads. ${FIRST_OPEN}`
+  return [
+    'WASD Engine scans each download for malware before the share page offers it.',
+    ...statuses.includes('pending') ? ['A download being scanned appears on the share page, and its link starts working, once the scan passes, usually within a few minutes.'] : [],
+    ...statuses.some(status => status === 'flagged' || status === 'failed') ? ['A download the scan flagged or could not scan is never offered.'] : [],
+    ...statuses.some(status => status === 'clean' || status === 'pending') ? [FIRST_OPEN] : [],
+  ].join(' ')
+}
 
 const PLATFORMS_SCHEMA = { type: 'array', items: { type: 'string', enum: DESKTOP_PLATFORMS } } as const
 
@@ -332,7 +356,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           imageLink: { type: 'string' },
           gifLink: { type: 'string' },
           visibility: STRING,
-          downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER } } },
+          downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER, status: STRING } } },
           warnings: WARNINGS,
         },
       },
@@ -347,9 +371,9 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           `This version: ${value.url}`,
           ...value.gifLink === undefined ? [] : [`GIF link: ${value.gifLink}`],
           ...value.imageLink === undefined ? [] : [`Image link: ${value.imageLink}`],
-          ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)})`),
+          ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)}${SCAN_STANDING[download.status as WasdDownloadStatus]})`),
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
-          ...value.downloads.length === 0 ? [] : [`The share page offers the downloads. ${FIRST_OPEN}`],
+          ...value.downloads.length === 0 ? [] : [downloadsNote(value.downloads.map(download => download.status as WasdDownloadStatus))],
           ...value.gifLink === undefined
             ? []
             : ['Posted on Reddit, Discord, Slack, Telegram, or iMessage, the share link and the GIF link show the GIF; opened in a browser, both play the game.'],

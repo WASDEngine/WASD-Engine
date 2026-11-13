@@ -7,10 +7,13 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { wasdMcpProvider, wasdToolDefinitions, type RecordedPreview, type WasdToolHost } from '../src/tools.ts'
+import type { WasdDesktopPlatform, WasdDownloadStatus } from '../src/types.ts'
 
 const LENGTHS = { seconds: 4, maxSeconds: 10 }
 
-function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: unknown[] } {
+function host(
+  preview: Partial<RecordedPreview> = {}, scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>> = {},
+): WasdToolHost & { calls: unknown[] } {
   const calls: unknown[] = []
   return {
     calls,
@@ -44,7 +47,9 @@ function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: u
         title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
         totalBytes: 50 * 1024 * 1024, gifLink: 'https://site.test/games/neon.gif', imageLink: 'https://site.test/games/neon.png', warnings: ['Note one.'],
         visibility: request.visibility ?? 'public',
-        downloads: (request.desktop ?? []).map(platform => ({ platform, url: `https://site.test/games/neon/download/${platform}?v=3`, bytes: 40 * 1024 * 1024 })),
+        downloads: (request.desktop ?? []).map(platform => ({
+          platform, url: `https://site.test/games/neon/download/${platform}?v=3`, bytes: 40 * 1024 * 1024, status: scans[platform] ?? 'clean',
+        })),
       })
     },
   }
@@ -90,8 +95,28 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
     expect(text).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB)')
     expect(text).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB)')
+    expect(text).toContain('The share page offers the downloads.')
     expect(text).toContain('SmartScreen')
     await expect(release.execute({ desktop: ['linux'] }, exec)).rejects.toThrow(/invalid arguments: "desktop\[0\]"/u)
+  })
+
+  it('says which downloads wait on their malware scan before the share page offers them, and which the scan refused', async () => {
+    const released = async (scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>>): Promise<string> => {
+      const release = wasdToolDefinitions(host({}, scans), LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+      return textOf(release.output.render({}, await release.execute({ desktop: ['windows', 'macos'] }, exec) as JsonValue))
+    }
+    const waiting = await released({ windows: 'pending' })
+    expect(waiting).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB, being scanned for malware)')
+    expect(waiting).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB)\n')
+    expect(waiting).toContain('WASD Engine scans each download for malware before the share page offers it. A download being scanned appears on the share page, and its link starts working, once the scan passes, usually within a few minutes. Neither build is signed by a publisher')
+    expect(waiting).not.toContain('The share page offers the downloads.')
+
+    const refused = await released({ windows: 'flagged', macos: 'failed' })
+    expect(refused).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB, flagged as malware: never offered)')
+    expect(refused).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB, not scannable for malware: never offered)')
+    expect(refused).toContain('WASD Engine scans each download for malware before the share page offers it. A download the scan flagged or could not scan is never offered.')
+    expect(refused).not.toContain('appears on the share page')
+    expect(refused).not.toContain('SmartScreen')
   })
 
   it('passes the choice between the project\'s game and a new game on to the release', async () => {
