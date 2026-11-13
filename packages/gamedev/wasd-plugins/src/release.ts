@@ -2,8 +2,9 @@
  * Releases: a Godot project's Web build, uploaded to the WASD Engine site the app is signed in to as the next
  * numbered version (1, 2, 3, ...) of the project's game, where its share page plays it, offers earlier versions, and
  * holds comments. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
- * and never follow redirects. A project remembers its game per site in `.wasdengine/game.json`, so later releases
- * add versions to the same game; when the site no longer has that game, or another account owns it, the release
+ * and never follow redirects. A project remembers its game per site in `.wasdengine/game.json` from the moment the site
+ * creates the game, before the upload, so later releases add versions to the same game, also after a release whose
+ * upload failed or was cut off; when the site no longer has that game, or another account owns it, the release
  * creates a new one. The Web build itself goes to `.wasdengine/web/`, which Godot does not import because the folder
  * is hidden.
  *
@@ -366,10 +367,19 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
     const api = new SiteApi(access, dependencies.fetch, signal)
     const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
+    const create = async (): Promise<GameJson> => {
+      const created = await api.create(name.slice(0, MAX_TITLE))
+      // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
+      // next release adds its version to this game instead of creating another.
+      await rememberGame(request.projectDir, access.origin, {
+        id: created.id, slug: created.slug, title: created.title, url: created.url, version: created.latest_version,
+      })
+      return created
+    }
     const linked = await linkedGame(request.projectDir, access.origin)
     let game = linked === undefined ? undefined : await api.game(linked.id)
     if (game !== undefined && title !== undefined && game.title !== title) game = await api.rename(game.id, title)
-    game ??= await api.create(name.slice(0, MAX_TITLE))
+    game ??= await create()
     const warnings = [...exported.warnings]
     const saved = await savedPreview(request.projectDir)
     let files: PreviewFiles = {
@@ -390,7 +400,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     let released = await api.release(game.id, archive, notes)
     if (released === undefined) {
       // The game was removed between the lookup and the upload: release to a new one.
-      game = await api.create(name.slice(0, MAX_TITLE))
+      game = await create()
       released = await api.release(game.id, archive, notes)
       if (released === undefined) throw new ReleaseError('WASD Engine could not store the release: the new game disappeared. Try again.')
     }

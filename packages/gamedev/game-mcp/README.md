@@ -40,6 +40,7 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
 |---|---|---|
 | `dataRoot` | Required | Absolute folder of the access token (`token`) and of the connected agents' Session bindings (`sessions.json`); a relative path fails the plugin load |
 | `port` | `9273` | Loopback port of the endpoint, a whole number from 0 to 65,535; 0 picks a free port. While another program holds it, the server listens on a free port until the Host restarts and says so in its view |
+| `progressIntervalMs` | `30000` | Interval in milliseconds of the progress notifications that a running tool call sends to an agent that asked for progress, a whole number of at least 1 |
 
 A profile patch turns the server off with `- id: game-mcp` and `disabled: true`.
 
@@ -57,7 +58,10 @@ claude mcp add-json wasd-engine '{"type":"http","url":"http://127.0.0.1:9273/mcp
 [mcp_servers.wasd-engine]
 url = "http://127.0.0.1:9273/mcp"
 http_headers = { "Authorization" = "Bearer <token>" }
+tool_timeout_sec = 1800
 ```
+
+Codex stops a tool call after 60 seconds unless the server's entry sets `tool_timeout_sec`, and a release that uploads a large build, or a long render, takes minutes, so the Codex entry allows 30 minutes.
 
 The token is 32 random bytes in base64url, created on first start in `<dataRoot>/token` with mode 0600, so agents set up once keep working across restarts. Deleting the file makes the next start create another token, after which every agent needs the new prompt.
 
@@ -83,6 +87,10 @@ A Godot call names its project by absolute path: the folder that holds `project.
 ### Provide tools
 
 `ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents.
+
+### Long calls
+
+A tool call may run for minutes, as a release that uploads a large build does. The response to every request is an event stream that starts as soon as the request arrives and carries a keep-alive comment every 15 seconds, so an agent that waits a fixed time for a response to begin keeps waiting: Claude Code gives up on an HTTP MCP request whose response has not begun after 60 seconds, with `The operation timed out.`. While a call runs, an agent that asked for progress, as Claude Code does, gets a progress notification every `progressIntervalMs` whose message gives the time so far, so an agent that gives up on a call that reports nothing, as Claude Code does after 5 minutes, keeps waiting too. Codex limits each call to its `tool_timeout_sec`, which the Codex entry of the setup prompt sets.
 
 -----
 

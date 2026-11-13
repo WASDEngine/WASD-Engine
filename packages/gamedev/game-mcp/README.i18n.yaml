@@ -18,11 +18,11 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-game-mcp/use-this-package/default-composition:
-  en: ce600a3a417e1aa4
-  zh: 1f8a43fa7169d1e4
+  en: 5c2355a37ca461a1
+  zh: 15f3b54f79ee592f
 /deepseek-ai-dsh-game-mcp/use-this-package/set-up-another-agent:
-  en: 7182d835c94f953f
-  zh: f85e3f6d9671bb74
+  en: af8a8dbba87fb0de
+  zh: 499d6100839b82c1
 /deepseek-ai-dsh-game-mcp/use-this-package/what-connected-agents-get:
   en: f430c6eba97cc120
   zh: 741c8043721e9f9c
@@ -30,8 +30,11 @@
   en: 49471e4ba27b5dc0
   zh: de543f7380919a58
 /deepseek-ai-dsh-game-mcp/use-this-package/provide-tools:
-  en: 223b6465272c8693
-  zh: f13b8318d30d7d63
+  en: e25b8cd5f2dd17f8
+  zh: 09cbe0de178e61eb
+/deepseek-ai-dsh-game-mcp/use-this-package/long-calls:
+  en: 4cd19e08d8a9cb9d
+  zh: a5920841a15e17c9
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
   en: ed8b6772a73c425e
   zh: f92ab9d731f94142

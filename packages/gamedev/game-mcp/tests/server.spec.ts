@@ -14,7 +14,7 @@ import type { AccountView, DeepSeekAccount } from '@deepseek-ai/dsh-deepseek-acc
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
-import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { Client, StreamableHTTPClientTransport, type Progress } from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpView } from '../src/index.ts'
 
@@ -137,6 +137,55 @@ describe('GameMcpServer', () => {
     expect(text(unknown)).toContain('no game tool named "nope"')
     expect((await client.callTool({ name: 'call_game_tool', arguments: {} })).isError).toBe(true)
     expect((await client.callTool({ name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: 'x' } })).isError).toBe(true)
+  }, TIMEOUT)
+
+  it('starts a long call\'s response at once and reports progress while it runs, on the 2026-07-28 revision', async () => {
+    let finish = (): void => {}
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    const slow = defineTool({
+      name: 'slow',
+      description: 'Wait until the test lets the call end.',
+      parameters: {},
+      output: {
+        schema: { type: 'object', additionalProperties: false, properties: { done: { type: 'boolean', required: true } } },
+        render: () => [{ type: 'text', text: 'done' }],
+      },
+      execute: async () => {
+        await finished
+        return { done: true }
+      },
+    })
+    const { server, view } = await start({ progressIntervalMs: 20 })
+    ctx.effect(() => server.provide({ ...alpha, tools: () => [{ name: 'alpha_slow', definition: slow }] }))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    // The content type of each tools/call response, recorded once its headers arrive.
+    const begun: string[] = []
+    const client = new Client({ name: 'claude-code', version: '2.1.0' }, { versionNegotiation: { mode: { pin: '2026-07-28' } } })
+    await client.connect(new StreamableHTTPClientTransport(new URL(view.url as string), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      fetch: async (input, init) => {
+        const response = await fetch(input, init)
+        if (typeof init?.body === 'string' && init.body.includes('"tools/call"')) begun.push(response.headers.get('content-type') ?? '')
+        return response
+      },
+    }))
+    ctx.effect(() => () => client.close())
+
+    // An agent that asked for no progress: the response begins while the tool still runs.
+    const quiet = client.callTool({ name: 'alpha_slow', arguments: {} })
+    await vi.waitFor(() => { expect(begun).toEqual([expect.stringContaining('text/event-stream')]) }, { timeout: TIMEOUT })
+    // An agent that asked for progress hears from the call at every interval.
+    const updates: Progress[] = []
+    const reported = client.callTool({ name: 'alpha_slow', arguments: {} }, { onprogress: (update) => { updates.push(update) } })
+    await vi.waitFor(() => { expect(updates.length).toBeGreaterThanOrEqual(2) }, { timeout: TIMEOUT })
+    expect(updates.slice(0, 2).map(update => update.progress)).toEqual([1, 2])
+    for (const update of updates) expect(update.message).toMatch(/^Still running after \d+ s\.$/u)
+    finish()
+    expect(text(await quiet)).toBe('done')
+    expect(text(await reported)).toBe('done')
+    const count = updates.length
+    await new Promise(resolve => setTimeout(resolve, 100))
+    expect(updates).toHaveLength(count)
   }, TIMEOUT)
 
   it('refuses every tool call while WASD Engine is signed out, and runs them once someone signs in', async () => {

@@ -40,6 +40,7 @@ WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasdengi
 |---|---|---|
 | `dataRoot` | 必填 | 访问令牌（`token`）与已连接 agent 的 Session 绑定（`sessions.json`）所在的绝对路径文件夹；相对路径会使插件加载失败 |
 | `port` | `9273` | 端点的回环端口，0 到 65,535 的整数；0 表示选择空闲端口。端口被其他程序占用时，服务器在 Host 重启前改用一个空闲端口，并在其视图中说明 |
+| `progressIntervalMs` | `30000` | 运行中的工具调用向请求了进度的 agent 发送进度通知的间隔（毫秒），至少为 1 的整数 |
 
 profile patch 用 `- id: game-mcp` 与 `disabled: true` 关闭服务器。
 
@@ -57,7 +58,10 @@ claude mcp add-json wasd-engine '{"type":"http","url":"http://127.0.0.1:9273/mcp
 [mcp_servers.wasd-engine]
 url = "http://127.0.0.1:9273/mcp"
 http_headers = { "Authorization" = "Bearer <token>" }
+tool_timeout_sec = 1800
 ```
+
+除非服务器条目设置了 `tool_timeout_sec`，Codex 会在 60 秒后停止一次工具调用；而上传大型构建的发布或较长的渲染需要数分钟，因此 Codex 条目允许 30 分钟。
 
 令牌是 32 个随机字节的 base64url 形式，首次启动时以 0600 权限写入 `<dataRoot>/token`，因此设置过一次的 agent 在重启后仍可使用。删除该文件后，下次启动会生成新令牌，此后每个 agent 都需要新的提示词。
 
@@ -83,6 +87,10 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 ### 提供工具
 
 `ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。
+
+### 长时间调用
+
+一次工具调用可能持续数分钟，例如上传大型构建的发布。对每个请求的响应都是一个事件流，请求一到达即开始，并每 15 秒发送一条保活注释，因此等待固定时长让响应开始的 agent 会继续等待：Claude Code 对响应在 60 秒后仍未开始的 HTTP MCP 请求会放弃，并报告 `The operation timed out.`。调用运行期间，请求了进度的 agent（Claude Code 即是如此）每隔 `progressIntervalMs` 收到一条进度通知，其消息给出已用时间，因此对长时间没有任何报告的调用会放弃的 agent（Claude Code 在 5 分钟后放弃）也会继续等待。Codex 把每次调用限制在其 `tool_timeout_sec` 以内，设置提示词中的 Codex 条目会设置该值。
 
 -----
 
