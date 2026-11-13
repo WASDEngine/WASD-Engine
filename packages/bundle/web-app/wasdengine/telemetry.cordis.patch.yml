@@ -20,8 +20,11 @@
 # choice of first-run.cordis.patch.yml: account sign-in is the only way in, the
 # sign-in dialog offers no Add API Key, and every user signs in: the sign-in
 # dialogs cannot be closed, and losing the sign-in opens Get started again.
+# Settings › Account offers Upgrade without View usage: users see their monthly
+# AI usage as the share left in the AI usage row, not in tokens or requests.
 - id: ui-settings-account
   config:
     contactFormUrl: https://github.com/WASDEngine/WASD-Engine/issues/new
     apiKeyEntry: false
     signInRequired: true
+    usageLink: false

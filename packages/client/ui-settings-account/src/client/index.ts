@@ -185,6 +185,7 @@ export function apply(ctx: Context): void {
     avatarFailed: (value) => { avatar.failed(value) },
     apiKeyEntry: config.apiKeyEntry,
     signInRequired: config.signInRequired,
+    usageLink: config.usageLink,
     subscribeSessionExpired: listener => ctx.remote.$on('deepseek-account/session-expired', listener),
     subscribeModelSignInRequired: listener => ctx.remote.$on('deepseek-account/model-sign-in-required', listener),
     ...nativePlatform === undefined ? {} : { openPlatformPage: platformPageOpener(refreshAccount) },

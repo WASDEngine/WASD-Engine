@@ -14,6 +14,8 @@ export interface ContactConfig {
    * started dialog again, in any view.
    */
   signInRequired: boolean
+  /** Offer the Platform usage page as Settings › Account's View usage link beside Top up; false leaves Top up alone. */
+  usageLink: boolean
 }
 /** Validate public questionnaire options. */
 export const ContactConfigFields = {
@@ -21,6 +23,7 @@ export const ContactConfigFields = {
   contactSource: z.string().default(''),
   apiKeyEntry: z.boolean().default(true),
   signInRequired: z.boolean().default(false),
+  usageLink: z.boolean().default(true),
 }
 /** Validate public questionnaire options. */
 export const ContactConfig: z<Partial<ContactConfig>, ContactConfig> = z.object(ContactConfigFields)
