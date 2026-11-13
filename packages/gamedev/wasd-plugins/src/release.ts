@@ -83,8 +83,6 @@ const GameJson = z.object({
   latest_version: z.number().int(),
   cover_url: z.string().nullish(),
   gif_url: z.string().nullish(),
-  image_link: z.string().nullish(),
-  gif_link: z.string().nullish(),
 })
 type GameJson = z.infer<typeof GameJson>
 const ReleaseJson = z.object({
@@ -519,8 +517,6 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       gameUrl: released.game.url,
       playUrl: released.release.play_url,
       totalBytes: released.release.total_bytes,
-      ...preview.game.image_link === undefined || preview.game.image_link === null ? {} : { imageLink: preview.game.image_link },
-      ...preview.game.gif_link === undefined || preview.game.gif_link === null ? {} : { gifLink: preview.game.gif_link },
       warnings,
     }
   } finally {

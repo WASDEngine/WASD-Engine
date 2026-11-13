@@ -247,7 +247,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
       title: { type: 'string', description: `Game title for the first release, or a new title for the game; at most ${MAX_TITLE} characters. Default: the project's name.` },
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
-      preview_gif: { type: 'string', description: 'Animated GIF that Explore plays on hover and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
+      preview_gif: { type: 'string', description: 'Animated GIF that Explore plays and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
     },
     output: {
@@ -261,8 +261,6 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           gameUrl: STRING,
           playUrl: STRING,
           totalBytes: INTEGER,
-          imageLink: { type: 'string' },
-          gifLink: { type: 'string' },
           warnings: WARNINGS,
         },
       },
@@ -272,12 +270,8 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths)
           `Released ${value.title} version ${value.version} (${megabytes(value.totalBytes)}).`,
           `Share link: ${value.gameUrl}`,
           `This version: ${value.url}`,
-          ...value.gifLink === undefined ? [] : [`GIF link: ${value.gifLink}`],
-          ...value.imageLink === undefined ? [] : [`Image link: ${value.imageLink}`],
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
-          ...value.gifLink === undefined
-            ? []
-            : ['Posted on Reddit, Discord, Slack, Telegram, or iMessage, the share link and the GIF link show the GIF; opened in a browser, both play the game.'],
+          'Sent in Messages or posted on Reddit, Discord, Slack, or Telegram, the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.',
         ].join('\n'), value.warnings),
       }],
     },
@@ -309,7 +303,7 @@ const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type
   wasd_release_game: {
     project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
     preview_image: { type: 'string', description: 'Absolute path of a PNG, JPEG, or WebP picture that Explore shows for the game; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
-    preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that Explore plays on hover and the share link shows. Default: the GIF that wasd_record_preview saved.' },
+    preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that Explore plays and the share link shows. Default: the GIF that wasd_record_preview saved.' },
   },
 }
 

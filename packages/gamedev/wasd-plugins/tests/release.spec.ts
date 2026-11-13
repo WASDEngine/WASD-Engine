@@ -31,8 +31,6 @@ function site(...tokens: string[]) {
     id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions,
     cover_url: game.cover === undefined ? null : `https://files.test/${game.cover}`,
     gif_url: game.gif === undefined ? null : `https://files.test/${game.gif}`,
-    image_link: game.cover === undefined ? null : `${ORIGIN}/games/${game.slug}.png`,
-    gif_link: game.gif === undefined ? null : `${ORIGIN}/games/${game.slug}.gif`,
   })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const fetchSite: typeof fetch = async (input, init) => {
@@ -334,7 +332,7 @@ describe('releaseGame', () => {
     await writeFile(join(dir, 'cover.jpg'), 'jpeg')
     const released = await releaseGame({ projectDir: dir, previewImage: join(dir, 'cover.jpg') }, deps, signal)
     expect(released.version).toBe(1)
-    expect(released.imageLink).toBeUndefined()
+    expect(server.games.get('game-1')?.cover).toBeUndefined()
     expect(released.warnings.at(-1)).toMatch(/released, but its preview image was not stored: .*PNG, JPEG, or WebP/u)
   })
 
@@ -349,14 +347,14 @@ describe('releaseGame', () => {
     const uploads = () => server.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))
     const first = await releaseGame({ projectDir: dir }, deps, signal)
     expect(uploads()).toEqual(['cover', 'gif'])
-    expect(first).toMatchObject({ imageLink: `${ORIGIN}/games/defenders-of-the-wall-1.png`, gifLink: `${ORIGIN}/games/defenders-of-the-wall-1.gif` })
+    expect(server.games.get('game-1')).toMatchObject({ cover: expect.any(String) as string, gif: expect.any(String) as string })
     const link = JSON.parse(await readFile(join(dir, STATE_DIR, LINK_FILE), 'utf8')) as { accounts: Record<string, { image?: string; gif?: string }[]> }
     const digest = expect.stringMatching(/^[0-9a-f]{64}$/u) as string
     expect(link.accounts[ORIGIN]?.[0]).toMatchObject({ image: digest, gif: digest })
 
     const second = await releaseGame({ projectDir: dir }, deps, signal)
     expect(uploads()).toEqual(['cover', 'gif'])
-    expect(second.gifLink).toBe(first.gifLink)
+    expect(second.gameUrl).toBe(first.gameUrl)
     await writeFile(join(previews, 'preview.gif'), 'GIF89a-two')
     await releaseGame({ projectDir: dir }, deps, signal)
     expect(uploads()).toEqual(['cover', 'gif', 'gif'])
@@ -401,7 +399,7 @@ describe('releaseGame', () => {
     }
     const first = await releaseGame({ projectDir: dir }, deps, signal)
     expect(recorded).toEqual([dir])
-    expect(first.gifLink).toBe(`${ORIGIN}/games/defenders-of-the-wall-1.gif`)
+    expect(server.games.get('game-1')?.gif).toBeDefined()
     expect(first.warnings).toContain('The project had no preview, so the release recorded the game\'s first seconds without input. For a preview that shows gameplay, record one with wasd_record_preview before the next release.')
     await rm(join(dir, STATE_DIR, PREVIEW_DIR), { recursive: true })
     await releaseGame({ projectDir: dir }, deps, signal)
@@ -409,7 +407,7 @@ describe('releaseGame', () => {
 
     const other = await project('Other')
     const failing = await releaseGame({ projectDir: other }, { ...deps, recordPreview: () => Promise.reject(new Error('The game did not keep running (crashed).')) }, signal)
-    expect(failing.gifLink).toBeUndefined()
+    expect([...server.games.values()].find(game => game.title === 'Other')?.gif).toBeUndefined()
     expect(failing.warnings.at(-1)).toBe('The game has no preview GIF: recording one failed: The game did not keep running (crashed).')
   })
 })

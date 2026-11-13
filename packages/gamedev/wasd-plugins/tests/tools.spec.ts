@@ -34,7 +34,7 @@ function host(preview: Partial<RecordedPreview> = {}): WasdToolHost & { calls: u
       calls.push(['release', request])
       return Promise.resolve({
         title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
-        totalBytes: 50 * 1024 * 1024, gifLink: 'https://site.test/games/neon.gif', imageLink: 'https://site.test/games/neon.png', warnings: ['Note one.'],
+        totalBytes: 50 * 1024 * 1024, warnings: ['Note one.'],
       })
     },
   }
@@ -62,9 +62,8 @@ describe('wasdToolDefinitions', () => {
     const text = textOf(release.output.render({}, value))
     expect(text).toContain('Released Neon Drift version 3 (50.0 MB).')
     expect(text).toContain('Share link: https://site.test/games/neon')
-    expect(text).toContain('GIF link: https://site.test/games/neon.gif')
-    expect(text).toContain('Image link: https://site.test/games/neon.png')
-    expect(text).toContain('opened in a browser, both play the game')
+    expect(text).not.toMatch(/GIF link|Image link/u)
+    expect(text).toContain('the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.')
     expect(text).toContain('- Note one.')
   })
 

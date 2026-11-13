@@ -19,8 +19,8 @@ const PROVIDER = 'wasd-release-web-test'
 const MODEL = 'scripted'
 const SESSION = SessionId('wasd-release-blank')
 const COPY_SESSION = SessionId('wasd-release-copy')
-const RELEASE_PROMPT = 'Release this game on WASD Engine. First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well. Then call wasd_release_game with short release notes about what changed since the last release, and give me the share link and the GIF link.'
-const NEW_GAME_PROMPT = 'Release this game on WASD Engine as a new game. First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well. Then call wasd_release_game with new_game set to true and short release notes about what is in this version, and give me the share link and the GIF link.'
+const RELEASE_PROMPT = 'Release this game on WASD Engine. First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well. Then call wasd_release_game with short release notes about what changed since the last release, and give me the share link.'
+const NEW_GAME_PROMPT = 'Release this game on WASD Engine as a new game. First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well. Then call wasd_release_game with new_game set to true and short release notes about what is in this version, and give me the share link.'
 
 /** Answers every request with one text block and keeps the requests. */
 class AnsweringAdapter extends LlmAdapter {
