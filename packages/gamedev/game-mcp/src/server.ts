@@ -4,9 +4,15 @@
  * that moment. `tools/call` answers the search and call tools itself and runs every other name through the
  * catalog, once the service lets this call run: WASD Engine refuses every call while no one is signed in. The
  * caller's identity reaches each request as its authentication information.
+ *
+ * The response to every request is an event stream that starts as soon as the request arrives and carries keep-alive
+ * comments every 15 seconds, so an agent that waits a fixed time for a response to begin, as Claude Code waits 60
+ * seconds, keeps waiting for a tool call that runs longer, such as a release that uploads a large build. While a call
+ * runs, an agent that asked for progress gets a progress notification every `progressIntervalMs`, so an agent that
+ * gives up on a call that reports nothing for minutes, as Claude Code does after 5, keeps waiting too.
  * @module @deepseek-ai/dsh-game-mcp/src/server
  */
-import { createMcpHandler, Server, type AuthInfo, type CallToolResult, type McpHttpHandler, type Tool } from '@modelcontextprotocol/server'
+import { createMcpHandler, Server, type AuthInfo, type CallToolResult, type McpHttpHandler, type ServerContext, type Tool } from '@modelcontextprotocol/server'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { CALL_TOOL, SEARCH_TOOL, type GameToolCatalog, type McpCallResult } from './catalog.ts'
 import { MAX_BODY_BYTES } from './http.ts'
@@ -35,6 +41,8 @@ export interface GameMcpServing {
    * @returns the call.
    */
   call(client: GameMcpClient, signal: AbortSignal): GameMcpCall
+  /** Interval in milliseconds of the progress notifications a running tool call sends to an agent that asked for progress. */
+  readonly progressIntervalMs: number
 }
 
 /**
@@ -58,6 +66,28 @@ function isObject(value: JsonValue | undefined): value is JsonObject {
 
 function errorResult(text: string): McpCallResult {
   return { isError: true, content: [{ type: 'text', text }] }
+}
+
+/**
+ * Tell an agent that asked for progress, every `intervalMs` until disposed, that its call still runs. The progress
+ * value counts the notifications, so it grows with each one as the protocol requires; the message gives the time.
+ * @param context - the call's request context; without a progress token, nothing is sent.
+ * @param intervalMs - interval between notifications.
+ * @param report - receives a notification that could not be sent.
+ * @returns the disposable that stops the notifications.
+ */
+function progressWhileRunning(context: ServerContext, intervalMs: number, report: (error: Error) => void): Disposable {
+  const progressToken = context.mcpReq._meta?.progressToken
+  if (progressToken === undefined) return { [Symbol.dispose]() {} }
+  const started = Date.now()
+  let progress = 0
+  const timer = setInterval(() => {
+    progress++
+    const seconds = Math.round((Date.now() - started) / 1000)
+    context.mcpReq.notify({ method: 'notifications/progress', params: { progressToken, progress, message: `Still running after ${String(seconds)} s.` } })
+      .catch((error: unknown) => { report(error instanceof Error ? error : new Error(String(error))) })
+  }, intervalMs)
+  return { [Symbol.dispose]() { clearInterval(timer) } }
 }
 
 /**
@@ -105,14 +135,25 @@ export function createGameMcpHandler(serving: GameMcpServing, report: (error: Er
     })
     // Every listed schema is an object schema: the catalog's own, `defineTool`'s, or one an MCP server listed.
     server.setRequestHandler('tools/list', () => ({ tools: catalog.listing().map(tool => ({ ...tool, inputSchema: tool.inputSchema as Tool['inputSchema'] })) }))
+    function answer(result: McpCallResult): CallToolResult {
+      return server.projectCallToolResult({ ...result, content: [...result.content] }, undefined)
+    }
     server.setRequestHandler('tools/call', async (request, context): Promise<CallToolResult> => {
       const refused = await serving.refusal()
+      if (refused !== undefined) return answer(errorResult(refused))
       // The SDK parsed the arguments from the request's JSON body.
       const args = (request.params.arguments ?? {}) as JsonObject
-      const result = refused !== undefined ? errorResult(refused)
-        : await callTool(serving, request.params.name, args, serving.call(clientOf(context.http?.authInfo), context.mcpReq.signal))
-      return server.projectCallToolResult({ ...result, content: [...result.content] }, undefined)
+      const call = serving.call(clientOf(context.http?.authInfo), context.mcpReq.signal)
+      using _progress = progressWhileRunning(context, serving.progressIntervalMs, report)
+      return answer(await callTool(serving, request.params.name, args, call))
     })
     return server
-  }, { legacy: 'stateless', onerror: report, maxRequestBodySize: MAX_BODY_BYTES })
+  }, {
+    legacy: 'stateless',
+    // The stateless serving of the 2025 revisions streams every response already; this makes the 2026-07-28
+    // revision's responses stream from the start too, instead of sending one JSON body once the call ends.
+    responseMode: 'sse',
+    onerror: report,
+    maxRequestBodySize: MAX_BODY_BYTES,
+  })
 }

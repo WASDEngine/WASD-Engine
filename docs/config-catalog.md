@@ -1851,6 +1851,11 @@ export interface Config {
   dataRoot: string
   /** Loopback port of the endpoint; while another program holds it, the server listens on a free port for that Host run. */
   port: number
+  /**
+   * Interval in milliseconds of the progress notifications a running tool call sends to an agent that asked for
+   * progress; agents such as Claude Code give up on a call that reports nothing for 5 minutes.
+   */
+  progressIntervalMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->

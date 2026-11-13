@@ -8,6 +8,13 @@
 export const SERVER_KEY = 'wasd-engine'
 
 /**
+ * The time limit of one tool call, in seconds, that the prompt asks Codex to allow: Codex stops a call after 60
+ * seconds unless the server's entry raises the limit, and a release that uploads a large build or a long render
+ * takes minutes.
+ */
+export const CODEX_TOOL_TIMEOUT_SECONDS = 1800
+
+/**
  * Write the setup prompt.
  * @param url - the MCP endpoint.
  * @param token - the access token.
@@ -30,6 +37,7 @@ export function setupPrompt(url: string, token: string): string {
     `  [mcp_servers.${SERVER_KEY}]`,
     `  url = "${url}"`,
     `  http_headers = { "Authorization" = "Bearer ${token}" }`,
+    `  tool_timeout_sec = ${String(CODEX_TOOL_TIMEOUT_SECONDS)}`,
     '- Another agent: add a Streamable HTTP MCP server with this URL and header.',
     '',
     'Then load the server; if you load MCP servers only when you start, tell me to restart you. Call search_game_tools to see the tools '
