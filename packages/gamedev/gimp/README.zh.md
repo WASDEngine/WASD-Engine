@@ -177,7 +177,7 @@ Session 的工作进程在其首次工具调用时启动，此时没有打开的
 | 路径 | 内容 | 生命周期 |
 |---|---|---|
 | `profile/` | `GIMP3_DIRECTORY` 指向的 GIMP 配置目录 | 保留；插件从不删除 |
-| `runtime/<version>/` | Windows Desktop 应用以归档形式自带、首次使用时解包的 GIMP 运行时；先解包到 `.partial-<8 位十六进制数字>` 同级文件夹，再重命名到位 | 保留；新的运行时版本解包在它旁边 |
+| `runtime/<version>/` | Windows Desktop 应用以归档形式自带、首次使用时解包的 GIMP 运行时；先解包到 `.partial-<8 位十六进制数字>` 同级文件夹，再重命名到位 | 应用随附该版本期间保留；另一个版本就位后，启动时会删除它 |
 | `payload/<hash>/wasd_gimp_worker.py` | 工作脚本的副本，是 Desktop 应用归档之外的普通文件；`<hash>` 是其 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；早期版本保留 |
 | `snapshots/<uuid>.png` 或 `snapshots/<uuid>.jpg` | `snapshot` 图像 | 调用返回时删除 |
 | `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
@@ -334,7 +334,7 @@ GIMP 3 was not found: this installation of WASD Engine has no GIMP runtime for d
 - **重启会丢失打开的图像** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使 GIMP 停止；打开的图像、未保存的更改、选区和 Python 命名空间随之丢失，新的工作进程启动时没有打开的图像。
 - **首次启动较慢** — 使用新配置目录的首次启动约需 15 秒，触发它的工具调用会一直等待。
 - **只为 Apple 芯片的 macOS 与 Windows x64 自带** — Desktop 应用为这两个平台自带 GIMP，使安装后的 macOS 应用增加约 290 MB、其下载增加约 95 MB，并使 Windows 安装程序多出运行时的归档；Web、Linux 与 Intel Mac 使用已安装的 GIMP 3。
-- **Windows 在首次使用时解包** — Windows 上 GIMP 的首次启动会把运行时解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 或换用新的运行时版本后，解包出的运行时仍留在那里。
+- **Windows 在首次使用时解包** — Windows 上 GIMP 的首次启动会把运行时解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 后，解包出的运行时仍留在那里；换用新的运行时版本后，首次启动会删除旧版本。
 - **GIMP 搜索范围固定** — 搜索覆盖两项设置、自带的运行时、macOS 应用包、`PATH`，以及 Windows 上 `%ProgramFiles%` 与 `%LOCALAPPDATA%\Programs` 下的安装；安装在其他位置的 GIMP 需要 `gimpConsolePath` 或 `GIMP_CONSOLE`。`PATH` 上不带版本号的 `gimp-console` 不经版本检查即被使用，因此若在那里找到的是 GIMP 2，工作进程无法启动。
 - **Windows 上没有崩溃看门狗** — 工作进程只在 `os.name` 为 `posix` 时启动看门狗；在其他系统上，GIMP 的 Python 进程终止后，GIMP 继续运行并保持回复管道打开，因此正在运行的调用要等请求时限到期才会失败。
 - **部分过程值无法访问** — `pdb_run` 无法设置类型没有 JSON 形式的参数，并把整数数组和数值数组作为占位文本返回，因为 GIMP 的 Python 绑定无法读取它们。

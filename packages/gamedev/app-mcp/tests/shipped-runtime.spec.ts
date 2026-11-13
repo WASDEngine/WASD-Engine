@@ -3,7 +3,7 @@
  * the first-use unpack of a runtime that it ships as its archive.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
@@ -143,7 +143,8 @@ const PACKED: PackedRuntime<typeof PACKED_RUNTIME> = {
   directory: 'C:\\app\\runtime\\win32-x64', archive: 'C:\\app\\runtime\\win32-x64\\gimp.tar.gz', bytes: 1, sha256: 'a'.repeat(64), record: PACKED_RUNTIME,
 }
 const DATA = 'C:\\Users\\dev\\.wasdengine\\gimp'
-const UNPACKED = `${DATA}\\runtime\\3.2.8-wasd.1`
+const RUNTIMES = `${DATA}\\runtime`
+const UNPACKED = `${RUNTIMES}\\3.2.8-wasd.1`
 const PROGRAM = `${UNPACKED}\\bin\\gimp-console-3.2.exe`
 const TAR = 'C:\\Windows\\System32\\tar.exe'
 const FAILURES = {
@@ -163,6 +164,10 @@ class FakeUnpackHost implements RuntimeUnpackHost {
   readonly made: string[] = []
   readonly renamed: [string, string][] = []
   readonly removed: string[] = []
+  /** What the data root's runtime folder lists. */
+  runtimeEntries: readonly string[] = []
+  /** Paths whose removal fails, as Windows fails one that holds a file in use. */
+  readonly busy = new Set<string>()
 
   constructor(
     private readonly listing: readonly string[] = ['archive.json', 'gimp.tar.gz'],
@@ -175,7 +180,11 @@ class FakeUnpackHost implements RuntimeUnpackHost {
   ) {}
 
   async isExecutable(file: string): Promise<boolean> { return this.executables.has(file) }
-  async listDirectory(directory: string): Promise<readonly string[]> { return directory === PACKED.directory ? this.listing : [] }
+  async listDirectory(directory: string): Promise<readonly string[]> {
+    if (directory === PACKED.directory) return this.listing
+    return directory === RUNTIMES ? this.runtimeEntries : []
+  }
+
   async readTextFile(file: string): Promise<string | undefined> { return this.files.get(file) }
   async makeDirectory(directory: string): Promise<void> { this.made.push(directory) }
   async rename(from: string, to: string): Promise<void> {
@@ -192,7 +201,11 @@ class FakeUnpackHost implements RuntimeUnpackHost {
     }
   }
 
-  async remove(target: string): Promise<void> { this.removed.push(target) }
+  async remove(target: string): Promise<void> {
+    if (this.busy.has(target)) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${target}'`), { code: 'EBUSY' })
+    this.removed.push(target)
+  }
+
   async run(argv: CommandArgv, options: CommandOptions): Promise<CommandResult> {
     this.commands.push({ argv, options })
     return this.unpack(options.cwd)
@@ -260,6 +273,32 @@ describe('unpackPackedRuntime', () => {
     }
   })
 
+  it('removes the folders of other runtime versions once the pinned one is in place, and keeps the folders of its own version', async () => {
+    const host = new FakeUnpackHost()
+    host.runtimeEntries = [
+      '3.2.8-wasd.0', '3.2.8-wasd.0.partial-1a2b3c4d', '3.2.8-wasd.1', '3.2.8-wasd.1.partial-5e6f7a8b',
+      '3.2.8-wasd.1.stale-0b6c5d1e-7f8a-4b9c-8d0e-1f2a3b4c5d6e', '3.2.8-wasd.10',
+    ]
+    await unpackPackedRuntime(PACKED, PACKED_RUNTIME.program, DATA, host, signal, FAILURES)
+    const partial = host.commands[0]!.options.cwd
+    expect(host.removed).toEqual([partial, `${RUNTIMES}\\3.2.8-wasd.0`, `${RUNTIMES}\\3.2.8-wasd.0.partial-1a2b3c4d`, `${RUNTIMES}\\3.2.8-wasd.10`])
+    // A later start that finds the runtime in place removes what an earlier one could not.
+    host.removed.length = 0
+    host.runtimeEntries = ['3.2.8-wasd.0', '3.2.8-wasd.1']
+    const reused = await unpackPackedRuntime(PACKED, PACKED_RUNTIME.program, DATA, host, signal, FAILURES)
+    expect(reused.unpacked).toBe(false)
+    expect(host.removed).toEqual([`${RUNTIMES}\\3.2.8-wasd.0`])
+  })
+
+  it('goes on when the folder of another version holds a file in use', async () => {
+    const host = new FakeUnpackHost()
+    host.runtimeEntries = ['3.2.8-wasd.0', '3.2.8-wasd.1', '3.2.9-wasd.1']
+    host.busy.add(`${RUNTIMES}\\3.2.8-wasd.0`)
+    const runtime = await unpackPackedRuntime(PACKED, PACKED_RUNTIME.program, DATA, host, signal, FAILURES)
+    expect(runtime).toMatchObject({ directory: UNPACKED, unpacked: true })
+    expect(host.removed.slice(1)).toEqual([`${RUNTIMES}\\3.2.9-wasd.1`])
+  })
+
   it('reports a runtime it cannot move into place through moveFailed', async () => {
     const host = new FakeUnpackHost(undefined, undefined, () => { throw new Error('read-only file system') })
     await expect(unpackPackedRuntime(PACKED, PACKED_RUNTIME.program, DATA, host, signal, FAILURES))
@@ -322,7 +361,7 @@ describe('nodeRuntimeUnpackHost', () => {
       .resolves.toEqual({ exitCode: 0, signal: null, output: '0123456789' })
   })
 
-  it.skipIf(process.platform === 'win32')('unpacks a packed runtime with the real tar once, and reuses the unpacked folder', async () => {
+  it.skipIf(process.platform === 'win32')('unpacks a packed runtime with the real tar once, reuses the unpacked folder, and removes only the other versions in the runtime folder', async () => {
     const root = await temporaryDirectory('dsh-app-mcp-unpack-')
     const runtime = { ...PACKED_RUNTIME, platform: process.platform, arch: process.arch, program: 'bin/gimp-console-3.2' }
     const content = join(root, 'content')
@@ -335,11 +374,22 @@ describe('nodeRuntimeUnpackHost', () => {
     await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: 'c'.repeat(64), runtime }))
     const host = nodeRuntimeUnpackHost(4096)
     const dataRoot = join(root, 'data ü')
+    // The runtime that an earlier WASD Engine version unpacked, a folder of the data root beside the runtimes, and a
+    // link in the runtime folder to a folder outside it.
+    await mkdir(join(dataRoot, 'runtime', '3.2.8-wasd.0', 'bin'), { recursive: true })
+    await writeFile(join(dataRoot, 'runtime', '3.2.8-wasd.0', 'bin', 'gimp-console-3.2'), '#!/bin/sh\n', { mode: 0o755 })
+    await mkdir(join(dataRoot, 'workers'))
+    await writeFile(join(dataRoot, 'workers', 'keep.txt'), 'kept\n')
+    await mkdir(join(root, 'elsewhere'))
+    await writeFile(join(root, 'elsewhere', 'keep.txt'), 'kept\n')
+    await symlink(join(root, 'elsewhere'), join(dataRoot, 'runtime', 'linked'))
     const packed = (await readPackedRuntime(join(root, 'pkg', 'runtime'), host, Record, invalid))!
     const directory = join(dataRoot, 'runtime', '3.2.8-wasd.1')
     const unpacked = await unpackPackedRuntime(packed, runtime.program, dataRoot, host, new AbortController().signal, FAILURES)
     expect(unpacked).toMatchObject({ directory, unpacked: true })
     await expect(readdir(join(dataRoot, 'runtime'))).resolves.toEqual(['3.2.8-wasd.1'])
+    await expect(readdir(join(dataRoot, 'workers'))).resolves.toEqual(['keep.txt'])
+    await expect(readdir(join(root, 'elsewhere'))).resolves.toEqual(['keep.txt'])
     await expect(host.isExecutable(unpacked.resolve(runtime.program))).resolves.toBe(true)
     await expect(unpackPackedRuntime(packed, runtime.program, dataRoot, host, new AbortController().signal, FAILURES))
       .resolves.toMatchObject({ unpacked: false })

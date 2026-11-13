@@ -162,7 +162,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | 路径 | 内容 | 生命周期 |
 |---|---|---|
 | `payload/<hash>/wasd_blender_worker.py` | 工作脚本的副本，是 Desktop 应用归档之外的普通文件；`<hash>` 是其 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；早期版本保留 |
-| `runtime/<version>/` | Windows 版 Desktop 应用以归档随附、首次使用时解包的 bpy 运行时；先解包到 `.partial-<8 个十六进制数字>` 同级文件夹，再重命名到位 | 保留；新的运行时版本解包在它旁边 |
+| `runtime/<version>/` | Windows 版 Desktop 应用以归档随附、首次使用时解包的 bpy 运行时；先解包到 `.partial-<8 个十六进制数字>` 同级文件夹，再重命名到位 | 应用随附该版本期间保留；另一个版本就位后，启动时会删除它 |
 | `uv-python/` | uv 为 `bpy` 后端安装的 Python | 保留 |
 | `venv-py<pythonVersion>-bpy<bpyVersion>/` | `bpy` 环境，先在同级的 `.partial-<uuid>` 目录中构建，再重命名到位；该位置上 Python 不可执行的目录会先被移到同级的 `.stale-<uuid>` 目录 | 保留；插件只删除被移开的目录 |
 | `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
@@ -312,7 +312,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 - **没有窗口** — 工具不提供视口、界面，也不提供窗口或区域截图，需要窗口的操作符会失败；`render_preview` 是查看场景的唯一方式，`render` 需要相机。
 - **重启会丢失未保存的工作** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使工作进程停止；场景、Python 命名空间和检查点随之丢失，新的工作进程以 Blender 默认场景启动。
 - **只为 Apple 芯片 macOS 与 Windows x64 随附** — Desktop 应用为 Apple 芯片 macOS 随附 `bpy`，使安装后的应用增大约 770 MB，下载增大约 270 MB；为 Windows x64 随附时，安装程序与安装后的应用增大约 360 MB；Web 与 Linux 用 uv 安装 `bpy` 或使用已安装的 Blender。
-- **Windows 在首次使用时解包** — Windows 上首次启动 Blender 时会把约 1 GB 解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 或换用新的运行时版本后，解包的运行时仍留在原处。EEVEE 渲染（例如 `material` 预览）需要支持 OpenGL 的 GPU，Windows 虚拟机和远程会话可能没有。
+- **Windows 在首次使用时解包** — Windows 上首次启动 Blender 时会把约 1 GB 解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 后，解包的运行时仍留在原处；换用新的运行时版本后，首次启动会删除旧版本。EEVEE 渲染（例如 `material` 预览）需要支持 OpenGL 的 GPU，Windows 虚拟机和远程会话可能没有。
 - **首次使用耗时且占用空间大** — 没有随附的运行时时，`bpy` 后端在首次工具调用期间安装，该调用会等待安装完成；调用超过 `toolCallTimeoutMs` 时，uv 停止，未完成的环境被删除，下一次调用重新开始安装。新的 `bpyVersion` 或 `pythonVersion` 会安装另一个环境，插件不删除任何可用的环境。
 - **bpy 只覆盖四个平台** — PyPI 只为 macOS arm64、Linux x86_64 以及 Windows x64 与 arm64 发布 bpy 5.2.3；在其他平台上 `bpy` 后端失败，`auto` 需要已安装的 Blender。
 - **检查点数量有限** — `undo_steps` 偏好设置（出厂设置为 32）限制 `undo` 能回退多远，`new_scene` 与 `open_blend` 会清除检查点。

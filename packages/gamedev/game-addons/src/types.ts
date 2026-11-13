@@ -268,8 +268,8 @@ export interface GameAddonRemoveResult {
   /** Project-relative paths that were taken out of the project. */
   readonly removed: readonly string[]
   /**
-   * Project-relative folder that keeps what was taken out, `.wasdengine/backups/<id>`, with the paths of `removed` below
-   * it; absent when nothing was taken out.
+   * Project-relative folder of the new backup that keeps what was taken out, `.wasdengine/backups/<id>/<time>`, with
+   * the paths of `removed` below it; absent when nothing was taken out.
    */
   readonly backup?: string
   /** Project files outside the add-on that still name its folder, at most 20, which now need changes. */

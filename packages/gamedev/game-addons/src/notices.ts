@@ -53,13 +53,19 @@ export function noticeSection(addon: GameAddon, licenseText: string | undefined)
   return lines.join('\n')
 }
 
-function withoutSection(text: string, id: string): string {
+/** Where one add-on's marked section lies in the text, from its begin marker to the end of its end marker. */
+function sectionRange(text: string, id: string): { readonly from: number; readonly to: number } | undefined {
   const from = text.indexOf(begin(id))
-  if (from < 0) return text
+  if (from < 0) return undefined
   const to = text.indexOf(end(id), from)
-  if (to < 0) return text
-  const before = text.slice(0, from).replace(/\n+$/u, '\n')
-  const after = text.slice(to + end(id).length).replace(/^\n+/u, '')
+  return to < 0 ? undefined : { from, to: to + end(id).length }
+}
+
+function withoutSection(text: string, id: string): string {
+  const range = sectionRange(text, id)
+  if (range === undefined) return text
+  const before = text.slice(0, range.from).replace(/\n+$/u, '\n')
+  const after = text.slice(range.to).replace(/^\n+/u, '')
   return after === '' ? before : `${before}\n${after}`
 }
 
@@ -73,9 +79,22 @@ async function readNotices(path: string): Promise<string | undefined> {
 }
 
 /**
+ * One add-on's section as the file holds it now.
+ * @param projectDir - absolute project folder.
+ * @param id - the add-on id.
+ * @returns the section from its begin marker to its end marker, or undefined when the file has none.
+ */
+export async function readNotice(projectDir: string, id: string): Promise<string | undefined> {
+  const current = await readNotices(join(projectDir, NOTICES_FILE))
+  if (current === undefined) return undefined
+  const range = sectionRange(current, id)
+  return range === undefined ? undefined : current.slice(range.from, range.to)
+}
+
+/**
  * Add or replace one add-on's section.
  * @param projectDir - absolute project folder.
- * @param section - the section from {@link noticeSection}.
+ * @param section - the section from {@link noticeSection} or {@link readNotice}.
  * @param id - the add-on id the section is marked with.
  */
 export async function writeNotice(projectDir: string, section: string, id: string): Promise<void> {
@@ -89,14 +108,16 @@ export async function writeNotice(projectDir: string, section: string, id: strin
  * Remove one add-on's section, and the file when only the generated header is left.
  * @param projectDir - absolute project folder.
  * @param id - the add-on id.
- * @returns whether a section was removed.
+ * @returns the section that was removed, or undefined when the file had none.
  */
-export async function removeNotice(projectDir: string, id: string): Promise<boolean> {
+export async function removeNotice(projectDir: string, id: string): Promise<string | undefined> {
   const path = join(projectDir, NOTICES_FILE)
   const current = await readNotices(path)
-  if (current === undefined || !current.includes(begin(id))) return false
+  if (current === undefined) return undefined
+  const range = sectionRange(current, id)
+  if (range === undefined) return undefined
   const rest = withoutSection(current, id).replace(/\n*$/u, '\n')
   if (rest === HEADER) await rm(path, { force: true })
   else await writeFileAtomic(path, rest, { mode: 0o644 })
-  return true
+  return current.slice(range.from, range.to)
 }

@@ -66,5 +66,5 @@ Run the game and take a `godot_screenshot` while a clip plays; `godot_eval` of t
 
 - After retargeting, the model's bones have the profile's names: code that names bones uses `Hips` or `LeftHand`, not `pelvis`.
 - A model without finger bones ignores the finger tracks. Animals, creatures with tails or wings, and other non-humanoid rigs cannot play these clips.
-- Removing the add-on deletes its folder; the bone maps beside the models stay, and scenes that use the library must drop it.
+- Removing the add-on moves its folder into a new backup folder under `.wasdengine/backups/universal-animation-library/`; the bone maps beside the models stay, and scenes that use the library must drop it.
 - CC0: no credit is required. Tell the user the clips are by Quaternius (quaternius.com).
