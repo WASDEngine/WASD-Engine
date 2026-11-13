@@ -83,7 +83,7 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
         captured = new Map()
         images.set(exec, captured)
       }
-      captured.set(id, shot.png)
+      captured.set(id, shot.image)
       return {
         width: shot.meta.width,
         height: shot.meta.height,
@@ -91,7 +91,7 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
         windowHeight: shot.meta.windowHeight,
         frame: shot.meta.frame,
         paused: shot.meta.paused,
-        image: { attachmentId: id, mediaType: 'image/png', bytes: shot.png.byteLength, width: shot.meta.width, height: shot.meta.height },
+        image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
       }
     },
   })

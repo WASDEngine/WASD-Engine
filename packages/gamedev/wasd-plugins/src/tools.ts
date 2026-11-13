@@ -1,8 +1,9 @@
 /**
  * The model-facing tools of WASD Engine Plugins: `wasd_export_web` builds a Godot project for the Web,
- * `wasd_export_desktop` builds it for Windows and macOS, `wasd_record_preview` records the game's preview, an animated
- * GIF and a still, and `wasd_release_game` builds the project and publishes the build as the next version of its game
- * on the WASD Engine site, public or private, with the preview and, when asked, desktop downloads. The same
+ * `wasd_export_desktop` builds it for Windows and macOS, `wasd_record_preview` records the game's preview, an
+ * animation for the site, a GIF for link previews, and a still, and `wasd_release_game` builds the project and
+ * publishes the build as the next version of its game on the WASD Engine site, public or private, with the preview
+ * and, when asked, desktop downloads. The same
  * definitions serve the Session's own agent, which may name the project relative to its working directory, and agents
  * connected through WASD Engine's MCP server, which name it by absolute path, run the game in a Session of theirs, and
  * name their own model for the game's credits.
@@ -36,8 +37,10 @@ export interface PreviewRequest {
 
 /** A recorded preview, saved in the project's preview folder. */
 export interface RecordedPreview {
-  /** Absolute path of the GIF. */
+  /** Absolute path of the GIF, which link previews of the game's share link show. */
   readonly gif: string
+  /** Absolute path of the animation, the animated WebP that Explore and the game's page play. */
+  readonly webp: string
   /** Absolute path of the still. */
   readonly image: string
   /** Frames in the GIF. */
@@ -50,6 +53,12 @@ export interface RecordedPreview {
   readonly height: number
   /** GIF size in bytes. */
   readonly gifBytes: number
+  /** Animation width in pixels. */
+  readonly webpWidth: number
+  /** Animation height in pixels. */
+  readonly webpHeight: number
+  /** Animation size in bytes. */
+  readonly webpBytes: number
   /** Still width in pixels. */
   readonly imageWidth: number
   /** Still height in pixels. */
@@ -159,12 +168,16 @@ const RECORDING_SCHEMA = {
   additionalProperties: false,
   properties: {
     gif: STRING,
+    webp: STRING,
     image: STRING,
     frames: INTEGER,
     seconds: NUMBER,
     width: INTEGER,
     height: INTEGER,
     gifBytes: INTEGER,
+    webpWidth: INTEGER,
+    webpHeight: INTEGER,
+    webpBytes: INTEGER,
     imageWidth: INTEGER,
     imageHeight: INTEGER,
     imageBytes: INTEGER,
@@ -243,9 +256,9 @@ function withWarnings(text: string, warnings: readonly string[]): string {
 
 function describeRecording(value: RecordedPreviewValue): string {
   return [
-    `Recorded the game's preview: ${value.gif} (${value.frames} frames, ${value.seconds.toFixed(1)} s, ${value.width}x${value.height}, ${size(value.gifBytes)}) and the still ${value.image} (${value.imageWidth}x${value.imageHeight}, ${size(value.imageBytes)}). wasd_release_game uploads them with the next release.`,
+    `Recorded the game's preview: the animation ${value.webp} (${value.webpWidth}x${value.webpHeight}, ${size(value.webpBytes)}) that Explore and the game's page play, the GIF ${value.gif} (${value.frames} frames, ${value.seconds.toFixed(1)} s, ${value.width}x${value.height}, ${size(value.gifBytes)}) that link previews of its share link show, and the still ${value.image} (${value.imageWidth}x${value.imageHeight}, ${size(value.imageBytes)}). wasd_release_game uploads them with the next release.`,
     ...value.started ? ['The recording started the game, which keeps running.'] : [],
-    ...value.paused ? ['The game was paused throughout, so the GIF shows no motion: resume it with godot_control, then record again.'] : [],
+    ...value.paused ? ['The game was paused throughout, so the preview shows no motion: resume it with godot_control, then record again.'] : [],
     ...value.view === undefined ? [] : ['The image below is the still.'],
   ].join('\n')
 }
@@ -321,7 +334,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
     },
   }), defineTool({
     name: 'wasd_record_preview',
-    description: 'Record the game\'s preview for WASD Engine: an animated GIF of a few seconds of the running game and a still image, which Explore and the game\'s share link show once wasd_release_game uploads them. First start the game with godot_run and bring it to its gameplay, such as past its title menu; events then play from the start of the recording, as godot_input takes them, so the clip shows the game in action. Without a running game, the recording starts the game and records its first seconds. The result shows the still: when it does not show the game well, record again. Each recording replaces the project\'s previous preview in its .wasdengine/preview folder.',
+    description: 'Record the game\'s preview for WASD Engine: a few seconds of the running game as an animation that Explore and the game\'s page play and a GIF that link previews of its share link show, and a still image, which wasd_release_game uploads. First start the game with godot_run and bring it to its gameplay, such as past its title menu; events then play from the start of the recording, as godot_input takes them, so the clip shows the game in action. Without a running game, the recording starts the game and records its first seconds. The result shows the still: when it does not show the game well, record again. Each recording replaces the project\'s previous preview in its .wasdengine/preview folder.',
     parameters: {
       project: PROJECT,
       seconds: { type: 'number', description: `Length of the clip in seconds, from 1 to ${lengths.maxSeconds}. Default: ${lengths.seconds}.` },
@@ -369,13 +382,13 @@ const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it
 function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): ToolDefinition {
   return defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the GIF and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game\'s page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
       title: { type: 'string', description: `Game title for the first release, or a new title for the game; at most ${MAX_TITLE} characters. Default: the project's name.` },
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
-      preview_gif: { type: 'string', description: 'Animated GIF that Explore plays and the share link shows, relative to the working directory. Default: the GIF that wasd_record_preview saved.' },
+      preview_gif: { type: 'string', description: 'Animated GIF that link previews of the share link show, and that Explore and the game\'s page then play in place of the recorded animation, relative to the working directory. Default: the GIF that wasd_record_preview saved, with its animation.' },
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
       visibility: { type: 'string', enum: ['public', 'private'], description: 'public lists the game on WASD Engine\'s Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game\'s current visibility; a new game is public.' },
       desktop: { ...PLATFORMS_SCHEMA, description: 'Also build the game for these desktop platforms and offer each build as a download of this version on the game\'s page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.' },
@@ -463,7 +476,7 @@ const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type
   wasd_release_game: {
     project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
     preview_image: { type: 'string', description: 'Absolute path of a PNG, JPEG, or WebP picture that Explore shows for the game; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
-    preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that Explore plays and the share link shows. Default: the GIF that wasd_record_preview saved.' },
+    preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that link previews of the share link show, and that Explore and the game\'s page then play in place of the recorded animation. Default: the GIF that wasd_record_preview saved, with its animation.' },
   },
 }
 
@@ -549,7 +562,7 @@ export function wasdMcpProvider(definitions: readonly ToolDefinition[], credits:
     id: 'wasd',
     title: 'WASD Engine',
     description: 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.',
-    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short GIF and a still of the running game, which Explore and the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
+    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

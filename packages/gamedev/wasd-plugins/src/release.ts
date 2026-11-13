@@ -78,14 +78,16 @@ export class ReleaseError extends Error {
 
 const GameRecord = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), version: z.number().int().min(0) })
 type GameRecord = z.infer<typeof GameRecord>
-// One account's game on one site; `account` is absent when the release did not know its account, `image` and `gif` are
-// the SHA-256 digests of the preview files the project last uploaded for the game, and `visibility` is the game's as the
-// site answered the project's latest release; absent before releases knew visibility, which made every game public.
+// One account's game on one site; `account` is absent when the release did not know its account, `image`, `gif`, and
+// `webp` are the SHA-256 digests of the preview files the project last uploaded for the game, and `visibility` is the
+// game's as the site answered the project's latest release; absent before releases knew visibility, which made every
+// game public.
 const Visibility = z.enum(['public', 'private'])
 const AccountGame = GameRecord.extend({
   account: z.string().optional(),
   image: z.string().optional(),
   gif: z.string().optional(),
+  webp: z.string().optional(),
   visibility: Visibility.optional(),
 })
 type AccountGame = z.infer<typeof AccountGame>
@@ -106,6 +108,8 @@ const GameJson = z.object({
   latest_version: z.number().int(),
   cover_url: z.string().nullish(),
   gif_url: z.string().nullish(),
+  // Absent from sites that play no animation of their own; a site drops a game's animation when its GIF changes.
+  webp_url: z.string().nullish(),
   // Absent from sites that keep every game public.
   visibility: Visibility.optional(),
 })
@@ -343,6 +347,11 @@ class SiteApi {
     return (await this.json(response, z.object({ game: GameJson }), 'store the preview GIF')).game
   }
 
+  async webp(id: string, webp: string): Promise<GameJson> {
+    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/webp`, { data: await openAsBlob(webp), type: 'image/webp' })
+    return (await this.json(response, z.object({ game: GameJson }), 'store the preview animation')).game
+  }
+
   async credits(id: string, credits: GameCredits): Promise<void> {
     const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/credits`, { data: JSON.stringify(credits), type: 'application/json' })
     await this.json(response, z.object({ game: GameJson }), 'store what the game was made with')
@@ -455,7 +464,7 @@ async function isFile(path: string): Promise<boolean> {
 }
 
 /** The preview digests a project last uploaded for a game. */
-type PreviewDigests = Pick<AccountGame, 'image' | 'gif'>
+type PreviewDigests = Pick<AccountGame, 'image' | 'gif' | 'webp'>
 
 /** What a release uploads of its preview. */
 interface PreviewUpload extends PreviewDigests {
@@ -465,7 +474,9 @@ interface PreviewUpload extends PreviewDigests {
 
 /**
  * Upload the preview files that the game lacks or that changed since the project last uploaded them. A failed upload
- * becomes a warning, because the version is released already.
+ * becomes a warning, because the version is released already. The animation goes up after the GIF, because the site
+ * drops a game's animation when its GIF changes, and not at all when the GIF failed, which would leave the two
+ * showing different recordings.
  * @param api - the site.
  * @param game - the released game.
  * @param files - the preview files.
@@ -478,13 +489,15 @@ async function uploadPreview(
   api: SiteApi, game: GameJson, files: PreviewFiles, uploaded: PreviewDigests, warnings: string[], signal: AbortSignal,
 ): Promise<PreviewUpload> {
   let current = game
-  const digests = { image: uploaded.image, gif: uploaded.gif }
+  const digests = { image: uploaded.image, gif: uploaded.gif, webp: uploaded.webp }
   const parts = [
     { kind: 'image', file: files.image, stored: () => current.cover_url, put: (path: string) => api.cover(current.id, path), what: 'preview image' },
     { kind: 'gif', file: files.gif, stored: () => current.gif_url, put: (path: string) => api.gif(current.id, path), what: 'preview GIF' },
+    { kind: 'webp', file: files.webp, stored: () => current.webp_url, put: (path: string) => api.webp(current.id, path), what: 'preview animation' },
   ] as const
+  let gifFailed = false
   for (const part of parts) {
-    if (part.file === undefined) continue
+    if (part.file === undefined || (part.kind === 'webp' && gifFailed)) continue
     try {
       const digest = await fileDigest(part.file, signal)
       if (digest === digests[part.kind] && (part.stored() ?? null) !== null) continue
@@ -492,6 +505,7 @@ async function uploadPreview(
       digests[part.kind] = digest
     } catch (error) {
       signal.throwIfAborted()
+      gifFailed ||= part.kind === 'gif'
       warnings.push(`The version is released, but its ${part.what} was not stored: ${(error as Error).message}`)
     }
   }
@@ -618,6 +632,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
         id: linked.id, slug: linked.slug, title: linked.title, url: linked.url, version,
         ...digests.image === undefined ? {} : { image: digests.image },
         ...digests.gif === undefined ? {} : { gif: digests.gif },
+        ...digests.webp === undefined ? {} : { webp: digests.webp },
         ...linked.visibility === undefined ? {} : { visibility: linked.visibility },
       })
     }
@@ -634,15 +649,18 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     game ??= await create()
     const warnings = [...exported.warnings]
     const saved = await savedPreview(request.projectDir)
+    // The saved animation plays the saved GIF's recording; with a GIF of the caller's, the site plays that GIF instead.
     let files: PreviewFiles = {
-      ...saved,
+      ...saved.image === undefined ? {} : { image: saved.image },
+      ...saved.gif === undefined ? {} : { gif: saved.gif },
+      ...saved.webp === undefined || request.previewGif !== undefined ? {} : { webp: saved.webp },
       ...request.previewImage === undefined ? {} : { image: request.previewImage },
       ...request.previewGif === undefined ? {} : { gif: request.previewGif },
     }
     if (files.gif === undefined && (game.gif_url ?? null) === null && dependencies.recordPreview !== undefined) {
       try {
         const recorded = await dependencies.recordPreview(request.projectDir, signal)
-        files = { gif: recorded.gif, image: request.previewImage ?? recorded.image }
+        files = { gif: recorded.gif, webp: recorded.webp, image: request.previewImage ?? recorded.image }
         warnings.push('The project had no preview, so the release recorded the game\'s first seconds without input. For a preview that shows gameplay, record one with wasd_record_preview before the next release.')
       } catch (error) {
         signal.throwIfAborted()
@@ -658,11 +676,13 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     }
     // Digests describe what this project uploaded to the game they name; a different game has none of its files.
     const prior = siteLinks.find(entry => entry.id === released.game.id)
-    const uploaded: PreviewDigests = prior === undefined ? {} : { image: prior.image, gif: prior.gif }
+    const uploaded: PreviewDigests = prior === undefined ? {} : { image: prior.image, gif: prior.gif, webp: prior.webp }
     await remember(released.game, released.release.version, uploaded)
     const downloads = await uploadDownloads(api, released.game, released.release.version, builds, warnings, signal)
     const preview = await uploadPreview(api, released.game, files, uploaded, warnings, signal)
-    if (preview.image !== uploaded.image || preview.gif !== uploaded.gif) await remember(released.game, released.release.version, preview)
+    if (preview.image !== uploaded.image || preview.gif !== uploaded.gif || preview.webp !== uploaded.webp) {
+      await remember(released.game, released.release.version, preview)
+    }
     const credited = dependencies.credits === undefined
       ? undefined
       : await uploadCredits(api, released.game.id, dependencies.credits(request.projectDir), warnings, signal)

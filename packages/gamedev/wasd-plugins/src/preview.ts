@@ -1,9 +1,10 @@
 /**
- * Game previews: a recording of the running game made into the animated GIF and the still image that a release
- * uploads as the game's preview, saved in the project's `.wasdengine/preview/` folder as `preview.gif` and
- * `preview.png` or `preview.jpg`, whichever holds the still in fewer bytes. The GIF keeps the recording's timing, loops
- * forever, and shrinks, first in width down to `minWidth` and then by dropping every other frame, until it fits
- * `maxGifBytes`.
+ * Game previews: a recording of the running game made into the three files that a release uploads as the game's
+ * preview, saved in the project's `.wasdengine/preview/` folder: `preview.webp`, an animated WebP that Explore and the
+ * game's page play; `preview.gif`, the GIF that link previews of its share link show; and `preview.png` or
+ * `preview.jpg`, whichever holds the still in fewer bytes. The animation and the GIF keep the recording's timing, loop
+ * forever, and shrink, first in width down to `minWidth` and then by dropping every other frame, until each fits its
+ * byte limit.
  * @module @deepseek-ai/dsh-wasd-plugins/src/preview
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -24,23 +25,34 @@ export const PREVIEW_DIR = 'preview'
 /** File name of the preview GIF. */
 export const PREVIEW_GIF = 'preview.gif'
 
+/** File name of the preview animation. */
+export const PREVIEW_WEBP = 'preview.webp'
+
 /** File names of the preview still, by its type. */
 export const PREVIEW_STILLS = { 'image/png': 'preview.png', 'image/jpeg': 'preview.jpg' } as const
 
 /** Shortest delay of a GIF frame; browsers play shorter delays as 100 ms. */
 const MIN_FRAME_DELAY_MS = 20
 
-/** Each smaller GIF width tried is this share of the previous one. */
+/** Each smaller width tried is this share of the previous one. */
 const WIDTH_STEP = 0.75
 
 /** JPEG quality of a still that encodes smaller as JPEG than as PNG. */
 const STILL_JPEG_QUALITY = 88
 
-/** How {@link encodePreview} encodes the GIF. */
+/** How {@link encodePreview} encodes the GIF and the animation. */
 export interface PreviewEncoding {
+  /** Largest GIF width in pixels. */
+  readonly gifWidth: number
   /** Largest GIF in bytes. */
   readonly maxGifBytes: number
-  /** Smallest GIF width in pixels that a GIF over `maxGifBytes` shrinks to before it drops frames. */
+  /** Largest animation width in pixels. */
+  readonly webpWidth: number
+  /** Largest animation in bytes. */
+  readonly maxWebpBytes: number
+  /** WebP quality of the animation, from 1 to 100. */
+  readonly webpQuality: number
+  /** Smallest width in pixels that a GIF or animation over its byte limit shrinks to before it drops frames. */
   readonly minWidth: number
   /** CPU effort of the GIF palette and frame optimization, from 1 (fastest) to 10 (smallest). */
   readonly effort: number
@@ -56,8 +68,16 @@ export interface EncodedPreview {
   readonly gifHeight: number
   /** Frames in the GIF. */
   readonly frames: number
-  /** Playing time of one loop in milliseconds. */
+  /** Playing time of one loop of the GIF in milliseconds. */
   readonly durationMs: number
+  /** Animated WebP bytes. */
+  readonly webp: Buffer
+  /** Animation width in pixels. */
+  readonly webpWidth: number
+  /** Animation height in pixels. */
+  readonly webpHeight: number
+  /** Frames in the animation. */
+  readonly webpFrames: number
   /** Still bytes. */
   readonly still: Buffer
   /** Still type. */
@@ -74,6 +94,8 @@ export interface PreviewFiles {
   readonly gif?: string
   /** The still, when the project has one. */
   readonly image?: string
+  /** The animation, when the project has one. */
+  readonly webp?: string
 }
 
 /**
@@ -104,74 +126,121 @@ function halve<T>(frames: readonly T[], delays: readonly number[]): { readonly f
   return { frames: kept, delays: merged }
 }
 
+/** Encode frames, with their delays, at one size. */
+type FrameEncoder = (frames: Sharp, delays: readonly number[]) => Promise<Buffer>
+
+/** A Sharp image, as Sharp's factory returns it. */
+type Sharp = ReturnType<typeof sharp>
+
 /**
- * Encode frames as one looping GIF of a width, each frame fitted into the first frame's aspect ratio on black.
+ * Encode frames as one looping image of a width, each frame fitted into the first frame's aspect ratio on black.
  * @param images - the frames.
  * @param delays - their delays in milliseconds.
- * @param width - GIF width.
- * @param height - GIF height.
- * @param effort - encoder effort.
- * @returns the GIF bytes.
+ * @param width - image width.
+ * @param height - image height.
+ * @param encode - the format's encoder.
+ * @returns the encoded bytes.
  */
-async function encodeGif(
-  images: readonly GodotRecordedImage[], delays: readonly number[], width: number, height: number, effort: number,
+async function encodeFrames(
+  images: readonly GodotRecordedImage[], delays: readonly number[], width: number, height: number, encode: FrameEncoder,
 ): Promise<Buffer> {
   const sharp = requireSharp()
-  const pixels = await Promise.all(images.map(image => sharp(image.png)
+  const pixels = await Promise.all(images.map(image => sharp(image.image)
     .resize(width, height, { fit: 'contain', background: '#000000' })
     .flatten({ background: '#000000' })
     .removeAlpha()
     .raw()
     .toBuffer()))
-  return await sharp(Buffer.concat(pixels), { raw: { width, height: height * images.length, channels: 3, pageHeight: height } })
-    .gif({ delay: [...delays], loop: 0, effort })
-    .toBuffer()
+  return await encode(
+    sharp(Buffer.concat(pixels), { raw: { width, height: height * images.length, channels: 3, pageHeight: height } }),
+    delays,
+  )
+}
+
+/** An animated image fitted to a byte limit. */
+interface FittedAnimation {
+  readonly bytes: Buffer
+  readonly width: number
+  readonly height: number
+  readonly frames: number
+  readonly durationMs: number
+}
+
+/**
+ * Encode a recording's frames at most `maxWidth` wide, then narrower, then with every other frame dropped, until the
+ * bytes fit `maxBytes`.
+ * @param first - the first frame, whose aspect ratio every frame takes.
+ * @param recorded - all frames.
+ * @param maxWidth - largest width.
+ * @param maxBytes - byte limit.
+ * @param minWidth - smallest width before frames drop.
+ * @param encode - the format's encoder.
+ * @param signal - cancellation, checked between encodings.
+ * @returns the last encoding, which may still exceed `maxBytes` when even two frames at `minWidth` do.
+ */
+async function fitAnimation(
+  first: GodotRecordedImage, recorded: readonly GodotRecordedImage[], maxWidth: number, maxBytes: number, minWidth: number,
+  encode: FrameEncoder, signal: AbortSignal,
+): Promise<FittedAnimation> {
+  let frames = recorded
+  let delays = frameDelays(frames)
+  let width = Math.min(first.width, maxWidth)
+  for (;;) {
+    signal.throwIfAborted()
+    const height = Math.max(1, Math.round(first.height * width / first.width))
+    const bytes = await encodeFrames(frames, delays, width, height, encode)
+    const narrower = Math.round(width * WIDTH_STEP)
+    if (bytes.length <= maxBytes || (width <= minWidth && frames.length <= 2)) {
+      return { bytes, width, height, frames: frames.length, durationMs: delays.reduce((sum, delay) => sum + delay, 0) }
+    }
+    if (narrower >= minWidth) {
+      width = narrower
+    } else if (width > minWidth) {
+      width = minWidth
+    } else {
+      ({ frames, delays } = halve(frames, delays))
+    }
+  }
 }
 
 /**
  * Encode a recording as a preview.
  * @param recording - frames and still.
- * @param encoding - GIF size limit, smallest width, and effort.
+ * @param encoding - the GIF's and the animation's widths and size limits, and the encoders' settings.
  * @param signal - cancellation, checked between encodings.
- * @returns the GIF and the still; the GIF may still exceed `maxGifBytes` when even two frames at `minWidth` do.
+ * @returns the GIF, the animation, and the still; either animated image may still exceed its byte limit when even
+ *   two frames at `minWidth` do.
  */
 export async function encodePreview(recording: GodotRecording, encoding: PreviewEncoding, signal: AbortSignal): Promise<EncodedPreview> {
   const sharp = requireSharp()
   const first = recording.frames[0]
   if (first === undefined) throw new Error('The recording holds no frames.')
-  let frames: readonly GodotRecordedImage[] = recording.frames
-  let delays = frameDelays(frames)
-  let width = first.width
-  let gif: Buffer
-  let height: number
-  for (;;) {
-    signal.throwIfAborted()
-    height = Math.max(1, Math.round(first.height * width / first.width))
-    gif = await encodeGif(frames, delays, width, height, encoding.effort)
-    if (gif.length <= encoding.maxGifBytes) break
-    const narrower = Math.round(width * WIDTH_STEP)
-    if (narrower >= encoding.minWidth) {
-      width = narrower
-    } else if (width > encoding.minWidth && first.width > encoding.minWidth) {
-      width = encoding.minWidth
-    } else if (frames.length > 2) {
-      ({ frames, delays } = halve(frames, delays))
-    } else {
-      break
-    }
-  }
+  const gif = await fitAnimation(
+    first, recording.frames, encoding.gifWidth, encoding.maxGifBytes, encoding.minWidth,
+    async (frames, delays) => await frames.gif({ delay: [...delays], loop: 0, effort: encoding.effort }).toBuffer(),
+    signal,
+  )
+  const webp = await fitAnimation(
+    first, recording.frames, encoding.webpWidth, encoding.maxWebpBytes, encoding.minWidth,
+    async (frames, delays) => await frames.webp({ delay: [...delays], loop: 0, quality: encoding.webpQuality }).toBuffer(),
+    signal,
+  )
   signal.throwIfAborted()
-  const png = await sharp(recording.still.png).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer()
-  const jpeg = await sharp(recording.still.png).flatten({ background: '#000000' })
+  const png = await sharp(recording.still.image).png({ compressionLevel: 9, adaptiveFiltering: true }).toBuffer()
+  const jpeg = await sharp(recording.still.image).flatten({ background: '#000000' })
     .jpeg({ quality: STILL_JPEG_QUALITY, chromaSubsampling: '4:4:4', mozjpeg: true })
     .toBuffer()
   const stillType = png.length <= jpeg.length ? 'image/png' : 'image/jpeg'
   return {
-    gif,
-    gifWidth: width,
-    gifHeight: height,
-    frames: frames.length,
-    durationMs: delays.reduce((sum, delay) => sum + delay, 0),
+    gif: gif.bytes,
+    gifWidth: gif.width,
+    gifHeight: gif.height,
+    frames: gif.frames,
+    durationMs: gif.durationMs,
+    webp: webp.bytes,
+    webpWidth: webp.width,
+    webpHeight: webp.height,
+    webpFrames: webp.frames,
     still: stillType === 'image/png' ? png : jpeg,
     stillType,
     stillWidth: recording.still.width,
@@ -200,13 +269,15 @@ export async function savePreview(projectDir: string, preview: EncodedPreview): 
   const folder = join(projectDir, STATE_DIR, PREVIEW_DIR)
   await mkdir(folder, { recursive: true })
   const gif = join(folder, PREVIEW_GIF)
+  const webp = join(folder, PREVIEW_WEBP)
   const image = join(folder, PREVIEW_STILLS[preview.stillType])
   await writeReplacing(gif, preview.gif)
+  await writeReplacing(webp, preview.webp)
   await writeReplacing(image, preview.still)
   for (const name of Object.values(PREVIEW_STILLS)) {
     if (name !== PREVIEW_STILLS[preview.stillType]) await rm(join(folder, name), { force: true })
   }
-  return { gif, image }
+  return { gif, image, webp }
 }
 
 async function isFile(path: string): Promise<boolean> {
@@ -221,16 +292,21 @@ async function isFile(path: string): Promise<boolean> {
 /**
  * The preview files saved in a project.
  * @param projectDir - absolute project folder.
- * @returns the GIF and the still that exist.
+ * @returns the GIF, the animation, and the still that exist.
  */
 export async function savedPreview(projectDir: string): Promise<PreviewFiles> {
   const folder = join(projectDir, STATE_DIR, PREVIEW_DIR)
   const gif = join(folder, PREVIEW_GIF)
+  const webp = join(folder, PREVIEW_WEBP)
   let image: string | undefined
   for (const name of Object.values(PREVIEW_STILLS)) {
     if (image === undefined && await isFile(join(folder, name))) image = join(folder, name)
   }
-  return { ...await isFile(gif) ? { gif } : {}, ...image === undefined ? {} : { image } }
+  return {
+    ...await isFile(gif) ? { gif } : {},
+    ...await isFile(webp) ? { webp } : {},
+    ...image === undefined ? {} : { image },
+  }
 }
 
 /**

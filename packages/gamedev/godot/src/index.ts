@@ -639,6 +639,7 @@ export default class GodotController extends TypertRemoteService {
         durationMs: request.seconds * 1000,
         frameMs: request.frameMs,
         maxWidth: request.maxWidth,
+        ...request.frameQuality === undefined ? {} : { frameQuality: request.frameQuality },
         stillWidth: request.stillWidth,
         stillAtMs: request.stillAt * 1000,
         ...delivered === undefined ? {} : { events: delivered },

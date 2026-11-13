@@ -5236,14 +5236,25 @@ export interface Config {
   previewMaxSeconds: number
   /** Milliseconds from one frame of a preview GIF to the next. */
   previewFrameMs: number
-  /** Largest width in pixels of a preview GIF. */
+  /** Largest width in pixels of a preview GIF, which link previews of a game's share link show. */
   previewWidth: number
-  /** Smallest width in pixels that a preview GIF over `previewMaxGifBytes` shrinks to before it drops frames. */
+  /** Largest width in pixels of a preview animation, the animated WebP that Explore and a game's page play. */
+  previewWebpWidth: number
+  /**
+   * Smallest width in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
+   * `previewMaxWebpBytes`, shrinks to before it drops frames.
+   */
   previewMinWidth: number
   /** Largest width in pixels of a preview still. */
   previewStillWidth: number
   /** Largest preview GIF in bytes. */
   previewMaxGifBytes: number
+  /** Largest preview animation in bytes. */
+  previewMaxWebpBytes: number
+  /** WebP quality of a preview animation, from 1 to 100. */
+  previewWebpQuality: number
+  /** JPEG quality, from 0.1 to 1, of the frames a preview recording captures; the still stays lossless. */
+  previewFrameQuality: number
   /** CPU effort of the preview GIF's palette and frame optimization, from 1 (fastest) to 10 (smallest). */
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */

@@ -29,6 +29,7 @@ interface SiteGame {
   visibility: 'public' | 'private'
   cover?: string
   gif?: string
+  webp?: string
   downloads: { platform: string; version: number; bytes: number }[]
   credits?: unknown
 }
@@ -41,6 +42,8 @@ interface SiteOptions {
   readonly refuseDownloads?: readonly string[]
   /** Answer each stored download with this status of its malware scan, as a site that scans downloads does. */
   readonly scanStatus?: string
+  /** Refuse preview GIFs. */
+  readonly refuseGif?: boolean
 }
 
 /** An in-memory WASD Engine site: the games API as releases call it, for the accounts of `tokens`. */
@@ -57,7 +60,7 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
     id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions,
     cover_url: game.cover === undefined ? null : `https://files.test/${game.cover}`,
     gif_url: game.gif === undefined ? null : `https://files.test/${game.gif}`,
-    ...options.legacy === true ? {} : { visibility: game.visibility },
+    ...options.legacy === true ? {} : { webp_url: game.webp === undefined ? null : `https://files.test/${game.webp}`, visibility: game.visibility },
   })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const fetchSite: typeof fetch = async (input, init) => {
@@ -87,7 +90,7 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
         },
       })
     }
-    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif|\/credits)?$/u.exec(url.pathname)
+    const match = /^\/api\/v1\/games(?:\/([^/]+))?(\/releases|\/cover|\/gif|\/webp|\/credits)?$/u.exec(url.pathname)
     const game = match?.[1] === undefined ? undefined : games.get(match[1])
     if (match?.[1] !== undefined && (game === undefined || game.owner !== token)) return json(404, { error: { message: 'No such game.' } })
     if (method === 'POST' && match?.[1] === undefined) {
@@ -130,7 +133,15 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
     }
     if (method === 'PUT' && game !== undefined && match?.[2] === '/gif') {
       expect(headers.get('content-type')).toBe('image/gif')
+      if (options.refuseGif === true) return json(413, { error: { message: 'A preview GIF may be at most 10 MB.' } })
       game.gif = `gif-${calls.length}.gif`
+      // As the site does: a new GIF drops the animation of the recording before it.
+      delete game.webp
+      return json(200, { game: gameJson(game) })
+    }
+    if (method === 'PUT' && game !== undefined && match?.[2] === '/webp' && options.legacy !== true) {
+      expect(headers.get('content-type')).toBe('image/webp')
+      game.webp = `webp-${calls.length}.webp`
       return json(200, { game: gameJson(game) })
     }
     return json(404, { error: { message: 'Not found' } })
@@ -480,31 +491,61 @@ describe('releaseGame', () => {
     expect(released.warnings.at(-1)).toMatch(/released, but its preview image was not stored: .*PNG, JPEG, or WebP/u)
   })
 
-  it('uploads the recorded preview, and again only once it changed or the site lost it', async () => {
+  it('uploads the recorded preview, the animation after the GIF, and again only once it changed or the site lost it', async () => {
     const dir = await project()
     const previews = join(dir, STATE_DIR, PREVIEW_DIR)
     await mkdir(previews, { recursive: true })
     await writeFile(join(previews, 'preview.gif'), 'GIF89a-one')
+    await writeFile(join(previews, 'preview.webp'), 'RIFF-one')
     await writeFile(join(previews, 'preview.png'), 'PNG-one')
     const server = site()
     const deps = dependencies(server.fetch)
     const uploads = () => server.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))
     const first = await releaseGame({ projectDir: dir }, deps, signal)
-    expect(uploads()).toEqual(['cover', 'gif'])
-    expect(server.games.get('game-1')).toMatchObject({ cover: expect.any(String) as string, gif: expect.any(String) as string })
-    const link = JSON.parse(await readFile(join(dir, STATE_DIR, LINK_FILE), 'utf8')) as { accounts: Record<string, { image?: string; gif?: string }[]> }
+    expect(uploads()).toEqual(['cover', 'gif', 'webp'])
+    expect(server.games.get('game-1')).toMatchObject({ cover: expect.any(String) as string, gif: expect.any(String) as string, webp: expect.any(String) as string })
+    const link = JSON.parse(await readFile(join(dir, STATE_DIR, LINK_FILE), 'utf8')) as { accounts: Record<string, { image?: string; gif?: string; webp?: string }[]> }
     const digest = expect.stringMatching(/^[0-9a-f]{64}$/u) as string
-    expect(link.accounts[ORIGIN]?.[0]).toMatchObject({ image: digest, gif: digest })
+    expect(link.accounts[ORIGIN]?.[0]).toMatchObject({ image: digest, gif: digest, webp: digest })
 
     const second = await releaseGame({ projectDir: dir }, deps, signal)
-    expect(uploads()).toEqual(['cover', 'gif'])
+    expect(uploads()).toEqual(['cover', 'gif', 'webp'])
     expect(second.gameUrl).toBe(first.gameUrl)
     await writeFile(join(previews, 'preview.gif'), 'GIF89a-two')
+    await writeFile(join(previews, 'preview.webp'), 'RIFF-two')
     await releaseGame({ projectDir: dir }, deps, signal)
-    expect(uploads()).toEqual(['cover', 'gif', 'gif'])
+    expect(uploads()).toEqual(['cover', 'gif', 'webp', 'gif', 'webp'])
     delete server.games.get('game-1')!.cover
+    delete server.games.get('game-1')!.webp
     await releaseGame({ projectDir: dir }, deps, signal)
-    expect(uploads()).toEqual(['cover', 'gif', 'gif', 'cover'])
+    expect(uploads()).toEqual(['cover', 'gif', 'webp', 'gif', 'webp', 'cover', 'webp'])
+  })
+
+  it('plays a GIF the release names on the site in place of the saved animation, and holds the animation back when the GIF fails', async () => {
+    const dir = await project()
+    const previews = join(dir, STATE_DIR, PREVIEW_DIR)
+    await mkdir(previews, { recursive: true })
+    await writeFile(join(previews, 'preview.gif'), 'GIF89a-recorded')
+    await writeFile(join(previews, 'preview.webp'), 'RIFF-recorded')
+    await writeFile(join(dir, 'clip.gif'), 'GIF89a-clip')
+    const server = site()
+    await releaseGame({ projectDir: dir, previewGif: join(dir, 'clip.gif') }, dependencies(server.fetch), signal)
+    expect(server.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))).toEqual(['gif'])
+    expect(server.games.get('game-1')?.webp).toBeUndefined()
+
+    const refusing = siteWith({ refuseGif: true })
+    const refused = await releaseGame({ projectDir: await project('Other') }, dependencies(refusing.fetch), signal)
+    expect(refusing.calls.filter(call => call.method === 'PUT')).toEqual([])
+    const other = await project('Third')
+    await mkdir(join(other, STATE_DIR, PREVIEW_DIR), { recursive: true })
+    await writeFile(join(other, STATE_DIR, PREVIEW_DIR, 'preview.gif'), 'GIF89a-third')
+    await writeFile(join(other, STATE_DIR, PREVIEW_DIR, 'preview.webp'), 'RIFF-third')
+    const third = await releaseGame({ projectDir: other }, dependencies(refusing.fetch), signal)
+    expect(refusing.calls.filter(call => call.method === 'PUT').map(call => call.path.split('/').at(-1))).toEqual(['gif'])
+    expect(third.warnings.filter(warning => warning.startsWith('The version is released, but its preview'))).toEqual([
+      expect.stringMatching(/^The version is released, but its preview GIF was not stored: .*at most 10 MB/u),
+    ])
+    expect(refused.warnings.some(warning => warning.includes('animation'))).toBe(false)
   })
 
   it('uploads the files a release names instead of the recorded preview, and all of them to a new game', async () => {
@@ -537,13 +578,14 @@ describe('releaseGame', () => {
         const folder = join(projectDir, STATE_DIR, PREVIEW_DIR)
         await mkdir(folder, { recursive: true })
         await writeFile(join(folder, 'preview.gif'), 'GIF89a-auto')
+        await writeFile(join(folder, 'preview.webp'), 'RIFF-auto')
         await writeFile(join(folder, 'preview.jpg'), 'JPEG-auto')
-        return { gif: join(folder, 'preview.gif'), image: join(folder, 'preview.jpg') }
+        return { gif: join(folder, 'preview.gif'), webp: join(folder, 'preview.webp'), image: join(folder, 'preview.jpg') }
       },
     }
     const first = await releaseGame({ projectDir: dir }, deps, signal)
     expect(recorded).toEqual([dir])
-    expect(server.games.get('game-1')?.gif).toBeDefined()
+    expect(server.games.get('game-1')).toMatchObject({ gif: expect.any(String) as string, webp: expect.any(String) as string })
     expect(first.warnings).toContain('The project had no preview, so the release recorded the game\'s first seconds without input. For a preview that shows gameplay, record one with wasd_record_preview before the next release.')
     await rm(join(dir, STATE_DIR, PREVIEW_DIR), { recursive: true })
     await releaseGame({ projectDir: dir }, deps, signal)
