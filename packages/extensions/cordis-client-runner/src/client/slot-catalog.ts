@@ -1243,7 +1243,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [
       'experimental-client-ui-forge WorktreeToggle id \'forge-panel.worktree\'',
       'experimental-client-ui-forge WorktreeDefault id \'forge-panel.worktree-default\'',
-      'wasd-plugins ReleaseButton id \'wasd-release\'',
+      'wasd-plugins ExportShareButton id \'wasd-export-share\'',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.hero.options\', () => ctx.slots.register(\n      { name: \'conversation.hero.options\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
@@ -2159,7 +2159,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
       'client-ui-sidebar-terminal AgentTerminalOpener id \'agent-terminals\'',
       'client-ui-subagent SubagentCatalogAction id \'subagent-catalog\'',
       'game-addons AddonsButton id \'game-addons\'',
-      'wasd-plugins ReleaseButton id \'wasd-release\'',
+      'wasd-plugins ExportShareButton id \'wasd-export-share\'',
     ],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.session.header.actions\', () => ctx.slots.register(\n      { name: \'conversation.session.header.actions\', id: \'my-entry\', order: 100, label: \'My entry\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',

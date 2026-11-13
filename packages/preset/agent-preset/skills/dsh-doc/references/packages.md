@@ -283,7 +283,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-polyhaven` | yes | Poly Haven for the agent: search CC0 HDRIs, textures, and 3D models and download them into the game project |
 | `@deepseek-ai/dsh-supercollider` | yes | Headless SuperCollider for the agent: an MCP server that designs sounds with sclang and renders them offline with scsynth |
 | `@deepseek-ai/dsh-todo-continuation` | yes | Keep the agent's turn going while the todo list it wrote in that turn has unfinished items |
-| `@deepseek-ai/dsh-wasd-plugins` | yes | WASD Engine's own features, always on: export games for the Web, record their previews, release them to WASD Engine with share links, the Release button, and Explore Games |
+| `@deepseek-ai/dsh-wasd-plugins` | yes | WASD Engine's own features, always on: export games for the Web, Windows, and macOS, record their previews, share them on WASD Engine publicly or by private link with desktop downloads, the Export / Share button, and Explore Games |
 
 ## goal
 

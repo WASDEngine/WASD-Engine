@@ -1,10 +1,11 @@
 /**
  * WASD Engine Plugins: WASD Engine's own features, which stay on in every profile (the plugin manager refuses to
- * switch this row off). It exports Godot games for the Web, records their previews, and releases them to the WASD
- * Engine site the app is signed in to, as numbered versions with share links and an animated preview, through the
- * `wasd_export_web`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's MCP
- * server. The `wasdPlugins` Remote tells the window what each project released and
- * where the site's Explore page is, for the Release button of game project Sessions and Explore Games in the sidebar.
+ * switch this row off). It exports Godot games for the Web, Windows, and macOS, records their previews, and releases
+ * them to the WASD Engine site the app is signed in to, as numbered versions with share links, an animated preview, and
+ * desktop downloads, public on the site's Explore page or private, through the `wasd_export_web`,
+ * `wasd_export_desktop`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's
+ * MCP server. The `wasdPlugins` Remote tells the window what each project released and where the site's Explore page
+ * is, for the Export / Share button of game project Sessions and Explore Games in the sidebar.
  * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
  * before its release adds to the game it shares with the folder it was copied from. Each release also uploads what the
  * game was made with: the AI models and game tools that worked on the project, which the plugin records in the
@@ -32,7 +33,7 @@ import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImage
 import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER, type ModelCredit, type ToolCredit } from './credits.ts'
 import { ReleaseFolders } from './folders.ts'
 import { encodePreview, savePreview } from './preview.ts'
-import { accountKey, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import { accountKey, DESKTOP_BUILD_DIR, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
 import type { WasdBrowserOutcome, WasdBrowserRequests, WasdProjectView, WasdSiteLinks } from './types.ts'
 
@@ -106,12 +107,12 @@ export interface Config {
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
-    /** WASD Engine's own features: Web exports, releases, and the site's links. */
+    /** WASD Engine's own features: Web and desktop exports, releases, and the site's links. */
     wasdPlugins: WasdPlugins
   }
 }
 
-/** Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Remote. */
+/** Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote. */
 export default class WasdPlugins extends TypertRemoteService {
   static inject = ['tools', 'workingDirectory', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
@@ -186,7 +187,7 @@ export default class WasdPlugins extends TypertRemoteService {
         inner.systemPrompt.section({ name: 'browser', order: inner.systemPrompt.getSectionOrder('TOOL_WEB_FETCH'), text: BROWSER_PROMPT })
       })
     }
-    // The Web export, preview, and release tools need the Godot plugin; the Browser, the Release button, and Explore
+    // The export, preview, and release tools need the Godot plugin; the Browser, the Export / Share button, and Explore
     // Games do not.
     ctx.inject(['godot', 'tools'], (scope) => {
       const record = async (agent: Agent, request: PreviewRequest, stopStarted: boolean, signal: AbortSignal) => {
@@ -216,6 +217,17 @@ export default class WasdPlugins extends TypertRemoteService {
           const outputDir = resolve(projectDir, STATE_DIR, WEB_BUILD_DIR)
           return scope.godot.exportWeb({ projectDir, outputDir }, signal)
         },
+        exportDesktop: async (projectDir, platforms, signal) => {
+          const builds = []
+          const warnings = []
+          for (const platform of platforms) {
+            const outputDir = resolve(projectDir, STATE_DIR, DESKTOP_BUILD_DIR, platform)
+            const exported = await scope.godot.exportDesktop({ projectDir, platform, outputDir }, signal)
+            builds.push({ platform, file: join(exported.outputDir, exported.entry), bytes: exported.bytes })
+            warnings.push(...exported.warnings)
+          }
+          return { projectDir, builds, warnings: [...new Set(warnings)] }
+        },
         recordPreview: async (request, exec) => {
           if (exec.agent === undefined) throw new Error('A preview recording runs the game in a Session; call it from one.')
           const agent = exec.agent
@@ -243,6 +255,9 @@ export default class WasdPlugins extends TypertRemoteService {
           return releaseGame(request, {
             access: () => this.access(),
             exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
+            exportDesktop: (projectDir, platform, outputDir, exportSignal) => {
+              return scope.godot.exportDesktop({ projectDir, platform, outputDir }, exportSignal)
+            },
             fetch: (input, init) => fetch(input, init),
             folders: this.folders,
             tempDir: tmpdir(),
@@ -276,7 +291,7 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
-   * What a project folder released, for the Release button.
+   * What a project folder released, for the Export / Share button.
    * @param projectDir - absolute folder of a game project.
    * @param signal - cancellation.
    * @returns whether it is a Godot project, the signed-in account's game on the site the app is signed in to, and

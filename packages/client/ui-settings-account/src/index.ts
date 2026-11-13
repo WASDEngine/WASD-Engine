@@ -29,6 +29,7 @@ export const Config = z.object({
   contactSource: ContactConfigFields.contactSource,
   apiKeyEntry: ContactConfigFields.apiKeyEntry,
   signInRequired: ContactConfigFields.signInRequired,
+  usageLink: ContactConfigFields.usageLink,
   version: OnboardingSettingsFields.version.volatile(),
   step: OnboardingSettingsFields.step.volatile(),
   purpose: OnboardingSettingsFields.purpose.volatile(),
@@ -50,7 +51,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('webserver/index-inject', (table) => {
     table.push({ kind: 'global', name: CONTACT_CONFIG_GLOBAL, value: {
       contactFormUrl: config.contactFormUrl, contactSource: config.contactSource,
-      apiKeyEntry: config.apiKeyEntry, signInRequired: config.signInRequired,
+      apiKeyEntry: config.apiKeyEntry, signInRequired: config.signInRequired, usageLink: config.usageLink,
     } satisfies ContactConfig })
   })
 }

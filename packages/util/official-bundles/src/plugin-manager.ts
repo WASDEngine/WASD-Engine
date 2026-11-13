@@ -1,8 +1,8 @@
 /** The package names the plugin manager protects, hides, orders, or marks experimental. */
 
 /**
- * WASDEngine fork: WASD Engine's own plugins, which stay on in every profile: WASD Engine Plugins, with the Web export
- * and release tools, the Release button, and Explore Games (wasdengine/FORK.md). They join {@link PROTECTED_PLUGINS}.
+ * WASDEngine fork: WASD Engine's own plugins, which stay on in every profile: WASD Engine Plugins, with the export and
+ * release tools, the Export / Share button, and Explore Games (wasdengine/FORK.md). They join {@link PROTECTED_PLUGINS}.
  */
 export const WASD_ENGINE_PLUGINS: ReadonlySet<string> = new Set(['@deepseek-ai/dsh-wasd-plugins'])
 

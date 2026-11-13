@@ -60,6 +60,9 @@ describe('configuration', () => {
     [{ dataRoot: '/data', runnerPath: 'godot_runner', libgodotPath: '/lib.so' }, 'runnerPath must be an absolute path'],
     [{ dataRoot: '/data', runtimeManifestUrl: 'not a url' }, 'runtimeManifestUrl must be an http or https URL'],
     [{ dataRoot: '/data', runtimeManifestUrl: 'file:///manifest.json' }, 'runtimeManifestUrl must be an http or https URL'],
+    [{ dataRoot: '/data', webTemplateArchiveUrl: 'file:///t.tpz' }, 'webTemplateArchiveUrl must be an http or https URL'],
+    [{ dataRoot: '/data', windowsTemplateArchiveUrl: 'nope' }, 'windowsTemplateArchiveUrl must be an http or https URL'],
+    [{ dataRoot: '/data', macosTemplatePath: 'macos.zip' }, 'macosTemplatePath must be an absolute path'],
   ])('fails loud for %j', (config, message) => {
     expect(() => new GodotController(new Context(), GodotController.Config(config))).toThrow(message)
   })
@@ -75,7 +78,16 @@ describe('configuration', () => {
       webTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
       webTemplateSha256: 'd3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0',
-      webTemplatePath: '', exportTimeoutMs: 600_000,
+      webTemplatePath: '',
+      windowsTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      windowsTemplateEntry: 'templates/windows_release_x86_64.exe',
+      windowsTemplateSha256: 'd34d36f3be1a6c49c56525ae86469b92e4f417ddf0b43cf00dd80c385c4b0562',
+      windowsTemplatePath: '',
+      macosTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      macosTemplateEntry: 'templates/macos.zip',
+      macosTemplateSha256: '88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792',
+      macosTemplatePath: '',
+      exportTimeoutMs: 600_000,
     })
   })
 })

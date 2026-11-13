@@ -1,11 +1,12 @@
 /**
- * The Godot Web export template: `web_nothreads_release.zip`, the single-threaded release build of the engine for the
- * browser, which Web exports pack with the project. Godot ships it only inside its export templates archive (about
- * 1.3 GB for every platform), so the manager reads that archive's ZIP directory with HTTP range requests and
- * downloads only the template entry (about 10 MB), then checks its size, CRC-32, and the SHA-256 the configuration
- * pins before it publishes `<dataRoot>/templates/<sha256>.zip` under a file lock. A configured `webTemplatePath`
- * replaces the download.
- * @module @deepseek-ai/dsh-godot/src/web-template
+ * Godot export templates: the engine builds that exports pack with a project. The Web export uses
+ * `web_nothreads_release.zip`, the single-threaded release build for the browser; desktop exports use
+ * `windows_release_x86_64.exe` and `macos.zip`. Godot ships them only inside its export templates archive (about
+ * 1.3 GB for every platform), so a manager reads that archive's ZIP directory with HTTP range requests and downloads
+ * only its template entry (about 10 MB for the Web, 38 MB for Windows, 123 MB for macOS), then checks its size, CRC-32,
+ * and the SHA-256 the configuration pins before it publishes `<dataRoot>/templates/<sha256><extension>` under a file
+ * lock. A configured path replaces the download.
+ * @module @deepseek-ai/dsh-godot/src/export-template
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
@@ -17,18 +18,24 @@ import { createInflateRaw, crc32 } from 'node:zlib'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { untilAborted } from './abort.ts'
 
-/** Template fields of the plugin configuration. */
-export interface WebTemplateSettings {
+/** One template of the plugin configuration. */
+export interface ExportTemplateSettings {
   /** Absolute plugin data folder; downloaded templates live in its `templates/` folder. */
   readonly dataRoot: string
+  /** The platform the template builds for, as messages name it: `Web`, `Windows`, or `macOS`. */
+  readonly platform: string
+  /** Prefix of the template's configuration fields, which messages name: `webTemplate`, `windowsTemplate`, or `macosTemplate`. */
+  readonly field: string
   /** Godot export templates archive (`.tpz`, a ZIP file) that holds the template. */
-  readonly webTemplateArchiveUrl: string
+  readonly archiveUrl: string
   /** Path of the template inside that archive. */
-  readonly webTemplateEntry: string
+  readonly entry: string
   /** Lowercase hex SHA-256 the extracted template must have. */
-  readonly webTemplateSha256: string
-  /** Absolute template ZIP to use instead of downloading one; empty when unset. */
-  readonly webTemplatePath: string
+  readonly sha256: string
+  /** Absolute template file to use instead of downloading one; empty when unset. */
+  readonly path: string
+  /** File name extension of the downloaded template, such as `.zip` or `.exe`. */
+  readonly extension: string
 }
 
 /**
@@ -73,37 +80,37 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-/** Resolves, and on first use downloads, the Web export template. */
-export class WebTemplateManager {
+/** Resolves, and on first use downloads, one export template. */
+export class ExportTemplateManager {
   private pending: Promise<string> | undefined
 
   /**
    * @param settings - template configuration.
    * @param fetchUrl - HTTP client; range requests go through it.
    */
-  constructor(private readonly settings: WebTemplateSettings, private readonly fetchUrl: TemplateFetch) {}
+  constructor(private readonly settings: ExportTemplateSettings, private readonly fetchUrl: TemplateFetch) {}
 
   /**
-   * The path of the downloaded Web template.
+   * The path of the downloaded template.
    * @returns where a downloaded template lives, named after its pinned SHA-256.
    */
   installedPath(): string {
-    return join(this.settings.dataRoot, 'templates', `${this.settings.webTemplateSha256}.zip`)
+    return join(this.settings.dataRoot, 'templates', `${this.settings.sha256}${this.settings.extension}`)
   }
 
   /**
-   * The template ZIP, downloading it once when neither a configured nor a downloaded one exists. Concurrent calls
+   * The template file, downloading it once when neither a configured nor a downloaded one exists. Concurrent calls
    * share one download.
    * @param signal - stops this caller's wait; a download another caller shares continues.
    * @returns the absolute template path.
    * @throws {GodotTemplateError} when the configured file is missing, or the download fails or does not match.
    */
   async resolve(signal: AbortSignal): Promise<string> {
-    if (this.settings.webTemplatePath !== '') {
-      if (!await isFile(this.settings.webTemplatePath)) {
-        throw new GodotTemplateError(`The configured Web export template ${this.settings.webTemplatePath} is not a file.`)
+    if (this.settings.path !== '') {
+      if (!await isFile(this.settings.path)) {
+        throw new GodotTemplateError(`The configured ${this.settings.platform} export template ${this.settings.path} is not a file.`)
       }
-      return this.settings.webTemplatePath
+      return this.settings.path
     }
     const installed = this.installedPath()
     if (await isFile(installed)) return installed
@@ -117,7 +124,7 @@ export class WebTemplateManager {
     await mkdir(folder, { recursive: true })
     // The download outlives any one caller; a dead connection fails it instead of hanging it.
     const signal = AbortSignal.timeout(15 * 60_000)
-    const staging = join(folder, `.download-${randomUUID()}.zip`)
+    const staging = join(folder, `.download-${randomUUID()}${this.settings.extension}`)
     try {
       await this.download(staging, signal)
       await withFileLock(destination, async () => {
@@ -135,7 +142,7 @@ export class WebTemplateManager {
    * suffix range (`bytes=-N`) with 501, so the archive's size comes from a first one-byte range.
    */
   private async range(start: number, end: number, signal: AbortSignal): Promise<{ readonly response: Response; readonly total: number }> {
-    const url = this.settings.webTemplateArchiveUrl
+    const url = this.settings.archiveUrl
     let response: Response
     try {
       response = await this.fetchUrl(url, { headers: { range: `bytes=${start}-${end}` }, signal })
@@ -146,7 +153,7 @@ export class WebTemplateManager {
     if (response.status !== 206) {
       await response.body?.cancel()
       throw new GodotTemplateError(response.ok
-        ? `The server of ${url} does not answer range requests, so only the Web template cannot be downloaded. Extract ${this.settings.webTemplateEntry} from the archive and set webTemplatePath in the Godot plugin configuration.`
+        ? `The server of ${url} does not answer range requests, so only the ${this.settings.platform} template cannot be downloaded. Extract ${this.settings.entry} from the archive and set ${this.settings.field}Path in the Godot plugin configuration.`
         : `Downloading the Godot export templates from ${url} failed with HTTP ${response.status}.`)
     }
     const total = Number(/\/(\d+)$/u.exec(response.headers.get('content-range') ?? '')?.[1])
@@ -194,8 +201,8 @@ export class WebTemplateManager {
       const extraLength = directory.readUInt16LE(position + 30)
       const commentLength = directory.readUInt16LE(position + 32)
       const name = directory.toString('utf8', position + 46, position + 46 + nameLength)
-      if (name === this.settings.webTemplateEntry) {
-        if (directory.readUInt32LE(position + 42) === 0xffffffff) throw new GodotTemplateError('The Godot export templates archive stores the Web template past 4 GB, which needs ZIP64 entry support.')
+      if (name === this.settings.entry) {
+        if (directory.readUInt32LE(position + 42) === 0xffffffff) throw new GodotTemplateError(`The Godot export templates archive stores the ${this.settings.platform} template past 4 GB, which needs ZIP64 entry support.`)
         return {
           method: directory.readUInt16LE(position + 10),
           crc: directory.readUInt32LE(position + 16),
@@ -206,12 +213,12 @@ export class WebTemplateManager {
       }
       position += 46 + nameLength + extraLength + commentLength
     }
-    throw new GodotTemplateError(`The Godot export templates archive has no ${this.settings.webTemplateEntry}.`)
+    throw new GodotTemplateError(`The Godot export templates archive has no ${this.settings.entry}.`)
   }
 
   private async download(destination: string, signal: AbortSignal): Promise<void> {
     const entry = await this.findEntry(signal)
-    if (entry.method !== 0 && entry.method !== 8) throw new GodotTemplateError(`${this.settings.webTemplateEntry} uses a ZIP compression method other than store or deflate.`)
+    if (entry.method !== 0 && entry.method !== 8) throw new GodotTemplateError(`${this.settings.entry} uses a ZIP compression method other than store or deflate.`)
     const header = await this.bytes(entry.localHeaderOffset, entry.localHeaderOffset + 29, signal)
     if (header.readUInt32LE(0) !== LOCAL_HEADER) throw new GodotTemplateError('The Godot export templates archive has a damaged entry header.')
     const dataStart = entry.localHeaderOffset + 30 + header.readUInt16LE(26) + header.readUInt16LE(28)
@@ -220,11 +227,12 @@ export class WebTemplateManager {
     const digest = createHash('sha256')
     let checksum = 0
     let size = 0
+    const platform = this.settings.platform
     const check = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         size += chunk.length
         if (size > entry.size) {
-          callback(new GodotTemplateError(`${entry.size} bytes were expected of the Web export template, and more arrived.`))
+          callback(new GodotTemplateError(`${entry.size} bytes were expected of the ${platform} export template, and more arrived.`))
           return
         }
         digest.update(chunk)
@@ -235,9 +243,9 @@ export class WebTemplateManager {
     const sink = createWriteStream(destination, { flags: 'wx', mode: 0o644 })
     if (entry.method === 8) await pipeline(response.body, createInflateRaw(), check, sink, { signal })
     else await pipeline(response.body, check, sink, { signal })
-    if (size !== entry.size || checksum >>> 0 !== entry.crc) throw new GodotTemplateError('The downloaded Web export template is damaged.')
-    if (digest.digest('hex') !== this.settings.webTemplateSha256) {
-      throw new GodotTemplateError('The downloaded Web export template does not match the SHA-256 the Godot plugin configuration pins; set webTemplateSha256 for the configured runtime version.')
+    if (size !== entry.size || checksum >>> 0 !== entry.crc) throw new GodotTemplateError(`The downloaded ${platform} export template is damaged.`)
+    if (digest.digest('hex') !== this.settings.sha256) {
+      throw new GodotTemplateError(`The downloaded ${platform} export template does not match the SHA-256 the Godot plugin configuration pins; set ${this.settings.field}Sha256 for the configured runtime version.`)
     }
   }
 }

@@ -1,11 +1,11 @@
-/** The Web template download reads only the template entry of the export templates archive and checks it. */
+/** A template download reads only the template's entry of the export templates archive and checks it. */
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync, crc32 } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
-import { GodotTemplateError, WebTemplateManager, type TemplateFetch, type WebTemplateSettings } from '../src/web-template.ts'
+import { ExportTemplateManager, GodotTemplateError, type ExportTemplateSettings, type TemplateFetch } from '../src/export-template.ts'
 
 const ENTRY = 'templates/web_nothreads_release.zip'
 const TEMPLATE = Buffer.from('PK fake web template '.repeat(400))
@@ -81,19 +81,19 @@ afterEach(async () => {
   await Promise.all(folders.splice(0).map(folder => rm(folder, { recursive: true, force: true })))
 })
 
-async function settings(overrides: Partial<WebTemplateSettings> = {}): Promise<WebTemplateSettings> {
+async function settings(overrides: Partial<ExportTemplateSettings> = {}): Promise<ExportTemplateSettings> {
   const dataRoot = await mkdtemp(join(tmpdir(), 'dsh-godot-template-'))
   folders.push(dataRoot)
-  return { dataRoot, webTemplateArchiveUrl: URL_, webTemplateEntry: ENTRY, webTemplateSha256: SHA256, webTemplatePath: '', ...overrides }
+  return { dataRoot, platform: 'Web', field: 'webTemplate', archiveUrl: URL_, entry: ENTRY, sha256: SHA256, path: '', extension: '.zip', ...overrides }
 }
 
 const signal = new AbortController().signal
 
-describe('WebTemplateManager', () => {
+describe('ExportTemplateManager', () => {
   it('downloads only the template entry, publishes it once, and reuses it', async () => {
     const body = archive({ 'templates/version.txt': Buffer.from('4.7.2.stable'), [ENTRY]: TEMPLATE, 'templates/linux_release.x86_64': randomBytes(400_000) })
     const server = rangeServer(body)
-    const manager = new WebTemplateManager(await settings(), server.fetch)
+    const manager = new ExportTemplateManager(await settings(), server.fetch)
     const [first, second] = await Promise.all([manager.resolve(signal), manager.resolve(signal)])
     expect(first).toBe(second)
     expect(first).toBe(manager.installedPath())
@@ -105,17 +105,17 @@ describe('WebTemplateManager', () => {
   })
 
   it('refuses a template whose SHA-256 differs from the pinned one', async () => {
-    const manager = new WebTemplateManager(await settings({ webTemplateSha256: '0'.repeat(64) }), rangeServer(archive({ [ENTRY]: TEMPLATE })).fetch)
-    await expect(manager.resolve(signal)).rejects.toThrow(/does not match the SHA-256/u)
+    const manager = new ExportTemplateManager(await settings({ sha256: '0'.repeat(64) }), rangeServer(archive({ [ENTRY]: TEMPLATE })).fetch)
+    await expect(manager.resolve(signal)).rejects.toThrow(/Web export template does not match the SHA-256[\s\S]*webTemplateSha256/u)
   })
 
   it('explains a server without range requests instead of downloading the whole archive', async () => {
-    const manager = new WebTemplateManager(await settings(), rangeServer(archive({ [ENTRY]: TEMPLATE }), { ranges: false }).fetch)
+    const manager = new ExportTemplateManager(await settings(), rangeServer(archive({ [ENTRY]: TEMPLATE }), { ranges: false }).fetch)
     await expect(manager.resolve(signal)).rejects.toThrow(/does not answer range requests[\s\S]*webTemplatePath/u)
   })
 
   it('reports an archive without the template', async () => {
-    const manager = new WebTemplateManager(await settings(), rangeServer(archive({ 'templates/version.txt': Buffer.from('x') })).fetch)
+    const manager = new ExportTemplateManager(await settings(), rangeServer(archive({ 'templates/version.txt': Buffer.from('x') })).fetch)
     const failure = manager.resolve(signal)
     await expect(failure).rejects.toBeInstanceOf(GodotTemplateError)
     await expect(failure).rejects.toThrow(/has no templates\/web_nothreads_release\.zip/u)
@@ -126,8 +126,25 @@ describe('WebTemplateManager', () => {
     const path = join(base.dataRoot, 'mine.zip')
     await writeFile(path, 'zip')
     const server = rangeServer(Buffer.alloc(0))
-    expect(await new WebTemplateManager({ ...base, webTemplatePath: path }, server.fetch).resolve(signal)).toBe(path)
+    expect(await new ExportTemplateManager({ ...base, path }, server.fetch).resolve(signal)).toBe(path)
     expect(server.requests).toBe(0)
-    await expect(new WebTemplateManager({ ...base, webTemplatePath: join(base.dataRoot, 'missing.zip') }, server.fetch).resolve(signal)).rejects.toThrow(/is not a file/u)
+    await expect(new ExportTemplateManager({ ...base, path: join(base.dataRoot, 'missing.zip') }, server.fetch).resolve(signal)).rejects.toThrow(/is not a file/u)
+  })
+
+  it('names a desktop template after its own SHA-256 and extension, and its own fields in messages', async () => {
+    const exe = Buffer.from('MZ fake windows template '.repeat(300))
+    const entry = 'templates/windows_release_x86_64.exe'
+    const sha256 = createHash('sha256').update(exe).digest('hex')
+    const body = archive({ [ENTRY]: TEMPLATE, [entry]: exe })
+    const windows = await settings({ platform: 'Windows', field: 'windowsTemplate', entry, sha256, extension: '.exe' })
+    const manager = new ExportTemplateManager(windows, rangeServer(body).fetch)
+    const path = await manager.resolve(signal)
+    expect(path).toBe(join(windows.dataRoot, 'templates', `${sha256}.exe`))
+    expect(await readFile(path)).toEqual(exe)
+    const refused = new ExportTemplateManager({ ...windows, sha256: '1'.repeat(64) }, rangeServer(body).fetch)
+    await expect(refused.resolve(signal)).rejects.toThrow(/Windows export template does not match[\s\S]*windowsTemplateSha256/u)
+    // Another data folder has no template yet, so it asks the server, which answers without ranges.
+    const elsewhere = new ExportTemplateManager({ ...windows, dataRoot: join(windows.dataRoot, 'other') }, rangeServer(body, { ranges: false }).fetch)
+    await expect(elsewhere.resolve(signal)).rejects.toThrow(/only the Windows template[\s\S]*windowsTemplatePath/u)
   })
 })

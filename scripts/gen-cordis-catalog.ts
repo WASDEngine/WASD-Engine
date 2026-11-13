@@ -861,6 +861,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   AudioReveal: 'gamedev.md',
   GodotWebExport: 'gamedev.md',
   GodotWebExportRequest: 'gamedev.md',
+  GodotDesktopExport: 'gamedev.md',
+  GodotDesktopExportRequest: 'gamedev.md',
   GodotRecordRequest: 'gamedev.md',
   GodotRecording: 'gamedev.md',
   GameMcpToolResult: 'gamedev.md',

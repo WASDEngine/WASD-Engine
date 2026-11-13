@@ -515,6 +515,26 @@ posix('godot_check', () => {
     for (const index of starts) expect(log[index + 1]).toEqual({ imported: true })
   }, PROCESSES_TIMEOUT)
 
+  it('exports a project for Windows and macOS with their configured templates, one export at a time', async () => {
+    // The fake export does not read the templates, so any existing file stands in for them.
+    const template = fileURLToPath(import.meta.url)
+    const c = await setup({
+      game: { export: { files: { 'Fake game.zip': 'zip' } } },
+      config: { windowsTemplatePath: template, macosTemplatePath: template },
+    })
+    const signal = new AbortController().signal
+    const [windows, macos] = await Promise.all([
+      c.godot.exportDesktop({ projectDir: c.project, platform: 'windows', outputDir: join(c.dir.root, 'windows') }, signal),
+      c.godot.exportDesktop({ projectDir: c.project, platform: 'macos', outputDir: join(c.dir.root, 'macos') }, signal),
+    ])
+    expect([windows.entry, windows.platform, macos.entry, macos.platform]).toEqual(['Fake game.zip', 'windows', 'Fake game.zip', 'macos'])
+    const log = await fakeLog(c.project)
+    expect(log.flatMap(entry => entry.preset === undefined ? [] : [entry.preset]).sort()).toEqual(['WASD Engine Windows', 'WASD Engine macOS'])
+    const starts = log.flatMap((entry, index) => (entry.argv as string[] | undefined)?.includes('--export-release') === true ? [index] : [])
+    // The second export starts after the first one ended.
+    expect(log.slice(starts[0], starts[1]).some(entry => entry.exported === true)).toBe(true)
+  }, PROCESSES_TIMEOUT)
+
   it('imports a project for a check before or after a Web export of it, never during one', async () => {
     const files = Object.fromEntries(['index.html', 'index.js', 'index.wasm', 'index.pck'].map(name => [name, name]))
     // The fake export does not read the template, so any existing file stands in for it.

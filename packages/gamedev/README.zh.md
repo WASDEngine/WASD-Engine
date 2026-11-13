@@ -42,7 +42,7 @@ kind: "package-group"
 | [`ui-game-audio/`](ui-game-audio/README.zh.md) | 右侧栏的「音频」标签页：按文件夹分组并显示时长地列出项目的音效、对白和音乐，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，播放时提供可拖动的波形、无缝循环、音量，以及格式、响度和峰值等详细信息；也负责 `audio_review` 背后的解码与测量 |
 | [`ui-game-mcp/`](ui-game-mcp/README.zh.md) | MCP 服务器的浏览器部分：登录后的「使用其他智能体设置」，作为桌面引导的最后一步与设置中的「其他智能体」分区，包含智能体标志、设置提示词与是否已有智能体连接，以及窗口打开已连接智能体启动游戏所在的会话 |
 | [`ui-game-tools/`](ui-game-tools/README.zh.md) | 「设置 › 内置插件」与「插件」页面上的「游戏工具」标签页：列出 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Poly Haven 与 SuperCollider 及其标志与 Loader 状态，并在「插件」页面为每个工具提供开关，在 profile patch 中关闭或开启其所在行 |
-| [`wasd-plugins/`](wasd-plugins/README.zh.md) | WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 MCP 服务器都提供的 Web 导出与发布工具，它们把 Godot 游戏作为带分享链接的编号版本发布到 WASD Engine 网站；桌面应用中智能体的 `browser_*` 工具，在右侧边栏的浏览器中搜索和浏览；会话标题栏与新会话页面上的“发布”按钮；以及侧边栏中的“探索游戏” |
+| [`wasd-plugins/`](wasd-plugins/README.zh.md) | WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 MCP 服务器都提供的 Web 与桌面版导出及发布工具，它们把 Godot 游戏作为带分享链接的编号版本发布到 WASD Engine 网站，可公开在探索页上或设为私密，并可附带 Windows 与 macOS 下载；桌面应用中智能体的 `browser_*` 工具，在右侧边栏的浏览器中搜索和浏览；会话标题栏与新会话页面上的“导出 / 分享”按钮；以及侧边栏中的“探索游戏” |
 
 -----
 

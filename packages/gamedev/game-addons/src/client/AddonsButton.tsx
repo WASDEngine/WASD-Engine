@@ -1,5 +1,5 @@
 /**
- * The Session header's Add-ons button, after the Release button: it opens a dialog that lists the curated Godot and
+ * The Session header's Add-ons button, after the Export / Share button: it opens a dialog that lists the curated Godot and
  * Blender add-ons with what each does, when it helps, its license, and whether the Session's game project has it, and
  * installs or removes one at the user's click. An installed add-on's guide reaches the Session's agent as a skill.
  * It shows only for a Session in a Workspace.
