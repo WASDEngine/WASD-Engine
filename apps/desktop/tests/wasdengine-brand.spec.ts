@@ -5,8 +5,9 @@
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { AppInfo, Packager } from 'app-builder-lib'
 import sharp from 'sharp'
 import { describe, expect, it, vi } from 'vitest'
@@ -16,7 +17,9 @@ import { unpackIco, TRAY_ICON_SIZES } from '../scripts/render-tray-icon.ts'
 import { readInstallerLocales } from '../scripts/installer-locales.mjs'
 import { applyWasdengineBrand, brandInstallerLocales, wasdengineBrandFile } from '../scripts/wasdengine-builder-config.mjs'
 import {
-  WASDENGINE_HOME_ATLAS, WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, renderWasdengineHomeAtlas,
+  WASDENGINE_HOME_ATLAS, WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, WASDENGINE_INSTALLER_ART,
+  WASDENGINE_INSTALLER_ART_DIRECTORY, WASDENGINE_INSTALLER_LAYOUT, WASDENGINE_LOGO_FILE, renderWasdengineHomeAtlas,
+  renderWasdengineInstallerArt, type WasdengineInstallerArtFile,
 } from '../scripts/wasdengine-render-icons.ts'
 import { de, en, es, fr, ja, pt, resolveDesktopLocale, ru, zh } from '../src/locale.ts'
 import { WASDENGINE_DESKTOP_BRAND as BRAND, WASDENGINE_DESKTOP_COPY, brandDesktopDictionaries } from '../src/wasdengine-brand.ts'
@@ -86,6 +89,8 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(config.extraMetadata).toMatchObject({ productName: BRAND.productName, author: { name: BRAND.publisher } })
     // The packaged npm name names the updater cache and the second folder the Windows uninstaller deletes.
     expect(config.extraMetadata.name).toBe(BRAND.packageName)
+    // Upstream's description, which describes the Electron shell for developers, would name the Windows installer in Task Manager.
+    expect(config.extraMetadata.description).toBe(BRAND.productName)
     expect(config.mac.extendInfo.NSMicrophoneUsageDescription).toBe(BRAND.microphoneUsage)
     expect(config.mac.icon).toBe(wasdengineBrandFile(BRAND.icons.macOS))
     expect(config.win.icon).toBe(wasdengineBrandFile(BRAND.icons.windows))
@@ -101,6 +106,8 @@ describe('WASDEngine Desktop packaging identity', () => {
     const appInfo = new AppInfo(packager, undefined)
     expect(appInfo.productFilename).toBe(BRAND.productName)
     expect(appInfo.companyName).toBe(BRAND.publisher)
+    // electron-builder's NSIS target writes it as the installer's FileDescription and the shortcuts' description.
+    expect(appInfo.description).toBe(BRAND.productName)
     expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} ${BRAND.productName}`)
     expect(appInfo.macBundleIdentifier).toBe(BRAND.appId)
     // Upstream's name would make both folders a stock DeepSeek Harness install's.
@@ -187,6 +194,54 @@ describe('WASDEngine Desktop packaging identity', () => {
     expect(locales.find(locale => locale.id === 'en_US')?.strings.INSTALLER_RUNNING).toBe(`${BRAND.productName} is running. Quit it from the system tray and try again.`)
     const builder = readFileSync(new URL('../scripts/electron-builder-config.mjs', import.meta.url), 'utf8')
     expect(builder).toContain('renderInstallerStrings(brandInstallerLocales(readInstallerLocales()))')
+  })
+
+  it('ships current Windows installer art of the WASD Engine icon and wordmark', async () => {
+    // prepare-windows-installer.ps1 converts exactly these files; the installer pages and the uninstaller embed the bitmaps.
+    const prepare = readFileSync(new URL('../scripts/prepare-windows-installer.ps1', import.meta.url), 'utf8')
+    expect(prepare).toContain("foreach ($asset in @('brand', 'brand-2x', 'brand-dark', 'brand-dark-2x', 'uninstaller-sidebar'))")
+    expect(Object.keys(WASDENGINE_INSTALLER_ART)).toEqual(['brand.png', 'brand-2x.png', 'brand-dark.png', 'brand-dark-2x.png', 'uninstaller-sidebar.png'])
+    const theme = readFileSync(new URL('../installer/theme.nsh', import.meta.url), 'utf8')
+    expect(theme).toContain(`!define INSTALLER_WINDOW_SIZE ${String(WASDENGINE_INSTALLER_LAYOUT.banner.width)}\n`)
+    expect(theme).toContain(`!define INSTALLER_BRAND_HEIGHT ${String(WASDENGINE_INSTALLER_LAYOUT.banner.height)}\n`)
+    const icon = readFileSync(wasdengineBrandFile(BRAND.icons.windows.replace(/\.png$/u, '.svg')))
+    const logo = readFileSync(WASDENGINE_LOGO_FILE)
+    for (const [file, { kind, scale }] of Object.entries(WASDENGINE_INSTALLER_ART)) {
+      const committed = join(WASDENGINE_INSTALLER_ART_DIRECTORY, file)
+      const { width, height } = WASDENGINE_INSTALLER_LAYOUT[kind]
+      const { channels } = await sharp(committed).metadata()
+      expect([...pngSize(readFileSync(committed)), channels], file).toEqual([width * scale, height * scale, kind === 'banner' ? 4 : 3])
+      const fresh = await sharp(await renderWasdengineInstallerArt(file as WasdengineInstallerArtFile, icon, logo)).raw().toBuffer()
+      const shipped = await sharp(committed).raw().toBuffer()
+      let drift = 0
+      for (let index = 0; index < fresh.length; index += 1) drift += Math.abs(fresh[index]! - shipped[index]!)
+      // One level of mean drift allows rasterizer differences between platforms.
+      expect(drift / fresh.length, file).toBeLessThan(1)
+    }
+  })
+
+  it('refuses a logo whose wordmark the installer art cannot read', async () => {
+    const icon = readFileSync(wasdengineBrandFile(BRAND.icons.windows.replace(/\.png$/u, '.svg')))
+    const logo = readFileSync(WASDENGINE_LOGO_FILE, 'utf8')
+    await expect(renderWasdengineInstallerArt('brand.png', icon, Buffer.from(logo.replaceAll('var(--wasdengine-wordmark)', '#17181D'))))
+      .rejects.toThrow('the logo needs one path filled with --wasdengine-wordmark')
+    const relative = logo.replace(/<path d="M([^"]+)" fill="var\(--wasdengine-wordmark\)"/u, '<path d="m$1" fill="var(--wasdengine-wordmark)"')
+    expect(relative).not.toBe(logo)
+    await expect(renderWasdengineInstallerArt('brand.png', icon, Buffer.from(relative))).rejects.toThrow('the wordmark path uses m;')
+  })
+
+  it('names WASD Engine in the installer update windows and extraction failure report', () => {
+    const source = (file: string): string => readFileSync(new URL(`../installer/${file}`, import.meta.url), 'utf8')
+    expect(source('restart-banner.h')).toContain(`    SetWindowTextW(title, L"${BRAND.productName}");\n`)
+    expect(source('restart-status.h')).toContain(`    SetWindowTextW(window, L"${BRAND.productName}");\n`)
+    expect(source('extract-report.h')).toContain(`    std::wstring report = L"${BRAND.productName} installer: extraction failed\\r\\n";\n`)
+    // brandInstallerLocales names WASD Engine in the locale files while packaging; no other installer source names DeepSeek Harness.
+    const native = readdirSync(new URL('../installer/', import.meta.url)).filter(file => /\.(?:cpp|h|nsh)$/u.test(file))
+    expect(native.length).toBeGreaterThan(10)
+    for (const file of native) expect(source(file), file).not.toContain('DeepSeek Harness')
+    for (const file of readdirSync(new URL('../scripts/', import.meta.url)).filter(file => file.endsWith('.nsh'))) {
+      expect(readFileSync(new URL(`../scripts/${file}`, import.meta.url), 'utf8'), file).not.toContain('DeepSeek Harness')
+    }
   })
 
   it('publishes updates from a WASDEngine repository on GitHub', () => {

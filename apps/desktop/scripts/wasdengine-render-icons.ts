@@ -1,12 +1,14 @@
 /**
  * Render the WASDEngine Desktop icons from their vector sources beside them in `wasdengine/`,
- * and the blank-home animation atlas from the keycaps of the Windows icon source.
+ * the blank-home animation atlas from the keycaps of the Windows icon source, and the Windows
+ * installer art from the Windows icon source and the first-run logo.
  *
  * The 1024 px application icons are rasterized from `icon-macos.svg` and `icon-windows.svg`,
  * and the multi-size Windows tray icon from the `tray-glyph` group of `icon-windows.svg`
  * with the upstream tray renderer. The home atlas replaces the frame atlas that the
  * `ui-brand-official` frame layer plays on a blank-home click: A, S, and D rise from below and W
  * drops in from above, W, A, S, D, and W press in turn, and the keycaps leave the way they came.
+ * The installer art replaces upstream's DeepSeek whale and wordmark in `installer/assets/`.
  * The Web install icons render from `icon-windows.svg` through
  * `apps/web/scripts/wasdengine-app-icons.ts`. The PNG, ICO, and WebP files are committed outputs;
  * rerun `pnpm exec tsx scripts/wasdengine-render-icons.ts` in `apps/desktop` after changing a source.
@@ -29,6 +31,41 @@ export const WASDENGINE_HOME_ATLAS = { width: 192, height: 108, columns: 12, fra
 /** The frame atlas the `ui-brand-official` home frame layer imports. */
 export const WASDENGINE_HOME_ATLAS_FILE = fileURLToPath(
   new URL('../../../packages/client/ui-brand-official/src/client/assets/breach-atlas.webp', import.meta.url))
+
+/** The first-run window's WASD Engine logo, whose wordmark path and theme colors the installer banner draws. */
+export const WASDENGINE_LOGO_FILE = fileURLToPath(new URL('../renderer/assets/welcome-brand.svg', import.meta.url))
+
+/**
+ * Directory of the Windows installer art, whose PNG files `prepare-windows-installer.ps1` flattens onto the page color
+ * into the installer's bitmaps.
+ */
+export const WASDENGINE_INSTALLER_ART_DIRECTORY = fileURLToPath(new URL('../installer/assets/', import.meta.url))
+
+/**
+ * The installer art files, which replace upstream's DeepSeek whale and wordmark: the banner that every installer page
+ * draws in its brand slot, at 1x and 2x, with the wordmark in the color of the light or dark theme on a transparent
+ * background, and the sidebar of the uninstaller's welcome and finish pages.
+ */
+export const WASDENGINE_INSTALLER_ART = {
+  'brand.png': { kind: 'banner', scale: 1, theme: 'light' },
+  'brand-2x.png': { kind: 'banner', scale: 2, theme: 'light' },
+  'brand-dark.png': { kind: 'banner', scale: 1, theme: 'dark' },
+  'brand-dark-2x.png': { kind: 'banner', scale: 2, theme: 'dark' },
+  'uninstaller-sidebar.png': { kind: 'sidebar', scale: 1, theme: 'light' },
+} as const
+
+/** File name of one installer art file. */
+export type WasdengineInstallerArtFile = keyof typeof WASDENGINE_INSTALLER_ART
+
+/**
+ * Installer art layout in 1x pixels. The banner fills the 600 x 196 slot of `installer/theme.nsh`; the icon, whose
+ * source insets its tile by 4 px of 128, puts the tile where upstream's 120 px badge was, and the wordmark takes
+ * upstream's wordmark line. The sidebar keeps upstream's gray page and badge position.
+ */
+export const WASDENGINE_INSTALLER_LAYOUT = {
+  banner: { width: 600, height: 196, icon: { left: 236, top: 12, size: 128 }, wordmark: { top: 165, height: 19 } },
+  sidebar: { width: 164, height: 314, background: '#F3F4F6', icon: { left: 18, top: 85, size: 128 } },
+} as const
 
 /**
  * Atlas cells per icon-source unit, the source point drawn at the frame anchor (the outlined keycap cluster centre), and
@@ -187,6 +224,72 @@ export async function renderWasdengineHomeAtlas(svg: Buffer): Promise<Buffer> {
     .webp({ lossless: true }).toBuffer()
 }
 
+/** The logo's wordmark: its path data, the extent of the path's points, and its light and dark theme colors. */
+interface LogoWordmark {
+  readonly path: string
+  readonly box: { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+  readonly colors: { readonly light: string; readonly dark: string }
+}
+
+function logoWordmark(logo: string): LogoWordmark {
+  const path = /<path d="([^"]+)" fill="var\(--wasdengine-wordmark\)"/u.exec(logo)?.[1]
+  const colors = [...logo.matchAll(/--wasdengine-wordmark: (#[\dA-F]{6});/giu)].map(([, color]) => color!)
+  if (path === undefined || colors.length !== 2) {
+    throw new Error('installer art: the logo needs one path filled with --wasdengine-wordmark and that variable\'s light and dark colors')
+  }
+  // A quadratic segment lies within the hull of its points, and the glyph outlines put a point at each extreme.
+  const xs: number[] = []
+  const ys: number[] = []
+  for (const [, command, operands] of path.matchAll(/([A-Za-z])([^A-Za-z]*)/gu)) {
+    const values = (operands!.match(/-?(?:\d+(?:\.\d*)?|\.\d+)/gu) ?? []).map(Number)
+    if (command === 'H') xs.push(...values)
+    else if (command === 'V') ys.push(...values)
+    else if (command === 'M' || command === 'L' || command === 'Q') values.forEach((value, index) => (index % 2 === 0 ? xs : ys).push(value))
+    else if (command !== 'Z') throw new Error(`installer art: the wordmark path uses ${command!}; only the absolute M, L, H, V, Q, and Z commands are read`)
+  }
+  const x = Math.min(...xs)
+  const y = Math.min(...ys)
+  return { path, box: { x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y }, colors: { light: colors[0]!, dark: colors[1]! } }
+}
+
+/** The application icon at `size` pixels, downscaled from its {@link WASDENGINE_ICON_EDGE} px rendering. */
+async function iconTile(icon: Buffer, size: number): Promise<Buffer> {
+  return sharp(await renderWasdengineIcon(icon)).resize(size, size).png().toBuffer()
+}
+
+/**
+ * Render one Windows installer art file of {@link WASDENGINE_INSTALLER_ART} with {@link WASDENGINE_INSTALLER_LAYOUT}:
+ * a banner draws the icon above the logo's wordmark, which is scaled to the layout's height and centered, and the
+ * sidebar draws the icon on its page color.
+ * @param file - Installer art file name.
+ * @param icon - `icon-windows.svg`.
+ * @param logo - {@link WASDENGINE_LOGO_FILE}: the wordmark is its one path filled with `var(--wasdengine-wordmark)`,
+ * drawn with absolute M, L, H, V, Q, and Z commands, and the variable's first and second values are the light and dark colors.
+ * @returns PNG bytes: RGBA for a banner, RGB for the sidebar.
+ * @throws when the logo lacks the wordmark path or its two colors, or the path uses another command.
+ */
+export async function renderWasdengineInstallerArt(file: WasdengineInstallerArtFile, icon: Buffer, logo: Buffer): Promise<Buffer> {
+  const { kind, scale, theme } = WASDENGINE_INSTALLER_ART[file]
+  if (kind === 'sidebar') {
+    const { width, height, background, icon: place } = WASDENGINE_INSTALLER_LAYOUT.sidebar
+    const page = await sharp({ create: { width, height, channels: 3, background } })
+      .composite([{ input: await iconTile(icon, place.size), left: place.left, top: place.top }]).png().toBuffer()
+    return sharp(page).removeAlpha().png({ compressionLevel: 9 }).toBuffer()
+  }
+  const { width, height, icon: place, wordmark: line } = WASDENGINE_INSTALLER_LAYOUT.banner
+  const { path, box, colors } = logoWordmark(logo.toString('utf8'))
+  const textHeight = line.height * scale
+  const textWidth = Math.round(textHeight * box.width / box.height)
+  const text = `<svg xmlns="http://www.w3.org/2000/svg" width="${String(textWidth)}" height="${String(textHeight)}"`
+    + ` viewBox="${String(box.x)} ${String(box.y)} ${String(box.width)} ${String(box.height)}"><path d="${path}" fill="${colors[theme]}"/></svg>`
+  return sharp({ create: { width: width * scale, height: height * scale, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([
+      { input: await iconTile(icon, place.size * scale), left: place.left * scale, top: place.top * scale },
+      { input: Buffer.from(text), left: Math.round((width * scale - textWidth) / 2), top: line.top * scale },
+    ])
+    .png({ compressionLevel: 9 }).toBuffer()
+}
+
 async function main(): Promise<void> {
   const { macOS, windows, tray } = WASDENGINE_DESKTOP_BRAND.icons
   const source = (icon: string): Promise<Buffer> => readFile(wasdengineBrandFile(icon.replace(/\.png$/u, '.svg')))
@@ -194,7 +297,13 @@ async function main(): Promise<void> {
   await writeFile(wasdengineBrandFile(windows), await renderWasdengineIcon(await source(windows)))
   await writeFile(wasdengineBrandFile(tray), packIco(await renderTrayIconEntries(await source(windows))))
   await writeFile(WASDENGINE_HOME_ATLAS_FILE, await renderWasdengineHomeAtlas(await source(windows)))
-  console.info(`wasdengine icons: wrote ${[macOS, windows, tray].join(', ')} and ${WASDENGINE_HOME_ATLAS_FILE}`)
+  const icon = await source(windows)
+  const logo = await readFile(WASDENGINE_LOGO_FILE)
+  const art = Object.keys(WASDENGINE_INSTALLER_ART) as WasdengineInstallerArtFile[]
+  for (const file of art) {
+    await writeFile(resolve(WASDENGINE_INSTALLER_ART_DIRECTORY, file), await renderWasdengineInstallerArt(file, icon, logo))
+  }
+  console.info(`wasdengine icons: wrote ${[macOS, windows, tray].join(', ')}, ${WASDENGINE_HOME_ATLAS_FILE}, and ${art.join(', ')} in ${WASDENGINE_INSTALLER_ART_DIRECTORY}`)
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()

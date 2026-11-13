@@ -8,6 +8,7 @@ export type WasdengineElectronBuilderConfig = Omit<DesktopElectronBuilderConfig,
   readonly extraMetadata: DesktopElectronBuilderConfig['extraMetadata'] & {
     readonly name: string
     readonly productName: string
+    readonly description: string
     readonly author: { readonly name: string }
   }
   readonly mac: DesktopElectronBuilderConfig['mac'] & { readonly icon: string }
@@ -85,8 +86,10 @@ export function applyWasdengineGameLayer<T extends { readonly files: readonly (s
 
 /**
  * Replace the product identity in one electron-builder configuration: the product and bundle
- * names, the packaged manifest `name`, `productName`, and `author`, the deep-link scheme, the icons,
- * the microphone prompt, and the start of the packaged file names.
+ * names, the packaged manifest `name`, `productName`, `description`, and `author`, the deep-link
+ * scheme, the icons, the microphone prompt, and the start of the packaged file names. The
+ * description is what Windows shows as the installer's file description in Task Manager and as the
+ * tooltip of the Start menu and desktop shortcuts.
  * @param config - Configuration from `createElectronBuilderConfig`.
  * @returns A new configuration that keeps every hook and packaging rule of `config`.
  * @throws When the application identifier is DeepSeek's, when the configuration embeds an update
