@@ -103,8 +103,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `macosTemplatePath` | `''` | 用来代替下载的绝对路径 macOS 模板 ZIP |
 | `exportTimeoutMs` | `600000` | 一次导出（包括它启动的资源导入）的截止时间 |
 | `webCheckCommand` | `[]` | 启动 [Web 检查](#web-check) 所用浏览器的命令行（不含其参数）：桌面应用的可执行文件，以及 Electron 默认应用运行它时的应用文件夹。游戏工具覆盖层从 `WASD_WEB_CHECK_COMMAND` 读取它，桌面应用为其 Host 设置该变量；为空时关闭 Web 检查 |
-| `webCheckSeconds` | `20` | 游戏启动后 Web 检查观察它的秒数，取值 1 到 600 |
-| `webCheckStartTimeoutMs` | `180000` | Web 检查等待游戏启动的毫秒数 |
+| `webCheckSeconds` | `20` | 游戏开始稳定绘制帧后 Web 检查观察它的秒数，取值 1 到 600 |
+| `webCheckStartTimeoutMs` | `180000` | 从打开页面起，Web 检查等待游戏启动并稳定绘制帧的毫秒数 |
 | `webCheckTimeoutMs` | `300000` | 一次 Web 检查的截止时间，包括其浏览器的启动和游戏的加载 |
 
 <a id="runtime"></a>

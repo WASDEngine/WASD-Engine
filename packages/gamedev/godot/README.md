@@ -103,8 +103,8 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `macosTemplatePath` | `''` | Absolute macOS template ZIP to use instead of the download |
 | `exportTimeoutMs` | `600000` | Deadline of one export, the asset import it starts included |
 | `webCheckCommand` | `[]` | Command line that starts the browser of [Web checks](#web-check), without its argument: the Desktop app's executable, and its application folder when Electron's default app runs it. The game tools overlay reads it from `WASD_WEB_CHECK_COMMAND`, which the Desktop app sets for its Host; empty turns Web checks off |
-| `webCheckSeconds` | `20` | Seconds a Web check watches the game after it started, from 1 to 600 |
-| `webCheckStartTimeoutMs` | `180000` | Milliseconds a Web check waits for the game to start |
+| `webCheckSeconds` | `20` | Seconds a Web check watches the game once it draws frames steadily, from 1 to 600 |
+| `webCheckStartTimeoutMs` | `180000` | Milliseconds a Web check waits, from opening the page, for the game to start and draw frames steadily |
 | `webCheckTimeoutMs` | `300000` | Deadline of one Web check, its browser's start and the game's loading included |
 
 <a id="runtime"></a>

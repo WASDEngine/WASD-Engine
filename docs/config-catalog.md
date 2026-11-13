@@ -2015,9 +2015,9 @@ export interface Config {
    * application folder when Electron runs it from one. Empty, as outside the Desktop app, turns Web checks off.
    */
   webCheckCommand: string[]
-  /** Seconds a Web check watches the game after it started. */
+  /** Seconds a Web check watches the game once it draws frames steadily. */
   webCheckSeconds: number
-  /** Milliseconds a Web check waits for the game to start. */
+  /** Milliseconds a Web check waits, from opening the page, for the game to start and draw frames steadily. */
   webCheckStartTimeoutMs: number
   /** Deadline of one Web check, its browser's start and the game's loading included, in milliseconds. */
   webCheckTimeoutMs: number
