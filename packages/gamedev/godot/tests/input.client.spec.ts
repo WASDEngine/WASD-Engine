@@ -3,8 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GodotInputEvent } from '../src/types.ts'
 import {
-  bindGameInput, godotKey, godotMouseButton, InputQueue, MAX_INPUT_EVENTS, MOUSE_MODE_CAPTURED, toGamePoint, wheelButton,
-  type GameInputTarget,
+  bindGameInput, ESCAPE_DELAY_MS, followMouseMode, godotKey, godotMouseButton, InputQueue, MAX_INPUT_EVENTS, MOUSE_MODE_CAPTURED,
+  toGamePoint, wheelButton, type GameInputTarget,
 } from '../src/client/input.ts'
 
 /** Key names of Godot's `core/os/keyboard.cpp` table that the panel may send; Godot matches them case-insensitively. */
@@ -300,6 +300,7 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLCanvasElement.prototype, 'requestPointerLock')
   document.body.replaceChildren()
   vi.restoreAllMocks()
+  vi.useRealTimers()
 })
 
 function harness(options: { focused?: boolean; send?: (events: GodotInputEvent[]) => Promise<void> } = {}): Harness {
@@ -638,26 +639,108 @@ describe('bindGameInput mouse', () => {
     h.dispose()
   })
 
-  it('lets go of the view when the user ends the pointer lock while the game still captures the mouse', () => {
+  it('gives the game the Escape that ended its pointer lock and keeps the view focused, with the free pointer off the game', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     const h = harness()
     h.target = { window: { width: 1280, height: 720 }, image: { width: 1280, height: 720 }, mouseMode: MOUSE_MODE_CAPTURED }
     mouse(h.canvas, 'mousedown', { button: 0, clientX: 200, clientY: 150 })
     mouse(window, 'mouseup', { button: 0, clientX: 200, clientY: 150 })
     lockTarget = h.canvas
     document.dispatchEvent(new Event('pointerlockchange'))
-    expect(document.activeElement).toBe(h.element)
-    // Escape: the browser ends the lock, and the game has not released the mouse.
+    // Escape: the browser keeps the key, ends the lock, and the game has not released the mouse.
     lockTarget = null
     document.dispatchEvent(new Event('pointerlockchange'))
-    expect(document.activeElement).not.toBe(h.element)
-    expect(h.releaseKeyboard).toHaveBeenCalledOnce()
-    mouse(h.element, 'mousemove', { clientX: 300, clientY: 150, movementX: 100 })
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS - 1)
     h.flush()
     expect(h.sent()).toEqual([
       { kind: 'mouse_button', button: 'left', pressed: true, x: 640, y: 360 },
       { kind: 'mouse_button', button: 'left', pressed: false, x: 640, y: 360 },
     ])
+    await vi.advanceTimersByTimeAsync(1)
+    // The game still captures the mouse, and the free pointer crosses it without moving it.
+    mouse(h.element, 'mousemove', { clientX: 300, clientY: 150, movementX: 100 })
+    h.flush()
+    expect(h.sent().slice(2)).toEqual([
+      { kind: 'key', key: 'Escape', pressed: true },
+      { kind: 'key', key: 'Escape', pressed: false },
+    ])
+    expect(document.activeElement).toBe(h.element)
+    expect(h.releaseKeyboard).not.toHaveBeenCalled()
+    mouse(h.canvas, 'mousedown', { button: 0, clientX: 300, clientY: 150 })
+    expect(requestPointerLock).toHaveBeenCalledTimes(2)
     h.dispose()
+  })
+
+  it('reads the modifiers held when a lock ends: Ctrl and Alt go with the Escape, Meta keeps it, and Shift releases the view', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const h = harness({ focused: true })
+    h.target = { window: { width: 1280, height: 720 }, image: { width: 1280, height: 720 }, mouseMode: MOUSE_MODE_CAPTURED }
+    const escapeLock = (): void => {
+      lockTarget = h.canvas
+      document.dispatchEvent(new Event('pointerlockchange'))
+      lockTarget = null
+      document.dispatchEvent(new Event('pointerlockchange'))
+    }
+    keyboard(h.element, 'keydown', { code: 'ControlLeft', key: 'Control', ctrlKey: true })
+    keyboard(h.element, 'keydown', { code: 'AltRight', key: 'Alt', ctrlKey: true, altKey: true })
+    escapeLock()
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    keyboard(h.element, 'keyup', { code: 'AltRight', key: 'Alt', ctrlKey: true })
+    keyboard(h.element, 'keyup', { code: 'ControlLeft', key: 'Control' })
+    keyboard(h.element, 'keydown', { code: 'MetaLeft', key: 'Meta', metaKey: true })
+    escapeLock()
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    keyboard(h.element, 'keyup', { code: 'MetaLeft', key: 'Meta' })
+    expect(document.activeElement).toBe(h.element)
+    keyboard(h.element, 'keydown', { code: 'ShiftRight', key: 'Shift', shiftKey: true })
+    escapeLock()
+    expect(document.activeElement).not.toBe(h.element)
+    expect(h.releaseKeyboard).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    h.flush()
+    expect(h.sent().filter(event => 'kind' in event && event.kind === 'key' && event.key === 'Escape')).toEqual([
+      { kind: 'key', key: 'Escape', pressed: true, ctrl: true, alt: true },
+      { kind: 'key', key: 'Escape', pressed: false, ctrl: true, alt: true },
+    ])
+    expect(h.sent().at(-1)).toEqual({ kind: 'key', key: 'Shift', pressed: false })
+    h.dispose()
+  })
+
+  it('sends no Escape for a lock that ends with the window’s or the view’s focus, or after the binding ends', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const h = harness({ focused: true })
+    h.target = { window: { width: 1280, height: 720 }, image: { width: 1280, height: 720 }, mouseMode: MOUSE_MODE_CAPTURED }
+    const lock = (locked: boolean): void => {
+      lockTarget = locked ? h.canvas : null
+      document.dispatchEvent(new Event('pointerlockchange'))
+    }
+    // The window lost focus before the lock change arrived.
+    const unfocusedWindow = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    lock(true)
+    lock(false)
+    unfocusedWindow.mockRestore()
+    // The window loses focus right after it, or at the last moment.
+    lock(true)
+    lock(false)
+    window.dispatchEvent(new FocusEvent('blur'))
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    lock(true)
+    lock(false)
+    const lateBlur = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    lateBlur.mockRestore()
+    // The view loses focus, which ends the lock.
+    lock(true)
+    h.element.blur()
+    lock(false)
+    h.element.focus()
+    lock(true)
+    lock(false)
+    h.dispose()
+    await vi.advanceTimersByTimeAsync(ESCAPE_DELAY_MS)
+    h.flush()
+    expect(h.sent()).toEqual([])
+    expect(exitPointerLock).toHaveBeenCalledOnce()
   })
 
   it('keeps the view focused when the game frees the mouse, and ends the lock when the view loses focus', () => {
@@ -730,6 +813,30 @@ describe('bindGameInput mouse', () => {
     expect(requestPointerLock).toHaveBeenCalledOnce()
     h.dispose()
     expect(exitPointerLock).not.toHaveBeenCalled()
+  })
+})
+
+describe('followMouseMode', () => {
+  it('locks the pointer when the game captures the mouse while the view and the window have focus, and frees it with the game', () => {
+    const element = document.createElement('div')
+    element.tabIndex = 0
+    const canvas = document.createElement('canvas')
+    element.append(canvas)
+    document.body.append(element)
+    followMouseMode(element, canvas, MOUSE_MODE_CAPTURED)
+    element.focus()
+    const unfocusedWindow = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    followMouseMode(element, canvas, MOUSE_MODE_CAPTURED)
+    unfocusedWindow.mockRestore()
+    expect(requestPointerLock).not.toHaveBeenCalled()
+    followMouseMode(element, canvas, MOUSE_MODE_CAPTURED)
+    expect(requestPointerLock).toHaveBeenCalledOnce()
+    lockTarget = canvas
+    followMouseMode(element, canvas, MOUSE_MODE_CAPTURED)
+    expect(requestPointerLock).toHaveBeenCalledOnce()
+    followMouseMode(element, canvas, 1)
+    followMouseMode(element, canvas, 0)
+    expect(exitPointerLock).toHaveBeenCalledOnce()
   })
 })
 

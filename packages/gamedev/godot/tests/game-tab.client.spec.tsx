@@ -26,6 +26,7 @@ let drawImage: ReturnType<typeof vi.fn>
 let clearRect: ReturnType<typeof vi.fn>
 let lockTarget: Element | null
 let exitPointerLock: ReturnType<typeof vi.fn>
+let requestPointerLock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   drawImage = vi.fn()
@@ -33,14 +34,17 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage, clearRect } as never)
   lockTarget = null
   exitPointerLock = vi.fn(() => { lockTarget = null })
+  requestPointerLock = vi.fn(async () => {})
   Object.defineProperty(document, 'pointerLockElement', { configurable: true, get: () => lockTarget })
   Object.defineProperty(document, 'exitPointerLock', { configurable: true, value: exitPointerLock })
+  Object.defineProperty(HTMLCanvasElement.prototype, 'requestPointerLock', { configurable: true, value: requestPointerLock })
 })
 
 afterEach(() => {
   cleanup()
   Reflect.deleteProperty(document, 'pointerLockElement')
   Reflect.deleteProperty(document, 'exitPointerLock')
+  Reflect.deleteProperty(HTMLCanvasElement.prototype, 'requestPointerLock')
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
@@ -459,15 +463,26 @@ describe('GameTab game view', () => {
     await vi.waitFor(() => { expect(h.input).toHaveBeenLastCalledWith('r1', [{ kind: 'mouse_motion', x: 320, y: 180, dx: 240, dy: 90 }]) })
   })
 
-  it('releases the pointer lock when the game frees the mouse', () => {
+  it('releases the pointer lock when the game frees the mouse, and locks it when the game captures the mouse in the focused view', () => {
     const h = tab(live(state({ run: run('r1', { mouseMode: MOUSE_MODE_CAPTURED }) })))
-    lockTarget = viewport().querySelector('canvas')
+    expect(requestPointerLock).not.toHaveBeenCalled()
+    const canvas = viewport().querySelector('canvas')
+    lockTarget = canvas
     h.set(live(state({ run: run('r1', { mouseMode: MOUSE_MODE_CAPTURED, fps: 30 }) })))
     expect(exitPointerLock).not.toHaveBeenCalled()
     h.set(live(state({ run: run('r1', { mouseMode: 0 }) })))
     expect(exitPointerLock).toHaveBeenCalledOnce()
     h.set(live(state({ run: run('r1', { mouseMode: 1 }) })))
     expect(exitPointerLock).toHaveBeenCalledOnce()
+    act(() => { viewport().focus() })
+    h.set(live(state({ run: run('r1', { mouseMode: MOUSE_MODE_CAPTURED }) })))
+    expect(requestPointerLock).toHaveBeenCalledOnce()
+    expect(requestPointerLock.mock.contexts).toEqual([canvas])
+    // A view that no longer takes input leaves the lock alone.
+    h.show(false)
+    h.set(live(state({ run: run('r1', { mouseMode: 0 }) })))
+    h.set(live(state({ run: run('r1', { mouseMode: MOUSE_MODE_CAPTURED }) })))
+    expect(requestPointerLock).toHaveBeenCalledOnce()
   })
 })
 

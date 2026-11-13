@@ -289,9 +289,18 @@ export interface GameInputOptions {
   readonly captureKeyboard: () => () => void
 }
 
-/** The chord that gives the keyboard back to the page: Shift+Escape without other modifiers, which games rarely bind. */
-function isReleaseChord(event: KeyboardEvent): boolean {
-  return event.code === 'Escape' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey
+/**
+ * Milliseconds from the end of a pointer lock that the user ended with Escape to the Escape that the view then sends the
+ * game. A switch to another window also ends the lock, and the window's loss of focus within this time cancels the key.
+ */
+export const ESCAPE_DELAY_MS = 100
+
+/** The modifier keys of an event, or the modifier keys that the view holds. */
+type ModifierState = Pick<KeyboardEvent, 'shiftKey' | 'ctrlKey' | 'altKey' | 'metaKey'>
+
+/** Whether Escape with these modifiers gives the keyboard back to the page: Shift alone, which games rarely bind with Escape. */
+function releases(state: ModifierState): boolean {
+  return state.shiftKey && !state.ctrlKey && !state.altKey && !state.metaKey
 }
 
 /**
@@ -301,13 +310,20 @@ function isReleaseChord(event: KeyboardEvent): boolean {
  * the canvas only moves the position that the next motion starts from, so the
  * pointer crosses the game without moving it. Mapped keys do not reach the
  * page, except presses with the Meta modifier, which stay with the
- * application. Shift+Escape never reaches the game: it removes focus from
- * `element`, so the keyboard and the mouse return to the page. While
- * `element` has focus, `captureKeyboard` holds the keys from application
+ * application. Escape reaches the game; Shift+Escape never does: it removes
+ * focus from `element`, so the keyboard and the mouse return to the page.
+ * While `element` has focus, `captureKeyboard` holds the keys from application
  * shortcuts. A press locks the pointer while the game captures the mouse, and
- * locked motion sends deltas; a lock that ends while the game still captures
- * the mouse, as when the user presses Escape, also removes focus from
- * `element`. Losing focus releases every held key and button and the lock.
+ * locked motion sends deltas; while the game captures the mouse without a
+ * lock, pointer motion only moves the position, as without focus. The browser
+ * keeps every Escape from the page while the pointer is locked and ends the
+ * lock instead, so a lock that ends while the game still captures the mouse,
+ * `element` keeps focus, and the window keeps focus stands for the key: after
+ * {@link ESCAPE_DELAY_MS}, unless the window has lost focus meanwhile, the
+ * game receives an Escape press and release with the Ctrl and Alt modifiers
+ * that the view holds, while held Shift alone removes focus from `element`
+ * and held Meta sends nothing. Losing focus releases every held key and
+ * button and the lock.
  * @param options - elements, game geometry, the batch sender, and the keyboard capture.
  * @returns a disposer that releases held keys, buttons, and the keyboard, sends what is queued, and detaches every listener.
  */
@@ -320,6 +336,7 @@ export function bindGameInput(options: GameInputOptions): () => void {
   let dragging = false
   let hadLock = false
   let releaseKeyboard: (() => void) | undefined
+  let cancelEscape: (() => void) | undefined
 
   const locate = (event: MouseEvent): GamePoint | undefined => {
     const target = options.target()
@@ -327,6 +344,18 @@ export function bindGameInput(options: GameInputOptions): () => void {
   }
   const locked = (): boolean => document.pointerLockElement === canvas
   const focused = (): boolean => document.activeElement === element
+  const captured = (): boolean => options.target().mouseMode === MOUSE_MODE_CAPTURED
+  const holds = (codes: Iterable<string>): boolean => [...codes].some(code => keys.has(code))
+  const heldModifiers = (): ModifierState => ({
+    shiftKey: holds(['ShiftLeft', 'ShiftRight']),
+    ctrlKey: holds(['ControlLeft', 'ControlRight']),
+    altKey: holds(['AltLeft', 'AltRight']),
+    metaKey: holds(META_CODES),
+  })
+  const dropEscape = (): void => {
+    cancelEscape?.()
+    cancelEscape = undefined
+  }
   const setDragging = (next: boolean): void => {
     if (next === dragging) return
     dragging = next
@@ -355,20 +384,41 @@ export function bindGameInput(options: GameInputOptions): () => void {
     release?.()
   }
   const blur = (): void => {
+    dropEscape()
     releaseAll()
     uncapture()
     if (locked()) document.exitPointerLock()
   }
+  const windowBlur = (): void => {
+    dropEscape()
+    releaseAll()
+  }
   const lockChange = (): void => {
     const lockedNow = locked()
-    // The game did not release the mouse, so the user or the browser ended the lock, and the pointer leaves the game.
-    if (hadLock && !lockedNow && options.target().mouseMode === MOUSE_MODE_CAPTURED) element.blur()
+    const ended = hadLock && !lockedNow
     hadLock = lockedNow
+    // A lock also ends when the game frees the mouse and when the view or the window loses focus; the user ends it with Escape.
+    if (!ended || !captured() || !focused() || !document.hasFocus()) return
+    const held = heldModifiers()
+    if (held.metaKey) return
+    if (releases(held)) {
+      element.blur()
+      return
+    }
+    dropEscape()
+    const timer = setTimeout(() => {
+      cancelEscape = undefined
+      if (!focused() || !document.hasFocus()) return
+      const at = modifiers(held)
+      queue.push({ kind: 'key', key: 'Escape', pressed: true, ...at })
+      queue.push({ kind: 'key', key: 'Escape', pressed: false, ...at })
+    }, ESCAPE_DELAY_MS)
+    cancelEscape = () => { clearTimeout(timer) }
   }
 
   const keydown = (event: KeyboardEvent): void => {
     if (event.isComposing || (event.metaKey && !META_CODES.has(event.code))) return
-    if (isReleaseChord(event)) {
+    if (event.code === 'Escape' && releases(event)) {
       event.preventDefault()
       element.blur()
       return
@@ -401,7 +451,7 @@ export function bindGameInput(options: GameInputOptions): () => void {
     const point = locate(event)
     if (button === undefined || point === undefined || !point.inside) return
     event.preventDefault()
-    if (options.target().mouseMode === MOUSE_MODE_CAPTURED && !locked()) requestLock(canvas)
+    if (captured() && !locked()) requestLock(canvas)
     if (!locked()) position = { x: point.x, y: point.y }
     buttons.add(button)
     setDragging(true)
@@ -431,7 +481,8 @@ export function bindGameInput(options: GameInputOptions): () => void {
   const hover = (event: MouseEvent): void => {
     // While a button is held, the window listener reports motion everywhere.
     if (dragging) return
-    if (focused()) {
+    // A game that captures the mouse takes pointer motion only through the lock.
+    if (focused() && (locked() || !captured())) {
       move(event)
       return
     }
@@ -458,10 +509,11 @@ export function bindGameInput(options: GameInputOptions): () => void {
   element.addEventListener('contextmenu', menu)
   element.addEventListener('focus', capture)
   element.addEventListener('blur', blur)
-  window.addEventListener('blur', releaseAll)
+  window.addEventListener('blur', windowBlur)
   document.addEventListener('pointerlockchange', lockChange)
   if (focused()) capture()
   return () => {
+    dropEscape()
     releaseAll()
     queue.close()
     uncapture()
@@ -473,13 +525,31 @@ export function bindGameInput(options: GameInputOptions): () => void {
     element.removeEventListener('contextmenu', menu)
     element.removeEventListener('focus', capture)
     element.removeEventListener('blur', blur)
-    window.removeEventListener('blur', releaseAll)
+    window.removeEventListener('blur', windowBlur)
     document.removeEventListener('pointerlockchange', lockChange)
     if (locked()) document.exitPointerLock()
   }
 }
 
-function modifiers(event: KeyboardEvent | MouseEvent): GodotInputModifiers {
+/**
+ * Make the pointer lock follow the game's mouse mode while the game view takes input: end the lock when the game frees
+ * the mouse, and lock the pointer when the game captures the mouse while `element` and the window have focus, as a
+ * game window takes the pointer. The browser refuses a lock without a recent press or key other than Escape, unless the
+ * page ended the previous lock, and for a moment after the user ended one; the next press on the canvas then locks it.
+ * @param element - the focusable game view.
+ * @param canvas - the canvas that holds the lock.
+ * @param mouseMode - the game's Godot mouse mode.
+ */
+export function followMouseMode(element: HTMLElement, canvas: HTMLCanvasElement, mouseMode: number): void {
+  const locked = document.pointerLockElement === canvas
+  if (mouseMode !== MOUSE_MODE_CAPTURED) {
+    if (locked) document.exitPointerLock()
+    return
+  }
+  if (!locked && document.activeElement === element && document.hasFocus()) requestLock(canvas)
+}
+
+function modifiers(event: ModifierState): GodotInputModifiers {
   return {
     ...event.shiftKey ? { shift: true } : {},
     ...event.ctrlKey ? { ctrl: true } : {},

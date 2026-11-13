@@ -15,7 +15,7 @@ import type {
 import type { GameFailure } from './actions.ts'
 import { decodeFrame, drawFrame, FramePresenter, nextFrame, readFrames } from './frames.ts'
 import { GameControllerIcon } from './icon.tsx'
-import { bindGameInput, MOUSE_MODE_CAPTURED, type GameInputTarget, type PixelSize } from './input.ts'
+import { bindGameInput, followMouseMode, type GameInputTarget, type PixelSize } from './input.ts'
 import type { Box, LayerPresentation } from './layer.ts'
 import type { GodotUiKey, NS } from './locales.ts'
 import { ACTIVE_PHASES, LIVE_PHASES, type GameSnapshot, type GameState } from './source.ts'
@@ -434,8 +434,8 @@ function Viewport({ run, visible, connected, input, openFrames, showLayer, holdV
   }, [streaming, input, captureKeyboard])
 
   useEffect(() => {
-    if (mouseMode !== MOUSE_MODE_CAPTURED && document.pointerLockElement === canvas.current) document.exitPointerLock()
-  }, [mouseMode])
+    if (streaming !== undefined) followMouseMode(host.current!, canvas.current!, mouseMode ?? 0)
+  }, [streaming, mouseMode])
 
   // Above a layer, which shows through a hole in the application root, the focus ring and the hints draw in a frame
   // portaled beside the root; the view keeps the hint as text for assistive technology.
