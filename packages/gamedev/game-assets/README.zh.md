@@ -55,7 +55,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 `asset_view` 按 `views` 中的方向绘制模型，每个方向是同一张图中的一格：`iso` 以透视从右前上方观察，`front`、`back`、`right`、`left`、`top` 与 `bottom` 不带透视地正对某一面（front 看 +Z 面，right 从 +X 看，top 从 +Y 向下看），便于测量比例。`shading` 为 `material`（默认）、`solid` 白模或 `wireframe` 线框；`skeleton` 在模型上叠加骨骼。给出 `animation`（动画片段名称）时，它从第一个方向绘制片段中的 `frames` 个姿势（默认 6 个，最多 16 个）；给出 `time` 时，则绘制该秒处各个方向的视图。Blender 文件会像素材标签页那样绘制由它导出的同名模型，最近的优先；没有导出模型时调用失败，并建议导出 GLB 或使用 Blender 的 `render_preview`。返回的图片为 JPEG。
 
-`asset_view` 在显示透明度的棋盘格上绘制图片：小尺寸像素画按适合 `size` 的最大整数倍放大，大于实际尺寸的图片平滑缩小；`region` 只绘制其中一个矩形，以便近看细节。`grid` 把图片读作 `columns` × `rows`（及 `count`）帧的精灵表：图片上会画出网格并标出每格编号，详细信息把它列为名为 `grid` 的动画。给出 `animation`（图片某个动画的名称）时，它按顺序绘制该动画的各帧，每帧标注序号与时长，最多 16 帧或 `frames` 帧；`fps` 设置网格或编号图片的速度。返回的图片为 PNG，像素保持精确。
+`asset_view` 在显示透明度的棋盘格上绘制图片：小尺寸像素画按适合 `size` 的最大整数倍放大，大于实际尺寸的图片平滑缩小；`region` 只绘制其中一个矩形，以便近看细节。`grid` 把图片读作 `columns` × `rows`（及 `count`）帧的精灵表：图片上会画出网格并标出每格编号，详细信息把它列为名为 `grid` 的动画。给出 `animation`（图片某个动画的名称）时，它按顺序绘制该动画的各帧，每帧标注序号与时长，最多 16 帧或 `frames` 帧；`fps` 设置网格或编号图片的速度。返回的图片为 PNG，像素保持精确。文件头所述像素超过窗口解码上限（素材标签页的 `maxDecodedPixels`，默认 8192 × 8192）的图片，会在解码之前以 `ASSET_TOO_LARGE` 失败。
 
 模型的详细信息包括格式和文件大小、尺寸与包围盒、三角形、顶点、网格与节点数，每个材质的类型、颜色、金属度、粗糙度、标志以及按槽位列出的纹理，纹理及其尺寸，骨骼树，每个动画片段的时长、轨道数与动画骨骼，每个网格的变形目标，以及模型引用但缺失的文件。图片的详细信息包括格式、文件大小、像素尺寸、透明度（无、镂空或半透明）、最多数到 256 的颜色数，以及它的 2D 动画：自身的帧（动画 GIF、WebP 或 PNG）、旁边的编号图片（`walk_01.png`、`walk_02.png` 等）、使用它的 Godot 场景与资源中的 SpriteFrames 动画和 Sprite2D 帧网格、同名精灵表 JSON 文件（Aseprite 或 TexturePacker）中的帧与标签，以及调用给出的网格，每个都附带帧数、速度与时长。详细信息最多列出 64 个动画片段或 2D 动画、32 个带变形目标的网格，以及每个网格的 64 个目标，并统计全部数量，因此文字会说明还有多少未列出。
 
@@ -73,7 +73,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节——点击展开</summary>
 
-`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 在 Host 上解析路径及其格式，用同样的遍历查找 Blender 文件的导出模型，然后带着调用方 Agent、调用的取消信号和 JSON 请求（工作区路径、类型、选项、是否绘制图片、字节与面积上限，以及答复详细信息中每个列表的最多条目数与最长名称，即 [`src/result.ts`](src/result.ts) 中的 `ANSWER_LIMITS`，窗口按其裁剪答复）发出作用域化的 waterfall 事件 `game-assets/render`。[`api-remotes`](../../api/remotes/README.zh.md) 把它转发给可以读取该会话的 owner 窗口；第一个答复胜出，无法处理的窗口（例如没有 WebGL 时遇到模型）用 `next()` 交给下一个。素材标签页的浏览器端负责答复（[`ui-game-assets`](../ui-game-assets/README.zh.md)）：它通过 `workspaceFiles` 读取文件、测量详细信息，并用标签页的 three.js 查看器在屏幕外绘制图片。请求以相对于会话头部所记录文件夹的路径给出素材（窗口按该文件夹解析会话的路径），并附带该文件以及 glTF 文件所引用的缓冲区和图片的大小，这些大小每次读取 16 个，调用结束时停止；引用超过 1,024 个文件的 glTF 文件以 `ASSET_TOO_LARGE` 失败。Host 会把窗口详细信息中提到的文件以及窗口失败消息中的路径，重新按调用方 agent 的工作目录给出。没有窗口连接到 Host 时，调用立即以 `ASSET_NO_WINDOW` 失败，因为网关会为之后连接的窗口保留该请求；已连接的窗口都无法处理时，waterfall 到达插件自己的最后一环，以同样的错误失败。窗口自身的失败，例如模型中没有调用给出的片段名称，会连同消息传给 agent。Host 先用 [`src/result.ts`](src/result.ts) 逐字段检查每个答复，再把图片存为附件或通过 MCP 发送；结果以 JSON 保留详细信息。
+`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 在 Host 上解析路径及其格式，用同样的遍历查找 Blender 文件的导出模型，然后带着调用方 Agent、调用的取消信号和 JSON 请求（工作区路径、类型、选项、是否绘制图片、字节与面积上限，以及答复详细信息中每个列表的最多条目数、最长名称、最长图片说明与最大图片或帧尺寸（像素），即 [`src/result.ts`](src/result.ts) 中的 `ANSWER_LIMITS`，窗口按其裁剪答复）发出作用域化的 waterfall 事件 `game-assets/render`。[`api-remotes`](../../api/remotes/README.zh.md) 把它转发给可以读取该会话的 owner 窗口；第一个答复胜出，无法处理的窗口（例如没有 WebGL 时遇到模型）用 `next()` 交给下一个。素材标签页的浏览器端负责答复（[`ui-game-assets`](../ui-game-assets/README.zh.md)）：它通过 `workspaceFiles` 读取文件、测量详细信息，并用标签页的 three.js 查看器在屏幕外绘制图片。请求以相对于会话头部所记录文件夹的路径给出素材（窗口按该文件夹解析会话的路径），并附带该文件以及 glTF 文件所引用的缓冲区和图片的大小，这些大小每次读取 16 个，调用结束时停止；与窗口一样，统计时不计入网址和其他 URL，也不计入走出项目文件夹的名称，因为窗口不会加载它们。引用超过 1,024 个文件的 glTF 文件，或其本身与所引用文件合计超过 `maxPreviewBytes` 的 glTF 文件，会在询问任何窗口之前以 `ASSET_TOO_LARGE` 失败。Host 会把窗口详细信息中提到的文件以及窗口失败消息中的路径，重新按调用方 agent 的工作目录给出。没有窗口连接到 Host 时，调用立即以 `ASSET_NO_WINDOW` 失败，因为网关会为之后连接的窗口保留该请求；已连接的窗口都无法处理时，waterfall 到达插件自己的最后一环，以同样的错误失败。窗口自身的失败，例如模型中没有调用给出的片段名称，会连同消息传给 agent。Host 先用 [`src/result.ts`](src/result.ts) 逐字段检查每个答复，再把图片存为附件或通过 MCP 发送；结果以 JSON 保留详细信息。
 
 格式表与 Blender 导出查找位于 [`src/formats.ts`](src/formats.ts)，以 `@deepseek-ai/dsh-game-assets/formats` 导出。插件的浏览器包不能导入其他插件的值，因此素材标签页保留一份副本，并由那里的一个测试保证两者一致。
 
@@ -145,7 +145,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 - **调用等待窗口** — 调用的 `renderTimeoutMs` 包括其请求在窗口中排在其他 agent 的图片之后等待的时间。
 - **不读取 Blender 文件** — 与素材标签页一样，Blender 文件只能通过由它导出的模型显示。
 - **一个窗口答复** — 每个可以读取该会话的 owner 窗口都会开始绘制，使用第一个答复。
-- **按名称匹配 Godot 动画** — Sprite2D 的 `frame` 轨道按节点名称匹配，超过 1 MiB 或排在前 400 个之后的 Godot 文件不会被读取。
+- **按名称匹配 Godot 动画** — 精灵节点的 `frame` 或 `frame_coords` 轨道按节点名称匹配，超过 1 MiB 或排在前 400 个之后的 Godot 文件不会被读取。
 
 <a id="dev-note"></a>
 ### 开发备注

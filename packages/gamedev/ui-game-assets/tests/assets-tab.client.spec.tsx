@@ -233,7 +233,8 @@ describe('Assets tab', () => {
     fireEvent.keyDown(search, { key: 'Enter' })
     expect(await screen.findByText('Showing archer.glb, exported from this Blender file.')).toBeTruthy()
     await waitFor(() => { expect(h.readBytes).toHaveBeenCalledWith(SESSION, 'assets/models/archer.glb', {}, expect.any(AbortSignal)) })
-    expect(await screen.findByText('Showing 3D models needs WebGL, which is off or unavailable here.')).toBeTruthy()
+    // The 3D view loads its three.js chunk first, which takes a while on a busy machine.
+    expect(await screen.findByText('Showing 3D models needs WebGL, which is off or unavailable here.', {}, { timeout: 15_000 })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open the model' }))
     expect(screen.getByRole('button', { name: /archer\.glb/u }).textContent).toBe('archer.glbassets/models')
     expect(screen.queryByText('Showing archer.glb, exported from this Blender file.')).toBeNull()

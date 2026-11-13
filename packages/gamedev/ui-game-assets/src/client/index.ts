@@ -24,7 +24,7 @@ import type { AssetGrid, AssetReveal } from '@deepseek-ai/dsh-game-assets/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
-import { answerRender, canDrawModels, type AgentRenderSources } from './agent.ts'
+import { answerRender, canDrawModels, drawWeight, HEAD_BYTES, type AgentRenderSources } from './agent.ts'
 import { MAX_TEXT_BYTES, type AnimationSources } from './animations2d.ts'
 import { AssetsTab, AssetsTabTitle, type AssetsTabInjected } from './AssetsTab.tsx'
 import { AssetsGlyph } from './icon.tsx'
@@ -32,9 +32,10 @@ import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { DrawQueue } from './queue.ts'
 import { readAsset, relatedUrl } from './read.ts'
 import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
-import { AssetsSource, freshScanMs } from './source.ts'
+import { AssetsSource } from './source.ts'
+import { ProjectWalks } from './walks.ts'
 
-export type { AssetsTabInjected, AssetsTabProps } from './AssetsTab.tsx'
+export type { AssetsTabInjected, AssetsTabProps, ViewerLimits } from './AssetsTab.tsx'
 export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from './formats.ts'
 export type { GameAssetsLocaleKey } from './locales.ts'
 export type { AssetFile, ReadBytes } from './read.ts'
@@ -67,11 +68,17 @@ export interface Config {
   maxAssets?: number
   /** Largest file the viewer reads, in bytes; a larger asset shows a notice instead. */
   maxPreviewBytes?: number
+  /**
+   * Most pixels, width times height, of an image the viewer decodes, as its header states them before any pixel is
+   * decoded; a larger image shows a notice instead, and an agent's picture of it fails.
+   */
+  maxDecodedPixels?: number
   /** Pictures this window draws at once for agents; later requests wait their turn. */
   maxAgentDraws?: number
   /**
-   * Largest total size in bytes of the assets this window draws at once for agents, as each request counts its asset;
-   * a larger asset draws alone.
+   * Largest total memory in bytes that the pictures this window draws at once for agents decode, as each request counts
+   * it: an image its file and the pixels its header states, a model its file with a glTF model's buffers and images; a
+   * larger draw draws alone.
    */
   maxAgentDrawBytes?: number
 }
@@ -81,6 +88,7 @@ export const Config: z<Config, Required<Config>> = z.object({
   maxFolders: z.natural().min(1).default(2000),
   maxAssets: z.natural().min(1).default(5000),
   maxPreviewBytes: z.natural().min(1).default(256 * 1024 * 1024),
+  maxDecodedPixels: z.natural().min(1).default(8192 * 8192),
   maxAgentDraws: z.natural().min(1).default(3),
   maxAgentDrawBytes: z.natural().min(1).default(64 * 1024 * 1024),
 })
@@ -127,40 +135,21 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     sources.set(sessionId, { source, release: () => { void dispose() } })
     return source
   }
-  // The latest project walk of each Session drawn for without an Assets tab scan, such as a teammate's or a connected
-  // agent's, which the pictures drawn for that Session share while it runs and while it stays fresh.
-  const walks = new Map<SessionId, { readonly scan: Promise<AssetScan | undefined>; expiresAt?: number }>()
+  // The project walks of the Sessions drawn for, whose Godot files an image's animations come from: the pictures drawn
+  // for an agent use only a walk that started after their request arrived, so a scene the agent just wrote is in it.
   const walking = new AbortController()
-  ctx.effect(() => () => {
-    walking.abort()
-    walks.clear()
-  }, 'ui-game-assets: agent project walks')
-  const walkOf = async (sessionId: SessionId, signal: AbortSignal): Promise<AssetScan | undefined> => {
-    signal.throwIfAborted()
-    const now = Date.now()
-    for (const [id, known] of walks) if (known.expiresAt !== undefined && now >= known.expiresAt) walks.delete(id)
-    let walk = walks.get(sessionId)
-    if (walk === undefined) {
-      const started: { readonly scan: Promise<AssetScan | undefined>; expiresAt?: number } = {
-        scan: scanAssets(listOf(sessionId), limits, walking.signal).then(
-          result => (result.ok ? result.value : undefined),
-          (error: unknown) => {
-            // The walk ended with this plugin, or a Remote call rejected for an assembly fault: no Godot files.
-            if (!walking.signal.aborted) ctx.logger.warn('ui-game-assets: a project walk for an agent failed', error)
-            return undefined
-          },
-        ).finally(() => { started.expiresAt = Date.now() + freshScanMs(Date.now() - now) }),
-      }
-      walks.set(sessionId, started)
-      walk = started
-    }
-    // The caller stops waiting when its call ends; the walk goes on for the others.
-    const waiting = Promise.withResolvers<AssetScan | undefined>()
-    const stop = (): void => { waiting.reject(signal.reason) }
-    signal.addEventListener('abort', stop, { once: true })
-    void walk.scan.then(waiting.resolve).finally(() => { signal.removeEventListener('abort', stop) })
-    return await waiting.promise
-  }
+  ctx.effect(() => () => { walking.abort() }, 'ui-game-assets: project walks')
+  const walkProject = (sessionId: string, signal: AbortSignal): Promise<AssetScan | undefined> => scanAssets(
+    listOf(brandString<SessionId>(sessionId)), limits, signal,
+  ).then(
+    result => (result.ok ? result.value : undefined),
+    (error: unknown) => {
+      // The walk ended with this plugin, or a Remote call rejected for an assembly fault: no Godot files.
+      if (!signal.aborted) ctx.logger.warn('ui-game-assets: a project walk failed', error)
+      return undefined
+    },
+  )
+  const walks = new ProjectWalks<AssetScan>(walkProject, () => Date.now(), walking.signal)
   /**
    * The reads that find an image's animations in one Session.
    * @param sessionId - the Session.
@@ -181,11 +170,19 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       return { files: scan?.godotFiles ?? [], projects: scan?.godotProjects ?? [] }
     },
   })
-  // An agent that just wrote a Godot resource looks for it, so its pictures use the tab's scan only while it is fresh.
-  const agentSources = (sessionId: SessionId): AgentRenderSources => ({
+  // An agent that just wrote a Godot resource looks for it, so its pictures use a walk that started after its request.
+  const agentSources = (sessionId: SessionId, ticket: number): AgentRenderSources => ({
     read: readOf(sessionId),
-    animations: animationSources(sessionId, async signal => sources.get(sessionId)?.source.freshScan() ?? await walkOf(sessionId, signal)),
-    relatedUrl: (base, reference) => relatedUrl(document.baseURI, base, reference),
+    async readHead(path, signal) {
+      const range = { offset: 0, length: HEAD_BYTES }
+      const head = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range }, signal).catch(() => {
+        // AbortError or an assembly fault: the draw counts the file alone, and a cancelled one ends before its turn.
+        return undefined
+      })
+      return head?.ok === true ? head.value.data : undefined
+    },
+    animations: animationSources(sessionId, signal => walks.get(sessionId, ticket, signal)),
+    relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
     viewer,
   })
   const tabFace = (scopeKey: string): AssetsTabInjected => {
@@ -203,9 +200,13 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
         ctx.logger.warn('ui-game-assets: reading an asset failed', error)
         return { ok: false, error: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}) } as const
       }),
-      relatedUrl: (base, reference) => relatedUrl(document.baseURI, base, reference),
+      relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
-      animations: animationSources(sessionId, async signal => source.scanState.getSnapshot().scan ?? await walkOf(sessionId, signal)),
+      animations: animationSources(
+        sessionId,
+        async signal => source.scanState.getSnapshot().scan ?? await walks.get(sessionId, walks.ticket(), signal),
+      ),
+      limits: { maxPreviewBytes: config.maxPreviewBytes, maxDecodedPixels: config.maxDecodedPixels },
       takeNavigation: (tabId, revision) => source.takeNavigation(tabId, revision),
     }
   }
@@ -227,12 +228,17 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   // The agent's asset tools: this window draws for the Sessions it may read, several pictures at a time in the order
   // the requests came; a window that cannot draw 3D leaves a model to another window. Once WebGL worked, it works.
   const draws = new DrawQueue(config.maxAgentDraws, config.maxAgentDrawBytes)
+  const drawLimits = { maxDecodedPixels: config.maxDecodedPixels }
   let drawsModels = false
   ctx.effect(() => ctx.remote.$on('game-assets/render', function (request, next) {
     const sessionId = ctx.sessions.scopeOf(this)
     if (sessionId === undefined || (request.kind === 'model' && !(drawsModels ||= canDrawModels()))) return next()
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
-    return draws.run(fields.bytes, signal, () => answerRender(fields, agentSources(sessionId), signal))
+    const reads = agentSources(sessionId, walks.ticket())
+    // A draw counts the memory it decodes, which an image's header gives before the draw waits for its turn.
+    return drawWeight(fields, reads, signal).then(
+      weight => draws.run(weight, signal, () => answerRender(fields, reads, drawLimits, signal)),
+    )
   }), 'ui-game-assets: draw assets for agents')
   // Only the latest reveal goes on: one that waits for its Session to come on screen stops when another arrives.
   let revealing: (() => void) | undefined

@@ -92,8 +92,10 @@ describe('Assets tab registration', () => {
   it('declares the browser services it needs and validates its caps', () => {
     expect(inject).toEqual(['slots', 'locale', 'sidebarRightTabs', 'sessions', 'remote', 'remote.workspaceFiles'])
     expect(Config({})).toEqual({
-      maxFolders: 2000, maxAssets: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxAgentDraws: 3, maxAgentDrawBytes: 64 * 1024 * 1024,
+      maxFolders: 2000, maxAssets: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxDecodedPixels: 8192 * 8192,
+      maxAgentDraws: 3, maxAgentDrawBytes: 64 * 1024 * 1024,
     })
+    expect(() => Config({ maxDecodedPixels: 0 })).toThrow()
     expect(() => Config({ maxAgentDraws: 0 })).toThrow()
     expect(() => Config({ maxAssets: 0 })).toThrow()
   })
@@ -136,7 +138,7 @@ describe('Assets tab registration', () => {
     face.select('other.png')
     expect(face.hooks.view.getSnapshot().asked).toBeUndefined()
     expect(await face.animations.files('', new AbortController().signal)).toEqual(['hero.png'])
-    expect(face.relatedUrl('/p/models/a.gltf', 'a.bin')).toBe(new URL(`api/file?path=${encodeURIComponent('/p/models/a.bin')}`, document.baseURI).href)
+    expect(face.relatedUrl('/p/models/a.gltf', 'models/a.gltf', 'a.bin')).toBe(new URL(`api/file?path=${encodeURIComponent('/p/models/a.bin')}`, document.baseURI).href)
     expect(() => f.face(GONE)).toThrow('is not retained')
     await f.scopes.get(S1)?.dispose()
     expect(f.face(S1).hooks.scan).not.toBe(face.hooks.scan)
@@ -172,7 +174,13 @@ describe('Assets tab registration', () => {
     const render = f.listeners.get('game-assets/render') as ((this: unknown, ...args: unknown[]) => Promise<unknown>) | undefined
     assert(render !== undefined)
     const reads: { path: string; release: () => void }[] = []
-    f.workspaceFiles.readBytes.mockImplementation(async (_sessionId: string, path: string) => {
+    const heads: string[] = []
+    f.workspaceFiles.readBytes.mockImplementation(async (_sessionId: string, path: string, options?: { readonly range?: unknown }) => {
+      // An image's first bytes, which size it before its draw waits for its turn, are not held.
+      if (options?.range !== undefined) {
+        heads.push(path)
+        return { ok: true as const, value: { absolutePath: `/p/${path}`, version: 'v1', bytes: 3, offset: 0, data: new Uint8Array([1, 2, 3]), eof: true } }
+      }
       const released = Promise.withResolvers<undefined>()
       reads.push({ path, release: () => { released.resolve(undefined) } })
       await released.promise
@@ -191,6 +199,7 @@ describe('Assets tab registration', () => {
       render.call('scoped', request('d.png'), next),
     ].map(answer => answer.then(() => 'drawn', (error: unknown) => (error instanceof Error ? error.message : String(error))))
     await vi.waitFor(() => { expect(reads.map(read => read.path)).toEqual(['a.png', 'b.png']) })
+    expect(heads).toEqual(['a.png', 'b.png', 'c.png', 'd.png'])
     ended.abort(new Error('the call ended'))
     for (const read of reads) read.release()
     await vi.waitFor(() => { expect(reads.map(read => read.path)).toEqual(['a.png', 'b.png', 'd.png']) })
@@ -201,42 +210,24 @@ describe('Assets tab registration', () => {
     await f.fiber.dispose()
   })
 
-  it('walks the project once for the pictures drawn together for a Session without a scan', async () => {
+  it('walks a Session\'s project for its images\' animations when it has no scan, again for each later image', async () => {
     const f = await fixture()
     const agentSession = SessionId('agent-session')
     const animations = f.face(agentSession).animations
     const signal = new AbortController().signal
     const walks = () => f.workspaceFiles.list.mock.calls.filter(([sessionId, path]) => sessionId === agentSession && path === '.').length
-    const [first, second] = await Promise.all([animations.godot(signal), animations.godot(signal)])
-    expect(first).toEqual(second)
+    expect(await animations.godot(signal)).toEqual({ files: [], projects: [] })
     expect(walks()).toBe(1)
-    // A fresh walk serves the next picture too.
-    await animations.godot(signal)
-    expect(walks()).toBe(1)
+    // The project may have changed since: a later image's animations come from a new walk.
+    f.workspaceFiles.list.mockImplementation(async (_sessionId: string, path: string) => ({
+      ok: true as const, value: { path: path === '.' ? '' : path, entries: [{ name: 'hero.tres', type: 'file' as const }], truncated: false },
+    }))
+    expect(await animations.godot(signal)).toEqual({ files: ['hero.tres'], projects: [] })
+    expect(walks()).toBe(2)
     // A caller whose call has ended does not wait.
     const ended = new AbortController()
     ended.abort(new Error('the call ended'))
     await expect(animations.godot(ended.signal)).rejects.toThrow('the call ended')
-    await f.fiber.dispose()
-  })
-
-  it('lets a caller stop waiting for a shared walk while the walk goes on for the others', async () => {
-    const f = await fixture()
-    const agentSession = SessionId('agent-session')
-    const listed = Promise.withResolvers<undefined>()
-    f.workspaceFiles.list.mockImplementation(async (_sessionId: string, path: string) => {
-      await listed.promise
-      return { ok: true as const, value: { path: path === '.' ? '' : path, entries: [{ name: 'hero.tres', type: 'file' as const }], truncated: false } }
-    })
-    const animations = f.face(agentSession).animations
-    const stopping = new AbortController()
-    const stopped = animations.godot(stopping.signal)
-    const staying = animations.godot(new AbortController().signal)
-    stopping.abort(new Error('the call ended'))
-    await expect(stopped).rejects.toThrow('the call ended')
-    listed.resolve(undefined)
-    expect(await staying).toEqual({ files: ['hero.tres'], projects: [] })
-    expect(f.workspaceFiles.list.mock.calls.filter(([sessionId]) => sessionId === agentSession)).toHaveLength(1)
     await f.fiber.dispose()
   })
 

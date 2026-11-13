@@ -67,11 +67,97 @@ export interface ModelSource {
   /**
    * The URL of a file the model names, such as a texture, a glTF buffer, or an OBJ material library.
    * @param reference - the name as the model stores it, relative to the model file.
-   * @returns the URL to load.
+   * @returns the URL to load, or undefined for a file the viewer does not load, which the model lists as missing.
    */
-  readonly related: (reference: string) => string
+  readonly related: (reference: string) => string | undefined
   /** Called when a texture that loads after the model arrives, so the stage draws it. */
   readonly changed: () => void
+  /**
+   * Largest number of bytes the model's description may size itself, beyond the files it is read from: the glTF
+   * accessors without a buffer view, which the loader fills, and the Meshopt-compressed buffer views it decodes.
+   */
+  readonly maxBytes: number
+}
+
+/** A model whose description asks for more memory than {@link ModelSource.maxBytes}. */
+export class ModelTooLargeError extends Error {
+  /**
+   * @param bytes - the bytes the description asks for.
+   * @param limit - the most the viewer sets aside.
+   */
+  constructor(readonly bytes: number, readonly limit: number) {
+    super(`the model asks for ${String(bytes)} bytes of geometry, more than the ${String(limit)} the viewer sets aside`)
+    this.name = 'ModelTooLargeError'
+  }
+}
+
+/** Components of each glTF accessor type. */
+const GLTF_COMPONENTS: Readonly<Record<string, number>> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 }
+
+/** Bytes of each glTF component type. */
+const GLTF_COMPONENT_BYTES: Readonly<Record<number, number>> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }
+
+/** The objects of one top-level glTF list. */
+function gltfEntries(json: unknown, key: string): object[] {
+  const list: unknown = typeof json === 'object' && json !== null ? Reflect.get(json, key) : undefined
+  return Array.isArray(list) ? list.filter((entry: unknown): entry is object => typeof entry === 'object' && entry !== null) : []
+}
+
+/** A count from a glTF description, or undefined when the loader would refuse it itself. */
+function gltfCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+}
+
+/**
+ * The JSON of a glTF model: the text of a `.gltf` file, or the JSON chunk of a GLB file.
+ * @param data - the model file.
+ * @returns the parsed JSON, or undefined when the file holds none, which the loader then reports.
+ */
+export function gltfJson(data: Uint8Array): unknown {
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  let text: Uint8Array = data
+  // A GLB file: the magic `glTF`, then the first chunk, which is the JSON.
+  if (data.byteLength >= 20 && view.getUint32(0, true) === 0x46546c67) {
+    const length = view.getUint32(12, true)
+    if (view.getUint32(16, true) !== 0x4e4f534a || 20 + length > data.byteLength) return undefined
+    text = data.subarray(20, 20 + length)
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(text))
+  } catch {
+    // SyntaxError: a file that is not JSON fails in the loader with its own message.
+    return undefined
+  }
+}
+
+/**
+ * The bytes the glTF loader sets aside from sizes a description gives alone, before it reads any buffer: an array of
+ * `count` items for each accessor without a buffer view, and the decoded size of each Meshopt-compressed buffer view.
+ * Sizes the loader refuses itself, such as a negative or fractional count, add nothing.
+ * @param json - the model's JSON.
+ * @returns the total in bytes.
+ */
+export function gltfDeclaredBytes(json: unknown): number {
+  let total = 0
+  for (const accessor of gltfEntries(json, 'accessors')) {
+    if (Reflect.get(accessor, 'bufferView') !== undefined) continue
+    const count = gltfCount(Reflect.get(accessor, 'count'))
+    const type: unknown = Reflect.get(accessor, 'type')
+    const componentType: unknown = Reflect.get(accessor, 'componentType')
+    const components = typeof type === 'string' && Object.hasOwn(GLTF_COMPONENTS, type) ? GLTF_COMPONENTS[type] : undefined
+    const bytes = typeof componentType === 'number' && Object.hasOwn(GLTF_COMPONENT_BYTES, componentType) ? GLTF_COMPONENT_BYTES[componentType] : undefined
+    if (count === undefined || components === undefined || bytes === undefined) continue
+    total += count * components * bytes
+  }
+  for (const bufferView of gltfEntries(json, 'bufferViews')) {
+    const extensions: unknown = Reflect.get(bufferView, 'extensions')
+    const meshopt: unknown = typeof extensions === 'object' && extensions !== null ? Reflect.get(extensions, 'EXT_meshopt_compression') : undefined
+    if (typeof meshopt !== 'object' || meshopt === null) continue
+    const count = gltfCount(Reflect.get(meshopt, 'count'))
+    const stride = gltfCount(Reflect.get(meshopt, 'byteStride'))
+    if (count !== undefined && stride !== undefined) total += count * stride
+  }
+  return total
 }
 
 /** Grid and helper line color, a gray that reads on light and dark backgrounds. */
@@ -117,12 +203,14 @@ function arrayBufferOf(bytes: Uint8Array): ArrayBuffer {
 async function objMaterials(
   library: string,
   manager: LoadingManager,
-  related: (reference: string) => string,
+  related: (reference: string) => string | undefined,
   signal: AbortSignal,
 ): Promise<MTLLoader.MaterialCreator | undefined> {
+  const url = related(library)
+  if (url === undefined) return undefined
   let response: Response
   try {
-    response = await fetch(related(library), { signal, credentials: 'same-origin' })
+    response = await fetch(url, { signal, credentials: 'same-origin' })
   } catch {
     // TypeError or AbortError: a library that cannot be fetched leaves the model untextured, and an abort ends the load
     // at its next check.
@@ -233,6 +321,46 @@ function fileName(reference: string): string {
   return normalized.slice(normalized.lastIndexOf('/') + 1)
 }
 
+/** Whether every corner of a box is a finite number. */
+function isFiniteBox(box: Box3): boolean {
+  return [box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z].every(Number.isFinite)
+}
+
+/**
+ * The world bounds of a model in its current pose, as three.js measures them precisely, leaving out vertices whose
+ * position is not a finite number and instanced meshes whose bounds are not, so that a damaged vertex leaves the
+ * rest measured.
+ * @param root - the model.
+ * @returns the bounds; empty when no vertex has a finite position.
+ */
+export function finiteBounds(root: Object3D): Box3 {
+  const bounds = new Box3()
+  const point = new Vector3()
+  const part = new Box3()
+  root.updateMatrixWorld(true)
+  root.traverse((object) => {
+    const geometry: unknown = Reflect.get(object, 'geometry')
+    if (!isGeometry(geometry)) return
+    if (!geometry.hasAttribute('position')) return
+    const position = geometry.getAttribute('position')
+    if (object instanceof InstancedMesh) {
+      // Instanced meshes are measured by their bounding box over every instance, as three.js measures them.
+      if (object.boundingBox === null) object.computeBoundingBox()
+      if (object.boundingBox === null) return
+      part.copy(object.boundingBox).applyMatrix4(object.matrixWorld)
+      if (!part.isEmpty() && isFiniteBox(part)) bounds.union(part)
+      return
+    }
+    for (let index = 0; index < position.count; index += 1) {
+      if (object instanceof Mesh) object.getVertexPosition(index, point)
+      else point.fromBufferAttribute(position, index)
+      point.applyMatrix4(object.matrixWorld)
+      if (Number.isFinite(point.x) && Number.isFinite(point.y) && Number.isFinite(point.z)) bounds.expandByPoint(point)
+    }
+  })
+  return bounds
+}
+
 /**
  * Read a model.
  * @param source - the format, the bytes, and how related files resolve.
@@ -247,8 +375,13 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
   const missing: string[] = []
   let outstanding = 0
   const settled = Promise.withResolvers<void>()
+  // A file the viewer does not load gets a `data:` URL without a comma, which fetches and images refuse without any
+  // request; each is its own URL, also beside another model's in the loaders' shared request table, so its failure
+  // names its own file.
+  const refusals = `refused-${Math.random().toString(36).slice(2)}-`
+  let refused = 0
   manager.setURLModifier((url) => {
-    const resolved = source.related(url)
+    const resolved = source.related(url) ?? `data:${refusals}${String(++refused)}`
     references.set(resolved, url)
     return resolved
   })
@@ -274,6 +407,9 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
   let animations: readonly AnimationClip[] = []
   switch (source.decoder) {
     case 'gltf': {
+      // The loader allocates these arrays from the description's sizes alone, so a small file could ask for gigabytes.
+      const declared = gltfDeclaredBytes(gltfJson(source.data))
+      if (declared > source.maxBytes) throw new ModelTooLargeError(declared, source.maxBytes)
       const gltf = await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(arrayBufferOf(source.data), '')
       root = gltf.scene
       animations = gltf.animations
@@ -377,6 +513,11 @@ function round(value: number): number {
   return Number(value.toPrecision(6))
 }
 
+/** Whether a value is a finite number, which the details can carry. */
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
 /**
  * Measure a model for its details.
  * @param model - the loaded model, in its rest pose.
@@ -386,8 +527,7 @@ function round(value: number): number {
  */
 export function describeModel(model: LoadedModel, format: string, bytes: number): ModelAssetDetails {
   const { root } = model
-  root.updateMatrixWorld(true)
-  const bounds = new Box3().setFromObject(root, true)
+  const bounds = finiteBounds(root)
   const empty = bounds.isEmpty()
   let meshes = 0
   let nodes = 0
@@ -413,7 +553,7 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
         const size = (key: 'width' | 'height'): number => {
           if (typeof image !== 'object' || image === null || !(key in image)) return 0
           const measured: unknown = Reflect.get(image, key)
-          return typeof measured === 'number' ? measured : 0
+          return isFiniteNumber(measured) && measured > 0 ? Math.round(measured) : 0
         }
         textures.set(value, { name: name === '' ? '(embedded)' : name, width: size('width'), height: size('height') })
       }
@@ -426,8 +566,8 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
         name: material.name,
         type: material.type,
         ...color instanceof Color ? { color: `#${color.getHexString()}` } : {},
-        ...typeof metalness === 'number' ? { metalness: round(metalness) } : {},
-        ...typeof roughness === 'number' ? { roughness: round(roughness) } : {},
+        ...isFiniteNumber(metalness) ? { metalness: round(metalness) } : {},
+        ...isFiniteNumber(roughness) ? { roughness: round(roughness) } : {},
         maps,
         transparent: material.transparent,
         doubleSided: material.side === DoubleSide,
@@ -449,7 +589,8 @@ export function describeModel(model: LoadedModel, format: string, bytes: number)
     }
     return {
       name: clip.name,
-      seconds: round(clip.duration),
+      // A clip whose key times are not numbers has no length to give.
+      seconds: isFiniteNumber(clip.duration) && clip.duration > 0 ? round(clip.duration) : 0,
       tracks: clip.tracks.length,
       targets: [...targets].slice(0, LISTED.targets),
       targetCount: targets.size,
@@ -675,6 +816,8 @@ export class ModelStage {
   private home: View | undefined
   /** Whether the reader moved the camera since the model was framed; until then a resize frames it again. */
   private moved = false
+  /** Whether the canvas is on screen; while it is not, the stage draws nothing. */
+  private visible = true
   private disposed = false
   private readonly clockListeners = new Set<(clock: ClipClock) => void>()
 
@@ -705,8 +848,7 @@ export class ModelStage {
     this.model = model
     this.scene.add(model.root)
     applyWireframe(model.root, this.shading === 'wireframe')
-    model.root.updateMatrixWorld(true)
-    const bounds = new Box3().setFromObject(model.root, true)
+    const bounds = finiteBounds(model.root)
     if (bounds.isEmpty()) bounds.set(new Vector3(-0.5, -0.5, -0.5), new Vector3(0.5, 0.5, 0.5))
     this.placeGrid(bounds)
     if (!keepView || this.home === undefined) this.fit(bounds)
@@ -870,15 +1012,30 @@ export class ModelStage {
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     if (!this.moved && this.model !== undefined) {
-      const bounds = new Box3().setFromObject(this.model.root, true)
+      const bounds = finiteBounds(this.model.root)
       if (!bounds.isEmpty()) this.fit(bounds)
     }
     this.requestRender()
   }
 
-  /** Draw at the next animation frame, once however often it is asked. */
+  /**
+   * Draw while the canvas is on screen, or stop drawing while it is not: a hidden stage asks for no frames, and its
+   * playing clip waits where it stands until the stage shows again.
+   * @param visible - whether the canvas is on screen.
+   */
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return
+    this.visible = visible
+    if (visible) {
+      // The time spent hidden does not move the clip.
+      this.timer.update()
+      this.requestRender()
+    }
+  }
+
+  /** Draw at the next animation frame, once however often it is asked, unless the stage is hidden. */
   requestRender(): void {
-    if (this.pending !== 0 || this.disposed) return
+    if (this.pending !== 0 || this.disposed || !this.visible) return
     this.pending = requestAnimationFrame(this.tick)
   }
 

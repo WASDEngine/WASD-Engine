@@ -3,22 +3,36 @@
  * workspace, measures its details as the Assets tab shows them, and draws the pictures the request asks for. An image
  * is drawn on a checkerboard, enlarged without smoothing when small, with a sprite sheet grid when asked, or as a sheet
  * of an animation's frames; a model is drawn with three.js off screen, one tile per view or pose. Pictures are PNG for
- * 2D art and JPEG for 3D scenes, within the request's bounds. A failure rejects with a message for the agent.
+ * 2D art and JPEG for 3D scenes, within the request's bounds. An image whose header states more pixels than the
+ * window decodes is refused before it is decoded; a picture holds no full-size copy of an image, and an animation's
+ * own frames decode one at a time, only those its sheet shows, at the size of their tile. A failure rejects with a
+ * message for the agent.
  */
 import type {
-  AssetDrawOptions, AssetRenderedImage, AssetRenderRequest, AssetRenderResult, AssetTransparency, ImageAssetDetails, SpriteAnimationDetails,
+  AssetDrawOptions, AssetRenderedImage, AssetRenderRequest, AssetRenderResult, ImageAssetDetails, SpriteAnimationDetails,
 } from '@deepseek-ai/dsh-game-assets/types'
 import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { findAnimations, type AnimationSources } from './animations2d.ts'
-import { fitDetails } from './answer.ts'
+import { fitDetails, shortened } from './answer.ts'
 import { formatOf, type AssetFormat } from './formats.ts'
-import { closeFrames, decodeOwnFrames } from './frames.ts'
+import { OwnFrames } from './frames.ts'
+import { imageSize } from './image-size.ts'
+import { checkedImageSize, DECODED_BYTES_PER_PIXEL, decodePicture, ImageTooLargeError, pixelFacts, type Decoded } from './picture.ts'
 import type { AssetFile } from './read.ts'
 import { drawImagePicture, drawSheet, encodeCanvas, pictureTile, sheetLayout, type Picture, type PictureBounds } from './render2d.ts'
 import { animationDetails, DEFAULT_FPS, gridAnimation, sampledFrames, type SpriteAnimation, type SpriteFrame } from './sprites.ts'
 
 type ViewerModule = typeof import('./viewer/index.ts')
+
+/** The first bytes of an image read to size it before its draw waits for its turn; enough for the headers of nearly every file. */
+export const HEAD_BYTES = 256 * 1024
+
+/** The window's caps on what one draw decodes. */
+export interface AgentDrawLimits {
+  /** Most pixels of an image the window decodes, as its header states them. */
+  readonly maxDecodedPixels: number
+}
 
 /** Frames a 3D clip shows when the request names none. */
 export const DEFAULT_CLIP_FRAMES = 6
@@ -28,9 +42,6 @@ export const DEFAULT_SPRITE_FRAMES = 16
 
 /** How long a model's textures may take to load before it is drawn without the late ones. */
 const TEXTURE_WAIT_MS = 20_000
-
-/** Largest image area measured pixel by pixel; larger images are measured at a smaller size. */
-const MEASURED_PIXELS = 4_000_000
 
 /** What answering a request reads and loads, bound to the calling Session. */
 export interface AgentRenderSources {
@@ -42,15 +53,23 @@ export interface AgentRenderSources {
    * @returns the file, or the Remote failure.
    */
   readonly read: (path: string, maxBytes: number, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>
+  /**
+   * Read the first bytes of a workspace file.
+   * @param path - workspace path.
+   * @param signal - cancellation.
+   * @returns up to {@link HEAD_BYTES} bytes, or undefined when the file cannot be read.
+   */
+  readonly readHead: (path: string, signal: AbortSignal) => Promise<Uint8Array | undefined>
   /** The reads that find an image's animations. */
   readonly animations: AnimationSources
   /**
-   * The URL of a file that a model names.
+   * The URL of a file that a model names, inside the project.
    * @param base - absolute path of the model file.
+   * @param path - the model's workspace path, which places the project folder in `base`.
    * @param reference - the name as the model stores it.
-   * @returns the URL.
+   * @returns the URL, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, reference: string) => string
+  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
   /** @returns the viewer's three.js chunk, loaded on first use. */
   readonly viewer: () => Promise<ViewerModule>
 }
@@ -67,83 +86,62 @@ export class AssetDrawError extends Error {
   }
 }
 
-/** A decoded picture and how to release it. */
-interface Decoded {
-  readonly picture: Picture
-  readonly close: () => void
+/**
+ * The memory a draw takes while it decodes its asset, which the window's queue counts: the file, and for an image the
+ * pixels its header states at what its decoder takes for each.
+ * @param request - the request.
+ * @param sources - the reads of the calling Session.
+ * @param signal - cancellation.
+ * @returns the bytes.
+ */
+export async function drawWeight(request: AssetRenderRequest, sources: AgentRenderSources, signal: AbortSignal): Promise<number> {
+  const format = formatOf(request.path)
+  if (format?.kind !== 'image') return request.bytes
+  const head = await sources.readHead(request.path, signal)
+  const size = head === undefined ? undefined : imageSize(head, format)
+  return request.bytes + (size === undefined ? 0 : size.width * size.height * DECODED_BYTES_PER_PIXEL[format.decoder])
 }
 
 /**
- * Decode an image file into a picture.
+ * Check an image's header against the window's caps, before any of its pixels are decoded.
+ * @param path - the image, as the agent names it.
  * @param data - the file.
  * @param format - its format.
- * @param viewer - loads the viewer chunk for TGA, HDR, and EXR.
- * @returns the picture.
- * @throws {AssetDrawError} when the file does not decode.
+ * @param request - the request, whose limits bound the size the details can give.
+ * @param limits - the window's caps.
+ * @throws {AssetDrawError} `ASSET_TOO_LARGE` for an image with more pixels than the window decodes, or a side longer
+ * than the details can give.
  */
-export async function decodePicture(
-  data: Uint8Array<ArrayBuffer>,
-  format: AssetFormat,
-  viewer: () => Promise<ViewerModule>,
-): Promise<Decoded> {
-  if (format.kind !== 'image') throw new AssetDrawError('Not an image.', 'ASSET_FORMAT')
+function checkImage(path: string, data: Uint8Array, format: AssetFormat, request: AssetRenderRequest, limits: AgentDrawLimits): void {
   try {
-    if (format.decoder !== 'browser') {
-      const bitmap = await (await viewer()).decodeImage(format.decoder, data)
-      return { picture: { source: bitmap, width: bitmap.width, height: bitmap.height }, close: () => { bitmap.close() } }
-    }
-    const blob = new Blob([data], format.mediaType === undefined ? {} : { type: format.mediaType })
-    if (format.mediaType !== 'image/svg+xml') {
-      const bitmap = await createImageBitmap(blob)
-      return { picture: { source: bitmap, width: bitmap.width, height: bitmap.height }, close: () => { bitmap.close() } }
-    }
-    // SVG decodes only through an image element.
-    const url = URL.createObjectURL(blob)
-    const image = new Image()
-    image.src = url
-    try {
-      await image.decode()
-    } finally {
-      URL.revokeObjectURL(url)
-    }
-    return { picture: { source: image, width: image.naturalWidth || 512, height: image.naturalHeight || 512 }, close: () => {} }
+    const size = checkedImageSize(data, format, limits.maxDecodedPixels)
+    if (size !== undefined) checkEdges(path, size, request)
   } catch (error) {
-    if (error instanceof AssetDrawError) throw error
-    throw new AssetDrawError(`The ${format.label} file could not be decoded: it may be damaged or use a feature the viewer does not support.`, 'ASSET_UNREADABLE')
+    if (!(error instanceof ImageTooLargeError)) throw error
+    throw new AssetDrawError(`${path} is ${error.size.width} × ${error.size.height} pixels, more than the ${error.limit} pixels this window decodes for one image.`, 'ASSET_TOO_LARGE')
   }
 }
 
 /**
- * How an image's pixels use transparency, and how many colors it has, counted up to 257.
- * @param picture - the image.
- * @returns the facts.
+ * Refuse an image whose size the details cannot give.
+ * @throws {AssetDrawError} `ASSET_TOO_LARGE` for a side longer than the request's `edge`.
  */
-export function pixelFacts(picture: Picture): { readonly transparency: AssetTransparency; readonly colors: number } {
-  const scale = Math.min(1, Math.sqrt(MEASURED_PIXELS / Math.max(1, picture.width * picture.height)))
-  const width = Math.max(1, Math.round(picture.width * scale))
-  const height = Math.max(1, Math.round(picture.height * scale))
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const context = canvas.getContext('2d', { willReadFrequently: true })
-  if (context === null) return { transparency: 'opaque', colors: 0 }
-  context.imageSmoothingEnabled = false
-  context.drawImage(picture.source, 0, 0, width, height)
-  const data = context.getImageData(0, 0, width, height).data
-  let transparent = false
-  let translucent = false
-  const colors = new Set<number>()
-  for (let offset = 0; offset < data.length; offset += 4) {
-    const alpha = data[offset + 3] ?? 255
-    if (alpha === 0) transparent = true
-    else if (alpha < 255) translucent = true
-    if (colors.size > 256) continue
-    const red = data[offset] ?? 0
-    const green = data[offset + 1] ?? 0
-    const blue = data[offset + 2] ?? 0
-    colors.add(((red << 24) | (green << 16) | (blue << 8) | alpha) >>> 0)
+function checkEdges(path: string, size: { readonly width: number; readonly height: number }, request: AssetRenderRequest): void {
+  if (size.width <= request.limits.edge && size.height <= request.limits.edge) return
+  throw new AssetDrawError(`${path} is ${size.width} × ${size.height} pixels; the viewer draws images up to ${request.limits.edge} pixels wide and tall.`, 'ASSET_TOO_LARGE')
+}
+
+/**
+ * Decode an image, or fail for the agent.
+ * @throws {AssetDrawError} `ASSET_UNREADABLE` when the file does not decode.
+ */
+async function decodeOrFail(data: Uint8Array<ArrayBuffer>, format: AssetFormat, viewer: () => Promise<ViewerModule>): Promise<Decoded> {
+  try {
+    return await decodePicture(data, format, viewer)
+  } catch {
+    // Error: the decoder's own message names nothing the agent can act on.
+    throw new AssetDrawError(`The ${format.label} file could not be decoded: it may be damaged or use a feature the viewer does not support.`, 'ASSET_UNREADABLE')
   }
-  return { transparency: translucent ? 'translucent' : transparent ? 'cutout' : 'opaque', colors: Math.min(257, colors.size) }
 }
 
 function readFailure(path: string, result: RemoteResult<AssetFile>): AssetDrawError | undefined {
@@ -163,6 +161,19 @@ async function readOrFail(sources: AgentRenderSources, path: string, maxBytes: n
 
 function seconds(value: number): string {
   return `${value.toFixed(2)} s`
+}
+
+/**
+ * A caption that names a clip or an animation, with the name shortened so that the caption fits the request's limit,
+ * which the Host checks.
+ * @param name - the clip's or animation's name.
+ * @param limit - most characters of a caption.
+ * @param build - the caption around a name.
+ * @returns the caption, at most `limit` characters long.
+ */
+export function namingCaption(name: string, limit: number, build: (name: string) => string): string {
+  const room = limit - build('').length
+  return shortened(build(name.length <= room ? name : shortened(name, Math.max(1, room))), limit)
 }
 
 /**
@@ -197,11 +208,15 @@ async function answerModel(
     model = await viewer.loadModel({
       decoder: format.decoder,
       data: file.data,
-      related: reference => sources.relatedUrl(file.absolutePath, reference),
+      related: reference => sources.relatedUrl(file.absolutePath, request.path, reference),
       changed: () => {},
+      maxBytes: request.maxBytes,
     }, signal)
   } catch (error) {
     signal.throwIfAborted()
+    if (error instanceof viewer.ModelTooLargeError) {
+      throw new AssetDrawError(`${request.path} asks for ${fileSizeText(error.bytes)} of geometry, more than the ${fileSizeText(error.limit)} the viewer sets aside for one model.`, 'ASSET_TOO_LARGE')
+    }
     throw new AssetDrawError(`${request.path} could not be read as ${format.label}: ${error instanceof Error ? error.message : String(error)}. It may be damaged or use a feature the viewer does not support.`, 'ASSET_UNREADABLE')
   }
   try {
@@ -256,11 +271,12 @@ async function answerModel(
     })), 1, bounds)
     const shading = { material: 'in its materials', solid: 'as solid clay', wireframe: 'as wireframe' }[draw.shading]
     const viewNames = `${views.join(', ')} view${views.length === 1 ? '' : 's'}`
+    const limit = request.limits.caption
     const caption = clipName === undefined
-      ? `${viewNames} ${shading}${draw.skeleton ? ' with the skeleton' : ''}`
+      ? shortened(`${viewNames} ${shading}${draw.skeleton ? ' with the skeleton' : ''}`, limit)
       : times !== undefined && times.length === 1 && draw.time !== undefined
-        ? `${viewNames} ${shading}, posed at ${seconds(times[0] ?? 0)} of ${clipName}${draw.skeleton ? ', with the skeleton' : ''}`
-        : `${times?.length ?? 0} poses of ${clipName} across its ${seconds(duration)}, ${viewNames} ${shading}${draw.skeleton ? ', with the skeleton' : ''}`
+        ? namingCaption(clipName, limit, name => `${viewNames} ${shading}, posed at ${seconds(times[0] ?? 0)} of ${name}${draw.skeleton ? ', with the skeleton' : ''}`)
+        : namingCaption(clipName, limit, name => `${times?.length ?? 0} poses of ${name} across its ${seconds(duration)}, ${viewNames} ${shading}${draw.skeleton ? ', with the skeleton' : ''}`)
     const image: AssetRenderedImage = { data: await encodeCanvas(sheet, 'image/jpeg'), mediaType: 'image/jpeg', width: sheet.width, height: sheet.height, caption }
     return { details, images: [image] }
   } finally {
@@ -268,13 +284,14 @@ async function answerModel(
   }
 }
 
-/** Decoded pictures of the frames' images, read once each. */
+/** Decoded pictures of the other images an animation's frames show, read and checked once each. */
 class FramePictures {
   private readonly decoded = new Map<string, Promise<Decoded>>()
 
   constructor(
     private readonly sources: AgentRenderSources,
-    private readonly maxBytes: number,
+    private readonly request: AssetRenderRequest,
+    private readonly limits: AgentDrawLimits,
     private readonly signal: AbortSignal,
   ) {}
 
@@ -284,7 +301,9 @@ class FramePictures {
       known = (async () => {
         const format = formatOf(path)
         if (format?.kind !== 'image') throw new AssetDrawError(`${path} is not an image.`, 'ASSET_FORMAT')
-        return await decodePicture((await readOrFail(this.sources, path, this.maxBytes, this.signal)).data, format, this.sources.viewer)
+        const file = await readOrFail(this.sources, path, this.request.maxBytes, this.signal)
+        checkImage(path, file.data, format, this.request, this.limits)
+        return await decodeOrFail(file.data, format, this.sources.viewer)
       })()
       this.decoded.set(path, known)
     }
@@ -312,18 +331,23 @@ async function answerImage(
   request: AssetRenderRequest,
   format: AssetFormat,
   sources: AgentRenderSources,
+  limits: AgentDrawLimits,
   signal: AbortSignal,
 ): Promise<AssetRenderResult> {
   if (format.kind !== 'image') throw new AssetDrawError(`${request.path} is not an image.`, 'ASSET_FORMAT')
   const file = await readOrFail(sources, request.path, request.maxBytes, signal)
-  const own = await decodePicture(file.data, format, sources.viewer)
-  const draw: AssetDrawOptions = request.draw
-  const frames = format.mediaType !== undefined
-    ? await decodeOwnFrames(file.data, format.mediaType, () => request.images && draw.animation !== undefined, signal)
-    : undefined
-  const pictures = new FramePictures(sources, request.maxBytes, signal)
+  checkImage(request.path, file.data, format, request, limits)
+  const own = await decodeOrFail(file.data, format, sources.viewer)
+  const pictures = new FramePictures(sources, request, limits, signal)
+  // The own frames that the sheet shows, each decoded at the size of its tile.
+  const drawn: ImageBitmap[] = []
+  let frames: OwnFrames | undefined
   try {
     const size = { width: own.picture.width, height: own.picture.height }
+    // An image without a header size, such as an SVG, is checked once decoded.
+    checkEdges(request.path, size, request)
+    frames = format.mediaType === undefined ? undefined : await OwnFrames.open(file.data, format.mediaType, signal)
+    const draw: AssetDrawOptions = request.draw
     const found = await findAnimations(request.path, size, frames?.durationsMs, sources.animations, signal)
     // The search treats its failed reads, cancelled ones included, as finding nothing.
     signal.throwIfAborted()
@@ -344,9 +368,10 @@ async function answerImage(
     if (!request.images) return { details, images: [] }
     const bounds: PictureBounds = { size: draw.size, maxPixels: request.maxPixels }
     if (draw.animation === undefined) {
+      // Drawn from the decoded image straight into a picture of the requested size.
       const { canvas, scale } = drawImagePicture(own.picture, bounds, draw.region, draw.grid)
       const part = draw.region === undefined ? 'the image' : `pixels (${draw.region.x}, ${draw.region.y}) to (${draw.region.x + draw.region.width}, ${draw.region.y + draw.region.height})`
-      const caption = `${part} at ${scale >= 1 ? `${scale}×` : `${Math.round(scale * 100)}%`} on a checkerboard that shows transparency${draw.grid === undefined ? '' : `, with the ${draw.grid.columns} × ${draw.grid.rows} grid and each cell's number`}`
+      const caption = shortened(`${part} at ${scale >= 1 ? `${scale}×` : `${Math.round(scale * 100)}%`} on a checkerboard that shows transparency${draw.grid === undefined ? '' : `, with the ${draw.grid.columns} × ${draw.grid.rows} grid and each cell's number`}`, request.limits.caption)
       return { details, images: [{ data: await encodeCanvas(canvas, 'image/png'), mediaType: 'image/png', width: canvas.width, height: canvas.height, caption }] }
     }
     const wanted = draw.animation
@@ -355,23 +380,27 @@ async function answerImage(
     if (animation === undefined) throw animationNotFound(request.path, wanted, animations)
     const timed = retimed(animation, draw.fps)
     const chosen = sampledFrames(timed.frames, draw.frames ?? DEFAULT_SPRITE_FRAMES)
+    // An own frame has the image's size; a frame of another image, that image's.
+    const sizeOf = async (frame: SpriteFrame): Promise<{ readonly width: number; readonly height: number }> =>
+      frame.region ?? (frame.index !== undefined || frame.path === request.path ? size : (await pictures.of(frame.path)).picture)
+    const first = chosen[0]?.frame
+    const firstSize = first === undefined ? undefined : await sizeOf(first)
+    const aspect = firstSize === undefined ? 1 : firstSize.width / Math.max(1, firstSize.height)
+    const layout = sheetLayout(chosen.length, aspect, bounds)
     const tiles = []
     for (const { frame, index } of chosen) {
-      const picture = await framePicture(frame, request.path, own.picture, frames?.bitmaps, pictures)
+      const picture = await framePicture(frame, request.path, own.picture, size, frames, pictures, layout, drawn)
       tiles.push(pictureTile(picture, frame.region, `${index} · ${Math.round(frame.durationMs)} ms`))
     }
-    const first = chosen[0]?.frame
-    const firstSize = first === undefined
-      ? undefined
-      : first.region ?? await framePicture(first, request.path, own.picture, frames?.bitmaps, pictures)
-    const aspect = firstSize === undefined ? 1 : firstSize.width / Math.max(1, firstSize.height)
     const sheet = drawSheet(tiles, aspect, bounds)
     const detail = animationDetails(timed, imageSize)
-    const caption = `${chosen.length === timed.frames.length ? `all ${chosen.length}` : `${chosen.length} of ${timed.frames.length}`} frames of ${timed.name} in order, each labeled with its index and duration (${detail.fps} fps)`
+    const counted = chosen.length === timed.frames.length ? `all ${chosen.length}` : `${chosen.length} of ${timed.frames.length}`
+    const caption = namingCaption(timed.name, request.limits.caption, name => `${counted} frames of ${name} in order, each labeled with its index and duration (${detail.fps} fps)`)
     return { details, images: [{ data: await encodeCanvas(sheet, 'image/png'), mediaType: 'image/png', width: sheet.width, height: sheet.height, caption }] }
   } finally {
     own.close()
-    if (frames !== undefined) closeFrames(frames)
+    for (const bitmap of drawn) bitmap.close()
+    frames?.close()
     await pictures.close()
   }
 }
@@ -382,17 +411,33 @@ function retimed(animation: SpriteAnimation, fps: number | undefined): SpriteAni
   return { ...animation, frames: animation.frames.map(frame => ({ ...frame, durationMs: 1000 / fps })) }
 }
 
+/**
+ * The picture one frame of a sheet shows. One of the image's own frames is decoded now, at most the size of its tile,
+ * and kept in `drawn` until the sheet is drawn; never the first frame in its place.
+ * @throws {AssetDrawError} `ASSET_UNREADABLE` when an own frame does not decode.
+ */
 async function framePicture(
   frame: SpriteFrame,
   path: string,
   own: Picture,
-  ownFrames: ReadonlyMap<number, ImageBitmap> | undefined,
+  size: { readonly width: number; readonly height: number },
+  ownFrames: OwnFrames | undefined,
   pictures: FramePictures,
+  layout: { readonly tileWidth: number; readonly tileHeight: number },
+  drawn: ImageBitmap[],
 ): Promise<Picture> {
   if (frame.index !== undefined) {
-    const bitmap = ownFrames?.get(frame.index)
-    if (bitmap !== undefined) return { source: bitmap, width: bitmap.width, height: bitmap.height }
-    return own
+    const fit = Math.min(1, layout.tileWidth / size.width, layout.tileHeight / size.height)
+    let bitmap: ImageBitmap
+    try {
+      if (ownFrames === undefined) throw new Error('no frames')
+      bitmap = await ownFrames.bitmap(frame.index, fit < 1 ? { width: size.width * fit, height: size.height * fit } : undefined)
+    } catch {
+      // EncodingError or a closed decoder: the frame cannot be shown, and no other frame is shown in its place.
+      throw new AssetDrawError(`Frame ${frame.index} of ${path} could not be decoded.`, 'ASSET_UNREADABLE')
+    }
+    drawn.push(bitmap)
+    return { source: bitmap, width: bitmap.width, height: bitmap.height }
   }
   if (frame.path === path) return own
   return (await pictures.of(frame.path)).picture
@@ -402,6 +447,7 @@ async function framePicture(
  * Answer one render request.
  * @param request - the asset and what to draw.
  * @param sources - reads and loads bound to the calling Session.
+ * @param limits - the window's caps on what one draw decodes.
  * @param signal - the request's cancellation.
  * @returns the details, fitted to the request's limits, and pictures.
  * @throws {AssetDrawError} for a failure the agent reads.
@@ -409,6 +455,7 @@ async function framePicture(
 export async function answerRender(
   request: AssetRenderRequest,
   sources: AgentRenderSources,
+  limits: AgentDrawLimits,
   signal: AbortSignal,
 ): Promise<AssetRenderResult> {
   // A request cancelled while it waited behind another draws nothing.
@@ -417,7 +464,7 @@ export async function answerRender(
   if (format === undefined) throw new AssetDrawError(`${request.path} is not an asset the viewer reads.`, 'ASSET_FORMAT')
   const answer = format.kind === 'model'
     ? await answerModel(request, format, sources, signal)
-    : await answerImage(request, format, sources, signal)
+    : await answerImage(request, format, sources, limits, signal)
   return { ...answer, details: fitDetails(answer.details, request.limits) }
 }
 

@@ -121,15 +121,6 @@ export class AssetsSource {
   }
 
   /**
-   * The latest scan while it is fresh, by {@link FRESH_SCAN_MS} or ten times its duration.
-   * @returns the scan, or undefined when there is none or it is older.
-   */
-  freshScan(): AssetScan | undefined {
-    const { scan, settledAt } = this.scanState.getSnapshot()
-    return settledAt !== undefined && this.now() - settledAt < freshScanMs(this.lastDuration) ? scan : undefined
-  }
-
-  /**
    * Select an asset.
    * @param path - workspace path of the asset, or undefined to clear the selection.
    * @param ask - the clip or 2D animation to play and the grid to read an image as, when the viewer shows it.

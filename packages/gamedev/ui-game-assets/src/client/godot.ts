@@ -1,9 +1,11 @@
 /**
  * The 2D animations that Godot scenes and resources define over an image: SpriteFrames animations (in a `.tres` file
  * or embedded in a `.tscn` scene, as AnimatedSprite2D uses them), whose frames are whole textures or AtlasTexture
- * regions, and Sprite2D frame grids (`hframes` × `vframes`), animated by the `frame` tracks of an AnimationPlayer's
- * animations or, without any, played cell by cell. The text resource format of Godot 4 (`format=3`) and Godot 3
- * (`format=2`) is parsed here: section headers, `key = value` properties, and the variant syntax of their values.
+ * regions, and the frame grids (`hframes` × `vframes`) of Sprite2D nodes and Godot 3's Sprite nodes, over the whole
+ * texture or over its region when `region_enabled` is on, animated by the `frame` and `frame_coords` tracks of an
+ * AnimationPlayer's animations or, without any, played cell by cell. The text resource format of Godot 4 (`format=3`)
+ * and Godot 3 (`format=2`) is parsed here: section headers, `key = value` properties, and the variant syntax of their
+ * values.
  */
 
 /** One parsed variant value. Dictionaries keep their keys as text; constructor calls keep their arguments. */
@@ -31,14 +33,24 @@ export interface PixelRect {
   readonly height: number
 }
 
+/** One cell of a sprite's frame grid, which the texture's size turns into a region. */
+export interface GodotCell {
+  /** The cell's number, left to right, then top to bottom. */
+  readonly index: number
+  readonly columns: number
+  readonly rows: number
+  /** The part of the texture the grid divides when the sprite's region is on; the whole texture otherwise. */
+  readonly region?: PixelRect
+}
+
 /** One frame of a Godot 2D animation: a texture, a region of it, and how long it shows. */
 export interface GodotFrame {
   /** `res://` path of the texture. */
   readonly texture: string
   /** The region of the texture, or undefined for the whole texture. */
   readonly region?: PixelRect
-  /** The cell of a Sprite2D frame grid, which the image's size turns into a region. */
-  readonly cell?: { readonly index: number; readonly columns: number; readonly rows: number }
+  /** The cell of a sprite's frame grid. */
+  readonly cell?: GodotCell
   readonly seconds: number
 }
 
@@ -383,14 +395,21 @@ function spriteFramesAnimations(section: GodotSection, file: Resolved): GodotAni
   return animations
 }
 
-/** One `frame` track of an animation: the node it moves and its keys. */
+/** The column and row of a frame grid's cell. */
+interface CellCoords {
+  readonly column: number
+  readonly row: number
+}
+
+/** One `frame` or `frame_coords` track of an animation: the node it moves and its keys. */
 interface FrameTrack {
   readonly node: string
   readonly times: readonly number[]
-  readonly values: readonly number[]
+  /** Each key's cell: its number for a `frame` track, its column and row for a `frame_coords` track. */
+  readonly values: readonly (number | CellCoords)[]
 }
 
-/** An Animation sub-resource's name, length, loop, and `frame` tracks. */
+/** An Animation sub-resource's name, length, loop, and frame tracks. */
 interface FrameAnimation {
   readonly name: string | undefined
   readonly length: number
@@ -398,7 +417,19 @@ interface FrameAnimation {
   readonly tracks: readonly FrameTrack[]
 }
 
-/** The `frame` tracks of an Animation sub-resource, with its length and loop. */
+/** The cells a `frame_coords` track's `Vector2i` (Godot 4) or `Vector2` (Godot 3) keys name, or none when one is not. */
+function coordsOf(value: GodotValue | undefined): CellCoords[] {
+  const coords: CellCoords[] = []
+  for (const item of listOf(value) ?? []) {
+    if (!isCall(item, 'Vector2i') && !isCall(item, 'Vector2')) return []
+    const [column, row] = item.args.map(arg => numberOf(arg, Number.NaN))
+    if (column === undefined || row === undefined || !Number.isFinite(column) || !Number.isFinite(row)) return []
+    coords.push({ column, row })
+  }
+  return coords
+}
+
+/** The `frame` and `frame_coords` tracks of an Animation sub-resource, with its length and loop. */
 function frameTracks(section: GodotSection): FrameAnimation {
   const tracks: FrameTrack[] = []
   for (let index = 0; ; index += 1) {
@@ -406,11 +437,12 @@ function frameTracks(section: GodotSection): FrameAnimation {
     if (path === undefined) break
     const target = isCall(path, 'NodePath') && typeof path.args[0] === 'string' ? path.args[0] : typeof path === 'string' ? path : ''
     const colon = target.lastIndexOf(':')
-    if (colon < 0 || target.slice(colon + 1) !== 'frame') continue
+    const property = colon < 0 ? '' : target.slice(colon + 1)
+    if (property !== 'frame' && property !== 'frame_coords') continue
     const keys = section.properties.get(`tracks/${index}/keys`)
     if (!isDict(keys)) continue
     const times = numbersOf(keys.entries.get('times'))
-    const values = numbersOf(keys.entries.get('values'))
+    const values = property === 'frame' ? numbersOf(keys.entries.get('values')) : coordsOf(keys.entries.get('values'))
     if (times.length === 0 || times.length !== values.length) continue
     const node = target.slice(0, colon)
     tracks.push({ node: node.slice(node.lastIndexOf('/') + 1), times, values })
@@ -439,10 +471,36 @@ function libraryNames(file: Resolved): Map<string, string> {
   return names
 }
 
+/** Node types whose texture a frame grid divides: Godot 4's Sprite2D and Godot 3's Sprite. */
+const SPRITE_TYPES: ReadonlySet<GodotValue | undefined> = new Set(['Sprite2D', 'Sprite'])
+
+/** A sprite node's frame grid. */
+interface SpriteGrid {
+  readonly texture: string
+  readonly columns: number
+  readonly rows: number
+  /** The region the grid divides, when the sprite's region is on. */
+  readonly region?: PixelRect
+}
+
+/**
+ * The cell a key of a frame track shows, kept inside the grid as Godot keeps a sprite's frame.
+ * @param grid - the sprite's grid.
+ * @param value - the key: a cell number, or a column and row.
+ * @returns the cell.
+ */
+function cellOf(grid: SpriteGrid, value: number | CellCoords): GodotCell {
+  const clamp = (number: number, count: number): number => Math.max(0, Math.min(count - 1, Math.round(number)))
+  const index = typeof value === 'number'
+    ? clamp(value, grid.columns * grid.rows)
+    : clamp(value.row, grid.rows) * grid.columns + clamp(value.column, grid.columns)
+  return { index, columns: grid.columns, rows: grid.rows, ...grid.region === undefined ? {} : { region: grid.region } }
+}
+
 /**
  * The 2D animations one Godot scene or resource defines.
  * @param text - the `.tscn` or `.tres` file.
- * @returns its SpriteFrames animations and Sprite2D grid animations, with `res://` texture paths.
+ * @returns its SpriteFrames animations and sprite grid animations, with `res://` texture paths.
  * @throws {GodotParseError} when the text is not in Godot's text resource format.
  */
 export function godotAnimations(text: string): GodotAnimation[] {
@@ -454,16 +512,17 @@ export function godotAnimations(text: string): GodotAnimation[] {
       || (section.tag === 'resource' && sections[0]?.attributes.get('type') === 'SpriteFrames')
     if (isFrames) animations.push(...spriteFramesAnimations(section, file))
   }
-  // Sprite2D nodes that slice their texture into a grid, by node name.
-  const grids = new Map<string, { readonly texture: string; readonly columns: number; readonly rows: number }>()
+  // Sprite nodes that slice their texture, or its region, into a grid, by node name.
+  const grids = new Map<string, SpriteGrid>()
   for (const section of sections) {
-    if (section.tag !== 'node' || section.attributes.get('type') !== 'Sprite2D') continue
+    if (section.tag !== 'node' || !SPRITE_TYPES.has(section.attributes.get('type'))) continue
     const columns = Math.max(1, Math.floor(numberOf(section.properties.get('hframes'), 1)))
     const rows = Math.max(1, Math.floor(numberOf(section.properties.get('vframes'), 1)))
     const texture = file.external.get(referenceId(section.properties.get('texture'), 'ExtResource') ?? '')
     const name = section.attributes.get('name')
     if (texture === undefined || typeof name !== 'string' || columns * rows < 2) continue
-    grids.set(name, { texture, columns, rows })
+    const region = section.properties.get('region_enabled') === true ? rectOf(section.properties.get('region_rect')) : undefined
+    grids.set(name, { texture, columns, rows, ...region === undefined ? {} : { region } })
   }
   if (grids.size === 0) return animations
   const names = libraryNames(file)
@@ -477,8 +536,7 @@ export function godotAnimations(text: string): GodotAnimation[] {
       animated.add(track.node)
       const frames: GodotFrame[] = track.times.map((time, index) => {
         const until = track.times[index + 1] ?? Math.max(length, time)
-        const cell = Math.max(0, Math.min(grid.columns * grid.rows - 1, Math.round(track.values[index] ?? 0)))
-        return { texture: grid.texture, cell: { index: cell, columns: grid.columns, rows: grid.rows }, seconds: Math.max(0, until - time) }
+        return { texture: grid.texture, cell: cellOf(grid, track.values[index] ?? 0), seconds: Math.max(0, until - time) }
       }).filter(frame => frame.seconds > 0)
       if (frames.length === 0) continue
       animations.push({ name: name ?? names.get(id) ?? `${track.node} animation`, frames, loop })
@@ -487,7 +545,7 @@ export function godotAnimations(text: string): GodotAnimation[] {
   for (const [node, grid] of grids) {
     if (animated.has(node)) continue
     const frames = Array.from({ length: grid.columns * grid.rows }, (_, index): GodotFrame => ({
-      texture: grid.texture, cell: { index, columns: grid.columns, rows: grid.rows }, seconds: 1 / GRID_FPS,
+      texture: grid.texture, cell: cellOf(grid, index), seconds: 1 / GRID_FPS,
     }))
     animations.push({ name: `${node} frames`, frames, loop: true })
   }
@@ -495,13 +553,26 @@ export function godotAnimations(text: string): GodotAnimation[] {
 }
 
 /**
- * The workspace path a `res://` path names.
+ * The workspace path a `res://` path names, inside the Godot project as Godot keeps every `res://` path.
  * @param resource - the `res://` path.
  * @param projectFolder - workspace path of the folder holding `project.godot`; empty for the workspace folder.
- * @returns the workspace path, or undefined for a path that is not `res://`.
+ * @returns the workspace path, or undefined for a path that is not `res://`, that `..` leads out of the project, or
+ * that names no file, such as one with a drive or a control character.
  */
 export function workspacePathOf(resource: string, projectFolder: string): string | undefined {
   if (!resource.startsWith('res://')) return undefined
-  const inside = resource.slice('res://'.length).replace(/^\/+/u, '')
+  const segments: string[] = []
+  for (const segment of resource.slice('res://'.length).split(/[\\/]/u)) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      if (segments.length === 0) return undefined
+      segments.pop()
+      continue
+    }
+    if (/[\u0000-\u001f\u007f]/u.test(segment) || /^[A-Za-z]:$/u.test(segment)) return undefined
+    segments.push(segment)
+  }
+  if (segments.length === 0) return undefined
+  const inside = segments.join('/')
   return projectFolder === '' ? inside : `${projectFolder}/${inside}`
 }

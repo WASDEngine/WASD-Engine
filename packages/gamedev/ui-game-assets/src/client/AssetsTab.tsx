@@ -16,6 +16,14 @@ import type { ScanState, ViewAsk, ViewState } from './source.ts'
 import type { KindFilter } from './tree.ts'
 import css from './AssetsTab.module.css'
 
+/** The caps of what the viewer reads and decodes. */
+export interface ViewerLimits {
+  /** Largest file the viewer reads, in bytes, which also bounds what a model's description may size itself. */
+  readonly maxPreviewBytes: number
+  /** Most pixels the viewer decodes for one image, as its header states them. */
+  readonly maxDecodedPixels: number
+}
+
 /** Business face of the Assets tab body, bound to one Session. */
 export interface AssetsTabInjected {
   /** The project scan and the reader's choices; the renderer binds them as `useScan` and `useView`. */
@@ -42,12 +50,13 @@ export interface AssetsTabInjected {
    */
   readonly read: (path: string, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>
   /**
-   * The URL of a file that a viewed model or material names.
+   * The URL of a file that a viewed model or material names, inside the project.
    * @param base - absolute path of the viewed file.
+   * @param path - the viewed file's workspace path, which places the project folder in `base`.
    * @param reference - the name as the loader requested it.
-   * @returns the URL to load.
+   * @returns the URL to load, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, reference: string) => string
+  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
   /**
    * The `file` resource address of an asset, which reports its version as it changes.
    * @param path - workspace path.
@@ -56,6 +65,8 @@ export interface AssetsTabInjected {
   readonly fileAddress: (path: string) => string
   /** The reads that find an image's 2D animations. */
   readonly animations: AnimationSources
+  /** The caps of what the viewer reads and decodes. */
+  readonly limits: ViewerLimits
   /**
    * Note that a tab acts on one of its navigations.
    * @param tabId - the tab.
@@ -96,14 +107,14 @@ export function selectedAsset(path: string | undefined, scan: AssetScan | undefi
  */
 export function AssetsTab({
   useResource, useTabInfo, useScan, useView, rescan, refresh, select, setOpen, setFilter, read, relatedUrl, fileAddress, animations,
-  takeNavigation, t,
+  limits, takeNavigation, t,
 }: AssetsTabProps): ReactNode {
   const scanState = useScan(state => state)
   const view = useView(state => state)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reloads, setReloads] = useState(0)
   useEffect(() => { refresh() }, [refresh])
-  const { id: tabId, navigation } = useTabInfo().tab
+  const { id: tabId, navigation, visible } = useTabInfo().tab
   // Each navigation that names an asset selects it once, also when the body mounts after it.
   useEffect(() => {
     if (!takeNavigation(tabId, navigation.revision)) return
@@ -163,6 +174,8 @@ export function AssetsTab({
         relatedUrl={relatedUrl}
         fileAddress={fileAddress}
         animations={animations}
+        limits={limits}
+        visible={visible}
         requested={requested}
         onSelect={(path) => { select(path) }}
         t={t}

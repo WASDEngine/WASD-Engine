@@ -1,8 +1,8 @@
 /**
  * The order of the pictures one window draws for agents. Requests start first come, first served, several at a time
- * within a total file size, so agents that look at different assets at once are answered together while one large
- * file draws alone. A request cancelled while it waits leaves the queue, and one cancelled while it draws gives up its
- * place at once.
+ * within a total memory that each request counts for itself, so agents that look at different assets at once are
+ * answered together while one large asset draws alone. A request cancelled while it waits leaves the queue, and one
+ * cancelled while it draws gives up its place at once.
  */
 
 /** A request waiting for its turn. */
@@ -19,7 +19,7 @@ export class DrawQueue {
 
   /**
    * @param limit - most pictures drawn at once.
-   * @param maxBytes - largest total size of the files drawn at once, in bytes; a larger file draws alone.
+   * @param maxBytes - largest total memory of the pictures drawn at once, in bytes; a larger picture draws alone.
    */
   constructor(private readonly limit: number, private readonly maxBytes: number) {}
 
@@ -35,10 +35,10 @@ export class DrawQueue {
 
   /**
    * Draw one picture when its turn comes: the earliest waiting request starts as soon as fewer than `limit` pictures
-   * are being drawn and its file fits within `maxBytes` beside theirs, or at once when nothing is being drawn.
+   * are being drawn and its memory fits within `maxBytes` beside theirs, or at once when nothing is being drawn.
    * Cancelling the request rejects at once, takes it out of the queue, and frees its place while the draw stops at
    * its next check of the signal.
-   * @param bytes - size of the asset the draw reads, as its request counts it.
+   * @param bytes - the memory the draw takes, as its request counts it.
    * @param signal - the request's cancellation.
    * @param draw - the drawing.
    * @returns the drawing's answer.

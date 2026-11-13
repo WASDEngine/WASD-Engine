@@ -1,12 +1,14 @@
 /**
- * 2D animations: Godot's text scenes and resources (SpriteFrames with atlas regions, Sprite2D grids with and without
- * AnimationPlayer frame tracks, Godot 3 syntax), sprite sheet JSON from Aseprite and TexturePacker, numbered image
- * sequences, grids, strip guesses, unique names, frame sampling, and the details the agent reads.
+ * 2D animations: Godot's text scenes and resources (SpriteFrames with atlas regions, Sprite2D and Godot 3 Sprite grids
+ * over the texture or its region, with and without AnimationPlayer `frame` and `frame_coords` tracks, Godot 3 syntax,
+ * `res://` paths kept inside the project), sprite sheet JSON from Aseprite and TexturePacker, numbered image sequences,
+ * grids, strip guesses, unique names, frame sampling, values that are not finite or overflow, and the details the
+ * agent reads.
  */
 import { describe, expect, it } from 'vitest'
 import { godotAnimations, GodotParseError, parseGodotText, workspacePathOf } from '../src/client/godot.ts'
 import {
-  animationDetails, godotProjectOf, godotSpriteAnimations, gridAnimation, gridRegions, ownFramesAnimation, sampledFrames,
+  animationDetails, godotProjectOf, godotSpriteAnimations, gridAnimation, gridRegions, MAX_FRAME_MS, ownFramesAnimation, sampledFrames,
   sequenceAnimation, sheetAnimations, stripGuess, uniqueNames,
 } from '../src/client/sprites.ts'
 
@@ -148,6 +150,127 @@ describe('Godot text resources', () => {
     expect(godotProjectOf('other/a.tscn', ['game'])).toBe('')
   })
 
+  it('keeps res:// paths inside the Godot project, as Godot does', () => {
+    expect(workspacePathOf('res://art/../hero.png', 'game')).toBe('game/hero.png')
+    expect(workspacePathOf('res://./art\\hero.png', '')).toBe('art/hero.png')
+    expect(workspacePathOf('res://../../../../Users/me/Pictures/private.png', 'game')).toBeUndefined()
+    expect(workspacePathOf('res://art/../../game.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://C:/Users/me/private.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://art/hero\n.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://', '')).toBeUndefined()
+    // A frame outside the project is left out of the animation that names it.
+    const scene = `[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://art/hero.png" id="1_in"]
+[ext_resource type="Texture2D" path="res://../../../../Users/me/Pictures/private.png" id="2_out"]
+
+[resource]
+animations = [{
+"frames": [{ "duration": 1.0, "texture": ExtResource("1_in") }, { "duration": 1.0, "texture": ExtResource("2_out") }],
+"loop": true,
+"name": &"peek",
+"speed": 5.0
+}]
+`
+    const [peek] = godotSpriteAnimations([{ path: 'game/peek.tres', text: scene }], 'game/art/hero.png', ['game'], { width: 16, height: 16 })
+    expect(peek?.frames.map(frame => frame.path)).toEqual(['game/art/hero.png'])
+  })
+
+  it('cuts a sprite grid within its region, follows frame_coords tracks, and reads Godot 3 Sprite nodes', () => {
+    const sheet = `[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Texture2D" path="res://art/sheet.png" id="1_sheet"]
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+length = 0.3
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/path = NodePath("Hero:frame_coords")
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 1,
+"values": [Vector2i(0, 1), Vector2i(1, 1), Vector2i(3, 1)]
+}
+
+[node name="Level" type="Node2D"]
+
+[node name="Bat" type="Sprite2D" parent="."]
+texture = ExtResource("1_sheet")
+region_enabled = true
+region_rect = Rect2(64, 32, 96, 32)
+hframes = 3
+
+[node name="Hero" type="Sprite2D" parent="."]
+texture = ExtResource("1_sheet")
+hframes = 4
+vframes = 2
+`
+    const animations = godotSpriteAnimations([{ path: 'scenes/level.tscn', text: sheet }], 'art/sheet.png', [''], { width: 128, height: 64 })
+    const regions = (name: string) => animations.find(animation => animation.name === name)?.frames.map(frame => frame.region)
+    expect(animations.map(animation => animation.name)).toEqual(['walk', 'Bat frames'])
+    // The bat's three cells divide its 96 × 32 region, not the whole 128 × 64 sheet.
+    expect(regions('Bat frames')).toEqual([
+      { x: 64, y: 32, width: 32, height: 32 },
+      { x: 96, y: 32, width: 32, height: 32 },
+      { x: 128, y: 32, width: 32, height: 32 },
+    ])
+    // The hero's frame_coords keys name column and row: cells 4, 5, and 7 of its 4 × 2 grid.
+    expect(regions('walk')).toEqual([
+      { x: 0, y: 32, width: 32, height: 32 },
+      { x: 32, y: 32, width: 32, height: 32 },
+      { x: 96, y: 32, width: 32, height: 32 },
+    ])
+    const godot3 = `[gd_scene load_steps=3 format=2]
+
+[ext_resource path="res://art/coin.png" type="Texture" id=1]
+
+[sub_resource type="Animation" id=1]
+resource_name = "spin"
+length = 0.4
+loop = true
+tracks/0/type = "value"
+tracks/0/path = NodePath("Coin:frame_coords")
+tracks/0/interp = 1
+tracks/0/keys = {
+"times": PoolRealArray( 0, 0.2 ),
+"transitions": PoolRealArray( 1, 1 ),
+"update": 1,
+"values": [ Vector2( 0, 0 ), Vector2( 1, 0 ) ]
+}
+
+[node name="Coin" type="Sprite"]
+texture = ExtResource( 1 )
+hframes = 2
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+anims/spin = SubResource( 1 )
+`
+    const [spin] = godotSpriteAnimations([{ path: 'coin.tscn', text: godot3 }], 'art/coin.png', [''], { width: 32, height: 16 })
+    expect(spin).toMatchObject({ name: 'spin', loop: true })
+    expect(spin?.frames.map(frame => [frame.region?.x, frame.durationMs])).toEqual([[0, 200], [16, 200]])
+  })
+
+  it('cuts a duration that overflows to the longest frame', () => {
+    const slow = `[gd_resource type="SpriteFrames" format=3]
+
+[ext_resource type="Texture2D" path="res://hero.png" id="1"]
+
+[resource]
+animations = [{
+"frames": [{ "duration": 1e300, "texture": ExtResource("1") }, { "duration": 1.0, "texture": ExtResource("1") }],
+"loop": true,
+"name": &"slow",
+"speed": 1e-300
+}]
+`
+    const [animation] = godotSpriteAnimations([{ path: 'slow.tres', text: slow }], 'hero.png', [''], { width: 8, height: 8 })
+    expect(animation?.frames.map(frame => frame.durationMs)).toEqual([MAX_FRAME_MS, MAX_FRAME_MS])
+    const details = animation === undefined ? undefined : animationDetails(animation, () => ({ width: 8, height: 8 }))
+    expect(Number.isFinite(details?.fps) && Number.isFinite(details?.seconds)).toBe(true)
+  })
+
   it('turns the animations that show an image into playable frames, Sprite2D cells into regions', () => {
     const files = [{ path: 'game/scenes/player.tscn', text: PLAYER_TSCN }, { path: 'game/broken.tres', text: '[resource' }]
     const hero = godotSpriteAnimations(files, 'game/art/hero.png', ['game'], { width: 64, height: 64 })
@@ -182,6 +305,16 @@ describe('sprite sheets, sequences, and grids', () => {
     expect(sheetAnimations({ frames: [{ frame: { x: 0, y: 0, w: 8, h: 8 } }] }, 'a/coin.png', 'a/coin.json').map(animation => animation.name)).toEqual(['coin'])
     expect(sheetAnimations({ ...json, meta: { image: 'other.png' } }, 'art/hero.png', 'art/hero.json')).toEqual([])
     expect(sheetAnimations('nope', 'art/hero.png', 'art/hero.json')).toEqual([])
+  })
+
+  it('leaves out frames whose rectangle is not finite, and times a duration that is not finite as the default', () => {
+    // JSON.parse reads 1e999 as Infinity.
+    const json: unknown = JSON.parse('{"frames":[{"frame":{"x":0,"y":0,"w":1e999,"h":16}},{"frame":{"x":16,"y":0,"w":16,"h":16},"duration":1e999},{"frame":{"x":32,"y":0,"w":16,"h":16},"duration":1e300}]}')
+    const [animation] = sheetAnimations(json, 'art/hero.png', 'art/hero.json')
+    expect(animation?.frames.map(frame => [frame.region?.x, frame.durationMs])).toEqual([[16, 1000 / 12], [32, MAX_FRAME_MS]])
+    const details = animation === undefined ? undefined : animationDetails(animation, () => undefined)
+    expect(details).toMatchObject({ frames: 2, frameWidth: 16, frameHeight: 16 })
+    expect(JSON.parse(JSON.stringify(details))).toEqual(details)
   })
 
   it('finds numbered images in number order', () => {

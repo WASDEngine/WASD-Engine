@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 /**
  * Reading models with the real three.js loaders: glTF with an external buffer and an animation, OBJ with its material
- * library, STL, PLY meshes and point clouds; the counts shown beside a model; disposal; and a Blender file's export.
+ * library, STL, PLY meshes and point clouds; files named outside the project or on the web; glTF descriptions that ask
+ * for more memory than the viewer sets aside; the counts shown beside a model; measurements of vertices that are not
+ * finite; disposal; and a Blender file's export.
  */
 import { BoxGeometry, BufferGeometry, Group, InstancedMesh, Mesh, MeshPhongMaterial, MeshStandardMaterial, Points, Texture } from 'three'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { exportOf } from '../src/client/AssetViewer.tsx'
 import { formatOf } from '../src/client/formats.ts'
+import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
-import { disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
+import { describeModel, disposeObject, gltfDeclaredBytes, gltfJson, loadModel, ModelTooLargeError, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -41,8 +44,12 @@ function triangleGltf(): { readonly json: string; readonly bin: ArrayBuffer } {
   }
 }
 
-function source(decoder: ModelSource['decoder'], data: Uint8Array<ArrayBuffer>, related = vi.fn((reference: string) => `http://host/api/file?path=/p/${reference}`)) {
-  return { decoder, data, related, changed: vi.fn() } satisfies ModelSource
+function source(
+  decoder: ModelSource['decoder'],
+  data: Uint8Array<ArrayBuffer>,
+  related: Mock<(reference: string) => string | undefined> = vi.fn((reference: string) => `http://host/api/file?path=/p/${reference}`),
+) {
+  return { decoder, data, related, changed: vi.fn(), maxBytes: 256 * 1024 * 1024 } satisfies ModelSource
 }
 
 describe('loadModel', () => {
@@ -93,6 +100,70 @@ describe('loadModel', () => {
     const cloud = await loadModel(source('ply', encode(`${header}end_header\n0 0 0\n1 0 0\n0 1 0\n`)), new AbortController().signal)
     expect(cloud.root).toBeInstanceOf(Points)
     expect(cloud.stats).toEqual({ triangles: 0, vertices: 3 })
+  })
+
+  it('requests no file a model names outside the project or on the web, and lists it as missing', async () => {
+    const fetched: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (request: Request | string) => {
+      const url = typeof request === 'string' ? request : request.url
+      fetched.push(url)
+      // Browsers refuse a data URL without a comma without any request.
+      if (/^data:[^,]*$/u.test(url)) throw new TypeError('Failed to fetch')
+      return new Response('newmtl red\nKd 1 0 0\n')
+    }))
+    const related = (path: string) => vi.fn((reference: string) => relatedUrl('http://host/', `/Users/me/Knight/${path}`, path, reference))
+    const obj = await loadModel(source('obj', encode('mtllib ../../../../Pictures/private.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'), related('models/hero.obj')), new AbortController().signal)
+    expect(fetched).toEqual([])
+    expect(obj.missing).toEqual(['private.mtl'])
+    expect(obj.stats.triangles).toBe(1)
+    // A buffer on the web fails the model without a request to the web.
+    const { json } = triangleGltf()
+    const web = JSON.stringify({ ...JSON.parse(json) as object, buffers: [{ uri: 'https://tracker.example/t%0A.bin', byteLength: 68 }] })
+    await expect(loadModel(source('gltf', encode(web), related('models/tri.gltf')), new AbortController().signal)).rejects.toThrow('Failed to load buffer')
+    expect(fetched).toHaveLength(1)
+    expect(fetched[0]).toMatch(/^data:[^,]*$/u)
+  })
+
+  it('refuses a glTF description that sizes more arrays than the viewer sets aside, before the loader allocates them', async () => {
+    // Three positions the loader fills with zeros itself: an accessor without a buffer view.
+    const zeros = (count: number) => JSON.stringify({
+      asset: { version: '2.0' },
+      scene: 0,
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+      accessors: [{ componentType: 5126, count, type: 'VEC3' }],
+    })
+    const small = await loadModel({ ...source('gltf', encode(zeros(3))), maxBytes: 36 }, new AbortController().signal)
+    expect(small.stats.vertices).toBe(3)
+    // About 4.8 GB of zeros from a description of a few hundred bytes.
+    const huge = zeros(400_000_000)
+    expect(gltfDeclaredBytes(JSON.parse(huge))).toBe(4_800_000_000)
+    const refused = loadModel(source('gltf', encode(huge)), new AbortController().signal)
+    await expect(refused).rejects.toBeInstanceOf(ModelTooLargeError)
+    await expect(refused).rejects.toMatchObject({ bytes: 4_800_000_000, limit: 256 * 1024 * 1024 })
+    // A Meshopt-compressed buffer view decodes into the size it gives, inside a GLB file as in a .gltf file.
+    const meshopt = { asset: { version: '2.0' }, bufferViews: [{ buffer: 0, byteLength: 4, extensions: { EXT_meshopt_compression: { buffer: 0, byteLength: 4, count: 1_000_000_000, byteStride: 16, mode: 'ATTRIBUTES' } } }] }
+    const text = new TextEncoder().encode(JSON.stringify(meshopt).padEnd(Math.ceil(JSON.stringify(meshopt).length / 4) * 4, ' '))
+    const glb = new Uint8Array(20 + text.byteLength)
+    const view = new DataView(glb.buffer)
+    view.setUint32(0, 0x46546c67, true)
+    view.setUint32(4, 2, true)
+    view.setUint32(8, glb.byteLength, true)
+    view.setUint32(12, text.byteLength, true)
+    view.setUint32(16, 0x4e4f534a, true)
+    glb.set(text, 20)
+    expect(gltfDeclaredBytes(gltfJson(glb))).toBe(16_000_000_000)
+    await expect(loadModel(source('gltf', glb), new AbortController().signal)).rejects.toBeInstanceOf(ModelTooLargeError)
+    // Sizes the loader refuses itself add nothing.
+    expect(gltfDeclaredBytes({ accessors: [{ count: -1, type: 'VEC3', componentType: 5126 }, { count: 1.5, type: 'VEC3', componentType: 5126 }, { count: 9, type: 'VEC9', componentType: 5126 }] })).toBe(0)
+  })
+
+  it('measures a model whose vertices are not all finite by the vertices that are, so its details stay plain JSON', async () => {
+    const model = await loadModel(source('stl', encode('solid t\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 2 0 0\nvertex 0 3 0\nendloop\nendfacet\nfacet normal 0 0 1\nouter loop\nvertex nan 0 0\nvertex 1 inf 0\nvertex 0 1 1\nendloop\nendfacet\nendsolid t\n')), new AbortController().signal)
+    const details = describeModel(model, 'STL', 100)
+    expect([details.min, details.max]).toEqual([[0, 0, 0], [2, 3, 1]])
+    expect(JSON.parse(JSON.stringify(details))).toEqual(details)
   })
 
   it('rejects a file that is not a model of its format', async () => {

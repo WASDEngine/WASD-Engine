@@ -329,7 +329,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules`；同时记录 Godot 场景与资源，以及包含 `project.godot` 的文件夹 | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
 | 当前查看的文件 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
 | 图片的动画 | `workspaceFiles.readBytes`：读取名称指向该图片的 Godot 文件（最多 400 个）和旁边的精灵表 JSON；`workspaceFiles.list`：列出其文件夹以查找编号图片 | 图片显示时 |
-| 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
+| 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析，且只在项目文件夹内；网址、走出项目的名称以及该路由不提供的路径都不会加载 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
 
 该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
 
@@ -337,7 +337,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 1. 工具解析出素材在 Session 工作目录内的路径、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：工作区路径（相对于 Session 头部记录的文件夹，窗口按该文件夹解析该 Session 的路径）、该文件以及 glTF 文件所引用的缓冲区和图片的大小、类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
 2. Remote events 白名单把该 waterfall 转发给每个可读取该 Session 的所有者窗口；第一个应答生效，无法处理的窗口（例如模型所需的 WebGL 不可用）用 `next()` 委托出去。
-3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时绘制的文件合计不超过 64 MiB，更大的文件单独绘制：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
+3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时解码的内存合计不超过 64 MiB，更大的绘制单独进行；图片计入其文件及其文件头所述的像素，这些在等待之前从其开头的字节读取；文件头所述像素超过 8192 × 8192 的图片会在解码之前被拒绝：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
 4. Host 逐字段验证应答，把图片作为附件存储给接受图像的模型，并把详细信息作为文本返回；不接受图像的模型只得到详细信息，没有窗口应答的调用以 `ASSET_NO_WINDOW` 失败。
 
 `show` 发出 `game-assets/reveal`，附带 Session、素材、动画和网格；白名单把它转发给可读取该 Session 的窗口，这些窗口会在 Session 不在屏幕上时打开它，并打开其「素材」标签页，选中该素材，在图片上显示该网格并播放该动画。队友或子 agent 会在其子 agent 树的领导 agent 的 Session 中显示素材，也就是用户正在查看的 Session。

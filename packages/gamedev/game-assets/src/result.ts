@@ -11,11 +11,14 @@ import type { AssetAnswerLimits, AssetDetails, AssetRenderResult } from './types
 export const MAX_ANSWER_IMAGES = 4
 
 /**
- * The most entries of each list of an answer's details and the longest name in them. `asset_view` sends these with
- * every request, and the window lists the first entries of a longer list and counts the rest.
+ * The most entries of each list of an answer's details, the longest name in them, the longest caption, and the largest
+ * size in pixels. `asset_view` sends these with every request, and the window lists the first entries of a longer
+ * list and counts the rest, shortens the names in a longer caption, and leaves out a larger frame size.
  */
 export const ANSWER_LIMITS: AssetAnswerLimits = {
   name: 512,
+  caption: 400,
+  edge: 1_000_000,
   animations: 64,
   materials: 48,
   maps: 32,
@@ -33,7 +36,7 @@ const MAX_IMAGE_BASE64 = Math.ceil((16 * 1024 * 1024) / 3) * 4
 const name = z.string().max(ANSWER_LIMITS.name)
 const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER)
 const measure = z.number()
-const positive = z.number().int().min(1).max(1_000_000)
+const positive = z.number().int().min(1).max(ANSWER_LIMITS.edge)
 const point = z.tuple([measure, measure, measure])
 
 const spriteAnimation = z.strictObject({
@@ -112,7 +115,7 @@ const answer = z.strictObject({
     mediaType: z.enum(['image/png', 'image/jpeg']),
     width: positive,
     height: positive,
-    caption: z.string().max(400),
+    caption: z.string().max(ANSWER_LIMITS.caption),
   })).max(MAX_ANSWER_IMAGES),
 })
 

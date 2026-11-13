@@ -42,19 +42,25 @@ export interface AnimationSources {
   readonly godot: (signal: AbortSignal) => Promise<{ readonly files: readonly string[]; readonly projects: readonly string[] }>
 }
 
+/**
+ * Read text files {@link READ_CONCURRENCY} at a time.
+ * @returns the files that could be read, in the order of `paths` whichever read finished first.
+ */
 async function readAll(paths: readonly string[], read: AnimationSources['readText'], signal: AbortSignal): Promise<GodotFile[]> {
-  const files: GodotFile[] = []
+  const texts: (string | undefined)[] = []
   let next = 0
   const worker = async (): Promise<void> => {
     while (next < paths.length) {
-      const path = paths[next] as string
+      const index = next
       next += 1
-      const text = await read(path, signal)
-      if (text !== undefined) files.push({ path, text })
+      texts[index] = await read(paths[index] as string, signal)
     }
   }
   await Promise.all(Array.from({ length: Math.min(READ_CONCURRENCY, paths.length) }, worker))
-  return files
+  return paths.flatMap((path, index) => {
+    const text = texts[index]
+    return text === undefined ? [] : [{ path, text }]
+  })
 }
 
 /**
@@ -64,7 +70,8 @@ async function readAll(paths: readonly string[], read: AnimationSources['readTex
  * @param ownDurations - the durations of the image's own frames, when it has more than one.
  * @param sources - the reads.
  * @param signal - cancellation.
- * @returns the animations with unique names: own frames first, then Godot, sprite sheet, and numbered images.
+ * @returns the animations with unique names: own frames first, then Godot in the order of the listed Godot files,
+ * sprite sheet, and numbered images; the same files give the same names in the same order on every call.
  */
 export async function findAnimations(
   path: string,
