@@ -1769,13 +1769,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>',
         description: 'Install an add-on that the user chose in the Add-ons dialog.',
-        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation; a cancelled installation leaves the project as it was.' }],
+        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops only the import of the project.' }],
         returns: 'the installation.',
       },
       {
         signature: '@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>',
         description: 'Remove an add-on that the user chose in the Add-ons dialog.',
-        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation before files are deleted.' }],
+        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation before the removal changes the project.' }],
         returns: 'the removal.',
       },
     ],
@@ -4687,15 +4687,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote({ mode: \'stream\' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>',
-        description: 'Follow the agents\' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and the ids of taken ones whose call still waits, so a window stops a command whose call ended.',
+        description: 'Follow the agents\' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and the ids of taken ones whose call still waits, so a window stops a command whose call ended, with the stream\'s own id, through which the window takes commands; the commands taken through a stream fail once it ends.',
         parameters: [{ name: 'signal', description: 'stream cancellation.' }],
         returns: 'both lists, then again after each change, until cancelled or the plugin is disposed.',
       },
       {
-        signature: '@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean',
-        description: 'Take a Browser command for the calling window, which then carries it out and settles it.',
-        parameters: [{ name: 'id', description: 'the command.' }, { name: 'signal', description: 'cancellation.' }],
-        returns: 'whether the window took it; false when another window did or the command ended.',
+        signature: '@Remote claimBrowserRequest(id: string, follower: string, signal: AbortSignal): boolean',
+        description: 'Take a Browser command for the calling window, which then carries it out and settles it. The command fails at once if the window\'s command stream ends before it settles.',
+        parameters: [{ name: 'id', description: 'the command.' }, { name: 'follower', description: 'the `follower` id of the latest list the window\'s command stream yielded.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the window took it; false when another window did, the command ended, or that stream ended.',
       },
       {
         signature: '@Remote settleBrowserRequest(id: string, outcome: WasdBrowserOutcome, signal: AbortSignal): boolean',
@@ -6207,7 +6207,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AssetAnswerLimits',
-    declaration: 'export interface AssetAnswerLimits {\n    readonly name: number;\n    readonly animations: number;\n    readonly materials: number;\n    readonly maps: number;\n    readonly textures: number;\n    readonly bones: number;\n    readonly clipTargets: number;\n    readonly morphMeshes: number;\n    readonly morphTargets: number;\n    readonly missing: number;\n}',
+    declaration: 'export interface AssetAnswerLimits {\n    readonly name: number;\n    readonly caption: number;\n    readonly edge: number;\n    readonly animations: number;\n    readonly materials: number;\n    readonly maps: number;\n    readonly textures: number;\n    readonly bones: number;\n    readonly clipTargets: number;\n    readonly morphMeshes: number;\n    readonly morphTargets: number;\n    readonly missing: number;\n}',
   },
   {
     name: 'AssetDetails',
@@ -6303,11 +6303,15 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AudioChannelMeasure',
-    declaration: 'export interface AudioChannelMeasure {\n    readonly peak: number;\n    readonly rms: number;\n    readonly dcOffset: number;\n    readonly clipped: number;\n}',
+    declaration: 'export interface AudioChannelMeasure {\n    readonly peak: number;\n    readonly rms: number;\n    readonly dcOffset: number;\n    readonly clipped: number;\n    readonly nonFinite: number;\n}',
   },
   {
     name: 'AudioImageLayout',
     declaration: 'export interface AudioImageLayout {\n    readonly width: number;\n    readonly height: number;\n    readonly waveformPanels: \'channels\' | \'mix\';\n    readonly timeStep: number;\n    readonly nyquist: number;\n}',
+  },
+  {
+    name: 'AudioLoop',
+    declaration: 'export interface AudioLoop {\n    readonly start: number;\n    readonly end?: number;\n}',
   },
   {
     name: 'AudioMeasureEvent',
@@ -6315,11 +6319,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AudioMeasurements',
-    declaration: 'export interface AudioMeasurements {\n    readonly sampleRate: number;\n    readonly channels: number;\n    readonly seconds: number;\n    readonly start: number;\n    readonly end: number;\n    readonly peak: number;\n    readonly rms: number;\n    readonly loudness?: number;\n    readonly leadingSilence: number;\n    readonly trailingSilence: number;\n    readonly dominantFrequency?: number;\n    readonly spectralCentroid?: number;\n    readonly channelLevels: readonly AudioChannelMeasure[];\n    readonly seam?: {\n        readonly jump: number;\n        readonly step: number;\n        readonly levelChange?: number;\n    };\n    readonly stereo?: {\n        readonly correlation?: number;\n        readonly balance?: number;\n        readonly identical: boolean;\n    };\n}',
+    declaration: 'export interface AudioMeasurements {\n    readonly sampleRate: number;\n    readonly channels: number;\n    readonly seconds: number;\n    readonly start: number;\n    readonly end: number;\n    readonly peak: number;\n    readonly rms: number;\n    readonly loudness?: number;\n    readonly leadingSilence: number;\n    readonly trailingSilence: number;\n    readonly dominantFrequency?: number;\n    readonly spectralCentroid?: number;\n    readonly channelLevels: readonly AudioChannelMeasure[];\n    readonly seam?: {\n        readonly start: number;\n        readonly end: number;\n        readonly jump: number;\n        readonly step: number;\n        readonly levelChange?: number;\n    };\n    readonly stereo?: {\n        readonly correlation?: number;\n        readonly balance?: number;\n        readonly identical: boolean;\n    };\n}',
   },
   {
     name: 'AudioMeasureRequest',
-    declaration: 'export interface AudioMeasureRequest {\n    readonly path: string;\n    readonly start: number;\n    readonly end?: number;\n    readonly maxSeconds: number;\n    readonly picture: boolean;\n    readonly maxBytes: number;\n}',
+    declaration: 'export interface AudioMeasureRequest {\n    readonly path: string;\n    readonly start: number;\n    readonly end?: number;\n    readonly maxSeconds: number;\n    readonly picture: boolean;\n    readonly maxBytes: number;\n    readonly loop?: AudioLoop;\n}',
   },
   {
     name: 'AudioMeasureResult',
@@ -11039,7 +11043,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'WasdBrowserRequests',
-    declaration: 'export interface WasdBrowserRequests {\n    readonly requests: readonly WasdBrowserRequest[];\n    readonly claimed: readonly string[];\n}',
+    declaration: 'export interface WasdBrowserRequests {\n    readonly follower: string;\n    readonly requests: readonly WasdBrowserRequest[];\n    readonly claimed: readonly string[];\n}',
   },
   {
     name: 'WasdProjectView',

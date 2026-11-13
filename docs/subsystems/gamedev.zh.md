@@ -504,7 +504,8 @@ Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system pr
  * Install an add-on that the user chose in the Add-ons dialog.
  * @param directory - absolute folder of the game project, or up to three levels above it.
  * @param id - catalog id.
- * @param signal - cancellation; a cancelled installation leaves the project as it was.
+ * @param signal - cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops
+ *   only the import of the project.
  * @returns the installation.
  */
 @Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>
@@ -513,7 +514,7 @@ Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system pr
  * Remove an add-on that the user chose in the Add-ons dialog.
  * @param directory - absolute folder of the game project, or up to three levels above it.
  * @param id - catalog id.
- * @param signal - cancellation before files are deleted.
+ * @param signal - cancellation before the removal changes the project.
  * @returns the removal.
  */
 @Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>
@@ -674,19 +675,22 @@ Owner of the Web export, release, and Browser tools and of the `wasdPlugins` Rem
 
 /**
  * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and
- * the ids of taken ones whose call still waits, so a window stops a command whose call ended.
+ * the ids of taken ones whose call still waits, so a window stops a command whose call ended, with the stream's own
+ * id, through which the window takes commands; the commands taken through a stream fail once it ends.
  * @param signal - stream cancellation.
  * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
  */
 @Remote({ mode: 'stream' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>
 
 /**
- * Take a Browser command for the calling window, which then carries it out and settles it.
+ * Take a Browser command for the calling window, which then carries it out and settles it. The command fails at once
+ * if the window's command stream ends before it settles.
  * @param id - the command.
+ * @param follower - the `follower` id of the latest list the window's command stream yielded.
  * @param signal - cancellation.
- * @returns whether the window took it; false when another window did or the command ended.
+ * @returns whether the window took it; false when another window did, the command ended, or that stream ended.
  */
-@Remote claimBrowserRequest(id: string, signal: AbortSignal): boolean
+@Remote claimBrowserRequest(id: string, follower: string, signal: AbortSignal): boolean
 
 /**
  * End a Browser command the window took, with the page afterwards or why it failed.

@@ -975,7 +975,10 @@ export interface Config {
   desktopPlatform?: 'darwin' | 'win32' | null
   /** Optional frontend deployment selector for embedded Usage and Top-up pages. */
   embeddedPageDist?: string
-  /** Exact HTTP(S) origin allowed to receive account tokens for inference and files. */
+  /**
+   * Exact HTTP(S) origin allowed to receive account tokens for inference and files; unset, DeepSeek's API under
+   * DeepSeek's platform and the platform origin under any other (`wasdengine-harness-origin.ts`).
+   */
   inferenceOrigin?: string
   /** Allow HTTP only on loopback for the development Mock. */
   allowLoopbackHttp?: boolean
@@ -1818,7 +1821,10 @@ export interface Config {
 ```ts config-catalog
 /** Deployment configuration of the audio tools. */
 export interface Config {
-  /** Time limit of one `audio_review` call, which waits for a window to read, decode, and measure the sound. */
+  /**
+   * Time a window has to read, decode, and measure one sound for `audio_review`; the wait behind other calls' sounds,
+   * which the windows measure one at a time, does not count.
+   */
   measureTimeoutMs: number
   /** Longest window one `audio_review` call measures, in seconds. */
   maxReviewSeconds: number
@@ -4459,7 +4465,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-todo-continuation`
 
-- `source`: [`packages/gamedev/todo-continuation/src/index.ts:30`](../packages/gamedev/todo-continuation/src/index.ts)
+- `source`: [`packages/gamedev/todo-continuation/src/index.ts:34`](../packages/gamedev/todo-continuation/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
