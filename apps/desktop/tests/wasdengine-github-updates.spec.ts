@@ -3,7 +3,8 @@
  * `https://github.com/WASDEngine/WASD-Engine/releases/latest/download/` with single-range requests and no
  * mandatory-update policy, unsigned Windows builds carry it while unsigned macOS builds do not, and
  * `wasdengine-github-release.ts` stages feed files whose URLs name their own release and publishes only a complete
- * release. `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
+ * release whose tagged commit pins a Web template that downloads. `wasdengine/FORK.md` (repository root) runs this spec
+ * after every upstream merge.
  */
 
 import { createHash } from 'node:crypto'
@@ -25,7 +26,7 @@ import { packageMacOSArtifacts, type DesktopPrepackagedArtifact, type MacOSArtif
 import { applyWasdengineBrand } from '../scripts/wasdengine-builder-config.mjs'
 import {
   SHA256SUMS, mergeSha256Sums, parseFeed, publishGitHubRelease, stageGitHubRelease, uploadGitHubRelease, verifyReleaseFeeds,
-  type GhRunner, type ReleaseAsset, type StagedRelease,
+  type GhRunner, type PublishOptions, type ReleaseAsset, type StagedRelease,
 } from '../scripts/wasdengine-github-release.ts'
 import {
   GITHUB_UPDATE_SERVICE, githubReleaseFileUrl, githubUpdateFeedUrl, resolveWasdengineUpdateConfig, unsignedBuildCarriesUpdateFeed,
@@ -355,10 +356,21 @@ describe('WASDEngine updates through GitHub releases', () => {
     await expect(uploadGitHubRelease(staged, { published: true, allowDirty: false, runner: live.runner, tagCommit: async () => COMMIT })).resolves.toContain(`v${VERSION}`)
   })
 
-  it('publishes a release only once it serves every target', async () => {
+  it('publishes a release only once it serves every target and the Web template that its tagged commit pins downloads', async () => {
     const root = await temporary()
     const gh = fakeGh()
-    const publish = () => publishGitHubRelease({ version: VERSION, targets: ['mac-arm64', 'win-x64'], runner: gh.runner })
+    const checked: string[] = []
+    const publish = (options: Partial<PublishOptions> = {}) => publishGitHubRelease({
+      version: VERSION,
+      targets: ['mac-arm64', 'win-x64'],
+      runner: gh.runner,
+      tagCommit: async () => COMMIT,
+      webTemplateProblems: async (commit) => {
+        checked.push(commit)
+        return []
+      },
+      ...options,
+    })
     await expect(publish()).rejects.toThrow(`has no release v${VERSION}`)
     for (const [target, unsigned, packaged] of [['mac-arm64', false, packagedMac], ['win-x64', true, packagedWindows]] as const) {
       const artifacts = join(root, target)
@@ -367,7 +379,12 @@ describe('WASDEngine updates through GitHub releases', () => {
       await uploadGitHubRelease(staged, { published: false, allowDirty: false, runner: gh.runner, tagCommit: async () => undefined })
       if (target === 'mac-arm64') await expect(publish()).rejects.toThrow('win-x64: the release lacks stable.yml')
     }
-    await publishGitHubRelease({ version: VERSION, targets: ['mac-arm64', 'win-x64'], runner: gh.runner })
+    await expect(publish({ tagCommit: async () => undefined })).rejects.toThrow(`has no tag v${VERSION}`)
+    await expect(publish({ webTemplateProblems: async () => ['the Web template release web-template-9.9.9 is missing'] }))
+      .rejects.toThrow(`v${VERSION} is not ready to publish:\n  the Web template release web-template-9.9.9 is missing`)
+    expect(gh.release()?.isDraft).toBe(true)
+    await publish()
+    expect(checked.at(-1)).toBe(COMMIT)
     expect(gh.calls.at(-1)).toEqual(['release', 'edit', `v${VERSION}`, '--repo', BRAND.releaseRepository, '--draft=false', '--prerelease=false', '--latest'])
     expect(gh.release()?.isDraft).toBe(false)
   })

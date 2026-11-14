@@ -2,19 +2,22 @@
  * Web check mode of the Desktop app: started by the Godot plugin with `--wasd-web-check=` and a JSON
  * {@link WebCheckLaunch}, this process opens a Godot Web build's page in one offscreen window, watches the game load
  * and run without input, prints one stdout line with what it measured, and exits. It claims no single-instance lock,
- * shows no window, Dock icon, or menu bar, and keeps its browser profile in a temporary folder that it deletes, so it
+ * shows no window, Dock icon, or menu bar, on macOS by starting from the Web check bundle of
+ * `wasdengine-web-check-helper.ts`, and keeps its browser profile in a temporary folder that it deletes, so it
  * runs beside the Desktop app, whose GPU process it does not share. Nothing the page does reaches the screen or leaves
  * its build: the check talks to the page without a user gesture, and the page gets no dialogs, popups, fullscreen,
  * printing, downloads, permissions, or navigation to another origin. The mode prints its result by the deadline its
  * request names, and exits at once when the process that started it ends.
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type {
   App, BrowserWindowConstructorOptions, Debugger, RenderProcessGoneDetails, WebContentsConsoleMessageEventParams,
 } from 'electron'
 import type { WebCheckArgument, WebCheckConsoleLine, WebCheckMarker, WebCheckRequest, WebCheckSample } from '@deepseek-ai/dsh-godot/types'
+import { WASDENGINE_DESKTOP_BRAND } from './wasdengine-brand.ts'
+import { WEB_CHECK_HELPER_SWITCHES, webCheckHelperExecutable } from './wasdengine-web-check-helper.ts'
 
 /** The argument that starts this mode; `=` and the JSON request follow it. */
 export const WEB_CHECK_ARGUMENT: WebCheckArgument = '--wasd-web-check'
@@ -296,15 +299,27 @@ export function webCheckRequest(argv: readonly string[]): WebCheckLaunch | undef
 }
 
 /**
- * The command line that starts this application in Web check mode, without the check's argument: the executable, and
- * the application folder when Electron runs the application from one, as in development.
- * @param execPath - the main process's executable.
+ * The command line that starts this application in Web check mode, without the check's argument: on macOS, when the
+ * application bundle holds the Web check bundle, its executable with {@link WEB_CHECK_HELPER_SWITCHES}, which never
+ * shows in the Dock, else the main process's executable; then the application folder when Electron runs the
+ * application from one, as in development.
+ * @param execPath - the main process's executable, in `<application>.app/Contents/MacOS/` on macOS.
  * @param appPath - the application folder.
  * @param defaultApp - whether Electron's default app runs the application from `appPath`.
+ * @param platform - the operating system.
+ * @param exists - whether a file exists.
  * @returns the command line.
  */
-export function webCheckCommand(execPath: string, appPath: string, defaultApp: boolean): string[] {
-  return defaultApp ? [execPath, appPath] : [execPath]
+export function webCheckCommand(
+  execPath: string, appPath: string, defaultApp: boolean, platform: NodeJS.Platform = process.platform,
+  exists: (path: string) => boolean = existsSync,
+): string[] {
+  const application = defaultApp ? [appPath] : []
+  if (platform === 'darwin') {
+    const helper = webCheckHelperExecutable(dirname(dirname(dirname(execPath))), WASDENGINE_DESKTOP_BRAND.productName)
+    if (exists(helper)) return [helper, ...WEB_CHECK_HELPER_SWITCHES, ...application]
+  }
+  return [execPath, ...application]
 }
 
 function delay(milliseconds: number): Promise<void> {

@@ -118,8 +118,10 @@ jobs:
           }
 
       # Packaging would otherwise fail an hour in, or, for a manifest without a Windows build, ship without the runtime.
-      # A test leaves out a runtime that neither a run nor a release provides.
-      - name: Require the runtime releases
+      # A test leaves out a runtime that neither a run nor a release provides. A release also needs the Web export
+      # template that the tag's Godot plugin pins, which no installer bundles but every Web export downloads, and which
+      # wasdengine-github-release.ts publish requires too.
+      - name: Require the runtime releases and the Web template release
         run: |
           node --input-type=module --eval @'
           import { appendFileSync } from 'node:fs'
@@ -127,6 +129,7 @@ jobs:
           const { BLENDER_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-blender.ts')
           const { GIMP_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-gimp.ts')
           const { SUPERCOLLIDER_MANIFEST_URL } = await import('./apps/desktop/scripts/wasdengine-supercollider.ts')
+          const { pinnedWebTemplateProblems } = await import('./apps/desktop/scripts/wasdengine-web-template-release.ts')
           const test = process.env.RELEASE_TAG === ''
           let missing = false
           for (const [url, prefix, runtime, workflow] of [
@@ -147,6 +150,12 @@ jobs:
             }
             console.log(`::error::${reason}. Run the ${runtime} runtime workflow (${workflow}) on main to publish it, then re-run this workflow.`)
             missing = true
+          }
+          if (!test) {
+            for (const problem of await pinnedWebTemplateProblems()) {
+              console.log(`::error::${problem}. Re-run this workflow once the tag's Web template downloads as pinned.`)
+              missing = true
+            }
           }
           if (missing) process.exit(1)
           '@

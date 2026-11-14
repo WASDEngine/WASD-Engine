@@ -77,6 +77,16 @@ export function applyWasdengineBlender<T extends { readonly asarUnpack: readonly
 export const GAME_LAYER_FILE: string
 
 /**
+ * Add the Web check bundle of `src/wasdengine-web-check-helper.ts` to a packaged macOS application, after the
+ * configuration's own `afterPack` hook and before electron-builder signs the application, which signs the bundle
+ * with the application's other helpers. Other platforms' packages are unchanged.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `afterPack` hook also creates the bundle in a macOS application.
+ * @throws When `afterPack` names a module instead of being a function.
+ */
+export function applyWasdengineWebCheckHelper<T extends { readonly afterPack?: unknown }>(config: T): T
+
+/**
  * Ship the game layer module beside the main bundle, outside `app.asar`, where the main process loads it as a native
  * module. The packaged files list it before the dsh trees that end the list.
  * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.

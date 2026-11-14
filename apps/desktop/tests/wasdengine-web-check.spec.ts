@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   WebCheckApp, WebCheckContents, WebCheckLaunch, WebCheckProcess, WebCheckSession, WebCheckWindow, WebCheckWindowClass,
 } from '../src/wasdengine-web-check.ts'
+import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
+import { webCheckHelperExecutable } from '../src/wasdengine-web-check-helper.ts'
 
 vi.mock('electron', () => ({}))
 
@@ -41,10 +43,21 @@ describe('webCheckRequest', () => {
 })
 
 describe('webCheckCommand', () => {
+  const executable = '/Applications/WASD Engine.app/Contents/MacOS/WASD Engine'
+  const helper = webCheckHelperExecutable('/Applications/WASD Engine.app', WASDENGINE_DESKTOP_BRAND.productName)
+
   it('starts the application folder with Electron\'s default app, and the executable alone otherwise', () => {
-    expect(webCheckCommand('/dev/Electron', '/repo/apps/desktop', true)).toEqual(['/dev/Electron', '/repo/apps/desktop'])
-    expect(webCheckCommand('/Applications/WASD Engine.app/Contents/MacOS/WASD Engine', '/ignored', false))
-      .toEqual(['/Applications/WASD Engine.app/Contents/MacOS/WASD Engine'])
+    expect(webCheckCommand('/dev/Electron', '/repo/apps/desktop', true, 'linux', () => false)).toEqual(['/dev/Electron', '/repo/apps/desktop'])
+    expect(webCheckCommand(executable, '/ignored', false, 'win32', () => true)).toEqual([executable])
+  })
+
+  it('starts from the Web check bundle on macOS, without the sandbox, when the application holds it', () => {
+    expect(webCheckCommand(executable, '/ignored', false, 'darwin', path => path === helper)).toEqual([helper, '--no-sandbox'])
+    const development = '/repo/apps/desktop/.desktop-build/development/WASD Engine.app'
+    const developmentHelper = webCheckHelperExecutable(development, WASDENGINE_DESKTOP_BRAND.productName)
+    expect(webCheckCommand(`${development}/Contents/MacOS/Electron`, '/repo/apps/desktop', true, 'darwin', path => path === developmentHelper))
+      .toEqual([developmentHelper, '--no-sandbox', '/repo/apps/desktop'])
+    expect(webCheckCommand(executable, '/ignored', false, 'darwin', () => false)).toEqual([executable])
   })
 })
 
