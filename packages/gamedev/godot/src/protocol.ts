@@ -3,10 +3,11 @@
  *
  * Every message, in both directions, is a 4-byte little-endian length N followed by N bytes: a 1-byte kind and
  * its payload. Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16
- * width, u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
- * u32 request id, then the image bytes. Kind 5 (harness to Host) answers an audio request: u32 request id, then the
- * captured samples as little-endian 32-bit floats, left and right interleaved. The constants match the harness script;
- * changing one requires changing both.
+ * width, u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot or view request:
+ * u32 request id, then the image bytes. Kind 4 (harness to Host) is one frame of a recording: u32 recording id, u32 frame
+ * index, u32 milliseconds into the video, u16 width, u16 height, then the bytes of a JPEG file. Kind 5 (harness to Host)
+ * answers an audio request: u32 request id, then the captured samples as little-endian 32-bit floats, left and right
+ * interleaved. The constants match the harness script; changing one requires changing both.
  * @module @deepseek-ai/dsh-godot/src/protocol
  */
 import { Buffer } from 'node:buffer'
@@ -22,9 +23,11 @@ export const MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 const KIND_JSON = 1
 const KIND_FRAME = 2
 const KIND_IMAGE = 3
+const KIND_RECORD = 4
 const KIND_AUDIO = 5
 const FRAME_HEADER_BYTES = 8
 const IMAGE_HEADER_BYTES = 4
+const RECORD_HEADER_BYTES = 16
 const AUDIO_HEADER_BYTES = 4
 
 /** A malformed message on the harness connection; the connection is no longer trustworthy. */
@@ -137,11 +140,28 @@ export interface HarnessFrame {
   readonly image: Buffer
 }
 
+/** One frame of a recording. */
+export interface HarnessRecordFrame {
+  /** Id of the recording, as its start request named it. */
+  readonly recording: number
+  /** Index of the frame among the recording's captured frames; a frame the harness skipped leaves a gap. */
+  readonly index: number
+  /** Milliseconds into the video at which the frame shows. */
+  readonly timeMs: number
+  /** Image width in pixels. */
+  readonly width: number
+  /** Image height in pixels. */
+  readonly height: number
+  /** Bytes of a JPEG file. */
+  readonly image: Buffer
+}
+
 /** One decoded harness message. */
 export type HarnessMessage =
   | { readonly kind: 'json'; readonly message: HarnessJsonMessage }
   | { readonly kind: 'frame'; readonly frame: HarnessFrame }
   | { readonly kind: 'image'; readonly id: number; readonly data: Buffer }
+  | { readonly kind: 'record'; readonly frame: HarnessRecordFrame }
   | { readonly kind: 'audio'; readonly id: number; readonly data: Buffer }
 
 /**
@@ -192,6 +212,19 @@ function decodeBody(body: Buffer): HarnessMessage {
     case KIND_IMAGE:
       if (payload.length < IMAGE_HEADER_BYTES) throw new HarnessProtocolError('Harness sent an image without its request id')
       return { kind: 'image', id: payload.readUInt32LE(0), data: payload.subarray(IMAGE_HEADER_BYTES) }
+    case KIND_RECORD:
+      if (payload.length < RECORD_HEADER_BYTES) throw new HarnessProtocolError('Harness sent a recording frame without its header')
+      return {
+        kind: 'record',
+        frame: {
+          recording: payload.readUInt32LE(0),
+          index: payload.readUInt32LE(4),
+          timeMs: payload.readUInt32LE(8),
+          width: payload.readUInt16LE(12),
+          height: payload.readUInt16LE(14),
+          image: payload.subarray(RECORD_HEADER_BYTES),
+        },
+      }
     case KIND_AUDIO:
       if (payload.length < AUDIO_HEADER_BYTES) throw new HarnessProtocolError('Harness sent audio without its request id')
       return { kind: 'audio', id: payload.readUInt32LE(0), data: payload.subarray(AUDIO_HEADER_BYTES) }

@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: 49710d4c3de698e0
-  zh: 80d7e2f7997254a9
+  en: db4e1b1988b058f0
+  zh: 5fd40b3d56dbe784
 /game-tools/composition:
   en: 5f630ba27c7f4ade
   zh: f43d244cef77aeca
@@ -60,8 +60,11 @@
   en: 23c3e8eb7e7d9a7f
   zh: d70a6fa5ce6a5165
 /game-tools/mcp-server-for-other-agents:
-  en: aef3574cabbff613
-  zh: 09f8b4b2ce6d9513
+  en: 97a378007ce1cd11
+  zh: 5910a19e85088b0c
+/game-tools/agent-feedback-and-mcp-usage:
+  en: d1a56725964df9d8
+  zh: 1ce6fd547cd5daa9
 /game-tools/agent-s-browser:
   en: f5bb3430cfa3433f
   zh: 84102920f1c0753b

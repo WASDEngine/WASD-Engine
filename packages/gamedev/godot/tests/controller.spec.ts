@@ -75,6 +75,7 @@ describe('configuration', () => {
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
+      minWindowHeight: 720, recordQuality: 0.92, recordBufferBytes: 1024 ** 3, maxVideoBytes: 4 * 1024 ** 3,
       webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
       webTemplateSha256: '477a8c0bff8a89acf58cdd68d913b160e71cfb038cf3648eebc2ab853148a65d',
@@ -384,7 +385,9 @@ posix('recordings for other plugins', () => {
 posix('frames route', () => {
   it('streams frame records of a live run and refuses others', async () => {
     const c = await setup()
-    expect(c.routes.size).toBe(1)
+    expect([...c.routes].map(candidate => [candidate.path, candidate.methods, candidate.requestBody])).toEqual([
+      ['/api/godot.frames', ['GET'], 'buffered'], ['/api/godot.recording', ['GET'], 'buffered'], ['/api/godot.video', ['POST'], 'streaming'],
+    ])
     const route = [...c.routes][0]
     if (route === undefined) throw new Error('expected the frames route')
     expect(route).toMatchObject({ path: '/api/godot.frames', methods: ['GET'], requestBody: 'buffered' })

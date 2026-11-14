@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agenten-Feedback",
+    "description": "Lässt den Agenten und mit WASD Engine verbundene Agenten Feedback zu WASD Engine an das Team senden und meldet, wie oft Agenten jedes Spielwerkzeug und jeden MCP-Server nutzen."
+  }
+}

@@ -10,6 +10,9 @@ import type {
 /** Bone names `asset_view` lists before it summarizes the rest. */
 export const LISTED_BONES = 160
 
+/** Names of materials, clips, or animations that an `asset_view` summary lists before it counts the rest. */
+export const SUMMARY_NAMES = 8
+
 /** Kinds as the tools name them. */
 const KIND_NAME = { image: '2D', model: '3D' } as const
 
@@ -233,4 +236,47 @@ function describeModel(path: string, details: ModelAssetDetails): string[] {
  */
 export function describeDetails(path: string, details: AssetDetails): string[] {
   return details.kind === 'image' ? describeImage(path, details) : describeModel(path, details)
+}
+
+/** Up to {@link SUMMARY_NAMES} names, then how many more there are. */
+function someNames(names: readonly string[], total: number): string {
+  const listed = names.slice(0, SUMMARY_NAMES).map(name => name === '' ? '(unnamed)' : name)
+  const more = total - listed.length
+  return more > 0 ? `${listed.join(', ')}, and ${INTEGER.format(more)} more` : listed.join(', ')
+}
+
+/**
+ * The short description of one drawn asset, which `asset_view` gives unless the call asks for the details: an image's
+ * details with its first {@link SUMMARY_NAMES} animations; or a model's size, geometry, and the names of its materials
+ * and clips, with its textures, bones, and morph targets counted.
+ * @param path - workspace path of the drawn asset.
+ * @param details - what the window measured.
+ * @returns the lines.
+ */
+export function describeSummary(path: string, details: AssetDetails): string[] {
+  if (details.kind === 'image') {
+    const total = details.animationCount ?? details.animations.length
+    if (details.animations.length <= SUMMARY_NAMES) return describeImage(path, details)
+    const lines = describeImage(path, { ...details, animations: details.animations.slice(0, SUMMARY_NAMES), animationCount: total })
+    lines.push('Pass details: true to list every animation.')
+    return lines
+  }
+  const size = details.max.map((value, axis) => numberText(value - (details.min[axis] ?? 0)))
+  const lines = [`Model ${path} (${details.format}, ${sizeText(details.bytes)}): ${size.join(' × ')} (x × y × z, y up), ${plural(details.triangles, 'triangle', 'triangles')} in ${plural(details.meshes, 'mesh', 'meshes')}.`]
+  const facts: string[] = []
+  if (details.materialCount > 0) facts.push(`Materials (${details.materialCount}): ${someNames(details.materials.map(material => material.name), details.materialCount)}.`)
+  if (details.textureCount > 0) facts.push(`${plural(details.textureCount, 'texture', 'textures')}.`)
+  const root = details.bones.find(bone => bone.parent === undefined)
+  facts.push(details.boneCount > 0 ? `Skeleton: ${plural(details.boneCount, 'bone', 'bones')}${root === undefined ? '' : ` from ${root.name === '' ? '(unnamed)' : root.name}`}.` : 'No skeleton.')
+  const clips = details.animationCount ?? details.animations.length
+  facts.push(clips === 0
+    ? 'No animation clips.'
+    : `Animation clips (${clips}): ${someNames(details.animations.map(clip => `${clip.name === '' ? '(unnamed)' : clip.name} (${secondsText(clip.seconds)})`), clips)}.`)
+  if (details.morphTargets.length > 0) {
+    const targets = details.morphTargets.reduce((total, morph) => total + (morph.targetCount ?? morph.targets.length), 0)
+    facts.push(`${plural(targets, 'morph target', 'morph targets')}.`)
+  }
+  if (details.missing.length > 0) facts.push(`Missing files: ${someNames(details.missing, details.missing.length)}.`)
+  lines.push(facts.join(' '), 'Pass details: true for the bounds, every material and its textures, the bone tree, each clip\'s animated bones, and the morph target names.')
+  return lines
 }

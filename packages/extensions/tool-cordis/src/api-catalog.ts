@@ -1793,6 +1793,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when the id is not lowercase letters and digits starting with a letter, or another provider has it.'],
       },
       {
+        signature: 'toolOwner(name: string): GameMcpToolOwner | undefined',
+        description: 'Find the provider that offers a tool now, so a report of a Session\'s own tool calls can count them by the plugin connected agents know them by: a Session calls Blender\'s tools as the MCP client names them, such as `mcp__wasd_blender__execute_python`, and connected agents as `blender_execute_python`.',
+        parameters: [{ name: 'name', description: 'the tool\'s name as a Session calls it (its harness definition\'s name), or as connected agents call it.' }],
+        returns: 'the provider\'s id and display name and the tool\'s name for connected agents, or undefined when no provider offers the tool.',
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) async* watch(signal: AbortSignal): AsyncIterable<GameMcpView>',
         description: 'Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.',
         parameters: [{ name: 'signal', description: 'stream cancellation.' }],
@@ -5622,6 +5628,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.change - fresh current projection or clear tombstone.' }],
   },
   {
+    name: 'godot/record',
+    mode: 'waterfall',
+    signature: '\'godot/record\'( this: Scoped<Agent>, request: GodotVideoEncodeEvent, next: () => Promise<GodotVideoEncodeResult>, ): Promise<GodotVideoEncodeResult>',
+    summary: 'Ask the windows that may read a Session to encode a recording of its game into a video.',
+    description: 'Ask the windows that may read a Session to encode a recording of its game into a video. Return the video\'s facts after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.',
+    parameters: [{ name: 'request', description: 'the recording, its frame rate and sheet, the size limit, the calling Agent, and the call\'s cancellation.' }],
+  },
+  {
     name: 'hmr/change',
     mode: 'emit',
     signature: '\'hmr/change\'(url: string): void',
@@ -7530,6 +7544,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n    readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined;\n}',
   },
   {
+    name: 'GameMcpToolOwner',
+    declaration: 'export interface GameMcpToolOwner {\n    readonly provider: string;\n    readonly title: string;\n    readonly tool: string;\n}',
+  },
+  {
     name: 'GameMcpToolResult',
     declaration: 'export interface GameMcpToolResult {\n    readonly provider: string;\n    readonly tool: string;\n    readonly args: JsonObject;\n    readonly client: GameMcpClient;\n    readonly agent?: Agent;\n    readonly isError: boolean;\n}',
   },
@@ -7683,7 +7701,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunLaunch',
-    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly web?: true;\n}',
+    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly web?: true;\n    readonly scale?: number;\n    readonly args?: readonly string[];\n    readonly engineArgs?: readonly string[];\n}',
   },
   {
     name: 'GodotRunLayer',
@@ -7695,7 +7713,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunRequest',
-    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n    readonly web?: boolean;\n}',
+    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n    readonly web?: boolean;\n    readonly args?: readonly string[];\n    readonly engineArgs?: readonly string[];\n}',
   },
   {
     name: 'GodotRunStarter',
@@ -7724,6 +7742,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotServerExportRequest',
     declaration: 'export interface GodotServerExportRequest {\n    readonly projectDir: string;\n    readonly outputDir: string;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeEvent',
+    declaration: 'export interface GodotVideoEncodeEvent extends GodotVideoEncodeRequest {\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeRequest',
+    declaration: 'export interface GodotVideoEncodeRequest {\n    readonly sessionId: SessionId;\n    readonly runId: string;\n    readonly recording: number;\n    readonly fps: number;\n    readonly sheetFrames: number;\n    readonly maxBytes: number;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeResult',
+    declaration: 'export interface GodotVideoEncodeResult {\n    readonly codec: string;\n    readonly frames: number;\n    readonly seconds: number;\n    readonly width: number;\n    readonly height: number;\n    readonly bytes: number;\n    readonly sheet?: {\n        readonly data: string;\n        readonly width: number;\n        readonly height: number;\n        readonly times: readonly number[];\n    };\n}',
   },
   {
     name: 'GodotViewItem',

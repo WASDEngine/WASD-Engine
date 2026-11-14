@@ -2,7 +2,7 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。`feedback_send` 工具让 Session 的 agent 和连接的 agent 向 WASD Engine 团队发送关于 WASD Engine 的反馈，用量报告统计 agent 调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASDEngine 网站。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
@@ -383,6 +383,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
+| `feedback_send` | `feedback`，经由 [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) 中的 `feedbackMcpProvider` | Session 自身带有 `model` 的工具定义，不需要 Session；提供方加入调用方 agent 的客户端，反馈发送到 WASD Engine 已登录的网站 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
@@ -392,6 +393,20 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
 **设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+
+<a id="agent-feedback"></a>
+## agent 反馈与 MCP 用量
+
+fork 的 [`telemetry.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/telemetry.cordis.patch.yml) 把 `agent-feedback` 行插入每个 Web 和 Desktop 配置，该行挂载 [`@deepseek-ai/dsh-agent-feedback`](../../packages/gamedev/agent-feedback/README.zh.md)。它的 `feedback_send` 工具把一条关于 WASD Engine 的反馈发送到 `POST /api/v1/feedback`，它的用量报告每分钟一次、并在 Host 停止时，把自上次报告以来统计的 MCP 工具调用发送到 `POST /api/v1/tool-usage`。两者都使用账号登录的 `getPlatformSession()` 给出的源和令牌，未登录时不发送任何内容；WASDEngine 网站为该账号保存两者。
+
+报告统计两类调用：
+
+| 调用 | 来源 | 计入 |
+|---|---|---|
+| Session 自身的调用 | `tools/result` | `gameMcp.toolOwner()` 为该工具找到的提供方，并使用连接 agent 所用的工具名；否则，名为 `mcp__<server>__<tool>` 的工具计入该服务器，视为用户添加的服务器；其他工具不计数 |
+| 连接 agent 的调用 | `game-mcp/tool-result` | 该调用的提供方和工具，并带有 agent 的客户端 id |
+
+`gameMcp.toolOwner(name)` 按连接 agent 所用的工具名，或按运行该工具的 harness 定义的名称查找工具，因此 Session 以 `mcp__wasd_blender__*` 调用的 Blender 工具，在两类调用中都计为 `blender_*`。
 
 <a id="agents-browser"></a>
 ## 智能体的浏览器
@@ -544,6 +559,16 @@ Owner of the MCP endpoint, its game tool providers, and the connected agents' Se
  * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.
  */
 provide(provider: GameMcpProvider): () => void
+
+/**
+ * Find the provider that offers a tool now, so a report of a Session's own tool calls can count them by the plugin
+ * connected agents know them by: a Session calls Blender's tools as the MCP client names them, such as
+ * `mcp__wasd_blender__execute_python`, and connected agents as `blender_execute_python`.
+ * @param name - the tool's name as a Session calls it (its harness definition's name), or as connected agents call it.
+ * @returns the provider's id and display name and the tool's name for connected agents, or undefined when no
+ * provider offers the tool.
+ */
+toolOwner(name: string): GameMcpToolOwner | undefined
 
 /**
  * Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.
@@ -993,4 +1018,29 @@ A connected agent's call of a provider tool finished, after its result was made;
 ```
 
 Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
+
+<a id="godot-events"></a>
+
+### `godot/*` events
+
+<a id="godotrecord--waterfall"></a>
+
+#### `godot/record` — waterfall
+
+Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts
+ * after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the recording, its frame rate and sheet, the size limit, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'godot/record'( this: Scoped<Agent>, request: GodotVideoEncodeEvent, next: () => Promise<GodotVideoEncodeResult>, ): Promise<GodotVideoEncodeResult>
+```
+
+Types: [Agent](core.zh.md) · [Scoped](scope.zh.md)
+
+Source: [`packages/gamedev/godot/src/types.ts`](../../packages/gamedev/godot/src/types.ts)
 <!-- END GENERATED cordis-surface -->

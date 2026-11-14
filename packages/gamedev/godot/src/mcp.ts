@@ -1,9 +1,9 @@
 /**
  * The Godot tools for agents connected through WASD Engine's MCP server: the Session's own tool definitions, run for
  * the connected agent's Session in the game project it names, so its games play in the WASD Engine window's Game
- * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one; screenshots and pictures
- * travel as PNG bytes, screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's
- * Game tab.
+ * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one; images travel as their
+ * PNG or JPEG bytes, screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's Game
+ * tab.
  * @module @deepseek-ai/dsh-godot/src/mcp
  */
 import { randomUUID } from 'node:crypto'
@@ -11,7 +11,7 @@ import { basename, dirname, isAbsolute } from 'node:path'
 import type { GameMcpContent, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { resolveGodotProject } from './project.ts'
-import { godotToolDefinitions, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
+import { godotToolDefinitions, regionFields, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
 import type { GodotRuntimeView } from './types.ts'
 
 /** Longest image edge an agent receives unresized. */
@@ -38,15 +38,16 @@ export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* 
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
-4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.`
+4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.
+5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.`
 
 const PROJECT_PARAMETER = {
   type: 'string',
   description: 'Absolute path of the Godot project: the folder that holds project.godot, or a folder above it. Default: the project of your previous Godot call.',
 } as const
 
-/** The PNG bytes of each call's screenshots and pictures, by image id. */
-type CapturedImages = WeakMap<ToolRunContext, Map<string, Buffer>>
+/** The bytes and media type of each call's images, by image id. */
+type CapturedImages = WeakMap<ToolRunContext, Map<string, { readonly data: Buffer; readonly mediaType: 'image/png' | 'image/jpeg' }>>
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -70,60 +71,68 @@ export function agentScreenshotWidth(maxWidth: number, width: number | undefined
 }
 
 /**
- * The screenshots of connected agents: each image's PNG bytes wait, under the image's id, for the call's result.
- * @param images - PNG bytes by image id, per call.
+ * The widest image of a size's aspect ratio that agents receive unresized.
+ * @param width - width of the size.
+ * @param height - height of the size.
+ * @returns the width in pixels.
+ */
+export function agentWidthLimit(width: number, height: number): number {
+  const aspect = width / height
+  const byEdge = aspect >= 1 ? AGENT_IMAGE_MAX_EDGE : AGENT_IMAGE_MAX_EDGE * aspect
+  return Math.max(MIN_SCREENSHOT_WIDTH, Math.floor(Math.min(byEdge, Math.sqrt(AGENT_IMAGE_MAX_PIXELS * aspect))))
+}
+
+/**
+ * The images of connected agents: each image's bytes wait, under the image's id, for the call's result, and the sizes
+ * the game draws fit agent image limits.
+ * @param images - image bytes by image id, per call.
  * @returns the screenshot resolution of {@link GodotToolSurface}.
  */
 function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots'] {
-  return exec => Promise.resolve({
-    async capture(run, maxWidth, signal) {
-      const view = run.view()
-      const shot = await run.screenshot(agentScreenshotWidth(maxWidth, view.width, view.height), signal)
-      const id = keepImage(images, exec, shot.image, 'godot-screenshot')
-      return {
-        width: shot.meta.width,
-        height: shot.meta.height,
-        windowWidth: shot.meta.windowWidth,
-        windowHeight: shot.meta.windowHeight,
-        frame: shot.meta.frame,
-        paused: shot.meta.paused,
-        image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
+  return (exec) => {
+    const keep = (prefix: string, data: Buffer, mediaType: 'image/png' | 'image/jpeg'): string => {
+      const id = `${prefix}-${randomUUID()}`
+      let captured = images.get(exec)
+      if (captured === undefined) {
+        captured = new Map()
+        images.set(exec, captured)
       }
-    },
-  })
-}
-
-/**
- * Keep PNG bytes under a new image id until the call's result.
- * @param images - PNG bytes by image id, per call.
- * @param exec - the call.
- * @param png - the PNG bytes.
- * @param prefix - start of the image id.
- * @returns the image id.
- */
-function keepImage(images: CapturedImages, exec: ToolRunContext, png: Buffer, prefix: string): string {
-  const id = `${prefix}-${randomUUID()}`
-  let captured = images.get(exec)
-  if (captured === undefined) {
-    captured = new Map()
-    images.set(exec, captured)
+      captured.set(id, { data, mediaType })
+      return id
+    }
+    return Promise.resolve({
+      async capture(run, maxWidth, signal, region) {
+        const view = run.view()
+        let shot
+        if (region === undefined) {
+          shot = await run.screenshot(agentScreenshotWidth(maxWidth, view.width, view.height), signal)
+        } else {
+          const limit = Math.min(maxWidth, agentWidthLimit(region.width, region.height))
+          shot = await run.screenshot(limit, signal, undefined, { ...region, minWidth: Math.min(region.minWidth, limit) })
+        }
+        const id = keep('godot-screenshot', shot.image, 'image/png')
+        return {
+          width: shot.meta.width,
+          height: shot.meta.height,
+          windowWidth: shot.meta.windowWidth,
+          windowHeight: shot.meta.windowHeight,
+          ...regionFields(shot.meta),
+          frame: shot.meta.frame,
+          paused: shot.meta.paused,
+          image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
+        }
+      },
+      store(made) {
+        const id = keep('godot-image', made.data, made.mediaType)
+        const { mediaType, width, height } = made
+        return Promise.resolve({ attachmentId: id, mediaType, bytes: made.data.byteLength, width, height })
+      },
+      fit(width, height) {
+        const limit = agentWidthLimit(width, height)
+        return width <= limit ? { width, height } : { width: limit, height: Math.max(1, Math.round(height * limit / width)) }
+      },
+    })
   }
-  captured.set(id, png)
-  return id
-}
-
-/**
- * The pictures of connected agents, which receive them as PNG bytes like screenshots.
- * @param images - PNG bytes by image id, per call.
- * @returns the picture resolution of {@link GodotToolSurface}.
- */
-function mcpPictures(images: CapturedImages): GodotToolSurface['pictures'] {
-  return exec => Promise.resolve({
-    keep(png, _name, size) {
-      const id = keepImage(images, exec, png, 'godot-picture')
-      return Promise.resolve({ attachmentId: id, mediaType: 'image/png', bytes: png.byteLength, width: size.width, height: size.height })
-    },
-  })
 }
 
 /**
@@ -166,7 +175,7 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
     // godot_check is not read-only: it may import the project first, which writes import data into it.
-    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
+    readOnly: ['godot_screenshot', 'godot_view', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
       const { project, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')
@@ -186,8 +195,8 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       return definition.output.render(args, value).flatMap((block): GameMcpContent[] => {
         if (block.type === 'text') return [{ type: 'text', text: block.text }]
         if (block.type !== 'image') return []
-        const png = captured?.get(block.attachment.attachmentId)
-        return png === undefined ? [] : [{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }]
+        const image = captured?.get(block.attachment.attachmentId)
+        return image === undefined ? [] : [{ type: 'image', data: image.data.toString('base64'), mimeType: image.mediaType }]
       })
     },
   }
@@ -205,7 +214,9 @@ export function godotMcpProvider(
 ): GameMcpProvider {
   const images: CapturedImages = new WeakMap()
   const projects = new Map<string, string>()
-  const tools = godotToolDefinitions(host, { screenshots: mcpScreenshots(images), pictures: mcpPictures(images), wording: MCP_WORDING })
+  const screenshots = mcpScreenshots(images)
+  // Connected agents always receive images, so a call's pictures are stored as its screenshots are.
+  const tools = godotToolDefinitions(host, { screenshots, pictures: screenshots, wording: MCP_WORDING })
     .map(definition => mcpTool(definition, images, projects))
   return {
     id: 'godot',

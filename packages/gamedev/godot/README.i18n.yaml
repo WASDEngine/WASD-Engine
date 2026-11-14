@@ -9,8 +9,8 @@
   en: a241cb34bd734eda
   zh: ba14b7bb3972b225
 /deepseek-ai-dsh-godot/summary:
-  en: bd36a9b3dd0b7a62
-  zh: 78fafd40bfd03179
+  en: 3177f18799726daf
+  zh: 485a4e4566174ed2
 /deepseek-ai-dsh-godot/table-of-contents:
   en: d152484eb41ac6b4
   zh: 725b47765ee8f30b
@@ -24,8 +24,8 @@
   en: cc31369797b3b01a
   zh: 2bdd59780bc3df73
 /deepseek-ai-dsh-godot/use-this-package/configuration:
-  en: c885d4a0b53c20b2
-  zh: 553f982e276164d2
+  en: 369cd9890adfa9fe
+  zh: f0200d33387b044a
 /deepseek-ai-dsh-godot/use-this-package/godot-runtime:
   en: 7999ee631747ad49
   zh: 44e14379a0147c1c
@@ -33,23 +33,26 @@
   en: 558a06ab96d37749
   zh: 7fe5494d891b4c1d
 /deepseek-ai-dsh-godot/use-this-package/game-runs:
-  en: 9f00e2c910935129
-  zh: 3bd639f1c1aa8080
+  en: 35aeddddf4687e98
+  zh: 37f9fd105261af2c
 /deepseek-ai-dsh-godot/use-this-package/the-harness:
-  en: dc74f1b1dfb0320d
-  zh: ef9ab3b227488929
+  en: 9bcd8f6c6df0d08c
+  zh: c53a3bf96d9d97b4
 /deepseek-ai-dsh-godot/use-this-package/tools:
-  en: de9e7bf6665c7cf1
-  zh: e2ee6a987a0e4013
+  en: 047d795338a5f717
+  zh: dfaebd9bc3ddda4c
+/deepseek-ai-dsh-godot/use-this-package/views-code-and-recordings:
+  en: 2cbb63a0acf14ec5
+  zh: 2e1069e039ed88eb
 /deepseek-ai-dsh-godot/use-this-package/tools-for-connected-agents:
-  en: ac1ef24630085f2d
-  zh: 008d6922d5fb346b
+  en: e7d4630d7206ca78
+  zh: 7e6d7ddb298bdee8
 /deepseek-ai-dsh-godot/use-this-package/game-tab:
   en: 54a2f9f731cb6ffe
   zh: 3497850a86bb11dc
 /deepseek-ai-dsh-godot/use-this-package/remote-methods-and-the-frame-route:
-  en: 6584de822123ad4e
-  zh: 367154fa183f5209
+  en: 3f7973e7656ba8d0
+  zh: 336ef8882e118534
 /deepseek-ai-dsh-godot/use-this-package/web-export:
   en: 8edf57f8aa20d87b
   zh: 67ee74ff284c48d9
@@ -96,14 +99,14 @@
   en: 8cef82d4c83581ef
   zh: 9c723246bc91357d
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/what-the-model-sees:
-  en: 6b132bf32762d6d4
-  zh: d267d8fec4483a50
+  en: a6decad37d54070d
+  zh: 838ba5c7a4009dd0
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/token-effect:
-  en: d96b9bbd46be068d
-  zh: 6c396cd39726e4b3
+  en: 199a4e709f2e3c83
+  zh: 6c9d2be3758302d6
 /deepseek-ai-dsh-godot/model-experience/godot-tool-declarations/kv-cache-effect:
-  en: 44124c6214857c47
-  zh: d4ca98b4dafc3f07
+  en: d3cdab2999e09d76
+  zh: 3b6061408ae39e2d
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt:
   en: 9a2a0228ccac0457
   zh: 9a9f0c1b1e0c17c9
@@ -114,8 +117,8 @@
   en: 5b7faaeb50336f4b
   zh: f1087c241f6734d3
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/token-effect:
-  en: 10fc0cbe4367ec16
-  zh: 3afb0174e60a962d
+  en: d888e20e81b2d58a
+  zh: 4fdebe6f311ec849
 /deepseek-ai-dsh-godot/model-experience/godot-section-in-the-system-prompt/kv-cache-effect:
   en: 7055ccc0a0c30685
   zh: fe72ad236b48d482
@@ -123,20 +126,20 @@
   en: 28cf07c27a2e0041
   zh: 5ef7b4bcef28cb98
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/what-the-model-sees:
-  en: 952107e225ded681
-  zh: cae9e81f64c5426d
+  en: e2e79df39000e3d0
+  zh: 50bdae9cbc69768e
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/what-the-model-sees/missing-runtime-message:
   en: 859d90af1f75cfb3
   zh: f75a462dc1106dbe
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/token-effect:
-  en: 44cac46429b05d62
-  zh: 476ff1a04a322cf7
+  en: 6f130771aa82fb65
+  zh: d49e808322f686b5
 /deepseek-ai-dsh-godot/model-experience/tool-results-screenshots-and-new-error-reports/kv-cache-effect:
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work:
-  en: 5f918802bab2147d
-  zh: 855faa8f063c1e35
+  en: 9c48e059154818f4
+  zh: 0061e47a98e5957a
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

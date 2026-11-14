@@ -6,15 +6,15 @@ extends SceneTree
 ## game is paused, and serves one loopback TCP connection to the Host. Autoloads load as usual.
 ##
 ## Wire format, both directions: a 4-byte little-endian length N, then N bytes holding a 1-byte kind and its payload.
-## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width,
-## u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
-## u32 request id, then the PNG or JPEG bytes. Kind 5 (harness to Host) answers an `audio` request: u32 request id,
-## then the captured samples as little-endian 32-bit floats, left and right interleaved. The first message on the
-## connection is the harness's `hello` JSON, which carries the token, and `wasdRuntime`: whether the runtime has the
-## `WASDEngineRuntime` singleton of WASD Engine's LibGodot builds, whose script profilers the harness uses. When the
-## game draws into the Core Animation layer of the macOS embedded display server, `hello` also carries `layer`: the
-## CAContext id through which another process of the login session can display that layer with a CALayerHost, and
-## the game window pixels per layer point (`scale`).
+## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width, u16 height,
+## then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot or view request: u32 request id,
+## then the PNG or JPEG bytes. Kind 4 (harness to Host) is a frame of a recording, as `record` says. Kind 5 (harness to
+## Host) answers an `audio` request: u32 request id, then the captured samples as little-endian 32-bit floats, left and
+## right interleaved. The first message on the connection is the harness's `hello` JSON, which carries the token, and
+## `wasdRuntime`: whether the runtime has the `WASDEngineRuntime` singleton of WASD Engine's LibGodot builds, whose
+## script profilers the harness uses. When the game draws into the Core Animation layer of the macOS embedded display
+## server, `hello` also carries `layer`: the CAContext id through which another process of the login session can display
+## that layer with a CALayerHost, and the game window pixels per layer point (`scale`).
 ##
 ## Screenshots and streamed frames show the game window at its pixel size, scaled down to `maxWidth`: the root
 ## viewport where the project's stretch settings place it, and black where the window shows bars around it. At
@@ -88,6 +88,7 @@ const PROTOCOL_VERSION := 1
 const KIND_JSON := 1
 const KIND_FRAME := 2
 const KIND_IMAGE := 3
+const KIND_RECORD := 4
 const KIND_AUDIO := 5
 const MAX_PENDING_LOGS := 4000
 const UNKNOWN_REFRESH_FPS := 60  # frame rate of a game that does not present, on a screen that reports no refresh rate
@@ -109,6 +110,22 @@ const AUDIO_LISTED_PLAYERS := 40  # players that played, listed in a capture's a
 const RUNTIME_SINGLETON := &"WASDEngineRuntime"
 # DisplayServer metadata in which the WASD Engine LibGodot build publishes the CAContext id of the embedded display server's layer.
 const LAYER_CONTEXT_META := &"wasd_layer_context_id"
+# `eval` code compiles as the body of `run` in a script of its own, under a path that names the script in its errors. The
+# names it may use are members, so the code may declare its own of the same names.
+const CODE_HEAD := "extends Node\n\n\nvar tree: SceneTree\nvar root: Window\nvar scene: Node\nvar node: Object\n\n\nfunc run():\n"
+const CODE_HEAD_LINES := 10
+const EVAL_PATH := "res://wasd_eval_%d.gd"
+const REGION_MAX_FACTOR := 8  # largest whole factor by which a small screenshot region grows
+const VIEW_MAX_SIDE := 4096
+const VIEW_FRAMES := 8  # frames a view draws before its capture, so temporal antialiasing and other temporal effects settle
+const VIEW_ASSET_FOV := 35.0  # vertical field of view of an asset view, in degrees
+const VIEW_BONE_RADIUS := 0.25  # meters a view frames around a bone
+const VIEW_YAW := 30.0
+const VIEW_PITCH := 10.0
+const VIEW_MAX_NODES := 50000  # nodes a view visits to measure its subject
+const ISOLATE_LAYER := 20  # the render layer that an isolated view draws alone
+const RECORD_MAX_IN_FLIGHT := 6  # frames of a recording being copied or encoded at once
+const RECORD_MAX_OUTBOX := 48 * 1024 * 1024  # bytes waiting for the connection beyond which a real-time recording skips frames
 
 ## Where the root viewport's picture shows in an image of the game window: the picture fills `target` of an image of
 ## `size`, and black fills the rest. A zero `size` keeps the picture as it is. The main thread builds a layout when it
@@ -206,10 +223,42 @@ class FrameEncoding extends RefCounted:
 			bytes = framed.save_png_to_buffer() if png else framed.save_jpg_to_buffer(quality)
 		usec = Time.get_ticks_usec() - start
 
+## One frame of a recording: copied from the GPU without waiting, or read at once, then encoded on a worker. `time_ms`
+## places it in the video: real milliseconds since the recording started, or game frames times their length.
+class RecordFrame extends RefCounted:
+	var index := 0
+	var time_ms := 0
+	var readback: FrameReadback = null
+	var encoding: FrameEncoding = null
+	var task := -1
+	var failed := false
+
 class HarnessLogger extends Logger:
 	var _mutex := Mutex.new()
 	var _pending: Array[Dictionary] = []
 	var dropped := 0
+	# Entries logged by code that `eval` compiled: {script path: entries}. While `swallow` holds a path, its entries
+	# stay out of the log, as the trial compiles of `eval` code do.
+	var _watched := {}
+	var _swallow := ""
+
+	## Collects the entries that name `path` as their file until `unwatch`; with `swallow`, they also stay out of the log.
+	func watch(path: String, swallow: bool) -> void:
+		_mutex.lock()
+		_watched[path] = []
+		if swallow:
+			_swallow = path
+		_mutex.unlock()
+
+	## Stops collecting the entries of `path`; returns them.
+	func unwatch(path: String) -> Array:
+		_mutex.lock()
+		var entries: Array = _watched.get(path, [])
+		_watched.erase(path)
+		if _swallow == path:
+			_swallow = ""
+		_mutex.unlock()
+		return entries
 
 	func _log_message(message: String, error: bool) -> void:
 		_push({"level": "stderr" if error else "stdout", "message": message.trim_suffix("\n")})
@@ -243,6 +292,12 @@ class HarnessLogger extends Logger:
 	func _push(entry: Dictionary) -> void:
 		entry["time_ms"] = Time.get_ticks_msec()
 		_mutex.lock()
+		var file: String = entry.get("file", "")
+		if _watched.has(file):
+			_watched[file].append(entry.duplicate())
+			if file == _swallow:
+				_mutex.unlock()
+				return
 		if _pending.size() >= MAX_PENDING_LOGS:
 			_pending.pop_front()
 			dropped += 1
@@ -402,6 +457,17 @@ var _waits: Array[Dictionary] = []
 # Scheduled hold releases: {sequence, identity, press, at}.
 var _holds: Array[Dictionary] = []
 var _last_status_ms := 0
+var _eval_serial := 0
+# Views being drawn: {id, viewport, frames left, layers to restore, format, quality, facts}.
+var _views: Array[Dictionary] = []
+var _view_holder: Node = null
+# The running recording, or empty: {id, fps, maxWidth, quality, step, frameMs, maxFrames, started, next, frame0, until,
+# captured, sent, skipped, frames: Array[RecordFrame] in capture order, stop: the stop request's id or null, size}.
+var _recording := {}
+# The answer of the latest recording that ended before its stop request arrived.
+var _ended_recording := {}
+# `eval` code that awaits: {request id: real time in seconds at which its answer stops waiting, 0 for never}.
+var _evals := {}
 var _last_mouse_mode := -1
 var _last_scene := ""
 # The running performance sample, or empty: {id, started, end, deadline (real seconds), frames, droppedFrames,
@@ -462,9 +528,12 @@ func _process(delta: float) -> bool:
 		_advance_waits(now)
 		_advance_sample(now)
 		_advance_audio(now)
+		_advance_evals(now)
 		_flush_logs()
 		_send_status_if_changed()
 		_stream_frame(now)
+		_advance_recording(now)
+		_advance_views()
 	# The main loop processes before the nodes do, so the nodes run this frame with the pause state set above.
 	_frame_seconds = 0.0 if paused else delta
 	if not _sample.is_empty():
@@ -601,13 +670,17 @@ func _handle(message: Dictionary, now: float) -> void:
 			else:
 				_reply_error(id, "cancel.request must be the id of a wait, step, or input request")
 		"eval":
-			_eval(id, message)
+			_eval(id, message, now)
 		"tree":
 			_tree(id, message)
 		"performance":
 			_start_sample(id, message, now)
 		"audio":
 			_start_audio(id, message, now)
+		"view":
+			_view(id, message)
+		"record":
+			_record(id, message, now)
 		"quit":
 			_reply(id, {"quitting": true})
 			quit(int(message.get("exitCode", 0)))
@@ -730,6 +803,10 @@ func _cancel(request, now: float) -> bool:
 		return true
 	if _audio != null and _audio.id == request:
 		_finish_audio(now, false, true)
+		return true
+	if _evals.has(request):
+		_evals.erase(request)
+		_reply_error(request, "cancelled")
 		return true
 	for i in _waits.size():
 		if _waits[i]["id"] == request:
@@ -1017,14 +1094,44 @@ func _capture(max_width: int) -> Image:
 
 
 func _screenshot(id, message: Dictionary) -> void:
-	var image := _capture(int(message.get("maxWidth", 0)))
+	var max_width := int(message.get("maxWidth", 0))
+	var region = message.get("region", null)
+	var facts := {}
+	var image: Image
+	if region is Dictionary:
+		var window_image := _capture(0)
+		if window_image == null:
+			_reply_error(id, "the root viewport has no image yet")
+			return
+		var bounds := Rect2i(Vector2i.ZERO, window_image.get_size())
+		var rect := Rect2i(int(region.get("x", 0)), int(region.get("y", 0)), int(region.get("width", 0)), int(region.get("height", 0))).intersection(bounds)
+		if rect.size.x <= 0 or rect.size.y <= 0:
+			_reply_error(id, "the region lies outside the %dx%d window" % [bounds.size.x, bounds.size.y])
+			return
+		image = window_image.get_region(rect)
+		if max_width > 0 and image.get_width() > max_width:
+			image.resize(max_width, maxi(1, roundi(image.get_height() * float(max_width) / image.get_width())), Image.INTERPOLATE_LANCZOS)
+		else:
+			# A small region grows by the largest whole factor that keeps it within minWidth, each window pixel a square, so a
+			# model sees its detail.
+			var factor := clampi(int(message.get("minWidth", 0)) / image.get_width(), 1, REGION_MAX_FACTOR)
+			if factor > 1:
+				image.resize(image.get_width() * factor, image.get_height() * factor, Image.INTERPOLATE_NEAREST)
+		facts = {"x": rect.position.x, "y": rect.position.y, "regionWidth": rect.size.x, "regionHeight": rect.size.y}
+	else:
+		image = _capture(max_width)
 	if image == null:
 		_reply_error(id, "the root viewport has no image yet")
 		return
 	var format := str(message.get("format", "png"))
-	var bytes := image.save_jpg_to_buffer(clampf(float(message.get("quality", 0.85)), 0.1, 1.0)) if format == "jpeg" else image.save_png_to_buffer()
 	var window := _window_size()
-	_reply(id, {"format": "jpeg" if format == "jpeg" else "png", "width": image.get_width(), "height": image.get_height(), "windowWidth": window.x, "windowHeight": window.y, "frame": _frame, "paused": paused})
+	facts.merge({"format": "jpeg" if format == "jpeg" else "png", "width": image.get_width(), "height": image.get_height(), "windowWidth": window.x, "windowHeight": window.y, "frame": _frame, "paused": paused})
+	_reply(id, facts)
+	_send_image(id, image.save_jpg_to_buffer(clampf(float(message.get("quality", 0.85)), 0.1, 1.0)) if format == "jpeg" else image.save_png_to_buffer())
+
+
+## Sends the image bytes that answer request `id`.
+func _send_image(id, bytes: PackedByteArray) -> void:
 	var header := PackedByteArray()
 	header.resize(4)
 	header.encode_u32(0, int(id) if id != null else 0)
@@ -1055,6 +1162,177 @@ func _stream_frame(now: float) -> void:
 	if picture == null or picture.is_empty():
 		return
 	_queue_frame(FrameEncoding.new(picture, PackedByteArray(), Vector2i.ZERO, layout, false, _stream_quality), now)
+
+
+## Starts or stops a recording. `start` records the game window, scaled down to at most `maxWidth`, as JPEG frames at
+## `quality`: `fps` times per second of real time, or with a positive `frameStep` every that many game frames, each
+## frame `frameMs` of video, never skipping one; it captures no further frame after `frames` frames when that is
+## positive, or after `seconds` of real time. Frames go out as kind 4: u32 recording id, u32 frame index, u32
+## milliseconds into the video, u16 width, u16 height, then the JPEG file. `stop` captures no further frames, or with
+## `wait` lets the recording reach its end, and answers once the captured frames went out.
+func _record(id, message: Dictionary, now: float) -> void:
+	var recording := int(message.get("recording", 0))
+	match str(message.get("action", "")):
+		"start":
+			if not _recording.is_empty():
+				_reply_error(id, "a recording is already running")
+				return
+			_recording = {
+				"id": recording,
+				"fps": clampf(float(message.get("fps", 30.0)), 1.0, 60.0),
+				"maxWidth": clampi(int(message.get("maxWidth", 1920)), 64, 4096),
+				"quality": clampf(float(message.get("quality", 0.9)), 0.1, 1.0),
+				"step": clampi(int(message.get("frameStep", 0)), 0, 1000),
+				"maxFrames": maxi(int(message.get("frames", 0)), 0),
+				"frameMs": maxf(float(message.get("frameMs", 0.0)), 0.0),
+				"started": now, "next": now, "frame0": _frame,
+				"until": now + clampf(float(message.get("seconds", 60.0)), 0.1, 3600.0),
+				"captured": 0, "sent": 0, "skipped": 0, "frames": [], "stop": null, "size": Vector2i.ZERO,
+			}
+			_ended_recording = {}
+			_reply(id, {"recording": recording, "frame": _frame})
+		"stop":
+			if not _recording.is_empty() and _recording["id"] == recording:
+				_recording["stop"] = id
+				if message.get("wait", false) != true:
+					_recording["until"] = minf(_recording["until"], now)
+			elif not _ended_recording.is_empty() and _ended_recording["recording"] == recording:
+				_reply(id, _ended_recording)
+				_ended_recording = {}
+			else:
+				_reply_error(id, "no recording %d is running" % recording)
+		_:
+			_reply_error(id, "record.action must be start or stop")
+
+
+## Captures the recording's due frame, hands copied frames to workers, sends encoded frames in order, and ends the
+## recording once it stopped capturing and its last frame went out. A real-time recording skips a frame while its
+## frames in flight or the waiting messages are full; a game-frame recording waits for them instead.
+func _advance_recording(now: float) -> void:
+	if _recording.is_empty():
+		return
+	var frames: Array = _recording["frames"]
+	_finish_record_frames(frames)
+	var step: int = _recording["step"]
+	if now < float(_recording["until"]) and _record_due(now, step):
+		if step > 0:
+			while frames.size() >= RECORD_MAX_IN_FLIGHT:
+				WorkerThreadPool.wait_for_task_completion((frames[0] as RecordFrame).task)
+				(frames[0] as RecordFrame).task = -2
+				_finish_record_frames(frames)
+			if _outbox_bytes > RECORD_MAX_OUTBOX:
+				_flush_outbox_waiting()
+			_capture_record_frame(now, step)
+		elif frames.size() >= RECORD_MAX_IN_FLIGHT or _outbox_bytes > RECORD_MAX_OUTBOX:
+			_recording["skipped"] += 1
+		else:
+			_capture_record_frame(now, step)
+		var wanted: int = _recording["maxFrames"]
+		if wanted > 0 and int(_recording["captured"]) >= wanted:
+			_recording["until"] = now
+	if now >= float(_recording["until"]) and frames.is_empty():
+		var recording := _recording
+		_recording = {}
+		var size: Vector2i = recording["size"]
+		var answer := {
+			"recording": recording["id"], "frames": recording["sent"], "skipped": recording["skipped"],
+			"seconds": now - float(recording["started"]), "width": size.x, "height": size.y,
+		}
+		if recording["stop"] != null:
+			_reply(recording["stop"], answer)
+		else:
+			_ended_recording = answer
+
+
+func _record_due(now: float, step: int) -> bool:
+	if step > 0:
+		return (_frame - int(_recording["frame0"])) % step == 0
+	if now < float(_recording["next"]):
+		return false
+	var interval := 1.0 / float(_recording["fps"])
+	var next := float(_recording["next"])
+	_recording["next"] = next + interval if now - next < interval else now + interval
+	return true
+
+
+func _capture_record_frame(now: float, step: int) -> void:
+	var frame := RecordFrame.new()
+	frame.index = _recording["captured"]
+	frame.time_ms = roundi(frame.index * step * float(_recording["frameMs"])) if step > 0 else roundi((now - float(_recording["started"])) * 1000.0)
+	var layout := _frame_layout(int(_recording["maxWidth"]))
+	var rd := RenderingServer.get_rendering_device()
+	if step == 0 and rd != null and not _readback_refused:
+		var texture := RenderingServer.texture_get_rd_texture(root.get_texture().get_rid())
+		if texture.is_valid():
+			frame.readback = FrameReadback.new(layout)
+			RenderingServer.call_on_render_thread(FrameReadback.request.bind(frame.readback, rd, texture))
+			_recording["captured"] += 1
+			_recording["frames"].append(frame)
+			return
+	var picture := root.get_texture().get_image()
+	if picture == null or picture.is_empty():
+		_recording["skipped"] += 1
+		return
+	_recording["captured"] += 1
+	_encode_record_frame(frame, FrameEncoding.new(picture, PackedByteArray(), Vector2i.ZERO, layout, false, _recording["quality"]))
+	_recording["frames"].append(frame)
+
+
+func _encode_record_frame(frame: RecordFrame, encoding: FrameEncoding) -> void:
+	frame.encoding = encoding
+	frame.task = WorkerThreadPool.add_task(encoding.run, false, "WASD Engine recording frame")
+
+
+## Hands the frames the GPU copied to workers and sends the encoded frames at the head of the queue, in order.
+func _finish_record_frames(frames: Array) -> void:
+	for item in frames:
+		var frame := item as RecordFrame
+		if frame.readback == null:
+			continue
+		var taken := frame.readback.take()
+		if taken[0] == FrameReadback.PENDING:
+			continue
+		var layout := frame.readback.layout
+		frame.readback = null
+		if taken[0] == FrameReadback.FAILED:
+			_readback_refused = true
+			frame.failed = true
+		else:
+			_encode_record_frame(frame, FrameEncoding.new(null, taken[1], taken[2], layout, false, _recording["quality"]))
+	while not frames.is_empty():
+		var head := frames[0] as RecordFrame
+		if head.failed:
+			frames.pop_front()
+			_recording["skipped"] += 1
+			continue
+		if head.encoding == null or (head.task >= 0 and not WorkerThreadPool.is_task_completed(head.task)):
+			return
+		if head.task >= 0:
+			WorkerThreadPool.wait_for_task_completion(head.task)
+		frames.pop_front()
+		if head.encoding.bytes.is_empty():
+			_recording["skipped"] += 1
+			continue
+		var payload := PackedByteArray()
+		payload.resize(16)
+		payload.encode_u32(0, int(_recording["id"]))
+		payload.encode_u32(4, head.index)
+		payload.encode_u32(8, head.time_ms)
+		payload.encode_u16(12, head.encoding.size.x)
+		payload.encode_u16(14, head.encoding.size.y)
+		payload.append_array(head.encoding.bytes)
+		_send(KIND_RECORD, payload)
+		_recording["sent"] += 1
+		_recording["size"] = head.encoding.size
+
+
+## Sends the waiting messages, waiting for the connection; a game-frame recording does this rather than skip a frame.
+func _flush_outbox_waiting() -> void:
+	while _connected and _outbox_bytes > RECORD_MAX_OUTBOX:
+		_peer.poll()
+		_flush_outbox()
+		if _outbox_bytes > RECORD_MAX_OUTBOX:
+			OS.delay_msec(1)
 
 
 ## Prepares a captured frame now, or after the frame that the worker prepares.
@@ -1148,6 +1426,10 @@ func _schedule_lossless_test(now: float) -> void:
 ## Waits for the frames being prepared; every WorkerThreadPool task must be waited for. A copy from the GPU that is still
 ## pending stays with its callback.
 func _wait_for_encodings() -> void:
+	for frame in _recording.get("frames", []):
+		if (frame as RecordFrame).task >= 0:
+			WorkerThreadPool.wait_for_task_completion((frame as RecordFrame).task)
+			(frame as RecordFrame).task = -1
 	if _encoding != null:
 		WorkerThreadPool.wait_for_task_completion(_encoding_task)
 		_encoding = null
@@ -1156,13 +1438,7 @@ func _wait_for_encodings() -> void:
 		_lossless_test = null
 
 
-func _eval(id, message: Dictionary) -> void:
-	var expression := Expression.new()
-	var names := PackedStringArray(["tree", "root", "scene"])
-	var error := expression.parse(str(message.get("expression", "")), names)
-	if error != OK:
-		_reply_error(id, expression.get_error_text())
-		return
+func _eval(id, message: Dictionary, now: float) -> void:
 	var base: Object = current_scene
 	var path := str(message.get("node", ""))
 	if not path.is_empty():
@@ -1170,11 +1446,121 @@ func _eval(id, message: Dictionary) -> void:
 		if base == null:
 			_reply_error(id, "no node at %s" % path)
 			return
-	var value = expression.execute([self, root, current_scene], base, false)
+	if message.has("code"):
+		var deadline := _deadline(id, message, now)
+		if deadline >= 0.0:
+			# A coroutine called through a Callable: the code may await, and its answer follows when it returns.
+			_run_code.call(id, str(message["code"]), base, deadline)
+		return
+	var names := PackedStringArray(["tree", "root", "scene"])
+	var values: Array = [self, root, current_scene]
+	_add_global_names(names, values)
+	var expression := Expression.new()
+	var error := expression.parse(str(message.get("expression", "")), names)
+	if error != OK:
+		_reply_error(id, expression.get_error_text())
+		return
+	var value = expression.execute(values, base, false)
 	if expression.has_execute_failed():
 		_reply_error(id, expression.get_error_text())
 		return
 	_reply(id, {"value": _to_json(value, 0), "valueType": type_string(typeof(value))})
+
+
+## Adds the engine singletons, such as Input, OS, and ResourceLoader, and the project's autoloads to an Expression's
+## inputs by name; a name that is already an input keeps its value.
+func _add_global_names(names: PackedStringArray, values: Array) -> void:
+	for name in Engine.get_singleton_list():
+		if not names.has(name):
+			names.append(name)
+			values.append(Engine.get_singleton(name))
+	for property in ProjectSettings.get_property_list():
+		var key := str(property["name"])
+		if not key.begins_with("autoload/"):
+			continue
+		var name := key.trim_prefix("autoload/")
+		var node := root.get_node_or_null(NodePath(name))
+		if node != null and not names.has(name):
+			names.append(name)
+			values.append(node)
+
+
+## Runs `code` as the body of a GDScript function, which may use lambdas, the engine singletons, the autoloads, and
+## `await`, and answers with the value it returns, or with its compile or script errors. Its answer waits for an
+## `await` until `deadline` (real seconds, 0 for none), when it answers that the code did not finish.
+func _run_code(id, code: String, base: Object, deadline: float) -> void:
+	_eval_serial += 1
+	var path := EVAL_PATH % _eval_serial
+	var compiled := _compile_code(code, path)
+	var script: GDScript = compiled[0]
+	if script == null:
+		_reply_error(id, "the code does not compile:\n%s" % _code_errors(compiled[2], compiled[1]))
+		return
+	var runner: Node = script.new()
+	runner.name = "WASDEngineEval%d" % _eval_serial
+	runner.process_mode = Node.PROCESS_MODE_ALWAYS
+	runner.set("tree", self)
+	runner.set("root", root)
+	runner.set("scene", current_scene)
+	runner.set("node", base)
+	# An internal child is not one of the root's children, so the game's own lookups do not meet it.
+	root.add_child(runner, false, Node.INTERNAL_MODE_BACK)
+	_evals[id] = deadline
+	_logger.watch(path, false)
+	var value = await runner.call("run")
+	var errors := _logger.unwatch(path)
+	runner.queue_free()
+	if not _evals.has(id):
+		return
+	_evals.erase(id)
+	if not errors.is_empty():
+		_reply_error(id, "the code stopped at an error:\n%s" % _code_errors(errors, compiled[1]))
+		return
+	_reply(id, {"value": _to_json(value, 0), "valueType": type_string(typeof(value))})
+
+
+## Compiles `code` as `run`'s body under `path`: first as one expression whose value `run` returns, then as statements.
+## Returns [script or null, the lines before the code, and the statements' errors when neither compiles]; the
+## errors of these compiles stay out of the log.
+func _compile_code(code: String, path: String) -> Array:
+	var body := code.dedent().strip_edges(false, true)
+	var unit := "\t"
+	for line in body.split("\n"):
+		if line.begins_with(" "):
+			unit = "    "
+			break
+	var statements := ""
+	for line in body.split("\n"):
+		statements += unit + line + "\n"
+	var errors: Array = []
+	for form in [[unit + "return (\n" + body + "\n)\n", CODE_HEAD_LINES + 1], [statements, CODE_HEAD_LINES]]:
+		var script := GDScript.new()
+		script.source_code = CODE_HEAD + form[0]
+		script.take_over_path(path)
+		_logger.watch(path, true)
+		var error := script.reload()
+		errors = _logger.unwatch(path)
+		if error == OK:
+			return [script, form[1], []]
+	return [null, CODE_HEAD_LINES, errors]
+
+
+## Lists log entries of `eval` code as lines of the code: `line N: message`.
+func _code_errors(entries: Array, offset: int) -> String:
+	var lines := PackedStringArray()
+	for entry in entries:
+		var line := int(entry.get("line", 0)) - offset
+		lines.append(("line %d: %s" % [line, entry.get("message", "")]) if line > 0 else str(entry.get("message", "")))
+	return "\n".join(lines) if not lines.is_empty() else "Godot reported no details."
+
+
+## Answers the `eval` code still awaiting past its deadline; the code keeps running, and its value is dropped.
+func _advance_evals(now: float) -> void:
+	for id in _evals.keys():
+		var deadline: float = _evals[id]
+		if deadline > 0.0 and now >= deadline:
+			_evals.erase(id)
+			_reply_error(id, "the code did not finish within its time limit; it keeps running in the game")
 
 
 func _tree(id, message: Dictionary) -> void:
@@ -1321,6 +1707,347 @@ func _audio_buses(peaks: Dictionary) -> Array:
 			"peakDb": float(peaks.get(name, -200.0)),
 		})
 	return buses
+
+
+## Starts drawing a view: the game's 3D world, or an asset loaded alone, from a camera of the view's own, in a
+## SubViewport of `width` × `height` with the root viewport's render settings. The camera frames `node` or the asset
+## from `yaw` and `pitch` degrees around its heading, takes `camera.position` and `camera.target`, or takes the game
+## camera's place. The view draws VIEW_FRAMES frames, so temporal effects settle, and answers like a screenshot.
+func _view(id, message: Dictionary) -> void:
+	var window := _window_size()
+	var width := int(message.get("width", 0))
+	var height := int(message.get("height", 0))
+	var size := Vector2i(clampi(width if width > 0 else window.x, 16, VIEW_MAX_SIDE), clampi(height if height > 0 else window.y, 16, VIEW_MAX_SIDE))
+	var game_camera := _game_camera()
+	var explicit = message.get("camera", null)
+	var viewport := SubViewport.new()
+	viewport.size = size
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_copy_render_settings(viewport)
+	var camera := Camera3D.new()
+	var asset := str(message.get("asset", ""))
+	var game_look := str(message.get("lighting", "studio")) == "game"
+	if game_camera != null:
+		_copy_camera(game_camera, camera)
+	if not asset.is_empty():
+		# An asset alone is seen through a lens of its own, in the game's environment only with game lighting.
+		camera.projection = Camera3D.PROJECTION_PERSPECTIVE
+		camera.fov = VIEW_ASSET_FOV
+		camera.cull_mask = 0xFFFFF
+		if not game_look:
+			camera.environment = null
+			camera.attributes = null
+			camera.compositor = null
+	if message.has("fov"):
+		camera.fov = clampf(float(message["fov"]), 1.0, 179.0)
+	var subject: Node3D = null
+	if not asset.is_empty():
+		var made = _instance_asset(asset)
+		if made is String:
+			viewport.free()
+			camera.free()
+			_reply_error(id, made)
+			return
+		subject = made
+		viewport.own_world_3d = true
+		viewport.add_child(subject)
+		_light_view(viewport, camera, game_look)
+	else:
+		var path := str(message.get("node", ""))
+		if not path.is_empty():
+			var node := root.get_node_or_null(NodePath(path))
+			if not node is Node3D:
+				viewport.free()
+				camera.free()
+				_reply_error(id, "no 3D node at %s; views draw the game's 3D world" % path if node == null else "%s is a %s, not a 3D node; views draw the game's 3D world" % [path, node.get_class()])
+				return
+			subject = node
+		var world: World3D = subject.get_world_3d() if subject != null else (game_camera.get_world_3d() if game_camera != null else root.find_world_3d())
+		if world == null or (subject == null and game_camera == null and not explicit is Dictionary):
+			viewport.free()
+			camera.free()
+			_reply_error(id, "the game shows no 3D world with a camera; name a node, a camera, or an asset")
+			return
+		viewport.world_3d = world
+	viewport.add_child(camera)
+	if _view_holder == null:
+		_view_holder = Node.new()
+		_view_holder.name = "WASDEngineViews"
+		_view_holder.process_mode = Node.PROCESS_MODE_ALWAYS
+		root.add_child(_view_holder, false, Node.INTERNAL_MODE_BACK)
+	_view_holder.add_child(viewport)
+	camera.current = true
+	if not asset.is_empty() and message.has("animation"):
+		var posed := _pose_asset(subject, str(message["animation"]), float(message.get("time", 0.0)))
+		if not posed.is_empty():
+			viewport.queue_free()
+			_reply_error(id, posed)
+			return
+	var facts := {}
+	if explicit is Dictionary:
+		var position = _vector(explicit.get("position", null))
+		var target = _vector(explicit.get("target", null))
+		if position == null or target == null or (position as Vector3).is_equal_approx(target):
+			viewport.queue_free()
+			_reply_error(id, "camera needs position and target, two different points [x, y, z]")
+			return
+		camera.global_position = position
+		camera.look_at(target, Vector3.UP if absf((target - position).normalized().y) < 0.999 else Vector3.FORWARD)
+		camera.far = maxf(camera.far, position.distance_to(target) * 4.0)
+	elif subject != null:
+		var framed := _frame_view(camera, subject, message, float(size.x) / size.y)
+		if framed.has("error"):
+			viewport.queue_free()
+			_reply_error(id, framed["error"])
+			return
+		facts["subject"] = framed
+	else:
+		camera.global_transform = game_camera.global_transform
+	var layers := []
+	if message.get("isolate", false) == true and subject != null and asset.is_empty():
+		layers = _isolate(subject)
+		camera.cull_mask = 1 << (ISOLATE_LAYER - 1)
+	var forward := -camera.global_basis.z
+	facts["camera"] = {"position": _array(camera.global_position), "direction": _array(forward), "fov": camera.fov}
+	var format := "jpeg" if str(message.get("format", "png")) == "jpeg" else "png"
+	_views.append({
+		"id": id, "viewport": viewport, "frames": clampi(int(message.get("frames", VIEW_FRAMES)), 1, 120), "layers": layers,
+		"format": format, "quality": clampf(float(message.get("quality", 0.9)), 0.1, 1.0), "facts": facts,
+	})
+
+
+## Captures the views that drew their frames, answers them, and frees their viewports.
+func _advance_views() -> void:
+	if _views.is_empty():
+		return
+	var remaining: Array[Dictionary] = []
+	for view in _views:
+		view["frames"] -= 1
+		if view["frames"] > 0:
+			remaining.append(view)
+			continue
+		var viewport: SubViewport = view["viewport"]
+		var image := viewport.get_texture().get_image()
+		_restore_layers(view["layers"])
+		viewport.queue_free()
+		if image == null or image.is_empty():
+			_reply_error(view["id"], "the view drew no image")
+			continue
+		if image.get_format() != Image.FORMAT_RGB8:
+			image.convert(Image.FORMAT_RGB8)
+		var facts: Dictionary = view["facts"]
+		facts.merge({"format": view["format"], "width": image.get_width(), "height": image.get_height(), "frame": _frame, "paused": paused})
+		_reply(view["id"], facts)
+		_send_image(view["id"], image.save_jpg_to_buffer(view["quality"]) if view["format"] == "jpeg" else image.save_png_to_buffer())
+	_views = remaining
+
+
+## Returns the camera the game draws its 3D world with: the root viewport's, or that of a SubViewport the game draws in.
+func _game_camera() -> Camera3D:
+	var camera := root.get_camera_3d()
+	if camera != null:
+		return camera
+	for node in root.find_children("*", "SubViewport", true, false):
+		var found := (node as SubViewport).get_camera_3d()
+		if found != null:
+			return found
+	return null
+
+
+## Gives a view the root viewport's antialiasing, scaling, level of detail, and shadow settings, which the game may set.
+func _copy_render_settings(viewport: SubViewport) -> void:
+	for property in ["msaa_3d", "screen_space_aa", "use_taa", "use_debanding", "use_occlusion_culling", "mesh_lod_threshold",
+			"scaling_3d_mode", "scaling_3d_scale", "fsr_sharpness", "texture_mipmap_bias", "anisotropic_filtering_level",
+			"positional_shadow_atlas_size", "positional_shadow_atlas_16_bits"]:
+		if property in root:
+			viewport.set(property, root.get(property))
+	for quadrant in 4:
+		viewport.set_positional_shadow_atlas_quadrant_subdiv(quadrant, root.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
+
+
+## Gives a view's camera the game camera's projection, clip planes, layers, environment, attributes, and compositor.
+func _copy_camera(source: Camera3D, camera: Camera3D) -> void:
+	for property in ["projection", "fov", "size", "keep_aspect", "near", "far", "cull_mask", "environment", "attributes", "compositor"]:
+		camera.set(property, source.get(property))
+
+
+## Loads a scene or mesh for a view: a PackedScene's 3D root, as the project imports a model, or a mesh in a
+## MeshInstance3D. Returns the node, or why it cannot.
+func _instance_asset(path: String) -> Variant:
+	if not ResourceLoader.exists(path):
+		return "no resource at %s; import the project first, as godot_run does" % path
+	var resource := ResourceLoader.load(path)
+	if resource is PackedScene:
+		var instance := (resource as PackedScene).instantiate()
+		if instance is Node3D:
+			return instance
+		var kind := instance.get_class()
+		instance.free()
+		return "%s is a scene whose root is a %s, not a 3D node" % [path, kind]
+	if resource is Mesh:
+		var mesh_instance := MeshInstance3D.new()
+		mesh_instance.mesh = resource
+		return mesh_instance
+	return "%s is a %s, not a 3D scene or mesh" % [path, resource.get_class() if resource != null else "resource that does not load"]
+
+
+## Poses an asset's AnimationPlayer at `time` seconds into `animation`, held there; returns why it cannot, or "".
+func _pose_asset(subject: Node, animation: String, time: float) -> String:
+	var players := subject.find_children("*", "AnimationPlayer", true, false)
+	if subject is AnimationPlayer:
+		players.push_front(subject)
+	for node in players:
+		var player := node as AnimationPlayer
+		if player.has_animation(animation):
+			player.play(animation)
+			player.seek(clampf(time, 0.0, player.get_animation(animation).length), true)
+			player.pause()
+			return ""
+	var names := PackedStringArray()
+	for node in players:
+		for name in (node as AnimationPlayer).get_animation_list():
+			names.append(name)
+	return "the asset has no animation %s%s" % [animation, "; it has %s" % ", ".join(names) if not names.is_empty() else "; it has no AnimationPlayer animations"]
+
+
+## Lights an asset view: the game's environment and directional lights with `game_look`, else a neutral studio, whose
+## key, fill, and rim lights follow the camera.
+func _light_view(viewport: SubViewport, camera: Camera3D, game_look: bool) -> void:
+	var environment: Environment = null
+	if game_look:
+		var game_camera := _game_camera()
+		if game_camera != null and game_camera.environment != null:
+			environment = game_camera.environment
+		elif root.find_world_3d() != null:
+			environment = root.find_world_3d().environment
+		if current_scene != null:
+			for node in current_scene.find_children("*", "DirectionalLight3D", true, false):
+				var light := node as DirectionalLight3D
+				if light.is_visible_in_tree():
+					var copy := light.duplicate(0) as DirectionalLight3D
+					copy.transform = light.global_transform
+					viewport.add_child(copy)
+	if environment == null:
+		var sky_material := ProceduralSkyMaterial.new()
+		sky_material.sky_top_color = Color(0.56, 0.6, 0.68)
+		sky_material.sky_horizon_color = Color(0.74, 0.75, 0.78)
+		sky_material.ground_horizon_color = Color(0.74, 0.75, 0.78)
+		sky_material.ground_bottom_color = Color(0.24, 0.24, 0.26)
+		var sky := Sky.new()
+		sky.sky_material = sky_material
+		environment = Environment.new()
+		environment.background_mode = Environment.BG_COLOR
+		environment.background_color = Color(0.3, 0.31, 0.34)
+		environment.sky = sky
+		environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+		environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+		for light in [[Vector3(-35.0, 40.0, 0.0), 1.6, true], [Vector3(-10.0, -55.0, 0.0), 0.45, false], [Vector3(-25.0, 160.0, 0.0), 0.9, false]]:
+			var studio := DirectionalLight3D.new()
+			studio.rotation_degrees = light[0]
+			studio.light_energy = light[1]
+			studio.shadow_enabled = light[2]
+			camera.add_child(studio)
+	var world_environment := WorldEnvironment.new()
+	world_environment.environment = environment
+	viewport.add_child(world_environment)
+
+
+## Places `camera` to frame `subject`: its visible bounds, or `radius` meters around its skeleton's `bone`, seen from
+## `yaw` degrees around its heading (0 looks at its +Z side) and `pitch` degrees above, at the distance that fits them
+## times `distance`. Returns the framed center and radius, or {"error": why}.
+func _frame_view(camera: Camera3D, subject: Node3D, message: Dictionary, aspect: float) -> Dictionary:
+	var bounds := _visual_bounds(subject)
+	var center := bounds.get_center()
+	var radius := maxf(bounds.size.length() * 0.5, 0.01)
+	var bone := str(message.get("bone", ""))
+	if not bone.is_empty():
+		var skeletons := subject.find_children("*", "Skeleton3D", true, false)
+		if subject is Skeleton3D:
+			skeletons.push_front(subject)
+		var found := false
+		for node in skeletons:
+			var skeleton := node as Skeleton3D
+			var index := skeleton.find_bone(bone)
+			if index >= 0:
+				center = (skeleton.global_transform * skeleton.get_bone_global_pose(index)).origin
+				radius = VIEW_BONE_RADIUS
+				found = true
+				break
+		if not found:
+			return {"error": "no bone %s in a Skeleton3D under %s" % [bone, subject.name]}
+	if message.has("radius"):
+		radius = maxf(float(message["radius"]), 0.001)
+	var heading := Vector3(subject.global_basis.z.x, 0.0, subject.global_basis.z.z)
+	var turn := (atan2(heading.x, heading.z) if heading.length() > 0.0001 else 0.0) + deg_to_rad(float(message.get("yaw", VIEW_YAW)))
+	var pitch := deg_to_rad(clampf(float(message.get("pitch", VIEW_PITCH)), -89.0, 89.0))
+	var direction := Vector3(sin(turn) * cos(pitch), sin(pitch), cos(turn) * cos(pitch))
+	var factor := maxf(float(message.get("distance", 1.0)), 0.01)
+	var distance: float
+	if camera.projection == Camera3D.PROJECTION_ORTHOGONAL:
+		camera.size = radius * 2.0 * factor * (1.0 if aspect >= 1.0 else 1.0 / aspect)
+		distance = radius * 4.0
+	else:
+		var half := deg_to_rad(camera.fov) * 0.5
+		var half_width := atan(tan(half) * aspect)
+		distance = radius / sin(minf(half, half_width)) * factor
+	camera.global_position = center + direction * distance
+	camera.look_at(center, Vector3.UP if absf(direction.y) < 0.999 else Vector3.FORWARD)
+	camera.near = minf(camera.near, maxf(0.002, (distance - radius) * 0.5))
+	camera.far = maxf(camera.far, distance + radius * 4.0)
+	return {"center": _array(center), "radius": snappedf(radius, 0.0001), "distance": snappedf(distance, 0.0001)}
+
+
+## Returns the world bounds of the meshes and other geometry under `subject` that are visible, without particles,
+## or a 1 meter box at its origin when it has none.
+func _visual_bounds(subject: Node3D) -> AABB:
+	var bounds := AABB()
+	var found := false
+	var stack: Array[Node] = [subject]
+	var visited := 0
+	while not stack.is_empty() and visited < VIEW_MAX_NODES:
+		var node: Node = stack.pop_back()
+		visited += 1
+		if node is GeometryInstance3D and not (node is GPUParticles3D or node is CPUParticles3D) and (node as Node3D).is_visible_in_tree():
+			var box: AABB = (node as GeometryInstance3D).global_transform * (node as GeometryInstance3D).get_aabb()
+			bounds = bounds.merge(box) if found else box
+			found = true
+		stack.append_array(node.get_children())
+	return bounds if found else AABB(subject.global_position - Vector3(0.5, 0.5, 0.5), Vector3.ONE)
+
+
+## Adds ISOLATE_LAYER to the geometry under `subject` and to every light, so a camera that draws that layer alone
+## draws the subject lit as the game lights it; returns [[node, its former layers]] to restore.
+func _isolate(subject: Node3D) -> Array:
+	var changed := []
+	var bit := 1 << (ISOLATE_LAYER - 1)
+	var nodes: Array = subject.find_children("*", "GeometryInstance3D", true, false)
+	if subject is GeometryInstance3D:
+		nodes.push_front(subject)
+	nodes.append_array(root.find_children("*", "Light3D", true, false))
+	for node in nodes:
+		var instance := node as VisualInstance3D
+		if instance.layers & bit == 0:
+			changed.append([instance, instance.layers])
+			instance.layers |= bit
+	return changed
+
+
+func _restore_layers(changed: Array) -> void:
+	for entry in changed:
+		if is_instance_valid(entry[0]):
+			(entry[0] as VisualInstance3D).layers = entry[1]
+
+
+## Reads [x, y, z] as a Vector3, or null.
+func _vector(value) -> Variant:
+	if value is Array and value.size() == 3 and (value as Array).all(func(item) -> bool: return item is int or item is float):
+		return Vector3(float(value[0]), float(value[1]), float(value[2]))
+	return null
+
+
+func _array(vector: Vector3) -> Array:
+	return [snappedf(vector.x, 0.0001), snappedf(vector.y, 0.0001), snappedf(vector.z, 0.0001)]
 
 
 func _start_sample(id, message: Dictionary, now: float) -> void:
