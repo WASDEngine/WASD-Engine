@@ -55,9 +55,9 @@ The Game tools tabs of Settings › Built-in plugins and the Plugins page list t
 | `size` | `1K` (about 1 megapixel, the default), `2K` (about 4), or `4K` (about 16) |
 | `replace` | Overwrite `path` when it exists; without it, an existing file is refused |
 
-`path` and each image are relative to the Session's working directory or absolute. A call checks every argument, the target path, and each image before the paid request, so a refused call costs nothing. An image is sent as it is when it is a PNG, JPEG, or WebP file that is upright, one frame, at most 2,048 pixels on its longest side, and at most 7 MB; any other image sharp reads, such as a GIF, a TIFF, an SVG, or a larger photo, is turned upright, scaled down, and sent as PNG, JPEG, or WebP. The images of one call may hold 14 MB in all. The API's image is saved unchanged when it already has the path's file type, and converted otherwise; it is written through a temporary file beside the target and appears complete or not at all. A result names the file, its pixel size and file size, the model, size, and shape, and the images it was made from.
+`path` and each image are relative to the Session's working directory or absolute. A call checks every argument, the target path, and each image before the paid request, so a refused call costs nothing. An image is sent as it is when it is a PNG, JPEG, or WebP file that is upright, one frame, at most 2,048 pixels on its longest side, and at most 7 MB; any other image sharp reads, such as a GIF, a TIFF, an SVG, or a larger photo, is turned upright, scaled down, and sent as PNG, JPEG, or WebP. The images of one call may hold 14 MB in all. Nano Banana answers with a JPEG file, which is saved unchanged for a `.jpg` path and converted for `.png` or `.webp`; it is written through a temporary file beside the target and appears complete or not at all. A result names the file, its pixel size and file size, the model, size, and shape, and the images it was made from.
 
-Nano Banana makes no transparent backgrounds, so the tool's description tells the agent to ask for one flat background color and make it transparent with GIMP, and to make textures seamless with GIMP. Every image carries Google's invisible SynthID watermark.
+Nano Banana makes no transparent backgrounds, so the tool's description tells the agent to ask for one flat background color and make it transparent with GIMP, with a little tolerance for the JPEG's edges, and to make textures seamless with GIMP. Every image carries Google's invisible SynthID watermark.
 
 Agents connected through WASD Engine's MCP server reach the tool under the provider `image`, titled Nano Banana, without a Session: `path` and every image must be absolute paths. Their images are charged to the account WASD Engine is signed in to, and the server refuses every call while it is signed out.
 
@@ -141,6 +141,7 @@ Append-only in the conversation.
 These limits define what the tool offers; they are current package constraints.
 
 - **No transparency** — Nano Banana makes no alpha channel; sprites and UI pieces need their background made transparent in GIMP.
+- **JPEG output** — the Gemini API's `generateContent` answers JPEG and offers no output type, so a `.png` keeps JPEG artifacts; Gemini's Interactions API, whose `response_format` can ask for PNG, would avoid them.
 - **No guaranteed tiling** — a texture is not seamless until GIMP makes it so; the API offers no tiling mode.
 - **No true pixel art** — pixel-art styles come out on an uneven grid with more colors than a palette; downscale them with nearest-neighbor sampling in GIMP and reduce their colors.
 - **One image per call** — a set of sprites or icons is one call each, kept consistent by passing earlier images.
