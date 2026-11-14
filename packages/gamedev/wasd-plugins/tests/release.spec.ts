@@ -175,7 +175,7 @@ function releaseFolders(): ReleaseFolders {
 }
 
 function dependencies(
-  fetchSite: typeof fetch, access: SiteAccess | null = ACCESS, releasedFrom = releaseFolders(),
+  fetchSite: typeof fetch, access: SiteAccess | null = ACCESS, releasedFrom = releaseFolders(), tempDir = tmpdir(),
 ): ReleaseDependencies & { exports: string[]; folders: ReleaseFolders; failDesktop?: GodotDesktopPlatform } {
   const exports: string[] = []
   return {
@@ -199,7 +199,7 @@ function dependencies(
     },
     fetch: fetchSite,
     folders: releasedFrom,
-    tempDir: tmpdir(),
+    tempDir,
   }
 }
 
@@ -219,8 +219,11 @@ const game = (n: number, version: number, visibility: 'public' | 'private' = 'pu
 describe('releaseGame', () => {
   it('creates the game on the first release, numbers later releases, and remembers the game', async () => {
     const dir = await project()
+    // Its own temp folder: other specs release into the shared one at the same time.
+    const scratch = await mkdtemp(join(tmpdir(), 'dsh-wasd-release-temp-'))
+    folders.push(scratch)
     const server = site()
-    const deps = dependencies(server.fetch)
+    const deps = dependencies(server.fetch, undefined, undefined, scratch)
     const first = await releaseGame({ projectDir: dir, notes: 'First playable' }, deps, signal)
     expect(first).toMatchObject({ title: 'Defenders of the Wall', version: 1, gameUrl: gameUrl(1), url: `${gameUrl(1)}?v=1` })
     expect(first.warnings).toEqual(['Renders with the Compatibility renderer.'])
@@ -238,7 +241,7 @@ describe('releaseGame', () => {
     expect(linked.accounts?.[ORIGIN]).toEqual([{ account: 'account-1', id: 'game-1', slug: 'defenders-of-the-wall-1', title: 'Defenders of the Wall', url: gameUrl(1), version: 2, visibility: 'public' }])
     expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true, game: game(1, 2) })
     expect(await projectView(dir, 'https://other.test', deps.folders, 'account-1')).toEqual({ godot: true })
-    expect((await readdir(tmpdir())).filter(name => name.startsWith('wasd-release-'))).toEqual([])
+    expect(await readdir(scratch)).toEqual([])
   })
 
   it('releases a private game, keeps its visibility when a release names none, and makes it public with a release', async () => {

@@ -147,12 +147,20 @@ const homeAndGuide = pairedPages([
     order: 4,
   },
   {
+    source: 'docs/user/guide/multiplayer.md',
+    route: 'guide/multiplayer.md',
+    label: { root: '联机多人游戏', en: 'Online multiplayer' },
+    sidebar: { root: 'zh-guide', en: 'en-guide' },
+    section: { root: '入门', en: 'Guide' },
+    order: 5,
+  },
+  {
     source: 'docs/user/guide/desktop-uninstall-cleanup.md',
     route: 'guide/desktop-uninstall-cleanup.md',
     label: { root: '卸载 WASD Engine', en: 'Uninstall WASD Engine' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '入门', en: 'Guide' },
-    order: 5,
+    order: 6,
   },
   {
     source: 'docs/user/guide/python-sdk.md',

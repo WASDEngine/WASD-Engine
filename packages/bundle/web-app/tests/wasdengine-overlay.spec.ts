@@ -87,7 +87,7 @@ const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-
 const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
-const SKILLS = ['game-design-doc', 'godot-project'] as const
+const SKILLS = ['game-design-doc', 'godot-project', 'multiplayer'] as const
 
 /**
  * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's
@@ -329,7 +329,9 @@ describe('WASDEngine overlay', () => {
   it('mounts WASD Engine Plugins from a web-app dependency, with its data folder, the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
     const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === WASD_PLUGINS.id)
     expect(entry?.name).toBe(WASD_PLUGINS.name)
-    expect(Object.keys(configOf(entry))).toEqual(['browser', 'dataRoot'])
+    expect(Object.keys(configOf(entry))).toEqual(['browser', 'library', 'dataRoot'])
+    // The game library lives where the Browser tools do: in the Desktop profile.
+    expect(expression(configOf(entry).library, 'wasd-plugins.library')).toBe(expression(configOf(entry).browser, 'wasd-plugins.browser'))
     expect(expression(configOf(entry).dataRoot, 'wasd-plugins.dataRoot')).toBe(`dshHomePath('${WASD_PLUGINS.id}')`)
     const browser = expression(configOf(entry).browser, 'wasd-plugins.browser')
     expect(expression(row(profile('web').fork.rows, 'ui-sidebar-browser')?.disabled, 'ui-sidebar-browser.disabled')).toBe(browser.replace('===', '!=='))

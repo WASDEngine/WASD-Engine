@@ -2,6 +2,8 @@
  * Sidebar slot contract: the registrant-side props composition for the
  * layout-owned `sidebar` slot, plus the holes this shell declares. The shell
  * owns column geometry, the brand row, New Session, and global panel rows;
+ * an optional `sidebar.mode` switch takes the New Session bar's place, and
+ * New Session then leads the panel rows;
  * everything between the workspace section header and the list bottom is the
  * `sidebar.workspaces` registrant's (ui-workspace), and the foot is the
  * `sidebar.settings` registrant's (ui-settings), followed by optional footer
@@ -45,6 +47,11 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * the sidebar owns the button and resolves its label from list metadata.
      */
     'sidebar.panellist': { kind: 'list'; scope: 'root'; owner: SidebarPanelIconOwnerProps }
+    /**
+     * A mode switch, such as a product's Play and Build modes. Declared by this package's `sidebar` entry; while it
+     * has an occupant, the switch takes the New Session bar's place and New Session becomes the first panel row.
+     */
+    'sidebar.mode': { kind: 'single'; scope: 'root'; owner: SidebarModeOwnerProps }
     /** Rows of the panel list's More menu; the sidebar shows More only while this list has registrations. */
     'sidebar.panellist.actions': { kind: 'list'; scope: 'root'; owner: SidebarPanelActionsOwnerProps }
     /**
@@ -86,6 +93,12 @@ export interface SidebarBrandMarkOwnerProps {
 export interface SidebarBrandNameOwnerProps {
   /** Marker field: the occupant owns its own content and width. */
   children?: never
+}
+
+/** Column state supplied to the `sidebar.mode` switch. */
+export interface SidebarModeOwnerProps {
+  /** Whether the sidebar renders wide content (false = 56px rail). */
+  wide: boolean
 }
 
 /** Icon presentation supplied by the global panel row. */
@@ -220,6 +233,8 @@ export type SidebarRootInjected = {
     entryPins: ObservableSnapshot<readonly string[]>
     /** Whether `sidebar.panellist.actions` has registrations. */
     entryActions: ObservableSnapshot<boolean>
+    /** Whether `sidebar.mode` has an occupant. */
+    modeSwitch: ObservableSnapshot<boolean>
   }
 }
 
@@ -234,6 +249,7 @@ export type SidebarRootComponentProps =
     | 'sidebar.brand.mark'
     | 'sidebar.brand.name'
     | 'sidebar.toggle.badge'
+    | 'sidebar.mode'
     | 'sidebar.panellist.actions'
     | 'sidebar.workspaces'
     | 'sidebar.settings'

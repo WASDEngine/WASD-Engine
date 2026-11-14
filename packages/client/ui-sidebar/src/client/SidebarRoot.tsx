@@ -8,7 +8,9 @@
  * same top-down order) on one fade that ends with the slide. The bottom-pinned
  * settings control only fades. The workspace/session browsing region between
  * global panel rows and the foot is the `sidebar.workspaces` registrant's,
- * and the foot holds `sidebar.settings` plus `sidebar.footer.action`; the shell
+ * and the foot holds `sidebar.settings` plus `sidebar.footer.action`. A
+ * `sidebar.mode` occupant takes the New Session bar's place, and New Session
+ * then leads the panel rows as a row of its own. The shell
  * hands them the wide flag (plus an expand request callback for the browser).
  * Through the browser's hookContext, the shell also hands it the scroller hook
  * that continues wheel scrolling over the sidebar viewport into its list.
@@ -26,6 +28,7 @@ import {
   Tooltip, useModalLayer, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ShortcutCatalogEntry } from '@deepseek-ai/dsh-client-shortcuts/client'
 import type {
   SidebarPanelActionsOwnerProps, SidebarPanelMetadata, SidebarRootComponentProps, SidebarRootInjected, SidebarSectionHookContext,
   SidebarSectionOwnerProps,
@@ -67,6 +70,27 @@ type PanelRowProps =
 function officialEntry(id: string): 'plugin' | 'cron' | undefined {
   if (id === 'plugins') return 'plugin'
   return id === 'schedules' ? 'cron' : undefined
+}
+
+type NewSessionRowProps =
+  Pick<SidebarSectionOwnerProps, 'wide'>
+  & { readonly label: string; readonly ariaLabel: string; readonly shortcut: ShortcutCatalogEntry | undefined }
+  & { readonly onStart: () => void }
+
+/** New Session as the first panel row, where a mode switch holds the New Session bar's place. */
+function NewSessionRow({ wide, label, ariaLabel, shortcut, onStart }: NewSessionRowProps) {
+  return (
+    <div className={clsx(css.panelEntry, wide && css.panelEntryWide)}>
+      <Tooltip label={ariaLabel} shortcutKeys={shortcut?.keys} delayMs={500} disabled={wide}>
+        <button type="button" className={css.panelRow} aria-label={ariaLabel} aria-keyshortcuts={shortcut?.aria} onClick={onStart}>
+          <span className={css.panelGlyph} aria-hidden="true">
+            {wide ? <IconNewChatOutlineMedium size={16} /> : <IconNewChatOutlineRegular size={18} />}
+          </span>
+          {wide && <span className={clsx(css.panelTitle, css.wide)}>{label}</span>}
+        </button>
+      </Tooltip>
+    </div>
+  )
 }
 
 /** Each panel row subscribes only to its own selection state. */
@@ -161,6 +185,7 @@ export function SidebarRoot({
   usePanels,
   useEntryPins,
   useEntryActions,
+  useModeSwitch,
   useShortcuts,
   usePanelInfo,
   t,
@@ -171,10 +196,12 @@ export function SidebarRoot({
   const unpinned = useEntryPins(ids => ids)
   const activePanelId = usePanelInfo(info => info.activePanelId)
   const hasEntryActions = useEntryActions(registered => registered)
+  const hasModeSwitch = useModeSwitch(present => present)
   const shortcut = useShortcuts(rows => rows.find(row => row.id === 'sidebar.left.toggle'))
   const newShortcut = useShortcuts(rows => rows.find(row => row.id === 'session.new'))
   // A page whose access snapshot excludes starting a Session offers no New Session affordance.
   const canStartSession = useRemoteAccess('session/create')
+  const newSessionRow = hasModeSwitch && canStartSession
   const toggleLabel = collapsed ? t('toggle.open') : t('toggle.collapse')
   // Wide content stays mounted while the collapse animates (fading via
   // .collapsed .wide), unmounts at settle, and remounts right away on expand.
@@ -378,8 +405,10 @@ export function SidebarRoot({
         {!darwinDesktop && toggle}
       </div>
 
+      {hasModeSwitch && <div className={css.modeArea}>{renderSlot('sidebar.mode', { wide })}</div>}
+
       {/* The label fades before the hover/focus shortcut, including on translucent backgrounds. */}
-      {canStartSession && (
+      {canStartSession && !hasModeSwitch && (
         <Tooltip label={t('session.new.label')} shortcutKeys={newShortcut?.keys} delayMs={500} side={captionTooltipSide} disabled={wide}>
           <button
             type="button"
@@ -407,8 +436,11 @@ export function SidebarRoot({
           className={css.scrollArea}
           data-sidebar-scrollport={wide ? '' : undefined}
         >
-          {panels.length > 0 && (
+          {(panels.length > 0 || newSessionRow) && (
             <nav className={css.panelList} aria-label={t('panels.label')}>
+              {newSessionRow && (
+                <NewSessionRow wide={wide} label={t('session.new')} ariaLabel={t('session.new.label')} shortcut={newShortcut} onStart={openNewSession} />
+              )}
               {panels.filter(({ id }) => id === FIXED_PANEL_ID || !hasEntryActions || !unpinned.includes(id)).map(({ id, label }) => (
                 <PanelRow
                   key={id}

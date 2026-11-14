@@ -30,6 +30,9 @@
       "path": "../../packages/gamedev/godot/tsconfig.host.json"
     },
     {
+      "path": "../../packages/gamedev/wasd-plugins/tsconfig.host.json"
+    },
+    {
       "path": "../../packages/client/shortcuts/tsconfig.host.json"
     },
     {

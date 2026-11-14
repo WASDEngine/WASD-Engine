@@ -4,8 +4,11 @@
  * them to the WASD Engine site the app is signed in to, as numbered versions with share links, an animated preview, and
  * desktop downloads, public on the site's Explore page or private, through the `wasd_export_web`,
  * `wasd_export_desktop`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's
- * MCP server. The `wasdPlugins` Remote tells the window what each project released and where the site's Explore page
- * is, for the Export / Share button of game project Sessions and Explore Games in the sidebar.
+ * MCP server, and puts games online through the multiplayer tools: player-hosted for free, or on dedicated servers the
+ * site sells by monthly size, which the user always confirms on the site. The `wasdPlugins` Remote tells the window
+ * what each project released and set up for multiplayer and where the site's Explore page is, for the Export / Share
+ * and Multiplayer buttons of game project Sessions and Explore Games in the sidebar, and hands windows the
+ * confirmation pages the tools open.
  * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
  * before its release adds to the game it shares with the folder it was copied from. Each release also uploads what the
  * game was made with: the AI models and game tools that worked on the project, which the plugin records in the
@@ -16,6 +19,7 @@
  */
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -28,17 +32,32 @@ import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
 import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER, type ModelCredit, type ToolCredit } from './credits.ts'
 import { ReleaseFolders } from './folders.ts'
+import { LinkRequests } from './links.ts'
+import { MultiplayerApi } from './multiplayer-api.ts'
+import { readMultiplayerConfig } from './multiplayer-project.ts'
+import {
+  MCP_SURFACE, MULTIPLAYER_MCP_INSTRUCTIONS, MULTIPLAYER_PROMPT, multiplayerMcpTools, multiplayerToolDefinitions, type ApprovalAnswer,
+  type MultiplayerSurface, type MultiplayerToolHost,
+} from './multiplayer-tools.ts'
+import { GameLibrary } from './library.ts'
+import { startDetached, systemUnpack } from './library-process.ts'
 import { encodePreview, savePreview } from './preview.ts'
-import { accountKey, DESKTOP_BUILD_DIR, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import { accountKey, DESKTOP_BUILD_DIR, linkedGame, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import { signInLink } from './site-sign-in.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
-import type { WasdBrowserOutcome, WasdBrowserRequests, WasdProjectView, WasdSiteLinks } from './types.ts'
+import type {
+  WasdBrowserOutcome, WasdBrowserRequests, WasdLibraryOutcome, WasdLibraryView, WasdLinkRequests, WasdMultiplayerView,
+  WasdProjectView, WasdSiteLinks,
+} from './types.ts'
 
 export type * from './types.ts'
 export { ReleaseError } from './release.ts'
+export { MultiplayerError } from './multiplayer-api.ts'
 export type { BrowserPageValue, BrowserScreenshotValue, BrowserToolHost, ScreenshotSaver, StoredScreenshot, WasdBrowserDone } from './browser.ts'
 
 /** Longest preview recording in seconds: the longest recording the Godot plugin's `record()` takes. */
@@ -56,7 +75,10 @@ function projectArgument(args: unknown): string | undefined {
 
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute folder of the plugin's data on this computer: which project folders released each game. */
+  /**
+   * Absolute folder of the plugin's data on this computer: which project folders released each game, and the game
+   * library's games in `library/`.
+   */
   dataRoot: string
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
@@ -65,6 +87,11 @@ export interface Config {
    * the Desktop app's Browser tabs are the ones a window can drive.
    */
   browser: boolean
+  /**
+   * Keep a game library: games installed from the WASD Engine site as desktop builds and started from the app, as the
+   * Desktop app does; elsewhere the library is empty and refuses installs.
+   */
+  library: boolean
   /** Cooperative timeout budget of each `browser_*` call, in milliseconds. */
   browserTimeoutMs: number
   /** How long a `browser_*` call waits for a window to take it, in milliseconds. */
@@ -114,6 +141,54 @@ export interface Config {
    * model's own name.
    */
   builtinModelProviders: string[]
+  /** Path of the site's page that lists the account's dedicated servers. */
+  serversPath: string
+  /** How long a confirmation page a multiplayer tool opens waits for a window to take it, in milliseconds. */
+  linkClaimTimeoutMs: number
+}
+
+/** The answer of the library's requests where the plugin keeps no library. */
+const LIBRARY_ELSEWHERE: WasdLibraryOutcome = { ok: false, message: 'Games install in the WASD Engine Desktop app.' }
+
+/** The library stream where the plugin keeps no library: one empty view, until the stream is cancelled. */
+async function * noLibrary(signal: AbortSignal): AsyncIterable<WasdLibraryView> {
+  yield { games: [], tasks: [], supported: false }
+  if (!signal.aborted) await new Promise((resolve) => { signal.addEventListener('abort', resolve, { once: true }) })
+}
+
+/** The WASD Multiplayer add-on that `wasd_multiplayer_setup` copies into projects, shipped in this package. */
+const ADDON_SOURCE = fileURLToPath(new URL('../addon/wasd_multiplayer', import.meta.url))
+
+/** The prompt section order anchor of the multiplayer section: with the game tools. */
+const MULTIPLAYER_SECTION_ANCHOR = 'TOOL_COMPUTER_USE'
+
+/**
+ * The Session's multiplayer surface: WASD Engine's approval prompt, which the Session's audit log records, and the
+ * confirmation page opened in a window of the app.
+ * @param ctx - plugin context with the optional approval service.
+ * @param links - the queue windows open links from.
+ * @returns the surface.
+ */
+function sessionSurface(ctx: Context, links: LinkRequests): MultiplayerSurface {
+  return {
+    channel: 'app',
+    projectDescription: 'Folder containing project.godot, relative to the working directory. Default: the nearest one.',
+    async approve(exec, toolName, prompt): Promise<ApprovalAnswer> {
+      const approval = ctx.get('approval')
+      if (approval === undefined || exec.agent === undefined) return 'unavailable'
+      const outcome = await approval.request({
+        agent: exec.agent, toolName, callId: exec.callId, reason: prompt.en, displayReason: prompt, signal: exec.signal,
+      })
+      switch (outcome) {
+        case 'allowed-once': return 'approved'
+        case 'rejected': return 'declined'
+        case 'cancelled': return 'cancelled'
+        case 'unavailable': return 'unavailable'
+        default: throw new Error(`unexpected approval outcome ${JSON.stringify(outcome satisfies never)}`)
+      }
+    },
+    openLink: (url, exec) => links.open(url, exec.signal),
+  }
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -130,6 +205,7 @@ export default class WasdPlugins extends TypertRemoteService {
     dataRoot: z.string().required(),
     explorePath: z.string().pattern(/^\/[A-Za-z0-9/_-]*$/u).default('/explore'),
     browser: z.boolean().default(false),
+    library: z.boolean().default(false),
     browserTimeoutMs: z.natural().min(1).default(60_000),
     browserClaimTimeoutMs: z.natural().min(1).default(5000),
     browserLoadTimeoutMs: z.natural().min(1).default(15_000),
@@ -150,12 +226,16 @@ export default class WasdPlugins extends TypertRemoteService {
     previewEffort: z.natural().min(1).max(10).default(4),
     previewStartSeconds: z.number().min(0).max(60).default(2),
     builtinModelProviders: z.array(z.string().min(1)).default(['deepseek-account', 'deepseek-official']),
+    serversPath: z.string().pattern(/^\/[A-Za-z0-9/_-]*$/u).default('/account/servers'),
+    linkClaimTimeoutMs: z.natural().min(1).default(5000),
   })
 
   private readonly lifetime = new AbortController()
   private readonly browserRequestQueue: BrowserRequestQueue
   private readonly folders: ReleaseFolders
   private readonly credits = new CreditsLedger()
+  private readonly linkQueue: LinkRequests
+  private readonly games: GameLibrary | undefined
 
   /**
    * @param ctx - plugin context; the tools and the Remote live as long as it.
@@ -183,6 +263,19 @@ export default class WasdPlugins extends TypertRemoteService {
       this.track(this.creditConnected(result.client.id, requested, result.agent, tool))
     })
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
+    this.linkQueue = new LinkRequests(config.linkClaimTimeoutMs, this.lifetime.signal)
+    this.games = config.library
+      ? new GameLibrary({
+        root: join(config.dataRoot, 'library'),
+        siteOrigin: () => this.siteOrigin(),
+        access: () => this.access(),
+        fetch: (input, init) => fetch(input, init),
+        system: process.platform,
+        unpack: systemUnpack(process.platform),
+        start: startDetached,
+        now: () => new Date(),
+      }, this.lifetime.signal)
+      : undefined
     if (config.browser) {
       if (config.browserOperationTimeoutMs >= config.browserTimeoutMs) {
         throw new TypeError('wasd-plugins: browserOperationTimeoutMs must be shorter than browserTimeoutMs')
@@ -288,6 +381,7 @@ export default class WasdPlugins extends TypertRemoteService {
             exportDesktop: (projectDir, platform, outputDir, exportSignal) => {
               return scope.godot.exportDesktop({ projectDir, platform, outputDir }, exportSignal)
             },
+            exportServer: (projectDir, outputDir, exportSignal) => scope.godot.exportServer({ projectDir, outputDir }, exportSignal),
             fetch: (input, init) => fetch(input, init),
             folders: this.folders,
             tempDir: tmpdir(),
@@ -314,8 +408,23 @@ export default class WasdPlugins extends TypertRemoteService {
         const projectDir = await this.projectOf(project, undefined, signal)
         if (projectDir !== undefined) await this.credits.claim(client, projectDir)
       }
+      const multiplayerHost: MultiplayerToolHost = {
+        project: (requested, exec) => host.project(requested, exec),
+        access: () => this.access(),
+        siteOrigin: () => this.siteOrigin(),
+        fetch: (input, init) => fetch(input, init),
+        runInstances: (request, signal) => scope.godot.runInstances(request, signal),
+        addonSource: ADDON_SOURCE,
+      }
+      const surface = sessionSurface(ctx, this.linkQueue)
+      for (const definition of multiplayerToolDefinitions(multiplayerHost, surface)) scope.tools.register(definition)
+      scope.inject(['systemPrompt'], (inner) => {
+        inner.systemPrompt.section({ name: 'multiplayer', order: inner.systemPrompt.getSectionOrder(MULTIPLAYER_SECTION_ANCHOR), text: MULTIPLAYER_PROMPT })
+      })
+      // Connected agents get the multiplayer tools too, confirming through their own user.
+      const multiplayer = multiplayerMcpTools(multiplayerToolDefinitions(multiplayerHost, MCP_SURFACE))
       scope.inject(['gameMcp'], (inner) => {
-        inner.effect(() => inner.gameMcp.provide(wasdMcpProvider(connected, { claim })), 'wasd-plugins: game MCP tools')
+        inner.effect(() => inner.gameMcp.provide(wasdMcpProvider(connected, { claim }, multiplayer, MULTIPLAYER_MCP_INSTRUCTIONS)), 'wasd-plugins: game MCP tools')
       })
     })
   }
@@ -337,6 +446,133 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
+   * A project's multiplayer, for the Multiplayer button: its mode, its game, and the game's dedicated servers on the
+   * site the app is signed in to.
+   * @param projectDir - absolute folder of a game project.
+   * @param signal - cancellation.
+   * @returns the view; servers that could not be read leave the list empty and name why.
+   */
+  @Remote
+  async multiplayer(projectDir: string, signal: AbortSignal): Promise<WasdMultiplayerView> {
+    if (!isAbsolute(projectDir)) throw new Error('projectDir must be an absolute path.')
+    const origin = await this.siteOrigin()
+    const signedIn = await this.access()
+    const access = signedIn?.origin === origin ? signedIn : undefined
+    const project = await projectView(projectDir, origin, this.folders, access?.account)
+    const config = project.godot ? await readMultiplayerConfig(projectDir) : undefined
+    const serversUrl = new URL(this.config.serversPath, origin).href
+    const view = {
+      godot: project.godot,
+      ...config === undefined ? {} : { mode: config.mode },
+      ...project.game === undefined ? {} : { game: project.game },
+      serversUrl,
+    }
+    const game = config?.mode === 'dedicated' && access !== undefined ? await linkedGame(projectDir, origin, access.account) : undefined
+    if (game === undefined || access === undefined) return { ...view, servers: [] }
+    try {
+      const servers = await new MultiplayerApi(access, (input, init) => fetch(input, init), signal).servers(game.id)
+      return {
+        ...view,
+        servers: servers.filter(server => server.state !== 'deleted').map(server => ({
+          id: server.id,
+          name: server.name,
+          size: server.size_name ?? server.size,
+          state: server.state,
+          players: server.players_online ?? 0,
+          ...server.bandwidth === null || server.bandwidth === undefined ? {} : { bandwidthPercent: Math.round(server.bandwidth.percent) },
+        })),
+      }
+    } catch (error) {
+      signal.throwIfAborted()
+      return { ...view, servers: [], error: (error as Error).message }
+    }
+  }
+
+  /**
+   * Follow the links the multiplayer tools ask a window to open, such as a server purchase's confirmation page.
+   * @param signal - stream cancellation.
+   * @returns the links no window took yet, then again after each change, until cancelled or the plugin is disposed.
+   */
+  @Remote({ mode: 'stream' })
+  linkRequests(signal: AbortSignal): AsyncIterable<WasdLinkRequests> {
+    return this.linkQueue.follow(signal)
+  }
+
+  /**
+   * Take a link for the calling window, which then opens it.
+   * @param id - the link.
+   * @param signal - cancellation.
+   * @returns whether the window took it; false when another window did or the tool stopped waiting.
+   */
+  @Remote
+  claimLink(id: string, signal: AbortSignal): boolean {
+    signal.throwIfAborted()
+    return this.linkQueue.claim(id)
+  }
+
+  /**
+   * Follow the game library: the games installed on this computer and the downloads in progress.
+   * @param signal - stream cancellation.
+   * @returns the library, then again after each change, until cancelled or the plugin is disposed; an empty library
+   * that says games do not install here where the plugin keeps none.
+   */
+  @Remote({ mode: 'stream' })
+  library(signal: AbortSignal): AsyncIterable<WasdLibraryView> {
+    if (this.games === undefined) return noLibrary(signal)
+    return this.games.follow(signal)
+  }
+
+  /**
+   * Start installing a game from the site, or its newer version; the library's stream follows the download.
+   * @param slug - the game's address on the site, `/games/<slug>`.
+   * @param version - an earlier version of a single-player game; 0 installs the latest.
+   * @param signal - cancellation.
+   * @returns whether the install started, or why not.
+   */
+  @Remote
+  async installGame(slug: string, version: number, signal: AbortSignal): Promise<WasdLibraryOutcome> {
+    signal.throwIfAborted()
+    if (this.games === undefined) return LIBRARY_ELSEWHERE
+    return await this.games.install(slug, version === 0 ? undefined : version)
+  }
+
+  /**
+   * Start an installed game; an online game first installs its newer version and signs in as the app's account.
+   * @param id - the game's id.
+   * @param signal - stops waiting; an update the start began goes on.
+   * @returns once the game started, or why it did not.
+   */
+  @Remote
+  async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome> {
+    if (this.games === undefined) return LIBRARY_ELSEWHERE
+    return await this.games.launch(id, signal)
+  }
+
+  /**
+   * Delete an installed game and its files.
+   * @param id - the game's id.
+   * @param signal - cancellation.
+   * @returns whether it was deleted, or why not.
+   */
+  @Remote
+  async removeGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome> {
+    signal.throwIfAborted()
+    if (this.games === undefined) return LIBRARY_ELSEWHERE
+    return await this.games.remove(id)
+  }
+
+  /**
+   * Forget a failed download.
+   * @param slug - the game's address on the site.
+   * @param signal - cancellation.
+   */
+  @Remote
+  dismissLibraryTask(slug: string, signal: AbortSignal): void {
+    signal.throwIfAborted()
+    this.games?.dismiss(slug)
+  }
+
+  /**
    * Pages of the WASD Engine site the app is signed in to, or would sign in to.
    * @param signal - cancellation.
    * @returns the Explore page.
@@ -346,6 +582,21 @@ export default class WasdPlugins extends TypertRemoteService {
     const origin = await this.siteOrigin()
     signal.throwIfAborted()
     return { explore: new URL(this.config.explorePath, origin).href }
+  }
+
+  /**
+   * A one-time link that opens a page of the WASD Engine site signed in as the app's account, which the Play page opens
+   * in place of the page, so the site in the app shows the app's account. It works once, within minutes; each new link
+   * the site redeems ends the session an earlier one made, and the app's sign-out ends it too.
+   * @param next - the page, a path on the site such as `/explore`.
+   * @param signal - cancellation.
+   * @returns the link, or null while the app is signed out or once the site no longer takes its sign-in.
+   */
+  @Remote
+  async siteSignInLink(next: string, signal: AbortSignal): Promise<string | null> {
+    const access = await this.access()
+    if (access === undefined) return null
+    return await signInLink(access, next, (input, init) => fetch(input, init), signal) ?? null
   }
 
   /**

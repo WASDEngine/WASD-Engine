@@ -17,8 +17,12 @@ export class DesktopBrowserGuests {
   private readonly partitions = new Map<string, string>()
   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
 
-  /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
-  constructor(private readonly hostUrl: () => string | undefined) {}
+  /**
+   * @param hostUrl - current authenticated DSH Host, which guests cannot request.
+   * @param appLink - WASD Engine: takes a link of the app's own URL scheme that a guest navigates to or opens, and
+   *   answers whether it took it; the guest then stays where it is.
+   */
+  constructor(private readonly hostUrl: () => string | undefined, private readonly appLink: (url: string) => boolean = () => false) {}
 
   /**
    * Reserve one guest in a workspace's process-lifetime partition.
@@ -109,6 +113,7 @@ export class DesktopBrowserGuests {
         guest.once('destroyed', () => { lease.releaseInput?.(); this.leases.delete(id) })
       })
       guest.setWindowOpenHandler(({ url, postBody }) => {
+        if (this.appLink(url)) return { action: 'deny' }
         const lease = attachedLease === undefined ? undefined : this.leases.get(attachedLease)
         if (attachedLease !== undefined && lease?.guest === guest && lease.owner === owner && !owner.isDestroyed()
           && postBody === undefined && this.allowedNavigation(url)) {
@@ -118,6 +123,10 @@ export class DesktopBrowserGuests {
         return { action: 'deny' }
       })
       guest.on('will-frame-navigate', (event) => {
+        if (this.appLink(event.url)) {
+          event.preventDefault()
+          return
+        }
         if (event.isMainFrame && !this.allowedNavigation(event.url)) event.preventDefault()
       })
       guest.on('will-redirect', (event, url, _inPlace, mainFrame) => {

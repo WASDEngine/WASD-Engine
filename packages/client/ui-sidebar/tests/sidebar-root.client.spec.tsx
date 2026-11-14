@@ -44,19 +44,20 @@ function makeHeaderProps(): HeaderLeadingControlsProps {
     useSessions: neverHook, useSessionStatus, useSessionRetainInfo: neverHook,
     usePanelInfo, useResource, useWorkspaces: neverHook, ...allowAllAccess,
     usePanels: selector => selector([]), useShortcuts: selector => selector([]),
-    useEntryPins: selector => selector([]), useEntryActions: selector => selector(false),
+    useEntryPins: selector => selector([]), useEntryActions: selector => selector(false), useModeSwitch: selector => selector(false),
     selectPanel: vi.fn(), setPinned: vi.fn(), toggleSidebar: vi.fn(),
     startSession: vi.fn(), trackEntryClick: vi.fn(), t,
   }
 }
 
-function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [], panels = [], content }: {
+function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts = [], panels = [], content, modeSwitch = false }: {
   collapsed?: boolean
   width?: number
   drawer?: boolean
   shortcuts?: readonly ShortcutCatalogEntry[]
   panels?: readonly SidebarPanelMetadata[]
   content?: ReactNode
+  modeSwitch?: boolean
 } = {}) {
   const startSession = vi.fn()
   const toggleSidebar = vi.fn()
@@ -74,7 +75,7 @@ function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts 
       collapsed={current.collapsed} width={current.width}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector(panels)} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(modeSwitch)} setPinned={vi.fn()}
       useShortcuts={selector => selector(shortcuts)}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -88,6 +89,7 @@ function mountShell({ collapsed = false, width = 300, drawer = false, shortcuts 
         if (key === 'sidebar.brand.mark') return brandMark
         if (key === 'sidebar.brand.name') return brandName
         if (key === 'sidebar.toggle.badge') return null
+        if (key === 'sidebar.mode') return <div data-testid="mode-switch" data-wide={owner.wide} />
         if (key === 'sidebar.panellist') return <span aria-hidden="true">P</span>
         if (key === 'sidebar.settings') {
           settingsOwner = owner
@@ -178,7 +180,8 @@ describe('SidebarRoot shell', () => {
       useSessionRetainInfo={neverHook} useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
       usePanels={select => select([])} useEntryPins={select => select([])}
-      useEntryActions={select => select(false)} setPinned={vi.fn()} useShortcuts={select => select([shortcut])} />)
+      useEntryActions={select => select(false)} useModeSwitch={select => select(false)} setPinned={vi.fn()}
+      useShortcuts={select => select([shortcut])} />)
     const button = screen.getByRole('button', { name: 'New session' })
     expect(screen.getByRole('button', { name: 'Open sidebar' }).hasAttribute('data-sidebar-opener')).toBe(true)
     expect(button.getAttribute('aria-keyshortcuts')).toBe('Control+N')
@@ -206,6 +209,30 @@ describe('SidebarRoot shell', () => {
     expect(b.trackEntryClick).toHaveBeenCalledTimes(2)
   })
 
+  it('puts a mode switch in the New Session bar\'s place and leads the panel rows with New Session', () => {
+    const b = mountShell({ modeSwitch: true, panels: [{ id: 'notes' as SidebarPanelMetadata['id'], order: 1, label: 'Notes' }] })
+    expect(screen.getByTestId('mode-switch').dataset.wide).toBe('true')
+    const navigation = screen.getByRole('navigation')
+    const rows = Array.from(navigation.querySelectorAll('button'), button => button.getAttribute('aria-label'))
+    expect(rows).toEqual(['New session', 'Notes'])
+    // The bar is gone: the wordmark and the row are the only starters left.
+    expect(screen.getAllByRole('button', { name: 'New session' })).toHaveLength(2)
+    fireEvent.click(navigation.querySelector('button') as HTMLButtonElement)
+    expect(b.startSession).toHaveBeenCalledOnce()
+    expect(b.trackEntryClick).toHaveBeenCalledExactlyOnceWith({ menu_name: 'new_session', position: 'sidebar' })
+  })
+
+  it('hands the mode switch the rail state and keeps New Session first on the rail', () => {
+    mountShell({ modeSwitch: true, collapsed: true, width: 56 })
+    expect(screen.getByTestId('mode-switch').dataset.wide).toBe('false')
+    expect(screen.getByRole('navigation').querySelector('button')?.getAttribute('aria-label')).toBe('New session')
+  })
+
+  it('shows New Session as a row even without panels while a mode switch is present', () => {
+    mountShell({ modeSwitch: true })
+    expect(Array.from(screen.getByRole('navigation').querySelectorAll('button'), button => button.getAttribute('aria-label'))).toEqual(['New session'])
+  })
+
   it('reports the collapsed rail New Session as a sidebar click outside the Windows caption', () => {
     const b = mountShell({ collapsed: true, width: 56 })
     fireEvent.click(screen.getByRole('button', { name: 'New session' }))
@@ -221,7 +248,7 @@ describe('SidebarRoot shell', () => {
       collapsed={false} width={300} drawer={false}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -254,7 +281,7 @@ describe('SidebarRoot shell', () => {
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -279,7 +306,7 @@ describe('SidebarRoot shell', () => {
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -308,7 +335,7 @@ describe('SidebarRoot shell', () => {
       collapsed={false} width={300} drawer={false}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -360,7 +387,7 @@ describe('SidebarRoot shell', () => {
       collapsed={false} width={300}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}
@@ -425,7 +452,7 @@ describe('SidebarRoot shell', () => {
       collapsed width={56}
       useSessions={neverHook} useSessionStatus={useSessionStatus} useSessionRetainInfo={neverHook}
       usePanelInfo={usePanelInfo} selectPanel={() => {}} usePanels={selector => selector([])} useEntryPins={selector => selector([])}
-      useEntryActions={selector => selector(false)} setPinned={vi.fn()}
+      useEntryActions={selector => selector(false)} useModeSwitch={selector => selector(false)} setPinned={vi.fn()}
       useShortcuts={selector => selector([])}
       useContextMenu={contextMenuHook()} useResource={useResource} useWorkspaces={neverHook}
       {...allowAllAccess}

@@ -12,6 +12,7 @@ import { syncWindowsAppearance } from './preload-windows.ts'
 import { installMandatoryUpdateOverlay } from './preload-mandatory-overlay.ts'
 import { createDesktopBrowserBridge } from './preload-browser.ts'
 import { createGameLayerBridge } from './wasdengine-game-layer-bridge.ts'
+import { createWasdLinksBridge } from './wasdengine-links-bridge.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 
 function createProductApi(): DshDesktopProductApi {
@@ -24,6 +25,7 @@ function createProductApi(): DshDesktopProductApi {
     },
     browser: createDesktopBrowserBridge(),
     ...process.platform === 'darwin' ? { gameLayer: createGameLayerBridge() } : {},
+    wasdLinks: createWasdLinksBridge(),
     fileDrag: {
       prepare: (source, requestId) => ipcRenderer.invoke(DESKTOP_IPC.fileDragPrepare, source, requestId) as
         Promise<FileDragHandle | undefined>,

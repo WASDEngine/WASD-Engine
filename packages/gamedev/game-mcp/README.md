@@ -75,6 +75,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_blender` server's tools, renamed from `mcp__wasd_blender__<tool>` |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_supercollider` server's tools, renamed from `mcp__wasd_supercollider__<tool>` |
+| `wasd_*` | [`@deepseek-ai/dsh-wasd-plugins`](../wasd-plugins/README.md) | The Web export and release tools and the multiplayer tools, each with an absolute `project` parameter |
 
 Every user signs in to WASD Engine: while the account plugin, `@deepseek-ai/dsh-deepseek-account`, reports no stored sign-in or cannot read it, the server answers every tool call, `search_game_tools` and `call_game_tool` included, with an error result that asks the user to sign in, and still lists its tools. It reads the sign-in at each call, so the tools work again as soon as the user signs in. A Host without the account plugin runs every call.
 
@@ -86,11 +87,16 @@ A Godot call names its project by absolute path: the folder that holds `project.
 
 ### Provide tools
 
-`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents. Once a provider tool's result is made, the server emits `game-mcp/tool-result` with the provider id, the tool name, the prepared arguments, the calling agent, the Session the call ran in, if any, and whether the agent got an error result; a listener's failure is logged and leaves the result alone. [WASD Engine Plugins](../wasd-plugins/README.md) credits a game with the tools that connected agents used on it from this event.
+`ctx.gameMcp.provide(provider)` offers a plugin's tools for the calling plugin's lifetime and returns an idempotent disposer. A provider has a lowercase `id`, which prefixes its tool names, a `title`, a one-sentence `description`, optional `instructions`, `tools()`, and `status(signal)`, which reports `ready`, `starting`, or `unavailable` with a message. Each tool names a harness `ToolDefinition` that runs the calls and may override its description and input schema, mark itself read-only, `prepare` a call (map its arguments and choose the Agent it runs as, through `call.session(directory)`), and turn the value into MCP `content`; without `content` the server sends the text blocks of `output.render`. A prepared call may `reveal` a Session, and a tool may name, through `confirmation(value)`, the page where the user confirms what a successful call asked for. The server lists a tool only when its name starts with the provider id and an underscore and no earlier tool has it, and it turns a failure of preparation, argument validation, or execution into an error result with the error's message. A tool that declares `timeoutMs` keeps it: its execution sees the expiry as cancellation, as it does in a Session, and the result says the call timed out. The server runs calls as they arrive, several at once, including calls of one agent and of its subagents. Once a provider tool's result is made, the server emits `game-mcp/tool-result` with the provider id, the tool name, the prepared arguments, the calling agent, the Session the call ran in, if any, and whether the agent got an error result; a listener's failure is logged and leaves the result alone. [WASD Engine Plugins](../wasd-plugins/README.md) credits a game with the tools that connected agents used on it from this event.
 
 ### Long calls
 
 A tool call may run for minutes, as a release that uploads a large build does. The response to every request is an event stream that starts as soon as the request arrives and carries a keep-alive comment every 15 seconds, so an agent that waits a fixed time for a response to begin keeps waiting: Claude Code gives up on an HTTP MCP request whose response has not begun after 60 seconds, with `The operation timed out.`. While a call runs, an agent that asked for progress, as Claude Code does, gets a progress notification every `progressIntervalMs` whose message gives the time so far, so an agent that gives up on a call that reports nothing, as Claude Code does after 5 minutes, keeps waiting too. Codex limits each call to its `tool_timeout_sec`, which the Codex entry of the setup prompt sets.
+
+<a id="confirmation-pages"></a>
+### Confirmation pages
+
+A call whose tool names a confirmation page, such as a game server purchase that the user confirms on the WASD Engine site, reaches an agent whose client declared URL-mode elicitation (`elicitation.url`) on the 2026-07-28 revision as an input-required result with the page and what to confirm. The client shows the page to the user and retries the call; the retry returns the call's content with a line that says how the user answered, without running the tool again. Every other client gets the content alone, which names the page, because the 2025 revisions, served statelessly, carry no client capabilities with a call. The content travels in the opaque `requestState`, sealed with a key of the server process, bound to `tools/call` and the calling agent, and valid for 30 minutes; a changed state is refused.
 
 -----
 
@@ -108,7 +114,7 @@ Stateless serving keeps no connection, so the server names each request's agent 
 |---|---|
 | [`src/index.ts`](src/index.ts) | `GameMcpServer`: Config, the provider registry, the listener lifecycle, the request checks, and the `gameMcp.watch` stream |
 | [`src/http.ts`](src/http.ts) | Loopback listener and the conversion between Node requests and web-standard requests and responses |
-| [`src/server.ts`](src/server.ts) | The MCP handler and the `tools/list` and `tools/call` handlers |
+| [`src/server.ts`](src/server.ts) | The MCP handler, the `tools/list` and `tools/call` handlers, and the confirmation pages' URL elicitation |
 | [`src/catalog.ts`](src/catalog.ts) | Tool collection, listing, search, instructions, and running one call |
 | [`src/clients.ts`](src/clients.ts) | Agent identities and the agents seen |
 | [`src/sessions.ts`](src/sessions.ts) | The connected agents' Sessions and `sessions.json` |
@@ -158,7 +164,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all ten providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 25,500 characters, about 6,900 of them the game add-ons catalog, and the 69 tool declarations to about 71,500 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all ten providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 26,400 characters, about 6,900 of them the game add-ons catalog, and the 80 tool declarations to about 80,400 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -191,6 +197,7 @@ These limits define what the server serves and to whom; they are current package
 - **No transcript** — the connected agent's tool calls appear in its own harness, not in the Session; the Session shows its game in the Game tab.
 - **Stateless serving** — two instances of the same agent share its Session, its project default, and its game per project.
 - **Cancellation from 2025 clients** — a client on a 2025 revision cancels with a `notifications/cancelled` request, which reaches a server of its own and no running call, so the call ends only when its request closes or its tool's time limit passes.
+- **Confirmation pages per process** — the key that seals a confirmation's state lives in the server process, so a retry after the Host restarted is refused; the page the client showed still works, and the tool that named it can list what waits for confirmation, as `wasd_server_status` does.
 
 <a id="dev-note"></a>
 ### Dev Note

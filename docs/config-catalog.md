@@ -1912,7 +1912,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:61`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:63`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2007,8 +2007,31 @@ export interface Config {
   macosTemplateSha256: string
   /** Absolute macOS template ZIP to use instead of the download; empty downloads it. */
   macosTemplatePath: string
+  /**
+   * Godot export templates archive of the runtime's Godot version, from which a dedicated server export downloads only
+   * its template.
+   */
+  serverTemplateArchiveUrl: string
+  /** Path of the Linux x86_64 release template inside that archive, for dedicated server exports. */
+  serverTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  serverTemplateSha256: string
+  /** Absolute Linux x86_64 release template to use instead of the download; empty downloads it. */
+  serverTemplatePath: string
   /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
+  /** Most headless instances one group of `runInstances` starts at once on any computer. */
+  maxInstances: number
+  /**
+   * Bytes of the computer's physical memory for each instance of a group: at most the computer's memory divided by
+   * this, rounded to the nearest whole number, run in one group; 0 leaves memory out of the limit.
+   */
+  instanceMemoryBytes: number
+  /**
+   * Logical processors for each instance of a group: at most the computer's logical processors divided by this,
+   * rounded down, run in one group; 0 leaves processors out of the limit.
+   */
+  instanceCores: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
@@ -5199,12 +5222,15 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:58`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:77`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute folder of the plugin's data on this computer: which project folders released each game. */
+  /**
+   * Absolute folder of the plugin's data on this computer: which project folders released each game, and the game
+   * library's games in `library/`.
+   */
   dataRoot: string
   /** Path of the Explore page on the WASD Engine site. */
   explorePath: string
@@ -5213,6 +5239,11 @@ export interface Config {
    * the Desktop app's Browser tabs are the ones a window can drive.
    */
   browser: boolean
+  /**
+   * Keep a game library: games installed from the WASD Engine site as desktop builds and started from the app, as the
+   * Desktop app does; elsewhere the library is empty and refuses installs.
+   */
+  library: boolean
   /** Cooperative timeout budget of each `browser_*` call, in milliseconds. */
   browserTimeoutMs: number
   /** How long a `browser_*` call waits for a window to take it, in milliseconds. */
@@ -5262,6 +5293,10 @@ export interface Config {
    * model's own name.
    */
   builtinModelProviders: string[]
+  /** Path of the site's page that lists the account's dedicated servers. */
+  serversPath: string
+  /** How long a confirmation page a multiplayer tool opens waits for a window to take it, in milliseconds. */
+  linkClaimTimeoutMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-wasd-plugins -->

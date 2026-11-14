@@ -87,7 +87,12 @@ describe('configuration', () => {
       macosTemplateEntry: 'templates/macos.zip',
       macosTemplateSha256: '88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792',
       macosTemplatePath: '',
+      serverTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      serverTemplateEntry: 'templates/linux_release.x86_64',
+      serverTemplateSha256: 'd9f79ab89b5ae369aeed11c6052d402e8218cd503bf85b4a235f9c30c46a7c63',
+      serverTemplatePath: '',
       exportTimeoutMs: 600_000,
+      maxInstances: 4, instanceMemoryBytes: 2 * 1024 ** 3, instanceCores: 1,
     })
   })
 })

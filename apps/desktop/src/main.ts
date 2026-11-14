@@ -68,6 +68,8 @@ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.t
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
+import { registerWasdengineLinks, WasdLinkInbox } from './wasdengine-links.ts'
+import { WASD_LINKS_IPC } from './wasdengine-links-names.ts'
 import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
 import { WasdengineUpdateSpace } from './wasdengine-update-space.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
@@ -497,7 +499,7 @@ async function main(): Promise<void> {
   const applicationUrl = `${SCHEME}://app/`
   let hostUrl: string | undefined
   let hostCookie: string | undefined
-  const browserGuests = new DesktopBrowserGuests(() => hostUrl)
+  const browserGuests = new DesktopBrowserGuests(() => hostUrl, url => wasdLinks.deliver(url))
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let reportedLaunch = false
@@ -856,6 +858,10 @@ async function main(): Promise<void> {
     return browserGuests.release(event.sender, lease)
   })
   registerWasdengineGameLayers(ipcMain, assertProductSender)
+  registerWasdengineLinks(ipcMain, wasdLinks, assertProductSender)
+  wasdLinks.listen(() => {
+    if (mainWindow !== undefined && !mainWindow.isDestroyed()) mainWindow.webContents.send(WASD_LINKS_IPC.changed)
+  })
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*', 'wss://127.0.0.1/*'] }, (details, callback) => {
     if (hostUrl === undefined || hostCookie === undefined || details.webContentsId !== mainWindow?.webContents.id) {
@@ -1621,7 +1627,25 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
-const ownsDesktopInstance = claimDesktopSingleInstance(app, () => { focusPrimaryWindow() })
+/** WASD Engine: game links (`wasdengine://games/<slug>`) wait here until the application page takes them. */
+const wasdLinks = new WasdLinkInbox(WASDENGINE_DESKTOP_BRAND.urlScheme)
+
+// Electron hands the owner a later launch's command line, where Windows puts the game link that launch was for.
+const ownsDesktopInstance = claimDesktopSingleInstance(app, (...launch: unknown[]) => {
+  wasdLinks.deliverArguments(Array.isArray(launch[1]) ? launch[1] : undefined)
+  focusPrimaryWindow()
+})
+
+if (ownsDesktopInstance) {
+  // macOS hands over the link that starts the app before the app is ready, so the inbox listens from the start.
+  app.on('open-url', (event, url) => {
+    if (!wasdLinks.deliver(url)) return
+    event.preventDefault()
+    focusPrimaryWindow()
+  })
+  // Windows passes the link that starts the app on its command line.
+  wasdLinks.deliverArguments(process.argv)
+}
 
 if (ownsDesktopInstance) void app.whenReady().then(main).catch(async (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error)

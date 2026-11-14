@@ -19,6 +19,7 @@ export interface FakeGodotConfig {
   readonly check?: Record<string, unknown>
   readonly script?: Record<string, unknown>
   readonly game?: Record<string, unknown>
+  readonly instance?: Record<string, unknown>
 }
 
 /** A temporary folder owned by one spec. */

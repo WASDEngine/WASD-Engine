@@ -45,6 +45,8 @@ const CONVERSATION = 'client/ui-conversation/src/client/skeleton/ConversationRoo
 const DOCKKIT = 'client/ui-dockkit/src/components/dockkit.module.css'
 const PLUGIN_MANAGER = 'client/ui-plugin-manager/src/client/PluginManagerPage.module.css'
 const PLATFORM_OVERLAY = 'client/ui-settings-account/src/client/PlatformOverlay.module.css'
+// WASD Engine: the Play page of WASD Engine Plugins.
+const PLAY_PAGE = 'gamedev/wasd-plugins/src/client/PlayPage.module.css'
 
 /**
  * One chrome row: the sheet that lays it out, the markup that marks it, and the
@@ -117,6 +119,12 @@ const CHROME_ROWS: readonly ChromeRow[] = [
     selector: '.header',
     markup: 'client/ui-settings-account/src/client/PlatformOverlay.tsx',
     height: ['height', '48px'],
+  },
+  // WASD Engine: the Play page's toolbar, which sits in the window's top strip like the conversation header.
+  {
+    file: PLAY_PAGE,
+    selector: '.toolbar',
+    markup: 'gamedev/wasd-plugins/src/client/PlayPage.tsx',
   },
 ]
 

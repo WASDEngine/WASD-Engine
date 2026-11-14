@@ -19,12 +19,18 @@
  * afterwards; the other formats' imported files stay in the project's `.godot` folder, where they spare the next
  * export the work.
  *
+ * The dedicated server export (`WASD Engine Server`) writes one Linux x86_64 executable, `server.x86_64`, with the pack
+ * embedded and the visuals of every resource stripped, which runs as the game's server with `--headless`.
+ *
+ * Every preset includes `wasd_multiplayer.cfg`, the WASD Multiplayer add-on's configuration at the project root, which
+ * is no resource, so Godot would leave it out of the pack.
+ *
  * Godot reads export presets only from the project's `export_presets.cfg`, so a preset is written there for the export
  * alone: the file's original bytes are restored afterwards, or the file is removed when the project had none, and the
  * project's own presets never change.
  * @module @deepseek-ai/dsh-godot/src/export
  */
-import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
@@ -34,13 +40,22 @@ import { consoleLines, describeExit, formatSeconds, lastLines } from './output.t
 import { FAILURE_OUTPUT_LINES } from './run.ts'
 import { parseProjectSettings } from './project.ts'
 import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
-import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebExport } from './types.ts'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotServerExport, GodotWebExport } from './types.ts'
 
 /** Name of the export preset the Web export writes for the duration of one export. */
 export const WEB_EXPORT_PRESET = 'WASD Engine Web'
 
+/** Name of the export preset the dedicated server export writes for the duration of one export. */
+export const SERVER_EXPORT_PRESET = 'WASD Engine Server'
+
+/** The executable a dedicated server export writes, with the game's pack embedded. */
+export const SERVER_EXPORT_BINARY = 'server.x86_64'
+
 /** The page that starts an exported game. */
 export const WEB_EXPORT_ENTRY = 'index.html'
+
+/** The WASD Multiplayer add-on's configuration file, at the project root, which every export includes. */
+export const MULTIPLAYER_CONFIG_FILE = 'wasd_multiplayer.cfg'
 
 /** Most Godot warnings a result lists. */
 export const EXPORT_WARNINGS = 10
@@ -69,13 +84,9 @@ export type TextureFormat = 's3tc_bptc' | 'etc2_astc'
 const PRESETS_FILE = 'export_presets.cfg'
 const PROJECT_FILE = 'project.godot'
 const REQUIRED_FILES = [WEB_EXPORT_ENTRY, 'index.js', 'index.wasm', 'index.pck'] as const
-/** The fields every preset of WASD Engine's sets, after its name and platform. */
-const PRESET_FIELDS = [
-  'runnable=false',
-  'dedicated_server=false',
-  'custom_features=""',
-  'export_filter="all_resources"',
-  'include_filter=""',
+/** The fields every preset of WASD Engine's sets after its export filter; the include filter adds the multiplayer configuration. */
+const FILTER_FIELDS = [
+  `include_filter="${MULTIPLAYER_CONFIG_FILE}"`,
   'exclude_filter=""',
   'export_path=""',
   'encryption_include_filters=""',
@@ -84,9 +95,31 @@ const PRESET_FIELDS = [
   'encrypt_directory=false',
   'script_export_mode=2',
 ] as const
+/** The fields a game's preset sets after its name and platform. */
+const PRESET_FIELDS = [
+  'runnable=false',
+  'dedicated_server=false',
+  'custom_features=""',
+  'export_filter="all_resources"',
+  ...FILTER_FIELDS,
+] as const
+/**
+ * The fields the dedicated server preset sets after its name and platform: every resource keeps its data but its
+ * visuals are stripped (`customized_files` maps `res://` to `strip`), and Godot adds the `dedicated_server` feature tag.
+ */
+const SERVER_PRESET_FIELDS = [
+  'runnable=false',
+  'dedicated_server=true',
+  'custom_features=""',
+  'export_filter="customized"',
+  'customized_files={',
+  '"res://": "strip"',
+  '}',
+  ...FILTER_FIELDS,
+] as const
 
 /** Parameters of one export process. */
-export interface WebExportOptions {
+export interface ExportOptions {
   /** Host subprocess service. */
   readonly subprocess: SubprocessRuntime
   /** Runtime to launch; its library must be an editor build. */
@@ -95,7 +128,10 @@ export interface WebExportOptions {
   readonly projectDir: string
   /** Absolute folder the export empties and fills. */
   readonly outputDir: string
-  /** Absolute path of the export template: the single-threaded Web release template ZIP, or the desktop one. */
+  /**
+   * Absolute path of the export template: the single-threaded Web release template ZIP, the desktop one, or the Linux
+   * x86_64 release executable of a dedicated server export.
+   */
   readonly template: string
   /** Host process id for the runner's parent watch. */
   readonly hostPid: number
@@ -109,8 +145,11 @@ export interface WebExportOptions {
   readonly signal: AbortSignal
 }
 
+/** Parameters of one Web export process. */
+export type WebExportOptions = ExportOptions
+
 /** Parameters of one desktop export process. */
-export interface DesktopExportOptions extends WebExportOptions {
+export interface DesktopExportOptions extends ExportOptions {
   /** The platform to build for; `template` is its release template: the Windows `.exe` or the macOS `.zip`. */
   readonly platform: GodotDesktopPlatform
 }
@@ -160,10 +199,13 @@ export function customBootSplash(projectText: string): boolean {
  * @param original - the file's text, or undefined when the project has none.
  * @param name - the preset's name.
  * @param platform - Godot's name of the preset's platform, such as `Web` or `Windows Desktop`.
+ * @param fields - the preset's fields after its name and platform.
  * @param options - the preset's option lines.
  * @returns the file text for the export.
  */
-function withPreset(original: string | undefined, name: string, platform: string, options: readonly string[]): string {
+function withPreset(
+  original: string | undefined, name: string, platform: string, fields: readonly string[], options: readonly string[],
+): string {
   const presets = new Map<number, PresetSections>()
   const other: string[] = []
   let current: string[] = other
@@ -199,7 +241,7 @@ function withPreset(original: string | undefined, name: string, platform: string
     '',
     `name=${quote(name)}`,
     `platform=${quote(platform)}`,
-    ...PRESET_FIELDS,
+    ...fields,
     '',
     `[preset.${index}.options]`,
     '',
@@ -218,7 +260,7 @@ function withPreset(original: string | undefined, name: string, platform: string
  * @returns the file text for the export.
  */
 export function withWebPreset(original: string | undefined, template: string, hideSplash: boolean): string {
-  return withPreset(original, WEB_EXPORT_PRESET, 'Web', [
+  return withPreset(original, WEB_EXPORT_PRESET, 'Web', PRESET_FIELDS, [
     'custom_template/debug=""',
     `custom_template/release=${quote(template)}`,
     'variant/extensions_support=false',
@@ -261,7 +303,7 @@ export function withDesktopPreset(original: string | undefined, platform: GodotD
   const templates = [`custom_template/debug=${quote(template)}`, `custom_template/release=${quote(template)}`]
   switch (platform) {
     case 'windows':
-      return withPreset(original, DESKTOP_EXPORT_PRESETS.windows, 'Windows Desktop', [
+      return withPreset(original, DESKTOP_EXPORT_PRESETS.windows, 'Windows Desktop', PRESET_FIELDS, [
         ...templates,
         'debug/export_console_wrapper=0',
         'binary_format/embed_pck=true',
@@ -272,7 +314,7 @@ export function withDesktopPreset(original: string | undefined, platform: GodotD
         'application/modify_resources=true',
       ])
     case 'macos':
-      return withPreset(original, DESKTOP_EXPORT_PRESETS.macos, 'macOS', [
+      return withPreset(original, DESKTOP_EXPORT_PRESETS.macos, 'macOS', PRESET_FIELDS, [
         'export/distribution_type=1',
         'binary_format/architecture="universal"',
         ...templates,
@@ -289,6 +331,28 @@ export function withDesktopPreset(original: string | undefined, platform: GodotD
 
 function assertNever(value: never): never {
   throw new Error(`Unknown desktop platform ${String(value)}`)
+}
+
+/**
+ * Add the dedicated server export preset to an `export_presets.cfg` text, after the project's presets, replacing an
+ * earlier `WASD Engine Server` preset. The preset exports for Linux x86_64 as a dedicated server, with the pack embedded
+ * in the executable.
+ * @param original - the file's text, or undefined when the project has none.
+ * @param template - absolute path of the Linux x86_64 release template.
+ * @returns the file text for the export.
+ */
+export function withServerPreset(original: string | undefined, template: string): string {
+  // The debug template is the release one too: Godot reports a missing debug template while it checks a preset.
+  return withPreset(original, SERVER_EXPORT_PRESET, 'Linux', SERVER_PRESET_FIELDS, [
+    `custom_template/debug=${quote(template)}`,
+    `custom_template/release=${quote(template)}`,
+    'debug/export_console_wrapper=0',
+    'binary_format/embed_pck=true',
+    'texture_format/s3tc_bptc=true',
+    'texture_format/etc2_astc=false',
+    'binary_format/architecture="x86_64"',
+    'ssh_remote_deploy/enabled=false',
+  ])
 }
 
 const IMPORT_SETTING = /^textures\/vram_compression\/import_(s3tc_bptc|etc2_astc)\s*=\s*(\S+)\s*$/u
@@ -373,23 +437,45 @@ async function readOptional(path: string): Promise<Buffer | undefined> {
   }
 }
 
+/** What one export run writes and checks. */
+interface ExportPlan {
+  /** The export preset's name. */
+  readonly preset: string
+  /** The `export_presets.cfg` text of the export, from the project's own text. */
+  readonly presets: (original: string | undefined) => string
+  /** The file Godot exports to, inside the output folder. */
+  readonly target: string
+  /** Files the output folder must hold afterwards. */
+  readonly required: readonly string[]
+  /** What messages call the export, such as `Web`. */
+  readonly label: string
+}
+
+/** The files an export wrote, the note about the Blender importer, and Godot's export warnings. */
+interface ExportOutcome {
+  readonly files: { path: string; bytes: number }[]
+  readonly blenderNote: string | undefined
+  readonly warnings: string[]
+}
+
 /**
- * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too.
+ * Run one export with a preset of WASD Engine's, restoring `export_presets.cfg` afterwards. Exports writing to one
+ * output folder run one at a time, across Hosts too.
  * @param options - process parameters, project, template, and output folder.
- * @returns the exported files.
- * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
+ * @param plan - the preset, the target file, and the files it must write.
+ * @returns the exported files, the note about the Blender importer, and Godot's export warnings.
+ * @throws {GodotExportError} when the process ends without writing the required files.
  */
-export async function exportWeb(options: WebExportOptions): Promise<GodotWebExport> {
+async function runExport(options: ExportOptions, plan: ExportPlan): Promise<ExportOutcome> {
   // The export scans and imports the project like the import step.
   const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
-  const project = await readFile(join(options.projectDir, 'project.godot'), 'utf8')
   await mkdir(options.outputDir, { recursive: true })
   return await withFileLock(options.outputDir, async () => {
     await rm(options.outputDir, { recursive: true, force: true })
     await mkdir(options.outputDir, { recursive: true })
     const presetsPath = join(options.projectDir, PRESETS_FILE)
     const original = await readOptional(presetsPath)
-    await writeFile(presetsPath, withWebPreset(original?.toString('utf8'), options.template, !customBootSplash(project)))
+    await writeFile(presetsPath, plan.presets(original?.toString('utf8')))
     let stdout: string
     let stderr: string
     let ended: string
@@ -397,7 +483,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
       const outcome = await runGodotCommand({
         ...options,
         argv: launcherArgv(options.runtime, options.hostPid, [
-          '--headless', '--path', options.projectDir, '--export-release', WEB_EXPORT_PRESET, join(options.outputDir, WEB_EXPORT_ENTRY),
+          '--headless', '--path', options.projectDir, '--export-release', plan.preset, join(options.outputDir, plan.target),
         ]),
         cwd: options.projectDir,
       })
@@ -414,23 +500,72 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
       if (entry.isFile()) files.push({ path: entry.name, bytes: (await stat(join(options.outputDir, entry.name))).size })
     }
     files.sort((left, right) => left.path.localeCompare(right.path))
-    const missing = REQUIRED_FILES.filter(name => !files.some(file => file.path === name))
+    const missing = plan.required.filter(name => !files.some(file => file.path === name))
     const lines = [...consoleLines(stderr), ...consoleLines(stdout)]
     if (missing.length > 0) {
       const errors = lines.filter(line => /\bERROR\b/u.test(line)).slice(-FAILURE_OUTPUT_LINES).join('\n')
       const tail = errors || lastLines(stderr, FAILURE_OUTPUT_LINES) || lastLines(stdout, FAILURE_OUTPUT_LINES)
-      throw new GodotExportError(`The Godot Web export ${ended} without writing ${missing.join(', ')}.${tail === '' ? '' : `\nLast output:\n${tail}`}`)
+      throw new GodotExportError(`The Godot ${plan.label} export ${ended} without writing ${missing.join(', ')}.${tail === '' ? '' : `\nLast output:\n${tail}`}`)
     }
     const warnings = [...new Set(lines.filter(line => line.startsWith('WARNING:')).map(line => line.slice('WARNING:'.length).trim()))]
-    return {
-      projectDir: options.projectDir,
-      outputDir: options.outputDir,
-      entry: WEB_EXPORT_ENTRY,
-      files,
-      totalBytes: files.reduce((sum, file) => sum + file.bytes, 0),
-      warnings: [...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...warnings].slice(0, EXPORT_WARNINGS),
-    }
+    return { files, blenderNote, warnings }
   }, { signal: options.signal, waitMs: options.timeoutMs })
+}
+
+/**
+ * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too.
+ * @param options - process parameters, project, template, and output folder.
+ * @returns the exported files.
+ * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
+ */
+export async function exportWeb(options: WebExportOptions): Promise<GodotWebExport> {
+  const project = await readFile(join(options.projectDir, PROJECT_FILE), 'utf8')
+  const outcome = await runExport(options, {
+    preset: WEB_EXPORT_PRESET,
+    presets: original => withWebPreset(original, options.template, !customBootSplash(project)),
+    target: WEB_EXPORT_ENTRY,
+    required: REQUIRED_FILES,
+    label: 'Web',
+  })
+  const { blenderNote, warnings } = outcome
+  return {
+    projectDir: options.projectDir,
+    outputDir: options.outputDir,
+    entry: WEB_EXPORT_ENTRY,
+    files: outcome.files,
+    totalBytes: outcome.files.reduce((sum, file) => sum + file.bytes, 0),
+    warnings: [...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...warnings].slice(0, EXPORT_WARNINGS),
+  }
+}
+
+/**
+ * Export a project as a Linux x86_64 dedicated server: one executable, {@link SERVER_EXPORT_BINARY}, with the pack
+ * embedded and the visuals of every resource stripped, which the WASD Engine game server hosts start with
+ * `--headless`, next to the native libraries of the project's GDExtensions, when it has any. Exports writing to one
+ * output folder run one at a time, across Hosts too.
+ * @param options - process parameters, project, the Linux x86_64 release template, and output folder.
+ * @returns the executable.
+ * @throws {GodotExportError} when the process ends without writing the executable.
+ */
+export async function exportServer(options: ExportOptions): Promise<GodotServerExport> {
+  const outcome = await runExport(options, {
+    preset: SERVER_EXPORT_PRESET,
+    presets: original => withServerPreset(original, options.template),
+    target: SERVER_EXPORT_BINARY,
+    required: [SERVER_EXPORT_BINARY],
+    label: 'dedicated server',
+  })
+  const binary = join(options.outputDir, SERVER_EXPORT_BINARY)
+  // Godot copies the template's mode on some hosts and not on others; the host starts the file as a program.
+  await chmod(binary, 0o755)
+  return {
+    projectDir: options.projectDir,
+    outputDir: options.outputDir,
+    binary: SERVER_EXPORT_BINARY,
+    bytes: (outcome.files.find(file => file.path === SERVER_EXPORT_BINARY) as { bytes: number }).bytes,
+    files: outcome.files,
+    warnings: [...outcome.blenderNote === undefined ? [] : [outcome.blenderNote], ...outcome.warnings].slice(0, EXPORT_WARNINGS),
+  }
 }
 
 /**

@@ -117,8 +117,9 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
     expect(text).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB)')
     expect(text).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB)')
-    expect(text).toContain('The share page offers the downloads.')
-    expect(text).toContain('SmartScreen')
+    expect(text).toContain('Players get the downloads through the share page\'s Install with WASD Engine button: the WASD Engine app installs the build for their computer, keeps it up to date, and starts it.')
+    // The app installs the builds itself, so the release says nothing of first-run prompts.
+    expect(text).not.toContain('SmartScreen')
     await expect(release.execute({ desktop: ['linux'] }, exec)).rejects.toThrow(/invalid arguments: "desktop\[0\]"/u)
   })
 
@@ -130,14 +131,13 @@ describe('wasdToolDefinitions', () => {
     const waiting = await released({ windows: 'pending' })
     expect(waiting).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB, being scanned for malware)')
     expect(waiting).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB)\n')
-    expect(waiting).toContain('WASD Engine scans each download for malware before the share page offers it. A download being scanned appears on the share page, and its link starts working, once the scan passes, usually within a few minutes. Neither build is signed by a publisher')
-    expect(waiting).not.toContain('The share page offers the downloads.')
+    expect(waiting).toContain('WASD Engine scans each download for malware before the share page offers it. A download being scanned becomes installable from the share page once the scan passes, usually within a few minutes. Players get the downloads through the share page\'s Install with WASD Engine button: the WASD Engine app installs the build for their computer, keeps it up to date, and starts it.')
 
     const refused = await released({ windows: 'flagged', macos: 'failed' })
     expect(refused).toContain('Windows download: https://site.test/games/neon/download/windows?v=3 (40.0 MB, flagged as malware: never offered)')
     expect(refused).toContain('macOS download: https://site.test/games/neon/download/macos?v=3 (40.0 MB, not scannable for malware: never offered)')
     expect(refused).toContain('WASD Engine scans each download for malware before the share page offers it. A download the scan flagged or could not scan is never offered.')
-    expect(refused).not.toContain('appears on the share page')
+    expect(refused).not.toContain('becomes installable')
     expect(refused).not.toContain('SmartScreen')
   })
 

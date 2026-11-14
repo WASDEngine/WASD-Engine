@@ -7,6 +7,7 @@ import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-c
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import type { DesktopGameLayerBridge } from '@deepseek-ai/dsh-godot/types'
+import type { DesktopWasdLinksBridge } from '@deepseek-ai/dsh-wasd-plugins/types'
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 
 /** IPC channel names kept private to the desktop application bundle. */
@@ -97,6 +98,8 @@ export interface DshDesktopProductApi {
   readonly browser: DesktopBrowserBridge
   /** WASD Engine: the layers of windowless games behind the page, on macOS only. */
   readonly gameLayer?: DesktopGameLayerBridge
+  /** WASD Engine: the game links the app was asked to open. */
+  readonly wasdLinks?: DesktopWasdLinksBridge
   readonly fileDrag: DesktopFileDrag
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi
