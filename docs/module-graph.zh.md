@@ -346,6 +346,7 @@ flowchart TD
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
+    pkg_image_generation["image-generation"]
     pkg_polyhaven["polyhaven"]
     pkg_supercollider["supercollider"]
     pkg_todo_continuation["todo-continuation"]
@@ -1044,6 +1045,7 @@ flowchart TD
   pkg_elevenlabs --> pkg_tools
   pkg_game_audio --> pkg_tools
   pkg_godot --> pkg_tools
+  pkg_image_generation --> pkg_tools
   pkg_polyhaven --> pkg_tools
   pkg_repeat_tool_reminder --> pkg_agent
   pkg_repeat_tool_reminder --> pkg_tools
@@ -1890,6 +1892,7 @@ flowchart TD
 | [`elevenlabs`](../packages/gamedev/elevenlabs) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`game-audio`](../packages/gamedev/game-audio) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`godot`](../packages/gamedev/godot) | `gamedev` | [`tools`](../packages/core/tools) |
+| [`image-generation`](../packages/gamedev/image-generation) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`polyhaven`](../packages/gamedev/polyhaven) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`repeat-tool-reminder`](../packages/guard/repeat-tool-reminder) | `guard` | [`agent`](../packages/core/agent), [`tools`](../packages/core/tools) |
 | [`tool-call-timeout-policy`](../packages/guard/timeout-policy) | `guard` | [`llm`](../packages/llm/llm), [`timeout`](../packages/util/timeout), [`tools`](../packages/core/tools) |

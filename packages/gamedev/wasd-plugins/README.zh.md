@@ -94,7 +94,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 发布会上传它指定的预览文件，否则上传 `wasd_record_preview` 保存的文件。关联文件中该账户的条目还记录项目上次为该游戏上传的静态图、GIF 和动画的 SHA-256，因此之后的发布只有在重新录制之后或网站丢失这些文件时才会再次上传，游戏在没有带来新预览的发布中保留原有预览。动画在 GIF 之后上传，因为网站在游戏的 GIF 变化时会删除其动画；GIF 上传失败时则不上传动画。发布指定自己的 `preview_gif` 时不上传动画，网站会播放那个 GIF。如果游戏在网站上还没有 GIF，而项目也没有可上传的 GIF，发布会先在无输入的情况下录制一段（启动游戏并在之后停止它），并在说明中提及；录制失败也会成为一条说明，因为发布会在没有预览的情况下继续。在网站上，分享链接对链接预览返回 GIF，对浏览器返回分享页面；参见后端 README 的“Share links”。
 
-最后，发布会上传游戏的制作信息，“探索”页面和游戏页面会带着标志显示它们：AI 模型、游戏工具和插件。项目把模型和工具记在 `.wasdengine/credits.json` 中，每当某个游戏工具调用为该项目成功完成，插件就会补充这个文件：会话智能体的调用记下该工具和会话的模型（`builtinModelProviders` 中提供者的模型记为 WASD Engine 内置 AI），连接的智能体的调用（由 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `game-mcp/tool-result` 事件报告）只记下工具。会记录的工具有 Godot、Blender、GIMP、SuperCollider、ElevenLabs 和 Poly Haven；文件最多保留六个模型，超出时最早的先移出。连接的智能体的调用没有指明项目时，记在该智能体最近使用的项目上；它在指明任何项目之前的调用，会等到它下一次指明项目的调用（包括它的发布）时再记入。发布会加上自己的模型以及构建每次发布的 Godot，从项目的插件记录 `.wasdengine/addons.json` 读取插件及每个插件所扩展的工具（发布同样会记下该工具），并替换网站上该游戏的制作信息，网站把每个插件列在其工具之下；被拒绝时会成为结果中的一条说明。
+最后，发布会上传游戏的制作信息，“探索”页面和游戏页面会带着标志显示它们：AI 模型、游戏工具和插件。项目把模型和工具记在 `.wasdengine/credits.json` 中，每当某个游戏工具调用为该项目成功完成，插件就会补充这个文件：会话智能体的调用记下该工具和会话的模型（`builtinModelProviders` 中提供者的模型记为 WASD Engine 内置 AI），连接的智能体的调用（由 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `game-mcp/tool-result` 事件报告）只记下工具。会记录的工具有 Godot、Blender、GIMP、SuperCollider、ElevenLabs、Nano Banana（图像工具）和 Poly Haven；文件最多保留六个模型，超出时最早的先移出。连接的智能体的调用没有指明项目时，记在该智能体最近使用的项目上；它在指明任何项目之前的调用，会等到它下一次指明项目的调用（包括它的发布）时再记入。发布会加上自己的模型以及构建每次发布的 Godot，从项目的插件记录 `.wasdengine/addons.json` 读取插件及每个插件所扩展的工具（发布同样会记下该工具），并替换网站上该游戏的制作信息，网站把每个插件列在其工具之下；被拒绝时会成为结果中的一条说明。
 
 <a id="multiplayer"></a>
 ### 多人联机

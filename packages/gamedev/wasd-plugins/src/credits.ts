@@ -35,7 +35,7 @@ export const MAX_ADDON_CREDITS = 24
 const MAX_ADDON_TITLE = 80
 
 /** Game tools a game can credit, in the order its page lists them. */
-export const TOOL_CREDITS = ['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'polyhaven'] as const
+export const TOOL_CREDITS = ['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven'] as const
 
 /** A game tool a game can credit. */
 export type ToolCredit = typeof TOOL_CREDITS[number]
@@ -74,6 +74,7 @@ const TOOL_NAMES: Readonly<Record<ToolCredit, string>> = {
   gimp: 'GIMP',
   supercollider: 'SuperCollider',
   elevenlabs: 'ElevenLabs',
+  'nano-banana': 'Nano Banana',
   polyhaven: 'Poly Haven',
 }
 
@@ -87,6 +88,7 @@ const SESSION_TOOL_PREFIXES: ReadonlyArray<readonly [string, ToolCredit]> = [
   ['mcp__wasd_gimp__', 'gimp'],
   ['mcp__wasd_supercollider__', 'supercollider'],
   ['elevenlabs_', 'elevenlabs'],
+  ['image_', 'nano-banana'],
   ['polyhaven_', 'polyhaven'],
 ]
 
@@ -129,13 +131,17 @@ function toolCredit(id: string): ToolCredit | undefined {
   return (TOOL_CREDITS as readonly string[]).includes(id) ? id as ToolCredit : undefined
 }
 
+/** Providers whose id is not the id of the tool they credit: the image tool's provider credits the model that makes its images. */
+const PROVIDER_CREDITS: ReadonlyMap<string, ToolCredit> = new Map([['image', 'nano-banana']])
+
 /**
- * The tool a provider of WASD Engine's MCP server credits: each credited tool's provider has the tool's id.
+ * The tool a provider of WASD Engine's MCP server credits: the image provider credits Nano Banana, and every other
+ * credited tool's provider has the tool's id.
  * @param provider - the provider id.
  * @returns the tool, or undefined for a provider no game credits.
  */
 export function providerToolCredit(provider: string): ToolCredit | undefined {
-  return toolCredit(provider)
+  return PROVIDER_CREDITS.get(provider) ?? toolCredit(provider)
 }
 
 /**

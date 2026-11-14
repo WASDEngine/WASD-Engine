@@ -12,8 +12,8 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { GameToolsController, type GameToolsState } from '../src/client/controller.ts'
 import {
-  BLENDER, change, ELEVENLABS, entryId, failed, GAME_ADDONS, GIMP, GODOT, inventory, OTHER, plugins, POLY_HAVEN,
-  SUPERCOLLIDER,
+  BLENDER, change, ELEVENLABS, entryId, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, OTHER, plugins,
+  POLY_HAVEN, SUPERCOLLIDER,
 } from './fixtures.client.ts'
 
 function bench() {
@@ -58,6 +58,7 @@ describe('GameToolsController reads', () => {
         { moduleName: GAME_ADDONS.moduleName, entry: GAME_ADDONS, control: { kind: 'switch' } },
         { moduleName: GIMP.moduleName, entry: GIMP, control: { kind: 'switch' } },
         { moduleName: GODOT.moduleName, entry: GODOT, control: { kind: 'switch' } },
+        { moduleName: IMAGE_GENERATION.moduleName, entry: IMAGE_GENERATION, control: { kind: 'switch' } },
         { moduleName: POLY_HAVEN.moduleName, entry: POLY_HAVEN, control: { kind: 'switch' } },
         { moduleName: SUPERCOLLIDER.moduleName, entry: SUPERCOLLIDER, control: { kind: 'switch' } },
       ],
@@ -95,6 +96,7 @@ describe('GameToolsController reads', () => {
         { moduleName: GAME_ADDONS.moduleName, entry: undefined },
         { moduleName: GIMP.moduleName, entry: undefined },
         { moduleName: GODOT.moduleName, entry: GODOT },
+        { moduleName: IMAGE_GENERATION.moduleName, entry: undefined },
         { moduleName: POLY_HAVEN.moduleName, entry: undefined },
         { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
       ],
@@ -115,6 +117,7 @@ describe('GameToolsController reads', () => {
       { moduleName: GAME_ADDONS.moduleName, entry: undefined },
       { moduleName: GIMP.moduleName, entry: undefined },
       { moduleName: GODOT.moduleName, entry: locked, control: { kind: 'locked', reason: 'unaddressable' } },
+      { moduleName: IMAGE_GENERATION.moduleName, entry: undefined },
       { moduleName: POLY_HAVEN.moduleName, entry: undefined },
       { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
     ])

@@ -50,6 +50,7 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   'game-addons': '@deepseek-ai/dsh-game-addons',
   gimp: '@deepseek-ai/dsh-gimp',
   godot: '@deepseek-ai/dsh-godot',
+  'image-generation': '@deepseek-ai/dsh-image-generation',
   polyhaven: '@deepseek-ai/dsh-polyhaven',
   supercollider: '@deepseek-ai/dsh-supercollider',
 }
@@ -59,6 +60,9 @@ const POLY_HAVEN = 'polyhaven'
 
 /** The game tool row whose only config is the WASDEngine API origin: ElevenLabs, whose audio the API makes and charges. */
 const ELEVENLABS = 'elevenlabs'
+
+/** The other row whose only config is the WASDEngine API origin: image generation, whose images the API makes and charges. */
+const IMAGE_GENERATION = 'image-generation'
 
 /** The game tool row that reads the shipped add-on catalog and keeps the Blender add-on store, which the `blender` row names too. */
 const GAME_ADDONS = 'game-addons'
@@ -380,8 +384,8 @@ describe('WASDEngine overlay', () => {
         expect(entry.config, `${id} config`).toBeUndefined()
         continue
       }
-      if (id === ELEVENLABS) {
-        // The account sign-in releases its token only to the inference origin, so the audio goes there.
+      if (id === ELEVENLABS || id === IMAGE_GENERATION) {
+        // The account sign-in releases its token only to the inference origin, so the audio and images go there.
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['apiOrigin'])
         expect(expression(configOf(entry).apiOrigin, `${id}.apiOrigin`), `${id}.apiOrigin`).toBe(api)
         continue
@@ -407,6 +411,7 @@ describe('WASDEngine overlay', () => {
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[POLY_HAVEN] ?? ''), 'the Plugins page can switch Poly Haven off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[GAME_ADDONS] ?? ''), 'the Plugins page can switch the game add-ons off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[ELEVENLABS] ?? ''), 'the Plugins page can switch ElevenLabs off').toBe(false)
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[IMAGE_GENERATION] ?? ''), 'the Plugins page can switch image generation off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {

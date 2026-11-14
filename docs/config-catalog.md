@@ -2319,6 +2319,25 @@ export interface TlsConfig {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-host-webserver -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-image-generation -->
+<a id="deepseek-aidsh-image-generation"></a>
+
+## `@deepseek-ai/dsh-image-generation`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/image-generation/src/index.ts:32`](../packages/gamedev/image-generation/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the image tool. */
+export interface Config {
+  /** Origin of the WASD Engine API, the inference origin that the account sign-in releases its token to. */
+  apiOrigin: string
+  /** Time limit of one `image_generate` call; the API waits up to 300 s for Google. */
+  generationTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-image-generation -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-jobs-local -->
 <a id="deepseek-aidsh-jobs-local"></a>
 

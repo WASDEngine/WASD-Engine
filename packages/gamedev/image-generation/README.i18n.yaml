@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/image-generation/README.md
+/:
+  en: de83c64817b04f44
+  zh: 86389d6a625810a4
+/deepseek-ai-dsh-image-generation:
+  en: d48d259f4be60bb3
+  zh: 7339d8b75c6d4e4e
+/deepseek-ai-dsh-image-generation/summary:
+  en: c217b192d8d97bd0
+  zh: 913b614308292d4f
+/deepseek-ai-dsh-image-generation/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-image-generation/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-image-generation/use-this-package/default-composition:
+  en: 1f6a7880eb91b27d
+  zh: 65ff6860cba8c0c6
+/deepseek-ai-dsh-image-generation/use-this-package/the-tool:
+  en: faf5581547aeb0aa
+  zh: ca5f105a4b5f7a9e
+/deepseek-ai-dsh-image-generation/use-this-package/prices-and-the-account:
+  en: c7003ae0f2342d30
+  zh: 68fcaa10f3c42a36
+/deepseek-ai-dsh-image-generation/use-this-package/plugin-icon:
+  en: 688aff6b9d733a41
+  zh: ea2cbfb4e8fdf2f6
+/deepseek-ai-dsh-image-generation/understand-the-implementation:
+  en: 4e78fcad91d2d252
+  zh: 25cef11c5f9ddc1d
+/deepseek-ai-dsh-image-generation/further-exploration:
+  en: 3d40ea03c6afc216
+  zh: 7648ea3db8a50cb8
+/deepseek-ai-dsh-image-generation/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-image-generation/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-image-generation/model-experience/tool-declarations/what-the-model-sees:
+  en: 489ab5ac95535e90
+  zh: a80764ee6ea604e3
+/deepseek-ai-dsh-image-generation/model-experience/tool-declarations/token-effect:
+  en: 3b3f4aa73499c66c
+  zh: b8290d4e0aff4e23
+/deepseek-ai-dsh-image-generation/model-experience/tool-declarations/kv-cache-effect:
+  en: ffbfd9eb395f50fe
+  zh: 2877f7cfee26d65f
+/deepseek-ai-dsh-image-generation/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-image-generation/model-experience/tool-results/what-the-model-sees:
+  en: e0343fdd2cca10e5
+  zh: 2415c0d7feec0221
+/deepseek-ai-dsh-image-generation/model-experience/tool-results/token-effect:
+  en: 06a6639a4ef81116
+  zh: 77891cadd7a9c250
+/deepseek-ai-dsh-image-generation/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: a38ada6d71b98d2c
+/deepseek-ai-dsh-image-generation/known-limitations-and-deferred-work:
+  en: b9d1a709165844bf
+  zh: 96d51cd12f7376b9
+/deepseek-ai-dsh-image-generation/known-limitations-and-deferred-work/dev-note:
+  en: b05b79765274e486
+  zh: 7906cd62a45a2423

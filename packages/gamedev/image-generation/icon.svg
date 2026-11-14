@@ -1,0 +1,14 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Image generation plugin icon: a package-local picture with a spark in the WASD Engine keycap purple, not Google's or Nano Banana's logo. -->
+  <defs>
+    <clipPath id="image-generation-picture">
+      <rect x="4.5" y="12" width="18" height="18" rx="2.5"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#image-generation-picture)">
+    <path d="M3 31.5L11 21.5L15.5 26.5L18.5 23L24 29.5V31.5Z" fill="#6338D9"/>
+  </g>
+  <circle cx="10" cy="17" r="2.25" fill="#8E63FF"/>
+  <rect x="3" y="10.5" width="21" height="21" rx="4" stroke="#8E63FF" stroke-width="3"/>
+  <path d="M29.5 1.5L30.9 5.1L34.5 6.5L30.9 7.9L29.5 11.5L28.1 7.9L24.5 6.5L28.1 5.1Z" fill="#6338D9"/>
+</svg>

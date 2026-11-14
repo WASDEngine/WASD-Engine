@@ -40,6 +40,16 @@ export const ELEVENLABS: PluginInfo = {
   meta: { title: 'ElevenLabs', description: 'Make voices, sound effects, and music.' },
 }
 
+/** Image generation running, switchable through its patch row, with a package that declares no icon. */
+export const IMAGE_GENERATION: PluginInfo = {
+  entryId: entryId('image-generation'),
+  moduleName: '@deepseek-ai/dsh-image-generation',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'image-generation',
+  meta: { title: 'Nano Banana', description: 'Make game art, UI pieces, and textures.' },
+}
+
 /** The game add-ons running, switchable through their patch row. */
 export const GAME_ADDONS: PluginInfo = {
   entryId: entryId('game-addons'),
@@ -106,7 +116,7 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -118,7 +128,7 @@ export function inventory(
  * @returns the successful answer.
  */
 export function plugins(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
 ): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }

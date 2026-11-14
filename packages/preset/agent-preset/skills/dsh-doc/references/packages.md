@@ -280,6 +280,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 | `@deepseek-ai/dsh-game-mcp` | yes | Serve WASD Engine's game tools to other agents on this computer over a local MCP server |
 | `@deepseek-ai/dsh-gimp` | yes | Headless GIMP 3 for the agent: an MCP server backed by gimp-console |
 | `@deepseek-ai/dsh-godot` | yes | Run, test, and play Godot games through LibGodot with a live Game tab |
+| `@deepseek-ai/dsh-image-generation` | yes | Image generation for the agent: game art, UI pieces, and textures made by Google's Nano Banana 2.1, saved into the game project and charged to the WASD Engine plan |
 | `@deepseek-ai/dsh-polyhaven` | yes | Poly Haven for the agent: search CC0 HDRIs, textures, and 3D models and download them into the game project |
 | `@deepseek-ai/dsh-supercollider` | yes | Headless SuperCollider for the agent: an MCP server that designs sounds with sclang and renders them offline with scsynth |
 | `@deepseek-ai/dsh-todo-continuation` | yes | Keep the agent's turn going while the todo list it wrote in that turn has unfinished items |

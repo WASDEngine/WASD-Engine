@@ -164,7 +164,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all ten providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 26,900 characters, about 7,300 of them the game add-ons catalog, and the 80 tool declarations to about 80,400 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all eleven providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 28,700 characters, about 7,300 of them the game add-ons catalog, and the 83 tool declarations to about 89,800 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
