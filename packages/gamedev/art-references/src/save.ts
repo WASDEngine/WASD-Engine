@@ -6,8 +6,8 @@
  * @module @deepseek-ai/dsh-art-references/src/save
  */
 import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { fileStem, IMAGE_EXTENSIONS, writeAtomically, type CachedImage } from './finder.ts'
+import { basename, join } from 'node:path'
+import { fileStem, HASH_NAME, IMAGE_EXTENSIONS, writeAtomically, type CachedImage } from './finder.ts'
 import { drawFramesSheet, type FramesLayout } from './images.ts'
 import type { SavedReference } from './types.ts'
 
@@ -100,10 +100,17 @@ function sourcesHeader(subject: string): string {
  * One `SOURCES.md` line.
  * @param saved - the saved file.
  * @param date - the day it was saved, as YYYY-MM-DD.
+ * @param local - whether the image was a file on this computer rather than a download.
  * @returns the line, ending in a line break.
  */
-function sourceLine(saved: SavedReference, date: string): string {
+function sourceLine(saved: SavedReference, date: string, local: boolean): string {
   const name = saved.file.split('/').at(-1) ?? saved.file
+  if (local) {
+    // A file on this computer: its name only, since its folders say nothing to a reader of the project.
+    const original = basename(saved.image)
+    const named = HASH_NAME.test(original.replace(/\.[^.]*$/u, '')) ? '' : ` (\`${linkText(original)}\`)`
+    return `- \`${name}\` — a file from this computer${named} — saved ${date}\n`
+  }
   const title = linkText(saved.title) || linkText(saved.page)
   const parts = [`[${title}](${linkTarget(saved.page)})`]
   if (saved.image !== saved.page) parts.push(`[image](${linkTarget(saved.image)})`)
@@ -136,7 +143,8 @@ export async function saveReferences(
   let number = await nextNumber(folder)
   const saved: SavedReference[] = []
   for (const image of images) {
-    const stem = `${String(number).padStart(2, '0')}-${slug(image.title, MAX_STEM) || slug(fileStem(image.image), MAX_STEM) || 'reference'}`
+    const fallback = image.local === true ? '' : slug(fileStem(image.image), MAX_STEM)
+    const stem = `${String(number).padStart(2, '0')}-${slug(image.title, MAX_STEM) || fallback || 'reference'}`
     const name = `${stem}${IMAGE_EXTENSIONS[image.format]}`
     const data = await readFile(image.path)
     await writeAtomically(join(folder, name), data)
@@ -160,7 +168,7 @@ export async function saveReferences(
   }
   const sources = join(folder, 'SOURCES.md')
   const date = now.toISOString().slice(0, 10)
-  const lines = saved.map(entry => sourceLine(entry, date)).join('')
+  const lines = saved.map((entry, index) => sourceLine(entry, date, images[index]?.local === true)).join('')
   try {
     await writeFile(sources, `${sourcesHeader(subject)}${lines}`, { flag: 'wx' })
   } catch (error) {

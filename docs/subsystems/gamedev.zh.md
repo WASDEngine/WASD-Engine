@@ -365,14 +365,15 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="art-references"></a>
 ## 美术参考
 
-`art-references` 行挂载 [`@deepseek-ai/dsh-art-references`](../../packages/gamedev/art-references/README.zh.md)，它的 `reference_search` 和 `reference_save` 工具在会话的 agent 和连接的 agent 制作游戏美术之前为它们提供参考，它的 `art-references` 系统提示词段落告诉 agent 在制作任何美术资源之前使用这些工具、向用户展示联系表，并在参考在风格、像素尺寸、比例、配色或视角上不同时用 `ask_user_question` 询问用户想要哪个方向。该行唯一的配置是 `dataRoot`，即 `dshHomePath('art-references')`，存放下载的图像和联系表的缓存，插件会在 `cacheDays` 后清理。
+`art-references` 行挂载 [`@deepseek-ai/dsh-art-references`](../../packages/gamedev/art-references/README.zh.md)，它的 `reference_search` 和 `reference_save` 工具在会话的 agent 和连接的 agent 制作游戏美术之前为它们提供参考，它的 `art-references` 系统提示词段落告诉 agent 在制作任何美术资源之前使用这些工具、向用户展示联系表，并在参考在风格、像素尺寸、比例、配色或视角上不同时用 `ask_user_question` 询问用户想要哪个方向。用户可以用自己的图片回答这个问题：[`ui-user-questions`](../../packages/client/ui-user-questions/README.zh.md#attaching-images) 的提问卡片把图片上传到会话，并在答案之前把它们作为一条消息引导进来，因此 agent 随答案一起收到图片和每份存储副本的路径，它会优先遵循这些图片，并用 `reference_save` 保存它们。该行唯一的配置是 `dataRoot`，即 `dshHomePath('art-references')`，存放下载的图像和联系表的缓存，插件会在 `cacheDays` 后清理。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|
 | 搜索结果 | `ctx.web.search`，即 `web_search` 使用的搜索，由 WASDEngine 服务计价 | `reference_search` 调用的每个查询 |
 | 页面和图像 | 从 Host 发出的 HTTP GET，只发往公共互联网地址，每次重定向都重新检查，不带 cookie | 搜索找到或调用给出的页面，以及它们提供的图像 |
 | 联系表 | `<dataRoot>/sheets/` 中的 JPEG 文件、给接受图像的模型的附件，以及 agent 消息中的 Markdown 图像，聊天界面通过 `/api/file` 渲染 | 每次找到图像的 `reference_search` 调用 |
-| 保存的参考 | `<project>/references/<subject>/` 中的文件，带 `SOURCES.md` 和帧表，以及 `<project>/references/.gdignore` | 每次 `reference_save` 调用 |
+| 答案图片 | 浏览器向会话上传图片，然后是一条带有这些图片的引导用户消息，模型看到每份存储副本的只读路径 | 用户为 `ask_user_question` 的答案附加图片时 |
+| 保存的参考 | `<project>/references/<subject>/` 中的文件，带 `SOURCES.md` 和帧表，以及 `<project>/references/.gdignore`；这台电脑上的图像文件从其路径复制 | 每次 `reference_save` 调用 |
 
 `.gdignore` 文件让 Godot 跳过该文件夹，因此参考既不会被导入，也不会随游戏导出；「素材」标签页仍会列出它们。
 

@@ -8,7 +8,8 @@
  * @module @deepseek-ai/dsh-art-references/src/tools
  */
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
@@ -239,6 +240,23 @@ export function formatSave(value: SaveValue): string {
 }
 
 /**
+ * The file an image argument names on this computer: an absolute path or a `file:` URL.
+ * @param address - one image argument.
+ * @returns the file's absolute path, or `undefined` for a web address.
+ */
+function localPath(address: string): string | undefined {
+  if (address.startsWith('file:')) {
+    try {
+      return fileURLToPath(address)
+    } catch {
+      // TypeError: a file: URL naming another host or no absolute path; parseWebUrl refuses it as no web address.
+      return undefined
+    }
+  }
+  return isAbsolute(address) ? address : undefined
+}
+
+/**
  * Check a search's arguments.
  * @returns the queries, trimmed and without repeats, and the pages' addresses.
  * @throws Error when the call names no query and no page, too many of either, or a page that is not a web address.
@@ -353,7 +371,7 @@ export function referenceToolDefinitions(host: ReferenceToolHost, surface: Refer
         type: 'array',
         required: true,
         items: { type: 'string' },
-        description: `1–${host.maxSaved} image addresses from reference_search, or other image addresses, such as one the user gave.`,
+        description: `1–${host.maxSaved} image addresses from reference_search, other image addresses, such as one the user gave, or absolute paths of image files on this computer, such as an image the user attached.`,
       },
     },
     output: {
@@ -369,7 +387,12 @@ export function referenceToolDefinitions(host: ReferenceToolHost, surface: Refer
       const addresses = [...new Set(args.images)]
       if (addresses.length === 0) throw new Error('images must name at least one image address.')
       if (addresses.length > host.maxSaved) throw new Error(`images must name at most ${host.maxSaved} images; save more in another call.`)
+      const files = new Map(addresses.flatMap((address) => {
+        const path = localPath(address)
+        return path === undefined ? [] : [[address, path] as const]
+      }))
       for (const address of addresses) {
+        if (files.has(address)) continue
         try {
           parseWebUrl(address)
         } catch (error) {
@@ -378,7 +401,12 @@ export function referenceToolDefinitions(host: ReferenceToolHost, surface: Refer
         }
       }
       const project = await host.project(exec)
-      const downloads = await Promise.allSettled(addresses.map(address => host.finder.download(address, { page: address, title: '', site: siteOf(address) }, exec.signal)))
+      const downloads = await Promise.allSettled(addresses.map((address) => {
+        const path = files.get(address)
+        return path === undefined
+          ? host.finder.download(address, { page: address, title: '', site: siteOf(address) }, exec.signal)
+          : host.finder.readLocal(path)
+      }))
       exec.signal.throwIfAborted()
       const ready: CachedImage[] = []
       const failed: { image: string; reason: string }[] = []

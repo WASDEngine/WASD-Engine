@@ -69,7 +69,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 结果在 web 工具使用的外部内容提示之后，列出每张图像的编号、标题、网站、像素尺寸、文件类型、帧数和时长、地址、所在页面和视频，并给出在对话中显示联系表的 Markdown 行：`![Reference images](<sheet path>)`。聊天界面通过 Host 的文件路由渲染绝对路径的图像。
 
-`reference_save` 接受 `subject`，即参考的用途，它决定文件夹名；以及 `images`，最多八个来自 `reference_search` 或其他地方的图像地址，例如用户给出的地址。它下载每张图像或在缓存中找到它，并把它写入会话工作目录下的 `references/<subject>/`，编号接在已有文件之后，例如 `references/knight/03-pixel-knight-pack.png`。动画 GIF 或 WebP 还会得到 `<name>.frames.png`，即它的各帧排成的网格，每帧从 1 开始编号并标出显示时长。每个文件的标题、页面、图像地址、视频和日期写入该文件夹的 `SOURCES.md`，其标题说明这些图像归其作者所有。一个空的 `references/.gdignore` 让 Godot 不导入该文件夹，因此参考永远不会成为游戏或其导出的一部分。结果列出保存的文件和失败的图像，并把每张保存的图像给会话的模型看，最多 `maxModelImages` 张：帧表以绘制时的 PNG 发送，静态图像最长边不超过 `modelImageEdge` 像素，小图按整数倍放大。
+`reference_save` 接受 `subject`，即参考的用途，它决定文件夹名；以及 `images`，最多八个来自 `reference_search` 或其他地方的图像地址，例如用户给出的地址，或这台电脑上图像文件的绝对路径或 `file:` URL，例如用户在回答中附上的图片。它下载每个地址或在缓存中找到它，就地读取每个文件，并把图像写入会话工作目录下的 `references/<subject>/`，编号接在已有文件之后，例如 `references/knight/03-pixel-knight-pack.png`。动画 GIF 或 WebP 还会得到 `<name>.frames.png`，即它的各帧排成的网格，每帧从 1 开始编号并标出显示时长。每个文件的标题、页面、图像地址、视频和日期写入该文件夹的 `SOURCES.md`，其标题说明这些图像归其作者所有；来自这台电脑的文件只列出文件名，不含所在文件夹，文件名是内容哈希时（附件的文件名就是如此）不列名称，保存为 `NN-<文件名>` 或 `NN-reference`。一个空的 `references/.gdignore` 让 Godot 不导入该文件夹，因此参考永远不会成为游戏或其导出的一部分。结果列出保存的文件和失败的图像，并把每张保存的图像给会话的模型看，最多 `maxModelImages` 张：帧表以绘制时的 PNG 发送，静态图像最长边不超过 `modelImageEdge` 像素，小图按整数倍放大。
 
 页面和图像请求只发往公共互联网地址：第一个地址和每次重定向的地址都必须解析为公共 IPv4 或 IPv6 地址，因此页面无法让工具访问本机或其局域网。请求不带 cookie 或凭据，最多跟随五次重定向。
 
@@ -122,7 +122,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型可见内容
 
-当会话有 `reference_search` 时，`art-references` 段落以 `# Art references` 为标题，告诉 agent：有好参考的美术效果好得多；在制作任何美术资源之前，无需等待要求，就用 `reference_search` 收集参考，除非用户已经给出参考、要求不要搜索，或该资源重复游戏中已有的美术。它说明如何为主体、外观和动作写两到四个查询；无论是否提问，都在下一条消息中用结果给出的 Markdown 图像行向用户展示联系表；保持游戏已有的风格，只从参考中取主体；比较参考的外观而不只是内容，即美术风格、像素尺寸或细节、比例、配色与氛围和视角；当它们在这些方面不同而请求没有说明时，询问用户想要哪个方向，会话有 `ask_user_question` 时用它，每个方向一个选项，即使在较长请求的中途也要问，因为美术方向由用户决定，而游戏的第一份美术决定整个游戏的外观；参考一致时则不询问继续工作；用 `reference_save` 保存用到的参考，它不会添加资源，也无需批准，自己制作的美术不要放进该文件夹；以参考为依据工作：会话有 `image_generate` 时把最接近所选方向的一到三张参考传给它并在提示词中说明从每张取什么，把 Blender 和 GIMP 的成果与参考对照，并按照动画的帧表制作。最后规定：描述自己的设计，绝不复制参考，不复制他人的角色、标志或作品，也绝不把参考图像放进游戏。 以下是 Web 和 Desktop 配置组合出的形式，含 `ask_user_question` 和 `image_generate`；没有 `ask_user_question` 时，问题在回复中提出，每行一个方向，并结束回合等待回答；没有 `image_generate` 时省略它那一步。
+当会话有 `reference_search` 时，`art-references` 段落以 `# Art references` 为标题，告诉 agent：有好参考的美术效果好得多；在制作任何美术资源之前，无需等待要求，就用 `reference_search` 收集参考，除非用户已经给出参考、要求不要搜索，或该资源重复游戏中已有的美术。它说明如何为主体、外观和动作写两到四个查询；无论是否提问，都在下一条消息中用结果给出的 Markdown 图像行向用户展示联系表；保持游戏已有的风格，只从参考中取主体；比较参考的外观而不只是内容，即美术风格、像素尺寸或细节、比例、配色与氛围和视角；当它们在这些方面不同而请求没有说明时，询问用户想要哪个方向，会话有 `ask_user_question` 时用它，每个方向一个选项，即使在较长请求的中途也要问，因为美术方向由用户决定，而游戏的第一份美术决定整个游戏的外观；参考一致时则不询问继续工作；用户给出的图片，无论随回答附上还是在消息中给出，都是用户选定的参考，每张都带有文件路径，要优先遵循，找到的参考只保留与之一致的；用 `reference_save` 保存用到的参考，用户的图片按其文件路径保存，它不会添加资源，也无需批准，自己制作的美术不要放进该文件夹；以参考为依据工作：会话有 `image_generate` 时把最接近所选方向的一到三张参考传给它并在提示词中说明从每张取什么，把 Blender 和 GIMP 的成果与参考对照，并按照动画的帧表制作。最后规定：描述自己的设计，绝不复制参考，不复制他人的角色、标志或作品，也绝不把参考图像放进游戏。 以下是 Web 和 Desktop 配置组合出的形式，含 `ask_user_question` 和 `image_generate`；没有 `ask_user_question` 时，问题在回复中提出，每行一个方向，并结束回合等待回答；没有 `image_generate` 时省略它那一步。
 
 ##### `art-references` 段落
 
@@ -134,8 +134,9 @@ Art made from good references comes out much better. Before you make any art ass
 - Search for the subject and its look in two to four short queries, such as "armored knight pixel art sprite", "knight sprite sheet walk cycle", and "medieval plate armor". For an animation, search for the motion too, such as "sword slash animation gif" or "walk cycle reference". Pass pages to take the images of a page the user linked or a gallery a search found.
 - Always show the user the contact sheet, whether or not you ask them anything: put the Markdown image line the result gives you in your next message, so they see what the art will be based on.
 - When the game already has art, keep its style, and take only the subject from the references: its shape, details, colors, and motion.
-- Otherwise compare how the references look, not only what they show: art style (pixel art, painted, flat, 3D), pixel size or detail (a 16-pixel sprite against a 64-pixel one), proportions (cute against heroic or realistic), palette and mood, and view (side, top-down, isometric). When they differ in any of these and the request does not say which, ask with ask_user_question which direction they want: one option per direction, labeled with its look and the numbers of the references that show it. Art direction is the user's choice, and a game's first art sets the look of the whole game, so ask even in the middle of a longer request. When the references agree, pick the ones that fit and go on without asking.
-- Save the references you use with reference_save. It keeps them in references/, out of the game, so it adds no asset and needs no approval; keep the art you make out of that folder.
+- Otherwise compare how the references look, not only what they show: art style (pixel art, painted, flat, 3D), pixel size or detail (a 16-pixel sprite against a 64-pixel one), proportions (cute against heroic or realistic), palette and mood, and view (side, top-down, isometric). When they differ in any of these and the request does not say which, ask with ask_user_question which direction they want: one option per direction, labeled with its look and the numbers of the references that show it; the user can also answer with images of their own. Art direction is the user's choice, and a game's first art sets the look of the whole game, so ask even in the middle of a longer request. When the references agree, pick the ones that fit and go on without asking.
+- Images the user gives you, with an answer or in a message, are references they chose, and each comes with its file path. Follow them first, and keep only the found references that agree with them.
+- Save the references you use with reference_save, the user's images by their file paths. It keeps them in references/, out of the game, so it adds no asset and needs no approval; keep the art you make out of that folder.
 - Work from the saved references: pass the one to three references closest to the chosen direction to image_generate in images, and say in the prompt what to take from each, such as the proportions and palette of the first image; compare what you make in Blender or GIMP with them; for an animation, follow the frame count and timing of the frames sheet reference_save makes for a GIF.
 
 References guide shape, proportions, colors, mood, and motion. Describe your own design and never copy a reference: do not reproduce someone else's character, logo, or artwork, and never put a reference image into the game.
@@ -143,7 +144,7 @@ References guide shape, proportions, colors, mood, and motion. Describe your own
 
 #### Token 影响
 
-该段落约 2,700 个字符。
+该段落约 3,000 个字符。
 
 #### KV Cache 影响
 
@@ -153,11 +154,11 @@ References guide shape, proportions, colors, mood, and motion. Describe your own
 
 #### 模型可见内容
 
-`reference_search` 带可选的 `queries` 和 `pages`，`reference_save` 带 `subject` 和 `images`。描述说明参考适用于哪些美术；每个查询取每个搜索到的页面的主图，包括 GIF 动画和视频封面；结果中的联系表以 Markdown 图像向用户展示；`reference_save` 把图像及其来源保存在 Godot 不纳入游戏的 `references/<subject>/` 中，并为动画制作帧表。连接的 agent 看到同样的工具、带 `project` 的 `reference_save`，以及 `## Art references` 下的提供方说明。
+`reference_search` 带可选的 `queries` 和 `pages`，`reference_save` 带 `subject` 和 `images`。描述说明参考适用于哪些美术；每个查询取每个搜索到的页面的主图，包括 GIF 动画和视频封面；结果中的联系表以 Markdown 图像向用户展示；`reference_save` 接受图像地址或这台电脑上图像文件的路径，把图像及其来源保存在 Godot 不纳入游戏的 `references/<subject>/` 中，并为动画制作帧表。连接的 agent 看到同样的工具、带 `project` 的 `reference_save`，以及 `## Art references` 下的提供方说明。
 
 #### Token 影响
 
-两个声明约 2,100 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 1,200 个字符。
+两个声明约 2,200 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 1,300 个字符。
 
 #### KV Cache 影响
 
@@ -167,7 +168,7 @@ References guide shape, proportions, colors, mood, and motion. Describe your own
 
 #### 模型可见内容
 
-搜索结果是一行找到了什么、联系表的路径和显示它的 Markdown 行、外部内容提示，以及每张图像两到三行：编号、标题、网站、尺寸、类型、帧数和时长以及地址；模型接受图像时附带联系表图像。保存结果列出每个保存的文件、它的帧表以及每张失败的图像和原因，最后说明要以它们为依据工作：把文件传给 `image_generate` 的 `images` 并说明从每张取什么，把 Blender 和 GIMP 的成果与它们对照，并按照帧表的时长制作；每张保存的图像或帧表以图像形式附带。失败会说明要改什么：缺少或过长的参数、不在公共网络上的地址，或网页搜索自己的消息，例如账号未登录。
+搜索结果是一行找到了什么、联系表的路径和显示它的 Markdown 行、外部内容提示，以及每张图像两到三行：编号、标题、网站、尺寸、类型、帧数和时长以及地址；模型接受图像时附带联系表图像。保存结果列出每个保存的文件、它的帧表以及每张失败的图像和原因，最后说明要以它们为依据工作：把文件传给 `image_generate` 的 `images` 并说明从每张取什么，把 Blender 和 GIMP 的成果与它们对照，并按照帧表的时长制作；每张保存的图像或帧表以图像形式附带。失败会说明要改什么：缺少或过长的参数、不在公共网络上的地址，或网页搜索自己的消息，例如账号未登录；不指向文件或图像的路径与失败的图像一起列出。
 
 #### Token 影响
 

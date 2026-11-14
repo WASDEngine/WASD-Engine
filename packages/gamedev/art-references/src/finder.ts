@@ -8,11 +8,14 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { decodeHtml, readPageMedia } from './html.ts'
 import { drawContactSheet, fingerprint, fingerprintDistance, probeImage, UnreadableImage } from './images.ts'
 import { getPublic, WebRequestError, type ReferenceWeb } from './net.ts'
 import type { ReferenceCandidate, ReferenceImageFormat, ReferenceImageInfo } from './types.ts'
+
+/** A file name that is a content hash, as the attachment store names its files: no title to keep. */
+export const HASH_NAME = /^[0-9a-f]{32,}$/iu
 
 /** Limits of a reference search. */
 export interface FinderLimits {
@@ -63,6 +66,8 @@ export interface ImageOrigin {
   readonly site: string
   /** Address of the video the page plays, when the image is its poster. */
   readonly video?: string
+  /** Set for an image file on this computer, such as one the user attached; `image` and `page` hold its path. */
+  readonly local?: true
 }
 
 /** One downloaded image in the cache folder. */
@@ -353,6 +358,25 @@ export class ReferenceFinder {
    */
   async download(image: string, origin: ImageOrigin, signal: AbortSignal): Promise<CachedImage> {
     return await this.downloadImage(image, origin, signal, true)
+  }
+
+  /**
+   * Read an image file on this computer, such as an image the user attached, to save as a reference. Saving copies
+   * the file, which stays where it is.
+   * @param path - absolute path of the file.
+   * @returns the image, titled by its file name unless the name is a content hash, as attachment files are.
+   * @throws UnreadableImage when the path names no file, the file is larger than an image download may be, or it is
+   *   not a reference image.
+   */
+  async readLocal(path: string): Promise<CachedImage> {
+    const file = await stat(path).catch((error: unknown) => {
+      throw new UnreadableImage('is not a file on this computer.', { cause: error })
+    })
+    if (!file.isFile()) throw new UnreadableImage('is not a file.')
+    if (file.size > this.limits.maxImageBytes) throw new UnreadableImage(`is larger than ${Math.round(this.limits.maxImageBytes / (1024 * 1024))} MB.`)
+    const info = await probeImage(await readFile(path))
+    const stem = basename(path).replace(/\.[^.]*$/u, '')
+    return { ...info, image: path, path, page: path, title: HASH_NAME.test(stem) ? '' : stem, site: '', local: true }
   }
 
   /**

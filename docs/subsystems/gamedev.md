@@ -365,14 +365,15 @@ The `game-audio` row mounts [`@deepseek-ai/dsh-game-audio`](../../packages/gamed
 <a id="art-references"></a>
 ## Art references
 
-The `art-references` row mounts [`@deepseek-ai/dsh-art-references`](../../packages/gamedev/art-references/README.md), whose `reference_search` and `reference_save` tools give the Session's agent and connected agents reference art before they make a game's art, and whose `art-references` system prompt section tells the agent to use them before it makes any art asset, to show the user the contact sheet, and to ask with `ask_user_question` which direction the user wants when the references differ in style, pixel size, proportions, palette, or view. The row's only configuration is `dataRoot`, `dshHomePath('art-references')`, the cache of downloaded images and contact sheets, which the plugin prunes after `cacheDays`.
+The `art-references` row mounts [`@deepseek-ai/dsh-art-references`](../../packages/gamedev/art-references/README.md), whose `reference_search` and `reference_save` tools give the Session's agent and connected agents reference art before they make a game's art, and whose `art-references` system prompt section tells the agent to use them before it makes any art asset, to show the user the contact sheet, and to ask with `ask_user_question` which direction the user wants when the references differ in style, pixel size, proportions, palette, or view. The user can answer that question with images of their own: the question card of [`ui-user-questions`](../../packages/client/ui-user-questions/README.md#attaching-images) uploads them to the Session and steers them in as one message just before the answer, so the agent receives them with the answer and the path of each stored copy, which it follows first and saves with `reference_save`. The row's only configuration is `dataRoot`, `dshHomePath('art-references')`, the cache of downloaded images and contact sheets, which the plugin prunes after `cacheDays`.
 
 | Data | Channel | When |
 |---|---|---|
 | Search results | `ctx.web.search`, the search of `web_search`, which the WASDEngine service prices | For each query of a `reference_search` call |
 | Pages and images | HTTP GET from the Host to public internet addresses only, each redirect checked again, without cookies | For the pages a search finds or a call names, and for the images they offer |
 | Contact sheet | A JPEG file in `<dataRoot>/sheets/`, an attachment for an image-capable model, and a Markdown image in the agent's message, which the chat renders through `/api/file` | For each `reference_search` call that finds an image |
-| Saved references | Files in `<project>/references/<subject>/` with `SOURCES.md` and frames sheets, and `<project>/references/.gdignore` | For each `reference_save` call |
+| Answer images | The browser's image upload to the Session, then a steered user message with the images, which the model sees with each stored copy's read-only path | When the user attaches images to an `ask_user_question` answer |
+| Saved references | Files in `<project>/references/<subject>/` with `SOURCES.md` and frames sheets, and `<project>/references/.gdignore`; an image file on this computer is copied from its path | For each `reference_save` call |
 
 The `.gdignore` file makes Godot skip the folder, so references are neither imported nor exported with the game; the Assets tab still lists them.
 

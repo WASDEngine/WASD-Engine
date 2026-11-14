@@ -3,13 +3,15 @@
  * search and the web are fakes, and the references land in the Session's working directory. The system prompt
  * section names the tools the Session has.
  */
-import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import sharp from 'sharp'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import * as ArtReferences from '../src/index.ts'
-import { artReferencesPrompt } from '../src/prompt.ts'
+import { artReferencesPrompt, MCP_INSTRUCTIONS } from '../src/prompt.ts'
 import { callTool, compose, imageNames, text, type Composition } from './composition.ts'
 import { animatedGif, patternImage, previewPage } from './fixtures.ts'
 
@@ -168,6 +170,39 @@ describe('reference_save', () => {
     expect(await readdir(join(current.work, 'references', 'mood-board'))).toContain('01-my-ref.webp')
   })
 
+  it('saves image files on this computer, such as an image the user attached, by absolute path or file: URL', async () => {
+    const current = await composed()
+    const outside = await mkdtemp(join(tmpdir(), 'art-references-user-'))
+    try {
+      // The attachment store names a file by its content hash, without an extension.
+      const attached = join(outside, 'objects', 'ab', 'ab'.repeat(32))
+      await mkdir(dirname(attached), { recursive: true })
+      await writeFile(attached, await patternImage(120, 90, 4))
+      const sketch = join(outside, 'tavern sketch.png')
+      await writeFile(sketch, await patternImage(64, 64, 5))
+      const notes = join(outside, 'notes.txt')
+      await writeFile(notes, 'not an image')
+      const missing = join(outside, 'missing.png')
+
+      const result = await callTool(current, 'reference_save', { subject: 'tavern', images: [attached, pathToFileURL(sketch).href, notes, missing] })
+      expect(result.isError).toBe(false)
+      expect(text(result).split('\n').slice(0, 5)).toEqual([
+        'Saved 2 references for tavern in references/tavern, with their sources in references/tavern/SOURCES.md:',
+        '- references/tavern/01-reference.png — 120×90 PNG',
+        '- references/tavern/02-tavern-sketch.png — 64×64 PNG',
+        `- Not saved: ${notes} is not an image file.`,
+        `- Not saved: ${missing} is not a file on this computer.`,
+      ])
+      const sources = await readFile(join(current.work, 'references', 'tavern', 'SOURCES.md'), 'utf8')
+      expect(sources).toContain('- `01-reference.png` — a file from this computer — saved ')
+      expect(sources).toContain('- `02-tavern-sketch.png` — a file from this computer (`tavern sketch.png`) — saved ')
+      expect(sources).not.toContain(outside)
+      expect(await readFile(join(current.work, 'references', 'tavern', '02-tavern-sketch.png'))).toEqual(await readFile(sketch))
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+
   it('refuses a subject without letters, no images, too many, or a bad address, and fails when no image saves', async () => {
     const current = await composed({ maxSaved: 2 })
     const cases: [Record<string, unknown>, string][] = [
@@ -204,6 +239,11 @@ describe('the art-references plugin', () => {
     expect(full).toContain('ask with ask_user_question which direction they want')
     expect(full).toContain('to image_generate in images, and say in the prompt what to take from each')
     expect(artReferencesPrompt({ ask: false, imageGenerate: false })).toContain('and end your turn to wait for the answer')
+    // The user can answer with images of their own, which the agent follows first and saves by their paths.
+    expect(full).toContain('; the user can also answer with images of their own.')
+    expect(full).toContain('- Images the user gives you, with an answer or in a message, are references they chose, and each comes with its file path.')
+    expect(full).toContain('the user\'s images by their file paths')
+    expect(MCP_INSTRUCTIONS).toContain('or image files on this computer by absolute path')
   })
 
   it('removes its tools and its section when unloaded', async () => {
