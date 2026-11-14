@@ -113,6 +113,10 @@ const PEER_REQUIRED_HOST_EXPORTS = {
   '@deepseek-ai/dsh-tools': ['defineTool'],
   // Add-ons and releases resolve projects as the installed Godot plugin does, then hand them to that plugin's service.
   '@deepseek-ai/dsh-godot': ['resolveGodotProject'],
+  // godot_audio measures and draws a game's captured mix with the Audio tools' own analysis, so its numbers and
+  // pictures match the audio_review answer for the same sound from the installed game-audio plugin.
+  '@deepseek-ai/dsh-game-audio/audio': ['analyzeAudio', 'describeAudioImage', 'drawAudioImage'],
+  '@deepseek-ai/dsh-game-audio/png': ['encodePng'],
 } as const satisfies HostDependencyExports
 
 /** Exact import specifier to reviewed runtime exports. */
