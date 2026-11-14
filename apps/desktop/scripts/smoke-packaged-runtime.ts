@@ -7,6 +7,7 @@ import { verifyWindowsCode } from './windows-runtime-signature.mjs'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { resolveDesktopPackageTarget } from './package-target.ts'
 import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
+import { smokeWebCheck } from './wasdengine-web-check-smoke.ts'
 
 const paths = resolveDesktopTargetBuildPaths()
 const { values } = parseArgs({ options: { unsigned: { type: 'boolean', default: false }, 'skip-notarization': { type: 'boolean', default: false } }, allowPositionals: false })
@@ -21,3 +22,5 @@ const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(path
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
 await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)
+// WASDEngine fork: the Web check mode starts under the build's signature and reports, on macOS from its helper bundle.
+await smokeWebCheck({ executable })

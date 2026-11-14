@@ -46,7 +46,9 @@ function helperInfoPlist(appBundle: string, productName: string): string {
  * that runs the main process, which finds Electron's framework from the bundle's place, and the Info.plist of the
  * application's helper, naming the copy, with `LSUIElement` set and without `ElectronMainProcess`, so that macOS never
  * shows the bundle in the Dock and Electron reads the copy as part of the application around it. Signing the
- * application signs the bundle with its other helpers.
+ * application signs the bundle with its other helpers. The copy needs no fuses of its own: on macOS Electron keeps its
+ * fuse wire in the `Electron Framework` binary, which `@electron/fuses` flips after this hook and which the copy loads
+ * through its run path, so a check runs with the application's fuses.
  * @param appBundle - the application's `.app` folder.
  * @param options - the product name, the main executable's file name, and the bundle identifier.
  * @returns the Web check bundle's executable.
