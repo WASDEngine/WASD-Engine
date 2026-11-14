@@ -4,7 +4,7 @@
  * project folder asks before it adds to the game of its original.
  */
 import { mkdtempSync } from 'node:fs'
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
@@ -239,6 +239,19 @@ describe('releaseGame', () => {
     expect(await projectView(dir, ORIGIN, deps.folders, 'account-1')).toEqual({ godot: true, game: game(1, 2) })
     expect(await projectView(dir, 'https://other.test', deps.folders, 'account-1')).toEqual({ godot: true })
     expect((await readdir(tmpdir())).filter(name => name.startsWith('wasd-release-'))).toEqual([])
+  })
+
+  it('replaces the link file whole at each change, so no reader or interrupted write meets part of it', async () => {
+    const dir = await project()
+    const deps = dependencies(site().fetch)
+    await releaseGame({ projectDir: dir }, deps, signal)
+    const file = join(dir, STATE_DIR, LINK_FILE)
+    const before = (await stat(file)).ino
+    await releaseGame({ projectDir: dir }, deps, signal)
+    // A file written in place keeps its inode; a whole new file renamed over it has its own.
+    expect((await stat(file)).ino).not.toBe(before)
+    expect((await readdir(join(dir, STATE_DIR))).sort()).toEqual(['game.json', 'web'])
+    expect((await link(dir)).accounts?.[ORIGIN]).toEqual([expect.objectContaining({ id: 'game-1', version: 2 })])
   })
 
   it('releases a private game, keeps its visibility when a release names none, and makes it public with a release', async () => {

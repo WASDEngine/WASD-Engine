@@ -54,13 +54,14 @@ Measured on Jolt at 60 ticks per second: 95% of edges within 2 to 5% of their le
 These break cloth without an error:
 - Scale on the sheet or a parent: soft bodies ignore it. Set `size` instead.
 - Moving it after it enters the tree misplaces it: free it and add a new one where it belongs.
+- Changing `fabric`, `precision`, or `linear_stiffness` after it enters the tree: Jolt keeps the stiffness and solver iterations it started with. Set them before `add_child`, or add a new sheet.
 - Toggling its `process_mode` makes it grow.
 - `linear_stiffness` 1.0 explodes; the presets stay at 0.9.
 - A sheet that starts inside a collider, or a collider thinner than a cell, lets points through.
 
 ## WasdClothWind3D
 
-An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code.
+An Area3D that blows on every soft body in its `box_size` box (100 by 40 by 100 m around it); WasdClothChains3D follows it too. Set `direction`, `speed` in m/s (2 is a breeze, 6 stiff, 12 a gale), `gustiness` (0 to 1), `turbulence` (degrees the direction swings), and `cloth_pressure` (scales the push on sheets). `direction` is a world direction: turning the zone, or a ship that carries it, turns only its box. Wind along a sheet's surface does not push it: aim it across. `WasdClothWind3D.velocity_at(get_tree(), position)` returns the wind for your own code.
 
 ## WasdClothChains3D
 

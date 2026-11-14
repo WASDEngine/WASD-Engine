@@ -13,14 +13,16 @@ index 3f51a57..282c206 100644
  RasterizerSceneGLES3 *RasterizerSceneGLES3::singleton = nullptr;
  
  RenderGeometryInstance *RasterizerSceneGLES3::geometry_instance_create(RID p_base) {
-@@ -4616,6 +4620,11 @@ RasterizerSceneGLES3::RasterizerSceneGLES3() {
+@@ -4616,6 +4620,13 @@ RasterizerSceneGLES3::RasterizerSceneGLES3() {
  			global_defines += "\n#define SPECULAR_OCCLUSION_DISABLED\n";
  		}
  		material_storage->shaders.scene_shader.initialize(global_defines);
 +#ifdef WEB_ENABLED
 +		// Compile 3D material programs in the browser's background compiler: a draw whose program is still
-+		// compiling is skipped instead of blocking the page until the driver has compiled it.
-+		material_storage->shaders.scene_shader.set_async_compile(emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "KHR_parallel_shader_compile"));
++		// compiling is skipped instead of blocking the page until the driver has compiled it. Shadow passes
++		// (RENDER_SHADOWS) compile and wait: the scene culler draws a positional light's shadow map again only
++		// when the light or a caster changes, so a caster skipped once would stay missing from it.
++		material_storage->shaders.scene_shader.set_async_compile(emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "KHR_parallel_shader_compile"), SceneShaderGLES3::RENDER_SHADOWS);
 +#endif
  		scene_globals.shader_default_version = material_storage->shaders.scene_shader.version_create();
  		material_storage->shaders.scene_shader.version_bind_shader(scene_globals.shader_default_version, SceneShaderGLES3::MODE_COLOR);
@@ -149,7 +151,7 @@ diff --git a/drivers/gles3/shader_gles3.h b/drivers/gles3/shader_gles3.h
 index 4ff35c1..86ed962 100644
 --- a/drivers/gles3/shader_gles3.h
 +++ b/drivers/gles3/shader_gles3.h
-@@ -107,6 +107,11 @@ private:
+@@ -107,6 +107,12 @@ private:
  
  	void _get_uniform_locations(Version::Specialization &spec, Version *p_version);
  	void _compile_specialization(Version::Specialization &spec, uint32_t p_variant, Version *p_version, uint64_t p_specialization);
@@ -158,15 +160,16 @@ index 4ff35c1..86ed962 100644
 +	Version::Specialization *_get_async_specialization(Version *p_version, int p_variant, uint64_t p_specialization);
 +
 +	bool async_compile = false;
++	uint64_t sync_specializations = 0;
  
  	void _clear_version(Version *p_version);
  	void _initialize_version(Version *p_version);
-@@ -191,7 +196,12 @@ protected:
+@@ -191,7 +197,12 @@ protected:
  		}
  
  		Version::Specialization *spec = version->variants[p_variant].getptr(p_specialization);
 -		if (!spec) {
-+		if (async_compile && (!spec || spec->build_queued)) {
++		if (async_compile && !(p_specialization & sync_specializations) && (!spec || spec->build_queued)) {
 +			spec = _get_async_specialization(version, p_variant, p_specialization);
 +			if (!spec) {
 +				return false; // Still compiling: the caller skips this draw.
@@ -175,14 +178,15 @@ index 4ff35c1..86ed962 100644
  			if (false) {
  				// Queue load this specialization and use defaults in the meantime (TODO)
  
-@@ -241,6 +251,11 @@ public:
+@@ -241,6 +252,12 @@ public:
  
  	bool version_is_valid(RID p_version);
  
 +	// With p_enable, a bind of a specialization that is not compiled yet starts compiling it and returns false, as
 +	// do later binds until the driver reports it compiled (GL_COMPLETION_STATUS_KHR), and the caller skips the draw;
-+	// otherwise a bind compiles it and waits. Needs KHR_parallel_shader_compile.
-+	void set_async_compile(bool p_enable) { async_compile = p_enable; }
++	// otherwise a bind compiles it and waits. Needs KHR_parallel_shader_compile. A specialization with any bit
++	// of p_sync always compiles and waits, for passes whose result is kept, such as shadow maps.
++	void set_async_compile(bool p_enable, uint64_t p_sync = 0) { async_compile = p_enable; sync_specializations = p_sync; }
 +
  	bool version_free(RID p_version);
  

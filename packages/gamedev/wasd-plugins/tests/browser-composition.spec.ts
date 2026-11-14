@@ -4,7 +4,7 @@
  * goes to the signed-in account's game and asks before a copied project folder adds to it, and a Browser call travels
  * through the `wasdPlugins` Remote methods to a simulated window and back.
  */
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -16,8 +16,9 @@ import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import type { GameMcpProvider } from '@deepseek-ai/dsh-game-mcp'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
-import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
+import ToolRuntime, { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import WasdPlugins, { type Config } from '../src/index.ts'
 import { UNCLAIMED_MESSAGE } from '../src/browser.ts'
@@ -202,6 +203,61 @@ describe('WASD Engine Plugins composition', () => {
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })
     const exported = await call('wasd_export_desktop', { project: 'space', platforms: ['macos'] })
     expect(text(exported)).toContain(`- macOS: ${join(root, 'space', '.wasdengine', 'desktop', 'macos', 'Space Game.zip')}`)
+  })
+
+  it('runs one project\'s exports and releases one at a time, from a Session and a connected agent, by the folder\'s real path', async () => {
+    const { ctx, root, toolNames, call } = await compose({})
+    const site = gamesSite('token-1')
+    vi.stubGlobal('fetch', site.fetch)
+    cleanups.push(async () => { vi.unstubAllGlobals() })
+    ctx.provide('deepseekAccount', {
+      getState: () => Promise.resolve({ links: { usageUrl: `${SITE}/account/usage` } }),
+      getPlatformSession: () => Promise.resolve({ origin: SITE, token: 'token-1', userId: 'user-1' }),
+    } as never)
+    const providers: GameMcpProvider[] = []
+    ctx.provide('gameMcp', { provide: (provider: GameMcpProvider) => { providers.push(provider); return () => {} } } as never)
+    // Each export takes a while, so operations that overlap on the project would export at the same time.
+    let exporting = 0
+    let overlapped = false
+    ctx.provide('godot', {
+      async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
+        overlapped ||= ++exporting > 1
+        await new Promise(resolve => setTimeout(resolve, 50))
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(join(outputDir, 'index.html'), 'game')
+        exporting--
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+      },
+    } as never)
+    await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
+    await expect.poll(() => providers.length).toBe(1)
+    await mkdir(join(root, 'space'))
+    await writeFile(join(root, 'space', 'project.godot'), '[application]\nconfig/name="Space Game"\n')
+    // The connected agent names the folder through a symbolic link.
+    await symlink(join(root, 'space'), join(root, 'space link'))
+    const release = providers[0]!.tools().find(tool => tool.name === 'wasd_release_game')!
+    const connected = async () => {
+      const signal = new AbortController().signal
+      const client = { id: 'claude-code', title: 'Claude Code' }
+      const session = () => Promise.reject(new Error('The Host cannot create the Session.'))
+      const prepared = await release.prepare!({ project: join(root, 'space link'), check: false }, { client, signal, session, reveal: () => {} })
+      const released = await release.definition.execute(prepared.args, { signal } as ToolRunContext)
+      return released as { readonly version: number; readonly gameUrl: string }
+    }
+
+    const [inSession, fromAgent, exported] = await Promise.all([
+      call('wasd_release_game', { project: 'space', check: false }),
+      connected(),
+      call('wasd_export_web', { project: join(root, 'space link'), check: false }),
+    ])
+    expect(site.games.size).toBe(1)
+    expect(overlapped).toBe(false)
+    expect(exported.isError).toBe(false)
+    const text = inSession.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+    const versions = [Number(/version (\d+)/u.exec(text)?.[1]), fromAgent.version].sort()
+    expect(versions).toEqual([1, 2])
+    expect(fromAgent.gameUrl).toBe(`${SITE}/games/space-game-1`)
+    expect(site.games.get('game-1')?.versions).toBe(2)
   })
 
   it('credits the models and game tools that worked on a project, and a release uploads them with its add-ons', async () => {

@@ -30,7 +30,7 @@ import { AssetsTab, AssetsTabTitle, type AssetsTabInjected } from './AssetsTab.t
 import { AssetsGlyph } from './icon.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { DrawQueue } from './queue.ts'
-import { readAsset, relatedUrl } from './read.ts'
+import { readablePath, readAsset, relatedUrl } from './read.ts'
 import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
 import { AssetsSource } from './source.ts'
 import { ProjectWalks } from './walks.ts'
@@ -108,7 +108,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   const viewer = (): Promise<typeof import('./viewer/index.ts')> => import('./viewer/index.ts')
   const listOf = (sessionId: SessionId): ListFolder => (path, signal) => ctx.remote.workspaceFiles.list(sessionId, path, signal)
   const readOf = (sessionId: SessionId) => (path: string, maxBytes: number, signal: AbortSignal) => readAsset(
-    (target, options, readSignal) => ctx.remote.workspaceFiles.readBytes(sessionId, target, options, readSignal),
+    (target, options, readSignal) => ctx.remote.workspaceFiles.readBytes(sessionId, readablePath(target), options, readSignal),
     path, maxBytes, signal,
   )
   // Each Session's state with the release of its Session-scope effect; both end with the Session or this plugin.
@@ -175,7 +175,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     read: readOf(sessionId),
     async readHead(path, signal) {
       const range = { offset: 0, length: HEAD_BYTES }
-      const head = await ctx.remote.workspaceFiles.readBytes(sessionId, path, { range }, signal).catch(() => {
+      const head = await ctx.remote.workspaceFiles.readBytes(sessionId, readablePath(path), { range }, signal).catch(() => {
         // AbortError or an assembly fault: the draw counts the file alone, and a cancelled one ends before its turn.
         return undefined
       })
@@ -236,7 +236,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
     const reads = agentSources(sessionId, walks.ticket())
     // A draw counts the memory it decodes, which an image's header gives before the draw waits for its turn.
-    return drawWeight(fields, reads, signal).then(
+    return drawWeight(fields, reads, drawLimits, signal).then(
       weight => draws.run(weight, signal, () => answerRender(fields, reads, drawLimits, signal)),
     )
   }), 'ui-game-assets: draw assets for agents')

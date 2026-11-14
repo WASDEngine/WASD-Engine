@@ -170,7 +170,7 @@ function LoadedAsset({
     : (
       <ModelView
         asset={asset} file={load.file} relatedUrl={relatedUrl} maxBytes={limits.maxPreviewBytes}
-        visible={visible} requested={requested} t={t}
+        maxDecodedPixels={limits.maxDecodedPixels} visible={visible} requested={requested} t={t}
       />
     )
 }

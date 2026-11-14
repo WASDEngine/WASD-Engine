@@ -486,6 +486,34 @@ describe('followBrowserRequests', () => {
     expect(h.claim.mock.calls).toEqual([[id, 'stream-1'], [id, 'stream-2']])
   })
 
+  it('stops a command it took again after a refused claim once its tool call ends', async () => {
+    const h = start()
+    page(await h.outcome(h.send({ kind: 'open', url: 'https://example.test/' })))
+    const [tab] = h.sidebar.tabsIn(SESSION)
+    const fake = h.pages.get(tab!.id)!
+    const typing = Promise.withResolvers<undefined>()
+    fake.stall.insertText = typing.promise
+    // The claim through the first stream comes back refused after the reopened stream offered the command again.
+    const answer = Promise.withResolvers<undefined>()
+    h.holdAnswers(answer.promise)
+    const id = h.send({ kind: 'type', element: 1, text: 'godot shaders', submit: true })
+    h.reopenQuietly()
+    await vi.advanceTimersByTimeAsync(0)
+    h.publish()
+    await vi.advanceTimersByTimeAsync(0)
+    h.holdAnswers(undefined)
+    answer.resolve(undefined)
+    for (let step = 0; step < 50 && !fake.calls.includes('insertText'); step++) await vi.advanceTimersByTimeAsync(10)
+    expect(h.claim.mock.calls.slice(-2)).toEqual([[id, 'stream-1'], [id, 'stream-2']])
+    expect(fake.calls).toContain('insertText')
+    h.end(id)
+    typing.resolve(undefined)
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(fake.inputs.filter(input => input.type === 'keyDown')).toEqual([])
+    expect(h.outcomes.has(id)).toBe(false)
+    expect(page(await h.outcome(h.send({ kind: 'read' }))).page.text).toContain('# Results')
+  })
+
   it('stops following when disposed', async () => {
     const h = start()
     h.stop()

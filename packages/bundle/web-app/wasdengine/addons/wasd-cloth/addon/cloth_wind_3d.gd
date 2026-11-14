@@ -9,7 +9,7 @@ extends Area3D
 ## Group of the wind zones in the scene tree.
 const GROUP := &"wasd_cloth_wind"
 
-## World direction the wind blows toward; it is normalized.
+## World direction the wind blows toward, whatever the rotation of this zone or its parents; it is normalized.
 @export var direction := Vector3(1.0, 0.0, 0.0)
 
 ## Mean wind speed in m/s: 2 is a breeze, 6 is a stiff wind, 12 is a gale.
@@ -47,6 +47,10 @@ func _ready() -> void:
 	add_child(_shape, false, Node.INTERNAL_MODE_BACK)
 	_source = Node3D.new()
 	_source.name = "WindSource"
+	# Area3D takes the wind's direction from its source's local transform and the physics engine uses it as a world
+	# direction, so the source ignores this zone's own rotation: direction stays a world direction when the zone or a
+	# parent turns.
+	_source.top_level = true
 	add_child(_source, false, Node.INTERNAL_MODE_BACK)
 	wind_source_path = get_path_to(_source)
 	wind_attenuation_factor = 0.0

@@ -160,6 +160,15 @@ describe('Audio tab registration', () => {
     await f.fiber.dispose()
   })
 
+  it('reads a path through a folder named ~ inside the workspace, which the Host would read in the home folder', async () => {
+    const f = await fixture()
+    await f.face(S1).read('~/sfx/jump.wav', new AbortController().signal)
+    expect(f.workspaceFiles.readBytes).toHaveBeenLastCalledWith(S1, './~/sfx/jump.wav', {}, expect.any(AbortSignal))
+    await f.face(S1).read('sfx/~/jump.wav', new AbortController().signal)
+    expect(f.workspaceFiles.readBytes).toHaveBeenLastCalledWith(S1, 'sfx/~/jump.wav', {}, expect.any(AbortSignal))
+    await f.fiber.dispose()
+  })
+
   it('measures a sound for an agent of a Session it may read, and leaves other requests to the next window', async () => {
     const f = await fixture()
     const next = vi.fn(async (): Promise<AudioMeasureResult> => { throw new Error('no window') })

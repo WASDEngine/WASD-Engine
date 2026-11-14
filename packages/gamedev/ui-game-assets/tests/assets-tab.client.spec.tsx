@@ -93,9 +93,12 @@ async function boot(list: (path: string) => Promise<Listing> = async path => lis
   await rt.sessions.retainFor(rt.ctx, SESSION, { source: 'mainView' }).ready
   await rt.mount({ inject: [...resourcesInject], apply: resourcesApply })
   const listCalls = vi.fn((_sessionId: string, path: string, _signal: AbortSignal) => list(path))
-  const readBytes = vi.fn(async (_sessionId: string, path: string): Promise<Bytes> => ({
-    ok: true, value: { absolutePath: `/project/${path}`, version: 'v1', bytes: 3, offset: 0, data: new Uint8Array([1, 2, 3]), eof: true },
-  }))
+  // A `.png` file is a PNG header stating 64 × 32 pixels, which the viewer reads before it decodes the image.
+  const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 64, 0, 0, 0, 32, 8, 6, 0, 0, 0]
+  const readBytes = vi.fn(async (_sessionId: string, path: string): Promise<Bytes> => {
+    const data = Uint8Array.from(path.endsWith('.png') ? png : [1, 2, 3])
+    return { ok: true, value: { absolutePath: `/project/${path}`, version: 'v1', bytes: data.byteLength, offset: 0, data, eof: true } }
+  })
   rt.remote.provideNamespaces({ workspaceFiles: { list: listCalls, readBytes } })
   // The `file` resource: each address reports version v1, then whatever the test pushes.
   const versions = new Map<string, (stat: WorkspaceFileStat) => void>()

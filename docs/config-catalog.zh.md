@@ -1914,7 +1914,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:65`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:64`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5213,7 +5213,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:58`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:61`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5248,12 +5248,18 @@ export interface Config {
   previewMaxSeconds: number
   /** Milliseconds from one frame of a preview GIF to the next. */
   previewFrameMs: number
-  /** Largest width in pixels of a preview GIF, which link previews of a game's share link show. */
+  /**
+   * Largest width or height in pixels of a preview GIF, which link previews of a game's share link show: the size of its
+   * longer side.
+   */
   previewWidth: number
-  /** Largest width in pixels of a preview animation, the animated WebP that Explore and a game's page play. */
+  /**
+   * Largest width or height in pixels of a preview animation, the animated WebP that Explore and a game's page play: the
+   * size of its longer side.
+   */
   previewWebpWidth: number
   /**
-   * Smallest width in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
+   * Smallest longer side in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
    * `previewMaxWebpBytes`, shrinks to before it drops frames.
    */
   previewMinWidth: number
@@ -5271,6 +5277,18 @@ export interface Config {
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */
   previewStartSeconds: number
+  /**
+   * Largest size in bytes of the decoded frames that encoding a preview GIF holds; a recording whose frames would take
+   * more at `previewWidth` makes a smaller GIF.
+   */
+  previewFrameBufferBytes: number
+  /** Most frames of a preview that decode or encode at once. */
+  previewConcurrency: number
+  /**
+   * Memory in bytes that must stay available, besides the decoded frames of the GIF, for a preview recording to be
+   * encoded; with less, the recording fails and asks for memory to be freed.
+   */
+  previewMinAvailableMemoryBytes: number
   /**
    * Model providers whose models are WASD Engine's built-in AI, which a game's credits name as such rather than by the
    * model's own name.

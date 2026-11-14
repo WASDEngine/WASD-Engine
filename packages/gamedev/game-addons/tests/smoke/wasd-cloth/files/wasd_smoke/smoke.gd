@@ -1,8 +1,10 @@
 extends SceneTree
 ## Smoke test of the wasd-cloth catalog entry on Godot 4.7.2 with Jolt Physics: a flag pinned to a pole in wind, a
-## tablecloth dropped onto a table, a spring-bone cape on a skeleton that runs, and a banner with the flag shader. After
-## three seconds of physics it checks that every point is a number, pins held, edges kept their length, the tablecloth
-## rests on the table, the cape has its chains and colliders and swung, and the wind blows.
+## tablecloth dropped onto a table, a spring-bone cape on a skeleton that runs, a banner with the flag shader, a custom
+## sheet whose scene sets its own soft-body settings before its script, and a sail in a wind zone turned half around.
+## After three seconds of physics it checks that every point is a number, pins held, edges kept their length, the
+## tablecloth rests on the table, the cape has its chains and colliders and swung, the wind blows, the flag has its
+## fabric's settings and the custom sheet its own, and the sail went the way of the zone's world direction.
 
 const SECONDS := 3.0
 
@@ -12,6 +14,9 @@ var failures: Array[String] = []
 var flag_start := PackedVector3Array()
 var tip_rest := Vector3.ZERO
 var tip_travel := 0.0
+## Sum and count of the sail's bottom-row Z over the last second.
+var sail_drift := 0.0
+var sail_samples := 0
 
 
 func _initialize() -> void:
@@ -43,10 +48,22 @@ func _physics_process(delta: float) -> bool:
 			flag_start.append(flag.get_point_transform(index))
 		return false
 	hero.position.x = -5.0 + 2.0 * sin(ticks * delta * 3.0)
+	if ticks * delta >= SECONDS - 1.0:
+		sail_drift += bottom_z(scene.get_node("Sail") as WasdClothSheet3D)
+		sail_samples += 1
 	if ticks * delta < SECONDS:
 		return false
 	finish(flag)
 	return true
+
+
+## Mean world Z of a sheet's bottom row of points, its free edge when it hangs from the top.
+func bottom_z(sheet: WasdClothSheet3D) -> float:
+	var grid := sheet.grid_size()
+	var total := 0.0
+	for column in grid.x + 1:
+		total += sheet.get_point_transform(sheet.point_at(column, grid.y)).z
+	return total / (grid.x + 1)
 
 
 func stretch(sheet: WasdClothSheet3D) -> float:
@@ -101,6 +118,14 @@ func finish(flag: WasdClothSheet3D) -> void:
 	check(WasdClothWind3D.velocity_at(self, Vector3(0.8, 2.4, 0)).length() > 1.0, "velocity_at finds no wind at the flag")
 	var banner := scene.get_node("Banner") as MeshInstance3D
 	check((banner.get_active_material(0) as ShaderMaterial).shader.code.contains("shader_type spatial"), "the flag shader did not load")
+	check(is_equal_approx(flag.total_mass, 0.45) and is_equal_approx(flag.linear_stiffness, 0.9) and flag.simulation_precision == 15,
+		"the canvas flag does not have its fabric's settings: mass %.2f kg, stiffness %.2f, precision %d" % [flag.total_mass, flag.linear_stiffness, flag.simulation_precision])
+	var custom := scene.get_node("Custom") as WasdClothSheet3D
+	check(is_equal_approx(custom.total_mass, 2.5) and is_equal_approx(custom.linear_stiffness, 0.6) and is_equal_approx(custom.damping_coefficient, 0.07) and custom.simulation_precision == 12,
+		"the custom sheet lost the settings of its scene: mass %.2f kg, stiffness %.2f, damping %.2f, precision %d" % [custom.total_mass, custom.linear_stiffness, custom.damping_coefficient, custom.simulation_precision])
+	# The zone is turned half around and blows toward world +Z, across the sail, which hangs at Z 0 facing +Z.
+	var drift := sail_drift / maxi(sail_samples, 1)
+	check(drift > 0.15, "the sail in the turned wind zone moved %.2f m toward the wind's world direction instead of at least 0.15 m" % drift)
 	if failures.is_empty():
 		print("SMOKE_PASS wasd-cloth")
 	else:

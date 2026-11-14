@@ -44,7 +44,7 @@ async function readOrFail(read: ReadSound, request: AudioMeasureRequest, signal:
 
 /**
  * Answer one measure request. The sound must be no longer than the Audio tab decodes: as its headers vouch before the
- * decode, by the length they state or the least an estimated MP3 length allows, and as decoded otherwise; the signal
+ * decode, by the longer of the length they state and the least its size allows, and as decoded otherwise; the signal
  * ends the work at each step.
  * @param request - the sound, the window, and the bounds.
  * @param read - reads sounds of the calling Session's workspace.
@@ -68,8 +68,8 @@ export async function answerMeasure(
   const probe = await probeAudio(memoryReader(file.data), file.data.byteLength)
   signal.throwIfAborted()
   const vouched = lengthBeforeDecoding(probe)
-  if (vouched !== undefined && vouched > maxDecodedSeconds) {
-    throw tooLong(request.path, vouched, maxDecodedSeconds, probe?.estimated === true)
+  if (vouched !== undefined && vouched.seconds > maxDecodedSeconds) {
+    throw tooLong(request.path, vouched.seconds, maxDecodedSeconds, vouched.atLeast)
   }
   const buffer = await decodeSound(file.data, format, probe?.sampleRate, { maxSeconds: maxDecodedSeconds, signal })
   // Headers that did not tell the length, or only estimated it, leave the check to the decoded sound.

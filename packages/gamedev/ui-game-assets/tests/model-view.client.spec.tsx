@@ -76,6 +76,7 @@ function props(overrides: Partial<ModelViewProps> = {}): ModelViewProps {
     file: { data: new Uint8Array([1, 2, 3]), absolutePath: '/p/models/robot.glb', version: 'v1' },
     relatedUrl: () => undefined,
     maxBytes: 1024,
+    maxDecodedPixels: 8192 * 8192,
     visible: true,
     t,
     ...overrides,

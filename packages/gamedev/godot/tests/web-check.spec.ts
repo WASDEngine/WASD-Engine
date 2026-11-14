@@ -59,6 +59,12 @@ const SHOTGUN: WebCheckSample = {
   unresponsive: true,
 }
 
+/** The finding of a page that stopped answering and had not answered again when the check ended. */
+const STOPPED = 'The page stopped answering during the check and had not answered again when the check ended, so the check measured no frames: the game froze, for good or for longer than players wait, and browsers offer to close a page that stays frozen. Browsers run Godot\'s scripts and drawing on one thread, so a loop that never ends, or work that takes many seconds in one frame, stops the whole tab: look for loops whose exit condition can stay false, and spread long work over frames with `await get_tree().process_frame`.'
+
+/** The finding of a page that the browser reported unresponsive and that answered again. */
+const UNRESPONSIVE = 'The browser reported the page unresponsive during the check: it ran nothing else for several seconds, and browsers offer players to close such a page.'
+
 describe('parseWebCheckOutput', () => {
   it('reads the last result line and ignores other output', () => {
     const stdout = [
@@ -117,6 +123,7 @@ describe('summarizeWebCheck', () => {
     })
     expect(report.findings).toEqual([
       'The game took 52.3 s from opening the page to draw frames steadily, with its files already on this computer; players also wait for the download first.',
+      UNRESPONSIVE,
       'The page froze for up to 30.2 s at a time (5 freezes of a second or more), drawing nothing and answering no input; browsers offer to close a page that stays frozen. Browsers run Godot\'s scripts and drawing on one thread, so work that takes seconds in one frame stops the whole tab: spread it over frames, for example by building a level in chunks with `await get_tree().process_frame` between them. Many new materials or lights appearing at once also freeze it while their shaders compile.',
       'It drew about 2915 meshes per frame (WebGL draw calls, up to 5193); a browser spends far longer on each draw call than a desktop driver, so above about 1,500 the frame rate falls. Merge static meshes, draw repeated objects with MultiMeshInstance3D, and give small distant objects visibility ranges.',
       // Six frames in 1083 ms: one slow frame pulls the rate down, as players feel it.
@@ -125,6 +132,18 @@ describe('summarizeWebCheck', () => {
       'GPUParticles3D.emit_particle() does nothing on the Web, where the Compatibility renderer draws, so particles emitted with it never appear: give each effect its own one-shot CPUParticles3D or GPUParticles3D node and restart() it instead.',
       'FogVolume shaders (`shader_type fog`) do not run on the Web, so that fog is missing there.',
       'TAA and FSR exist only in Forward+, so on the Web the edges they smoothed, such as alpha-tested leaves and shadow edges, show their raw pixels.',
+    ])
+  })
+
+  it('reports a page that stopped answering, without frames it could not measure', () => {
+    const report = summarizeWebCheck({ ...HEALTHY, frameMs: [], drawCalls: [], unresponsive: true }, 20, 180_000)
+    expect(report).not.toHaveProperty('fps')
+    expect(report).not.toHaveProperty('drawCalls')
+    expect(report.findings).toEqual([STOPPED])
+    const { readyMs: _ready, ...loading } = HEALTHY
+    expect(summarizeWebCheck({ ...loading, frameMs: [], drawCalls: [], unresponsive: true }, 20, 120_000).findings).toEqual([
+      'The game did not draw frames steadily within 120 s of opening the page, so players would see it frozen or crawling that long.',
+      STOPPED,
     ])
   })
 
@@ -213,7 +232,7 @@ async function browser(dir: Scratch, behavior: { readonly result?: WebCheckSampl
 const argument = process.argv.find(arg => arg.startsWith(${JSON.stringify(`${WEB_CHECK_ARGUMENT}=`)}))
 const request = JSON.parse(argument.slice(${String(WEB_CHECK_ARGUMENT.length + 1)}))
 const page = await fetch(request.url).then(response => response.text())
-console.log('loaded ' + page.length + ' ' + request.width + 'x' + request.height + ' ' + request.seconds + ' ' + request.startTimeoutMs)
+console.log('loaded ' + page.length + ' ' + request.width + 'x' + request.height + ' ' + request.seconds + ' ' + request.startTimeoutMs + ' ' + request.deadlineMs)
 ${behavior.output === undefined ? '' : `console.log(${JSON.stringify(behavior.output)})`}
 ${behavior.result === undefined ? '' : `console.log(${JSON.stringify(`${WEB_CHECK_MARKER}${JSON.stringify(behavior.result)}`)})`}
 `)
@@ -252,7 +271,8 @@ posix('checkWebBuild', () => {
     expect((failure as Error).message).toBe([
       'The Web check\'s browser ended (exit code 0) without a result.',
       'Last output:',
-      'loaded 17 1280x720 7 9000',
+      // The browser's own deadline leaves it 10 s before the check's to print its result and exit.
+      'loaded 17 1280x720 7 9000 20000',
       'GPU process isn\'t usable',
     ].join('\n'))
   })

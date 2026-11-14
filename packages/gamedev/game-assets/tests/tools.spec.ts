@@ -14,6 +14,9 @@ import { ANSWER_LIMITS } from '../src/result.ts'
 import { callerPath, DEFAULT_LIMIT, gltfFilesBytes, MAX_GLTF_FILES, NO_WINDOW_MESSAGE, windowPath } from '../src/tools.ts'
 import { callTool, compose, fakeAgent, HERO, KNIGHT, PIXEL_PNG, text, type Composition } from './composition.ts'
 
+/** The largest file the window reads, by default. */
+const MAX_BYTES = 256 * 1024 * 1024
+
 let composition: Composition | undefined
 
 afterEach(async () => {
@@ -276,11 +279,44 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     await mkdir(join(c.work, 'game', 'models'), { recursive: true })
     await writeFile(join(c.work, 'game', 'models', 'tree.bin'), Buffer.alloc(1000))
     await writeFile(join(c.work, 'game', 'models', 'reaching.gltf'), reaching)
-    const counted = await gltfFilesBytes(join(c.work, 'game', 'models', 'reaching.gltf'), 10, join(c.work, 'game'), new AbortController().signal)
+    const counted = await gltfFilesBytes(join(c.work, 'game', 'models', 'reaching.gltf'), 10, join(c.work, 'game'), MAX_BYTES, new AbortController().signal)
     expect(counted).toBe(1000)
     // Files whose JSON cannot be read add nothing.
     await writeFile(join(c.work, 'models', 'broken.gltf'), '{ not json')
-    expect(await gltfFilesBytes(join(c.work, 'models', 'broken.gltf'), 10, c.work, new AbortController().signal)).toBe(0)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'broken.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(0)
+  })
+
+  it('counts the files a GLB model or a large .gltf model names, as the window loads them', async () => {
+    const c = await composed()
+    c.openWindow({ details: KNIGHT, images: [] })
+    await mkdir(join(c.work, 'models'), { recursive: true })
+    await writeFile(join(c.work, 'models', 'skin.png'), Buffer.alloc(3000))
+    const chunk = (type: number, body: Buffer) => {
+      const header = Buffer.alloc(8)
+      header.writeUInt32LE(body.byteLength, 0)
+      header.writeUInt32LE(type, 4)
+      return Buffer.concat([header, body])
+    }
+    const glb = (...chunks: readonly Buffer[]) => {
+      const header = Buffer.alloc(12)
+      header.writeUInt32LE(0x46546c67, 0)
+      header.writeUInt32LE(2, 4)
+      header.writeUInt32LE(12 + chunks.reduce((total, part) => total + part.byteLength, 0), 8)
+      return Buffer.concat([header, ...chunks])
+    }
+    const description = Buffer.from(JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'skin.png' }] }).padEnd(52, ' '))
+    // The window's loader reads the last JSON chunk, wherever it lies.
+    const model = glb(chunk(0x004e4942, Buffer.alloc(8)), chunk(0x4e4f534a, Buffer.from('{"asset":{"version":"2.0"}}'.padEnd(28, ' '))), chunk(0x4e4f534a, description))
+    await writeFile(join(c.work, 'models', 'hero.glb'), model)
+    await callTool(c, 'asset_view', { path: 'models/hero.glb' })
+    expect(c.requests.at(-1)?.bytes).toBe(model.byteLength + 3000)
+    // A .gltf file above 16 MiB, and one whose text starts with a byte order mark, which the window drops.
+    const large = `${JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'skin.png' }] })}${' '.repeat(17 * 1024 * 1024)}`
+    await writeFile(join(c.work, 'models', 'large.gltf'), large)
+    await callTool(c, 'asset_view', { path: 'models/large.gltf' })
+    expect(c.requests.at(-1)?.bytes).toBe(Buffer.byteLength(large) + 3000)
+    await writeFile(join(c.work, 'models', 'marked.gltf'), `\uFEFF${JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'skin.png' }] })}`)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'marked.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(3000)
   })
 
   it('refuses a glTF model whose files together are larger than the window reads, before asking the window', async () => {
@@ -308,7 +344,7 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     const named = (count: number): string => JSON.stringify({ asset: { version: '2.0' }, images: Array.from({ length: count }, (_, index) => ({ uri: `t${String(index)}.png` })) })
     await writeFile(join(c.work, 'models', 't0.png'), Buffer.alloc(7))
     await writeFile(join(c.work, 'models', 'many.gltf'), named(MAX_GLTF_FILES))
-    expect(await gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, new AbortController().signal)).toBe(7)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(7)
     await writeFile(join(c.work, 'models', 'too-many.gltf'), named(MAX_GLTF_FILES + 1))
     const refused = await callTool(c, 'asset_view', { path: 'models/too-many.gltf' })
     expect(refused.isError).toBe(true)
@@ -316,7 +352,7 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     expect(c.requests).toEqual([])
     const ended = new AbortController()
     ended.abort(new Error('the call ended'))
-    await expect(gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, ended.signal)).rejects.toThrow('the call ended')
+    await expect(gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, MAX_BYTES, ended.signal)).rejects.toThrow('the call ended')
   })
 
   it('says how many clips, morph targets, and 2D animations a window counted beyond those it lists', async () => {

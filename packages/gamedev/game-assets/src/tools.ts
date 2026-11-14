@@ -283,9 +283,6 @@ function callerDetails(details: AssetDetails, root: string, project: string): As
   }
 }
 
-/** Largest .gltf file whose JSON is read for the files it names; a larger one holds its data inside. */
-const MAX_GLTF_JSON_BYTES = 16 * 1024 * 1024
-
 /** Most distinct files one glTF model may name for the window to load with it. */
 export const MAX_GLTF_FILES = 1024
 
@@ -295,23 +292,56 @@ const GLTF_STAT_CONCURRENCY = 16
 /** A URL scheme of two letters or more, which a Windows drive such as `C:` is not. */
 const URL_SCHEME = /^[A-Za-z][A-Za-z\d+.-]+:/u
 
+/** The magic `glTF` that starts a GLB file, and the type of a GLB file's JSON chunk. */
+const GLB_MAGIC = 0x46546c67
+const GLB_JSON_CHUNK = 0x4e4f534a
+
 /**
- * The total size of the files a glTF model names outside its .gltf file, its buffers and images, which the window
+ * The JSON text of a glTF model as the window's loader finds it, whatever the file's name: a GLB file's JSON chunk,
+ * the last one among its chunks up to the length its header states, or else the whole file's text, a byte order mark
+ * dropped as the window drops it.
+ * @param data - the model file.
+ * @returns the text, or undefined where the loader finds none.
+ */
+function gltfText(data: Buffer): string | undefined {
+  if (data.byteLength < 4 || data.readUInt32LE(0) !== GLB_MAGIC) return new TextDecoder().decode(data)
+  if (data.byteLength < 12 || data.readUInt32LE(4) < 2) return undefined
+  const contents = data.readUInt32LE(8) - 12
+  let json: string | undefined
+  for (let index = 0; index < contents;) {
+    // Each chunk: its length, its type, then its bytes; reading past the file fails the loader.
+    if (12 + index + 8 > data.byteLength) return undefined
+    const length = data.readUInt32LE(12 + index)
+    const start = 12 + index + 8
+    if (data.readUInt32LE(16 + index) === GLB_JSON_CHUNK) {
+      if (start + length > data.byteLength) return undefined
+      json = new TextDecoder().decode(data.subarray(start, start + length))
+    }
+    index += 8 + length
+  }
+  return json
+}
+
+/**
+ * The total size of the files a glTF or GLB model names outside its own file, its buffers and images, which the window
  * loads with it. Names resolve as the window resolves them: from the model's folder, an absolute name by its file name
  * in that folder, and only inside the project folder; a web address or other URL, and a name that leads out of the
  * project, load nothing and count nothing. The sizes are read {@link GLTF_STAT_CONCURRENCY} at a time.
- * @param file - absolute path of the .gltf file.
+ * @param file - absolute path of the model file.
  * @param size - its size in bytes.
  * @param root - the project folder the window loads the model's files from.
+ * @param maxBytes - the largest file the window reads; a larger model file, which the window refuses, counts nothing.
  * @param signal - the call's cancellation, checked before each read.
- * @returns the total size in bytes, 0 when the file holds its data inside or is not readable JSON.
+ * @returns the total size in bytes, 0 when the file names no other file or its description is not readable JSON.
  * @throws {HarnessError} `ASSET_TOO_LARGE` when the model names more than {@link MAX_GLTF_FILES} distinct files.
  */
-export async function gltfFilesBytes(file: string, size: number, root: string, signal: AbortSignal): Promise<number> {
-  if (size > MAX_GLTF_JSON_BYTES) return 0
+export async function gltfFilesBytes(file: string, size: number, root: string, maxBytes: number, signal: AbortSignal): Promise<number> {
+  if (size > maxBytes) return 0
   let parsed: unknown
   try {
-    parsed = JSON.parse(await readFile(file, 'utf8'))
+    const text = gltfText(await readFile(file))
+    if (text === undefined) return 0
+    parsed = JSON.parse(text)
   } catch {
     // ENOENT, EACCES, or SyntaxError: the window reports the file it cannot read.
     return 0
@@ -591,10 +621,11 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       }
       const root = agent.session.header.cwd
       const sent = windowPath(root, absolute)
-      // A glTF model's buffers and images in files of their own load with it, from the project folder the window reads:
-      // the folder in the Session's header, or the model's own folder for a model outside it.
-      if (format.label === 'glTF') {
-        const named = await gltfFilesBytes(absolute, bytes, root === undefined || sent === absolute ? dirname(absolute) : root, exec.signal)
+      // A glTF or GLB model's buffers and images in files of their own load with it, from the project folder the window
+      // reads: the folder in the Session's header, or the model's own folder for a model outside it.
+      if (format.decoder === 'gltf') {
+        const folder = root === undefined || sent === absolute ? dirname(absolute) : root
+        const named = await gltfFilesBytes(absolute, bytes, folder, host.maxPreviewBytes, exec.signal)
         if (bytes + named > host.maxPreviewBytes) {
           fail(`${path} and the files it names take ${sizeText(bytes + named)}, more than the ${sizeText(host.maxPreviewBytes)} the viewer reads for one model.`, ASSET_ERROR.tooLarge)
         }

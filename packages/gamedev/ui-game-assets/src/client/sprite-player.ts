@@ -3,16 +3,17 @@
  * and the pictures its animations' frames show. The shown image decodes once, from the object URL its view's image
  * element shows, so both share one decoded image; a frame's picture, one of the image's own frames or another image of
  * the project, decodes when the view asks for it and is kept, the most recently shown first, within a memory budget,
- * so an animation of any length plays every frame. An image whose header states more pixels than the viewer decodes
- * decodes nothing. One instance serves one shown file and is closed with it, which releases every picture.
+ * so an animation of any length plays every frame. An image whose header states more pixels than the viewer decodes,
+ * or no size the viewer reads, decodes nothing. One instance serves one shown file and is closed with it, which
+ * releases every picture.
  */
 import type { ImageAssetDetails } from '@deepseek-ai/dsh-game-assets/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { findAnimations, type AnimationSources } from './animations2d.ts'
 import { formatOf, type AssetFormat } from './formats.ts'
 import { OwnFrames } from './frames.ts'
-import { imageSize, type PixelSize } from './image-size.ts'
-import { checkedImageSize, decodePicture, ImageTooLargeError, pixelFacts, type Decoded } from './picture.ts'
+import type { PixelSize } from './image-size.ts'
+import { checkedImageSize, decodePicture, ImageTooLargeError, pixelFacts, UnsizedImageError, type Decoded } from './picture.ts'
 import type { AssetFile } from './read.ts'
 import type { Picture } from './render2d.ts'
 import { animationDetails, type SpriteAnimation, type SpriteFrame } from './sprites.ts'
@@ -21,6 +22,23 @@ type ViewerModule = typeof import('./viewer/index.ts')
 
 /** Most pixels of the frames' pictures one player keeps at once, about 256 MiB; a frame let go decodes again. */
 const MAX_KEPT_PIXELS = 64 * 1024 * 1024
+
+/**
+ * Why the viewer does not decode an image, from its header.
+ * @param data - the file.
+ * @param format - its format.
+ * @param maxPixels - the most pixels the viewer decodes for one image.
+ * @returns the refusal, or undefined for an image the viewer decodes.
+ */
+function refusalOf(data: Uint8Array, format: AssetFormat, maxPixels: number): ImageTooLargeError | UnsizedImageError | undefined {
+  try {
+    checkedImageSize(data, format, maxPixels)
+    return undefined
+  } catch (error) {
+    if (error instanceof ImageTooLargeError || error instanceof UnsizedImageError) return error
+    throw error
+  }
+}
 
 /** What the 2D view knows about the shown image once it is decoded and its animations are found. */
 export interface SpriteState {
@@ -44,6 +62,8 @@ export class SpritePlayer {
   readonly url: string | undefined
   /** The size the image's header states when it is more pixels than the viewer decodes; nothing is decoded then. */
   readonly tooLarge: PixelSize | undefined
+  /** Why the image is not decoded: its header states more pixels than the viewer decodes, or no size it reads. */
+  private readonly refusal: ImageTooLargeError | UnsizedImageError | undefined
   private own: Promise<Decoded> | undefined
   private ownPicture: Picture | undefined
   private ownFailed = false
@@ -73,9 +93,9 @@ export class SpritePlayer {
     private readonly viewer: () => Promise<ViewerModule>,
     private readonly maxPixels: number,
   ) {
-    const stated = imageSize(data, format)
-    this.tooLarge = stated !== undefined && stated.width * stated.height > maxPixels ? stated : undefined
-    this.url = this.tooLarge === undefined && format.kind === 'image' && format.decoder === 'browser'
+    this.refusal = refusalOf(data, format, maxPixels)
+    this.tooLarge = this.refusal instanceof ImageTooLargeError ? this.refusal.size : undefined
+    this.url = this.refusal === undefined && format.kind === 'image' && format.decoder === 'browser'
       ? URL.createObjectURL(new Blob([data], format.mediaType === undefined ? {} : { type: format.mediaType }))
       : undefined
   }
@@ -83,10 +103,11 @@ export class SpritePlayer {
   /**
    * The shown image's picture, decoded once.
    * @returns the picture.
-   * @throws {ImageTooLargeError} for an image larger than the viewer decodes, or {Error} when it does not decode.
+   * @throws {ImageTooLargeError} for an image larger than the viewer decodes, {UnsizedImageError} for one whose header
+   * states no size the viewer reads, or {Error} when it does not decode.
    */
   async picture(): Promise<Picture> {
-    if (this.tooLarge !== undefined) throw new ImageTooLargeError(this.tooLarge, this.maxPixels)
+    if (this.refusal !== undefined) throw this.refusal
     this.own ??= decodePicture(this.data, this.format, this.viewer, this.url).then((decoded) => {
       if (this.closed) decoded.close()
       else this.ownPicture = decoded.picture
@@ -131,7 +152,7 @@ export class SpritePlayer {
     const key = this.keyOf(frame)
     if (key === undefined) {
       if (this.ownPicture !== undefined) return { kind: 'ready', picture: this.ownPicture }
-      return this.ownFailed || this.tooLarge !== undefined ? FAILED : PENDING
+      return this.ownFailed || this.refusal !== undefined ? FAILED : PENDING
     }
     const kept = this.kept.get(key)
     if (kept === undefined) return this.failed.has(key) ? FAILED : PENDING

@@ -76,6 +76,12 @@ export class GodotParseError extends Error {
 /** Frames per second of a Sprite2D grid without an animation, the default speed of Godot's SpriteFrames. */
 export const GRID_FPS = 5
 
+/** Most frames one animation keeps; a longer animation keeps its first frames. */
+export const MAX_ANIMATION_FRAMES = 1024
+
+/** Most columns or rows of a sprite's frame grid: Godot's own range for `hframes` and `vframes`. */
+export const MAX_GRID_SIDE = 16_384
+
 class Reader {
   position = 0
 
@@ -516,8 +522,9 @@ export function godotAnimations(text: string): GodotAnimation[] {
   const grids = new Map<string, SpriteGrid>()
   for (const section of sections) {
     if (section.tag !== 'node' || !SPRITE_TYPES.has(section.attributes.get('type'))) continue
-    const columns = Math.max(1, Math.floor(numberOf(section.properties.get('hframes'), 1)))
-    const rows = Math.max(1, Math.floor(numberOf(section.properties.get('vframes'), 1)))
+    const side = (key: string): number => Math.min(MAX_GRID_SIDE, Math.max(1, Math.floor(numberOf(section.properties.get(key), 1))))
+    const columns = side('hframes')
+    const rows = side('vframes')
     const texture = file.external.get(referenceId(section.properties.get('texture'), 'ExtResource') ?? '')
     const name = section.attributes.get('name')
     if (texture === undefined || typeof name !== 'string' || columns * rows < 2) continue
@@ -544,7 +551,8 @@ export function godotAnimations(text: string): GodotAnimation[] {
   }
   for (const [node, grid] of grids) {
     if (animated.has(node)) continue
-    const frames = Array.from({ length: grid.columns * grid.rows }, (_, index): GodotFrame => ({
+    // A grid plays its first cells, as many as an animation keeps.
+    const frames = Array.from({ length: Math.min(grid.columns * grid.rows, MAX_ANIMATION_FRAMES) }, (_, index): GodotFrame => ({
       texture: grid.texture, cell: cellOf(grid, index), seconds: 1 / GRID_FPS,
     }))
     animations.push({ name: `${node} frames`, frames, loop: true })
@@ -553,11 +561,23 @@ export function godotAnimations(text: string): GodotAnimation[] {
 }
 
 /**
+ * Whether a segment of a `res://` path names one file or folder wherever the Host reads it. A `~` segment is the home
+ * folder to the Host's file reads, a colon names a drive or a data stream on Windows, so that `D:x.png` is read on
+ * another drive, a segment of only dots and spaces may stand for `..` on Windows, and a control character names no file.
+ * @param segment - one segment, without separators.
+ * @returns whether the segment is a plain name.
+ */
+function isPlainSegment(segment: string): boolean {
+  return segment !== '~' && !segment.includes(':') && !/^[.\s]+$/u.test(segment) && !/[\u0000-\u001f\u007f]/u.test(segment)
+}
+
+/**
  * The workspace path a `res://` path names, inside the Godot project as Godot keeps every `res://` path.
  * @param resource - the `res://` path.
  * @param projectFolder - workspace path of the folder holding `project.godot`; empty for the workspace folder.
  * @returns the workspace path, or undefined for a path that is not `res://`, that `..` leads out of the project, or
- * that names no file, such as one with a drive or a control character.
+ * that has a segment the Host could read outside the workspace: `~`, a segment with a colon such as a drive, one of
+ * dots and spaces only, or one with a control character.
  */
 export function workspacePathOf(resource: string, projectFolder: string): string | undefined {
   if (!resource.startsWith('res://')) return undefined
@@ -569,7 +589,7 @@ export function workspacePathOf(resource: string, projectFolder: string): string
       segments.pop()
       continue
     }
-    if (/[\u0000-\u001f\u007f]/u.test(segment) || /^[A-Za-z]:$/u.test(segment)) return undefined
+    if (!isPlainSegment(segment)) return undefined
     segments.push(segment)
   }
   if (segments.length === 0) return undefined

@@ -13,13 +13,14 @@ import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import { formatWebCheck, type GodotWebCheck, type GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME, modelName } from './credits.ts'
 import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
 import type { WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdRelease } from './types.ts'
+import { formatWebCheck } from './web-check-text.ts'
 
 /** What a preview recording asks for. */
 export interface PreviewRequest {

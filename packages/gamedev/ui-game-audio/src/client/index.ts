@@ -28,7 +28,7 @@ import { AudioTab, AudioTabTitle, type AudioTabInjected } from './AudioTab.tsx'
 import { AudioGlyph } from './icon.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { AudioPlayback } from './playback.ts'
-import { readSound, windowReader, type ReadBytes, type SoundFile } from './read.ts'
+import { readablePath, readSound, windowReader, type ReadBytes, type SoundFile } from './read.ts'
 import type { ScanLimits, SoundEntry } from './scan.ts'
 import { AudioSource } from './source.ts'
 
@@ -109,7 +109,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   const player = new AudioPlayback()
   ctx.effect(() => () => { player.close() }, 'ui-game-audio: player')
   const bytesOf = (sessionId: SessionId): ReadBytes => (path, options, signal) =>
-    ctx.remote.workspaceFiles.readBytes(sessionId, path, options, signal)
+    ctx.remote.workspaceFiles.readBytes(sessionId, readablePath(path), options, signal)
   const readOf = (sessionId: SessionId) => (path: string, maxBytes: number, signal: AbortSignal): Promise<RemoteResult<SoundFile>> =>
     readSound(bytesOf(sessionId), path, maxBytes, signal).catch((error: unknown) => {
       // A Remote call rejects only for an assembly fault; the player shows it as a failed read.

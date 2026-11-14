@@ -3,11 +3,11 @@
  * out, installations and removals that run at once or beside other writers of `project.godot`, changes that stay inside
  * the project, and the Blender add-on store.
  */
-import { appendFile, lstat, mkdir, readdir, readFile, readlink, symlink, writeFile } from 'node:fs/promises'
+import { appendFile, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, posix, win32 } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
-import { addonView, BACKUPS_DIR, GameAddonManager, STORE_INDEX, STORE_MARKER, type ImportReport } from '../src/manager.ts'
+import { addonView, BACKUPS_DIR, GameAddonManager, STORE_INDEX, STORE_MARKER, STORE_SETUP_DIR, type ImportReport } from '../src/manager.ts'
 import { NOTICES_FILE } from '../src/notices.ts'
 import { GameAddonPathError, isProjectPath, within } from '../src/paths.ts'
 import { ProjectFile } from '../src/project-file.ts'
@@ -560,7 +560,7 @@ describe('GameAddonManager for Blender', () => {
     const index = JSON.parse(await readFile(join(store, STORE_INDEX), 'utf8')) as { addons: Record<string, unknown> }
     expect(index.addons['test-trees']).toEqual({
       module: 'test_trees', kind: 'extension', version: '2.0.0',
-      setup: join(manager.catalog.folder('test-trees'), 'setup.py'), assets: join(assets, 'test-trees'),
+      setup: join(store, STORE_SETUP_DIR, 'test-trees', 'setup.py'), assets: join(assets, 'test-trees'),
     })
     expect(await readdir(join(dir!.root, 'archives'))).toEqual([])
     const second = join(dir!.root, 'second')
@@ -571,6 +571,27 @@ describe('GameAddonManager for Blender', () => {
       bytes: TREES_ARCHIVE.byteLength + TREE_ASSETS_ARCHIVE.byteLength,
       assets: { license: 'CC0-1.0', bytes: TREE_ASSETS_ARCHIVE.byteLength, homepage: 'https://assets.example.test/' },
     })
+  })
+
+  it('indexes a copy of each setup script in the store, which workers read without the catalog, copied again only when it changes', async () => {
+    const script = 'def setup(module, assets):\n    pass\n'
+    const { manager, project, store } = await setup(undefined, entriesWithTreeAssets(), { 'test-trees/setup.py': script })
+    await manager.install(project, 'test-trees', {}, signal)
+    const folder = join(store, STORE_SETUP_DIR, 'test-trees')
+    const indexed = async (): Promise<string | undefined> => (JSON.parse(await readFile(join(store, STORE_INDEX), 'utf8')) as { addons: Record<string, { setup?: string }> }).addons['test-trees']?.setup
+    expect(await indexed()).toBe(join(folder, 'setup.py'))
+    expect(await tree(folder)).toEqual([STORE_MARKER, 'setup.py'])
+    expect(await readFile(join(folder, 'setup.py'), 'utf8')).toBe(script)
+    // An unchanged script keeps its copy; a changed one replaces it at the next start or Blender installation.
+    const copied = (await lstat(join(folder, 'setup.py'))).ino
+    await manager.writeStoreIndex(signal)
+    expect((await lstat(join(folder, 'setup.py'))).ino).toBe(copied)
+    await writeFile(join(manager.catalog.folder('test-trees'), 'setup.py'), 'def setup(module, assets):\n    return 2\n')
+    await manager.writeStoreIndex(signal)
+    expect(await readFile(join(folder, 'setup.py'), 'utf8')).toBe('def setup(module, assets):\n    return 2\n')
+    // The Desktop app keeps the catalog inside app.asar, which Blender's Python cannot read: the index must not need it.
+    await rm(manager.catalog.dir, { recursive: true, force: true })
+    expect(await readFile(await indexed() ?? '', 'utf8')).toBe('def setup(module, assets):\n    return 2\n')
   })
 
   it('copies an extension that WASD Engine wrote from its catalog files into the store, and again only when a file changes', async () => {

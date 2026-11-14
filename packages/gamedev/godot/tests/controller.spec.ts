@@ -77,7 +77,7 @@ describe('configuration', () => {
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
       webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
-      webTemplateSha256: '13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a',
+      webTemplateSha256: '477a8c0bff8a89acf58cdd68d913b160e71cfb038cf3648eebc2ab853148a65d',
       webTemplatePath: '',
       windowsTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
       windowsTemplateEntry: 'templates/windows_release_x86_64.exe',

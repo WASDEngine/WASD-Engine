@@ -5,7 +5,7 @@
  * project sees an add-on's guide only once the add-on is installed and loads it through the `skill` tool, and the
  * plugin's tool, prompt section, guides, and game MCP provider leave with its fiber.
  */
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
@@ -24,8 +24,9 @@ import type { ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import GameAddons, { STORE_INDEX, TOOL_NAME } from '../src/index.ts'
+import { STORE_SETUP_DIR } from '../src/manager.ts'
 import { PROMPT_SECTION, sessionPrompt } from '../src/prompt.ts'
-import { editableCatalogEntries, fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
+import { editableCatalogEntries, entriesWithTreeAssets, fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
 let ctx: Context | undefined
@@ -40,7 +41,11 @@ afterEach(async () => {
 
 const signal = new AbortController().signal
 
-async function compose(catalogDir?: string) {
+/**
+ * @param catalogDir - the catalog folder; the test catalog by default.
+ * @param before - runs with the configuration before the plugin starts, such as to leave a store from an earlier version.
+ */
+async function compose(catalogDir?: string, before?: (config: { readonly blenderStore: string }) => Promise<void>) {
   dir = await scratch('compose')
   const project = await writeProject(join(dir.root, 'work', 'game'))
   const downloads = fakeDownloads()
@@ -62,6 +67,7 @@ async function compose(catalogDir?: string) {
   const providers: string[] = []
   ctx.provide('gameMcp', { provide: (provider: { id: string }) => { providers.push(provider.id); return () => { providers.splice(providers.indexOf(provider.id), 1) } } } as never)
   const config = { catalogDir: catalogDir ?? await writeCatalog(dir.root), dataRoot: join(dir.root, 'data'), blenderStore: join(dir.root, 'data', 'blender') }
+  await before?.(config)
   const fiber = ctx.plugin(GameAddons, GameAddons.Config(config))
   await fiber
   const scope = ctx.plugin(() => {})
@@ -147,6 +153,26 @@ describe('game add-ons plugin', () => {
     expect(await promptSection(context)).toBeUndefined()
     expect(await guideNames(context, project, agent)).toEqual([])
     expect(providers).toEqual([])
+  })
+
+  it('replaces at its start a store index that names setup scripts in the catalog, as earlier versions wrote it', async () => {
+    const root = await scratch('setup-catalog')
+    try {
+      const catalogDir = await writeCatalog(root.root, entriesWithTreeAssets())
+      await writeFile(join(catalogDir, 'test-trees', 'setup.py'), 'def setup(module, assets):\n    pass\n')
+      // 0.1.1 and 0.1.2 indexed the catalog file, which the Desktop app keeps inside app.asar, where Blender's Python
+      // cannot read it.
+      const stale = '/Applications/WASD Engine.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-web-app/wasdengine/addons/test-trees/setup.py'
+      const { config } = await compose(catalogDir, async ({ blenderStore }) => {
+        await mkdir(blenderStore, { recursive: true })
+        await writeFile(join(blenderStore, STORE_INDEX), `${JSON.stringify({ format: 1, addons: { 'test-trees': { module: 'test_trees', kind: 'extension', version: '2.0.0', setup: stale } } })}\n`)
+      })
+      const setup = (JSON.parse(await readFile(join(config.blenderStore, STORE_INDEX), 'utf8')) as { addons: Record<string, { setup?: string }> }).addons['test-trees']?.setup
+      expect(setup).toBe(join(config.blenderStore, STORE_SETUP_DIR, 'test-trees', 'setup.py'))
+      expect(await readFile(setup ?? '', 'utf8')).toBe('def setup(module, assets):\n    pass\n')
+    } finally {
+      await root.cleanup()
+    }
   })
 
   it('does not start with an invalid catalog', async () => {

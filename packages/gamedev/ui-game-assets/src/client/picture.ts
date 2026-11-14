@@ -1,14 +1,14 @@
 /**
  * Decoding the images the 2D view shows and the agent's pictures draw. An image's header is read first, and one that
- * states more pixels than the viewer decodes is refused before any pixel is decoded. The browser's formats decode into
- * an image element, whose pixels the browser keeps as it keeps those of the images it shows, so a picture drawn from
- * it at a smaller size holds no full-size copy of its own, and the 2D view's element and its player share one decoded
- * image; TGA, HDR, and EXR decode into a bitmap through the viewer chunk. The pixel facts, transparency and colors,
- * are measured on a copy of at most four million pixels.
+ * states more pixels than the viewer decodes, or no size the viewer reads, is refused before any pixel is decoded. The
+ * browser's formats decode into an image element, whose pixels the browser keeps as it keeps those of the images it
+ * shows, so a picture drawn from it at a smaller size holds no full-size copy of its own, and the 2D view's element and
+ * its player share one decoded image; TGA, HDR, and EXR decode into a bitmap through the viewer chunk. The pixel facts,
+ * transparency and colors, are measured on a copy of at most four million pixels.
  */
 import type { AssetTransparency } from '@deepseek-ai/dsh-game-assets/types'
-import type { AssetFormat, ImageDecoder } from './formats.ts'
-import { imageSize, type PixelSize } from './image-size.ts'
+import { formatOf, type AssetFormat, type ImageDecoder } from './formats.ts'
+import { imageSize, statesPixels, type PixelSize } from './image-size.ts'
 import type { Picture } from './render2d.ts'
 
 type ViewerModule = typeof import('./viewer/index.ts')
@@ -43,18 +43,48 @@ export class ImageTooLargeError extends Error {
   }
 }
 
+/** An image whose header states no size the viewer can read, which it therefore does not decode. */
+export class UnsizedImageError extends Error {
+  constructor() {
+    super('the image\'s header states no size the viewer can read before decoding it')
+    this.name = 'UnsizedImageError'
+  }
+}
+
 /**
  * The size an image's header states, checked against the most pixels the viewer decodes.
- * @param data - the file, or its first bytes.
+ * @param data - the file.
  * @param format - its format.
  * @param maxPixels - the most pixels the viewer decodes.
- * @returns the stated size, or undefined for an image whose header states none.
- * @throws {ImageTooLargeError} when the header states more pixels.
+ * @returns the stated size, or undefined for an SVG, which states none.
+ * @throws {ImageTooLargeError} when the header states more pixels; {UnsizedImageError} when it states no size this
+ * viewer reads, so that the decoder would decide the size alone.
  */
 export function checkedImageSize(data: Uint8Array, format: AssetFormat, maxPixels: number): PixelSize | undefined {
   const size = imageSize(data, format)
-  if (size !== undefined && size.width * size.height > maxPixels) throw new ImageTooLargeError(size, maxPixels)
+  if (size === undefined) {
+    if (statesPixels(format)) throw new UnsizedImageError()
+    return undefined
+  }
+  if (size.width * size.height > maxPixels) throw new ImageTooLargeError(size, maxPixels)
   return size
+}
+
+/** The format of an image the browser decodes, which it reads by its content. */
+const BY_CONTENT: AssetFormat = { kind: 'image', label: 'image', decoder: 'browser' }
+
+/**
+ * Check an image a model names before it is decoded: an image a three.js decoder reads by the format its name gives,
+ * any other by its content, as the browser decodes it.
+ * @param data - the image file, or the bytes of the buffer that holds it.
+ * @param name - the name the model stores for it; empty for an image inside the model's buffers.
+ * @param maxPixels - the most pixels the viewer decodes for one image.
+ * @throws {ImageTooLargeError} when its header states more pixels; {UnsizedImageError} when it states no size this
+ * viewer reads.
+ */
+export function checkModelImage(data: Uint8Array, name: string, maxPixels: number): void {
+  const named = formatOf(name)
+  checkedImageSize(data, named?.kind === 'image' && named.decoder !== 'browser' ? named : BY_CONTENT, maxPixels)
 }
 
 /**

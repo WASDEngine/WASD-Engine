@@ -33,9 +33,9 @@ function png(width: number, height: number): Uint8Array<ArrayBuffer> {
   return Uint8Array.from([...signature, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, ...size, 8, 6, 0, 0, 0, 0, 0, 0, 0])
 }
 
-/** A GIF header stating a size. */
+/** A GIF header stating a size, and its trailer. */
 function gif(width: number, height: number): Uint8Array<ArrayBuffer> {
-  return Uint8Array.from([...new TextEncoder().encode('GIF89a'), width & 0xff, width >> 8, height & 0xff, height >> 8, 0, 0, 0])
+  return Uint8Array.from([...new TextEncoder().encode('GIF89a'), width & 0xff, width >> 8, height & 0xff, height >> 8, 0, 0, 0, 0x3b])
 }
 
 beforeEach(() => {
@@ -107,12 +107,30 @@ describe('agent pictures', () => {
     await expect(answerRender(request('art/strip.png'), strip, LIMITS, new AbortController().signal)).rejects.toMatchObject({ code: 'ASSET_TOO_LARGE' })
   })
 
-  it('counts the memory an image decodes, from its header, and a model\'s files', async () => {
-    const files = sources({ 'art/hero.png': png(1000, 500) })
-    expect(await drawWeight(request('art/hero.png'), files, new AbortController().signal)).toBe(100 + 1000 * 500 * 4)
-    expect(await drawWeight(request('models/hero.glb', { kind: 'model' }), files, new AbortController().signal)).toBe(100)
-    // A header it cannot read counts the file alone.
-    expect(await drawWeight(request('art/gone.png'), files, new AbortController().signal)).toBe(100)
+  it('counts the memory an image decodes, from its checked header, and a model\'s files', async () => {
+    // A JPEG whose frame header lies past the first 64 bytes this fixture reads.
+    const late = Uint8Array.from([
+      0xff, 0xd8, 0xff, 0xe1, 0, 102, ...Array.from({ length: 100 }, () => 0), 0xff, 0xc0, 0, 17, 8, 0, 10, 0, 10, 3,
+    ])
+    const files = sources({ 'art/hero.png': png(1000, 500), 'art/huge.png': png(50_000, 50_000), 'art/late.jpg': late, 'art/junk.png': Uint8Array.from([1, 2, 3]) })
+    const signal = new AbortController().signal
+    expect(await drawWeight(request('art/hero.png'), files, LIMITS, signal)).toBe(100 + 1000 * 500 * 4)
+    expect(await drawWeight(request('models/hero.glb', { kind: 'model' }), files, LIMITS, signal)).toBe(100)
+    // An image refused before decoding counts its file alone: too large, or whole in its first bytes without a size.
+    expect(await drawWeight(request('art/huge.png'), files, LIMITS, signal)).toBe(100)
+    expect(await drawWeight(request('art/junk.png', { bytes: 3 }), files, LIMITS, signal)).toBe(3)
+    // First bytes that do not tell, or a read that failed, count the most pixels the window decodes.
+    expect(await drawWeight(request('art/late.jpg'), files, LIMITS, signal)).toBe(100 + LIMITS.maxDecodedPixels * 4)
+    expect(await drawWeight(request('art/gone.png'), files, LIMITS, signal)).toBe(100 + LIMITS.maxDecodedPixels * 4)
+  })
+
+  it('refuses an image whose header states no size it reads, before decoding it', async () => {
+    const junk = sources({ 'art/junk.png': Uint8Array.from([1, 2, 3]) })
+    await expect(answerRender(request('art/junk.png'), junk, LIMITS, new AbortController().signal)).rejects.toMatchObject({
+      code: 'ASSET_UNREADABLE',
+      message: 'art/junk.png is not a PNG file whose header states its size, so this window does not decode it; it may be damaged or another kind of file.',
+    })
+    expect(elementDecodes).toBe(0)
   })
 
   it('draws the sampled frames of an animated image of any length, each decoded at the size of its tile', async () => {

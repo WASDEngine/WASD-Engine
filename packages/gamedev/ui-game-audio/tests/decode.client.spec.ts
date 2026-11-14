@@ -10,7 +10,7 @@ import type { WorkspaceFileBytes } from '@deepseek-ai/dsh-api-workspace-files/ty
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerMeasure } from '../src/client/agent.ts'
-import { decodeSound, measureSound, pictureOf, SoundError, WHOLE_SOUND } from '../src/client/decode.ts'
+import { decodeSound, lengthBeforeDecoding, measureSound, pictureOf, SoundError, WHOLE_SOUND } from '../src/client/decode.ts'
 import { readSound, type ReadBytes, type SoundFile } from '../src/client/read.ts'
 import { aiffFile, FakeAudioBuffer, FakeOfflineAudioContext, installWebAudio, vbrMp3File, wavFile } from './webaudio.client.ts'
 
@@ -245,6 +245,38 @@ describe('the bounds of a decode', () => {
       code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is at least 142.5 s long, longer than the 100 s a WASD Engine window decodes, so it cannot be measured.',
     })
     expect(decode).not.toHaveBeenCalled()
+  })
+
+  it('refuses before decoding a constant bit rate MP3 without a frame count whose estimate runs past the cap', async () => {
+    // MPEG-1 layer III at 32 kbps and 32 kHz: 144-byte frames, 47 MB of them, 11,750 s long; at the highest bit rate,
+    // 320 kbps, the size would allow 1175 s, under the cap.
+    const frame = [0xff, 0xfb, 0x18, 0x00, ...new Array<number>(140).fill(0)]
+    const mp3 = new Uint8Array(326_389 * 144)
+    for (let at = 0; at < mp3.length; at += 144) mp3.set(frame, at)
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
+    const theme = { ...request, path: 'music/long.mp3', maxBytes: 1 << 26 }
+    const failure = await answerMeasure(theme, async () => file(mp3), new AbortController().signal, 1200).catch((error: unknown) => error)
+    expect(failure).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'music/long.mp3 is 11750.0 s long, longer than the 1200 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    expect(decode).not.toHaveBeenCalled()
+  })
+
+  it('refuses before decoding an MP3 whose frame count understates the length its size allows', async () => {
+    // An Info frame that counts 2 frames, at the head of a megabyte of 128 kbps frames: at least 25 s at 320 kbps.
+    const frame = (body: readonly number[] = []) => [0xff, 0xfb, 0x90, 0x00, ...body, ...new Array<number>(413 - body.length).fill(0)]
+    const info = frame([...new Array<number>(32).fill(0), ...Array.from('Info', character => character.charCodeAt(0)), 0, 0, 0, 1, 0, 0, 0, 2])
+    const mp3 = new Uint8Array(1_000_000)
+    mp3.set(info)
+    for (let at = 417; at + 417 <= mp3.length; at += 417) mp3.set(frame(), at)
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
+    const failure = await answerMeasure({ ...request, path: 'sfx/hum.mp3' }, async () => file(mp3), new AbortController().signal, 10).catch((error: unknown) => error)
+    expect(failure).toMatchObject({
+      code: AUDIO_ERROR.tooLarge, message: 'sfx/hum.mp3 is at least 25.0 s long, longer than the 10 s a WASD Engine window decodes, so it cannot be measured.',
+    })
+    expect(decode).not.toHaveBeenCalled()
+    expect(lengthBeforeDecoding({ format: 'Ogg Vorbis', seconds: 1, minSeconds: 30 })).toEqual({ seconds: 30, atLeast: true })
+    expect(lengthBeforeDecoding({ format: 'WAV', seconds: 2 })).toEqual({ seconds: 2, atLeast: false })
   })
 
   it('decodes a long AIFF file in a hidden window, whose timers Chromium throttles', async () => {

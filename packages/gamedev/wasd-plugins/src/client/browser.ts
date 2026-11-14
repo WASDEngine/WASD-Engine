@@ -596,7 +596,9 @@ export function followBrowserRequests(services: BrowserDriverServices): () => vo
         .catch((error: unknown) => {
           services.warn('wasd-plugins: a Browser command failed in the window', error)
         })
-        .finally(() => { commands.delete(request.id) })
+        // A refused claim's attempt ends after the window may have taken the command again under a new controller,
+        // which stays registered, so the end of its tool call still stops it.
+        .finally(() => { if (commands.get(request.id) === controller) commands.delete(request.id) })
       queues.set(request.sessionId, next)
       void next.then(() => { if (queues.get(request.sessionId) === next) queues.delete(request.sessionId) })
     }

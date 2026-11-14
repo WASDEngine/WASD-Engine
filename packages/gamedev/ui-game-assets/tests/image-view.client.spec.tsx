@@ -176,4 +176,12 @@ describe('ImageView animations', () => {
     expect(decodes).toBe(0)
     expect(document.querySelector('img')).toBeNull()
   })
+
+  it('shows an image whose header states no size the viewer reads as unreadable, and decodes nothing', async () => {
+    // A JPEG name over bytes that state no frame: the browser would decide its size alone.
+    render(<ImageView {...props('art/broken.jpg', Uint8Array.from([0xff, 0xd8, 0xff, 0xd8, 0, 1, 2]))} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('viewer.unreadable')
+    expect(decodes).toBe(0)
+    expect(document.querySelector('img')).toBeNull()
+  })
 })

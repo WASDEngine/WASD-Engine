@@ -43,7 +43,8 @@ describe('imageSize', () => {
     // A JPEG states its size in its frame header, after any number of other segments.
     const jpeg = bytes([0xff, 0xd8], [0xff, 0xe0], u16be(16), 'JFIF', Array.from({ length: 10 }, () => 0), [0xff, 0xe1], u16be(1002), Array.from({ length: 1000 }, () => 7), [0xff, 0xc2], u16be(17), [8], u16be(300), u16be(400), [3])
     expect(size('a.jpg', jpeg)).toEqual({ width: 400, height: 300 })
-    expect(size('a.gif', bytes('GIF89a', u16le(320), u16le(200), [0, 0, 0]))).toEqual({ width: 320, height: 200 })
+    expect(size('a.gif', bytes('GIF89a', u16le(320), u16le(200), [0, 0, 0], [0x2c], u16le(0), u16le(0), u16le(320), u16le(200), [0]))).toEqual({ width: 320, height: 200 })
+    expect(size('a.gif', bytes('GIF89a', u16le(320), u16le(200), [0, 0, 0], [0x3b]))).toEqual({ width: 320, height: 200 })
     expect(size('a.webp', bytes('RIFF', u32le(30), 'WEBP', 'VP8X', u32le(10), [0, 0, 0, 0], u24le(1023), u24le(767)))).toEqual({ width: 1024, height: 768 })
     expect(size('a.webp', bytes('RIFF', u32le(30), 'WEBP', 'VP8L', u32le(10), [0x2f], u32le((99 << 14) | 49)))).toEqual({ width: 50, height: 100 })
     expect(size('a.webp', bytes('RIFF', u32le(30), 'WEBP', 'VP8 ', u32le(10), [0, 0, 0, 0x9d, 0x01, 0x2a], u16le(256), u16le(128)))).toEqual({ width: 256, height: 128 })
@@ -69,6 +70,37 @@ describe('imageSize', () => {
     const bomb = png(50_000, 50_000)
     expect(bomb.byteLength).toBeLessThan(64)
     expect(size('bomb.png', bomb)).toEqual({ width: 50_000, height: 50_000 })
+  })
+
+  it('reads each header as the decoder that reads the file does', () => {
+    // libjpeg skips stray bytes, fill bytes, and stuffed zeros before a marker.
+    const frame = [[0xff, 0xc0], u16be(17), [8], u16be(30_000), u16be(30_000), [3]]
+    expect(size('a.jpg', bytes([0xff, 0xd8], [0x00, 0x13], ...frame))).toEqual({ width: 30_000, height: 30_000 })
+    expect(size('a.jpg', bytes([0xff, 0xd8], [0xff, 0x00, 0x42, 0xff, 0xff], ...frame))).toEqual({ width: 30_000, height: 30_000 })
+    // A marker libjpeg fails on before the frame, such as a second start of image, states no size.
+    expect(size('a.jpg', bytes([0xff, 0xd8, 0xff, 0xd8], ...frame))).toBeUndefined()
+    // Browsers grow a GIF's screen to its first frame's bounds, past a color table and extensions.
+    const table = Array.from({ length: 6 }, () => 0)
+    const extension = [0x21, 0xf9, 4, 0, 0, 0, 0, 0]
+    const grown = bytes('GIF89a', u16le(1), u16le(1), [0x80, 0, 0], table, extension, [0x2c], u16le(100), u16le(50), u16le(30_000), u16le(20_000), [0])
+    expect(size('a.gif', grown)).toEqual({ width: 30_100, height: 20_050 })
+    // A GIF that ends before its first frame or its trailer states no size.
+    expect(size('a.gif', bytes('GIF89a', u16le(1), u16le(1), [0, 0, 0], extension))).toBeUndefined()
+    // HDRLoader takes the resolution from any header line once FORMAT is read, with any spaces, and skips comments.
+    expect(size('a.hdr', bytes('#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n-Y 30000 +X 20000\n'))).toEqual({ width: 20_000, height: 30_000 })
+    expect(size('a.hdr', bytes('#?RADIANCE\r\n# -Y 1 +X 1\r\nFORMAT=32-bit_rle_rgbe\r\n-Y  600\t+X 800\r\n'))).toEqual({ width: 800, height: 600 })
+    // A resolution before FORMAT is the one the loader keeps: it stops at the line where it has both.
+    expect(size('a.hdr', bytes('#?RADIANCE\n-Y 4 +X 4\nFORMAT=32-bit_rle_rgbe\n-Y 600 +X 800\n'))).toEqual({ width: 4, height: 4 })
+    // EXRLoader keeps the last data window, and an attribute of a type it does not read replaces nothing.
+    const exr = (...attributes: readonly (readonly number[] | string)[]) => bytes(u32le(20000630), u32le(2), ...attributes, [0])
+    const dataWindow = (side: number) => ['dataWindow\0box2i\0', u32le(16), u32le(0), u32le(0), u32le(side - 1), u32le(side - 1)] as const
+    expect(size('a.exr', exr(...dataWindow(1), ...dataWindow(30_000)))).toEqual({ width: 30_000, height: 30_000 })
+    expect(size('a.exr', exr(...dataWindow(64), 'dataWindow\0custom\0', u32le(2), [1, 2]))).toEqual({ width: 64, height: 64 })
+    expect(size('a.exr', exr(...dataWindow(64), 'dataWindow\0string\0', u32le(2), 'ab'))).toBeUndefined()
+    // A header without its closing empty name, which the loader would read without end, states no size.
+    expect(size('a.exr', bytes(u32le(20000630), u32le(2), ...dataWindow(64)))).toBeUndefined()
+    // The browser decodes the format the content names, whatever the file's name.
+    expect(size('named.png', bytes('GIF89a', u16le(1), u16le(1), [0, 0, 0], [0x2c], u16le(0), u16le(0), u16le(9000), u16le(9000), [0]))).toEqual({ width: 9000, height: 9000 })
   })
 
   it('states no size for an SVG, a header cut short, or a file that is not of its format', () => {

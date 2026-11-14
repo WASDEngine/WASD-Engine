@@ -100,7 +100,9 @@ export default class GameAddons extends TypertRemoteService {
       now: () => new Date(),
       changed: () => { invalidate?.() },
     })
-    await this.manager.writeStoreIndex()
+    // Every start writes the index and the setup script copies anew, which also replaces an index that an earlier
+    // version wrote with catalog paths that Blender workers cannot read.
+    await this.manager.writeStoreIndex(new AbortController().signal)
     const host: GameAddonToolHost = {
       manager: this.manager,
       project: async (requested, exec) => (await resolveGodotProject(await this.base(requested, exec), requested, exec.signal)).dir,

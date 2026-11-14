@@ -367,6 +367,11 @@ export interface WebCheckRequest {
   readonly width: number
   /** Page height in CSS pixels. */
   readonly height: number
+  /**
+   * Milliseconds from the start of the Web check mode's process by which it prints its result and exits, under the
+   * plugin's own deadline for the check, when it stops that process.
+   */
+  readonly deadlineMs: number
 }
 
 /** One console message of the checked page. */
@@ -400,7 +405,10 @@ export interface WebCheckSample {
   readonly console: readonly WebCheckConsoleLine[]
   /** Why the page's process ended during the check; absent when it kept running. */
   readonly crashed?: string
-  /** The browser reported the page unresponsive. */
+  /**
+   * The page stopped answering: the browser reported it unresponsive, or it did not answer the check's last request,
+   * which then reports no frames.
+   */
   readonly unresponsive: boolean
 }
 

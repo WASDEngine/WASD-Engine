@@ -54,8 +54,7 @@ export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './export-template.ts'
-export { formatWebCheck, GodotWebCheckError } from './web-check.ts'
-export type { GodotWebCheckView } from './web-check.ts'
+export { GodotWebCheckError } from './web-check.ts'
 export { GodotScriptError } from './script.ts'
 export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
 export type { GodotScriptRequest } from './tools.ts'
@@ -325,7 +324,7 @@ export default class GodotController extends TypertRemoteService {
     agentRunsMuted: z.boolean().default(true),
     webTemplateArchiveUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz'),
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
-    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a'),
+    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('477a8c0bff8a89acf58cdd68d913b160e71cfb038cf3648eebc2ab853148a65d'),
     webTemplatePath: z.string().default(''),
     windowsTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
     windowsTemplateEntry: z.string().default('templates/windows_release_x86_64.exe'),

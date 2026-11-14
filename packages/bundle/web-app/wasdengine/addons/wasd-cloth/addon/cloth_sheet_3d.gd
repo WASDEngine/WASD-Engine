@@ -33,18 +33,23 @@ enum Facing {
 		_rebuild()
 
 ## Fabric preset from WasdClothFabrics: silk, cotton, canvas, denim, leather, or rubber. It sets the mass from the
-## area, the stiffness, the damping, and the precision. custom leaves those SoftBody3D properties as they are set.
+## area, the stiffness, the damping, and the precision when the sheet is added to its parent, before it enters the
+## tree, and again whenever a setting changes after that. Jolt keeps the stiffness and the precision that a sheet has
+## when it enters the tree, so set them before. custom leaves those SoftBody3D properties as the scene or your code
+## set them.
 @export_enum("silk", "cotton", "canvas", "denim", "leather", "rubber", "custom") var fabric := "cotton":
 	set(value):
 		fabric = value
-		_apply_fabric()
+		if _fabric_applied:
+			_apply_fabric()
 		notify_property_list_changed()
 
 ## Solver iterations per physics tick; 0 uses the fabric's. Higher stretches less and costs more, about linearly.
 @export_range(0, 40) var precision := 0:
 	set(value):
 		precision = clampi(value, 0, 40)
-		_apply_fabric()
+		if _fabric_applied:
+			_apply_fabric()
 
 ## Edges whose points do not move: top, bottom, left, right, or a corner (top_left, top_right, bottom_left,
 ## bottom_right). Top is +Y when VERTICAL and -Z when HORIZONTAL; left is -X.
@@ -71,13 +76,27 @@ var _local: PackedVector3Array = []
 var _pinned: PackedInt32Array = []
 var _pin_offsets: PackedVector3Array = []
 var _target: Node3D
+## Whether the fabric was applied once; setters apply it again only after that.
+var _fabric_applied := false
 
 
+## Builds the mesh only. A scene sets its SoftBody3D properties before it attaches this script, which runs _init(), and
+## sets fabric after that, so a preset applied here would overwrite the settings of a custom sheet.
 func _init() -> void:
 	_rebuild()
 
 
+## Applies the fabric when the sheet gets its parent: a scene has set all of this node's properties by then, fabric
+## among them, and the soft body does not exist yet, which the physics engine creates when the sheet enters the tree.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PARENTED:
+		_apply_fabric()
+
+
 func _ready() -> void:
+	# A script attached after the sheet got its parent has not applied the fabric yet.
+	if not _fabric_applied:
+		_apply_fabric()
 	if Engine.is_editor_hint():
 		return
 	var engine := str(ProjectSettings.get_setting("physics/3d/physics_engine", "DEFAULT"))
@@ -85,7 +104,6 @@ func _ready() -> void:
 		push_warning("WASD Cloth: %s runs on the %s physics engine. Set [physics] 3d/physics_engine=\"Jolt Physics\" in project.godot; Godot Physics lets soft bodies fall through static bodies." % [name, engine])
 	if not global_basis.get_scale().is_equal_approx(Vector3.ONE):
 		push_warning("WASD Cloth: %s is scaled, and soft bodies ignore scale. Set size instead and keep the scale at 1." % name)
-	_apply_fabric()
 	_pin()
 
 
@@ -162,6 +180,7 @@ func _on_edge(edge: String, column: int, row: int) -> bool:
 
 
 func _apply_fabric() -> void:
+	_fabric_applied = true
 	if fabric == "custom":
 		if precision > 0:
 			simulation_precision = precision
@@ -245,4 +264,6 @@ func _rebuild() -> void:
 		material.albedo_color = Color(0.82, 0.8, 0.76)
 		grid_mesh.surface_set_material(0, material)
 	mesh = grid_mesh
-	_apply_fabric()
+	# The mass follows the area; until the sheet gets its parent, the fabric waits for the scene's values.
+	if _fabric_applied:
+		_apply_fabric()

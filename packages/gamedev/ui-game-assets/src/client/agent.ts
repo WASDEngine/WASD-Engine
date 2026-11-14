@@ -17,8 +17,11 @@ import { findAnimations, type AnimationSources } from './animations2d.ts'
 import { fitDetails, shortened } from './answer.ts'
 import { formatOf, type AssetFormat } from './formats.ts'
 import { OwnFrames } from './frames.ts'
-import { imageSize } from './image-size.ts'
-import { checkedImageSize, DECODED_BYTES_PER_PIXEL, decodePicture, ImageTooLargeError, pixelFacts, type Decoded } from './picture.ts'
+import { imageSize, statesPixels } from './image-size.ts'
+import {
+  checkedImageSize, checkModelImage, DECODED_BYTES_PER_PIXEL, decodePicture, ImageTooLargeError, pixelFacts, UnsizedImageError,
+  type Decoded,
+} from './picture.ts'
 import type { AssetFile } from './read.ts'
 import { drawImagePicture, drawSheet, encodeCanvas, pictureTile, sheetLayout, type Picture, type PictureBounds } from './render2d.ts'
 import { animationDetails, DEFAULT_FPS, gridAnimation, sampledFrames, type SpriteAnimation, type SpriteFrame } from './sprites.ts'
@@ -88,18 +91,30 @@ export class AssetDrawError extends Error {
 
 /**
  * The memory a draw takes while it decodes its asset, which the window's queue counts: the file, and for an image the
- * pixels its header states at what its decoder takes for each.
+ * pixels it may decode at what its decoder takes for each. Those are the pixels its header states when the window
+ * decodes that many, none when the image is refused before decoding, and the most the window decodes when its first
+ * bytes do not tell, as for a header past them or a read that failed.
  * @param request - the request.
  * @param sources - the reads of the calling Session.
+ * @param limits - the window's caps.
  * @param signal - cancellation.
  * @returns the bytes.
  */
-export async function drawWeight(request: AssetRenderRequest, sources: AgentRenderSources, signal: AbortSignal): Promise<number> {
+export async function drawWeight(
+  request: AssetRenderRequest,
+  sources: AgentRenderSources,
+  limits: AgentDrawLimits,
+  signal: AbortSignal,
+): Promise<number> {
   const format = formatOf(request.path)
-  if (format?.kind !== 'image') return request.bytes
+  if (format?.kind !== 'image' || !statesPixels(format)) return request.bytes
   const head = await sources.readHead(request.path, signal)
   const size = head === undefined ? undefined : imageSize(head, format)
-  return request.bytes + (size === undefined ? 0 : size.width * size.height * DECODED_BYTES_PER_PIXEL[format.decoder])
+  // First bytes that hold the whole file and state no size mean a refused image.
+  const whole = head !== undefined && head.byteLength >= request.bytes
+  const stated = size === undefined ? undefined : size.width * size.height
+  const pixels = stated === undefined ? (whole ? 0 : limits.maxDecodedPixels) : stated > limits.maxDecodedPixels ? 0 : stated
+  return request.bytes + pixels * DECODED_BYTES_PER_PIXEL[format.decoder]
 }
 
 /**
@@ -110,13 +125,16 @@ export async function drawWeight(request: AssetRenderRequest, sources: AgentRend
  * @param request - the request, whose limits bound the size the details can give.
  * @param limits - the window's caps.
  * @throws {AssetDrawError} `ASSET_TOO_LARGE` for an image with more pixels than the window decodes, or a side longer
- * than the details can give.
+ * than the details can give; `ASSET_UNREADABLE` for one whose header states no size the window reads.
  */
 function checkImage(path: string, data: Uint8Array, format: AssetFormat, request: AssetRenderRequest, limits: AgentDrawLimits): void {
   try {
     const size = checkedImageSize(data, format, limits.maxDecodedPixels)
     if (size !== undefined) checkEdges(path, size, request)
   } catch (error) {
+    if (error instanceof UnsizedImageError) {
+      throw new AssetDrawError(`${path} is not a ${format.label} file whose header states its size, so this window does not decode it; it may be damaged or another kind of file.`, 'ASSET_UNREADABLE')
+    }
     if (!(error instanceof ImageTooLargeError)) throw error
     throw new AssetDrawError(`${path} is ${error.size.width} × ${error.size.height} pixels, more than the ${error.limit} pixels this window decodes for one image.`, 'ASSET_TOO_LARGE')
   }
@@ -198,6 +216,7 @@ async function answerModel(
   request: AssetRenderRequest,
   format: AssetFormat,
   sources: AgentRenderSources,
+  limits: AgentDrawLimits,
   signal: AbortSignal,
 ): Promise<AssetRenderResult> {
   if (format.kind !== 'model' || format.decoder === 'blend') throw new AssetDrawError(`${request.path} is not a model the viewer reads.`, 'ASSET_FORMAT')
@@ -211,6 +230,7 @@ async function answerModel(
       related: reference => sources.relatedUrl(file.absolutePath, request.path, reference),
       changed: () => {},
       maxBytes: request.maxBytes,
+      checkImage: (data, name) => { checkModelImage(data, name, limits.maxDecodedPixels) },
     }, signal)
   } catch (error) {
     signal.throwIfAborted()
@@ -463,7 +483,7 @@ export async function answerRender(
   const format = formatOf(request.path)
   if (format === undefined) throw new AssetDrawError(`${request.path} is not an asset the viewer reads.`, 'ASSET_FORMAT')
   const answer = format.kind === 'model'
-    ? await answerModel(request, format, sources, signal)
+    ? await answerModel(request, format, sources, limits, signal)
     : await answerImage(request, format, sources, limits, signal)
   return { ...answer, details: fitDetails(answer.details, request.limits) }
 }

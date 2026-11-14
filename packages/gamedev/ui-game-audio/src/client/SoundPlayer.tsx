@@ -123,7 +123,7 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
       if (!file.ok) return { kind: 'failed', failure: file.error }
       const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
       const vouched = lengthBeforeDecoding(probe)
-      if (vouched !== undefined && vouched > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
+      if (vouched !== undefined && vouched.seconds > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
       try {
         const bounds = { maxSeconds: maxDecodedSeconds, signal: controller.signal }
         const buffer = await decodeSound(file.value.data, format, probe?.sampleRate, bounds)

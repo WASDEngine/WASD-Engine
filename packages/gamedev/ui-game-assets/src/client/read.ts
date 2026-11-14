@@ -36,6 +36,16 @@ export type ReadBytes = (
 const WINDOWED_ATTEMPTS = 2
 
 /**
+ * A workspace path as the Host's `workspaceFiles.readBytes` reads it inside the workspace. The Host reads a path whose
+ * first segment is `~` in the home folder, so a relative path through a folder named `~` is sent as `./~/…`.
+ * @param path - workspace path, relative to the workspace folder or absolute.
+ * @returns the path to send.
+ */
+export function readablePath(path: string): string {
+  return path === '~' || path.startsWith('~/') || path.startsWith('~\\') ? `./${path}` : path
+}
+
+/**
  * Read a complete asset. A file above the Host's complete-file cap is read window by window; a file larger than
  * `maxBytes` fails with `workspace-file/too-large` naming `maxBytes`, and one that keeps changing while its windows
  * are read fails with `game-assets/changed`.

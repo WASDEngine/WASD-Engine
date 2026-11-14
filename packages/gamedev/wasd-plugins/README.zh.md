@@ -52,15 +52,18 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `previewMaxSeconds` | `10` | `wasd_record_preview` 片段的最长秒数；`previewSeconds` 不得超过它，否则插件加载失败 |
 | `previewFrameMs` | `80` | 预览相邻两帧之间的毫秒数，即每秒 12.5 帧 |
 | `previewFrameQuality` | `0.9` | 录制截取各帧所用的 JPEG 质量，从 0.1 到 1；静态图保持无损 |
-| `previewWidth` | `480` | 预览 GIF 的最大宽度（像素），分享链接的链接预览显示这个 GIF |
-| `previewWebpWidth` | `960` | 预览动画的最大宽度（像素），即探索页和游戏页面播放的动画 WebP |
-| `previewMinWidth` | `240` | 超过 `previewMaxGifBytes` 的 GIF 或超过 `previewMaxWebpBytes` 的动画在隔帧删减之前缩小到的最小宽度；不得超过 `previewWidth` 和 `previewWebpWidth`，否则插件加载失败 |
+| `previewWidth` | `480` | 预览 GIF 的最大宽度或高度（像素），即其长边的尺寸；分享链接的链接预览显示这个 GIF |
+| `previewWebpWidth` | `960` | 预览动画的最大宽度或高度（像素），即其长边的尺寸；预览动画是探索页和游戏页面播放的动画 WebP |
+| `previewMinWidth` | `240` | 超过 `previewMaxGifBytes` 的 GIF 或超过 `previewMaxWebpBytes` 的动画在隔帧删减之前缩小到的最小长边；不得超过 `previewWidth` 和 `previewWebpWidth`，否则插件加载失败 |
 | `previewStillWidth` | `1280` | 预览静态图的最大宽度（像素） |
 | `previewMaxGifBytes` | `5242880`（5 MiB） | 录制保留的预览 GIF 的最大字节数 |
 | `previewMaxWebpBytes` | `6291456`（6 MiB） | 录制保留的预览动画的最大字节数 |
 | `previewWebpQuality` | `75` | 预览动画的 WebP 质量，从 1 到 100 |
 | `previewEffort` | `4` | GIF 调色板与帧优化所用的 CPU 力度，从 1（最快）到 10（最小） |
 | `previewStartSeconds` | `2` | 录制启动游戏时，游戏在录制开始前运行的秒数 |
+| `previewFrameBufferBytes` | `67108864`（64 MiB） | 编码预览 GIF 时所持有的解码帧的最大字节数；如果录制的帧按 `previewWidth` 解码会超过这个大小，就生成更小的 GIF |
+| `previewConcurrency` | `4` | 预览同时解码或编码的最多帧数 |
+| `previewMinAvailableMemoryBytes` | `268435456`（256 MiB） | 除 GIF 的解码帧之外，编码录制所需保持可用的内存；可用内存不足时，`wasd_record_preview` 失败并附带一条请求释放内存的消息，而需要补录预览的发布会在没有预览的情况下继续 |
 | `builtinModelProviders` | `['deepseek-account', 'deepseek-official']` | 其模型属于 WASD Engine 内置 AI 的模型提供者；游戏的制作信息把这些模型记为内置 AI，而不按模型名称记录 |
 
 插件管理器把本包列入 `WASD_ENGINE_PLUGINS`，[`@deepseek-ai/dsh-official-bundles`](../../util/official-bundles/README.zh.md) 将其加入 `PROTECTED_PLUGINS`，因此插件页面、插件管理工具和 `pluginManager` Remote 都拒绝关闭这一行。只有当 [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot` 服务存在时，导出、预览与发布工具才会注册，因此关闭 Godot 的配置仍保留浏览器工具、“导出 / 分享”按钮和“探索游戏”；发布还需要 `deepseekAccount` 服务提供网站来源与已登录的令牌。
@@ -74,11 +77,11 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `wasd_record_preview` | 通过 `ctx.godot.record()` 录制游戏的预览：录制运行中的游戏 `seconds` 秒（默认 `previewSeconds`，最多 `previewMaxSeconds`），同时从开头播放 `events`（格式与 `godot_input` 相同），保存为 `.wasdengine/preview/preview.webp`（探索页和游戏页面播放的动画）、`preview.gif`（分享链接的链接预览显示的 GIF），以及一张在 `still_at`（默认取中间）截取的静态图，即 `preview.png` 或 `preview.jpg` 中较小的一个。没有运行中的游戏时，它会启动游戏，并在 `previewStartSeconds` 秒后开始录制。结果会把静态图展示给模型，便于智能体重新录制 |
 | `wasd_release_game` | 导出项目，把构建连同游戏的预览上传到网站的游戏 API，作为该游戏的下一个版本（1、2、3……），并返回分享链接。在一个网站上的第一次发布会创建游戏，标题取自 `project.godot`，除非 `title` 另有指定；`notes` 最多 1,000 个字符，显示在游戏页面上；`preview_image`（PNG、JPEG 或 WebP 文件）和 `preview_gif`（GIF 文件）会替代录制的静态图和 GIF；`new_game` 为 `true` 时改为发布一个新游戏的第 1 版，为 `false` 时为与其他文件夹共用游戏的文件夹确认项目的游戏；从这个版本起，`visibility` 为 `public` 时游戏列在网站的探索页上，为 `private` 时不出现在探索页上、只能通过链接访问，不传时保持游戏原有的可见性（新游戏为公开）；`desktop` 指定平台（`windows` 和 `macos`），发布会导出这些平台的构建并作为该版本的下载上传；`check` 为 `false` 时跳过 Web 检查。结果给出游戏是否公开、分享链接、该版本的链接、每个下载链接及其在网站恶意软件扫描中的状态、游戏页面所列的制作信息，以及所发布构建的 Web 检查 |
 
-在会话中，`project`、`preview_image` 和 `preview_gif` 相对于工作目录；不传 `project` 时，工具使用最近的 `project.godot`。通过 WASD Engine MCP 服务器连接的智能体在提供者 `wasd` 下使用这些工具，并且必须传入绝对路径；`wasd_record_preview` 与 `wasd_release_game` 在该连接智能体对应此项目的会话中运行游戏，并显示在该会话的“游戏”标签页中，录制会把静态图作为图片返回。它们的 `wasd_release_game` 还接受 `model`，即该智能体所用 AI 模型的名称，例如 `Claude Opus 5.5`，游戏页面会列出它；不传时，发布记下智能体所在的应用，例如 Claude Code。发布需要已登录的 WASD Engine：未登录时，工具失败并提示用户登录；登录过期时，工具失败并提示用户重新登录。
+在会话中，`project`、`preview_image` 和 `preview_gif` 相对于工作目录；不传 `project` 时，工具使用最近的 `project.godot`。通过 WASD Engine MCP 服务器连接的智能体在提供者 `wasd` 下使用这些工具，并且必须传入绝对路径；`wasd_record_preview` 与 `wasd_release_game` 在该连接智能体对应此项目的会话中运行游戏，并显示在该会话的“游戏”标签页中，录制会把静态图作为图片返回。它们的 `wasd_release_game` 还接受 `model`，即该智能体所用 AI 模型的名称，例如 `Claude Opus 5.5`，游戏页面会列出它；不传时，发布记下智能体所在的应用，例如 Claude Code。发布需要已登录的 WASD Engine：未登录时，工具失败并提示用户登录；登录过期时，工具失败并提示用户重新登录。同一项目的导出、对其构建的 Web 检查、预览录制和发布按调用顺序逐个运行，无论调用来自会话的智能体还是连接的智能体；插件按项目文件夹的真实路径识别项目，因此通过符号链接发出的调用同样要等待，而在等待中被取消的调用不会运行。
 
 游戏在网站上是公开或私密的，带 `visibility` 的发布会在其版本上线时更改它，因此上传失败时保持原样；私密游戏保留其分享链接（游戏一开始就是私密时，网站会为它取一个无法猜到的名字），但探索页从不列出它。所有游戏都公开的网站在回复中不给出可见性，向它发起的私密发布会在上传之前失败（新游戏则在创建之后），因此不会出现任何公开内容。带 `desktop` 的发布在网页版导出之后、任何内容到达网站之前构建桌面版，因此构建失败时不会发布任何内容；桌面版在网页版构建之后上传，每个发往 `PUT /api/v1/games/<id>/releases/<version>/downloads/<platform>`，网站拒绝的下载会成为结果中的一条说明，因为该版本已经发布。网站会对每个下载进行恶意软件扫描，扫描通过后分享页面才提供该下载：上传的回复给出它的扫描状态，扫描进行中为 `pending`，已提供为 `clean`，扫描发现恶意软件或无法运行时为 `flagged` 或 `failed`，这样的下载永远不会提供；不给出状态的网站会立即提供每个下载，因此视为 `clean`。下载链接会统计下载次数；参见后端 README 的“Released games”。
 
-项目在 `.wasdengine/game.json` 中按网站记住每个账户的游戏，因此同一文件夹之后的发布会为同一个游戏添加版本。网站一创建游戏，发布就在上传之前写入该文件，因此上传失败的发布（例如网站因体积过大而拒绝的发布），或调用在网站仍在存储构建时就已结束的发布，都会让项目保持关联，下一次发布会为该游戏添加版本，而不会再创建一个游戏。登录同一网站的每个账户各有自己的游戏：网站只为已登录账户自己的游戏作答，因此发布会加入网站作答的第一个已关联游戏，并先尝试该账户自己的游戏。该文件用 `accountKey()`（账户 ID 的指纹）标明每个游戏所属的账户，还在 `games` 下保留该网站最近一次发布的游戏，供支持按账户关联之前的版本读取。当网站上已没有该账户的游戏时，发布会创建新游戏。`title` 会重命名已有的游戏，`new_game: true` 会发布一个新游戏的第 1 版，此后该文件夹都发布到这个新游戏。网站为版本连续编号，且每个更早的版本都仍可游玩。
+项目在 `.wasdengine/game.json` 中按网站记住每个账户的游戏，因此同一文件夹之后的发布会为同一个游戏添加版本。网站一创建游戏，发布就在上传之前写入该文件，因此上传失败的发布（例如网站因体积过大而拒绝的发布），或调用在网站仍在存储构建时就已结束的发布，都会让项目保持关联，下一次发布会为该游戏添加版本，而不会再创建一个游戏。登录同一网站的每个账户各有自己的游戏：网站只为已登录账户自己的游戏作答，因此发布会加入网站作答的第一个已关联游戏，并先尝试该账户自己的游戏。该文件用 `accountKey()`（账户 ID 的指纹）标明每个游戏所属的账户，还在 `games` 下保留该网站最近一次发布的游戏，供支持按账户关联之前的版本读取。当网站上已没有该账户的游戏时，发布会创建新游戏。`title` 会重命名已有的游戏，`new_game: true` 会发布一个新游戏的第 1 版，此后该文件夹都发布到这个新游戏。网站为版本连续编号，且每个更早的版本都仍可游玩。每次修改都整体替换该文件，因此中途停止的写入会留下之前的关联。
 
 复制的项目文件夹会带上原文件夹的 `game.json`。`<dataRoot>/release-folders/` 按真实路径和文件系统 ID 记录这台电脑上哪些文件夹发布过每个游戏；重命名或在同一卷内移动都会保留文件系统 ID。如果一个文件夹从未发布过它所关联的游戏，而另一个已记录的文件夹仍然存在并关联到该游戏，发布会在导出之前失败，并给出一条说明另一个文件夹、请智能体询问用户的消息；随后 `new_game: false` 会把版本加入该游戏并记录这个文件夹，`new_game: true` 会创建新游戏。已记录的文件夹都已不存在或关联到其他游戏时（例如移动之后），文件夹发布时不会询问；游戏在这台电脑上的第一次发布也不会询问。
 
@@ -145,19 +148,20 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 
 发布会把导出结果写入系统临时文件夹中的 ZIP 文件：每个文件通过 `node:zlib` 流式写入，已经压缩的格式按原样存储；然后把它作为 `POST /api/v1/games/<id>/releases` 的请求体上传，更新说明和可见性放在查询字符串中，上传后删除该文件。桌面版构建本身就是 Godot 写出的 ZIP 文件，因此按原样上传。上传返回 404 表示游戏在此期间被删除，此时会创建新游戏并再次上传。之后再上传预览：静态图发往 `PUT /api/v1/games/<id>/cover`，GIF 发往 `PUT /api/v1/games/<id>/gif`，然后把制作信息以 JSON 发往 `PUT /api/v1/games/<id>/credits`；网站拒绝的内容会成为结果中的一条说明，因为该版本已经发布。制作信息文件整体写入后再重命名到位，每个项目一次只进行一项修改；如果某项修改没有带来本次运行中在文件里没见过的内容，就不会写入。
 
-录制来自 Godot 插件的 `record()`：按 `previewFrameMs` 间隔截取、质量为 `previewFrameQuality` 的 JPEG 截图及其截取时间，宽度最多为 `previewWidth` 与 `previewWebpWidth` 中较大者，以及一张宽度为 `previewStillWidth` 的 PNG 静态图；在动画的宽度下，游戏编码 JPEG 能跟上帧间隔，而 PNG 跟不上。[Sharp](https://sharp.pixelplumbing.com/) 在第一次录制时加载，它把每一帧缩放到第一帧的尺寸内，并把这些帧编码两次：一个宽度最多 `previewWidth` 的循环 GIF，以及一个质量为 `previewWebpQuality`、宽度最多 `previewWebpWidth` 的循环动画 WebP，两者的帧延时都取自截取时间；超过各自字节上限时每次缩窄四分之一，直到 `previewMinWidth`，之后再隔帧删减。对于 3D 游戏的录制，宽度为 GIF 两倍的 WebP 仍比 GIF 更小。静态图在 PNG 小于质量 88 的 JPEG 时保留 PNG（例如像素画和纯色画面），否则使用该 JPEG。
+录制来自 Godot 插件的 `record()`：按 `previewFrameMs` 间隔截取、质量为 `previewFrameQuality` 的 JPEG 截图及其截取时间，宽度最多为 `previewWidth` 与 `previewWebpWidth` 中较大者，以及一张宽度为 `previewStillWidth` 的 PNG 静态图；在动画的宽度下，游戏编码 JPEG 能跟上帧间隔，而 PNG 跟不上。[Sharp](https://sharp.pixelplumbing.com/) 在第一次录制时加载，它把每一帧缩放到第一帧的形状内，并把这些帧编码两次：一个长边最多 `previewWidth` 的循环 GIF，以及一个长边最多 `previewWebpWidth` 的循环动画 WebP，两者的帧延时都取自截取时间。只有当电脑的可用内存不少于 GIF 的解码帧再加上 `previewMinAvailableMemoryBytes` 时，编码才会开始；同时解码或编码的帧最多为 `previewConcurrency` 帧。GIF 的帧解码到一个缓冲区中，每次尝试都复用它，因此没有哪次尝试会再复制一遍这些帧；如果录制的帧按 `previewWidth` 解码会超过 `previewFrameBufferBytes`，GIF 就从能容纳它们的最大尺寸开始。动画的每一帧都是一张独立的有损 WebP 图像，质量为 `previewWebpQuality`，插件把这些图像写入一个动画 WebP 文件，其中每一帧都替换前一帧：libwebp 的动画编码器只保留相对上一帧发生变化的部分，并省略低于其质量阈值的变化，因此淡入淡出或每帧只漂移一个色阶的颜色从未进入它的文件，过时的色块会一直留在画面上。整帧比只存变化需要更多字节。超过字节上限的编码会根据其字节数确定下一次的尺寸，最多为本次尺寸的四分之三、且不小于 `previewMinWidth`，之后再隔帧删减。静态图在 PNG 小于质量 88 的 JPEG 时保留 PNG（例如像素画和纯色画面），否则使用该 JPEG。
 
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | `WasdPlugins`：配置、工具注册、游戏 MCP 提供者和 `wasdPlugins` Remote |
 | [`src/tools.ts`](src/tools.ts) | 工具定义及其 MCP 包装 |
+| [`src/web-check-text.ts`](src/web-check-text.ts) | 工具结果为 Web 检查报告给出的文本 |
 | [`src/browser.ts`](src/browser.ts) | 浏览器命令队列、`browser_*` 工具定义、截图存储和 `browser` 提示词段落 |
 | [`src/client/browser.ts`](src/client/browser.ts) | 浏览器的窗口部分：窗口接手哪些命令、智能体的标签页，以及对其页面的操作 |
 | [`src/client/page.ts`](src/client/page.ts) | 窗口在页面中运行的脚本：页面文本及其编号控件，查找、点击和填写控件 |
 | [`src/release.ts`](src/release.ts) | 网站 API 客户端、游戏关联文件，以及包含可见性、桌面版下载和预览上传的发布流程 |
 | [`src/preview.ts`](src/preview.ts) | 预览编码、预览文件夹和文件摘要 |
 | [`src/credits.ts`](src/credits.ts) | 制作信息：哪些工具名称对应哪个工具、项目的制作信息文件，以及插件记录中的插件 |
-| [`src/state.ts`](src/state.ts) | 项目的 `.wasdengine` 状态文件夹 |
+| [`src/state.ts`](src/state.ts) | 项目的 `.wasdengine` 状态文件夹、其文件的整体写入，以及让每个项目的导出、录制和发布逐个运行的队列 |
 | [`src/folders.ts`](src/folders.ts) | 发布文件夹记录：这台电脑上哪些文件夹发布过每个游戏 |
 | [`src/zip.ts`](src/zip.ts) | 上传所用的流式 ZIP 写入器 |
 | [`src/client/`](src/client/) | “导出 / 分享”按钮、“探索游戏”、首次构建提示、它们的文案、提示语和 Remote 挂载 |
@@ -201,7 +205,7 @@ Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列
 
 #### 模型可见内容
 
-`wasd_export_web` 给出输出文件夹、其中的文件及其大小，并说明要通过网页服务器打开 `index.html`。`wasd_export_desktop` 给出每个平台的 ZIP 文件、其大小和内容，并说明下载的副本首次运行前 Windows SmartScreen 和 macOS Gatekeeper 会先询问，以及如何放行。`wasd_record_preview` 给出动画、GIF 和静态图文件及其帧数、时长、尺寸、字节数和各自的用途，说明录制是否启动了游戏或游戏是否始终处于暂停状态，并在模型接受图片时把静态图作为图片展示。`wasd_release_game` 给出标题、版本、游戏公开在探索页上还是私密、分享链接、该版本的链接、每个下载链接及其恶意软件扫描状态，以及游戏页面所列的制作信息，例如 `Made with, as the game's page credits it: Claude Opus 5.5, Godot, Blender with MPFB (MakeHuman).`，说明分享页面列出更早的版本并接受评论，说明它提供这些下载，或者在每个下载的恶意软件扫描通过后才提供、永远不提供扫描标记或无法扫描的下载，并像桌面版导出一样附上首次运行说明，并说明分享链接在链接预览中显示 GIF、在浏览器中打开时运行游戏。两者都会列出关于网页版构建的说明，例如 Forward+ 项目使用兼容性渲染器或数据包超过 100 MiB，以及导出的警告，并以 Web 检查结尾：一段测量结果、构建打印的错误和警告及其次数，以及诸如 `The page froze for up to 30.2 s at a time (5 freezes of a second or more), drawing nothing and answering no input; …` 的发现，或者 `Web check: it could not run:` 加上原因。失败会附带原因，例如未登录的提示、Godot 的导出错误，或者对于与另一个文件夹共用游戏的文件夹，需要询问用户的问题以及回答它的 `new_game` 取值。
+`wasd_export_web` 给出输出文件夹、其中的文件及其大小，并说明要通过网页服务器打开 `index.html`。`wasd_export_desktop` 给出每个平台的 ZIP 文件、其大小和内容，并说明下载的副本首次运行前 Windows SmartScreen 和 macOS Gatekeeper 会先询问，以及如何放行。`wasd_record_preview` 给出动画、GIF 和静态图文件及其帧数、时长、尺寸、字节数和各自的用途，说明录制是否启动了游戏或游戏是否始终处于暂停状态，并在模型接受图片时把静态图作为图片展示。`wasd_release_game` 给出标题、版本、游戏公开在探索页上还是私密、分享链接、该版本的链接、每个下载链接及其恶意软件扫描状态，以及游戏页面所列的制作信息，例如 `Made with, as the game's page credits it: Claude Opus 5.5, Godot, Blender with MPFB (MakeHuman).`，说明分享页面列出更早的版本并接受评论，说明它提供这些下载，或者在每个下载的恶意软件扫描通过后才提供、永远不提供扫描标记或无法扫描的下载，并像桌面版导出一样附上首次运行说明，并说明分享链接在链接预览中显示 GIF、在浏览器中打开时运行游戏。两者都会列出关于网页版构建的说明，例如 Forward+ 项目使用兼容性渲染器或数据包超过 100 MiB，以及导出的警告，并以 Web 检查结尾：一段测量结果、构建打印的错误和警告及其次数，以及诸如 `The page froze for up to 30.2 s at a time (5 freezes of a second or more), drawing nothing and answering no input; …` 的发现，或者 `Web check: it could not run:` 加上原因。失败会附带原因，例如未登录的提示、Godot 的导出错误、电脑可用内存不足以编码的录制，或者对于与另一个文件夹共用游戏的文件夹，需要询问用户的问题以及回答它的 `new_game` 取值。
 
 #### Token 影响
 

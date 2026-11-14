@@ -313,7 +313,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 发现 | `game-addons` 部分列出目录中的每个扩展、它有帮助的阶段以及何时使用它；`game_addons` 的 `search` 按游戏的需求对目录排序，并显示每个扩展的大小、冲突以及何时不用；`guide` 在安装前返回指南 |
 | 判断 | 智能体判断游戏需要某个扩展时就安装或移除它，在任何审批策略下都不询问用户；该部分告诉它何时值得安装扩展，并要求它告诉用户添加了什么以及许可证 |
 | Godot 安装 | 压缩包只下载一次到 `<dataRoot>/archives/<sha256>.zip`，并须与固定值一致；其中一个文件夹经 `.wasdengine/staging/` 解压到 `res://addons/<folder>/`，并一同加入条目在目录中的叠加文件夹里的文件，例如 Universal Animation Library 动画包的导入设置和 `retarget.gd`；`project.godot` 获得插件的 `_enable_plugin()` 本会添加的编辑器插件、自动加载与设置；`THIRD_PARTY_NOTICES.md` 获得许可证；`.wasdengine/addons.json` 记录该扩展；`ctx.godot.importProject` 导入项目 |
-| Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
+| Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本在存储目录中的副本（`<blenderStore>/.wasd-setup/<id>/`，每次启动时写入）和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
 | 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
 | 移除 | 记录中的路径、该扩展的 `project.godot` 条目及其声明段落会被删除；另一个已安装扩展也设置的设置项会保留；结果会列出仍在使用该扩展的文件 |
 
@@ -335,9 +335,9 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 **agent 的视图。** `game-assets` 行挂载 [`@deepseek-ai/dsh-game-assets`](../../packages/gamedev/game-assets/README.zh.md)，即原生 `asset_search` 与 `asset_view` 工具。`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 让一个窗口用该标签页自己的查看器绘制素材：
 
-1. 工具解析出素材在 Session 工作目录内的路径、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：工作区路径（相对于 Session 头部记录的文件夹，窗口按该文件夹解析该 Session 的路径）、该文件以及 glTF 文件所引用的缓冲区和图片的大小、类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
+1. 工具解析出素材在 Session 工作目录内的路径、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：工作区路径（相对于 Session 头部记录的文件夹，窗口按该文件夹解析该 Session 的路径）、该文件以及 glTF 或 GLB 文件所引用的缓冲区和图片的大小、类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
 2. Remote events 白名单把该 waterfall 转发给每个可读取该 Session 的所有者窗口；第一个应答生效，无法处理的窗口（例如模型所需的 WebGL 不可用）用 `next()` 委托出去。
-3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时解码的内存合计不超过 64 MiB，更大的绘制单独进行；图片计入其文件及其文件头所述的像素，这些在等待之前从其开头的字节读取；文件头所述像素超过 8192 × 8192 的图片会在解码之前被拒绝：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
+3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时解码的内存合计不超过 64 MiB，更大的绘制单独进行；图片计入其文件及其文件头所述的像素，这些在等待之前从其开头的字节读取，未注明像素时按 8192 × 8192 像素计入；文件头所述像素超过 8192 × 8192 的图片，以及其格式本应注明尺寸却未注明的图片，会在解码之前被拒绝：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
 4. Host 逐字段验证应答，把图片作为附件存储给接受图像的模型，并把详细信息作为文本返回；不接受图像的模型只得到详细信息，没有窗口应答的调用以 `ASSET_NO_WINDOW` 失败。
 
 `show` 发出 `game-assets/reveal`，附带 Session、素材、动画和网格；白名单把它转发给可读取该 Session 的窗口，这些窗口会在 Session 不在屏幕上时打开它，并打开其「素材」标签页，选中该素材，在图片上显示该网格并播放该动画。队友或子 agent 会在其子 agent 树的领导 agent 的 Session 中显示素材，也就是用户正在查看的 Session。

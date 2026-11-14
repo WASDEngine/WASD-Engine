@@ -7,10 +7,11 @@
  * and a copy does not.
  * @module @deepseek-ai/dsh-wasd-plugins/src/folders
  */
-import { createHash, randomUUID } from 'node:crypto'
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, realpath, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { z } from 'zod'
+import { writeWhole } from './state.ts'
 
 /** One project folder on this computer. */
 export interface ReleaseFolder {
@@ -88,14 +89,8 @@ export class ReleaseFolders {
     const others = (await this.list(origin, gameId)).filter(known => known.path !== folder.path && known.inode !== folder.inode)
     const file = this.file(origin, gameId)
     await mkdir(dirname(file), { recursive: true })
-    // Written whole, then renamed into place, so a reader never sees part of a record.
-    const temporary = `${file}.${randomUUID()}.tmp`
-    try {
-      await writeFile(temporary, `${JSON.stringify({ format: 1, folders: [folder, ...others] }, null, 2)}\n`)
-      await rename(temporary, file)
-    } finally {
-      await rm(temporary, { force: true })
-    }
+    // Replaced whole, so a reader never sees part of a record.
+    await writeWhole(file, `${JSON.stringify({ format: 1, folders: [folder, ...others] }, null, 2)}\n`)
   }
 
   /**

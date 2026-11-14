@@ -17,6 +17,7 @@ import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelAssetDetails } from '@deepseek-ai/dsh-game-assets/types'
 import { DetailsPanel, type MorphControl } from './DetailsPanel.tsx'
 import type { NS } from './locales.ts'
+import { checkModelImage } from './picture.ts'
 import type { AssetFile } from './read.ts'
 import type { AssetEntry } from './scan.ts'
 import type { ViewRequest } from './source.ts'
@@ -41,6 +42,8 @@ export interface ModelViewProps {
   readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
   /** Largest number of bytes a model's description may size itself, beyond its files; a larger model shows a notice. */
   readonly maxBytes: number
+  /** Most pixels of an image a model names that the viewer decodes, as its header states them; a larger one fails the model. */
+  readonly maxDecodedPixels: number
   /** Whether the view is on screen; a hidden view draws nothing. */
   readonly visible: boolean
   /** What an agent asked to show: the clip to play once the model shows; `request` changes for each ask. */
@@ -166,7 +169,7 @@ function Timeline({ stage, t }: { readonly stage: ModelStage; readonly t: Transl
  * @param props - the asset, its bytes, the related-file resolver, the clip an agent asked for, and copy.
  * @returns the stage over its timeline, info bar, controls, and details.
  */
-export function ModelView({ asset, file, relatedUrl, maxBytes, visible, requested, t }: ModelViewProps): ReactNode {
+export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels, visible, requested, t }: ModelViewProps): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<StageState>()
@@ -245,6 +248,7 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, visible, requeste
       related: reference => relatedUrl(file.absolutePath, path, reference),
       changed: () => { drawn.requestRender() },
       maxBytes,
+      checkImage: (data, name) => { checkModelImage(data, name, maxDecodedPixels) },
     }, controller.signal).then((model) => {
       if (controller.signal.aborted) {
         model.dispose()
@@ -284,7 +288,7 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, visible, requeste
       if (!controller.signal.aborted) setPhase(error instanceof module.ModelTooLargeError ? 'tooLarge' : 'failed')
     })
     return () => { controller.abort() }
-  }, [stage, file, path, format, relatedUrl, maxBytes, asset.format.label])
+  }, [stage, file, path, format, relatedUrl, maxBytes, maxDecodedPixels, asset.format.label])
 
   const drawn = stage?.kind === 'ready' ? stage.stage : undefined
   const clips = details?.animations.map(animation => animation.name) ?? settings.current.clips

@@ -4,9 +4,10 @@
  * The plugin serves the export folder on a loopback port and starts the browser that `webCheckCommand` names, the
  * Desktop app in its Web check mode, with `--wasd-web-check=` and a JSON {@link WebCheckRequest}. That process opens the
  * page in an offscreen window with its own GPU process, measures it, and prints one stdout line, {@link WEB_CHECK_MARKER}
- * and a JSON {@link WebCheckSample}, which this module validates and turns into a {@link GodotWebCheck}: when the game
- * started, its longest main-thread freeze, its frame rate and draw calls, the errors and warnings it printed, and
- * findings that explain the ones players notice and how to fix them.
+ * and a JSON {@link WebCheckSample}, by the deadline that the request names, under the check's own. This module
+ * validates that line and turns it into a {@link GodotWebCheck}: when the game started, its longest main-thread freeze,
+ * its frame rate and draw calls, the errors and warnings it printed, whether it stopped answering, and findings that
+ * explain the ones players notice and how to fix them.
  * @module @deepseek-ai/dsh-godot/src/web-check
  */
 import { createReadStream } from 'node:fs'
@@ -34,6 +35,12 @@ export const WEB_CHECK_MESSAGES = 12
 /** Page size of the check, in CSS pixels. */
 export const WEB_CHECK_VIEWPORT = { width: 1280, height: 720 } as const
 
+/**
+ * Time that the browser's deadline leaves before the check's own, in milliseconds, for the browser to print its result
+ * and exit before the check stops it; at most half the check's deadline.
+ */
+export const WEB_CHECK_EXIT_MS = 10_000
+
 /** A main-thread task at least this long, in milliseconds, counts as a freeze. */
 const FREEZE_MS = 1000
 
@@ -48,6 +55,12 @@ const LOW_FPS = 30
 
 /** A median draw call count above this gets a finding. */
 const MANY_DRAW_CALLS = 1500
+
+/** The finding of a page that stopped answering and had not answered again when the check ended. */
+const STOPPED_FINDING = 'The page stopped answering during the check and had not answered again when the check ended, so the check measured no frames: the game froze, for good or for longer than players wait, and browsers offer to close a page that stays frozen. Browsers run Godot\'s scripts and drawing on one thread, so a loop that never ends, or work that takes many seconds in one frame, stops the whole tab: look for loops whose exit condition can stay false, and spread long work over frames with `await get_tree().process_frame`.'
+
+/** The finding of a page that the browser reported unresponsive and that answered again. */
+const UNRESPONSIVE_FINDING = 'The browser reported the page unresponsive during the check: it ran nothing else for several seconds, and browsers offer players to close such a page.'
 
 /** Godot's messages that mean the Web build lacks something the project uses, and what that does to the game. */
 const MESSAGE_FINDINGS: readonly { readonly match: RegExp; readonly finding: string }[] = [
@@ -206,6 +219,8 @@ export function summarizeWebCheck(sample: WebCheckSample, watchSeconds: number, 
   } else if (sample.readyMs > SLOW_START_MS) {
     findings.push(`The game took ${String(seconds(sample.readyMs))} s from opening the page to draw frames steadily, with its files already on this computer; players also wait for the download first.`)
   }
+  // The browser leaves out the frames of a page that did not answer its last request.
+  if (sample.unresponsive) findings.push(frames ? UNRESPONSIVE_FINDING : STOPPED_FINDING)
   if (longest >= FREEZE_MS && (longest >= FREEZE_FINDING_MS || freezes > 1)) {
     findings.push(`The page froze for up to ${String(seconds(longest))} s at a time (${String(freezes)} ${freezes === 1 ? 'freeze' : 'freezes'} of a second or more), drawing nothing and answering no input; browsers offer to close a page that stays frozen. Browsers run Godot's scripts and drawing on one thread, so work that takes seconds in one frame stops the whole tab: spread it over frames, for example by building a level in chunks with \`await get_tree().process_frame\` between them. Many new materials or lights appearing at once also freeze it while their shaders compile.`)
   }
@@ -329,12 +344,14 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
   if (options.command.length === 0) throw new GodotWebCheckError(WEB_CHECK_UNAVAILABLE)
   const served = await serveFolder(options.outputDir)
   try {
-    const request: WebCheckRequest = {
+    const request = {
       url: `${served.origin}/${options.entry.split('/').map(encodeURIComponent).join('/')}`,
       seconds: options.seconds,
       startTimeoutMs: options.startTimeoutMs,
       ...WEB_CHECK_VIEWPORT,
-    }
+      // From the browser's start: it prints what it measured by then, before this check's deadline stops it.
+      deadlineMs: options.timeoutMs - Math.min(WEB_CHECK_EXIT_MS, options.timeoutMs / 2),
+    } satisfies WebCheckRequest
     const outcome = await runGodotCommand({
       subprocess: options.subprocess,
       argv: [...options.command, `${WEB_CHECK_ARGUMENT}=${JSON.stringify(request)}`],
@@ -355,37 +372,4 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
   } finally {
     await served.close()
   }
-}
-
-/** A Web check report whose message levels are plain strings, as tool results carry it. */
-export type GodotWebCheckView = Omit<GodotWebCheck, 'messages'> & {
-  readonly messages: readonly { readonly level: string; readonly text: string; readonly count: number }[]
-}
-
-/**
- * Describe a Web check: what it did, what it measured, the errors and warnings, and the findings.
- * @param check - the report.
- * @returns the text, one paragraph or list item per line.
- */
-export function formatWebCheck(check: GodotWebCheckView): string {
-  const measured = [
-    `longest freeze ${String(check.longestFreezeSeconds)} s${check.freezes > 0 ? ` (${String(check.freezes)} of a second or more)` : ''}`,
-    ...check.fps === undefined ? [] : [`${String(check.fps)} fps, slowest frame ${String(check.slowestFrameMs ?? 0)} ms`],
-    ...check.drawCalls === undefined ? [] : [`${String(check.drawCalls.median)} draw calls per frame (median, up to ${String(check.drawCalls.max)})`],
-    `${String(check.programs)} shader programs`,
-    ...check.crashed === undefined ? [] : [`the page's process ended (${check.crashed})`],
-  ].join('; ')
-  let opening: string
-  if (!check.started) opening = 'Web check: a browser opened the build, and the game did not start'
-  else if (check.readySeconds === undefined) opening = `Web check: a browser opened the build, Godot started the game after ${String(check.startSeconds ?? 0)} s, and it never drew frames steadily`
-  else opening = `Web check: a browser opened the build, Godot started the game after ${String(check.startSeconds ?? 0)} s, it drew frames steadily from ${String(check.readySeconds)} s on, and the check watched it run for ${String(check.seconds)} s without input`
-  const lines = [`${opening}: ${measured}.`]
-  if (check.messages.length === 0) {
-    lines.push('The build printed no errors or warnings.')
-  } else {
-    lines.push('Errors and warnings the build printed:', ...check.messages.map(message => `- ${message.text}${message.count > 1 ? ` (${String(message.count)} times)` : ''}`))
-    if (check.moreMessages > 0) lines.push(`- … and ${String(check.moreMessages)} more.`)
-  }
-  if (check.findings.length > 0) lines.push('Findings:', ...check.findings.map(finding => `- ${finding}`))
-  return lines.join('\n')
 }

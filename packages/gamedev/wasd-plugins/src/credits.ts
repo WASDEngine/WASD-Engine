@@ -8,11 +8,10 @@
  * server that name no project to the project the same agent used last.
  * @module @deepseek-ai/dsh-wasd-plugins/src/credits
  */
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { STATE_DIR } from './state.ts'
+import { STATE_DIR, writeWhole } from './state.ts'
 
 /** File name of a project's credits inside its state folder. */
 export const CREDITS_FILE = 'credits.json'
@@ -294,15 +293,8 @@ function merged(current: ProjectCredits, models: readonly ModelCredit[], tools: 
 }
 
 async function writeCredits(projectDir: string, credits: ProjectCredits): Promise<void> {
-  const dir = join(projectDir, STATE_DIR)
-  await mkdir(dir, { recursive: true })
-  const temporary = join(dir, `.${CREDITS_FILE}.${randomUUID()}.tmp`)
-  try {
-    await writeFile(temporary, `${JSON.stringify({ format: CREDITS_FORMAT, models: credits.models, tools: credits.tools }, null, 2)}\n`)
-    await rename(temporary, creditsPath(projectDir))
-  } finally {
-    await rm(temporary, { force: true })
-  }
+  await mkdir(join(projectDir, STATE_DIR), { recursive: true })
+  await writeWhole(creditsPath(projectDir), `${JSON.stringify({ format: CREDITS_FORMAT, models: credits.models, tools: credits.tools }, null, 2)}\n`)
 }
 
 /** Owner of the credits files that this process writes, and of what connected agents used before they named a project. */

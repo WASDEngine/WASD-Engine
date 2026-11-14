@@ -36,12 +36,20 @@ async function recording(count: number, options: RecordingShape = {}): Promise<G
   return { frames, still, windowWidth: width * 4, windowHeight: height * 4, started: false, paused: false }
 }
 
-/** An encoding that keeps the frames' width, within generous limits, unless the spec says otherwise. */
+/** An encoding that keeps the frames' size, within generous limits and with memory to spare, unless the spec says otherwise. */
 function encoding(overrides: Partial<PreviewEncoding> = {}): PreviewEncoding {
   return {
     gifWidth: 4096, maxGifBytes: 50 * 1024 * 1024, webpWidth: 4096, maxWebpBytes: 50 * 1024 * 1024,
-    webpQuality: 75, minWidth: 64, effort: 1, ...overrides,
+    webpQuality: 75, minWidth: 64, effort: 1, frameBufferBytes: 1024 ** 3, concurrency: 4,
+    minAvailableMemoryBytes: 0, availableMemory: () => Number.MAX_SAFE_INTEGER, ...overrides,
   }
+}
+
+/** Mean absolute difference per channel value between two images of the same size, as raw RGB. */
+function meanDifference(left: Uint8Array, right: Uint8Array): number {
+  let sum = 0
+  for (let index = 0; index < left.length; index++) sum += Math.abs((left[index] as number) - (right[index] as number))
+  return sum / left.length
 }
 
 const folders: string[] = []
@@ -100,6 +108,58 @@ describe('encodePreview', () => {
     controller.abort(new Error('stopped'))
     await expect(encodePreview(mixed, encoding({ maxGifBytes: 1024 }), controller.signal)).rejects.toThrow('stopped')
     await expect(encodePreview({ ...mixed, frames: [] }, encoding(), signal)).rejects.toThrow('no frames')
+  })
+
+  it('plays a background that changes by one or two levels a frame in every frame, also beside a moving object', async () => {
+    const width = 160
+    const height = 90
+    const count = 30
+    const pageBytes = width * height * 3
+    const sources: Buffer[] = []
+    const frames: GodotRecordedImage[] = []
+    for (let index = 0; index < count; index++) {
+      // A background whose color drifts slowly, as a fade or a day cycle does, while a white square moves across it.
+      const shade = 40 + Math.round(index * 1.5)
+      const pixels = Buffer.alloc(pageBytes)
+      for (let pixel = 0; pixel < width * height; pixel++) {
+        const x = pixel % width
+        const y = Math.floor(pixel / width)
+        const left = (index * 4) % (width - 8)
+        const square = x >= left && x < left + 8 && y >= 8 && y < 16
+        pixels.set(square ? [255, 255, 255] : [shade, Math.round(shade / 2), 200 - shade], pixel * 3)
+      }
+      sources.push(pixels)
+      frames.push({ image: await sharp(pixels, { raw: { width, height, channels: 3 } }).png().toBuffer(), type: 'image/png', width, height, atMs: index * 80 })
+    }
+    const still = frames[0] as GodotRecordedImage
+    const recorded = { frames, still, windowWidth: width, windowHeight: height, started: false, paused: false }
+    const preview = await encodePreview(recorded, encoding(), signal)
+    const decoded = await sharp(preview.webp, { animated: true }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
+    expect(decoded.info.height).toBe(height * count)
+    const drift = sources.map((source, index) => meanDifference(decoded.data.subarray(index * pageBytes, (index + 1) * pageBytes), source))
+    expect(drift.at(-1)).toBeLessThan(3)
+    expect(Math.max(...drift)).toBeLessThan(3)
+  })
+
+  it('fits the GIF and the animation within their size on the longer side, so a tall game is as small as a wide one', async () => {
+    const tall = await encodePreview(await recording(3, { width: 90, height: 160 }), encoding({ gifWidth: 80, webpWidth: 120 }), signal)
+    expect(tall).toMatchObject({ gifWidth: 45, gifHeight: 80, webpWidth: 68, webpHeight: 120, frames: 3, webpFrames: 3 })
+    expect(await sharp(tall.webp, { animated: true }).metadata()).toMatchObject({ pages: 3, width: 68, pageHeight: 120 })
+  })
+
+  it('starts a GIF whose decoded frames would pass frameBufferBytes at the largest size that keeps them within it', async () => {
+    const preview = await encodePreview(await recording(8), encoding({ frameBufferBytes: 100_000 }), signal)
+    expect(preview.frames).toBe(8)
+    expect(preview.gifWidth * preview.gifHeight * 3 * 8).toBeLessThanOrEqual(100_000)
+    expect(preview.gifWidth).toBeGreaterThanOrEqual(80)
+    // The animation encodes one frame at a time, so the budget leaves it at full size.
+    expect(preview.webpWidth).toBe(160)
+  })
+
+  it('refuses to encode while the computer has less memory available than the encoding needs', async () => {
+    const short = encoding({ minAvailableMemoryBytes: 64 * 1024 ** 2, availableMemory: () => 32 * 1024 ** 2 })
+    await expect(encodePreview(await recording(2), short, signal))
+      .rejects.toThrow(/^The computer has 32 MB of memory available, less than the 64 MB that encoding the preview needs/u)
   })
 })
 

@@ -1,7 +1,7 @@
 /** What the header probe reads from WAV, AIFF, FLAC, MP3, and Ogg files, and how the AIFF decoder reads samples. */
 import { describe, expect, it } from 'vitest'
 import { AiffDecodeError, decodeAiff } from '../src/audio/aiff.ts'
-import { probeAudio, readExtended } from '../src/audio/probe.ts'
+import { OGG_MAX_BITS_PER_CHANNEL, probeAudio, readExtended } from '../src/audio/probe.ts'
 import { aiff, Bytes, extended, memoryReader, pcmWav } from './signals.ts'
 
 async function probe(bytes: Uint8Array): Promise<Awaited<ReturnType<typeof probeAudio>>> {
@@ -96,7 +96,19 @@ describe('probeAudio', () => {
         .text('LAME3.100').zeros(12).raw(0x24, 0x03, 0xe8),
     })
     const file = Uint8Array.from([...info, ...mp3Frame(), ...mp3Frame()])
-    expect(await probe(file)).toEqual({ format: 'MP3', sampleRate: 44_100, channels: 2, seconds: (100 * 1152 - 576 - 1000) / 44_100, bitrate: Math.round(41_700 * 8 / ((100 * 1152 - 1576) / 44_100)) })
+    expect(await probe(file)).toEqual({
+      format: 'MP3', sampleRate: 44_100, channels: 2, seconds: (100 * 1152 - 576 - 1000) / 44_100, bitrate: Math.round(41_700 * 8 / ((100 * 1152 - 1576) / 44_100)),
+      minSeconds: file.length * 8 / 320_000,
+    })
+  })
+
+  it('states the shortest length an MP3 file\'s size allows beside a frame count that understates it', async () => {
+    // An Info frame that counts 2 frames, at the head of a megabyte of 128 kbps frames.
+    const info = mp3Frame({ body: frame => frame.zeros(32).text('Info').int(0x01, 4, true).int(2, 4, true) })
+    const file = new Uint8Array(1_000_000)
+    file.set(info)
+    for (let at = 417; at + 417 <= file.length; at += 417) file.set(mp3Frame(), at)
+    expect(await probe(file)).toMatchObject({ seconds: 2 * 1152 / 44_100, minSeconds: file.length * 8 / 320_000 })
   })
 
   it('reads a VBRI frame count, skips an ID3 tag, and estimates a length without a frame count from the bit rate', async () => {
@@ -105,8 +117,23 @@ describe('probeAudio', () => {
     const tag = new Bytes().text('ID3').raw(3, 0, 0, 0, 0, 2, 44).zeros(300).bytes
     const plain = Uint8Array.from([...tag, ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true }), ...mp3Frame({ mono: true })])
     expect(await probe(plain)).toEqual({
-      format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true, minSeconds: 3 * 417 * 8 / 320_000,
+      format: 'MP3', sampleRate: 44_100, channels: 1, bitrate: 128_000, seconds: 3 * 417 * 8 / 128_000, estimated: true, constantBitRate: true,
+      minSeconds: 3 * 417 * 8 / 320_000,
     })
+  })
+
+  it('tells a constant bit rate MP3 without a frame count by frames found through the file', async () => {
+    // MPEG-1 layer III at 32 kbps and 32 kHz: 144-byte frames, 47 MB of them, 11,750 s long.
+    const frame = [0xff, 0xfb, 0x18, 0x00, ...new Array<number>(140).fill(0)]
+    const file = new Uint8Array(326_389 * 144)
+    for (let at = 0; at < file.length; at += 144) file.set(frame, at)
+    expect(await probe(file)).toMatchObject({
+      seconds: file.length * 8 / 32_000, estimated: true, constantBitRate: true, minSeconds: file.length * 8 / 320_000,
+    })
+    // The same file with louder frames past its middle has a variable bit rate: 320 kbps frames hold 1440 bytes.
+    const louder = [0xff, 0xfb, 0xe8, 0x00, ...new Array<number>(1436).fill(0)]
+    for (let at = 144 * 181_300; at < 144 * 181_300 + 1440 * 100; at += 1440) file.set(louder, at)
+    expect((await probe(file))?.constantBitRate).toBeUndefined()
   })
 
   it('bounds an estimated MP3 length below by the highest bit rate, which a quiet first frame of a variable bit rate file does not move', async () => {
@@ -116,6 +143,7 @@ describe('probeAudio', () => {
     file.set([...frame([0xff, 0xfb, 0x10, 0x44], 104), ...frame([0xff, 0xfb, 0xb0, 0x44], 626), ...frame([0xff, 0xfb, 0xb0, 0x44], 626)])
     const bits = 5_700_000 * 8
     expect(await probe(file)).toMatchObject({ bitrate: 32_000, seconds: bits / 32_000, estimated: true, minSeconds: bits / 320_000 })
+    expect((await probe(file))?.constantBitRate).toBeUndefined()
     // MPEG-2 layer III at 22.05 kHz peaks at 160 kbps; its 64 kbps frames hold 208 bytes.
     const low = Uint8Array.from([...frame([0xff, 0xf3, 0x80, 0xc4], 208), ...frame([0xff, 0xf3, 0x80, 0xc4], 504)])
     expect(await probe(low)).toMatchObject({ sampleRate: 22_050, bitrate: 64_000, estimated: true, minSeconds: low.length * 8 / 160_000 })
@@ -131,7 +159,10 @@ describe('probeAudio', () => {
       // A page of another stream at the end is not the Vorbis stream's last.
       ...oggPage({ type: 4, granule: 999_999, serial: 9, packet: [1] }),
     ])
-    expect(await probe(vorbis)).toEqual({ format: 'Ogg Vorbis', sampleRate: 44_100, channels: 2, seconds: 10, bitrate: Math.round(vorbis.length * 8 / 10) })
+    expect(await probe(vorbis)).toEqual({
+      format: 'Ogg Vorbis', sampleRate: 44_100, channels: 2, seconds: 10, bitrate: Math.round(vorbis.length * 8 / 10),
+      minSeconds: vorbis.length * 8 / (2 * OGG_MAX_BITS_PER_CHANNEL.vorbis),
+    })
     const opusHead = [...new Bytes().text('OpusHead').raw(1, 1).int(312, 2).int(16_000, 4).int(0, 2).raw(0).bytes]
     const opus = Uint8Array.from([
       ...oggPage({ type: 2, granule: 0, serial: 3, packet: opusHead }),
@@ -140,6 +171,13 @@ describe('probeAudio', () => {
       ...oggPage({ type: 0, granule: -1, serial: 3, packet: [1] }),
     ])
     expect(await probe(opus)).toMatchObject({ format: 'Ogg Opus', sampleRate: 48_000, channels: 1, seconds: 3 })
+    // A last granule position that understates the length leaves the shortest length the size allows.
+    const padded = Uint8Array.from([
+      ...oggPage({ type: 2, granule: 0, serial: 3, packet: opusHead }),
+      ...new Array<number>(600_000).fill(0),
+      ...oggPage({ type: 4, granule: 312 + 3 * 48_000, serial: 3, packet: [1] }),
+    ])
+    expect(await probe(padded)).toMatchObject({ seconds: 3, minSeconds: padded.length * 8 / OGG_MAX_BITS_PER_CHANNEL.opus })
   })
 
   it('reads nothing from a file whose headers name no format it reads', async () => {

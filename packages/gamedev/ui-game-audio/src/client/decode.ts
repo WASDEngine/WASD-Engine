@@ -105,15 +105,29 @@ export function tooLong(name: string, seconds: number, maxSeconds: number, atLea
   return new SoundError(`${name} is ${length} long, longer than the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`, AUDIO_ERROR.tooLarge)
 }
 
+/** The length a sound's headers vouch for before it decodes. */
+export interface VouchedLength {
+  /** Seconds the decoded sound reaches at least. */
+  readonly seconds: number
+  /** Whether the seconds are the shortest the sound's size allows, rather than the length its headers state. */
+  readonly atLeast: boolean
+}
+
 /**
- * The length a sound's headers vouch for before it decodes: the length they state, or, for an MP3 length they only
- * estimate from one frame's bit rate, the shortest the sound can be, so that an estimate that runs long refuses no sound
+ * The length a sound's headers vouch for before it decodes: the longer of the length they state and the shortest its
+ * size allows, so that a frame count or granule position that understates the length does not let a long sound decode.
+ * An MP3 length estimated from one frame's bit rate counts as stated only when the frames found through the file share
+ * that bit rate; a variable bit rate file's estimate, which runs long when its first frame is quiet, refuses no sound
  * the decode would take.
  * @param probe - what the headers say.
- * @returns the seconds the decoded sound reaches at least, or undefined when the headers do not tell.
+ * @returns the length, or undefined when the headers do not tell.
  */
-export function lengthBeforeDecoding(probe: AudioProbe | undefined): number | undefined {
-  return probe?.estimated === true ? probe.minSeconds : probe?.seconds
+export function lengthBeforeDecoding(probe: AudioProbe | undefined): VouchedLength | undefined {
+  if (probe === undefined) return undefined
+  const stated = probe.estimated === true && probe.constantBitRate !== true ? undefined : probe.seconds
+  const least = probe.minSeconds
+  if (least !== undefined && (stated === undefined || least > stated)) return { seconds: least, atLeast: true }
+  return stated === undefined ? undefined : { seconds: stated, atLeast: false }
 }
 
 /**

@@ -145,6 +145,27 @@ describe('Assets tab registration', () => {
     await f.fiber.dispose()
   })
 
+  it('reads a path through a folder named ~ inside the workspace, which the Host would read in the home folder', async () => {
+    const f = await fixture()
+    await f.face(S1).read('~/Pictures/hero.png', new AbortController().signal)
+    expect(f.workspaceFiles.readBytes).toHaveBeenLastCalledWith(S1, './~/Pictures/hero.png', {}, expect.any(AbortSignal))
+    await f.face(S1).read('art/~/hero.png', new AbortController().signal)
+    expect(f.workspaceFiles.readBytes).toHaveBeenLastCalledWith(S1, 'art/~/hero.png', {}, expect.any(AbortSignal))
+    // An agent's draw reads the image's first bytes the same way.
+    const render = f.listeners.get('game-assets/render') as ((this: unknown, ...args: unknown[]) => Promise<unknown>) | undefined
+    assert(render !== undefined)
+    const request = {
+      path: '~/Pictures/hero.png', kind: 'image', draw: { views: ['iso'], shading: 'material', skeleton: false, size: 512 }, images: false,
+      bytes: 3, maxBytes: 10, maxPixels: 100, limits: ANSWER_LIMITS,
+    }
+    await render.call('scoped', request, vi.fn()).catch(() => {
+      // AssetDrawError: the fixture's bytes are no image; only the paths read matter here.
+    })
+    const paths = f.workspaceFiles.readBytes.mock.calls.slice(2).map(([, path]) => path)
+    expect(paths).toEqual(['./~/Pictures/hero.png', './~/Pictures/hero.png'])
+    await f.fiber.dispose()
+  })
+
   it('turns a read that rejects into a failed read and reports it', async () => {
     const f = await fixture()
     const warn = vi.spyOn(f.ctx.logger, 'warn').mockImplementation(() => {})

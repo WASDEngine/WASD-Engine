@@ -6,7 +6,9 @@
  * agent reads.
  */
 import { describe, expect, it } from 'vitest'
-import { godotAnimations, GodotParseError, parseGodotText, workspacePathOf } from '../src/client/godot.ts'
+import {
+  godotAnimations, GodotParseError, MAX_ANIMATION_FRAMES, MAX_GRID_SIDE, parseGodotText, workspacePathOf,
+} from '../src/client/godot.ts'
 import {
   animationDetails, godotProjectOf, godotSpriteAnimations, gridAnimation, gridRegions, MAX_FRAME_MS, ownFramesAnimation, sampledFrames,
   sequenceAnimation, sheetAnimations, stripGuess, uniqueNames,
@@ -158,6 +160,13 @@ describe('Godot text resources', () => {
     expect(workspacePathOf('res://C:/Users/me/private.png', '')).toBeUndefined()
     expect(workspacePathOf('res://art/hero\n.png', '')).toBeUndefined()
     expect(workspacePathOf('res://', '')).toBeUndefined()
+    // The Host reads `~/…` in the home folder, `D:x` on another Windows drive, and Windows may read `.. ` as `..`.
+    expect(workspacePathOf('res://~/Pictures/private.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://art/../~/private.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://D:Users/Public/private.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://art/hero.png:stream', '')).toBeUndefined()
+    expect(workspacePathOf('res://art/.. /hero.png', '')).toBeUndefined()
+    expect(workspacePathOf('res://art/~hero.png', '')).toBe('art/~hero.png')
     // A frame outside the project is left out of the animation that names it.
     const scene = `[gd_resource type="SpriteFrames" format=3]
 
@@ -250,6 +259,26 @@ anims/spin = SubResource( 1 )
     const [spin] = godotSpriteAnimations([{ path: 'coin.tscn', text: godot3 }], 'art/coin.png', [''], { width: 32, height: 16 })
     expect(spin).toMatchObject({ name: 'spin', loop: true })
     expect(spin?.frames.map(frame => [frame.region?.x, frame.durationMs])).toEqual([[0, 200], [16, 200]])
+  })
+
+  it('builds at most the frames an animation keeps from a sprite grid, within Godot\'s grid sides', () => {
+    const scene = `[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://art/hero.png" id="1_hero"]
+
+[node name="Wide" type="Sprite2D"]
+texture = ExtResource("1_hero")
+hframes = 2000000
+
+[node name="Tall" type="Sprite2D"]
+texture = ExtResource("1_hero")
+vframes = 99999
+`
+    const [wide, tall] = godotAnimations(scene)
+    expect(wide?.frames).toHaveLength(MAX_ANIMATION_FRAMES)
+    expect(wide?.frames.at(-1)?.cell).toEqual({ index: MAX_ANIMATION_FRAMES - 1, columns: MAX_GRID_SIDE, rows: 1 })
+    expect(tall?.frames).toHaveLength(MAX_ANIMATION_FRAMES)
+    expect(tall?.frames[0]?.cell).toEqual({ index: 0, columns: 1, rows: MAX_GRID_SIDE })
   })
 
   it('cuts a duration that overflows to the longest frame', () => {

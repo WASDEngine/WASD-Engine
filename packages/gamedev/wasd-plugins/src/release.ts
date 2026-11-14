@@ -24,14 +24,14 @@
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
 import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
-import { STATE_DIR } from './state.ts'
+import { STATE_DIR, writeWhole } from './state.ts'
 import type { WasdDownload, WasdProjectView, WasdRelease, WasdVisibility } from './types.ts'
 import { writeZip } from './zip.ts'
 
@@ -196,13 +196,14 @@ async function linksTo(projectDir: string, origin: string, gameId: string): Prom
 }
 
 // The account's game becomes the site's latest and replaces the account's earlier game and the game's earlier entry.
+// The file is replaced whole, so an interrupted write leaves the earlier link, never a damaged one.
 async function rememberGame(projectDir: string, origin: string, record: AccountGame): Promise<void> {
   const links = await readLinks(projectDir)
   const replaces = (game: AccountGame) => game.id === record.id || (record.account !== undefined && game.account === record.account)
   const others = siteGames(links, origin).filter(game => !replaces(game))
   const latest: GameRecord = { id: record.id, slug: record.slug, title: record.title, url: record.url, version: record.version }
   await mkdir(join(projectDir, STATE_DIR), { recursive: true })
-  await writeFile(linkPath(projectDir), `${JSON.stringify({
+  await writeWhole(linkPath(projectDir), `${JSON.stringify({
     format: 1,
     games: { ...links.games, [origin]: latest },
     accounts: { ...links.accounts, [origin]: [record, ...others] },

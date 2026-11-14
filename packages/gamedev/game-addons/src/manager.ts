@@ -13,7 +13,8 @@
  * project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks once into the shared add-on
  * store, or is copied there from its catalog files when WASD Engine wrote it, and every Blender worker enables it by id;
  * its asset pack, if it has one, unpacks into the asset folder beside the store; its project keeps only the record.
- * Their archives then leave the cache.
+ * Their archives then leave the cache. The store's index names setup scripts by their copies in the store, never by a
+ * catalog file, which a worker's Python cannot read inside the Desktop app's `app.asar`.
  * @module @deepseek-ai/dsh-game-addons/src/manager
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -57,6 +58,12 @@ export const STORE_MARKER = '.wasd-addon.json'
 
 /** Index of the catalog's Blender add-ons in the store, which Blender workers read to enable an add-on by id. */
 export const STORE_INDEX = 'catalog.json'
+
+/**
+ * Folder of the store that holds a copy of each Blender add-on's setup script, in a folder per add-on id, which the
+ * index names. Blender skips folders whose names start with `.` when it lists the modules of an extensions repository.
+ */
+export const STORE_SETUP_DIR = '.wasd-setup'
 
 /**
  * Project-relative folder that keeps, in a folder per add-on id, one folder per removal or replacement with what it
@@ -209,15 +216,22 @@ interface StoreSource {
   readonly placed?: () => Promise<void>
 }
 
-/**
- * A catalog folder as the source of a store folder: its SHA-256 covers every file's path and bytes, so the store copy
- * is replaced whenever a file changes.
- */
-async function catalogFilesSource(folder: string): Promise<StoreSource> {
-  const files = (await readdir(folder, { recursive: true, withFileTypes: true }))
+/** The files of a catalog folder without Finder metadata and Python bytecode, `/`-separated and sorted. */
+async function catalogFiles(folder: string): Promise<string[]> {
+  return (await readdir(folder, { recursive: true, withFileTypes: true }))
     .filter(entry => entry.isFile() && entry.name !== '.DS_Store' && !entry.parentPath.split(sep).includes('__pycache__'))
     .map(entry => relative(folder, join(entry.parentPath, entry.name)).split(sep).join('/'))
     .sort()
+}
+
+/**
+ * Files of a catalog folder as the source of a store folder: its SHA-256 covers every file's path and bytes, so the
+ * store copy is replaced whenever a file changes.
+ * @param folder - absolute catalog folder.
+ * @param files - the files to copy, relative to `folder`, `/`-separated and sorted.
+ * @returns the source.
+ */
+async function catalogFilesSource(folder: string, files: readonly string[]): Promise<StoreSource> {
   const hash = createHash('sha256')
   for (const file of files) {
     hash.update(`${file}\0`)
@@ -232,7 +246,7 @@ async function catalogFilesSource(folder: string): Promise<StoreSource> {
         await mkdir(dirname(target), { recursive: true })
         await copyFile(join(folder, ...file.split('/')), target, constants.COPYFILE_EXCL)
       }
-      return files
+      return [...files]
     },
   }
 }
@@ -754,7 +768,7 @@ export class GameAddonManager {
     // The check before the downloads refuses a conflicting add-on without downloading anything; the check under the
     // record's lock decides.
     this.checkConflicts(addon, await this.presence(projectDir))
-    await this.writeStoreIndex()
+    await this.writeStoreIndex(signal)
     if (addon.archive !== undefined) {
       const archive = addon.archive
       await this.storeFolder(join(this.options.blenderStore, blender.module), addon, this.archiveSource(archive, signal), (files) => {
@@ -764,7 +778,8 @@ export class GameAddonManager {
         }
       }, signal)
     } else if (blender.files !== undefined) {
-      const source = await catalogFilesSource(join(this.catalog.dir, ...blender.files.split('/')))
+      const folder = join(this.catalog.dir, ...blender.files.split('/'))
+      const source = await catalogFilesSource(folder, await catalogFiles(folder))
       await this.storeFolder(join(this.options.blenderStore, blender.module), addon, source, () => undefined, signal)
     }
     if (addon.assets !== undefined) {
@@ -896,21 +911,41 @@ export class GameAddonManager {
 
   /**
    * Write the store index that Blender workers read to enable add-ons by id: each Blender add-on's module, kind, and
-   * version, and its setup script and asset folder as absolute paths.
+   * version, and its setup script and asset folder as absolute paths. The index names no catalog file: a worker runs
+   * the setup script with its own Python, which cannot read the catalog where the Desktop app keeps it, inside
+   * `app.asar`, so each setup script is first copied into the store's {@link STORE_SETUP_DIR}, like a store folder,
+   * with a marker that names the SHA-256 of its path and bytes. The whole index is replaced, so a call also replaces an
+   * index that names catalog files, as earlier versions wrote it.
+   * @param signal - cancellation while a copy waits for its folder's lock.
    */
-  async writeStoreIndex(): Promise<void> {
+  async writeStoreIndex(signal: AbortSignal): Promise<void> {
     const addons: Record<string, { module: string; kind: string; version: string; setup?: string; assets?: string }> = {}
     for (const addon of this.catalog.entries) {
       if (addon.blender === undefined) continue
+      const setup = addon.blender.setup === undefined ? undefined : await this.storeSetup(addon, addon.blender.setup, signal)
       addons[addon.id] = {
         module: addon.blender.module,
         kind: addon.blender.kind,
         version: addon.version,
-        ...addon.blender.setup === undefined ? {} : { setup: join(this.catalog.folder(addon.id), addon.blender.setup) },
+        ...setup === undefined ? {} : { setup },
         ...addon.assets === undefined ? {} : { assets: this.assetsFolder(addon) },
       }
     }
     await writeFileAtomic(join(this.options.blenderStore, STORE_INDEX), `${JSON.stringify({ format: 1, addons }, null, 2)}\n`, { mode: 0o644 })
+  }
+
+  /**
+   * Copy a Blender add-on's setup script into its folder of the store's {@link STORE_SETUP_DIR}, unless that folder
+   * already holds the script as the catalog has it.
+   * @param addon - the catalog entry.
+   * @param script - the setup script's file name in the entry's catalog folder.
+   * @param signal - cancellation while the copy waits for its folder's lock.
+   * @returns the absolute path of the copy.
+   */
+  private async storeSetup(addon: GameAddon, script: string, signal: AbortSignal): Promise<string> {
+    const folder = join(this.options.blenderStore, STORE_SETUP_DIR, addon.id)
+    await this.storeFolder(folder, addon, await catalogFilesSource(this.catalog.folder(addon.id), [script]), () => undefined, signal)
+    return join(folder, script)
   }
 
   /** An archive as the source of a store folder: it downloads only when the folder does not hold it yet. */

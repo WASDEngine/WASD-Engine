@@ -6,13 +6,10 @@
  */
 import type { AssetGrid, SpriteAnimationDetails, SpriteAnimationSource } from '@deepseek-ai/dsh-game-assets/types'
 import { formatOf } from './formats.ts'
-import { godotAnimations, workspacePathOf, type GodotCell, type PixelRect } from './godot.ts'
+import { godotAnimations, MAX_ANIMATION_FRAMES, workspacePathOf, type GodotCell, type PixelRect } from './godot.ts'
 
 /** Frames per second of an animation without its own timing. */
 export const DEFAULT_FPS = 12
-
-/** Most frames one animation keeps. */
-export const MAX_ANIMATION_FRAMES = 1024
 
 /** Longest time one frame shows, in milliseconds; a longer duration, such as an overflowing Godot speed, is cut to it. */
 export const MAX_FRAME_MS = 3_600_000

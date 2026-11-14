@@ -7,7 +7,9 @@
  * MCP server. The `wasdPlugins` Remote tells the window what each project released and where the site's Explore page
  * is, for the Export / Share button of game project Sessions and Explore Games in the sidebar.
  * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
- * before its release adds to the game it shares with the folder it was copied from. Each release also uploads what the
+ * before its release adds to the game it shares with the folder it was copied from. A project's exports, Web checks of
+ * its build, preview recordings, and releases run one at a time, whether a Session's agent or a connected agent called
+ * them, because each rewrites or reads the project's state folder. Each release also uploads what the
  * game was made with: the AI models and game tools that worked on the project, which the plugin records in the
  * project's `.wasdengine/credits.json` as Sessions' agents and connected agents call game tools, and its add-ons.
  * With `browser` on, as in the Desktop app, the Session's agent also gets the `browser_*` tools, which the window
@@ -34,6 +36,7 @@ import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit,
 import { ReleaseFolders } from './folders.ts'
 import { encodePreview, savePreview } from './preview.ts'
 import { accountKey, DESKTOP_BUILD_DIR, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import { ProjectQueue } from './state.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
 import type { WasdBrowserOutcome, WasdBrowserRequests, WasdProjectView, WasdSiteLinks } from './types.ts'
 
@@ -86,12 +89,18 @@ export interface Config {
   previewMaxSeconds: number
   /** Milliseconds from one frame of a preview GIF to the next. */
   previewFrameMs: number
-  /** Largest width in pixels of a preview GIF, which link previews of a game's share link show. */
+  /**
+   * Largest width or height in pixels of a preview GIF, which link previews of a game's share link show: the size of its
+   * longer side.
+   */
   previewWidth: number
-  /** Largest width in pixels of a preview animation, the animated WebP that Explore and a game's page play. */
+  /**
+   * Largest width or height in pixels of a preview animation, the animated WebP that Explore and a game's page play: the
+   * size of its longer side.
+   */
   previewWebpWidth: number
   /**
-   * Smallest width in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
+   * Smallest longer side in pixels that a preview GIF over `previewMaxGifBytes`, or a preview animation over
    * `previewMaxWebpBytes`, shrinks to before it drops frames.
    */
   previewMinWidth: number
@@ -109,6 +118,18 @@ export interface Config {
   previewEffort: number
   /** Seconds that a game a preview recording starts runs before the recording begins. */
   previewStartSeconds: number
+  /**
+   * Largest size in bytes of the decoded frames that encoding a preview GIF holds; a recording whose frames would take
+   * more at `previewWidth` makes a smaller GIF.
+   */
+  previewFrameBufferBytes: number
+  /** Most frames of a preview that decode or encode at once. */
+  previewConcurrency: number
+  /**
+   * Memory in bytes that must stay available, besides the decoded frames of the GIF, for a preview recording to be
+   * encoded; with less, the recording fails and asks for memory to be freed.
+   */
+  previewMinAvailableMemoryBytes: number
   /**
    * Model providers whose models are WASD Engine's built-in AI, which a game's credits name as such rather than by the
    * model's own name.
@@ -149,6 +170,9 @@ export default class WasdPlugins extends TypertRemoteService {
     previewFrameQuality: z.number().min(0.1).max(1).default(0.9),
     previewEffort: z.natural().min(1).max(10).default(4),
     previewStartSeconds: z.number().min(0).max(60).default(2),
+    previewFrameBufferBytes: z.natural().min(1024 * 1024).default(64 * 1024 * 1024),
+    previewConcurrency: z.natural().min(1).max(64).default(4),
+    previewMinAvailableMemoryBytes: z.natural().default(256 * 1024 * 1024),
     builtinModelProviders: z.array(z.string().min(1)).default(['deepseek-account', 'deepseek-official']),
   })
 
@@ -156,6 +180,7 @@ export default class WasdPlugins extends TypertRemoteService {
   private readonly browserRequestQueue: BrowserRequestQueue
   private readonly folders: ReleaseFolders
   private readonly credits = new CreditsLedger()
+  private readonly projects = new ProjectQueue()
 
   /**
    * @param ctx - plugin context; the tools and the Remote live as long as it.
@@ -229,22 +254,29 @@ export default class WasdPlugins extends TypertRemoteService {
           webpQuality: config.previewWebpQuality,
           minWidth: config.previewMinWidth,
           effort: config.previewEffort,
+          frameBufferBytes: config.previewFrameBufferBytes,
+          concurrency: config.previewConcurrency,
+          minAvailableMemoryBytes: config.previewMinAvailableMemoryBytes,
+          availableMemory: () => process.availableMemory(),
         }
         const encoded = await encodePreview(recording, encoding, signal)
         return { recording, encoded, files: await savePreview(request.projectDir, encoded) }
       }
+      // The operations that write a project's state folder, or read the builds there, take the project's turn, so the
+      // Session's agent and connected agents, which share these operations, never overlap on one project.
       const host: WasdToolHost = {
         project: async (requested, exec) => {
           const base = await this.base(requested, exec)
           return (await resolveGodotProject(base, requested, exec.signal)).dir
         },
         file: async (requested, exec) => resolve(await this.base(requested, exec), requested),
-        exportWeb: (projectDir, signal) => {
+        exportWeb: (projectDir, signal) => this.projects.run(projectDir, signal, () => {
           const outputDir = resolve(projectDir, STATE_DIR, WEB_BUILD_DIR)
           return scope.godot.exportWeb({ projectDir, outputDir }, signal)
-        },
-        checkWeb: (outputDir, signal) => scope.godot.checkWeb({ outputDir }, signal),
-        exportDesktop: async (projectDir, platforms, signal) => {
+        }),
+        // The build's folder is the project's `.wasdengine/web`, where exportWeb writes it.
+        checkWeb: (outputDir, signal) => this.projects.run(resolve(outputDir, '..', '..'), signal, () => scope.godot.checkWeb({ outputDir }, signal)),
+        exportDesktop: (projectDir, platforms, signal) => this.projects.run(projectDir, signal, async () => {
           const builds = []
           const warnings = []
           for (const platform of platforms) {
@@ -254,8 +286,8 @@ export default class WasdPlugins extends TypertRemoteService {
             warnings.push(...exported.warnings)
           }
           return { projectDir, builds, warnings: [...new Set(warnings)] }
-        },
-        recordPreview: async (request, exec) => {
+        }),
+        recordPreview: (request, exec) => this.projects.run(request.projectDir, exec.signal, async () => {
           if (exec.agent === undefined) throw new Error('A preview recording runs the game in a Session; call it from one.')
           const agent = exec.agent
           const { recording, encoded, files } = await record(agent, request, false, exec.signal)
@@ -280,8 +312,8 @@ export default class WasdPlugins extends TypertRemoteService {
             paused: recording.paused,
             ...view === undefined ? {} : { view },
           }
-        },
-        release: (request, exec, model) => {
+        }),
+        release: (request, exec, model) => this.projects.run(request.projectDir, exec.signal, () => {
           const agent = exec.agent
           return releaseGame(request, {
             access: () => this.access(),
@@ -306,7 +338,7 @@ export default class WasdPlugins extends TypertRemoteService {
               },
             },
           }, exec.signal)
-        },
+        }),
       }
       const lengths = { seconds: config.previewSeconds, maxSeconds: config.previewMaxSeconds }
       for (const definition of wasdToolDefinitions(host, lengths)) scope.tools.register(definition)

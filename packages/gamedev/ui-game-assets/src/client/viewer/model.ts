@@ -7,8 +7,8 @@
  */
 import {
   AnimationMixer, Bone, Box3, BufferAttribute, BufferGeometry, Color, DirectionalLight, DoubleSide, GridHelper, Group, HemisphereLight,
-  InstancedMesh, LineBasicMaterial, LoadingManager, Material, Mesh, MeshStandardMaterial, NeutralToneMapping, PerspectiveCamera,
-  PMREMGenerator,
+  InstancedMesh, LineBasicMaterial, LoaderUtils, LoadingManager, Material, Mesh, MeshStandardMaterial, NeutralToneMapping,
+  PerspectiveCamera, PMREMGenerator,
   Points, PointsMaterial, PropertyBinding, Scene, SkeletonHelper, SkinnedMesh, SRGBColorSpace, Texture, Timer, Vector3,
   WebGLRenderer, type AnimationAction, type AnimationClip, type Object3D,
 } from 'three'
@@ -17,7 +17,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js'
 import { ColladaLoader } from 'three/examples/jsm/loaders/ColladaLoader.js'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { GLTFLoader, type GLTFLoaderPlugin, type GLTFParser } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
@@ -74,9 +74,26 @@ export interface ModelSource {
   readonly changed: () => void
   /**
    * Largest number of bytes the model's description may size itself, beyond the files it is read from: the glTF
-   * accessors without a buffer view, which the loader fills, and the Meshopt-compressed buffer views it decodes.
+   * accessors without a buffer view, which the loader fills, the Meshopt-compressed buffer views it decodes, and the
+   * instance matrices of `EXT_mesh_gpu_instancing` nodes.
    */
   readonly maxBytes: number
+  /**
+   * Check an image a glTF model names before it is decoded, from its bytes.
+   * @param data - the image file, or the bytes of its buffer view.
+   * @param name - the name the model stores for the file; empty for an image inside a buffer.
+   * @throws {Error} when its header states more pixels than the viewer decodes, or no size the viewer reads; the model
+   * then shows without the image and lists it as missing.
+   */
+  readonly checkImage: (data: Uint8Array, name: string) => void
+}
+
+/** A glTF model whose description gives a count or a byte stride that is not a whole number of items. */
+export class ModelUnsizedError extends Error {
+  constructor() {
+    super('the model\'s description gives a count or a byte stride that is not a whole number')
+    this.name = 'ModelUnsizedError'
+  }
 }
 
 /** A model whose description asks for more memory than {@link ModelSource.maxBytes}. */
@@ -97,31 +114,91 @@ const GLTF_COMPONENTS: Readonly<Record<string, number>> = { SCALAR: 1, VEC2: 2, 
 /** Bytes of each glTF component type. */
 const GLTF_COMPONENT_BYTES: Readonly<Record<number, number>> = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }
 
-/** The objects of one top-level glTF list. */
-function gltfEntries(json: unknown, key: string): object[] {
-  const list: unknown = typeof json === 'object' && json !== null ? Reflect.get(json, key) : undefined
-  return Array.isArray(list) ? list.filter((entry: unknown): entry is object => typeof entry === 'object' && entry !== null) : []
+/** Bytes of one instance matrix, which three.js keeps for each instance of an `EXT_mesh_gpu_instancing` node. */
+const INSTANCE_MATRIX_BYTES = 16 * 4
+
+/** Whether a value is an object of a glTF description. */
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null
 }
 
-/** A count from a glTF description, or undefined when the loader would refuse it itself. */
-function gltfCount(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
+/** Whether a value is an ArrayBuffer of any realm. */
+function isArrayBuffer(value: unknown): value is ArrayBuffer {
+  return Object.prototype.toString.call(value) === '[object ArrayBuffer]'
+}
+
+/** A field of an object of a glTF description, read as the loader reads it; undefined for a value that is no object. */
+function field(value: unknown, key: string): unknown {
+  return isObject(value) ? Reflect.get(value, key) : undefined
 }
 
 /**
- * The JSON of a glTF model: the text of a `.gltf` file, or the JSON chunk of a GLB file.
+ * An entry of a glTF description's list by the index another entry gives, looked up as the loader looks it up: by the
+ * index as a property name, so that `"0"` names the first entry too.
+ */
+function entryAt(list: unknown, index: unknown): unknown {
+  return Array.isArray(list) && (typeof index === 'number' || typeof index === 'string') ? Reflect.get(list, String(index)) : undefined
+}
+
+/** The objects of one top-level glTF list. */
+function gltfEntries(json: unknown, key: string): object[] {
+  const list = field(json, key)
+  return Array.isArray(list) ? list.filter(isObject) : []
+}
+
+/**
+ * A count or byte stride of a glTF description, which the loader multiplies as JavaScript numbers.
+ * @param value - the field.
+ * @returns the number; undefined when the field is absent.
+ * @throws {ModelUnsizedError} when it is present but not a whole number from 0 up, which the loader would still
+ * multiply, a numeric text as its number.
+ */
+function gltfCount(value: unknown): number | undefined {
+  if (value === undefined) return undefined
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return value
+  throw new ModelUnsizedError()
+}
+
+/** The magic `glTF` that starts a GLB file, and the types of its JSON chunk. */
+const GLB_MAGIC = 0x46546c67
+const GLB_JSON_CHUNK = 0x4e4f534a
+
+/**
+ * The JSON chunk of a GLB file as three.js's GLTFLoader finds it: its chunks in order up to the length the header
+ * states, the last JSON chunk among them winning.
+ * @param data - the GLB file.
+ * @returns the chunk's bytes, or undefined where the loader fails to read the file.
+ */
+function glbJsonChunk(data: Uint8Array): Uint8Array | undefined {
+  if (data.byteLength < 12) return undefined
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
+  if (view.getUint32(4, true) < 2) return undefined
+  const contents = view.getUint32(8, true) - 12
+  let json: Uint8Array | undefined
+  for (let index = 0; index < contents;) {
+    // Each chunk: its length, its type, then its bytes; reading past the file fails the loader.
+    if (12 + index + 8 > data.byteLength) return undefined
+    const length = view.getUint32(12 + index, true)
+    const type = view.getUint32(16 + index, true)
+    const start = 12 + index + 8
+    if (type === GLB_JSON_CHUNK) {
+      if (start + length > data.byteLength) return undefined
+      json = data.subarray(start, start + length)
+    }
+    index += 8 + length
+  }
+  return json
+}
+
+/**
+ * The JSON of a glTF model as three.js's GLTFLoader reads it: a GLB file's JSON chunk, or the whole file's text.
  * @param data - the model file.
  * @returns the parsed JSON, or undefined when the file holds none, which the loader then reports.
  */
 export function gltfJson(data: Uint8Array): unknown {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  let text: Uint8Array = data
-  // A GLB file: the magic `glTF`, then the first chunk, which is the JSON.
-  if (data.byteLength >= 20 && view.getUint32(0, true) === 0x46546c67) {
-    const length = view.getUint32(12, true)
-    if (view.getUint32(16, true) !== 0x4e4f534a || 20 + length > data.byteLength) return undefined
-    text = data.subarray(20, 20 + length)
-  }
+  const glb = data.byteLength >= 4 && new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(0, true) === GLB_MAGIC
+  const text = glb ? glbJsonChunk(data) : data
+  if (text === undefined) return undefined
   try {
     return JSON.parse(new TextDecoder().decode(text))
   } catch {
@@ -132,32 +209,115 @@ export function gltfJson(data: Uint8Array): unknown {
 
 /**
  * The bytes the glTF loader sets aside from sizes a description gives alone, before it reads any buffer: an array of
- * `count` items for each accessor without a buffer view, and the decoded size of each Meshopt-compressed buffer view.
- * Sizes the loader refuses itself, such as a negative or fractional count, add nothing.
+ * `count` items for each accessor without a buffer view, the decoded size of each Meshopt-compressed buffer view, and
+ * an instance matrix for each instance of each primitive of an `EXT_mesh_gpu_instancing` node, whose instance count is
+ * that of its attributes. A type or component type the loader does not know adds nothing.
  * @param json - the model's JSON.
  * @returns the total in bytes.
+ * @throws {ModelUnsizedError} for a count or byte stride that is not a whole number from 0 up.
  */
 export function gltfDeclaredBytes(json: unknown): number {
   let total = 0
+  const accessors = field(json, 'accessors')
   for (const accessor of gltfEntries(json, 'accessors')) {
-    if (Reflect.get(accessor, 'bufferView') !== undefined) continue
     const count = gltfCount(Reflect.get(accessor, 'count'))
-    const type: unknown = Reflect.get(accessor, 'type')
-    const componentType: unknown = Reflect.get(accessor, 'componentType')
-    const components = typeof type === 'string' && Object.hasOwn(GLTF_COMPONENTS, type) ? GLTF_COMPONENTS[type] : undefined
-    const bytes = typeof componentType === 'number' && Object.hasOwn(GLTF_COMPONENT_BYTES, componentType) ? GLTF_COMPONENT_BYTES[componentType] : undefined
-    if (count === undefined || components === undefined || bytes === undefined) continue
+    gltfCount(field(Reflect.get(accessor, 'sparse'), 'count'))
+    if (Reflect.get(accessor, 'bufferView') !== undefined || count === undefined) continue
+    // The loader looks both up as property names.
+    const type = String(Reflect.get(accessor, 'type'))
+    const componentType = String(Reflect.get(accessor, 'componentType'))
+    const components = Object.hasOwn(GLTF_COMPONENTS, type) ? GLTF_COMPONENTS[type] : undefined
+    const bytes = Object.hasOwn(GLTF_COMPONENT_BYTES, componentType) ? GLTF_COMPONENT_BYTES[Number(componentType)] : undefined
+    if (components === undefined || bytes === undefined) continue
     total += count * components * bytes
   }
   for (const bufferView of gltfEntries(json, 'bufferViews')) {
-    const extensions: unknown = Reflect.get(bufferView, 'extensions')
-    const meshopt: unknown = typeof extensions === 'object' && extensions !== null ? Reflect.get(extensions, 'EXT_meshopt_compression') : undefined
-    if (typeof meshopt !== 'object' || meshopt === null) continue
+    const meshopt = field(Reflect.get(bufferView, 'extensions'), 'EXT_meshopt_compression')
+    if (!isObject(meshopt)) continue
     const count = gltfCount(Reflect.get(meshopt, 'count'))
     const stride = gltfCount(Reflect.get(meshopt, 'byteStride'))
     if (count !== undefined && stride !== undefined) total += count * stride
   }
+  const meshes = field(json, 'meshes')
+  for (const node of gltfEntries(json, 'nodes')) {
+    const attributes = field(field(Reflect.get(node, 'extensions'), 'EXT_mesh_gpu_instancing'), 'attributes')
+    if (!isObject(attributes)) continue
+    // The loader counts instances by one attribute; the largest of them bounds that count.
+    let instances = 0
+    for (const index of Object.values(attributes)) instances = Math.max(instances, gltfCount(field(entryAt(accessors, index), 'count')) ?? 0)
+    const primitives = field(entryAt(meshes, Reflect.get(node, 'mesh')), 'primitives')
+    total += (Array.isArray(primitives) ? primitives.length : 0) * instances * INSTANCE_MATRIX_BYTES
+  }
   return total
+}
+
+/** Name of the GLTFLoader plugin that checks a model's images before they are decoded. */
+const CHECKED_IMAGES = 'wasd_checked_images'
+
+/**
+ * A GLTFLoader plugin that checks each image a model names before the loader decodes it, from the bytes of its buffer
+ * view or of the file its URI names, which the check fetches through the same URL as the loader. The loader shows the
+ * model without an image that fails the check, as without one that does not load.
+ * @param parser - the loader's parser of one model.
+ * @param check - the check, {@link ModelSource.checkImage}.
+ * @param refused - told the name of each image that fails the check: the file name of its URI, else its own name or
+ * its number.
+ * @param signal - cancellation of the model's read.
+ * @returns the plugin.
+ */
+function checkedImages(
+  parser: GLTFParser,
+  check: ModelSource['checkImage'],
+  refused: (name: string) => void,
+  signal: AbortSignal,
+): GLTFLoaderPlugin {
+  const json: unknown = parser.json
+  const images = field(json, 'images')
+  const checks = new Map<number, Promise<void>>()
+  const checkSource = async (sourceIndex: number): Promise<void> => {
+    const image = entryAt(images, sourceIndex)
+    const uri = field(image, 'uri')
+    const own = field(image, 'name')
+    // How the missing files list a refused image: its file's name, else its own name, else its JSON Pointer in the
+    // model's description.
+    const listed = typeof uri === 'string' && !/^data:/iu.test(uri) ? fileName(uri) : typeof own === 'string' && own !== '' ? own : `#/images/${String(sourceIndex)}`
+    const verify = (data: Uint8Array, name: string): void => {
+      try {
+        check(data, name)
+      } catch (error) {
+        refused(listed)
+        throw error
+      }
+    }
+    const view = field(image, 'bufferView')
+    if (view !== undefined) {
+      const bytes: unknown = await parser.getDependency('bufferView', Number(view))
+      // The loader's buffers may come from another realm, as in a test page, where `instanceof` does not hold.
+      if (isArrayBuffer(bytes)) verify(new Uint8Array(bytes), '')
+      return
+    }
+    if (typeof uri !== 'string') return
+    const url = parser.options.manager.resolveURL(LoaderUtils.resolveURL(uri, parser.options.path))
+    let response: Response
+    try {
+      response = await fetch(url, { signal, credentials: 'same-origin' })
+    } catch {
+      // TypeError or AbortError: a file that cannot be fetched fails in the loader's own fetch, which names it.
+      return
+    }
+    if (response.ok) verify(new Uint8Array(await response.arrayBuffer()), uri)
+  }
+  const loadImageSource = parser.loadImageSource.bind(parser)
+  parser.loadImageSource = async (sourceIndex, loader) => {
+    let checked = checks.get(sourceIndex)
+    if (checked === undefined) {
+      checked = checkSource(sourceIndex)
+      checks.set(sourceIndex, checked)
+    }
+    await checked
+    return await loadImageSource(sourceIndex, loader)
+  }
+  return { name: CHECKED_IMAGES }
 }
 
 /** Grid and helper line color, a gray that reads on light and dark backgrounds. */
@@ -410,7 +570,10 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
       // The loader allocates these arrays from the description's sizes alone, so a small file could ask for gigabytes.
       const declared = gltfDeclaredBytes(gltfJson(source.data))
       if (declared > source.maxBytes) throw new ModelTooLargeError(declared, source.maxBytes)
-      const gltf = await new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).parseAsync(arrayBufferOf(source.data), '')
+      const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder)
+      const refused = (name: string): void => { if (!missing.includes(name)) missing.push(name) }
+      loader.register(parser => checkedImages(parser, source.checkImage, refused, signal))
+      const gltf = await loader.parseAsync(arrayBufferOf(source.data), '')
       root = gltf.scene
       animations = gltf.animations
       break

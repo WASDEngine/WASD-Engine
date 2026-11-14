@@ -68,7 +68,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现细节 —— 点击展开</summary>
 
-该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件；解码通过发给页面自身的消息等待这些事件，Chromium 会在隐藏窗口中节流计时器，但不会节流消息。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
+该标签页不添加 Host 服务：它用 `workspaceFiles.list` 列出工作区，用 `workspaceFiles.readBytes` 读取文件头和文件，并用 `file` 资源跟随所选文件；Host 会在主文件夹中读取首段为 `~` 的工作区路径，因此标签页把经过名为 `~` 的文件夹的路径以 `./~/…` 发送。声音解码之前，标签页与 `audio_review` 按其文件头所述长度与其大小所允许的最短长度中的较长者，把它限制在 `maxDecodedSeconds` 之内，其中 MP3 的估算长度仅在恒定比特率时才算作所述长度；解码后的声音会再次按此限制。浏览器通过以文件头所给采样率创建的 `OfflineAudioContext` 解码 WAV、MP3、Ogg 和 FLAC，因此采样保持文件自身的采样率；AIFF 文件用 `@deepseek-ai/dsh-game-audio/audio` 中的 `openAiff` 解码，客户端包会内联该模块：先确认 AudioBuffer 能容纳文件的声道数和采样率、且声音不超过 `maxDecodedSeconds`，再把采样分片直接写入缓冲区，分片之间页面可以处理其事件；解码通过发给页面自身的消息等待这些事件，Chromium 会在隐藏窗口中节流计时器，但不会节流消息。播放器是整个窗口共用的一个 `AudioContext`，在第一次播放时创建，用一个 gain 节点控制音量，每次开始播放都新建一个 `AudioBufferSourceNode`。
 
 | 文件 | 作用 |
 |---|---|
