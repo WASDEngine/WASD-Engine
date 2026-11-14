@@ -1,9 +1,10 @@
 # WASDEngine product telemetry overlay (fork-owned; wasdengine/FORK.md lists the
 # fork changes). It is a dsh-web-app patch layer, so the Web and Desktop
 # profiles load it. It switches off the two dsh-web-app rows that report to the
-# DeepSeek collector, and it sends the account menu's Feedback item, with the
+# DeepSeek collector, sends the account menu's Feedback item, with the
 # account and device details it appends, to WASDEngine instead of DeepSeek's
-# form. The provider endpoints, the Session log request field, and the Session
+# form, and inserts agent feedback, which reports to WASDEngine what agents
+# tell its team. The provider endpoints, the Session log request field, and the Session
 # OpenTelemetry export are set for every profile that layers over dsh-base by
 # packages/bundle/base/wasdengine/gateway.cordis.patch.yml.
 
@@ -28,3 +29,17 @@
     apiKeyEntry: false
     signInRequired: true
     usageLink: false
+
+# Agent feedback (packages/gamedev/agent-feedback): the feedback_send tool of
+# every Session and of the game tools' MCP server, and the usage report of how
+# often agents call each game tool and each MCP server the user added. Both post
+# to the WASDEngine Platform origin of the account sign-in (deepseek-account's
+# platformOrigin in packages/bundle/base/wasdengine/gateway.cordis.patch.yml)
+# for the signed-in account, and send nothing while signed out. `appVersion`
+# names the app in feedback; the Desktop app sets DSH_CLIENT_VERSION for its
+# Host. The Plugins page can switch the row off.
+- insert:
+    - id: agent-feedback
+      name: '@deepseek-ai/dsh-agent-feedback'
+      config:
+        appVersion: !!js process.env.DSH_CLIENT_VERSION ?? ''

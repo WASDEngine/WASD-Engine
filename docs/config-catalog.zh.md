@@ -71,6 +71,34 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-default-model -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-feedback -->
+<a id="deepseek-aidsh-agent-feedback"></a>
+
+## `@deepseek-ai/dsh-agent-feedback`
+
+- `inject`: `tools`
+- `source`: [`packages/gamedev/agent-feedback/src/index.ts:33`](../packages/gamedev/agent-feedback/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration. */
+export interface Config {
+  /** Report how often agents call each MCP tool; false counts nothing and sends no reports. */
+  usageReports: boolean
+  /** Milliseconds between two usage reports; a report is sent only when calls were counted since the last one. */
+  reportIntervalMs: number
+  /** Time limit of one request to the WASD Engine site, in milliseconds. */
+  requestTimeoutMs: number
+  /** Time limit of the last usage report, which the plugin sends as it stops, such as when the app quits. */
+  finalReportTimeoutMs: number
+  /**
+   * The app's version, which feedback names, such as `0.1.3`; empty names none, and so does a version the site would
+   * refuse, which the plugin logs.
+   */
+  appVersion: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-feedback -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-agent-instructions -->
 <a id="deepseek-aidsh-agent-instructions"></a>
 

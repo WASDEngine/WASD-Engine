@@ -1793,6 +1793,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['when the id is not lowercase letters and digits starting with a letter, or another provider has it.'],
       },
       {
+        signature: 'toolOwner(name: string): GameMcpToolOwner | undefined',
+        description: 'Find the provider that offers a tool now, so a report of a Session\'s own tool calls can count them by the plugin connected agents know them by: a Session calls Blender\'s tools as the MCP client names them, such as `mcp__wasd_blender__execute_python`, and connected agents as `blender_execute_python`.',
+        parameters: [{ name: 'name', description: 'the tool\'s name as a Session calls it (its harness definition\'s name), or as connected agents call it.' }],
+        returns: 'the provider\'s id and display name and the tool\'s name for connected agents, or undefined when no provider offers the tool.',
+      },
+      {
         signature: '@Remote({ mode: \'stream\' }) async* watch(signal: AbortSignal): AsyncIterable<GameMcpView>',
         description: 'Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.',
         parameters: [{ name: 'signal', description: 'stream cancellation.' }],
@@ -7528,6 +7534,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GameMcpTool',
     declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n    readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined;\n}',
+  },
+  {
+    name: 'GameMcpToolOwner',
+    declaration: 'export interface GameMcpToolOwner {\n    readonly provider: string;\n    readonly title: string;\n    readonly tool: string;\n}',
   },
   {
     name: 'GameMcpToolResult',
