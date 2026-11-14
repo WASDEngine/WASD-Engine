@@ -1,7 +1,9 @@
-/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, GIMP, and Blender runtimes, and the game layer module, to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, GIMP, and Blender runtimes, the game layer module, and the Web check bundle to the ordinary Desktop release configuration. */
 
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
+import { createWebCheckHelper } from './wasdengine-web-check-helper.ts'
 import { githubUpdateFeedUrl } from './wasdengine-update-service.mjs'
 
 /** Start of upstream's packaged file names, which `applyWasdengineBrand` replaces with `WASDENGINE_DESKTOP_BRAND.artifactBase`. */
@@ -81,6 +83,35 @@ export const BLENDER_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-blender/run
  */
 export function applyWasdengineBlender(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, BLENDER_ASAR_UNPACK] }
+}
+
+/**
+ * Add the Web check bundle of `src/wasdengine-web-check-helper.ts` to a packaged macOS application, after the
+ * configuration's own `afterPack` hook and before electron-builder signs the application, which signs the bundle
+ * with the application's other helpers. Other platforms' packages are unchanged.
+ * @template {{ readonly afterPack?: unknown }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `afterPack` hook also creates the bundle in a macOS application.
+ * @throws {Error} When `afterPack` names a module instead of being a function.
+ */
+export function applyWasdengineWebCheckHelper(config) {
+  const previous = config.afterPack
+  if (previous !== undefined && previous !== null && typeof previous !== 'function') {
+    throw new Error('WASDEngine desktop: afterPack names a module; applyWasdengineWebCheckHelper wraps a function')
+  }
+  return {
+    ...config,
+    afterPack: async context => {
+      if (typeof previous === 'function') await previous(context)
+      if (context.electronPlatformName !== 'darwin') return
+      const { productFilename, macBundleIdentifier } = context.packager.appInfo
+      createWebCheckHelper(join(context.appOutDir, `${productFilename}.app`), {
+        productName: BRAND.productName,
+        executable: productFilename,
+        bundleId: `${macBundleIdentifier}.helper.WebCheck`,
+      })
+    },
+  }
 }
 
 /** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */

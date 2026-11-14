@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
+import { createWebCheckHelper } from './wasdengine-web-check-helper.ts'
 
 /** Workspace and runtime settings captured for Launch Services cold starts. */
 export interface DevelopmentAppOptions {
@@ -31,7 +32,7 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
   const executable = join(bundle, 'Contents', 'MacOS', WASDENGINE_DESKTOP_BRAND.productName)
   const stamp = join(bundle, 'Contents', 'Resources', 'dsh-development.json')
   const launcher = developmentLauncher(options, bundle)
-  const identity = JSON.stringify({ ...options, launcher, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8') })
+  const identity = JSON.stringify({ ...options, launcher, plist: readFileSync(join(source, 'Contents', 'Info.plist'), 'utf8'), webCheckHelper: 1 })
   if (!existsSync(stamp) || readFileSync(stamp, 'utf8') !== identity) {
     rmSync(bundle, { recursive: true, force: true })
     execFileSync('/usr/bin/ditto', [source, bundle])
@@ -47,6 +48,7 @@ export function prepareDevelopmentApp(options: DevelopmentAppOptions): string {
       execFileSync('/usr/bin/plutil', ['-replace', key, '-json', JSON.stringify(value), plist])
     }
     writeFileSync(executable, launcher, { mode: 0o755 })
+    createWebCheckHelper(bundle, { productName: WASDENGINE_DESKTOP_BRAND.productName, executable: 'Electron', bundleId: `${values.CFBundleIdentifier}.helper.WebCheck` })
     writeFileSync(stamp, identity, { mode: 0o600 })
     execFileSync('/usr/bin/codesign', ['--force', '--deep', '--sign', '-', bundle], { stdio: 'pipe' })
   }
