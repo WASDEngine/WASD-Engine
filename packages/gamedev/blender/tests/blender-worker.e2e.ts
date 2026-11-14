@@ -1,22 +1,23 @@
 /**
- * The Blender worker and tools against real Blender: the bpy module through uv (offline, from the
- * uv cache), the bpy runtime installed in this package's `runtime` folder as the Desktop app ships
- * it, and an installed Blender in background mode. Each suite skips when its runtime is missing on
- * this machine.
+ * The Blender worker, its script mode, and the tools against real Blender: the bpy module through uv (offline, from
+ * the uv cache), the bpy runtime installed in this package's `runtime` folder as the Desktop app ships it, and an
+ * installed Blender in background mode. Each suite skips when its runtime is missing on this machine.
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { lstat, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
-import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
+import { JsonLineWorker, WorkerError, WorkerPool, materializePayload, nodeMachine, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
 import type { AppWorkerScope, JsonLineWorkerSpec } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { BlenderWorkers, childEnvironment, findBlender, findShippedBpy, findUv, nodeBlenderSetupHost, resolveWorkerLaunch } from '../src/environment.ts'
+import type { WorkerLaunch } from '../src/environment.ts'
+import { BlenderScripts } from '../src/scripts.ts'
 import { blenderTools } from '../src/tools.ts'
 import type { BlenderBackend, BlenderServerOptions } from '../src/types.ts'
 
@@ -35,6 +36,7 @@ const OPTIONS: Omit<BlenderServerOptions, 'dataRoot'> = {
   backend: 'app', bpyVersion: BPY_VERSION, pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 120_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 300_000, graceMs: 3000, maxLogBytes: 64 * 1024,
   maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000, addonStore: '',
+  maxScripts: 4, scriptMemoryBytes: 0, scriptCores: 0, keptScriptResults: 20, scriptLogBytes: 16 * 1024 ** 2,
 }
 
 /** Scope of the tool calls, as a Session's calls reach the server. */
@@ -255,7 +257,7 @@ function suite(name: string, { argv, serverWiring, leadsGroup, backend, runtime 
         dataRoot,
         requestTimeoutMs: options.requestTimeoutMs,
         maxTimeoutMs: options.toolCallTimeoutMs,
-      }).map(tool => [tool.name, tool]))
+      }, { run: () => Promise.reject(new Error('no script runs in this test')) }).map(tool => [tool.name, tool]))
       const run = async (tool: string, args: Record<string, unknown> = {}) => await tools.get(tool)!.run(args, new AbortController().signal)
       try {
         const started = new RegExp(`^Blender \\d+\\.\\d+\\.\\d+ started \\(${runtime}, Python 3\\.\\d+\\.\\d+\\) with its default scene\\.\\n\\n`, 'u')
@@ -503,6 +505,64 @@ result = errors`
       } finally {
         await worker.close(3000)
       }
+    }, 240_000)
+
+    it('runs scripts in Blender processes of their own, on a .blend file and many at once, with their exit codes', async () => {
+      const tools = await mkdtemp(join(tmpdir(), 'dsh-blender-e2e-scripts-'))
+      onTestFinished(async () => { await rm(tools, { recursive: true, force: true }) })
+      await mkdir(join(tools, 'out'))
+      await writeFile(join(tools, 'helper.py'), 'VALUE = 42\n')
+      await writeFile(join(tools, 'make.py'), [
+        'import sys', 'import bpy',
+        'bpy.ops.wm.read_factory_settings(use_empty=True)',
+        'mesh = bpy.data.meshes.new("Hero")',
+        'bpy.context.scene.collection.objects.link(bpy.data.objects.new("Hero", mesh))',
+        'bpy.ops.wm.save_as_mainfile(filepath=sys.argv[sys.argv.index("--") + 1])',
+        'print("saved")', '',
+      ].join('\n'))
+      await writeFile(join(tools, 'clip.py'), [
+        'import json, os, sys', 'import bpy', 'import helper', 'import wasd_addons',
+        'args = sys.argv[sys.argv.index("--") + 1:]',
+        'name = args[0]',
+        'if name == "fail":', '    raise ValueError("no clip named fail")',
+        'if name == "exit7":', '    sys.exit(7)',
+        'data = {"args": args, "argv": sys.argv, "objects": sorted(o.name for o in bpy.data.objects), "file": bpy.data.filepath,',
+        '        "cwd": os.getcwd(), "main": __name__, "helper": helper.VALUE, "addons": wasd_addons.enabled(),',
+        '        "script": os.environ.get("WASD_BLENDER_SCRIPT"), "user": os.environ["BLENDER_USER_RESOURCES"]}',
+        'with open(os.path.join(os.environ["WASD_OUTPUT_DIR"], name + ".json"), "w") as out:', '    json.dump(data, out)',
+        'print("done", name)', '',
+      ].join('\n'))
+      const [command = '', ...rest] = await argv(dataRoot)
+      const launch: WorkerLaunch = {
+        backend: backend === 'app' ? 'app' : 'bpy', shipped: false, repair: '', argv: [command, ...rest], env: childEnvironment(process.env), notes: [],
+      }
+      const scripts = new BlenderScripts({ ...OPTIONS, backend, dataRoot }, { launch: async () => launch, machine: nodeMachine() })
+      const blend = join(tools, 'out', 'hero.blend')
+      const made = await scripts.run({
+        script: join(tools, 'make.py'), runs: [{ args: [blend] }], timeoutMs: 120_000, callTimeoutMs: 240_000,
+      }, new AbortController().signal)
+      expect(made.runs[0]).toMatchObject({ status: 'finished', exitCode: 0, lastLine: 'saved' })
+      expect(existsSync(blend)).toBe(true)
+
+      const script = join(tools, 'clip.py')
+      const report = await scripts.run({
+        script, blend, timeoutMs: 120_000, callTimeoutMs: 240_000,
+        runs: [{ args: ['walk', '--fps', '30'], name: 'walk' }, { args: ['run'] }, { args: ['fail'], name: 'fail' }, { args: ['exit7'] }],
+      }, new AbortController().signal)
+      expect(report.parallel).toBe(4)
+      expect(report.runs.map(run => [run.status, run.exitCode])).toEqual([['finished', 0], ['finished', 0], ['failed', 1], ['failed', 7]])
+      expect(report.runs[0]).toMatchObject({ lastLine: 'done walk', files: ['walk.json'], totalFiles: 1 })
+      expect(report.runs[2]!.lastLine).toBe('ValueError: no clip named fail')
+      const log = await readFile(join(report.runs[2]!.folder, 'output.log'), 'utf8')
+      expect(log).toMatch(/Traceback \(most recent call last\):\n {2}File ".*clip\.py", line 8, in <module>\n/u)
+      expect(log).not.toContain('wasd_blender_worker')
+      const walk = JSON.parse(await readFile(join(report.runs[0]!.folder, 'files', 'walk.json'), 'utf8')) as Record<string, unknown>
+      expect(walk).toEqual({
+        args: ['walk', '--fps', '30'], argv: [script, '--', 'walk', '--fps', '30'], objects: ['Hero'], file: blend, cwd: await realpath(tools),
+        main: '__main__', helper: 42, addons: [], script: null, user: join(report.runs[0]!.folder, 'blender-user'),
+      })
+      // Each run's Blender user folder goes with it.
+      expect(existsSync(join(report.runs[0]!.folder, 'blender-user'))).toBe(false)
     }, 240_000)
 
     it('ends with the processes it started when the server dies, idle or during a request', async () => {

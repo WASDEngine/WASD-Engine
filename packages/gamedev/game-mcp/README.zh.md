@@ -79,7 +79,7 @@ tool_timeout_sec = 1800
 
 每位用户都要登录 WASD Engine：账号插件 `@deepseek-ai/dsh-deepseek-account` 报告没有已存储的登录，或无法读取登录时，服务器对每次工具调用（包括 `search_game_tools` 与 `call_game_tool`）都返回要求用户登录的错误结果，但仍会列出其工具。服务器在每次调用时读取登录状态，因此用户一登录，工具就能再次使用。没有账号插件的 Host 会执行每次调用。
 
-服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 彼此共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与 WASD Engine 自身各 Session 的 worker 分开（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），这些插件的指令也说明了这一点。
+服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 彼此共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与 WASD Engine 自身各 Session 的 worker 分开（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），除非它们对这些工具的调用传入 `session`：此时每个名称在 `project` 指定的游戏项目中，于该 agent 同名 Session 的 worker 中运行，这也是该名称在 Godot 工具中选择的 Session（[连接的 agent 的 Session](../app-mcp/README.zh.md#connected-agents-sessions)）。这些插件的指令也说明了这一点。
 
 <a id="games-in-the-wasd-engine-window"></a>
 ### WASD Engine 窗口中的游戏
@@ -161,11 +161,11 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### 模型可见内容
 
-已连接 agent 的模型会看到 `search_game_tools`、`call_game_tool`，以及每个 provider 工具，其描述与输入 schema 由 [`src/catalog.ts`](src/catalog.ts) 列出——Godot 工具使用 Session 自身的工具描述，并改用面向绝对项目路径的措辞；还会看到服务器指令：先是一段介绍各插件的文字，然后是每个插件在 `## <title>` 下的指令。agent 自身的 harness 决定如何呈现它们。
+已连接 agent 的模型会看到 `search_game_tools`、`call_game_tool`，以及每个 provider 工具，其描述与输入 schema 由 [`src/catalog.ts`](src/catalog.ts) 列出——Godot 工具使用 Session 自身的工具描述，并改用面向绝对项目路径的措辞；Blender、GIMP 与 SuperCollider 工具使用其服务器自身的描述，并加上 `session` 与 `project`；还会看到服务器指令：先是一段介绍各插件的文字，然后是每个插件在 `## <title>` 下的指令。agent 自身的 harness 决定如何呈现它们。
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 29,100 个字符（其中约 7,300 个是游戏扩展目录），83 个工具声明约 93,700 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 30,100 个字符（其中约 7,300 个是游戏扩展目录），84 个工具声明约 108,000 个字符的 JSON，其中约 12,200 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -196,7 +196,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **单一端口**——第二个 Host（例如与 Desktop 应用同时运行的 `dsh web`）会发现端口已被占用并改用一个空闲端口，其 URL 只在该 Host 的设置内容中显示。
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
-- **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；无论给出什么名称，它们都共用一个 Blender、GIMP 与 SuperCollider worker。
+- **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；它们对 Blender、GIMP 与 SuperCollider 工具的调用若未给出 `session`，则各共用一个 worker。
 - **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。
 - **确认页面按进程有效**——封存确认状态的密钥存在于服务器进程中，因此 Host 重启后的重试会被拒绝；客户端展示过的页面仍然有效，指明该页面的工具可以列出等待确认的内容，`wasd_server_status` 即是如此。
 

@@ -79,7 +79,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 
 Every user signs in to WASD Engine: while the account plugin, `@deepseek-ai/dsh-deepseek-account`, reports no stored sign-in or cannot read it, the server answers every tool call, `search_game_tools` and `call_game_tool` included, with an error result that asks the user to sign in, and still lists its tools. It reads the sign-in at each call, so the tools work again as soon as the user signs in. A Host without the account plugin runs every call.
 
-The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents share one Blender, one GIMP, and one SuperCollider worker among themselves, apart from the workers of WASD Engine's own Sessions ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), and the instructions of those plugins say so.
+The server's instructions introduce each plugin and append the plugin's own instructions under its title. Connected agents share one Blender, one GIMP, and one SuperCollider worker among themselves, apart from the workers of WASD Engine's own Sessions ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), unless their calls of those tools pass `session`: each name then runs in the worker of the agent's Session of that name, the same Session that the name picks for the Godot tools, in the game project that `project` names ([connected agents' Sessions](../app-mcp/README.md#connected-agents-sessions)). The instructions of those plugins say so.
 
 <a id="games-in-the-wasd-engine-window"></a>
 ### Games in the WASD Engine window
@@ -161,11 +161,11 @@ None; this package neither assembles nor sends a provider request.
 
 #### What the model sees
 
-A connected agent's model sees `search_game_tools`, `call_game_tool`, and every provider tool with the description and input schema that [`src/catalog.ts`](src/catalog.ts) lists, which for the Godot tools are the Session's own tool descriptions with the wording for absolute project paths, and the server instructions: one paragraph that introduces each plugin, then each plugin's instructions under `## <title>`. The agent's own harness decides how it presents them.
+A connected agent's model sees `search_game_tools`, `call_game_tool`, and every provider tool with the description and input schema that [`src/catalog.ts`](src/catalog.ts) lists, which for the Godot tools are the Session's own tool descriptions with the wording for absolute project paths, and for the Blender, GIMP, and SuperCollider tools their servers' own with `session` and `project` added, and the server instructions: one paragraph that introduces each plugin, then each plugin's instructions under `## <title>`. The agent's own harness decides how it presents them.
 
 #### Token effect
 
-With all eleven providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 29,100 characters, about 7,300 of them the game add-ons catalog, and the 83 tool declarations to about 93,700 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all eleven providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 30,100 characters, about 7,300 of them the game add-ons catalog, and the 84 tool declarations to about 108,000 characters of JSON, about 12,200 of them the `session` and `project` arguments of the 40 Blender, GIMP, and SuperCollider tools; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -196,7 +196,7 @@ These limits define what the server serves and to whom; they are current package
 - **One port** — a second Host, such as `dsh web` beside the Desktop app, finds the port taken and listens on a free one, whose URL only the setup of that Host shows.
 - **Blank Sessions** — a connected agent's Session has no turns, so the Session list names it New Session, New Session in its game project opens it, and while no provider is signed in, the Get started dialog opens over it when the window shows it.
 - **No transcript** — the connected agent's tool calls appear in its own harness, not in the Session; the Session shows its game in the Game tab.
-- **Stateless serving** — two instances of the same agent share its Session, its project default, and its game per project unless their Godot calls give different `session` names, and they share one Blender, GIMP, and SuperCollider worker whatever names they give.
+- **Stateless serving** — two instances of the same agent share its Session, its project default, and its game per project unless their Godot calls give different `session` names, and their calls of the Blender, GIMP, and SuperCollider tools that give no `session` share one worker of each.
 - **Cancellation from 2025 clients** — a client on a 2025 revision cancels with a `notifications/cancelled` request, which reaches a server of its own and no running call, so the call ends only when its request closes or its tool's time limit passes.
 - **Confirmation pages per process** — the key that seals a confirmation's state lives in the server process, so a retry after the Host restarted is refused; the page the client showed still works, and the tool that named it can list what waits for confirmation, as `wasd_server_status` does.
 

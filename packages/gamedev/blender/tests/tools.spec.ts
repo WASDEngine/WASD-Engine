@@ -8,7 +8,8 @@ import { z } from 'zod'
 import { AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_MAX_EDGE, WorkerReplyError } from '@deepseek-ai/dsh-app-mcp'
 import type { AppToolDependencies, JsonObject } from '@deepseek-ai/dsh-app-mcp'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { OBJECT_LIST_LIMIT, RENDER_MAX_EDGE, blenderTools, renderSamplingSeconds } from '../src/tools.ts'
+import type { ScriptCall, ScriptCallReport, ScriptRunReport } from '../src/scripts.ts'
+import { OBJECT_LIST_LIMIT, RENDER_MAX_EDGE, blenderTools, formatScriptCall, renderSamplingSeconds } from '../src/tools.ts'
 
 type Reply = JsonValue | ((params: JsonObject) => JsonValue | Promise<JsonValue>)
 
@@ -21,7 +22,20 @@ afterAll(async () => { await rm(dataRoot, { recursive: true, force: true }) })
 const signal = new AbortController().signal
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
-function harness(replies: Record<string, Reply>, notes: string[] = []) {
+/** Script runs that record each call and answer with `report`, or fail without one. */
+function scriptRuns(report?: (call: ScriptCall) => ScriptCallReport) {
+  const calls: ScriptCall[] = []
+  return {
+    calls,
+    run: async (call: ScriptCall): Promise<ScriptCallReport> => {
+      calls.push(call)
+      if (report === undefined) throw new Error('no script runs in this spec')
+      return report(call)
+    },
+  }
+}
+
+function harness(replies: Record<string, Reply>, notes: string[] = [], scripts = scriptRuns()) {
   const calls: Call[] = []
   const dependencies: AppToolDependencies = {
     async call(method, params, options) {
@@ -35,7 +49,7 @@ function harness(replies: Record<string, Reply>, notes: string[] = []) {
     requestTimeoutMs: 600_000,
     maxTimeoutMs: 900_000,
   }
-  const tools = new Map(blenderTools(dependencies).map(tool => [tool.name, tool]))
+  const tools = new Map(blenderTools(dependencies, scripts).map(tool => [tool.name, tool]))
   const tool = (name: string) => {
     const found = tools.get(name)
     if (found === undefined) throw new Error(`missing tool ${name}`)
@@ -62,10 +76,10 @@ const image = (path: string, mime = 'image/png', width = 768, height = 768): Jso
 
 describe('tool set', () => {
   it('lists the Blender tools in a stable order with titles and descriptions', () => {
-    const tools = blenderTools({ call: async () => null, takeNotes: () => [], dataRoot: '/data', requestTimeoutMs: 1000, maxTimeoutMs: 1000 })
+    const tools = blenderTools({ call: async () => null, takeNotes: () => [], dataRoot: '/data', requestTimeoutMs: 1000, maxTimeoutMs: 1000 }, scriptRuns())
     expect(tools.map(tool => tool.name)).toEqual([
       'scene_info', 'object_info', 'execute_python', 'new_scene', 'open_blend', 'save_blend', 'import_file', 'export_gltf',
-      'export_file', 'render_preview', 'render', 'python_api', 'checkpoint', 'undo',
+      'export_file', 'render_preview', 'render', 'python_api', 'run_script', 'checkpoint', 'undo',
     ])
     for (const tool of tools) {
       expect(tool.title).toMatch(/^[A-Z.]/)
@@ -374,5 +388,96 @@ describe('render', () => {
     expect(calls[0]!.params).toMatchObject({ path: target, width: 2048, height: 1024, engine: 'CYCLES', samples: 64, camera: 'Shot' })
     expect(existsSync(copy)).toBe(false)
     expect(existsSync(target)).toBe(true)
+  })
+})
+
+/** A run report with the fields that every run has. */
+function runReport(fields: Partial<ScriptRunReport> & Pick<ScriptRunReport, 'folder' | 'status'>): ScriptRunReport {
+  return { args: [], durationMs: 0, files: [], totalFiles: 0, ...fields }
+}
+
+describe('run_script', () => {
+  const RESULTS = '/data/blender/script-runs/20261114T030000000Z-abcdef'
+
+  it('takes an absolute .py file, a .blend file, and either the arguments of one run or up to 64 runs', () => {
+    const { schema } = harness({})
+    expect(schema('run_script').safeParse({ script: '/work/tools/bake.py' }).success).toBe(true)
+    expect(schema('run_script').safeParse({ script: '/work/tools/BAKE.PY', blend: '/work/hero.Blend', args: ['--fps', '30'] }).success).toBe(true)
+    expect(schema('run_script').safeParse({ script: 'tools/bake.py' }).success).toBe(false)
+    expect(schema('run_script').safeParse({ script: '/work/tools/bake.txt' }).success).toBe(false)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', blend: '/work/hero.fbx' }).success).toBe(false)
+    const runs = (count: number) => Array.from({ length: count }, (_, index) => ({ args: [String(index)] }))
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', runs: runs(64) }).success).toBe(true)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', runs: runs(65) }).success).toBe(false)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', runs: [] }).success).toBe(false)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', runs: [{ name: 'x'.repeat(61) }] }).success).toBe(false)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', timeout_seconds: 900 }).success).toBe(true)
+    expect(schema('run_script').safeParse({ script: '/work/bake.py', timeout_seconds: 901 }).success).toBe(false)
+  })
+
+  it('runs one run with the default time limit and the call budget, and fails when it did not finish', async () => {
+    const scripts = scriptRuns(call => ({
+      script: call.script, runtime: 'the bpy module that WASD Engine ships', resultsDir: RESULTS, parallel: 1, durationMs: 2000,
+      notes: ['Installed Python 3.13 and bpy 5.2.3 into /data/blender/venv (first use).'],
+      runs: [runReport({ args: [...call.runs[0]!.args], folder: `${RESULTS}/1`, status: 'failed', exitCode: 1, durationMs: 1500, files: ['a.json'], totalFiles: 1 })],
+      output: 'Traceback (most recent call last):\nValueError: no clip', omittedLines: 3,
+    }))
+    const { run } = harness({}, [], scripts)
+    const result = await run('run_script', { script: '/work/bake.py', args: ['--clip', 'walk'] })
+    expect(scripts.calls).toEqual([{ script: '/work/bake.py', runs: [{ args: ['--clip', 'walk'] }], timeoutMs: 600_000, callTimeoutMs: 900_000 }])
+    expect(result.isError).toBe(true)
+    expect(result.text).toBe('Installed Python 3.13 and bpy 5.2.3 into /data/blender/venv (first use).\n\n'
+      + 'Ran /work/bake.py with the bpy module that WASD Engine ships: it failed with exit code 1 in 1.5 s.\n'
+      + `Results: ${RESULTS}/1 (output.log; 1 file: a.json in files/).\n`
+      + 'output (3 earlier lines are in output.log):\nTraceback (most recent call last):\nValueError: no clip')
+  })
+
+  it('runs several named runs on a .blend file with a time limit and reports each one', async () => {
+    const scripts = scriptRuns(call => ({
+      script: call.script, ...call.blend === undefined ? {} : { blend: call.blend }, runtime: 'Blender at /Applications/Blender.app/Contents/MacOS/Blender',
+      resultsDir: RESULTS,
+      parallel: 2, durationMs: 9000, notes: [],
+      runs: [
+        runReport({ name: 'walk', args: ['walk'], folder: `${RESULTS}/1-walk`, status: 'finished', exitCode: 0, durationMs: 4000, lastLine: 'done',
+          files: ['a.png', 'b.png', 'c.png', 'd.png', 'e.png', 'f.png'], totalFiles: 7 }),
+        runReport({ args: ['x'.repeat(200)], folder: `${RESULTS}/2`, status: 'timed-out', durationMs: 5000 }),
+        runReport({ name: 'sit', args: [], folder: `${RESULTS}/3-sit`, status: 'not-started', reason: 'The call ran out of time.' }),
+        runReport({ args: [], folder: `${RESULTS}/4`, status: 'failed', signal: 'SIGSEGV', durationMs: 100 }),
+      ],
+    }))
+    const { run } = harness({}, [], scripts)
+    const result = await run('run_script', {
+      script: '/work/bake.py', blend: '/work/hero.blend', timeout_seconds: 30, runs: [{ name: 'walk', args: ['walk'] }, { args: ['x'] }, { name: 'sit' }, {}],
+    })
+    expect(scripts.calls[0]).toEqual({
+      script: '/work/bake.py', blend: '/work/hero.blend', timeoutMs: 30_000, callTimeoutMs: 900_000,
+      runs: [{ name: 'walk', args: ['walk'] }, { args: ['x'] }, { name: 'sit', args: [] }, { args: [] }],
+    })
+    expect(result.isError).toBe(false)
+    expect(result.text.split('\n')).toEqual([
+      'Ran /work/bake.py on /work/hero.blend 4 times, up to 2 at a time, with Blender at /Applications/Blender.app/Contents/MacOS/Blender, in 9.0 s: '
+      + `1 finished, 1 failed, 1 timed out, 1 not started. Results: ${RESULTS} (summary.json, and output.log and files/ in each run's folder).`,
+      '1-walk ["walk"]: finished in 4.0 s; 7 files: a.png, b.png, c.png, d.png, e.png and 2 more. Last line: done',
+      `2 ${JSON.stringify(['x'.repeat(200)]).slice(0, 120)}…: was stopped at its time limit after 5.0 s; no files.`,
+      '3-sit []: did not start: The call ran out of time.',
+      '4 []: was ended by SIGSEGV after 0.1 s; no files.',
+    ])
+  })
+
+  it('refuses arguments for one run beside runs', async () => {
+    const scripts = scriptRuns()
+    const { run } = harness({}, [], scripts)
+    await expect(run('run_script', { script: '/work/bake.py', args: ['a'], runs: [{ args: ['b'] }] }))
+      .rejects.toThrow('Pass args for a single run or runs for several, not both.')
+    expect(scripts.calls).toEqual([])
+  })
+
+  it('says when a single run printed nothing or did not start', () => {
+    const base = { script: '/work/s.py', runtime: 'the bpy module that uv installed', resultsDir: RESULTS, parallel: 1, durationMs: 10, notes: [] }
+    expect(formatScriptCall({ ...base, runs: [runReport({ folder: `${RESULTS}/1`, status: 'finished', exitCode: 0, durationMs: 10, outputCut: true })], output: '', omittedLines: 0 }))
+      .toBe(`Ran /work/s.py with the bpy module that uv installed: it finished in 0.0 s.\nResults: ${RESULTS}/1 (output.log (cut at scriptLogBytes); no files in files/).\n`
+        + 'The script printed nothing.')
+    expect(formatScriptCall({ ...base, runs: [runReport({ folder: `${RESULTS}/1`, status: 'not-started', reason: 'Too little memory.' })] }))
+      .toBe('Ran /work/s.py with the bpy module that uv installed: it did not start: Too little memory.')
   })
 })

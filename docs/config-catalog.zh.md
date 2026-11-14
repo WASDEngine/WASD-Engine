@@ -503,7 +503,7 @@ export type Config = LocalConfig
 
 - `inject`: `mcpManager`
 - `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
-- `source`: [`packages/gamedev/blender/src/index.ts:26`](../packages/gamedev/blender/src/index.ts)
+- `source`: [`packages/gamedev/blender/src/index.ts:27`](../packages/gamedev/blender/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the Blender tools. */
@@ -536,6 +536,22 @@ export interface Config extends AppMcpConfig {
    * empty leaves `wasd_addons` without add-ons.
    */
   addonStore: string
+  /** Most `run_script` runs that run at once on any computer, whichever calls asked for them. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `run_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `run_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `run_script` calls kept under `script-runs/` in `dataRoot`; a new call deletes the oldest beyond this. */
+  keptScriptResults: number
+  /** Most bytes of output that a `run_script` run keeps in its `output.log`; later output is left out. */
+  scriptLogBytes: number
 }
 
 /**

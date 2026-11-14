@@ -9,8 +9,8 @@
   en: eed18107d2aae81d
   zh: 877fe549341a7661
 /deepseek-ai-dsh-blender/summary:
-  en: 7c8d210954fbeb3a
-  zh: 80ab754ce06a4fc8
+  en: 581392b08b860005
+  zh: a4357ef503f02753
 /deepseek-ai-dsh-blender/table-of-contents:
   en: d152484eb41ac6b4
   zh: 725b47765ee8f30b
@@ -24,8 +24,8 @@
   en: b7315842930901ed
   zh: b174e87ae23c0616
 /deepseek-ai-dsh-blender/use-this-package/configuration:
-  en: 2824a5ca542aa10e
-  zh: fc57049ef774263d
+  en: 186c7ad9a367fea2
+  zh: e08e158bf16526e5
 /deepseek-ai-dsh-blender/use-this-package/backends:
   en: 74ed2ac1bd8838f6
   zh: 44d5482f1dfe28e0
@@ -33,11 +33,11 @@
   en: cac2147c1deb4142
   zh: 3d74fdadf5ea1eee
 /deepseek-ai-dsh-blender/use-this-package/tools:
-  en: bf1e194c9cbd2108
-  zh: eb8e3c9479b98835
+  en: 157408b22e408edc
+  zh: 0aa891f92cd688a1
 /deepseek-ai-dsh-blender/use-this-package/one-blender-session-per-conversation:
-  en: 82f0b3188ef7f7ca
-  zh: fe137706e77857c2
+  en: a17fe4008dad9306
+  zh: 8bdfebb0a10fd986
 /deepseek-ai-dsh-blender/use-this-package/game-add-ons:
   en: 77022a40a3a1a06e
   zh: a5b71bedd23057a6
@@ -45,20 +45,23 @@
   en: 4f11dfa39b922f55
   zh: b3d1ed5ee2e340ae
 /deepseek-ai-dsh-blender/use-this-package/checkpoints:
-  en: 2871e274b1ce960d
-  zh: 796b377399acf2a7
+  en: cf8c0ae579760c2c
+  zh: 1348b6819e4bd676
+/deepseek-ai-dsh-blender/use-this-package/script-runs:
+  en: c43184c1d783aaef
+  zh: 2d2c8fe1b3c3787c
 /deepseek-ai-dsh-blender/use-this-package/files-under-the-data-directory:
-  en: 3c30009122795558
-  zh: 36fe142abcc2e407
+  en: 9ca219ec109b8e60
+  zh: 084b70fc0039031b
 /deepseek-ai-dsh-blender/use-this-package/plugin-icon:
   en: 2b694dbcc59f8d0e
   zh: e4db8412ad1dc139
 /deepseek-ai-dsh-blender/understand-the-implementation:
-  en: 80660d0c9ece88be
-  zh: bb88ac1a8fcb8f0f
+  en: 3f54e8c6530f9ac4
+  zh: a5221be57d45be44
 /deepseek-ai-dsh-blender/understand-the-implementation/verify-against-real-blender:
-  en: d4460549ad460b05
-  zh: 42378ff037326128
+  en: a4bce0fd8e55c76f
+  zh: f83073a46b3921c0
 /deepseek-ai-dsh-blender/further-exploration:
   en: cfc48c6f5a5b8af3
   zh: d6db5fb082326c28
@@ -69,14 +72,14 @@
   en: 0069f7069888ddbc
   zh: 2e37d4f635b33448
 /deepseek-ai-dsh-blender/model-experience/blender-tool-declarations/what-the-model-sees:
-  en: 452e7538243fe0b2
-  zh: 83b61683da1ca9c8
+  en: 0446f091f4aec929
+  zh: 8f19af4b21708eab
 /deepseek-ai-dsh-blender/model-experience/blender-tool-declarations/token-effect:
-  en: 66ede7668662284d
-  zh: cbdee35c16ad27a0
+  en: d54d34467554419d
+  zh: d82868c78b22aeac
 /deepseek-ai-dsh-blender/model-experience/blender-tool-declarations/kv-cache-effect:
-  en: b7558aaccefb5013
-  zh: 3625f58ecc9d7ddc
+  en: fa179540b095b444
+  zh: c9b700881f8e298c
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt:
   en: 8643a279f586bfd3
   zh: 208bccd112725bde
@@ -87,8 +90,8 @@
   en: dc16c352b87e2012
   zh: 483f7d12c5739291
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/token-effect:
-  en: c8d6dcaf01dd911d
-  zh: 2e5efa51d819403c
+  en: db48f58dc4ab2417
+  zh: 4fb12aa2835e5267
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
   en: 457158b3658aae47
   zh: b6a061d2499c0716
@@ -96,17 +99,17 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-blender/model-experience/tool-results-and-images/what-the-model-sees:
-  en: f31c083d3d91f46e
-  zh: 90a3af3d849075f6
+  en: 6f7c540e6bbeca07
+  zh: 7201d93488062264
 /deepseek-ai-dsh-blender/model-experience/tool-results-and-images/token-effect:
-  en: 8c34c30a57ec2cc3
-  zh: 7b3a75157d1603a9
+  en: e28c9adc7191ad71
+  zh: 1c5fd7c4226e4928
 /deepseek-ai-dsh-blender/model-experience/tool-results-and-images/kv-cache-effect:
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-blender/known-limitations-and-deferred-work:
-  en: 150d799a42e108ec
-  zh: 4b44b2d9d39b2c68
+  en: 885f0732708773fa
+  zh: 8fc78e19ac25781c
 /deepseek-ai-dsh-blender/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

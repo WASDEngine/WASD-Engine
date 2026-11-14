@@ -21,6 +21,14 @@ when it leads its own process group, which the server gives it on POSIX, it
 kills the group with SIGKILL, so processes that executed code started end
 with it; otherwise it exits with ``os._exit``.
 
+Script mode: when the ``WASD_BLENDER_SCRIPT`` environment variable names a
+Python file, the worker serves no requests. It opens the .blend file that
+``WASD_BLENDER_FILE`` names, if any, runs that script as
+``blender --background --python <script> -- <args>`` would, with the
+arguments after ``--`` on its own command line, and exits with the script's
+exit code. File descriptor 3, when open, is a pipe whose reader is the server,
+which the run watches as the worker watches its reply pipe.
+
 The same file runs under the ``bpy`` module (``python -I -X utf8 -u <file>``)
 and inside Blender (``blender --background --python <file>``). It uses only
 the standard library and Blender's bundled modules.
@@ -2127,16 +2135,15 @@ def _end_when_unread(fd):
     _end_worker(1)
 
 
-def main():
-    try:
-        replies = os.fdopen(REPLY_FD, 'w', buffering=1, encoding='utf-8')
-    except OSError as error:
-        sys.stderr.write(f'wasd_blender_worker: file descriptor {REPLY_FD} must be the reply pipe ({error})\n')
-        sys.stderr.flush()
-        os._exit(2)
+def _watch_server():
+    """Start the thread that ends the process once the server stops reading ``REPLY_FD``, where poll() exists."""
     os.set_inheritable(REPLY_FD, False)
     if hasattr(select, 'poll'):
         threading.Thread(target=_end_when_unread, args=(REPLY_FD,), name='wasd-blender-server-check', daemon=True).start()
+
+
+def _line_buffered():
+    """Make standard output and standard error flush each line, so logs arrive as they are written."""
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, 'reconfigure', None)
         if reconfigure is not None:
@@ -2144,6 +2151,17 @@ def main():
                 reconfigure(line_buffering=True)
             except (ValueError, io.UnsupportedOperation):
                 continue  # A host-replaced stream keeps its own buffering; logs may arrive later.
+
+
+def main():
+    try:
+        replies = os.fdopen(REPLY_FD, 'w', buffering=1, encoding='utf-8')
+    except OSError as error:
+        sys.stderr.write(f'wasd_blender_worker: file descriptor {REPLY_FD} must be the reply pipe ({error})\n')
+        sys.stderr.flush()
+        os._exit(2)
+    _watch_server()
+    _line_buffered()
     # Blender may replace sys.stdin; requests always come from the inherited descriptor 0.
     requests = os.fdopen(0, 'rb', closefd=False)
     worker = Worker(replies)
@@ -2166,4 +2184,68 @@ def main():
     os._exit(0)
 
 
-main()
+SCRIPT_VARIABLE = 'WASD_BLENDER_SCRIPT'
+"""Environment variable that selects script mode: the absolute path of the script to run."""
+
+FILE_VARIABLE = 'WASD_BLENDER_FILE'
+"""Environment variable that names a .blend file that script mode opens before the script."""
+
+
+def _exit_code(code):
+    """The exit status of ``SystemExit(code)``: 0 for None, an integer from 0 to 255 as it is (``True`` is 1), 1 for
+    any other integer, and 1 for another value, which Python's own exit prints to standard error first."""
+    if code is None:
+        return 0
+    if isinstance(code, int):
+        return int(code) if 0 <= code <= 255 else 1
+    sys.stderr.write(f'{code}\n')
+    return 1
+
+
+def _end_run(code):
+    """Flush the run's output and exit with ``code`` at once, as the worker does, since Blender can crash in its own
+    exit handlers. The server stops the processes that the script left running."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError):
+            continue  # A closed or broken stream has nothing more to give.
+    os._exit(code)
+
+
+def run_script(script):
+    """Script mode: run ``script`` once and exit with its exit code. ``sys.argv`` becomes ``[script, '--', *args]``
+    with the arguments after ``--`` on this process's command line, the script's folder comes first on ``sys.path``,
+    and ``wasd_addons`` imports as in ``execute_python``. The script runs as ``__main__``; ``sys.exit`` ends the run
+    with its code, and an exception ends it with code 1 after its traceback goes to standard error."""
+    blend = os.environ.pop(FILE_VARIABLE, '')
+    os.environ.pop(SCRIPT_VARIABLE, None)
+    try:
+        _watch_server()
+    except OSError:
+        pass  # Started without the server's pipe on descriptor 3, such as by hand: nothing watches for the server.
+    _line_buffered()
+    sys.modules['wasd_addons'] = _addons_module(Addons(os.environ.get(ADDON_STORE_VARIABLE, '')))
+    args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
+    sys.argv = [script, '--', *args]
+    sys.path.insert(0, os.path.dirname(script))
+    if blend:
+        try:
+            bpy.ops.wm.open_mainfile(filepath=blend, load_ui=False, use_scripts=False)
+        except RuntimeError as error:
+            sys.stderr.write(f'Blender could not open {blend}: {error}\n')
+            _end_run(1)
+    try:
+        runpy.run_path(script, run_name='__main__')
+    except SystemExit as error:
+        _end_run(_exit_code(error.code))
+    except BaseException as error:  # noqa: BLE001 - any failure of the script ends the run with code 1 and its traceback.
+        sys.stderr.write(_user_traceback(error, script))
+        _end_run(1)
+    _end_run(0)
+
+
+if os.environ.get(SCRIPT_VARIABLE):
+    run_script(os.environ[SCRIPT_VARIABLE])
+else:
+    main()

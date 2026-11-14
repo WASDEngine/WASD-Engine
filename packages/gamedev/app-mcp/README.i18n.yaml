@@ -24,11 +24,11 @@
   en: 1c0e16c786819631
   zh: cd418ec29d7aa5bc
 /deepseek-ai-dsh-app-mcp/use-this-package/register-the-server:
-  en: c8fb8590169c7993
-  zh: 57c025565209fa1a
+  en: 31b3bbaef4f97663
+  zh: a7dee5d3373cfcd8
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-server-process:
-  en: 4282949fd4d8be26
-  zh: b5e72c51a2a8de84
+  en: e65cdac2ea3213d4
+  zh: 402fddfd811410a0
 /deepseek-ai-dsh-app-mcp/use-this-package/serve-the-tools:
   en: ec59e9998c2ec560
   zh: afd4b2008f813e88
@@ -42,8 +42,11 @@
   en: 06726341500636e8
   zh: 7cfff4bd6a26a2c4
 /deepseek-ai-dsh-app-mcp/use-this-package/one-worker-per-session:
-  en: 2fd59a64c1c26b03
-  zh: 56efe325f7ccf80e
+  en: 38fc2664a6ef7594
+  zh: 5c68ee3b5d5879ac
+/deepseek-ai-dsh-app-mcp/use-this-package/connected-agents-sessions:
+  en: 86220645f328f4dd
+  zh: 3f8c265e73048901
 /deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
   en: d861d4c6e3de143c
   zh: d0654b3832f0ba31
@@ -51,8 +54,8 @@
   en: 97ae7e1c41f94bdf
   zh: 0c3387495709f95e
 /deepseek-ai-dsh-app-mcp/understand-the-implementation:
-  en: 84210260bbb9e966
-  zh: 7dcce002552ad978
+  en: bc8c475fed145a33
+  zh: b137e635319b5315
 /deepseek-ai-dsh-app-mcp/further-exploration:
   en: 85ecbc0d02201f9b
   zh: f446fd63761ac5bd
@@ -108,8 +111,8 @@
   en: c9ff5f25eab76338
   zh: e5ba6dc4b21859da
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work:
-  en: b763211f331cf641
-  zh: 5c64cabad5cde6cb
+  en: cda01b8db1949883
+  zh: 7507744ef381926d
 /deepseek-ai-dsh-app-mcp/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

@@ -41,10 +41,12 @@ export interface AppWorkers {
    * @returns the notes, oldest first.
    */
   takeNotes(): readonly string[]
+  /** Stop the processes that the starter runs besides the workers, such as one-shot script runs; shutdown calls it. */
+  close?(): void
 }
 
 /** What one application contributes to its MCP server process. */
-export interface AppMcpServerDefinition<O extends AppServerOptions> {
+export interface AppMcpServerDefinition<O extends AppServerOptions, W extends AppWorkers = AppWorkers> {
   /** Server name reported to the client. */
   readonly name: string
   /** Application name in the worker pool's messages, such as `Blender`. */
@@ -67,13 +69,14 @@ export interface AppMcpServerDefinition<O extends AppServerOptions> {
    * @param dependencies - the worker script copy and the worker start.
    * @returns the starter the supervisor uses.
    */
-  readonly workers: (options: O, dependencies: AppWorkerDependencies) => AppWorkers
+  readonly workers: (options: O, dependencies: AppWorkerDependencies) => W
   /**
-   * Build the tools.
+   * Build the tools of one calling Session.
    * @param dependencies - worker access, setup notes, the data directory, and request budgets.
+   * @param workers - the worker starter that `workers` created, which the server process keeps for its lifetime.
    * @returns the tools in the order the server lists them.
    */
-  readonly tools: (dependencies: AppToolDependencies) => readonly AppTool<z.ZodRawShape>[]
+  readonly tools: (dependencies: AppToolDependencies, workers: W) => readonly AppTool<z.ZodRawShape>[]
 }
 
 /**
@@ -85,8 +88,8 @@ export interface AppMcpServerDefinition<O extends AppServerOptions> {
  * `requestTimeoutMs` and its shutdown grace `graceMs`; the pool starts a worker through `workers` on
  * the Session's first call, after copying the worker script with `materializePayload`, and gives it
  * a numbered folder in `<dataRoot>/workers/<pid>/`, the folder of the server process. The tools get `dataRoot`, `requestTimeoutMs`, and
- * `toolCallTimeoutMs` less `TOOL_CALL_RESERVE_MS` as their `maxTimeoutMs`. Shutdown closes the pool,
- * which stops every worker and deletes the worker folders.
+ * `toolCallTimeoutMs` less `TOOL_CALL_RESERVE_MS` as their `maxTimeoutMs`, and the worker starter. Shutdown closes the
+ * pool, which stops every worker and deletes the worker folders.
  * @param definition - the application's name, instructions, worker script, options, workers, and tools.
  * @param argv - the server process's `process.argv`.
  * @param io - the process resources to serve on; omission binds the current process.
@@ -95,8 +98,8 @@ export interface AppMcpServerDefinition<O extends AppServerOptions> {
  * @returns once the server is serving.
  * @throws TypeError when `argv[2]` holds no server options; the errors of `parseOptions` and `serveAppMcp`.
  */
-export async function runAppMcpServer<O extends AppServerOptions>(
-  definition: AppMcpServerDefinition<O>, argv: readonly string[], io?: AppMcpProcess, files?: WorkerPoolFiles,
+export async function runAppMcpServer<O extends AppServerOptions, W extends AppWorkers>(
+  definition: AppMcpServerDefinition<O, W>, argv: readonly string[], io?: AppMcpProcess, files?: WorkerPoolFiles,
   machine: MachineResources = nodeMachine(),
 ): Promise<void> {
   const options = definition.parseOptions(decodeServerOptions(argv))
@@ -124,14 +127,17 @@ export async function runAppMcpServer<O extends AppServerOptions>(
     dataRoot: options.dataRoot,
     requestTimeoutMs: options.requestTimeoutMs,
     maxTimeoutMs: options.toolCallTimeoutMs - TOOL_CALL_RESERVE_MS,
-  }).map(tool => [tool.name, tool]))
+  }, workers).map(tool => [tool.name, tool]))
   await serveAppMcp({
     name: definition.name,
     version: definition.version,
     instructions: definition.instructions,
     tools: [...toolsOf(SHARED_SCOPE).values()],
     scopedTools: session => toolsOf(session === undefined ? SHARED_SCOPE : `session:${session}`),
-    onClose: async () => { await pool.close() },
+    onClose: async () => {
+      workers.close?.()
+      await pool.close()
+    },
     process: io,
   })
 }
