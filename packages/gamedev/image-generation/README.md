@@ -68,7 +68,7 @@ The WASD Engine API charges each image to the AI usage of the account's plan at 
 <a id="plugin-icon"></a>
 ### Plugin icon
 
-The Game tools tabs ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`: a package-local picture with a spark in the WASD Engine keycap purple, not Google's or Nano Banana's logo. WASD Engine is not affiliated with, made by, or endorsed by Google.
+The Game tools tabs ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`. Google marks Nano Banana with the banana emoji, as on the Gemini app's Create images button, and has no other Nano Banana logo, so the file embeds Google's own drawing of that emoji unaltered in a 36 × 36 canvas: `2D/svg/emoji_u1f34c.svg` of [Noto Emoji](https://github.com/googlefonts/noto-emoji), at the commit that the file's comment names, © 2013 Google, under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), which also covers `icon.svg`. Nano Banana and Gemini are trademarks of Google LLC. WASD Engine is not affiliated with, made by, or endorsed by Google.
 
 -----
 

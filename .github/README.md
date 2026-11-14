@@ -50,12 +50,25 @@ WASD Engine bundles everything you need to build high-polish games in a single a
     <td><b>SuperCollider</b><br>Audio synthesis and algorithmic composition for your game's music and sound effects. Your agent composes original scores and designs custom SFX.</td>
   </tr>
   <tr>
+    <td align="center"><img src="../packages/gamedev/elevenlabs/icon.svg" width="40" height="40" alt="ElevenLabs logo"></td>
+    <td><b>ElevenLabs</b><br>Character voices, sound effects, and music. Your agent casts a voice for every character, or clones your own, and saves the audio straight into your game.</td>
+  </tr>
+  <tr>
+    <td align="center"><img src="../packages/gamedev/image-generation/icon.svg" width="40" height="40" alt="Nano Banana logo"></td>
+    <td><b>Nano Banana 2.1</b><br>Google's image model for game art, UI pieces, and textures. Your agent makes and edits images from your references and saves them into your project.</td>
+  </tr>
+  <tr>
     <td align="center"><a href="https://polyhaven.com"><img src="../packages/gamedev/polyhaven/icon.svg" width="40" height="40" alt="Poly Haven logo"></a></td>
     <td><b>Poly Haven</b><br>Thousands of free HDRI skies, PBR textures, and 3D models, all CC0. Your agent searches Poly Haven and drops the assets it picks straight into your game. Powered by <a href="https://polyhaven.com">Poly Haven</a>, which does not endorse WASD Engine.</td>
   </tr>
 </table>
 
-Godot, Blender, GIMP, and SuperCollider come with the Desktop app for macOS and Windows, so there is nothing else to install. When you run WASD Engine from source instead, Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks.
+Godot, Blender, GIMP, and SuperCollider come with the Desktop app for macOS and Windows, so there is nothing else to install. When you run WASD Engine from source instead, Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks, and ElevenLabs and Nano Banana run through your WASD Engine account, counted in your plan's AI usage.
+
+When your game needs behavior trees, dialogue, inventories, or rigged characters, your agent picks a proven add-on from the [catalog](../packages/bundle/web-app/wasdengine/addons/), installs it into your project, and reads how to use it:
+
+- **Godot:** [Beehave](https://github.com/bitbrain/beehave), [Better Terrain](https://github.com/Portponky/better-terrain), [Dialogue Manager](https://github.com/nathanhoad/godot_dialogue_manager), [Extra Import Hints](https://github.com/rllyy97/extra-import-hints), [Gaea](https://github.com/gaea-godot/gaea), [GdUnit4](https://github.com/godot-gdunit-labs/gdUnit4), [GLoot](https://github.com/peter-kish/gloot), [Godot State Charts](https://github.com/derkork/godot-statecharts), [GUT](https://github.com/bitwes/Gut), [Importality](https://github.com/nklbdev/godot-4-importality), [LDtk Importer](https://github.com/heygleeson/godot-ldtk-importer), [Phantom Camera](https://github.com/ramokz/phantom-camera), [ProtonScatter](https://github.com/HungryProton/scatter), [Shaker](https://github.com/Eneskp3441/Shaker), [Sky3D](https://github.com/TokisanGames/Sky3D), [SmartShape2D](https://github.com/SirRamEsq/SmartShape2D), [Universal Animation Library](https://quaternius.com/packs/universalanimationlibrary.html) and [Universal Animation Library 2](https://quaternius.com/packs/universalanimationlibrary2.html), [WASD Cloth](../packages/bundle/web-app/wasdengine/addons/wasd-cloth/), and [YATI](https://github.com/Kiamo2/YATI).
+- **Blender:** [A.N.T. Landscape](https://extensions.blender.org/add-ons/antlandscape/), [MPFB (MakeHuman)](https://static.makehumancommunity.org/mpfb.html), [Rigify](https://docs.blender.org/manual/en/latest/addons/rigging/rigify/index.html), [Sapling Tree Gen](https://extensions.blender.org/add-ons/sapling-tree-gen/), the [VRM Add-on for Blender](https://vrm-addon-for-blender.info), and [WASD Cloth for Blender](../packages/bundle/web-app/wasdengine/addons/wasd-cloth-blender/).
 
 ## Agents fill every game dev role
 
@@ -73,6 +86,15 @@ WASD Engine orchestrates agents to create art, music, and game logic, so your vi
     </td>
   </tr>
 </table>
+
+## Build true multiplayer games.
+
+WASD Engine hosts your game on the web, packages it for Mac and Windows, gets every update to your players, and runs the servers for your online games.
+
+1. **Web games.** Export / Share puts your game on its own page at wasdengine.com, playable in any browser from a link. List it on Explore or keep the link private.
+2. **Mac & Windows downloads.** Add downloads to the same page: WASD Engine exports a Windows .exe and a Mac app for you, and players who use WASD Engine install your game in one click.
+3. **Over-the-air updates.** Release a new version and it reaches every player: the web page plays it at once, installed games get the update, and online games update with their servers, so everyone plays the same version.
+4. **Multiplayer, servers included.** Ask your agent to "make this game multiplayer for up to 8 friends." It adds online play to your game, and WASD Engine runs the rest: player sign-in, lobbies, the connections between players, and the game servers. Player-hosted games are free: one player hosts a lobby and friends join with a 6-letter code. Dedicated servers start at $5 a month: players join any time, a server sleeps while nobody plays and wakes in seconds, and your world is backed up every hour. The [multiplayer guide](../docs/user/guide/multiplayer.md) compares the two.
 
 ## Built from plugins. Shaped by you.
 
@@ -197,4 +219,4 @@ The optional LiveShare viewer page shows the upstream whale as its sidebar mark.
 
 WASD Engine is distributed under the GNU General Public License, version 3 only (`GPL-3.0-only`), in [LICENSE](../LICENSE). It is a fork of an MIT-licensed project, whose [license and copyright notice](../wasdengine/deepseek-harness-MIT.txt) the fork keeps. Third-party dependencies and their licenses are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
 
-The tool logos are not covered by this repository's license. The Godot logo is by Andrea Calabró, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Blender and the Blender logo are trademarks of the Blender Foundation. Wilber, the GIMP logo, is by Aryeom Han, under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The SuperCollider logo is by Nathan Ho, under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html). Each logo's `icon.svg` under [`packages/gamedev/`](../packages/gamedev/README.md) carries its full credit and terms.
+The tool logos are not covered by this repository's license. The Godot logo is by Andrea Calabró, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Blender and the Blender logo are trademarks of the Blender Foundation. Wilber, the GIMP logo, is by Aryeom Han, under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The SuperCollider logo is by Nathan Ho, under the [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html). ElevenLabs and the ElevenLabs logo are trademarks of ElevenLabs. The Nano Banana icon is the banana emoji as Google draws it in Noto Emoji, © 2013 Google, under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), and Nano Banana is a trademark of Google. Each logo's `icon.svg` under [`packages/gamedev/`](../packages/gamedev/README.md) carries its full credit and terms.

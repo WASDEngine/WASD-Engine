@@ -1,8 +1,25 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- ElevenLabs plugin icon: a package-local sound wave in the WASD Engine keycap purple, not the ElevenLabs logo. -->
-  <rect x="5" y="14" width="3.5" height="8" rx="1.75" fill="#8E63FF"/>
-  <rect x="10.5" y="9" width="3.5" height="18" rx="1.75" fill="#8E63FF"/>
-  <rect x="16.25" y="4" width="3.5" height="28" rx="1.75" fill="#6338D9"/>
-  <rect x="22" y="10" width="3.5" height="16" rx="1.75" fill="#8E63FF"/>
-  <rect x="27.5" y="15" width="3.5" height="6" rx="1.75" fill="#8E63FF"/>
+  <!--
+    ElevenLabs plugin icon: ElevenLabs' app icon, its 11 symbol on a white rounded square, embedded unaltered in a
+    36x36 canvas.
+    Source: https://elevenlabs.io/icon.svg, the icon elevenlabs.io names for itself (retrieved 2026-11-14). ElevenLabs'
+    brand page, https://elevenlabs.io/brand, offers the 11 symbol for app ecosystems in a square or circular holding
+    shape, in black and white only.
+
+    ElevenLabs and the ElevenLabs logo are trademarks of ElevenLabs. The logo is not covered by this repository's
+    license. It identifies the ElevenLabs integration only. WASD Engine is not affiliated with, made by, or endorsed
+    by ElevenLabs.
+  -->
+  <svg x="3" y="3" width="30" height="30" viewBox="0 0 500 500" overflow="visible">
+    <g clip-path="url(#clip0_470_2)">
+    <rect width="500" height="500" rx="100" fill="white"/>
+    <path d="M314 355H271V145H314V355Z" fill="black"/>
+    <path d="M229 355H186V145H229V355Z" fill="black"/>
+    </g>
+    <defs>
+    <clipPath id="clip0_470_2">
+    <rect width="500" height="500" fill="white"/>
+    </clipPath>
+    </defs>
+  </svg>
 </svg>

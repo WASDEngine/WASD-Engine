@@ -74,7 +74,7 @@ ElevenLabs makes its account holder confirm, for every clone, the right and cons
 <a id="plugin-icon"></a>
 ### Plugin icon
 
-The Game tools tabs of Settings › Built-in plugins and the Plugins page ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`: a package-local sound wave in the WASD Engine keycap purple, not ElevenLabs' logo. WASD Engine is not affiliated with, made by, or endorsed by ElevenLabs.
+The Game tools tabs of Settings › Built-in plugins and the Plugins page ([`ui-game-tools`](../ui-game-tools/README.md)) show the package's [`icon.svg`](icon.svg), which `package.json` names as `icon`. The file embeds ElevenLabs' app icon unaltered in a 36 × 36 canvas: the 11 symbol on a white rounded square, as `https://elevenlabs.io/icon.svg` serves it. ElevenLabs' [brand page](https://elevenlabs.io/brand) offers the symbol for app ecosystems in a square or circular holding shape, in black and white only. ElevenLabs and the ElevenLabs logo are trademarks of ElevenLabs; this repository's license does not cover the logo, which identifies the ElevenLabs integration only. WASD Engine is not affiliated with, made by, or endorsed by ElevenLabs.
 
 -----
 

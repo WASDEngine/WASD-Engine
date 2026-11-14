@@ -68,7 +68,7 @@ WASD Engine API 按 Google 为 Nano Banana 2.1 定的 API 价格，根据 Google
 <a id="plugin-icon"></a>
 ### 插件图标
 
-“游戏工具”标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，由 `package.json` 的 `icon` 字段指定：一个带闪光的包内图片图形，使用 WASD Engine 键帽紫色，不是 Google 或 Nano Banana 的标志。WASD Engine 与 Google 没有关联，也不是由 Google 制作或认可的。
+“游戏工具”标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包的 [`icon.svg`](icon.svg)，由 `package.json` 的 `icon` 字段指定。Google 以香蕉 emoji 标识 Nano Banana，例如 Gemini 应用的“制作图片”按钮，此外没有其他 Nano Banana 标志，因此该文件把 Google 自己绘制的这个 emoji 原样嵌入 36 × 36 画布：[Noto Emoji](https://github.com/googlefonts/noto-emoji) 的 `2D/svg/emoji_u1f34c.svg`，取自文件注释写明的提交，© 2013 Google，采用 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)，`icon.svg` 同样适用该许可证。Nano Banana 与 Gemini 是 Google LLC 的商标。WASD Engine 与 Google 没有关联，也不是由 Google 制作或认可的。
 
 -----
 

@@ -74,7 +74,7 @@ ElevenLabs 要求其账号持有者在每次克隆时确认拥有克隆该声音
 <a id="plugin-icon"></a>
 ### 插件图标
 
-「设置 › 内置插件」与「插件」页面的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包 `package.json` 的 `icon` 字段所指向的 [`icon.svg`](icon.svg)：一个包内自有的声波图形，采用 WASD Engine 键帽紫色，而不是 ElevenLabs 的标志。WASD Engine 与 ElevenLabs 无关联，并非由 ElevenLabs 制作或认可。
+「设置 › 内置插件」与「插件」页面的「游戏工具」标签页（[`ui-game-tools`](../ui-game-tools/README.zh.md)）显示本包 `package.json` 的 `icon` 字段所指向的 [`icon.svg`](icon.svg)。该文件把 ElevenLabs 的应用图标原样嵌入 36 × 36 画布：白色圆角方形上的 11 符号，即 `https://elevenlabs.io/icon.svg` 所提供的文件。ElevenLabs 的[品牌页面](https://elevenlabs.io/brand)提供该符号，供应用生态在方形或圆形承载形状中使用，且只有黑白两色。ElevenLabs 与 ElevenLabs 标志是 ElevenLabs 的商标；本仓库的许可证不覆盖该标志，它仅用于标识 ElevenLabs 集成。WASD Engine 与 ElevenLabs 无关联，并非由 ElevenLabs 制作或认可。
 
 -----
 
