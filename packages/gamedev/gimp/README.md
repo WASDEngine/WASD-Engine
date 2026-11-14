@@ -107,7 +107,7 @@ GIMP runs with the `GIMP3_DIRECTORY` environment variable set to `<dataRoot>/pro
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `gimp_<name>`, and share one GIMP session among themselves.
+The model calls each tool as `mcp__wasd_gimp__<name>`, and every path argument is absolute. A result is text, and `snapshot` adds one image; a failed call returns an error result whose text names the cause. An argument that does not apply to the chosen `action` or `mode` fails the call. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `gimp_<name>`, which also take `session` and `project`, and share one GIMP session among themselves unless they pass `session` ([connected agents' Sessions](../app-mcp/README.md#connected-agents-sessions)).
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -165,7 +165,7 @@ Tools name a layer by its id or its exact name, both of which `image_info` lists
 <a id="one-gimp-session"></a>
 ### One GIMP session per conversation
 
-The Host runs one GIMP MCP server, and the server runs one GIMP worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open images, their selections, and `execute_python` namespace, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside; agents connected through WASD Engine's MCP server share one worker among themselves. Open images persist between calls until `close_image` closes them or the worker stops, as it does after `workerIdleTimeoutMs` without calls.
+The Host runs one GIMP MCP server, and the server runs one GIMP worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open images, their selections, and `execute_python` namespace, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside; agents connected through WASD Engine's MCP server share one worker among themselves, unless their calls pass `session` names, which give each name the worker of a Session of its own ([connected agents' Sessions](../app-mcp/README.md#connected-agents-sessions)). Open images persist between calls until `close_image` closes them or the worker stops, as it does after `workerIdleTimeoutMs` without calls.
 
 A Session's worker starts on its first tool call with no images open. A crash, an expired request budget, or a cancelled running call stops GIMP and loses the open images and unsaved changes. When GIMP stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When GIMP stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. On macOS and Linux, a watchdog stops GIMP as soon as GIMP's Python process dies, so the running call fails without waiting for its budget. Save `.xcf` files at milestones.
 
@@ -328,7 +328,7 @@ Append-only: calls and their results follow the existing request prefix and do n
 
 These limits describe current gaps in the GIMP tools.
 
-- **Connected agents share one GIMP** — agents connected through WASD Engine's MCP server share the open images, their ids, and one Python namespace, so one can change or close another's images, and a long filter or script delays the others' calls.
+- **Connected agents share one GIMP unless they name sessions** — agents connected through WASD Engine's MCP server whose calls pass no `session` share the open images, their ids, and one Python namespace, so one can change or close another's images, and a long filter or script delays the others' calls.
 - **An idle Session loses its images** — a Session's worker stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`, and its open images and unsaved changes go with it.
 - **No window** — the tools offer no canvas, interface, or screenshot of GIMP, and `pdb_run` runs every procedure non-interactively, without its dialog; `snapshot` is the only way to look at an image.
 - **Restarts lose open images** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops GIMP; the open images, unsaved changes, selections, and the Python namespace are gone, and the fresh worker starts with no images open.

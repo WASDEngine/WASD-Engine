@@ -69,11 +69,12 @@ describe('configuration', () => {
 
   it('applies the documented defaults', () => {
     expect(GodotController.Config({ dataRoot: '/data' })).toEqual({
-      dataRoot: '/data', runtimeVersion: '4.7.2-wasd.2',
-      runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json',
+      dataRoot: '/data', runtimeVersion: '4.7.2-wasd.3',
+      runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json',
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
+      idleRunStopMs: 300_000, maxScripts: 4, scriptMemoryBytes: 2 * 1024 ** 3, scriptCores: 2, keptScriptResults: 20,
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
       minWindowHeight: 720, recordQuality: 0.92, recordBufferBytes: 1024 ** 3, maxVideoBytes: 4 * 1024 ** 3,
       webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',
@@ -236,20 +237,22 @@ posix('Remote', () => {
     expect(await fakeLog(c.project)).toEqual([])
   })
 
-  it('counts a view of the run while a view stream stays open, and refuses one for another run', async () => {
+  it('counts a display of the run while a view stream stays open, and refuses one for another run', async () => {
     const c = await setup({ game: { game: { displayServer: 'embedded' } }, config: { hiddenFps: 10, hiddenDelayMs: 100 } })
     const run = await c.godot.run(OWNER, {}, signal)
-    const paces = async (): Promise<number[]> => (await fakeRequests(c.project)).flatMap(request => request.type === 'pace' ? [request.maxFps as number] : [])
-    await until(async () => (await paces()).length === 1)
+    const paces = async (): Promise<string[]> => (await fakeRequests(c.project))
+      .flatMap(request => request.type === 'pace' ? [`${String(request.maxFps)} ${request.present === true ? 'presenting' : 'hidden'}`] : [])
+    await until(async () => (await paces()).length === 2)
     const viewing = new AbortController()
     const stream = c.godot.view(OWNER, run.runId, viewing.signal)[Symbol.asyncIterator]()
     expect(await stream.next()).toEqual({ done: false, value: { type: 'shown' } })
-    await until(async () => (await paces()).length === 2)
+    await until(async () => (await paces()).length === 3)
     const ended = stream.next()
     viewing.abort()
     expect(await ended).toEqual({ done: true, value: undefined })
-    await until(async () => (await paces()).length === 3)
-    expect(await paces()).toEqual([10, 0, 10])
+    await until(async () => (await paces()).length === 5)
+    // The game stops presenting as the view ends, and drops its frame rate after the delay.
+    expect(await paces()).toEqual(['0 hidden', '10 hidden', '0 presenting', '0 hidden', '10 hidden'])
     await expectRemote(() => c.godot.view(OWNER, 'another-run', signal)[Symbol.asyncIterator]().next(), 'godot/stale-run')
     await expectRemote(() => c.godot.view(SessionId('other'), run.runId, signal)[Symbol.asyncIterator]().next(), 'godot/not-running')
   })

@@ -144,6 +144,8 @@ export async function compose(options: CompositionOptions = {}): Promise<Composi
     // Limits that do not depend on the memory and processors of the computer that runs the specs.
     runMemoryBytes: 0,
     runCores: 0,
+    scriptMemoryBytes: 0,
+    scriptCores: 0,
     minAvailableMemoryBytes: 0,
     ...options.config,
   }))

@@ -96,11 +96,12 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     const godot = tools.filter(tool => tool.name.startsWith('godot_'))
     expect(godot.map(tool => tool.name)).toEqual([
       'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_view', 'godot_record', 'godot_control', 'godot_eval',
-      'godot_scene_tree', 'godot_performance', 'godot_logs', 'godot_check', 'godot_script',
+      'godot_scene_tree', 'godot_performance', 'godot_audio', 'godot_logs', 'godot_check', 'godot_script',
     ])
     for (const tool of godot) {
       expect(tool.inputSchema.properties?.project).toMatchObject({ type: 'string' })
       expect(JSON.stringify(tool.inputSchema.properties?.project)).toContain('Absolute path')
+      expect(JSON.stringify(tool.inputSchema.properties?.session)).toContain('Name of a Session of your own')
     }
     expect(godot.find(tool => tool.name === 'godot_input')?.inputSchema.required).toEqual(['events'])
     expect(godot.find(tool => tool.name === 'godot_script')?.inputSchema.required).toEqual(['script'])
@@ -113,7 +114,39 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_record')?.annotations?.readOnlyHint).toBeUndefined()
     // A check may import the project first, which writes its import data.
     expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
-    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 14 tools)')
+    expect(godot.find(tool => tool.name === 'godot_audio')?.description).toContain('Listen to the running game')
+    expect(JSON.stringify(godot.find(tool => tool.name === 'godot_audio')?.inputSchema.properties?.path)).toContain('an absolute path')
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 15 tools)')
+  }, TIMEOUT)
+
+  it('gives each session name a Session and a game of its own, so the runs of agents that share a connection stay apart', async () => {
+    const { client, project, created } = await connected()
+    const titles: Array<[SessionId, string]> = []
+    Object.assign(composition?.sessionController ?? {}, {
+      rename: async ({ sessionId, title }: { sessionId: SessionId; title: string }) => {
+        titles.push([sessionId, title])
+        return { title, seq: 1 }
+      },
+    })
+    const builder = await client.callTool({ name: 'godot_run', arguments: { project, session: 'Builder' } })
+    expect(builder.isError, text(builder)).toBeFalsy()
+    // Without project, a Session's first call uses the agent's most recent project.
+    const checker = await client.callTool({ name: 'godot_run', arguments: { session: 'checker' } })
+    expect(checker.isError, text(checker)).toBeFalsy()
+    expect(created).toHaveLength(2)
+    expect(titles).toEqual([[created[0], 'Claude Code: Builder'], [created[1], 'Claude Code: checker']])
+    // Names that differ only in case share a Session, and both games still run.
+    for (const session of ['builder', 'CHECKER']) {
+      const shot = await client.callTool({ name: 'godot_screenshot', arguments: { session } })
+      expect(shot.isError, text(shot)).toBeFalsy()
+    }
+    expect(created).toHaveLength(2)
+    // The agent's unnamed Session is a third one, with no game yet.
+    const plain = await client.callTool({ name: 'godot_screenshot', arguments: {} })
+    expect(text(plain)).toContain('No game is running in this Session; call godot_run first.')
+    expect(created).toHaveLength(3)
+    const bad = await client.callTool({ name: 'godot_logs', arguments: { session: ' ' } })
+    expect(text(bad)).toContain('session must be a name of 1 to 40 characters')
   }, TIMEOUT)
 
   it('runs the game for the agent\'s own Session, shows it in the window, and returns screenshots as PNG bytes', async () => {

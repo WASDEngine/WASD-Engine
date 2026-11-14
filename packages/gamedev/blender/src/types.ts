@@ -17,4 +17,9 @@ export interface BlenderServerOptions extends AppServerOptions {
   readonly startupTimeoutMs: number
   /** Absolute folder of the game add-on store, or empty. */
   readonly addonStore: string
+  readonly maxScripts: number
+  readonly scriptMemoryBytes: number
+  readonly scriptCores: number
+  readonly keptScriptResults: number
+  readonly scriptLogBytes: number
 }

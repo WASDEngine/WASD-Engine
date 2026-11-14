@@ -2,11 +2,11 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。`feedback_send` 工具让 Session 的 agent 和连接的 agent 向 WASD Engine 团队发送关于 WASD Engine 的反馈，用量报告统计 agent 调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASDEngine 网站。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。原生 `reference_*` 工具在网上为 agent 即将制作的美术查找参考图像、动画和视频封面，并把选中的保存到游戏项目中，一个系统提示词段落让 agent 在制作美术之前收集它们。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。`feedback_send` 工具让 Session 的 agent 和连接的 agent 向 WASD Engine 团队发送关于 WASD Engine 的反馈，用量报告统计 agent 调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASDEngine 网站。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的八个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页与素材工具](#assets-tab)的 `ui-game-assets` 与 `game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 与 `image-generation` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的八个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页与素材工具](#assets-tab)的 `ui-game-assets` 与 `game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`、挂载[参考工具](#art-references)的 `art-references`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 与 `image-generation` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -27,7 +27,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 | Blender、GIMP 或 SuperCollider 工作进程 | MCP 服务器，在 Session 第一次发现该 Session 没有运行中工作进程的工具调用时启动 | 自行退出、服务器关闭，或服务器因超时、协议违规、调用被取消、`workerIdleTimeoutMs` 内没有调用而停止它，或为另一个 Session 的工作进程腾出位置或释放内存而停止它时 | 与其 MCP 服务器通信；SuperCollider 工作进程还与其 sclang 通信 |
 | sclang，以及渲染期间的 scsynth | SuperCollider 工作进程在启动时启动 sclang；sclang 为每次渲染通过 shell 运行 scsynth | sclang 在工作进程关闭其输入、代码让它退出，或工作进程的进程组被停止时结束；scsynth 在其渲染结束时结束 | sclang：通过标准输入与输出和工作进程通信；scsynth：无，sclang 读取其输出文件与日志 |
 | Godot 游戏 | `ctx.godot` 通过 `ctx.subprocess` 启动，每次运行一个 | 运行被停止或游戏退出时；连接关闭时 harness 脚本也会退出游戏，`godot_runner` 会随 Host 进程一起退出 | 通过一条回环 TCP 连接与 `ctx.godot` 通信 |
-| Godot 导入步骤、脚本检查、脚本或 Web 导出 | `ctx.godot`：导入步骤在运行之前、在项目自上次导入以来有改动的 `godot_check` 或 `godot_script` 之前，以及每次 `ctx.godot.importProject` 调用时启动；检查在每次 `godot_check` 调用时启动；脚本在每次 `godot_script` 调用时启动；导出在每次 Web 导出时启动；检查、脚本、供其他插件使用的导入与导出最多同时运行 `maxHeadlessProcesses` 个 | Godot 完成时，或 `importTimeoutMs`（导出为 `exportTimeoutMs`）到期后 | 无；`ctx.godot` 读取其输出 |
+| Godot 导入步骤、脚本检查、脚本或 Web 导出 | `ctx.godot`：导入步骤在运行之前、在项目自上次导入以来有改动的 `godot_check` 或 `godot_script` 之前，以及每次 `ctx.godot.importProject` 调用时启动；检查在每次 `godot_check` 调用时启动；脚本在每次 `godot_script` 调用的每次运行时启动；导出在每次 Web 导出时启动；检查、供其他插件使用的导入与脚本之前的导入，以及导出，最多同时运行 `maxHeadlessProcesses` 个，脚本运行最多同时运行脚本上限个，即 `maxScripts`，按 `scriptMemoryBytes` 与 `scriptCores` 降低 | Godot 完成时，或 `importTimeoutMs`（导出为 `exportTimeoutMs`）到期后 | 无；`ctx.godot` 读取其输出 |
 
 ## 应用 MCP 服务器
 
@@ -35,8 +35,8 @@ Blender、GIMP 与 SuperCollider 采用相同的进程模型，由 `@deepseek-ai
 
 1. Host 插件调用 `registerAppMcpPlugin`，它检查插件的路径设置，并在插件生命周期内向 `ctx.mcpManager`（[MCP](mcp.zh.md)）注册一个 stdio 服务器条目。该条目用 Host 自身的可执行文件运行包的服务器入口（在 Desktop 应用中，`ELECTRON_RUN_AS_NODE=1` 使该可执行文件以 Node 运行；源码启动注册 TypeScript 入口时则通过 tsx 运行），并把插件配置作为一个 base64url JSON 参数传入。
 2. 服务器入口调用 `runAppMcpServer`。服务器进程响应 MCP 工具发现时不会启动应用，因此无论应用是否已安装，工具都会列出。MCP 客户端以 `mcp__<server>__<tool>` 公开这些工具，并把服务器的说明加入系统提示词。
-3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，并把用户资源放在工作进程的文件夹中，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止。服务器最多运行[进程上限](#process-limits)对本机允许的工作进程数：运行中的工作进程达到该数时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败。每次启动都先要求电脑有 `minAvailableMemoryBytes` 的可用内存；不足时，它按最久未使用优先停止其他 Session 的空闲工作进程，没有可停止的工作进程时以 `LOW_MEMORY` 失败。被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
-4. 每个工具向同名的工作进程方法发送一个请求，并把回复转换为文本和图像。工作进程报告的异常不会影响工作进程及其状态。调用期间发生超时、协议违规或退出时，工作进程会被停止，该调用失败并说明工作进程的状态已丢失；工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行，而是以同样的消息失败。该 Session 之后第一次实际执行的调用会启动新的工作进程。
+3. 服务器列出一项实验性能力，使 Host 的 MCP 客户端在每次工具调用中注明发起调用的 Session；子 agent 以自己的 Session 发起调用，未注明 Session 的调用（例如通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent 的调用）共用一个工作进程，已连接 agent 给出 `session` 名称的调用则以该 agent 同名的 Session 发起。Session 的第一次工具调用会准备应用、把工作进程脚本复制出包，并在 `<dataRoot>/workers/` 下该工作进程自己的文件夹中为该 Session 启动一个工作进程；Blender 可能先用 uv 安装 `bpy` 模块，并把用户资源放在工作进程的文件夹中，GIMP 使用其所有工作进程共用的 GIMP 配置目录，SuperCollider 则在工作进程的文件夹中使用用户目录与类库配置。`WorkerPool` 为每个 Session 提供一个 `WorkerSupervisor`，它针对该 Session 的工作进程及其应用状态逐个执行该 Session 的调用，不同 Session 的工作进程同时运行。工作进程逐个启动。`workerIdleTimeoutMs` 内没有调用的工作进程会停止。服务器最多运行[进程上限](#process-limits)对本机允许的工作进程数：运行中的工作进程达到该数时，新 Session 的第一次调用会停止最久未使用且没有运行调用的工作进程，若每个工作进程都在运行调用，则以 `WORKERS_BUSY` 失败。每次启动都先要求电脑有 `minAvailableMemoryBytes` 的可用内存；不足时，它按最久未使用优先停止其他 Session 的空闲工作进程，没有可停止的工作进程时以 `LOW_MEMORY` 失败。被停止工作进程的 Session 会在下一次调用时得知状态已丢失。关于启动的信息（例如应用版本或首次使用时的安装）会出现在该 Session 下一个工具结果的文本之前。
+4. 每个工具向同名的工作进程方法发送一个请求，并把回复转换为文本和图像。Blender 的 `run_script` 则在独立的 Blender 进程中运行 Python 文件，可运行一次或在自己的上限内同时运行多次，并把每次调用的输出和文件保存在 `<dataRoot>/script-runs/` 下的一个文件夹中（[脚本运行](../../packages/gamedev/blender/README.zh.md#script-runs)）。工作进程报告的异常不会影响工作进程及其状态。调用期间发生超时、协议违规或退出时，工作进程会被停止，该调用失败并说明工作进程的状态已丢失；工作进程在两次调用之间退出，或正在运行的调用被取消时，下一次调用不会执行，而是以同样的消息失败。该 Session 之后第一次实际执行的调用会启动新的工作进程。
 5. stdin 关闭、MCP 传输因 stdout 写入失败或收到的消息超出读取缓冲区而自行关闭，或者收到 SIGTERM 或 SIGINT 时，服务器停止其所有工作进程并退出；重复的信号不会中断这一关闭过程。
 
 [app-mcp README](../../packages/gamedev/app-mcp/README.zh.md#use-this-package) 负责说明注册字段、结果上限、错误码与重启规则。
@@ -87,7 +87,7 @@ stdout of sclang  <token> END <id> {"ok": false, "error": {"type": "<error class
 
 ## Godot 运行
 
-`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有运行上限个运行尚未结束时（已关闭 Session 的运行在其游戏进程结束前一直计入），或电脑的可用内存少于 `minAvailableMemoryBytes` 时，它会拒绝启动新的运行（[进程上限](#process-limits)）。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
+`ctx.godot` 是 `@deepseek-ai/dsh-godot` 默认导出的 `GodotController` 服务，拥有 Host 的所有游戏运行。它为每个存活的 Agent 保留一个当前运行，因此每个 Session 都有自己的游戏；已有运行上限个运行尚未结束时（已关闭 Session 的运行在其游戏进程结束前一直计入），除非它可以先停止由 agent 启动、且已闲置 `idleRunStopMs`（没有 Game 标签页显示、也没有请求在用）的游戏，或电脑的可用内存少于 `minAvailableMemoryBytes` 时，它会拒绝启动新的运行（[进程上限](#process-limits)）。同一 Session 的启动与停止逐个执行，启动会先停止该 Session 的当前运行，再启动下一个。dispose 某个 Agent 会停止其运行，此后该 Session 没有运行，直到之后的 Agent 启动一个；dispose 插件会停止所有运行，结束所有 follow 流，并取消正在进行的运行时安装。`godot_*` 工具与 Game 标签页的 `godot` Remote 作用于同一组运行。
 
 ### 运行时解析
 
@@ -144,6 +144,7 @@ message   u32 LE length N (1 to 64 MiB), then N bytes: u8 kind, payload
 kind 1    UTF-8 JSON object                                            both directions
 kind 2    u32 LE seq, u16 LE width, u16 LE height, PNG or JPEG bytes   harness to Host: a streamed frame
 kind 3    u32 LE request id, PNG or JPEG bytes                         harness to Host: a screenshot image
+kind 5    u32 LE request id, LE f32 samples, left and right interleaved   harness to Host: an audio capture
 ```
 
 - harness 连接 `127.0.0.1` 上由 `--wasd-port` 指定的端口，并首先发送 `hello`。在连接出示本次运行的令牌之前，`ctx.godot` 在该连接上只接受至多 64 KiB 的消息；收到 `token` 经恒定时间比较相符的 `hello` 以外的任何内容，都会销毁该连接；它按读取每条消息时生效的上限衡量该消息，因此同一次读取中 `hello` 之后的消息可以使用 64 MiB 的上限。`protocol` 不同的 `hello` 会使启动失败。
@@ -152,7 +153,7 @@ kind 3    u32 LE request id, PNG or JPEG bytes                         harness t
 
 | `type` | 字段 | 发送时机 |
 |---|---|---|
-| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale` | 最先发送，仅一次 |
+| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale`；`wasdRuntime`，即运行时是否带有 WASD Engine 的 LibGodot 构建中的 `WASDEngineRuntime` 单例 | 最先发送，仅一次 |
 | `status` | `frame`、`fps`、`paused`、`scene`（当前场景的 `res://` 文件，或为空）、`mouseMode`、`width`、`height`、`droppedLogs` | 每秒一次，以及当前场景或鼠标模式发生变化的那一帧 |
 | `logs` | `entries`，每项含 `level`、`message`、`time_ms`，以及已知时的 `file`、`line`、`function`、`code`，和由 `function`、`file`、`line` 组成的 `backtrace` 帧 | 每个有新条目的帧；连接建立之前记录的条目在连接打开后发送 |
 | `result` | `id`、`ok`、`ok` 为 false 时的 `error`，以及该请求的结果字段 | 回答请求时 |
@@ -164,7 +165,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
 | `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（准备 PNG 帧跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
-| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者） | `maxFps`，即生效后的 `Engine.max_fps` | `requestTimeoutMs` |
+| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者）；可选的 `present`，即游戏是否向其窗口呈现帧 | `maxFps`，即生效后的 `Engine.max_fps`；`presenting` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -172,16 +173,20 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `wait` | `frames` 或 `seconds`；可选的 `timeoutMs` | `frames`、`seconds`、`frame`、`paused`、`timedOut`、`cancelled` | 无；它携带 `timeoutMs`，即其秒数（或按每秒 10 帧计的帧数）加上 `requestTimeoutMs` |
 | `eval` | `expression`、`node` | `value`、`valueType` | `requestTimeoutMs` |
 | `tree` | `node`、`depth`（0 到 64，默认 6）、`maxNodes`（1 到 5,000，默认 400） | `tree`、`truncated` | `requestTimeoutMs` |
-| `cancel` | `request`，即待处理的 `wait`、`step` 或 `input` 请求的 id | `cancelled` | 不等待 |
+| `performance` | 测量帧的 `seconds`（0.1 到 60），其后剖析脚本的 `scriptSeconds`（0 到 60）；可选的 `timeoutMs` | `seconds`、`frames`、`droppedFrames`、`pausedFrames`、`physicsSteps`、`streamedFrames`、逐帧的 `series`、`monitorsStart`、`monitorsEnd`、`custom`、`nodes`、`context`、`scriptProfiler`、`scripts`、`scriptSeconds`、`scriptFrames`、`timedOut`、`cancelled` | 无；它携带两个时间窗的 `timeoutMs` 再加 `requestTimeoutMs` |
+| `audio` | 音频的 `seconds`（0.05 到 120）；可选的 `timeoutMs` | `sampleRate`、`channels`（2）、`frames`、`seconds`、`droppedFrames`、`masterVolumes`、`masterBypassed`、`detached`、`driver`、`outputLatencyMs`、`startFrame`、`frame`、`buses`、`players`、`morePlayers`、`timedOut`、`cancelled`，以及带请求 id 的 kind 5 采集 | 无；它携带其秒数的 `timeoutMs` 再加 `requestTimeoutMs` |
+| `cancel` | `request`，即待处理的 `wait`、`step`、`input`、`performance` 或 `audio` 请求的 id | `cancelled` | 不等待 |
 | `quit` | `exitCode` | `quitting` | 不等待 |
 
 - 被拒绝的请求以 `ok: false` 回答，并附带 `error` 文本；未知的 `type` 会被拒绝。
 - 没有期限的请求，在 `ctx.godot` 等待期间若 harness 连续 `requestTimeoutMs` 没有发送任何内容，仍会失败；帧、状态与日志都算作活动。`ctx.godot` 放弃一个等待、单步或输入请求时（因为其调用方已中止，或 harness 已沉默），除非运行正在停止，否则会发送带该请求 id 的 `cancel`。
-- 截图回答在其 JSON 结果与图像都到达后才算完整，两者顺序不限。截图与帧以像素尺寸显示游戏窗口：根视口位于项目的拉伸模式与宽高比放置它的位置，窗口显示黑边的地方为黑色，因此在完整尺寸下，图像像素就是同一位置的窗口像素。harness 随后把图像缩小到宽度至多 `maxWidth` 像素，并以每秒实际时间至多 `fps` 帧推流，游戏暂停或 `Engine.time_scale` 为 0 时也是如此。
+- 截图回答在其 JSON 结果与图像都到达后才算完整，两者顺序不限；音频回答与其采集也是如此。截图与帧以像素尺寸显示游戏窗口：根视口位于项目的拉伸模式与宽高比放置它的位置，窗口显示黑边的地方为黑色，因此在完整尺寸下，图像像素就是同一位置的窗口像素。harness 随后把图像缩小到宽度至多 `maxWidth` 像素，并以每秒实际时间至多 `fps` 帧推流，游戏暂停或 `Engine.time_scale` 为 0 时也是如此。
 - `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束，以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
 - `eval` 以输入 `tree`、`root` 与 `scene`（当前场景）解析 Godot `Expression`，并在 `node` 上运行；未给出 `node` 时在当前场景上运行。
+- `performance` 先在 `seconds` 内测量帧；`scriptSeconds` 为正且运行时带有 `WASDEngineRuntime` 单例时，再用 `scriptSeconds` 剖析脚本，并以 `[签名, 调用次数, 总微秒数, 自身微秒数]` 条目回答 `scripts`，引擎方法的条目紧跟在调用它的函数之后，不含 harness 自身的函数。`audio` 用 Master 总线效果链末尾的 `AudioEffectCapture` 采集该总线的混音，采集在总线音量之前，`masterVolumes` 以 `[采集的帧, 音量 dB, 是否静音]` 列出开始时以及每次变化后的音量。两者都像 `wait` 一样在其 `timeoutMs` 到达或收到 `cancel` 时提前结束，并以截至当时测得或采集到的内容作答。
 - `ctx.godot` 以 `id` 0 发送 `quit`，并且不等待其回答。
 - **无人显示的游戏的帧率。** 无窗口游戏连接后、其最后一个视图结束后，或其最后一个请求结束后经过 `hiddenDelayMs`（默认 30 秒），`ctx.godot` 会向它发送带 `hiddenFps`（默认 10）的 `pace`。视图是指“游戏”标签页显示运行画面期间持有的 `godot.view` 流，或帧流。新视图以及除 `pace` 与 `stream` 之外的任何请求都会先发送 `maxFps` 为 0 的 `pace`，因此请求以游戏自身的帧率运行。有窗口的游戏（Linux 与 Windows 上）从不受此限制。
+- **无人显示的游戏的呈现。** 无窗口游戏只在有显示器显示它时呈现其帧：显示器即“游戏”标签页显示运行画面期间持有的 `godot.view` 流。没有显示时，`ctx.godot` 发送带 `present: false` 的 `pace`，harness 把根视口从屏幕上分离，让它每帧更新到其纹理中（截图与帧流读取该纹理），并把 `Engine.max_fps` 限制为屏幕的刷新率，与呈现时的节奏相同。呈现要等待窗口服务器，而另一个进程大量呈现帧时，窗口服务器会迟迟才归还窗口的帧，因此在另一个呈现帧的游戏旁边呈现的游戏会一次卡顿数百毫秒。
 
 <a id="input-events"></a>
 ### 输入事件
@@ -318,7 +323,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
 | 移除 | 记录中的路径、该扩展的 `project.godot` 条目及其声明段落会被删除；另一个已安装扩展也设置的设置项会保留；结果会列出仍在使用该扩展的文件 |
 
-`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器：项目自上次导入以来有改动时，它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
+`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器以及测量：项目自上次导入以来有改动时，它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本，运行一次，或按 `runs` 的每个条目同时各运行一次，用 `fixed_fps` 时以固定帧率运行，并把每次运行的输出及其写入 `WASD_OUTPUT_DIR` 的文件保存在项目数据文件夹中的一个文件夹里。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印或写入的内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
 
 <a id="assets-tab"></a>
 ## 「素材」标签页
@@ -362,6 +367,21 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 `AudioMeasureEvent` 是 `game-audio/measure` 的请求：声音的工作区路径 `path`、从 `start` 到 `end` 的测量片段（没有 `end` 时到声音结尾）、最长片段 `maxSeconds`、是否绘制图像的 `picture`、读取的最大文件 `maxBytes`、游戏所播放的循环 `loop`（窗口从整个解码后的声音测量其衔接），以及在 Host 上发起调用的 `agent` 和调用的 `signal`。`AudioMeasureResult` 以 `measurements`（工具渲染的数值）和 `picture`（带 `layout` 的 base64 PNG）作答。`AudioReveal` 携带 `sessionId` 和声音的 `path`。
 
+<a id="art-references"></a>
+## 美术参考
+
+`art-references` 行挂载 [`@deepseek-ai/dsh-art-references`](../../packages/gamedev/art-references/README.zh.md)，它的 `reference_search` 和 `reference_save` 工具在会话的 agent 和连接的 agent 制作游戏美术之前为它们提供参考，它的 `art-references` 系统提示词段落告诉 agent 在制作任何美术资源之前使用这些工具、向用户展示联系表，并在参考在风格、像素尺寸、比例、配色或视角上不同时用 `ask_user_question` 询问用户想要哪个方向。用户可以用自己的图片回答这个问题：[`ui-user-questions`](../../packages/client/ui-user-questions/README.zh.md#attaching-images) 的提问卡片把图片上传到会话，并在答案之前把它们作为一条消息引导进来，因此 agent 随答案一起收到图片和每份存储副本的路径，它会优先遵循这些图片，并用 `reference_save` 保存它们。该行唯一的配置是 `dataRoot`，即 `dshHomePath('art-references')`，存放下载的图像和联系表的缓存，插件会在 `cacheDays` 后清理。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 搜索结果 | `ctx.web.search`，即 `web_search` 使用的搜索，由 WASDEngine 服务计价 | `reference_search` 调用的每个查询 |
+| 页面和图像 | 从 Host 发出的 HTTP GET，只发往公共互联网地址，每次重定向都重新检查，不带 cookie | 搜索找到或调用给出的页面，以及它们提供的图像 |
+| 联系表 | `<dataRoot>/sheets/` 中的 JPEG 文件、给接受图像的模型的附件，以及 agent 消息中的 Markdown 图像，聊天界面通过 `/api/file` 渲染 | 每次找到图像的 `reference_search` 调用 |
+| 答案图片 | 浏览器向会话上传图片，然后是一条带有这些图片的引导用户消息，模型看到每份存储副本的只读路径 | 用户为 `ask_user_question` 的答案附加图片时 |
+| 保存的参考 | `<project>/references/<subject>/` 中的文件，带 `SOURCES.md` 和帧表，以及 `<project>/references/.gdignore`；这台电脑上的图像文件从其路径复制 | 每次 `reference_save` 调用 |
+
+`.gdignore` 文件让 Godot 跳过该文件夹，因此参考既不会被导入，也不会随游戏导出；「素材」标签页仍会列出它们。
+
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
 
@@ -375,15 +395,16 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
 | `image_generate` | `image`，经由 [`src/mcp.ts`](../../packages/gamedev/image-generation/src/mcp.ts) 中的 `imageMcpProvider` | Session 自身的工具定义，不需要 Session；文件和每张图像都需要绝对路径，图像费用计入 WASD Engine 已登录的账号 |
+| `reference_search`、`reference_save` | `reference`，通过 [`src/mcp.ts`](../../packages/gamedev/art-references/src/mcp.ts) 中的 `referenceMcpProvider` | 会话自己的工具定义，不需要会话；`reference_save` 以绝对路径的 `project` 接受游戏项目文件夹，每个结果的图像以图像字节返回 |
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
 | `feedback_send` | `feedback`，经由 [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) 中的 `feedbackMcpProvider` | Session 自身带有 `model` 的工具定义，不需要 Session；提供方加入调用方 agent 的客户端，反馈发送到 WASD Engine 已登录的网站 |
-| `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交 |
+| `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交；调用以该 agent 与调用中 `session` 名称同名的 Session 运行，或不带 Session 运行 |
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
 
-**Session。** 每次 Godot 调用都以绝对路径指定项目，或沿用该 agent 上一次的项目。除非已有注册的游戏项目包含该文件夹，服务器会把该文件夹注册为游戏项目，并在该项目中解析该 agent 的 Session，首次使用时创建：每个 agent 与游戏项目对应一个 Session，记录在 `<dataRoot>/sessions.json` 中。游戏在这个 Session 中运行，因此它的运行、日志与 Game 标签页都与普通 Session 相同，用户可以在其中观看、暂停和游玩。
+**Session。** 每次 Godot 调用都以绝对路径指定项目，或沿用该 agent 上一次的项目。除非已有注册的游戏项目包含该文件夹，服务器会把该文件夹注册为游戏项目，并在该项目中解析该 agent 的 Session，首次使用时创建：每个 agent 与游戏项目对应一个 Session，agent 的调用每给出一个 `session` 名称就再对应一个，因此共用同一连接的 agent（例如同一会话的多个子 agent）能运行各自的游戏；这些 Session 都记录在 `<dataRoot>/sessions.json` 中。游戏在这个 Session 中运行，因此它的运行、日志与 Game 标签页都与普通 Session 相同，用户可以在其中观看、暂停和游玩。Blender、GIMP 与 SuperCollider 工具也接受 `session` 与 `project`：给出名称的调用在同一个 Session 中运行，因而使用该 Session 自己的工作进程；未给出 `session` 的调用则共用每个应用的一个工作进程（[连接的 agent 的 Session](../../packages/gamedev/app-mcp/README.zh.md#connected-agents-sessions)）。
 
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
@@ -488,7 +509,7 @@ fork 的 [`telemetry.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine
 | `godot/runtime-unavailable` | `message` | 没有可以解析的运行时，或某个已配置的运行时路径不可用 |
 | `godot/not-running` | 无 | Session 没有运行，或其游戏不接受请求 |
 | `godot/stale-run` | `runId` | `input` 指向的运行不是该 Session 的当前运行 |
-| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满运行上限 |
+| `godot/too-many-runs` | `limit` | 其他 Session 的游戏（包括仍在停止的已关闭 Session 的游戏）已占满运行上限，且其中没有由 agent 启动并已闲置 `idleRunStopMs` 的游戏 |
 | `godot/low-memory` | `availableBytes`、`requiredBytes` | 运行启动时电脑的可用内存少于 `minAvailableMemoryBytes` |
 | `godot/request-failed` | `message` | 游戏拒绝了请求，或没有及时回答 |
 
@@ -628,9 +649,9 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
- * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
- * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
- * the run ends.
+ * Count the Session's run as displayed while the stream stays open, so a windowless game keeps its own frame rate and
+ * presents its frames; the Game tab holds one while it shows the run's picture. The stream yields one item once the
+ * display counts and ends when the run ends.
  * @param sessionId - Session whose run is shown.
  * @param runId - the run the tab shows.
  * @param signal - ends the view.

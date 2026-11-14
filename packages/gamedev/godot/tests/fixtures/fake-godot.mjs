@@ -6,8 +6,9 @@
 // class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
 // `--export-release` writes the configured export files next to the requested page, records the export presets and
 // the `project.godot` it saw, appends the configured `appendProject` text to `project.godot` when there is one, and
-// records `exported` at its end, `--headless ... --script` runs the `script` section, which records `scripted` at
-// its end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
+// records `exported` at its end, `--headless ... --script` runs the `script` section, which writes its `files` into the
+// folder that WASD_OUTPUT_DIR names and records `scripted` with that folder, HOME, and its start and end times at its
+// end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
 // instance's `WASD_TEST_NAME` (or its `*` entry) when the config has an `instance` section, and the static check, which
 // records `checked` at its end, otherwise; anything else runs a game that speaks the wasd_harness.gd protocol on the
 // loopback port the Host passes.
@@ -50,9 +51,16 @@ async function runImport(section) {
 }
 
 async function runScript(section) {
+  const startedAt = Date.now()
+  const outputDir = process.env.WASD_OUTPUT_DIR
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
-  record({ scripted: true })
+  // The `files` section names files to write into the run's WASD_OUTPUT_DIR, as a script writes its results there.
+  for (const [name, text] of Object.entries(section.files ?? {})) {
+    mkdirSync(dirname(join(outputDir, name)), { recursive: true })
+    writeFileSync(join(outputDir, name), text)
+  }
+  record({ scripted: true, outputDir: outputDir ?? null, home: process.env.HOME ?? null, startedAt, endedAt: Date.now() })
   await finish(section)
 }
 
@@ -121,7 +129,7 @@ async function runGame(section) {
   const encodeJson = message => encode(1, Buffer.from(JSON.stringify(message), 'utf8'))
   const send = (kind, payload) => socket.write(encode(kind, payload))
   const json = message => socket.write(encodeJson(message))
-  const state = { frame: 1, paused: false, width: section.width ?? 640, height: section.height ?? 360, sequence: 0, stream: undefined, frozen: false }
+  const state = { frame: 1, paused: false, width: section.width ?? 640, height: section.height ?? 360, sequence: 0, stream: undefined, frozen: false, presenting: true }
   const status = () => ({
     type: 'status', frame: state.frame, fps: 60, paused: state.paused, scene: section.scene ?? 'res://main.tscn',
     mouseMode: 0, width: state.width, height: state.height, droppedLogs: 0,
@@ -131,6 +139,7 @@ async function runGame(section) {
     project: 'Fake', mainScene: 'res://main.tscn', displayServer: section.displayServer ?? 'headless',
     renderingDriver: 'fake', renderingMethod: 'forward_plus', width: state.width, height: state.height,
     ...section.layer === undefined ? {} : { layer: section.layer },
+    ...section.wasdRuntime === undefined ? {} : { wasdRuntime: section.wasdRuntime },
   }
   switch (section.first ?? 'hello') {
     case 'frame': send(2, frame(1, 1, 1)); break
@@ -247,7 +256,8 @@ async function runGame(section) {
         }
         return reply(message.id, { fps: message.fps })
       case 'pace':
-        return reply(message.id, { maxFps: message.maxFps })
+        if (message.present !== undefined) state.presenting = message.present
+        return reply(message.id, { maxFps: message.maxFps, presenting: state.presenting })
       case 'screenshot': {
         const scale = message.maxWidth > 0 && state.width > message.maxWidth ? message.maxWidth / state.width : 1
         const jpeg = message.format === 'jpeg'
@@ -299,6 +309,11 @@ async function runGame(section) {
         return reply(message.id, { frames, seconds: frames / 60, frame: state.frame, paused: state.paused, timedOut, cancelled })
       }
       case 'cancel':
+        if (state.heldAudio?.id === message.request) {
+          const held = state.heldAudio
+          state.heldAudio = undefined
+          held.answer(true)
+        }
         return reply(message.id, { cancelled: true })
       case 'eval':
         return reply(message.id, { value: section.evalValue ?? message.expression, valueType: 'String' })
@@ -313,9 +328,37 @@ async function runGame(section) {
           context: {
             paused: state.paused, timeScale: 1, maxFps: 0, physicsTicksPerSecond: 60, vsyncMode: 1, lowProcessorMode: false,
             renderingMethod: 'forward_plus', renderingDriver: 'fake', adapter: '', adapterVendor: '', width: state.width, height: state.height, streamFps: 0,
+            frameCap: 0, presenting: state.presenting, refreshRate: 60, wasdRuntime: section.wasdRuntime ?? false,
           },
+          scriptProfiler: section.wasdRuntime ?? false, scripts: [], scriptSeconds: 0, scriptFrames: 0,
           timedOut: false, cancelled: false,
         })
+      }
+      case 'audio': {
+        // A capture of `seconds` of a 441 Hz sine at half scale in both channels, or the configured `audio` reply and
+        // samples; the samples follow the answer as kind 5. With `replies.audio` 'untilCancel', the capture answers
+        // with a tenth of a second when a `cancel` names it.
+        const rate = 44100
+        if (behavior === 'untilCancel' && message.held !== true) {
+          state.heldAudio = { id: message.id, answer: () => handle({ ...message, seconds: 0.1, held: true }) }
+          return
+        }
+        const frames = section.audio?.frames ?? Math.round(message.seconds * rate)
+        const samples = Buffer.alloc(4 + frames * 8)
+        samples.writeUInt32LE(message.id, 0)
+        const amplitude = section.audio?.amplitude ?? 0.5
+        for (let index = 0; index < frames; index++) {
+          const value = amplitude * Math.sin(2 * Math.PI * 441 * index / rate)
+          samples.writeFloatLE(value, 4 + index * 8)
+          samples.writeFloatLE(value, 8 + index * 8)
+        }
+        reply(message.id, {
+          sampleRate: rate, channels: 2, frames, seconds: frames / rate, droppedFrames: 0, masterVolumes: [[0, 0, false]],
+          masterBypassed: false, detached: false, driver: 'Dummy', outputLatencyMs: 0, startFrame: state.frame, frame: state.frame,
+          buses: [{ name: 'Master', volumeDb: 0, mute: false, solo: false, bypass: false, send: '', effects: [], peakDb: -6 }],
+          players: [], morePlayers: 0, timedOut: false, cancelled: message.held === true, ...section.audio?.reply,
+        })
+        return send(5, samples)
       }
       case 'quit':
         reply(message.id, { quitting: true })

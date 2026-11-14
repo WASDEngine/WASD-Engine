@@ -111,6 +111,7 @@ jobs:
           packages/client/ui-tool/tests/web-card.client.spec.tsx
           packages/client/ui-tool/tests/tool-row.client.spec.tsx
           packages/client/ui-tool/tests/wasdengine-web-links.client.spec.tsx
+          packages/client/ui-user-questions
           scripts/client-bundle-purity.spec.ts
 
       - name: Runtime script tests

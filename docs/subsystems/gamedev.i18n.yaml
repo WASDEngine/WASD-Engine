@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: db4e1b1988b058f0
-  zh: 5fd40b3d56dbe784
+  en: 055dc5ad15430aa7
+  zh: 0ec7b14063e25208
 /game-tools/composition:
-  en: 5f630ba27c7f4ade
-  zh: f43d244cef77aeca
+  en: 4d470fb40f29ab23
+  zh: 7349296eed44dc67
 /game-tools/application-mcp-servers:
-  en: 580c70a2e4dc2335
-  zh: a5f54718ee5fa960
+  en: b9669e8ec35d2dad
+  zh: b805abb2a443e963
 /game-tools/application-mcp-servers/worker-protocol:
   en: 2351ff72999cc210
   zh: a5ad7594250ba9fd
@@ -18,8 +18,8 @@
   en: 16c4c209db98bfd9
   zh: bf8e6daad28cf9eb
 /game-tools/godot-runs:
-  en: a97beb5510782845
-  zh: 06c86335e796ac1c
+  en: 62a60e8c42f367bd
+  zh: 05269c4981f87205
 /game-tools/godot-runs/runtime-resolution:
   en: d6979e6ce4574993
   zh: 86c94652b18e443a
@@ -27,8 +27,8 @@
   en: 8ece884d6497a6c9
   zh: fdf3b24cd1ef846f
 /game-tools/godot-runs/harness-protocol:
-  en: 9ae98d7100062148
-  zh: 68781cc4f5b88d05
+  en: e1b8ad55bd1e07e9
+  zh: 98e4936c17b5f4b6
 /game-tools/godot-runs/input-events:
   en: 19e632b59a04e600
   zh: 1380b209cd31903a
@@ -51,17 +51,20 @@
   en: 054af2dc320873cf
   zh: a0fff36c645a9e11
 /game-tools/game-add-ons:
-  en: 5d1430a05f7612bd
-  zh: 864caf4f1f670fe4
+  en: a25b2ebe85722938
+  zh: 8fe7fbff8e9e1a0f
 /game-tools/assets-tab:
   en: b2904282f3338f10
   zh: a3b92e613cb9c472
 /game-tools/audio-tab-and-audio-tools:
-  en: 23c3e8eb7e7d9a7f
-  zh: d70a6fa5ce6a5165
+  en: e59698b6c9423c38
+  zh: 7eca82eb4f9107a9
+/game-tools/art-references:
+  en: c9bdbd9ea515733f
+  zh: d2b2a878cebf7e6c
 /game-tools/mcp-server-for-other-agents:
-  en: 97a378007ce1cd11
-  zh: 5910a19e85088b0c
+  en: 809f12ef879eb264
+  zh: bf98614646a9e28c
 /game-tools/agent-feedback-and-mcp-usage:
   en: d1a56725964df9d8
   zh: 1ce6fd547cd5daa9
@@ -69,5 +72,5 @@
   en: f5bb3430cfa3433f
   zh: 84102920f1c0753b
 /game-tools/remote-types:
-  en: 7f9c5758601d5fa8
-  zh: 3f44d9f759c1cf34
+  en: d209163eb146109c
+  zh: a4093965bf359da5

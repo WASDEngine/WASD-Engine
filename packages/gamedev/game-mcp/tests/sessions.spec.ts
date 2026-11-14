@@ -108,6 +108,41 @@ describe('ExternalSessions.agent', () => {
     expect(claude.id).not.toBe(codex.id)
   })
 
+  it('gives each Session name of an agent a Session of its own, titled with the agent and the name, and remembers it', async () => {
+    fakes.workspaces.push({ id: 'game', path: join(root, 'game'), sessionIds: [] })
+    const titles: Array<{ sessionId: SessionId; title: string }> = []
+    Object.assign(fakes.controller, { rename: vi.fn(async (request: { sessionId: SessionId; title: string }) => { titles.push(request) }) })
+    const store = sessions()
+    const shared = await store.agent(CLAUDE, join(root, 'game'), signal)
+    const builder = await store.agent(CLAUDE, join(root, 'game'), signal, ' Builder ')
+    const checker = await store.agent(CLAUDE, join(root, 'game'), signal, 'checker')
+    expect(new Set([shared.id, builder.id, checker.id]).size).toBe(3)
+    expect((await store.agent(CLAUDE, join(root, 'game'), signal, 'BUILDER')).id).toBe(builder.id)
+    expect(titles).toEqual([{ sessionId: builder.id, title: 'Claude Code: Builder' }, { sessionId: checker.id, title: 'Claude Code: checker' }])
+    const saved = JSON.parse(await readFile(join(root, 'data', 'sessions.json'), 'utf8')) as { sessions: unknown[] }
+    expect(saved.sessions).toEqual([
+      { workspaceId: 'game', client: 'claude-code', sessionId: shared.id },
+      { workspaceId: 'game', client: 'claude-code', name: 'builder', sessionId: builder.id },
+      { workspaceId: 'game', client: 'claude-code', name: 'checker', sessionId: checker.id },
+    ])
+    // After a Host restart, each name finds its Session again.
+    expect((await sessions().agent(CLAUDE, join(root, 'game'), signal, 'Checker')).id).toBe(checker.id)
+    expect((await sessions().agent(CLAUDE, join(root, 'game'), signal)).id).toBe(shared.id)
+  })
+
+  it('keeps a named Session that cannot be titled, and refuses empty, long, and multi-line names', async () => {
+    fakes.workspaces.push({ id: 'game', path: join(root, 'game'), sessionIds: [] })
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    Object.assign(fakes.controller, { rename: vi.fn(async () => { throw new Error('no title service') }) })
+    const store = sessions()
+    expect((await store.agent(CLAUDE, join(root, 'game'), signal, 'tester')).id).toBe('session-1')
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('no title service'))
+    for (const name of ['', '   ', 'x'.repeat(41), 'two\nlines']) {
+      await expect(store.agent(CLAUDE, join(root, 'game'), signal, name)).rejects.toThrow(GameMcpSessionError)
+    }
+    expect(fakes.controller.create).toHaveBeenCalledTimes(1)
+  })
+
   it('creates one Session for concurrent first calls', async () => {
     fakes.workspaces.push({ id: 'game', path: join(root, 'game'), sessionIds: [] })
     const store = sessions()

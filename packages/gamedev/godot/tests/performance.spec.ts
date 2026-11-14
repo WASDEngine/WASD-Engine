@@ -52,8 +52,12 @@ function reply(overrides: Partial<PerformanceReply> = {}): PerformanceReply {
     context: {
       paused: false, timeScale: 1, maxFps: 0, physicsTicksPerSecond: 60, vsyncMode: 1, lowProcessorMode: false,
       renderingMethod: 'forward_plus', renderingDriver: 'vulkan', adapter: 'Example GPU', adapterVendor: 'Example',
-      width: 1280, height: 720, streamFps: 30,
+      width: 1280, height: 720, streamFps: 30, frameCap: 0, presenting: true, refreshRate: 60, wasdRuntime: false,
     },
+    scriptProfiler: false,
+    scripts: [],
+    scriptSeconds: 0,
+    scriptFrames: 0,
     timedOut: false,
     cancelled: false,
     ...overrides,
@@ -171,6 +175,87 @@ describe('performance summary', () => {
     expect(opengl(0, true)).not.toContain('renders without a window')
     expect(opengl(1, false)).not.toContain('renders without a window')
     expect(formatPerformance(summarizePerformance(reply(), false))).not.toContain('renders without a window')
+  })
+
+  it('says that a windowless game no Game tab shows draws without presenting, at most at the refresh rate', () => {
+    const text = formatPerformance(summarizePerformance(reply({ context: { ...reply().context, presenting: false, frameCap: 120 } }), true))
+    expect(text).toContain('No Game tab shows the game, so it draws its frames without presenting them, at most 120 per second, '
+      + 'the display\'s refresh rate, and never waits for the window server.')
+    expect(text).not.toContain('renders without a window')
+    expect(formatPerformance(summarizePerformance(reply({ context: { ...reply().context, presenting: false } }), false))).not.toContain('No Game tab')
+  })
+
+  it('says why Metal has no GPU time: a runtime without WASD Engine\'s timestamps', () => {
+    const metal = (wasdRuntime: boolean): string => formatPerformance(summarizePerformance(reply({
+      series: { ...reply().series, gpu: [0, 0, 0, 0] }, context: { ...reply().context, renderingDriver: 'metal', wasdRuntime },
+    }), true))
+    expect(metal(false)).toContain('GPU time: this Godot runtime takes no GPU timestamps on Metal; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.3 do.')
+    expect(metal(true)).toContain('GPU time: this renderer reports none.')
+  })
+
+  it('profiles scripts per frame: own time with the engine methods each function calls, by script and function', () => {
+    const summary = summarizePerformance(reply({
+      scriptProfiler: true,
+      scriptSeconds: 2.004,
+      scriptFrames: 100,
+      scripts: [
+        ['res://player.gd::40::_physics_process', 100, 150_000, 30_000],
+        ['res://player.gd::0::CharacterBody3D.move_and_slide', 100, 80_000, 80_000],
+        ['res://player.gd::0::Node.get_node', 200, 1_000, 1_000],
+        ['res://player.gd::0::@implicit_new', 1, 10, 10],
+        ['res://player.gd::12::aim', 400, 20_000, 20_000],
+        ['res://enemy.gd::7::_process', 4000, 60_000, 50_000],
+        ['res://enemy.gd::0::Node3D.look_at', 4000, 5_000, 5_000],
+        ['res://level.tscn::GDScript_ab12::3::_on_timeout(lambda)', 2, 300, 300],
+      ],
+    }), true)
+    expect(summary.scriptProfile).toEqual({
+      seconds: 2,
+      frames: 100,
+      msPerFrame: 1.863,
+      scripts: [
+        {
+          path: 'res://player.gd',
+          msPerFrame: 1.31,
+          functions: [
+            {
+              name: '_physics_process', line: 40, callsPerFrame: 1, msPerFrame: 1.11, totalMsPerFrame: 1.5,
+              engineCalls: [{ method: 'CharacterBody3D.move_and_slide', callsPerFrame: 1, msPerFrame: 0.8 }, { method: 'Node.get_node', callsPerFrame: 2, msPerFrame: 0.01 }],
+            },
+            { name: 'aim', line: 12, callsPerFrame: 4, msPerFrame: 0.2, totalMsPerFrame: 0.2, engineCalls: [] },
+            { name: '@implicit_new', line: 0, callsPerFrame: 0.01, msPerFrame: 0, totalMsPerFrame: 0, engineCalls: [] },
+          ],
+        },
+        {
+          path: 'res://enemy.gd',
+          msPerFrame: 0.55,
+          functions: [
+            { name: '_process', line: 7, callsPerFrame: 40, msPerFrame: 0.55, totalMsPerFrame: 0.6, engineCalls: [{ method: 'Node3D.look_at', callsPerFrame: 40, msPerFrame: 0.05 }] },
+          ],
+        },
+        {
+          path: 'res://level.tscn::GDScript_ab12',
+          msPerFrame: 0.003,
+          functions: [{ name: '_on_timeout(lambda)', line: 3, callsPerFrame: 0.02, msPerFrame: 0.003, totalMsPerFrame: 0.003, engineCalls: [] }],
+        },
+      ],
+    })
+    const text = formatPerformance(summary, true)
+    expect(text).toContain('Scripts, profiled for 2.00 s (100 frames) after the frames above; the profiler slows scripts, so compare these times with each other. '
+      + 'Own time per frame (ms) counts a function\'s code and the engine methods it calls, not the script functions it calls: 1.86 in all.')
+    expect(text).toContain('res://player.gd 1.31: _physics_process (line 40) 1.11, of which CharacterBody3D.move_and_slide 0.80, Node.get_node 0.01; '
+      + 'aim (line 12) 0.20, 4 calls; @implicit_new (line 0) 0.00, 0.01 calls')
+    expect(text).toContain('res://enemy.gd 0.55: _process (line 7) 0.55, 40 calls, of which Node3D.look_at 0.05')
+  })
+
+  it('explains a missing script profile only when the sample asked for one', () => {
+    expect(formatPerformance(summarizePerformance(reply(), true), true))
+      .toContain('Scripts: this Godot runtime has no script profiler; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.3 time every script function.')
+    expect(formatPerformance(summarizePerformance(reply(), true), false)).not.toContain('Scripts:')
+    expect(formatPerformance(summarizePerformance(reply({ scriptProfiler: true }), true), true))
+      .toContain('Scripts: the sample ended before its script window measured a frame.')
+    expect(formatPerformance(summarizePerformance(reply({ scriptProfiler: true, scriptSeconds: 1, scriptFrames: 30 }), true), true))
+      .toContain('Scripts: no script function ran during the 1.00 s script window.')
   })
 
   it('rejects a harness answer without its series', () => {

@@ -5,8 +5,9 @@
  * its payload. Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16
  * width, u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot or view request:
  * u32 request id, then the image bytes. Kind 4 (harness to Host) is one frame of a recording: u32 recording id, u32 frame
- * index, u32 milliseconds into the video, u16 width, u16 height, then the bytes of a JPEG file. The constants match the
- * harness script; changing one requires changing both.
+ * index, u32 milliseconds into the video, u16 width, u16 height, then the bytes of a JPEG file. Kind 5 (harness to Host)
+ * answers an audio request: u32 request id, then the captured samples as little-endian 32-bit floats, left and right
+ * interleaved. The constants match the harness script; changing one requires changing both.
  * @module @deepseek-ai/dsh-godot/src/protocol
  */
 import { Buffer } from 'node:buffer'
@@ -23,9 +24,11 @@ const KIND_JSON = 1
 const KIND_FRAME = 2
 const KIND_IMAGE = 3
 const KIND_RECORD = 4
+const KIND_AUDIO = 5
 const FRAME_HEADER_BYTES = 8
 const IMAGE_HEADER_BYTES = 4
 const RECORD_HEADER_BYTES = 16
+const AUDIO_HEADER_BYTES = 4
 
 /** A malformed message on the harness connection; the connection is no longer trustworthy. */
 export class HarnessProtocolError extends Error {
@@ -80,6 +83,7 @@ const Hello = z.object({
   width: z.number().int(),
   height: z.number().int(),
   layer: z.object({ context: z.number().int().min(1).max(0xffff_ffff), scale: z.number().positive() }).optional(),
+  wasdRuntime: z.boolean().optional(),
 })
 
 const Status = z.object({
@@ -107,7 +111,8 @@ const HarnessJson = z.discriminatedUnion('type', [Hello, Status, Logs, Result])
 
 /**
  * The harness's first message: identity, token, and the game's rendering facts. `layer` names the Core Animation
- * layer that a windowless macOS game draws into, when the runtime publishes it.
+ * layer that a windowless macOS game draws into, when the runtime publishes it; `wasdRuntime` says whether the runtime
+ * is a WASD Engine LibGodot build with the `WASDEngineRuntime` singleton, whose script profilers the harness uses.
  */
 export type HarnessHello = z.infer<typeof Hello>
 
@@ -157,6 +162,7 @@ export type HarnessMessage =
   | { readonly kind: 'frame'; readonly frame: HarnessFrame }
   | { readonly kind: 'image'; readonly id: number; readonly data: Buffer }
   | { readonly kind: 'record'; readonly frame: HarnessRecordFrame }
+  | { readonly kind: 'audio'; readonly id: number; readonly data: Buffer }
 
 /**
  * Encode one JSON request for the harness.
@@ -219,6 +225,9 @@ function decodeBody(body: Buffer): HarnessMessage {
           image: payload.subarray(RECORD_HEADER_BYTES),
         },
       }
+    case KIND_AUDIO:
+      if (payload.length < AUDIO_HEADER_BYTES) throw new HarnessProtocolError('Harness sent audio without its request id')
+      return { kind: 'audio', id: payload.readUInt32LE(0), data: payload.subarray(AUDIO_HEADER_BYTES) }
     default:
       throw new HarnessProtocolError(`Harness sent unknown message kind ${String(kind)}`)
   }

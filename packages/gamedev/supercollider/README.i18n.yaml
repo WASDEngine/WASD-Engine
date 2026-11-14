@@ -30,11 +30,11 @@
   en: c18bddb5cfb4cb51
   zh: 324ece34847dc711
 /deepseek-ai-dsh-supercollider/use-this-package/one-interpreter-per-conversation:
-  en: 3e2b0cb5d6952230
-  zh: 22a67a7b0ebe18d2
+  en: 9d4807c45f3e535d
+  zh: b0afee07898d2bda
 /deepseek-ai-dsh-supercollider/use-this-package/tools:
-  en: c9952b6194ce6211
-  zh: 7419a2aeba1706b3
+  en: de25e63bfd2d082d
+  zh: caf726f43e3ad77c
 /deepseek-ai-dsh-supercollider/use-this-package/files-under-the-data-directory:
   en: 3ce79a8d9c44b07b
   zh: 5e4587c131085170
@@ -42,8 +42,8 @@
   en: 1f60aacd73da07d5
   zh: 68b4eb8f4e33a67f
 /deepseek-ai-dsh-supercollider/understand-the-implementation:
-  en: ae644588a52f6c2a
-  zh: 464f8190ba3b3e12
+  en: 76ca4e8cf5dcf82c
+  zh: 0786a7d6177cc5ec
 /deepseek-ai-dsh-supercollider/understand-the-implementation/verify-against-real-supercollider:
   en: 9d282332fc26a718
   zh: 1276de4184994268
@@ -96,8 +96,8 @@
   en: 00af0e13a5a63f94
   zh: 21a0433bbdc9d3c0
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
-  en: 47730bb236bf6309
-  zh: 6d3cc312ccd613d5
+  en: 838ec41a710e77c7
+  zh: fcf89c47a4eee8f7
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

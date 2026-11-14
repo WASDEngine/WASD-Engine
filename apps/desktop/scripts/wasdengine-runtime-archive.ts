@@ -61,7 +61,7 @@ export interface PinnedRuntime {
   readonly packageName: string
   /** Folder of the package that holds one `<platform>-<arch>` folder per runtime. */
   readonly folder: string
-  /** Runtime version that the default manifest URL names and that every signed build ships, such as `4.7.2-wasd.2`. */
+  /** Runtime version that the default manifest URL names and that every signed build ships, such as `4.7.2-wasd.3`. */
   readonly version: string
 }
 

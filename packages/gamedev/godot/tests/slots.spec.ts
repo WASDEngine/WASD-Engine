@@ -64,6 +64,46 @@ describe('ProcessSlots', () => {
     expect(log).toEqual(['+first', '-first', '+next', '-next'])
   })
 
+  it('runs a task alone once every slot is free, and holds back the tasks that arrive after it', async () => {
+    const slots = new ProcessSlots(2)
+    const log: string[] = []
+    const signal = new AbortController().signal
+    const [a, alone, b] = ['a', 'alone', 'b'].map(name => held(log, name))
+    const running = slots.run(signal, a!.task)
+    const exclusive = slots.runAlone(signal, alone!.task)
+    const later = slots.run(signal, b!.task)
+    await tick()
+    expect(log).toEqual(['+a'])
+    a!.finish()
+    await tick()
+    expect(log).toEqual(['+a', '-a', '+alone'])
+    alone!.finish()
+    await tick()
+    expect(log).toEqual(['+a', '-a', '+alone', '-alone', '+b'])
+    b!.finish()
+    expect(await Promise.all([running, exclusive, later])).toEqual(['a', 'alone', 'b'])
+  })
+
+  it('starts the tasks behind a task that stopped waiting for every slot', async () => {
+    const slots = new ProcessSlots(2)
+    const log: string[] = []
+    const first = held(log, 'first')
+    const running = slots.run(new AbortController().signal, first.task)
+    const cancel = new AbortController()
+    const alone = slots.runAlone(cancel.signal, held(log, 'alone').task)
+    const behind = held(log, 'behind')
+    const later = slots.run(new AbortController().signal, behind.task)
+    await tick()
+    expect(log).toEqual(['+first'])
+    cancel.abort(new Error('cancelled'))
+    await expect(alone).rejects.toThrow('cancelled')
+    await tick()
+    expect(log).toEqual(['+first', '+behind'])
+    first.finish()
+    behind.finish()
+    await Promise.all([running, later])
+  })
+
   it('refuses waiting and later tasks once closed and lets running ones finish', async () => {
     const slots = new ProcessSlots(1)
     const log: string[] = []
