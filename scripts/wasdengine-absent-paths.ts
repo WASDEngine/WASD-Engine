@@ -41,6 +41,11 @@ export function isGitIgnoredPath(root: string, target: string): boolean {
   const matched = spawnSync('git', ['check-ignore', '-v', '--', path], { cwd: root, encoding: 'utf8' })
   if (matched.status !== 0) return false
   // `<source>:<line>:<pattern>\t<path>`; the source is a path relative to the checkout for its own .gitignore files.
-  const source = matched.stdout.slice(0, matched.stdout.indexOf(':'))
+  const record = /^(?<source>[^:]*):\d+:(?<pattern>[^\t]*)\t/u.exec(matched.stdout)?.groups
+  if (record === undefined) return false
+  // With -v, git also reports, and exits 0 for, a path whose last matching pattern is a negation (`!name`): that path is
+  // kept, not ignored.
+  if (record.pattern?.startsWith('!') === true) return false
+  const source = record.source ?? ''
   return source !== '.gitignore' && source.endsWith('/.gitignore')
 }

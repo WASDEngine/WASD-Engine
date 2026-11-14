@@ -60,6 +60,13 @@ describe('isGitIgnoredPath', () => {
     expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/runtime'))).toBe(true)
   })
 
+  it('does not match a path that a negated pattern keeps', () => {
+    initGit()
+    write('packages/gamedev/gimp/.gitignore', 'runtime/*\n!runtime/README.md\n')
+    expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/gimp/runtime/darwin-arm64'))).toBe(true)
+    expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/gimp/runtime/README.md'))).toBe(false)
+  })
+
   it('matches nothing outside a git checkout', () => {
     expect(isGitIgnoredPath(root, join(root, 'packages/gamedev/blender/runtime'))).toBe(false)
   })
