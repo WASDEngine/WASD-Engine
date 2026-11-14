@@ -74,6 +74,7 @@ describe('configuration', () => {
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
+      idleRunStopMs: 300_000, maxScripts: 4, scriptMemoryBytes: 2 * 1024 ** 3, scriptCores: 2, keptScriptResults: 20,
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
       minWindowHeight: 720, recordQuality: 0.92, recordBufferBytes: 1024 ** 3, maxVideoBytes: 4 * 1024 ** 3,
       webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',

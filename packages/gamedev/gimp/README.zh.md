@@ -107,7 +107,7 @@ GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `gimp_<name>` 调用同样的工具，并彼此共享一个 GIMP 会话。
+模型以 `mcp__wasd_gimp__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`snapshot` 另附一张图像；调用失败时返回错误结果，其文本说明原因。不适用于所选 `action` 或 `mode` 的参数会使调用失败。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `gimp_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`；除非传入 `session`，这些 agent 彼此共享一个 GIMP 会话（[连接的 agent 的 Session](../app-mcp/README.zh.md#connected-agents-sessions)）。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -165,7 +165,7 @@ GIMP 运行时，`GIMP3_DIRECTORY` 环境变量被设为 `<dataRoot>/profile`，
 <a id="one-gimp-session"></a>
 ### 每个对话一个 GIMP 会话
 
-宿主只运行一个 GIMP MCP 服务器，该服务器为每个调用它的 Session 运行一个 GIMP 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己打开的图像、它们的选区和 `execute_python` 命名空间；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行；通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程。打开的图像在调用之间保留，直到 `close_image` 将其关闭或工作进程停止；工作进程在 `workerIdleTimeoutMs` 内没有调用时会停止。
+宿主只运行一个 GIMP MCP 服务器，该服务器为每个调用它的 Session 运行一个 GIMP 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己打开的图像、它们的选区和 `execute_python` 命名空间；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行；通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程，除非它们的调用传入 `session` 名称，每个名称由此获得自己 Session 的工作进程（[连接的 agent 的 Session](../app-mcp/README.zh.md#connected-agents-sessions)）。打开的图像在调用之间保留，直到 `close_image` 将其关闭或工作进程停止；工作进程在 `workerIdleTimeoutMs` 内没有调用时会停止。
 
 Session 的工作进程在其首次工具调用时启动，此时没有打开的图像。崩溃、请求时限到期或正在运行的调用被取消，都会使 GIMP 停止并丢失打开的图像和未保存的更改。GIMP 在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。GIMP 在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。在 macOS 和 Linux 上，GIMP 的 Python 进程一旦终止，看门狗就会停止 GIMP，因此正在运行的调用无需等到时限到期就会失败。请在关键节点保存 `.xcf` 文件。
 
@@ -328,7 +328,7 @@ GIMP 3 was not found: this installation of WASD Engine has no GIMP runtime for d
 
 以下限制描述 GIMP 工具当前的不足。
 
-- **连接的 agent 共享一个 GIMP** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用打开的图像、它们的 id 和一个 Python 命名空间，因此其中一个可能修改或关闭另一个的图像，一个耗时的滤镜或脚本也会推迟其他 agent 的调用。
+- **连接的 agent 除非指明会话，否则共享一个 GIMP** — 通过 WASD Engine 的 MCP 服务器连接、调用时未传入 `session` 的 agent 共用打开的图像、它们的 id 和一个 Python 命名空间，因此其中一个可能修改或关闭另一个的图像，一个耗时的滤镜或脚本也会推迟其他 agent 的调用。
 - **空闲的 Session 会丢失图像** — Session 的工作进程在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止，打开的图像和未保存的更改随之丢失。
 - **没有窗口** — 工具不提供画布、界面或 GIMP 截图，`pdb_run` 以非交互方式运行每个过程，不显示其对话框；`snapshot` 是查看图像的唯一方式。
 - **重启会丢失打开的图像** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使 GIMP 停止；打开的图像、未保存的更改、选区和 Python 命名空间随之丢失，新的工作进程启动时没有打开的图像。

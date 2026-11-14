@@ -59,7 +59,7 @@
 | `game-audio/measure` | `waterfall` | [`packages/gamedev/game-audio/src/types.ts:146`](../packages/gamedev/game-audio/src/types.ts) | [`game-audio`](../packages/gamedev/game-audio) (`waterfall`) | `remotes` |
 | `game-audio/reveal` | `emit` | [`packages/gamedev/game-audio/src/types.ts:157`](../packages/gamedev/game-audio/src/types.ts) | [`game-audio`](../packages/gamedev/game-audio) (`emit`) | `remotes` |
 | `game-mcp/reveal` | `emit` | [`packages/gamedev/game-mcp/src/types.ts:43`](../packages/gamedev/game-mcp/src/types.ts) | [`game-mcp`](../packages/gamedev/game-mcp) (`emit`) | `remotes` |
-| `game-mcp/tool-result` | `emit` | [`packages/gamedev/game-mcp/src/provider.ts:175`](../packages/gamedev/game-mcp/src/provider.ts) | [`game-mcp`](../packages/gamedev/game-mcp) (`emit`) | [`agent-feedback`](../packages/gamedev/agent-feedback), [`wasd-plugins`](../packages/gamedev/wasd-plugins) |
+| `game-mcp/tool-result` | `emit` | [`packages/gamedev/game-mcp/src/provider.ts:179`](../packages/gamedev/game-mcp/src/provider.ts) | [`game-mcp`](../packages/gamedev/game-mcp) (`emit`) | [`agent-feedback`](../packages/gamedev/agent-feedback), [`wasd-plugins`](../packages/gamedev/wasd-plugins) |
 | `goal/activation-changed` | `emit` | [`packages/goal/goal/src/types.ts:147`](../packages/goal/goal/src/types.ts) | [`goal`](../packages/goal/goal) (`emit`) | `remotes`, `server` |
 | `goal/changed` | `emit` | [`packages/goal/goal/src/domain.ts:114`](../packages/goal/goal/src/domain.ts) | [`goal`](../packages/goal/goal) (`emit`) | [`goal-round-driver`](../packages/goal/goal-round-driver) |
 | `godot/record` | `waterfall` | [`packages/gamedev/godot/src/types.ts:595`](../packages/gamedev/godot/src/types.ts) | [`godot`](../packages/gamedev/godot) (`waterfall`) | `remotes` |

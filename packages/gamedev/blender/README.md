@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent inspect, model, render, and export 3D assets with Blender, which runs without a window: the agent looks at its work through rendered previews and exports glTF files for the game. WASD Engine Web and Desktop turn the tools on by default. The first tool call starts Blender: the `bpy` module that the Desktop app ships or uv installs, or an installed Blender in background mode; tool results report setup problems. Each conversation gets its own Blender session and open scene; a crash, a timeout, or a long pause loses unsaved changes.
+Let the agent inspect, model, render, and export 3D assets with Blender, which runs without a window: the agent looks at its work through rendered previews and exports glTF files for the game. WASD Engine Web and Desktop turn the tools on by default. The first tool call starts Blender: the `bpy` module that the Desktop app ships or uv installs, or an installed Blender in background mode. Each conversation gets its own Blender session and open scene, which a crash, a timeout, or a long pause loses; `run_script` runs batch scripts in Blender processes of their own.
 
 ## Table of Contents
 
@@ -65,7 +65,7 @@ A disabled row withdraws the tools and the server instructions from the model an
 
 | Field | Default | Meaning |
 |---|---|---|
-| `dataRoot` | required | Absolute directory for the managed bpy environment and its Python, the runtime that the Windows Desktop app unpacks, previews, default renders, and the worker script copy |
+| `dataRoot` | required | Absolute directory for the managed bpy environment and its Python, the runtime that the Windows Desktop app unpacks, previews, default renders, `run_script` results, and the worker script copy |
 | `backend` | `auto` | Which Blender runs the tools: `auto`, `bpy`, or `app` (see [Backends](#backends)) |
 | `bpyVersion` | `5.2.3` | Version of the `bpy` package, in `major.minor.patch` form: the [shipped runtime](#shipped-bpy) runs only when it is this version, and uv installs this version into the managed environment |
 | `pythonVersion` | `3.13` | Python minor version of the managed environment, in `3.<minor>` form; the bpy release must support it. The shipped runtime brings its own Python |
@@ -79,6 +79,11 @@ A disabled row withdraws the tools and the server instructions from the model an
 | `maxWorkers` | `4` | Most Blender workers that run at once, one for each calling Session, from 1 to 16 |
 | `workerIdleTimeoutMs` | `600,000` | Time without a call after which a Session's Blender worker stops and its unsaved scene is lost |
 | `addonStore` | `''` | Absolute folder of the [game add-on](../game-addons/README.md) store, which each worker receives as `WASD_ADDON_STORE`; empty leaves `wasd_addons` without add-ons. The WASDEngine overlay sets it to the `game-addons` row's `blenderStore` |
+| `maxScripts` | `4` | Most [`run_script`](#script-runs) runs that run at once on any computer, whichever calls asked for them, from 1 to 64; the limit of a computer can be lower |
+| `scriptMemoryBytes` | `2,147,483,648` (2 GiB) | Physical memory of the computer for each `run_script` run: at most the computer's memory divided by this, rounded to the nearest whole number, run at once; `0` leaves memory out |
+| `scriptCores` | `2` | Logical processors for each `run_script` run: at most the computer's logical processors divided by this, rounded down, run at once; `0` leaves processors out |
+| `keptScriptResults` | `20` | Folders of `run_script` calls kept in `script-runs/` under `dataRoot`, from 1 to 1,000; a new call deletes the oldest beyond this, except those of calls that still run |
+| `scriptLogBytes` | `16,777,216` (16 MiB) | Most bytes of output that a `run_script` run keeps in its `output.log`, which then says that it left the rest out |
 
 <a id="backends"></a>
 ### Backends
@@ -101,7 +106,7 @@ The Desktop app for Windows x64 ships the runtime's archive instead, in `runtime
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, and share one Blender session among themselves.
+The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, which also take `session` and `project` ([one Blender session per conversation](#one-blender-session)).
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -117,6 +122,7 @@ The model calls each tool as `mcp__wasd_blender__<name>`, and every path argumen
 | `render_preview` | `width`, `height`, `view`, `objects`, `shading` | One preview image with its size, view, object count, and world bounds, and a note naming listed objects that the preview cannot show |
 | `render` | `path`, `width`, `height`, `engine`, `samples`, `camera`, `timeout_seconds` | One rendered image with its size, engine, camera, render time, and saved PNG path |
 | `python_api` | `identifier` | Documentation of one Blender Python API name, read from the running Blender, at most 12,000 characters |
+| `run_script` | `script`, `args`, `runs`, `blend`, `timeout_seconds` | How each run ended, with its exit code, last output line, files, and folder, and for a single run the end of its output ([script runs](#script-runs)) |
 | `checkpoint` | none | The number of the new checkpoint |
 | `undo` | none | The checkpoint that the scene returned to; at the oldest checkpoint left, an error names it |
 
@@ -129,7 +135,7 @@ The model calls each tool as `mcp__wasd_blender__<name>`, and every path argumen
 <a id="one-blender-session"></a>
 ### One Blender session per conversation
 
-The Host runs one Blender MCP server, and the server runs one Blender worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open scene, `execute_python` namespace, and set of checkpoints, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside; agents connected through WASD Engine's MCP server share one worker among themselves. This state persists between calls until `new_scene` or `open_blend` replaces the scene, or until the worker stops after `workerIdleTimeoutMs` without calls. The replacement also clears the `execute_python` names, because a name that holds part of the old scene, such as `scene.render` or `mesh.vertices`, would point at freed memory: reading it returned garbage, and writing through it crashed Blender.
+The Host runs one Blender MCP server, and the server runs one Blender worker for each Session that calls it ([one worker per Session](../app-mcp/README.md#one-worker-per-session)). Each Session's worker holds its own open scene, `execute_python` namespace, and set of checkpoints, and a Session's calls run one at a time in arrival order while other Sessions' calls run alongside. Agents connected through WASD Engine's MCP server share one worker among themselves, apart from those of WASD Engine's Sessions, unless a call passes `session`, a name: then it runs in the worker of the agent's Session of that name in the game project that `project` names, so agents that work at the same time, such as the subagents of one Claude Code session, keep scenes of their own ([connected agents' Sessions](../app-mcp/README.md#connected-agents-sessions)). This state persists between calls until `new_scene` or `open_blend` replaces the scene, or until the worker stops after `workerIdleTimeoutMs` without calls. The replacement also clears the `execute_python` names, because a name that holds part of the old scene, such as `scene.render` or `mesh.vertices`, would point at freed memory: reading it returned garbage, and writing through it crashed Blender.
 
 A Session's worker starts on its first tool call with Blender's default scene. A crash, an expired request budget, or a cancelled running call stops the worker and loses unsaved changes. When the worker stops during a call, that call fails and says that the state was lost, and the next call starts a fresh worker. When the worker stops while idle or because a running call was cancelled, the next call fails with that notice without running, and the call after it starts a fresh worker. When the MCP server itself dies, Blender ends within about a second, also in the middle of a call, and so do the processes that executed code started. Save `.blend` files at milestones.
 
@@ -154,6 +160,15 @@ After rendering, `render_preview` restores the scene's camera, world, render set
 
 `checkpoint` records the scene state, and `undo` returns the scene to the latest checkpoint and discards later changes. A second `undo` right away steps back one more checkpoint, down to the scene as it was opened or created. `new_scene` and `open_blend` clear the checkpoints. The checkpoints live in Blender's undo history, so the `undo_steps` preference, 32 with factory settings, bounds how far `undo` reaches; at the oldest checkpoint left, `undo` fails and names that checkpoint. After `undo`, Python references held in `execute_python` variables can be invalid, and the `undo` result tells the agent to look objects up by name again.
 
+<a id="script-runs"></a>
+### Script runs
+
+`run_script` runs a Python file in Blender processes of its own, as `blender --background --factory-startup --python <file> -- <args>` runs it: for batch work, such as processing many models or animations, and for long jobs that would otherwise hold a Session's worker. Each run starts from Blender's default scene, or from the `.blend` file that `blend` names, which opens without running the scripts stored in it, and ends with the script; it never sees or changes a Session's scene. The script runs as `__main__` in its own folder, which also comes first on `sys.path`, with `sys.argv` set to `[<script>, '--', <args>...]`, and imports `wasd_addons` as `execute_python` code does. The run's exit code is the script's: 0 when the script ends, the code it passes to `sys.exit`, and 1 for a code outside 0 to 255 and after an uncaught exception, whose traceback starts at the script's first frame.
+
+`args` gives the arguments of a single run; `runs`, a list of 1 to 64 items with `args` and `name`, runs the script once per item instead. The runs of all calls share the server's places, as many as `processLimit` of `maxScripts`, `scriptMemoryBytes`, and `scriptCores` allows, taken in arrival order: on the default settings four on a computer with 8 GiB of memory and 8 logical processors, and two on one with 4 logical processors. A run starts only while the computer has `minAvailableMemoryBytes` available; otherwise it does not start and its result says why. `timeout_seconds` bounds each run, by default `requestTimeoutMs`, and all runs of a call end within `toolCallTimeoutMs` less 30 s: then runs that have not started do not start, and those that still run stop. A cancelled call stops its runs.
+
+Each call keeps its results in `script-runs/<time>-<6 hex digits>/` under `dataRoot`: `summary.json`, the call's report, and one folder per run, `<n>` or `<n>-<name>`, with `output.log`, the run's standard output and standard error together up to `scriptLogBytes`, and `files/`, whose path the run finds in the `WASD_OUTPUT_DIR` environment variable for the files it writes. Each run also gets a `blender-user` folder as its `BLENDER_USER_RESOURCES`, which goes when the run ends. The result says for each run how it ended, `finished`, `failed`, `timed-out`, or `not-started`, with its exit code or signal, its last output line, and up to 5 of its files; for a single run it names up to 50 files and quotes the last 6,000 characters of its output. The result is an error result when no run finished.
+
 <a id="data-directory"></a>
 ### Files under the data directory
 
@@ -168,6 +183,7 @@ The first tool call creates `dataRoot`. Each worker runs in its own numbered fol
 | `workers/<pid>/<n>/` | A worker's working directory | Deleted after the worker stops; a starting server deletes the folders of server processes that have exited |
 | `previews/` | `render_preview` images and the downscaled copies of `render` images | Deleted when the call returns |
 | `renders/<time>-<id>.png` | `render` output for a call without `path` | Kept |
+| `script-runs/<time>-<id>/` | `run_script` results: `summary.json`, and a folder per run with `output.log` and `files/` | The newest `keptScriptResults` call folders are kept; a new call deletes older ones that no running call uses |
 
 Other files go where the agent's absolute paths point; `save_blend`, `export_gltf`, `export_file`, and `render` create missing parent folders. uv keeps downloaded packages in its own cache directory.
 
@@ -190,20 +206,24 @@ On the first call, the server resolves the backend, prepares the bpy environment
 
 The same worker script runs under the bpy module (`<python> -I -X utf8 -B -u <script>` for the runtime inside the app, `<python> -I -X utf8 -u <script>` for the runtime that the Windows app unpacks and for uv's environment) and inside Blender (`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`). Under the bpy module the worker runs in UTF-8 mode (`-X utf8`), which Blender also sets for its own Python; without it, Python on Windows writes its output in the ANSI code page and fails on text outside it, such as a path below a user profile with a non-ASCII name, which Blender's glTF exporter prints. The server removes `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `VIRTUAL_ENV`, and `ELECTRON_RUN_AS_NODE` from the environment of uv and the worker, so the user's Python setup stays out of Blender. It sets `BLENDER_USER_RESOURCES` to the `blender-user` folder of the worker's own directory, so Blender's extension cache, the wheels of enabled extensions, extension user data, and files that add-ons write to Blender's user folder stay apart from the user's Blender and from other workers, and go when the worker stops. The worker exits with `os._exit(0)` after its `shutdown` reply, because Blender can crash in its own exit handlers after some exporters ran. Its standard input closing without a `shutdown` request, or its reply pipe losing its reader, means the server is gone. A worker thread checks the reply pipe every second, so the worker notices this also during a request; it then kills its process group, which the server gives it on POSIX, so the processes that executed code started end with it.
 
+`run_script` prepares Blender as a worker start does, one preparation at a time beside the worker starts, and then starts the worker script once per run in script mode: the server sets `WASD_BLENDER_SCRIPT` to the script and `WASD_BLENDER_FILE` to the `.blend` file, appends `--` and the run's arguments to the command line, and holds the reading end of a pipe on the run's file descriptor 3, which the run watches as the worker watches its reply pipe, so a run ends within about a second once the server is gone. The server removes both variables from the environment of uv and the workers, so an inherited value never turns a worker into a run. On POSIX each run leads its own process group, which the server stops when the run exits, reaches its time limit, or is cancelled, so the processes that a script starts end with it.
+
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Host plugin: the configuration schema, with the shared fields spread in, and the server registration |
 | [`src/worker.ts`](src/worker.ts) | MCP server process entry: `runAppMcpServer` with the Blender options, worker starter, tools, and instructions |
 | [`src/environment.ts`](src/environment.ts) | The shipped runtime, uv, and Blender search, the bpy environment, backend choice, and setup notes |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, result text, and image files |
+| [`src/scripts.ts`](src/scripts.ts) | `run_script` runs: the shared places, the call and run folders, the processes, and the reports |
+| [`src/abort.ts`](src/abort.ts) | Cancellation of the server's waits |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
-| [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | Worker: the protocol loop and one method per tool |
+| [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | Worker: the protocol loop, one method per tool, and the script mode of `run_script` |
 
 The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, the setup host, and the tool helpers, including `execute_python`.
 
 ### Verify against real Blender
 
-From the repository root, run the end-to-end suite. Its bpy suite runs uv offline, so it runs only when bpy 5.2.3 is already in the uv cache; its shipped suite runs only when this package's `runtime/` folder holds the runtime of this platform, and also checks that the worker leaves every file of the runtime unchanged; its app suite runs only when it finds an installed Blender. A suite whose runtime is missing is skipped.
+From the repository root, run the end-to-end suite. Its bpy suite runs uv offline, so it runs only when bpy 5.2.3 is already in the uv cache; its shipped suite runs only when this package's `runtime/` folder holds the runtime of this platform, and also checks that the worker leaves every file of the runtime unchanged; its app suite runs only when it finds an installed Blender. A suite whose runtime is missing is skipped. Each suite also runs scripts through `run_script`'s runs, on a `.blend` file and four at once.
 
 ```sh
 pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
@@ -232,15 +252,15 @@ pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
 
 #### What the model sees
 
-The model sees 14 tools named `mcp__wasd_blender__<name>` with the descriptions and input schemas that [`src/tools.ts`](src/tools.ts) declares and [`model-surface.spec.ts.snap`](tests/__snapshots__/model-surface.spec.ts.snap) pins; the generated tool catalog does not list MCP server tools. In `execute_python`, the `timeout_seconds` description names the `requestTimeoutMs` default in seconds, and its maximum is `toolCallTimeoutMs` less 30 s, in whole seconds. The server lists the tools without starting Blender, so the model sees them whether or not uv or Blender is installed.
+The model sees 15 tools named `mcp__wasd_blender__<name>` with the descriptions and input schemas that [`src/tools.ts`](src/tools.ts) declares and [`model-surface.spec.ts.snap`](tests/__snapshots__/model-surface.spec.ts.snap) pins; the generated tool catalog does not list MCP server tools. In `execute_python` and `run_script`, the `timeout_seconds` description names the `requestTimeoutMs` default in seconds, and its maximum is `toolCallTimeoutMs` less 30 s, in whole seconds, which `run_script` also names as the time within which all runs of a call end. The server lists the tools without starting Blender, so the model sees them whether or not uv or Blender is installed.
 
 #### Token effect
 
-The 14 declarations come to about 10,200 characters of JSON, names included, and enter every request while the server's tools are registered.
+The 15 declarations come to about 12,200 characters of JSON, names included, and enter every request while the server's tools are registered.
 
 #### KV Cache effect
 
-One configuration always yields identical declarations, so a reconnect keeps the tool-definition prefix stable. The tools register when the server finishes discovery after the Host starts; a request assembled earlier has no Blender tools, and the first request after registration can lose reuse from the first changed definition onward. A change of `requestTimeoutMs` or `toolCallTimeoutMs` changes the `execute_python` declaration, and a disabled row removes all 14 declarations.
+One configuration always yields identical declarations, so a reconnect keeps the tool-definition prefix stable. The tools register when the server finishes discovery after the Host starts; a request assembled earlier has no Blender tools, and the first request after registration can lose reuse from the first changed definition onward. A change of `requestTimeoutMs` or `toolCallTimeoutMs` changes the `execute_python` and `run_script` declarations, and a disabled row removes all 15 declarations.
 
 ### Server instructions in the system prompt
 
@@ -260,6 +280,7 @@ Inspect, change, look:
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
 - render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
 - render makes final images from a scene camera.
+- run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 
 Game assets:
 - Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.
@@ -281,7 +302,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### Token effect
 
-The section adds about 4,900 characters to every request while the server is connected.
+The section adds about 5,100 characters to every request while the server is connected.
 
 #### KV Cache effect
 
@@ -291,11 +312,11 @@ The text is constant, so a reconnect renders an identical section. The section a
 
 #### What the model sees
 
-Each result has one text block, and `render_preview` and `render` add one image: the rendered PNG when its longest edge is at most 1,568 pixels and its file at most 3 MiB, otherwise a copy scaled down to that edge, as PNG or, when the PNG still exceeds 3 MiB, as JPEG; the `render` text names the copy's size. After each worker start, the next result begins with `Blender <version> started (<runtime>, Python <python>) with its default scene.`, where `<runtime>` is `the bpy module that WASD Engine ships`, `bpy module`, or `Blender app`; on first use, the bpy installation or unpack note comes before it, and so does the note that an installed Blender replaced a bpy module that could not be installed, unpacked, or started. The `new_scene` and `open_blend` texts end with the `execute_python` names they cleared, when there were any. Error results carry the failure: a setup failure says how to install uv or Blender, or how to repair the shipped runtime, and a worker failure names its error code and adds the traceback and recent worker output when there are any. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
+Each result has one text block, and `render_preview` and `render` add one image: the rendered PNG when its longest edge is at most 1,568 pixels and its file at most 3 MiB, otherwise a copy scaled down to that edge, as PNG or, when the PNG still exceeds 3 MiB, as JPEG; the `render` text names the copy's size. After each worker start, the next result begins with `Blender <version> started (<runtime>, Python <python>) with its default scene.`, where `<runtime>` is `the bpy module that WASD Engine ships`, `bpy module`, or `Blender app`; on first use, the bpy installation or unpack note comes before it, and so does the note that an installed Blender replaced a bpy module that could not be installed, unpacked, or started. The `new_scene` and `open_blend` texts end with the `execute_python` names they cleared, when there were any. A `run_script` result has text only: the notes of its Blender preparation, such as a first-use installation, then the call's runs; it neither starts a worker nor reports one's start. Error results carry the failure: a setup failure says how to install uv or Blender, or how to repair the shipped runtime, and a worker failure names its error code and adds the traceback and recent worker output when there are any. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
 
 #### Token effect
 
-Arguments, result text, and admitted images stay in the conversation until compaction. The tools bound their text: `scene_info` lists at most 300 objects, `execute_python` keeps at most 20,000 characters of printed output and of an exception message and replaces a `result` over 50,000 characters of JSON with a truncated preview, `python_api` returns at most 12,000 characters, and the server cuts any text block over 1 MiB of JSON. A worker reply over 32 MiB, such as `object_info` for a huge custom property, becomes an error that says the request completed.
+Arguments, result text, and admitted images stay in the conversation until compaction. The tools bound their text: `scene_info` lists at most 300 objects, `execute_python` keeps at most 20,000 characters of printed output and of an exception message and replaces a `result` over 50,000 characters of JSON with a truncated preview, `python_api` returns at most 12,000 characters, `run_script` lists at most 64 runs with last lines of at most 200 characters and quotes at most 6,000 characters of a single run's output, and the server cuts any text block over 1 MiB of JSON. A worker reply over 32 MiB, such as `object_info` for a huge custom property, becomes an error that says the request completed.
 
 #### KV Cache effect
 
@@ -307,9 +328,11 @@ Append-only: calls and their results follow the existing request prefix and do n
 
 These limits describe current gaps in the Blender tools.
 
-- **Connected agents share one Blender** — agents connected through WASD Engine's MCP server share one open scene, Python namespace, and set of checkpoints, so one can change or replace another's scene, and a long render delays the others' calls.
+- **Connected agents share one Blender unless they name sessions** — agents connected through WASD Engine's MCP server whose calls pass no `session` share one open scene, Python namespace, and set of checkpoints, so one can change or replace another's scene, and a long render delays the others' calls.
 - **An idle Session loses its scene** — a Session's worker stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`, and the unsaved scene goes with it.
 - **No window** — the tools offer no viewport, interface, or window or area screenshot, and operators that need a window fail; `render_preview` is the only way to look at the scene, and `render` needs a camera.
+- **Script runs last one tool call** — a `run_script` call waits for its runs, and all of them end within `toolCallTimeoutMs` less 30 s, 870 s by default; a longer job needs a larger budget or several calls.
+- **Script runs on Windows** — Windows has no process groups and no `poll()` on the pipe that a run watches, so processes that a script leaves running outlive the run, and a run outlives a server that dies during it.
 - **Restarts lose unsaved work** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, or a cancelled running call stops the worker; the scene, the Python namespace, and the checkpoints are gone, and the fresh worker starts with Blender's default scene.
 - **Shipped for macOS on Apple silicon and Windows x64 only** — the Desktop app ships `bpy` for macOS on Apple silicon, where it adds about 770 MB to the installed app and about 270 MB to its download, and for Windows x64, where it adds about 360 MB to the installer and the installed app; Web and Linux install `bpy` with uv or use an installed Blender.
 - **Windows unpacks on first use** — the first Blender start on Windows unpacks about 1 GB into `dataRoot`, which the tool call waits for, and the unpacked runtime stays there when WASD Engine is uninstalled; after a move to a new runtime version, the first start removes the old one. EEVEE renders, such as the `material` previews, need a GPU with OpenGL, which Windows virtual machines and remote sessions may lack.

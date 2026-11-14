@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender：Desktop 应用随附或 uv 安装的 `bpy` 模块，或以后台模式运行的已安装 Blender；工具结果会报告安装问题。每个对话都有自己的 Blender 会话和打开的场景；崩溃、超时或长时间没有调用都会丢失未保存的更改。
+让 agent（智能体）在没有窗口的 Blender 中检查、建模、渲染并导出 3D 资产：agent 通过渲染预览查看自己的成果，并为游戏导出 glTF 文件。WASD Engine 的 Web 与 Desktop 默认启用这些工具。首次工具调用会启动 Blender：Desktop 应用随附或 uv 安装的 `bpy` 模块，或以后台模式运行的已安装 Blender。每个对话都有自己的 Blender 会话和打开的场景，崩溃、超时或长时间没有调用都会使其丢失；`run_script` 在独立的 Blender 进程中运行批量脚本。
 
 ## 目录
 
@@ -65,7 +65,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
-| `dataRoot` | 必填 | 存放托管的 bpy 环境及其 Python、Windows 版 Desktop 应用解包的运行时、预览、默认渲染结果和工作脚本副本的绝对目录 |
+| `dataRoot` | 必填 | 存放托管的 bpy 环境及其 Python、Windows 版 Desktop 应用解包的运行时、预览、默认渲染结果、`run_script` 的结果和工作脚本副本的绝对目录 |
 | `backend` | `auto` | 由哪种 Blender 运行工具：`auto`、`bpy` 或 `app`（见[后端](#backends)） |
 | `bpyVersion` | `5.2.3` | `bpy` 包的版本，格式为 `major.minor.patch`：[随附的运行时](#shipped-bpy)只在其版本与此相同时运行，uv 也把这个版本安装到托管环境中 |
 | `pythonVersion` | `3.13` | 托管环境的 Python 次版本号，格式为 `3.<minor>`；所用 bpy 版本必须支持它。随附的运行时自带 Python |
@@ -79,6 +79,11 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `maxWorkers` | `4` | 同时运行的 Blender 工作进程上限，每个调用的 Session 一个，取值 1 到 16 |
 | `workerIdleTimeoutMs` | `600,000` | Session 的 Blender 工作进程在没有调用多长时间后停止，其未保存的场景随之丢失 |
 | `addonStore` | `''` | [游戏扩展](../game-addons/README.zh.md)存储目录的绝对路径，每个工作进程以 `WASD_ADDON_STORE` 接收它；为空时 `wasd_addons` 没有可用的扩展。WASDEngine 覆盖层把它设为 `game-addons` 行的 `blenderStore` |
+| `maxScripts` | `4` | 任何电脑上同时运行的 [`run_script`](#script-runs) 运行数上限（无论来自哪些调用），取值 1 到 64；某台电脑的上限可能更低 |
+| `scriptMemoryBytes` | `2,147,483,648`（2 GiB） | 每个 `run_script` 运行所需的电脑物理内存：同时运行的数量至多为电脑内存除以此值并四舍五入到整数；`0` 表示不考虑内存 |
+| `scriptCores` | `2` | 每个 `run_script` 运行所需的逻辑处理器数：同时运行的数量至多为电脑的逻辑处理器数除以此值并向下取整；`0` 表示不考虑处理器 |
+| `keptScriptResults` | `20` | `dataRoot` 下 `script-runs/` 中保留的 `run_script` 调用文件夹数，取值 1 到 1,000；新调用会删除超出此数量的最旧文件夹，仍在运行的调用的文件夹除外 |
+| `scriptLogBytes` | `16,777,216`（16 MiB） | `run_script` 的每次运行在其 `output.log` 中保留的最多输出字节数，此后日志会说明其余输出已被省略 |
 
 <a id="backends"></a>
 ### 后端
@@ -101,7 +106,7 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，并彼此共享一个 Blender 会话。
+模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -117,6 +122,7 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 | `render_preview` | `width`、`height`、`view`、`objects`、`shading` | 一张预览图像，以及它的尺寸、视角、对象数量和世界范围，另有一条说明列出预览无法显示的已列出对象 |
 | `render` | `path`、`width`、`height`、`engine`、`samples`、`camera`、`timeout_seconds` | 一张渲染图像，以及它的尺寸、引擎、相机、渲染耗时和保存的 PNG 路径 |
 | `python_api` | `identifier` | 从正在运行的 Blender 读取的某个 Blender Python API 名称的文档，最多 12,000 个字符 |
+| `run_script` | `script`、`args`、`runs`、`blend`、`timeout_seconds` | 每次运行的结束方式，以及它的退出码、最后一行输出、文件和文件夹；单次运行时还有其输出的结尾（[脚本运行](#script-runs)） |
 | `checkpoint` | 无 | 新检查点的编号 |
 | `undo` | 无 | 场景恢复到的检查点；已在保留的最早检查点时，错误会写明该检查点 |
 
@@ -129,7 +135,7 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 <a id="one-blender-session"></a>
 ### 每个对话一个 Blender 会话
 
-宿主只运行一个 Blender MCP 服务器，该服务器为每个调用它的 Session 运行一个 Blender 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己的打开场景、`execute_python` 命名空间和一组检查点；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行；通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程。这些状态在调用之间保留，直到 `new_scene` 或 `open_blend` 替换场景，或工作进程在 `workerIdleTimeoutMs` 内没有调用而停止。替换场景时也会清除 `execute_python` 的名称，因为保存旧场景某一部分的名称（例如 `scene.render` 或 `mesh.vertices`）会指向已释放的内存：读取它会得到垃圾数据，通过它写入会使 Blender 崩溃。
+宿主只运行一个 Blender MCP 服务器，该服务器为每个调用它的 Session 运行一个 Blender 工作进程（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)）。每个 Session 的工作进程拥有自己的打开场景、`execute_python` 命名空间和一组检查点；同一个 Session 的调用按到达顺序逐个执行，其他 Session 的调用同时执行。通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个工作进程（与 WASD Engine 各 Session 的工作进程分开），除非调用传入名称 `session`：此时调用在 `project` 指定的游戏项目中该 agent 同名 Session 的工作进程中运行，因此同时工作的 agent（例如同一个 Claude Code 会话的多个子 agent）各自保留自己的场景（[连接的 agent 的 Session](../app-mcp/README.zh.md#connected-agents-sessions)）。这些状态在调用之间保留，直到 `new_scene` 或 `open_blend` 替换场景，或工作进程在 `workerIdleTimeoutMs` 内没有调用而停止。替换场景时也会清除 `execute_python` 的名称，因为保存旧场景某一部分的名称（例如 `scene.render` 或 `mesh.vertices`）会指向已释放的内存：读取它会得到垃圾数据，通过它写入会使 Blender 崩溃。
 
 Session 的工作进程在其首次工具调用时启动，带有 Blender 的默认场景。崩溃、请求时限到期或正在运行的调用被取消，都会使工作进程停止并丢失未保存的更改。工作进程在调用期间停止时，该调用失败并说明状态已丢失，下一次调用启动新的工作进程。工作进程在空闲时停止，或因正在运行的调用被取消而停止时，下一次调用不执行，直接以该通知失败，再下一次调用才启动新的工作进程。MCP 服务器本身终止时，Blender 会在大约一秒内结束，即使正处于某次调用之中也是如此，执行的代码所启动的进程也随之结束。请在关键节点保存 `.blend` 文件。
 
@@ -154,6 +160,15 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 
 `checkpoint` 记录场景状态，`undo` 把场景恢复到最近的检查点并丢弃之后的更改。紧接着再次调用 `undo` 会再后退一个检查点，最早可回到场景被打开或创建时的状态。`new_scene` 与 `open_blend` 会清除检查点。检查点保存在 Blender 的撤销历史中，因此 `undo_steps` 偏好设置（出厂设置为 32）限制了 `undo` 能回退多远；已在保留的最早检查点时，`undo` 失败并写明该检查点。`undo` 之后，`execute_python` 变量中保存的 Python 引用可能失效，`undo` 的结果会提示 agent 按名称重新查找对象。
 
+<a id="script-runs"></a>
+### 脚本运行
+
+`run_script` 在独立的 Blender 进程中运行一个 Python 文件，运行方式与 `blender --background --factory-startup --python <file> -- <args>` 相同：适用于批量工作（例如处理大量模型或动画），以及否则会长时间占用 Session 工作进程的长任务。每次运行从 Blender 的默认场景开始，或从 `blend` 指定的 `.blend` 文件开始（打开该文件时不运行其中存储的脚本），并随脚本结束而结束；它从不读取或更改 Session 的场景。脚本以 `__main__` 身份在自己所在的文件夹中运行，该文件夹也排在 `sys.path` 的最前面，`sys.argv` 被设为 `[<script>, '--', <args>...]`，并且可以像 `execute_python` 的代码一样导入 `wasd_addons`。运行的退出码即脚本的退出码：脚本运行结束时为 0；脚本调用 `sys.exit` 时为传入的值；该值超出 0 到 255 的范围或发生未捕获的异常时为 1，异常的 traceback 从脚本的第一帧开始。
+
+`args` 给出单次运行的参数；`runs` 是由包含 `args` 与 `name` 的 1 到 64 个条目组成的列表，改为按每个条目各运行一次脚本。所有调用的运行共享服务器的运行位置，数量为 `maxScripts`、`scriptMemoryBytes` 与 `scriptCores` 经 `processLimit` 得出的上限，按到达顺序分配：按默认设置，8 GiB 内存、8 个逻辑处理器的电脑同时运行四个，只有 4 个逻辑处理器的电脑运行两个。只有电脑可用内存不少于 `minAvailableMemoryBytes` 时运行才会启动；否则它不启动，其结果说明原因。`timeout_seconds` 限制每次运行，默认为 `requestTimeoutMs`；一次调用的所有运行都在 `toolCallTimeoutMs` 减去 30 s 之内结束：届时尚未开始的运行不再开始，仍在运行的运行被停止。被取消的调用会停止其运行。
+
+每次调用把结果保存在 `dataRoot` 下的 `script-runs/<time>-<6 位十六进制数字>/` 中：`summary.json` 是该调用的报告；每次运行各有一个文件夹 `<n>` 或 `<n>-<name>`，其中 `output.log` 合并保存该运行的标准输出与标准错误（最多 `scriptLogBytes`），`files/` 用于存放运行写出的文件，运行从环境变量 `WASD_OUTPUT_DIR` 得到它的路径。每次运行还有一个 `blender-user` 文件夹作为其 `BLENDER_USER_RESOURCES`，运行结束时删除。结果说明每次运行的结束方式（`finished`、`failed`、`timed-out` 或 `not-started`），以及它的退出码或信号、最后一行输出和最多 5 个文件；单次运行时列出最多 50 个文件，并引用其输出的最后 6,000 个字符。没有任何运行完成时，结果为错误结果。
+
 <a id="data-directory"></a>
 ### 数据目录中的文件
 
@@ -168,6 +183,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
 | `previews/` | `render_preview` 图像和 `render` 图像的缩小副本 | 调用返回时删除 |
 | `renders/<time>-<id>.png` | 未提供 `path` 的 `render` 调用的输出 | 保留 |
+| `script-runs/<time>-<id>/` | `run_script` 的结果：`summary.json`，以及每次运行一个包含 `output.log` 与 `files/` 的文件夹 | 保留最新的 `keptScriptResults` 个调用文件夹；新调用删除没有正在运行的调用使用的更早文件夹 |
 
 其他文件写到 agent 给出的绝对路径；`save_blend`、`export_gltf`、`export_file` 与 `render` 会创建缺失的父文件夹。uv 把下载的包保存在它自己的缓存目录中。
 
@@ -190,20 +206,24 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 
 同一个工作脚本既在 bpy 模块下运行（应用内的运行时为 `<python> -I -X utf8 -B -u <script>`，Windows 应用解包的运行时与 uv 的环境为 `<python> -I -X utf8 -u <script>`），也在 Blender 内运行（`blender --background --factory-startup -noaudio --python-exit-code 1 --python <script>`）。在 bpy 模块下，工作进程以 UTF-8 模式（`-X utf8`）运行，Blender 也为自己的 Python 设置这一模式；否则 Windows 上的 Python 以 ANSI 代码页写出输出，遇到代码页之外的文本便会失败，例如 Blender 的 glTF 导出器打印的、位于非 ASCII 名称用户配置文件之下的路径。服务器从 uv 和工作进程的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 Blender。它把 `BLENDER_USER_RESOURCES` 设为工作进程自身目录中的 `blender-user` 文件夹，使 Blender 的扩展缓存、已启用扩展的 wheel、扩展的用户数据以及扩展写入 Blender 用户文件夹的文件，与用户自己的 Blender 和其他工作进程分开，并在工作进程停止时一并删除。工作进程在回复 `shutdown` 后以 `os._exit(0)` 退出，因为某些导出器运行之后，Blender 可能在自己的退出处理程序中崩溃。标准输入在没有 `shutdown` 请求的情况下关闭，或回复管道失去读取方，都表示服务器已不存在。工作进程中的一个线程每秒检查一次回复管道，因此即使在请求期间工作进程也能察觉；随后它终止自己的进程组（服务器在 POSIX 上为它创建了独立的进程组），执行的代码所启动的进程也随之结束。
 
+`run_script` 像启动工作进程一样准备 Blender（准备过程与工作进程启动一起逐个进行），然后为每次运行以脚本模式启动一次工作脚本：服务器把 `WASD_BLENDER_SCRIPT` 设为脚本，把 `WASD_BLENDER_FILE` 设为 `.blend` 文件，在命令行末尾追加 `--` 和该运行的参数，并在该运行的文件描述符 3 上持有一个管道的读取端；运行像工作进程监视回复管道一样监视它，因此服务器不存在后，运行在大约一秒内结束。服务器从 uv 和工作进程的环境中移除这两个变量，因此继承来的值不会把工作进程变成一次运行。在 POSIX 上，每次运行都领导自己的进程组，运行退出、达到时间限制或被取消时，服务器停止该进程组，因此脚本启动的进程随之结束。
+
 | 文件 | 职责 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 宿主插件：展开了共享字段的配置 schema，以及服务器注册 |
 | [`src/worker.ts`](src/worker.ts) | MCP 服务器进程入口：以 Blender 的选项、工作进程启动器、工具和指令调用 `runAppMcpServer` |
 | [`src/environment.ts`](src/environment.ts) | 随附的运行时、uv 与 Blender 搜索、bpy 环境、后端选择和安装提示 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、结果文本和图像文件 |
+| [`src/scripts.ts`](src/scripts.ts) | `run_script` 的运行：共享的运行位置、调用与运行文件夹、进程和报告 |
+| [`src/abort.ts`](src/abort.ts) | 服务器等待的取消 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称和指令 |
-| [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | 工作进程：协议循环，以及每个工具对应的一个方法 |
+| [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | 工作进程：协议循环、每个工具对应的一个方法，以及 `run_script` 的脚本模式 |
 
 共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限、setup host（安装环境宿主）以及包括 `execute_python` 在内的工具辅助函数。
 
 ### 用真实 Blender 验证
 
-在仓库根目录运行端到端测试套件。其中 bpy 套件以离线方式运行 uv，因此只有 uv 缓存中已有 bpy 5.2.3 时才会运行；随附套件只有本包的 `runtime/` 文件夹中有本平台的运行时时才会运行，并检查工作进程没有改动运行时的任何文件；app 套件只有找到已安装的 Blender 时才会运行。缺少运行时的套件会被跳过。
+在仓库根目录运行端到端测试套件。其中 bpy 套件以离线方式运行 uv，因此只有 uv 缓存中已有 bpy 5.2.3 时才会运行；随附套件只有本包的 `runtime/` 文件夹中有本平台的运行时时才会运行，并检查工作进程没有改动运行时的任何文件；app 套件只有找到已安装的 Blender 时才会运行。缺少运行时的套件会被跳过。每个套件还通过 `run_script` 的运行执行脚本，包括在 `.blend` 文件上同时运行四次。
 
 ```sh
 pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
@@ -232,15 +252,15 @@ pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
 
 #### 模型可见内容
 
-模型看到 14 个名为 `mcp__wasd_blender__<name>` 的工具，其描述和输入 schema 由 [`src/tools.ts`](src/tools.ts) 声明，并由 [`model-surface.spec.ts.snap`](tests/__snapshots__/model-surface.spec.ts.snap) 固定；生成的工具目录不列出 MCP 服务器工具。在 `execute_python` 中，`timeout_seconds` 的描述写明以秒计的 `requestTimeoutMs` 默认值，其最大值为 `toolCallTimeoutMs` 减去 30 s，以整秒计。服务器列出工具时不启动 Blender，因此无论是否安装了 uv 或 Blender，模型都能看到这些工具。
+模型看到 15 个名为 `mcp__wasd_blender__<name>` 的工具，其描述和输入 schema 由 [`src/tools.ts`](src/tools.ts) 声明，并由 [`model-surface.spec.ts.snap`](tests/__snapshots__/model-surface.spec.ts.snap) 固定；生成的工具目录不列出 MCP 服务器工具。在 `execute_python` 与 `run_script` 中，`timeout_seconds` 的描述写明以秒计的 `requestTimeoutMs` 默认值，其最大值为 `toolCallTimeoutMs` 减去 30 s，以整秒计；`run_script` 还把它写作一次调用的所有运行结束的时限。服务器列出工具时不启动 Blender，因此无论是否安装了 uv 或 Blender，模型都能看到这些工具。
 
 #### Token 影响
 
-14 个声明合计约 10,200 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
+15 个声明合计约 12,200 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
 
 #### KV Cache 影响
 
-同一配置总是生成相同的声明，因此重连后工具定义前缀保持稳定。服务器在宿主启动后完成工具发现时注册这些工具；此前组装的请求不含 Blender 工具，注册后的第一个请求可能从第一个变化的定义开始失去缓存复用。修改 `requestTimeoutMs` 或 `toolCallTimeoutMs` 会改变 `execute_python` 的声明，禁用该行会移除全部 14 个声明。
+同一配置总是生成相同的声明，因此重连后工具定义前缀保持稳定。服务器在宿主启动后完成工具发现时注册这些工具；此前组装的请求不含 Blender 工具，注册后的第一个请求可能从第一个变化的定义开始失去缓存复用。修改 `requestTimeoutMs` 或 `toolCallTimeoutMs` 会改变 `execute_python` 与 `run_script` 的声明，禁用该行会移除全部 15 个声明。
 
 ### 系统提示词中的服务器指令
 
@@ -260,6 +280,7 @@ Inspect, change, look:
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
 - render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
 - render makes final images from a scene camera.
+- run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 
 Game assets:
 - Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.
@@ -281,7 +302,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### Token 影响
 
-服务器保持连接期间，该部分为每个请求增加约 4,900 个字符。
+服务器保持连接期间，该部分为每个请求增加约 5,100 个字符。
 
 #### KV Cache 影响
 
@@ -291,11 +312,11 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### 模型可见内容
 
-每个结果包含一个文本块，`render_preview` 与 `render` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `the bpy module that WASD Engine ships`、`bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装或解包提示；bpy 模块无法安装、解包或启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，或如何修复随附的运行时，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
+每个结果包含一个文本块，`render_preview` 与 `render` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `the bpy module that WASD Engine ships`、`bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装或解包提示；bpy 模块无法安装、解包或启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。`run_script` 的结果只有文本：先是其准备 Blender 时的提示（例如首次使用时的安装），然后是该调用的各次运行；它既不启动工作进程，也不报告工作进程的启动。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，或如何修复随附的运行时，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
 
 #### Token 影响
 
-参数、结果文本和已准入的图像在对话中保留，直到压缩（compaction）。工具限制了文本长度：`scene_info` 最多列出 300 个对象，`execute_python` 最多保留 20,000 个字符的打印输出和异常消息，并把 JSON 超过 50,000 个字符的 `result` 替换为截断预览，`python_api` 最多返回 12,000 个字符，服务器会截断任何 JSON 超过 1 MiB 的文本块。超过 32 MiB 的工作进程回复（例如对一个巨大自定义属性调用 `object_info`）会变成一条说明请求已完成的错误。
+参数、结果文本和已准入的图像在对话中保留，直到压缩（compaction）。工具限制了文本长度：`scene_info` 最多列出 300 个对象，`execute_python` 最多保留 20,000 个字符的打印输出和异常消息，并把 JSON 超过 50,000 个字符的 `result` 替换为截断预览，`python_api` 最多返回 12,000 个字符，`run_script` 最多列出 64 次运行（每次的最后一行输出最多 200 个字符），并最多引用单次运行输出的 6,000 个字符，服务器会截断任何 JSON 超过 1 MiB 的文本块。超过 32 MiB 的工作进程回复（例如对一个巨大自定义属性调用 `object_info`）会变成一条说明请求已完成的错误。
 
 #### KV Cache 影响
 
@@ -307,9 +328,11 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 以下限制描述 Blender 工具当前的不足。
 
-- **连接的 agent 共享一个 Blender** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用一个打开的场景、Python 命名空间和一组检查点，因此其中一个可能修改或替换另一个的场景，一次耗时的渲染也会推迟其他 agent 的调用。
+- **连接的 agent 除非指明会话，否则共享一个 Blender** — 通过 WASD Engine 的 MCP 服务器连接、调用时未传入 `session` 的 agent 共用一个打开的场景、Python 命名空间和一组检查点，因此其中一个可能修改或替换另一个的场景，一次耗时的渲染也会推迟其他 agent 的调用。
 - **空闲的 Session 会丢失场景** — Session 的工作进程在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止，未保存的场景随之丢失。
 - **没有窗口** — 工具不提供视口、界面，也不提供窗口或区域截图，需要窗口的操作符会失败；`render_preview` 是查看场景的唯一方式，`render` 需要相机。
+- **脚本运行只持续一次工具调用** — `run_script` 调用会等待其运行结束，所有运行都在 `toolCallTimeoutMs` 减去 30 s（默认 870 s）之内结束；更长的任务需要更大的预算或多次调用。
+- **Windows 上的脚本运行** — Windows 没有进程组，也不能对运行所监视的管道使用 `poll()`，因此脚本留下继续运行的进程会比该运行存活得更久，服务器在运行期间终止时，运行也会继续。
 - **重启会丢失未保存的工作** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期，或正在运行的调用被取消，都会使工作进程停止；场景、Python 命名空间和检查点随之丢失，新的工作进程以 Blender 默认场景启动。
 - **只为 Apple 芯片 macOS 与 Windows x64 随附** — Desktop 应用为 Apple 芯片 macOS 随附 `bpy`，使安装后的应用增大约 770 MB，下载增大约 270 MB；为 Windows x64 随附时，安装程序与安装后的应用增大约 360 MB；Web 与 Linux 用 uv 安装 `bpy` 或使用已安装的 Blender。
 - **Windows 在首次使用时解包** — Windows 上首次启动 Blender 时会把约 1 GB 解包到 `dataRoot`，工具调用会等待解包完成；卸载 WASD Engine 后，解包的运行时仍留在原处；换用新的运行时版本后，首次启动会删除旧版本。EEVEE 渲染（例如 `material` 预览）需要支持 OpenGL 的 GPU，Windows 虚拟机和远程会话可能没有。

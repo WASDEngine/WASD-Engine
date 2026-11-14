@@ -7501,7 +7501,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpCall',
-    declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
+    declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string, name?: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
   },
   {
     name: 'GameMcpClient',

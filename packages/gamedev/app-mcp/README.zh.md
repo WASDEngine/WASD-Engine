@@ -58,7 +58,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 - 服务器收到 `dataRoot`、`requestTimeoutMs`、`toolCallTimeoutMs`、`graceMs`、`maxLogBytes`、`maxWorkers`、`workerMemoryBytes`、`workerCores`、`minAvailableMemoryBytes`、`workerIdleTimeoutMs`，以及 `plugin.options` 所列的 Config 字段，每个都使用其 Config 名称。
 - 当 `plugin.module`（插件的 `import.meta.url`）以 `.ts` 结尾时，服务器入口是它旁边的 `worker.ts`，否则是它旁边的 `worker.js`。
 - 注册通过 `registerAppMcpServer` 完成，使用 `plugin.serverName` 以及 Config 中的 `toolCallTimeoutMs` 与 `startupTimeoutMs`。
-- 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。provider 的指令是服务器的指令，后面附有一条说明：连接的 agent 彼此共享一个应用程序会话，因为它们的调用不指明 Session（[每个 Session 一个工作进程](#one-worker-per-session)）。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
+- 提供 `plugin.gameMcp`（由 `id`、`title`、`description` 与 `instructions` 组成的 `AppGameMcpIdentity`）时，只要 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 与工具注册表存在，服务器的工具也会提供给通过它连接的 agent（智能体）：MCP 客户端以 `mcp__<serverName>__<name>` 注册的每个工具以 `<id>_<name>` 提供，运行同一个已注册的定义，并返回服务器的文本与图像；其他内容块变为 `[<type> content omitted]`。每个提供的工具除服务器的参数外还接受两个自己的参数 `session` 与 `project`，它们决定由哪个工作进程运行该调用（[连接的 agent 的 Session](#connected-agents-sessions)）。provider 的指令是服务器的指令，后面附有一条说明：连接的 agent 彼此共享一个应用程序会话；同时工作的 agent 在每次调用时传入 `session`、并在第一次调用时传入 `project`，即可各自获得自己的会话。服务器已连接时 provider 报告 `ready`，连接之前与重连期间报告 `starting`，失败之后或关闭期间报告带有最后一次错误的 `unavailable`。
 
 编译器会对照插件的 Config 检查这些字段名，并且只有字符串字段能放入 `plugin.paths`。
 
@@ -99,10 +99,10 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 `runAppMcpServer(definition, process.argv)` 是服务器入口的全部主体。`definition` 给出服务器的 `name`、`version` 与 `instructions`、随包 `workerScript` 的 `file:` URL，以及三个函数：
 
 - `parseOptions(value)` 校验解码后的选项。服务器用 `AppServerOptionFields`（每个服务器都会收到的 `AppServerOptions` 字段）与自身的字段构建其严格 schema，并调用 `parseAppServerOptions(app, schema, value)`。该函数抛出以 `<app> MCP server options are invalid:` 开头、指明每个缺失、无效或未知字段的错误。
-- `workers(options, dependencies)` 创建应用程序的 `AppWorkers`。其 `start(signal, scope)` 准备应用程序，并通过 `dependencies.start`（即 `JsonLineWorker.start`）为一个 Session 启动一个工作进程；`scope.directory` 是该工作进程自己的文件夹，用于应用程序配置文件等文件，且各次启动从不重叠，因此所有工作进程共用的安装步骤一次只运行一个。`dependencies.workerScript()` 返回工作进程脚本在 `dataRoot` 下的 `materializePayload` 副本的真实路径。其 `takeNotes()` 交出自上次调用以来收集的安装说明，例如已启动工作进程的版本。
-- `tools(dependencies)` 以 `AppToolDependencies` 构建工具。服务器为每次调用按调用方的 Session 构建它们：`call` 在该 Session 的工作进程上执行工作进程方法，其预算是 `requestTimeoutMs` 与 `graceMs`；`takeNotes` 读取该 Session 的工作进程启动时的说明；`dataRoot`、`requestTimeoutMs` 与 `maxTimeoutMs`（即 `toolCallTimeoutMs` 减去 30 s）携带路径与预算。
+- `workers(options, dependencies)` 创建应用程序的 `AppWorkers`。其 `start(signal, scope)` 准备应用程序，并通过 `dependencies.start`（即 `JsonLineWorker.start`）为一个 Session 启动一个工作进程；`scope.directory` 是该工作进程自己的文件夹，用于应用程序配置文件等文件，且各次启动从不重叠，因此所有工作进程共用的安装步骤一次只运行一个。`dependencies.workerScript()` 返回工作进程脚本在 `dataRoot` 下的 `materializePayload` 副本的真实路径。其 `takeNotes()` 交出自上次调用以来收集的安装说明，例如已启动工作进程的版本。其可选的 `close()` 停止启动器在工作进程之外运行的进程，例如 Blender 的脚本运行。
+- `tools(dependencies, workers)` 以 `AppToolDependencies` 和 `workers` 创建的启动器构建工具；服务器在其整个生命周期内保留该启动器，因此工具可以使用启动器为整个服务器运行的内容，例如 Blender 的脚本运行。服务器为每次调用按调用方的 Session 构建它们：`call` 在该 Session 的工作进程上执行工作进程方法，其预算是 `requestTimeoutMs` 与 `graceMs`；`takeNotes` 读取该 Session 的工作进程启动时的说明；`dataRoot`、`requestTimeoutMs` 与 `maxTimeoutMs`（即 `toolCallTimeoutMs` 减去 30 s）携带路径与预算。
 
-定义中的 `app`（例如 `Blender`）在[每个 Session 一个工作进程](#one-worker-per-session)的消息中指称该应用程序。服务器把 `processLimit({ max: maxWorkers, memoryBytes: workerMemoryBytes, cores: workerCores }, machine)` 作为工作进程池的工作进程上限，并以 `machine` 报告的可用内存检查 `minAvailableMemoryBytes`；可选的第五个参数 `machine` 默认为 `nodeMachine()`，即本机的 `os.totalmem()`、`os.availableParallelism()` 与 `process.availableMemory()`。服务器开始提供服务后它即返回；服务器关闭时会关闭工作进程池，后者停止每个工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
+定义中的 `app`（例如 `Blender`）在[每个 Session 一个工作进程](#one-worker-per-session)的消息中指称该应用程序。服务器把 `processLimit({ max: maxWorkers, memoryBytes: workerMemoryBytes, cores: workerCores }, machine)` 作为工作进程池的工作进程上限，并以 `machine` 报告的可用内存检查 `minAvailableMemoryBytes`；可选的第五个参数 `machine` 默认为 `nodeMachine()`，即本机的 `os.totalmem()`、`os.availableParallelism()` 与 `process.availableMemory()`。服务器开始提供服务后它即返回；服务器关闭时会调用启动器的 `close` 并关闭工作进程池，后者停止每个工作进程。`argv[2]` 不含选项，或 `parseOptions` 拒绝选项时，它在提供任何服务之前即拒绝。
 
 <a id="serve-the-tools"></a>
 ### 提供工具
@@ -190,6 +190,11 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 - 工作进程因上述任一原因停止后，该作用域的下一次调用以 `WORKER_EXITED` 失败，消息说明原因并以 `; its state (open files, scene, unsaved changes) was lost, and the next call starts a fresh worker.` 结尾；之后的调用会启动新的工作进程。池为最近 256 个这样的作用域记住这一点。
 - `prepare()` 删除 `root` 中已退出的服务器进程的文件夹，以及以本进程 id 命名、由使用过同一 id 的先前进程留下的文件夹；它保留仍在运行的进程的文件夹（例如仍在关闭的旧服务器），以及不是进程 id 的名称。`close()` 以 `WORKER_EXITED` 拒绝后续调用，关闭每个 supervisor，并删除本进程的文件夹。
 
+<a id="connected-agents-sessions"></a>
+### 连接的 agent 的 Session
+
+通过 WASD Engine 的 MCP 服务器连接的 agent 发起的调用在没有 Session 的情况下运行 MCP 客户端的工具定义，因此它不指明 Session，并在 `shared` 工作进程中运行，除非它传入一个名称 `session`。此时，提供方通过 game-mcp 的 `call.session(project, session)` 在 `project` 指定的游戏项目中解析该 agent 同名的 Session（首次使用时创建该 Session），并以该 Session 的身份运行定义，于是调用在该 Session 自己的工作进程中运行。通过同一连接同时工作的 agent（例如同一个 Claude Code 会话的多个子 agent）传入不同的名称，从而各自保留自己的应用程序状态，正如每个名称在 Godot 工具中也各自运行自己的游戏。`project` 是绝对文件夹路径；除非已注册的游戏项目包含它，game-mcp 会把它注册为游戏项目。某个名称的第一次调用未传入 `project` 时，使用该 agent 上一次使用该名称的调用的项目，否则使用其上一次使用任意名称的调用的项目；provider 在加载期间记住这些项目，找不到时调用失败并返回 `Pass project, the absolute path of the game project folder, with your first call that names a session.`。只传入 `project` 而未传入 `session` 的调用会失败，并提示传入 `session` 或省略 `project`，因为仅凭项目不会选择工作进程。提供方在运行定义之前移除这两个参数，因此服务器自己的工具不得接受同名参数。
+
 ### 停止后重启
 
 `WorkerSupervisor(start, { requestTimeoutMs, closeGraceMs })` 拥有一个作用域的工作进程，`call(method, params, { timeoutMs, signal })` 通过它执行一个工作进程方法：
@@ -228,6 +233,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/register.ts`](src/register.ts) | 宿主注册、通过 tsx 的源码启动，以及固定的管理器条目字段 |
 | [`src/options.ts`](src/options.ts) | `argv[2]` 选项编解码、共享的选项字段及其校验 |
 | [`src/app-server.ts`](src/app-server.ts) | 服务器进程主体：选项、工作进程脚本副本、工作进程池，以及每个调用方 Session 的工具 |
+| [`src/game-mcp.ts`](src/game-mcp.ts) | 供通过 WASD Engine 的 MCP 服务器连接的 agent 使用的工具：名称、`session` 与 `project` 参数、结果、就绪状态，以及指令中的说明 |
 | [`src/pool.ts`](src/pool.ts) | 每个 Session 作用域一个 supervisor、工作进程文件夹、串行启动、空闲停止、腾出位置、启动前的内存检查与状态丢失通知 |
 | [`src/machine.ts`](src/machine.ts) | 电脑的内存与处理器、它们允许的进程上限、内存检查及其消息 |
 | [`src/session-scope.ts`](src/session-scope.ts) | Session 作用域能力与 `_meta` 键，以及从调用中读取发起调用的 Session |
@@ -240,7 +246,8 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/materialize.ts`](src/materialize.ts) | 按内容寻址的载荷副本 |
 | [`tests/fixtures/fake-worker.mjs`](tests/fixtures/fake-worker.mjs) | 代替 Python 工作进程的协议 fixture（测试前置数据） |
 | [`tests/fixtures/source-server.ts`](tests/fixtures/source-server.ts) | 只能通过源码启动运行的 TypeScript 服务器入口 |
-| [`tests/composition.spec.ts`](tests/composition.spec.ts) | 使用真实 MCP 管理器、MCP 客户端与工具运行时的完整链路 |
+| [`tests/fixtures/scoped-server.mjs`](tests/fixtures/scoped-server.mjs) | 其工具会说出调用到达的 Session 作用域的服务器 fixture |
+| [`tests/composition.spec.ts`](tests/composition.spec.ts) | 使用真实 MCP 管理器、MCP 客户端与工具运行时的完整链路，以及连接的 agent 的调用到达其所指明 Session 的作用域 |
 
 </details>
 
@@ -320,7 +327,8 @@ traceback 部分最多增加 4,000 个字符，工作进程输出部分最多增
 
 以下约束适用于基于本库构建的每个服务器。
 
-- **连接的 agent 共享一个工作进程**：通过 WASD Engine 的 MCP 服务器连接的 agent 发起的调用不指明 Session，因此所有连接的 agent 使用 `shared` 工作进程及其应用程序状态，其调用在正在运行的调用之后排队。它们的指令说明了这一点。
+- **连接的 agent 除非指明 Session，否则共享一个工作进程**：通过 WASD Engine 的 MCP 服务器连接的 agent 发起的调用除非传入 `session`，否则不指明 Session，因此所有未传入它的连接的 agent 使用 `shared` 工作进程及其应用程序状态，其调用在正在运行的调用之后排队。它们的指令说明了这一点。
+- **具名 Session 的图像会被保存**：连接的 agent 传入 `session` 的调用以该 Session 的身份运行，因此当该 Session 的模型接受图像时，MCP 客户端也会像处理该 Session 自己的调用一样，把结果中的图像保存到附件存储中，尽管没有任何对话记录引用它们。
 - **每个 Session 的工作进程都是一个进程**：最多同时运行工作进程上限个应用程序进程，各自占用内存；多个 Session 中的渲染等 CPU 密集型工作会彼此拖慢。在 Apple M3 Pro 上，以 1280×720 渲染一次 Blender 默认场景的内存峰值为 1.5 GiB（Cycles）到 1.7 GiB（EEVEE），因此默认的 `workerMemoryBytes` 为每个工作进程预留电脑的 8 GiB。
 - **每个应用程序各有上限**：Blender、GIMP 与 SuperCollider 各自确定工作进程上限，因此三者合计最多可运行单个上限的三倍，另外还有 Godot 的游戏。它们共享的是读取整台电脑数值的内存检查。
 - **内存检查只针对启动**：工作进程启动后若继续增长（例如加载大场景或渲染），不会被停止；检查会拒绝下一次启动。该数值来自操作系统：在 macOS 上为空闲页加上非活跃、推测与可清除页，不含系统通过压缩或交换才能释放的内存。

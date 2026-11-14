@@ -24,11 +24,14 @@ import { applyMasterVolume, AUDIO_PROPERTIES, describeAudio, encodeWav, summariz
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
-import { fixedFps, GODOT_ENGINE_OPTIONS } from './launch.ts'
+import { fixedFps, GODOT_ENGINE_OPTIONS, MAX_FIXED_FPS } from './launch.ts'
 import { MAX_VIDEO_SECONDS } from './video.ts'
 import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
 import { MAX_INPUT_EVENTS, type GodotRun, type ScreenshotRegion, type ViewParams } from './run.ts'
-import { DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_SECONDS, type GodotScriptReport } from './script.ts'
+import {
+  DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_CALL_SECONDS, MAX_SCRIPT_RUNS, MAX_SCRIPT_SECONDS, OUTPUT_DIR_VARIABLE,
+  type EngineIssue, type GodotScriptReport, type GodotScriptRunsReport, type ScriptRunResult,
+} from './script.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
 import type { GodotInputEvent, GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
 
@@ -105,11 +108,12 @@ export interface GodotToolHost {
   /**
    * Run a GDScript that extends `SceneTree` or `MainLoop` against the project headless, without running the game.
    * @param agent - calling Session.
-   * @param request - project, script, user arguments, and time limit as the model gave them.
+   * @param request - project, script, user arguments, runs, fixed frame rate, and time limit as the model gave them.
    * @param signal - cancellation.
-   * @returns the exit code, the end of the output, and the engine errors.
+   * @returns for a request without runs, the exit code, the end of the output, the engine errors, and the files the
+   *   script wrote; with runs, how each run ended.
    */
-  script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport>
+  script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport | GodotScriptRunsReport>
   /**
    * Resolve a file path as the model gave it: absolute, or relative to the Session's working directory.
    * @param agent - calling Session.
@@ -173,8 +177,22 @@ export interface GodotScriptRequest {
   readonly script: string
   /** User arguments after `--`. */
   readonly args?: readonly string[]
-  /** Time limit in seconds. */
+  /** Time limit of each run in seconds. */
   readonly timeoutSeconds?: number
+  /** Runs at once, each with its own arguments after `args` and an optional name; one run with `args` when omitted. */
+  readonly runs?: readonly GodotScriptRunRequest[]
+  /** Frame rate that `--fixed-fps` fixes; real time when omitted. */
+  readonly fixedFps?: number
+  /** Whether each run runs while no other script run, script check, or export of the Host runs. */
+  readonly exclusive?: boolean
+}
+
+/** One run of a script request as the model asked for it. */
+export interface GodotScriptRunRequest {
+  /** User arguments after the request's own `args`. */
+  readonly args?: readonly string[]
+  /** Name of the run in its folder's name and the report. */
+  readonly name?: string
 }
 
 /** A required string field. */
@@ -1618,11 +1636,31 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     },
   }), defineTool({
     name: 'godot_script',
-    description: `Run a GDScript that extends SceneTree or MainLoop against the project in a headless Godot, without running the game, and report the end of what it printed. Use it for command-line runners of test add-ons, such as GUT's or GdUnit4's, and for build or generator scripts. The script is ${wording.scriptPath}; args reach it after --, where OS.get_cmdline_user_args() reads them. It imports the project first, as godot_run does, so new class_name scripts and resources are known. The script must quit itself with quit(). The built-in Godot does not pass the script's exit code on, so judge the result by what it prints, such as a test runner's summary.`,
+    description: `Run a GDScript that extends SceneTree or MainLoop against the project in a headless Godot, without running the game, and report the end of what it printed: test runners such as GUT's or GdUnit4's, build or generator scripts, and measurements, which runs repeats at once with other arguments and fixed_fps makes repeatable. The script is ${wording.scriptPath}; args reach it after --, where OS.get_cmdline_user_args() reads them. Each run gets a folder with stdout.log, stderr.log, and files/, which the environment variable ${OUTPUT_DIR_VARIABLE} names: write results there, and the report lists them. Runs share the project, so they should write only there; with runs, each also gets its own user:// folder. It imports the project first, as godot_run does. The script must quit itself with quit(); the built-in Godot does not pass on its exit code, so judge the result by what it prints or writes.`,
     parameters: {
       script: { type: 'string', required: true, description: 'The script to run, such as res://addons/gut/gut_cmdln.gd.' },
-      args: { type: 'array', items: { type: 'string' }, description: 'User arguments passed after --. Default: none.' },
-      timeout_seconds: { type: 'integer', description: `Time limit in seconds, from 1 to ${MAX_SCRIPT_SECONDS}. Default: ${DEFAULT_SCRIPT_SECONDS}.` },
+      args: { type: 'array', items: { type: 'string' }, description: 'User arguments passed after --; with runs, before each run\'s own. Default: none.' },
+      runs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            args: { type: 'array', items: { type: 'string' }, description: 'Arguments of this run, after args.' },
+            name: { type: 'string', description: 'Name in the run\'s folder and the report.' },
+          },
+        },
+        description: `One run per entry, 1 to ${MAX_SCRIPT_RUNS}, as many at once as this computer allows, all within ${MAX_SCRIPT_CALL_SECONDS / 60} minutes. Default: one run with args.`,
+      },
+      fixed_fps: {
+        type: 'integer',
+        description: `Game time per frame is 1/fixed_fps s however long frames take (Godot's --fixed-fps), so runs repeat exactly and finish as fast as they can; 1 to ${MAX_FIXED_FPS}. Default: real time.`,
+      },
+      exclusive: {
+        type: 'boolean',
+        description: 'Run the runs one at a time while no other godot_script run, check, or export runs, for timing measurements. Default: false.',
+      },
+      timeout_seconds: { type: 'integer', description: `Time limit of each run in seconds, from 1 to ${MAX_SCRIPT_SECONDS}. Default: ${DEFAULT_SCRIPT_SECONDS}.` },
       project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the running game\'s project, else the nearest one.' },
     },
     output: {
@@ -1633,22 +1671,57 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           projectDir: STRING,
           script: STRING,
           exitCode: { type: 'integer', description: 'Exit code of the Godot runner: 0 once the script quit, another value when the runner itself failed; absent when a signal or the time limit ended it.' },
-          timedOut: { type: 'boolean', required: true },
+          timedOut: { type: 'boolean' },
           durationMs: INTEGER,
-          output: STRING,
-          omittedLines: INTEGER,
+          output: { type: 'string' },
+          omittedLines: { type: 'integer' },
           issues: {
             type: 'array',
-            required: true,
             items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
           },
-          totalIssues: INTEGER,
+          totalIssues: { type: 'integer' },
+          folder: { type: 'string', description: 'Folder of the run, for a call without runs.' },
+          files: { type: 'array', items: { type: 'string' } },
+          totalFiles: { type: 'integer' },
+          resultsDir: { type: 'string', description: 'Folder of a call with runs: summary.json and one folder per run.' },
+          fixedFps: { type: 'integer' },
+          parallel: { type: 'integer' },
+          importIssues: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
+          },
+          runs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                args: { type: 'array', items: { type: 'string' }, required: true },
+                folder: STRING,
+                status: { type: 'string', enum: ['finished', 'timed-out', 'ended', 'not-started'], required: true },
+                exitCode: { type: 'integer' },
+                reason: { type: 'string' },
+                durationMs: INTEGER,
+                files: { type: 'array', items: { type: 'string' }, required: true },
+                totalFiles: INTEGER,
+                issues: {
+                  type: 'array',
+                  required: true,
+                  items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
+                },
+                totalIssues: INTEGER,
+                lastLine: { type: 'string' },
+              },
+            },
+          },
           ...DIGEST_SCHEMA,
         },
       },
       render: (_args, value) => {
+        if (value.runs !== undefined) return textResult(formatScriptRuns(value.script, value), formatDigest(value))
         const seconds = (value.durationMs / 1000).toFixed(1)
-        const ended = value.timedOut
+        const ended = value.timedOut === true
           ? `did not finish within its time limit and was stopped after ${seconds} s.`
           : value.exitCode === undefined
             ? 'was ended by a signal.'
@@ -1656,14 +1729,16 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
               ? `finished after ${seconds} s. The built-in Godot does not report the script's own exit code; read the result from its output.`
               : `could not run: the Godot runner failed with exit code ${value.exitCode} after ${seconds} s.`
         const lines = [`${value.script} ${ended}`]
-        if (value.issues.length > 0) {
-          lines.push(`Engine errors (${value.totalIssues}):`, ...value.issues.map(issue => `[${issue.level}] ${issue.file === undefined ? '' : `${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: `}${clip(issue.message, MESSAGE_CHARS)}`))
-        }
-        lines.push(value.output === '' ? 'It printed nothing.' : `${value.omittedLines > 0 ? `Output (last lines; ${value.omittedLines} earlier lines left out):` : 'Output:'}\n${value.output}`)
+        if (value.folder !== undefined) lines.push(describeRunFolder(value.folder, value.files ?? [], value.totalFiles ?? 0))
+        const issues = value.issues ?? []
+        if (issues.length > 0) lines.push(`Engine errors (${value.totalIssues ?? issues.length}):`, ...issues.map(formatEngineIssue))
+        const output = value.output ?? ''
+        const omitted = value.omittedLines ?? 0
+        lines.push(output === '' ? 'It printed nothing.' : `${omitted > 0 ? `Output (last lines; ${omitted} earlier lines left out):` : 'Output:'}\n${output}`)
         return textResult(lines.join('\n'), formatDigest(value))
       },
     },
-    timeoutMs: (MAX_SCRIPT_SECONDS + 60) * 1000,
+    timeoutMs: (MAX_SCRIPT_CALL_SECONDS + 600) * 1000,
     async execute(args, exec) {
       return invoke(host, exec, async (agent) => {
         const report = await host.script(agent, {
@@ -1671,7 +1746,22 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...args.project === undefined ? {} : { project: args.project },
           ...args.args === undefined ? {} : { args: args.args },
           ...args.timeout_seconds === undefined ? {} : { timeoutSeconds: args.timeout_seconds },
+          ...args.runs === undefined ? {} : { runs: args.runs },
+          ...args.fixed_fps === undefined ? {} : { fixedFps: args.fixed_fps },
+          ...args.exclusive === undefined ? {} : { exclusive: args.exclusive },
         }, exec.signal)
+        if ('runs' in report) {
+          return {
+            projectDir: report.projectDir,
+            script: report.script,
+            durationMs: report.durationMs,
+            resultsDir: report.resultsDir,
+            ...report.fixedFps === undefined ? {} : { fixedFps: report.fixedFps },
+            parallel: report.parallel,
+            importIssues: report.importIssues.map(issueValue),
+            runs: report.runs.map(runValue),
+          }
+        }
         return {
           projectDir: report.projectDir,
           script: report.script,
@@ -1680,12 +1770,146 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           durationMs: report.durationMs,
           output: report.output,
           omittedLines: report.omittedLines,
-          issues: [...report.issues],
+          issues: report.issues.map(issueValue),
           totalIssues: report.totalIssues,
+          folder: report.folder,
+          files: [...report.files],
+          totalFiles: report.totalFiles,
         }
       })
     },
   })]
+}
+
+/** An engine issue as a result value holds it. */
+interface IssueValue {
+  readonly level: string
+  readonly message: string
+  readonly file?: string
+  readonly line?: number
+}
+
+/** A run of a call with runs as a result value holds it. */
+interface RunValue {
+  readonly name?: string
+  readonly args: string[]
+  readonly folder: string
+  readonly status: ScriptRunResult['status']
+  readonly exitCode?: number
+  readonly reason?: string
+  readonly durationMs: number
+  readonly files: string[]
+  readonly totalFiles: number
+  readonly issues: IssueValue[]
+  readonly totalIssues: number
+  readonly lastLine?: string
+}
+
+/** An engine issue as a result value holds it. */
+function issueValue(issue: EngineIssue): IssueValue {
+  return {
+    level: issue.level,
+    message: issue.message,
+    ...issue.file === undefined ? {} : { file: issue.file },
+    ...issue.line === undefined ? {} : { line: issue.line },
+  }
+}
+
+/** A run of a call with runs as a result value holds it. */
+function runValue(run: ScriptRunResult): RunValue {
+  return {
+    ...run.name === undefined ? {} : { name: run.name },
+    args: [...run.args],
+    folder: run.folder,
+    status: run.status,
+    ...run.exitCode === undefined ? {} : { exitCode: run.exitCode },
+    ...run.reason === undefined ? {} : { reason: run.reason },
+    durationMs: run.durationMs,
+    files: [...run.files],
+    totalFiles: run.totalFiles,
+    issues: run.issues.map(issueValue),
+    totalIssues: run.totalIssues,
+    ...run.lastLine === undefined ? {} : { lastLine: run.lastLine },
+  }
+}
+
+/** One engine issue as a line of a script result. */
+function formatEngineIssue(issue: IssueValue): string {
+  return `[${issue.level}] ${issue.file === undefined ? '' : `${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: `}${clip(issue.message, MESSAGE_CHARS)}`
+}
+
+/** Most file names that a script result names for one run. */
+const NAMED_RUN_FILES = 5
+
+/** The files a run wrote, as a phrase: the first few names, then how many more. */
+function describeFiles(files: readonly string[], total: number): string {
+  if (total === 0) return 'no files'
+  const named = files.slice(0, NAMED_RUN_FILES).join(', ')
+  return total > NAMED_RUN_FILES ? `${named}, and ${total - NAMED_RUN_FILES} more` : named
+}
+
+/**
+ * Describe the folder of a call's only run.
+ * @param folder - absolute folder.
+ * @param files - files the script wrote to `files/`, relative to it.
+ * @param total - files in `files/` in all.
+ * @returns one line.
+ */
+function describeRunFolder(folder: string, files: readonly string[], total: number): string {
+  return `Its folder ${folder} keeps stdout.log and stderr.log; files the script wrote to ${OUTPUT_DIR_VARIABLE} (files/): ${describeFiles(files, total)}.`
+}
+
+/** The phrase of a run's end in a call with runs. */
+function describeRunEnd(run: Pick<RunValue, 'durationMs' | 'exitCode' | 'reason'> & { readonly status: string }): string {
+  const seconds = (run.durationMs / 1000).toFixed(1)
+  switch (run.status) {
+    case 'finished':
+      return `finished in ${seconds} s`
+    case 'timed-out':
+      return `timed out after ${seconds} s`
+    case 'not-started':
+      return `did not start: ${run.reason ?? 'unknown reason'}`
+    default:
+      return run.exitCode === undefined ? `was ended by a signal after ${seconds} s` : `failed: the Godot runner exited with code ${run.exitCode} after ${seconds} s`
+  }
+}
+
+/**
+ * Format the result of a call with runs: a summary line, the call's folder, the import errors, and one line per run.
+ * @param script - `res://` path of the script.
+ * @param value - the result value.
+ * @returns the text.
+ */
+function formatScriptRuns(script: string, value: {
+  readonly durationMs: number
+  readonly resultsDir?: string
+  readonly fixedFps?: number
+  readonly parallel?: number
+  readonly importIssues?: readonly IssueValue[]
+  readonly runs?: ReadonlyArray<Omit<RunValue, 'status'> & { readonly status: string }>
+}): string {
+  const runs = value.runs ?? []
+  const counts = new Map<string, number>()
+  for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1)
+  const tally = [
+    ['finished', 'finished'], ['timed-out', 'timed out'], ['ended', 'failed'], ['not-started', 'did not start'],
+  ].flatMap(([status, words]) => counts.has(status as string) ? [`${String(counts.get(status as string))} ${words as string}`] : []).join(', ')
+  const pace = value.fixedFps === undefined ? '' : ` at a fixed ${value.fixedFps} FPS`
+  const lines = [
+    `Ran ${script} ${runs.length === 1 ? 'once' : `${runs.length} times, up to ${value.parallel ?? 1} at a time`}${pace}, in ${(value.durationMs / 1000).toFixed(1)} s: ${tally}.`,
+    `The call's folder ${value.resultsDir ?? '(unknown)'} holds summary.json, with every run's details, and one folder per run with stdout.log, stderr.log, files/ (its ${OUTPUT_DIR_VARIABLE}), and home/, which holds its user:// folder.`,
+  ]
+  const importIssues = value.importIssues ?? []
+  if (importIssues.length > 0) lines.push('Errors of the import before the runs:', ...importIssues.map(formatEngineIssue))
+  runs.forEach((run, index) => {
+    const parts = [`${String(index + 1)}${run.name === undefined ? '' : ` ${run.name}`}: ${describeRunEnd(run)}`]
+    if (run.status !== 'not-started') parts.push(`files: ${describeFiles(run.files, run.totalFiles)}`)
+    const first = run.issues[0]
+    if (first !== undefined) parts.push(`${run.totalIssues} engine error${run.totalIssues === 1 ? '' : 's'}, first: ${formatEngineIssue(first)}`)
+    if (run.lastLine !== undefined) parts.push(`last line: ${run.lastLine}`)
+    lines.push(parts.join('; '))
+  })
+  return lines.join('\n')
 }
 
 /** A scene tree node as the harness describes it. */

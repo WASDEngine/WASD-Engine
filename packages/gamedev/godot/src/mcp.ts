@@ -1,9 +1,9 @@
 /**
  * The Godot tools for agents connected through WASD Engine's MCP server: the Session's own tool definitions, run for
  * the connected agent's Session in the game project it names, so its games play in the WASD Engine window's Game
- * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one; images travel as their
- * PNG or JPEG bytes, screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's Game
- * tab.
+ * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one, and `session`, a name
+ * that gives agents sharing one connection Sessions, and games, of their own; images travel as their PNG or JPEG bytes,
+ * screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's Game tab.
  * @module @deepseek-ai/dsh-godot/src/mcp
  */
 import { randomUUID } from 'node:crypto'
@@ -38,12 +38,18 @@ export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* 
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
-4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.
-5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.`
+4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner, once or many times at once.
+5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.
+Agents that work at the same time through one connection, such as the subagents of one session, share a game unless each passes its own session name to every Godot call: one agent's godot_run would restart the game another is testing.`
 
 const PROJECT_PARAMETER = {
   type: 'string',
   description: 'Absolute path of the Godot project: the folder that holds project.godot, or a folder above it. Default: the project of your previous Godot call.',
+} as const
+
+const SESSION_PARAMETER = {
+  type: 'string',
+  description: 'Name of a Session of your own, such as your task, for agents that work at the same time: each name runs its own game. Use one name in all your Godot calls. Default: your shared Session.',
 } as const
 
 /** The bytes and media type of each call's images, by image id. */
@@ -153,10 +159,22 @@ function statusOf(view: GodotRuntimeView): GameMcpProviderStatus {
 }
 
 /**
+ * The key of an agent's most recent project in one of its Sessions: the agent, and the Session name when the call gives
+ * one.
+ * @param client - the agent's id.
+ * @param session - the Session name as the call gave it.
+ * @returns the key.
+ */
+function projectKey(client: string, session: string | undefined): string {
+  return session === undefined ? `${client}\n` : `${client}\n${session.trim().toLowerCase()}`
+}
+
+/**
  * Offer one Godot tool definition to connected agents.
  * @param definition - the tool, built for connected agents.
  * @param images - the screenshots of each call.
- * @param projects - each agent's most recent project folder.
+ * @param projects - each agent's most recent project folder under its id, and in each of its Sessions under
+ *   {@link projectKey}.
  * @returns the server tool.
  */
 function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: Map<string, string>): GameMcpTool {
@@ -171,20 +189,24 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      properties: { project: PROJECT_PARAMETER, ...others },
+      properties: { project: PROJECT_PARAMETER, session: SESSION_PARAMETER, ...others },
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
     // godot_check is not read-only: it may import the project first, which writes import data into it.
     readOnly: ['godot_screenshot', 'godot_view', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
-      const { project, ...rest } = args
+      const { project, session, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')
-      const requested = project ?? projects.get(call.client.id)
+      if (session !== undefined && typeof session !== 'string') throw new Error('session must be a string.')
+      // A Session's first call without project uses the agent's most recent project in any of its Sessions.
+      const key = projectKey(call.client.id, session)
+      const requested = project ?? projects.get(key) ?? projects.get(call.client.id)
       if (requested === undefined) throw new Error('Pass project: the absolute path of the folder that holds project.godot.')
       if (!isAbsolute(requested)) throw new Error(`project must be an absolute path, got ${JSON.stringify(requested)}.`)
       const folder = basename(requested) === 'project.godot' ? dirname(requested) : requested
       const found = await resolveGodotProject(folder, undefined, call.signal)
-      const agent = await call.session(found.dir)
+      const agent = await call.session(found.dir, session)
+      projects.set(key, found.dir)
       projects.set(call.client.id, found.dir)
       // The window shows the Session, whose Game tab opens for a run an agent starts.
       if (definition.name === 'godot_run') call.reveal(agent.id)

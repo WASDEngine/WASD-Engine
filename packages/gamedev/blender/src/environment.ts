@@ -16,6 +16,7 @@ import type {
   AppWorkerDependencies, AppWorkerScope, CommandArgv, CommandOptions, CommandResult, JsonObject, PackedRuntime, RuntimeUnpackHost,
   SetupHost, ShippedRuntimeHost, WorkerReady,
 } from '@deepseek-ai/dsh-app-mcp'
+import { untilSettled } from './abort.ts'
 import type { BlenderServerOptions } from './types.ts'
 
 /** A `bpy` package version such as `5.2.3`. */
@@ -23,6 +24,15 @@ export const BPY_VERSION_PATTERN = /^\d+\.\d+\.\d+$/
 
 /** Environment variable that names the game add-on store to the worker. */
 export const ADDON_STORE_VARIABLE = 'WASD_ADDON_STORE'
+
+/**
+ * Environment variable that makes the worker script run one script and exit instead of serving requests: the
+ * script's absolute path.
+ */
+export const SCRIPT_VARIABLE = 'WASD_BLENDER_SCRIPT'
+
+/** Environment variable that names a .blend file that the worker script opens before the script that {@link SCRIPT_VARIABLE} names. */
+export const BLEND_FILE_VARIABLE = 'WASD_BLENDER_FILE'
 
 /**
  * Folder in a worker's own directory that Blender uses as its user resources (`BLENDER_USER_RESOURCES`): the
@@ -43,6 +53,11 @@ const ServerOptions = z.strictObject({
   blenderPath: z.string(),
   startupTimeoutMs: z.int().min(1),
   addonStore: z.string(),
+  maxScripts: z.int().min(1),
+  scriptMemoryBytes: z.int().min(0),
+  scriptCores: z.int().min(0),
+  keptScriptResults: z.int().min(1),
+  scriptLogBytes: z.int().min(1),
 })
 
 /**
@@ -240,11 +255,13 @@ function venvPython(directory: string, platform: NodeJS.Platform): string {
   return platform === 'win32' ? paths.join(directory, 'Scripts', 'python.exe') : paths.join(directory, 'bin', 'python')
 }
 
-const REDIRECTING_VARIABLES = new Set(['PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP', 'VIRTUAL_ENV', 'ELECTRON_RUN_AS_NODE'])
+const REDIRECTING_VARIABLES = new Set([
+  'PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP', 'VIRTUAL_ENV', 'ELECTRON_RUN_AS_NODE', SCRIPT_VARIABLE, BLEND_FILE_VARIABLE,
+])
 
 /**
  * The environment for uv and the worker: the server's own environment without variables that
- * would redirect Python's module search or the Electron runtime flag.
+ * would redirect Python's module search, the Electron runtime flag, or the worker script's script mode.
  * @param env - the MCP server process environment.
  * @returns a copy safe to pass to child processes.
  */
@@ -437,6 +454,8 @@ function lastOutputLine(logTail: string | undefined): string {
  */
 export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
   private notes: string[] = []
+  /** Settles when the latest launch preparation has settled; it never rejects. */
+  private preparing: Promise<void> = Promise.resolve()
 
   /**
    * @param options - validated server options.
@@ -456,9 +475,8 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
    */
   async start(signal: AbortSignal, scope: AppWorkerScope): Promise<W> {
     const { host } = this.dependencies
-    await host.makeDirectory(this.options.dataRoot)
-    const script = await this.dependencies.workerScript()
-    const launch = await resolveWorkerLaunch(this.options, script, this.dependencies.bundledRoot, host, signal)
+    const launch = await this.launch(signal)
+    const script = launch.script
     try {
       return await this.startWorker(launch, scope, signal)
     } catch (error) {
@@ -469,6 +487,35 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
         ...launch.notes,
         `The bpy module did not start (${error.message}${lastOutputLine(error.logTail)}), so Blender at ${blender} runs the tools instead. ${launch.repair}`,
       ]), scope, signal)
+    }
+  }
+
+  /**
+   * Prepare the environment and build the command line of one script run: the worker launch, whose worker script runs
+   * the script that {@link SCRIPT_VARIABLE} names instead of serving requests. Preparations run one at a time, also
+   * beside worker starts, so a first-use bpy installation or unpack never runs twice at once.
+   * @param signal - cancels the preparation.
+   * @returns the launch, whose notes report what the preparation did, such as a first-use installation.
+   * @throws the errors of {@link resolveWorkerLaunch}.
+   */
+  async scriptLaunch(signal: AbortSignal): Promise<WorkerLaunch> {
+    return await this.launch(signal)
+  }
+
+  /** Resolve the worker launch, with the worker script's path, after the preparations that began earlier settled. */
+  private async launch(signal: AbortSignal): Promise<WorkerLaunch & { readonly script: string }> {
+    const previous = this.preparing
+    const own = Promise.withResolvers<void>()
+    // A preparation whose wait was cancelled still keeps the later ones behind the earlier ones.
+    this.preparing = previous.then(() => own.promise)
+    try {
+      await untilSettled(previous, signal)
+      const { host } = this.dependencies
+      await host.makeDirectory(this.options.dataRoot)
+      const script = await this.dependencies.workerScript()
+      return { ...await resolveWorkerLaunch(this.options, script, this.dependencies.bundledRoot, host, signal), script }
+    } finally {
+      own.resolve()
     }
   }
 

@@ -588,7 +588,7 @@ export type Config = LocalConfig
 
 - `inject`: `mcpManager`
 - `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
-- `source`: [`packages/gamedev/blender/src/index.ts:26`](../packages/gamedev/blender/src/index.ts)
+- `source`: [`packages/gamedev/blender/src/index.ts:27`](../packages/gamedev/blender/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the Blender tools. */
@@ -621,6 +621,22 @@ export interface Config extends AppMcpConfig {
    * empty leaves `wasd_addons` without add-ons.
    */
   addonStore: string
+  /** Most `run_script` runs that run at once on any computer, whichever calls asked for them. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `run_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `run_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `run_script` calls kept under `script-runs/` in `dataRoot`; a new call deletes the oldest beyond this. */
+  keptScriptResults: number
+  /** Most bytes of output that a `run_script` run keeps in its `output.log`; later output is left out. */
+  scriptLogBytes: number
 }
 
 /**
@@ -1999,7 +2015,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:68`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:72`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2054,8 +2070,27 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
+  /**
+   * Milliseconds that a game an agent started must go unused, shown in no Game tab and serving no request, before a
+   * start that finds every run slot taken stops it; 0 makes such a start fail instead.
+   */
+  idleRunStopMs: number
   /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
+  /** Most `godot_script` runs that run at once across Sessions on any computer; later ones wait for one to end. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `godot_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `godot_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `godot_script` calls that each project keeps in its data folder; a new call deletes the oldest beyond it. */
+  keptScriptResults: number
   /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**

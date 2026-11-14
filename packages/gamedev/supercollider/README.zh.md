@@ -95,12 +95,12 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器写入工作进程自己的文件夹 `<dataRoot>/workers/<pid>/<n>/` 中 `sclang_conf.yaml` 的类库配置；该文件夹是 sclang 的工作目录，命令行以相对于它的路径指明该文件，因为 Windows 上的 sclang 以 ANSI 代码页读取参数，无法容纳用户文件夹名中的所有字符。对于自带运行时，该配置用运行时的类库替换默认的类库路径；配置的 sclang 则保留其默认路径，因此会加载它的系统范围扩展。无论哪种情况，在 macOS 与 Linux 上，`XDG_CONFIG_HOME` 与 `XDG_DATA_HOME` 都把 sclang 的用户配置目录和用户数据目录指向该文件夹中的 `home/`，因此用户自己的扩展、quark 与 synthdef 都不会被加载；Windows 上的 sclang 忽略这两个变量，使用用户自己的 `%LOCALAPPDATA%\SuperCollider` 文件夹。在所有平台上，工作类都会跳过用户的启动文件。该配置还加入工作类 `WasdWorker.sc` 所在的目录，工作类也会让 `Server:boot` 抛出错误：由于没有音频设备，启动实时服务器的代码会失败，并收到指向 `render_audio` 的消息。
 
-每个调用工具的 Session 都有自己的解释器（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），其状态在该 Session 的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个解释器。解释器在 `workerIdleTimeoutMs` 内没有调用时停止，新的解释器启动时上述状态都不存在。
+每个调用工具的 Session 都有自己的解释器（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），其状态在该 Session 的调用之间保持：如 `~kick` 这样的环境变量、解释器变量 `a` 到 `z`、用 `.add` 添加的 SynthDef，以及代码定义的其他任何内容。通过 WASD Engine 的 MCP 服务器连接的 agent 彼此共享一个解释器，除非它们的调用传入 `session` 名称，每个名称由此获得自己 Session 的解释器（[连接的 agent 的 Session](../app-mcp/README.zh.md#connected-agents-sessions)）。解释器在 `workerIdleTimeoutMs` 内没有调用时停止，新的解释器启动时上述状态都不存在。
 
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_supercollider__<name>` 调用每个工具，所有路径参数都是绝对路径。调用失败时返回错误结果，其文本指出原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `supercollider_<name>` 调用同样的工具，并彼此共享一个解释器。
+模型以 `mcp__wasd_supercollider__<name>` 调用每个工具，所有路径参数都是绝对路径。调用失败时返回错误结果，其文本指出原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `supercollider_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`；除非传入 `session`，这些 agent 彼此共享一个解释器。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -287,7 +287,7 @@ WASD Engine's headless SuperCollider is not installed for darwin-x64. The WASD E
 以下限制描述 SuperCollider 工具当前的不足。
 
 - **不会发出声音** — 工具在没有音频设备的情况下运行，并拒绝启动实时服务器，因此 agent 和用户都无法通过工具听到声音；用户在游戏中或其他地方收听渲染出的文件。
-- **连接的 agent 共享一个解释器** — 通过 WASD Engine 的 MCP 服务器连接的 agent 共用其变量与 SynthDef，一次耗时的渲染会推迟其他 agent 的调用。
+- **连接的 agent 除非指明会话，否则共享一个解释器** — 通过 WASD Engine 的 MCP 服务器连接、调用时未传入 `session` 的 agent 共用其变量与 SynthDef，一次耗时的渲染会推迟其他 agent 的调用。
 - **空闲的 Session 会丢失解释器状态** — Session 的解释器在 `workerIdleTimeoutMs` 内没有调用时停止，或在另一个 Session 需要占用 `maxWorkers` 中的位置时停止。
 - **重启会丢失解释器状态** — 崩溃、`requestTimeoutMs` 或 `timeout_seconds` 到期、取消正在运行的调用，或调用 `0.exit` 的代码都会停止 sclang；变量与 SynthDef 随之消失，新的解释器启动时一个都没有。
 - **SuperCollider 只在 macOS arm64、Windows x64 与 Linux x64 上运行** — 面向 Apple 芯片 macOS 与 Windows x64 的 Desktop 应用自带运行时，Linux 检出可安装发布构建；Intel Mac 没有运行时，而工具不会启动已安装的 SuperCollider，因此除非 `sclangPath` 指向无界面构建，否则工具会在那里报告缺少运行时。

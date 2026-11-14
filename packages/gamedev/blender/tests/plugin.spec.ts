@@ -51,7 +51,7 @@ it('registers the wasd_blender stdio server with its options and removes it when
       dataRoot: '/data/blender', backend: 'app', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '/opt/blender/blender',
       startupTimeoutMs: 30_000, requestTimeoutMs: 120_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
       maxWorkers: 4, workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
-      addonStore: '',
+      addonStore: '', maxScripts: 4, scriptMemoryBytes: 2 * 1024 ** 3, scriptCores: 2, keptScriptResults: 20, scriptLogBytes: 16 * 1024 ** 2,
     })
     await fiber.dispose()
     expect(manager.registered.size).toBe(0)
@@ -79,7 +79,7 @@ it('serves the Blender tools from the registered command line without starting B
   expect(client.getServerVersion()).toMatchObject({ name: 'wasd_blender' })
   expect((await client.listTools()).tools.map(tool => tool.name)).toEqual([
     'scene_info', 'object_info', 'execute_python', 'new_scene', 'open_blend', 'save_blend', 'import_file', 'export_gltf',
-    'export_file', 'render_preview', 'render', 'python_api', 'checkpoint', 'undo',
+    'export_file', 'render_preview', 'render', 'python_api', 'run_script', 'checkpoint', 'undo',
   ])
 }, 60_000)
 
@@ -96,7 +96,7 @@ it('validates versions, backends, and budgets', () => {
     dataRoot: '/d', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '', startupTimeoutMs: 30_000,
     toolCallTimeoutMs: 900_000, requestTimeoutMs: 600_000, graceMs: 3000, maxLogBytes: 65_536, maxWorkers: 4,
     workerMemoryBytes: 8 * 1024 ** 3, workerCores: 4, minAvailableMemoryBytes: 1024 ** 3, workerIdleTimeoutMs: 600_000,
-    addonStore: '',
+    addonStore: '', maxScripts: 4, scriptMemoryBytes: 2 * 1024 ** 3, scriptCores: 2, keptScriptResults: 20, scriptLogBytes: 16 * 1024 ** 2,
   })
   for (const invalid of [{}, { dataRoot: '/d', backend: 'gpu' }, { dataRoot: '/d', bpyVersion: '5.2' }, { dataRoot: '/d', pythonVersion: '2.7' },
     { dataRoot: '/d', requestTimeoutMs: 0 }, { dataRoot: '/d', toolCallTimeoutMs: 2_147_483_648 }, { dataRoot: '/d', startupTimeoutMs: 0 }, { dataRoot: '/d', maxLogBytes: 0 }]) {
