@@ -93,6 +93,9 @@ const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-
 /** The row the fork inserts last: WASD Engine Plugins, WASD Engine's own always-on features. */
 const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
+/** The row the fork's telemetry overlay inserts first: agents' feedback and their MCP tool usage, reported to WASDEngine. */
+const AGENT_FEEDBACK = { id: 'agent-feedback', name: '@deepseek-ai/dsh-agent-feedback' } as const
+
 /** Bundled skills shipped under `wasdengine/skills`. */
 const SKILLS = ['game-design-doc', 'godot-project', 'godot-web', 'multiplayer'] as const
 
@@ -327,10 +330,24 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
-  it('patches exactly the target rows and inserts only the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, the reference tools, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only agent feedback, the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, the reference tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual(['preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, ART_REFERENCES.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual([AGENT_FEEDBACK.id, 'preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, ART_REFERENCES.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+  })
+
+  it('mounts agent feedback from a web-app dependency with the app\'s version, and the Plugins page can switch it off', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === AGENT_FEEDBACK.id)
+    expect(entry?.name).toBe(AGENT_FEEDBACK.name)
+    expect(entry?.disabled).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['appVersion'])
+    expect(expression(configOf(entry).appVersion, 'agent-feedback.appVersion')).toBe("process.env.DSH_CLIENT_VERSION ?? ''")
+    expect(manifest(webAppDir).dependencies?.[AGENT_FEEDBACK.name]).toBe('workspace:*')
+    expect(PROTECTED_PLUGINS.has(AGENT_FEEDBACK.name)).toBe(false)
+    const meta = readPluginMeta(AGENT_FEEDBACK.name, pathToFileURL(join(webAppDir, 'package.json')).href)
+    expect(meta?.error).toBeUndefined()
+    const title = meta?.title
+    expect(typeof title === 'object' ? title.en : title).toBe('Agent feedback')
   })
 
   it('mounts the reference tools from a web-app dependency with their cache folder under the harness home, and the Plugins page may switch them off', () => {

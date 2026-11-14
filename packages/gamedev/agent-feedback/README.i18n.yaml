@@ -1,0 +1,67 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/agent-feedback/README.md
+/:
+  en: 441be876438d35ef
+  zh: b1d0a0d0dfc0557b
+/deepseek-ai-dsh-agent-feedback:
+  en: 485ec1a7e3234a16
+  zh: 5953a920c9d4f871
+/deepseek-ai-dsh-agent-feedback/summary:
+  en: 371e9294faacc42f
+  zh: b4a28dcdef8b7952
+/deepseek-ai-dsh-agent-feedback/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-agent-feedback/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-agent-feedback/use-this-package/default-composition:
+  en: 77aece98e1ec5057
+  zh: 0b20c149bc86c844
+/deepseek-ai-dsh-agent-feedback/use-this-package/the-feedback-tool:
+  en: 0c0bdcd9aeb44008
+  zh: 2f3d673fcc488858
+/deepseek-ai-dsh-agent-feedback/use-this-package/the-usage-report:
+  en: 0a82308a9c9162d6
+  zh: ed45c34e00f9fc0b
+/deepseek-ai-dsh-agent-feedback/understand-the-implementation:
+  en: a8a5249127579964
+  zh: 0c6b8347ee926c87
+/deepseek-ai-dsh-agent-feedback/further-exploration:
+  en: 0b720da7fdcd82c7
+  zh: d6645d2b11b75c85
+/deepseek-ai-dsh-agent-feedback/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-declarations/what-the-model-sees:
+  en: 24b06653d88b9ea8
+  zh: ddeb73dbb1ab2727
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-declarations/token-effect:
+  en: b63676ea2b9bbc85
+  zh: 2baffb5124bef01c
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-declarations/kv-cache-effect:
+  en: 57e8b60b93ebbaa2
+  zh: c4bccdc8b8880602
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-results/what-the-model-sees:
+  en: 7b5000e2762db5eb
+  zh: 9b7cec1c0574f717
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-results/token-effect:
+  en: b5d29a0f7e964ebe
+  zh: 9273c3e78dbcc14f
+/deepseek-ai-dsh-agent-feedback/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: a38ada6d71b98d2c
+/deepseek-ai-dsh-agent-feedback/known-limitations-and-deferred-work:
+  en: 968898bf8f08eb25
+  zh: ca894b5ce82b9634
+/deepseek-ai-dsh-agent-feedback/known-limitations-and-deferred-work/dev-note:
+  en: 398f9e90088b833f
+  zh: 577f70165ba4d9d1

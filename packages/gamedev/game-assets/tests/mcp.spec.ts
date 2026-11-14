@@ -125,7 +125,7 @@ describe('the asset tools over WASD Engine\'s MCP server', () => {
     expect(view.isError).toBeFalsy()
     expect((view.content as Array<{ type: string }>).map(block => block.type)).toEqual(['text', 'image'])
     expect(view.content).toContainEqual({ type: 'image', data: PIXEL_PNG, mimeType: 'image/png' })
-    expect(text(view)).toContain('Model models/knight.glb (GLB, 2.4 MB).')
+    expect(text(view)).toContain('Model models/knight.glb (GLB, 2.4 MB): 0.92 × 1.84 × 0.41 (x × y × z, y up), 12,340 triangles in 3 meshes.')
     expect(requests[0]).toMatchObject({ path: 'models/knight.glb', images: true, draw: { shading: 'solid' } })
     // The connected agent's own Session of the project, not one of the composition's Agents.
     expect(requests[0]?.agent?.id).toBe('agent-session-1')

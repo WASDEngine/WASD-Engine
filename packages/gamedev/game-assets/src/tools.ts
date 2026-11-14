@@ -17,7 +17,7 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { describeDetails, describeSearch, sizeText, type ListedAsset, type ListedFolder } from './describe.ts'
+import { describeDetails, describeSearch, describeSummary, sizeText, type ListedAsset, type ListedFolder } from './describe.ts'
 import { exportOf, formatOf, isBlendFormat, NAME_ORDER } from './formats.ts'
 import { ANSWER_LIMITS, parseDetails } from './result.ts'
 import { scanProject, type ScanLimits } from './scan.ts'
@@ -471,10 +471,11 @@ interface ViewArgs {
   readonly show?: boolean
 }
 
-function renderView(value: ViewValue): ContentBlock[] {
+function renderView(value: ViewValue, full: boolean): ContentBlock[] {
   const lines = []
   if (value.requested !== undefined) lines.push(`${value.requested} is a Blender file, which the viewer cannot read; this is the model exported from it.`)
-  lines.push(...describeDetails(value.path, parseDetails(value.details)))
+  const details = parseDetails(value.details)
+  lines.push(...full ? describeDetails(value.path, details) : describeSummary(value.path, details))
   if (value.imagesOmitted === true) lines.push('Your model does not accept images, so no picture was drawn.')
   else if (value.captions.length > 0) lines.push(`The image${value.captions.length === 1 ? ' shows' : 's show'}: ${value.captions.join('; ')}.`)
   if (value.shown) lines.push('It is open in the user\'s Assets panel.')
@@ -548,7 +549,8 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
   }), defineTool({
     name: 'asset_view',
     description: 'Look at one 2D or 3D asset of the game project as the Assets panel draws it, and get the details needed to edit it. '
-      + 'A model is drawn from the views you ask for, in its materials, as solid clay, or as wireframe, optionally with its skeleton over it; its details give its size and bounds, triangles, materials and their textures, its bones as a tree, its animation clips with their lengths and animated bones, and its morph targets. '
+      + 'A model is drawn from the views you ask for, in its materials, as solid clay, or as wireframe, optionally with its skeleton over it; a summary gives its size, triangles, materials, bone count, and animation clips, and details: true lists its bounds, materials and their textures, its bones as a tree, its clips\' animated bones, and its morph targets. '
+      + 'The viewer draws the file\'s own materials and the clips stored in it; a game may shade and animate the model otherwise, which godot_view shows from the running game. '
       + 'An image is drawn at a readable size, pixel art enlarged without smoothing, with its pixel size, transparency, and colors, and the 2D animations it plays or takes part in: its own frames (animated GIF, WebP, or PNG), numbered images beside it, Godot SpriteFrames and Sprite2D frame grids that use it, sprite sheet JSON beside it, or a grid you give. '
       + 'Pass animation to see frames across a clip or 2D animation. A Blender file shows the model exported from it. Set show to open the asset in the user\'s Assets panel.',
     parameters: {
@@ -583,10 +585,11 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       },
       size: { type: 'integer', description: `Longest edge of the returned image in pixels, from ${MIN_IMAGE_EDGE} to ${host.maxImageEdge}. Default: ${Math.min(host.defaultImageEdge, host.maxImageEdge)}.` },
       show: { type: 'boolean', description: 'Also open the asset in the user\'s Assets panel, with the grid and playing the animation you name. Default: false.' },
+      details: { type: 'boolean', description: 'List every detail: the bounds, each material and its textures, the bone tree, each clip\'s animated bones, and the morph target names. Default: false, a summary.' },
     },
     output: {
       schema: VIEW_SCHEMA,
-      render: (_args, value) => renderView(value),
+      render: (args, value) => renderView(value, args.details === true),
     },
     timeoutMs: host.renderTimeoutMs,
     isConcurrencySafe: () => true,

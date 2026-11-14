@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Retours des agents",
+    "description": "Permet à l'agent et aux agents connectés à WASD Engine d'envoyer des retours sur WASD Engine à son équipe, et indique la fréquence d'utilisation de chaque outil de jeu et serveur MCP par les agents."
+  }
+}

@@ -103,22 +103,25 @@ export function hasPointerEvents(events: readonly GodotInputEvent[]): boolean {
 }
 
 /**
- * Scale pointer coordinates from a screenshot's pixels to game window pixels.
+ * Map pointer coordinates from a screenshot's pixels to game window pixels; a screenshot of a region of the window
+ * maps into that region. Relative motion scales without the region's offset.
  * @param events - validated events in screenshot pixels.
  * @param frame - the screenshot they refer to.
  * @returns the events in window pixels.
  */
 export function screenshotToWindow(events: readonly GodotInputEvent[], frame: ScreenshotFrame): GodotInputEvent[] {
-  const scaleX = frame.windowWidth / frame.width
-  const scaleY = frame.windowHeight / frame.height
+  const scaleX = (frame.regionWidth ?? frame.windowWidth) / frame.width
+  const scaleY = (frame.regionHeight ?? frame.windowHeight) / frame.height
+  const left = frame.x ?? 0
+  const top = frame.y ?? 0
   return events.map((event) => {
     if (!('kind' in event)) return event
-    if (event.kind === 'mouse_button') return { ...event, x: event.x * scaleX, y: event.y * scaleY }
+    if (event.kind === 'mouse_button') return { ...event, x: left + event.x * scaleX, y: top + event.y * scaleY }
     if (event.kind !== 'mouse_motion') return event
     return {
       ...event,
-      x: event.x * scaleX,
-      y: event.y * scaleY,
+      x: left + event.x * scaleX,
+      y: top + event.y * scaleY,
       ...event.dx === undefined ? {} : { dx: event.dx * scaleX },
       ...event.dy === undefined ? {} : { dy: event.dy * scaleY },
     }

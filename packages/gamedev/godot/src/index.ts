@@ -12,6 +12,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
 import { materializePayload, memoryShortage, nodeMachine, processLimit, type MachineResources } from '@deepseek-ai/dsh-app-mcp'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-attachment'
@@ -30,6 +31,7 @@ import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
 import { runInstanceGroup } from './instances.ts'
 import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
+import { defaultWindowSize, fixedFps, parseEngineArgs, parseGameArgs } from './launch.ts'
 import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
@@ -42,6 +44,7 @@ import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRe
 import { ProcessSlots } from './slots.ts'
 import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
 import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
+import { GodotVideoError, GodotVideoRecorder, videoPath } from './video.ts'
 import { checkWebBuild, GodotWebCheckError, WEB_CHECK_UNAVAILABLE } from './web-check.ts'
 import type {
   GodotControlRequest, GodotDesktopExport, GodotDesktopExportRequest, GodotDesktopPlatform, GodotFollowItem, GodotInputEvent,
@@ -126,6 +129,17 @@ export interface Config {
   hiddenDelayMs: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
+  /**
+   * Height in pixels toward which a run that names no window size grows a shorter project window, by a whole factor,
+   * when the project's stretch mode scales its content; 0 keeps every project's window size.
+   */
+  minWindowHeight: number
+  /** JPEG quality of the frames that `godot_record` captures, 0.1 to 1. */
+  recordQuality: number
+  /** Bytes of captured frames kept for a window that encodes a recording more slowly than the game captures it. */
+  recordBufferBytes: number
+  /** Largest video `godot_record` saves, in bytes. */
+  maxVideoBytes: number
   /**
    * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
    * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD
@@ -235,10 +249,14 @@ Test a Godot project with the godot_* tools:
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
+5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.
 The user can watch and play the running game in the Game panel.
 
 Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses. Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere; run a game on another renderer with godot_run web: true to see it as players will. A Web export ends with a Web check of the build in a browser: fix the freezes and errors it reports.`
 }
+
+/** Why `godot_record` cannot record: no WASD Engine window encodes the video. */
+const NO_RECORDING_WINDOW = 'godot_record needs the WASD Engine window open, which encodes the video; it records once the window is connected.'
 
 /** A Godot runtime does not resolve. */
 class GodotUnavailableError extends Error {
@@ -351,6 +369,10 @@ export default class GodotController extends TypertRemoteService {
     hiddenFps: z.number().step(1).min(0).max(60).default(10),
     hiddenDelayMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(30_000),
     agentRunsMuted: z.boolean().default(true),
+    minWindowHeight: z.number().step(1).min(0).max(16_384).default(720),
+    recordQuality: z.number().min(0.1).max(1).default(0.92),
+    recordBufferBytes: z.number().step(1).min(1024 * 1024).default(1024 ** 3),
+    maxVideoBytes: z.number().step(1).min(1024 * 1024).default(4 * 1024 ** 3),
     webTemplateArchiveUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz'),
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
     webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('477a8c0bff8a89acf58cdd68d913b160e71cfb038cf3648eebc2ab853148a65d'),
@@ -388,6 +410,7 @@ export default class GodotController extends TypertRemoteService {
   private readonly desktopTemplates: Readonly<Record<GodotDesktopPlatform, ExportTemplateManager>>
   private readonly serverTemplates: ExportTemplateManager
   private readonly runtimeWatchers = new Set<() => void>()
+  private readonly videos: GodotVideoRecorder
   private payload: Promise<{ readonly harness: string; readonly check: string }> | undefined
 
   /**
@@ -400,6 +423,12 @@ export default class GodotController extends TypertRemoteService {
     const maxRuns = processLimit({ max: config.maxRuns, memoryBytes: config.runMemoryBytes, cores: config.runCores }, this.machine)
     this.sessions = new GodotSessions(ctx, maxRuns, () => { this.requireMemory('the game') })
     this.headless = new ProcessSlots(config.maxHeadlessProcesses)
+    this.videos = new GodotVideoRecorder({
+      quality: config.recordQuality,
+      bufferBytes: config.recordBufferBytes,
+      maxBytes: config.maxVideoBytes,
+      windowTimeoutMs: config.requestTimeoutMs,
+    })
     const host = createRuntimeHost(ctx.subprocess, { outputBytes: config.processOutputBytes, graceMs: config.stopGraceMs })
     // The desktop app's packaging puts the runtime it ships in this package's `libgodot` folder.
     const bundledRoot = bundledRuntimeRoot(resolve(fileURLToPath(new URL('..', import.meta.url))))
@@ -427,6 +456,24 @@ export default class GodotController extends TypertRemoteService {
       },
       check: (agent, request, signal) => this.check(agent, request, signal),
       script: (agent, request, signal) => this.script(agent, request, signal),
+      record: async (agent, run, request, signal) => {
+        // The gateway keeps a request no window answers for a window that connects later; a call made while no window is
+        // connected fails at once instead.
+        if (ctx.get('typertGateway')?.hasLiveClient() === false) throw new GodotVideoError(NO_RECORDING_WINDOW)
+        const workingDirectory = await ctx.workingDirectory.ensure(agent, signal)
+        const fixed = fixedFps(run.view().launch.engineArgs ?? [])
+        return await this.videos.record({
+          sessionId: agent.id,
+          run,
+          path: videoPath(request.path, workingDirectory, run.project, new Date()),
+          replace: request.replace,
+          ...fixed === undefined ? {} : { fixedFps: fixed },
+          encode: (encode, encodeSignal) => ctx.waterfall(
+            scopeTarget(agent, agent), 'godot/record', { ...encode, agent, signal: encodeSignal },
+            () => Promise.reject(new GodotVideoError(NO_RECORDING_WINDOW)),
+          ),
+        }, request, signal)
+      },
     }
     registerGodotTools(ctx, toolHost)
     const release = godotRelease(config)
@@ -445,6 +492,19 @@ export default class GodotController extends TypertRemoteService {
           return run?.id === runId ? run : undefined
         })),
       }), 'godot: /api/godot.frames')
+      inner.effect(() => inner.connection.fetch.register({
+        path: '/api/godot.recording',
+        methods: ['GET'],
+        requestBody: 'buffered',
+        fetch: request => Promise.resolve(this.videos.serve(request)),
+      }), 'godot: /api/godot.recording')
+      // The video arrives as a stream with no size cap but maxVideoBytes; the frame stream's GET has no body to stream.
+      inner.effect(() => inner.connection.fetch.register({
+        path: '/api/godot.video',
+        methods: ['POST'],
+        requestBody: 'streaming',
+        fetch: request => this.videos.receive(request),
+      }), 'godot: /api/godot.video')
     })
   }
 
@@ -912,10 +972,15 @@ export default class GodotController extends TypertRemoteService {
     signal: AbortSignal,
   ): Promise<GodotRun> {
     const size = parseWindowSize(request.width, request.height)
+    const args = parseGameArgs(request.args ?? [])
+    const engineArgs = parseEngineArgs(request.engineArgs ?? [])
     const session = this.sessions.session(agent)
     const workingDirectory = await this.ctx.workingDirectory.ensure(agent, signal)
     const project = await resolveGodotProject(workingDirectory, request.project, signal)
     const scene = request.scene === undefined ? undefined : await resolveScene(project, request.scene)
+    // A small project window that scales its content grows when the run names no size.
+    const window = size === undefined ? project.window : undefined
+    const scaled = window === undefined ? undefined : defaultWindowSize(window, this.config.minWindowHeight)
     const runtime = await this.requireRuntime(signal)
     const { harness } = await this.scripts()
     signal.throwIfAborted()
@@ -926,6 +991,9 @@ export default class GodotController extends TypertRemoteService {
       project,
       ...scene === undefined ? {} : { scene },
       ...size === undefined ? {} : { size },
+      ...scaled === undefined ? {} : { size: { width: scaled.width, height: scaled.height }, scale: scaled.factor },
+      args,
+      engineArgs,
       muted: request.muted,
       web: request.web === true,
       runtime,

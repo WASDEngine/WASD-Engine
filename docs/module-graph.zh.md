@@ -333,6 +333,7 @@ flowchart TD
     pkg_message_feedback["message-feedback"]
   end
   subgraph group_gamedev["packages/gamedev"]
+    pkg_agent_feedback["agent-feedback"]
     pkg_app_mcp["app-mcp"]
     pkg_art_references["art-references"]
     pkg_blender["blender"]
@@ -1043,6 +1044,7 @@ flowchart TD
   pkg_message_feedback --> pkg_session
   pkg_message_feedback --> pkg_session_persistence
   pkg_message_feedback --> pkg_typert_protocol
+  pkg_agent_feedback --> pkg_tools
   pkg_art_references --> pkg_tools
   pkg_elevenlabs --> pkg_tools
   pkg_game_audio --> pkg_tools
@@ -1891,6 +1893,7 @@ flowchart TD
 | [`tool-terminal`](../packages/experimental/tool-terminal) | `experimental` | [`agent`](../packages/core/agent), [`jobs`](../packages/jobs/jobs), [`llm`](../packages/llm/llm), [`output-retention`](../packages/util/output-retention), [`system-prompt`](../packages/core/system-prompt), [`terminal`](../packages/terminal/terminal), [`tools`](../packages/core/tools), [`working-directory`](../packages/session/working-directory) |
 | [`cordis-host-runner`](../packages/extensions/cordis-host-runner) | `extensions` | [`agent`](../packages/core/agent), [`brand`](../packages/util/brand), [`llm`](../packages/llm/llm), [`scope`](../packages/core/scope), [`session`](../packages/core/session), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol) |
 | [`message-feedback`](../packages/feedback/message-feedback) | `feedback` | [`brand`](../packages/util/brand), [`command-feedback`](../packages/feedback/command-feedback), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-persistence`](../packages/session/session-persistence), [`typert-protocol`](../packages/typert/protocol) |
+| [`agent-feedback`](../packages/gamedev/agent-feedback) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`art-references`](../packages/gamedev/art-references) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`elevenlabs`](../packages/gamedev/elevenlabs) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`game-audio`](../packages/gamedev/game-audio) | `gamedev` | [`tools`](../packages/core/tools) |

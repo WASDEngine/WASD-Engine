@@ -22,10 +22,11 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。Poly Haven 包搜索 Poly Haven 资源库并下载其素材，ElevenLabs 包通过 WASD Engine API 制作语音、音效和音乐，图像生成包同样通过它用 Nano Banana 制作图像，美术参考包在网上为智能体要制作的美术查找参考图像并把选中的保存到项目中，游戏扩展包把目录中的扩展安装到游戏项目中，并把其指南列为这些项目会话的技能。游戏工具标签页包在设置与「插件」页面中展示这八个工具，素材标签页包在 Game 标签页旁显示项目的 2D 与 3D 美术素材，音频标签页包在其旁播放项目的声音，游戏音频包让智能体通过音频标签页的浏览器部分列出并测量这些声音，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。始终开启的 WASD Engine 插件把 Godot 游戏导出为网页版，并带着分享链接发布到 WASD Engine 网站。待办续行包在 `gamedev` 预设的智能体于当前轮次写下的待办列表仍有未完成项时，让它继续工作。
+共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。Poly Haven 包搜索 Poly Haven 资源库并下载其素材，ElevenLabs 包通过 WASD Engine API 制作语音、音效和音乐，图像生成包同样通过它用 Nano Banana 制作图像，美术参考包在网上为智能体要制作的美术查找参考图像并把选中的保存到项目中，游戏扩展包把目录中的扩展安装到游戏项目中，并把其指南列为这些项目会话的技能。游戏工具标签页包在设置与「插件」页面中展示这八个工具，素材标签页包在 Game 标签页旁显示项目的 2D 与 3D 美术素材，音频标签页包在其旁播放项目的声音，游戏音频包让智能体通过音频标签页的浏览器部分列出并测量这些声音，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。始终开启的 WASD Engine 插件把 Godot 游戏导出为网页版，并带着分享链接发布到 WASD Engine 网站。智能体反馈包让智能体向 WASD Engine 团队发送关于 WASD Engine 的反馈，并报告它们调用每个游戏工具和所添加 MCP 服务器的频率。待办续行包在 `gamedev` 预设的智能体于当前轮次写下的待办列表仍有未完成项时，让它继续工作。
 
 | 包 | 提供的能力 |
 |---|---|
+| [`agent-feedback/`](agent-feedback/README.zh.md) | 智能体反馈：每个会话和 MCP 服务器都提供 `feedback_send` 工具，向 WASD Engine 团队发送关于 WASD Engine 的反馈；用量报告统计智能体调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASD Engine 网站 |
 | [`app-mcp/`](app-mcp/README.zh.md) | 在 MCP stdio 服务器之后以无界面方式运行应用程序：把工作脚本复制出包外，监管一个 JSON 行协议的工作进程，并向 MCP 管理器注册该服务器；还提供 Blender、GIMP 与 SuperCollider 服务器共用的 Config 字段、应用程序查找与工具辅助函数 |
 | [`art-references/`](art-references/README.zh.md) | 面向智能体与已连接智能体的参考工具：`reference_search` 在网上为智能体即将制作的美术查找参考图像、动画和视频封面，并在一张联系表上编号；`reference_save` 把选中的参考连同来源保存到游戏项目的 `references/` 文件夹，Godot 不会把它纳入游戏；一个系统提示词段落让智能体在制作美术前收集参考，并在参考不一致时询问用户想要哪个方向 |
 | [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑；Desktop 应用为 Apple 芯片 macOS 与 Windows x64 随附 `bpy` |
