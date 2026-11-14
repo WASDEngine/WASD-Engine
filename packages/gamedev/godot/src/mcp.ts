@@ -10,7 +10,7 @@ import { basename, dirname, isAbsolute } from 'node:path'
 import type { GameMcpContent, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { resolveGodotProject } from './project.ts'
-import { godotToolDefinitions, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
+import { godotToolDefinitions, regionFields, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
 import type { GodotRuntimeView } from './types.ts'
 
 /** Longest image edge an agent receives unresized. */
@@ -36,15 +36,16 @@ export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* 
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
-4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.`
+4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.
+5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.`
 
 const PROJECT_PARAMETER = {
   type: 'string',
   description: 'Absolute path of the Godot project: the folder that holds project.godot, or a folder above it. Default: the project of your previous Godot call.',
 } as const
 
-/** The PNG bytes of each call's screenshots, by image id. */
-type CapturedImages = WeakMap<ToolRunContext, Map<string, Buffer>>
+/** The bytes and media type of each call's images, by image id. */
+type CapturedImages = WeakMap<ToolRunContext, Map<string, { readonly data: Buffer; readonly mediaType: 'image/png' | 'image/jpeg' }>>
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -68,33 +69,68 @@ export function agentScreenshotWidth(maxWidth: number, width: number | undefined
 }
 
 /**
- * The screenshots of connected agents: each image's PNG bytes wait, under the image's id, for the call's result.
- * @param images - PNG bytes by image id, per call.
+ * The widest image of a size's aspect ratio that agents receive unresized.
+ * @param width - width of the size.
+ * @param height - height of the size.
+ * @returns the width in pixels.
+ */
+export function agentWidthLimit(width: number, height: number): number {
+  const aspect = width / height
+  const byEdge = aspect >= 1 ? AGENT_IMAGE_MAX_EDGE : AGENT_IMAGE_MAX_EDGE * aspect
+  return Math.max(MIN_SCREENSHOT_WIDTH, Math.floor(Math.min(byEdge, Math.sqrt(AGENT_IMAGE_MAX_PIXELS * aspect))))
+}
+
+/**
+ * The images of connected agents: each image's bytes wait, under the image's id, for the call's result, and the sizes
+ * the game draws fit agent image limits.
+ * @param images - image bytes by image id, per call.
  * @returns the screenshot resolution of {@link GodotToolSurface}.
  */
 function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots'] {
-  return exec => Promise.resolve({
-    async capture(run, maxWidth, signal) {
-      const view = run.view()
-      const shot = await run.screenshot(agentScreenshotWidth(maxWidth, view.width, view.height), signal)
-      const id = `godot-screenshot-${randomUUID()}`
+  return (exec) => {
+    const keep = (prefix: string, data: Buffer, mediaType: 'image/png' | 'image/jpeg'): string => {
+      const id = `${prefix}-${randomUUID()}`
       let captured = images.get(exec)
       if (captured === undefined) {
         captured = new Map()
         images.set(exec, captured)
       }
-      captured.set(id, shot.image)
-      return {
-        width: shot.meta.width,
-        height: shot.meta.height,
-        windowWidth: shot.meta.windowWidth,
-        windowHeight: shot.meta.windowHeight,
-        frame: shot.meta.frame,
-        paused: shot.meta.paused,
-        image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
-      }
-    },
-  })
+      captured.set(id, { data, mediaType })
+      return id
+    }
+    return Promise.resolve({
+      async capture(run, maxWidth, signal, region) {
+        const view = run.view()
+        let shot
+        if (region === undefined) {
+          shot = await run.screenshot(agentScreenshotWidth(maxWidth, view.width, view.height), signal)
+        } else {
+          const limit = Math.min(maxWidth, agentWidthLimit(region.width, region.height))
+          shot = await run.screenshot(limit, signal, undefined, { ...region, minWidth: Math.min(region.minWidth, limit) })
+        }
+        const id = keep('godot-screenshot', shot.image, 'image/png')
+        return {
+          width: shot.meta.width,
+          height: shot.meta.height,
+          windowWidth: shot.meta.windowWidth,
+          windowHeight: shot.meta.windowHeight,
+          ...regionFields(shot.meta),
+          frame: shot.meta.frame,
+          paused: shot.meta.paused,
+          image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
+        }
+      },
+      store(made) {
+        const id = keep('godot-image', made.data, made.mediaType)
+        const { mediaType, width, height } = made
+        return Promise.resolve({ attachmentId: id, mediaType, bytes: made.data.byteLength, width, height })
+      },
+      fit(width, height) {
+        const limit = agentWidthLimit(width, height)
+        return width <= limit ? { width, height } : { width: limit, height: Math.max(1, Math.round(height * limit / width)) }
+      },
+    })
+  }
 }
 
 /**
@@ -137,7 +173,7 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
     // godot_check is not read-only: it may import the project first, which writes import data into it.
-    readOnly: ['godot_screenshot', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
+    readOnly: ['godot_screenshot', 'godot_view', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
       const { project, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')
@@ -157,8 +193,8 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       return definition.output.render(args, value).flatMap((block): GameMcpContent[] => {
         if (block.type === 'text') return [{ type: 'text', text: block.text }]
         if (block.type !== 'image') return []
-        const png = captured?.get(block.attachment.attachmentId)
-        return png === undefined ? [] : [{ type: 'image', data: png.toString('base64'), mimeType: 'image/png' }]
+        const image = captured?.get(block.attachment.attachmentId)
+        return image === undefined ? [] : [{ type: 'image', data: image.data.toString('base64'), mimeType: image.mediaType }]
       })
     },
   }

@@ -988,4 +988,29 @@ A connected agent's call of a provider tool finished, after its result was made;
 ```
 
 Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
+
+<a id="godot-events"></a>
+
+### `godot/*` events
+
+<a id="godotrecord--waterfall"></a>
+
+#### `godot/record` — waterfall
+
+Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts
+ * after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the recording, its frame rate and sheet, the size limit, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'godot/record'( this: Scoped<Agent>, request: GodotVideoEncodeEvent, next: () => Promise<GodotVideoEncodeResult>, ): Promise<GodotVideoEncodeResult>
+```
+
+Types: [Agent](core.md) · [Scoped](scope.md)
+
+Source: [`packages/gamedev/godot/src/types.ts`](../../packages/gamedev/godot/src/types.ts)
 <!-- END GENERATED cordis-surface -->

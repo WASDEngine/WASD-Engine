@@ -128,6 +128,8 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
     runId: 'run-1',
     startedBy: 'agent',
     project: { dir: project, name: 'Fake game', mainScene: 'res://main.tscn' },
+    args: [],
+    engineArgs: [],
     muted: true,
     web: false,
     runtime: { kind: 'libgodot', runner: fakeGodot, library: `${fakeGodot}-libgodot` },

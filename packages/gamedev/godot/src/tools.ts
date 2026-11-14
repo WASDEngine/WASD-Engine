@@ -17,11 +17,13 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
+import { fixedFps, GODOT_ENGINE_OPTIONS } from './launch.ts'
+import { MAX_VIDEO_SECONDS } from './video.ts'
 import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
-import { MAX_INPUT_EVENTS, type GodotRun } from './run.ts'
+import { MAX_INPUT_EVENTS, type GodotRun, type ScreenshotRegion, type ViewParams } from './run.ts'
 import { DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_SECONDS, type GodotScriptReport } from './script.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
-import type { GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
+import type { GodotInputEvent, GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
 
 /** Most characters of text in one tool result. */
 export const TEXT_BUDGET = 6000
@@ -45,6 +47,15 @@ const MESSAGE_CHARS = 500
 /** Default `max_width` of `godot_screenshot`, and the largest width of the screenshot `godot_input` and `godot_wait` take. */
 export const SCREENSHOT_WIDTH = 1280
 
+/** Width a small screenshot region grows toward, by a whole factor, so its detail is large enough to see. */
+export const REGION_MIN_WIDTH = 768
+
+/** Default, shortest, and longest real seconds that `godot_eval` code may await. */
+const CODE_SECONDS = { default: 10, min: 1, max: 300 } as const
+
+/** Default and largest sides in pixels of a `godot_view` image. */
+const VIEW_SIZE = { width: 1280, height: 720, max: 4096 } as const
+
 /** Default, shortest, and longest real seconds that `godot_performance` measures. */
 const PERFORMANCE_SECONDS = { default: 2, min: 0.25, max: 20 } as const
 
@@ -56,6 +67,15 @@ export interface GodotToolHost {
   readonly sessions: GodotSessions
   /** Whether agent runs use the Dummy audio driver unless the call says otherwise. */
   readonly agentRunsMuted: boolean
+  /**
+   * Record the Session's running game to a video file through a WASD Engine window, which encodes it.
+   * @param agent - calling Session.
+   * @param run - the running game.
+   * @param request - duration, frame rate, size, input, and where to save the video.
+   * @param signal - cancellation; it stops the recording and saves nothing.
+   * @returns the saved video and a sheet of its frames.
+   */
+  record(agent: Agent, run: GodotRun, request: GodotVideoRequest, signal: AbortSignal): Promise<GodotVideo>
   /**
    * Start or restart the Session's game and wait until it runs or has ended.
    * @param agent - calling Session.
@@ -80,6 +100,51 @@ export interface GodotToolHost {
    * @returns the exit code, the end of the output, and the engine errors.
    */
   script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport>
+}
+
+/** A recording as `godot_record` asks for it, its events already in window pixels. */
+export interface GodotVideoRequest {
+  /** Real seconds to record. */
+  readonly seconds: number
+  /** Frames per second of the video. */
+  readonly fps: number
+  /** Largest frame width in pixels; smaller windows keep their size. */
+  readonly maxWidth: number
+  /** Where to save the video, relative to the working directory or absolute; a new file under `recordings/` when undefined. */
+  readonly path?: string
+  /** Input events the game receives from the recording's start, in window pixels. */
+  readonly events?: readonly GodotInputEvent[]
+  /** Frames in the sheet that shows the recording, from 0 to 24. */
+  readonly sheetFrames: number
+  /** Whether an existing file at `path` may be replaced. */
+  readonly replace: boolean
+}
+
+/** A saved recording. */
+export interface GodotVideo {
+  /** Absolute path of the video file. */
+  readonly path: string
+  /** Its size in bytes. */
+  readonly bytes: number
+  /** Video codec, such as `H.264`. */
+  readonly codec: string
+  /** Frames in the video. */
+  readonly frames: number
+  /** Frames the game skipped because capturing or encoding fell behind. */
+  readonly skipped: number
+  /** Seconds the video plays. */
+  readonly seconds: number
+  /** Frames per second of the video. */
+  readonly fps: number
+  /** Frame size in pixels. */
+  readonly width: number
+  readonly height: number
+  /** Whether every frame advanced the game by the same game time (a run with `--fixed-fps`) instead of real time. */
+  readonly fixedFps: boolean
+  /** Why the input events failed, when the game refused one; the recording went on without the rest. */
+  readonly inputError?: string
+  /** The frame sheet as a JPEG file, with the time of each frame in seconds; absent with no sheet frames. */
+  readonly sheet?: { readonly data: Buffer; readonly width: number; readonly height: number; readonly times: readonly number[] }
 }
 
 /** A script run as the model asked for it. */
@@ -129,10 +194,9 @@ const DIGEST_SCHEMA = {
 } as const
 
 /** The stored image: the attachment reference that the attachment store returned for it. */
-const IMAGE_SCHEMA = {
+const IMAGE_OBJECT = {
   type: 'object',
   additionalProperties: false,
-  required: true,
   properties: {
     attachmentId: STRING,
     mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
@@ -143,11 +207,17 @@ const IMAGE_SCHEMA = {
   },
 } as const
 
+const IMAGE_SCHEMA = { ...IMAGE_OBJECT, required: true } as const
+
 const SCREENSHOT_PROPERTIES = {
   width: { ...INTEGER, description: 'Image width in pixels; mouse coordinates refer to this size.' },
   height: INTEGER,
   windowWidth: INTEGER,
   windowHeight: INTEGER,
+  x: { type: 'integer', description: 'Window pixels from the left edge to the region the image shows.' },
+  y: { type: 'integer', description: 'Window pixels from the top edge to the region the image shows.' },
+  regionWidth: { type: 'integer', description: 'Width in window pixels of the region the image shows.' },
+  regionHeight: { type: 'integer', description: 'Height in window pixels of the region the image shows.' },
   frame: INTEGER,
   paused: BOOLEAN,
   image: IMAGE_SCHEMA,
@@ -158,17 +228,47 @@ const SCREENSHOT_SCHEMA = { type: 'object', additionalProperties: false, propert
 /** A screenshot as a result value holds it: its size, the game window it shows, and the stored image. */
 export type ScreenshotValue = InferValue<typeof SCREENSHOT_SCHEMA>
 
-/** Captures the screenshots of one tool call for the callers of a {@link GodotToolSurface}. */
+/** A stored image as a result value holds it: the attachment reference, or the image id for connected agents. */
+export type ImageValue = InferValue<typeof IMAGE_SCHEMA>
+
+/** An image the game or a window made for a tool call, which the surface stores for its callers. */
+export interface MadeImage {
+  /** PNG or JPEG bytes. */
+  readonly data: Buffer
+  readonly mediaType: 'image/png' | 'image/jpeg'
+  /** Size in pixels. */
+  readonly width: number
+  readonly height: number
+  /** File name the stored image takes. */
+  readonly name: string
+}
+
+/** Captures and stores the images of one tool call for the callers of a {@link GodotToolSurface}. */
 export interface ScreenshotTaker {
   /**
-   * Capture the running game's window and store the image where the surface's callers receive it.
+   * Capture the running game's window, or a region of it, and store the image where the surface's callers receive it.
    * @param run - running game.
    * @param maxWidth - largest image width the call asked for.
    * @param signal - cancellation.
+   * @param region - part of the window to capture, in window pixels.
    * @returns the screenshot as a result value holds it; input coordinates in screenshot pixels refer to its
    * `width` and `height`.
    */
-  capture(run: GodotRun, maxWidth: number, signal: AbortSignal): Promise<ScreenshotValue>
+  capture(run: GodotRun, maxWidth: number, signal: AbortSignal, region?: ScreenshotRegion): Promise<ScreenshotValue>
+  /**
+   * Store an image where the surface's callers receive it.
+   * @param image - the image.
+   * @param signal - cancellation.
+   * @returns the stored image as a result value holds it.
+   */
+  store(image: MadeImage, signal: AbortSignal): Promise<ImageValue>
+  /**
+   * Fit a size that the call asks the game to draw within the images the surface's callers receive unresized.
+   * @param width - asked width in pixels.
+   * @param height - asked height in pixels.
+   * @returns the size to draw, with the same aspect ratio.
+   */
+  fit(width: number, height: number): { readonly width: number; readonly height: number }
 }
 
 /** Tool description text that depends on how a surface's callers name projects and files. */
@@ -279,12 +379,42 @@ function textResult(...sections: string[]): ContentBlock[] {
 }
 
 function screenshotBlocks(shot: ScreenshotValue): ContentBlock[] {
+  return imageBlocks(shot.image)
+}
+
+function imageBlocks(image: ImageValue): ContentBlock[] {
   // The value holds the reference that the attachment store returned, so its id is a stored attachment id.
-  return [{ type: 'image', attachment: { ...shot.image, attachmentId: brandString<AttachmentId>(shot.image.attachmentId) } }]
+  return [{ type: 'image', attachment: { ...image, attachmentId: brandString<AttachmentId>(image.attachmentId) } }]
+}
+
+/**
+ * Read a point a call gives as [x, y, z].
+ * @param value - the call's list.
+ * @param name - the parameter, for the error.
+ * @returns the point.
+ * @throws when the list is not three finite numbers.
+ */
+function point(value: readonly number[], name: string): readonly [number, number, number] {
+  if (value.length !== 3 || !value.every(Number.isFinite)) throw new Error(`${name} must be [x, y, z], three numbers.`)
+  return [value[0] as number, value[1] as number, value[2] as number]
+}
+
+function numberText(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2)
+}
+
+function sizeText(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function describeScreenshot(shot: ScreenshotValue): string {
-  return `Screenshot at frame ${shot.frame}${shot.paused ? ' (paused)' : ''}: ${shot.width}x${shot.height} px of a ${shot.windowWidth}x${shot.windowHeight} px game window. Mouse coordinates for godot_input are pixels of this image.`
+  const paused = shot.paused ? ' (paused)' : ''
+  if (shot.x !== undefined && shot.y !== undefined && shot.regionWidth !== undefined && shot.regionHeight !== undefined) {
+    return `Screenshot at frame ${shot.frame}${paused}: ${shot.width}x${shot.height} px showing the ${shot.regionWidth}x${shot.regionHeight} px region at (${shot.x}, ${shot.y}) of a ${shot.windowWidth}x${shot.windowHeight} px game window. Mouse coordinates for godot_input are pixels of this image, which map into that region.`
+  }
+  const smaller = shot.width < shot.windowWidth ? ' To see detail at the window\'s own pixels, pass region.' : ''
+  return `Screenshot at frame ${shot.frame}${paused}: ${shot.width}x${shot.height} px of a ${shot.windowWidth}x${shot.windowHeight} px game window. Mouse coordinates for godot_input are pixels of this image.${smaller}`
 }
 
 /** The screenshot fields of a result that may end with a screenshot. */
@@ -390,8 +520,8 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
       throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`)
     }
     return {
-      async capture(run, maxWidth, signal) {
-        const shot = await run.screenshot(maxWidth, signal)
+      async capture(run, maxWidth, signal, region) {
+        const shot = await run.screenshot(maxWidth, signal, undefined, region)
         const [image] = await attachments.saveImages([{ data: shot.image, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
         signal.throwIfAborted()
         const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
@@ -400,13 +530,41 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
           height: seen.height,
           windowWidth: shot.meta.windowWidth,
           windowHeight: shot.meta.windowHeight,
+          ...regionFields(shot.meta),
           frame: shot.meta.frame,
           paused: shot.meta.paused,
           image,
         }
       },
+      async store(made, signal) {
+        const saved = await attachments.saveImages([{ data: made.data, mediaType: made.mediaType, name: made.name }])
+        const [image] = saved as [ImageAttachmentRef]
+        signal.throwIfAborted()
+        return image
+      },
+      fit: (width, height) => ({ width, height }),
     }
   }
+}
+
+/**
+ * The region fields of a screenshot's metadata.
+ * @param meta - what the game reported.
+ * @returns the region in window pixels, or nothing for a screenshot of the whole window.
+ */
+export function regionFields(meta: {
+  readonly x?: number | undefined
+  readonly y?: number | undefined
+  readonly regionWidth?: number | undefined
+  readonly regionHeight?: number | undefined
+}): {
+  x?: number
+  y?: number
+  regionWidth?: number
+  regionHeight?: number
+} {
+  if (meta.x === undefined || meta.y === undefined || meta.regionWidth === undefined || meta.regionHeight === undefined) return {}
+  return { x: meta.x, y: meta.y, regionWidth: meta.regionWidth, regionHeight: meta.regionHeight }
 }
 
 /**
@@ -424,10 +582,11 @@ async function captureScreenshot(
   run: GodotRun,
   maxWidth: number,
   signal: AbortSignal,
+  region?: ScreenshotRegion,
 ): Promise<ScreenshotValue> {
-  const shot = await taker.capture(run, maxWidth, signal)
+  const shot = await taker.capture(run, maxWidth, signal, region)
   const { width, height, windowWidth, windowHeight } = shot
-  session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight }
+  session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight, ...regionFields(shot) }
   return shot
 }
 
@@ -486,6 +645,41 @@ const EVENT_SCHEMA = {
   },
 } as const
 
+/**
+ * The window region a `godot_screenshot` call names, in window pixels.
+ * @param region - the rectangle as the call gives it.
+ * @param space - the rectangle's unit.
+ * @param session - the calling Session's state, whose latest screenshot screenshot pixels refer to.
+ * @param run - the running game.
+ * @param maxWidth - the call's largest image width, which a small region grows toward at most.
+ * @returns the region with the width a small region grows toward.
+ * @throws when the rectangle is empty, or in screenshot pixels while this game has no screenshot.
+ */
+function windowRegion(
+  region: { readonly x: number; readonly y: number; readonly width: number; readonly height: number },
+  space: 'screenshot' | 'window',
+  session: GodotSession,
+  run: GodotRun,
+  maxWidth: number,
+): ScreenshotRegion {
+  if (region.width < 1 || region.height < 1) throw new Error('region width and height must be at least 1.')
+  const minWidth = Math.min(REGION_MIN_WIDTH, maxWidth)
+  if (space === 'window') return { x: region.x, y: region.y, width: region.width, height: region.height, minWidth }
+  const frame = session.screenshot
+  if (frame === undefined || frame.runId !== run.id) {
+    throw new Error('region is in screenshot pixels, but this game has no screenshot yet; call godot_screenshot first, or pass coordinate_space "window".')
+  }
+  const scaleX = (frame.regionWidth ?? frame.windowWidth) / frame.width
+  const scaleY = (frame.regionHeight ?? frame.windowHeight) / frame.height
+  return {
+    x: (frame.x ?? 0) + Math.floor(region.x * scaleX),
+    y: (frame.y ?? 0) + Math.floor(region.y * scaleY),
+    width: Math.max(1, Math.ceil(region.width * scaleX)),
+    height: Math.max(1, Math.ceil(region.height * scaleY)),
+    minWidth,
+  }
+}
+
 function boundedInteger(value: number | undefined, name: string, fallback: number, min: number, max: number): number {
   if (value === undefined) return fallback
   if (value < min || value > max) throw new Error(`${name} must be from ${min} to ${max}.`)
@@ -523,6 +717,18 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       height: { type: 'integer', description: 'Game window height in pixels; give width too.' },
       muted: { type: 'boolean', description: `Run without audio. Default: ${String(host.agentRunsMuted)}.` },
       web: { type: 'boolean', description: WEB_RUN_DESCRIPTION },
+      args: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Launch options for the game itself: arguments it reads with OS.get_cmdline_user_args(), such as a test or capture mode the game offers. Default: none.',
+      },
+      engine_args: {
+        type: 'array',
+        items: { type: 'string' },
+        description: `Godot command-line options, each followed by its value: ${Object.keys(GODOT_ENGINE_OPTIONS).join(', ')}. `
+          + '["--fixed-fps", "30"] makes every frame advance 1/30 s of game time however fast or slow it draws, so godot_record keeps every '
+          + 'frame; --max-fps does not slow such a game. --time-scale speeds the game up or slows it down. Default: none.',
+      },
     },
     output: {
       schema: {
@@ -541,19 +747,27 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           windowless: BOOLEAN,
           muted: BOOLEAN,
           web: { type: 'boolean' },
+          scale: { type: 'integer', description: 'The whole factor by which the window grew from the project\'s small window size.' },
+          args: { type: 'array', items: { type: 'string' } },
+          engineArgs: { type: 'array', items: { type: 'string' } },
           issues: { type: 'array', items: ENTRY_SCHEMA, required: true },
           moreIssues: INTEGER,
           ...DIGEST_SCHEMA,
         },
       },
       render: (_args, value) => {
+        const window = value.scale === undefined
+          ? `window ${value.width}x${value.height}`
+          : `window ${value.width}x${value.height} (the project's ${value.width / value.scale}x${value.height / value.scale} grown ${value.scale}x; pass width and height for another size)`
         const facts = [
           ...value.scene === undefined ? [] : [`scene ${value.scene}`],
-          `window ${value.width}x${value.height}`,
+          window,
           `renderer ${value.renderer}${value.web === true ? ' as on the Web' : ''}`,
           `Godot ${value.godot}`,
           ...value.windowless ? ['windowless'] : [],
           ...value.muted ? ['muted'] : [],
+          ...value.engineArgs === undefined ? [] : [`Godot options ${value.engineArgs.join(' ')}`],
+          ...value.args === undefined ? [] : [`game arguments ${JSON.stringify(value.args)}`],
         ].join(', ')
         const name = value.projectName === undefined ? value.projectDir : `${value.projectName} (${value.projectDir})`
         const issues = value.issues.length === 0
@@ -571,6 +785,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...size,
           muted: args.muted ?? host.agentRunsMuted,
           ...args.web === true ? { web: true } : {},
+          ...args.args === undefined ? {} : { args: args.args },
+          ...args.engine_args === undefined ? {} : { engineArgs: args.engine_args },
         }, exec.signal)
         let timer: NodeJS.Timeout | undefined
         await Promise.race([run.whenEnded(), new Promise<void>((resolve) => { timer = setTimeout(resolve, STARTUP_LOG_WINDOW_MS) })])
@@ -597,6 +813,9 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           windowless: view.windowless,
           muted: view.muted,
           ...view.launch.web === true ? { web: true } : {},
+          ...view.launch.scale === undefined ? {} : { scale: view.launch.scale },
+          ...view.launch.args === undefined ? {} : { args: [...view.launch.args] },
+          ...view.launch.engineArgs === undefined ? {} : { engineArgs: [...view.launch.engineArgs] },
           issues: issues.slice(0, STARTUP_ENTRIES),
           moreIssues: Math.max(0, issues.length - STARTUP_ENTRIES),
         }
@@ -619,9 +838,17 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     },
   }), defineTool({
     name: 'godot_screenshot',
-    description: 'Capture the running game\'s window as an image. Mouse coordinates for godot_input refer to the pixels of the latest screenshot.',
+    description: 'Capture the running game\'s window as an image, or a region of it at the window\'s own pixels, to see small detail such as faces or text. '
+      + 'Mouse coordinates for godot_input refer to the pixels of the latest screenshot. To see the game larger than its window, or from another camera, use godot_view.',
     parameters: {
       max_width: { type: 'integer', description: `Largest image width in pixels. Default: ${SCREENSHOT_WIDTH}.` },
+      region: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { x: INTEGER, y: INTEGER, width: INTEGER, height: INTEGER },
+        description: `Capture only this rectangle: x and y of its top left corner, width, and height. A region narrower than ${REGION_MIN_WIDTH} px grows by a whole factor, each window pixel a square.`,
+      },
+      coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of region: pixels of the latest screenshot, or of the game window. Default: screenshot.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ...SCREENSHOT_PROPERTIES, ...DIGEST_SCHEMA } },
@@ -631,7 +858,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       const maxWidth = boundedInteger(args.max_width, 'max_width', SCREENSHOT_WIDTH, 64, 4096)
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
-        return captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal)
+        const region = args.region === undefined ? undefined : windowRegion(args.region, args.coordinate_space ?? 'screenshot', session, run, maxWidth)
+        return captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal, region)
       })
     },
   }), defineTool({
@@ -744,6 +972,206 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       })
     },
   }), defineTool({
+    name: 'godot_view',
+    description: 'Draw the running game\'s 3D world from your own camera at any size, without changing its window or camera, to judge faces, materials, '
+      + 'and animation up close as the game draws them: its shaders, lights, and current pose. Frame a node (or one of its bones, such as Head) from an angle, '
+      + 'place the camera yourself, or omit both for the game camera\'s view at the size you ask. asset draws a scene or model alone as the game imports '
+      + 'it, its scripts running, optionally posed in an animation.',
+    parameters: {
+      node: { type: 'string', description: 'Node path of a 3D node to frame, such as /root/Main/Zombie.' },
+      asset: { type: 'string', description: 'res:// path of a scene or model (.tscn, .glb, .fbx, .blend, …) to draw alone, instead of node.' },
+      bone: { type: 'string', description: 'Frame this Skeleton3D bone of the subject, such as Head.' },
+      yaw: { type: 'number', description: 'Degrees around the subject\'s heading: 0 looks at its +Z side (the front of most imported models), 180 at its back. Default: 30.' },
+      pitch: { type: 'number', description: 'Degrees above the subject. Default: 10.' },
+      distance: { type: 'number', description: 'Multiplier of the distance that fits the subject: below 1 is closer. Default: 1.' },
+      radius: { type: 'number', description: 'Meters around the subject\'s center to fit. Default: its bounds, or 0.25 around a bone.' },
+      camera: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          position: { type: 'array', items: { type: 'number' }, required: true, description: '[x, y, z] of the camera in world coordinates.' },
+          target: { type: 'array', items: { type: 'number' }, required: true, description: '[x, y, z] the camera looks at.' },
+        },
+        description: 'Place the camera yourself.',
+      },
+      fov: { type: 'number', description: 'Vertical field of view in degrees. Default: the game camera\'s, or 35 for an asset.' },
+      isolate: { type: 'boolean', description: 'node: draw it alone, lit as the game lights it.' },
+      lighting: { type: 'string', enum: ['studio', 'game'], description: 'asset: a neutral studio, or the game\'s sky and sun. Default: studio.' },
+      animation: { type: 'string', description: 'asset: an AnimationPlayer animation to pose it in.' },
+      time: { type: 'number', description: 'asset: seconds into the animation. Default: 0.' },
+      width: { type: 'integer', description: `Image width in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.width}.` },
+      height: { type: 'integer', description: `Image height in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.height}.` },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          width: INTEGER,
+          height: INTEGER,
+          frame: INTEGER,
+          paused: BOOLEAN,
+          camera: { type: 'json', required: true, description: 'The camera that drew the view: position, direction, and vertical fov.' },
+          subject: { type: 'json', description: 'The framed center, radius in meters, and the camera\'s distance from the center.' },
+          image: IMAGE_SCHEMA,
+          ...DIGEST_SCHEMA,
+        },
+      },
+      render: (args, value) => {
+        const what = args.asset ?? args.node ?? 'the game camera\'s view'
+        const camera = value.camera as { position?: JsonValue; direction?: JsonValue; fov?: JsonValue }
+        const lines = [`View of ${what} at frame ${value.frame}${value.paused ? ' (paused)' : ''}: ${value.width}x${value.height} px; camera at ${formatVector(camera.position) ?? '?'} looking along ${formatVector(camera.direction) ?? '?'}, fov ${typeof camera.fov === 'number' ? camera.fov.toFixed(1) : '?'}°.`]
+        const subject = value.subject as { center?: JsonValue; radius?: JsonValue; distance?: JsonValue } | undefined
+        if (subject !== undefined && typeof subject.radius === 'number' && typeof subject.distance === 'number') {
+          lines.push(`Framed ${subject.radius.toFixed(3)} m around ${formatVector(subject.center) ?? '?'} from ${subject.distance.toFixed(3)} m.`)
+        }
+        return [...textResult(lines.join(' '), formatDigest(value)), ...imageBlocks(value.image)]
+      },
+    },
+    async execute(args, exec) {
+      const width = boundedInteger(args.width, 'width', VIEW_SIZE.width, 16, VIEW_SIZE.max)
+      const height = boundedInteger(args.height, 'height', VIEW_SIZE.height, 16, VIEW_SIZE.max)
+      if (args.asset !== undefined && args.node !== undefined) throw new Error('Give node or asset, not both.')
+      const framing = [args.bone, args.yaw, args.pitch, args.distance, args.radius].some(value => value !== undefined)
+      if (args.camera !== undefined && framing) {
+        throw new Error('camera places the camera itself; leave out bone, yaw, pitch, distance, and radius.')
+      }
+      const camera = args.camera === undefined ? undefined : { position: point(args.camera.position, 'camera.position'), target: point(args.camera.target, 'camera.target') }
+      if (args.isolate === true && args.node === undefined) throw new Error('isolate draws a node alone; name the node.')
+      if ((args.animation !== undefined || args.time !== undefined || args.lighting !== undefined) && args.asset === undefined) {
+        throw new Error('animation, time, and lighting apply to an asset; name the asset.')
+      }
+      return invoke(host, exec, async (agent, session) => {
+        const run = requireRunning(session)
+        const taker = await surface.screenshots(exec, agent)
+        const size = taker.fit(width, height)
+        const params: ViewParams = {
+          width: size.width,
+          height: size.height,
+          ...args.node === undefined ? {} : { node: args.node },
+          ...args.asset === undefined ? {} : { asset: args.asset },
+          ...args.bone === undefined ? {} : { bone: args.bone },
+          ...args.yaw === undefined ? {} : { yaw: args.yaw },
+          ...args.pitch === undefined ? {} : { pitch: args.pitch },
+          ...args.distance === undefined ? {} : { distance: args.distance },
+          ...args.radius === undefined ? {} : { radius: args.radius },
+          ...camera === undefined ? {} : { camera },
+          ...args.fov === undefined ? {} : { fov: args.fov },
+          ...args.isolate === true ? { isolate: true } : {},
+          ...args.lighting === undefined ? {} : { lighting: args.lighting },
+          ...args.animation === undefined ? {} : { animation: args.animation },
+          ...args.time === undefined ? {} : { time: args.time },
+        }
+        const drawn = await run.drawView(params, exec.signal)
+        const image = await taker.store({ data: drawn.image, mediaType: 'image/png', width: drawn.meta.width, height: drawn.meta.height, name: `godot-view-${drawn.meta.frame}.png` }, exec.signal)
+        return {
+          width: drawn.meta.width,
+          height: drawn.meta.height,
+          frame: drawn.meta.frame,
+          paused: drawn.meta.paused,
+          camera: drawn.meta.camera,
+          ...drawn.meta.subject === undefined ? {} : { subject: drawn.meta.subject },
+          image,
+        }
+      })
+    },
+  }), defineTool({
+    name: 'godot_record',
+    description: 'Record the running game to an MP4 video (H.264) while it plays, optionally sending input events, and see a sheet of frames from '
+      + 'across it to judge motion. The WASD Engine window encodes the video. For films without dropped frames, start the game with engine_args '
+      + '["--fixed-fps", "30"]: the recording then captures every frame, each advancing the game by the same time, and seconds counts seconds of video.',
+    parameters: {
+      seconds: { type: 'number', required: true, description: `Seconds to record, from 0.5 to ${MAX_VIDEO_SECONDS}: real seconds, or seconds of video in a run with --fixed-fps.` },
+      fps: { type: 'integer', description: 'Frames per second, 1 to 60. Default: 30, or the run\'s --fixed-fps rate.' },
+      max_width: { type: 'integer', description: 'Largest frame width in pixels, 64 to 3840. Default: 1920.' },
+      path: { type: 'string', description: '.mp4 file to save, inside the working directory or the project. Default: a new file in the project\'s recordings folder.' },
+      replace: { type: 'boolean', description: 'Replace an existing file at path.' },
+      events: { type: 'array', items: { type: 'object', additionalProperties: true }, description: `Input events to send from the recording's start, as godot_input's events, at most ${MAX_INPUT_EVENTS}.` },
+      coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of the events\' mouse coordinates. Default: screenshot.' },
+      sheet_frames: { type: 'integer', description: 'Frames in the returned sheet, spread from start to end, 0 to 24. Default: 12.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          path: STRING,
+          bytes: INTEGER,
+          codec: STRING,
+          frames: INTEGER,
+          skipped: INTEGER,
+          seconds: NUMBER,
+          fps: NUMBER,
+          width: INTEGER,
+          height: INTEGER,
+          fixedFps: BOOLEAN,
+          inputError: { type: 'string' },
+          sheetTimes: { type: 'array', items: { type: 'number' } },
+          sheet: IMAGE_OBJECT,
+          ...DIGEST_SCHEMA,
+        },
+      },
+      render: (_args, value) => {
+        const pacing = value.fixedFps ? 'every frame advancing the game by the same time' : 'at real time'
+        const skipped = value.skipped > 0 ? ` The game skipped ${value.skipped} frames because capturing fell behind; start it with --fixed-fps to keep every frame.` : ''
+        const lines = [`Recorded ${value.seconds.toFixed(2)} s at ${numberText(value.fps)} fps, ${pacing}: ${value.frames} frames of ${value.width}x${value.height} px in ${value.codec}, saved to ${value.path} (${sizeText(value.bytes)}).${skipped}`]
+        if (value.inputError !== undefined) lines.push(`The input events stopped at an error: ${value.inputError}`)
+        if (value.sheetTimes !== undefined && value.sheetTimes.length > 0) {
+          lines.push(`The sheet shows ${value.sheetTimes.length} frames left to right, top to bottom, at ${value.sheetTimes.map(time => `${time.toFixed(2)} s`).join(', ')}.`)
+        }
+        return [...textResult(lines.join('\n'), formatDigest(value)), ...value.sheet === undefined ? [] : imageBlocks(value.sheet)]
+      },
+    },
+    timeoutMs: (MAX_VIDEO_SECONDS * 3 + 120) * 1000,
+    async execute(args, exec) {
+      if (!(args.seconds >= 0.5 && args.seconds <= MAX_VIDEO_SECONDS)) throw new Error(`seconds must be from 0.5 to ${MAX_VIDEO_SECONDS}.`)
+      const maxWidth = boundedInteger(args.max_width, 'max_width', 1920, 64, 3840)
+      const sheetFrames = boundedInteger(args.sheet_frames, 'sheet_frames', 12, 0, 24)
+      if (args.fps !== undefined) boundedInteger(args.fps, 'fps', 30, 1, 60)
+      const events = args.events === undefined ? undefined : parseInputEvents(args.events, MAX_INPUT_EVENTS)
+      return invoke(host, exec, async (agent, session) => {
+        const run = requireRunning(session)
+        let delivered = events
+        if (events !== undefined && args.coordinate_space !== 'window' && hasPointerEvents(events)) {
+          const frame = session.screenshot
+          if (frame === undefined || frame.runId !== run.id) {
+            throw new Error('Mouse coordinates are screenshot pixels, but this game has no screenshot yet; call godot_screenshot first, or pass coordinate_space "window".')
+          }
+          delivered = screenshotToWindow(events, frame)
+        }
+        const taker = sheetFrames > 0 ? await surface.screenshots(exec, agent) : undefined
+        const fixed = fixedFps(run.view().launch.engineArgs ?? [])
+        const fps = args.fps ?? (fixed === undefined ? 30 : fixed / Math.ceil(fixed / 60))
+        const video = await host.record(agent, run, {
+          seconds: args.seconds,
+          fps,
+          maxWidth,
+          sheetFrames,
+          replace: args.replace === true,
+          ...args.path === undefined ? {} : { path: args.path },
+          ...delivered === undefined ? {} : { events: delivered },
+        }, exec.signal)
+        const sheet = taker === undefined || video.sheet === undefined
+          ? undefined
+          : await taker.store({ data: video.sheet.data, mediaType: 'image/jpeg', width: video.sheet.width, height: video.sheet.height, name: 'godot-recording-sheet.jpg' }, exec.signal)
+        return {
+          path: video.path,
+          bytes: video.bytes,
+          codec: video.codec,
+          frames: video.frames,
+          skipped: video.skipped,
+          seconds: video.seconds,
+          fps: video.fps,
+          width: video.width,
+          height: video.height,
+          fixedFps: video.fixedFps,
+          ...video.inputError === undefined ? {} : { inputError: video.inputError },
+          ...video.sheet === undefined ? {} : { sheetTimes: [...video.sheet.times] },
+          ...sheet === undefined ? {} : { sheet },
+        }
+      })
+    },
+  }), defineTool({
     name: 'godot_control',
     description: 'Pause or resume the running game, or step it: step runs a number of frames and pauses again.',
     parameters: {
@@ -781,11 +1209,22 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     },
   }), defineTool({
     name: 'godot_eval',
-    description: 'Evaluate a Godot Expression in the running game and return its value, for example scene.get_node("Player").position. '
-      + 'The names scene (the current scene), root, and tree are defined; method calls without a base run on node, or on the current scene.',
+    description: 'Evaluate a Godot Expression in the running game and return its value, for example scene.get_node("Player").position, '
+      + 'or run GDScript code there with code. In an expression, the names scene (the current scene), root, tree, the engine singletons '
+      + 'such as Input, OS, and ResourceLoader, and the autoloads are defined; method calls without a base run on node, or on the current scene. '
+      + 'code runs as the body of a function, so it may declare variables, loop, use lambdas and await, and set up a capture or test '
+      + 'without changing the game\'s files; it returns its value with return, and a single expression returns its value.',
     parameters: {
-      expression: STRING,
+      expression: { type: 'string', description: 'A Godot Expression. Give expression or code.' },
+      code: {
+        type: 'string',
+        description: 'GDScript statements, indented as a function body; tree, root, scene (the current scene), and node (the object at the node path, else the current scene) are defined, get_tree() works, and await waits for signals such as get_tree().process_frame.',
+      },
       node: { type: 'string', description: 'Node path of the base object, for example /root/Main/Player.' },
+      timeout_seconds: {
+        type: 'number',
+        description: `code: real seconds to wait for code that awaits, from ${CODE_SECONDS.min} to ${CODE_SECONDS.max}; the code keeps running after them. Default: ${CODE_SECONDS.default}.`,
+      },
     },
     output: {
       schema: {
@@ -795,10 +1234,20 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       },
       render: (_args, value) => textResult(`${value.valueType}: ${JSON.stringify(value.value)}`, formatDigest(value)),
     },
+    timeoutMs: (CODE_SECONDS.max + 60) * 1000,
     async execute(args, exec) {
-      if (args.expression.trim() === '') throw new Error('expression must not be empty.')
+      if ((args.expression === undefined) === (args.code === undefined)) throw new Error('Give either expression or code.')
+      const source = (args.expression ?? args.code) as string
+      if (source.trim() === '') throw new Error(`${args.code === undefined ? 'expression' : 'code'} must not be empty.`)
+      const seconds = args.timeout_seconds ?? CODE_SECONDS.default
+      if (!(seconds >= CODE_SECONDS.min && seconds <= CODE_SECONDS.max)) {
+        throw new Error(`timeout_seconds must be from ${CODE_SECONDS.min} to ${CODE_SECONDS.max}.`)
+      }
       return invoke(host, exec, async (_agent, session) => {
-        const reply = await requireRunning(session).evaluate(args.expression, args.node, exec.signal)
+        const run = requireRunning(session)
+        const reply = args.code === undefined
+          ? await run.evaluate(source, args.node, exec.signal)
+          : await run.runCode(source, args.node, seconds * 1000, exec.signal)
         return { value: reply.value, valueType: reply.valueType }
       })
     },
