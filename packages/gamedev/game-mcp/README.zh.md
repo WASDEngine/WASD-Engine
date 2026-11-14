@@ -164,7 +164,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 28,800 个字符（其中约 7,300 个是游戏扩展目录），83 个工具声明约 89,800 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部十二个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、游戏扩展与 WASD Engine 插件都提供工具时，指令约 30,000 个字符（其中约 7,300 个是游戏扩展目录），85 个工具声明约 91,900 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -174,7 +174,7 @@ Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 

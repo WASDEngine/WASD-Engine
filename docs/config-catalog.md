@@ -408,6 +408,65 @@ export interface SearchLimits {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-files -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-art-references -->
+<a id="deepseek-aidsh-art-references"></a>
+
+## `@deepseek-ai/dsh-art-references`
+
+- `inject`: `tools` · `web` · `workingDirectory`
+- `source`: [`packages/gamedev/art-references/src/index.ts:40`](../packages/gamedev/art-references/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the reference tools. */
+export interface Config {
+  /** The cache folder of downloaded images and contact sheets. */
+  dataRoot: string
+  /** `User-Agent` of every page and image request. */
+  userAgent: string
+  /** Days a downloaded image or a contact sheet stays in the cache folder. */
+  cacheDays: number
+  /** Time limit of one `reference_search` call. */
+  searchTimeoutMs: number
+  /** Time limit of one `reference_save` call. */
+  saveTimeoutMs: number
+  /** Most queries one search takes. */
+  maxQueries: number
+  /** Most pages one search reads by address. */
+  maxPages: number
+  /** Pages one query's web search returns. */
+  resultsPerQuery: number
+  /** Most images on one contact sheet. */
+  maxCandidates: number
+  /** Most images one save takes. */
+  maxSaved: number
+  /** Most images one save shows the caller's model. */
+  maxModelImages: number
+  /** Longest side in pixels of an image the caller's model receives. */
+  modelImageEdge: number
+  /** Time limit of reading one page. */
+  pageTimeoutMs: number
+  /** Time limit of downloading one image. */
+  imageTimeoutMs: number
+  /** Most bytes of a page read. */
+  maxPageBytes: number
+  /** Largest image downloaded, in bytes. */
+  maxImageBytes: number
+  /** Smallest longest side, in pixels, of an image worth studying. */
+  minImageEdge: number
+  /** Side in pixels of each image's square on the contact sheet. */
+  sheetCell: number
+  /** Most images in one row of the contact sheet. */
+  sheetColumns: number
+  /** Most frames on an animation's frames sheet; a longer animation is sampled evenly. */
+  framesMaxFrames: number
+  /** Longest side in pixels of an animation's frames sheet. */
+  framesMaxEdge: number
+  /** Pages read and images downloaded at once. */
+  concurrency: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-art-references -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
 <a id="deepseek-aidsh-attachment-local"></a>
 

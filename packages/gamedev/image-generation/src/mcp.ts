@@ -12,7 +12,7 @@ import { imageToolDefinitions, type ImageToolHost, type ImageToolSurface } from 
 /** How connected agents use the image tool. */
 export const MCP_INSTRUCTIONS = 'Nano Banana makes images for the user\'s game with Google\'s Nano Banana 2.1, charged to the AI usage of the WASD Engine account the app is signed in to. '
   + 'image_generate makes one image from a prompt and saves it at path, an absolute path such as <game project>/art/items/potion.png, as PNG, JPEG, or WebP by its extension, and refuses to overwrite a file unless replace is true. '
-  + 'Pass images, absolute paths of up to 14 existing images, to edit them or to keep a character, object, or art style consistent; aspect_ratio sets the shape and size 1K, 2K, or 4K the resolution. '
+  + 'Pass images, absolute paths of up to 14 existing images, to work from references, to edit them, or to keep a character, object, or art style consistent; aspect_ratio sets the shape and size 1K, 2K, or 4K the resolution. '
   + 'It makes no transparent backgrounds: ask for one flat background color the art does not use and make it transparent with GIMP, with a little tolerance for JPEG edges. '
   + 'Look at each image before building on it, and save and reuse images instead of making them again, since every image costs the user\'s plan, more at 2K and 4K.'
 
