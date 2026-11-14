@@ -1,13 +1,13 @@
 /**
  * The game library installs a game's desktop build for this computer from the site, checks and unpacks it, keeps one
  * version per game, updates an online game before it starts and hands it a player token, starts a single-player game
- * at the version it has, and deletes games.
+ * at the version it has, counts each start as a play on the site, and deletes games.
  */
 import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { findProgram, GameLibrary, type GameCommand, type LibraryDependencies } from '../src/library.ts'
 import type { WasdLibraryView } from '../src/types.ts'
 
@@ -22,9 +22,11 @@ afterEach(async () => {
 
 interface Release { readonly version: number; readonly multiplayer: 'player_hosted' | 'dedicated' | null; readonly bytes: Buffer; readonly status?: string }
 
-/** A site with one game and its releases; each release has a macOS and a Windows build. */
+/** A site with one game and its releases; each release has a macOS and a Windows build. `plays` holds the token of each
+ * play the library counted, or '' for one without a token. */
 function site(releases: Release[]) {
   const calls: string[] = []
+  const plays: string[] = []
   let latest = () => releases.at(-1) as Release
   let cover: string | null = null
   const fetchSite: typeof fetch = async (input, init) => {
@@ -52,18 +54,35 @@ function site(releases: Release[]) {
       if (headers.get('x-dsh-auth-token') !== 'account-token') return Response.json({ error: { message: 'no' } }, { status: 401 })
       return Response.json({ token: 'wpt1.player', expires_at: '2026-11-14T00:00:00Z', player: { id: 'p', name: 'Ada' }, game_id: GAME_ID, api_origin: ORIGIN })
     }
+    if (url.pathname === '/api/v1/library/games/sky-keep/plays' && init?.method === 'POST') {
+      plays.push(new Headers(init.headers).get('x-dsh-auth-token') ?? '')
+      return new Response(null, { status: 204 })
+    }
     if (url.pathname === '/api/v1/library/games/missing') return Response.json({ error: { message: 'No such game.' } }, { status: 404 })
     return new Response('not found', { status: 404 })
   }
   return {
     fetch: fetchSite,
     calls,
+    plays,
     setLatest: (next: () => Release) => { latest = next },
     setCover: (next: string | null) => { cover = next },
   }
 }
 
-async function library(options: { readonly system?: NodeJS.Platform; readonly releases: Release[]; readonly signedIn?: boolean }) {
+interface LibraryOptions {
+  readonly system?: NodeJS.Platform
+  readonly releases: Release[]
+  readonly signedIn?: boolean
+  /** The site the app is signed in to; the game's own by default. */
+  readonly accessOrigin?: string
+  /** The app's HTTP client in front of the fake site. */
+  readonly fetch?: (site: typeof fetch) => typeof fetch
+  /** Why starting a game fails; games start by default. */
+  readonly startError?: Error
+}
+
+async function library(options: LibraryOptions) {
   const root = await mkdtemp(join(tmpdir(), 'dsh-wasd-library-'))
   folders.push(root)
   const fake = site(options.releases)
@@ -72,8 +91,8 @@ async function library(options: { readonly system?: NodeJS.Platform; readonly re
   const dependencies: LibraryDependencies = {
     root,
     siteOrigin: () => Promise.resolve(ORIGIN),
-    access: () => Promise.resolve(options.signedIn === false ? undefined : { origin: ORIGIN, token: 'account-token' }),
-    fetch: fake.fetch,
+    access: () => Promise.resolve(options.signedIn === false ? undefined : { origin: options.accessOrigin ?? ORIGIN, token: 'account-token' }),
+    fetch: options.fetch?.(fake.fetch) ?? fake.fetch,
     system,
     // Unpacking writes what the platform's build holds, with the ZIP's bytes as the program.
     async unpack(archive, folder) {
@@ -86,6 +105,7 @@ async function library(options: { readonly system?: NodeJS.Platform; readonly re
       }
     },
     start: (command) => {
+      if (options.startError !== undefined) return Promise.reject(options.startError)
       started.push(command)
       return Promise.resolve()
     },
@@ -117,9 +137,10 @@ describe('GameLibrary', () => {
       installedAt: '2026-11-13T12:00:00.000Z',
     }])
     expect(fake.calls).toContain('GET /games/sky-keep/download/macos?v=1')
-    // A single-player game starts at its own version and notes the newer one.
+    // A single-player game starts at its own version and notes the newer one; the site counts the play.
     expect(await games.launch(GAME_ID, signal)).toEqual({ ok: true })
     expect(started).toEqual([{ program: join(root, GAME_ID, '1', 'Sky Keep.app', 'Contents', 'MacOS', 'Sky Keep'), cwd: join(root, GAME_ID, '1'), env: {} }])
+    await vi.waitFor(() => { expect(fake.plays).toEqual(['account-token']) })
     // Update installs the newer version and deletes the earlier one.
     await games.install('sky-keep')
     view = await settled(games)
@@ -145,6 +166,48 @@ describe('GameLibrary', () => {
     }])
     expect(fake.calls).toContain('GET /games/sky-keep/download/windows?v=2')
     expect(fake.calls).toContain('POST /api/v1/play/token')
+    await vi.waitFor(() => { expect(fake.plays).toEqual(['account-token']) })
+  })
+
+  it('counts each start as a play, with the account\'s token only on its own site, and starts the game whatever the count does', async () => {
+    const releases: Release[] = [{ version: 1, multiplayer: null, bytes: Buffer.from('counted') }]
+    const signedOut = await library({ releases, signedIn: false })
+    await signedOut.games.install('sky-keep')
+    await settled(signedOut.games)
+    expect(await signedOut.games.launch(GAME_ID, signal)).toEqual({ ok: true })
+    expect(await signedOut.games.launch(GAME_ID, signal)).toEqual({ ok: true })
+    await vi.waitFor(() => { expect(signedOut.site.plays).toEqual(['', '']) })
+
+    // Signed in to another site, the app sends this one no token.
+    const elsewhere = await library({ releases, accessOrigin: 'https://other.test' })
+    await elsewhere.games.install('sky-keep')
+    await settled(elsewhere.games)
+    expect(await elsewhere.games.launch(GAME_ID, signal)).toEqual({ ok: true })
+    await vi.waitFor(() => { expect(elsewhere.site.plays).toEqual(['']) })
+
+    // A count that cannot reach the site is lost, and the game runs.
+    const attempts: string[] = []
+    const offline = await library({
+      releases,
+      fetch: fetchSite => async (input, init) => {
+        const url = String(input instanceof Request ? input.url : input)
+        if (!url.endsWith('/plays')) return await fetchSite(input, init)
+        attempts.push(url)
+        throw new TypeError('fetch failed')
+      },
+    })
+    await offline.games.install('sky-keep')
+    await settled(offline.games)
+    expect(await offline.games.launch(GAME_ID, signal)).toEqual({ ok: true })
+    expect(offline.started).toHaveLength(1)
+    await vi.waitFor(() => { expect(attempts).toEqual([`${ORIGIN}/api/v1/library/games/sky-keep/plays`]) })
+
+    // A game that does not start counts no play.
+    const broken = await library({ releases, startError: new Error('spawn EACCES') })
+    await broken.games.install('sky-keep')
+    await settled(broken.games)
+    expect(await broken.games.launch(GAME_ID, signal)).toEqual({ ok: false, message: 'The game did not start: spawn EACCES' })
+    expect(broken.site.calls.filter(call => call.endsWith('/plays'))).toEqual([])
   })
 
   it('asks for a sign-in before an online game starts', async () => {

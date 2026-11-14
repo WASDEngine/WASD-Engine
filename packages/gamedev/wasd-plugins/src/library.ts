@@ -12,7 +12,8 @@
  * then hands the game a player token of the signed-in account in `WASD_PLAY_TOKEN`, with `WASD_API_ORIGIN`,
  * `WASD_GAME_ID`, and `WASD_GAME_VERSION`, which the WASD Multiplayer add-on reads. A single-player game starts at the
  * version it has, and the library notes a newer one, which the Play page offers as Update. A game runs as a process of
- * its own, detached from the app's, so it keeps running after the app quits.
+ * its own, detached from the app's, so it keeps running after the app quits. Each start counts a play of the game on
+ * the site (`POST /api/v1/library/games/<slug>/plays`), as its page counts one there.
  * @module @deepseek-ai/dsh-wasd-plugins/src/library
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -237,7 +238,8 @@ export class GameLibrary {
 
   /**
    * Start an installed game. An online game first installs the site's newer version, if there is one; a single-player
-   * game starts at its version and notes a newer one.
+   * game starts at its version and notes a newer one. Once the game started, the site counts a play of it, in the
+   * background.
    * @param id - the game's id.
    * @param signal - stops waiting; an update the start began goes on.
    * @returns once the game started, or why it did not.
@@ -251,6 +253,7 @@ export class GameLibrary {
       const env = game.multiplayer === undefined ? {} : await this.playEnvironment(game, signal)
       const folder = join(this.dependencies.root, game.folder)
       await this.dependencies.start({ program: await this.executable(game, folder), cwd: folder, env })
+      this.countPlay(game)
       await this.record({ ...game, startedAt: this.dependencies.now().toISOString() })
       return { ok: true }
     } catch (error) {
@@ -298,6 +301,29 @@ export class GameLibrary {
     const changed = noted.latestVersion !== game.latestVersion || noted.title !== game.title || noted.coverUrl !== game.coverUrl
     if (changed) await this.record(noted)
     return noted
+  }
+
+  /**
+   * Tell the game's site that the game started, which counts a play of it there. The request carries the signed-in
+   * account's token when the app is signed in to that site, so the site leaves out the creator's own plays. It runs in
+   * the background and its failures are dropped: the game is running already, and a play the site never hears of,
+   * such as one offline, stays uncounted.
+   */
+  private countPlay(game: InstalledGame): void {
+    void (async () => {
+      const access = await this.dependencies.access()
+      const token = access?.origin === game.origin ? access.token : ''
+      const response = await this.dependencies.fetch(new URL(`/api/v1/library/games/${game.slug}/plays`, game.origin), {
+        method: 'POST',
+        redirect: 'error',
+        signal: this.lifetime,
+        headers: token === '' ? {} : { 'x-dsh-auth-token': token },
+      })
+      await response.body?.cancel()
+    })().catch(() => {
+      // A failed request, such as one to an unreachable site or one the plugin's disposal aborts, costs one play in
+      // the site's figures; the game is running already.
+    })
   }
 
   /** The player token and site of an online game, for its process's environment. */
