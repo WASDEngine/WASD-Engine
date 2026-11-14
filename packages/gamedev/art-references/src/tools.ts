@@ -207,7 +207,7 @@ export function formatSearch(value: SearchValue): string {
   const lines = [
     `Found ${value.candidates.length} reference ${value.candidates.length === 1 ? 'image' : 'images'} for ${asked} (${counts.join('; ')}).`,
     `Contact sheet, numbered as listed: ${value.sheet}`,
-    `To show the images to the user, put this line in your message: ![Reference images](${encodeURI(value.sheet)})`,
+    `Show the user these images in your next message, whether or not you ask about them, with this line: ![Reference images](${encodeURI(value.sheet)})`,
   ]
   if (value.imagesOmitted === true) lines.push('The sheet is not attached because your model does not take images; choose by the titles below.')
   lines.push('', EXTERNAL_NOTICE, '')

@@ -122,7 +122,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型可见内容
 
-当会话有 `reference_search` 时，`art-references` 段落以 `# Art references` 为标题，告诉 agent：有好参考的美术效果好得多；在制作任何美术资源之前，无需等待要求，就用 `reference_search` 收集参考，除非用户已经给出参考、要求不要搜索，或该资源重复游戏中已有的美术。它说明如何为主体、外观和动作写两到四个查询；在消息中用结果给出的 Markdown 图像行向用户展示联系表；保持游戏已有的风格，只从参考中取主体；比较参考的外观而不只是内容，即美术风格、像素尺寸或细节、比例、配色与氛围和视角；当它们在这些方面不同而请求没有说明时，询问用户想要哪个方向，会话有 `ask_user_question` 时用它，每个方向一个选项，即使在较长请求的中途也要问，因为美术方向由用户决定，而游戏的第一份美术决定整个游戏的外观；参考一致时则不询问继续工作；用 `reference_save` 保存用到的参考，它不会添加资源，也无需批准，自己制作的美术不要放进该文件夹；以参考为依据工作：会话有 `image_generate` 时把最接近所选方向的一到三张参考传给它并在提示词中说明从每张取什么，把 Blender 和 GIMP 的成果与参考对照，并按照动画的帧表制作。最后规定：描述自己的设计，绝不复制参考，不复制他人的角色、标志或作品，也绝不把参考图像放进游戏。 以下是 Web 和 Desktop 配置组合出的形式，含 `ask_user_question` 和 `image_generate`；没有 `ask_user_question` 时，问题在回复中提出，每行一个方向，并结束回合等待回答；没有 `image_generate` 时省略它那一步。
+当会话有 `reference_search` 时，`art-references` 段落以 `# Art references` 为标题，告诉 agent：有好参考的美术效果好得多；在制作任何美术资源之前，无需等待要求，就用 `reference_search` 收集参考，除非用户已经给出参考、要求不要搜索，或该资源重复游戏中已有的美术。它说明如何为主体、外观和动作写两到四个查询；无论是否提问，都在下一条消息中用结果给出的 Markdown 图像行向用户展示联系表；保持游戏已有的风格，只从参考中取主体；比较参考的外观而不只是内容，即美术风格、像素尺寸或细节、比例、配色与氛围和视角；当它们在这些方面不同而请求没有说明时，询问用户想要哪个方向，会话有 `ask_user_question` 时用它，每个方向一个选项，即使在较长请求的中途也要问，因为美术方向由用户决定，而游戏的第一份美术决定整个游戏的外观；参考一致时则不询问继续工作；用 `reference_save` 保存用到的参考，它不会添加资源，也无需批准，自己制作的美术不要放进该文件夹；以参考为依据工作：会话有 `image_generate` 时把最接近所选方向的一到三张参考传给它并在提示词中说明从每张取什么，把 Blender 和 GIMP 的成果与参考对照，并按照动画的帧表制作。最后规定：描述自己的设计，绝不复制参考，不复制他人的角色、标志或作品，也绝不把参考图像放进游戏。 以下是 Web 和 Desktop 配置组合出的形式，含 `ask_user_question` 和 `image_generate`；没有 `ask_user_question` 时，问题在回复中提出，每行一个方向，并结束回合等待回答；没有 `image_generate` 时省略它那一步。
 
 ##### `art-references` 段落
 
@@ -132,7 +132,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 Art made from good references comes out much better. Before you make any art asset, such as a sprite, character, creature, item, icon, tile, texture, background, UI piece, 3D model, animation, or effect, gather references for it with reference_search without waiting to be asked. Skip this only when the user already gave references for it, asks you not to search, or the asset repeats art the game already has, such as another color of an existing item.
 
 - Search for the subject and its look in two to four short queries, such as "armored knight pixel art sprite", "knight sprite sheet walk cycle", and "medieval plate armor". For an animation, search for the motion too, such as "sword slash animation gif" or "walk cycle reference". Pass pages to take the images of a page the user linked or a gallery a search found.
-- Show the user the contact sheet in your message with the Markdown image line the result gives you, so they see what the art will be based on.
+- Always show the user the contact sheet, whether or not you ask them anything: put the Markdown image line the result gives you in your next message, so they see what the art will be based on.
 - When the game already has art, keep its style, and take only the subject from the references: its shape, details, colors, and motion.
 - Otherwise compare how the references look, not only what they show: art style (pixel art, painted, flat, 3D), pixel size or detail (a 16-pixel sprite against a 64-pixel one), proportions (cute against heroic or realistic), palette and mood, and view (side, top-down, isometric). When they differ in any of these and the request does not say which, ask with ask_user_question which direction they want: one option per direction, labeled with its look and the numbers of the references that show it. Art direction is the user's choice, and a game's first art sets the look of the whole game, so ask even in the middle of a longer request. When the references agree, pick the ones that fit and go on without asking.
 - Save the references you use with reference_save. It keeps them in references/, out of the game, so it adds no asset and needs no approval; keep the art you make out of that folder.
@@ -143,7 +143,7 @@ References guide shape, proportions, colors, mood, and motion. Describe your own
 
 #### Token 影响
 
-该段落约 2,600 个字符。
+该段落约 2,700 个字符。
 
 #### KV Cache 影响
 
