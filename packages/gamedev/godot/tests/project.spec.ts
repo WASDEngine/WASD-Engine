@@ -56,7 +56,7 @@ describe('resolveGodotProject', () => {
     await project(join(root, 'a', 'deeper', 'game'))
     await project(join(root, 'c', 'game'), '[application]\nrun/main_scene="res://main.tscn"\n')
     await writeFile(join(root, 'notes.txt'), '')
-    expect(await resolveGodotProject(root, undefined, signal)).toEqual({ dir: join(root, 'b', 'game'), name: 'Game' })
+    expect(await resolveGodotProject(root, undefined, signal)).toEqual({ dir: join(root, 'b', 'game'), name: 'Game', window: { width: 1152, height: 648, stretch: 'disabled' } })
   })
 
   it('prefers the working directory itself and stops below the search depth', async () => {

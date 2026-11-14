@@ -268,6 +268,7 @@ Every package below exports a Cordis plugin that a bundle patch can name in a Lo
 
 | Package | Config | Description |
 |---|---|---|
+| `@deepseek-ai/dsh-agent-feedback` | yes | What agents tell the WASD Engine team: the feedback_send tool of every Session and of WASD Engine's MCP server, and reports of how often agents call each game tool and MCP server, sent for the signed-in account |
 | `@deepseek-ai/dsh-blender` | yes | Headless Blender for the agent: an MCP server backed by the bpy module |
 | `@deepseek-ai/dsh-client-ui-game-assets` | no | Assets tab of the right Sidebar: search a game project's 2D and 3D art or browse it by folder, and view images and models |
 | `@deepseek-ai/dsh-client-ui-game-audio` | no | Audio tab of the right Sidebar: search a game project's sound effects, dialogue, and music or browse them by folder, listen to them with their waveform, and read their loudness and length |

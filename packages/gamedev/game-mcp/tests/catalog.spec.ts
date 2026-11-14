@@ -211,3 +211,22 @@ describe('GameToolCatalog.run', () => {
     expect(text).toMatch(/\[output truncated: \d+ more characters\]$/u)
   })
 })
+
+describe('GameToolCatalog.owner', () => {
+  it('finds the provider of a tool by its server name or by the harness tool that runs it, silently skipping invalid names', () => {
+    const warn = vi.fn<(message: string) => void>()
+    const catalog = new GameToolCatalog(() => [
+      provider('alpha', [
+        { name: 'alpha_bad name', definition: echoDefinition('bad_harness_name') },
+        { name: 'alpha_echo', definition: echoDefinition('mcp__wasd_alpha__echo') },
+      ]),
+      provider('beta', [{ name: 'beta_echo', definition: echoDefinition('beta_echo') }]),
+    ], warn)
+    expect(catalog.owner('alpha_echo')).toEqual({ provider: 'alpha', title: 'ALPHA', tool: 'alpha_echo' })
+    expect(catalog.owner('mcp__wasd_alpha__echo')).toEqual({ provider: 'alpha', title: 'ALPHA', tool: 'alpha_echo' })
+    expect(catalog.owner('beta_echo')).toEqual({ provider: 'beta', title: 'BETA', tool: 'beta_echo' })
+    expect(catalog.owner('bad_harness_name')).toBeUndefined()
+    expect(catalog.owner('read')).toBeUndefined()
+    expect(warn).not.toHaveBeenCalled()
+  })
+})

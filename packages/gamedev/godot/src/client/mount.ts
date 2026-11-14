@@ -1,7 +1,8 @@
 /**
  * Remote contribution and registrations of the Godot browser plugin: the Game tab, its opening for Agent runs, the stop of
- * the Session's game when the tab closes, the tool cards, and, in the macOS Desktop app, the holes of the application
- * root through which the shell's game layers show.
+ * the Session's game when the tab closes, the tool cards, the encoding of `godot_record` recordings for the Sessions
+ * this window may read, and, in the macOS Desktop app, the holes of the application root through which the shell's
+ * game layers show.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ClientRemote } from '@deepseek-ai/dsh-api-remotes/client'
@@ -22,6 +23,7 @@ import { GameTab, GameTabTitle, type GameTabInjected } from './GameTab.tsx'
 import { GameControllerIcon } from './icon.tsx'
 import { LayerHoles, presentLayer, type LayerPresentation } from './layer.ts'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
+import { canEncodeRecordings, encodeRecording } from './recorder.ts'
 import { ACTIVE_PHASES, createGameSource, type GameSource } from './source.ts'
 
 /** Services required before the Remote contribution mounts. */
@@ -53,6 +55,19 @@ interface SessionGame {
  */
 function frameUrl(sessionId: SessionId, runId: string): URL {
   return new URL(`api/godot.frames?${new URLSearchParams({ session: sessionId, run: runId }).toString()}`, document.baseURI)
+}
+
+/**
+ * A recording's frame stream address, or its video upload address.
+ * @param route - `godot.recording` for the frames, `godot.video` for the upload.
+ * @param sessionId - the Session whose game records.
+ * @param runId - the run.
+ * @param recording - the recording's id.
+ * @returns the address relative to the page's base.
+ */
+function recordingUrl(route: 'godot.recording' | 'godot.video', sessionId: SessionId, runId: string, recording: number): URL {
+  const query = new URLSearchParams({ session: sessionId, run: runId, recording: String(recording) })
+  return new URL(`api/${route}?${query.toString()}`, document.baseURI)
 }
 
 async function settle(call: Promise<RemoteResult<unknown>>): Promise<GameFailure | undefined> {
@@ -150,6 +165,18 @@ function registerUi(ctx: Context): void {
     }
   }
 
+  // godot_record: this window encodes the recordings of the Sessions it may read, where WebCodecs offers a video encoder.
+  ctx.effect(() => ctx.remote.$on('godot/record', function (request, next) {
+    const sessionId = ctx.sessions.scopeOf(this)
+    if (sessionId === undefined || sessionId !== request.sessionId || !canEncodeRecordings()) return next()
+    const { agent: _agent, signal = new AbortController().signal, ...fields } = request
+    return encodeRecording(fields, {
+      open: opened => fetch(recordingUrl('godot.recording', fields.sessionId, fields.runId, fields.recording), { signal: opened, cache: 'no-store' }),
+      upload: (video, uploaded) => fetch(recordingUrl('godot.video', fields.sessionId, fields.runId, fields.recording), {
+        method: 'POST', body: video, signal: uploaded, headers: { 'Content-Type': 'video/mp4' },
+      }),
+    }, signal)
+  }), 'godot: encode recordings')
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: TAB_ID,
     kind: TAB_KIND,

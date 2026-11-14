@@ -14,7 +14,7 @@ import type { ToolExecutionToken, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {
   GameMcpCall, GameMcpConfirmation, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus,
-  GameMcpTool, GameMcpToolResult, JsonObject,
+  GameMcpTool, GameMcpToolOwner, GameMcpToolResult, JsonObject,
 } from './provider.ts'
 
 /** Name of the search tool. */
@@ -149,6 +149,22 @@ export class GameToolCatalog {
       }
     }
     return tools
+  }
+
+  /**
+   * Find the provider that offers a tool, without the warnings of {@link GameToolCatalog.tools}, which a lookup for
+   * each call would repeat.
+   * @param name - the tool's name as connected agents call it, or the name of the harness tool definition that runs
+   * it, as a Session calls that tool.
+   * @returns the first provider in provider order whose valid tool has that name or definition, or undefined.
+   */
+  owner(name: string): GameMcpToolOwner | undefined {
+    for (const provider of this.providers()) {
+      const tool = provider.tools().find(candidate => candidate.name.startsWith(`${provider.id}_`) && TOOL_NAME_PATTERN.test(candidate.name)
+        && (candidate.name === name || candidate.definition.name === name))
+      if (tool !== undefined) return { provider: provider.id, title: provider.title, tool: tool.name }
+    }
+    return undefined
   }
 
   /**

@@ -37,6 +37,14 @@ export interface ScreenshotFrame {
   readonly windowWidth: number
   /** Game window height when the screenshot was taken. */
   readonly windowHeight: number
+  /** Window pixels from the window's left edge to the part of the window the image shows; 0 when absent. */
+  readonly x?: number
+  /** Window pixels from the window's top edge to the part of the window the image shows; 0 when absent. */
+  readonly y?: number
+  /** Width in window pixels of the part of the window the image shows; the window width when absent. */
+  readonly regionWidth?: number
+  /** Height in window pixels of the part of the window the image shows; the window height when absent. */
+  readonly regionHeight?: number
 }
 
 /** The live Agent is not an active Session owner. */

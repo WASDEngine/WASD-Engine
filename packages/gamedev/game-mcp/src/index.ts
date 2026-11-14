@@ -23,7 +23,7 @@ import { GameToolCatalog, PROVIDER_ID_PATTERN } from './catalog.ts'
 import { ClientDirectory } from './clients.ts'
 import { listenLoopback, LOOPBACK_HOST, type HttpListener } from './http.ts'
 import { setupPrompt } from './prompt.ts'
-import type { GameMcpCall, GameMcpClient, GameMcpProvider } from './provider.ts'
+import type { GameMcpCall, GameMcpClient, GameMcpProvider, GameMcpToolOwner } from './provider.ts'
 import { authInfoFor, createGameMcpHandler } from './server.ts'
 import { ExternalSessions } from './sessions.ts'
 import { authorizes, loadToken } from './token.ts'
@@ -151,6 +151,18 @@ export default class GameMcpServer extends TypertRemoteService {
       }
     }, 'gameMcp.provide()')
     return () => void dispose()
+  }
+
+  /**
+   * Find the provider that offers a tool now, so a report of a Session's own tool calls can count them by the plugin
+   * connected agents know them by: a Session calls Blender's tools as the MCP client names them, such as
+   * `mcp__wasd_blender__execute_python`, and connected agents as `blender_execute_python`.
+   * @param name - the tool's name as a Session calls it (its harness definition's name), or as connected agents call it.
+   * @returns the provider's id and display name and the tool's name for connected agents, or undefined when no
+   * provider offers the tool.
+   */
+  toolOwner(name: string): GameMcpToolOwner | undefined {
+    return this.catalog.owner(name)
   }
 
   /**

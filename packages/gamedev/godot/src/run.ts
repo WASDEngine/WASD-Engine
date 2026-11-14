@@ -24,7 +24,7 @@ import type { GodotProject } from './project.ts'
 import {
   encodeJsonMessage, HarnessDecoder, HARNESS_PROTOCOL_VERSION, MAX_MESSAGE_BYTES,
   type HarnessFrame, type HarnessHello, type HarnessJsonMessage, type HarnessLogEntry, type HarnessMessage,
-  type HarnessResult, type HarnessStatus,
+  type HarnessRecordFrame, type HarnessResult, type HarnessStatus,
 } from './protocol.ts'
 import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 import type { GodotInputEvent, GodotLogEntry, GodotRunLayer, GodotRunPhase, GodotRunStarter, GodotRunView } from './types.ts'
@@ -77,6 +77,15 @@ export interface GodotRunSpec {
   readonly scene?: string
   /** Window size in pixels. */
   readonly size?: { readonly width: number; readonly height: number }
+  /**
+   * The whole factor by which `size` scales the project's window size, when the run named no size and the plugin chose
+   * a larger one.
+   */
+  readonly scale?: number
+  /** Arguments after `--` that the game reads with `OS.get_cmdline_user_args()`, before the harness's own. */
+  readonly args: readonly string[]
+  /** Validated Godot command-line options, each followed by its value. */
+  readonly engineArgs: readonly string[]
   /** Run with the Dummy audio driver. */
   readonly muted: boolean
   /** Render with the Compatibility renderer, as the game's Web build does, instead of the project's renderer. */
@@ -133,6 +142,33 @@ export interface GodotRunDependencies {
 /** Change notifications of a run. */
 export type GodotRunEvent = { readonly type: 'view' } | { readonly type: 'logs' } | { readonly type: 'end' }
 
+/** Receives the frames of one recording until the recording stops or the run ends. */
+export interface RecordingSink {
+  /**
+   * Receive one frame.
+   * @param frame - decoded frame.
+   */
+  frame(frame: HarnessRecordFrame): void
+}
+
+/** What a recording captures: frames per second, size, JPEG quality, game-frame pacing, and its longest duration. */
+export interface RecordingParams {
+  /** Frames per second of real time; ignored with `frameStep`. */
+  readonly fps: number
+  /** Largest frame width; wider windows are scaled down. */
+  readonly maxWidth: number
+  /** JPEG quality of the frames, 0.1 to 1. */
+  readonly quality: number
+  /** Capture every this many game frames, none skipped, instead of by real time; 0 captures by real time. */
+  readonly frameStep: number
+  /** Milliseconds of video that one game frame takes, with `frameStep`. */
+  readonly frameMs: number
+  /** Frames after which the game stops capturing; 0 for none. */
+  readonly frames: number
+  /** Real seconds after which the game stops capturing by itself. */
+  readonly seconds: number
+}
+
 /** Receives streamed frames until the run ends. */
 export interface FrameSink {
   /**
@@ -165,6 +201,33 @@ const ScreenshotReply = z.object({
   windowHeight: z.number().int(),
   frame: z.number().int(),
   paused: z.boolean(),
+  x: z.number().int().optional(),
+  y: z.number().int().optional(),
+  regionWidth: z.number().int().positive().optional(),
+  regionHeight: z.number().int().positive().optional(),
+})
+
+const Point = z.tuple([z.number(), z.number(), z.number()])
+
+const ViewReply = z.object({
+  format: z.enum(['png', 'jpeg']),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  frame: z.number().int(),
+  paused: z.boolean(),
+  camera: z.object({ position: Point, direction: Point, fov: z.number() }),
+  subject: z.object({ center: Point, radius: z.number(), distance: z.number() }).optional(),
+})
+
+const RecordStartReply = z.object({ recording: z.number().int(), frame: z.number().int() })
+
+const RecordStopReply = z.object({
+  recording: z.number().int(),
+  frames: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  seconds: z.number().nonnegative(),
+  width: z.number().int().nonnegative(),
+  height: z.number().int().nonnegative(),
 })
 
 const InputReply = z.object({
@@ -191,8 +254,62 @@ const EvalReply = z.object({ value: z.json(), valueType: z.string() })
 
 const TreeReply = z.object({ tree: z.json(), truncated: z.boolean() })
 
-/** Screenshot metadata from the harness. */
+/**
+ * Screenshot metadata from the harness. A screenshot of a region of the window carries the region in window pixels:
+ * its top left corner `x`, `y`, and its `regionWidth` and `regionHeight`.
+ */
 export type ScreenshotReply = z.infer<typeof ScreenshotReply>
+
+/** The part of the window a screenshot shows, in window pixels, and the width a small part grows to. */
+export interface ScreenshotRegion {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+  /** Width the image grows to, by a whole factor of at most 8, when the region is narrower. */
+  readonly minWidth: number
+}
+
+/**
+ * A drawn view: its image size, the camera that drew it, and, when the view framed a node or an asset, the framed
+ * center and radius in meters and the camera's distance from the center.
+ */
+export type ViewReply = z.infer<typeof ViewReply>
+
+/** The end of a recording: the frames sent and skipped, the real seconds it ran, and the frame size. */
+export type RecordStopReply = z.infer<typeof RecordStopReply>
+
+/** What a view draws, as `godot_view` passes it to the harness. */
+export interface ViewParams {
+  /** Image size in pixels; the window size when absent. */
+  readonly width?: number
+  readonly height?: number
+  /** Node path of a 3D node to frame. */
+  readonly node?: string
+  /** `res://` path of a scene or mesh to load and draw alone. */
+  readonly asset?: string
+  /** Animation to pose the asset in, and the seconds into it. */
+  readonly animation?: string
+  readonly time?: number
+  /** Explicit camera position and the point it looks at, in world coordinates. */
+  readonly camera?: { readonly position: readonly [number, number, number]; readonly target: readonly [number, number, number] }
+  /** Degrees around the framed subject's heading (0 looks at its +Z side), and above it. */
+  readonly yaw?: number
+  readonly pitch?: number
+  /** Multiplier of the distance that fits the subject. */
+  readonly distance?: number
+  /** Skeleton bone to frame instead of the whole subject, and the meters around it. */
+  readonly bone?: string
+  readonly radius?: number
+  /** Vertical field of view in degrees. */
+  readonly fov?: number
+  /** Draw the framed node alone, lit as the game lights it. */
+  readonly isolate?: boolean
+  /** Light an asset with the game's environment and sun instead of a neutral studio. */
+  readonly lighting?: 'studio' | 'game'
+  /** Frames drawn before the capture. */
+  readonly frames?: number
+}
 
 /**
  * Completion of an input sequence: the events that ran, and the frames and real seconds they took. `timedOut` marks
@@ -286,7 +403,8 @@ export function gameArgv(spec: GodotRunSpec, port: number, token: string): strin
     ...spec.muted ? ['--audio-driver', 'Dummy'] : [],
     ...spec.web ? ['--rendering-method', WEB_RENDERING_METHOD] : [],
     ...spec.size === undefined ? [] : ['--resolution', `${spec.size.width}x${spec.size.height}`],
-    '--', `--wasd-port=${port}`, `--wasd-token=${token}`,
+    ...spec.engineArgs,
+    '--', ...spec.args, `--wasd-port=${port}`, `--wasd-token=${token}`,
     ...spec.scene === undefined ? [] : [`--wasd-scene=${spec.scene}`],
   ])
 }
@@ -326,6 +444,7 @@ export class GodotRun {
   private readonly lifetime = new AbortController()
   private readonly listeners = new Set<(event: GodotRunEvent) => void>()
   private readonly frameSinks = new Set<FrameSink>()
+  private readonly recordingSinks = new Map<number, RecordingSink>()
   private readonly pending = new Map<number, Pending>()
   private readonly sockets = new Set<Socket>()
   private readonly handshake = Promise.withResolvers<void>()
@@ -455,8 +574,10 @@ export class GodotRun {
       ...this.spec.project.name === undefined ? {} : { projectName: this.spec.project.name },
       launch: {
         ...this.spec.scene === undefined ? {} : { scene: this.spec.scene },
-        ...this.spec.size,
+        ...this.spec.scale === undefined ? this.spec.size : { scale: this.spec.scale },
         ...this.spec.web ? { web: true } : {},
+        ...this.spec.args.length === 0 ? {} : { args: this.spec.args },
+        ...this.spec.engineArgs.length === 0 ? {} : { engineArgs: this.spec.engineArgs },
       },
       ...scene === undefined ? {} : { scene },
       ...this.window,
@@ -546,18 +667,71 @@ export class GodotRun {
   }
 
   /**
-   * Capture the game window.
-   * @param maxWidth - largest image width; wider windows are scaled down.
+   * Capture the game window, or a region of it.
+   * @param maxWidth - largest image width; wider windows and regions are scaled down.
    * @param signal - cancellation.
    * @param jpegQuality - JPEG quality from 0.1 to 1; without it, a PNG.
+   * @param region - part of the window to capture at its own pixels, in window pixels; the game clips it to the window.
    * @returns metadata and the image bytes, of `meta.format`.
    */
   async screenshot(
-    maxWidth: number, signal: AbortSignal, jpegQuality?: number,
+    maxWidth: number, signal: AbortSignal, jpegQuality?: number, region?: ScreenshotRegion,
   ): Promise<{ readonly meta: ScreenshotReply; readonly image: Buffer }> {
-    const params = jpegQuality === undefined ? { format: 'png', maxWidth } : { format: 'jpeg', quality: jpegQuality, maxWidth }
+    const params = {
+      ...jpegQuality === undefined ? { format: 'png', maxWidth } : { format: 'jpeg', quality: jpegQuality, maxWidth },
+      ...region === undefined
+        ? {}
+        : { region: { x: region.x, y: region.y, width: region.width, height: region.height }, minWidth: region.minWidth },
+    }
     const reply = await this.send('screenshot', params, { signal, bounded: true, image: true })
     return { meta: ScreenshotReply.parse(reply.result), image: reply.image as Buffer }
+  }
+
+  /**
+   * Draw a view of the game's 3D world, or of an asset alone, from a camera of its own, without changing the game's
+   * window or camera.
+   * @param params - what to draw and from where.
+   * @param signal - cancellation.
+   * @returns metadata and the image bytes, of `meta.format`.
+   */
+  async drawView(params: ViewParams, signal: AbortSignal): Promise<{ readonly meta: ViewReply; readonly image: Buffer }> {
+    const reply = await this.send('view', { ...params, format: 'png' }, { signal, bounded: true, image: true })
+    return { meta: ViewReply.parse(reply.result), image: reply.image as Buffer }
+  }
+
+  /**
+   * Start recording the game window: the game sends JPEG frames to `sink` until {@link GodotRun.stopRecording}
+   * answers, or until `params.seconds` passed, after which it captures none.
+   * @param recording - id of the recording, which its frames carry.
+   * @param params - frame rate, size, quality, pacing, and longest duration.
+   * @param sink - receives the frames in order.
+   * @param signal - cancellation of the start request; the recording then stops at `params.seconds`.
+   */
+  async startRecording(recording: number, params: RecordingParams, sink: RecordingSink, signal: AbortSignal): Promise<void> {
+    this.recordingSinks.set(recording, sink)
+    try {
+      RecordStartReply.parse((await this.send('record', { action: 'start', recording, ...params }, { signal, bounded: true })).result)
+    } catch (error) {
+      this.recordingSinks.delete(recording)
+      throw error
+    }
+  }
+
+  /**
+   * Stop a recording: the game captures no further frames, or with `wait` lets the recording reach its `frames` or
+   * `seconds`, and answers once the captured frames reached the sink.
+   * @param recording - id of the recording.
+   * @param signal - cancellation.
+   * @param wait - let the recording reach its end, which only the game's silence bounds, instead of stopping it now.
+   * @returns the frames sent and skipped, the seconds the recording ran, and the frame size.
+   */
+  async stopRecording(recording: number, signal: AbortSignal, wait = false): Promise<RecordStopReply> {
+    try {
+      const params = { action: 'stop', recording, ...wait ? { wait: true } : {} }
+      return RecordStopReply.parse((await this.send('record', params, { signal, bounded: !wait })).result)
+    } finally {
+      this.recordingSinks.delete(recording)
+    }
   }
 
   /**
@@ -637,6 +811,21 @@ export class GodotRun {
    */
   async evaluate(expression: string, node: string | undefined, signal: AbortSignal): Promise<EvalReply> {
     return EvalReply.parse((await this.send('eval', { expression, ...node === undefined ? {} : { node } }, { signal, bounded: true })).result)
+  }
+
+  /**
+   * Run GDScript code as the body of a function in the game: it may use lambdas, the engine singletons, the autoloads,
+   * and `await`. The game answers with the value the code returns, or with its compile or script errors, or once
+   * `timeoutMs` of real time passed while the code awaits.
+   * @param code - function body; a single expression returns its value.
+   * @param node - node path of the object the code names `node`; the current scene when undefined.
+   * @param timeoutMs - real time the answer waits for code that awaits.
+   * @param signal - cancellation; the game stops waiting for the code, which keeps running.
+   * @returns the value as JSON and its Godot type name.
+   */
+  async runCode(code: string, node: string | undefined, timeoutMs: number, signal: AbortSignal): Promise<EvalReply> {
+    const params = { code, timeoutMs, ...node === undefined ? {} : { node } }
+    return EvalReply.parse((await this.send('eval', params, { signal, bounded: false })).result)
   }
 
   /**
@@ -833,6 +1022,9 @@ export class GodotRun {
         return
       case 'image':
         this.receiveImage(message.id, message.data)
+        return
+      case 'record':
+        this.recordingSinks.get(message.frame.recording)?.frame(message.frame)
         return
       case 'json':
         this.receiveJson(message.message)
@@ -1174,6 +1366,7 @@ export class GodotRun {
     this.userQueue = []
     for (const sink of [...this.frameSinks]) sink.end()
     this.frameSinks.clear()
+    this.recordingSinks.clear()
     this.bump()
     this.emit({ type: 'end' })
     void (this.exit ?? Promise.resolve()).then(() => { this.ended.resolve() })

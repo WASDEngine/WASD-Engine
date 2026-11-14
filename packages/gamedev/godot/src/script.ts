@@ -38,9 +38,6 @@ export const MAX_SCRIPT_RUNS = 64
  */
 export const MAX_SCRIPT_CALL_SECONDS = 3600
 
-/** Highest frame rate that a call may fix. */
-export const MAX_FIXED_FPS = 1000
-
 /** Most files of a run's `files` folder that a report names. */
 export const LISTED_RUN_FILES = 50
 

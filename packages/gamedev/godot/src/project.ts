@@ -6,6 +6,7 @@
 import type { Dirent } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { parseProjectWindow, type ProjectWindow } from './launch.ts'
 
 /** How many directory levels below the working directory the search for the nearest `project.godot` descends. */
 export const PROJECT_SEARCH_DEPTH = 3
@@ -26,6 +27,8 @@ export interface GodotProject {
   readonly name?: string
   /** `application/run/main_scene`, when set. */
   readonly mainScene?: string
+  /** The window size and stretch mode of a run that names no window size; absent where a caller built the project. */
+  readonly window?: ProjectWindow
 }
 
 /** No usable `project.godot` for a request; `directory` is where the Host looked. */
@@ -174,7 +177,8 @@ async function findNearestProject(root: string, signal: AbortSignal): Promise<st
  * @returns the project.
  */
 export async function readGodotProject(dir: string): Promise<GodotProject> {
-  return { dir, ...parseProjectSettings(await readFile(join(dir, PROJECT_FILE), 'utf8')) }
+  const text = await readFile(join(dir, PROJECT_FILE), 'utf8')
+  return { dir, ...parseProjectSettings(text), window: parseProjectWindow(text) }
 }
 
 /**

@@ -85,7 +85,7 @@ describe('asset_view', () => {
   it('asks the window to draw a model with the call\'s options, and stores the images for the model', async () => {
     const c = await composed()
     c.openWindow({ details: KNIGHT, images: [{ data: PIXEL_PNG, mediaType: 'image/png', width: 1, height: 1, caption: 'iso and front views, materials, skeleton' }] })
-    const result = await callTool(c, 'asset_view', { path: 'models/knight.glb', views: ['iso', 'front', 'iso'], skeleton: true, size: 512 })
+    const result = await callTool(c, 'asset_view', { path: 'models/knight.glb', views: ['iso', 'front', 'iso'], skeleton: true, size: 512, details: true })
     expect(result.isError).toBeFalsy()
     const [request] = c.requests
     expect(request).toMatchObject({
@@ -117,6 +117,18 @@ describe('asset_view', () => {
       '- Walk: 1.07 s, 12 tracks on 3 bones or nodes: Hips, Spine, LeftLeg',
       'Morph targets: Face: Blink, Smile.',
       'The image shows: iso and front views, materials, skeleton.',
+    ].join('\n'))
+  })
+
+  it('summarizes a model unless the call asks for every detail', async () => {
+    const c = await composed()
+    c.openWindow({ details: KNIGHT, images: [{ data: PIXEL_PNG, mediaType: 'image/png', width: 1, height: 1, caption: 'iso view, materials' }] })
+    const result = await callTool(c, 'asset_view', { path: 'models/knight.glb' })
+    expect(text(result)).toBe([
+      'Model models/knight.glb (GLB, 2.4 MB): 0.92 × 1.84 × 0.41 (x × y × z, y up), 12,340 triangles in 3 meshes.',
+      'Materials (1): Body. 2 textures. Skeleton: 4 bones from Hips. Animation clips (1): Walk (1.07 s). 2 morph targets.',
+      'Pass details: true for the bounds, every material and its textures, the bone tree, each clip\'s animated bones, and the morph target names.',
+      'The image shows: iso view, materials.',
     ].join('\n'))
   })
 
@@ -369,10 +381,12 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
         images: [],
       }
       : { details: { ...HERO, animations: HERO.animations.slice(0, 1), animationCount: 65 }, images: [] }))
-    const model = text(await callTool(c, 'asset_view', { path: 'models/knight.glb' }))
+    const model = text(await callTool(c, 'asset_view', { path: 'models/knight.glb', details: true }))
     expect(model).toContain('Animation clips (70); pass one\'s name as animation to see frames across it:')
     expect(model).toContain('- and 69 more clips')
     expect(model).toContain('Morph targets: Face: blink, smile, and 65 more; and 32 more meshes with morph targets.')
+    const summary = text(await callTool(c, 'asset_view', { path: 'models/knight.glb' }))
+    expect(summary).toContain('Animation clips (70): Walk (1.07 s), and 69 more. 67 morph targets.')
     const sprite = text(await callTool(c, 'asset_view', { path: 'art/hero.png' }))
     expect(sprite).toContain('Animations (65); pass one\'s name as animation to see its frames:')
     expect(sprite).toContain('- and 64 more animations')

@@ -278,10 +278,11 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
   'workflow': 'workflow.md',
   'workspace': 'workspace.md',
   // WASDEngine fork: the game MCP server's request to show a Session, the asset tools' render request and asset reveal,
-  // and the audio tools' measure request and sound reveal (wasdengine/FORK.md).
+  // the audio tools' measure request and sound reveal, and the recording tool's encode request (wasdengine/FORK.md).
   'game-mcp': 'gamedev.md',
   'game-assets': 'gamedev.md',
   'game-audio': 'gamedev.md',
+  'godot': 'gamedev.md',
   'working-directory': 'working-directory.md',
   'worktree': 'worktrees.md',
 }
@@ -868,6 +869,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotRecordRequest: 'gamedev.md',
   GodotRecording: 'gamedev.md',
   GameMcpToolResult: 'gamedev.md',
+  GameMcpToolOwner: 'gamedev.md',
   GodotServerExport: 'gamedev.md',
   GodotServerExportRequest: 'gamedev.md',
   GodotInstancesReport: 'gamedev.md',
@@ -887,6 +889,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   AssetRenderEvent: 'gamedev.md',
   AssetRenderResult: 'gamedev.md',
   AssetReveal: 'gamedev.md',
+  GodotVideoEncodeEvent: 'gamedev.md',
+  GodotVideoEncodeResult: 'gamedev.md',
   TranslationError: 'translation.md',
   TranslationErrorCode: 'translation.md',
   SpeechSpec: 'voice-input.md',

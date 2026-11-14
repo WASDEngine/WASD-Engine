@@ -2,7 +2,7 @@
 
 English | [中文](gamedev.zh.md)
 
-The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models with their animations and details, which native `asset_*` tools let agents find and see as that tab draws them, and the Audio tab plays the project's sound effects, dialogue, and music, which native `audio_*` tools let agents list and measure. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The native `image_generate` tool makes game art, UI pieces, concept art, and textures with Google's Nano Banana 2.1 and saves them into the game project, made by the WASDEngine API and charged the same way. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
+The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group lets the agent make game assets with Blender, GIMP, and SuperCollider and run, test, and play the Session's Godot game. Blender, GIMP, and SuperCollider run without a window behind MCP servers; each server serves its tools to every Session and runs one long-lived application worker for each Session that calls them. Godot runs each Session's game as its own process through LibGodot, never through an installed Godot editor, gives the agent native `godot_*` tools, and streams the game to the Game tab in the right sidebar, where the user watches and plays it; the Assets tab beside it shows the project's images and models with their animations and details, which native `asset_*` tools let agents find and see as that tab draws them, and the Audio tab plays the project's sound effects, dialogue, and music, which native `audio_*` tools let agents list and measure. Native `polyhaven_*` tools find CC0 HDRIs, textures, and 3D models in Poly Haven's library and download them into the game project. Native `elevenlabs_*` tools find or clone voices for characters and save speech, sound effects, and music into the game project, made by the WASDEngine API with ElevenLabs and charged to the signed-in account's plan. The native `image_generate` tool makes game art, UI pieces, concept art, and textures with Google's Nano Banana 2.1 and saves them into the game project, made by the WASDEngine API and charged the same way. The `game_addons` tool installs curated third-party Godot and Blender add-ons into a game project, and only that project's Sessions see their usage guides as skills. An MCP server of its own offers the same tools to other agents on the computer, such as Claude Code or Codex, whose games play in the same Game tab. The `feedback_send` tool lets the Session's agent and connected agents send feedback about WASD Engine to its team, and a usage report counts how often agents call each game tool and each MCP server the user added; both go to the WASDEngine site for the signed-in account. This page describes how the packages connect and the formats their processes exchange; the package READMEs own configuration, tool catalogs, model-visible text, and limitations.
 
 ## Composition
 
@@ -378,6 +378,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
 | `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
+| `feedback_send` | `feedback`, through `feedbackMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) | The Session's own tool definition with `model`, which needs no Session; the provider adds the calling agent's client, and the feedback goes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images, run as the agent's Session of the call's `session` name, or without a Session |
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
@@ -387,6 +388,20 @@ A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, an
 **The window.** `godot_run` emits the Host event `game-mcp/reveal` with the Session id. The Remote events allowlist forwards it to every window that may read the Session, and the `ui-game-mcp` row's browser plugin, [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.md), opens the Session there; the Game tab then opens for the run, as for any run an agent starts.
 
 **Setup.** Every user signs in to WASD Engine first, and the server refuses tool calls while the account plugin reports no stored sign-in. The same browser plugin then offers Set up with another agent in two places: the Desktop introduction's last step, `settings.account.onboarding.agents`, and the Other agents section of Settings. Both show the AI agents' logos and follow the `gameMcp.watch` stream while they show: the server's state, the endpoint, the setup prompt with the token, and the agents seen since the Host started. [LiveShare](liveshare.md) classifies `gameMcp/watch` as owner-only and never offers the `gameMcp` namespace to share viewers.
+
+<a id="agent-feedback"></a>
+## Agent feedback and MCP usage
+
+The `agent-feedback` row, which the fork's [`telemetry.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/telemetry.cordis.patch.yml) inserts into every Web and Desktop profile, mounts [`@deepseek-ai/dsh-agent-feedback`](../../packages/gamedev/agent-feedback/README.md). Its `feedback_send` tool sends one feedback about WASD Engine to `POST /api/v1/feedback`, and its usage report sends the MCP tool calls counted since the last report to `POST /api/v1/tool-usage`, every minute and as the Host stops. Both use the origin and token of the account sign-in's `getPlatformSession()` and send nothing while signed out; the WASDEngine site stores both for the account.
+
+The report counts two streams of calls:
+
+| Calls | Source | Counted under |
+|---|---|---|
+| A Session's own | `tools/result` | The provider that `gameMcp.toolOwner()` finds for the tool, with the tool's name for connected agents; else, for a tool named `mcp__<server>__<tool>`, that server, as one the user added; other tools count nothing |
+| A connected agent's | `game-mcp/tool-result` | The call's provider and tool, with the agent's client id |
+
+`gameMcp.toolOwner(name)` finds a tool by its name for connected agents or by the name of the harness definition that runs it, so Blender's tools, which a Session calls as `mcp__wasd_blender__*`, count as `blender_*` from both streams.
 
 <a id="agents-browser"></a>
 ## Agent's Browser
@@ -539,6 +554,16 @@ Owner of the MCP endpoint, its game tool providers, and the connected agents' Se
  * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.
  */
 provide(provider: GameMcpProvider): () => void
+
+/**
+ * Find the provider that offers a tool now, so a report of a Session's own tool calls can count them by the plugin
+ * connected agents know them by: a Session calls Blender's tools as the MCP client names them, such as
+ * `mcp__wasd_blender__execute_python`, and connected agents as `blender_execute_python`.
+ * @param name - the tool's name as a Session calls it (its harness definition's name), or as connected agents call it.
+ * @returns the provider's id and display name and the tool's name for connected agents, or undefined when no
+ * provider offers the tool.
+ */
+toolOwner(name: string): GameMcpToolOwner | undefined
 
 /**
  * Follow the server for the window: its state, endpoint, and setup prompt, and the agents seen.
@@ -988,4 +1013,29 @@ A connected agent's call of a provider tool finished, after its result was made;
 ```
 
 Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
+
+<a id="godot-events"></a>
+
+### `godot/*` events
+
+<a id="godotrecord--waterfall"></a>
+
+#### `godot/record` — waterfall
+
+Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+
+```ts cordis-catalog
+/**
+ * Ask the windows that may read a Session to encode a recording of its game into a video. Return the video's facts
+ * after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch
+ * (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.
+ * @param request - the recording, its frame rate and sheet, the size limit, the calling Agent, and the call's cancellation.
+ * @mode waterfall
+ */
+'godot/record'( this: Scoped<Agent>, request: GodotVideoEncodeEvent, next: () => Promise<GodotVideoEncodeResult>, ): Promise<GodotVideoEncodeResult>
+```
+
+Types: [Agent](core.md) · [Scoped](scope.md)
+
+Source: [`packages/gamedev/godot/src/types.ts`](../../packages/gamedev/godot/src/types.ts)
 <!-- END GENERATED cordis-surface -->

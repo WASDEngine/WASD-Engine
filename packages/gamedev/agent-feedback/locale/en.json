@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent feedback",
+    "description": "Let the agent and agents connected to WASD Engine send feedback about WASD Engine to its team, and report how often agents use each game tool and MCP server."
+  }
+}

@@ -142,6 +142,16 @@ export interface GameMcpProvider {
   status(signal: AbortSignal): Promise<GameMcpProviderStatus>
 }
 
+/** The provider of WASD Engine's MCP server that offers one tool, as `gameMcp.toolOwner()` finds it. */
+export interface GameMcpToolOwner {
+  /** Id of the provider, such as `blender`. */
+  readonly provider: string
+  /** Display name of the provider, such as Blender. */
+  readonly title: string
+  /** The tool's name as connected agents call it, such as `blender_execute_python`. */
+  readonly tool: string
+}
+
 /** One finished call of a provider's tool by a connected agent, as the `game-mcp/tool-result` event reports it. */
 export interface GameMcpToolResult {
   /** Id of the provider that offers the tool, such as `blender`. */
