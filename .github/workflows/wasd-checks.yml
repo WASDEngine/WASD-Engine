@@ -77,6 +77,7 @@ jobs:
           packages/client/ui-brand-official
           packages/client/ui-chat
           packages/client/ui-sidebar-right
+          packages/client/ui-sidebar/tests
           apps/web/tests/app-icons.spec.ts
           apps/web/tests/wasdengine-app-icons.spec.ts
           packages/client/locale/tests/wasdengine-copy.client.spec.ts
@@ -99,6 +100,7 @@ jobs:
           packages/client/ui-settings-general
           packages/client/ui-entry-customization
           packages/gamedev
+          packages/api/remotes/tests
           packages/mcp/mcp-client
           packages/client/ui-plugin-manager/tests/components.client.spec.tsx
           packages/util/official-bundles
