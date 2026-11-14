@@ -17,9 +17,12 @@
  *   which it creates as a draft on the build's commit when it does not exist: installers and blockmaps first, feed
  *   files next, and SHA256SUMS, merged with the lines of the other targets, last.
  * - `publish [--targets mac-arm64,win-x64]` checks that the release holds every target's feed files, the files they
- *   name, and a SHA256SUMS line for every file, then publishes it as the latest release, which the feed then serves.
+ *   name, and a SHA256SUMS line for every file, and that the Web export template that the Godot plugin of the tagged
+ *   commit pins can be downloaded (`wasdengine-web-template-release.ts`), then publishes it as the latest release,
+ *   which the feed then serves.
  *
- * `gh` performs the GitHub operations with its own sign-in or `GH_TOKEN`; `git ls-remote` reads the release tag.
+ * `gh` performs the GitHub operations with its own sign-in or `GH_TOKEN`; `git ls-remote` reads the release tag, and
+ * `git show` the Godot plugin of its commit, which this clone must hold.
  */
 
 import { execFile } from 'node:child_process'
@@ -34,6 +37,7 @@ import { desktopBuildRecordFilename, desktopUpdateMetadataFilename } from './des
 import { desktopArtifactOutput, desktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { WASDENGINE_DESKTOP_BRAND as BRAND } from '../src/wasdengine-brand.ts'
 import { GITHUB_UPDATE_SERVICE, githubReleaseFileUrl, githubUpdateFeedUrl } from './wasdengine-update-service.mjs'
+import { pinnedWebTemplateProblems } from './wasdengine-web-template-release.ts'
 
 const run = promisify(execFile)
 const APP_ROOT = resolve(import.meta.dirname, '..')
@@ -510,13 +514,21 @@ export interface PublishOptions {
   readonly targets: readonly GitHubReleaseTarget[]
   readonly repository?: string
   readonly runner?: GhRunner
+  /** Reads the commit of the release tag; defaults to {@link remoteTagCommit}. */
+  readonly tagCommit?: (repository: string, tag: string) => Promise<string | undefined>
+  /**
+   * Lists what keeps the Web export template that the Godot plugin of a commit pins from downloading; defaults to
+   * {@link pinnedWebTemplateProblems} at that commit.
+   */
+  readonly webTemplateProblems?: (commit: string) => Promise<readonly string[]>
 }
 
 /**
- * Check that the release `v<version>` serves every target's update, then publish it as the latest release.
- * @param options - Version, targets, and repository.
+ * Check that the release `v<version>` serves every target's update and that the Web export template that the Godot
+ * plugin of the tagged commit pins can be downloaded, then publish it as the latest release.
+ * @param options - Version, targets, repository, and the readers of the tag and the Web template.
  * @returns The release URL.
- * @throws When the release is missing or `verifyReleaseFeeds` reports a problem.
+ * @throws When the release or its tag is missing, or `verifyReleaseFeeds` or the Web template check reports a problem.
  */
 export async function publishGitHubRelease(options: PublishOptions): Promise<string> {
   const repository = options.repository ?? BRAND.releaseRepository
@@ -524,10 +536,16 @@ export async function publishGitHubRelease(options: PublishOptions): Promise<str
   const tag = `v${options.version}`
   const release = await viewRelease(runner, repository, tag)
   if (release === undefined) throw new Error(`github release: ${repository} has no release ${tag}`)
+  const commit = await (options.tagCommit ?? remoteTagCommit)(repository, tag)
+  if (commit === undefined) throw new Error(`github release: ${repository} has no tag ${tag}, whose commit names the Web template to check; push the tag first`)
   const present = new Set(release.assets.map(asset => asset.name))
   const wanted = [SHA256SUMS, ...options.targets.flatMap(target => Object.values(githubFeedFilenames(options.version, target)))]
   const texts = await downloadAssets(runner, repository, tag, wanted.filter(name => present.has(name)))
-  const problems = verifyReleaseFeeds({ version: options.version, targets: options.targets, assets: release.assets, texts })
+  const webTemplateProblems = options.webTemplateProblems ?? (async (tagged: string) => await pinnedWebTemplateProblems({ commit: tagged }))
+  const problems = [
+    ...verifyReleaseFeeds({ version: options.version, targets: options.targets, assets: release.assets, texts }),
+    ...await webTemplateProblems(commit),
+  ]
   if (problems.length > 0) throw new Error(`github release: ${tag} is not ready to publish:\n  ${problems.join('\n  ')}`)
   await runner(['release', 'edit', tag, '--repo', repository, '--draft=false', '--prerelease=false', '--latest'])
   return release.url
