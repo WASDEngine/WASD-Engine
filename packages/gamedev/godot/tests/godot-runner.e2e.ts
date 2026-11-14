@@ -6,7 +6,9 @@
  * cancelled input sequence, a queued input sequence that its real-time limit ends, a static check that runs no
  * autoload, a letterboxed stretch mode, a game on the Compatibility renderer, JPEG frames of a scene that PNG
  * encoding cannot keep up with, GPU time and a script profile on WASD Engine's own runtime, a windowless game that
- * presents its frames only while a Game tab displays it, and a capture of a muted game's audio mix.
+ * presents its frames only while a Game tab displays it, a capture of a muted game's audio mix, and games that exit
+ * cleanly when they quit by themselves while their reads of frames from the GPU are in flight, or after turning VSync off
+ * on the Compatibility renderer.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -18,6 +20,7 @@ import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { GodotRunView } from '../src/types.ts'
 import { callTool, compose, text, type Composition } from './composition.ts'
 
 const GODOT_PLATFORMS: Partial<Record<NodeJS.Platform, { readonly name: string; readonly suffix: string }>> = {
@@ -96,6 +99,33 @@ const COMPATIBILITY_PROJECT = {
     'config/features=PackedStringArray("4.7", "GL Compatibility")', '', '[rendering]', '', 'renderer/rendering_method="gl_compatibility"', '',
   ].join('\n'),
   'main.gd': ['extends Node2D', 'func _draw():', '\tdraw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 1))', '\tdraw_rect(Rect2(500, 40, 60, 60), Color(1, 0, 0))', ''].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// A game whose finish() reads its frame back from the GPU with a GDScript lambda in each of the next 10 frames, as a
+// game script may, and then quits while the latest reads are still in flight.
+const DOWNLOADS_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="DownloadsTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'class Pixels extends RefCounted:', '\tvar data := PackedByteArray()', 'var left := 0', 'func finish():', '\tleft = 10',
+    'func _process(_delta):', '\tif left == 0:', '\t\treturn', '\tvar pixels := Pixels.new()',
+    '\tvar texture := RenderingServer.texture_get_rd_texture(get_viewport().get_texture().get_rid())',
+    '\tRenderingServer.get_rendering_device().texture_get_data_async(texture, 0, func(data): pixels.data = data)',
+    '\tleft -= 1', '\tif left == 0:', '\t\tget_tree().quit()', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// A Compatibility renderer game whose finish() turns VSync off, as a game's settings may, and quits 10 frames later.
+const VSYNC_PROJECT = {
+  'project.godot': [
+    'config_version=5', '', '[application]', '', 'config/name="VSyncTest"', 'run/main_scene="res://main.tscn"',
+    'config/features=PackedStringArray("4.7", "GL Compatibility")', '', '[rendering]', '', 'renderer/rendering_method="gl_compatibility"', '',
+  ].join('\n'),
+  'main.gd': [
+    'extends Node2D', 'var left := 0', 'func finish():', '\tDisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)', '\tleft = 10',
+    'func _process(_delta):', '\tif left > 0:', '\t\tleft -= 1', '\t\tif left == 0:', '\t\t\tget_tree().quit()', '',
+  ].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
@@ -245,6 +275,23 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     return route
   }
   const counted = async (): Promise<number> => Number(text(await callTool(c, 'godot_eval', { expression: 'scene.get_node("Counter").frames' })).replace('int: ', ''))
+  const addProject = async (name: string, files: Record<string, string>): Promise<void> => {
+    const dir = join(c.dir.root, 'work', name)
+    await mkdir(dir, { recursive: true })
+    for (const [file, content] of Object.entries(files)) await writeFile(join(dir, file), content)
+  }
+  const endedRun = async (): Promise<GodotRunView> => {
+    const following = new AbortController()
+    try {
+      for await (const item of c.godot.follow(c.owner.agent.id, following.signal)) {
+        const run = item.type === 'snapshot' || item.type === 'run' ? item.run : null
+        if (run !== null && (run.phase === 'exited' || run.phase === 'crashed' || run.phase === 'failed')) return run
+      }
+      throw new Error('the follow stream ended before the run')
+    } finally {
+      following.abort()
+    }
+  }
 
   beforeAll(async () => {
     c = await compose({
@@ -683,5 +730,29 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect([records[0]?.readUInt16LE(4), records[0]?.readUInt16LE(6)]).toEqual([1280, 720])
     expect(records.map(recordFormat).filter(format => format !== 'jpeg')).toEqual([])
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
+  it('ends a game that quits by itself while its own reads of frames from the GPU are in flight as exited', async () => {
+    await addProject('downloads', DOWNLOADS_PROJECT)
+    const started = await callTool(c, 'godot_run', { project: 'downloads', width: 640, height: 360 })
+    expect(started.isError, text(started)).toBe(false)
+    await callTool(c, 'godot_eval', { expression: 'scene.finish()' })
+    expect(await endedRun()).toMatchObject({ phase: 'exited', exitCode: 0 })
+  }, 240_000)
+
+  it('ends a Compatibility renderer game that turns VSync off and then quits by itself as exited', async () => {
+    await addProject('vsync', VSYNC_PROJECT)
+    const started = await callTool(c, 'godot_run', { project: 'vsync', width: 640, height: 360 })
+    expect(started.isError, text(started)).toBe(false)
+    // While a Game tab displays the game, each frame's swap waits for the display.
+    const viewing = new AbortController()
+    const stream = c.godot.view(c.owner.agent.id, (started.value as { runId: string }).runId, viewing.signal)[Symbol.asyncIterator]()
+    await stream.next()
+    await callTool(c, 'godot_wait', { seconds: 1.5 })
+    await callTool(c, 'godot_eval', { expression: 'scene.finish()' })
+    expect(await endedRun()).toMatchObject({ phase: 'exited', exitCode: 0 })
+    const closed = stream.next()
+    viewing.abort()
+    await closed
   }, 240_000)
 })
