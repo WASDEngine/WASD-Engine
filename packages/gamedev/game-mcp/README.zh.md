@@ -71,7 +71,7 @@ tool_timeout_sec = 1800
 |---|---|---|
 | `search_game_tools` | 本包 | 列出各插件及其就绪状态与工具数量，以及工具：不带查询时列出每个工具的第一句说明，带查询时列出最匹配的工具及其参数；`plugin` 用于限定插件 |
 | `call_game_tool` | 本包 | 按 `name` 与 `arguments` 调用工具，供工具列表中缺少该工具的 agent 使用 |
-| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) | Session 自身的十二个 Godot 工具，每个都带有绝对路径参数 `project` |
+| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.zh.md) | Session 自身的十四个 Godot 工具，每个都带有绝对路径参数 `project` |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_blender` 服务器的工具，由 `mcp__wasd_blender__<tool>` 重命名而来 |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_gimp` 服务器的工具，由 `mcp__wasd_gimp__<tool>` 重命名而来 |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.zh.md)，经由 [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.zh.md) | `wasd_supercollider` 服务器的工具，由 `mcp__wasd_supercollider__<tool>` 重命名而来 |
@@ -165,7 +165,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十二个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展、WASD Engine 插件与 agent 反馈都提供工具时，指令约 30,900 个字符（其中约 7,300 个是游戏扩展目录），87 个工具声明约 117,300 个字符的 JSON，其中约 12,200 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部十三个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、反馈工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 32,400 个字符（其中约 7,300 个是游戏扩展目录），89 个工具声明约 119,700 个字符的 JSON，其中约 12,200 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -175,7 +175,7 @@ Web 与 Desktop profile 的全部十二个 provider，即 Godot、Blender、GIMP
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行与工具列表。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 

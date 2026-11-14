@@ -27,6 +27,7 @@ import type { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { createWaterfallRequest, PendingQuestion, type QuestionRpcChannel } from './contract/slots.ts'
 import { createQuestionDraftStore } from './draft-store.ts'
+import { answerImageIntake, QuestionImageRegistry } from './question-images.ts'
 import { QuestionComposer } from './QuestionComposer.tsx'
 import { answeredQuestionDefinition, questionReplyDefinition } from './question-reply.ts'
 import { QuestionReplyView } from './QuestionReplyView.tsx'
@@ -82,7 +83,14 @@ interface QuestionCard {
 class QuestionCards {
   readonly #cards = new Map<string, QuestionCard>()
 
-  constructor(private readonly publish: PendingInteractionPublisher<PendingQuestion>) {}
+  /**
+   * @param publish - publishes one card into the Session's pending-interaction registry.
+   * @param onRemove - told the key of each card that leaves the registry.
+   */
+  constructor(
+    private readonly publish: PendingInteractionPublisher<PendingQuestion>,
+    private readonly onRemove: (key: string) => void = () => {},
+  ) {}
 
   byCallId(sessionId: SessionId, callId: string): QuestionCard | undefined {
     return this.#cards.get(PendingQuestion.keyOf(sessionId, callId))
@@ -141,6 +149,7 @@ class QuestionCards {
         pending.close()
         unpublish?.()
         unpublish = undefined
+        this.onRemove(pending.key)
       },
       trackRequest: (completion) => {
         requests.add(completion)
@@ -371,7 +380,9 @@ export function apply(ctx: ClientContext): void {
   const registerPendingInteraction = ctx.uiSession.registerPendingInteraction<PendingQuestion>(
     pending => pending.kind === 'plan-review' ? 2 : 1,
   )
-  const cards = new QuestionCards(registerPendingInteraction)
+  const images = new QuestionImageRegistry()
+  ctx.effect(() => () => { images.dispose() }, 'ui-user-questions: answer images')
+  const cards = new QuestionCards(registerPendingInteraction, (key) => { images.drop(key) })
   ctx.effect(() => () => { cards.dispose() }, 'ui-user-questions: cards')
   const disposePanels = ctx.reflect.provide('userQuestionPanels', {
     reveal: (sessionId, callId) => cards.reveal(sessionId, callId),
@@ -386,7 +397,13 @@ export function apply(ctx: ClientContext): void {
         pendingInteraction instanceof PendingQuestion ? pendingInteraction : null,
       locale: NS,
       store: questionDraftStore,
-      inject: () => ({ keyedHooks: { questionCard: (key: string) => cards.source(key) } }),
+      inject: (sessionId: SessionId) => ({
+        keyedHooks: {
+          questionCard: (key: string) => cards.source(key),
+          questionImages: (key: string) => cards.source(key) === undefined ? undefined : images.ensure(key),
+        },
+        ...answerImageIntake(ctx, images, sessionId),
+      }),
       children: { 'conversation.plan-review.actions': { kind: 'list', scope: 'session' } },
     },
     QuestionComposer,

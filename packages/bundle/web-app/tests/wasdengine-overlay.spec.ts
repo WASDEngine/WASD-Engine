@@ -81,7 +81,10 @@ const GAME_AUDIO_UI = { id: 'ui-game-audio', name: '@deepseek-ai/dsh-client-ui-g
 /** The row the fork inserts after the Audio tab: the agent's audio tools, whose measurements the Audio tab makes. */
 const GAME_AUDIO = { id: 'game-audio', name: '@deepseek-ai/dsh-game-audio' } as const
 
-/** The row the fork inserts after the audio tools: the MCP server through which other agents on the computer use the game tools. */
+/** The row the fork inserts after the audio tools: the agent's reference tools, which find and save reference art for the art it makes. */
+const ART_REFERENCES = { id: 'art-references', name: '@deepseek-ai/dsh-art-references' } as const
+
+/** The row the fork inserts after the reference tools: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
 
 /** The row the fork inserts after the MCP server: the browser half of the MCP server, the setup for another agent. */
@@ -327,10 +330,10 @@ describe('WASDEngine overlay', () => {
     expect(manifest(webAppDir).files).toContain('wasdengine/addons')
   })
 
-  it('patches exactly the target rows and inserts only agent feedback, the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, their MCP server, and WASD Engine Plugins', () => {
+  it('patches exactly the target rows and inserts only agent feedback, the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, the reference tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual([AGENT_FEEDBACK.id, 'preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual([AGENT_FEEDBACK.id, 'preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, ART_REFERENCES.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
   it('mounts agent feedback from a web-app dependency with the app\'s version, and the Plugins page can switch it off', () => {
@@ -345,6 +348,16 @@ describe('WASDEngine overlay', () => {
     expect(meta?.error).toBeUndefined()
     const title = meta?.title
     expect(typeof title === 'object' ? title.en : title).toBe('Agent feedback')
+  })
+
+  it('mounts the reference tools from a web-app dependency with their cache folder under the harness home, and the Plugins page may switch them off', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === ART_REFERENCES.id)
+    expect(entry?.name).toBe(ART_REFERENCES.name)
+    expect(entry?.disabled).toBeUndefined()
+    expect(Object.keys(configOf(entry))).toEqual(['dataRoot'])
+    expect(expression(configOf(entry).dataRoot, 'art-references.dataRoot')).toBe(`dshHomePath('${ART_REFERENCES.id}')`)
+    expect(manifest(webAppDir).dependencies?.[ART_REFERENCES.name]).toBe('workspace:*')
+    expect(PROTECTED_PLUGINS.has(ART_REFERENCES.name)).toBe(false)
   })
 
   it('mounts WASD Engine Plugins from a web-app dependency, with its data folder, the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {

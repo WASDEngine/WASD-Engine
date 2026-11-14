@@ -22,7 +22,11 @@
 # `asset_search` and `asset_view`, whose pictures the Assets tab's browser half draws. `ui-game-audio` is the right
 # Sidebar's Audio tab, which lists the project's sound effects, dialogue, and music and plays them with their waveform
 # and details; `game-audio` gives the agent and connected agents `audio_search` and `audio_review`, whose measurements
-# and picture the Audio tab's browser half makes. `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`,
+# and picture the Audio tab's browser half makes. `art-references` gives the agent and connected agents
+# `reference_search` and `reference_save`, which find reference images for art on the web, through the `web` row's
+# search and the pages it finds, and save the chosen ones into the game project's `references/` folder, with downloads
+# and contact sheets cached under `dataRoot`; its system prompt section has the agent gather references before it makes
+# art. `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`,
 # which the Desktop app sets for its Host to the command that starts the app's Web check mode; without it, as in the
 # Web profile, Web checks are off.
 - insert:
@@ -73,6 +77,10 @@
       name: '@deepseek-ai/dsh-client-ui-game-audio'
     - id: game-audio
       name: '@deepseek-ai/dsh-game-audio'
+    - id: art-references
+      name: '@deepseek-ai/dsh-art-references'
+      config:
+        dataRoot: !!js dshHomePath('art-references')
     - id: game-mcp
       name: '@deepseek-ai/dsh-game-mcp'
       config:

@@ -1,5 +1,5 @@
 ---
-description: "游戏开发包组：通过 MCP 为智能体提供无界面的 Blender、GIMP 与 SuperCollider，通过 LibGodot 运行、测试和游玩 Godot 游戏，查找 Poly Haven 的 CC0 素材并下载到项目中，用 ElevenLabs 制作角色配音、音效和音乐，用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素和贴图，把精选的 Godot 与 Blender 扩展安装到项目中并提供只有该项目会话可见的使用指南，在设置与「插件」页面的「游戏工具」标签页中列出它们，在「素材」标签页中显示项目的美术素材，通过「音频」标签页和音频工具让用户试听项目的声音、让智能体测量它们，通过 MCP 服务器把它们提供给这台电脑上的其他智能体，并通过待办续行让智能体按待办列表把工作做完。"
+description: "游戏开发包组：通过 MCP 为智能体提供无界面的 Blender、GIMP 与 SuperCollider，通过 LibGodot 运行、测试和游玩 Godot 游戏，查找 Poly Haven 的 CC0 素材并下载到项目中，用 ElevenLabs 制作角色配音、音效和音乐，用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素和贴图，在网上为智能体要制作的美术查找参考图像，把精选的 Godot 与 Blender 扩展安装到项目中并提供只有该项目会话可见的使用指南，在设置与「插件」页面的「游戏工具」标签页中列出它们，在「素材」标签页中显示项目的美术素材，通过「音频」标签页和音频工具让用户试听项目的声音、让智能体测量它们，通过 MCP 服务器把它们提供给这台电脑上的其他智能体，并通过待办续行让智能体按待办列表把工作做完。"
 kind: "package-group"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-group"
 
 ## 概述
 
-`gamedev/` 组为智能体提供制作游戏所需的应用程序，且无需窗口。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后以无界面方式运行。Godot 通过 LibGodot 运行并测试会话中的游戏，并把游戏画面推送到 Game 标签页。Poly Haven 提供 CC0 素材，ElevenLabs 制作音频，Nano Banana 制作图像，游戏扩展安装经过测试的 Godot 与 Blender 扩展。「游戏工具」标签页列出这八个工具，「素材」与「音频」标签页显示项目的美术素材并播放其声音，一个 MCP 服务器把这些工具提供给其他智能体。[游戏工具子系统页面](../../docs/subsystems/gamedev.zh.md)说明各部分如何连接。
+`gamedev/` 组为智能体提供制作游戏所需的应用程序，且无需窗口。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后以无界面方式运行。Godot 通过 LibGodot 运行并测试会话中的游戏，并把游戏画面推送到 Game 标签页。Poly Haven 提供 CC0 素材，ElevenLabs 制作音频，Nano Banana 制作图像，美术参考为美术提供网上的参考；游戏扩展安装经过测试的 Godot 与 Blender 扩展。「游戏工具」标签页列出这八个工具，「素材」与「音频」标签页显示美术素材和声音，一个 MCP 服务器把这些工具提供给其他智能体。[游戏工具子系统页面](../../docs/subsystems/gamedev.zh.md)说明各部分如何连接。
 
 ## 目录
 
@@ -22,12 +22,13 @@ kind: "package-group"
 <a id="packages"></a>
 ## 包
 
-共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。Poly Haven 包搜索 Poly Haven 资源库并下载其素材，ElevenLabs 包通过 WASD Engine API 制作语音、音效和音乐，图像生成包同样通过它用 Nano Banana 制作图像，游戏扩展包把目录中的扩展安装到游戏项目中，并把其指南列为这些项目会话的技能。游戏工具标签页包在设置与「插件」页面中展示这八个工具，素材标签页包在 Game 标签页旁显示项目的 2D 与 3D 美术素材，音频标签页包在其旁播放项目的声音，游戏音频包让智能体通过音频标签页的浏览器部分列出并测量这些声音，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。始终开启的 WASD Engine 插件把 Godot 游戏导出为网页版，并带着分享链接发布到 WASD Engine 网站。智能体反馈包让智能体向 WASD Engine 团队发送关于 WASD Engine 的反馈，并报告它们调用每个游戏工具和所添加 MCP 服务器的频率。待办续行包在 `gamedev` 预设的智能体于当前轮次写下的待办列表仍有未完成项时，让它继续工作。
+共享的 MCP 运行时为每个应用程序启动并监管一个无界面工作进程；Blender、GIMP 与 SuperCollider 包在其上构建各自的工具，Godot 包负责游戏运行、相应工具与 Game 标签页。Poly Haven 包搜索 Poly Haven 资源库并下载其素材，ElevenLabs 包通过 WASD Engine API 制作语音、音效和音乐，图像生成包同样通过它用 Nano Banana 制作图像，美术参考包在网上为智能体要制作的美术查找参考图像并把选中的保存到项目中，游戏扩展包把目录中的扩展安装到游戏项目中，并把其指南列为这些项目会话的技能。游戏工具标签页包在设置与「插件」页面中展示这八个工具，素材标签页包在 Game 标签页旁显示项目的 2D 与 3D 美术素材，音频标签页包在其旁播放项目的声音，游戏音频包让智能体通过音频标签页的浏览器部分列出并测量这些声音，游戏 MCP 包把它们的工具提供给已登录用户的其他智能体，其浏览器部分在桌面引导的最后与设置中提供设置内容。始终开启的 WASD Engine 插件把 Godot 游戏导出为网页版，并带着分享链接发布到 WASD Engine 网站。智能体反馈包让智能体向 WASD Engine 团队发送关于 WASD Engine 的反馈，并报告它们调用每个游戏工具和所添加 MCP 服务器的频率。待办续行包在 `gamedev` 预设的智能体于当前轮次写下的待办列表仍有未完成项时，让它继续工作。
 
 | 包 | 提供的能力 |
 |---|---|
 | [`agent-feedback/`](agent-feedback/README.zh.md) | 智能体反馈：每个会话和 MCP 服务器都提供 `feedback_send` 工具，向 WASD Engine 团队发送关于 WASD Engine 的反馈；用量报告统计智能体调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASD Engine 网站 |
 | [`app-mcp/`](app-mcp/README.zh.md) | 在 MCP stdio 服务器之后以无界面方式运行应用程序：把工作脚本复制出包外，监管一个 JSON 行协议的工作进程，并向 MCP 管理器注册该服务器；还提供 Blender、GIMP 与 SuperCollider 服务器共用的 Config 字段、应用程序查找与工具辅助函数 |
+| [`art-references/`](art-references/README.zh.md) | 面向智能体与已连接智能体的参考工具：`reference_search` 在网上为智能体即将制作的美术查找参考图像、动画和视频封面，并在一张联系表上编号；`reference_save` 把选中的参考连同来源保存到游戏项目的 `references/` 文件夹，Godot 不会把它纳入游戏；一个系统提示词段落让智能体在制作美术前收集参考，并在参考不一致时询问用户想要哪个方向 |
 | [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑；Desktop 应用为 Apple 芯片 macOS 与 Windows x64 随附 `bpy` |
 | [`elevenlabs/`](elevenlabs/README.zh.md) | ElevenLabs 工具：为角色查找声音，或在取得同意后克隆用户自己的声音，并把 Eleven v4 Turbo 制作的语音、SFX v3 制作的音效和 Music v2.5 制作的音乐保存到游戏项目中；音频由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`game-assets/`](game-assets/README.zh.md) | 面向智能体与已连接智能体的素材工具：`asset_search` 列出游戏项目中的图片与模型，`asset_view` 让 WASD Engine 窗口像「素材」标签页那样绘制其中一个（可从任意方向，含骨架、动画片段与 2D 动画），并给出修改它所需的详细信息 |
