@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-音频插件让无法收听的 agent（智能体）也能审阅游戏的音效、对白和音乐。`audio_search` 列出项目中的声音及其类型、格式和时长。`audio_review` 按 WASD Engine 音频标签页播放的方式测量一个声音：峰值与响度、削波、两端的静音、频谱、循环衔接、立体声声道以及 Godot 导入设置，并附带波形与频谱图，还可以在用户的音频标签页中打开该声音。通过 WASD Engine 的 MCP 服务器连接的 agent 获得同样的工具。`./audio` 导出包含音频标签页与 SuperCollider 共用的格式、文件头探测、测量和图像。
+音频插件让无法收听的 agent（智能体）也能审阅游戏的音效、对白和音乐。`audio_search` 列出项目中的声音及其类型、格式和时长。`audio_review` 按 WASD Engine 音频标签页播放的方式测量一个声音：峰值与响度、削波、两端的静音、频谱、循环衔接、立体声声道以及 Godot 导入设置，并附带波形与频谱图，还可以在用户的音频标签页中打开该声音。通过 WASD Engine 的 MCP 服务器连接的 agent 获得同样的工具。`./audio` 导出包含音频标签页与游戏工具共用的格式、文件头探测、测量和图像。
 
 ## 目录
 
@@ -74,6 +74,8 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `analyzeAudioSteps`、`stereoImageSteps`、`drawAudioImageSteps`、`finish` | 以生成器形式给出的相同测量和图像，每处理约 `STEP_FRAMES` 帧或一列图像就暂停一次：`finish` 一次运行到底，音频标签页则在页面事件之间每次运行一个分片 |
 | `AUDIO_ERROR` | 工具的错误码，窗口无法完成请求时用它作答 |
 
+`./png` 导出 `encodePng` 用 `node:zlib` 把图像的 RGB 像素编码为 PNG 文件，因此只有 Host 代码导入它：SuperCollider 工具和 `godot_audio`。
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -97,6 +99,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/result.ts`](src/result.ts) | 对窗口答复和已存储结果字段的校验 |
 | [`src/mcp.ts`](src/mcp.ts) | 面向已连接 agent 的工具和提供方说明 |
 | [`src/types.ts`](src/types.ts) | 浏览器安全的请求、答复和打开类型，以及两个事件 |
+| [`src/png.ts`](src/png.ts) | `./png` 模块：在 Host 上把图像编码为 PNG |
 | [`src/audio/`](src/audio/index.ts) | `./audio` 模块 |
 
 </details>

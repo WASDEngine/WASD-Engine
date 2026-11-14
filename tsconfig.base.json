@@ -82,6 +82,7 @@
       "@deepseek-ai/dsh-client-ui-game-audio": ["./packages/gamedev/ui-game-audio/src"],
       "@deepseek-ai/dsh-client-ui-game-audio/client": ["./packages/gamedev/ui-game-audio/src/client/index.ts"],
       "@deepseek-ai/dsh-game-audio/audio": ["./packages/gamedev/game-audio/src/audio/index.ts"],
+      "@deepseek-ai/dsh-game-audio/png": ["./packages/gamedev/game-audio/src/png.ts"],
       "@deepseek-ai/dsh-game-audio/types": ["./packages/gamedev/game-audio/src/types.ts"],
       "@deepseek-ai/dsh-game-mcp/types": ["./packages/gamedev/game-mcp/src/types.ts"],
       "@deepseek-ai/dsh-game-assets/types": ["./packages/gamedev/game-assets/src/types.ts"],

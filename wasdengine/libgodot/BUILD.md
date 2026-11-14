@@ -20,11 +20,19 @@ On macOS and Linux, `--parent-pid` must name the runner's parent process; on Win
 
 The runner exits with 0 after the game quits or a stop request ends it, 2 on a usage error, including a `--parent-pid` that names a running process other than the parent on macOS and Linux, 3 when the library cannot be loaded or is not a LibGodot build, 4 when Godot cannot create an instance from the arguments, 5 when the instance does not start, and 6 when the `--parent-pid` process is not running or cannot be watched, or the engine does not shut down within 3 seconds after it exits. LibGodot does not report the game's own exit code. The header comment of `godot_runner.c` describes the runner in full.
 
-## The patch
+## The patches
 
 Upstream LibGodot on macOS always creates `OS_MacOS_NSApp`, the windowed OS layer: a game opens a window and a Dock icon even with `--headless`, and `--embedded` has no effect. [0001-libgodot-macos-embedded-and-headless.patch](patches/0001-libgodot-macos-embedded-and-headless.patch) makes `libgodot_create_godot_instance` choose `OS_MacOS_Embedded` when the arguments contain `--embedded`, and `OS_MacOS_Headless` for `--headless` or `--display-driver headless`.
 
-The embedded display server draws into a Core Animation layer that it shares through a CAContext for the Godot editor to display, so a game runs without any window. The patch lets that display server run without the editor's debugger connection, and makes it report the mouse position and buttons of injected input events, because no OS cursor is over the game. On OpenGL, the driver of the Compatibility renderer, the window's framebuffers come from the size that the editor sends through the debugger; without the editor, the patch creates them at the window's starting size in the first event pass, after OpenGL's functions load, so the game draws at its window size and VSync paces it. It also publishes the layer's CAContext id as the display server's `wasd_layer_context_id` metadata, which the harness script reports, so that the macOS Desktop app can show the layer in the Game tab, and without the editor it scales the layer with linear filtering, because the Desktop app fits the layer into the tab. Screenshots, and the Game tab outside the macOS Desktop app, read frames through the harness script. The patch changes only macOS files. It applies to Godot 4.7.2-stable; another Godot version needs a rebased patch and a new runtime version.
+The embedded display server draws into a Core Animation layer that it shares through a CAContext for the Godot editor to display, so a game runs without any window. The patch lets that display server run without the editor's debugger connection, and makes it report the mouse position and buttons of injected input events, because no OS cursor is over the game. On OpenGL, the driver of the Compatibility renderer, the window's framebuffers come from the size that the editor sends through the debugger; without the editor, the patch creates them at the window's starting size in the first event pass, after OpenGL's functions load, so the game draws at its window size and VSync paces it. It also publishes the layer's CAContext id as the display server's `wasd_layer_context_id` metadata, which the harness script reports, so that the macOS Desktop app can show the layer in the Game tab, and without the editor it scales the layer with linear filtering, because the Desktop app fits the layer into the tab. Screenshots, and the Game tab outside the macOS Desktop app, read frames through the harness script. The patch changes only macOS files.
+
+[0002-wasd-runtime-profiling-and-metal-timestamps.patch](patches/0002-wasd-runtime-profiling-and-metal-timestamps.patch) gives the harness script measurements that upstream Godot takes only for a debugger, or not at all:
+
+- **Metal GPU timestamps.** Upstream's Metal driver stubs out timestamp queries, so `RenderingServer.viewport_get_measured_render_time_gpu` reads 0 on macOS. The patch implements them for Apple GPUs, which sample counters only at stage boundaries: from a command buffer's first timestamp write until its commit, every render, compute, and blit pass samples the GPU clock at its start and end into a counter sample buffer of its own, at most 2,048 passes, and a timestamp reads the latest end of the passes before it, or, before the first pass, the start of the first pass after it, as Vulkan's bottom-of-pipe timestamps do. A compute or blit pass that is still open ends at a timestamp, so its end is sampled. Results are nanoseconds on the host clock; a sample outside its command buffer's GPU start and end times, left from an earlier use of the buffer, counts as not taken, and a query without a sample reads its neighbor's, so the time between two queries is never measured from 0. Godot captures timestamps only while a viewport measures its render time or the visual profiler runs, so other frames sample nothing.
+- **Script profiles without a debugger.** GDScript names its functions for the profiler only while a debugger is attached; the patch names them in every build with `DEBUG_ENABLED`, as WASD Engine's editor builds are. Its accumulated profile kept only the current frame's engine method calls, because every frame moves them into the per-frame profile, and joined calls of one method from different functions under the first function; the patch keeps each function's calls since profiling started, and bounds the engine method entries by the caller's array, which upstream overruns.
+- **The `WASDEngineRuntime` singleton.** A module, `modules/wasd_runtime`, registers this engine singleton, which starts and stops the profiler of every script language and returns the profile as `[signature, calls, total microseconds, self microseconds]` entries, with each engine method's entry after the entry of the function that called it. The harness finds it with `Engine.has_singleton`, so it runs unchanged on runtimes without it.
+
+The patches apply to Godot 4.7.2-stable; another Godot version needs rebased patches and a new runtime version.
 
 ## Build locally
 
@@ -61,7 +69,7 @@ On macOS, `build.sh` signs both binaries ad hoc (`codesign --sign -`); they are 
 ```json
 {
   "format": 1,
-  "version": "4.7.2-wasd.2",
+  "version": "4.7.2-wasd.3",
   "godot": "4.7.2-stable",
   "platform": "darwin",
   "arch": "arm64",
@@ -83,11 +91,11 @@ In `runtime.json`, `format` is the file format the Godot plugin reads (1), `vers
 ```json
 {
   "format": 1,
-  "version": "4.7.2-wasd.2",
+  "version": "4.7.2-wasd.3",
   "godot": "4.7.2-stable",
   "artifacts": {
     "darwin-arm64": {
-      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/libgodot-4.7.2-wasd.2-darwin-arm64.tar.gz",
+      "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/libgodot-4.7.2-wasd.3-darwin-arm64.tar.gz",
       "bytes": 70598887,
       "sha256": "<SHA-256 digest of the archive>",
       "runner": "godot_runner",
@@ -110,17 +118,17 @@ python3 -B -m unittest discover --start-directory wasdengine/libgodot --pattern 
 To try an installed runtime on macOS, import a Godot 4.7 project once, then run it without a window; stop it with Ctrl+C:
 
 ```sh
-runtime=~/.wasdengine/godot/runtime/4.7.2-wasd.2
+runtime=~/.wasdengine/godot/runtime/4.7.2-wasd.3
 "$runtime/godot_runner" --libgodot "$runtime/libgodot.macos.editor.arm64.dylib" -- --headless --path ~/games/my-game --import
 "$runtime/godot_runner" --libgodot "$runtime/libgodot.macos.editor.arm64.dylib" -- --path ~/games/my-game --embedded --resolution 640x360
 ```
 
 ## Release
 
-The LibGodot runtime workflow, [wasd-libgodot.yml](../../.github/workflows/wasd-libgodot.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-libgodot.yml -f version=4.7.2-wasd.2 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
+The LibGodot runtime workflow, [wasd-libgodot.yml](../../.github/workflows/wasd-libgodot.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-libgodot.yml -f version=4.7.2-wasd.3 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory.
 
 Three `build` jobs run `build.sh` on macOS 26 (arm64), Ubuntu 24.04 (x64), and Windows Server 2022 (x64). Each restores and saves an SCons cache keyed by platform and Godot ref, installs the runtime into a directory whose name holds characters outside the Windows runner's ANSI code page, runs a headless SceneTree script from there through it as a smoke test, and uploads the archive with its one-entry `manifest.json` as a workflow artifact that is kept for seven days.
 
 When the workflow runs on the default branch, the `release` job merges the manifests and checks every archive against the merged manifest: URL, size, digest, and the files and platform inside. It then creates the release `libgodot-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archives and then `manifest.json`, and publishes the release as a pre-release, so that it never becomes the repository's latest release, which the Desktop update feed and the front page's Download link reach through `releases/latest`; GitHub makes a full release the latest one while no other full release exists, even one published with `--latest=false`. The job fails when the release is already published. A run on another branch stops after the builds.
 
-The Godot plugin downloads `manifest.json` from the release of its configured runtime version, and Desktop packaging reads the same manifest to ship the runtime inside the app ([LibGodot in the Desktop app](../FORK.md#libgodot-in-the-desktop-app)); to package with a local build instead, set `WASD_LIBGODOT_DIR` to its `--out` folder. A published runtime version never changes, so publish a new one, such as `4.7.2-wasd.2`, whenever the patches, the runner, or the build options change, and update the plugin's `runtimeVersion` and `runtimeManifestUrl` defaults and `LIBGODOT_MANIFEST_URL` in `apps/desktop/scripts/wasdengine-libgodot.ts` to match.
+The Godot plugin downloads `manifest.json` from the release of its configured runtime version, and Desktop packaging reads the same manifest to ship the runtime inside the app ([LibGodot in the Desktop app](../FORK.md#libgodot-in-the-desktop-app)); to package with a local build instead, set `WASD_LIBGODOT_DIR` to its `--out` folder. A published runtime version never changes, so publish a new one, such as `4.7.2-wasd.3`, whenever the patches, the runner, or the build options change, and update the plugin's `runtimeVersion` and `runtimeManifestUrl` defaults and `LIBGODOT_MANIFEST_URL` in `apps/desktop/scripts/wasdengine-libgodot.ts` to match.

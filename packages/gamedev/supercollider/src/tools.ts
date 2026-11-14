@@ -12,7 +12,7 @@ import {
   analyzeAudio, describeAudioImage, drawAudioImage, FAR_BEYOND_FULL_SCALE, type AudioAnalysis, type AudioSamples,
 } from '@deepseek-ai/dsh-game-audio/audio'
 import { applyGain, readFloatWav } from './audio.ts'
-import { encodePng } from './png.ts'
+import { encodePng } from '@deepseek-ai/dsh-game-audio/png'
 import { condenseHelp, helpSummary } from './schelp.ts'
 
 /** Longest code a call accepts, in UTF-16 code units. */

@@ -144,6 +144,7 @@ message   u32 LE length N (1 to 64 MiB), then N bytes: u8 kind, payload
 kind 1    UTF-8 JSON object                                            both directions
 kind 2    u32 LE seq, u16 LE width, u16 LE height, PNG or JPEG bytes   harness to Host: a streamed frame
 kind 3    u32 LE request id, PNG or JPEG bytes                         harness to Host: a screenshot image
+kind 5    u32 LE request id, LE f32 samples, left and right interleaved   harness to Host: an audio capture
 ```
 
 - harness 连接 `127.0.0.1` 上由 `--wasd-port` 指定的端口，并首先发送 `hello`。在连接出示本次运行的令牌之前，`ctx.godot` 在该连接上只接受至多 64 KiB 的消息；收到 `token` 经恒定时间比较相符的 `hello` 以外的任何内容，都会销毁该连接；它按读取每条消息时生效的上限衡量该消息，因此同一次读取中 `hello` 之后的消息可以使用 64 MiB 的上限。`protocol` 不同的 `hello` 会使启动失败。
@@ -152,7 +153,7 @@ kind 3    u32 LE request id, PNG or JPEG bytes                         harness t
 
 | `type` | 字段 | 发送时机 |
 |---|---|---|
-| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale` | 最先发送，仅一次 |
+| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale`；`wasdRuntime`，即运行时是否带有 WASD Engine 的 LibGodot 构建中的 `WASDEngineRuntime` 单例 | 最先发送，仅一次 |
 | `status` | `frame`、`fps`、`paused`、`scene`（当前场景的 `res://` 文件，或为空）、`mouseMode`、`width`、`height`、`droppedLogs` | 每秒一次，以及当前场景或鼠标模式发生变化的那一帧 |
 | `logs` | `entries`，每项含 `level`、`message`、`time_ms`，以及已知时的 `file`、`line`、`function`、`code`，和由 `function`、`file`、`line` 组成的 `backtrace` 帧 | 每个有新条目的帧；连接建立之前记录的条目在连接打开后发送 |
 | `result` | `id`、`ok`、`ok` 为 false 时的 `error`，以及该请求的结果字段 | 回答请求时 |
@@ -164,7 +165,7 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `type` | 参数 | 结果字段 | `ctx.godot` 中的期限 |
 |---|---|---|---|
 | `stream` | `fps`（0 表示停止；至多 60）、`quality`（JPEG 质量，0.1 到 1）、`maxWidth`（64 到 4,096）、`lossless`（准备 PNG 帧跟得上 `fps` 时发送 PNG 帧） | `fps`、`quality`、`maxWidth`、`lossless` | `requestTimeoutMs` |
-| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者） | `maxFps`，即生效后的 `Engine.max_fps` | `requestTimeoutMs` |
+| `pace` | `maxFps`（0 恢复游戏自身的 `Engine.max_fps`；否则为上限，游戏自身的上限更低时取后者）；可选的 `present`，即游戏是否向其窗口呈现帧 | `maxFps`，即生效后的 `Engine.max_fps`；`presenting` | `requestTimeoutMs` |
 | `screenshot` | `format`（`png` 或 `jpeg`）、`maxWidth`、`quality` | `format`、`width`、`height`、`windowWidth`、`windowHeight`、`frame`、`paused`，以及一张带请求 id 的 kind 3 图像 | `requestTimeoutMs` |
 | `input` | `events`，见[输入事件](#input-events)；可选的 `timeoutMs` | `events`、`frames`、`seconds`（实际时间）、`frame`、`timedOut`、`cancelled` | 无；agent 的序列携带 `timeoutMs`，即其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs`；Game 标签页的输入不携带 |
 | `pause`、`resume` | 无 | `paused`、`frame` | `requestTimeoutMs` |
@@ -172,16 +173,20 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `wait` | `frames` 或 `seconds`；可选的 `timeoutMs` | `frames`、`seconds`、`frame`、`paused`、`timedOut`、`cancelled` | 无；它携带 `timeoutMs`，即其秒数（或按每秒 10 帧计的帧数）加上 `requestTimeoutMs` |
 | `eval` | `expression`、`node` | `value`、`valueType` | `requestTimeoutMs` |
 | `tree` | `node`、`depth`（0 到 64，默认 6）、`maxNodes`（1 到 5,000，默认 400） | `tree`、`truncated` | `requestTimeoutMs` |
-| `cancel` | `request`，即待处理的 `wait`、`step` 或 `input` 请求的 id | `cancelled` | 不等待 |
+| `performance` | 测量帧的 `seconds`（0.1 到 60），其后剖析脚本的 `scriptSeconds`（0 到 60）；可选的 `timeoutMs` | `seconds`、`frames`、`droppedFrames`、`pausedFrames`、`physicsSteps`、`streamedFrames`、逐帧的 `series`、`monitorsStart`、`monitorsEnd`、`custom`、`nodes`、`context`、`scriptProfiler`、`scripts`、`scriptSeconds`、`scriptFrames`、`timedOut`、`cancelled` | 无；它携带两个时间窗的 `timeoutMs` 再加 `requestTimeoutMs` |
+| `audio` | 音频的 `seconds`（0.05 到 120）；可选的 `timeoutMs` | `sampleRate`、`channels`（2）、`frames`、`seconds`、`droppedFrames`、`masterVolumes`、`masterBypassed`、`detached`、`driver`、`outputLatencyMs`、`startFrame`、`frame`、`buses`、`players`、`morePlayers`、`timedOut`、`cancelled`，以及带请求 id 的 kind 5 采集 | 无；它携带其秒数的 `timeoutMs` 再加 `requestTimeoutMs` |
+| `cancel` | `request`，即待处理的 `wait`、`step`、`input`、`performance` 或 `audio` 请求的 id | `cancelled` | 不等待 |
 | `quit` | `exitCode` | `quitting` | 不等待 |
 
 - 被拒绝的请求以 `ok: false` 回答，并附带 `error` 文本；未知的 `type` 会被拒绝。
 - 没有期限的请求，在 `ctx.godot` 等待期间若 harness 连续 `requestTimeoutMs` 没有发送任何内容，仍会失败；帧、状态与日志都算作活动。`ctx.godot` 放弃一个等待、单步或输入请求时（因为其调用方已中止，或 harness 已沉默），除非运行正在停止，否则会发送带该请求 id 的 `cancel`。
-- 截图回答在其 JSON 结果与图像都到达后才算完整，两者顺序不限。截图与帧以像素尺寸显示游戏窗口：根视口位于项目的拉伸模式与宽高比放置它的位置，窗口显示黑边的地方为黑色，因此在完整尺寸下，图像像素就是同一位置的窗口像素。harness 随后把图像缩小到宽度至多 `maxWidth` 像素，并以每秒实际时间至多 `fps` 帧推流，游戏暂停或 `Engine.time_scale` 为 0 时也是如此。
+- 截图回答在其 JSON 结果与图像都到达后才算完整，两者顺序不限；音频回答与其采集也是如此。截图与帧以像素尺寸显示游戏窗口：根视口位于项目的拉伸模式与宽高比放置它的位置，窗口显示黑边的地方为黑色，因此在完整尺寸下，图像像素就是同一位置的窗口像素。harness 随后把图像缩小到宽度至多 `maxWidth` 像素，并以每秒实际时间至多 `fps` 帧推流，游戏暂停或 `Engine.time_scale` 为 0 时也是如此。
 - `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束，以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
 - `eval` 以输入 `tree`、`root` 与 `scene`（当前场景）解析 Godot `Expression`，并在 `node` 上运行；未给出 `node` 时在当前场景上运行。
+- `performance` 先在 `seconds` 内测量帧；`scriptSeconds` 为正且运行时带有 `WASDEngineRuntime` 单例时，再用 `scriptSeconds` 剖析脚本，并以 `[签名, 调用次数, 总微秒数, 自身微秒数]` 条目回答 `scripts`，引擎方法的条目紧跟在调用它的函数之后，不含 harness 自身的函数。`audio` 用 Master 总线效果链末尾的 `AudioEffectCapture` 采集该总线的混音，采集在总线音量之前，`masterVolumes` 以 `[采集的帧, 音量 dB, 是否静音]` 列出开始时以及每次变化后的音量。两者都像 `wait` 一样在其 `timeoutMs` 到达或收到 `cancel` 时提前结束，并以截至当时测得或采集到的内容作答。
 - `ctx.godot` 以 `id` 0 发送 `quit`，并且不等待其回答。
 - **无人显示的游戏的帧率。** 无窗口游戏连接后、其最后一个视图结束后，或其最后一个请求结束后经过 `hiddenDelayMs`（默认 30 秒），`ctx.godot` 会向它发送带 `hiddenFps`（默认 10）的 `pace`。视图是指“游戏”标签页显示运行画面期间持有的 `godot.view` 流，或帧流。新视图以及除 `pace` 与 `stream` 之外的任何请求都会先发送 `maxFps` 为 0 的 `pace`，因此请求以游戏自身的帧率运行。有窗口的游戏（Linux 与 Windows 上）从不受此限制。
+- **无人显示的游戏的呈现。** 无窗口游戏只在有显示器显示它时呈现其帧：显示器即“游戏”标签页显示运行画面期间持有的 `godot.view` 流。没有显示时，`ctx.godot` 发送带 `present: false` 的 `pace`，harness 把根视口从屏幕上分离，让它每帧更新到其纹理中（截图与帧流读取该纹理），并把 `Engine.max_fps` 限制为屏幕的刷新率，与呈现时的节奏相同。呈现要等待窗口服务器，而另一个进程大量呈现帧时，窗口服务器会迟迟才归还窗口的帧，因此在另一个呈现帧的游戏旁边呈现的游戏会一次卡顿数百毫秒。
 
 <a id="input-events"></a>
 ### 输入事件
@@ -603,9 +608,9 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
- * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
- * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
- * the run ends.
+ * Count the Session's run as displayed while the stream stays open, so a windowless game keeps its own frame rate and
+ * presents its frames; the Game tab holds one while it shows the run's picture. The stream yields one item once the
+ * display counts and ends when the run ends.
  * @param sessionId - Session whose run is shown.
  * @param runId - the run the tab shows.
  * @param signal - ends the view.

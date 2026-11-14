@@ -1,6 +1,7 @@
 /**
  * Performance samples of a running game: the harness's answer to a `performance` request, the summary that
- * `godot_performance` returns, and the summary's text.
+ * `godot_performance` returns, including the script profile that WASD Engine's LibGodot builds take, and the
+ * summary's text.
  * @module @deepseek-ai/dsh-godot/src/performance
  */
 import type { InferValue } from '@deepseek-ai/dsh-tools'
@@ -57,7 +58,16 @@ export const PerformanceReply = z.object({
     width: Count,
     height: Count,
     streamFps: z.number(),
+    frameCap: Count,
+    presenting: z.boolean(),
+    refreshRate: z.number(),
+    wasdRuntime: z.boolean(),
   }),
+  scriptProfiler: z.boolean(),
+  /** [signature, calls, total microseconds, self microseconds]; an engine method's entry follows its caller's. */
+  scripts: z.array(z.tuple([z.string(), Count, Count, Count])),
+  scriptSeconds: z.number(),
+  scriptFrames: Count,
   timedOut: z.boolean(),
   cancelled: z.boolean(),
 })
@@ -79,6 +89,41 @@ const NAMED_VALUES = {
   type: 'array',
   required: true,
   items: { type: 'object', additionalProperties: false, properties: { name: STRING, value: NUMBER } },
+} as const
+
+const ENGINE_CALL = { type: 'object', additionalProperties: false, properties: { method: STRING, callsPerFrame: NUMBER, msPerFrame: NUMBER } } as const
+
+const SCRIPT_FUNCTION = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    name: STRING,
+    line: INTEGER,
+    callsPerFrame: NUMBER,
+    msPerFrame: NUMBER,
+    totalMsPerFrame: NUMBER,
+    engineCalls: { type: 'array', required: true, items: ENGINE_CALL },
+  },
+} as const
+
+/** The script profile of a sample: per frame of its script window, each script's own time and its costliest functions. */
+const SCRIPT_PROFILE = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    seconds: NUMBER,
+    frames: INTEGER,
+    msPerFrame: NUMBER,
+    scripts: {
+      type: 'array',
+      required: true,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { path: STRING, msPerFrame: NUMBER, functions: { type: 'array', required: true, items: SCRIPT_FUNCTION } },
+      },
+    },
+  },
 } as const
 
 /** Result fields of `godot_performance`, before the new-error report that every Godot tool adds. */
@@ -178,8 +223,14 @@ export const PERFORMANCE_PROPERTIES = {
       width: INTEGER,
       height: INTEGER,
       streamFps: NUMBER,
+      frameCap: INTEGER,
+      presenting: BOOLEAN,
+      refreshRate: NUMBER,
+      wasdRuntime: BOOLEAN,
     },
   },
+  scriptProfile: SCRIPT_PROFILE,
+  scriptProfiler: BOOLEAN,
 } as const
 
 const SUMMARY_SCHEMA = { type: 'object', additionalProperties: false, properties: PERFORMANCE_PROPERTIES } as const
@@ -190,6 +241,13 @@ export type PerformanceSummary = InferValue<typeof SUMMARY_SCHEMA>
 type Spread = PerformanceSummary['frameMs']
 type MeanMax = PerformanceSummary['phasesMs']['physics']
 type NamedValue = PerformanceSummary['custom'][number]
+type ScriptProfile = NonNullable<PerformanceSummary['scriptProfile']>
+type ScriptFunction = ScriptProfile['scripts'][number]['functions'][number]
+
+/** Most scripts, functions per script, and engine methods per function that a script profile lists. */
+const LISTED_SCRIPTS = 8
+const LISTED_FUNCTIONS = 3
+const LISTED_ENGINE_CALLS = 2
 
 /** Frames longer than this multiple of the median frame time count as spikes. */
 const SPIKE_FACTOR = 2
@@ -229,6 +287,84 @@ function monitor(values: Readonly<Record<string, number>>, name: string): number
   return values[name] ?? 0
 }
 
+/** One profiled function with the engine methods it called, in microseconds over the script window. */
+interface ProfiledFunction {
+  readonly path: string
+  readonly name: string
+  readonly line: number
+  readonly calls: number
+  readonly total: number
+  readonly self: number
+  readonly engineCalls: { method: string; calls: number; time: number }[]
+}
+
+/**
+ * Split a profile signature, `<script path>::<line>::<function>`, where a built-in script's path holds `::` itself.
+ * @returns the path, line, and name.
+ */
+function splitSignature(signature: string): { readonly path: string; readonly line: number; readonly name: string } {
+  const parts = signature.split('::')
+  const name = parts.pop() ?? ''
+  const line = Number(parts.pop() ?? '0')
+  return { path: parts.join('::'), line: Number.isInteger(line) ? line : 0, name }
+}
+
+/**
+ * Group a script profile's entries by function: an engine method's entry, which names line 0 and a method that does
+ * not start with `@` as the implicit functions of GDScript do, follows the entry of the function that called it.
+ */
+function profiledFunctions(entries: PerformanceReply['scripts']): ProfiledFunction[] {
+  const functions: ProfiledFunction[] = []
+  for (const [signature, calls, total, self] of entries) {
+    const { path, line, name } = splitSignature(signature)
+    const caller = functions.at(-1)
+    if (line === 0 && !name.startsWith('@') && caller !== undefined && caller.path === path) {
+      caller.engineCalls.push({ method: name, calls, time: total })
+    } else {
+      functions.push({ path, name, line, calls, total, self, engineCalls: [] })
+    }
+  }
+  return functions
+}
+
+/** A function's own time: its own code and the engine methods it called, not the script functions it called. */
+function ownTime(entry: ProfiledFunction): number {
+  return entry.self + entry.engineCalls.reduce((total, call) => total + call.time, 0)
+}
+
+/**
+ * The script profile of a sample, per frame of its script window.
+ * @param reply - the harness's answer, whose script window profiled scripts.
+ * @returns the profile, or undefined when the window measured no frame.
+ */
+function summarizeScripts(reply: PerformanceReply): ScriptProfile | undefined {
+  const frames = reply.scriptFrames
+  if (frames === 0 || reply.scriptSeconds === 0) return undefined
+  const perFrame = (microseconds: number): number => round(microseconds / frames / 1000, 3)
+  const byScript = new Map<string, ProfiledFunction[]>()
+  for (const entry of profiledFunctions(reply.scripts)) byScript.set(entry.path, [...byScript.get(entry.path) ?? [], entry])
+  const scripts = [...byScript].map(([path, functions]) => ({ path, functions, time: sum(functions.map(ownTime)) }))
+    .sort((a, b) => b.time - a.time)
+  return {
+    seconds: round(reply.scriptSeconds),
+    frames,
+    msPerFrame: perFrame(sum(scripts.map(script => script.time))),
+    scripts: scripts.slice(0, LISTED_SCRIPTS).map(script => ({
+      path: script.path,
+      msPerFrame: perFrame(script.time),
+      functions: [...script.functions].sort((a, b) => ownTime(b) - ownTime(a)).slice(0, LISTED_FUNCTIONS).map((entry): ScriptFunction => ({
+        name: entry.name,
+        line: entry.line,
+        callsPerFrame: round(entry.calls / frames, 2),
+        msPerFrame: perFrame(ownTime(entry)),
+        totalMsPerFrame: perFrame(entry.total),
+        engineCalls: [...entry.engineCalls].sort((a, b) => b.time - a.time).slice(0, LISTED_ENGINE_CALLS)
+          .map(call => ({ method: call.method, callsPerFrame: round(call.calls / frames, 2), msPerFrame: perFrame(call.time) })),
+      })),
+    })),
+  }
+}
+
 /** The navigation monitors that are not 0: the 2D and 3D ones where the Godot version splits them. */
 function navigationValues(values: Readonly<Record<string, number>>): NamedValue[] {
   const names = Object.keys(values).filter(name => name.startsWith('NAVIGATION_'))
@@ -256,6 +392,7 @@ export function summarizePerformance(reply: PerformanceReply, windowless: boolea
   const renderCpu = series.renderCpu.filter(value => value > 0)
   const change = (name: string): { start: number; end: number } => ({ start: monitor(start, name), end: monitor(end, name) })
   const added = (name: string): number => Math.max(0, monitor(end, name) - monitor(start, name))
+  const scriptProfile = reply.scriptProfiler ? summarizeScripts(reply) : undefined
   return {
     seconds: round(reply.seconds),
     frames: reply.frames,
@@ -318,6 +455,8 @@ export function summarizePerformance(reply: PerformanceReply, windowless: boolea
     },
     custom: Object.entries(reply.custom).map(([name, value]) => ({ name, value })),
     context: { ...reply.context },
+    ...scriptProfile === undefined ? {} : { scriptProfile },
+    scriptProfiler: reply.scriptProfiler,
   }
 }
 
@@ -382,19 +521,29 @@ function describeRun(summary: PerformanceSummary): string[] {
 }
 
 /**
- * What limits the frame rate of a game without a window. The Metal layer of LibGodot's macOS embedded display server
- * shows frames at the display's refresh rate whatever the VSync mode; its OpenGL path follows the VSync mode as a
- * window does.
+ * What limits the frame rate of a game without a window. A game that no Game tab shows draws without presenting its
+ * frames, at most at the screen's refresh rate. A presenting game's Metal layer shows frames at the display's refresh
+ * rate whatever the VSync mode; its OpenGL path follows the VSync mode as a window does.
  */
 function windowlessLimit(summary: PerformanceSummary): string[] {
-  if (!summary.windowless || summary.context.renderingDriver.startsWith('opengl')) return []
+  if (!summary.windowless) return []
+  const { context } = summary
+  if (!context.presenting) {
+    return [`No Game tab shows the game, so it draws its frames without presenting them, at most ${count(context.frameCap)} per second, `
+      + 'the display\'s refresh rate, and never waits for the window server.']
+  }
+  if (context.renderingDriver.startsWith('opengl')) return []
   return ['The game renders without a window, which shows its frames at most at the display\'s refresh rate, also with VSync off.']
 }
 
 function describeRendering(summary: PerformanceSummary): string[] {
   const cpu = summary.renderCpuMs
+  const { context } = summary
+  const noGpuTime = context.renderingDriver.startsWith('metal') && !context.wasdRuntime
+    ? 'GPU time: this Godot runtime takes no GPU timestamps on Metal; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.3 do.'
+    : 'GPU time: this renderer reports none.'
   return [
-    summary.gpuMs === undefined ? 'GPU time: this renderer reports none.' : `GPU time per frame (ms): ${spreadText(summary.gpuMs)}.`,
+    summary.gpuMs === undefined ? noGpuTime : `GPU time per frame (ms): ${spreadText(summary.gpuMs)}.`,
     ...cpu === undefined ? [] : [`Root viewport render CPU time per frame (ms): mean ${cpu.mean.toFixed(2)}, max ${cpu.max.toFixed(2)}.`],
   ]
 }
@@ -472,13 +621,56 @@ function describeTree(summary: PerformanceSummary): string[] {
   ]
 }
 
+/** Calls per frame, which can be a fraction of one for functions that run on some frames. */
+const CALLS = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })
+
+/** A function's own milliseconds per frame, with its costliest engine methods. */
+function functionText(entry: ScriptFunction): string {
+  const calls = entry.callsPerFrame === 1 ? '' : `, ${CALLS.format(entry.callsPerFrame)} calls`
+  const engine = entry.engineCalls.length === 0
+    ? ''
+    : `, of which ${entry.engineCalls.map(call => `${call.method} ${call.msPerFrame.toFixed(2)}`).join(', ')}`
+  return `${entry.name} (line ${String(entry.line)}) ${entry.msPerFrame.toFixed(2)}${calls}${engine}`
+}
+
+/**
+ * The script profile, or why there is none.
+ * @param summary - the summary.
+ * @param requested - whether the sample asked for a script window.
+ */
+function describeScripts(summary: PerformanceSummary, requested: boolean): string[] {
+  const profile = summary.scriptProfile
+  if (profile === undefined) {
+    if (!requested) return []
+    return summary.scriptProfiler
+      ? ['Scripts: the sample ended before its script window measured a frame.']
+      : ['Scripts: this Godot runtime has no script profiler; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.3 time every script function.']
+  }
+  if (profile.scripts.length === 0) return [`Scripts: no script function ran during the ${profile.seconds.toFixed(2)} s script window.`]
+  return [
+    `Scripts, profiled for ${profile.seconds.toFixed(2)} s (${count(profile.frames)} frames) after the frames above; the profiler slows scripts, `
+      + "so compare these times with each other. Own time per frame (ms) counts a function's code and the engine methods it calls, "
+      + `not the script functions it calls: ${profile.msPerFrame.toFixed(2)} in all.`,
+    ...profile.scripts.map(script => `${script.path} ${script.msPerFrame.toFixed(2)}: ${script.functions.map(functionText).join('; ')}`),
+  ]
+}
+
 /**
  * Describe a performance summary for the model.
  * @param summary - summary from {@link summarizePerformance}.
- * @returns paragraphs: the run and its limits, frame times, resources, and the scene tree.
+ * @param scriptsRequested - whether the sample asked for a script window, so that a missing profile is explained.
+ * @returns paragraphs: the run and its limits, frame times, resources, the scene tree, and the script profile.
  */
-export function formatPerformance(summary: PerformanceSummary): string {
-  return [describeRun(summary), describeFrames(summary), describeResources(summary), describeTree(summary)]
+export function formatPerformance(summary: PerformanceSummary, scriptsRequested = false): string {
+  const paragraphs = [
+    describeRun(summary),
+    describeFrames(summary),
+    describeResources(summary),
+    describeTree(summary),
+    describeScripts(summary, scriptsRequested),
+  ]
+  return paragraphs
+    .filter(lines => lines.length > 0)
     .map(lines => lines.join('\n'))
     .join('\n\n')
 }

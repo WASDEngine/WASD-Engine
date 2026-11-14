@@ -7,13 +7,20 @@
  * MCP server, whose screenshots travel as image bytes.
  * @module @deepseek-ai/dsh-godot/src/tools
  */
+import { Buffer } from 'node:buffer'
+import { stat } from 'node:fs/promises'
+import { extname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { analyzeAudio, describeAudioImage, drawAudioImage, type AudioSamples } from '@deepseek-ai/dsh-game-audio/audio'
+import { encodePng } from '@deepseek-ai/dsh-game-audio/png'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { applyMasterVolume, AUDIO_PROPERTIES, describeAudio, encodeWav, summarizeAudio } from './audio.ts'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
@@ -21,7 +28,7 @@ import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from 
 import { MAX_INPUT_EVENTS, type GodotRun } from './run.ts'
 import { DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_SECONDS, type GodotScriptReport } from './script.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
-import type { GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
+import type { GodotInputEvent, GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
 
 /** Most characters of text in one tool result. */
 export const TEXT_BUDGET = 6000
@@ -47,6 +54,9 @@ export const SCREENSHOT_WIDTH = 1280
 
 /** Default, shortest, and longest real seconds that `godot_performance` measures. */
 const PERFORMANCE_SECONDS = { default: 2, min: 0.25, max: 20 } as const
+
+/** Default, shortest, and longest seconds of audio that `godot_audio` captures. */
+export const AUDIO_SECONDS = { default: 3, min: 0.25, max: 30 } as const
 
 const LEVELS = ['stdout', 'stderr', 'warning', 'error', 'script_error', 'shader_error'] as const
 
@@ -80,6 +90,14 @@ export interface GodotToolHost {
    * @returns the exit code, the end of the output, and the engine errors.
    */
   script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport>
+  /**
+   * Resolve a file path as the model gave it: absolute, or relative to the Session's working directory.
+   * @param agent - calling Session.
+   * @param path - the path.
+   * @param signal - cancellation.
+   * @returns the absolute path.
+   */
+  resolvePath(agent: Agent, path: string, signal: AbortSignal): Promise<string>
 }
 
 /** A script run as the model asked for it. */
@@ -129,10 +147,9 @@ const DIGEST_SCHEMA = {
 } as const
 
 /** The stored image: the attachment reference that the attachment store returned for it. */
-const IMAGE_SCHEMA = {
+const IMAGE_FIELDS = {
   type: 'object',
   additionalProperties: false,
-  required: true,
   properties: {
     attachmentId: STRING,
     mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
@@ -142,6 +159,8 @@ const IMAGE_SCHEMA = {
     originalDimensions: { type: 'object', additionalProperties: false, properties: SIZE },
   },
 } as const
+
+const IMAGE_SCHEMA = { ...IMAGE_FIELDS, required: true } as const
 
 const SCREENSHOT_PROPERTIES = {
   width: { ...INTEGER, description: 'Image width in pixels; mouse coordinates refer to this size.' },
@@ -171,6 +190,19 @@ export interface ScreenshotTaker {
   capture(run: GodotRun, maxWidth: number, signal: AbortSignal): Promise<ScreenshotValue>
 }
 
+/** Keeps the pictures of one tool call, such as an audio capture's waveform, for the callers of a {@link GodotToolSurface}. */
+export interface PictureKeeper {
+  /**
+   * Store a PNG picture where the surface's callers receive it.
+   * @param png - the PNG file bytes.
+   * @param name - file name of the picture.
+   * @param size - its width and height in pixels.
+   * @param signal - cancellation.
+   * @returns the stored image as a result value holds it.
+   */
+  keep(png: Buffer, name: string, size: { readonly width: number; readonly height: number }, signal: AbortSignal): Promise<ScreenshotValue['image']>
+}
+
 /** Tool description text that depends on how a surface's callers name projects and files. */
 export interface GodotToolWording {
   /** First sentence of the `godot_run` description, with its trailing space. */
@@ -181,6 +213,8 @@ export interface GodotToolWording {
   readonly scriptPath: string
   /** The `godot_logs` description's sentence about reading without `since`. */
   readonly logsDefault: string
+  /** How the `godot_audio` description names the file path it accepts. */
+  readonly audioPath: string
 }
 
 /** The callers that one set of Godot tool definitions serves. */
@@ -194,6 +228,13 @@ export interface GodotToolSurface {
    * @throws when the caller cannot receive screenshots.
    */
   screenshots(exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker>
+  /**
+   * Resolve where a call's pictures go.
+   * @param exec - the tool call.
+   * @param agent - calling Session.
+   * @returns the call's picture keeper, or undefined when the callers receive no images, so that the result keeps to text.
+   */
+  pictures(exec: ToolRunContext, agent: Agent): Promise<PictureKeeper | undefined>
   /** Description text for these callers. */
   readonly wording: GodotToolWording
 }
@@ -204,6 +245,7 @@ export const SESSION_WORDING: GodotToolWording = {
   checkPaths: 'files or folders, as res:// paths or relative to the working directory',
   scriptPath: 'a res:// path or a path relative to the working directory',
   logsDefault: 'Without since, returns the entries after the ones this Session last read.',
+  audioPath: 'a path relative to the working directory, or absolute',
 }
 
 /** A log entry as tools report it. */
@@ -278,9 +320,13 @@ function textResult(...sections: string[]): ContentBlock[] {
   return [{ type: 'text', text: finishText(...sections) }]
 }
 
-function screenshotBlocks(shot: ScreenshotValue): ContentBlock[] {
+function imageBlocks(image: ScreenshotValue['image']): ContentBlock[] {
   // The value holds the reference that the attachment store returned, so its id is a stored attachment id.
-  return [{ type: 'image', attachment: { ...shot.image, attachmentId: brandString<AttachmentId>(shot.image.attachmentId) } }]
+  return [{ type: 'image', attachment: { ...image, attachmentId: brandString<AttachmentId>(image.attachmentId) } }]
+}
+
+function screenshotBlocks(shot: ScreenshotValue): ContentBlock[] {
+  return imageBlocks(shot.image)
 }
 
 function describeScreenshot(shot: ScreenshotValue): string {
@@ -410,6 +456,31 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
 }
 
 /**
+ * The pictures of the Session's own tools: each picture becomes an attachment that the Session's model receives, and a
+ * model that does not accept images receives none.
+ * @param ctx - plugin context with the optional attachment and model services.
+ * @returns the picture resolution of {@link GodotToolSurface}.
+ */
+export function sessionPictures(ctx: Context): GodotToolSurface['pictures'] {
+  return async (exec, agent) => {
+    const attachments = ctx.get('attachments')
+    const llm = ctx.get('llm')
+    const route = agent.model.current()
+    if (attachments === undefined || llm === undefined || route === undefined) return undefined
+    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
+    if (info.inputModalities?.includes('image') !== true) return undefined
+    return {
+      async keep(png, name, _size, signal) {
+        const [image] = await attachments.saveImages([{ data: png, mediaType: 'image/png', name }]) as [ImageAttachmentRef]
+        signal.throwIfAborted()
+        await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
+        return image
+      },
+    }
+  }
+}
+
+/**
  * Capture a screenshot; afterwards input coordinates in screenshot pixels refer to it.
  * @param taker - the call's screenshot taker.
  * @param session - the calling Session's Godot state.
@@ -451,6 +522,59 @@ async function screenshotAfter(
   } catch (error) {
     signal.throwIfAborted()
     return { screenshotError: (error as Error).message }
+  }
+}
+
+/**
+ * Refuse a path that holds a folder, or a file the call may not replace.
+ * @param path - absolute path.
+ * @param replace - whether a file may be replaced.
+ * @throws Error when the path is a folder, or a file and `replace` is false.
+ */
+async function refuseExisting(path: string, replace: boolean): Promise<void> {
+  let found
+  try {
+    found = await stat(path)
+  } catch (error) {
+    // Only a path that does not exist yet is free; any other failure stops the call.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  if (found.isDirectory()) throw new Error(`${path} is a folder; pass the path of a .wav file.`)
+  if (!replace) throw new Error(`${path} already exists; pass replace: true to overwrite it, or choose another path.`)
+}
+
+/**
+ * Capture the game's audio while an input sequence plays from the capture's start; input still running when the
+ * capture ends is cancelled, and the game releases what it held.
+ * @param run - running game.
+ * @param seconds - seconds of audio.
+ * @param events - input in window pixels.
+ * @param signal - cancellation of the call.
+ * @returns the capture.
+ * @throws the input sequence's failure, other than the cancellation that ends it with the capture.
+ */
+async function captureWithInput(
+  run: GodotRun, seconds: number, events: readonly GodotInputEvent[] | undefined, signal: AbortSignal,
+): ReturnType<GodotRun['audio']> {
+  const capture = run.audio(seconds, signal)
+  if (events === undefined || events.length === 0) return await capture
+  const input = new AbortController()
+  const cancelInput = (): void => { input.abort(signal.reason) }
+  signal.addEventListener('abort', cancelInput, { once: true })
+  let failure: { readonly error: unknown } | undefined
+  const played = run.input(events, input.signal).then(() => {}, (error: unknown) => {
+    // The capture cancels the input it outlasts; any other failure fails the call.
+    if (!input.signal.aborted) failure = { error }
+  })
+  try {
+    const captured = await capture
+    if (failure !== undefined) throw failure.error
+    return captured
+  } finally {
+    signal.removeEventListener('abort', cancelInput)
+    input.abort(new Error('The audio capture ended.'))
+    await played
   }
 }
 
@@ -498,7 +622,8 @@ function boundedInteger(value: number | undefined, name: string, fallback: numbe
  * @param host - plugin operations the tools call.
  */
 export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
-  for (const definition of godotToolDefinitions(host, { screenshots: sessionScreenshots(ctx), wording: SESSION_WORDING })) {
+  const surface = { screenshots: sessionScreenshots(ctx), pictures: sessionPictures(ctx), wording: SESSION_WORDING }
+  for (const definition of godotToolDefinitions(host, surface)) {
     ctx.tools.register(definition)
   }
 }
@@ -834,16 +959,19 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     name: 'godot_performance',
     description: 'Measure the running game\'s performance over seconds of real time: frame rate and frame time percentiles, '
       + 'milliseconds per frame in physics, scripts, and drawing, GPU time, draw calls, memory, object and orphan node counts, '
-      + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors.',
+      + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors. '
+      + 'Then, for as many seconds again, it profiles the game\'s scripts: milliseconds per frame of each script and its costliest '
+      + 'functions, with the engine methods they call.',
     parameters: {
       seconds: {
         type: 'number',
         description: `Real seconds to measure, from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}. Default: ${PERFORMANCE_SECONDS.default}.`,
       },
+      scripts: { type: 'boolean', description: 'Profile the scripts after measuring the frames. Default: true.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ...PERFORMANCE_PROPERTIES, ...DIGEST_SCHEMA } },
-      render: (_args, value) => textResult(formatPerformance(value), formatDigest(value)),
+      render: (args, value) => textResult(formatPerformance(value, args.scripts !== false), formatDigest(value)),
     },
     async execute(args, exec) {
       const seconds = args.seconds ?? PERFORMANCE_SECONDS.default
@@ -852,7 +980,84 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       }
       return invoke(host, exec, async (_agent, session) => {
         const run = requireRunning(session)
-        return summarizePerformance(await run.performance(seconds, exec.signal), run.view().windowless)
+        const sample = await run.performance(seconds, args.scripts === false ? 0 : seconds, exec.signal)
+        return summarizePerformance(sample, run.view().windowless)
+      })
+    },
+  }), defineTool({
+    name: 'godot_audio',
+    description: 'Listen to the running game: capture its audio mix, the Master bus as players hear it, for seconds of real time while '
+      + 'optional input events play, then report levels, loudness, clipping, silence, spectrum, when sounds start and stop, which '
+      + 'audio players played on which buses, and the bus volumes and peaks, with a waveform and spectrogram picture. '
+      + 'A muted run mixes its audio as usual, so it can be captured too.',
+    parameters: {
+      seconds: {
+        type: 'number',
+        description: `Seconds of audio, from ${AUDIO_SECONDS.min} to ${AUDIO_SECONDS.max}. Default: ${AUDIO_SECONDS.default}.`,
+      },
+      events: {
+        type: 'array',
+        items: EVENT_SCHEMA,
+        description: `Input events to play from the capture's start, as godot_input takes them, at most ${MAX_INPUT_EVENTS}.`,
+      },
+      coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of the events\' x, y, dx, dy. Default: screenshot.' },
+      path: { type: 'string', description: `Save the capture as a 16-bit .wav file at this path, ${wording.audioPath}.` },
+      replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ...AUDIO_PROPERTIES,
+          savedPath: { type: 'string' },
+          picture: IMAGE_FIELDS,
+          pictureText: { type: 'string' },
+          ...DIGEST_SCHEMA,
+        },
+      },
+      render: (_args, value) => [
+        ...textResult(
+          describeAudio(value).join('\n'),
+          value.savedPath === undefined ? '' : `Saved the capture to ${value.savedPath}.`,
+          value.pictureText ?? '',
+          formatDigest(value),
+        ),
+        ...value.picture === undefined ? [] : imageBlocks(value.picture),
+      ],
+    },
+    async execute(args, exec) {
+      const seconds = args.seconds ?? AUDIO_SECONDS.default
+      if (!(seconds >= AUDIO_SECONDS.min && seconds <= AUDIO_SECONDS.max)) {
+        throw new Error(`seconds must be from ${AUDIO_SECONDS.min} to ${AUDIO_SECONDS.max}.`)
+      }
+      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.wav') throw new Error('path must end in .wav.')
+      const events = args.events === undefined ? undefined : parseInputEvents(args.events, MAX_INPUT_EVENTS)
+      return invoke(host, exec, async (agent, session) => {
+        const run = requireRunning(session)
+        let delivered = events
+        if (events !== undefined && args.coordinate_space !== 'window' && hasPointerEvents(events)) {
+          const frame = session.screenshot
+          if (frame === undefined || frame.runId !== run.id) {
+            throw new Error('Mouse coordinates are screenshot pixels, but this game has no screenshot yet; call godot_screenshot first, or pass coordinate_space "window".')
+          }
+          delivered = screenshotToWindow(events, frame)
+        }
+        // The target is checked before the capture, so a refused path wastes no capture.
+        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
+        if (target !== undefined) await refuseExisting(target, args.replace === true)
+        const pictures = await surface.pictures(exec, agent)
+        const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
+        const audio: AudioSamples = {
+          sampleRate: meta.sampleRate, channels: 2, frames: meta.frames,
+          samples: applyMasterVolume(samples.subarray(0, meta.frames * 2), meta.masterVolumes),
+        }
+        const summary = summarizeAudio(meta, audio, analyzeAudio(audio))
+        if (target !== undefined) await writeFileAtomic(target, encodeWav(audio), { mode: 0o644 })
+        if (pictures === undefined || audio.frames === 0) return { ...summary, ...target === undefined ? {} : { savedPath: target } }
+        const { image, layout } = drawAudioImage(audio)
+        const picture = await pictures.keep(encodePng(image), `godot-audio-${String(meta.frame)}.png`, image, exec.signal)
+        return { ...summary, ...target === undefined ? {} : { savedPath: target }, picture, pictureText: describeAudioImage(layout) }
       })
     },
   }), defineTool({

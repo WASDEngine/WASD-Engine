@@ -144,6 +144,7 @@ message   u32 LE length N (1 to 64 MiB), then N bytes: u8 kind, payload
 kind 1    UTF-8 JSON object                                            both directions
 kind 2    u32 LE seq, u16 LE width, u16 LE height, PNG or JPEG bytes   harness to Host: a streamed frame
 kind 3    u32 LE request id, PNG or JPEG bytes                         harness to Host: a screenshot image
+kind 5    u32 LE request id, LE f32 samples, left and right interleaved   harness to Host: an audio capture
 ```
 
 - The harness connects to `127.0.0.1` on the `--wasd-port` port and sends `hello` first. Until a connection presents the run's token, `ctx.godot` accepts messages of at most 64 KiB on it and destroys it on anything but a `hello` whose `token` matches in a constant-time comparison; it measures each message against the limit in force when it reads that message, so messages after the `hello` in the same read may use the 64 MiB limit. A `hello` with another `protocol` fails the start.
@@ -152,7 +153,7 @@ kind 3    u32 LE request id, PNG or JPEG bytes                         harness t
 
 | `type` | Fields | Sent |
 |---|---|---|
-| `hello` | `protocol` (1), `token`, `pid`, `godot` (the Godot version string), `project` (`application/config/name`), `mainScene`, `displayServer`, `renderingDriver`, `renderingMethod`, `width`, `height`, and, when the game draws into the macOS embedded display server's layer, `layer`: its CAContext `context` and the game window pixels per layer point, `scale` | First, once |
+| `hello` | `protocol` (1), `token`, `pid`, `godot` (the Godot version string), `project` (`application/config/name`), `mainScene`, `displayServer`, `renderingDriver`, `renderingMethod`, `width`, `height`, and, when the game draws into the macOS embedded display server's layer, `layer`: its CAContext `context` and the game window pixels per layer point, `scale`; `wasdRuntime`, whether the runtime has the `WASDEngineRuntime` singleton of WASD Engine's LibGodot builds | First, once |
 | `status` | `frame`, `fps`, `paused`, `scene` (the current scene's `res://` file, or empty), `mouseMode`, `width`, `height`, `droppedLogs` | Every second, and in the frame where the current scene or the mouse mode changes |
 | `logs` | `entries`, each with `level`, `message`, `time_ms`, and when known `file`, `line`, `function`, `code`, and `backtrace` frames of `function`, `file`, and `line` | In each frame that has new entries; entries logged before the connection follow once it opens |
 | `result` | `id`, `ok`, `error` when `ok` is false, and the result fields of the request | In answer to a request |
@@ -164,7 +165,7 @@ The harness logger keeps at most 4,000 unsent entries, drops the oldest beyond t
 | `type` | Parameters | Result fields | Deadline in `ctx.godot` |
 |---|---|---|---|
 | `stream` | `fps` (0 stops; at most 60), `quality` (JPEG quality, 0.1 to 1), `maxWidth` (64 to 4,096), `lossless` (PNG frames while preparing a PNG frame keeps up with `fps`) | `fps`, `quality`, `maxWidth`, `lossless` | `requestTimeoutMs` |
-| `pace` | `maxFps` (0 restores the game's own `Engine.max_fps`; otherwise the cap, or the game's own when that is lower) | `maxFps`, the resulting `Engine.max_fps` | `requestTimeoutMs` |
+| `pace` | `maxFps` (0 restores the game's own `Engine.max_fps`; otherwise the cap, or the game's own when that is lower); optional `present`, whether the game presents its frames to its window | `maxFps`, the resulting `Engine.max_fps`; `presenting` | `requestTimeoutMs` |
 | `screenshot` | `format` (`png` or `jpeg`), `maxWidth`, `quality` | `format`, `width`, `height`, `windowWidth`, `windowHeight`, `frame`, `paused`, and a kind 3 image with the request id | `requestTimeoutMs` |
 | `input` | `events`, as [input events](#input-events) describes; optional `timeoutMs` | `events`, `frames`, `seconds` (real time), `frame`, `timedOut`, `cancelled` | None; an agent's sequence carries `timeoutMs` of its waits, one frame per wait and one to start at 10 frames per second, plus `requestTimeoutMs`, and Game tab input carries none |
 | `pause`, `resume` | None | `paused`, `frame` | `requestTimeoutMs` |
@@ -172,16 +173,20 @@ The harness logger keeps at most 4,000 unsent entries, drops the oldest beyond t
 | `wait` | `frames` or `seconds`; optional `timeoutMs` | `frames`, `seconds`, `frame`, `paused`, `timedOut`, `cancelled` | None; it carries `timeoutMs` of its seconds, or of its frames at 10 frames per second, plus `requestTimeoutMs` |
 | `eval` | `expression`, `node` | `value`, `valueType` | `requestTimeoutMs` |
 | `tree` | `node`, `depth` (0 to 64, default 6), `maxNodes` (1 to 5,000, default 400) | `tree`, `truncated` | `requestTimeoutMs` |
-| `cancel` | `request`, the id of a pending `wait`, `step`, or `input` request | `cancelled` | Not awaited |
+| `performance` | `seconds` (0.1 to 60) of frames, `scriptSeconds` (0 to 60) of script profile after them; optional `timeoutMs` | `seconds`, `frames`, `droppedFrames`, `pausedFrames`, `physicsSteps`, `streamedFrames`, `series` per frame, `monitorsStart`, `monitorsEnd`, `custom`, `nodes`, `context`, `scriptProfiler`, `scripts`, `scriptSeconds`, `scriptFrames`, `timedOut`, `cancelled` | None; it carries `timeoutMs` of both windows plus `requestTimeoutMs` |
+| `audio` | `seconds` (0.05 to 120) of audio; optional `timeoutMs` | `sampleRate`, `channels` (2), `frames`, `seconds`, `droppedFrames`, `masterVolumes`, `masterBypassed`, `detached`, `driver`, `outputLatencyMs`, `startFrame`, `frame`, `buses`, `players`, `morePlayers`, `timedOut`, `cancelled`, and a kind 5 capture with the request id | None; it carries `timeoutMs` of its seconds plus `requestTimeoutMs` |
+| `cancel` | `request`, the id of a pending `wait`, `step`, `input`, `performance`, or `audio` request | `cancelled` | Not awaited |
 | `quit` | `exitCode` | `quitting` | Not awaited |
 
 - A refused request answers `ok: false` with `error` text; an unknown `type` is refused.
 - A request without a deadline still fails when the harness sends nothing at all for `requestTimeoutMs` while `ctx.godot` waits; frames, status, and logs count as activity. When `ctx.godot` gives up on a wait, step, or input request, because its caller aborted or the harness went silent, it sends `cancel` with that request's id unless the run is stopping.
-- A screenshot answer is complete once its JSON result and its image have both arrived, in either order. Screenshots and frames show the game window at its pixel size: the root viewport where the project's stretch mode and aspect place it, with black where the window shows bars, so at full size an image pixel is the window pixel at the same position. The harness then scales the image down to at most `maxWidth` pixels wide, and streams at most `fps` frames per second of real time, also while the game is paused or `Engine.time_scale` is 0.
+- A screenshot answer is complete once its JSON result and its image have both arrived, in either order, and so is an audio answer with its capture. Screenshots and frames show the game window at its pixel size: the root viewport where the project's stretch mode and aspect place it, with black where the window shows bars, so at full size an image pixel is the window pixel at the same position. The harness then scales the image down to at most `maxWidth` pixels wide, and streams at most `fps` frames per second of real time, also while the game is paused or `Engine.time_scale` is 0.
 - `step` resumes the game, lets that many frames run, then pauses it; a `pause`, a `resume`, or a newer `step` ends a running step with `cancelled: true`, and the game stays paused after `pause` and running after the others. `wait` counts the frames that run after it arrives, while its `seconds` count only unpaused game time, which `Engine.time_scale` scales. A `wait`, `step`, or `input` request with `timeoutMs` ends once that many milliseconds of real time have passed since it arrived, answering what ran with `timedOut: true`; a step that ends so pauses the game. `cancel` ends the pending request whose id is `request` the same way with `cancelled: true`, and answers `cancelled` with whether one was pending. A request that runs to its end answers `timedOut` and `cancelled` as false.
 - `eval` parses a Godot `Expression` with the inputs `tree`, `root`, and `scene` (the current scene) and runs it on `node` or, without one, on the current scene.
+- `performance` measures frames for `seconds`, then, with a positive `scriptSeconds` and the `WASDEngineRuntime` singleton, profiles the scripts for `scriptSeconds` more and answers `scripts` as `[signature, calls, total microseconds, self microseconds]` entries, an engine method's after its caller's, without the harness's own. `audio` captures the Master bus's mix with an `AudioEffectCapture` at the end of its effects, before the bus's volume, which `masterVolumes` lists as `[captured frame, volume dB, muted]` at the start and each change. Like a `wait`, both end early at their `timeoutMs` or on `cancel`, answering with what they measured or captured until then.
 - `ctx.godot` sends `quit` with `id` 0 and does not wait for its answer.
 - **Frame rate of a game nobody shows.** `ctx.godot` sends `pace` with `hiddenFps` (10 by default) to a windowless game once `hiddenDelayMs` (30 s by default) passed since the game connected, since the last view of it ended, or since its last request settled. A view is a `godot.view` stream, which the Game tab holds while it shows the run's picture, or a frame stream. A new view, and any request other than `pace` and `stream`, first sends `pace` with `maxFps` 0, so the request runs at the game's own frame rate. A game with a window, on Linux and Windows, is never capped.
+- **Presentation of a game nobody displays.** A windowless game presents its frames only while a display shows it: a `godot.view` stream, which the Game tab holds while it shows the run's picture. Without one, `ctx.godot` sends `pace` with `present: false`, and the harness detaches the root viewport from the screen, has it update every frame into its texture, which screenshots and frame streams read, and caps `Engine.max_fps` at the screen's refresh rate, as presenting paces it. Presenting waits for the window server, which returns a window's frames late while another process presents many frames, so a game that presents beside another presenting game stalls for hundreds of milliseconds at a time.
 
 <a id="input-events"></a>
 ### Input events
@@ -603,9 +608,9 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 @Remote input(sessionId: SessionId, runId: string, events: GodotInputEvent[], signal: AbortSignal): void
 
 /**
- * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
- * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
- * the run ends.
+ * Count the Session's run as displayed while the stream stays open, so a windowless game keeps its own frame rate and
+ * presents its frames; the Game tab holds one while it shows the run's picture. The stream yields one item once the
+ * display counts and ends when the run ends.
  * @param sessionId - Session whose run is shown.
  * @param runId - the run the tab shows.
  * @param signal - ends the view.

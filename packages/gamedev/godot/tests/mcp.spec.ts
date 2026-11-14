@@ -96,7 +96,7 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     const godot = tools.filter(tool => tool.name.startsWith('godot_'))
     expect(godot.map(tool => tool.name)).toEqual([
       'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_control', 'godot_eval', 'godot_scene_tree',
-      'godot_performance', 'godot_logs', 'godot_check', 'godot_script',
+      'godot_performance', 'godot_audio', 'godot_logs', 'godot_check', 'godot_script',
     ])
     for (const tool of godot) {
       expect(tool.inputSchema.properties?.project).toMatchObject({ type: 'string' })
@@ -110,7 +110,9 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
     // A check may import the project first, which writes its import data.
     expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
-    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 12 tools)')
+    expect(godot.find(tool => tool.name === 'godot_audio')?.description).toContain('Listen to the running game')
+    expect(JSON.stringify(godot.find(tool => tool.name === 'godot_audio')?.inputSchema.properties?.path)).toContain('an absolute path')
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 13 tools)')
   }, TIMEOUT)
 
   it('runs the game for the agent\'s own Session, shows it in the window, and returns screenshots as PNG bytes', async () => {

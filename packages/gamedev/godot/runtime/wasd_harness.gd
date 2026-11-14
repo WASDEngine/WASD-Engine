@@ -8,10 +8,13 @@ extends SceneTree
 ## Wire format, both directions: a 4-byte little-endian length N, then N bytes holding a 1-byte kind and its payload.
 ## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width,
 ## u16 height, then the bytes of a PNG or JPEG file. Kind 3 (harness to Host) answers a screenshot request:
-## u32 request id, then the PNG or JPEG bytes. The first message on the connection is the harness's `hello`
-## JSON, which carries the token. When the game draws into the Core Animation layer of the macOS embedded display
-## server, `hello` also carries `layer`: the CAContext id through which another process of the login session can
-## display that layer with a CALayerHost, and the game window pixels per layer point (`scale`).
+## u32 request id, then the PNG or JPEG bytes. Kind 5 (harness to Host) answers an `audio` request: u32 request id,
+## then the captured samples as little-endian 32-bit floats, left and right interleaved. The first message on the
+## connection is the harness's `hello` JSON, which carries the token, and `wasdRuntime`: whether the runtime has the
+## `WASDEngineRuntime` singleton of WASD Engine's LibGodot builds, whose script profilers the harness uses. When the
+## game draws into the Core Animation layer of the macOS embedded display server, `hello` also carries `layer`: the
+## CAContext id through which another process of the login session can display that layer with a CALayerHost, and
+## the game window pixels per layer point (`scale`).
 ##
 ## Screenshots and streamed frames show the game window at its pixel size, scaled down to `maxWidth`: the root
 ## viewport where the project's stretch settings place it, and black where the window shows bars around it. At
@@ -42,7 +45,7 @@ extends SceneTree
 ## times out or is cancelled pauses the game, and one that `resume` or a newer step ends leaves it running. An
 ## input sequence that ends early answers `events` as the number of its events that ran; one that ends early or
 ## fails releases the keys, buttons, and actions it pressed and did not release. `cancel` answers `cancelled`:
-## whether a `wait`, `step`, `input`, or `performance` request with that id was pending.
+## whether a `wait`, `step`, `input`, `performance`, or `audio` request with that id was pending.
 ##
 ## A `performance` request samples the game for `seconds` of real time, one sample at a time, and answers with a
 ## series per measured frame: its milliseconds from start to start (`frame`), in physics steps, in this harness's
@@ -54,15 +57,40 @@ extends SceneTree
 ## `cancel`, which answer `timedOut` or `cancelled`. While it runs, the root viewport measures its render time;
 ## afterwards the measurement is off.
 ##
+## With a positive `scriptSeconds`, the sample then continues for that many seconds of real time with the script
+## profilers of the `WASDEngineRuntime` singleton, which time every script function and the engine methods that each
+## one calls. Those seconds add nothing to the series, so the profilers' own cost stays out of the frame times. The
+## answer lists the profiled entries as `scripts`, [signature, calls, total microseconds, self microseconds], without
+## this harness's own functions: each function's entry is followed by the entries of the engine methods it called, whose
+## signatures name line 0. The functions with the most own time, their self time plus the time of those engine methods,
+## come first, in at most PERFORMANCE_MAX_SCRIPT_ENTRIES entries. The answer also carries the `scriptSeconds` and
+## `scriptFrames` of that window; `scriptProfiler` is false, and the window is skipped, when the runtime has no
+## profilers.
+##
 ## A `pace` request with a positive `maxFps` caps Engine.max_fps at that rate, or at the game's own cap when that is
 ## lower; `maxFps` 0 restores the game's own cap. The Host caps a game that nobody shows or uses and lifts the cap
-## before the requests it sends to a capped game. The answer carries the resulting `maxFps`.
+## before the requests it sends to a capped game. A boolean `present` says whether the game presents its frames to its
+## window. Without presenting, the root viewport leaves the screen and draws every frame into its texture, which
+## screenshots and streamed frames read, and the frame rate stays at most the screen's refresh rate, as presenting
+## paces it. A game that no view shows then never waits for the window server, which takes back the frames that a
+## window presents late while other processes present frames. The answer carries the resulting `maxFps` and
+## `presenting`.
+##
+## An `audio` request captures the mix of the Master bus, as players hear it, for `seconds` of audio: an
+## AudioEffectCapture at the end of the bus's effects takes the mix, whose Master volume the answer's `masterVolumes`
+## lists as [captured frame, volume dB, muted] at the start and at each change, because the bus applies its volume after
+## its effects. One capture runs at a time. It also follows the bus peaks and the audio players that play, and answers
+## with them, the mix rate, the audio driver, and the frames that the capture's buffer dropped, then sends the samples
+## as kind 5. Like a `wait`, it ends early at its `timeoutMs` or on `cancel`, which answer `timedOut` or `cancelled`
+## with the audio captured until then.
 
 const PROTOCOL_VERSION := 1
 const KIND_JSON := 1
 const KIND_FRAME := 2
 const KIND_IMAGE := 3
+const KIND_AUDIO := 5
 const MAX_PENDING_LOGS := 4000
+const UNKNOWN_REFRESH_FPS := 60  # frame rate of a game that does not present, on a screen that reports no refresh rate
 const MAX_MESSAGE_BYTES := 64 * 1024 * 1024
 const USEC_PER_SECOND := 1000000.0
 const LOSSLESS_TEST_DELAY := 1.0  # seconds from a failed or slow PNG test, or a slow PNG frame, to the next test
@@ -72,6 +100,13 @@ const PERFORMANCE_MAX_FRAMES := 20000  # frames a sample records; later frames c
 const PERFORMANCE_MAX_NODES := 200000  # nodes the census visits
 const PERFORMANCE_TOP := 8  # node classes and scripts the census lists
 const PERFORMANCE_MAX_CUSTOM := 40  # custom monitors a sample reports
+const PERFORMANCE_MAX_SCRIPT_ENTRIES := 400  # profiled functions and engine methods a sample reports
+const AUDIO_MAX_SECONDS := 120.0  # longest audio capture
+const AUDIO_BUFFER_SECONDS := 4.0  # audio that the capture holds between two frames of the game before it drops frames
+const AUDIO_MAX_PLAYERS := 500  # audio players a capture follows
+const AUDIO_LISTED_PLAYERS := 40  # players that played, listed in a capture's answer
+# The singleton of WASD Engine's LibGodot builds, whose script profilers time each script function.
+const RUNTIME_SINGLETON := &"WASDEngineRuntime"
 # DisplayServer metadata in which the WASD Engine LibGodot build publishes the CAContext id of the embedded display server's layer.
 const LAYER_CONTEXT_META := &"wasd_layer_context_id"
 
@@ -222,6 +257,104 @@ class HarnessLogger extends Logger:
 		return taken
 
 
+## One capture of the Master bus's mix. The main thread pulls the captured frames once per frame of the game.
+class AudioCapture extends RefCounted:
+	var id
+	var effect := AudioEffectCapture.new()
+	var started := 0.0  # real time in seconds
+	var deadline := 0.0
+	var target := 0  # frames to capture
+	var rate := 0.0
+	var data := PackedByteArray()  # interleaved 32-bit float stereo samples
+	var frames := 0
+	var start_frame := 0
+	var start_usec := 0
+	var volumes: Array = []  # [captured frame, Master volume dB, Master muted]
+	var peaks := {}  # bus name: largest peak in dB
+	var players := {}  # instance id: {path, class, stream, bus, volumeDb, starts, firstAt, lastAt, playing}
+	var bypassed := false
+
+	func _init(request_id, now: float, capture_deadline: float, seconds: float) -> void:
+		id = request_id
+		started = now
+		deadline = capture_deadline
+		rate = AudioServer.get_mix_rate()
+		target = maxi(1, roundi(seconds * rate))
+		start_usec = Time.get_ticks_usec()
+		bypassed = AudioServer.is_bus_bypassing_effects(0)
+		effect.buffer_length = AUDIO_BUFFER_SECONDS
+		AudioServer.add_bus_effect(0, effect)
+		note_volume()
+
+	## Moves the frames that the effect captured, up to the target, into `data`.
+	func pull() -> void:
+		var count := mini(effect.get_frames_available(), target - frames)
+		if count <= 0:
+			return
+		var pairs := effect.get_buffer(count)
+		var bytes := pairs.to_byte_array()
+		if bytes.size() != count * 8:
+			# A build with double precision stores 64-bit vectors.
+			var samples := PackedFloat32Array()
+			samples.resize(count * 2)
+			for i in count:
+				samples[i * 2] = pairs[i].x
+				samples[i * 2 + 1] = pairs[i].y
+			bytes = samples.to_byte_array()
+		data.append_array(bytes)
+		frames += count
+
+	func note_volume() -> void:
+		var volume := AudioServer.get_bus_volume_db(0)
+		var muted := AudioServer.is_bus_mute(0)
+		if volumes.is_empty() or volumes[-1][1] != volume or volumes[-1][2] != muted:
+			volumes.append([frames, volume, muted])
+
+	## Whether the effect still sits on the Master bus; a bus layout that the game set during the capture removes it.
+	func attached() -> bool:
+		for i in AudioServer.get_bus_effect_count(0):
+			if AudioServer.get_bus_effect(0, i) == effect:
+				return true
+		return false
+
+	func detach() -> void:
+		for i in range(AudioServer.get_bus_effect_count(0) - 1, -1, -1):
+			if AudioServer.get_bus_effect(0, i) == effect:
+				AudioServer.remove_bus_effect(0, i)
+
+	func follow(node: Node) -> void:
+		if players.size() >= AUDIO_MAX_PLAYERS or not (node is AudioStreamPlayer or node is AudioStreamPlayer2D or node is AudioStreamPlayer3D):
+			return
+		var key := node.get_instance_id()
+		if not players.has(key):
+			players[key] = {"path": str(node.get_path()), "class": node.get_class(), "stream": "", "bus": str(node.bus), "volumeDb": node.volume_db,
+				"starts": 0, "firstAt": -1.0, "lastAt": -1.0, "playing": false}
+
+	## Records the frame at `seconds` into the capture: bus peaks, and which players play.
+	func observe(seconds: float) -> void:
+		for bus in AudioServer.bus_count:
+			var name := str(AudioServer.get_bus_name(bus))
+			var peak := maxf(AudioServer.get_bus_peak_volume_left_db(bus, 0), AudioServer.get_bus_peak_volume_right_db(bus, 0))
+			peaks[name] = maxf(float(peaks.get(name, -200.0)), peak)
+		for key in players:
+			var node := instance_from_id(key) as Node
+			if node == null:
+				continue
+			var entry: Dictionary = players[key]
+			var playing: bool = node.is_playing()
+			if playing and not entry["playing"]:
+				entry["starts"] += 1
+				if entry["firstAt"] < 0.0:
+					entry["firstAt"] = seconds
+				var stream: AudioStream = node.stream
+				entry["stream"] = "" if stream == null else (stream.resource_path if not stream.resource_path.is_empty() else stream.get_class())
+				entry["bus"] = str(node.bus)
+				entry["volumeDb"] = node.volume_db
+			if playing:
+				entry["lastAt"] = seconds
+			entry["playing"] = playing
+
+
 var _logger := HarnessLogger.new()
 var _peer := StreamPeerTCP.new()
 var _connected := false
@@ -234,8 +367,14 @@ var _token := ""
 var _scene_override := ""
 var _rx := PackedByteArray()
 
+var _runtime: Object = null  # the WASDEngineRuntime singleton, when the runtime has it
+var _audio: AudioCapture = null  # the running audio capture
+
 var _stream_fps := 0.0
-var _own_max_fps := -1  # the game's own Engine.max_fps while the Host caps the frame rate, -1 while it does not
+var _own_max_fps := -1  # the game's own Engine.max_fps while the harness caps the frame rate, -1 while it does not
+var _pace_cap := 0  # the Host's frame rate cap, 0 for none
+var _presenting := true  # whether the root viewport presents its frames to the window
+var _present_cap := 0  # the screen's refresh rate while the game does not present, 0 while it does
 var _stream_quality := 0.9
 var _stream_max_width := 1280
 var _stream_lossless := false
@@ -266,8 +405,10 @@ var _last_status_ms := 0
 var _last_mouse_mode := -1
 var _last_scene := ""
 # The running performance sample, or empty: {id, started, end, deadline (real seconds), frames, droppedFrames,
-# pausedFrames, physicsSteps, streamedFrames, series: {name: values}, monitorsStart, marks}. `marks` holds the tick
-# microseconds at which the phases of the current frame began, 0 until they do, and its physics microseconds.
+# pausedFrames, physicsSteps, streamedFrames, series: {name: values}, monitorsStart, marks, phase, scriptSeconds,
+# scriptStart, scriptEnd, scriptFrames}, and, once the frame window ended, {framesEnded, monitorsEnd, custom}. `marks`
+# holds the tick microseconds at which the phases of the current frame began, 0 until they do, and its physics
+# microseconds. `phase` is "frames" during the frame window and "scripts" during the script window.
 var _sample := {}
 
 
@@ -280,6 +421,8 @@ func _init() -> void:
 			_token = arg.trim_prefix("--wasd-token=")
 		elif arg.begins_with("--wasd-scene="):
 			_scene_override = arg.trim_prefix("--wasd-scene=")
+	if Engine.has_singleton(RUNTIME_SINGLETON):
+		_runtime = Engine.get_singleton(RUNTIME_SINGLETON)
 	if _port > 0:
 		_peer.connect_to_host("127.0.0.1", _port)
 
@@ -297,6 +440,8 @@ func _initialize() -> void:
 
 
 func _finalize() -> void:
+	if _audio != null:
+		_audio.detach()
 	_wait_for_encodings()
 	_flush_logs()
 	OS.remove_logger(_logger)
@@ -316,6 +461,7 @@ func _process(delta: float) -> bool:
 		_advance_actions(now)
 		_advance_waits(now)
 		_advance_sample(now)
+		_advance_audio(now)
 		_flush_logs()
 		_send_status_if_changed()
 		_stream_frame(now)
@@ -361,6 +507,7 @@ func _hello() -> Dictionary:
 		"renderingMethod": RenderingServer.get_current_rendering_method(),
 		"width": size.x,
 		"height": size.y,
+		"wasdRuntime": _runtime != null,
 	}
 	var layer_context := int(DisplayServer.get_meta(LAYER_CONTEXT_META, 0))
 	if layer_context > 0:
@@ -459,6 +606,8 @@ func _handle(message: Dictionary, now: float) -> void:
 			_tree(id, message)
 		"performance":
 			_start_sample(id, message, now)
+		"audio":
+			_start_audio(id, message, now)
 		"quit":
 			_reply(id, {"quitting": true})
 			quit(int(message.get("exitCode", 0)))
@@ -466,18 +615,55 @@ func _handle(message: Dictionary, now: float) -> void:
 			_reply_error(id, "unknown request type %s" % str(message.get("type", "")))
 
 
-## Caps the frame rate at `maxFps` while nobody shows or uses the game, keeping a lower cap of the game's own, or
-## restores the game's own cap for a `maxFps` of 0. Game time keeps its pace while physics steps fit the capped frames.
+## Applies the Host's pacing: a frame rate cap of `maxFps` (0 for none) and, with a boolean `present`, whether the game
+## presents its frames to its window. Game time keeps its pace while physics steps fit the capped frames.
 func _pace(id, message: Dictionary) -> void:
-	var cap := clampi(int(message.get("maxFps", 0)), 0, 1000)
-	if cap > 0:
-		if _own_max_fps < 0:
-			_own_max_fps = Engine.max_fps
-		Engine.max_fps = cap if _own_max_fps == 0 else mini(cap, _own_max_fps)
-	elif _own_max_fps >= 0:
-		Engine.max_fps = _own_max_fps
-		_own_max_fps = -1
-	_reply(id, {"maxFps": Engine.max_fps})
+	_pace_cap = clampi(int(message.get("maxFps", 0)), 0, 1000)
+	var present = message.get("present", null)
+	if present is bool and present != _presenting:
+		_set_presenting(present)
+	_apply_frame_cap()
+	_reply(id, {"maxFps": Engine.max_fps, "presenting": _presenting})
+
+
+func _set_presenting(on: bool) -> void:
+	_presenting = on
+	if on:
+		RenderingServer.frame_pre_draw.disconnect(_leave_screen)
+		RenderingServer.viewport_set_update_mode(root.get_viewport_rid(), RenderingServer.VIEWPORT_UPDATE_WHEN_VISIBLE)
+		# Setting the content scale mode makes the window attach its viewport to the screen where its settings place it.
+		root.content_scale_mode = root.content_scale_mode
+		_present_cap = 0
+		return
+	_leave_screen()
+	# The window attaches its viewport again when its size or content scale changes, so it leaves before every frame.
+	RenderingServer.frame_pre_draw.connect(_leave_screen)
+	var refresh := DisplayServer.screen_get_refresh_rate()
+	_present_cap = roundi(refresh) if refresh > 0.0 else UNKNOWN_REFRESH_FPS
+
+
+## Detaches the root viewport from the screen and has it draw every frame into its texture anyway.
+func _leave_screen() -> void:
+	var viewport := root.get_viewport_rid()
+	RenderingServer.viewport_attach_to_screen(viewport, Rect2(), DisplayServer.INVALID_WINDOW_ID)
+	RenderingServer.viewport_set_update_mode(viewport, RenderingServer.VIEWPORT_UPDATE_ALWAYS)
+
+
+## Caps Engine.max_fps at the lowest of the Host's cap, the screen's refresh rate while the game does not present, and
+## the game's own cap; without a cap of the Host or the harness, it restores the game's own.
+func _apply_frame_cap() -> void:
+	var cap := 0
+	for limit in [_pace_cap, _present_cap]:
+		if limit > 0 and (cap == 0 or limit < cap):
+			cap = limit
+	if cap == 0:
+		if _own_max_fps >= 0:
+			Engine.max_fps = _own_max_fps
+			_own_max_fps = -1
+		return
+	if _own_max_fps < 0:
+		_own_max_fps = Engine.max_fps
+	Engine.max_fps = cap if _own_max_fps == 0 else mini(cap, _own_max_fps)
 
 
 ## Returns the real time in seconds at which a request's `timeoutMs` ends it, 0 when it has none, or -1 after
@@ -541,6 +727,9 @@ func _end_steps(pause_step: bool) -> void:
 func _cancel(request, now: float) -> bool:
 	if not _sample.is_empty() and _sample["id"] == request:
 		_finish_sample(now, false, true)
+		return true
+	if _audio != null and _audio.id == request:
+		_finish_audio(now, false, true)
 		return true
 	for i in _waits.size():
 		if _waits[i]["id"] == request:
@@ -1033,6 +1222,107 @@ func _describe(node: Node, depth: int, limit: Dictionary) -> Dictionary:
 	return entry
 
 
+func _start_audio(id, message: Dictionary, now: float) -> void:
+	if _audio != null:
+		_reply_error(id, "an audio capture is already running")
+		return
+	var deadline := _deadline(id, message, now)
+	if deadline < 0.0:
+		return
+	_audio = AudioCapture.new(id, now, deadline, clampf(float(message.get("seconds", 3.0)), 0.05, AUDIO_MAX_SECONDS))
+	_audio.start_frame = _frame
+	var stack: Array[Node] = [root]
+	var visited := 0
+	while not stack.is_empty() and visited < PERFORMANCE_MAX_NODES:
+		var node: Node = stack.pop_back()
+		visited += 1
+		_audio.follow(node)
+		stack.append_array(node.get_children())
+	node_added.connect(_on_audio_node_added)
+
+
+func _on_audio_node_added(node: Node) -> void:
+	if _audio != null:
+		_audio.follow(node)
+
+
+## Moves the captured frames along, and ends the capture once it holds its audio or at its `timeoutMs`.
+func _advance_audio(now: float) -> void:
+	if _audio == null:
+		return
+	_audio.pull()
+	_audio.note_volume()
+	_audio.observe(now - _audio.started)
+	if _audio.frames >= _audio.target:
+		_finish_audio(now, false, false)
+	elif _audio.deadline > 0.0 and now >= _audio.deadline:
+		_finish_audio(now, true, false)
+
+
+func _finish_audio(_now: float, timed_out: bool, cancelled: bool) -> void:
+	var capture := _audio
+	_audio = null
+	node_added.disconnect(_on_audio_node_added)
+	capture.pull()
+	var attached := capture.attached()
+	capture.detach()
+	var played: Array[Dictionary] = []
+	for key in capture.players:
+		var entry: Dictionary = capture.players[key]
+		if entry["starts"] > 0:
+			played.append(entry)
+	played.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["firstAt"] < b["firstAt"])
+	_reply(capture.id, {
+		"sampleRate": capture.rate,
+		"channels": 2,
+		"frames": capture.frames,
+		"seconds": capture.frames / capture.rate,
+		"droppedFrames": capture.effect.get_discarded_frames(),
+		"masterVolumes": capture.volumes,
+		"masterBypassed": capture.bypassed,
+		"detached": not attached,
+		"driver": AudioServer.get_driver_name(),
+		"outputLatencyMs": AudioServer.get_output_latency() * 1000.0,
+		"startFrame": capture.start_frame,
+		"frame": _frame,
+		"buses": _audio_buses(capture.peaks),
+		"players": played.slice(0, AUDIO_LISTED_PLAYERS),
+		"morePlayers": maxi(0, played.size() - AUDIO_LISTED_PLAYERS),
+		"timedOut": timed_out,
+		"cancelled": cancelled,
+	})
+	if capture.id == null:
+		return
+	var payload := PackedByteArray()
+	payload.resize(4)
+	payload.encode_u32(0, int(capture.id))
+	payload.append_array(capture.data)
+	_send(KIND_AUDIO, payload)
+
+
+## Describes the audio buses: their settings, effects as [class, enabled], and the largest peak in `peaks`.
+func _audio_buses(peaks: Dictionary) -> Array:
+	var buses := []
+	for bus in AudioServer.bus_count:
+		var name := str(AudioServer.get_bus_name(bus))
+		var effects := []
+		for i in AudioServer.get_bus_effect_count(bus):
+			var effect := AudioServer.get_bus_effect(bus, i)
+			if effect != null:
+				effects.append([effect.get_class(), AudioServer.is_bus_effect_enabled(bus, i)])
+		buses.append({
+			"name": name,
+			"volumeDb": AudioServer.get_bus_volume_db(bus),
+			"mute": AudioServer.is_bus_mute(bus),
+			"solo": AudioServer.is_bus_solo(bus),
+			"bypass": AudioServer.is_bus_bypassing_effects(bus),
+			"send": str(AudioServer.get_bus_send(bus)) if bus > 0 else "",
+			"effects": effects,
+			"peakDb": float(peaks.get(name, -200.0)),
+		})
+	return buses
+
+
 func _start_sample(id, message: Dictionary, now: float) -> void:
 	if not _sample.is_empty():
 		_reply_error(id, "a performance sample is already running")
@@ -1048,6 +1338,8 @@ func _start_sample(id, message: Dictionary, now: float) -> void:
 		"frames": 0, "droppedFrames": 0, "pausedFrames": 0, "physicsSteps": 0, "streamedFrames": 0,
 		"series": series, "monitorsStart": _monitors(),
 		"marks": {"process": 0, "physicsFirst": 0, "physicsUsec": 0, "nodes": 0, "draw": 0, "drawn": 0, "paused": paused},
+		"phase": "frames", "scriptSeconds": clampf(float(message.get("scriptSeconds", 0.0)), 0.0, 60.0),
+		"scriptStart": 0.0, "scriptEnd": 0.0, "scriptFrames": 0,
 	}
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
 	physics_frame.connect(_on_sample_physics_frame)
@@ -1059,6 +1351,9 @@ func _start_sample(id, message: Dictionary, now: float) -> void:
 ## Records the frame that ended at `now_usec`, the start of this `_process`, and starts the marks of the next one.
 ## A frame's physics steps run before its `_process`, so their time is known when the frame starts.
 func _sample_frame(now_usec: int) -> void:
+	if _sample["phase"] == "scripts":
+		_sample["scriptFrames"] += 1
+		return
 	var marks: Dictionary = _sample["marks"]
 	var begun: int = marks["process"]
 	if begun > 0:
@@ -1114,26 +1409,49 @@ func _on_sample_post_draw() -> void:
 	_sample["marks"]["drawn"] = Time.get_ticks_usec()
 
 
-## Ends the running performance sample once its window has passed, or at its `timeoutMs` with `timedOut`.
+## Moves the running performance sample from its frame window to its script window, and ends it after both, or at its
+## `timeoutMs` with `timedOut`.
 func _advance_sample(now: float) -> void:
 	if _sample.is_empty():
 		return
-	if now >= float(_sample["end"]):
+	if _sample["phase"] == "frames" and now >= float(_sample["end"]):
+		if float(_sample["scriptSeconds"]) > 0.0 and _runtime != null:
+			_end_frame_window(_sample, now)
+			_sample["phase"] = "scripts"
+			_sample["scriptStart"] = now
+			_sample["scriptEnd"] = now + float(_sample["scriptSeconds"])
+			_runtime.call(&"start_script_profiling", true)
+		else:
+			_finish_sample(now, false, false)
+	elif _sample["phase"] == "scripts" and now >= float(_sample["scriptEnd"]):
 		_finish_sample(now, false, false)
 	elif float(_sample["deadline"]) > 0.0 and now >= float(_sample["deadline"]):
 		_finish_sample(now, true, false)
 
 
-func _finish_sample(now: float, timed_out: bool, cancelled: bool) -> void:
-	var sample := _sample
-	_sample = {}
+## Stops the measurements of the frame window and keeps its end state in the sample.
+func _end_frame_window(sample: Dictionary, now: float) -> void:
 	physics_frame.disconnect(_on_sample_physics_frame)
 	process_frame.disconnect(_on_sample_process_frame)
 	RenderingServer.frame_pre_draw.disconnect(_on_sample_pre_draw)
 	RenderingServer.frame_post_draw.disconnect(_on_sample_post_draw)
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), false)
+	sample["framesEnded"] = now
+	sample["monitorsEnd"] = _monitors()
+	sample["custom"] = _custom_monitors()
+
+
+func _finish_sample(now: float, timed_out: bool, cancelled: bool) -> void:
+	var sample := _sample
+	_sample = {}
+	var scripts := []
+	if sample["phase"] == "frames":
+		_end_frame_window(sample, now)
+	else:
+		scripts = _script_profile()
+		_runtime.call(&"stop_script_profiling")
 	_reply(sample["id"], {
-		"seconds": now - float(sample["started"]),
+		"seconds": float(sample["framesEnded"]) - float(sample["started"]),
 		"frames": sample["frames"],
 		"droppedFrames": sample["droppedFrames"],
 		"pausedFrames": sample["pausedFrames"],
@@ -1141,13 +1459,47 @@ func _finish_sample(now: float, timed_out: bool, cancelled: bool) -> void:
 		"streamedFrames": sample["streamedFrames"],
 		"series": sample["series"],
 		"monitorsStart": sample["monitorsStart"],
-		"monitorsEnd": _monitors(),
-		"custom": _custom_monitors(),
+		"monitorsEnd": sample["monitorsEnd"],
+		"custom": sample["custom"],
 		"nodes": _node_census(),
 		"context": _performance_context(),
+		"scriptProfiler": _runtime != null,
+		"scripts": scripts,
+		"scriptSeconds": now - float(sample["scriptStart"]) if sample["phase"] == "scripts" else 0.0,
+		"scriptFrames": sample["scriptFrames"],
 		"timedOut": timed_out,
 		"cancelled": cancelled,
 	})
+
+
+## Returns the script profile since the script window started, without this harness's own functions. The runtime lists
+## each function's entry before the entries of the engine methods it called; those stay together, the functions with
+## the most own time first and each one's costliest engine methods first, in at most PERFORMANCE_MAX_SCRIPT_ENTRIES
+## entries.
+func _script_profile() -> Array:
+	var own := (get_script() as Script).resource_path + "::"
+	var functions: Array[Dictionary] = []
+	for entry in _runtime.call(&"get_script_profile"):
+		if not (entry is Array and entry.size() >= 4) or str(entry[0]).begins_with(own):
+			continue
+		var parts := str(entry[0]).rsplit("::", true, 2)
+		var engine_method := parts.size() == 3 and parts[1] == "0" and not parts[2].begins_with("@")
+		if engine_method and not functions.is_empty() and functions[-1]["path"] == parts[0]:
+			var caller := functions[-1]
+			(caller["calls"] as Array).append(entry)
+			caller["time"] = int(caller["time"]) + int(entry[2])
+		else:
+			functions.append({"path": parts[0], "entry": entry, "calls": [], "time": int(entry[3])})
+	functions.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a["time"]) > int(b["time"]))
+	var kept := []
+	for profiled in functions:
+		if kept.size() >= PERFORMANCE_MAX_SCRIPT_ENTRIES:
+			break
+		kept.append(profiled["entry"])
+		var calls: Array = profiled["calls"]
+		calls.sort_custom(func(a: Array, b: Array) -> bool: return int(a[2]) > int(b[2]))
+		kept.append_array(calls.slice(0, PERFORMANCE_MAX_SCRIPT_ENTRIES - kept.size()))
+	return kept
 
 
 ## Returns every built-in `Performance` monitor by its constant name, so other Godot 4 versions report theirs.
@@ -1220,7 +1572,11 @@ func _performance_context() -> Dictionary:
 	return {
 		"paused": paused,
 		"timeScale": Engine.time_scale,
-		"maxFps": Engine.max_fps,
+		"maxFps": _own_max_fps if _own_max_fps >= 0 else Engine.max_fps,
+		"frameCap": Engine.max_fps,
+		"presenting": _presenting,
+		"refreshRate": DisplayServer.screen_get_refresh_rate(),
+		"wasdRuntime": _runtime != null,
 		"physicsTicksPerSecond": Engine.physics_ticks_per_second,
 		"vsyncMode": int(ProjectSettings.get_setting("display/window/vsync/vsync_mode", 1)),
 		"lowProcessorMode": OS.low_processor_usage_mode,

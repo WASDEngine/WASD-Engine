@@ -484,21 +484,23 @@ posix('frames', () => {
 
 posix('frame rate of a game nobody shows', () => {
   const HIDDEN = { hidden: { fps: 10, delayMs: 150 } }
-  /** The `maxFps` of each pace request the fake received, in order. */
-  async function paces(project: string): Promise<number[]> {
-    return (await fakeRequests(project)).flatMap(request => request.type === 'pace' ? [request.maxFps as number] : [])
+  /** The `maxFps` and `present` of each pace request the fake received, in order. */
+  async function paces(project: string): Promise<{ maxFps: unknown; present: unknown }[]> {
+    return (await fakeRequests(project)).flatMap(request => request.type === 'pace' ? [{ maxFps: request.maxFps, present: request.present }] : [])
   }
+  const hidden = (maxFps: number): { maxFps: number; present: boolean } => ({ maxFps, present: false })
 
   it('caps a windowless game that nobody shows or uses once the delay passed, and lifts the cap before a request', async () => {
     const { run, project } = await running({ game: { displayServer: 'embedded' } }, HIDDEN)
-    await until(async () => (await paces(project)).length === 1)
-    expect(await paces(project)).toEqual([10])
+    await until(async () => (await paces(project)).length === 2)
+    // Nothing displays the game, so it stops presenting at once, and its frame rate drops after the delay.
+    expect(await paces(project)).toEqual([hidden(0), hidden(10)])
     await run.evaluate('1 + 1', undefined, signal)
     // The request found the game capped, so the cap was lifted before the request reached the game.
     const requests = await fakeRequests(project)
-    expect(requests[requests.findIndex(request => request.type === 'eval') - 1]).toMatchObject({ type: 'pace', maxFps: 0 })
-    await until(async () => (await paces(project)).length === 3)
-    expect(await paces(project)).toEqual([10, 0, 10])
+    expect(requests[requests.findIndex(request => request.type === 'eval') - 1]).toMatchObject({ type: 'pace', maxFps: 0, present: false })
+    await until(async () => (await paces(project)).length === 4)
+    expect(await paces(project)).toEqual([hidden(0), hidden(10), hidden(0), hidden(10)])
   })
 
   it('keeps a game at its own frame rate while a view or a frame stream shows it, and for the delay after', async () => {
@@ -510,29 +512,77 @@ posix('frame rate of a game nobody shows', () => {
     hide()
     hide()
     await tick(400)
-    expect(await paces(project)).toEqual([])
+    // Views keep the frame rate, but only a display keeps the game presenting.
+    expect(await paces(project)).toEqual([hidden(0)])
     leave()
     const left = performance.now()
-    await until(async () => (await paces(project)).length === 1)
+    await until(async () => (await paces(project)).length === 2)
     expect(performance.now() - left).toBeGreaterThanOrEqual(140)
     const shown = run.show()
-    await until(async () => (await paces(project)).length === 2)
-    expect(await paces(project)).toEqual([10, 0])
+    await until(async () => (await paces(project)).length === 3)
+    expect(await paces(project)).toEqual([hidden(0), hidden(10), hidden(0)])
     shown()
   })
 
-  it('leaves a game with a window, and every game when the hidden frame rate is 0, at its own frame rate', async () => {
+  it('presents a windowless game\'s frames only while a display shows it, which also counts as a view', async () => {
+    const early = await start({ game: { displayServer: 'embedded' } }, HIDDEN)
+    const shown = early.run.display()
+    await early.run.started()
+    await tick(400)
+    // A display from the start keeps the game presenting and at its own frame rate, so nothing changes.
+    expect(await paces(early.project)).toEqual([])
+    shown()
+    shown()
+    await until(async () => (await paces(early.project)).length === 2)
+    expect(await paces(early.project)).toEqual([hidden(0), hidden(10)])
+    const again = early.run.display()
+    await until(async () => (await paces(early.project)).length === 3)
+    expect((await paces(early.project))[2]).toEqual({ maxFps: 0, present: true })
+    again()
+  })
+
+  it('leaves a game with a window at its own frame rate and presenting, and paces only presentation when the hidden frame rate is 0', async () => {
     const windowed = await running({ game: { displayServer: 'macos' } }, HIDDEN)
     const off = await running({ game: { displayServer: 'embedded' } }, { hidden: { fps: 0, delayMs: 0 } })
     await tick(400)
     expect(await paces(windowed.project)).toEqual([])
-    expect(await paces(off.project)).toEqual([])
+    expect(await paces(off.project)).toEqual([hidden(0)])
   })
 
   it('warns about a refused frame rate request', async () => {
     const failing = await running({ game: { displayServer: 'embedded', replies: { pace: 'error' } } }, { hidden: { fps: 10, delayMs: 0 } })
     await until(() => failing.warnings.length > 0)
     expect(failing.warnings[0]).toBe('Godot frame rate request failed: fake pace failure')
+  })
+})
+
+posix('audio captures', () => {
+  it('captures the mix for the requested seconds as interleaved stereo samples, which follow the answer', async () => {
+    const { run, project } = await running({ game: {} })
+    const { meta, samples } = await run.audio(0.5, signal)
+    expect(meta).toMatchObject({ sampleRate: 44100, channels: 2, frames: 22050, driver: 'Dummy', timedOut: false, cancelled: false })
+    expect(samples).toHaveLength(44100)
+    expect(samples[2]).toBe(samples[3])
+    expect(Math.max(...samples.subarray(0, 400))).toBeCloseTo(0.5, 2)
+    // The capture's real-time limit is its seconds plus requestTimeoutMs.
+    expect((await fakeRequests(project)).find(request => request.type === 'audio')).toMatchObject({ seconds: 0.5, timeoutMs: 5500 })
+  })
+
+  it('ends a capture early on stop and keeps what it captured, and abandons it on cancellation', async () => {
+    const { run, project } = await running({ game: { replies: { audio: 'untilCancel' } } })
+    const stop = new AbortController()
+    const capture = run.audio(10, signal, stop.signal)
+    await until(async () => (await fakeRequests(project)).some(request => request.type === 'audio'))
+    stop.abort()
+    const { meta, samples } = await capture
+    expect(meta).toMatchObject({ cancelled: true, frames: 4410 })
+    expect(samples).toHaveLength(8820)
+    const request = (await fakeRequests(project)).find(entry => entry.type === 'audio')
+    expect((await fakeRequests(project)).find(entry => entry.type === 'cancel')).toMatchObject({ request: request?.id })
+    const abandoned = new AbortController()
+    const lost = run.audio(10, abandoned.signal)
+    abandoned.abort(new Error('the call ended'))
+    await expect(lost).rejects.toThrow('the call ended')
   })
 })
 

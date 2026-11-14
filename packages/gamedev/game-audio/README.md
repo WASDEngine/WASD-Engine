@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The audio plugin lets agents, which cannot listen, review a game's sound effects, dialogue, and music. `audio_search` lists the project's sounds with their kind, format, and length. `audio_review` measures one sound as WASD Engine's Audio tab plays it: peak and loudness, clipping, silence at either end, spectrum, loop seam, stereo channels, and Godot import, with a waveform and spectrogram picture, and can open the sound in the user's Audio tab. Agents connected through WASD Engine's MCP server get the same tools. The `./audio` export holds the formats, header probe, measurements, and picture that the Audio tab and SuperCollider share.
+The audio plugin lets agents, which cannot listen, review a game's sound effects, dialogue, and music. `audio_search` lists the project's sounds with their kind, format, and length. `audio_review` measures one sound as WASD Engine's Audio tab plays it: peak and loudness, clipping, silence at either end, spectrum, loop seam, stereo channels, and Godot import, with a waveform and spectrogram picture, and can open the sound in the user's Audio tab. Agents connected through WASD Engine's MCP server get the same tools. The `./audio` export holds the formats, header probe, measurements, and picture that the Audio tab and game tools share.
 
 ## Table of Contents
 
@@ -74,6 +74,8 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 | `analyzeAudioSteps`, `stereoImageSteps`, `drawAudioImageSteps`, `finish` | The same measurements and picture as generators that pause after about `STEP_FRAMES` frames or one picture column: `finish` runs one to its end at once, and the Audio tab runs them a slice at a time between the page's events |
 | `AUDIO_ERROR` | The tools' error codes, with which a window answers a request it cannot fulfil |
 
+The `./png` export, `encodePng`, encodes the picture's RGB pixels as a PNG file with `node:zlib`, so only Host code imports it: the SuperCollider tools and `godot_audio`.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -97,6 +99,7 @@ The `./audio` export is browser-safe and has no dependencies: the client bundle 
 | [`src/result.ts`](src/result.ts) | Validation of a window's answer and of a stored result's fields |
 | [`src/mcp.ts`](src/mcp.ts) | The tools for connected agents and the provider's instructions |
 | [`src/types.ts`](src/types.ts) | The browser-safe request, answer, and reveal types and the two events |
+| [`src/png.ts`](src/png.ts) | The `./png` module: PNG encoding of the picture on the Host |
 | [`src/audio/`](src/audio/index.ts) | The `./audio` module |
 
 </details>

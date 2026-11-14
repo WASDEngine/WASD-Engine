@@ -178,7 +178,6 @@ IDE 名称不为 `none` 时，sclang 会关闭 readline 输入，因此它按以
 | [`src/sclang-output.ts`](src/sclang-output.ts) | sclang 输出中的回复行，以及它们之间有上限的输出 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、分析报告与帮助文本 |
 | [`src/audio.ts`](src/audio.ts) | 浮点 WAV 读取，以及归一化渲染的增益 |
-| [`src/png.ts`](src/png.ts) | 波形与声谱图图像的 PNG 编码 |
 | [`src/schelp.ts`](src/schelp.ts) | SCDoc 帮助文件的纯文本 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称与指令 |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | 工作类：启动、分派、JSON 回复、每个方法一个处理方法，以及对 `Server:boot` 的覆盖 |

@@ -1,7 +1,7 @@
 /**
  * One run of a Session's game: the optional import step, a loopback server with a token handshake, the Godot
  * process, request and response correlation, logs, status, frame fan-out, the frame rate cap of a game that nobody
- * shows or uses, and shutdown.
+ * shows or uses, whether a windowless game presents its frames, and shutdown.
  *
  * Lifecycle: `preparing` → `importing` (when configured) → `starting` → `running` ⇄ `paused` → `exited` or
  * `crashed`; a failure before the harness connects ends in `failed`. The run owns every process, socket, and
@@ -16,6 +16,7 @@ import { createServer, type AddressInfo, type Server, type Socket } from 'node:n
 import type { SubprocessHandle, SubprocessOutputReader, SubprocessRuntime, SubprocessStdio } from '@deepseek-ai/dsh-subprocess'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
+import { AudioReply } from './audio.ts'
 import { importFailure, type GodotImportOutcome, type ProjectImports } from './imports.ts'
 import { isErrorEntry, LogRing, type LogSequence } from './logs.ts'
 import { describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
@@ -110,7 +111,8 @@ export interface GodotRunSpec {
   readonly stream: StreamSettings
   /**
    * Frame rate of a windowless game that no view shows and no request uses: `fps` once `delayMs` passed since the game
-   * connected or the latest view or request ended; an `fps` of 0 leaves every game at its own frame rate.
+   * connected or the latest view or request ended; an `fps` of 0 leaves every game at its own frame rate. A windowless
+   * game also presents its frames only while a display ({@link GodotRun.display}) shows it.
    */
   readonly hidden: { readonly fps: number; readonly delayMs: number }
 }
@@ -226,20 +228,23 @@ interface OutputOffsets {
   readonly stderr: number
 }
 
+/** The binary message that follows the JSON answer of a request: a screenshot's image or a capture's audio. */
+type BinaryKind = 'image' | 'audio'
+
 interface Reply {
   readonly result: HarnessResult
-  readonly image?: Buffer
+  readonly data?: Buffer
 }
 
 interface Pending {
-  readonly wantsImage: boolean
+  readonly wants: BinaryKind | undefined
   /** Whether the harness drops the request on `cancel`: waits, steps, and input sequences. */
   readonly cancelable: boolean
   readonly resolve: (reply: Reply) => void
   readonly reject: (error: unknown) => void
   readonly dispose: () => void
   result?: HarnessResult
-  image?: Buffer
+  data?: Buffer
 }
 
 interface RequestOptions {
@@ -249,7 +254,13 @@ interface RequestOptions {
    * limit that they carry, Game tab input carries none, and the harness drops one that the Host abandons.
    */
   readonly bounded: boolean
-  readonly image?: boolean
+  /** The binary message that completes the answer. */
+  readonly binary?: BinaryKind
+  /**
+   * Ends a cancelable request early without abandoning it: the Host sends `cancel`, and the harness answers with what
+   * the request did until then.
+   */
+  readonly stop?: AbortSignal
   /** Whether the Host sends the request for itself, such as a frame rate or streaming change, so it does not use the game. */
   readonly background?: boolean
 }
@@ -355,12 +366,16 @@ export class GodotRun {
   private disconnectTimer: NodeJS.Timeout | undefined
   /** Views that show the run's picture, such as Game tabs. */
   private views = 0
+  /** Displays, the views through which a windowless game presents its frames, such as Game tabs. */
+  private displays = 0
   /** Requests that use the game and have not settled. */
   private uses = 0
   /** Real time when the game connected or the latest view or use ended. */
   private lastUse = 0
-  /** Whether the harness caps the game's frame rate at `hidden.fps`. */
-  private capped = false
+  /** The frame rate cap that the harness applies: `hidden.fps` or 0. */
+  private cap = 0
+  /** Whether the harness presents the game's frames, as it does from its start. */
+  private presenting = true
   private paceTimer: NodeJS.Timeout | undefined
   private userInputInFlight = false
   private userQueue: GodotInputEvent[] = []
@@ -524,6 +539,25 @@ export class GodotRun {
   }
 
   /**
+   * Count a display of the run: a view, as {@link GodotRun.show} counts one, through which a windowless game presents
+   * its frames, such as a Game tab that shows the game's Core Animation layer. A windowless game that no display shows
+   * renders into its texture without presenting, at most at the screen's refresh rate, so it never waits for the
+   * window server; screenshots and streamed frames read that texture.
+   * @returns the release; later calls do nothing.
+   */
+  display(): () => void {
+    this.displays += 1
+    const hide = this.show()
+    let released = false
+    return () => {
+      if (released) return
+      released = true
+      this.displays -= 1
+      hide()
+    }
+  }
+
+  /**
    * Capture the game window.
    * @param maxWidth - largest image width; wider windows are scaled down.
    * @param signal - cancellation.
@@ -534,8 +568,31 @@ export class GodotRun {
     maxWidth: number, signal: AbortSignal, jpegQuality?: number,
   ): Promise<{ readonly meta: ScreenshotReply; readonly image: Buffer }> {
     const params = jpegQuality === undefined ? { format: 'png', maxWidth } : { format: 'jpeg', quality: jpegQuality, maxWidth }
-    const reply = await this.send('screenshot', params, { signal, bounded: true, image: true })
-    return { meta: ScreenshotReply.parse(reply.result), image: reply.image as Buffer }
+    const reply = await this.send('screenshot', params, { signal, bounded: true, binary: 'image' })
+    return { meta: ScreenshotReply.parse(reply.result), image: reply.data as Buffer }
+  }
+
+  /**
+   * Capture the game's audio mix: the Master bus after its effects, as players hear it, for `seconds` of audio. The
+   * capture ends early, with `timedOut`, once those seconds plus `requestTimeoutMs` of real time have passed since the
+   * game received it, and with `cancelled` when `stop` aborts; both keep the audio captured until then.
+   * @param seconds - seconds of audio.
+   * @param signal - cancellation; the game also ends the capture, and its audio is lost.
+   * @param stop - ends the capture early and keeps its audio.
+   * @returns the capture's facts and its samples, left and right interleaved.
+   */
+  async audio(
+    seconds: number,
+    signal: AbortSignal,
+    stop?: AbortSignal,
+  ): Promise<{ readonly meta: AudioReply; readonly samples: Float32Array }> {
+    const timeoutMs = this.limitMs(seconds, 0)
+    const reply = await this.send('audio', { seconds, timeoutMs }, { signal, bounded: false, binary: 'audio', ...stop === undefined ? {} : { stop } })
+    const data = reply.data as Buffer
+    // The samples are little-endian 32-bit floats, as every platform of the Host stores them; a copy aligns them.
+    const bytes = new Uint8Array(data.byteLength - data.byteLength % 4)
+    bytes.set(data.subarray(0, bytes.length))
+    return { meta: AudioReply.parse(reply.result), samples: new Float32Array(bytes.buffer) }
   }
 
   /**
@@ -630,15 +687,17 @@ export class GodotRun {
   }
 
   /**
-   * Sample the game's performance for `seconds` of real time. The sample ends early, with `timedOut`, once those
-   * seconds plus `requestTimeoutMs` of real time have passed since the game received it.
-   * @param seconds - real seconds to sample.
+   * Sample the game's performance for `seconds` of real time, then, for `scriptSeconds` more, profile its scripts
+   * where the runtime can. The sample ends early, with `timedOut`, once those seconds plus `requestTimeoutMs` of real
+   * time have passed since the game received it.
+   * @param seconds - real seconds to sample frames.
+   * @param scriptSeconds - real seconds to profile scripts after the frames; 0 profiles none.
    * @param signal - cancellation; the game also ends the sample.
-   * @returns the per-frame series, monitors, scene census, and conditions that the game reported.
+   * @returns the per-frame series, monitors, scene census, script profile, and conditions that the game reported.
    */
-  async performance(seconds: number, signal: AbortSignal): Promise<PerformanceReply> {
-    const timeoutMs = this.limitMs(seconds, 0)
-    return PerformanceReply.parse((await this.send('performance', { seconds, timeoutMs }, { signal, bounded: false })).result)
+  async performance(seconds: number, scriptSeconds: number, signal: AbortSignal): Promise<PerformanceReply> {
+    const timeoutMs = this.limitMs(seconds + scriptSeconds, 0)
+    return PerformanceReply.parse((await this.send('performance', { seconds, scriptSeconds, timeoutMs }, { signal, bounded: false })).result)
   }
 
   /**
@@ -810,7 +869,8 @@ export class GodotRun {
         for (const sink of this.frameSinks) sink.frame(message.frame)
         return
       case 'image':
-        this.receiveImage(message.id, message.data)
+      case 'audio':
+        this.receiveBinary(message.kind, message.id, message.data)
         return
       case 'json':
         this.receiveJson(message.message)
@@ -875,23 +935,23 @@ export class GodotRun {
       pending.reject(new GodotRequestError(result.error ?? 'The game refused the request.'))
       return
     }
-    if (pending.wantsImage && pending.image === undefined) {
+    if (pending.wants !== undefined && pending.data === undefined) {
       pending.result = result
       return
     }
     this.settle(result.id, pending)
-    pending.resolve({ result, ...pending.image === undefined ? {} : { image: pending.image } })
+    pending.resolve({ result, ...pending.data === undefined ? {} : { data: pending.data } })
   }
 
-  private receiveImage(id: number, data: Buffer): void {
+  private receiveBinary(kind: BinaryKind, id: number, data: Buffer): void {
     const pending = this.pending.get(id)
-    if (pending === undefined || !pending.wantsImage) return
+    if (pending === undefined || pending.wants !== kind) return
     if (pending.result === undefined) {
-      pending.image = data
+      pending.data = data
       return
     }
     this.settle(id, pending)
-    pending.resolve({ result: pending.result, image: data })
+    pending.resolve({ result: pending.result, data })
   }
 
   private append(source: GodotLogEntry['source'], line: EngineOutputLine | Omit<GodotLogEntry, 'seq' | 'runId' | 'source' | 'time'>): void {
@@ -945,18 +1005,25 @@ export class GodotRun {
       this.abandon(id, entry)
       reject(options.signal.reason)
     }
+    const stop = (): void => {
+      // The harness answers the request with what it did until now, which settles it.
+      if (this.pending.get(id) === entry && this.connection !== undefined && !this.stopRequested) this.cancelRequest(id)
+    }
     const entry: Pending = {
-      wantsImage: options.image === true,
+      wants: options.binary,
       cancelable: !options.bounded,
       resolve,
       reject,
       dispose: () => {
         clearTimeout(timer)
         options.signal.removeEventListener('abort', abort)
+        options.stop?.removeEventListener('abort', stop)
       },
     }
     this.pending.set(id, entry)
     options.signal.addEventListener('abort', abort, { once: true })
+    if (options.stop?.aborted === true) queueMicrotask(stop)
+    else options.stop?.addEventListener('abort', stop, { once: true })
     if (options.bounded) {
       timer = setTimeout(() => {
         this.settle(id, entry)
@@ -980,29 +1047,25 @@ export class GodotRun {
   }
 
   /**
-   * Cap a windowless game that no view shows and no request uses at `hidden.fps`, `hidden.delayMs` after the game
-   * connected or the latest view or use ended, and lift the cap as soon as a view or a request begins.
+   * Pace a windowless game: cap one that no view shows and no request uses at `hidden.fps`, `hidden.delayMs` after the
+   * game connected or the latest view or use ended, lifting the cap as soon as a view or a request begins; and have it
+   * present its frames only while a display shows it.
    */
   private pace(): void {
     clearTimeout(this.paceTimer)
     this.paceTimer = undefined
-    if (this.spec.hidden.fps === 0 || !this.windowless || !this.connected) return
-    if (this.views > 0 || this.uses > 0) {
-      if (this.capped) this.setCap(false)
-      return
+    if (!this.windowless || !this.connected) return
+    let cap = 0
+    if (this.spec.hidden.fps > 0 && this.views === 0 && this.uses === 0) {
+      const remaining = this.lastUse + this.spec.hidden.delayMs - Date.now()
+      if (remaining > 0) this.paceTimer = setTimeout(() => { this.pace() }, remaining)
+      else cap = this.spec.hidden.fps
     }
-    if (this.capped) return
-    const remaining = this.lastUse + this.spec.hidden.delayMs - Date.now()
-    if (remaining > 0) {
-      this.paceTimer = setTimeout(() => { this.pace() }, remaining)
-      return
-    }
-    this.setCap(true)
-  }
-
-  private setCap(capped: boolean): void {
-    this.capped = capped
-    this.send('pace', { maxFps: capped ? this.spec.hidden.fps : 0 }, { signal: this.lifetime.signal, bounded: true, background: true })
+    const present = this.displays > 0
+    if (cap === this.cap && present === this.presenting) return
+    this.cap = cap
+    this.presenting = present
+    this.send('pace', { maxFps: cap, present }, { signal: this.lifetime.signal, bounded: true, background: true })
       .catch((error: unknown) => {
         // A closing connection or ending run also rejects the request; only a refusal or timeout is news.
         if (error instanceof GodotRequestError) this.deps.warn(`Godot frame rate request failed: ${error.message}`)
@@ -1029,10 +1092,14 @@ export class GodotRun {
   /** Stop waiting for a request; the harness drops a cancelable one that it still runs. */
   private abandon(id: number, entry: Pending): void {
     this.settle(id, entry)
-    const connection = this.connection
-    if (!entry.cancelable || connection === undefined || this.stopRequested) return
+    if (!entry.cancelable || this.connection === undefined || this.stopRequested) return
+    this.cancelRequest(id)
+  }
+
+  /** Ask the harness to end a cancelable request; its answer, if any, arrives as usual. */
+  private cancelRequest(id: number): void {
     this.nextRequestId += 1
-    connection.write(encodeJsonMessage({ type: 'cancel', id: this.nextRequestId, request: id }))
+    ;(this.connection as Socket).write(encodeJsonMessage({ type: 'cancel', id: this.nextRequestId, request: id }))
   }
 
   private rejectPending(error: Error): void {

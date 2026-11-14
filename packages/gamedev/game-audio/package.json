@@ -22,6 +22,10 @@
       "types": "./lib/types/audio/index.d.ts",
       "default": "./lib/types/audio/index.js"
     },
+    "./png": {
+      "types": "./lib/types/png.d.ts",
+      "default": "./lib/types/png.js"
+    },
     "./types": {
       "types": "./lib/types/types.d.ts"
     },

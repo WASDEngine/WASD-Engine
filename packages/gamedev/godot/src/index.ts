@@ -203,7 +203,7 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
  * The Godot release, `major.minor`, of the runtime that the plugin ships or installs: the start of `runtimeVersion`,
- * such as `4.7` for `4.7.2-wasd.2`, which the shipped and managed runtimes must match.
+ * such as `4.7` for `4.7.2-wasd.3`, which the shipped and managed runtimes must match.
  * @param config - the plugin configuration.
  * @returns the release, or undefined when `libgodotPath` and `runnerPath` name another runtime or `runtimeVersion` does not start with one.
  */
@@ -233,7 +233,7 @@ ${builtIn}
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.
 
@@ -328,8 +328,8 @@ export default class GodotController extends TypertRemoteService {
   static inject = ['tools', 'systemPrompt', 'workingDirectory', 'subprocess', 'agents', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
     dataRoot: z.string().required(),
-    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.2'),
-    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json'),
+    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.3'),
+    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),
@@ -427,6 +427,7 @@ export default class GodotController extends TypertRemoteService {
       },
       check: (agent, request, signal) => this.check(agent, request, signal),
       script: (agent, request, signal) => this.script(agent, request, signal),
+      resolvePath: async (agent, path, signal) => isAbsolute(path) ? path : resolve(await ctx.workingDirectory.ensure(agent, signal), path),
     }
     registerGodotTools(ctx, toolHost)
     const release = godotRelease(config)
@@ -545,9 +546,9 @@ export default class GodotController extends TypertRemoteService {
   }
 
   /**
-   * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
-   * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
-   * the run ends.
+   * Count the Session's run as displayed while the stream stays open, so a windowless game keeps its own frame rate and
+   * presents its frames; the Game tab holds one while it shows the run's picture. The stream yields one item once the
+   * display counts and ends when the run ends.
    * @param sessionId - Session whose run is shown.
    * @param runId - the run the tab shows.
    * @param signal - ends the view.
@@ -558,7 +559,7 @@ export default class GodotController extends TypertRemoteService {
     const run = this.sessions.find(sessionId)?.run
     if (run === undefined || run.terminal) throw notRunning()
     if (run.id !== runId) throw new RemoteError('godot/stale-run', 'The view was meant for a game that is no longer current.', { runId })
-    const hide = run.show()
+    const hide = run.display()
     try {
       yield { type: 'shown' }
       await untilSettledOrAborted(run.whenEnded(), signal)

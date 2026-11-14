@@ -178,7 +178,6 @@ The bridge leads the worker's process group and keeps sclang in it, and sclang r
 | [`src/sclang-output.ts`](src/sclang-output.ts) | Reply lines in sclang's post output, and the bounded output between them |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, the analysis report, and help text |
 | [`src/audio.ts`](src/audio.ts) | Float WAV reading and the gain of a normalized render |
-| [`src/png.ts`](src/png.ts) | PNG encoding of the waveform and spectrogram image |
 | [`src/schelp.ts`](src/schelp.ts) | Plain text of SCDoc help files |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | Worker class: boot, dispatch, JSON replies, one handler per method, and the `Server:boot` override |

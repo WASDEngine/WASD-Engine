@@ -1,8 +1,9 @@
 /**
  * The Godot tools for agents connected through WASD Engine's MCP server: the Session's own tool definitions, run for
  * the connected agent's Session in the game project it names, so its games play in the WASD Engine window's Game
- * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one; screenshots travel as
- * PNG bytes, sized for agent image limits; and `godot_run` asks the window to show the Session's Game tab.
+ * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one; screenshots and pictures
+ * travel as PNG bytes, screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's
+ * Game tab.
  * @module @deepseek-ai/dsh-godot/src/mcp
  */
 import { randomUUID } from 'node:crypto'
@@ -29,13 +30,14 @@ export const MCP_WORDING: GodotToolWording = {
   checkPaths: 'files or folders, as res:// paths or absolute paths',
   scriptPath: 'a res:// path or an absolute path inside the project',
   logsDefault: 'Without since, returns the entries after the ones you last read.',
+  audioPath: 'an absolute path',
 }
 
 /** How connected agents use the Godot tools, before the sentence that names the Godot release. */
 export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* tools. Pass project, the absolute path of the folder that holds project.godot, to your first Godot call; later calls default to it.
 1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner.`
 
 const PROJECT_PARAMETER = {
@@ -43,7 +45,7 @@ const PROJECT_PARAMETER = {
   description: 'Absolute path of the Godot project: the folder that holds project.godot, or a folder above it. Default: the project of your previous Godot call.',
 } as const
 
-/** The PNG bytes of each call's screenshots, by image id. */
+/** The PNG bytes of each call's screenshots and pictures, by image id. */
 type CapturedImages = WeakMap<ToolRunContext, Map<string, Buffer>>
 
 function isObject(value: unknown): value is JsonObject {
@@ -77,13 +79,7 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
     async capture(run, maxWidth, signal) {
       const view = run.view()
       const shot = await run.screenshot(agentScreenshotWidth(maxWidth, view.width, view.height), signal)
-      const id = `godot-screenshot-${randomUUID()}`
-      let captured = images.get(exec)
-      if (captured === undefined) {
-        captured = new Map()
-        images.set(exec, captured)
-      }
-      captured.set(id, shot.image)
+      const id = keepImage(images, exec, shot.image, 'godot-screenshot')
       return {
         width: shot.meta.width,
         height: shot.meta.height,
@@ -93,6 +89,39 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
         paused: shot.meta.paused,
         image: { attachmentId: id, mediaType: 'image/png', bytes: shot.image.byteLength, width: shot.meta.width, height: shot.meta.height },
       }
+    },
+  })
+}
+
+/**
+ * Keep PNG bytes under a new image id until the call's result.
+ * @param images - PNG bytes by image id, per call.
+ * @param exec - the call.
+ * @param png - the PNG bytes.
+ * @param prefix - start of the image id.
+ * @returns the image id.
+ */
+function keepImage(images: CapturedImages, exec: ToolRunContext, png: Buffer, prefix: string): string {
+  const id = `${prefix}-${randomUUID()}`
+  let captured = images.get(exec)
+  if (captured === undefined) {
+    captured = new Map()
+    images.set(exec, captured)
+  }
+  captured.set(id, png)
+  return id
+}
+
+/**
+ * The pictures of connected agents, which receive them as PNG bytes like screenshots.
+ * @param images - PNG bytes by image id, per call.
+ * @returns the picture resolution of {@link GodotToolSurface}.
+ */
+function mcpPictures(images: CapturedImages): GodotToolSurface['pictures'] {
+  return exec => Promise.resolve({
+    keep(png, _name, size) {
+      const id = keepImage(images, exec, png, 'godot-picture')
+      return Promise.resolve({ attachmentId: id, mediaType: 'image/png', bytes: png.byteLength, width: size.width, height: size.height })
     },
   })
 }
@@ -176,7 +205,7 @@ export function godotMcpProvider(
 ): GameMcpProvider {
   const images: CapturedImages = new WeakMap()
   const projects = new Map<string, string>()
-  const tools = godotToolDefinitions(host, { screenshots: mcpScreenshots(images), wording: MCP_WORDING })
+  const tools = godotToolDefinitions(host, { screenshots: mcpScreenshots(images), pictures: mcpPictures(images), wording: MCP_WORDING })
     .map(definition => mcpTool(definition, images, projects))
   return {
     id: 'godot',

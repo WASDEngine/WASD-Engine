@@ -66,8 +66,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
-| `runtimeVersion` | `4.7.2-wasd.2` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
-| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json` | 安装时下载的发布 manifest |
+| `runtimeVersion` | `4.7.2-wasd.3` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
+| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
@@ -125,7 +125,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 配置的路径不是可用文件时，调用会失败，消息中写明该字段，搜索不再继续。Desktop 打包时会放入附带的运行时（[Desktop 应用中的 LibGodot](../../../wasdengine/FORK.md#libgodot-in-the-desktop-app)）；源码检出和 npm 安装不附带运行时，使用托管运行时。插件从不启动 Godot 编辑器，无论它位于 `PATH`、`/Applications` 还是其他位置，因为编辑器会在窗口中运行游戏。没有任何运行时可用时，`godot_run` 与 `godot_check` 会失败，并要求从“游戏”标签页安装运行时或在配置中设置。
 
-在 macOS 上，每次运行都会传入 `--embedded`，[打过补丁的 LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patch) 用 Metal 把游戏渲染到一个不显示在任何窗口中的图层：不会打开游戏窗口，“游戏”标签页和截图是查看游戏的唯一途径。在补丁未覆盖的 Linux 与 Windows 上，运行会在宿主的桌面上打开普通的游戏窗口，“游戏”标签页同样会为其推流。
+在 macOS 上，每次运行都会传入 `--embedded`，[打过补丁的 LibGodot](../../../wasdengine/libgodot/BUILD.md#the-patches) 用 Metal 把游戏渲染到一个不显示在任何窗口中的图层：不会打开游戏窗口，“游戏”标签页和截图是查看游戏的唯一途径。在补丁未覆盖的 Linux 与 Windows 上，运行会在宿主的桌面上打开普通的游戏窗口，“游戏”标签页同样会为其推流。
 
 <a id="managed-runtime"></a>
 ### 安装托管运行时
@@ -147,6 +147,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 无人显示或使用的无窗口游戏以 `hiddenFps` 的帧率运行：游戏连接后、最后一个[“游戏”标签页](#game-tab)或帧流不再显示它后，或其最后一个请求结束后，经过 `hiddenDelayMs`，宿主就通过 harness 为 `Engine.max_fps` 设置上限；游戏自身的上限更低时保留后者。显示该游戏的“游戏”标签页，以及工具或标签页的每个请求，都会立即解除上限，且在请求到达游戏之前解除，因此 `godot_wait`、`godot_input`、`godot_performance` 及其他工具看到的都是游戏自身的帧率。受限期间，只要项目的物理节拍能放进受限后的帧（默认每帧最多 8 个物理步，即每秒 10 帧时每秒 80 个节拍），游戏时间就保持原有速度；每帧按固定量移动、不考虑帧间隔的逻辑会变慢。Linux 与 Windows 上有窗口的游戏保持自身帧率，因为用户能看到窗口。在 Apple M3 Pro 上，一个无人显示的 Defenders of the Wall 游戏以自身帧率运行时占用 0.33 个核心，限制为每秒 10 帧后占用 0.04 个核心。
 
+无窗口游戏只在有显示器显示它时才呈现（present）其帧：显示该游戏的“游戏”标签页持有一个 `godot.view` 流，它计为一个显示。没有显示时，harness 把根视口从屏幕上分离，但仍让它把每一帧绘制到其纹理中，截图、录制和帧流读取的正是该纹理，帧率最多为屏幕的刷新率，与呈现时的节奏相同。一帧呈现时要等窗口服务器（window server）收回上一帧，而其他进程大量呈现帧时，它会迟迟才收回：在 Apple M3 Pro 上，一个游戏旁边另有一个呈现帧的游戏时，它每秒多次卡顿 100 到 600 毫秒；第二个游戏停止呈现后，尽管它仍绘制每一帧，第一个游戏便稳定地以每秒 120 帧运行。只渲染而不呈现的帧不会拖累第一个游戏，只占用处理器的繁忙游戏也不会。
+
 运行使用 `project` 参数指定的文件夹（相对于工作目录），否则使用最近的 `project.godot`：插件按名称顺序广度优先搜索工作目录及其下三层文件夹，并跳过 `.git`、`node_modules`、`.godot`、`.agents` 和 `.wasdengine`（WASD Engine 在其中保存项目状态，例如已移除扩展的备份）；`godot_check` 检查整个项目时也跳过这些文件夹。`scene` 必须是现有文件的 `res://` 路径或 `uid://` 引用；不指定时，游戏打开项目的主场景。`width` 与 `height` 一起设置窗口大小，取值为 1 到 16384 像素。
 
 运行依次经过以下阶段：
@@ -166,7 +168,7 @@ agent 启动的运行使用 Godot 的 `Dummy` 音频驱动，除非 `godot_run` 
 <a id="harness"></a>
 ### harness
 
-harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script` 选项，传入本包 `runtime/wasd_harness.gd` 在 `<dataRoot>/payload/` 中的副本，`project.godot` 以及项目的场景和脚本保持不变。导入步骤写入的导入数据与 Godot 编辑器相同。harness 是游戏的主循环：它连同项目的自动加载打开主场景或请求的场景，在游戏暂停时继续为宿主服务，通过 Godot `Logger` 记录打印的行以及带脚本回溯的错误，并通过回环连接响应宿主的截图、帧流、帧率、输入、等待、单步、暂停、继续、取消、求值、场景树和退出请求。
+harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script` 选项，传入本包 `runtime/wasd_harness.gd` 在 `<dataRoot>/payload/` 中的副本，`project.godot` 以及项目的场景和脚本保持不变。导入步骤写入的导入数据与 Godot 编辑器相同。harness 是游戏的主循环：它连同项目的自动加载打开主场景或请求的场景，在游戏暂停时继续为宿主服务，通过 Godot `Logger` 记录打印的行以及带脚本回溯的错误，并通过回环连接响应宿主的截图、帧流、帧率、呈现、输入、等待、单步、暂停、继续、取消、求值、场景树、性能、音频和退出请求。在 WASD Engine 自己的 LibGodot 构建（从 `4.7.2-wasd.3` 起）上，它通过运行时的 `WASDEngineRuntime` 单例剖析脚本；在其他运行时上，`godot_performance` 会说明无法剖析。
 
 <a id="tools"></a>
 ### 工具
@@ -183,12 +185,13 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `godot_control` | `action`（`pause`、`resume` 或 `step`）、`frames` | 暂停或继续游戏，或运行 `frames` 帧（默认 1，最多 100000）后再次暂停；单步期间游戏被暂停、继续或再次单步时（例如在“游戏”标签页中），以及按每秒 10 帧计的帧数加上 `requestTimeoutMs` 的实际时间过去后，单步提前结束，结果会写明原因；报告暂停状态和帧号 |
 | `godot_eval` | `expression`、`node` | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root` 和 `tree`，以 `node` 处的节点或当前场景为基对象；返回 JSON 形式的值及其 Godot 类型 |
 | `godot_scene_tree` | `node`、`depth`（默认 6，最多 64）、`max_nodes`（默认 400，最多 5000） | 缩进的大纲，列出节点名称、类、脚本、位置、大小、隐藏节点、Label 与 Button 文本，以及被禁用的处理 |
-| `godot_performance` | `seconds`（默认 2，0.25 到 20） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制 |
+| `godot_performance` | `seconds`（默认 2，0.25 到 20）、`scripts`（默认 true） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制；随后，除非 `scripts` 为 false，再以同样的秒数剖析脚本，报告每个脚本及其最耗时的函数每帧的毫秒数，以及它们调用的引擎方法 |
+| `godot_audio` | `seconds`（默认 3，0.25 到 30）、`events`（最多 256 个）、`coordinate_space`、`path`、`replace` | 在这些事件从开始处播放的同时，采集这么长的游戏混音，报告电平、响度、削波、静音、频谱、含有声音的片段、播放过的音频播放器以及总线，模型能看图像时附上波形与声谱图；`path` 把采集保存为 16 位 `.wav` 文件，除非 `replace` 为 true，否则不覆盖已有文件 |
 | `godot_logs` | `since`、`levels`、`limit`（默认 200，最多 1000） | 游标 `since` 之后、或本 Session 上次读取之后的日志条目，以及下一个游标 |
 | `godot_check` | `paths`、`project` | 项目自上次导入以来有改动时先导入项目，然后在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
 | `godot_script` | `script`、`args`、`timeout_seconds`、`project` | 项目自上次导入以来有改动时先导入项目，然后在无界面 Godot 中针对项目运行继承 `SceneTree` 或 `MainLoop` 的 GDScript 而不运行游戏，并报告其输出的结尾和引擎错误 |
 
-`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree` 和 `godot_performance` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
+`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance` 和 `godot_audio` 需要已连接的游戏。在 Session 第一次运行之前，它们以 `No game is running in this Session; call godot_run first.` 失败；游戏启动或停止期间，以 `The game is starting or stopping; call godot_run to wait for it.` 失败；游戏结束后，它们写明游戏的阶段并引用崩溃或失败消息。
 
 使用 `screenshot: true` 时，`godot_input` 和 `godot_wait` 会在向游戏发送任何内容之前检查模型路由能否查看图像，不能时直接失败，不对游戏执行任何操作。事件或等待之后的截图失败不会让调用失败，因为游戏已经执行了操作：结果文本写明 `The screenshot after the events failed: <reason>` 或 `The screenshot after the wait failed: <reason>`。
 
@@ -202,7 +205,11 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 随后，检查启动一个无界面 Godot，通过 `runtime/wasd_check.gd` 加载每个脚本，绕过资源缓存。在加载某个扩展文件夹的第一个脚本之前，它先加载该文件夹 `plugin.cfg` 指定的脚本，就像编辑器先加载编辑器插件、再加载其扩展的其余部分一样。扩展文件夹是脚本路径上 `res://addons/` 之下第一个含有 `plugin.cfg` 的文件夹，因此嵌套在供应商文件夹中的扩展会像编辑器的插件搜索那样被找到。这次加载的每个错误都归入其所在文件对应的受检脚本，否则归入插件脚本；请求未包含该插件脚本时，报告会把它列在受检脚本之后。受检脚本自身加载时再次遇到的插件错误同样归入插件，因此每个错误只出现一次，干净的脚本保持干净。Dialogue Manager 等扩展依赖这一顺序：视图脚本使用其插件的类，而插件预加载视图的场景；若先加载视图脚本，就会在它仍在加载时经由该场景再次遇到它，Godot 会把它报告为不存在的资源。它不创建自动加载，也不打开场景，因此它运行的项目代码只有加载本身运行的代码：被加载脚本的静态初始化代码，以及项目声明为全局类的自定义资源加载器和保存器。它检查 `paths` 指定的文件和文件夹（`res://` 路径或相对于工作目录的路径），或检查项目的每个 `.gd` 文件，最多 400 个。不指定 `project` 时，它使用本 Session 当前或上一次运行的项目，否则使用最近的项目。它列出脚本加载期间 Godot 在 `res://` 文件中记录的错误和警告，因此预加载脚本中的错误会写明那个脚本；没有此类条目的脚本会得到第一个引擎错误（如果有）。这个 Godot 在报告完每个脚本之前结束或超过 `importTimeoutMs` 时，检查失败。引用单例自动加载的脚本与在游戏中一样进行检查，只是场景自动加载的类型为 `Node`，因此检查不会报告使用场景自动加载成员时的类型错误。
 
-`godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时（随附 macOS 运行时的 Metal 渲染器即如此），结果会说明。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
+`godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时，结果会说明。上游 Godot 的 Metal 驱动不采集 GPU 时间戳，因此在 macOS 上，只有 WASD Engine 从 `4.7.2-wasd.3` 起的 LibGodot 构建会报告 GPU 时间：它们的 Metal 驱动在时间戳之后的每个通道（pass）开始和结束时采样 GPU 时钟，一个时间戳读取它之前各通道中最晚的结束时间，与 Vulkan 的时间戳相同。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
+
+除非 `scripts` 为 false，采样随后再以同样的秒数，用 WASD Engine 的 LibGodot 构建中的脚本剖析器继续进行，它们为每个 GDScript 函数及函数调用的每个引擎方法计时。剖析器会拖慢脚本，因此它们只在测完帧之后运行，帧时间不受其影响。结果为每个脚本给出其每帧的自身时间：在其函数的代码以及这些函数调用的引擎方法中所花的时间，不含它们调用的脚本函数，后者计入各自的脚本，因此各脚本的时间之和就是全部 GDScript 的时间。它列出最耗时的八个脚本，每个脚本中最耗时的三个函数及其每帧调用次数、自身与总时间以及函数体开始的行号，以及每个函数中最耗时的两个引擎方法。harness 自身的函数不计入。没有剖析器时（例如上游的 LibGodot 构建），结果会说明。
+
+`godot_audio` 向游戏发送一个 `audio` 请求。harness 在 Master 总线效果链的末尾加入一个 `AudioEffectCapture`，因此采集的是完整的混音，之后再把它移除；Master 总线在效果之后才应用其音量，因此宿主按 harness 报告的音量与静音（开始时以及每次变化）缩放采样。静音运行的 `Dummy` 音频驱动不向任何设备播放，但照常混音，因此它的音频也能采集。harness 每帧从 4 秒的缓冲区取出采集到的音频；游戏两帧之间卡顿更久时会丢失音频，结果会说明丢了多少。采集期间，harness 跟踪每个 `AudioStreamPlayer`、`AudioStreamPlayer2D` 和 `AudioStreamPlayer3D`（最多 500 个，包括进入场景树的），并报告开始播放的那些及其流、总线、音量、开始次数和时间，以及每条总线的音量、静音、独奏、旁路、发送目标、效果和最大峰值。宿主用 [`@deepseek-ai/dsh-game-audio`](../game-audio/README.zh.md) 的测量和图像测量这些采样，与“音频”标签页测量声音文件的方式相同，并找出高于 -50 dBFS 的片段，短于 150 毫秒的间隔会并入。事件像 `godot_input` 那样从采集开始处播放，采集结束时仍在运行的事件会被取消。采集在其秒数加上 `requestTimeoutMs` 的真实时间后提前结束。`ctx.godot` 和其他插件可以通过 `GodotRun.audio` 采集，其可选的停止信号会提前结束采集，并保留截至当时的音频。
 
 结果文本不超过 6,000 个字符，被截断时以 `… (output shortened)` 结尾；引用的日志消息不超过 500 个字符。`godot_logs` 在达到文本上限之前结束本页，其下一个游标紧跟在最后一个列出的条目之后。
 
@@ -231,7 +238,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 状态区显示安装进度、运行的阶段、帧率、场景文件（悬停提示显示其 `res://` 路径）以及渲染器。宿主拒绝的操作会显示一条可关闭的消息，每个控件在其自身的请求进行期间保持禁用。另一个正在运行的 Web 或桌面端应用写入该 Session 时，**运行** 显示“此会话已在另一个正在运行的 Web 或桌面端应用中打开，请退出该应用后重试”。
 
-游戏画面按比例适配标签页并在两侧留出边条，只在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时显示游戏；此期间标签页持有该运行的 `view` 流，使无窗口游戏保持自身帧率（[游戏运行](#game-runs)）。在 macOS 桌面应用中，画面显示游戏自身的画面：应用把无窗口游戏的图层放在页面之后，页面让游戏所在的矩形保持透明，因此游戏以完整分辨率和显示器的刷新率显示，不捕获、编码或解码任何帧。在 Web 应用、Windows 与 Linux 桌面应用中，以及桌面应用不显示其图层的运行，画面改为绘制最新推流的帧。点击游戏即可让画面获得焦点，这次点击也会送达游戏。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Esc 会送达游戏，因此游戏自己的暂停或设置菜单会像在游戏窗口中一样随 Esc 打开。Shift+Esc 从不送达游戏：它把键盘和鼠标交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放鼠标和键盘”。画面获得焦点时，图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效；没有焦点时，指针经过游戏不会让游戏移动。游戏捕获鼠标时，在图像上的下一次按下会把指针锁定在画面上；画面和窗口都有焦点时，捕获本身也会锁定指针，前提是浏览器此时允许锁定：刚点击过或按过 Esc 以外的按键之后，或者上一次锁定由页面结束之后。锁定后的移动以相对位移送达游戏；指针锁定之前，它经过游戏不会让游戏移动。游戏释放鼠标、画面或窗口失去焦点时，锁定结束。指针锁定期间，浏览器自己保留 Esc（无论带哪些修饰键），改为结束锁定；画面随后在 100 毫秒后把 Esc 发送给游戏并保持焦点，除非窗口在此期间失去焦点；按住 Shift 时，它会像按下 Shift+Esc 一样释放自己。失去焦点时，会释放画面按住的所有按键和按钮并结束锁定。
+游戏画面按比例适配标签页并在两侧留出边条，只在跟随流正在送达、标签页可见且游戏处于运行或暂停状态时显示游戏；此期间标签页持有该运行的 `view` 流，使无窗口游戏保持自身帧率并呈现其帧（[游戏运行](#game-runs)）。在 macOS 桌面应用中，画面显示游戏自身的画面：应用把无窗口游戏的图层放在页面之后，页面让游戏所在的矩形保持透明，因此游戏以完整分辨率和显示器的刷新率显示，不捕获、编码或解码任何帧。在 Web 应用、Windows 与 Linux 桌面应用中，以及桌面应用不显示其图层的运行，画面改为绘制最新推流的帧。点击游戏即可让画面获得焦点，这次点击也会送达游戏。获得焦点时，画面把已映射的按键发送给游戏，并阻止页面接收这些按键；未映射的按键、输入法组字，以及按住 Meta 键（Command 或 Windows 键）时的按键仍由页面和应用处理。用 AltGr 输入的字符（Windows 将其报告为 Ctrl+Alt）会带着其文本送达游戏；其他 Ctrl 组合键不带文本。在 Windows Desktop 上，画面获得焦点时 Ctrl+W 等应用快捷键不会执行，因此游戏会收到这些按键；在 macOS Desktop 上，带 Command 的组合键仍由应用处理。Esc 会送达游戏，因此游戏自己的暂停或设置菜单会像在游戏窗口中一样随 Esc 打开。Shift+Esc 从不送达游戏：它把键盘和鼠标交还给页面，画面获得焦点后的几秒内会显示“按 Shift+Esc 释放鼠标和键盘”。画面获得焦点时，图像上的鼠标按键、移动和滚轮步进以游戏窗口像素送达游戏，从图像上开始的拖动在移出图像后继续有效；没有焦点时，指针经过游戏不会让游戏移动。游戏捕获鼠标时，在图像上的下一次按下会把指针锁定在画面上；画面和窗口都有焦点时，捕获本身也会锁定指针，前提是浏览器此时允许锁定：刚点击过或按过 Esc 以外的按键之后，或者上一次锁定由页面结束之后。锁定后的移动以相对位移送达游戏；指针锁定之前，它经过游戏不会让游戏移动。游戏释放鼠标、画面或窗口失去焦点时，锁定结束。指针锁定期间，浏览器自己保留 Esc（无论带哪些修饰键），改为结束锁定；画面随后在 100 毫秒后把 Esc 发送给游戏并保持焦点，除非窗口在此期间失去焦点；按住 Shift 时，它会像按下 Shift+Esc 一样释放自己。失去焦点时，会释放画面按住的所有按键和按钮并结束锁定。
 
 输入按批发送，每批最多 256 个事件，每次重绘一批，连续的鼠标移动会合并；下一批要等宿主接受上一批后才发送。宿主每次向游戏转发一批，排队超过 256 个时丢弃最早的事件。发给已结束运行的输入会被丢弃。一批输入因其他原因失败时，标签页记录一次失败，直到某一批再次成功，并在下一批中、或在画面失去焦点时，再次发送失败那一批中的按键和鼠标按钮释放，使游戏不会一直按住某个键或按钮。
 
@@ -251,7 +258,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `stop(session)` | 无 | 游戏结束后返回，Session 没有运行时以 `godot/not-running` 拒绝；取消调用只会停止等待 |
 | `control(session, request)` | `GodotRunView` | `pause`、`resume`，或带 1 到 100000 个 `frames` 的 `step` |
 | `input(session, runId, events)` | 无 | 为指定运行排队最多 256 个事件，不等待游戏处理 |
-| `view(session, runId)` | `GodotViewItem` 流 | 流保持打开期间把指定运行计为正在显示，使无窗口游戏保持自身帧率；视图计入后产出 `{ type: 'shown' }`，运行结束时结束，并以 `godot/not-running` 或 `godot/stale-run` 拒绝 |
+| `view(session, runId)` | `GodotViewItem` 流 | 流保持打开期间把指定运行计为一个显示，使无窗口游戏保持自身帧率并呈现其帧；显示计入后产出 `{ type: 'shown' }`，运行结束时结束，并以 `godot/not-running` 或 `godot/stale-run` 拒绝 |
 | `installRuntime()` | `GodotRuntimeView` | 安装托管运行时，或加入正在进行的安装，并在其结束后返回 |
 
 拒绝时使用以下代码：`godot/no-project`（附搜索的 `directory`）、`godot/runtime-unavailable`、`godot/not-running`、`godot/stale-run`（输入或视图所针对的运行已不是当前运行）、`godot/too-many-runs`（附 `limit`）、`godot/low-memory`（附可用内存不足的启动的 `availableBytes` 与 `requiredBytes`）、`godot/request-failed`（游戏拒绝了请求或没有应答），以及用于无效事件、大小或帧数的 `gateway/bad-request`。恢复失败的 `run` 带有 Session 控制器的代码，例如 `session/not-found`，或另一个宿主进程写入该 Session 时的 `session/writer-held`。LiveShare 把每个方法归为仅所有者可用，并把该命名空间排除在共享之外。
@@ -355,9 +362,11 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/runtime.ts`](src/runtime.ts) | 运行时解析、托管安装和运行时视图 |
 | [`src/runs.ts`](src/runs.ts) | 每 Session 状态、运行替换、运行数上限和每次启动的准入 |
 | [`src/slots.ts`](src/slots.ts) | 同时运行的脚本检查与 Web 导出的位置 |
-| [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧、无人显示的游戏的帧率和关闭 |
+| [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧、音频采集、无人显示的游戏的帧率与呈现，以及关闭 |
 | [`src/protocol.ts`](src/protocol.ts) | harness 连接上的消息分帧与校验 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、结果文本和新错误报告 |
+| [`src/performance.ts`](src/performance.ts) | 性能采样的回答、带脚本剖析的汇总及其文本 |
+| [`src/audio.ts`](src/audio.ts) | 音频采集的回答、Master 音量、含有声音的片段、汇总及其文本，以及 WAV 文件 |
 | [`src/check.ts`](src/check.ts) | 静态脚本检查及其之前的导入 |
 | [`src/imports.ts`](src/imports.ts) | 运行、检查、脚本与其他插件的导入步骤，同一项目的导入步骤、检查与 Web 导出的执行顺序，以及项目自上次导入以来是否有改动 |
 | [`src/command.ts`](src/command.ts) | 运行到结束并收集输出的 Godot 命令：导入步骤、检查、导出以及实例组中的每个实例 |
@@ -379,10 +388,10 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 
 ### 用真实运行时验证
 
-在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它检查一个从未导入过、脚本相互使用对方 `class_name` 类的项目，导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、控制、检查和停止工具，读取帧路由，并运行第二个项目，其拉伸模式会给游戏加上黑边；未设置该变量时，测试套件会被跳过。
+在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它检查一个从未导入过、脚本相互使用对方 `class_name` 类的项目，导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、性能、控制、检查和停止工具，在“游戏”标签页的视图打开与关闭时跟踪游戏的呈现，读取帧路由，运行第二个项目（其拉伸模式会给游戏加上黑边），并用 `godot_audio` 采集第三个项目的音调；在 WASD Engine 自己的运行时上，还会检查 GPU 时间与脚本剖析。未设置该变量时，测试套件会被跳过。
 
 ```sh
-WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.2" \
+WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.3" \
 pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 ```
 
@@ -410,7 +419,7 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### 模型可见内容
 
-插件加载时在全局工具层注册 12 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance`、`godot_logs`、`godot_check` 和 `godot_script`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
+插件加载时在全局工具层注册 13 个工具，因此无论是否存在 Godot 运行时或项目，只要 Agent 的工具集没有排除它们，Agent 就能看到：`godot_run`、`godot_stop`、`godot_screenshot`、`godot_input`、`godot_wait`、`godot_control`、`godot_eval`、`godot_scene_tree`、`godot_performance`、`godot_audio`、`godot_logs`、`godot_check` 和 `godot_script`，其名称、描述和参数 schema 由 [`src/tools.ts`](src/tools.ts) 声明。唯一随配置变化的文本是 `godot_run` 中 `muted` 的描述 `Run without audio. Default: <agentRunsMuted>.`
 
 #### Token 影响
 
@@ -436,7 +445,7 @@ Godot 4.7 is built in: the godot_* tools run it, so making, checking, and runnin
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.
 
@@ -445,7 +454,7 @@ Released games play in browsers, where Godot draws with its Compatibility render
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 1560 个字符；不写明 Godot 版本时为 1486 个字符。
+插件加载期间，该部分为每个系统提示词增加 1641 个字符；不写明 Godot 版本时为 1567 个字符。
 
 #### KV Cache 影响
 
@@ -478,7 +487,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 以下限制描述 Godot 运行、“游戏”标签页和运行时当前的不足。
 
 - **游戏以宿主用户的全部权限运行** — 游戏、导入步骤和 `godot_check` 作为宿主的普通子进程运行。Session 权限模式（例如 `read-only` 或 `workspace-write`）的[沙箱](../../sandbox/sandbox-policy/README.zh.md)不约束它们，它们也从不像 `bash` 命令那样请求[批准](../../interaction/user-approval/README.zh.md)。`godot_run` 启动的游戏代码、`godot_check` 加载的脚本，以及 `godot_eval` 求值的表达式（它可以运行包括 `OS.execute` 在内的任意 GDScript），都能读写宿主用户可访问的所有文件并启动其他程序。`project` 接受绝对路径或工作目录之外的路径，因此 `godot_run` 和 `godot_check` 会运行宿主用户可读取的任何项目。
-- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.2`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
+- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.3`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
 - **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过 `runnerPath` 与 `libgodotPath` 指定的本地 LibGodot 构建运行。
 - **macOS 以外会打开窗口** — LibGodot 补丁只在 macOS 上实现无窗口渲染。在 Linux 与 Windows 上，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。
@@ -489,7 +498,10 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **音频只在宿主上播放** — “游戏”标签页不带声音。游戏音频通过宿主机器的音频输出播放，因此另一台计算机上的浏览器听不到声音，agent 的运行默认静音。
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行运行上限个游戏。
-- **隐藏的游戏继续运行** — 没有“游戏”标签页显示的游戏会一直运行到停止：最后一次被显示或使用后的 `hiddenDelayMs` 内以全速运行，之后以 `hiddenFps` 运行，因此仍会占用一些处理器与图形处理时间；运行上限限制了这样的游戏数。Linux 与 Windows 上有窗口的游戏从不受限。内存检查只针对启动：游戏启动后若继续增长，不会被停止。
+- **隐藏的游戏继续运行** — 没有“游戏”标签页显示的游戏会一直运行到停止：最后一次被显示或使用后的 `hiddenDelayMs` 内以自身帧率（最高为屏幕刷新率）运行，之后以 `hiddenFps` 运行，因此仍会占用一些处理器与图形处理时间；运行上限限制了这样的游戏数。Linux 与 Windows 上有窗口的游戏从不受限，并且总是呈现其帧。内存检查只针对启动：游戏启动后若继续增长，不会被停止。
+- **“游戏”标签页显示的游戏仍共享 GPU 与窗口服务器** — 没有显示的游戏会停止呈现，但两个“游戏”标签页同时显示的两个游戏都会呈现，繁忙的游戏仍会让另一个卡顿。只渲染不呈现的游戏仍占用 GPU 时间，因此另一个游戏的帧可能变慢，但不会卡顿。
+- **脚本剖析与 Metal 的 GPU 时间需要 WASD Engine 的运行时** — 除 WASD Engine 从 `4.7.2-wasd.3` 起的构建之外的 LibGodot 构建（例如 `runnerPath` 与 `libgodotPath` 指定的构建）没有不依赖调试器的脚本剖析器，在 macOS 上也没有 GPU 时间戳；这时 `godot_performance` 只报告帧时间，并说明原因。剖析器只为 GDScript 计时，其自身开销会拉长它报告的时间，因此这些时间用于在脚本之间比较，而不是与帧时间比较。
+- **音频采集取 Master 总线的立体声混音** — 采集位于 Master 总线效果链的末尾，因此 Master 总线旁路其效果时得到的是静音，采集期间替换总线布局的游戏会在那里中断采集的音频；结果会说明这两种情况。在环绕声扬声器模式下，Master 总线的每个声道对都会写入采集，采集会把它们交错在一起，因此其音频不是立体声混音。
 - **Web 运行不是浏览器** — `web: true` 的 `godot_run` 使用桌面 OpenGL 驱动渲染，其限制大于浏览器中的 WebGL，例如 uniform 缓冲区为 64 KB，而 Apple GPU 上的 Chrome 只允许 16 KB；它还以原生代码在多个线程上运行，因此既不会显示实例 uniform 溢出，也不会显示浏览器单线程造成的卡顿；这些由 [Web 检查](#web-check)报告。
 - **Web 检查需要桌面应用，且只看到启动阶段** — 只有桌面应用提供检查所用的浏览器，因此在其他环境中 `wasd_export_web` 和 `wasd_release_game` 会报告检查无法运行。检查在没有输入的情况下只观察游戏开头的 `webCheckSeconds`，因此会漏掉只有在玩家操作之后或后续关卡中才出现的问题；其离屏页面还要把每一帧从 GPU 复制回来，这会多花几毫秒，而浏览器标签页没有这部分开销。
 - **导入只在同一宿主内相互等待** — 宿主逐个执行同一项目的导入步骤、检查和 Web 导出，但另一个宿主或 Godot 编辑器在此期间导入同一项目时，会同时写入其导入数据。
