@@ -132,7 +132,7 @@ describe('BlenderScripts', () => {
     expect(most).toBe(2)
   })
 
-  it('shares its places among calls, first come first served', async () => {
+  it('shares its places among calls, so one place runs one run of any call at a time', async () => {
     const log = join(root, 'calls.log')
     const script = await plan('slow.json', { log, sleepMs: 300 })
     const runner = scripts({ maxScripts: 1 })
@@ -141,8 +141,11 @@ describe('BlenderScripts', () => {
       runner.run(call(script, { runs: [{ args: ['two'] }] }), signal()),
     ])
     expect([first.runs[0]!.status, second.runs[0]!.status]).toEqual(['finished', 'finished'])
-    expect((await readFile(log, 'utf8')).trim().split('\n').map(line => line.split(' ').slice(0, 2).join(' ')))
-      .toEqual(['start one', 'end one', 'start two', 'end two'])
+    // Each call reaches the places once its files are checked and its folder exists, so either may run first.
+    const events = (await readFile(log, 'utf8')).trim().split('\n').map(line => line.split(' ').slice(0, 2).join(' '))
+    const earlier = events[0]?.split(' ')[1] ?? ''
+    const later = earlier === 'one' ? 'two' : 'one'
+    expect(events).toEqual([`start ${earlier}`, `end ${earlier}`, `start ${later}`, `end ${later}`])
   })
 
   it('starts no run after the call\'s time ran out and stops the runs that still run then', async () => {
