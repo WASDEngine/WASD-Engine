@@ -62,6 +62,7 @@
 | `game-mcp/tool-result` | `emit` | [`packages/gamedev/game-mcp/src/provider.ts:175`](../packages/gamedev/game-mcp/src/provider.ts) | [`game-mcp`](../packages/gamedev/game-mcp) (`emit`) | [`agent-feedback`](../packages/gamedev/agent-feedback), [`wasd-plugins`](../packages/gamedev/wasd-plugins) |
 | `goal/activation-changed` | `emit` | [`packages/goal/goal/src/types.ts:147`](../packages/goal/goal/src/types.ts) | [`goal`](../packages/goal/goal) (`emit`) | `remotes`, `server` |
 | `goal/changed` | `emit` | [`packages/goal/goal/src/domain.ts:114`](../packages/goal/goal/src/domain.ts) | [`goal`](../packages/goal/goal) (`emit`) | [`goal-round-driver`](../packages/goal/goal-round-driver) |
+| `godot/record` | `waterfall` | [`packages/gamedev/godot/src/types.ts:595`](../packages/gamedev/godot/src/types.ts) | [`godot`](../packages/gamedev/godot) (`waterfall`) | `remotes` |
 | `hmr/change` | `emit` | [`packages/boot/hmr/src/index.ts:35`](../packages/boot/hmr/src/index.ts) | [`hmr`](../packages/boot/hmr) (`emit`) | - |
 | `hmr/reload` | `emit` | [`packages/boot/hmr/src/index.ts:40`](../packages/boot/hmr/src/index.ts) | [`hmr`](../packages/boot/hmr) (`emit`) | - |
 | `llm-pi-ai/request-headers` | `waterfall` | [`packages/llm/llm-pi-ai/src/index.ts:114`](../packages/llm/llm-pi-ai/src/index.ts) | [`llm-pi-ai`](../packages/llm/llm-pi-ai) (`waterfall`) | - |

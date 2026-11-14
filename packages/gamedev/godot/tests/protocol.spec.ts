@@ -98,12 +98,26 @@ describe('HarnessDecoder', () => {
     expect(() => parseGodotJson('{"a":')).toThrow(SyntaxError)
   })
 
+  it('decodes a recording frame with its recording, index, time, and size', () => {
+    const payload = Buffer.alloc(16 + 4)
+    payload.writeUInt32LE(7, 0)
+    payload.writeUInt32LE(42, 4)
+    payload.writeUInt32LE(1400, 8)
+    payload.writeUInt16LE(1280, 12)
+    payload.writeUInt16LE(720, 14)
+    payload.write('jpeg', 16, 'latin1')
+    const [decoded] = decode(new HarnessDecoder(MAX_MESSAGE_BYTES), message(4, payload))
+    expect(decoded).toMatchObject({ kind: 'record', frame: { recording: 7, index: 42, timeMs: 1400, width: 1280, height: 720 } })
+    expect(decoded?.kind === 'record' && decoded.frame.image.toString('latin1')).toBe('jpeg')
+  })
+
   it.each([
     ['a zero length', Buffer.from([0, 0, 0, 0])],
     ['a length over the limit', Buffer.from([0xff, 0xff, 0xff, 0x7f])],
     ['an unknown kind', message(9, Buffer.from('x'))],
     ['a short frame header', message(2, Buffer.alloc(4))],
     ['a short image header', message(3, Buffer.alloc(2))],
+    ['a short recording frame header', message(4, Buffer.alloc(15))],
     ['JSON that does not parse', message(1, Buffer.from('{'))],
     ['an unknown JSON message', message(1, Buffer.from('{"type":"other"}'))],
   ])('rejects %s', (_case, bytes) => {

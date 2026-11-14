@@ -95,8 +95,8 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     const { tools } = await client.listTools()
     const godot = tools.filter(tool => tool.name.startsWith('godot_'))
     expect(godot.map(tool => tool.name)).toEqual([
-      'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_control', 'godot_eval', 'godot_scene_tree',
-      'godot_performance', 'godot_logs', 'godot_check', 'godot_script',
+      'godot_run', 'godot_stop', 'godot_screenshot', 'godot_input', 'godot_wait', 'godot_view', 'godot_record', 'godot_control', 'godot_eval',
+      'godot_scene_tree', 'godot_performance', 'godot_logs', 'godot_check', 'godot_script',
     ])
     for (const tool of godot) {
       expect(tool.inputSchema.properties?.project).toMatchObject({ type: 'string' })
@@ -108,9 +108,12 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBe(true)
     expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
+    expect(godot.find(tool => tool.name === 'godot_view')?.annotations?.readOnlyHint).toBe(true)
+    // A recording saves a video file.
+    expect(godot.find(tool => tool.name === 'godot_record')?.annotations?.readOnlyHint).toBeUndefined()
     // A check may import the project first, which writes its import data.
     expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
-    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 12 tools)')
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 14 tools)')
   }, TIMEOUT)
 
   it('runs the game for the agent\'s own Session, shows it in the window, and returns screenshots as PNG bytes', async () => {

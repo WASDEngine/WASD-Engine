@@ -1942,7 +1942,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:65`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:68`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2010,6 +2010,17 @@ export interface Config {
   hiddenDelayMs: number
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
+  /**
+   * Height in pixels toward which a run that names no window size grows a shorter project window, by a whole factor,
+   * when the project's stretch mode scales its content; 0 keeps every project's window size.
+   */
+  minWindowHeight: number
+  /** JPEG quality of the frames that `godot_record` captures, 0.1 to 1. */
+  recordQuality: number
+  /** Bytes of captured frames kept for a window that encodes a recording more slowly than the game captures it. */
+  recordBufferBytes: number
+  /** Largest video `godot_record` saves, in bytes. */
+  maxVideoBytes: number
   /**
    * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
    * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD

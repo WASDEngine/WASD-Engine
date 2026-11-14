@@ -5628,6 +5628,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'payload', description: '.change - fresh current projection or clear tombstone.' }],
   },
   {
+    name: 'godot/record',
+    mode: 'waterfall',
+    signature: '\'godot/record\'( this: Scoped<Agent>, request: GodotVideoEncodeEvent, next: () => Promise<GodotVideoEncodeResult>, ): Promise<GodotVideoEncodeResult>',
+    summary: 'Ask the windows that may read a Session to encode a recording of its game into a video.',
+    description: 'Ask the windows that may read a Session to encode a recording of its game into a video. Return the video\'s facts after uploading it to claim the request, or call `next()` to delegate. Scope-filtered dispatch (`@deepseek-ai/dsh-scope`): agent-scoped listeners receive only that agent.',
+    parameters: [{ name: 'request', description: 'the recording, its frame rate and sheet, the size limit, the calling Agent, and the call\'s cancellation.' }],
+  },
+  {
     name: 'hmr/change',
     mode: 'emit',
     signature: '\'hmr/change\'(url: string): void',
@@ -7693,7 +7701,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunLaunch',
-    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly web?: true;\n}',
+    declaration: 'export interface GodotRunLaunch {\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly web?: true;\n    readonly scale?: number;\n    readonly args?: readonly string[];\n    readonly engineArgs?: readonly string[];\n}',
   },
   {
     name: 'GodotRunLayer',
@@ -7705,7 +7713,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotRunRequest',
-    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n    readonly web?: boolean;\n}',
+    declaration: 'export interface GodotRunRequest {\n    readonly project?: string;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly muted?: boolean;\n    readonly web?: boolean;\n    readonly args?: readonly string[];\n    readonly engineArgs?: readonly string[];\n}',
   },
   {
     name: 'GodotRunStarter',
@@ -7734,6 +7742,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotServerExportRequest',
     declaration: 'export interface GodotServerExportRequest {\n    readonly projectDir: string;\n    readonly outputDir: string;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeEvent',
+    declaration: 'export interface GodotVideoEncodeEvent extends GodotVideoEncodeRequest {\n    agent?: Agent;\n    signal?: AbortSignal;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeRequest',
+    declaration: 'export interface GodotVideoEncodeRequest {\n    readonly sessionId: SessionId;\n    readonly runId: string;\n    readonly recording: number;\n    readonly fps: number;\n    readonly sheetFrames: number;\n    readonly maxBytes: number;\n}',
+  },
+  {
+    name: 'GodotVideoEncodeResult',
+    declaration: 'export interface GodotVideoEncodeResult {\n    readonly codec: string;\n    readonly frames: number;\n    readonly seconds: number;\n    readonly width: number;\n    readonly height: number;\n    readonly bytes: number;\n    readonly sheet?: {\n        readonly data: string;\n        readonly width: number;\n        readonly height: number;\n        readonly times: readonly number[];\n    };\n}',
   },
   {
     name: 'GodotViewItem',

@@ -63,8 +63,14 @@ async function base() {
   // A connected carrier: the Gateway's logical streams retry a carrier loss once at once and treat other ends as final.
   const connection = { generation: createSnapshotStore<object | undefined>({}) }
   const logical: RemoteStream<unknown>[] = []
+  // Forwarded Host event listeners by event name.
+  const handlers = new Map<string, (this: unknown, ...args: never[]) => unknown>()
   class Remote extends Service {
     constructor() { super(ctx, 'remote') }
+    $on(event: string, listener: (this: unknown, ...args: never[]) => unknown) {
+      handlers.set(event, listener)
+      return () => { handlers.delete(event) }
+    }
     async $mount(contribution: TypertRemoteContribution) {
       expect(contribution).toBe(REMOTE)
       return unmount
@@ -125,6 +131,7 @@ async function base() {
     return scope
   }
   ctx.provide('sessions', {
+    scopeOf: (scope: unknown) => (scope as { readonly sessionId?: SessionId } | undefined)?.sessionId,
     binding: (id: SessionId) => {
       if (id === GONE) return undefined
       const scope = scopeOf(id)
@@ -142,7 +149,7 @@ async function base() {
       'tool.call.toolview': { kind: 'keyed', scope: 'session' },
     },
   } as never, () => null)
-  return { ctx, unmount, streams, logical, godot, kinds, mounted, sidebarRight, closeHandlers, scopes, shortcuts }
+  return { ctx, unmount, streams, logical, godot, kinds, mounted, sidebarRight, closeHandlers, scopes, shortcuts, handlers }
 }
 
 async function fixture() {
@@ -230,6 +237,49 @@ describe('mountGame registration', () => {
       expect(b.kinds.has(TAB_KIND)).toBe(false)
       expect(b.unmount).toHaveBeenCalledOnce()
     } finally { await b.ctx.fiber.dispose() }
+  })
+})
+
+describe('recording encoder', () => {
+  const request = { sessionId: S1, runId: 'r1', recording: 7, fps: 30, sheetFrames: 4, maxBytes: 1024 }
+  const record = (f: Awaited<ReturnType<typeof fixture>>, scope: SessionId, next: () => Promise<unknown>) => {
+    const handler = f.handlers.get('godot/record')
+    assert(handler !== undefined)
+    return handler.call({ sessionId: scope }, ...[request, next] as never[]) as Promise<unknown>
+  }
+
+  it('leaves recordings to the next window without WebCodecs, and those of Sessions it does not read', async () => {
+    const f = await fixture()
+    const next = vi.fn(async () => 'next')
+    expect(await record(f, S1, next)).toBe('next')
+    vi.stubGlobal('VideoEncoder', vi.fn())
+    vi.stubGlobal('VideoFrame', vi.fn())
+    vi.stubGlobal('OffscreenCanvas', vi.fn())
+    try {
+      expect(await record(f, S2, next)).toBe('next')
+      expect(next).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    await f.fiber.dispose()
+    expect(f.handlers.has('godot/record')).toBe(false)
+  })
+
+  it('reads the recording\'s frames at the Session\'s recording address, and fails when the Host refuses them', async () => {
+    const f = await fixture()
+    const fetched = vi.fn(async (_url: URL | RequestInfo, _init?: RequestInit) => new Response('no such recording', { status: 404 }))
+    vi.stubGlobal('VideoEncoder', vi.fn())
+    vi.stubGlobal('VideoFrame', vi.fn())
+    vi.stubGlobal('OffscreenCanvas', vi.fn())
+    vi.stubGlobal('fetch', fetched)
+    try {
+      await expect(record(f, S1, async () => 'next')).rejects.toThrow('The Host refused the recording\'s frames (HTTP 404).')
+      const [url, init] = fetched.mock.calls[0] as [URL, RequestInit]
+      expect(url.href).toBe(new URL(`api/godot.recording?session=${S1}&run=r1&recording=7`, document.baseURI).href)
+      expect(init.cache).toBe('no-store')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

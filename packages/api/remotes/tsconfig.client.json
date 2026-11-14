@@ -125,6 +125,9 @@
       "path": "../../gamedev/game-audio"
     },
     {
+      "path": "../../gamedev/godot/tsconfig.host.json"
+    },
+    {
       "path": "../../gamedev/game-mcp"
     }
   ]
