@@ -1,12 +1,12 @@
 /**
  * Godot export templates: the engine builds that exports pack with a project. The Web export uses
  * `web_nothreads_release.zip`, the single-threaded release build for the browser; desktop exports use
- * `windows_release_x86_64.exe` and `macos.zip`. Godot ships them only inside its export templates archive (about
- * 1.3 GB for every platform), and WASD Engine ships its build of the Web template in an archive of the same layout, so
- * a manager reads an archive's ZIP directory with HTTP range requests and downloads only its template entry (about
- * 10 MB for the Web, 38 MB for Windows, 123 MB for macOS), then checks its size, CRC-32,
- * and the SHA-256 the configuration pins before it publishes `<dataRoot>/templates/<sha256><extension>` under a file
- * lock. A configured path replaces the download.
+ * `windows_release_x86_64.exe` and `macos.zip`; dedicated server exports use `linux_release.x86_64`. Godot ships them
+ * only inside its export templates archive (about 1.3 GB for every platform), and WASD Engine ships its build of the
+ * Web template in an archive of the same layout, so a manager reads an archive's ZIP directory with HTTP range requests
+ * and downloads only its template entry (about 10 MB for the Web, 38 MB for Windows, 123 MB for macOS, 28 MB for a
+ * Linux server), then checks its size, CRC-32, and the SHA-256 the configuration pins before it publishes
+ * `<dataRoot>/templates/<sha256><extension>` under a file lock. A configured path replaces the download.
  * @module @deepseek-ai/dsh-godot/src/export-template
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -23,9 +23,12 @@ import { untilAborted } from './abort.ts'
 export interface ExportTemplateSettings {
   /** Absolute plugin data folder; downloaded templates live in its `templates/` folder. */
   readonly dataRoot: string
-  /** The platform the template builds for, as messages name it: `Web`, `Windows`, or `macOS`. */
+  /** The platform the template builds for, as messages name it: `Web`, `Windows`, `macOS`, or `Linux server`. */
   readonly platform: string
-  /** Prefix of the template's configuration fields, which messages name: `webTemplate`, `windowsTemplate`, or `macosTemplate`. */
+  /**
+   * Prefix of the template's configuration fields, which messages name: `webTemplate`, `windowsTemplate`,
+   * `macosTemplate`, or `serverTemplate`.
+   */
   readonly field: string
   /** Godot export templates archive (`.tpz`, a ZIP file) that holds the template. */
   readonly archiveUrl: string
@@ -35,7 +38,7 @@ export interface ExportTemplateSettings {
   readonly sha256: string
   /** Absolute template file to use instead of downloading one; empty when unset. */
   readonly path: string
-  /** File name extension of the downloaded template, such as `.zip` or `.exe`. */
+  /** File name extension of the downloaded template, such as `.zip`, `.exe`, or `.x86_64`. */
   readonly extension: string
 }
 

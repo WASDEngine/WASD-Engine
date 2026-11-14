@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-wasd-plugins",
-  "description": "WASD Engine's own features, always on: export games for the Web, Windows, and macOS, record their previews, share them on WASD Engine publicly or by private link with desktop downloads, the Export / Share button, and Explore Games",
+  "description": "WASD Engine's own features, always on: export games for the Web, Windows, and macOS, record their previews, share them on WASD Engine publicly or by private link with desktop downloads, put them online player-hosted or on dedicated servers, the Export / Share and Multiplayer buttons, and Explore Games",
   "version": "0.1.2",
   "icon": "./icon.svg",
   "publishConfig": {
@@ -86,6 +86,7 @@
     "@deepseek-ai/dsh-client-test-runtime": "workspace:*",
     "@deepseek-ai/dsh-client-ui-conversation": "workspace:*",
     "@deepseek-ai/dsh-client-ui-dockkit": "workspace:*",
+    "@deepseek-ai/dsh-client-ui-layout": "workspace:*",
     "@deepseek-ai/dsh-client-ui-model-selection": "workspace:*",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
     "@deepseek-ai/dsh-client-ui-renderer": "workspace:*",
@@ -105,6 +106,7 @@
     "@deepseek-ai/dsh-tool-testkit": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
     "@deepseek-ai/dsh-typert-registry": "workspace:*",
+    "@deepseek-ai/dsh-user-approval": "workspace:*",
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@deepseek-ai/dsh-working-directory": "workspace:*",
     "@testing-library/react": "^16.3.3",
@@ -117,6 +119,7 @@
     "locale/*.json",
     "lib/index.js",
     "lib/client.js",
+    "addon/wasd_multiplayer",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",

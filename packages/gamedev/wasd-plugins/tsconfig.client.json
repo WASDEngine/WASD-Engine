@@ -66,6 +66,9 @@
       "path": "../../client/ui-dockkit"
     },
     {
+      "path": "../../client/ui-layout"
+    },
+    {
       "path": "../../client/ui-sidebar-browser/tsconfig.client.json"
     },
     {

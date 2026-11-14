@@ -70,8 +70,13 @@ export interface WasdRelease {
    */
   readonly credits?: readonly string[]
   /**
+   * The dedicated server build the release stored with this version, for a project whose multiplayer mode is
+   * `dedicated`; absent otherwise, and when the server export or its upload failed, which a warning then explains.
+   */
+  readonly serverBuild?: WasdServerBuild
+  /**
    * How the Web build differs from desktop runs, the export's warnings, and what happened to the preview, downloads,
-   * and credits.
+   * credits, and server build.
    */
   readonly warnings: readonly string[]
   /** What the Web check saw in the released build; absent when the release skipped the check or it could not run. */
@@ -117,6 +122,52 @@ export interface WasdDesktopExport {
   readonly builds: readonly WasdDesktopBuild[]
   /** The exports' warnings. */
   readonly warnings: readonly string[]
+}
+
+/** A dedicated server build that a release stored. */
+export interface WasdServerBuild {
+  /** The release it belongs to. */
+  readonly version: number
+  /** Size of the uploaded archive in bytes. */
+  readonly bytes: number
+}
+
+/** The links tools asked a window to open that no window took yet. */
+export interface WasdLinkRequests {
+  /** The links, oldest first; a window claims one before it opens it. */
+  readonly links: readonly { readonly id: string; readonly url: string }[]
+}
+
+/** One dedicated server as the Multiplayer dialog lists it. */
+export interface WasdServerSummary {
+  /** The server's id. */
+  readonly id: string
+  /** The server's name. */
+  readonly name: string
+  /** Size as the site names it, such as `Small`; the size id when the site sends no name. */
+  readonly size: string
+  /** State, such as `running` or `stopped_bandwidth`. */
+  readonly state: string
+  /** Players on the server now. */
+  readonly players: number
+  /** Share of this month's bandwidth used, 0 to 100, when the site reports it. */
+  readonly bandwidthPercent?: number
+}
+
+/** A project's multiplayer, as the Multiplayer dialog shows it. */
+export interface WasdMultiplayerView {
+  /** Whether the folder holds `project.godot`. */
+  readonly godot: boolean
+  /** The mode the project's `res://wasd_multiplayer.cfg` names; absent before setup. */
+  readonly mode?: 'player_hosted' | 'dedicated'
+  /** The game the project released to on the site the app is signed in to. */
+  readonly game?: WasdReleasedGame
+  /** The game's dedicated servers; empty while signed out, before the first release, or in player-hosted mode. */
+  readonly servers: readonly WasdServerSummary[]
+  /** The site's page that lists the account's servers. */
+  readonly serversUrl: string
+  /** Why the servers could not be read, when they could not. */
+  readonly error?: string
 }
 
 /**
@@ -211,3 +262,80 @@ export interface WasdBrowserImage {
 export type WasdBrowserOutcome =
   | { readonly ok: true; readonly page: WasdBrowserPage; readonly note?: string; readonly image?: WasdBrowserImage }
   | { readonly ok: false; readonly message: string }
+
+/** How a game plays online: `player_hosted`, with one player's game hosting, or `dedicated`, on the game's servers. */
+export type WasdMultiplayerMode = 'player_hosted' | 'dedicated'
+
+/**
+ * The Desktop shell's WASD Engine game links, at `dshDesktop.wasdLinks` of the application page: the
+ * `wasdengine://games/<slug>` links that the system or a Browser or Play page asked the app to open, such as the
+ * site's Install buttons, which carry `install=1` and, for an earlier version of a single-player game, `v=<n>`. The
+ * shell keeps them until the page takes them, also the one that started the app.
+ */
+export interface DesktopWasdLinksBridge {
+  /** @returns the links that waited, oldest first; each is handed out once. */
+  take(): Promise<string[]>
+  /**
+   * Hear about new links, which {@link DesktopWasdLinksBridge.take} then returns.
+   * @param listener - called after links arrive.
+   * @returns the function that stops listening.
+   */
+  subscribe(listener: () => void): () => void
+}
+
+/** A game the library installed on this computer. */
+export interface WasdLibraryGame {
+  /** The game's id on the site. */
+  readonly id: string
+  /** The game's address on the site, `/games/<slug>`. */
+  readonly slug: string
+  /** Game title. */
+  readonly title: string
+  /** The installed version. */
+  readonly version: number
+  /** The site's latest version when the library last asked; above `version`, an update waits. */
+  readonly latestVersion: number
+  /** How the game plays online; absent for a single-player game. An online game starts only at its latest version. */
+  readonly multiplayer?: WasdMultiplayerMode
+  /** The platform of the installed build. */
+  readonly platform: WasdDesktopPlatform
+  /** Size of the downloaded build in bytes. */
+  readonly bytes: number
+  /** When it was installed, in ISO 8601. */
+  readonly installedAt: string
+  /** The game's picture on the site, when it has one. */
+  readonly coverUrl?: string
+}
+
+/** A download and installation the library is working on, or one that failed. */
+export interface WasdLibraryTask {
+  /** The game's address on the site. */
+  readonly slug: string
+  /** Game title, once the site named it. */
+  readonly title: string
+  /** The version it installs, once the site named it; 0 before. */
+  readonly version: number
+  /** `downloading`, `installing` (unpacking), or `failed`. */
+  readonly state: 'downloading' | 'installing' | 'failed'
+  /** Bytes received so far. */
+  readonly receivedBytes: number
+  /** Bytes of the whole download; 0 before the site named its size. */
+  readonly totalBytes: number
+  /** Why it failed, for a failed task. */
+  readonly message?: string
+  /** The game's picture on the site, once the site named the game and when it has one. */
+  readonly coverUrl?: string
+}
+
+/** The library: the games installed on this computer, the last started first, and the tasks in progress. */
+export interface WasdLibraryView {
+  /** Installed games. */
+  readonly games: readonly WasdLibraryGame[]
+  /** Downloads in progress, and failed ones until they are dismissed or retried. */
+  readonly tasks: readonly WasdLibraryTask[]
+  /** Whether games install on this computer: Windows or macOS; the site has builds for no other system. */
+  readonly supported: boolean
+}
+
+/** What happened to a library request: done, or why not. */
+export type WasdLibraryOutcome = { readonly ok: true } | { readonly ok: false; readonly message: string }

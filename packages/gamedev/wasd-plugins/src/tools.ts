@@ -289,6 +289,9 @@ const BUILD_CONTENTS: Readonly<Record<WasdDesktopPlatform, string>> = {
 }
 
 /** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
+/** How players get a release's desktop builds. */
+const INSTALLED_BY_APP = 'Players get the downloads through the share page\'s Install with WASD Engine button: the WASD Engine app installs the build for their computer, keeps it up to date, and starts it.'
+
 const FIRST_OPEN = 'Neither build is signed by a publisher, so a downloaded copy asks before it first runs: on Windows, SmartScreen\'s "Windows protected your PC" needs More info, then Run anyway; on a Mac, Gatekeeper blocks the first open until the user chooses Open Anyway in System Settings > Privacy & Security.'
 
 /** What a release result adds after a download's size when the share page does not offer the download yet, or never will. */
@@ -306,12 +309,12 @@ const SCAN_STANDING: Readonly<Record<WasdDownloadStatus, string>> = {
  * @returns the note.
  */
 function downloadsNote(statuses: readonly WasdDownloadStatus[]): string {
-  if (statuses.every(status => status === 'clean')) return `The share page offers the downloads. ${FIRST_OPEN}`
+  if (statuses.every(status => status === 'clean')) return INSTALLED_BY_APP
   return [
     'WASD Engine scans each download for malware before the share page offers it.',
-    ...statuses.includes('pending') ? ['A download being scanned appears on the share page, and its link starts working, once the scan passes, usually within a few minutes.'] : [],
+    ...statuses.includes('pending') ? ['A download being scanned becomes installable from the share page once the scan passes, usually within a few minutes.'] : [],
     ...statuses.some(status => status === 'flagged' || status === 'failed') ? ['A download the scan flagged or could not scan is never offered.'] : [],
-    ...statuses.some(status => status === 'clean' || status === 'pending') ? [FIRST_OPEN] : [],
+    ...statuses.some(status => status === 'clean' || status === 'pending') ? [INSTALLED_BY_APP] : [],
   ].join(' ')
 }
 
@@ -468,7 +471,7 @@ const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it
 function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): ToolDefinition {
   return defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game\'s page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game\'s page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. A game set up for a dedicated server also gets its server build stored with the version, and its servers switch to it. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
@@ -495,6 +498,12 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           visibility: STRING,
           downloads: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, url: STRING, bytes: INTEGER, status: STRING } } },
           credits: { type: 'array', items: { type: 'string' } },
+          serverBuild: {
+            type: 'object',
+            additionalProperties: false,
+            description: 'The dedicated server build stored with this version.',
+            properties: { version: INTEGER, bytes: INTEGER },
+          },
           warnings: WARNINGS,
           webCheck: WEB_CHECK_SCHEMA,
           webCheckError: { type: 'string' },
@@ -511,6 +520,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           `This version: ${value.url}`,
           ...value.downloads.map(download => `${PLATFORM_NAMES[download.platform as WasdDesktopPlatform]} download: ${download.url} (${megabytes(download.bytes)}${SCAN_STANDING[download.status as WasdDownloadStatus]})`),
           ...value.credits === undefined ? [] : [`Made with, as the game's page credits it: ${value.credits.join(', ')}.`],
+          ...value.serverBuild === undefined ? [] : [`Server build: stored for version ${value.serverBuild.version} (${megabytes(value.serverBuild.bytes)}); the game's dedicated servers switch to it after a 60-second warning to their players.`],
           'The share page plays the latest version, lists the earlier ones with their release dates, and takes comments.',
           ...value.downloads.length === 0 ? [] : [downloadsNote(value.downloads.map(download => download.status as WasdDownloadStatus))],
           'Sent in Messages or posted on Reddit, Discord, Slack, or Telegram, the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.',
@@ -538,6 +548,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         ...rest,
         downloads: rest.downloads.map(download => ({ ...download })),
         ...credits === undefined ? {} : { credits: [...credits] },
+        ...released.serverBuild === undefined ? {} : { serverBuild: { ...released.serverBuild } },
         warnings: [...warnings],
         ...webCheck === undefined ? {} : { webCheck: copyWebCheck(webCheck) },
         ...webCheckError === undefined ? {} : { webCheckError },
@@ -646,17 +657,24 @@ function mcpTool(definition: ToolDefinition, credits: ConnectedCredits): GameMcp
 
 /**
  * The WASD Engine provider of WASD Engine's MCP server.
- * @param definitions - the tool definitions for connected agents.
+ * @param definitions - the export, preview, and release tool definitions for connected agents.
  * @param credits - the plugin's credits.
+ * @param multiplayer - the multiplayer tools, already offered for connected agents; none by default.
+ * @param multiplayerInstructions - the multiplayer part of the provider's instructions, with `multiplayer`.
  * @returns the provider.
  */
-export function wasdMcpProvider(definitions: readonly ToolDefinition[], credits: ConnectedCredits): GameMcpProvider {
-  const tools = definitions.map(definition => mcpTool(definition, credits))
+export function wasdMcpProvider(
+  definitions: readonly ToolDefinition[], credits: ConnectedCredits, multiplayer: readonly GameMcpTool[] = [], multiplayerInstructions = '',
+): GameMcpProvider {
+  const tools = [...definitions.map(definition => mcpTool(definition, credits)), ...multiplayer]
+  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.'
   return {
     id: 'wasd',
     title: 'WASD Engine',
-    description: 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.',
-    instructions: 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.',
+    description: multiplayer.length === 0
+      ? 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.'
+      : 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, release it on WASD Engine with a share link, and put it online: player-hosted for free, or on a dedicated server by monthly size.',
+    instructions: multiplayerInstructions === '' ? release : `${release}\n\n${multiplayerInstructions}`,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

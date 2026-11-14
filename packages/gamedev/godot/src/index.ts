@@ -24,10 +24,11 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
-import { exportDesktop, exportWeb, WEB_EXPORT_ENTRY } from './export.ts'
+import { exportDesktop, exportServer, exportWeb, WEB_EXPORT_ENTRY } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
+import { runInstanceGroup } from './instances.ts'
 import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
@@ -44,8 +45,8 @@ import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from 
 import { checkWebBuild, GodotWebCheckError, WEB_CHECK_UNAVAILABLE } from './web-check.ts'
 import type {
   GodotControlRequest, GodotDesktopExport, GodotDesktopExportRequest, GodotDesktopPlatform, GodotFollowItem, GodotInputEvent,
-  GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView, GodotViewItem, GodotWebCheck, GodotWebCheckRequest,
-  GodotWebExport, GodotWebExportRequest,
+  GodotInstancesReport, GodotInstancesRequest, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView, GodotServerExport,
+  GodotServerExportRequest, GodotViewItem, GodotWebCheck, GodotWebCheckRequest, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
 import { ExportTemplateManager } from './export-template.ts'
 
@@ -153,8 +154,31 @@ export interface Config {
   macosTemplateSha256: string
   /** Absolute macOS template ZIP to use instead of the download; empty downloads it. */
   macosTemplatePath: string
+  /**
+   * Godot export templates archive of the runtime's Godot version, from which a dedicated server export downloads only
+   * its template.
+   */
+  serverTemplateArchiveUrl: string
+  /** Path of the Linux x86_64 release template inside that archive, for dedicated server exports. */
+  serverTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  serverTemplateSha256: string
+  /** Absolute Linux x86_64 release template to use instead of the download; empty downloads it. */
+  serverTemplatePath: string
   /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
+  /** Most headless instances one group of `runInstances` starts at once on any computer. */
+  maxInstances: number
+  /**
+   * Bytes of the computer's physical memory for each instance of a group: at most the computer's memory divided by
+   * this, rounded to the nearest whole number, run in one group; 0 leaves memory out of the limit.
+   */
+  instanceMemoryBytes: number
+  /**
+   * Logical processors for each instance of a group: at most the computer's logical processors divided by this,
+   * rounded down, run in one group; 0 leaves processors out of the limit.
+   */
+  instanceCores: number
   /**
    * Command line that starts the browser of Web checks, without its argument: the Desktop app's executable, and the
    * application folder when Electron runs it from one. Empty, as outside the Desktop app, turns Web checks off.
@@ -241,7 +265,12 @@ function validateConfig(config: Config): void {
 }
 
 /** The export templates the configuration names, by the prefix of their fields. */
-const TEMPLATE_FIELDS = ['webTemplate', 'windowsTemplate', 'macosTemplate'] as const
+const TEMPLATE_FIELDS = ['webTemplate', 'windowsTemplate', 'macosTemplate', 'serverTemplate'] as const
+
+/** A group of headless instances that the plugin refuses before starting any. */
+export class GodotInstancesError extends Error {
+  override name = 'GodotInstancesError'
+}
 
 /** Each desktop platform's template: the prefix of its configuration fields, the name messages use, and its file extension. */
 const DESKTOP_TEMPLATES: Readonly<Record<GodotDesktopPlatform, { readonly field: 'windowsTemplate' | 'macosTemplate'; readonly platform: string; readonly extension: string }>> = {
@@ -334,7 +363,14 @@ export default class GodotController extends TypertRemoteService {
     macosTemplateEntry: z.string().default('templates/macos.zip'),
     macosTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('88df5e2e6fee99088699be66e6d42e4da4fb0c5619d054297d755a49558a4792'),
     macosTemplatePath: z.string().default(''),
+    serverTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    serverTemplateEntry: z.string().default('templates/linux_release.x86_64'),
+    serverTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d9f79ab89b5ae369aeed11c6052d402e8218cd503bf85b4a235f9c30c46a7c63'),
+    serverTemplatePath: z.string().default(''),
     exportTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(600_000),
+    maxInstances: z.number().step(1).min(1).default(4),
+    instanceMemoryBytes: z.number().step(1).min(0).default(2 * 1024 ** 3),
+    instanceCores: z.number().step(1).min(0).default(1),
     webCheckCommand: z.array(z.string().min(1)).default([]),
     webCheckSeconds: z.number().min(1).max(600).default(20),
     webCheckStartTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(180_000),
@@ -350,6 +386,7 @@ export default class GodotController extends TypertRemoteService {
   private readonly runtime: GodotRuntimeManager
   private readonly templates: ExportTemplateManager
   private readonly desktopTemplates: Readonly<Record<GodotDesktopPlatform, ExportTemplateManager>>
+  private readonly serverTemplates: ExportTemplateManager
   private readonly runtimeWatchers = new Set<() => void>()
   private payload: Promise<{ readonly harness: string; readonly check: string }> | undefined
 
@@ -374,6 +411,7 @@ export default class GodotController extends TypertRemoteService {
       return templateManager(config, field, platform, extension)
     }
     this.desktopTemplates = { windows: desktopTemplate(DESKTOP_TEMPLATES.windows), macos: desktopTemplate(DESKTOP_TEMPLATES.macos) }
+    this.serverTemplates = templateManager(config, 'serverTemplate', 'Linux server', '.x86_64')
     ctx.effect(() => async () => {
       this.runtime.dispose()
       this.headless.close(new Error('The Godot plugin stopped before the check or export could start.'))
@@ -638,6 +676,92 @@ export default class GodotController extends TypertRemoteService {
         outputBytes: this.config.processOutputBytes,
         signal,
       }), signal)
+    })
+  }
+
+  /**
+   * Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`,
+   * with the pack embedded and the visuals of every resource stripped, which a game server host starts with
+   * `--headless`. The first export downloads the Linux release template. Like a Web export, the export waits until the
+   * project's import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not
+   * call it.
+   * @param request - absolute project folder and output folder.
+   * @param signal - cancellation; it stops the export process.
+   * @returns the executable.
+   * @throws {GodotProjectError} without `project.godot` in the project folder.
+   * @throws {GodotTemplateError} when the Linux template cannot be downloaded.
+   * @throws {GodotExportError} when the export writes no executable.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+   */
+  async exportServer(request: GodotServerExportRequest, signal: AbortSignal): Promise<GodotServerExport> {
+    const project = await resolveGodotProject(request.projectDir, '.', signal)
+    const runtime = await this.requireRuntime(signal)
+    const template = await this.serverTemplates.resolve(signal)
+    return await this.headless.run(signal, async () => {
+      this.requireMemory('a Godot dedicated server export')
+      return await this.imports.exclusive(project.dir, () => exportServer({
+        subprocess: this.ctx.subprocess,
+        runtime,
+        projectDir: project.dir,
+        outputDir: request.outputDir,
+        template,
+        hostPid: process.pid,
+        timeoutMs: this.config.exportTimeoutMs,
+        graceMs: this.config.stopGraceMs,
+        outputBytes: this.config.processOutputBytes,
+        signal,
+      }), signal)
+    })
+  }
+
+  /**
+   * Run a group of headless instances of a project at once, each running the main scene with environment entries of
+   * its own, such as a multiplayer game's server and its clients in a local test. The group first imports the project
+   * when its import data may be outdated, and holds one of the `maxHeadlessProcesses` slots and the project's import
+   * turn while it runs. For other plugins on the Host; the Game tab and the `godot_*` tools do not call it.
+   * @param request - absolute project folder, the instances, and the group's deadline.
+   * @param signal - cancellation; it stops every instance.
+   * @returns how each instance ended, with the end of its output.
+   * @throws {GodotProjectError} without `project.godot` in the project folder.
+   * @throws {GodotInstancesError} when the group asks for no instance or more than this computer runs at once.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the group starts.
+   */
+  async runInstances(request: GodotInstancesRequest, signal: AbortSignal): Promise<GodotInstancesReport> {
+    const limit = processLimit({
+      max: this.config.maxInstances, memoryBytes: this.config.instanceMemoryBytes, cores: this.config.instanceCores,
+    }, this.machine)
+    if (request.instances.length === 0) throw new GodotInstancesError('A group of instances needs at least one instance.')
+    if (request.instances.length > limit) {
+      throw new GodotInstancesError(`This computer runs at most ${String(limit)} headless instances of a game at once; ${String(request.instances.length)} were asked for.`)
+    }
+    if (!Number.isInteger(request.timeoutMs) || request.timeoutMs < 1 || request.timeoutMs > MAX_TIMER_MS) {
+      throw new GodotInstancesError('timeoutMs must be a whole number of milliseconds from 1.')
+    }
+    const project = await resolveGodotProject(request.projectDir, '.', signal)
+    const runtime = await this.requireRuntime(signal)
+    return await this.headless.run(signal, async () => {
+      this.requireMemory('a group of headless Godot instances')
+      return await this.imports.exclusive(project.dir, async () => {
+        const imported = this.config.importBeforeRun && await this.imports.outdated(project.dir, signal)
+          ? importReport(await this.importStep(runtime, project.dir, signal), this.config.importTimeoutMs).issues.filter(issue => issue.level !== 'warning')
+          : []
+        const instances = await runInstanceGroup({
+          subprocess: this.ctx.subprocess,
+          runtime,
+          projectDir: project.dir,
+          instances: request.instances,
+          timeoutMs: request.timeoutMs,
+          hostPid: process.pid,
+          graceMs: this.config.stopGraceMs,
+          outputBytes: this.config.processOutputBytes,
+          signal,
+        })
+        return {
+          projectDir: project.dir,
+          instances,
+          importIssues: imported.slice(0, LISTED_ENGINE_ISSUES).map(issue => issue.file === undefined ? issue.message : `${issue.file}${issue.line === undefined ? '' : `:${String(issue.line)}`}: ${issue.message}`),
+        }
+      }, signal)
     })
   }
 

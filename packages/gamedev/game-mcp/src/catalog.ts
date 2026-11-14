@@ -13,7 +13,8 @@ import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ToolExecutionToken, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import type {
-  GameMcpCall, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, GameMcpToolResult, JsonObject,
+  GameMcpCall, GameMcpConfirmation, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus,
+  GameMcpTool, GameMcpToolResult, JsonObject,
 } from './provider.ts'
 
 /** Name of the search tool. */
@@ -56,6 +57,8 @@ export interface McpToolListing {
 export interface McpCallResult {
   readonly content: GameMcpContent[]
   readonly isError?: boolean
+  /** The page where the user confirms what the call asked for, which the server may send as an elicitation. */
+  readonly confirmation?: GameMcpConfirmation
 }
 
 function isRecord(value: JsonValue | undefined): value is JsonObject {
@@ -298,7 +301,11 @@ export class GameToolCatalog {
       const content = tool.content === undefined
         ? textContent(tool.definition.output.render(prepared.args, value))
         : [...await tool.content(value, prepared.args, exec)]
-      result = { content: content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block) }
+      const confirmation = tool.confirmation?.(value)
+      result = {
+        content: content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block),
+        ...confirmation === undefined ? {} : { confirmation },
+      }
     } catch (error) {
       result = failureResult(error)
     }

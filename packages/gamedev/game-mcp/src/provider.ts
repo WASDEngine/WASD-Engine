@@ -67,6 +67,17 @@ export interface GameMcpPreparedCall {
 /** The content of a successful call, at once or later. */
 export type GameMcpContentResult = Promise<readonly GameMcpContent[]> | readonly GameMcpContent[]
 
+/**
+ * A page where the user confirms what a call asked for, such as a purchase on the WASD Engine site, which the server
+ * sends as a URL-mode elicitation to an agent whose client supports one.
+ */
+export interface GameMcpConfirmation {
+  /** The page; an https address in production. */
+  readonly url: string
+  /** What the user confirms there, for the client to show with the page's host. */
+  readonly message: string
+}
+
 /** One tool that the server offers to connected agents. */
 export interface GameMcpTool {
   /** Name agents call: the provider id, an underscore, and letters, digits, `_`, or `-`, at most 64 characters. */
@@ -97,6 +108,14 @@ export interface GameMcpTool {
    * @returns the result content, text first.
    */
   readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult
+  /**
+   * The page where the user confirms what a successful call asked for. A client that declared URL-mode elicitation
+   * gets the page as an elicitation and the call's content once the user answered; other clients get the content,
+   * which names the page too.
+   * @param value - the definition's canonical value.
+   * @returns the page, or undefined when the call needs no confirmation.
+   */
+  readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined
 }
 
 /** One game tool plugin as connected agents find it. */

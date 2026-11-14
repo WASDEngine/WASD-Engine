@@ -1,8 +1,9 @@
 /**
  * WASD Engine Plugins in a Host composition with the real tool, prompt, Agent, and Typert services: the Browser tools
- * and their prompt section exist without the Godot plugin, the export and release tools join once it exists, a release
- * goes to the signed-in account's game and asks before a copied project folder adds to it, and a Browser call travels
- * through the `wasdPlugins` Remote methods to a simulated window and back.
+ * and their prompt section exist without the Godot plugin, the export, release, and multiplayer tools join once it
+ * exists, a release goes to the signed-in account's game and asks before a copied project folder adds to it, a Browser
+ * call travels through the `wasdPlugins` Remote methods to a simulated window and back, and a server purchase asks the
+ * approval service before a simulated window opens its confirmation page.
  */
 import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -20,9 +21,12 @@ import type { GameMcpProvider } from '@deepseek-ai/dsh-game-mcp'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
+import type { ApprovalOutcome, ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types'
 import WasdPlugins, { type Config } from '../src/index.ts'
 import { UNCLAIMED_MESSAGE } from '../src/browser.ts'
 import { accountKey } from '../src/release.ts'
+import { MULTIPLAYER_PROMPT, MULTIPLAYER_TOOLS } from '../src/multiplayer-tools.ts'
+import { GAME, multiplayerProject, multiplayerSite, ORIGIN, removeProjects, TOKEN } from './multiplayer-site.ts'
 
 const BROWSER_TOOLS = ['browser_click', 'browser_open', 'browser_read', 'browser_screenshot', 'browser_type']
 const RELEASE_TOOLS = ['wasd_export_desktop', 'wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
@@ -126,7 +130,7 @@ describe('WASD Engine Plugins composition', () => {
     const prompt = await ctx.systemPrompt.assemble()
     expect(prompt.sections.map(section => section.name)).toContain('browser')
     ctx.provide('godot', { exportWeb: () => Promise.reject(new Error('not used')) } as never)
-    await expect.poll(toolNames).toEqual([...BROWSER_TOOLS, ...RELEASE_TOOLS])
+    await expect.poll(toolNames).toEqual([...BROWSER_TOOLS, ...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
   })
 
   it('refuses a dataRoot that is not an absolute path', async () => {
@@ -164,7 +168,7 @@ describe('WASD Engine Plugins composition', () => {
         })
       },
     } as never)
-    await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
     const text = (result: Awaited<ReturnType<typeof call>>) => result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
     await mkdir(join(root, 'space'))
     await writeFile(join(root, 'space', 'project.godot'), '[application]\nconfig/name="Space Game"\n')
@@ -197,7 +201,7 @@ describe('WASD Engine Plugins composition', () => {
     expect(text(privately)).toContain('Released Space Game version 3')
     expect(text(privately)).toContain('The game is private: Explore does not list it, so only people with its link can find it.')
     expect(text(privately)).toMatch(new RegExp(`Windows download: ${SITE}/games/space-game-1/download/windows\\?v=3 \\([\\d.]+ MB, being scanned for malware\\)`, 'u'))
-    expect(text(privately)).toContain('A download being scanned appears on the share page, and its link starts working, once the scan passes')
+    expect(text(privately)).toContain('A download being scanned becomes installable from the share page once the scan passes')
     expect(site.games.get('game-1')).toMatchObject({ visibility: 'private', downloads: ['windows 3'] })
     expect(await ctx.wasdPlugins.project(join(root, 'space'), new AbortController().signal))
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })
@@ -229,7 +233,7 @@ describe('WASD Engine Plugins composition', () => {
         return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
       },
     } as never)
-    await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
     await expect.poll(() => providers.length).toBe(1)
     await mkdir(join(root, 'space'))
     await writeFile(join(root, 'space', 'project.godot'), '[application]\nconfig/name="Space Game"\n')
@@ -277,7 +281,7 @@ describe('WASD Engine Plugins composition', () => {
       },
       checkWeb: () => Promise.reject(new Error('The Web check runs in the WASD Engine Desktop app.')),
     } as never)
-    await expect.poll(toolNames).toEqual(RELEASE_TOOLS)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
     const game = join(root, 'space')
     await mkdir(join(game, '.wasdengine'), { recursive: true })
     await writeFile(join(game, 'project.godot'), '[application]\nconfig/name="Space Game"\n')
@@ -362,6 +366,87 @@ describe('WASD Engine Plugins composition', () => {
   it('refuses a page operation limit that is not shorter than the call\'s timeout', async () => {
     await expect(compose({ browser: true, browserTimeoutMs: 10_000, browserOperationTimeoutMs: 10_000 }))
       .rejects.toThrow('wasd-plugins: browserOperationTimeoutMs must be shorter than browserTimeoutMs')
+  })
+
+  it('adds the multiplayer tools and prompt section with Godot, asks before a purchase, and opens its page in a window', async () => {
+    const site = multiplayerSite()
+    site.addServer()
+    vi.stubGlobal('fetch', site.fetch)
+    cleanups.push(async () => {
+      vi.unstubAllGlobals()
+      await removeProjects()
+    })
+    const { ctx, toolNames, call } = await compose({ linkClaimTimeoutMs: 5000 })
+    const answers: ApprovalOutcome[] = ['rejected', 'allowed-once']
+    const asked: ApprovalRequestEvent[] = []
+    ctx.provide('approval', {
+      request: (event: ApprovalRequestEvent) => {
+        asked.push(event)
+        return Promise.resolve(answers.shift() ?? 'unavailable')
+      },
+    } as never)
+    ctx.provide('deepseekAccount', {
+      getState: () => Promise.resolve({ links: { usageUrl: `${ORIGIN}/account/usage` } }),
+      getPlatformSession: () => Promise.resolve({ origin: ORIGIN, token: TOKEN, userId: 'user-1' }),
+    } as never)
+    ctx.provide('godot', { exportWeb: () => Promise.reject(new Error('not used')) } as never)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
+    const prompt = await ctx.systemPrompt.assemble()
+    expect(prompt.sections.find(section => section.name === 'multiplayer')?.text).toBe(MULTIPLAYER_PROMPT)
+    const dir = await multiplayerProject({ config: '[wasd]\nmode="dedicated"\n' })
+    const text = (result: Awaited<ReturnType<typeof call>>) => result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+
+    expect(text(await call('wasd_server_create', { project: dir, size: 'small' }))).toBe('The user declined, so nothing was created or charged.')
+    const following = new AbortController()
+    cleanups.push(async () => { following.abort() })
+    const window = (async () => {
+      for await (const view of ctx.wasdPlugins.linkRequests(following.signal)) {
+        const link = view.links[0]
+        if (link === undefined) continue
+        expect(ctx.wasdPlugins.claimLink(link.id, following.signal)).toBe(true)
+        return link.url
+      }
+      return undefined
+    })()
+    const created = await call('wasd_server_create', { project: dir, size: 'small' })
+    expect(created.isError).toBe(false)
+    expect(await window).toMatch(/^https:\/\/site\.test\/servers\/confirm\/token-\d+$/u)
+    expect(text(created)).toContain('WASD Engine opened a page on site.test in the browser. This is a Small server for Defenders at $5 a month.')
+    expect(asked.map(event => [event.toolName, event.reason])).toEqual([
+      ['wasd_server_create', 'Create a Small game server for "Defenders" at $5 a month? WASD Engine then opens a page on site.test where you confirm and pay; nothing is charged before that.'],
+      ['wasd_server_create', 'Create a Small game server for "Defenders" at $5 a month? WASD Engine then opens a page on site.test where you confirm and pay; nothing is charged before that.'],
+    ])
+    expect(asked[0]?.displayReason?.zh).toContain('Defenders')
+
+    const view = await ctx.wasdPlugins.multiplayer(dir, new AbortController().signal)
+    expect(view).toMatchObject({ godot: true, mode: 'dedicated', game: { title: GAME.title, url: GAME.url, version: GAME.version }, serversUrl: `${ORIGIN}/account/servers` })
+    expect(view.servers.map(server => [server.name, server.size, server.state, server.players, server.bandwidthPercent])).toEqual([
+      ['Main', 'Small', 'running', 3, 12],
+      ['Defenders', 'Small', 'awaiting_confirmation', 0, 12],
+    ])
+  })
+
+  it('hands the Play page a sign-in link of the signed-in account, and none while signed out', async () => {
+    const { ctx } = await compose({})
+    const asked: { readonly url: string; readonly token: string | null; readonly body: unknown }[] = []
+    vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString()
+      const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
+      asked.push({ url, token: new Headers(init?.headers).get('x-dsh-auth-token'), body })
+      return Promise.resolve(Response.json({ url: `${SITE}/app/sign-in#code=wasd_one`, expires_at: '2026-11-13T12:02:00Z' }))
+    })
+    cleanups.push(async () => { vi.unstubAllGlobals() })
+    let session: { readonly origin: string; readonly token: string; readonly userId: string } | null = null
+    ctx.provide('deepseekAccount', {
+      getState: () => Promise.resolve({ links: { usageUrl: `${SITE}/account/usage` } }),
+      getPlatformSession: () => Promise.resolve(session),
+    } as never)
+    const signal = new AbortController().signal
+    expect(await ctx.wasdPlugins.siteSignInLink('/explore', signal)).toBeNull()
+    expect(asked).toEqual([])
+    session = { origin: SITE, token: 'token-1', userId: 'user-1' }
+    expect(await ctx.wasdPlugins.siteSignInLink('/games/sky-keep', signal)).toBe(`${SITE}/app/sign-in#code=wasd_one`)
+    expect(asked).toEqual([{ url: `${SITE}/api/v1/app/sign-in-links`, token: 'token-1', body: { next: '/games/sky-keep' } }])
   })
 
   it('fails a Browser call that no window claims with the fallback to the web tools', async () => {

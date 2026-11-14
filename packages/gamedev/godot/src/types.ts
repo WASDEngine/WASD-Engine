@@ -272,13 +272,16 @@ export interface GodotWebExportRequest {
   readonly outputDir: string
 }
 
-/** One file of a Web export. */
-export interface GodotWebExportFile {
+/** One file of an export. */
+export interface GodotExportFile {
   /** Name inside the output folder. */
   readonly path: string
   /** Size in bytes. */
   readonly bytes: number
 }
+
+/** One file of a Web export. */
+export type GodotWebExportFile = GodotExportFile
 
 /** A finished Web export: a folder a static web server can serve, with `entry` as its page. */
 export interface GodotWebExport {
@@ -442,4 +445,75 @@ export interface GodotDesktopExport {
   readonly bytes: number
   /** Godot's export warnings; at most 10. */
   readonly warnings: readonly string[]
+}
+
+/** Parameters of a dedicated server export. */
+export interface GodotServerExportRequest {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** Absolute folder the export empties and fills with the server executable. */
+  readonly outputDir: string
+}
+
+/** A finished dedicated server export: one Linux x86_64 executable with the game's pack embedded. */
+export interface GodotServerExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** Absolute folder holding the executable. */
+  readonly outputDir: string
+  /** Name of the executable inside the output folder, `server.x86_64`. */
+  readonly binary: string
+  /** Size of the executable in bytes. */
+  readonly bytes: number
+  /**
+   * Every file the export wrote, sorted by path: the executable and the native libraries of the project's
+   * GDExtensions, which the executable loads from its own folder.
+   */
+  readonly files: readonly GodotExportFile[]
+  /** Godot's export warnings and notes about the export; at most 10. */
+  readonly warnings: readonly string[]
+}
+
+/** One headless instance of a project in a group that runs at once, such as a game's server and its clients. */
+export interface GodotInstanceSpec {
+  /** Name of the instance in the report, such as `server` or `client-1`. */
+  readonly name: string
+  /** Environment entries the instance's process gets on top of the Host's environment. */
+  readonly env: Readonly<Record<string, string>>
+  /** Milliseconds after the group starts before this instance starts; 0 starts it at once. */
+  readonly delayMs: number
+}
+
+/** A group of headless instances of one project that run at once. */
+export interface GodotInstancesRequest {
+  /** Absolute folder holding `project.godot`; each instance runs its main scene. */
+  readonly projectDir: string
+  /** The instances, at least one. */
+  readonly instances: readonly GodotInstanceSpec[]
+  /** Deadline of the whole group from its start, in milliseconds; an instance still running then is stopped. */
+  readonly timeoutMs: number
+}
+
+/** How one instance of a group ended. */
+export interface GodotInstanceReport {
+  /** The instance's name. */
+  readonly name: string
+  /** Exit code of the runner, or null when a signal or the deadline ended it. */
+  readonly exitCode: number | null
+  /** Whether the group's deadline stopped the instance. */
+  readonly timedOut: boolean
+  /** The instance's standard output, its last characters when it printed more than the plugin keeps. */
+  readonly stdout: string
+  /** The instance's standard error, its last characters when it printed more than the plugin keeps. */
+  readonly stderr: string
+}
+
+/** How a group of headless instances ended. */
+export interface GodotInstancesReport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** One report per instance, in request order. */
+  readonly instances: readonly GodotInstanceReport[]
+  /** Errors the import before the group logged, when it ran; at most 20. */
+  readonly importIssues: readonly string[]
 }

@@ -269,6 +269,8 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-gimp': ['py/**/*.py'],
   '@deepseek-ai/dsh-godot': ['runtime/*.gd'],
   '@deepseek-ai/dsh-supercollider': ['sc/*.sc'],
+  // WASDEngine fork: the WASD Multiplayer add-on that wasd_multiplayer_setup copies into game projects (wasdengine/FORK.md).
+  '@deepseek-ai/dsh-wasd-plugins': ['addon/wasd_multiplayer'],
   // WASDEngine fork: the Assets tab loads three.js as a lazy client chunk (wasdengine/FORK.md).
   '@deepseek-ai/dsh-client-ui-game-assets': ['lib/client.*.js'],
   // The headless entry and its startup row share the JSON projection code

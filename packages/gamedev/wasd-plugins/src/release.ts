@@ -20,19 +20,28 @@
  * preview again only when it changed or the site lost it. A game without a GIF on the site, released from a project
  * with none to upload, gets one recorded from its game first, when the release can run it. Last, the release uploads
  * what the game was made with (`credits.ts`), which the game's page and Explore credit with their logos.
+ *
+ * A project set up for multiplayer (`res://wasd_multiplayer.cfg`) gets its game's id and the site's origins written
+ * into that file before the export once the project is linked, and after its first release, so builds know their game
+ * and their site where no URL names them. In `dedicated` mode, the release then exports the Linux dedicated server
+ * build into `.wasdengine/server/`, zips `server.x86_64` with any GDExtension libraries the export wrote next to it,
+ * and stores it on the site with the new version's number, which updates the game's servers; a server build that
+ * fails leaves the version released and becomes a warning.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
 import { mkdir, readFile, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
-import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotServerExport, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
 import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
+import { MultiplayerApi } from './multiplayer-api.ts'
+import { readMultiplayerConfig, writeMultiplayerConfig, type MultiplayerConfig } from './multiplayer-project.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR, writeWhole } from './state.ts'
-import type { WasdDownload, WasdProjectView, WasdRelease, WasdVisibility } from './types.ts'
+import type { WasdDownload, WasdMultiplayerMode, WasdProjectView, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
 import { writeZip } from './zip.ts'
 
 export { STATE_DIR }
@@ -45,6 +54,9 @@ export const LINK_FILE = 'game.json'
 
 /** The desktop builds' folder inside {@link STATE_DIR}, which holds one folder per platform. */
 export const DESKTOP_BUILD_DIR = 'desktop'
+
+/** The dedicated server build's folder inside {@link STATE_DIR}. */
+export const SERVER_BUILD_DIR = 'server'
 
 /** The desktop platforms a release or an export builds for, in the order they build. */
 export const DESKTOP_PLATFORMS: readonly GodotDesktopPlatform[] = ['windows', 'macos']
@@ -325,9 +337,14 @@ class SiteApi {
   }
 
   async release(
-    id: string, archive: string, notes: string, visibility: WasdVisibility | undefined,
+    id: string, archive: string, notes: string, visibility: WasdVisibility | undefined, multiplayer: WasdMultiplayerMode | undefined,
   ): Promise<z.infer<typeof ReleaseJson> | undefined> {
-    const params = new URLSearchParams({ ...notes === '' ? {} : { notes }, ...visibility === undefined ? {} : { visibility } })
+    const params = new URLSearchParams({
+      ...notes === '' ? {} : { notes },
+      ...visibility === undefined ? {} : { visibility },
+      // An online version plays on the site only while it is the latest, which the site learns here.
+      ...multiplayer === undefined ? {} : { multiplayer },
+    })
     const query = params.size === 0 ? '' : `?${params.toString()}`
     const response = await this.call('POST', `/api/v1/games/${encodeURIComponent(id)}/releases${query}`, { data: await openAsBlob(archive), type: 'application/zip' })
     if (response.status === 404) {
@@ -434,6 +451,15 @@ export interface ReleaseDependencies {
   readonly exportDesktop: (
     projectDir: string, platform: GodotDesktopPlatform, outputDir: string, signal: AbortSignal,
   ) => Promise<GodotDesktopExport>
+  /**
+   * Export the project as a Linux dedicated server, for projects in the `dedicated` multiplayer mode; absent, such
+   * releases store no server build and say so in a warning.
+   * @param projectDir - absolute project folder.
+   * @param outputDir - absolute folder the export fills.
+   * @param signal - cancellation.
+   * @returns the server executable.
+   */
+  readonly exportServer?: (projectDir: string, outputDir: string, signal: AbortSignal) => Promise<GodotServerExport>
   /**
    * Check a Web build in a browser; absent where Web checks are off.
    * @param outputDir - absolute folder of the Web build.
@@ -585,6 +611,47 @@ function requireVisibility(game: GameJson, visibility: WasdVisibility | undefine
 }
 
 /**
+ * Point a multiplayer project's configuration at a game and the site, when it names another.
+ * @param projectDir - absolute project folder.
+ * @param config - the project's configuration.
+ * @param gameId - the game's id.
+ * @param origin - the site's origin.
+ * @returns the configuration in effect.
+ */
+async function pointConfig(projectDir: string, config: MultiplayerConfig, gameId: string, origin: string): Promise<MultiplayerConfig> {
+  if (config.gameId === gameId && config.apiOrigin === origin && config.appOrigin === origin) return config
+  const updated = { ...config, gameId, apiOrigin: origin, appOrigin: origin }
+  await writeMultiplayerConfig(projectDir, updated)
+  return updated
+}
+
+/**
+ * Export, zip, and store the dedicated server build of a released version.
+ * @param request - the release's project.
+ * @param dependencies - the server export, HTTP, and temporary files.
+ * @param access - the signed-in site.
+ * @param gameId - the released game.
+ * @param version - the released version.
+ * @param signal - cancellation.
+ * @returns the stored build.
+ */
+async function storeServerBuild(
+  request: ReleaseRequest, dependencies: ReleaseDependencies, access: SiteAccess, gameId: string, version: number, signal: AbortSignal,
+): Promise<WasdServerBuild> {
+  const exportServer = dependencies.exportServer
+  if (exportServer === undefined) throw new ReleaseError('this WASD Engine cannot export dedicated server builds.')
+  const exported = await exportServer(request.projectDir, join(request.projectDir, STATE_DIR, SERVER_BUILD_DIR), signal)
+  const archive = join(dependencies.tempDir, `wasd-server-${randomUUID()}.zip`)
+  try {
+    const bytes = await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
+    const build = await new MultiplayerApi(access, dependencies.fetch, signal).uploadBuild(gameId, version, archive)
+    return { version: build.version, bytes }
+  } finally {
+    await rm(archive, { force: true })
+  }
+}
+
+/**
  * Export a project for the Web, and for the desktop platforms the request names, and release the build as the next
  * version of the signed-in account's game, or as the first version of a new game, with the desktop builds as its
  * downloads and what the game was made with.
@@ -624,6 +691,11 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       : await dependencies.folders.sharedWith(access.origin, id, here, dir => linksTo(dir, access.origin, id))
     if (other !== undefined) throw new ReleaseError(copyQuestion(other, game))
     await dependencies.folders.add(access.origin, id, here)
+  }
+  let multiplayer = await readMultiplayerConfig(request.projectDir)
+  // The builds carry their game's id where no URL names it; a first release learns the id only from the site.
+  if (multiplayer !== undefined && game !== undefined) {
+    multiplayer = await pointConfig(request.projectDir, multiplayer, game.id, access.origin)
   }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
   // The Web check watches the build while the release builds and uploads; a release that fails stops it.
@@ -682,17 +754,27 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
         warnings.push(`The game has no preview GIF: recording one failed: ${(error as Error).message}`)
       }
     }
-    let released = await api.release(game.id, archive, notes, request.visibility)
+    let released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode)
     if (released === undefined) {
       // The game was removed between the lookup and the upload: release to a new one.
       game = await create()
-      released = await api.release(game.id, archive, notes, request.visibility)
+      released = await api.release(game.id, archive, notes, request.visibility, multiplayer?.mode)
       if (released === undefined) throw new ReleaseError('WASD Engine could not store the release: the new game disappeared. Try again.')
     }
     // Digests describe what this project uploaded to the game they name; a different game has none of its files.
     const prior = siteLinks.find(entry => entry.id === released.game.id)
     const uploaded: PreviewDigests = prior === undefined ? {} : { image: prior.image, gif: prior.gif, webp: prior.webp }
     await remember(released.game, released.release.version, uploaded)
+    if (multiplayer !== undefined) multiplayer = await pointConfig(request.projectDir, multiplayer, released.game.id, access.origin)
+    let serverBuild: WasdServerBuild | undefined
+    if (multiplayer?.mode === 'dedicated') {
+      try {
+        serverBuild = await storeServerBuild(request, dependencies, access, released.game.id, released.release.version, signal)
+      } catch (error) {
+        if (signal.aborted) throw error
+        warnings.push(`The version is released, but its dedicated server build was not stored, so the game's servers keep their earlier build: ${(error as Error).message}`)
+      }
+    }
     const downloads = await uploadDownloads(api, released.game, released.release.version, builds, warnings, signal)
     const preview = await uploadPreview(api, released.game, files, uploaded, warnings, signal)
     if (preview.image !== uploaded.image || preview.gif !== uploaded.gif || preview.webp !== uploaded.webp) {
@@ -711,6 +793,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       visibility: released.game.visibility ?? 'public',
       downloads,
       ...credited === undefined ? {} : { credits: creditNames(credited) },
+      ...serverBuild === undefined ? {} : { serverBuild },
       warnings,
       ...checking === undefined ? {} : await checking,
     }

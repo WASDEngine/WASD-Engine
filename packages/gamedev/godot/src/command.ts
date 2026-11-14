@@ -21,6 +21,8 @@ export interface GodotCommandOptions {
   readonly outputBytes: number
   /** Cancellation; it stops the command. */
   readonly signal: AbortSignal
+  /** Environment entries the process gets on top of the Host's environment. */
+  readonly env?: Readonly<Record<string, string>>
 }
 
 /** How a Godot command ended. */
@@ -50,7 +52,7 @@ export async function runGodotCommand(options: GodotCommandOptions): Promise<God
     stdio: { stdin: 'ignore', stdout: { maxBytes: options.outputBytes }, stderr: { maxBytes: options.outputBytes } },
     graceMs: options.graceMs,
     signal: AbortSignal.any([options.signal, timeout]),
-    env: { ELECTRON_RUN_AS_NODE: undefined },
+    env: { ...options.env, ELECTRON_RUN_AS_NODE: undefined },
   })
   const exit = await handle.done
   return {

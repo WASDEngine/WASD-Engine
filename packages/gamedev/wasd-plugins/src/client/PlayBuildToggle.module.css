@@ -1,0 +1,79 @@
+/* Play and Build: one 38px segmented bar in the New Session bar's geometry, with the active half raised; on the rail,
+   two stacked 36px icon controls. */
+.root {
+  display: flex;
+  gap: 2px;
+  height: 38px;
+  padding: 3px;
+  box-sizing: border-box;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-2, rgb(127 127 127 / 8%));
+}
+
+.mode {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: calc(var(--dsw-radius-md) - 3px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.mode:focus-visible {
+  outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+}
+
+@media (hover: hover) {
+  .mode:not(.active):hover {
+    color: var(--dsw-alias-label-primary);
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.active {
+  background: var(--dsw-alias-button-elevated-fill);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 0 0 0.5px var(--dsw-alias-border-l3);
+  cursor: default;
+}
+
+.icon {
+  flex: none;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rail {
+  flex-direction: column;
+  width: 36px;
+  height: auto;
+  padding: 0;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+}
+
+.rail .mode {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--dsw-radius-md);
+}

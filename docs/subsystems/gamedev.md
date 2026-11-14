@@ -375,7 +375,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
-| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result` |
+| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images |
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
@@ -665,6 +665,36 @@ async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<Godo
 async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>
 
 /**
+ * Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`,
+ * with the pack embedded and the visuals of every resource stripped, which a game server host starts with
+ * `--headless`. The first export downloads the Linux release template. Like a Web export, the export waits until the
+ * project's import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not
+ * call it.
+ * @param request - absolute project folder and output folder.
+ * @param signal - cancellation; it stops the export process.
+ * @returns the executable.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotTemplateError} when the Linux template cannot be downloaded.
+ * @throws {GodotExportError} when the export writes no executable.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+ */
+async exportServer(request: GodotServerExportRequest, signal: AbortSignal): Promise<GodotServerExport>
+
+/**
+ * Run a group of headless instances of a project at once, each running the main scene with environment entries of
+ * its own, such as a multiplayer game's server and its clients in a local test. The group first imports the project
+ * when its import data may be outdated, and holds one of the `maxHeadlessProcesses` slots and the project's import
+ * turn while it runs. For other plugins on the Host; the Game tab and the `godot_*` tools do not call it.
+ * @param request - absolute project folder, the instances, and the group's deadline.
+ * @param signal - cancellation; it stops every instance.
+ * @returns how each instance ended, with the end of its output.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotInstancesError} when the group asks for no instance or more than this computer runs at once.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the group starts.
+ */
+async runInstances(request: GodotInstancesRequest, signal: AbortSignal): Promise<GodotInstancesReport>
+
+/**
  * Record the Session's game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady
  * interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or
  * a game of another project, the recording first starts the project's game as `godot_run` does, muted as
@@ -718,11 +748,85 @@ Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote.
 @Remote async project(projectDir: string, signal: AbortSignal): Promise<WasdProjectView>
 
 /**
+ * A project's multiplayer, for the Multiplayer button: its mode, its game, and the game's dedicated servers on the
+ * site the app is signed in to.
+ * @param projectDir - absolute folder of a game project.
+ * @param signal - cancellation.
+ * @returns the view; servers that could not be read leave the list empty and name why.
+ */
+@Remote async multiplayer(projectDir: string, signal: AbortSignal): Promise<WasdMultiplayerView>
+
+/**
+ * Follow the links the multiplayer tools ask a window to open, such as a server purchase's confirmation page.
+ * @param signal - stream cancellation.
+ * @returns the links no window took yet, then again after each change, until cancelled or the plugin is disposed.
+ */
+@Remote({ mode: 'stream' }) linkRequests(signal: AbortSignal): AsyncIterable<WasdLinkRequests>
+
+/**
+ * Take a link for the calling window, which then opens it.
+ * @param id - the link.
+ * @param signal - cancellation.
+ * @returns whether the window took it; false when another window did or the tool stopped waiting.
+ */
+@Remote claimLink(id: string, signal: AbortSignal): boolean
+
+/**
+ * Follow the game library: the games installed on this computer and the downloads in progress.
+ * @param signal - stream cancellation.
+ * @returns the library, then again after each change, until cancelled or the plugin is disposed; an empty library
+ * that says games do not install here where the plugin keeps none.
+ */
+@Remote({ mode: 'stream' }) library(signal: AbortSignal): AsyncIterable<WasdLibraryView>
+
+/**
+ * Start installing a game from the site, or its newer version; the library's stream follows the download.
+ * @param slug - the game's address on the site, `/games/<slug>`.
+ * @param version - an earlier version of a single-player game; 0 installs the latest.
+ * @param signal - cancellation.
+ * @returns whether the install started, or why not.
+ */
+@Remote async installGame(slug: string, version: number, signal: AbortSignal): Promise<WasdLibraryOutcome>
+
+/**
+ * Start an installed game; an online game first installs its newer version and signs in as the app's account.
+ * @param id - the game's id.
+ * @param signal - stops waiting; an update the start began goes on.
+ * @returns once the game started, or why it did not.
+ */
+@Remote async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>
+
+/**
+ * Delete an installed game and its files.
+ * @param id - the game's id.
+ * @param signal - cancellation.
+ * @returns whether it was deleted, or why not.
+ */
+@Remote async removeGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>
+
+/**
+ * Forget a failed download.
+ * @param slug - the game's address on the site.
+ * @param signal - cancellation.
+ */
+@Remote dismissLibraryTask(slug: string, signal: AbortSignal): void
+
+/**
  * Pages of the WASD Engine site the app is signed in to, or would sign in to.
  * @param signal - cancellation.
  * @returns the Explore page.
  */
 @Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>
+
+/**
+ * A one-time link that opens a page of the WASD Engine site signed in as the app's account, which the Play page opens
+ * in place of the page, so the site in the app shows the app's account. It works once, within minutes; each new link
+ * the site redeems ends the session an earlier one made, and the app's sign-out ends it too.
+ * @param next - the page, a path on the site such as `/explore`.
+ * @param signal - cancellation.
+ * @returns the link, or null while the app is signed out or once the site no longer takes its sign-in.
+ */
+@Remote async siteSignInLink(next: string, signal: AbortSignal): Promise<string | null>
 
 /**
  * Follow the agents' Browser commands for a window that can drive Browser tabs: those no window has taken yet, and

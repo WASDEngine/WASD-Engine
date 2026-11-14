@@ -1,0 +1,141 @@
+/* Multiplayer button: a compact control after Release and Add-ons in the Session header, styled like Add-ons in the
+   header's neutral tone so the purple Release button stays the one call to action. */
+
+.trigger {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--dsw-radius-xs);
+  background: var(--dsw-alias-bg-layer-3, rgb(127 127 127 / 12%));
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 22px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .trigger:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.trigger:focus-visible {
+  outline: 2px solid #8e63ff;
+  outline-offset: 1px;
+}
+
+.icon {
+  flex: none;
+}
+
+/* Wider than the default dialog, so the two ways sit side by side and each server's line fits on one row. */
+.dialog {
+  width: min(520px, 100%);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.mode {
+  padding: 10px 12px;
+  border: 0.5px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 30%));
+  border-radius: var(--dsw-radius-sm);
+}
+
+.modeTitle {
+  margin: 0 0 4px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modeBody {
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+}
+
+.status a {
+  color: #8e63ff;
+}
+
+.warning {
+  margin: 0;
+  color: var(--dsw-alias-label-warning, #d97706);
+  font-size: 13px;
+}
+
+.servers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.server {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.serverName {
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.serverMeta {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

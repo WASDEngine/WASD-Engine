@@ -61,7 +61,7 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 
 ### Configuration
 
-[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `webTemplatePath`, `windowsTemplatePath`, or `macosTemplatePath` holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl`, `webTemplateArchiveUrl`, `windowsTemplateArchiveUrl`, or `macosTemplateArchiveUrl` is not an http or https URL.
+[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `webTemplatePath`, `windowsTemplatePath`, `macosTemplatePath`, or `serverTemplatePath` holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl`, `webTemplateArchiveUrl`, `windowsTemplateArchiveUrl`, `macosTemplateArchiveUrl`, or `serverTemplateArchiveUrl` is not an http or https URL.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -84,8 +84,8 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `maxRuns` | `4` | Most games that may run at once across all Sessions on any computer, each counted until its process ended; the [run limit](#game-runs) of a computer can be lower |
 | `runMemoryBytes` | `8589934592` (8 GiB) | Physical memory of the computer for each game: the run limit is at most the computer's memory divided by this, rounded to the nearest whole number; `0` leaves memory out |
 | `runCores` | `4` | Logical processors for each game: the run limit is at most the computer's logical processors divided by this, rounded down; `0` leaves processors out |
-| `maxHeadlessProcesses` | `2` | Most `godot_check` processes, `godot_script` runs, imports for other plugins, and exports that run at once; later ones wait in order until one ends |
-| `minAvailableMemoryBytes` | `1073741824` (1 GiB) | Memory that the computer must have available to start a game, a `godot_check` process, or an export; `0` turns the check off |
+| `maxHeadlessProcesses` | `2` | Most `godot_check` processes, `godot_script` runs, imports for other plugins, exports, and instance groups that run at once; later ones wait in order until one ends |
+| `minAvailableMemoryBytes` | `1073741824` (1 GiB) | Memory that the computer must have available to start a game, a `godot_check` process, an export, or an instance group; `0` turns the check off |
 | `hiddenFps` | `10` | Frames per second of a [windowless game that nobody shows or uses](#game-runs), 0 to 60; `0` leaves every game at its own frame rate |
 | `hiddenDelayMs` | `30000` | Time after the game connected, after the last Game tab stopped showing it, or after its last request ended, before `hiddenFps` applies |
 | `agentRunsMuted` | `true` | Whether runs that the agent starts have no audio unless `godot_run` says otherwise |
@@ -101,7 +101,14 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `macosTemplateEntry` | `templates/macos.zip` | Path of the macOS template ZIP inside that archive |
 | `macosTemplateSha256` | `88df5e2e…558a4792` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
 | `macosTemplatePath` | `''` | Absolute macOS template ZIP to use instead of the download |
+| `serverTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | Godot export templates archive of the runtime's Godot version, from which a [dedicated server export](#server-export) downloads only its template; an http or https URL |
+| `serverTemplateEntry` | `templates/linux_release.x86_64` | Path of the Linux x86_64 release template inside that archive |
+| `serverTemplateSha256` | `d9f79ab8…a7c63` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
+| `serverTemplatePath` | `''` | Absolute Linux x86_64 release template to use instead of the download |
 | `exportTimeoutMs` | `600000` | Deadline of one export, the asset import it starts included |
+| `maxInstances` | `4` | Most headless instances that one [instance group](#instance-groups) starts at once on any computer; the computer's own limit can be lower |
+| `instanceMemoryBytes` | `2147483648` (2 GiB) | Physical memory of the computer for each instance of a group: a group holds at most the computer's memory divided by this, rounded to the nearest whole number; `0` leaves memory out |
+| `instanceCores` | `1` | Logical processors for each instance of a group: a group holds at most the computer's logical processors divided by this, rounded down; `0` leaves processors out |
 | `webCheckCommand` | `[]` | Command line that starts the browser of [Web checks](#web-check), without its argument: the Desktop app's executable, and its application folder when Electron's default app runs it. The game tools overlay reads it from `WASD_WEB_CHECK_COMMAND`, which the Desktop app sets for its Host; empty turns Web checks off |
 | `webCheckSeconds` | `20` | Seconds a Web check watches the game once it draws frames steadily, from 1 to 600 |
 | `webCheckStartTimeoutMs` | `180000` | Milliseconds a Web check waits, from opening the page, for the game to start and draw frames steadily |
@@ -284,6 +291,18 @@ A desktop build packs only the VRAM-compressed texture formats the project impor
 
 The first export for each platform downloads its template the way the Web export downloads its own: `windowsTemplateEntry`, about 38 MB, published as `templates/<sha256>.exe`, and `macosTemplateEntry`, about 123 MB, published as `templates/<sha256>.zip`.
 
+<a id="server-export"></a>
+### Dedicated server export
+
+`ctx.godot.exportServer({ projectDir, outputDir }, signal)` exports a project as a Linux x86_64 dedicated server for other Host plugins, such as WASD Engine Plugins, whose releases store a multiplayer game's server build. It runs `--export-release` with the preset `WASD Engine Server`, added and removed as the Web preset is: a dedicated server export that strips the visuals of every resource, embeds the pack, and writes one executable, `server.x86_64`, which a game server host starts with `--headless`. GDExtension libraries for Linux x86_64 land next to it. The export makes the executable runnable, shares the slots, the memory check, and the order of the project's import steps with the other exports, and returns the executable's size, every file it wrote, and up to ten notes. Every export preset includes `res://wasd_multiplayer.cfg`, the WASD Multiplayer add-on's configuration, which Godot would leave out because it is no resource.
+
+The first dedicated server export downloads its template the way the Web export downloads its own: `serverTemplateEntry`, about 28 MB compressed, published as `templates/<sha256>.x86_64`.
+
+<a id="instance-groups"></a>
+### Instance groups
+
+`ctx.godot.runInstances({ projectDir, instances, timeoutMs }, signal)` runs several headless instances of a project's main scene at once for other Host plugins, such as the multiplayer test of WASD Engine Plugins, which runs a game's server and its clients. Each instance runs `--headless --path <project>` with its own environment entries on top of the Host's, starts after its own `delayMs`, and stops at the group's deadline; the report gives each instance's exit code, whether it timed out, and the last 20,000 characters of each output stream. The group imports the project first when its import data may be outdated, holds one of the `maxHeadlessProcesses` slots and the project's turn in the import order, and is refused before starting anything when it asks for no instance or more than the computer's limit: `maxInstances`, lowered by `instanceMemoryBytes` and `instanceCores` on smaller computers.
+
 ### Recordings for other plugins
 
 `ctx.godot.record(agent, request, signal)` records the game of an Agent's Session for other Host plugins, such as the previews of [WASD Engine Plugins](../wasd-plugins/README.md); the Game tab and the `godot_*` tools do not call it. It captures a screenshot of the window every `frameMs` for `seconds` of real time, at most 30, each at most `maxWidth` wide and a JPEG at `frameQuality` when the request gives one, which the game encodes faster than PNG at larger widths, else a PNG, while `events`, which it validates as `godot_input` does, play from the recording's start; events still playing when the recording ends are cancelled, and the game releases what they held. A capture that ends after the next interval has begun is followed at once by the latest interval's capture, so the frames keep real time and each carries its capture time. One more screenshot, a PNG at most `stillWidth` wide, becomes the still at `stillAt` seconds, unless a frame is wide enough. The recording counts as a view of the run, so a windowless game keeps its own frame rate, and the Game tab's frame stream stays as it is. When the Session runs no game, or a game of another project than `project`, the recording first starts the project's game as `godot_run` does, muted as `agentRunsMuted` says, and lets it run `startSeconds`; with `stopStarted`, it stops that game afterwards. The result holds the frames and the still, each with its image type, the window size, whether the recording started the game, and whether the game was paused in every frame. Pointer coordinates are pixels of the Session's latest screenshot of the running game unless `coordinateSpace` is `window`, so a recording that must start the game refuses them before it starts.
@@ -304,8 +323,8 @@ Godot's Blender scene importer converts a `.blend` file by running the Blender e
 | `payload/<hash>/wasd_harness.gd`, `payload/<hash>/wasd_check.gd` | Copies of the harness and the check script outside the Desktop application archive; `<hash>` is the first 16 hex digits of the script's SHA-256 | Reused while the script is unchanged; earlier versions stay |
 | `runtime/<runtimeVersion>/` | The managed runtime: the runner, the LibGodot library, and `runtime.json` | Kept; a new `runtimeVersion` installs beside it |
 | `runtime/.download-<id>.tar.gz`, `runtime/.staging-<id>/`, `runtime/<runtimeVersion>.lock` | The archive, the extracted files, and the writer lock of an install in progress | Removed when the install ends |
-| `templates/<sha256>.zip`, `templates/<sha256>.exe` | The downloaded Web, macOS, and Windows export templates, each named after its pinned SHA-256 | Kept; a new SHA-256 downloads beside them |
-| `templates/.download-<id>.zip`, `templates/.download-<id>.exe`, `templates/<sha256>.<ext>.lock` | A template download in progress and its writer lock | Removed when the download ends |
+| `templates/<sha256>.zip`, `templates/<sha256>.exe`, `templates/<sha256>.x86_64` | The downloaded Web, macOS, Windows, and Linux server export templates, each named after its pinned SHA-256 | Kept; a new SHA-256 downloads beside them |
+| `templates/.download-<id>.<ext>`, `templates/<sha256>.<ext>.lock` | A template download in progress and its writer lock | Removed when the download ends |
 
 The plugin writes nothing else under `dataRoot`; screenshots go to the attachment store, and an export writes into the folder its caller names.
 
@@ -341,7 +360,10 @@ In the macOS Desktop app, the page has `dshDesktop.gameLayer`, and a run that th
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, result text, and new-error reports |
 | [`src/check.ts`](src/check.ts) | Static script check and the import before it |
 | [`src/imports.ts`](src/imports.ts) | The import step of runs, checks, scripts, and other plugins, the order of one project's import steps, checks, and Web exports, and whether a project changed since its last import |
-| [`src/command.ts`](src/command.ts) | A Godot command that runs to its end with its output collected: the import step, the check, and the Web export |
+| [`src/command.ts`](src/command.ts) | A Godot command that runs to its end with its output collected: the import step, the check, the exports, and each instance of a group |
+| [`src/export.ts`](src/export.ts) | The Web, desktop, and dedicated server export presets and exports |
+| [`src/export-template.ts`](src/export-template.ts) | The download of one template entry from the export templates archive, for the Web, Windows, macOS, and Linux server templates |
+| [`src/instances.ts`](src/instances.ts) | Groups of headless instances with their own environment |
 | [`src/script.ts`](src/script.ts) | `godot_script` runs and the import report for other plugins |
 | [`src/record.ts`](src/record.ts) | Recordings for other plugins: the request, its ranges, and the capture clock |
 | [`src/project.ts`](src/project.ts) | Project search, `project.godot` settings, and `res://` paths |
@@ -477,7 +499,8 @@ These limits describe current gaps of the Godot runs, the Game tab, and the runt
 - **Application shortcuts pause in the game view on Windows Desktop** — while the view has focus, no application shortcut or menu accelerator runs until Shift+Esc or a click elsewhere releases it.
 - **Esc with Shift held releases the game view** — the view takes Esc pressed while Shift is held as Shift+Esc, so a game that runs on Shift does not receive Esc while the player runs, and while the pointer is locked, Esc reaches the game 100 ms after the key.
 - **No C# scripts** — the WASD Engine LibGodot is built without .NET, so C# scripts do not load, and the plugin never falls back to a .NET Godot editor.
-- **Web, Windows, and macOS exports only** — [`exportWeb`](#web-export) and [`exportDesktop`](#desktop-export) export for the Web, 64-bit x86 Windows, and Macs, through WASD Engine Plugins' tools; the `godot_*` tools export nothing, Linux, Windows on ARM, and mobile exports need a Godot editor of the same version with its export templates, which the agent runs from the shell, and desktop builds carry no publisher's signature.
+- **Web, Windows, macOS, and Linux server exports only** — [`exportWeb`](#web-export), [`exportDesktop`](#desktop-export), and [`exportServer`](#server-export) export for the Web, 64-bit x86 Windows, Macs, and a Linux x86_64 dedicated server, through WASD Engine Plugins' tools; the `godot_*` tools export nothing, Linux desktop, Windows on ARM, and mobile exports need a Godot editor of the same version with its export templates, which the agent runs from the shell, and desktop builds carry no publisher's signature.
+- **Instance groups share the Host's limits** — a group of instances counts as one headless process, and its instances are not game runs, so the Game tab never shows them and the run limit does not count them; `maxInstances` and the computer's memory and processors bound a group instead.
 - **A configured runtime is not version-checked** — the harness and the check script extend Godot's `Logger` class and read `ScriptBacktrace` frames; a LibGodot build that `runnerPath` and `libgodotPath` name and that lacks those classes cannot start a run.
 - **The harness replaces a custom main loop** — runs pass the harness with `--script`, so a project whose `application/run/main_loop_type` names its own `SceneTree` or `MainLoop` class runs under the harness instead.
 - **The Game tab can show an outdated runtime state** — the tab resolves the runtime when it starts following a Session and after an install, so the tab shows a runtime folder added or removed by hand while it is open only after it follows a Session again, for example after a page reload.

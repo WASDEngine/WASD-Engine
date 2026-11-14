@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/README.md
 /:
-  en: 51dfe41b0e2d6d4a
-  zh: b33f0bb8bdcb3483
+  en: 4cf12385a8cdbf6e
+  zh: 64505e47439d540c
 /deepseek-ai-dsh-wasd-plugins:
   en: cb5ec703da430be8
   zh: d206a2431aaa3c7e
 /deepseek-ai-dsh-wasd-plugins/summary:
-  en: 4e015437e8d3bc5a
-  zh: d17a2df810dae905
+  en: a4610bd7d5509add
+  zh: 0e441564b3a97351
 /deepseek-ai-dsh-wasd-plugins/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,14 +18,20 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-wasd-plugins/use-this-package/default-composition:
-  en: eaa2387b4ca40df5
-  zh: 477a8b7b4b4d4786
+  en: 3ff876a2d2fbf047
+  zh: e7c04ef34f9fc7b0
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-tools:
-  en: 91d2be83a7af9b1b
-  zh: 28b7602e98154b72
-/deepseek-ai-dsh-wasd-plugins/use-this-package/the-export-share-button-and-explore-games:
-  en: 6cbaa4be5dbb4336
-  zh: 1c1a58b33b0f3015
+  en: eb4cf69f065b7a64
+  zh: 4295c5df4ab37808
+/deepseek-ai-dsh-wasd-plugins/use-this-package/multiplayer:
+  en: ac933255a67d2565
+  zh: e4f96bc154061521
+/deepseek-ai-dsh-wasd-plugins/use-this-package/the-export-share-and-multiplayer-buttons:
+  en: 163d54a2e59734d6
+  zh: 541010632b3af636
+/deepseek-ai-dsh-wasd-plugins/use-this-package/the-play-page-and-the-game-library:
+  en: c2bb122931b8d975
+  zh: 73c5d28a43612284
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-first-build-tip:
   en: e626ec2396baccdf
   zh: 800c6fda404364cf
@@ -33,11 +39,11 @@
   en: a1fa1eb0d8ddfc6d
   zh: fc6e332fbd71c533
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-wasdplugins-remote:
-  en: c6c3215c8ad59d1c
-  zh: 48d89380d54e0651
+  en: 8398e3229d3213de
+  zh: 800b8ebe73c2ced4
 /deepseek-ai-dsh-wasd-plugins/understand-the-implementation:
-  en: d1a199b61c880ee4
-  zh: 97094607bb603f49
+  en: 16a274dc5c0a1612
+  zh: 29a7a6fd0d57c3d5
 /deepseek-ai-dsh-wasd-plugins/further-exploration:
   en: a2427a05cde2ac76
   zh: 00432972ba649dff
@@ -60,11 +66,11 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/what-the-model-sees:
-  en: 486db7bf258229f2
-  zh: 22abdc0a59878edb
+  en: 8de6a3681800a303
+  zh: aa23bf352951929f
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/token-effect:
-  en: 4ba023a6296ef4ba
-  zh: acc38725fcb38f30
+  en: 405eeb2f9a3eafb1
+  zh: 513e39a884eb9136
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009
@@ -95,12 +101,39 @@
 /deepseek-ai-dsh-wasd-plugins/model-experience/browser-tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-declarations-and-the-multiplayer-section:
+  en: f8c05aa3bebdaeca
+  zh: 57ea665d819d5b01
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-declarations-and-the-multiplayer-section/what-the-model-sees:
+  en: e15a7459601eeda9
+  zh: b5e40751ea3115ae
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-declarations-and-the-multiplayer-section/what-the-model-sees/the-multiplayer-section:
+  en: d2cb7947e2f527ec
+  zh: 0099ea36eacab939
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-declarations-and-the-multiplayer-section/token-effect:
+  en: 68d473bf81b2e360
+  zh: 0b3786bd0462cd06
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-declarations-and-the-multiplayer-section/kv-cache-effect:
+  en: d28c624515395d5b
+  zh: e5703f94135f465e
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-results:
+  en: 778817e6730240c0
+  zh: cfb76636251e2e32
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-results/what-the-model-sees:
+  en: f6df65aff6bc11a2
+  zh: a9c1e3480bae25e5
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-results/token-effect:
+  en: 1cd26296796f23ba
+  zh: 493d243018f06d70
+/deepseek-ai-dsh-wasd-plugins/model-experience/multiplayer-tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: b5fe15ad16d14009
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-export-share-prompts:
   en: 43e4e62288bc3cfc
   zh: cd166a9550050f24
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-export-share-prompts/what-the-model-sees:
-  en: 0ae0c77715c5db5c
-  zh: 470f645b608a36af
+  en: 31af5bac868659ee
+  zh: a8458fe3aff379e8
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-export-share-prompts/token-effect:
   en: 4002b63c11d15d97
   zh: 9b81b133156faebe
@@ -108,8 +141,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: 27ca0a6ac10175b9
-  zh: d34532194b8136d2
+  en: 75b8556ade4f2902
+  zh: bd68f2713d00c350
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
-  en: f6b8b1289843a15c
-  zh: 512ae8d91fa0cf53
+  en: 3226fc4cda1758c4
+  zh: d0d829c53f51399d

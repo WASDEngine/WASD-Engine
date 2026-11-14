@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for multiplayer.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/guide/multiplayer.md
+/online-multiplayer:
+  en: 7e87fcf5279826a7
+  zh: 2f42671b3d94dad4
+/online-multiplayer/choose-a-mode:
+  en: 2c7c91e007cdc247
+  zh: 501e7b72fc1b48d7
+/online-multiplayer/player-hosted-games:
+  en: 6f3c4ff2c6cc900a
+  zh: 2b119a3421aa0a0f
+/online-multiplayer/dedicated-servers:
+  en: 67e1175bbe079d46
+  zh: d12ac357ba795582
+/online-multiplayer/players-sign-in:
+  en: d21878539eb0db6c
+  zh: 47eeb2ee300f825d

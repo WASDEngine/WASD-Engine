@@ -530,6 +530,18 @@
   }
 }
 
+/* A mode switch in the New Session bar's place: the bar's insets in the wide
+   column, the rail's left-aligned column when collapsed. */
+.modeArea {
+  flex: none;
+  margin: 0 calc(var(--dsh-sidebar-paint-inset) + 1px);
+}
+
+.collapsed .modeArea {
+  align-self: flex-start;
+  margin: 0 0 12px;
+}
+
 .scrollRegion {
   margin-top: 4px;
   position: relative;

@@ -7,8 +7,10 @@
 // `--export-release` writes the configured export files next to the requested page, records the export presets and
 // the `project.godot` it saw, appends the configured `appendProject` text to `project.godot` when there is one, and
 // records `exported` at its end, `--headless ... --script` runs the `script` section, which records `scripted` at
-// its end, when the config has one and the static check, which records `checked` at its end, otherwise, and anything
-// else runs a game that speaks the wasd_harness.gd protocol on the loopback port the Host passes.
+// its end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
+// instance's `WASD_TEST_NAME` (or its `*` entry) when the config has an `instance` section, and the static check, which
+// records `checked` at its end, otherwise; anything else runs a game that speaks the wasd_harness.gd protocol on the
+// loopback port the Host passes.
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -339,6 +341,15 @@ async function runGame(section) {
   })
 }
 
+async function runInstance(section) {
+  const name = process.env.WASD_TEST_NAME ?? ''
+  record({ instance: name, role: process.env.WASD_MULTIPLAYER_TEST ?? null, port: process.env.WASD_TEST_PORT ?? null, ticket: process.env.WASD_TEST_TICKET ?? null, at: Date.now() })
+  const behavior = section[name] ?? section['*'] ?? {}
+  if (behavior.delayMs !== undefined) await sleep(behavior.delayMs)
+  await emitOutput(behavior)
+  await finish(behavior)
+}
+
 async function runExport(section) {
   const page = args[args.indexOf('--export-release') + 2]
   const presets = join(project, 'export_presets.cfg')
@@ -358,5 +369,6 @@ async function runExport(section) {
 if (args.includes('--import')) await runImport(config.import ?? {})
 else if (args.includes('--export-release')) await runExport(config.export ?? {})
 else if (args.includes('--headless') && config.script !== undefined) await runScript(config.script)
+else if (args.includes('--headless') && !args.includes('--script') && config.instance !== undefined) await runInstance(config.instance)
 else if (args.includes('--headless')) await runCheck(config.check ?? {})
 else await runGame(config.game ?? {})

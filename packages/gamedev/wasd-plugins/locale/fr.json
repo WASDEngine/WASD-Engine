@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Plugins WASD Engine",
-    "description": "Les fonctionnalités propres à WASD Engine, toujours actives : exporter les jeux Godot pour le Web, les publier avec des liens jouables par tous, et explorer les jeux publiés."
+    "description": "Les fonctionnalités propres à WASD Engine, toujours actives : exporter les jeux Godot pour le Web, les publier avec des liens jouables par tous, les mettre en ligne en multijoueur, et explorer les jeux publiés."
   }
 }

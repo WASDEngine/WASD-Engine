@@ -1956,6 +1956,20 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no ZIP file.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
+        signature: 'async exportServer(request: GodotServerExportRequest, signal: AbortSignal): Promise<GodotServerExport>',
+        description: 'Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`, with the pack embedded and the visuals of every resource stripped, which a game server host starts with `--headless`. The first export downloads the Linux release template. Like a Web export, the export waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
+        returns: 'the executable.',
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Linux template cannot be downloaded.', '{GodotExportError} when the export writes no executable.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
+      },
+      {
+        signature: 'async runInstances(request: GodotInstancesRequest, signal: AbortSignal): Promise<GodotInstancesReport>',
+        description: 'Run a group of headless instances of a project at once, each running the main scene with environment entries of its own, such as a multiplayer game\'s server and its clients in a local test. The group first imports the project when its import data may be outdated, and holds one of the `maxHeadlessProcesses` slots and the project\'s import turn while it runs. For other plugins on the Host; the Game tab and the `godot_*` tools do not call it.',
+        parameters: [{ name: 'request', description: 'absolute project folder, the instances, and the group\'s deadline.' }, { name: 'signal', description: 'cancellation; it stops every instance.' }],
+        returns: 'how each instance ended, with the end of its output.',
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotInstancesError} when the group asks for no instance or more than this computer runs at once.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the group starts.'],
+      },
+      {
         signature: 'async record(agent: Agent, request: GodotRecordRequest, signal: AbortSignal): Promise<GodotRecording>',
         description: 'Record the Session\'s game for other Host plugins, such as the previews of WASD Engine Plugins: frames at a steady interval for `seconds` of real time while `events` play, and one larger still. When the Session runs no game, or a game of another project, the recording first starts the project\'s game as `godot_run` does, muted as `agentRunsMuted` says, and lets it run `startSeconds`; the Game tab shows that run like any other. The Game tab\'s frame stream stays as it is, because every frame is a screenshot request.',
         parameters: [{ name: 'agent', description: 'the Session\'s live Agent.' }, { name: 'request', description: 'project, duration, sizes, still, input, and whether to stop a game the recording started.' }, { name: 'signal', description: 'cancellation; it cancels the input too, and stops a game the recording started when `stopStarted` is set.' }],
@@ -4701,10 +4715,63 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'whether it is a Godot project, the signed-in account\'s game on the site the app is signed in to, and another folder on this computer that releases the same game.',
       },
       {
+        signature: '@Remote async multiplayer(projectDir: string, signal: AbortSignal): Promise<WasdMultiplayerView>',
+        description: 'A project\'s multiplayer, for the Multiplayer button: its mode, its game, and the game\'s dedicated servers on the site the app is signed in to.',
+        parameters: [{ name: 'projectDir', description: 'absolute folder of a game project.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the view; servers that could not be read leave the list empty and name why.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) linkRequests(signal: AbortSignal): AsyncIterable<WasdLinkRequests>',
+        description: 'Follow the links the multiplayer tools ask a window to open, such as a server purchase\'s confirmation page.',
+        parameters: [{ name: 'signal', description: 'stream cancellation.' }],
+        returns: 'the links no window took yet, then again after each change, until cancelled or the plugin is disposed.',
+      },
+      {
+        signature: '@Remote claimLink(id: string, signal: AbortSignal): boolean',
+        description: 'Take a link for the calling window, which then opens it.',
+        parameters: [{ name: 'id', description: 'the link.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the window took it; false when another window did or the tool stopped waiting.',
+      },
+      {
+        signature: '@Remote({ mode: \'stream\' }) library(signal: AbortSignal): AsyncIterable<WasdLibraryView>',
+        description: 'Follow the game library: the games installed on this computer and the downloads in progress.',
+        parameters: [{ name: 'signal', description: 'stream cancellation.' }],
+        returns: 'the library, then again after each change, until cancelled or the plugin is disposed; an empty library that says games do not install here where the plugin keeps none.',
+      },
+      {
+        signature: '@Remote async installGame(slug: string, version: number, signal: AbortSignal): Promise<WasdLibraryOutcome>',
+        description: 'Start installing a game from the site, or its newer version; the library\'s stream follows the download.',
+        parameters: [{ name: 'slug', description: 'the game\'s address on the site, `/games/<slug>`.' }, { name: 'version', description: 'an earlier version of a single-player game; 0 installs the latest.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether the install started, or why not.',
+      },
+      {
+        signature: '@Remote async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>',
+        description: 'Start an installed game; an online game first installs its newer version and signs in as the app\'s account.',
+        parameters: [{ name: 'id', description: 'the game\'s id.' }, { name: 'signal', description: 'stops waiting; an update the start began goes on.' }],
+        returns: 'once the game started, or why it did not.',
+      },
+      {
+        signature: '@Remote async removeGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>',
+        description: 'Delete an installed game and its files.',
+        parameters: [{ name: 'id', description: 'the game\'s id.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'whether it was deleted, or why not.',
+      },
+      {
+        signature: '@Remote dismissLibraryTask(slug: string, signal: AbortSignal): void',
+        description: 'Forget a failed download.',
+        parameters: [{ name: 'slug', description: 'the game\'s address on the site.' }, { name: 'signal', description: 'cancellation.' }],
+      },
+      {
         signature: '@Remote async links(signal: AbortSignal): Promise<WasdSiteLinks>',
         description: 'Pages of the WASD Engine site the app is signed in to, or would sign in to.',
         parameters: [{ name: 'signal', description: 'cancellation.' }],
         returns: 'the Explore page.',
+      },
+      {
+        signature: '@Remote async siteSignInLink(next: string, signal: AbortSignal): Promise<string | null>',
+        description: 'A one-time link that opens a page of the WASD Engine site signed in as the app\'s account, which the Play page opens in place of the page, so the site in the app shows the app\'s account. It works once, within minutes; each new link the site redeems ends the session an earlier one made, and the app\'s sign-out ends it too.',
+        parameters: [{ name: 'next', description: 'the page, a path on the site such as `/explore`.' }, { name: 'signal', description: 'cancellation.' }],
+        returns: 'the link, or null while the app is signed out or once the site no longer takes its sign-in.',
       },
       {
         signature: '@Remote({ mode: \'stream\' }) browserRequests(signal: AbortSignal): AsyncIterable<WasdBrowserRequests>',
@@ -7431,6 +7498,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GameMcpClientView {\n    readonly id: string;\n    readonly title: string;\n    readonly lastSeen: number;\n}',
   },
   {
+    name: 'GameMcpConfirmation',
+    declaration: 'export interface GameMcpConfirmation {\n    readonly url: string;\n    readonly message: string;\n}',
+  },
+  {
     name: 'GameMcpContent',
     declaration: 'export type GameMcpContent = {\n    readonly type: \'text\';\n    readonly text: string;\n} | {\n    readonly type: \'image\';\n    readonly data: string;\n    readonly mimeType: string;\n};',
   },
@@ -7456,7 +7527,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpTool',
-    declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n}',
+    declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n    readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined;\n}',
   },
   {
     name: 'GameMcpToolResult',
@@ -7551,6 +7622,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type GodotDesktopPlatform = \'windows\' | \'macos\';',
   },
   {
+    name: 'GodotExportFile',
+    declaration: 'export interface GodotExportFile {\n    readonly path: string;\n    readonly bytes: number;\n}',
+  },
+  {
     name: 'GodotFollowItem',
     declaration: 'export type GodotFollowItem = {\n    readonly type: \'snapshot\';\n    readonly run: GodotRunView | null;\n    readonly runtime: GodotRuntimeView;\n    readonly logs: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'run\';\n    readonly run: GodotRunView | null;\n} | {\n    readonly type: \'logs\';\n    readonly entries: readonly GodotLogEntry[];\n    readonly cursor: number;\n} | {\n    readonly type: \'runtime\';\n    readonly runtime: GodotRuntimeView;\n};',
   },
@@ -7565,6 +7640,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotInputModifiers',
     declaration: 'export interface GodotInputModifiers {\n    readonly shift?: boolean;\n    readonly ctrl?: boolean;\n    readonly alt?: boolean;\n    readonly meta?: boolean;\n}',
+  },
+  {
+    name: 'GodotInstanceReport',
+    declaration: 'export interface GodotInstanceReport {\n    readonly name: string;\n    readonly exitCode: number | null;\n    readonly timedOut: boolean;\n    readonly stdout: string;\n    readonly stderr: string;\n}',
+  },
+  {
+    name: 'GodotInstanceSpec',
+    declaration: 'export interface GodotInstanceSpec {\n    readonly name: string;\n    readonly env: Readonly<Record<string, string>>;\n    readonly delayMs: number;\n}',
+  },
+  {
+    name: 'GodotInstancesReport',
+    declaration: 'export interface GodotInstancesReport {\n    readonly projectDir: string;\n    readonly instances: readonly GodotInstanceReport[];\n    readonly importIssues: readonly string[];\n}',
+  },
+  {
+    name: 'GodotInstancesRequest',
+    declaration: 'export interface GodotInstancesRequest {\n    readonly projectDir: string;\n    readonly instances: readonly GodotInstanceSpec[];\n    readonly timeoutMs: number;\n}',
   },
   {
     name: 'GodotLogEntry',
@@ -7627,6 +7718,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GodotRunView {\n    readonly runId: string;\n    readonly phase: GodotRunPhase;\n    readonly startedBy: GodotRunStarter;\n    readonly projectDir: string;\n    readonly projectName?: string;\n    readonly launch: GodotRunLaunch;\n    readonly scene?: string;\n    readonly width?: number;\n    readonly height?: number;\n    readonly fps?: number;\n    readonly frame?: number;\n    readonly mouseMode?: number;\n    readonly renderer?: string;\n    readonly muted: boolean;\n    readonly windowless: boolean;\n    readonly layer?: GodotRunLayer;\n    readonly runtime: GodotRuntimeKind;\n    readonly exitCode?: number | null;\n    readonly signal?: string | null;\n    readonly message?: string;\n    readonly errorCount: number;\n    readonly warningCount: number;\n    readonly startedAt: number;\n}',
   },
   {
+    name: 'GodotServerExport',
+    declaration: 'export interface GodotServerExport {\n    readonly projectDir: string;\n    readonly outputDir: string;\n    readonly binary: string;\n    readonly bytes: number;\n    readonly files: readonly GodotExportFile[];\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GodotServerExportRequest',
+    declaration: 'export interface GodotServerExportRequest {\n    readonly projectDir: string;\n    readonly outputDir: string;\n}',
+  },
+  {
     name: 'GodotViewItem',
     declaration: 'export interface GodotViewItem {\n    readonly type: \'shown\';\n}',
   },
@@ -7648,7 +7747,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotWebExportFile',
-    declaration: 'export interface GodotWebExportFile {\n    readonly path: string;\n    readonly bytes: number;\n}',
+    declaration: 'export type GodotWebExportFile = GodotExportFile;',
   },
   {
     name: 'GodotWebExportRequest',
@@ -11115,12 +11214,48 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface WasdBrowserRequests {\n    readonly follower: string;\n    readonly requests: readonly WasdBrowserRequest[];\n    readonly claimed: readonly string[];\n}',
   },
   {
+    name: 'WasdDesktopPlatform',
+    declaration: 'export type WasdDesktopPlatform = \'windows\' | \'macos\';',
+  },
+  {
+    name: 'WasdLibraryGame',
+    declaration: 'export interface WasdLibraryGame {\n    readonly id: string;\n    readonly slug: string;\n    readonly title: string;\n    readonly version: number;\n    readonly latestVersion: number;\n    readonly multiplayer?: WasdMultiplayerMode;\n    readonly platform: WasdDesktopPlatform;\n    readonly bytes: number;\n    readonly installedAt: string;\n    readonly coverUrl?: string;\n}',
+  },
+  {
+    name: 'WasdLibraryOutcome',
+    declaration: 'export type WasdLibraryOutcome = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly message: string;\n};',
+  },
+  {
+    name: 'WasdLibraryTask',
+    declaration: 'export interface WasdLibraryTask {\n    readonly slug: string;\n    readonly title: string;\n    readonly version: number;\n    readonly state: \'downloading\' | \'installing\' | \'failed\';\n    readonly receivedBytes: number;\n    readonly totalBytes: number;\n    readonly message?: string;\n    readonly coverUrl?: string;\n}',
+  },
+  {
+    name: 'WasdLibraryView',
+    declaration: 'export interface WasdLibraryView {\n    readonly games: readonly WasdLibraryGame[];\n    readonly tasks: readonly WasdLibraryTask[];\n    readonly supported: boolean;\n}',
+  },
+  {
+    name: 'WasdLinkRequests',
+    declaration: 'export interface WasdLinkRequests {\n    readonly links: readonly {\n        readonly id: string;\n        readonly url: string;\n    }[];\n}',
+  },
+  {
+    name: 'WasdMultiplayerMode',
+    declaration: 'export type WasdMultiplayerMode = \'player_hosted\' | \'dedicated\';',
+  },
+  {
+    name: 'WasdMultiplayerView',
+    declaration: 'export interface WasdMultiplayerView {\n    readonly godot: boolean;\n    readonly mode?: \'player_hosted\' | \'dedicated\';\n    readonly game?: WasdReleasedGame;\n    readonly servers: readonly WasdServerSummary[];\n    readonly serversUrl: string;\n    readonly error?: string;\n}',
+  },
+  {
     name: 'WasdProjectView',
     declaration: 'export interface WasdProjectView {\n    readonly godot: boolean;\n    readonly game?: WasdReleasedGame;\n    readonly sharedWith?: string;\n}',
   },
   {
     name: 'WasdReleasedGame',
     declaration: 'export interface WasdReleasedGame {\n    readonly title: string;\n    readonly url: string;\n    readonly version: number;\n    readonly visibility: WasdVisibility;\n}',
+  },
+  {
+    name: 'WasdServerSummary',
+    declaration: 'export interface WasdServerSummary {\n    readonly id: string;\n    readonly name: string;\n    readonly size: string;\n    readonly state: string;\n    readonly players: number;\n    readonly bandwidthPercent?: number;\n}',
   },
   {
     name: 'WasdSiteLinks',
