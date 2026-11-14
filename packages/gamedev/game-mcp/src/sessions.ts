@@ -1,9 +1,11 @@
 /**
- * The Sessions through which connected agents work: one per agent and game project. A call names a directory; the
- * game project registration that contains it, or a new one for the directory itself, holds the agent's Session,
- * which is created on first use and remembered in a JSON file, so the agent keeps its Session, and the Session its
- * game, across agent and Host restarts. The Session stays untitled and blank until someone prompts in it, so New
- * Session in that game project opens it, and its Game tab, rather than a second blank Session.
+ * The Sessions through which connected agents work: one per agent and game project, and one more for each Session name
+ * that the agent's calls give, so agents that share one connection, such as the subagents of one session, can each run
+ * a game of their own. A call names a directory; the game project registration that contains it, or a new one for the
+ * directory itself, holds the agent's Sessions, which are created on first use and remembered in a JSON file, so the
+ * agent keeps its Sessions, and the Sessions their games, across agent and Host restarts. The agent's unnamed Session
+ * stays untitled and blank until someone prompts in it, so New Session in that game project opens it, and its Game tab,
+ * rather than a second blank Session; a named Session is titled with the agent and the name.
  * @module @deepseek-ai/dsh-game-mcp/src/sessions
  */
 import { readFile, realpath, stat } from 'node:fs/promises'
@@ -21,10 +23,15 @@ import type { GameMcpClient } from './provider.ts'
 /** Format version of the bindings file. */
 const FILE_VERSION = 1
 
-/** One remembered Session: the game project registration, the agent, and the Session. */
+/** Longest Session name a call may give, after trimming. */
+export const MAX_SESSION_NAME_CHARS = 40
+
+/** One remembered Session: the game project registration, the agent, the Session name if any, and the Session. */
 interface Binding {
   readonly workspaceId: string
   readonly client: string
+  /** The Session name in lowercase; absent for the agent's unnamed Session. */
+  readonly name?: string
   readonly sessionId: string
 }
 
@@ -33,14 +40,30 @@ export class GameMcpSessionError extends Error {
   override name = 'GameMcpSessionError'
 }
 
-function bindingKey(workspaceId: string, client: string): string {
-  return `${workspaceId}\n${client}`
+function bindingKey(workspaceId: string, client: string, name: string | undefined): string {
+  return name === undefined ? `${workspaceId}\n${client}` : `${workspaceId}\n${client}\n${name}`
 }
 
 function isBinding(value: unknown): value is Binding {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
   return typeof record.workspaceId === 'string' && typeof record.client === 'string' && typeof record.sessionId === 'string'
+    && (record.name === undefined || typeof record.name === 'string')
+}
+
+/**
+ * Validate a Session name that a call gives.
+ * @param name - the name as the call gave it.
+ * @returns the name without surrounding spaces, and its key: the name in lowercase.
+ * @throws {GameMcpSessionError} for a name that is empty or longer than {@link MAX_SESSION_NAME_CHARS} characters after
+ *   trimming, or that holds a control character.
+ */
+export function sessionName(name: string): { readonly title: string; readonly key: string } {
+  const title = name.trim()
+  if (title === '' || title.length > MAX_SESSION_NAME_CHARS || /\p{Cc}/u.test(title)) {
+    throw new GameMcpSessionError(`session must be a name of 1 to ${MAX_SESSION_NAME_CHARS} characters without line breaks, got ${JSON.stringify(name)}.`)
+  }
+  return { title, key: title.toLowerCase() }
 }
 
 /**
@@ -77,11 +100,14 @@ export class ExternalSessions {
    * @param client - calling agent.
    * @param directory - absolute path of an existing directory.
    * @param signal - cancellation before the Session is created or resumed.
+   * @param name - the Session name the call gives, which picks a Session of its own; undefined picks the agent's
+   *   unnamed Session. Names that differ only in case pick the same Session.
    * @returns the live Agent.
-   * @throws {GameMcpSessionError} when the path is unusable, the Host keeps no game projects, or the Session cannot
-   * be created or resumed.
+   * @throws {GameMcpSessionError} when the path or the name is unusable, the Host keeps no game projects, or the
+   * Session cannot be created or resumed.
    */
-  async agent(client: GameMcpClient, directory: string, signal: AbortSignal): Promise<Agent> {
+  async agent(client: GameMcpClient, directory: string, signal: AbortSignal, name?: string): Promise<Agent> {
+    const named = name === undefined ? undefined : sessionName(name)
     if (!isAbsolute(directory)) throw new GameMcpSessionError(`The project path must be absolute, got ${JSON.stringify(directory)}.`)
     let canonical: string
     try {
@@ -97,7 +123,7 @@ export class ExternalSessions {
     }
     signal.throwIfAborted()
     const workspace = containing(registry.list(), canonical) ?? await registry.create(canonical)
-    const key = bindingKey(workspace.id, client.id)
+    const key = bindingKey(workspace.id, client.id, named?.key)
     return this.serialize(key, async () => {
       const bindings = await this.load()
       const stored = bindings.get(key)
@@ -114,7 +140,18 @@ export class ExternalSessions {
       const created = await controller.create({ workspaceId: workspace.id })
       const resolved = await controller.resolveAgent(created.sessionId)
       if ('error' in resolved) throw new GameMcpSessionError(`WASD Engine cannot open the Session of ${client.title}: ${resolved.error.message}`)
-      bindings.set(key, { workspaceId: workspace.id, client: client.id, sessionId: created.sessionId })
+      if (named !== undefined) {
+        try {
+          await controller.rename({ sessionId: created.sessionId, title: `${client.title}: ${named.title}` })
+        } catch (error) {
+          // The title only tells the Sessions apart in the window; the Session works without it.
+          this.ctx.logger.warn(`game-mcp: cannot title the Session of ${client.title} named ${JSON.stringify(named.title)}: ${(error as Error).message}`)
+        }
+      }
+      const binding: Binding = {
+        workspaceId: workspace.id, client: client.id, ...named === undefined ? {} : { name: named.key }, sessionId: created.sessionId,
+      }
+      bindings.set(key, binding)
       await this.save(bindings)
       return resolved.agent
     })
@@ -153,7 +190,7 @@ export class ExternalSessions {
         this.ctx.logger.warn(`game-mcp: ${this.file} has an unknown format; connected agents get new Sessions`)
         return bindings
       }
-      for (const entry of entries) if (isBinding(entry)) bindings.set(bindingKey(entry.workspaceId, entry.client), entry)
+      for (const entry of entries) if (isBinding(entry)) bindings.set(bindingKey(entry.workspaceId, entry.client, entry.name), entry)
       return bindings
     })().catch((error: unknown) => {
       // A failed read is retried by the next call instead of failing every later one.
@@ -169,7 +206,9 @@ export class ExternalSessions {
    */
   private save(bindings: Map<string, Binding>): Promise<void> {
     const write = this.saving.then(async () => {
-      const sessions = [...bindings.values()].map(({ workspaceId, client, sessionId }) => ({ workspaceId, client, sessionId }))
+      const sessions = [...bindings.values()].map(({ workspaceId, client, name, sessionId }) => ({
+        workspaceId, client, ...name === undefined ? {} : { name }, sessionId,
+      }))
       await writeFileAtomic(this.file, `${JSON.stringify({ version: FILE_VERSION, sessions }, null, 2)}\n`, { mode: 0o600 })
     })
     this.saving = write.catch(() => {

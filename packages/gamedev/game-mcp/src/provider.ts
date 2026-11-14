@@ -43,12 +43,16 @@ export interface GameMcpCall {
   /**
    * Resolve the Agent of the Session through which the calling agent works in the game project that holds
    * `directory`: the game project registration that contains it, or a new one for the directory itself, and that
-   * project's Session for this agent, created on first use.
+   * project's Session for this agent, or for this agent and `name`, created on first use. Agents that share one
+   * connection, such as the subagents of one session, give different names to work in Sessions of their own.
    * @param directory - absolute path of an existing directory.
+   * @param name - Session name of 1 to 40 characters, which names that differ only in case share; undefined picks
+   *   the agent's unnamed Session.
    * @returns the Session's live Agent.
-   * @throws when the path is not absolute or not a directory, or the Host cannot create or resume the Session.
+   * @throws when the path is not absolute or not a directory, the name is unusable, or the Host cannot create or
+   *   resume the Session.
    */
-  session(directory: string): Promise<Agent>
+  session(directory: string, name?: string): Promise<Agent>
   /**
    * Ask the WASD Engine windows that may read a Session to show it, through the `game-mcp/reveal` event.
    * @param sessionId - Session to show.

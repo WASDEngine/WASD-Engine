@@ -6,8 +6,9 @@
 // class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
 // `--export-release` writes the configured export files next to the requested page, records the export presets and
 // the `project.godot` it saw, appends the configured `appendProject` text to `project.godot` when there is one, and
-// records `exported` at its end, `--headless ... --script` runs the `script` section, which records `scripted` at
-// its end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
+// records `exported` at its end, `--headless ... --script` runs the `script` section, which writes its `files` into the
+// folder that WASD_OUTPUT_DIR names and records `scripted` with that folder, HOME, and its start and end times at its
+// end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
 // instance's `WASD_TEST_NAME` (or its `*` entry) when the config has an `instance` section, and the static check, which
 // records `checked` at its end, otherwise; anything else runs a game that speaks the wasd_harness.gd protocol on the
 // loopback port the Host passes.
@@ -50,9 +51,16 @@ async function runImport(section) {
 }
 
 async function runScript(section) {
+  const startedAt = Date.now()
+  const outputDir = process.env.WASD_OUTPUT_DIR
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
-  record({ scripted: true })
+  // The `files` section names files to write into the run's WASD_OUTPUT_DIR, as a script writes its results there.
+  for (const [name, text] of Object.entries(section.files ?? {})) {
+    mkdirSync(dirname(join(outputDir, name)), { recursive: true })
+    writeFileSync(join(outputDir, name), text)
+  }
+  record({ scripted: true, outputDir: outputDir ?? null, home: process.env.HOME ?? null, startedAt, endedAt: Date.now() })
   await finish(section)
 }
 

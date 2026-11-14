@@ -275,7 +275,7 @@ export default class GameMcpServer extends TypertRemoteService {
     return {
       client,
       signal: callSignal,
-      session: directory => this.sessions.agent(client, directory, callSignal),
+      session: (directory, name) => this.sessions.agent(client, directory, callSignal, name),
       reveal: (sessionId: SessionId) => { this.ctx.emit('game-mcp/reveal', sessionId) },
     }
   }

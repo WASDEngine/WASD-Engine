@@ -1,8 +1,9 @@
 /**
  * Per-Session Godot state: at most one run per live Agent, the Session's log and error-digest cursors, and the
  * coordinate frame of its latest screenshot; and the watchers of the follow streams of each Session id, which need
- * no live Agent. Starts and stops of one Session are serialized; disposal of the Agent or of the registry stops the
- * Session's run.
+ * no live Agent. Starts and stops of one Session are serialized, and the admission of starts across Sessions too; a
+ * start that finds every run slot taken first stops the game that an agent started and that has gone unused longest,
+ * when it has gone unused long enough. Disposal of the Agent or of the registry stops the Session's run.
  * @module @deepseek-ai/dsh-godot/src/runs
  */
 import type { Context } from '@deepseek-ai/cordis'
@@ -49,11 +50,19 @@ export class TooManyRunsError extends Error {
 
   /**
    * @param limit - most games that run at once on this computer.
+   * @param idleStopMs - how long a game that an agent started must go unused before a start stops it; 0 when starts
+   *   stop none.
    */
-  constructor(readonly limit: number) {
+  constructor(readonly limit: number, idleStopMs = 0) {
     super(`${limit} Godot ${limit === 1 ? 'game already runs' : 'games already run'}, as many as this computer runs at once; `
-      + 'stop one before starting another.')
+      + `stop one before starting another.${idleStopMs > 0 ? ` A game that an agent started makes room once it has gone unused for ${describeMinutes(idleStopMs)}.` : ''}`)
   }
+}
+
+/** A duration in whole minutes, or in seconds below a minute, as messages give it. */
+function describeMinutes(ms: number): string {
+  const [count, unit] = ms < 60_000 ? [Math.max(1, Math.round(ms / 1000)), 'second'] : [Math.round(ms / 60_000), 'minute']
+  return `${String(count)} ${unit}${count === 1 ? '' : 's'}`
 }
 
 /** The computer has too little memory available to start a Godot process. */
@@ -129,6 +138,8 @@ export class GodotSessions {
   private readonly live = new Set<GodotRun>()
   /** Watchers per Session id; a Session id keeps its watchers while its Agent comes and goes. */
   private readonly watchers = new Map<SessionId, Set<SessionWatcher>>()
+  /** The admission of the latest start; starts across Sessions are admitted one at a time. */
+  private admission: Promise<unknown> = Promise.resolve()
   private disposing: Promise<void> | undefined
 
   /**
@@ -136,8 +147,15 @@ export class GodotSessions {
    * @param maxRuns - most runs whose game may live at once across Sessions; a run counts until it ended.
    * @param admit - called before each start that `maxRuns` allows, after the Session's previous run ended; it throws
    *   to refuse the start, such as with a {@link LowMemoryError}.
+   * @param idleStopMs - how long a game that an agent started must have gone unused, shown in no view and serving no
+   *   request, before a start that finds every run slot taken stops it; 0 makes such a start fail instead.
    */
-  constructor(private readonly ctx: Context, private readonly maxRuns: number, private readonly admit: () => void) {}
+  constructor(
+    private readonly ctx: Context,
+    private readonly maxRuns: number,
+    private readonly admit: () => void,
+    private readonly idleStopMs = 0,
+  ) {}
 
   /**
    * The Godot state of a live Agent, created on first use.
@@ -195,25 +213,59 @@ export class GodotSessions {
   }
 
   /**
-   * Replace the Session's run: stop the current one, then create the next.
+   * Replace the Session's run: stop the current one, then create the next. When the games of other Sessions use every
+   * run slot, the start first stops the game that an agent started, that no view shows and no request uses, and that
+   * has gone unused longest, once it has gone unused for `idleStopMs`; that game's view then says why it stopped.
    * @param session - Session state.
    * @param create - launches the new run; called only when the limit allows it.
    * @returns the new run, launched but not necessarily started.
    * @throws {TooManyRunsError} when the games of other Sessions, also of closed Sessions whose game still stops,
-   * use every run slot; the error of `admit`.
+   * use every run slot and none of them may be stopped; the error of `admit`.
    */
   replace(session: GodotSession, create: () => GodotRun): Promise<GodotRun> {
     return session.serialize(async () => {
       await session.run?.stop()
       if (session.closed) throw new GodotSessionError('This Session closed; reopen it and try again.')
-      if (this.live.size >= this.maxRuns) throw new TooManyRunsError(this.maxRuns)
-      this.admit()
-      const run = create()
-      this.live.add(run)
-      void run.whenEnded().then(() => { this.live.delete(run) })
-      session.attach(run)
-      return run
+      return await this.admitted(async () => {
+        if (this.live.size >= this.maxRuns) await this.makeRoom()
+        this.admit()
+        const run = create()
+        this.live.add(run)
+        void run.whenEnded().then(() => { this.live.delete(run) })
+        session.attach(run)
+        return run
+      })
     })
+  }
+
+  /** Run a start's admission after the admissions of earlier starts settled, so two starts never take one free slot. */
+  private admitted<T>(operation: () => Promise<T>): Promise<T> {
+    const task = this.admission.then(operation)
+    this.admission = task.catch(() => {
+      // The caller receives the failure; the chain only orders admissions.
+    })
+    return task
+  }
+
+  /**
+   * Stop the game that an agent started and that has gone unused longest, when it has gone unused for `idleStopMs`.
+   * @throws {TooManyRunsError} when no game may be stopped.
+   */
+  private async makeRoom(): Promise<void> {
+    const now = Date.now()
+    let idlest: GodotRun | undefined
+    let since = Number.POSITIVE_INFINITY
+    for (const run of this.live) {
+      const idle = run.idleSince()
+      if (idle === undefined || run.view().startedBy !== 'agent' || now - idle < this.idleStopMs || idle >= since) continue
+      idlest = run
+      since = idle
+    }
+    if (this.idleStopMs === 0 || idlest === undefined) throw new TooManyRunsError(this.maxRuns, this.idleStopMs)
+    const games = this.maxRuns === 1 ? 'game' : 'games'
+    await idlest.stopWith(`WASD Engine stopped this game to start another Session's game: this computer runs at most ${String(this.maxRuns)} ${games} `
+      + `at once, and this one had gone unused for ${describeMinutes(now - since)}. Call godot_run to start it again.`)
+    this.live.delete(idlest)
   }
 
   /**

@@ -81,13 +81,14 @@ tool_timeout_sec = 1800
 
 服务器指令先介绍每个插件，再在插件标题下附上插件自己的指令。已连接 agent 彼此共用同一个 Blender worker、同一个 GIMP worker 和同一个 SuperCollider worker，与 WASD Engine 自身各 Session 的 worker 分开（[每个 Session 一个工作进程](../app-mcp/README.zh.md#one-worker-per-session)），这些插件的指令也说明了这一点。
 
+<a id="games-in-the-wasd-engine-window"></a>
 ### WASD Engine 窗口中的游戏
 
-Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身；省略 `project` 时，调用使用该 agent 上一次的项目。服务器解析在该项目中运行这个 agent 游戏的 Session：包含该文件夹的已注册游戏项目，或为该文件夹新建的注册，为每个 agent 保存一个 Session；Session 在首次使用时创建，并记录在 `<dataRoot>/sessions.json` 中，因此 agent 在重启后仍保有它的 Session 与游戏。离开了游戏项目、已归档或已不存在的 Session 会被新的 Session 取代。`godot_run` 会携带该 Session 发出 `game-mcp/reveal`，窗口随即通过 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 打开该 Session，「游戏」标签页也会像对待任何由 agent 启动的运行一样为这次运行打开。
+Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身；省略 `project` 时，调用使用该 agent 上一次的项目。服务器解析在该项目中运行这个 agent 游戏的 Session：包含该文件夹的已注册游戏项目，或为该文件夹新建的注册，为每个 agent 保存一个 Session；Session 在首次使用时创建，并记录在 `<dataRoot>/sessions.json` 中，因此 agent 在重启后仍保有它的 Session 与游戏。离开了游戏项目、已归档或已不存在的 Session 会被新的 Session 取代。Godot 调用还可以给出 `session`：一个 1 到 40 个字符、不含控制字符的名称；每个名称在该项目中为该 agent 选择另一个 Session，标题为 `<agent>: <name>`，只有大小写不同的名称选择同一个 Session。共用同一连接、因而共用同一身份的 agent（例如同一 Claude Code 会话中同时工作的多个子 agent）各自给出自己的名称，就能各自运行自己的游戏，而不会重启另一个 agent 正在测试的游戏；某个名称的第一次调用省略 `project` 时，使用该 agent 最近的项目。`godot_run` 会携带该 Session 发出 `game-mcp/reveal`，窗口随即通过 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 打开该 Session，「游戏」标签页也会像对待任何由 agent 启动的运行一样为这次运行打开。
 
 ### 提供工具
 
-`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session；工具还可以通过 `confirmation(value)` 指明一个页面，用户在该页面上确认成功的调用所申请的内容。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具记入该游戏的制作信息。
+`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、一句话的 `description`、可选的 `instructions`、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory, name)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session；工具还可以通过 `confirmation(value)` 指明一个页面，用户在该页面上确认成功的调用所申请的内容。只有当工具名称以 provider id 加下划线开头、且之前没有工具使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具记入该游戏的制作信息。
 
 ### 长时间调用
 
@@ -164,7 +165,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 28,800 个字符（其中约 7,300 个是游戏扩展目录），83 个工具声明约 89,800 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
+Web 与 Desktop profile 的全部十一个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 29,100 个字符（其中约 7,300 个是游戏扩展目录），83 个工具声明约 93,700 个字符的 JSON；agent 的 harness 决定其中多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -195,7 +196,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **单一端口**——第二个 Host（例如与 Desktop 应用同时运行的 `dsh web`）会发现端口已被占用并改用一个空闲端口，其 URL 只在该 Host 的设置内容中显示。
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
-- **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏。
+- **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；无论给出什么名称，它们都共用一个 Blender、GIMP 与 SuperCollider worker。
 - **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。
 - **确认页面按进程有效**——封存确认状态的密钥存在于服务器进程中，因此 Host 重启后的重试会被拒绝；客户端展示过的页面仍然有效，指明该页面的工具可以列出等待确认的内容，`wasd_server_status` 即是如此。
 

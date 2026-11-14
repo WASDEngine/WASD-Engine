@@ -367,6 +367,8 @@ export class GodotRun {
   private exitCode: number | null | undefined
   private exitSignal: string | null | undefined
   private message: string | undefined
+  /** Why the run was stopped, which its view keeps once it ended. */
+  private stopMessage: string | undefined
 
   private constructor(private readonly spec: GodotRunSpec, private readonly deps: GodotRunDependencies) {
     this.id = spec.runId
@@ -471,6 +473,26 @@ export class GodotRun {
       warningCount: this.warningCount,
       startedAt: this.startedAt,
     }
+  }
+
+  /**
+   * The real time since which no view shows the run and no request uses it.
+   * @returns milliseconds since the epoch, or undefined while a view or a request does, before the game connected, and
+   *   once it is stopping or ended.
+   */
+  idleSince(): number | undefined {
+    if (!this.connected || this.views > 0 || this.uses > 0) return undefined
+    return this.lastUse
+  }
+
+  /**
+   * Stop the run as {@link GodotRun.stop} does, and keep in its view a message that says why.
+   * @param message - why the run stopped; the first message of a run's stops counts.
+   * @returns a shared promise settling after the run ended.
+   */
+  stopWith(message: string): Promise<void> {
+    this.stopMessage ??= message
+    return this.stop()
   }
 
   /**
@@ -1108,7 +1130,7 @@ export class GodotRun {
     }
     if (this.disconnectOffsets !== undefined) this.appendOutput(this.disconnectOffsets)
     if (this.stopRequested || (exit.exitCode === 0 && exit.signal === null)) {
-      this.finish('exited', exit, undefined)
+      this.finish('exited', exit, this.stopMessage)
       return
     }
     const summary = this.lingered
@@ -1126,7 +1148,7 @@ export class GodotRun {
     this.lifetime.abort(new Error('Godot run startup ended'))
     const exit = this.exit === undefined ? undefined : await this.exit
     if (this.stopRequested) {
-      this.finish('exited', exit, undefined)
+      this.finish('exited', exit, this.stopMessage)
       return
     }
     if (this.process !== undefined) this.appendOutput({ stdout: 0, stderr: 0 })
