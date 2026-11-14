@@ -159,6 +159,27 @@ describe('GameAddonManager.install for Godot', () => {
     expect(await readFile(join(project, 'addons', 'test_camera', 'tools', 'framing.gd'), 'utf8')).toBe('extends SceneTree\n')
   })
 
+  it('installs an add-on that WASD Engine wrote from its overlay folders alone, without a download', async () => {
+    const entries = overlayEntries()
+    const camera = entries['test-camera'] as Record<string, unknown>
+    delete camera.archive
+    camera.license = 'MIT'
+    ;(camera.godot as Record<string, unknown>).overlay = ['test-camera/overlay', 'camera-tools']
+    const files = { ...OVERLAY_FILES, 'camera-tools/plugin.cfg': '[plugin]\n\nname="Test Camera"\nversion="1.2.0"\nscript="plugin.gd"\n', 'camera-tools/plugin.gd': '@tool\nextends EditorPlugin\n', 'camera-tools/manager.gd': 'extends Node\n' }
+    const { manager, project, downloads } = await setup(undefined, entries, files)
+    const result = await manager.install(project, 'test-camera', {}, signal)
+    expect(result.addon).toEqual({
+      id: 'test-camera', title: 'Test Camera', host: 'godot', version: '1.2.0', license: 'MIT',
+      paths: ['addons/test_camera'], installedAt: '2026-11-11T12:00:00.000Z',
+    })
+    expect(await tree(join(project, 'addons', 'test_camera'))).toEqual(['manager.gd', 'plugin.cfg', 'plugin.gd', 'rig.gd.import', 'tools/framing.gd'])
+    expect(downloads.requests).toEqual([])
+    const notices = await readFile(join(project, NOTICES_FILE), 'utf8')
+    expect(notices).toContain('- License: MIT')
+    expect(notices).toContain('Permission is hereby granted, free of charge')
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT + CAMERA_ENTRIES)
+  })
+
   it('refuses an overlay file that would replace a file of the archive, leaving the project as it was', async () => {
     const { manager, project } = await setup(undefined, overlayEntries(), { ...OVERLAY_FILES, 'camera-tools/plugin.cfg': '[plugin]\n' })
     await expect(manager.install(project, 'test-camera', {}, signal))
@@ -550,6 +571,35 @@ describe('GameAddonManager for Blender', () => {
       bytes: TREES_ARCHIVE.byteLength + TREE_ASSETS_ARCHIVE.byteLength,
       assets: { license: 'CC0-1.0', bytes: TREE_ASSETS_ARCHIVE.byteLength, homepage: 'https://assets.example.test/' },
     })
+  })
+
+  it('copies an extension that WASD Engine wrote from its catalog files into the store, and again only when a file changes', async () => {
+    const entries = editableCatalogEntries()
+    const trees = entries['test-trees'] as Record<string, unknown>
+    delete trees.archive
+    trees.blender = { module: 'test_trees', kind: 'extension', files: 'test-trees/extension' }
+    const files = {
+      'test-trees/extension/blender_manifest.toml': 'schema_version = "1.0.0"\nid = "test_trees"\n',
+      'test-trees/extension/__init__.py': 'def register():\n    pass\n',
+      'test-trees/extension/tools/grow.py': 'def grow():\n    return 1\n',
+    }
+    const { manager, project, store, downloads } = await setup(undefined, entries, files)
+    const result = await manager.install(project, 'test-trees', {}, signal)
+    expect(result.addon).toEqual({ id: 'test-trees', title: 'Test Trees', host: 'blender', version: '2.0.0', license: 'GPL-3.0-or-later', paths: [], installedAt: '2026-11-11T12:00:00.000Z' })
+    expect(await tree(store)).toEqual([STORE_INDEX, `test_trees/${STORE_MARKER}`, 'test_trees/__init__.py', 'test_trees/blender_manifest.toml', 'test_trees/tools/grow.py'])
+    expect(downloads.requests).toEqual([])
+    const marker = await readFile(join(store, 'test_trees', STORE_MARKER), 'utf8')
+    const second = join(dir!.root, 'second')
+    await writeProject(second)
+    await manager.install(second, 'test-trees', {}, signal)
+    expect(await readFile(join(store, 'test_trees', STORE_MARKER), 'utf8')).toBe(marker)
+    // A changed catalog file replaces the store copy at the next installation.
+    await writeFile(join(manager.catalog.dir, 'test-trees', 'extension', 'tools', 'grow.py'), 'def grow():\n    return 2\n')
+    const third = join(dir!.root, 'third')
+    await writeProject(third)
+    await manager.install(third, 'test-trees', {}, signal)
+    expect(await readFile(join(store, 'test_trees', 'tools', 'grow.py'), 'utf8')).toBe('def grow():\n    return 2\n')
+    expect(await readFile(join(store, 'test_trees', STORE_MARKER), 'utf8')).not.toBe(marker)
   })
 
   it('records a core add-on without a download', async () => {

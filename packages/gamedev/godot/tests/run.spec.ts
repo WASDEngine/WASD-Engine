@@ -100,6 +100,14 @@ describe('command lines', () => {
     expect(gameArgv(windowed, 1, 't'))
       .toEqual([...launcherArgv(windowed.runtime, process.pid, []), '--path', '/p', '--script', '/h.gd', '--', '--wasd-port=1', '--wasd-token=t'])
   })
+
+  it('renders a Web run with the Compatibility renderer', () => {
+    const web = runSpec('/bin/godot_runner', '/p', { muted: false, harnessPath: '/h.gd', web: true })
+    expect(gameArgv(web, 1, 't')).toEqual([
+      ...launcherArgv(web.runtime, process.pid, []), '--path', '/p', '--script', '/h.gd', '--rendering-method', 'gl_compatibility',
+      '--', '--wasd-port=1', '--wasd-token=t',
+    ])
+  })
 })
 
 posix('starting', () => {

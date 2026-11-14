@@ -1,0 +1,10 @@
+config_version=5
+
+[application]
+
+config/name="Add-on smoke"
+config/features=PackedStringArray("4.7")
+
+[physics]
+
+3d/physics_engine="Jolt Physics"

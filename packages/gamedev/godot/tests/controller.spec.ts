@@ -75,9 +75,9 @@ describe('configuration', () => {
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
       maxHeadlessProcesses: 2, minAvailableMemoryBytes: 1024 ** 3, hiddenFps: 10, hiddenDelayMs: 30_000, agentRunsMuted: true,
-      webTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      webTemplateArchiveUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz',
       webTemplateEntry: 'templates/web_nothreads_release.zip',
-      webTemplateSha256: 'd3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0',
+      webTemplateSha256: '13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a',
       webTemplatePath: '',
       windowsTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
       windowsTemplateEntry: 'templates/windows_release_x86_64.exe',
@@ -93,6 +93,7 @@ describe('configuration', () => {
       serverTemplatePath: '',
       exportTimeoutMs: 600_000,
       maxInstances: 4, instanceMemoryBytes: 2 * 1024 ** 3, instanceCores: 1,
+      webCheckCommand: [], webCheckSeconds: 20, webCheckStartTimeoutMs: 180_000, webCheckTimeoutMs: 300_000,
     })
   })
 })
@@ -428,16 +429,18 @@ async function godotSection(c: Composition): Promise<string | undefined> {
 
 /** The section's first paragraph when it names no Godot release. */
 const UNVERSIONED = 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
-  + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+  + 'Do not look for one or download one. For a new game, first write project.godot, whose [physics] section sets '
+  + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.'
 
 posix('system prompt', () => {
-  it('tells the agent which Godot is built in, in the text and size that both READMEs document', async () => {
+  it('tells the agent which Godot is built in, and to give a new project Jolt, in the text and size that both READMEs document', async () => {
     // No runtime paths: the shipped or installed runtime of the default runtimeVersion runs the games.
     const c = await setup({ config: { runnerPath: '', libgodotPath: '' } })
     const text = await godotSection(c)
     const lead = '# Godot games\n\nGodot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need '
       + 'no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first '
-      + 'write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.\n\n'
+      + 'write project.godot, whose config/features starts with "4.7" and whose [physics] section sets '
+      + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.\n\n'
     expect(text?.slice(0, lead.length)).toBe(lead)
     const english = await readFile(new URL('../README.md', import.meta.url), 'utf8')
     const chinese = await readFile(new URL('../README.zh.md', import.meta.url), 'utf8')

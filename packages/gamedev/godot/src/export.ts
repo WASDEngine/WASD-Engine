@@ -414,18 +414,32 @@ export function withTextureImports(projectText: string, values: Partial<Record<T
   return [...kept, '', '[rendering]', '', ...added, ''].join(newline)
 }
 
+/** A pack larger than this many bytes gets a note: players download all of it before the game starts. */
+export const LARGE_PACK_BYTES = 100 * 1024 * 1024
+
+/** The note of a project whose desktop renderer is not the Compatibility renderer that Web builds use. */
+export const WEB_RENDERER_NOTE = 'The Web build renders with the Compatibility renderer (WebGL 2), not the project\'s desktop renderer: SSAO, SSR, SDFGI, volumetric fog, TAA, and FSR are missing or different there, shaders read `source_color` textures as sRGB values and scene depth in another range, and instance uniforms fit far fewer objects. godot_run with web set to true shows the game as the Web build draws it.'
+
 /**
  * Notes about how the Web build of a project differs from its desktop runs.
  * @param projectText - `project.godot` text.
  * @returns the notes.
  */
 export function webNotes(projectText: string): string[] {
-  const method = /^renderer\/rendering_method="([^"]+)"/mu.exec(projectText)?.[1]
-  const webMethod = /^renderer\/rendering_method\.web="([^"]+)"/mu.exec(projectText)?.[1]
-  if ((method === 'forward_plus' || method === 'mobile') && (webMethod === undefined || webMethod === 'gl_compatibility')) {
-    return ['The Web build renders with the Compatibility renderer (WebGL 2), so effects that need Forward+ or Mobile, such as SSAO, SSR, SDFGI, and volumetric fog, are missing or look different there.']
-  }
-  return []
+  // An unset rendering method is Forward+, Godot 4's default.
+  const method = /^renderer\/rendering_method="([^"]+)"/mu.exec(projectText)?.[1] ?? 'forward_plus'
+  return method === 'gl_compatibility' ? [] : [WEB_RENDERER_NOTE]
+}
+
+/**
+ * The note about a large pack, which players download in full before the game starts.
+ * @param files - the exported files.
+ * @returns the note, or none for a pack of at most {@link LARGE_PACK_BYTES}.
+ */
+export function packNotes(files: readonly { readonly path: string; readonly bytes: number }[]): string[] {
+  const pack = files.find(file => file.path === 'index.pck')
+  if (pack === undefined || pack.bytes <= LARGE_PACK_BYTES) return []
+  return [`The game's pack is ${String(Math.round(pack.bytes / (1024 * 1024)))} MB, and players download all of it before the game starts. Textures are most of most packs: lower the size limit of large ones (process/size_limit in their .import files), reuse textures, and keep sounds compressed.`]
 }
 
 async function readOptional(path: string): Promise<Buffer | undefined> {
@@ -534,7 +548,9 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     entry: WEB_EXPORT_ENTRY,
     files: outcome.files,
     totalBytes: outcome.files.reduce((sum, file) => sum + file.bytes, 0),
-    warnings: [...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...warnings].slice(0, EXPORT_WARNINGS),
+    warnings: [
+      ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...packNotes(outcome.files), ...warnings,
+    ].slice(0, EXPORT_WARNINGS),
   }
 }
 

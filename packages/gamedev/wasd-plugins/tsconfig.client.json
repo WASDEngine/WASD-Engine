@@ -73,6 +73,9 @@
     },
     {
       "path": "../../client/ui-sidebar-right"
+    },
+    {
+      "path": "../godot/tsconfig.client.json"
     }
   ]
 }

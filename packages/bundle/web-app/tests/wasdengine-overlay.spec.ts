@@ -87,7 +87,7 @@ const GAME_MCP_UI = { id: 'ui-game-mcp', name: '@deepseek-ai/dsh-client-ui-game-
 const WASD_PLUGINS = { id: 'wasd-plugins', name: '@deepseek-ai/dsh-wasd-plugins' } as const
 
 /** Bundled skills shipped under `wasdengine/skills`. */
-const SKILLS = ['game-design-doc', 'godot-project', 'multiplayer'] as const
+const SKILLS = ['game-design-doc', 'godot-project', 'godot-web', 'multiplayer'] as const
 
 /**
  * The bundled skill root inside the macOS app installed in `/Applications`. A `skill` tool result names the skill's
@@ -394,6 +394,11 @@ describe('WASDEngine overlay', () => {
       } else if (id === 'blender') {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'addonStore'])
         expect(expression(configOf(entry).addonStore, `${id}.addonStore`), `${id}.addonStore`).toBe(store)
+      } else if (id === 'godot') {
+        // The Desktop app sets WASD_WEB_CHECK_COMMAND for its Host; without it Web checks are off.
+        expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot', 'webCheckCommand'])
+        expect(expression(configOf(entry).webCheckCommand, `${id}.webCheckCommand`), `${id}.webCheckCommand`)
+          .toBe("JSON.parse(ctx.get('launchEnvironment')?.getFrom('WASD_WEB_CHECK_COMMAND', ['process'])?.value || '[]')")
       } else {
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['dataRoot'])
       }
@@ -777,5 +782,22 @@ describe('gamedev preset', () => {
     expect(builtIn).toBeGreaterThan(0)
     expect(text.indexOf(fallback)).toBeGreaterThan(builtIn)
     expect(text.indexOf('godot --')).toBe(text.indexOf(fallback) + fallback.length)
+  })
+
+  it('has godot-project give a new project.godot Jolt physics and keep an existing project\'s physics engine', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    expect(text).toContain('A new `project.godot` also sets `3d/physics_engine="Jolt Physics"` under `[physics]`')
+    expect(text).toContain('Keep an existing project\'s physics engine')
+  })
+
+  it('has godot-project export for the Web, Windows, and macOS with the built-in Godot before the editor command line', () => {
+    const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    const section = text.indexOf('## Export')
+    const editor = text.indexOf('--export-release')
+    expect(section).toBeGreaterThan(0)
+    for (const route of ['`wasd_export_web` (Web)', '`wasd_export_desktop` (Windows, macOS)', '`wasd_release_game` publishes']) {
+      expect(text.indexOf(route), route).toBeGreaterThan(section)
+      expect(text.indexOf(route), route).toBeLessThan(editor)
+    }
   })
 })

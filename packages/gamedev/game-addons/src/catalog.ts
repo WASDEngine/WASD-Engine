@@ -1,8 +1,9 @@
 /**
  * The curated add-on catalog: one folder per add-on under the catalog folder, holding `addon.json`, the entry, and
- * `SKILL.md`, its usage guide, beside folders without an entry that Godot add-ons name as overlays. Loading validates
- * every entry, its archive pin, its setup script and overlay folders, and its guide's frontmatter, and rejects a
- * catalog whose entries name unknown conflicts. Search ranks entries by query words against their ids,
+ * `SKILL.md`, its usage guide, beside folders without an entry that Godot add-ons name as overlays. An add-on that WASD
+ * Engine wrote has no archive: a Godot one is its overlay folders, a Blender extension its `blender.files` folder.
+ * Loading validates every entry, its archive pin, its setup script, overlay folders, and extension files, and its
+ * guide's frontmatter, and rejects a catalog whose entries name unknown conflicts. Search ranks entries by query words against their ids,
  * titles, tags, and descriptions.
  * @module @deepseek-ai/dsh-game-addons/src/catalog
  */
@@ -76,6 +77,7 @@ const Entry = z.strictObject({
     module: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u),
     kind: z.enum(['extension', 'core']),
     setup: z.string().regex(/^[A-Za-z0-9_-]+\.py$/u).exactOptional(),
+    files: ArchivePath.min(1).exactOptional(),
   }).exactOptional(),
   icon: z.strictObject({
     file: z.string().regex(/^icon\.(?:png|svg)$/u),
@@ -142,7 +144,7 @@ function checkEntry(entry: GameAddon, folder: string): void {
   if (entry.id !== folder) throw new GameAddonCatalogError(`${where}: id ${entry.id} must equal its folder name.`)
   if (entry.host === 'godot') {
     if (entry.godot === undefined || entry.blender !== undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs godot and no blender field.`)
-    if (entry.archive === undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs an archive.`)
+    if (entry.archive === undefined && entry.godot.overlay === undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs an archive or overlay folders.`)
     if (entry.assets !== undefined) throw new GameAddonCatalogError(`${where}: only a Blender add-on has an asset pack.`)
     if (entry.verified.godot === undefined) throw new GameAddonCatalogError(`${where}: verified.godot is missing.`)
     for (const autoload of entry.godot.autoloads ?? []) {
@@ -153,8 +155,9 @@ function checkEntry(entry: GameAddon, folder: string): void {
     return
   }
   if (entry.blender === undefined || entry.godot !== undefined) throw new GameAddonCatalogError(`${where}: a Blender add-on needs blender and no godot field.`)
-  if ((entry.blender.kind === 'extension') !== (entry.archive !== undefined)) {
-    throw new GameAddonCatalogError(`${where}: a Blender extension needs an archive, and a core add-on has none.`)
+  const sources = (entry.archive === undefined ? 0 : 1) + (entry.blender.files === undefined ? 0 : 1)
+  if (sources !== (entry.blender.kind === 'extension' ? 1 : 0)) {
+    throw new GameAddonCatalogError(`${where}: a Blender extension needs either an archive or blender.files, and a core add-on has neither.`)
   }
   // Blender add-ons stay in the add-on store and never ship with the game, so no notice copies their license.
   if (entry.archive?.license !== undefined) throw new GameAddonCatalogError(`${where}: archive.license applies only to Godot add-ons.`)
@@ -284,6 +287,15 @@ export async function loadCatalog(dir: string): Promise<GameAddonCatalog> {
         await access(join(dir, folder, setup))
       } catch (error) {
         throw new GameAddonCatalogError(`Cannot read the setup script of ${entry.id} at ${join(dir, folder, setup)}: ${(error as Error).message}`)
+      }
+    }
+    const files = entry.blender?.files
+    if (files !== undefined) {
+      const manifest = join(dir, ...files.split('/'), 'blender_manifest.toml')
+      try {
+        await access(manifest)
+      } catch (error) {
+        throw new GameAddonCatalogError(`Cannot read the extension manifest of ${entry.id} at ${manifest}: ${(error as Error).message}`)
       }
     }
     for (const overlay of entry.godot?.overlay ?? []) {

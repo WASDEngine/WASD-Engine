@@ -46,6 +46,8 @@ export interface GodotRunLaunch {
   readonly width?: number
   /** Requested window height in pixels; absent, with `width`, for the project's window size. */
   readonly height?: number
+  /** True when the run renders with the Compatibility renderer, as the game's Web build does; absent otherwise. */
+  readonly web?: true
 }
 
 /**
@@ -181,6 +183,8 @@ export interface GodotRunRequest {
   readonly height?: number
   /** Run with the Dummy audio driver. */
   readonly muted?: boolean
+  /** Render with the Compatibility renderer, which the game's Web build uses, instead of the project's renderer. */
+  readonly web?: boolean
 }
 
 /** Pause, resume, or step the running game. */
@@ -293,6 +297,114 @@ export interface GodotWebExport {
   readonly totalBytes: number
   /** How the Web build differs from desktop runs, then Godot's export warnings; at most 10. */
   readonly warnings: readonly string[]
+}
+
+/** A Web build to check: a folder a Web export filled. */
+export interface GodotWebCheckRequest {
+  /** Absolute folder holding the exported files. */
+  readonly outputDir: string
+  /** The page that starts the game; default `index.html`. */
+  readonly entry?: string
+}
+
+/** One error or warning that the checked Web build printed, with how often it printed it. */
+export interface GodotWebCheckMessage {
+  /** `error` for Godot's errors and the page's own, `warning` for Godot's warnings. */
+  readonly level: 'error' | 'warning'
+  /** The message, without the source location line Godot prints after it. */
+  readonly text: string
+  /** How many times the build printed it during the check. */
+  readonly count: number
+}
+
+/** What a Web check saw: the build opened in a browser, which watched it start and run without input. */
+export interface GodotWebCheck {
+  /** Seconds the check watched the game once it drew frames steadily. */
+  readonly seconds: number
+  /** Godot started the game within the check's start deadline. */
+  readonly started: boolean
+  /** Seconds from opening the page until Godot started the game, with the files already on this computer; absent when it did not start. */
+  readonly startSeconds?: number
+  /**
+   * Seconds from opening the page until the game drew frames steadily, when the check began to watch it; absent when it
+   * did not within the start deadline.
+   */
+  readonly readySeconds?: number
+  /** The page's longest main-thread task in seconds, during which it drew nothing and answered no input. */
+  readonly longestFreezeSeconds: number
+  /** Main-thread tasks of a second or more. */
+  readonly freezes: number
+  /** Frames per second while the check watched the game, its frames over the time they took; absent when it saw no frames. */
+  readonly fps?: number
+  /** Slowest frame while the check watched, in milliseconds; absent when it saw no frames. */
+  readonly slowestFrameMs?: number
+  /** Median and largest WebGL draw calls per frame while the check watched; absent when it saw no frames. */
+  readonly drawCalls?: { readonly median: number; readonly max: number }
+  /** WebGL shader programs the page linked. */
+  readonly programs: number
+  /** The errors and warnings the build printed, in order of first appearance. */
+  readonly messages: readonly GodotWebCheckMessage[]
+  /** Distinct errors and warnings beyond `messages`. */
+  readonly moreMessages: number
+  /** What the results mean for players and how to fix them, one paragraph each. */
+  readonly findings: readonly string[]
+  /** Why the page's process ended during the check, such as `oom` or `crashed`; absent when it kept running. */
+  readonly crashed?: string
+}
+
+/** The command-line argument, followed by `=` and a JSON {@link WebCheckRequest}, that starts the Desktop app in Web check mode. */
+export type WebCheckArgument = '--wasd-web-check'
+
+/** The prefix of the stdout line that carries a Web check mode's JSON {@link WebCheckSample}. */
+export type WebCheckMarker = 'WASD_WEB_CHECK '
+
+/** What the Desktop app's Web check mode opens and how long it watches. */
+export interface WebCheckRequest {
+  /** Loopback URL of the Web build's page. */
+  readonly url: string
+  /** Seconds to watch the game once it draws frames steadily. */
+  readonly seconds: number
+  /** Milliseconds from opening the page to wait for the game to start and draw frames steadily. */
+  readonly startTimeoutMs: number
+  /** Page width in CSS pixels. */
+  readonly width: number
+  /** Page height in CSS pixels. */
+  readonly height: number
+}
+
+/** One console message of the checked page. */
+export interface WebCheckConsoleLine {
+  /** The console level, as Electron reports it. */
+  readonly level: 'debug' | 'info' | 'warning' | 'error'
+  /** The message text. */
+  readonly text: string
+}
+
+/** What a Web check mode measured in the page, as its result line carries it. */
+export interface WebCheckSample {
+  /** The game started: Godot's page removed its loading overlay (`#status`). */
+  readonly started: boolean
+  /** Milliseconds from the page's time origin until the game started; absent when it did not. */
+  readonly startMs?: number
+  /**
+   * Milliseconds from the page's time origin until the check began to watch, once the game drew frames steadily; absent
+   * when it did not.
+   */
+  readonly readyMs?: number
+  /** Main-thread tasks of 50 ms or more, as [start, duration] in milliseconds since the page's time origin. */
+  readonly longTasks: readonly (readonly [number, number])[]
+  /** Intervals between animation frames while the check watched, or since the game started when it never drew steadily, in milliseconds. */
+  readonly frameMs: readonly number[]
+  /** WebGL draw calls in each of those frames. */
+  readonly drawCalls: readonly number[]
+  /** WebGL programs the page linked. */
+  readonly programs: number
+  /** The page's console messages, in order; Godot prints its errors and warnings there. */
+  readonly console: readonly WebCheckConsoleLine[]
+  /** Why the page's process ended during the check; absent when it kept running. */
+  readonly crashed?: string
+  /** The browser reported the page unresponsive. */
+  readonly unresponsive: boolean
 }
 
 /** A desktop platform a desktop export builds for: `windows`, 64-bit x86 Windows, or `macos`, Intel and Apple silicon Macs. */

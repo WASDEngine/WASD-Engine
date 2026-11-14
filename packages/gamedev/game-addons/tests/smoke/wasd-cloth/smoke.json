@@ -1,0 +1,1 @@
+{ "run": "script", "path": "res://wasd_smoke/smoke.gd", "expect": ["SMOKE_PASS wasd-cloth"], "timeoutSeconds": 120 }

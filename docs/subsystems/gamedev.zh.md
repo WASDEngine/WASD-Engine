@@ -18,7 +18,7 @@ WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundl
 | `polyhaven` | [`@deepseek-ai/dsh-polyhaven`](../../packages/gamedev/polyhaven/README.zh.md) | 原生 `polyhaven_search`、`polyhaven_asset` 与 `polyhaven_download` | 无：由 Host 请求 Poly Haven API 并写入下载的文件 |
 | `supercollider` | [`@deepseek-ai/dsh-supercollider`](../../packages/gamedev/supercollider/README.zh.md) | MCP 服务器 `wasd_supercollider` 提供的 `mcp__wasd_supercollider__<tool>` | 每个调用的 Session 一个带有一个 sclang 的桥接进程，sclang 为每次渲染离线运行 scsynth：Desktop 应用自带的运行时，或 `sclangPath` 指明的无界面 sclang |
 
-激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 与 ElevenLabs 行在第一次工具调用时才发出第一个请求，游戏扩展行只在安装扩展时才下载；需要缺失应用的调用会失败，并给出安装步骤，未登录时的 ElevenLabs 调用会请用户登录。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-project` skill（技能）会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*`、`polyhaven_*`、`elevenlabs_*`、`game_addons` 与 `godot_script` 工具存在时引导 agent 使用它们。
+激活时不安装、不下载，也不启动任何应用。Blender、GIMP 与 SuperCollider 行只启动各自的 MCP 服务器进程，由它在第一次工具调用时启动应用；Godot 行只在工具或 Game 标签页请求时才启动游戏，Poly Haven 与 ElevenLabs 行在第一次工具调用时才发出第一个请求，游戏扩展行只在安装扩展时才下载；需要缺失应用的调用会失败，并给出安装步骤，未登录时的 ElevenLabs 调用会请用户登录。三个 MCP 服务器都构建在库 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 之上。它的 `materializePayload` 把包交给应用的每个脚本复制到 `<dataRoot>/payload/<digest>/<file name>`，其中 `<digest>` 是内容 SHA-256 的前 16 位十六进制数字。之所以需要复制，是因为打包后的 Desktop 应用把包文件放在 `app.asar` 内，只有 Electron 的 `fs` 能够读取；Godot 包用该函数复制自己的两个 GDScript 文件。MCP 服务器名称带有 `wasd_` 前缀，以便与用户自行配置的 `blender`、`gimp` 或 `supercollider` 服务器区分。fork 内置的 `godot-web` skill（技能）说明 Godot 游戏在浏览器中（WASD Engine 发布的游戏在那里运行）的显示和运行方式，其 `godot-project` skill 会在 `godot_*`、`mcp__wasd_blender__*`、`mcp__wasd_gimp__*`、`mcp__wasd_supercollider__*`、`polyhaven_*`、`elevenlabs_*`、`game_addons` 与 `godot_script` 工具存在时引导 agent 使用它们。
 
 | 进程 | 启动方 | 结束时机 | 通信对象 |
 |---|---|---|---|
@@ -125,11 +125,11 @@ Desktop 打包时会填充 `libgodot` 目录，详见 [Desktop 应用中的 LibG
 6. 在 `startTimeoutMs` 内，harness 脚本按 [harness 协议](#harness-protocol)所述连接并完成认证，运行随即变为 `running`。
 
 ```text
---path <project> [--embedded] --script <wasd_harness.gd> [--audio-driver Dummy] [--resolution <width>x<height>]
+--path <project> [--embedded] --script <wasd_harness.gd> [--audio-driver Dummy] [--rendering-method gl_compatibility] [--resolution <width>x<height>]
   -- --wasd-port=<port> --wasd-token=<token> [--wasd-scene=<scene>]
 ```
 
-`--audio-driver Dummy` 使运行静音。agent 启动的运行默认静音，除非调用另行指定，或关闭了 `agentRunsMuted`；Game 标签页启动的运行会播放音频，除非其请求设置了 `muted`。
+`--audio-driver Dummy` 使运行静音。agent 启动的运行默认静音，除非调用另行指定，或关闭了 `agentRunsMuted`；Game 标签页启动的运行会播放音频，除非其请求设置了 `muted`。`--rendering-method gl_compatibility` 让设置了 `web` 的请求使用游戏 Web 构建所用的兼容性渲染器渲染，无论项目使用哪种渲染器。
 
 `godot_stop`、`godot.stop`、重启与 dispose 以相同方式停止运行：`ctx.godot` 发送 `quit`，至多等待 `stopGraceMs` 让进程退出，然后中止进程，由子进程服务终止它，并在进程消失后才结束。
 
@@ -249,7 +249,7 @@ Blender、GIMP 与 SuperCollider 的工作进程以及 Godot 游戏都是完整�
 | 18 GiB，12 个逻辑处理器 | 2 |
 | 32 GiB，16 个逻辑处理器 | 4 |
 
-每次启动工作进程、游戏、脚本检查、脚本、供其他插件使用的导入或 Web 导出之前，启动方都会读取操作系统报告的可用内存 `process.availableMemory()`。它少于 `minAvailableMemoryBytes`（默认 1 GiB）时，应用程序服务器会按最久未使用优先停止本应用程序其他 Session 的空闲工作进程；仍然不足时，启动以 `LOW_MEMORY` 或 `godot/low-memory` 失败。该数值涵盖整台电脑，因此每个游戏工具的进程与其他程序都计入其中，而上限按应用程序分别计算。Godot 最多同时运行 `maxHeadlessProcesses` 个脚本检查与 Web 导出，之后的按顺序等待其中一个结束。
+每次启动工作进程、游戏、脚本检查、脚本、供其他插件使用的导入或 Web 导出之前，启动方都会读取操作系统报告的可用内存 `process.availableMemory()`。它少于 `minAvailableMemoryBytes`（默认 1 GiB）时，应用程序服务器会按最久未使用优先停止本应用程序其他 Session 的空闲工作进程；仍然不足时，启动以 `LOW_MEMORY` 或 `godot/low-memory` 失败。该数值涵盖整台电脑，因此每个游戏工具的进程与其他程序都计入其中，而上限按应用程序分别计算。Godot 最多同时运行 `maxHeadlessProcesses` 个脚本检查、Web 导出与 Web 检查，之后的按顺序等待其中一个结束。Web 检查以 Web 检查模式运行桌面应用自身的 Electron，Godot 包 README 的 [Web 检查](../../packages/gamedev/godot/README.zh.md#web-check)对此有说明；内存检查像对待导出一样计入它。
 
 所有调用方都受同样的上限约束：Host 的 Session、各自算作独立 Session 的子 agent，以及通过[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents)连接的 agent，它们的调用都到达同样的工作进程池和同一个 `ctx.godot`。字段与拒绝由 [app-mcp README](../../packages/gamedev/app-mcp/README.zh.md#one-worker-per-session) 与 [Godot README](../../packages/gamedev/godot/README.zh.md#game-runs) 负责说明。
 
@@ -419,6 +419,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `scene` | 代替主场景运行的 `res://` 或 `uid://` 场景 |
 | `width`、`height` | 窗口尺寸（像素），须同时给出，均为 1 到 16,384 的整数 |
 | `muted` | 使用 Dummy 音频驱动运行；`godot.run` 默认为 false |
+| `web` | 像游戏的 Web 构建一样使用兼容性渲染器渲染，而不是项目的渲染器；默认为 false |
 
 `GodotControlRequest` 携带 `action`（`pause`、`resume` 或 `step`）；对于 `step`，还携带帧数 `frames`，即 1 到 100,000 的整数，默认为 1。
 
@@ -430,7 +431,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `phase` | [运行生命周期](#run-lifecycle)中的阶段 |
 | `startedBy` | `agent` 或 `user` |
 | `projectDir`、`projectName` | 项目文件夹，以及设置时的 `application/config/name` |
-| `launch` | 启动请求的场景与窗口尺寸：`scene`、`width` 与 `height`，请求未给出时均不存在；「重新运行」会再次传入它们 |
+| `launch` | 启动请求的场景、窗口尺寸与渲染器：`scene`、`width` 与 `height`，请求未给出时均不存在；设置了 `web` 的请求带有 `web: true`；「重新运行」会再次传入它们 |
 | `scene` | 已知时，正在运行的场景的 `res://` 路径 |
 | `width`、`height` | 游戏窗口尺寸，在游戏报告后提供 |
 | `fps`、`frame`、`mouseMode` | 最新 `status` 消息中的值；`mouseMode` 是 Godot 的 `Input.MouseMode`：0 可见、1 隐藏、2 捕获、3 限制在窗口内、4 限制在窗口内且隐藏 |
@@ -631,6 +632,20 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
  * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>
+
+/**
+ * Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that
+ * `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and
+ * report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed,
+ * and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For
+ * other plugins on the Host; the Game tab does not call it.
+ * @param request - the export folder and its page.
+ * @param signal - cancellation; it stops the browser.
+ * @returns what the check saw.
+ * @throws {GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.
+ */
+async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck>
 
 /**
  * Export a project for one desktop platform with the built-in runtime: one ZIP file named after the game, holding the

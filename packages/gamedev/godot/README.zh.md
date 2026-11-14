@@ -89,9 +89,9 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `hiddenFps` | `10` | [无人显示或使用的无窗口游戏](#game-runs)的每秒帧数，取值 0 到 60；`0` 让所有游戏保持自身帧率 |
 | `hiddenDelayMs` | `30000` | 游戏连接后、最后一个“游戏”标签页不再显示它后，或其最后一个请求结束后，经过多长时间开始应用 `hiddenFps` |
 | `agentRunsMuted` | `true` | agent 启动的运行是否默认无音频，除非 `godot_run` 另行指定 |
-| `webTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；[Web 导出](#web-export)只从中下载 Web 模板；须为 http 或 https URL |
+| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz` | 包含运行时 Godot 版本 Web 模板的导出模板归档；[Web 导出](#web-export)只从中下载该模板；须为 http 或 https URL。默认值是 WASD Engine 构建的模板 |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
-| `webTemplateSha256` | `d3ee2f08…4032a0` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `webTemplateSha256` | `13e81eb1…e6d05a` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
 | `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
 | `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Windows 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
 | `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | 64 位 x86 Windows 发布模板在该归档中的路径 |
@@ -109,6 +109,10 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `maxInstances` | `4` | 在任何电脑上，一个[实例组](#instance-groups)同时启动的无窗口实例数上限；电脑自身的上限可能更低 |
 | `instanceMemoryBytes` | `2147483648`（2 GiB） | 为实例组中每个实例预留的电脑物理内存：一个实例组最多包含电脑内存除以该值后四舍五入的实例数；`0` 表示不考虑内存 |
 | `instanceCores` | `1` | 为实例组中每个实例预留的逻辑处理器数：一个实例组最多包含电脑逻辑处理器数除以该值后向下取整的实例数；`0` 表示不考虑处理器 |
+| `webCheckCommand` | `[]` | 启动 [Web 检查](#web-check) 所用浏览器的命令行（不含其参数）：桌面应用的可执行文件，以及 Electron 默认应用运行它时的应用文件夹。游戏工具覆盖层从 `WASD_WEB_CHECK_COMMAND` 读取它，桌面应用为其 Host 设置该变量；为空时关闭 Web 检查 |
+| `webCheckSeconds` | `20` | 游戏开始稳定绘制帧后 Web 检查观察它的秒数，取值 1 到 600 |
+| `webCheckStartTimeoutMs` | `180000` | 从打开页面起，Web 检查等待游戏启动并稳定绘制帧的毫秒数 |
+| `webCheckTimeoutMs` | `300000` | 一次 Web 检查的截止时间，包括其浏览器的启动和游戏的加载 |
 
 <a id="runtime"></a>
 ### Godot 运行时
@@ -157,6 +161,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 agent 启动的运行使用 Godot 的 `Dummy` 音频驱动，除非 `godot_run` 传入 `muted: false` 或 `agentRunsMuted` 为 `false`。从“游戏”标签页启动的运行会播放音频。
 
+`godot_run` 以 `web: true` 启动的运行会传入 `--rendering-method gl_compatibility`，因此无论项目的 `rendering/renderer/rendering_method` 如何设置，游戏都使用其 [Web 构建](#web-export)的兼容性渲染器渲染，显示已发布游戏的玩家看到的着色、阴影和缺失的效果。其 `launch` 带有 `web: true`，因此“游戏”标签页的 **运行** 会以同样方式重启它，其渲染器显示为 `opengl3 / gl_compatibility`。这种运行使用桌面 OpenGL 驱动而非浏览器，因此只有浏览器才有的限制和卡顿由 [Web 检查](#web-check)报告。
+
 <a id="harness"></a>
 ### harness
 
@@ -169,7 +175,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
-| `godot_run` | `project`、`scene`、`width`、`height`、`muted` | 启动或重启游戏并等待其运行，然后报告阶段、项目、场景、窗口大小、渲染器、Godot 版本、无窗口与静音标志，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败 |
+| `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器）并等待其运行，然后报告阶段、项目、场景、窗口大小、渲染器、Godot 版本、无窗口、静音与 Web 标志，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败 |
 | `godot_stop` | 无 | 游戏结束后返回 `Stopped the game.`，或返回 `No game was running.` |
 | `godot_screenshot` | `max_width`（默认 1280，64 到 4096） | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，并附上图像大小、窗口大小、帧号以及游戏是否暂停 |
 | `godot_input` | `events`（最多 256 个）、`screenshot`、`coordinate_space` | 依次执行事件，其中的等待和按住按实际时间计算，然后报告事件数、帧数、秒数和当前帧；`screenshot: true` 会附加一张截图。序列在其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已执行的事件 |
@@ -211,7 +217,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
 - 截图以 PNG 字节形式直接放在结果中返回，而不是为模型路由保存附件，也不检查模型；每张截图请求的宽度使其最长边至多 1,568 像素、面积至多 1,150,000 像素，即 agent 无需缩放即可接收的尺寸。
 
-`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and start config/features in a new project.godot with "4.7".` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目。
+`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" and set 3d/physics_engine="Jolt Physics" under [physics].` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目。
 
 <a id="game-tab"></a>
 ### “游戏”标签页
@@ -265,11 +271,16 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 <a id="web-export"></a>
 ### Web 导出
 
-`ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。导出占用与 `godot_check` 共享的 `maxHeadlessProcesses` 个位置之一；电脑的可用内存少于 `minAvailableMemoryBytes` 时，导出不启动 Godot 并失败。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：Forward+ 或 Mobile 项目在网页上使用兼容性渲染器，以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
+`ctx.godot.exportWeb({ projectDir, outputDir }, signal)` 为其他 Host 插件把项目导出为网页版，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 工具会调用它；“游戏”标签页和 `godot_*` 工具不会调用。解析出的运行时启动一个无窗口的 Godot 进程，以预设 `WASD Engine Web` 运行 `--export-release`：使用不支持 GDExtension 的单线程 Web 发布模板，因此构建不需要跨源隔离，可以在任何嵌入它的页面中运行。Godot 只从项目的 `export_presets.cfg` 读取预设，所以导出会把该预设加到项目自身预设之后（项目预设保持原有顺序），并在之后恢复该文件的原始字节；若项目原本没有该文件，则删除它。导出会先清空 `outputDir`，导出到同一文件夹的两次导出依次进行。导出占用与 `godot_check` 共享的 `maxHeadlessProcesses` 个位置之一；电脑的可用内存少于 `minAvailableMemoryBytes` 时，导出不启动 Godot 并失败。结果列出各文件（`index.html`、`index.js`、`index.wasm`、`index.pck`、音频 worklet 与图标）及其大小，并附最多十条说明：桌面渲染器不是兼容性渲染器的项目（`rendering/renderer/rendering_method` 未设置时为 Forward+）在网页上使用兼容性渲染器，那里的着色器以 sRGB 值读取 `source_color` 纹理、场景深度的范围不同，SSAO、SDFGI、体积雾、TAA 和 FSR 等效果缺失，实例 uniform 能容纳的对象更少；数据包超过 100 MiB 时玩家要等待其完整下载；以及 Godot 的导出警告。没有写出页面、引擎或数据包的导出会失败，并附上 Godot 的错误行。
 
 Godot 的网页运行时不绘制启动画面；只有页面的加载界面会在进度条上方显示启动图片，除非项目的 `application/boot_splash/image` 指定了自己的图片，否则该图片是 Godot 的标志。对于没有自己图片的项目，预设的 `html/head_include` 会加入一段隐藏该图片的样式，因此加载界面只在项目的 `application/boot_splash/bg_color` 背景上显示进度条；有自己图片的项目保留其图片。
 
-Godot 只在其导出模板归档中提供 Web 模板，该归档包含所有平台，约 1.3 GB。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了 Forward+ 游戏在 Web 上遇到的 Compatibility 渲染器限制：超过约 60 个物体时的实例 uniform、未过滤的 `SOFT_VERY_LOW` 阴影、`emit_particle()`，以及主线程等待着色器编译和帧缓冲检查（[构建说明](../../../wasdengine/web-template/BUILD.md)）。它的导出模板归档只包含该模板。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布（约 40 MB，因为模板以不压缩方式存储，其摘要只取决于其中的文件）；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+
+<a id="web-check"></a>
+### Web 检查
+
+`ctx.godot.checkWeb({ outputDir, entry }, signal)` 以玩家遇到它的方式检查一个 Web 导出，供其他 Host 插件使用，例如 [WASD Engine 插件](../wasd-plugins/README.zh.md)，其 `wasd_export_web` 与 `wasd_release_game` 会报告检查结果。插件在 `127.0.0.1` 的随机端口上通过 HTTP 提供 `outputDir`，只响应对其中文件的 GET 和 HEAD 请求，并以 `--wasd-web-check=` 加一个 JSON 请求启动 `webCheckCommand` 指定的浏览器：请求包含 `entry`（默认 `index.html`）的 URL、1280x720 的页面、`webCheckSeconds` 和 `webCheckStartTimeoutMs`。在桌面应用中，这个浏览器就是处于 Web 检查模式的应用本身（`apps/desktop/src/wasdengine-web-check.ts`）：它不申请单实例锁，不显示窗口、Dock 图标或菜单栏，把浏览器配置保存在一个用后删除的临时文件夹中，并在一个拥有独立 GPU 进程的离屏窗口中打开页面，因此耗尽 GPU 或内存的游戏不会影响应用。在页面自身的脚本运行之前，它记录页面 50 ms 及以上的主线程任务；游戏启动后（Godot 的页面移除其 `#status` 加载遮罩时），它还记录每个动画帧的间隔和 WebGL 绘制调用，并保留页面的控制台输出。Godot 在游戏自身的加载之前就会移除遮罩，而游戏的加载可能让页面长时间卡住，因此检查在游戏绘制了 60 帧之后才开始观察：它丢弃此前的帧，在没有输入的情况下观察游戏运行 `webCheckSeconds`；从打开页面起，它最多等待 `webCheckStartTimeoutMs` 让游戏启动并绘制这些帧。随后它在 stdout 打印一行测量结果并退出。插件校验这一行，并报告 Godot 何时启动游戏、游戏何时开始稳定绘制帧；页面最长的主线程任务以及持续一秒及以上的任务数；帧率（观察到的帧数除以其所用时间）和最慢的一帧；每帧绘制调用的中位数和最大值；页面链接的 WebGL 程序数；构建打印的不同错误和警告中的最多 12 条（Godot 的 `ERROR:` 和 `WARNING:` 消息不含其位置行，以及页面自身的错误），各附次数；以及用平实语言写成的发现：打开页面超过 20 s 后才稳定绘制帧，或在 `webCheckStartTimeoutMs` 内始终没有稳定绘制、单次卡顿 2 s 及以上或多次一秒的卡顿、每帧绘制调用中位数超过 1,500、帧率低于 30、页面进程结束，以及表示 Web 构建缺少项目所用功能的 Godot 消息：超出 uniform 缓冲区的实例 uniform、`emit_particle()`、FogVolume 着色器、TAA 和 FSR。一次检查占用导出所用的 `maxHeadlessProcesses` 个位置之一并经过同样的内存检查；`webCheckCommand` 为空，或浏览器没有输出结果行就结束时，检查以 `GodotWebCheckError` 失败。`formatWebCheck` 把报告转换成工具结果显示的文本。
 
 <a id="desktop-export"></a>
 ### 桌面版导出
@@ -403,7 +414,7 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### Token 影响
 
-默认配置下，12 个声明合计约 8,100 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
+默认配置下，12 个声明合计约 8,700 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_input` 最大，约 2,500 个字符。
 
 #### KV Cache 影响
 
@@ -413,14 +424,14 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### 模型可见内容
 
-插件在 `TOOL_COMPUTER_USE` 位置对应的顺序上注册一个名为 `godot` 的全局系统提示词部分，文本如下；该部分是静态的，因此即使 Agent 的工具集排除了 Godot 工具，它也仍在该 Agent 的提示词中。第一段写明 `runtimeVersion` 开头的 Godot 版本（默认为 `4.7`），自带运行时与托管运行时都必须与之一致。设置了 `libgodotPath` 与 `runnerPath`，或 `runtimeVersion` 不以 `major.minor` 版本开头时，该段不写明版本，改为 `Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.`。
+插件在 `TOOL_COMPUTER_USE` 位置对应的顺序上注册一个名为 `godot` 的全局系统提示词部分，文本如下；该部分是静态的，因此即使 Agent 的工具集排除了 Godot 工具，它也仍在该 Agent 的提示词中。第一段写明 `runtimeVersion` 开头的 Godot 版本（默认为 `4.7`），自带运行时与托管运行时都必须与之一致。设置了 `libgodotPath` 与 `runnerPath`，或 `runtimeVersion` 不以 `major.minor` 版本开头时，该段不写明版本，改为 `Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. For a new game, first write project.godot, whose [physics] section sets 3d/physics_engine="Jolt Physics", a main scene, and its scripts.`。两种形式都让新游戏的 `project.godot` 在 `[physics]` 下设置 `3d/physics_engine="Jolt Physics"`：Godot 4.6 及更高版本默认使用 Jolt，只是因为编辑器的项目管理器会把该键写入它创建的项目；没有该键时 Godot 运行 GodotPhysics3D，在它之下 SoftBody3D 会穿过静态碰撞体。
 
 ##### Godot 部分文本
 
 ```markdown
 # Godot games
 
-Godot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first write project.godot, whose config/features starts with "4.7", a main scene, and its scripts.
+Godot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first write project.godot, whose config/features starts with "4.7" and whose [physics] section sets 3d/physics_engine="Jolt Physics", a main scene, and its scripts.
 
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
@@ -428,11 +439,13 @@ Test a Godot project with the godot_* tools:
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 The user can watch and play the running game in the Game panel.
+
+Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses. Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere; run a game on another renderer with godot_run web: true to see it as players will. A Web export ends with a Web check of the build in a browser: fix the freezes and errors it reports.
 ```
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 1037 个字符；不写明 Godot 版本时为 966 个字符。
+插件加载期间，该部分为每个系统提示词增加 1560 个字符；不写明 Godot 版本时为 1486 个字符。
 
 #### KV Cache 影响
 
@@ -477,6 +490,8 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **LiveShare 查看者看不到游戏** — LiveShare 把每个 `godot` 方法归为仅所有者可用，并把该命名空间排除在共享之外，帧路由对非所有者 Peer 返回 403，因此查看者既不能观看也不能游玩。
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行运行上限个游戏。
 - **隐藏的游戏继续运行** — 没有“游戏”标签页显示的游戏会一直运行到停止：最后一次被显示或使用后的 `hiddenDelayMs` 内以全速运行，之后以 `hiddenFps` 运行，因此仍会占用一些处理器与图形处理时间；运行上限限制了这样的游戏数。Linux 与 Windows 上有窗口的游戏从不受限。内存检查只针对启动：游戏启动后若继续增长，不会被停止。
+- **Web 运行不是浏览器** — `web: true` 的 `godot_run` 使用桌面 OpenGL 驱动渲染，其限制大于浏览器中的 WebGL，例如 uniform 缓冲区为 64 KB，而 Apple GPU 上的 Chrome 只允许 16 KB；它还以原生代码在多个线程上运行，因此既不会显示实例 uniform 溢出，也不会显示浏览器单线程造成的卡顿；这些由 [Web 检查](#web-check)报告。
+- **Web 检查需要桌面应用，且只看到启动阶段** — 只有桌面应用提供检查所用的浏览器，因此在其他环境中 `wasd_export_web` 和 `wasd_release_game` 会报告检查无法运行。检查在没有输入的情况下只观察游戏开头的 `webCheckSeconds`，因此会漏掉只有在玩家操作之后或后续关卡中才出现的问题；其离屏页面还要把每一帧从 GPU 复制回来，这会多花几毫秒，而浏览器标签页没有这部分开销。
 - **导入只在同一宿主内相互等待** — 宿主逐个执行同一项目的导入步骤、检查和 Web 导出，但另一个宿主或 Godot 编辑器在此期间导入同一项目时，会同时写入其导入数据。
 - **删除文件不会触发检查前的导入** — 检查在项目文件发生变化或新增后才导入，因此在下一次导入之前，预加载已删除资源（其导入副本仍在）的脚本会通过检查，而使用已删除脚本的 `class_name` 类的脚本虽然检查失败，但错误消息与游戏显示的不同。
 - **游戏脚本逐个加载** — 在 `res://addons/` 之外，检查会先于游戏本会先加载的其他内容加载每个脚本，因此若某个脚本经由其使用的类遇到一个预加载的、带有该脚本本身的场景，它会被报告为不存在的资源，即使游戏先加载那个类、从不会遇到这个错误。

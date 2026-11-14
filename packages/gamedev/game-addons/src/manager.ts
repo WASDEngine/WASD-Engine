@@ -1,6 +1,7 @@
 /**
  * Installation and removal of catalog add-ons, and what a project has. A Godot add-on downloads and unpacks from its
- * checked archive into a staging folder inside the project and gains the files of its catalog overlay folders; then,
+ * checked archive into a staging folder inside the project and gains the files of its catalog overlay folders, or, when
+ * WASD Engine wrote it, consists of those files alone; then,
  * holding the record's lock, the installer checks the project again, moves the folder into `res://addons/<folder>/`,
  * enables it in `project.godot` the way the editor's plugin switch does, writes its license into the project's
  * notices, and records it in `.wasdengine/addons.json`, and afterwards imports the project so the add-on's errors show
@@ -10,11 +11,12 @@
  * in the add-on's own folder in the same way. Every folder that a removal or a replacement takes out moves to a new
  * backup folder of the add-on, `.wasdengine/backups/<id>/<time>/`, and stays there. Every change stays inside the
  * project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks once into the shared add-on
- * store, where every Blender worker enables it by id, and its asset pack, if it has one, into the asset folder beside
- * the store; its project keeps only the record. Their archives then leave the cache.
+ * store, or is copied there from its catalog files when WASD Engine wrote it, and every Blender worker enables it by id;
+ * its asset pack, if it has one, unpacks into the asset folder beside the store; its project keeps only the record.
+ * Their archives then leave the cache.
  * @module @deepseek-ai/dsh-game-addons/src/manager
  */
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
@@ -196,6 +198,43 @@ async function removeEmptyFolders(path: string): Promise<void> {
     if (entry.isDirectory()) await removeEmptyFolders(join(path, entry.name))
   }
   await removeEmpty(path)
+}
+
+/** What a store folder is filled from: the SHA-256 that its marker records, and the step that writes its files. */
+interface StoreSource {
+  readonly sha256: string
+  /** Write the files into `staging`, a folder that does not exist yet; returns their paths, `/`-separated. */
+  readonly write: (staging: string) => Promise<string[]>
+  /** Runs once the store folder holds the files. */
+  readonly placed?: () => Promise<void>
+}
+
+/**
+ * A catalog folder as the source of a store folder: its SHA-256 covers every file's path and bytes, so the store copy
+ * is replaced whenever a file changes.
+ */
+async function catalogFilesSource(folder: string): Promise<StoreSource> {
+  const files = (await readdir(folder, { recursive: true, withFileTypes: true }))
+    .filter(entry => entry.isFile() && entry.name !== '.DS_Store' && !entry.parentPath.split(sep).includes('__pycache__'))
+    .map(entry => relative(folder, join(entry.parentPath, entry.name)).split(sep).join('/'))
+    .sort()
+  const hash = createHash('sha256')
+  for (const file of files) {
+    hash.update(`${file}\0`)
+    hash.update(await readFile(join(folder, ...file.split('/'))))
+    hash.update('\0')
+  }
+  return {
+    sha256: hash.digest('hex'),
+    write: async (staging) => {
+      for (const file of files) {
+        const target = join(staging, ...file.split('/'))
+        await mkdir(dirname(target), { recursive: true })
+        await copyFile(join(folder, ...file.split('/')), target, constants.COPYFILE_EXCL)
+      }
+      return files
+    },
+  }
 }
 
 async function readText(path: string): Promise<string | undefined> {
@@ -599,22 +638,27 @@ export class GameAddonManager {
 
   /**
    * Download a Godot add-on's archive and unpack its folder into a new staging folder of the project, with its license
-   * file and the files of its overlay folders.
+   * file and the files of its overlay folders; an add-on without an archive is its overlay folders' files alone.
    * @returns the staged folder; on failure nothing of it is left.
    */
   private async stage(projectDir: string, addon: GameAddon, signal: AbortSignal): Promise<StagedAddon> {
     const godot = addon.godot as NonNullable<GameAddon['godot']>
-    const archive = addon.archive as NonNullable<GameAddon['archive']>
-    const archivePath = await cachedArchive(archive, this.options.downloads, signal)
+    const archive = addon.archive
+    const archivePath = archive === undefined ? undefined : await cachedArchive(archive, this.options.downloads, signal)
     const staging = await stagingFolder(projectDir)
     const folder = join(staging.dir, godot.addonDir)
     try {
-      const files = await unpackFolder(archivePath, archive.root, folder, signal)
-      const licenseText = await this.licenseText(addon, archivePath, folder, files)
-      const rootPrefix = archive.root === '' ? '' : `${archive.root}/`
-      const licenseOutside = archive.license !== undefined && !archive.license.startsWith(rootPrefix)
-      if (licenseOutside && licenseText !== undefined && !files.some(file => LICENSE_NAMES.test(file))) {
-        await writeFile(join(folder, 'LICENSE'), licenseText, { flag: 'wx' })
+      let licenseText = standardLicenseText(addon.license, addon.copyright)
+      if (archive === undefined || archivePath === undefined) {
+        await mkdir(folder, { recursive: true })
+      } else {
+        const files = await unpackFolder(archivePath, archive.root, folder, signal)
+        licenseText = await this.licenseText(addon, archivePath, folder, files)
+        const rootPrefix = archive.root === '' ? '' : `${archive.root}/`
+        const licenseOutside = archive.license !== undefined && !archive.license.startsWith(rootPrefix)
+        if (licenseOutside && licenseText !== undefined && !files.some(file => LICENSE_NAMES.test(file))) {
+          await writeFile(join(folder, 'LICENSE'), licenseText, { flag: 'wx' })
+        }
       }
       for (const overlay of godot.overlay ?? []) await this.addOverlay(addon, overlay, folder, signal)
       signal.throwIfAborted()
@@ -657,7 +701,6 @@ export class GameAddonManager {
     }
     if (staged === undefined) return undefined
     const godot = addon.godot as NonNullable<GameAddon['godot']>
-    const archive = addon.archive as NonNullable<GameAddon['archive']>
     const folderPath = addonFolder(addon)
     const installed: InstalledGameAddon = {
       id: addon.id,
@@ -665,8 +708,7 @@ export class GameAddonManager {
       host: addon.host,
       version: addon.version,
       license: addon.license,
-      source: archive.url,
-      sha256: archive.sha256,
+      ...addon.archive === undefined ? {} : { source: addon.archive.url, sha256: addon.archive.sha256 },
       paths: [folderPath],
       installedAt: this.options.now().toISOString(),
     }
@@ -714,14 +756,20 @@ export class GameAddonManager {
     this.checkConflicts(addon, await this.presence(projectDir))
     await this.writeStoreIndex()
     if (addon.archive !== undefined) {
-      await this.storeFolder(join(this.options.blenderStore, blender.module), addon, addon.archive, (files) => {
+      const archive = addon.archive
+      await this.storeFolder(join(this.options.blenderStore, blender.module), addon, this.archiveSource(archive, signal), (files) => {
         if (!files.includes('blender_manifest.toml') && !files.includes('__init__.py')) {
-          const root = addon.archive?.root === '' ? 'its root' : addon.archive?.root ?? ''
+          const root = archive.root === '' ? 'its root' : archive.root
           throw new GameAddonError(`The archive of ${addon.title} has neither blender_manifest.toml nor __init__.py under ${root}.`)
         }
       }, signal)
+    } else if (blender.files !== undefined) {
+      const source = await catalogFilesSource(join(this.catalog.dir, ...blender.files.split('/')))
+      await this.storeFolder(join(this.options.blenderStore, blender.module), addon, source, () => undefined, signal)
     }
-    if (addon.assets !== undefined) await this.storeFolder(this.assetsFolder(addon), addon, addon.assets, () => undefined, signal)
+    if (addon.assets !== undefined) {
+      await this.storeFolder(this.assetsFolder(addon), addon, this.archiveSource(addon.assets, signal), () => undefined, signal)
+    }
     const installed: InstalledGameAddon = {
       id: addon.id,
       title: addon.title,
@@ -865,14 +913,33 @@ export class GameAddonManager {
     await writeFileAtomic(join(this.options.blenderStore, STORE_INDEX), `${JSON.stringify({ format: 1, addons }, null, 2)}\n`, { mode: 0o644 })
   }
 
+  /** An archive as the source of a store folder: it downloads only when the folder does not hold it yet. */
+  private archiveSource(
+    archive: { readonly url: string; readonly sha256: string; readonly bytes: number; readonly root: string },
+    signal: AbortSignal,
+  ): StoreSource {
+    let archivePath: string | undefined
+    return {
+      sha256: archive.sha256,
+      write: async (staging) => {
+        archivePath = await cachedArchive(archive, this.options.downloads, signal)
+        return await unpackFolder(archivePath, archive.root, staging, signal)
+      },
+      placed: async () => {
+        if (archivePath !== undefined) await rm(archivePath, { force: true })
+      },
+    }
+  }
+
   /**
-   * Unpack an archive into a shared folder once per archive, under that folder's lock: a marker names the archive the
-   * folder came from, a matching marker skips the work, and the cached archive is removed once the folder holds it.
+   * Fill a shared folder from its source once per content, under that folder's lock: a marker names the SHA-256 of
+   * what the folder came from, a matching marker skips the work, and the source's `placed` step runs once the folder
+   * holds it.
    */
   private async storeFolder(
     target: string,
     addon: GameAddon,
-    archive: { readonly url: string; readonly sha256: string; readonly bytes: number; readonly root: string },
+    source: StoreSource,
     check: (files: readonly string[]) => void,
     signal: AbortSignal,
   ): Promise<void> {
@@ -880,15 +947,15 @@ export class GameAddonManager {
     await mkdir(parent, { recursive: true })
     await withFileLock(target, async () => {
       const marker = await readText(join(target, STORE_MARKER))
-      if (marker !== undefined && (JSON.parse(marker) as { sha256?: unknown }).sha256 === archive.sha256) return
-      const archivePath = await cachedArchive(archive, this.options.downloads, signal)
+      if (marker !== undefined && (JSON.parse(marker) as { sha256?: unknown }).sha256 === source.sha256) return
       const staging = join(parent, `.staging-${randomUUID()}`)
       const trash = join(parent, `.trash-${randomUUID()}`)
       let movedOld = false
       let placed = false
       try {
-        check(await unpackFolder(archivePath, archive.root, staging, signal))
-        await writeFile(join(staging, STORE_MARKER), `${JSON.stringify({ id: addon.id, version: addon.version, sha256: archive.sha256 })}\n`, { flag: 'wx' })
+        check(await source.write(staging))
+        signal.throwIfAborted()
+        await writeFile(join(staging, STORE_MARKER), `${JSON.stringify({ id: addon.id, version: addon.version, sha256: source.sha256 })}\n`, { flag: 'wx' })
         if (await exists(target)) {
           await rename(target, trash)
           movedOld = true
@@ -903,7 +970,7 @@ export class GameAddonManager {
         await rm(staging, { recursive: true, force: true })
         if (!movedOld || placed) await rm(trash, { recursive: true, force: true })
       }
-      await rm(archivePath, { force: true })
+      await source.placed?.()
     }, { signal, waitMs: 120_000 })
   }
 

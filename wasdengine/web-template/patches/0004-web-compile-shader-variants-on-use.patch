@@ -1,0 +1,21 @@
+diff --git a/drivers/gles3/shader_gles3.cpp b/drivers/gles3/shader_gles3.cpp
+index 4fe333e..b745fa3 100644
+--- a/drivers/gles3/shader_gles3.cpp
++++ b/drivers/gles3/shader_gles3.cpp
+@@ -709,10 +709,16 @@ void ShaderGLES3::_initialize_version(Version *p_version) {
+ 	p_version->variants.reserve(variant_count);
+ 	for (int i = 0; i < variant_count; i++) {
+ 		p_version->variants.push_back(AHashMap<uint64_t, Version::Specialization>());
++#ifndef WEB_ENABLED
+ 		Version::Specialization spec;
+ 		_compile_specialization(spec, i, p_version, specialization_default_mask);
+ 		p_version->variants[i].insert(specialization_default_mask, spec);
++#endif
+ 	}
++	// On the Web, which has no shader cache to fill, each specialization compiles when a draw first binds it
++	// (_version_bind_shader()). Compiling every variant with the default specializations here would block the
++	// main thread on programs that draws rarely use: scene draws set specializations for their lights, shadows,
++	// and fog, so a material's four default programs go unused.
+ 	if (use_cache) {
+ 		_save_to_cache(p_version);
+ 	}

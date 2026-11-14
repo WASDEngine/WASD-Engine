@@ -24,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
-import { exportDesktop, exportServer, exportWeb } from './export.ts'
+import { exportDesktop, exportServer, exportWeb, WEB_EXPORT_ENTRY } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
@@ -42,10 +42,11 @@ import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRe
 import { ProcessSlots } from './slots.ts'
 import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
 import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
+import { checkWebBuild, GodotWebCheckError, WEB_CHECK_UNAVAILABLE } from './web-check.ts'
 import type {
   GodotControlRequest, GodotDesktopExport, GodotDesktopExportRequest, GodotDesktopPlatform, GodotFollowItem, GodotInputEvent,
   GodotInstancesReport, GodotInstancesRequest, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView, GodotServerExport,
-  GodotServerExportRequest, GodotViewItem, GodotWebExport, GodotWebExportRequest,
+  GodotServerExportRequest, GodotViewItem, GodotWebCheck, GodotWebCheckRequest, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
 import { ExportTemplateManager } from './export-template.ts'
 
@@ -54,6 +55,8 @@ export { GodotExportError, SERVER_EXPORT_BINARY, SERVER_EXPORT_PRESET, WEB_EXPOR
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './export-template.ts'
+export { formatWebCheck, GodotWebCheckError } from './web-check.ts'
+export type { GodotWebCheckView } from './web-check.ts'
 export { GodotScriptError } from './script.ts'
 export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
 export type { GodotScriptRequest } from './tools.ts'
@@ -125,8 +128,9 @@ export interface Config {
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
-   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
-   * Web template with HTTP range requests.
+   * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
+   * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD
+   * Engine's build of the template (`wasdengine/web-template/BUILD.md`).
    */
   webTemplateArchiveUrl: string
   /** Path of the single-threaded Web release template inside that archive. */
@@ -176,6 +180,17 @@ export interface Config {
    * rounded down, run in one group; 0 leaves processors out of the limit.
    */
   instanceCores: number
+  /**
+   * Command line that starts the browser of Web checks, without its argument: the Desktop app's executable, and the
+   * application folder when Electron runs it from one. Empty, as outside the Desktop app, turns Web checks off.
+   */
+  webCheckCommand: string[]
+  /** Seconds a Web check watches the game once it draws frames steadily. */
+  webCheckSeconds: number
+  /** Milliseconds a Web check waits, from opening the page, for the game to start and draw frames steadily. */
+  webCheckStartTimeoutMs: number
+  /** Deadline of one Web check, its browser's start and the game's loading included, in milliseconds. */
+  webCheckTimeoutMs: number
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -206,10 +221,12 @@ function godotRelease(config: Pick<Config, 'runtimeVersion' | 'libgodotPath'>): 
 function godotPrompt(release: string | undefined): string {
   const builtIn = release === undefined
     ? 'Godot is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. '
-      + 'Do not look for one or download one. For a new game, first write project.godot, a main scene, and its scripts.'
+      + 'Do not look for one or download one. For a new game, first write project.godot, whose [physics] section sets '
+      + '3d/physics_engine="Jolt Physics", a main scene, and its scripts.'
     : `Godot ${release} is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. `
       + `Do not look for one or download one. Write code for Godot ${release}. For a new game, first write project.godot, whose `
-      + `config/features starts with "${release}", a main scene, and its scripts.`
+      + `config/features starts with "${release}" and whose [physics] section sets 3d/physics_engine="Jolt Physics", a main scene, `
+      + 'and its scripts.'
   return `# Godot games
 
 ${builtIn}
@@ -219,7 +236,9 @@ Test a Godot project with the godot_* tools:
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
-The user can watch and play the running game in the Game panel.`
+The user can watch and play the running game in the Game panel.
+
+Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses. Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere; run a game on another renderer with godot_run web: true to see it as players will. A Web export ends with a Web check of the build in a browser: fix the freezes and errors it reports.`
 }
 
 /** A Godot runtime does not resolve. */
@@ -333,9 +352,9 @@ export default class GodotController extends TypertRemoteService {
     hiddenFps: z.number().step(1).min(0).max(60).default(10),
     hiddenDelayMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(30_000),
     agentRunsMuted: z.boolean().default(true),
-    webTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    webTemplateArchiveUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz'),
     webTemplateEntry: z.string().default('templates/web_nothreads_release.zip'),
-    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d3ee2f08cef0cf3cf6678a6355a92a8db48ccdd35cbd2e8bfd5f0e8a0b4032a0'),
+    webTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('13e81eb1c0ca444d12280152cfa85e983bf3d15595d2b3ce306371a5bbe6d05a'),
     webTemplatePath: z.string().default(''),
     windowsTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
     windowsTemplateEntry: z.string().default('templates/windows_release_x86_64.exe'),
@@ -353,6 +372,10 @@ export default class GodotController extends TypertRemoteService {
     maxInstances: z.number().step(1).min(1).default(4),
     instanceMemoryBytes: z.number().step(1).min(0).default(2 * 1024 ** 3),
     instanceCores: z.number().step(1).min(0).default(1),
+    webCheckCommand: z.array(z.string().min(1)).default([]),
+    webCheckSeconds: z.number().min(1).max(600).default(20),
+    webCheckStartTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(180_000),
+    webCheckTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(300_000),
   })
 
   private readonly sequence = new LogSequence()
@@ -586,6 +609,37 @@ export default class GodotController extends TypertRemoteService {
         outputBytes: this.config.processOutputBytes,
         signal,
       }), signal)
+    })
+  }
+
+  /**
+   * Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that
+   * `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and
+   * report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed,
+   * and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For
+   * other plugins on the Host; the Game tab does not call it.
+   * @param request - the export folder and its page.
+   * @param signal - cancellation; it stops the browser.
+   * @returns what the check saw.
+   * @throws {GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.
+   */
+  async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck> {
+    if (this.config.webCheckCommand.length === 0) throw new GodotWebCheckError(WEB_CHECK_UNAVAILABLE)
+    return await this.headless.run(signal, async () => {
+      this.requireMemory('a Web check')
+      return await checkWebBuild({
+        subprocess: this.ctx.subprocess,
+        command: this.config.webCheckCommand,
+        outputDir: request.outputDir,
+        entry: request.entry ?? WEB_EXPORT_ENTRY,
+        seconds: this.config.webCheckSeconds,
+        startTimeoutMs: this.config.webCheckStartTimeoutMs,
+        timeoutMs: this.config.webCheckTimeoutMs,
+        graceMs: this.config.stopGraceMs,
+        outputBytes: this.config.processOutputBytes,
+        signal,
+      })
     })
   }
 
@@ -874,6 +928,7 @@ export default class GodotController extends TypertRemoteService {
       ...scene === undefined ? {} : { scene },
       ...size === undefined ? {} : { size },
       muted: request.muted,
+      web: request.web === true,
       runtime,
       windowless: this.runtime.windowless(),
       harnessPath: harness,

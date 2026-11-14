@@ -129,6 +129,7 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
     startedBy: 'agent',
     project: { dir: project, name: 'Fake game', mainScene: 'res://main.tscn' },
     muted: true,
+    web: false,
     runtime: { kind: 'libgodot', runner: fakeGodot, library: `${fakeGodot}-libgodot` },
     windowless: false,
     harnessPath: join(project, 'harness.gd'),

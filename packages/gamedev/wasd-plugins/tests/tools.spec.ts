@@ -8,8 +8,27 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type ReleaseModel, type WasdToolHost } from '../src/tools.ts'
 import type { WasdDesktopPlatform, WasdDownloadStatus } from '../src/types.ts'
+import type { GodotWebCheck } from '@deepseek-ai/dsh-godot'
 
 const LENGTHS = { seconds: 4, maxSeconds: 10 }
+
+/** A release without desktop builds. */
+const RELEASED = {
+  title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
+  totalBytes: 50 * 1024 * 1024, warnings: ['Note one.'], visibility: 'public', downloads: [],
+} as const
+
+/** A Web check that froze and printed errors. */
+const WEB_CHECK: GodotWebCheck = {
+  seconds: 20, started: true, startSeconds: 3.4, readySeconds: 52.3, longestFreezeSeconds: 30.2, freezes: 4, fps: 30, slowestFrameMs: 917,
+  drawCalls: { median: 2915, max: 5193 }, programs: 226,
+  messages: [
+    { level: 'error', text: 'ERROR: Too many instances using shader instance variables.', count: 72 },
+    { level: 'warning', text: 'WARNING: The Compatibility renderer does not support manually emitting particles.', count: 1 },
+  ],
+  moreMessages: 2,
+  findings: ['The page froze for up to 30.2 s at a time.', 'Particles emitted with emit_particle() never appear.'],
+}
 
 function host(
   preview: Partial<RecordedPreview> = {}, scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>> = {},
@@ -24,6 +43,11 @@ function host(
     exportWeb: (projectDir) => {
       calls.push(['export', projectDir])
       return Promise.resolve({ projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024, warnings: [] })
+    },
+    checkWeb: (outputDir) => {
+      calls.push(['check', outputDir])
+      if (outputDir.startsWith('/work/broken/')) return Promise.reject(new Error('The Web check\'s browser ended (exit code 1) without a result.'))
+      return Promise.resolve(WEB_CHECK)
     },
     exportDesktop: (projectDir, platforms) => {
       calls.push(['desktop', projectDir, platforms])
@@ -95,6 +119,23 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('- Note one.')
     expect(stub.models).toEqual([{ kind: 'session' }])
     expect(release.parameters).not.toHaveProperty('properties.model')
+  })
+
+  it('passes check on and renders the release\'s Web check, or why it could not run', async () => {
+    const checked = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheck: WEB_CHECK }) }
+    const release = wasdToolDefinitions(checked, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    const text = textOf(release.output.render({}, await release.execute({}, exec) as JsonValue))
+    expect(text).toContain('Share link: https://site.test/games/neon\n')
+    expect(text).toContain('\nWeb check: a browser opened the build, Godot started the game after 3.4 s,')
+    expect(text).toContain('\n- Particles emitted with emit_particle() never appear.\nNotes:\n- Note one.')
+    const failing = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheckError: 'The Web check runs in the WASD Engine Desktop app.' }) }
+    const failed = wasdToolDefinitions(failing, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    expect(textOf(failed.output.render({}, await failed.execute({}, exec) as JsonValue)))
+      .toContain('Web check: it could not run: The Web check runs in the WASD Engine Desktop app.')
+    const stub = host()
+    const skipping = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    await skipping.execute({ check: false }, exec)
+    expect(stub.calls).toEqual([['release', { projectDir: '/work/game', check: false }]])
   })
 
   it('credits the model a connected agent names, cleaned, and no model when it names none', async () => {
@@ -170,13 +211,34 @@ describe('wasdToolDefinitions', () => {
     await expect(exporter.execute({ platforms: [] }, exec)).rejects.toThrow('platforms must name at least one')
   })
 
-  it('exports the nearest project and names the folder to serve', async () => {
+  it('exports the nearest project, names the folder to serve, and reports the Web check', async () => {
     const stub = host()
     const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
     const value = await exporter.execute({}, exec) as JsonValue
-    expect(stub.calls).toEqual([['export', '/work/game']])
+    expect(stub.calls).toEqual([['export', '/work/game'], ['check', '/work/game/.wasdengine/web']])
     const text = textOf(exporter.output.render({}, value))
-    expect(text).toContain('Exported /work/game for the Web into /work/game/.wasdengine/web: index.html (2.0 MB).')
+    expect(text).toBe([
+      'Exported /work/game for the Web into /work/game/.wasdengine/web: index.html (2.0 MB). Open index.html through a web server, not from the file system.',
+      'Web check: a browser opened the build, Godot started the game after 3.4 s, it drew frames steadily from 52.3 s on, and the check watched it run for 20 s without input: longest freeze 30.2 s (4 of a second or more); 30 fps, slowest frame 917 ms; 2915 draw calls per frame (median, up to 5193); 226 shader programs.',
+      'Errors and warnings the build printed:',
+      '- ERROR: Too many instances using shader instance variables. (72 times)',
+      '- WARNING: The Compatibility renderer does not support manually emitting particles.',
+      '- … and 2 more.',
+      'Findings:',
+      '- The page froze for up to 30.2 s at a time.',
+      '- Particles emitted with emit_particle() never appear.',
+    ].join('\n'))
+  })
+
+  it('skips the Web check on request, and reports a check that could not run without failing the export', async () => {
+    const stub = host()
+    const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
+    const skipped = await exporter.execute({ check: false }, exec) as JsonValue
+    expect(stub.calls).toEqual([['export', '/work/game']])
+    expect(textOf(exporter.output.render({}, skipped))).not.toContain('Web check')
+    const failed = await exporter.execute({ project: 'broken' }, exec) as JsonValue
+    expect(failed).toMatchObject({ webCheckError: 'The Web check\'s browser ended (exit code 1) without a result.' })
+    expect(textOf(exporter.output.render({}, failed))).toContain('Web check: it could not run: The Web check\'s browser ended (exit code 1) without a result.')
   })
 
   it('records the preview with its input, within the configured lengths, and shows the still the model receives', async () => {

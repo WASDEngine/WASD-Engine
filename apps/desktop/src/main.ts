@@ -70,6 +70,7 @@ import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
 import { registerWasdengineLinks, WasdLinkInbox } from './wasdengine-links.ts'
 import { WASD_LINKS_IPC } from './wasdengine-links-names.ts'
+import { runWebCheckMode, webCheckCommand, webCheckRequest } from './wasdengine-web-check.ts'
 import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
 import { WasdengineUpdateSpace } from './wasdengine-update-space.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
@@ -544,7 +545,11 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, {
+        ...hostEnvironment,
+        DSH_CLIENT_VERSION: desktopClientVersion(),
+        WASD_WEB_CHECK_COMMAND: JSON.stringify(webCheckCommand(process.execPath, app.getAppPath(), process.defaultApp)),
+      }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
@@ -1627,11 +1632,16 @@ async function main(): Promise<void> {
   publishUpdate(updateState)
 }
 
+// WASD Engine: `--wasd-web-check=` starts the Godot plugin's Web check instead of the Desktop app.
+const webCheck = webCheckRequest(process.argv)
+if (webCheck !== undefined) runWebCheckMode(app, BrowserWindow, webCheck)
+
 /** WASD Engine: game links (`wasdengine://games/<slug>`) wait here until the application page takes them. */
 const wasdLinks = new WasdLinkInbox(WASDENGINE_DESKTOP_BRAND.urlScheme)
 
-// Electron hands the owner a later launch's command line, where Windows puts the game link that launch was for.
-const ownsDesktopInstance = claimDesktopSingleInstance(app, (...launch: unknown[]) => {
+// Electron hands the owner a later launch's command line, where Windows puts the game link that launch was for. A Web
+// check neither claims the app nor takes links.
+const ownsDesktopInstance = webCheck === undefined && claimDesktopSingleInstance(app, (...launch: unknown[]) => {
   wasdLinks.deliverArguments(Array.isArray(launch[1]) ? launch[1] : undefined)
   focusPrimaryWindow()
 })

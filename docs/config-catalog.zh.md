@@ -1914,7 +1914,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:63`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:66`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1983,8 +1983,9 @@ export interface Config {
   /** Whether games the agent starts run without audio unless the call says otherwise. */
   agentRunsMuted: boolean
   /**
-   * Godot export templates archive (`.tpz`) of the runtime's Godot version, from which a Web export downloads only the
-   * Web template with HTTP range requests.
+   * Export templates archive (`.tpz`) that holds the single-threaded Web release template of the runtime's Godot
+   * version, from which a Web export downloads only that template with HTTP range requests; the default holds WASD
+   * Engine's build of the template (`wasdengine/web-template/BUILD.md`).
    */
   webTemplateArchiveUrl: string
   /** Path of the single-threaded Web release template inside that archive. */
@@ -2034,6 +2035,17 @@ export interface Config {
    * rounded down, run in one group; 0 leaves processors out of the limit.
    */
   instanceCores: number
+  /**
+   * Command line that starts the browser of Web checks, without its argument: the Desktop app's executable, and the
+   * application folder when Electron runs it from one. Empty, as outside the Desktop app, turns Web checks off.
+   */
+  webCheckCommand: string[]
+  /** Seconds a Web check watches the game once it draws frames steadily. */
+  webCheckSeconds: number
+  /** Milliseconds a Web check waits, from opening the page, for the game to start and draw frames steadily. */
+  webCheckStartTimeoutMs: number
+  /** Deadline of one Web check, its browser's start and the game's loading included, in milliseconds. */
+  webCheckTimeoutMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
