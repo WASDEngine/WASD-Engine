@@ -7,6 +7,7 @@ import type {
   AskUserQuestionAnswer, AskUserQuestionAnswerItem, AskUserQuestionItem, UserQuestionState,
 } from '@deepseek-ai/dsh-user-questions/types'
 import type { createQuestionDraftStore } from '../draft-store.ts'
+import type { QuestionImageDrafts, QuestionImageIntake } from '../question-images.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-session/client' {
   interface SessionPendingInteractionMap {
@@ -570,5 +571,10 @@ export type QuestionComposerProps =
   & PropsStore<ReturnType<typeof createQuestionDraftStore>>
   & PropsRenderSlots<'conversation.plan-review.actions'>
   & InjectFace<{ keyedHooks: { questionCard: (key: string) => PendingQuestion | undefined } }>
+  // Answer images: optional, so a card without them renders the plain question flow.
+  & Partial<InjectFace<{
+    keyedHooks: { questionImages: (key: string) => QuestionImageDrafts | undefined }
+    questionImageIntake: QuestionImageIntake
+  }>>
   & { matched: QuestionWait }
   & PropsLocale<'question'>

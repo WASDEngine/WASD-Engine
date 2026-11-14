@@ -71,7 +71,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 |---|---|---|
 | `search_game_tools` | This package | Lists the plugins with their readiness and tool counts, and the tools: every tool's first sentence without a query, or the best matches with their parameters for a query; `plugin` limits the search |
 | `call_game_tool` | This package | Calls a tool by `name` with `arguments`, for an agent whose tool list lacks it |
-| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's twelve Godot tools, each with an absolute `project` parameter |
+| `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's fourteen Godot tools, each with an absolute `project` parameter |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_blender` server's tools, renamed from `mcp__wasd_blender__<tool>` |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |
 | `supercollider_*` | [`@deepseek-ai/dsh-supercollider`](../supercollider/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_supercollider` server's tools, renamed from `mcp__wasd_supercollider__<tool>` |
@@ -164,7 +164,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, and every 
 
 #### Token effect
 
-With all eleven providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the game add-ons, and WASD Engine Plugins, the instructions come to about 28,800 characters, about 7,300 of them the game add-ons catalog, and the 83 tool declarations to about 89,800 characters of JSON; the agent's harness decides how much of them enters its requests.
+With all thirteen providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the art references, the feedback tool, the game add-ons, and WASD Engine Plugins, the instructions come to about 31,100 characters, about 7,300 of them the game add-ons catalog, and the 88 tool declarations to about 101,200 characters of JSON; the agent's harness decides how much of them enters its requests.
 
 #### KV Cache effect
 
@@ -174,7 +174,7 @@ The list and the instructions are identical while the providers and their tools 
 
 #### What the model sees
 
-A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the asset tools' pictures, the audio review's waveform and spectrogram picture, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+A provider tool's result is its rendered text and, for Godot screenshots, Poly Haven previews, the asset tools' pictures, the audio review's waveform and spectrogram picture, the reference tools' contact sheets and saved references, and the images that the Blender, GIMP, and SuperCollider servers send, its images. A failure becomes an error result with the error's message, such as `Pass project: the absolute path of the folder that holds project.godot.`. `search_game_tools` returns the plugin lines and the tool list as text. While WASD Engine is signed out, every call returns the error result `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token effect
 

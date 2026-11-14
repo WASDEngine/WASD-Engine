@@ -110,7 +110,7 @@ WASD Engine API 按 Google 为 Nano Banana 2.1 定的 API 价格，根据 Google
 
 #### 模型可见内容
 
-会话的 agent 看到 `image_generate`，参数为 `prompt`、`path`，以及可选的 `images`、`aspect_ratio`、`size` 和 `replace`。说明写明了模型，列出它能制作的游戏美术、界面美术和贴图，说明可以传入图像来编辑，或让角色、物体或风格保持一致，说明 Nano Banana 不生成透明背景以及如何用 GIMP 得到透明背景，如何请求贴图并用 GIMP 处理成无缝，要用 `asset_view` 查看每个结果，以及每张图像都会消耗用户 WASD Engine 套餐的 AI 用量，2K 和 4K 更多。连接的 agent 看到同样的工具，其中 `path` 和 `images` 被描述为绝对路径，提供方说明位于 `## Nano Banana` 下。
+会话的 agent 看到 `image_generate`，参数为 `prompt`、`path`，以及可选的 `images`、`aspect_ratio`、`size` 和 `replace`。说明写明了模型，列出它能制作的游戏美术、界面美术和贴图，说明可以传入图像作为参考、用来编辑，或让角色、物体或风格保持一致，并说明要从每张图像中取什么，说明 Nano Banana 不生成透明背景以及如何用 GIMP 得到透明背景，如何请求贴图并用 GIMP 处理成无缝，要用 `asset_view` 查看每个结果，以及每张图像都会消耗用户 WASD Engine 套餐的 AI 用量，2K 和 4K 更多。连接的 agent 看到同样的工具，其中 `path` 和 `images` 被描述为绝对路径，提供方说明位于 `## Nano Banana` 下。
 
 #### Token 影响
 

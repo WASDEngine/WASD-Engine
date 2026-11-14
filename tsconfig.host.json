@@ -596,6 +596,7 @@
     { "path": "./packages/gamedev/polyhaven" },
     { "path": "./packages/gamedev/elevenlabs" },
     { "path": "./packages/gamedev/image-generation" },
+    { "path": "./packages/gamedev/art-references" },
     { "path": "./packages/gamedev/agent-feedback" },
     { "path": "./packages/gamedev/wasd-plugins/tsconfig.host.json" },
     { "path": "./packages/gamedev/game-addons/tsconfig.host.json" },
