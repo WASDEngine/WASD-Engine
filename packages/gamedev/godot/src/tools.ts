@@ -7,21 +7,31 @@
  * MCP server, whose screenshots travel as image bytes.
  * @module @deepseek-ai/dsh-godot/src/tools
  */
+import { Buffer } from 'node:buffer'
+import { stat } from 'node:fs/promises'
+import { extname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import type { AttachmentId, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { analyzeAudio, describeAudioImage, drawAudioImage, type AudioSamples } from '@deepseek-ai/dsh-game-audio/audio'
+import { encodePng } from '@deepseek-ai/dsh-game-audio/png'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { applyMasterVolume, AUDIO_PROPERTIES, describeAudio, encodeWav, summarizeAudio } from './audio.ts'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
-import { fixedFps, GODOT_ENGINE_OPTIONS } from './launch.ts'
+import { fixedFps, GODOT_ENGINE_OPTIONS, MAX_FIXED_FPS } from './launch.ts'
 import { MAX_VIDEO_SECONDS } from './video.ts'
 import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
 import { MAX_INPUT_EVENTS, type GodotRun, type ScreenshotRegion, type ViewParams } from './run.ts'
-import { DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_SECONDS, type GodotScriptReport } from './script.ts'
+import {
+  DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_CALL_SECONDS, MAX_SCRIPT_RUNS, MAX_SCRIPT_SECONDS, OUTPUT_DIR_VARIABLE,
+  type EngineIssue, type GodotScriptReport, type GodotScriptRunsReport, type ScriptRunResult,
+} from './script.ts'
 import type { GodotSession, GodotSessions } from './runs.ts'
 import type { GodotInputEvent, GodotLogEntry, GodotLogLevel, GodotRunRequest } from './types.ts'
 
@@ -59,6 +69,9 @@ const VIEW_SIZE = { width: 1280, height: 720, max: 4096 } as const
 /** Default, shortest, and longest real seconds that `godot_performance` measures. */
 const PERFORMANCE_SECONDS = { default: 2, min: 0.25, max: 20 } as const
 
+/** Default, shortest, and longest seconds of audio that `godot_audio` captures. */
+export const AUDIO_SECONDS = { default: 3, min: 0.25, max: 30 } as const
+
 const LEVELS = ['stdout', 'stderr', 'warning', 'error', 'script_error', 'shader_error'] as const
 
 /** What the tools need from the plugin. */
@@ -95,11 +108,20 @@ export interface GodotToolHost {
   /**
    * Run a GDScript that extends `SceneTree` or `MainLoop` against the project headless, without running the game.
    * @param agent - calling Session.
-   * @param request - project, script, user arguments, and time limit as the model gave them.
+   * @param request - project, script, user arguments, runs, fixed frame rate, and time limit as the model gave them.
    * @param signal - cancellation.
-   * @returns the exit code, the end of the output, and the engine errors.
+   * @returns for a request without runs, the exit code, the end of the output, the engine errors, and the files the
+   *   script wrote; with runs, how each run ended.
    */
-  script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport>
+  script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport | GodotScriptRunsReport>
+  /**
+   * Resolve a file path as the model gave it: absolute, or relative to the Session's working directory.
+   * @param agent - calling Session.
+   * @param path - the path.
+   * @param signal - cancellation.
+   * @returns the absolute path.
+   */
+  resolvePath(agent: Agent, path: string, signal: AbortSignal): Promise<string>
 }
 
 /** A recording as `godot_record` asks for it, its events already in window pixels. */
@@ -155,8 +177,22 @@ export interface GodotScriptRequest {
   readonly script: string
   /** User arguments after `--`. */
   readonly args?: readonly string[]
-  /** Time limit in seconds. */
+  /** Time limit of each run in seconds. */
   readonly timeoutSeconds?: number
+  /** Runs at once, each with its own arguments after `args` and an optional name; one run with `args` when omitted. */
+  readonly runs?: readonly GodotScriptRunRequest[]
+  /** Frame rate that `--fixed-fps` fixes; real time when omitted. */
+  readonly fixedFps?: number
+  /** Whether each run runs while no other script run, script check, or export of the Host runs. */
+  readonly exclusive?: boolean
+}
+
+/** One run of a script request as the model asked for it. */
+export interface GodotScriptRunRequest {
+  /** User arguments after the request's own `args`. */
+  readonly args?: readonly string[]
+  /** Name of the run in its folder's name and the report. */
+  readonly name?: string
 }
 
 /** A required string field. */
@@ -281,6 +317,8 @@ export interface GodotToolWording {
   readonly scriptPath: string
   /** The `godot_logs` description's sentence about reading without `since`. */
   readonly logsDefault: string
+  /** How the `godot_audio` description names the file path it accepts. */
+  readonly audioPath: string
 }
 
 /** The callers that one set of Godot tool definitions serves. */
@@ -294,6 +332,14 @@ export interface GodotToolSurface {
    * @throws when the caller cannot receive screenshots.
    */
   screenshots(exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker>
+  /**
+   * Resolve where a call's pictures go, such as an audio capture's waveform, which a result can do without.
+   * @param exec - the tool call.
+   * @param agent - calling Session.
+   * @returns what stores the call's pictures, or undefined when the callers receive no images, so that the result keeps
+   * to text.
+   */
+  pictures(exec: ToolRunContext, agent: Agent): Promise<Pick<ScreenshotTaker, 'store'> | undefined>
   /** Description text for these callers. */
   readonly wording: GodotToolWording
 }
@@ -304,6 +350,7 @@ export const SESSION_WORDING: GodotToolWording = {
   checkPaths: 'files or folders, as res:// paths or relative to the working directory',
   scriptPath: 'a res:// path or a path relative to the working directory',
   logsDefault: 'Without since, returns the entries after the ones this Session last read.',
+  audioPath: 'a path relative to the working directory, or absolute',
 }
 
 /** A log entry as tools report it. */
@@ -502,6 +549,19 @@ async function invoke<T extends object>(
 }
 
 /**
+ * Store an image of a tool call as an attachment of the Session.
+ * @param attachments - the Session's attachment store.
+ * @param made - the image.
+ * @param signal - cancellation.
+ * @returns the attachment reference.
+ */
+async function storeImage(attachments: AttachmentStore, made: MadeImage, signal: AbortSignal): Promise<ImageValue> {
+  const [image] = await attachments.saveImages([{ data: made.data, mediaType: made.mediaType, name: made.name }]) as [ImageAttachmentRef]
+  signal.throwIfAborted()
+  return image
+}
+
+/**
  * The screenshots of the Session's own tools: each image becomes an attachment that the Session's model receives,
  * measured as that model sees it.
  * @param ctx - plugin context with the optional attachment and model services.
@@ -536,12 +596,7 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
           image,
         }
       },
-      async store(made, signal) {
-        const saved = await attachments.saveImages([{ data: made.data, mediaType: made.mediaType, name: made.name }])
-        const [image] = saved as [ImageAttachmentRef]
-        signal.throwIfAborted()
-        return image
-      },
+      store: (made, signal) => storeImage(attachments, made, signal),
       fit: (width, height) => ({ width, height }),
     }
   }
@@ -565,6 +620,24 @@ export function regionFields(meta: {
 } {
   if (meta.x === undefined || meta.y === undefined || meta.regionWidth === undefined || meta.regionHeight === undefined) return {}
   return { x: meta.x, y: meta.y, regionWidth: meta.regionWidth, regionHeight: meta.regionHeight }
+}
+
+/**
+ * The pictures of the Session's own tools, such as an audio capture's waveform: each becomes an attachment that the
+ * Session's model receives. A Session whose model does not accept images keeps none, so its results keep to text.
+ * @param ctx - plugin context with the optional attachment and model services.
+ * @returns the picture resolution of {@link GodotToolSurface}.
+ */
+export function sessionPictures(ctx: Context): GodotToolSurface['pictures'] {
+  return async (exec, agent) => {
+    const attachments = ctx.get('attachments')
+    const llm = ctx.get('llm')
+    const route = agent.model.current()
+    if (attachments === undefined || llm === undefined || route === undefined) return undefined
+    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
+    if (info.inputModalities?.includes('image') !== true) return undefined
+    return { store: (made, signal) => storeImage(attachments, made, signal) }
+  }
 }
 
 /**
@@ -610,6 +683,59 @@ async function screenshotAfter(
   } catch (error) {
     signal.throwIfAborted()
     return { screenshotError: (error as Error).message }
+  }
+}
+
+/**
+ * Refuse a path that holds a folder, or a file the call may not replace.
+ * @param path - absolute path.
+ * @param replace - whether a file may be replaced.
+ * @throws Error when the path is a folder, or a file and `replace` is false.
+ */
+async function refuseExisting(path: string, replace: boolean): Promise<void> {
+  let found
+  try {
+    found = await stat(path)
+  } catch (error) {
+    // Only a path that does not exist yet is free; any other failure stops the call.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  if (found.isDirectory()) throw new Error(`${path} is a folder; pass the path of a .wav file.`)
+  if (!replace) throw new Error(`${path} already exists; pass replace: true to overwrite it, or choose another path.`)
+}
+
+/**
+ * Capture the game's audio while an input sequence plays from the capture's start; input still running when the
+ * capture ends is cancelled, and the game releases what it held.
+ * @param run - running game.
+ * @param seconds - seconds of audio.
+ * @param events - input in window pixels.
+ * @param signal - cancellation of the call.
+ * @returns the capture.
+ * @throws the input sequence's failure, other than the cancellation that ends it with the capture.
+ */
+async function captureWithInput(
+  run: GodotRun, seconds: number, events: readonly GodotInputEvent[] | undefined, signal: AbortSignal,
+): ReturnType<GodotRun['audio']> {
+  const capture = run.audio(seconds, signal)
+  if (events === undefined || events.length === 0) return await capture
+  const input = new AbortController()
+  const cancelInput = (): void => { input.abort(signal.reason) }
+  signal.addEventListener('abort', cancelInput, { once: true })
+  let failure: { readonly error: unknown } | undefined
+  const played = run.input(events, input.signal).then(() => {}, (error: unknown) => {
+    // The capture cancels the input it outlasts; any other failure fails the call.
+    if (!input.signal.aborted) failure = { error }
+  })
+  try {
+    const captured = await capture
+    if (failure !== undefined) throw failure.error
+    return captured
+  } finally {
+    signal.removeEventListener('abort', cancelInput)
+    input.abort(new Error('The audio capture ended.'))
+    await played
   }
 }
 
@@ -692,7 +818,8 @@ function boundedInteger(value: number | undefined, name: string, fallback: numbe
  * @param host - plugin operations the tools call.
  */
 export function registerGodotTools(ctx: Context, host: GodotToolHost): void {
-  for (const definition of godotToolDefinitions(host, { screenshots: sessionScreenshots(ctx), wording: SESSION_WORDING })) {
+  const surface = { screenshots: sessionScreenshots(ctx), pictures: sessionPictures(ctx), wording: SESSION_WORDING }
+  for (const definition of godotToolDefinitions(host, surface)) {
     ctx.tools.register(definition)
   }
 }
@@ -1283,16 +1410,19 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     name: 'godot_performance',
     description: 'Measure the running game\'s performance over seconds of real time: frame rate and frame time percentiles, '
       + 'milliseconds per frame in physics, scripts, and drawing, GPU time, draw calls, memory, object and orphan node counts, '
-      + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors.',
+      + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors. '
+      + 'Then, for as many seconds again, it profiles the game\'s scripts: milliseconds per frame of each script and its costliest '
+      + 'functions, with the engine methods they call.',
     parameters: {
       seconds: {
         type: 'number',
         description: `Real seconds to measure, from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}. Default: ${PERFORMANCE_SECONDS.default}.`,
       },
+      scripts: { type: 'boolean', description: 'Profile the scripts after measuring the frames. Default: true.' },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ...PERFORMANCE_PROPERTIES, ...DIGEST_SCHEMA } },
-      render: (_args, value) => textResult(formatPerformance(value), formatDigest(value)),
+      render: (args, value) => textResult(formatPerformance(value, args.scripts !== false), formatDigest(value)),
     },
     async execute(args, exec) {
       const seconds = args.seconds ?? PERFORMANCE_SECONDS.default
@@ -1301,7 +1431,86 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       }
       return invoke(host, exec, async (_agent, session) => {
         const run = requireRunning(session)
-        return summarizePerformance(await run.performance(seconds, exec.signal), run.view().windowless)
+        const sample = await run.performance(seconds, args.scripts === false ? 0 : seconds, exec.signal)
+        return summarizePerformance(sample, run.view().windowless)
+      })
+    },
+  }), defineTool({
+    name: 'godot_audio',
+    description: 'Listen to the running game: capture its audio mix, the Master bus as players hear it, for seconds of real time while '
+      + 'optional input events play, then report levels, loudness, clipping, silence, spectrum, when sounds start and stop, which '
+      + 'audio players played on which buses, and the bus volumes and peaks, with a waveform and spectrogram picture. '
+      + 'A muted run mixes its audio as usual, so it can be captured too.',
+    parameters: {
+      seconds: {
+        type: 'number',
+        description: `Seconds of audio, from ${AUDIO_SECONDS.min} to ${AUDIO_SECONDS.max}. Default: ${AUDIO_SECONDS.default}.`,
+      },
+      events: {
+        type: 'array',
+        items: EVENT_SCHEMA,
+        description: `Input events to play from the capture's start, as godot_input takes them, at most ${MAX_INPUT_EVENTS}.`,
+      },
+      coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of the events\' x, y, dx, dy. Default: screenshot.' },
+      path: { type: 'string', description: `Save the capture as a 16-bit .wav file at this path, ${wording.audioPath}.` },
+      replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          ...AUDIO_PROPERTIES,
+          savedPath: { type: 'string' },
+          picture: IMAGE_OBJECT,
+          pictureText: { type: 'string' },
+          ...DIGEST_SCHEMA,
+        },
+      },
+      render: (_args, value) => [
+        ...textResult(
+          describeAudio(value).join('\n'),
+          value.savedPath === undefined ? '' : `Saved the capture to ${value.savedPath}.`,
+          value.pictureText ?? '',
+          formatDigest(value),
+        ),
+        ...value.picture === undefined ? [] : imageBlocks(value.picture),
+      ],
+    },
+    async execute(args, exec) {
+      const seconds = args.seconds ?? AUDIO_SECONDS.default
+      if (!(seconds >= AUDIO_SECONDS.min && seconds <= AUDIO_SECONDS.max)) {
+        throw new Error(`seconds must be from ${AUDIO_SECONDS.min} to ${AUDIO_SECONDS.max}.`)
+      }
+      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.wav') throw new Error('path must end in .wav.')
+      const events = args.events === undefined ? undefined : parseInputEvents(args.events, MAX_INPUT_EVENTS)
+      return invoke(host, exec, async (agent, session) => {
+        const run = requireRunning(session)
+        let delivered = events
+        if (events !== undefined && args.coordinate_space !== 'window' && hasPointerEvents(events)) {
+          const frame = session.screenshot
+          if (frame === undefined || frame.runId !== run.id) {
+            throw new Error('Mouse coordinates are screenshot pixels, but this game has no screenshot yet; call godot_screenshot first, or pass coordinate_space "window".')
+          }
+          delivered = screenshotToWindow(events, frame)
+        }
+        // The target is checked before the capture, so a refused path wastes no capture.
+        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
+        if (target !== undefined) await refuseExisting(target, args.replace === true)
+        const pictures = await surface.pictures(exec, agent)
+        const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
+        const audio: AudioSamples = {
+          sampleRate: meta.sampleRate, channels: 2, frames: meta.frames,
+          samples: applyMasterVolume(samples.subarray(0, meta.frames * 2), meta.masterVolumes),
+        }
+        const summary = summarizeAudio(meta, audio, analyzeAudio(audio))
+        if (target !== undefined) await writeFileAtomic(target, encodeWav(audio), { mode: 0o644 })
+        if (pictures === undefined || audio.frames === 0) return { ...summary, ...target === undefined ? {} : { savedPath: target } }
+        const { image, layout } = drawAudioImage(audio)
+        const picture = await pictures.store({
+          data: encodePng(image), mediaType: 'image/png', width: image.width, height: image.height, name: `godot-audio-${String(meta.frame)}.png`,
+        }, exec.signal)
+        return { ...summary, ...target === undefined ? {} : { savedPath: target }, picture, pictureText: describeAudioImage(layout) }
       })
     },
   }), defineTool({
@@ -1427,11 +1636,31 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     },
   }), defineTool({
     name: 'godot_script',
-    description: `Run a GDScript that extends SceneTree or MainLoop against the project in a headless Godot, without running the game, and report the end of what it printed. Use it for command-line runners of test add-ons, such as GUT's or GdUnit4's, and for build or generator scripts. The script is ${wording.scriptPath}; args reach it after --, where OS.get_cmdline_user_args() reads them. It imports the project first, as godot_run does, so new class_name scripts and resources are known. The script must quit itself with quit(). The built-in Godot does not pass the script's exit code on, so judge the result by what it prints, such as a test runner's summary.`,
+    description: `Run a GDScript that extends SceneTree or MainLoop against the project in a headless Godot, without running the game, and report the end of what it printed: test runners such as GUT's or GdUnit4's, build or generator scripts, and measurements, which runs repeats at once with other arguments and fixed_fps makes repeatable. The script is ${wording.scriptPath}; args reach it after --, where OS.get_cmdline_user_args() reads them. Each run gets a folder with stdout.log, stderr.log, and files/, which the environment variable ${OUTPUT_DIR_VARIABLE} names: write results there, and the report lists them. Runs share the project, so they should write only there; with runs, each also gets its own user:// folder. It imports the project first, as godot_run does. The script must quit itself with quit(); the built-in Godot does not pass on its exit code, so judge the result by what it prints or writes.`,
     parameters: {
       script: { type: 'string', required: true, description: 'The script to run, such as res://addons/gut/gut_cmdln.gd.' },
-      args: { type: 'array', items: { type: 'string' }, description: 'User arguments passed after --. Default: none.' },
-      timeout_seconds: { type: 'integer', description: `Time limit in seconds, from 1 to ${MAX_SCRIPT_SECONDS}. Default: ${DEFAULT_SCRIPT_SECONDS}.` },
+      args: { type: 'array', items: { type: 'string' }, description: 'User arguments passed after --; with runs, before each run\'s own. Default: none.' },
+      runs: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            args: { type: 'array', items: { type: 'string' }, description: 'Arguments of this run, after args.' },
+            name: { type: 'string', description: 'Name in the run\'s folder and the report.' },
+          },
+        },
+        description: `One run per entry, 1 to ${MAX_SCRIPT_RUNS}, as many at once as this computer allows, all within ${MAX_SCRIPT_CALL_SECONDS / 60} minutes. Default: one run with args.`,
+      },
+      fixed_fps: {
+        type: 'integer',
+        description: `Game time per frame is 1/fixed_fps s however long frames take (Godot's --fixed-fps), so runs repeat exactly and finish as fast as they can; 1 to ${MAX_FIXED_FPS}. Default: real time.`,
+      },
+      exclusive: {
+        type: 'boolean',
+        description: 'Run the runs one at a time while no other godot_script run, check, or export runs, for timing measurements. Default: false.',
+      },
+      timeout_seconds: { type: 'integer', description: `Time limit of each run in seconds, from 1 to ${MAX_SCRIPT_SECONDS}. Default: ${DEFAULT_SCRIPT_SECONDS}.` },
       project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the running game\'s project, else the nearest one.' },
     },
     output: {
@@ -1442,22 +1671,57 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           projectDir: STRING,
           script: STRING,
           exitCode: { type: 'integer', description: 'Exit code of the Godot runner: 0 once the script quit, another value when the runner itself failed; absent when a signal or the time limit ended it.' },
-          timedOut: { type: 'boolean', required: true },
+          timedOut: { type: 'boolean' },
           durationMs: INTEGER,
-          output: STRING,
-          omittedLines: INTEGER,
+          output: { type: 'string' },
+          omittedLines: { type: 'integer' },
           issues: {
             type: 'array',
-            required: true,
             items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
           },
-          totalIssues: INTEGER,
+          totalIssues: { type: 'integer' },
+          folder: { type: 'string', description: 'Folder of the run, for a call without runs.' },
+          files: { type: 'array', items: { type: 'string' } },
+          totalFiles: { type: 'integer' },
+          resultsDir: { type: 'string', description: 'Folder of a call with runs: summary.json and one folder per run.' },
+          fixedFps: { type: 'integer' },
+          parallel: { type: 'integer' },
+          importIssues: {
+            type: 'array',
+            items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
+          },
+          runs: {
+            type: 'array',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                name: { type: 'string' },
+                args: { type: 'array', items: { type: 'string' }, required: true },
+                folder: STRING,
+                status: { type: 'string', enum: ['finished', 'timed-out', 'ended', 'not-started'], required: true },
+                exitCode: { type: 'integer' },
+                reason: { type: 'string' },
+                durationMs: INTEGER,
+                files: { type: 'array', items: { type: 'string' }, required: true },
+                totalFiles: INTEGER,
+                issues: {
+                  type: 'array',
+                  required: true,
+                  items: { type: 'object', additionalProperties: false, properties: { level: STRING, file: { type: 'string' }, line: { type: 'integer' }, message: STRING } },
+                },
+                totalIssues: INTEGER,
+                lastLine: { type: 'string' },
+              },
+            },
+          },
           ...DIGEST_SCHEMA,
         },
       },
       render: (_args, value) => {
+        if (value.runs !== undefined) return textResult(formatScriptRuns(value.script, value), formatDigest(value))
         const seconds = (value.durationMs / 1000).toFixed(1)
-        const ended = value.timedOut
+        const ended = value.timedOut === true
           ? `did not finish within its time limit and was stopped after ${seconds} s.`
           : value.exitCode === undefined
             ? 'was ended by a signal.'
@@ -1465,14 +1729,16 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
               ? `finished after ${seconds} s. The built-in Godot does not report the script's own exit code; read the result from its output.`
               : `could not run: the Godot runner failed with exit code ${value.exitCode} after ${seconds} s.`
         const lines = [`${value.script} ${ended}`]
-        if (value.issues.length > 0) {
-          lines.push(`Engine errors (${value.totalIssues}):`, ...value.issues.map(issue => `[${issue.level}] ${issue.file === undefined ? '' : `${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: `}${clip(issue.message, MESSAGE_CHARS)}`))
-        }
-        lines.push(value.output === '' ? 'It printed nothing.' : `${value.omittedLines > 0 ? `Output (last lines; ${value.omittedLines} earlier lines left out):` : 'Output:'}\n${value.output}`)
+        if (value.folder !== undefined) lines.push(describeRunFolder(value.folder, value.files ?? [], value.totalFiles ?? 0))
+        const issues = value.issues ?? []
+        if (issues.length > 0) lines.push(`Engine errors (${value.totalIssues ?? issues.length}):`, ...issues.map(formatEngineIssue))
+        const output = value.output ?? ''
+        const omitted = value.omittedLines ?? 0
+        lines.push(output === '' ? 'It printed nothing.' : `${omitted > 0 ? `Output (last lines; ${omitted} earlier lines left out):` : 'Output:'}\n${output}`)
         return textResult(lines.join('\n'), formatDigest(value))
       },
     },
-    timeoutMs: (MAX_SCRIPT_SECONDS + 60) * 1000,
+    timeoutMs: (MAX_SCRIPT_CALL_SECONDS + 600) * 1000,
     async execute(args, exec) {
       return invoke(host, exec, async (agent) => {
         const report = await host.script(agent, {
@@ -1480,7 +1746,22 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...args.project === undefined ? {} : { project: args.project },
           ...args.args === undefined ? {} : { args: args.args },
           ...args.timeout_seconds === undefined ? {} : { timeoutSeconds: args.timeout_seconds },
+          ...args.runs === undefined ? {} : { runs: args.runs },
+          ...args.fixed_fps === undefined ? {} : { fixedFps: args.fixed_fps },
+          ...args.exclusive === undefined ? {} : { exclusive: args.exclusive },
         }, exec.signal)
+        if ('runs' in report) {
+          return {
+            projectDir: report.projectDir,
+            script: report.script,
+            durationMs: report.durationMs,
+            resultsDir: report.resultsDir,
+            ...report.fixedFps === undefined ? {} : { fixedFps: report.fixedFps },
+            parallel: report.parallel,
+            importIssues: report.importIssues.map(issueValue),
+            runs: report.runs.map(runValue),
+          }
+        }
         return {
           projectDir: report.projectDir,
           script: report.script,
@@ -1489,12 +1770,146 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           durationMs: report.durationMs,
           output: report.output,
           omittedLines: report.omittedLines,
-          issues: [...report.issues],
+          issues: report.issues.map(issueValue),
           totalIssues: report.totalIssues,
+          folder: report.folder,
+          files: [...report.files],
+          totalFiles: report.totalFiles,
         }
       })
     },
   })]
+}
+
+/** An engine issue as a result value holds it. */
+interface IssueValue {
+  readonly level: string
+  readonly message: string
+  readonly file?: string
+  readonly line?: number
+}
+
+/** A run of a call with runs as a result value holds it. */
+interface RunValue {
+  readonly name?: string
+  readonly args: string[]
+  readonly folder: string
+  readonly status: ScriptRunResult['status']
+  readonly exitCode?: number
+  readonly reason?: string
+  readonly durationMs: number
+  readonly files: string[]
+  readonly totalFiles: number
+  readonly issues: IssueValue[]
+  readonly totalIssues: number
+  readonly lastLine?: string
+}
+
+/** An engine issue as a result value holds it. */
+function issueValue(issue: EngineIssue): IssueValue {
+  return {
+    level: issue.level,
+    message: issue.message,
+    ...issue.file === undefined ? {} : { file: issue.file },
+    ...issue.line === undefined ? {} : { line: issue.line },
+  }
+}
+
+/** A run of a call with runs as a result value holds it. */
+function runValue(run: ScriptRunResult): RunValue {
+  return {
+    ...run.name === undefined ? {} : { name: run.name },
+    args: [...run.args],
+    folder: run.folder,
+    status: run.status,
+    ...run.exitCode === undefined ? {} : { exitCode: run.exitCode },
+    ...run.reason === undefined ? {} : { reason: run.reason },
+    durationMs: run.durationMs,
+    files: [...run.files],
+    totalFiles: run.totalFiles,
+    issues: run.issues.map(issueValue),
+    totalIssues: run.totalIssues,
+    ...run.lastLine === undefined ? {} : { lastLine: run.lastLine },
+  }
+}
+
+/** One engine issue as a line of a script result. */
+function formatEngineIssue(issue: IssueValue): string {
+  return `[${issue.level}] ${issue.file === undefined ? '' : `${issue.file}${issue.line === undefined ? '' : `:${issue.line}`}: `}${clip(issue.message, MESSAGE_CHARS)}`
+}
+
+/** Most file names that a script result names for one run. */
+const NAMED_RUN_FILES = 5
+
+/** The files a run wrote, as a phrase: the first few names, then how many more. */
+function describeFiles(files: readonly string[], total: number): string {
+  if (total === 0) return 'no files'
+  const named = files.slice(0, NAMED_RUN_FILES).join(', ')
+  return total > NAMED_RUN_FILES ? `${named}, and ${total - NAMED_RUN_FILES} more` : named
+}
+
+/**
+ * Describe the folder of a call's only run.
+ * @param folder - absolute folder.
+ * @param files - files the script wrote to `files/`, relative to it.
+ * @param total - files in `files/` in all.
+ * @returns one line.
+ */
+function describeRunFolder(folder: string, files: readonly string[], total: number): string {
+  return `Its folder ${folder} keeps stdout.log and stderr.log; files the script wrote to ${OUTPUT_DIR_VARIABLE} (files/): ${describeFiles(files, total)}.`
+}
+
+/** The phrase of a run's end in a call with runs. */
+function describeRunEnd(run: Pick<RunValue, 'durationMs' | 'exitCode' | 'reason'> & { readonly status: string }): string {
+  const seconds = (run.durationMs / 1000).toFixed(1)
+  switch (run.status) {
+    case 'finished':
+      return `finished in ${seconds} s`
+    case 'timed-out':
+      return `timed out after ${seconds} s`
+    case 'not-started':
+      return `did not start: ${run.reason ?? 'unknown reason'}`
+    default:
+      return run.exitCode === undefined ? `was ended by a signal after ${seconds} s` : `failed: the Godot runner exited with code ${run.exitCode} after ${seconds} s`
+  }
+}
+
+/**
+ * Format the result of a call with runs: a summary line, the call's folder, the import errors, and one line per run.
+ * @param script - `res://` path of the script.
+ * @param value - the result value.
+ * @returns the text.
+ */
+function formatScriptRuns(script: string, value: {
+  readonly durationMs: number
+  readonly resultsDir?: string
+  readonly fixedFps?: number
+  readonly parallel?: number
+  readonly importIssues?: readonly IssueValue[]
+  readonly runs?: ReadonlyArray<Omit<RunValue, 'status'> & { readonly status: string }>
+}): string {
+  const runs = value.runs ?? []
+  const counts = new Map<string, number>()
+  for (const run of runs) counts.set(run.status, (counts.get(run.status) ?? 0) + 1)
+  const tally = [
+    ['finished', 'finished'], ['timed-out', 'timed out'], ['ended', 'failed'], ['not-started', 'did not start'],
+  ].flatMap(([status, words]) => counts.has(status as string) ? [`${String(counts.get(status as string))} ${words as string}`] : []).join(', ')
+  const pace = value.fixedFps === undefined ? '' : ` at a fixed ${value.fixedFps} FPS`
+  const lines = [
+    `Ran ${script} ${runs.length === 1 ? 'once' : `${runs.length} times, up to ${value.parallel ?? 1} at a time`}${pace}, in ${(value.durationMs / 1000).toFixed(1)} s: ${tally}.`,
+    `The call's folder ${value.resultsDir ?? '(unknown)'} holds summary.json, with every run's details, and one folder per run with stdout.log, stderr.log, files/ (its ${OUTPUT_DIR_VARIABLE}), and home/, which holds its user:// folder.`,
+  ]
+  const importIssues = value.importIssues ?? []
+  if (importIssues.length > 0) lines.push('Errors of the import before the runs:', ...importIssues.map(formatEngineIssue))
+  runs.forEach((run, index) => {
+    const parts = [`${String(index + 1)}${run.name === undefined ? '' : ` ${run.name}`}: ${describeRunEnd(run)}`]
+    if (run.status !== 'not-started') parts.push(`files: ${describeFiles(run.files, run.totalFiles)}`)
+    const first = run.issues[0]
+    if (first !== undefined) parts.push(`${run.totalIssues} engine error${run.totalIssues === 1 ? '' : 's'}, first: ${formatEngineIssue(first)}`)
+    if (run.lastLine !== undefined) parts.push(`last line: ${run.lastLine}`)
+    lines.push(parts.join('; '))
+  })
+  return lines.join('\n')
 }
 
 /** A scene tree node as the harness describes it. */

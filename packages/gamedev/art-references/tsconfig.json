@@ -1,0 +1,51 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib/types"
+  },
+  "include": [
+    "src"
+  ],
+  "references": [
+    {
+      "path": "../../../vendor/cordis"
+    },
+    {
+      "path": "../../../vendor/schemastery"
+    },
+    {
+      "path": "../../attachment/attachment"
+    },
+    {
+      "path": "../../core/system-prompt"
+    },
+    {
+      "path": "../../core/tools"
+    },
+    {
+      "path": "../../llm/llm"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../util/brand"
+    },
+    {
+      "path": "../../util/lazy-require"
+    },
+    {
+      "path": "../../util/timeout"
+    },
+    {
+      "path": "../../util/values"
+    },
+    {
+      "path": "../../web/web"
+    },
+    {
+      "path": "../game-mcp"
+    }
+  ]
+}

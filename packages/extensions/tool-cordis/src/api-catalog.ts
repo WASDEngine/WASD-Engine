@@ -1930,7 +1930,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: '@Remote({ mode: \'stream\' }) async * view(sessionId: SessionId, runId: string, signal: AbortSignal): AsyncIterable<GodotViewItem>',
-        description: 'Count the Session\'s run as shown while the stream stays open, so a windowless game keeps its own frame rate; the Game tab holds one while it shows the run\'s picture. The stream yields one item once the view counts and ends when the run ends.',
+        description: 'Count the Session\'s run as displayed while the stream stays open, so a windowless game keeps its own frame rate and presents its frames; the Game tab holds one while it shows the run\'s picture. The stream yields one item once the display counts and ends when the run ends.',
         parameters: [{ name: 'sessionId', description: 'Session whose run is shown.' }, { name: 'runId', description: 'the run the tab shows.' }, { name: 'signal', description: 'ends the view.' }],
         returns: 'the stream.',
       },
@@ -7501,7 +7501,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpCall',
-    declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
+    declaration: 'export interface GameMcpCall {\n    readonly client: GameMcpClient;\n    readonly signal: AbortSignal;\n    session(directory: string, name?: string): Promise<Agent>;\n    reveal(sessionId: SessionId): void;\n}',
   },
   {
     name: 'GameMcpClient',

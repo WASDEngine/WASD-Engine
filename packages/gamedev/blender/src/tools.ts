@@ -1,6 +1,7 @@
 /**
  * Blender MCP tools. Each tool validates the agent's arguments, sends one request to the worker
- * method of the same name, validates the worker's reply, and returns compact text plus images.
+ * method of the same name, validates the worker's reply, and returns compact text plus images;
+ * `run_script` instead runs a script in Blender processes of its own through the server's script runs.
  */
 import { randomUUID } from 'node:crypto'
 import { readFile, rm } from 'node:fs/promises'
@@ -10,6 +11,9 @@ import {
   AGENT_IMAGE_MAX_BYTES, AGENT_IMAGE_MAX_EDGE, WorkerReplyError, defineAppTool, executePythonTool, formatBytes, replyParser, withSetupNotes,
 } from '@deepseek-ai/dsh-app-mcp'
 import type { AppTool, AppToolDependencies, JsonObject } from '@deepseek-ai/dsh-app-mcp'
+import {
+  LISTED_RUN_FILES, MAX_RUN_NAME_CHARS, MAX_SCRIPT_ARGS, MAX_SCRIPT_RUNS, type BlenderScripts, type ScriptCallReport, type ScriptRunReport,
+} from './scripts.ts'
 
 /** Longest edge of a final render requested through tool arguments. */
 export const RENDER_MAX_EDGE = 2048
@@ -26,6 +30,12 @@ const parseReply = replyParser('Blender')
 
 function absolutePath(description: string): z.ZodString {
   return z.string().min(1).max(PATH_MAX).refine(value => isAbsolute(value), 'must be an absolute path').describe(description)
+}
+
+/** An absolute path whose name ends in `extension`, in any letter case. */
+function absoluteFile(description: string, extension: string): z.ZodString {
+  return z.string().min(1).max(PATH_MAX).refine(value => isAbsolute(value), 'must be an absolute path')
+    .refine(value => value.toLowerCase().endsWith(extension), `must end in ${extension}`).describe(description)
 }
 
 function objectNames(description: string): z.ZodArray<z.ZodString> {
@@ -129,12 +139,99 @@ function renderStamp(): string {
   return `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID().slice(0, 8)}`
 }
 
+/** Most files of each run that the result of a call with several runs names. */
+const NAMED_RUN_FILES = 5
+
+/** Longest list of a run's arguments that the result of a call with several runs quotes. */
+const QUOTED_ARGS_CHARS = 120
+
+/** Longest argument a run accepts, in characters. */
+const ARG_MAX = 4096
+
+/** How each run status reads in a tally, in tally order. */
+const STATUS_WORDS = { 'finished': 'finished', 'failed': 'failed', 'timed-out': 'timed out', 'not-started': 'not started' } as const
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`
+}
+
+/** The text with a period at its end, unless it ends in one already. */
+function sentence(text: string): string {
+  return text.endsWith('.') ? text : `${text}.`
+}
+
+/** A run's files as a clause: `no files`, or the count and up to `limit` names. */
+function describeFiles(run: ScriptRunReport, limit: number): string {
+  if (run.totalFiles === 0) return 'no files'
+  const shown = run.files.slice(0, limit)
+  const more = run.totalFiles - shown.length
+  return `${String(run.totalFiles)} ${run.totalFiles === 1 ? 'file' : 'files'}: ${shown.join(', ')}${more > 0 ? ` and ${String(more)} more` : ''}`
+}
+
+/** How a run ended, as a clause such as `finished in 2.0 s` or `failed with exit code 1 in 0.4 s`. */
+function describeRunEnd(run: ScriptRunReport): string {
+  switch (run.status) {
+    case 'finished':
+      return `finished in ${seconds(run.durationMs)}`
+    case 'failed':
+      return run.exitCode === undefined
+        ? `was ended by ${run.signal ?? 'a signal'} after ${seconds(run.durationMs)}`
+        : `failed with exit code ${String(run.exitCode)} in ${seconds(run.durationMs)}`
+    case 'timed-out':
+      return `was stopped at its time limit after ${seconds(run.durationMs)}`
+    case 'not-started':
+      return `did not start: ${run.reason ?? 'no reason was given'}`
+  }
+}
+
+/**
+ * The result text of a `run_script` call.
+ * @param report - the call's report.
+ * @returns setup notes first, then the call, each run, and for a call with one run the end of its output.
+ */
+export function formatScriptCall(report: ScriptCallReport): string {
+  const blend = report.blend === undefined ? '' : ` on ${report.blend}`
+  const parts = [...report.notes]
+  if (report.runs.length === 1) {
+    const run = report.runs[0] as ScriptRunReport
+    const cut = run.outputCut === true ? ' (cut at scriptLogBytes)' : ''
+    const lines = [sentence(`Ran ${report.script}${blend} with ${report.runtime}: it ${describeRunEnd(run)}`)]
+    if (run.status !== 'not-started') lines.push(`Results: ${run.folder} (output.log${cut}; ${describeFiles(run, LISTED_RUN_FILES)} in files/).`)
+    if (report.output !== undefined) {
+      const omitted = report.omittedLines ?? 0
+      lines.push(report.output === '' ? 'The script printed nothing.'
+        : `${omitted > 0 ? `output (${String(omitted)} earlier lines are in output.log)` : 'output'}:\n${report.output}`)
+    }
+    parts.push(lines.join('\n'))
+    return parts.join('\n\n')
+  }
+  const tally = Object.entries(STATUS_WORDS).flatMap(([status, words]) => {
+    const count = report.runs.filter(run => run.status === status).length
+    return count === 0 ? [] : [`${String(count)} ${words}`]
+  }).join(', ')
+  const lines = [
+    `Ran ${report.script}${blend} ${String(report.runs.length)} times, up to ${String(report.parallel)} at a time, with ${report.runtime}, `
+    + `in ${seconds(report.durationMs)}: ${tally}. Results: ${report.resultsDir} (summary.json, and output.log and files/ in each run's folder).`,
+  ]
+  for (const run of report.runs) {
+    const label = run.folder.slice(report.resultsDir.length + 1)
+    const args = JSON.stringify(run.args)
+    const quoted = args.length > QUOTED_ARGS_CHARS ? `${args.slice(0, QUOTED_ARGS_CHARS)}…` : args
+    const files = run.status === 'not-started' ? '' : `; ${describeFiles(run, NAMED_RUN_FILES)}`
+    const last = run.lastLine === undefined ? '' : ` Last line: ${run.lastLine}`
+    lines.push(`${sentence(`${label} ${quoted}: ${describeRunEnd(run)}${files}`)}${last}`)
+  }
+  parts.push(lines.join('\n'))
+  return parts.join('\n\n')
+}
+
 /**
  * Build the Blender tool set.
  * @param dependencies - worker access, setup notes, data directory, and timeout budgets.
+ * @param scripts - the server's script runs, which `run_script` starts.
  * @returns the tools in the order the server lists them.
  */
-export function blenderTools(dependencies: AppToolDependencies): readonly AppTool<z.ZodRawShape>[] {
+export function blenderTools(dependencies: AppToolDependencies, scripts: Pick<BlenderScripts, 'run'>): readonly AppTool<z.ZodRawShape>[] {
   const { call, dataRoot, requestTimeoutMs } = dependencies
   const previews = join(dataRoot, 'previews')
   // The same bounds as execute_python's timeout_seconds.
@@ -372,6 +469,42 @@ export function blenderTools(dependencies: AppToolDependencies): readonly AppToo
       async run(args, signal) {
         const reply = parseReply(ApiReply, 'python_api', await call('python_api', { identifier: args.identifier }, { signal }))
         return withSetupNotes(dependencies, { text: reply.text })
+      },
+    }),
+    defineAppTool({
+      name: 'run_script',
+      title: 'Run a Blender script',
+      description: 'Run a Python file in new headless Blender processes, as blender --background --factory-startup --python <file> -- <args> '
+        + 'does, for batch work such as processing many assets or animations: each run is a Blender process of its own that starts '
+        + 'from the default scene, or from blend, and ends with the script, apart from the scene of the other tools. The script reads '
+        + 'its arguments from sys.argv after "--", imports wasd_addons as execute_python does, and writes result files to the '
+        + 'folder that the WASD_OUTPUT_DIR environment variable names. Pass runs to run it several times at once with other '
+        + 'arguments, as many at a time as this computer allows. The result gives each run\'s exit code, last output line, files, '
+        + 'and folder, which keeps its output.log; for a single run, also the end of its output.',
+      input: {
+        script: absoluteFile('Absolute path of the .py file.', '.py'),
+        args: z.array(z.string().max(ARG_MAX)).max(MAX_SCRIPT_ARGS).optional().describe('Arguments of a single run.'),
+        runs: z.array(z.object({
+          args: z.array(z.string().max(ARG_MAX)).max(MAX_SCRIPT_ARGS).optional().describe('Arguments of this run.'),
+          name: z.string().min(1).max(MAX_RUN_NAME_CHARS).optional().describe('Name of this run, which its folder carries.'),
+        })).min(1).max(MAX_SCRIPT_RUNS).optional().describe('Runs at once, instead of args: one item per run.'),
+        blend: absoluteFile('Absolute path of a .blend file that each run opens before the script; default: Blender\'s default scene.', '.blend')
+          .optional(),
+        timeout_seconds: z.int().min(1).max(maxTimeoutSeconds).optional().describe('Seconds each run may take before it is stopped '
+          + `(default ${String(defaultTimeoutSeconds)}); all runs of a call end within ${String(maxTimeoutSeconds)} seconds.`),
+      },
+      async run(args, signal) {
+        if (args.args !== undefined && args.runs !== undefined) throw new Error('Pass args for a single run or runs for several, not both.')
+        const report = await scripts.run({
+          script: args.script,
+          ...args.blend === undefined ? {} : { blend: args.blend },
+          runs: args.runs === undefined
+            ? [{ args: args.args ?? [] }]
+            : args.runs.map(run => ({ args: run.args ?? [], ...run.name === undefined ? {} : { name: run.name } })),
+          timeoutMs: args.timeout_seconds === undefined ? requestTimeoutMs : args.timeout_seconds * 1000,
+          callTimeoutMs: dependencies.maxTimeoutMs,
+        }, signal)
+        return { text: formatScriptCall(report), isError: !report.runs.some(run => run.status === 'finished') }
       },
     }),
     defineAppTool({

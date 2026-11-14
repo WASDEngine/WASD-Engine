@@ -12,12 +12,15 @@ export type GodotOptionValue =
   | { readonly number: readonly [number, number] }
   | { readonly pattern: RegExp; readonly accepts: string }
 
+/** Highest frame rate that a run or a script call may fix with `--fixed-fps`. */
+export const MAX_FIXED_FPS = 1000
+
 /**
  * The Godot command-line options a run passes on request, with their values. They change how the game runs and draws,
  * never where it reads or writes files or how it connects to the Host.
  */
 export const GODOT_ENGINE_OPTIONS: Readonly<Record<string, GodotOptionValue>> = {
-  '--fixed-fps': { integer: [1, 1000] },
+  '--fixed-fps': { integer: [1, MAX_FIXED_FPS] },
   '--max-fps': { integer: [0, 1000] },
   '--time-scale': { number: [0.01, 100] },
   '--disable-vsync': 'flag',

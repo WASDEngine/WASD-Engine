@@ -1,7 +1,7 @@
 /** PNG encoding of the audio picture: valid PNG bytes whose rows decode back to the pixels. */
 import { crc32, inflateSync } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
-import type { RgbImage } from '@deepseek-ai/dsh-game-audio/audio'
+import type { RgbImage } from '../src/audio/index.ts'
 import { encodePng } from '../src/png.ts'
 
 describe('encodePng', () => {

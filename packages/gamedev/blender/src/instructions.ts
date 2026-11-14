@@ -16,6 +16,7 @@ Inspect, change, look:
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
 - render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
 - render makes final images from a scene camera.
+- run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 
 Game assets:
 - Model in meters at real scale, with -Y as the front and +Z as up in Blender; glTF export converts to +Y up. Apply rotation and scale (bpy.ops.object.transform_apply) and place each origin where the game expects the pivot, such as the feet of a character.

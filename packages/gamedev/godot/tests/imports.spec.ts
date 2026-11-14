@@ -218,3 +218,54 @@ describe('ProjectImports.exclusive', () => {
     expect(await imports.exclusive('/games/one', async () => 'next', signal)).toBe('next')
   })
 })
+
+describe('ProjectImports.shared', () => {
+  it('runs shared operations together, an exclusive one after them, and later shared ones after it', async () => {
+    const imports = new ProjectImports()
+    const events: string[] = []
+    const gates = [Promise.withResolvers<undefined>(), Promise.withResolvers<undefined>()]
+    const a = imports.shared('/games/one', async () => { events.push('+a'); await gates[0]?.promise; events.push('-a') }, signal)
+    const b = imports.shared('/games/one', async () => { events.push('+b'); await gates[1]?.promise; events.push('-b') }, signal)
+    const exclusive = imports.exclusive('/games/one', async () => { events.push('exclusive') }, signal)
+    const later = imports.shared('/games/one', async () => { events.push('later') }, signal)
+    await tick()
+    expect(events).toEqual(['+a', '+b'])
+    gates[0]?.resolve(undefined)
+    await tick()
+    expect(events).toEqual(['+a', '+b', '-a'])
+    gates[1]?.resolve(undefined)
+    await Promise.all([a, b, exclusive, later])
+    expect(events).toEqual(['+a', '+b', '-a', '-b', 'exclusive', 'later'])
+  })
+
+  it('starts the shared operations behind a cancelled exclusive wait', async () => {
+    const imports = new ProjectImports()
+    const events: string[] = []
+    const gate = Promise.withResolvers<undefined>()
+    const first = imports.shared('/games/one', async () => { events.push('+first'); await gate.promise; events.push('-first') }, signal)
+    const controller = new AbortController()
+    const cancelled = imports.exclusive('/games/one', async () => { events.push('cancelled') }, controller.signal)
+    const behind = imports.shared('/games/one', async () => { events.push('behind') }, signal)
+    await tick()
+    expect(events).toEqual(['+first'])
+    controller.abort(new Error('stop waiting'))
+    await expect(cancelled).rejects.toThrow('stop waiting')
+    await behind
+    expect(events).toEqual(['+first', 'behind'])
+    gate.resolve(undefined)
+    await first
+  })
+
+  it('waits for a running exclusive operation', async () => {
+    const imports = new ProjectImports()
+    const events: string[] = []
+    const gate = Promise.withResolvers<undefined>()
+    const importing = imports.exclusive('/games/one', async () => { events.push('+import'); await gate.promise; events.push('-import') }, signal)
+    const reading = imports.shared('/games/one', async () => { events.push('read') }, signal)
+    await tick()
+    expect(events).toEqual(['+import'])
+    gate.resolve(undefined)
+    await Promise.all([importing, reading])
+    expect(events).toEqual(['+import', '-import', 'read'])
+  })
+})

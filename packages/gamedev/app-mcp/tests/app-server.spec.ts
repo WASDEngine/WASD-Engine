@@ -1,8 +1,9 @@
 /**
  * runAppMcpServer in process, bound to injected streams, signals, and exit:
  * option validation, the worker script copy, one fake worker per calling
- * Session behind the definition's tools, setup notes, the tools' budgets, and
- * the workers' shutdown when the client goes away.
+ * Session behind the definition's tools, setup notes, the tools' budgets and
+ * worker starter, and the workers' and the starter's shutdown when the client
+ * goes away.
  */
 import { EventEmitter } from 'node:events'
 import { access, readFile, realpath, writeFile } from 'node:fs/promises'
@@ -12,7 +13,7 @@ import { pathToFileURL } from 'node:url'
 import { Client } from '@modelcontextprotocol/client'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { z } from 'zod'
-import { runAppMcpServer, type AppMcpServerDefinition } from '../src/app-server.ts'
+import { runAppMcpServer, type AppMcpServerDefinition, type AppWorkers } from '../src/app-server.ts'
 import type { AppMcpProcess } from '../src/mcp-server.ts'
 import { AppServerOptionFields, encodeServerOptions, parseAppServerOptions, type AppServerOptions } from '../src/options.ts'
 import type { AppWorkerScope } from '../src/pool.ts'
@@ -29,15 +30,26 @@ interface FakeOptions extends AppServerOptions {
 
 const FakeOptions = z.strictObject({ ...AppServerOptionFields, greeting: z.string() })
 
+/** The fake worker starter, which tells the tools its greeting and counts its shutdowns. */
+interface FakeWorkers extends AppWorkers {
+  readonly greeting: string
+}
+
 /** The fake application: one fake worker per start, a note per start, and tools that report what they received. */
-type FakeApplication = AppMcpServerDefinition<FakeOptions> & { readonly copies: string[]; readonly scopes: AppWorkerScope[] }
+type FakeApplication = AppMcpServerDefinition<FakeOptions, FakeWorkers> & {
+  readonly copies: string[]
+  readonly scopes: AppWorkerScope[]
+  readonly closes: string[]
+}
 
 function fakeApplication(workerScript: URL): FakeApplication {
   const copies: string[] = []
   const scopes: AppWorkerScope[] = []
+  const closes: string[] = []
   return {
     copies,
     scopes,
+    closes,
     name: 'wasd_fake',
     app: 'Fake',
     version: '1.2.3',
@@ -59,9 +71,11 @@ function fakeApplication(workerScript: URL): FakeApplication {
           return worker
         },
         takeNotes: () => notes.splice(0),
+        close: () => { closes.push(options.greeting) },
+        greeting: options.greeting,
       }
     },
-    tools: dependencies => [
+    tools: (dependencies, workers) => [
       defineAppTool({
         name: 'echo',
         description: 'Echo the text through the worker.',
@@ -85,6 +99,7 @@ function fakeApplication(workerScript: URL): FakeApplication {
         run: async () => ({
           text: JSON.stringify({
             dataRoot: dependencies.dataRoot, requestTimeoutMs: dependencies.requestTimeoutMs, maxTimeoutMs: dependencies.maxTimeoutMs,
+            greeting: workers.greeting,
           }),
         }),
       }),
@@ -153,10 +168,13 @@ describe('runAppMcpServer', () => {
     onTestFinished(() => { killQuietly(worker) })
     expect(isAlive(worker)).toBe(true)
     // A worker request may use the tool-call budget less the 30 s that a worker start and the result keep.
-    expect(JSON.parse(textOf(await client.callTool({ name: 'budgets', arguments: {} })))).toEqual({ dataRoot, requestTimeoutMs: 15_000, maxTimeoutMs: 45_000 })
+    expect(JSON.parse(textOf(await client.callTool({ name: 'budgets', arguments: {} }))))
+      .toEqual({ dataRoot, requestTimeoutMs: 15_000, maxTimeoutMs: 45_000, greeting: 'the specs' })
+    expect(application.closes).toEqual([])
 
     io.stdin.end()
     await expect(io.exited).resolves.toBe(0)
+    expect(application.closes).toEqual(['the specs'])
     await vi.waitFor(() => { expect(isAlive(worker)).toBe(false) }, { timeout: TIMEOUT })
   }, TIMEOUT)
 

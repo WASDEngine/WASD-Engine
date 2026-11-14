@@ -4,7 +4,7 @@
  * @module @deepseek-ai/dsh-godot
  */
 import { randomUUID } from 'node:crypto'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -31,7 +31,7 @@ import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
 import { runInstanceGroup } from './instances.ts'
 import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
-import { defaultWindowSize, fixedFps, parseEngineArgs, parseGameArgs } from './launch.ts'
+import { defaultWindowSize, fixedFps, MAX_FIXED_FPS, parseEngineArgs, parseGameArgs } from './launch.ts'
 import { LogSequence } from './logs.ts'
 import { godotMcpProvider } from './mcp.ts'
 import { GodotProjectError, resolveGodotProject, resolveScene } from './project.ts'
@@ -42,7 +42,11 @@ import {
 } from './runtime.ts'
 import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRecordRequest } from './record.ts'
 import { ProcessSlots } from './slots.ts'
-import { DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_SCRIPT_SECONDS, resolveScript, runScript, type GodotImportReport, type GodotScriptReport } from './script.ts'
+import {
+  createCallFolder, DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_RUN_NAME_CHARS,
+  MAX_SCRIPT_CALL_SECONDS, MAX_SCRIPT_RUNS, MAX_SCRIPT_SECONDS, resolveScript, runFolderName, runScript, runScriptRuns, type EngineIssue,
+  type GodotImportReport, type GodotScriptReport, type GodotScriptRunsReport, type ScriptRun, type ScriptRunTurns,
+} from './script.ts'
 import { registerGodotTools, type GodotScriptRequest, type GodotToolHost } from './tools.ts'
 import { GodotVideoError, GodotVideoRecorder, videoPath } from './video.ts'
 import { checkWebBuild, GodotWebCheckError, WEB_CHECK_UNAVAILABLE } from './web-check.ts'
@@ -60,7 +64,7 @@ export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './export-template.ts'
 export { GodotWebCheckError } from './web-check.ts'
 export { GodotScriptError } from './script.ts'
-export type { EngineIssue, GodotImportReport, GodotScriptReport } from './script.ts'
+export type { EngineIssue, GodotImportReport, GodotScriptReport, GodotScriptRunsReport, ScriptRunResult, ScriptRunStatus } from './script.ts'
 export type { GodotScriptRequest } from './tools.ts'
 export type { GodotRecordedImage, GodotRecording, GodotRecordRequest } from './record.ts'
 
@@ -116,8 +120,27 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
+  /**
+   * Milliseconds that a game an agent started must go unused, shown in no Game tab and serving no request, before a
+   * start that finds every run slot taken stops it; 0 makes such a start fail instead.
+   */
+  idleRunStopMs: number
   /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
+  /** Most `godot_script` runs that run at once across Sessions on any computer; later ones wait for one to end. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `godot_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `godot_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `godot_script` calls that each project keeps in its data folder; a new call deletes the oldest beyond it. */
+  keptScriptResults: number
   /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**
@@ -217,7 +240,7 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
  * The Godot release, `major.minor`, of the runtime that the plugin ships or installs: the start of `runtimeVersion`,
- * such as `4.7` for `4.7.2-wasd.2`, which the shipped and managed runtimes must match.
+ * such as `4.7` for `4.7.2-wasd.3`, which the shipped and managed runtimes must match.
  * @param config - the plugin configuration.
  * @returns the release, or undefined when `libgodotPath` and `runnerPath` name another runtime or `runtimeVersion` does not start with one.
  */
@@ -247,7 +270,7 @@ ${builtIn}
 Test a Godot project with the godot_* tools:
 1. godot_run starts or restarts the game and reports import and startup errors.
 2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
-3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, and memory; godot_control pauses, resumes, or steps frames.
+3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.
 The user can watch and play the running game in the Game panel.
@@ -346,8 +369,8 @@ export default class GodotController extends TypertRemoteService {
   static inject = ['tools', 'systemPrompt', 'workingDirectory', 'subprocess', 'agents', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
     dataRoot: z.string().required(),
-    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.2'),
-    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.2/manifest.json'),
+    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.3'),
+    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),
@@ -364,7 +387,12 @@ export default class GodotController extends TypertRemoteService {
     maxRuns: z.number().step(1).min(1).default(4),
     runMemoryBytes: z.number().step(1).min(0).default(8 * 1024 ** 3),
     runCores: z.number().step(1).min(0).default(4),
+    idleRunStopMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(300_000),
     maxHeadlessProcesses: z.number().step(1).min(1).default(2),
+    maxScripts: z.number().step(1).min(1).default(4),
+    scriptMemoryBytes: z.number().step(1).min(0).default(2 * 1024 ** 3),
+    scriptCores: z.number().step(1).min(0).default(2),
+    keptScriptResults: z.number().step(1).min(1).default(20),
     minAvailableMemoryBytes: z.number().step(1).min(0).default(1024 ** 3),
     hiddenFps: z.number().step(1).min(0).max(60).default(10),
     hiddenDelayMs: z.number().step(1).min(0).max(MAX_TIMER_MS).default(30_000),
@@ -405,6 +433,8 @@ export default class GodotController extends TypertRemoteService {
   private readonly sessions: GodotSessions
   /** Slots of the Godot processes that run without a game: script checks and exports. */
   private readonly headless: ProcessSlots
+  /** Slots of the `godot_script` runs. */
+  private readonly scriptSlots: ProcessSlots
   private readonly runtime: GodotRuntimeManager
   private readonly templates: ExportTemplateManager
   private readonly desktopTemplates: Readonly<Record<GodotDesktopPlatform, ExportTemplateManager>>
@@ -421,7 +451,10 @@ export default class GodotController extends TypertRemoteService {
     super(ctx, 'godot', { namespace: 'godot' })
     validateConfig(config)
     const maxRuns = processLimit({ max: config.maxRuns, memoryBytes: config.runMemoryBytes, cores: config.runCores }, this.machine)
-    this.sessions = new GodotSessions(ctx, maxRuns, () => { this.requireMemory('the game') })
+    this.sessions = new GodotSessions(ctx, maxRuns, () => { this.requireMemory('the game') }, config.idleRunStopMs)
+    const scriptLimit = { max: config.maxScripts, memoryBytes: config.scriptMemoryBytes, cores: config.scriptCores }
+    const maxScripts = processLimit(scriptLimit, this.machine)
+    this.scriptSlots = new ProcessSlots(maxScripts)
     this.headless = new ProcessSlots(config.maxHeadlessProcesses)
     this.videos = new GodotVideoRecorder({
       quality: config.recordQuality,
@@ -444,6 +477,7 @@ export default class GodotController extends TypertRemoteService {
     ctx.effect(() => async () => {
       this.runtime.dispose()
       this.headless.close(new Error('The Godot plugin stopped before the check or export could start.'))
+      this.scriptSlots.close(new Error('The Godot plugin stopped before the script could start.'))
       await this.sessions.dispose()
     }, 'godot.runs')
     const toolHost: GodotToolHost = {
@@ -456,6 +490,7 @@ export default class GodotController extends TypertRemoteService {
       },
       check: (agent, request, signal) => this.check(agent, request, signal),
       script: (agent, request, signal) => this.script(agent, request, signal),
+      resolvePath: async (agent, path, signal) => isAbsolute(path) ? path : resolve(await ctx.workingDirectory.ensure(agent, signal), path),
       record: async (agent, run, request, signal) => {
         // The gateway keeps a request no window answers for a window that connects later; a call made while no window is
         // connected fails at once instead.
@@ -605,9 +640,9 @@ export default class GodotController extends TypertRemoteService {
   }
 
   /**
-   * Count the Session's run as shown while the stream stays open, so a windowless game keeps its own frame rate; the
-   * Game tab holds one while it shows the run's picture. The stream yields one item once the view counts and ends when
-   * the run ends.
+   * Count the Session's run as displayed while the stream stays open, so a windowless game keeps its own frame rate and
+   * presents its frames; the Game tab holds one while it shows the run's picture. The stream yields one item once the
+   * display counts and ends when the run ends.
    * @param sessionId - Session whose run is shown.
    * @param runId - the run the tab shows.
    * @param signal - ends the view.
@@ -618,7 +653,7 @@ export default class GodotController extends TypertRemoteService {
     const run = this.sessions.find(sessionId)?.run
     if (run === undefined || run.terminal) throw notRunning()
     if (run.id !== runId) throw new RemoteError('godot/stale-run', 'The view was meant for a game that is no longer current.', { runId })
-    const hide = run.show()
+    const hide = run.display()
     try {
       yield { type: 'shown' }
       await untilSettledOrAborted(run.whenEnded(), signal)
@@ -1056,7 +1091,12 @@ export default class GodotController extends TypertRemoteService {
     if (shortage !== undefined) throw new LowMemoryError(what, shortage)
   }
 
-  private async script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport> {
+  /**
+   * Run a script request: import the project first when its import data may be outdated, then run the script once, or
+   * once per entry of `runs`, as many at once as the `godot_script` slots allow, each beside the project's other script
+   * runs but never during an import, check, or export of the project.
+   */
+  private async script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport | GodotScriptRunsReport> {
     const session = this.sessions.session(agent)
     const workingDirectory = await this.ctx.workingDirectory.ensure(agent, signal)
     const current = session.run?.project
@@ -1068,6 +1108,19 @@ export default class GodotController extends TypertRemoteService {
     if (!Number.isInteger(seconds) || seconds < 1 || seconds > MAX_SCRIPT_SECONDS) {
       throw new GodotScriptError(`timeout_seconds must be an integer from 1 to ${MAX_SCRIPT_SECONDS}.`)
     }
+    const { fixedFps } = request
+    if (fixedFps !== undefined && (!Number.isInteger(fixedFps) || fixedFps < 1 || fixedFps > MAX_FIXED_FPS)) {
+      throw new GodotScriptError(`fixed_fps must be an integer from 1 to ${MAX_FIXED_FPS}.`)
+    }
+    const requested = request.runs
+    if (requested !== undefined && (requested.length === 0 || requested.length > MAX_SCRIPT_RUNS)) {
+      throw new GodotScriptError(`runs must hold from 1 to ${MAX_SCRIPT_RUNS} runs.`)
+    }
+    for (const run of requested ?? []) {
+      if (run.name !== undefined && (run.name.trim() === '' || run.name.length > MAX_RUN_NAME_CHARS)) {
+        throw new GodotScriptError(`A run's name must have from 1 to ${MAX_RUN_NAME_CHARS} characters.`)
+      }
+    }
     const runtime = await this.requireRuntime(signal)
     const options = {
       subprocess: this.ctx.subprocess,
@@ -1078,21 +1131,64 @@ export default class GodotController extends TypertRemoteService {
       outputBytes: this.config.processOutputBytes,
       signal,
     }
-    return await this.headless.run(signal, async () => {
-      this.requireMemory('a Godot script')
-      return await this.imports.exclusive(project.dir, async () => {
-        // Like a check, a script sees the classes and resources added since the last import only after an import.
-        const imported = this.config.importBeforeRun && await this.imports.outdated(project.dir, signal)
+    // Like a check, a script sees the classes and resources added since the last import only after an import.
+    const importIssues: EngineIssue[] = this.config.importBeforeRun && await this.imports.outdated(project.dir, signal)
+      ? await this.headless.run(signal, async () => {
+        this.requireMemory('a Godot import')
+        return await this.imports.exclusive(project.dir, async () => await this.imports.outdated(project.dir, signal)
           ? importReport(await this.importStep(runtime, project.dir, signal), this.config.importTimeoutMs).issues.filter(issue => issue.level !== 'warning')
-          : []
-        const report = await runScript(options, script, request.args ?? [], seconds * 1000)
-        if (imported.length === 0) return report
-        return {
-          ...report,
-          issues: [...imported, ...report.issues].slice(0, LISTED_ENGINE_ISSUES),
-          totalIssues: imported.length + report.totalIssues,
-        }
-      }, signal)
+          : [], signal)
+      })
+      : []
+    const resultsDir = await createCallFolder(project.dir, this.config.keptScriptResults, new Date())
+    const turns = this.scriptTurns(project.dir, request.exclusive === true)
+    const common = request.args ?? []
+    if (requested === undefined) {
+      const run: ScriptRun = { args: common, folder: join(resultsDir, '1'), ownUserData: false }
+      const report = await turns.turn(() => runScript(options, script, fixedFps, run, seconds * 1000), signal)
+      if (importIssues.length === 0) return report
+      return {
+        ...report,
+        issues: [...importIssues, ...report.issues].slice(0, LISTED_ENGINE_ISSUES),
+        totalIssues: importIssues.length + report.totalIssues,
+      }
+    }
+    const runs = requested.map((run, index): ScriptRun => {
+      const folder = run.name === undefined ? '' : runFolderName(run.name)
+      return {
+        ...run.name === undefined ? {} : { name: run.name },
+        args: [...common, ...run.args ?? []],
+        folder: join(resultsDir, folder === '' ? String(index + 1) : `${String(index + 1)}-${folder}`),
+        ownUserData: true,
+      }
     })
+    return await runScriptRuns(options, {
+      script,
+      ...fixedFps === undefined ? {} : { fixedFps },
+      runs,
+      timeoutMs: seconds * 1000,
+      deadline: Date.now() + MAX_SCRIPT_CALL_SECONDS * 1000,
+      resultsDir,
+      importIssues: importIssues.slice(0, LISTED_ENGINE_ISSUES),
+    }, turns)
+  }
+
+  /**
+   * How the runs of one script call take turns: a `godot_script` slot, or every slot and every slot of checks and
+   * exports for a call that runs alone, then the project's shared turn, and enough available memory.
+   * @param projectDir - absolute project folder.
+   * @param alone - whether each run runs while no other script run, check, or export of the Host runs.
+   * @returns the turns.
+   */
+  private scriptTurns(projectDir: string, alone: boolean): ScriptRunTurns {
+    const start = <T>(task: () => Promise<T>, signal: AbortSignal): Promise<T> => this.imports.shared(projectDir, async () => {
+      this.requireMemory('a Godot script')
+      return await task()
+    }, signal)
+    if (!alone) return { parallel: this.scriptSlots.limit, turn: (task, signal) => this.scriptSlots.run(signal, () => start(task, signal)) }
+    return {
+      parallel: 1,
+      turn: (task, signal) => this.headless.runAlone(signal, () => this.scriptSlots.runAlone(signal, () => start(task, signal))),
+    }
   }
 }

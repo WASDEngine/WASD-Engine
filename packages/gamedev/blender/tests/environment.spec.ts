@@ -16,6 +16,7 @@ const OPTIONS: BlenderServerOptions = {
   dataRoot: '/data/blender', backend: 'auto', bpyVersion: '5.2.3', pythonVersion: '3.13', uvPath: '', blenderPath: '',
   startupTimeoutMs: 30_000, requestTimeoutMs: 600_000, toolCallTimeoutMs: 900_000, graceMs: 3000, maxLogBytes: 65_536,
   maxWorkers: 4, workerMemoryBytes: 0, workerCores: 0, minAvailableMemoryBytes: 0, workerIdleTimeoutMs: 600_000, addonStore: '',
+  maxScripts: 4, scriptMemoryBytes: 0, scriptCores: 0, keptScriptResults: 20, scriptLogBytes: 16 * 1024 ** 2,
 }
 const VENV = '/data/blender/venv-py3.13-bpy5.2.3'
 const VENV_PYTHON = `${VENV}/bin/python`
@@ -249,8 +250,11 @@ describe('bpyEnvironment and childEnvironment', () => {
       .toEqual({ directory: 'C:\\data\\venv-py3.13-bpy5.2.3', python: 'C:\\data\\venv-py3.13-bpy5.2.3\\Scripts\\python.exe' })
   })
 
-  it('drops variables that redirect Python or Electron', () => {
-    const env = { PATH: '/bin', HOME: '/home', PYTHONPATH: 'x', PYTHONHOME: 'y', PYTHONSTARTUP: 'z', VIRTUAL_ENV: 'v', ELECTRON_RUN_AS_NODE: '1' }
+  it('drops variables that redirect Python or Electron, or select the worker script\'s script mode', () => {
+    const env = {
+      PATH: '/bin', HOME: '/home', PYTHONPATH: 'x', PYTHONHOME: 'y', PYTHONSTARTUP: 'z', VIRTUAL_ENV: 'v', ELECTRON_RUN_AS_NODE: '1',
+      WASD_BLENDER_SCRIPT: '/s.py', WASD_BLENDER_FILE: '/f.blend',
+    }
     expect(childEnvironment(env)).toEqual({ PATH: '/bin', HOME: '/home' })
     expect(env.PYTHONPATH).toBe('x')
   })
@@ -553,6 +557,38 @@ describe('BlenderWorkers', () => {
   const reinstall = `If the bpy environment at ${VENV} is damaged, delete that folder so that the next start installs it again.`
   /** A host where bpy is installed, and Blender too unless `app` is false. */
   const installedHost = (app = true): FakeHost => new FakeHost({ executables: ['/usr/bin/uv', VENV_PYTHON, ...app ? [APP] : []] })
+
+  it('prepares the launch of a script run as for a worker start, one preparation at a time', async () => {
+    // uv's first step waits for the spec, so the preparations behind it can only wait.
+    const gate = Promise.withResolvers<undefined>()
+    const host = new FakeHost({
+      executables: ['/usr/bin/uv'],
+      run: async () => {
+        await gate.promise
+        return { exitCode: 0, signal: null, output: '' }
+      },
+    })
+    const workers = new BlenderWorkers(OPTIONS, workerDependencies(host, vi.fn()))
+    const first = workers.scriptLaunch(signal)
+    const controller = new AbortController()
+    const cancelled = workers.scriptLaunch(controller.signal)
+    const third = workers.scriptLaunch(signal)
+    await vi.waitFor(() => { expect(host.commands).toHaveLength(1) })
+    controller.abort(new Error('the call was cancelled'))
+    await expect(cancelled).rejects.toThrow('the call was cancelled')
+    // A cancelled wait keeps the preparations behind it waiting for the one before it.
+    await new Promise(resolve => setTimeout(resolve, 20))
+    expect(host.commands).toHaveLength(1)
+    gate.resolve(undefined)
+    expect(await first).toMatchObject({
+      backend: 'bpy', shipped: false, argv: [VENV_PYTHON, '-I', '-X', 'utf8', '-u', SCRIPT],
+      notes: [`Installed Python 3.13 and bpy 5.2.3 into ${VENV} (first use).`],
+    })
+    // The later preparation finds the environment that the first one installed.
+    expect((await third).notes).toEqual([])
+    expect(host.commands.map(command => command.argv[1])).toEqual(['venv', 'pip'])
+    expect(workers.takeNotes()).toEqual([])
+  })
 
   it('starts an installed Blender under auto when the bpy module does not start, and quotes the failure', async () => {
     const start = vi.fn(async (spec: { argv: readonly string[] }) => {

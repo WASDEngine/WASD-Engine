@@ -1,7 +1,8 @@
 /**
  * Headless Blender tools for the agent. The Host plugin registers the `wasd_blender` MCP server with
- * the MCP server manager; the server process (`worker.ts`) starts one Blender worker on the first
- * tool call. Activation never downloads, installs, or starts Blender.
+ * the MCP server manager; the server process (`worker.ts`) starts a Session's Blender worker on its first
+ * tool call, and runs `run_script` in Blender processes of their own. Activation never downloads, installs, or
+ * starts Blender.
  *
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  */
@@ -52,6 +53,22 @@ export interface Config extends AppMcpConfig {
    * empty leaves `wasd_addons` without add-ons.
    */
   addonStore: string
+  /** Most `run_script` runs that run at once on any computer, whichever calls asked for them. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `run_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `run_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `run_script` calls kept under `script-runs/` in `dataRoot`; a new call deletes the oldest beyond this. */
+  keptScriptResults: number
+  /** Most bytes of output that a `run_script` run keeps in its `output.log`; later output is left out. */
+  scriptLogBytes: number
 }
 
 /** Validates the configuration when the plugin loads. */
@@ -64,6 +81,11 @@ export const Config: z<Partial<Config>, Config> = z.object({
   blenderPath: z.string().default(''),
   startupTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(30_000),
   addonStore: z.string().default(''),
+  maxScripts: z.natural().min(1).max(64).default(4),
+  scriptMemoryBytes: z.natural().default(2 * 1024 ** 3),
+  scriptCores: z.natural().default(2),
+  keptScriptResults: z.natural().min(1).max(1000).default(20),
+  scriptLogBytes: z.natural().min(1).default(16 * 1024 ** 2),
   // Schemastery erases object field types on dict; the shared Config declares their output types.
   ...AppMcpConfig.dict as { [Key in keyof AppMcpConfig]: z<unknown, AppMcpConfig[Key]> },
 })
@@ -80,7 +102,10 @@ export function apply(ctx: Context, config: Config): void {
     serverName: BLENDER_SERVER_NAME,
     module: import.meta.url,
     paths: ['uvPath', 'blenderPath', 'addonStore'],
-    options: ['backend', 'bpyVersion', 'pythonVersion', 'uvPath', 'blenderPath', 'startupTimeoutMs', 'addonStore'],
+    options: [
+      'backend', 'bpyVersion', 'pythonVersion', 'uvPath', 'blenderPath', 'startupTimeoutMs', 'addonStore',
+      'maxScripts', 'scriptMemoryBytes', 'scriptCores', 'keptScriptResults', 'scriptLogBytes',
+    ],
     gameMcp: {
       id: 'blender',
       title: 'Blender',

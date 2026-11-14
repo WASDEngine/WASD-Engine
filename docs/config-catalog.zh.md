@@ -438,6 +438,65 @@ export interface SearchLimits {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-api-workspace-files -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-art-references -->
+<a id="deepseek-aidsh-art-references"></a>
+
+## `@deepseek-ai/dsh-art-references`
+
+- `inject`: `tools` · `web` · `workingDirectory`
+- `source`: [`packages/gamedev/art-references/src/index.ts:40`](../packages/gamedev/art-references/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the reference tools. */
+export interface Config {
+  /** The cache folder of downloaded images and contact sheets. */
+  dataRoot: string
+  /** `User-Agent` of every page and image request. */
+  userAgent: string
+  /** Days a downloaded image or a contact sheet stays in the cache folder. */
+  cacheDays: number
+  /** Time limit of one `reference_search` call. */
+  searchTimeoutMs: number
+  /** Time limit of one `reference_save` call. */
+  saveTimeoutMs: number
+  /** Most queries one search takes. */
+  maxQueries: number
+  /** Most pages one search reads by address. */
+  maxPages: number
+  /** Pages one query's web search returns. */
+  resultsPerQuery: number
+  /** Most images on one contact sheet. */
+  maxCandidates: number
+  /** Most images one save takes. */
+  maxSaved: number
+  /** Most images one save shows the caller's model. */
+  maxModelImages: number
+  /** Longest side in pixels of an image the caller's model receives. */
+  modelImageEdge: number
+  /** Time limit of reading one page. */
+  pageTimeoutMs: number
+  /** Time limit of downloading one image. */
+  imageTimeoutMs: number
+  /** Most bytes of a page read. */
+  maxPageBytes: number
+  /** Largest image downloaded, in bytes. */
+  maxImageBytes: number
+  /** Smallest longest side, in pixels, of an image worth studying. */
+  minImageEdge: number
+  /** Side in pixels of each image's square on the contact sheet. */
+  sheetCell: number
+  /** Most images in one row of the contact sheet. */
+  sheetColumns: number
+  /** Most frames on an animation's frames sheet; a longer animation is sampled evenly. */
+  framesMaxFrames: number
+  /** Longest side in pixels of an animation's frames sheet. */
+  framesMaxEdge: number
+  /** Pages read and images downloaded at once. */
+  concurrency: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-art-references -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-attachment-local -->
 <a id="deepseek-aidsh-attachment-local"></a>
 
@@ -531,7 +590,7 @@ export type Config = LocalConfig
 
 - `inject`: `mcpManager`
 - `refs`: [`AppMcpConfig`](../packages/gamedev/app-mcp/src/index.ts)
-- `source`: [`packages/gamedev/blender/src/index.ts:26`](../packages/gamedev/blender/src/index.ts)
+- `source`: [`packages/gamedev/blender/src/index.ts:27`](../packages/gamedev/blender/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the Blender tools. */
@@ -564,6 +623,22 @@ export interface Config extends AppMcpConfig {
    * empty leaves `wasd_addons` without add-ons.
    */
   addonStore: string
+  /** Most `run_script` runs that run at once on any computer, whichever calls asked for them. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `run_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `run_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `run_script` calls kept under `script-runs/` in `dataRoot`; a new call deletes the oldest beyond this. */
+  keptScriptResults: number
+  /** Most bytes of output that a `run_script` run keeps in its `output.log`; later output is left out. */
+  scriptLogBytes: number
 }
 
 /**
@@ -1942,7 +2017,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:68`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:72`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1997,8 +2072,27 @@ export interface Config {
    * once; 0 leaves processors out of the limit.
    */
   runCores: number
+  /**
+   * Milliseconds that a game an agent started must go unused, shown in no Game tab and serving no request, before a
+   * start that finds every run slot taken stops it; 0 makes such a start fail instead.
+   */
+  idleRunStopMs: number
   /** Most script checks and exports that run at once; later ones wait for one to end. */
   maxHeadlessProcesses: number
+  /** Most `godot_script` runs that run at once across Sessions on any computer; later ones wait for one to end. */
+  maxScripts: number
+  /**
+   * Bytes of the computer's physical memory for each `godot_script` run: at most the computer's memory divided by this,
+   * rounded to the nearest whole number, run at once; 0 leaves memory out of the limit.
+   */
+  scriptMemoryBytes: number
+  /**
+   * Logical processors for each `godot_script` run: at most the computer's logical processors divided by this, rounded
+   * down, run at once; 0 leaves processors out of the limit.
+   */
+  scriptCores: number
+  /** Folders of `godot_script` calls that each project keeps in its data folder; a new call deletes the oldest beyond it. */
+  keptScriptResults: number
   /** Bytes of memory that the computer must have available to start a game, a script check, or an export; 0 turns the check off. */
   minAvailableMemoryBytes: number
   /**

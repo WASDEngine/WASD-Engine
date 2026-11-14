@@ -136,7 +136,7 @@ Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需�
 
 游戏的“安装”按钮链接到 `wasdengine://games/<slug>?install=1`，单人游戏的更早版本还会带上 `v=<n>`。桌面外壳从系统（macOS 的 `open-url`，以及 Windows 上启动应用的那次或之后某次启动的命令行）和它的客体中接收这些链接，并保留它们，直到窗口通过 `dshDesktop.wasdLinks`（`apps/desktop/src/wasdengine-links.ts`）取走。窗口随后在该游戏的页面显示“游玩”，如果链接要求安装，就调用 `installGame`。
 
-开启 `library` 后（桌面应用就是如此），Host 在 `<dataRoot>/library/` 中保留游戏库。安装时会向网站的 `GET /api/v1/library/games/<slug>` 询问要安装的版本及其构建，通过计数的下载链接下载适合这台电脑的构建，检查其大小和 SHA-256，用系统自带的工具（macOS 上的 `ditto`，Windows 10 及更高版本自带的 `tar`）把它解压到 `<game id>/<version>/`，记录到 `games.json` 中，并删除该游戏的更早版本。游戏库以流的形式给出每个下载的进度，失败的下载会带着原因留在列表中，直到被关闭或重试。“游玩”会把 macOS 上 `.app` 包中的程序或 Windows 上的 `.exe` 作为独立的进程启动，与应用的进程分离，因此游戏在应用退出后仍会继续运行。联机游戏（其最新发布给出了多人联机模式）只能以最新版本游玩，因此“游玩”会先安装较新的版本，然后为已登录的账户签发玩家令牌（`POST /api/v1/play/token`），并带着 `WASD_PLAY_TOKEN`、`WASD_API_ORIGIN`、`WASD_GAME_ID` 和 `WASD_GAME_VERSION` 启动游戏，WASD Multiplayer 插件会读取这些变量。单人游戏以已安装的版本启动，版本旁或游戏菜单中的“更新”会安装较新的版本。游戏菜单中的“卸载”会删除该游戏的文件。
+开启 `library` 后（桌面应用就是如此），Host 在 `<dataRoot>/library/` 中保留游戏库。安装时会向网站的 `GET /api/v1/library/games/<slug>` 询问要安装的版本及其构建，通过计数的下载链接下载适合这台电脑的构建，检查其大小和 SHA-256，用系统自带的工具（macOS 上的 `ditto`，Windows 10 及更高版本自带的 `tar`）把它解压到 `<game id>/<version>/`，记录到 `games.json` 中，并删除该游戏的更早版本。游戏库以流的形式给出每个下载的进度，失败的下载会带着原因留在列表中，直到被关闭或重试。“游玩”会把 macOS 上 `.app` 包中的程序或 Windows 上的 `.exe` 作为独立的进程启动，与应用的进程分离，因此游戏在应用退出后仍会继续运行。每次启动都会在后台让网站为该游戏计一次游玩（`POST /api/v1/library/games/<slug>/plays`）；应用登录了该网站时会附上账户的令牌，使网站不计入创作者自己的游玩；网站没有收到的游玩（例如离线时）不会计入。联机游戏（其最新发布给出了多人联机模式）只能以最新版本游玩，因此“游玩”会先安装较新的版本，然后为已登录的账户签发玩家令牌（`POST /api/v1/play/token`），并带着 `WASD_PLAY_TOKEN`、`WASD_API_ORIGIN`、`WASD_GAME_ID` 和 `WASD_GAME_VERSION` 启动游戏，WASD Multiplayer 插件会读取这些变量。单人游戏以已安装的版本启动，版本旁或游戏菜单中的“更新”会安装较新的版本。游戏菜单中的“卸载”会删除该游戏的文件。
 
 ### 首次构建提示
 
@@ -408,6 +408,6 @@ Godot 插件加载期间，声明和段落都是静态的，因此保留在已�
 <details>
 <summary>维护者工作背景 — 点击展开</summary>
 
-WASD Engine 中既不是游戏工具、也不来自上游的每项功能都属于本包，这样它会与其余功能一起保持开启。发布会调用网站的 `GET`、`POST` 和 `PATCH /api/v1/games[/<id>]`、`POST /api/v1/games/<id>/releases`、`PUT /api/v1/games/<id>/releases/<version>/downloads/<platform>`、`PUT /api/v1/games/<id>/cover` 和 `/gif`，对专用服务器游戏还会调用 `POST /api/v1/games/<id>/server-builds`。游戏库调用 `GET /api/v1/library/games/<slug>`、计数的下载链接和 `POST /api/v1/play/token`。多人联机工具调用 `GET /api/v1/servers/plans`、`POST` 与 `GET /api/v1/servers`、`GET`、`PATCH` 与 `DELETE /api/v1/servers/<id>`、`POST /api/v1/servers/<id>/actions` 与 `/deploy`、`GET /api/v1/servers/<id>/logs` 与 `/backups`，以及 `GET /api/v1/play/stats`。`addon/wasd_multiplayer/` 中的插件是设置时逐字节复制的 GDScript；它自己的 README 说明其 API 和测试模式。
+WASD Engine 中既不是游戏工具、也不来自上游的每项功能都属于本包，这样它会与其余功能一起保持开启。发布会调用网站的 `GET`、`POST` 和 `PATCH /api/v1/games[/<id>]`、`POST /api/v1/games/<id>/releases`、`PUT /api/v1/games/<id>/releases/<version>/downloads/<platform>`、`PUT /api/v1/games/<id>/cover` 和 `/gif`，对专用服务器游戏还会调用 `POST /api/v1/games/<id>/server-builds`。游戏库调用 `GET /api/v1/library/games/<slug>`、`POST /api/v1/library/games/<slug>/plays`、计数的下载链接和 `POST /api/v1/play/token`。多人联机工具调用 `GET /api/v1/servers/plans`、`POST` 与 `GET /api/v1/servers`、`GET`、`PATCH` 与 `DELETE /api/v1/servers/<id>`、`POST /api/v1/servers/<id>/actions` 与 `/deploy`、`GET /api/v1/servers/<id>/logs` 与 `/backups`，以及 `GET /api/v1/play/stats`。`addon/wasd_multiplayer/` 中的插件是设置时逐字节复制的 GDScript；它自己的 README 说明其 API 和测试模式。
 
 </details>

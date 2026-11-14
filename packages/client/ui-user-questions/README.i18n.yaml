@@ -9,8 +9,8 @@
   en: f109e91b29d71f55
   zh: 73200984bad7f908
 /deepseek-ai-dsh-client-ui-user-questions/summary:
-  en: 1aa6291852d48a08
-  zh: 414eed268fb2cf1f
+  en: d5a31bbf0c229f0e
+  zh: 37ff8b59ecef90d7
 /deepseek-ai-dsh-client-ui-user-questions/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,8 +18,11 @@
   en: f63c46f9fc2edb1f
   zh: 82ad1b2e56a61a52
 /deepseek-ai-dsh-client-ui-user-questions/use-this-package/answering:
-  en: 8900fbf9cbd72083
-  zh: 67a951d58a029a58
+  en: f546abf73baac319
+  zh: 70f9a3a89debeea6
+/deepseek-ai-dsh-client-ui-user-questions/use-this-package/attaching-images:
+  en: 3d136b0646752c32
+  zh: 6b97cf5a0e9fbb42
 /deepseek-ai-dsh-client-ui-user-questions/use-this-package/reading-a-settled-question-back:
   en: d51f61aec8981c28
   zh: 9973db6ce3fe6b72
@@ -45,14 +48,23 @@
   en: dc98d242987579a3
   zh: a193b9f33a197089
 /deepseek-ai-dsh-client-ui-user-questions/model-experience:
-  en: 198421eb8ed8923f
-  zh: 84f719be6e6dfe62
-/deepseek-ai-dsh-client-ui-user-questions/model-experience/kv-cache-effect:
-  en: 1032ba29b7d7f9d7
-  zh: 01f1dbf4c2164fd2
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-client-ui-user-questions/model-experience/answer-images-message:
+  en: 1c3d06b8de47b14a
+  zh: 2ad1a2530b911cf5
+/deepseek-ai-dsh-client-ui-user-questions/model-experience/answer-images-message/what-the-model-sees:
+  en: 2b8308a128be260b
+  zh: 6b2c4907ccf3bdf9
+/deepseek-ai-dsh-client-ui-user-questions/model-experience/answer-images-message/token-effect:
+  en: 823e18e759d22bc1
+  zh: 749111577a8680ba
+/deepseek-ai-dsh-client-ui-user-questions/model-experience/answer-images-message/kv-cache-effect:
+  en: 459b43067b373536
+  zh: 6dd6ff8752d5cd78
 /deepseek-ai-dsh-client-ui-user-questions/known-limitations-and-deferred-work:
-  en: d61767a407077aaf
-  zh: 891e7bffa61f3017
+  en: 374ad243fc02a8f4
+  zh: 2bb070226db1e09e
 /deepseek-ai-dsh-client-ui-user-questions/known-limitations-and-deferred-work/dev-note:
   en: 4ff0c667c1b130df
   zh: 3f42eaff797dc46d

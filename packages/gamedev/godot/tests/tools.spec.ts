@@ -1,5 +1,5 @@
 /** The godot_* tools run, observe, and drive the Session's game through the real tool pipeline. */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -173,10 +173,60 @@ posix('observing the game', () => {
     const measured = await callTool(c, 'godot_performance', { seconds: 0.5 })
     expect(text(measured).split('\n')[0]).toBe('Measured 0.50 s of real time: 0 frames at 0.0 FPS; the forward_plus renderer on fake draws a 640x360 window.')
     expect(value(measured)).toMatchObject({ seconds: 0.5, frames: 0, windowless: false, sceneTree: { nodes: 1, classes: [{ name: 'Window', nodes: 1 }] } })
-    // The game's own limit is the sample's seconds plus requestTimeoutMs.
-    expect((await fakeRequests(c.project)).find(request => request.type === 'performance')).toMatchObject({ seconds: 0.5, timeoutMs: 5500 })
+    // The game's own limit is the sample's seconds, twice with the script window, plus requestTimeoutMs.
+    expect((await fakeRequests(c.project)).find(request => request.type === 'performance')).toMatchObject({ seconds: 0.5, scriptSeconds: 0.5, timeoutMs: 6000 })
+    expect(text(measured)).toContain('Scripts: this Godot runtime has no script profiler;')
+    const framesOnly = await callTool(c, 'godot_performance', { seconds: 0.5, scripts: false })
+    expect(text(framesOnly)).not.toContain('Scripts:')
+    expect((await fakeRequests(c.project)).filter(request => request.type === 'performance').at(-1)).toMatchObject({ scriptSeconds: 0, timeoutMs: 5500 })
     expect(text(await callTool(c, 'godot_performance', { seconds: 30 }))).toContain('seconds must be from 0.25 to 20.')
     expect(text(await callTool(c, 'godot_performance', { seconds: 0.1 }))).toContain('seconds must be from 0.25 to 20.')
+  })
+
+  it('captures the audio mix with its measurements and picture, and saves it as a WAV file on request', async () => {
+    const c = await started()
+    const result = await callTool(c, 'godot_audio', { seconds: 0.5 })
+    expect(text(result).split('\n').slice(0, 4)).toEqual([
+      'Captured 0.50 s of the game\'s audio mix, the Master bus after its effects and volume, at 44100 Hz in stereo.',
+      'The game runs muted (Dummy audio driver): it mixes its audio as usual, but no device plays it.',
+      'Levels: peak -6.0 dBFS, RMS -9.0 dBFS (left -6.0 dBFS peak, -9.0 dBFS RMS; right -6.0 dBFS peak, -9.0 dBFS RMS), loudness -6.7 LUFS.',
+      'Silence below -60 dBFS: 0.00 s at the start, 0.00 s at the end.',
+    ])
+    expect(text(result)).toContain('Sounds (stretches above -50 dBFS): 0.00-0.50 s peak -6.0 dBFS.')
+    expect(text(result)).toContain('No AudioStreamPlayer, AudioStreamPlayer2D, or AudioStreamPlayer3D started playing during the capture.')
+    expect(text(result)).toContain('Buses (volume, largest peak): Master 0.0 dB, peak -6.0 dB.')
+    expect(text(result)).toContain('Image (1024 x')
+    expect(value(result)).toMatchObject({ seconds: 0.5, muted: true, dominantHz: expect.any(Number) as number, picture: { attachmentId: 'a1', mediaType: 'image/png' } })
+    expect(Math.abs((value(result).dominantHz as number) - 441)).toBeLessThan(25)
+    expect(result.content.at(-1)).toMatchObject({ type: 'image', attachment: { attachmentId: 'a1' } })
+    expect(Buffer.from(c.saved[0]?.data as Uint8Array).subarray(1, 4).toString('latin1')).toBe('PNG')
+    expect((await fakeRequests(c.project)).find(request => request.type === 'audio')).toMatchObject({ seconds: 0.5, timeoutMs: 5500 })
+
+    const saved = await callTool(c, 'godot_audio', { seconds: 0.25, path: 'captures/mix.wav' })
+    expect(text(saved)).toContain(`Saved the capture to ${join(c.dir.root, 'work', 'captures', 'mix.wav')}.`)
+    const wav = await readFile(join(c.dir.root, 'work', 'captures', 'mix.wav'))
+    expect(wav.toString('latin1', 0, 4)).toBe('RIFF')
+    expect(wav.length).toBe(44 + 11025 * 4)
+    expect(text(await callTool(c, 'godot_audio', { seconds: 0.25, path: 'captures/mix.wav' }))).toContain('already exists; pass replace: true to overwrite it')
+    expect(text(await callTool(c, 'godot_audio', { seconds: 0.25, path: 'captures/mix.wav', replace: true }))).toContain('Saved the capture to')
+    expect(text(await callTool(c, 'godot_audio', { path: 'captures/mix.mp3' }))).toContain('path must end in .wav.')
+    expect(text(await callTool(c, 'godot_audio', { seconds: 40 }))).toContain('seconds must be from 0.25 to 30.')
+  })
+
+  it('plays input from the capture\'s start, keeps to text for a model without images, and reports what the game played', async () => {
+    const players = [{ path: '/root/Main/Gun/Shot', class: 'AudioStreamPlayer3D', stream: 'res://sfx/shot.wav', bus: 'SFX', volumeDb: -2, starts: 2, firstAt: 0.21, lastAt: 0.4, playing: false }]
+    const c = await started({ model: 'blind', game: { game: { audio: { amplitude: 0, reply: { players, morePlayers: 1, droppedFrames: 12, driver: 'CoreAudio', masterBypassed: true, detached: true } } } } })
+    const result = await callTool(c, 'godot_audio', { seconds: 0.25, events: [{ kind: 'key', key: 'Space', pressed: true }] })
+    expect(text(result)).not.toContain('muted')
+    expect(text(result)).toContain('The Master bus bypasses its effects')
+    expect(text(result)).toContain('The game replaced its audio bus layout during the capture')
+    expect(text(result)).toContain('drop 12 audio frames')
+    expect(text(result)).toContain('The mix is silent: no sample reaches -120 dBFS.')
+    expect(text(result)).toContain('Players that played: /root/Main/Gun/Shot (AudioStreamPlayer3D, res://sfx/shot.wav, bus SFX, -2.0 dB) started 2 times from 0.21 s; and 1 more.')
+    expect(result.content.some(block => block.type === 'image')).toBe(false)
+    const requests = await fakeRequests(c.project)
+    expect(requests.some(request => request.type === 'input')).toBe(true)
+    expect(text(await callTool(c, 'godot_audio', { events: [{ kind: 'mouse_button', button: 'left', pressed: true, x: 1, y: 1 }] }))).toContain('this game has no screenshot yet')
   })
 
   it('reads the log after the Session cursor, by level, within the text budget', async () => {

@@ -110,7 +110,7 @@ These pages cover the MCP server that offers the tool to other agents and how th
 
 #### What the model sees
 
-The Session's agent sees `image_generate`, with `prompt`, `path`, and the optional `images`, `aspect_ratio`, `size`, and `replace`. The description names the model, lists the kinds of game art, UI art, and textures it makes, says to pass images to edit or to keep a character, object, or style consistent, says that Nano Banana makes no transparent backgrounds and how to get one with GIMP, how to ask for a texture and make it seamless with GIMP, to look at each result with `asset_view`, and that each image costs AI usage from the user's WASD Engine plan, more at 2K and 4K. A connected agent sees the same tool, with `path` and `images` described as absolute paths, and the provider's instructions under `## Nano Banana`.
+The Session's agent sees `image_generate`, with `prompt`, `path`, and the optional `images`, `aspect_ratio`, `size`, and `replace`. The description names the model, lists the kinds of game art, UI art, and textures it makes, says to pass images to work from references, to edit, or to keep a character, object, or style consistent, and to say what to take from each, says that Nano Banana makes no transparent backgrounds and how to get one with GIMP, how to ask for a texture and make it seamless with GIMP, to look at each result with `asset_view`, and that each image costs AI usage from the user's WASD Engine plan, more at 2K and 4K. A connected agent sees the same tool, with `path` and `images` described as absolute paths, and the provider's instructions under `## Nano Banana`.
 
 #### Token effect
 

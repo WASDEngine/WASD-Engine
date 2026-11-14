@@ -12,6 +12,8 @@ import { planReviewOf, type QuestionAnswer, type QuestionCardSnapshot, type Ques
 import type { PendingQuestion } from './contract/slots.ts'
 import type { QuestionDraftAnswer, QuestionDraftProgress } from './draft-store.ts'
 import { PlanReviewPanel } from './PlanReviewPanel.tsx'
+import { useAnswerImages } from './answer-images.tsx'
+import type { ImageFeedback } from './question-images.ts'
 import css from './QuestionComposer.module.css'
 
 /**
@@ -20,7 +22,10 @@ import css from './QuestionComposer.module.css'
  * runtime failure messages (finished strings from the wire) pass through
  * verbatim.
  */
-type Feedback = { key: 'error.incomplete' | 'error.unanswered' | 'error.unavailable' | 'error.resubmit' | 'status.sent' } | { text: string }
+type Feedback =
+  | { key: 'error.incomplete' | 'error.unanswered' | 'error.unavailable' | 'error.resubmit' | 'status.sent'; params?: undefined }
+  | ImageFeedback
+  | { text: string }
 
 /** A removed card can remain mounted until the composer seat updates. */
 const REMOVED_CARD: QuestionCardSnapshot = {
@@ -162,15 +167,21 @@ export function QuestionComposer(props: QuestionComposerProps) {
         useStore={props.useStore}
         useQuestionCard={props.useQuestionCard}
         actions={props.actions}
+        useProjection={props.useProjection}
+        {...props.useQuestionImages === undefined ? {} : { useQuestionImages: props.useQuestionImages }}
+        {...props.questionImageIntake === undefined ? {} : { questionImageIntake: props.questionImageIntake }}
       />
     )
     : <PlanReviewPanel key={question.key} pending={question} review={review} t={props.t} renderSlot={props.renderSlot} />
 }
 
 type QuestionFlowProps =
-  { pending: PendingQuestion } & Pick<QuestionComposerProps, 't' | 'useStore' | 'useQuestionCard' | 'actions'>
+  { pending: PendingQuestion } & Pick<QuestionComposerProps, 't' | 'useStore' | 'useQuestionCard' | 'actions'
+  | 'useProjection' | 'useQuestionImages' | 'questionImageIntake'>
 
-function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: QuestionFlowProps) {
+function QuestionFlow({
+  pending, t, useStore, useQuestionCard, actions, useProjection, useQuestionImages, questionImageIntake,
+}: QuestionFlowProps) {
   const descriptionIdPrefix = useId()
   const questions = pending.questions
   // A read-only card built from a settled call's transcript: the same panel
@@ -259,6 +270,18 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
   // and they apply only while their question is the one shown.
   const [expandedCopy, setExpandedCopy] = useState<ExpandedCopy>({ index, copies: NOTHING_EXPANDED })
   const expanded = expandedCopy.index === index ? expandedCopy.copies : NOTHING_EXPANDED
+  // Images the user attaches to an answer reach the agent in a steered message sent just before the batch.
+  const images = useAnswerImages({
+    pending, index, locked, t, useProjection, useQuestionImages,
+    intake: questionImageIntake,
+    onAttached: () => {
+      engage()
+      replaceProgress(index, drafts)
+      setError(null)
+      setMinimized(false)
+    },
+    onFeedback: (feedback) => { setError(feedback) },
+  })
 
   const questionToggleLabel = t(expanded.has('question') ? 'text.collapse' : 'text.expand')
 
@@ -366,13 +389,14 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
     }, question.multiSelect !== true && index < questions.length - 1 ? index + 1 : index)
   }
 
-  const answered = (item: QuestionDraftAnswer): boolean =>
-    item.selected.length > 0 || item.custom.trim() !== ''
+  // Attached images answer a question too, so an answer of images alone is not a skip.
+  const answered = (item: QuestionDraftAnswer, itemIndex = index): boolean =>
+    item.selected.length > 0 || item.custom.trim() !== '' || images.count(itemIndex) > 0
 
-  const completed = (item: QuestionDraftAnswer): boolean => answered(item) || item.skipped
+  const completed = (item: QuestionDraftAnswer, itemIndex: number): boolean => answered(item, itemIndex) || item.skipped
 
   const submitDrafts = (values: QuestionDraftAnswer[]): void => {
-    const missing = values.findIndex(item => !completed(item))
+    const missing = values.findIndex((item, itemIndex) => !completed(item, itemIndex))
     if (missing >= 0) {
       replaceProgress(missing, values)
       setError({ key: 'error.incomplete' })
@@ -382,11 +406,17 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
       setError({ key: 'error.unavailable' })
       return
     }
+    if (images.blocker !== undefined) {
+      setError(images.blocker)
+      return
+    }
     const answer: QuestionAnswer = {
       answers: questions.map((item, itemIndex) => {
         const value = values[itemIndex] as QuestionDraftAnswer
         if (value.skipped) return { id: item.id, selected: [] }
-        const custom = value.custom.trim()
+        const typed = value.custom.trim()
+        // An answer of images alone says so, so it does not read as a skipped question.
+        const custom = typed === '' && value.selected.length === 0 && images.count(itemIndex) > 0 ? t('images.answer') : typed
         return {
           id: item.id,
           selected: custom === '' || item.multiSelect === true ? value.selected : [],
@@ -396,6 +426,24 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
     }
     setBusy('answer')
     setError(null)
+    if (!images.unsent) {
+      deliver(answer)
+      return
+    }
+    // The images go first: the agent is still waiting for the batch, so its
+    // next request carries both, and a refused image keeps the batch unsent.
+    void images.send(question => t('images.heading', { question: questions[question]?.question ?? '' }))
+      .then((failure) => {
+        if (failure === undefined) {
+          deliver(answer)
+          return
+        }
+        setBusy(null)
+        setError(failure)
+      })
+  }
+
+  const deliver = (answer: QuestionAnswer): void => {
     // The external-store render can lag the carrier as a timed call continues.
     // Read the channel used by answer() in this same event turn.
     const channel = pending.snapshot().channel
@@ -449,6 +497,7 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
 
   const skipQuestion = (): void => {
     engage()
+    images.clear(index)
     const nextDrafts = drafts.map((item, itemIndex) => itemIndex === index
       ? { selected: [], custom: '', skipped: true }
       : item)
@@ -463,8 +512,12 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
   return (
     <div className={css.frame} data-question-key={pending.key}>
       <section
-        className={clsx(css.card, minimized && css.cardMinimized)}
+        className={clsx(css.card, minimized && css.cardMinimized, images.drop.className)}
         aria-labelledby={`question-${pending.key}-${String(index)}`}
+        onDragEnter={images.drop.onDragEnter}
+        onDragOver={images.drop.onDragOver}
+        onDragLeave={images.drop.onDragLeave}
+        onDrop={images.drop.onDrop}
       >
         <header className={css.header}>
           {(question.header !== undefined || minimized) && (
@@ -526,6 +579,7 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
               data-question-scroll
               onFocusCapture={focusAnswerSurface}
               onBlurCapture={blurAnswerSurface}
+              onPaste={images.onPaste}
             >
               <div className={css.questionTitle} data-expanded={expanded.has('question') || undefined}>
                 <h2
@@ -680,6 +734,7 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
                     />
                   ))}
               </div>
+              {images.strip}
             </div>
 
             <footer className={css.footer}>
@@ -701,11 +756,12 @@ function QuestionFlow({ pending, t, useStore, useQuestionCard, actions }: Questi
                 </button>
               </div>
               <div className={css.feedback} role="status">
-                {error === null ? null : 'key' in error ? t(error.key) : error.text}
+                {error === null ? null : 'key' in error ? t(error.key, error.params) : error.text}
               </div>
               {/* A review card has nothing to send: the pager alone walks the record. */}
               {review === undefined && (
                 <div className={css.footerActions}>
+                  {images.button}
                   <Button variant="outline" disabled={busy !== null} onClick={skipQuestion}>
                     {t('action.skip')}
                   </Button>

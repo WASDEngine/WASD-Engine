@@ -1,0 +1,713 @@
+diff --git a/drivers/metal/metal3_objects.cpp b/drivers/metal/metal3_objects.cpp
+index d0c1f21..6f63b41 100644
+--- a/drivers/metal/metal3_objects.cpp
++++ b/drivers/metal/metal3_objects.cpp
+@@ -88,6 +88,7 @@ void MDCommandBuffer::end_label() {
+ void MDCommandBuffer::begin() {
+ 	DEV_ASSERT(commandBuffer.get() == nullptr && !state_begin);
+ 	state_begin = true;
++	pass_timeline.reset();
+ 	bzero(pending_after_stages, sizeof(pending_after_stages));
+ 	bzero(pending_before_queue_stages, sizeof(pending_before_queue_stages));
+ 	binding_cache.clear();
+@@ -122,11 +123,84 @@ void MDCommandBuffer::commit() {
+ 			_frame_state.rs->commit();
+ 		}
+ 	}
++	if (pass_timeline) {
++		pass_timeline->command_buffer = commandBuffer;
++		pass_timeline.reset();
++	}
+ 	commandBuffer->commit();
+ 	commandBuffer.reset();
+ 	state_begin = false;
+ }
+ 
++#pragma mark - Timestamps
++
++void MDCommandBuffer::timestamp_write(MDTimestampPool *p_pool, uint32_t p_index) {
++	if (!pass_timeline) {
++		MTL::CounterSampleBuffer *samples = device_driver->new_timestamp_sample_buffer(MDPassTimeline::MAX_PASSES * 2);
++		if (samples == nullptr) {
++			p_pool->queries[p_index] = {};
++			return;
++		}
++		pass_timeline = std::make_shared<MDPassTimeline>();
++		pass_timeline->samples = NS::TransferPtr(samples);
++	}
++	// A compute or blit pass stays open across commands; it ends here, so that its end is sampled before the timestamp.
++	if (type == MDCommandBufferStateType::Compute) {
++		_end_compute_dispatch();
++	} else if (type == MDCommandBufferStateType::Blit) {
++		_end_blit();
++	}
++	p_pool->queries[p_index] = { pass_timeline, pass_timeline->pass_count };
++}
++
++NS::UInteger MDCommandBuffer::_next_pass_sample() {
++	if (!pass_timeline || pass_timeline->pass_count >= MDPassTimeline::MAX_PASSES) {
++		return MTL::CounterDontSample;
++	}
++	return NS::UInteger(pass_timeline->pass_count++) * 2;
++}
++
++void MDCommandBuffer::_sample_render_pass(MTL::RenderPassDescriptor *p_desc) {
++	MTL::RenderPassSampleBufferAttachmentDescriptor *attachment = p_desc->sampleBufferAttachments()->object(0);
++	NS::UInteger start = _next_pass_sample();
++	if (start == MTL::CounterDontSample) {
++		attachment->setSampleBuffer(nullptr);
++		return;
++	}
++	attachment->setSampleBuffer(pass_timeline->samples.get());
++	attachment->setStartOfVertexSampleIndex(start);
++	attachment->setEndOfVertexSampleIndex(MTL::CounterDontSample);
++	attachment->setStartOfFragmentSampleIndex(MTL::CounterDontSample);
++	attachment->setEndOfFragmentSampleIndex(start + 1);
++}
++
++MTL::ComputeCommandEncoder *MDCommandBuffer::_new_compute_encoder() {
++	NS::UInteger start = _next_pass_sample();
++	if (start == MTL::CounterDontSample) {
++		return command_buffer()->computeCommandEncoder(MTL::DispatchTypeConcurrent);
++	}
++	NS::SharedPtr<MTL::ComputePassDescriptor> desc = NS::TransferPtr(MTL::ComputePassDescriptor::alloc()->init());
++	desc->setDispatchType(MTL::DispatchTypeConcurrent);
++	MTL::ComputePassSampleBufferAttachmentDescriptor *attachment = desc->sampleBufferAttachments()->object(0);
++	attachment->setSampleBuffer(pass_timeline->samples.get());
++	attachment->setStartOfEncoderSampleIndex(start);
++	attachment->setEndOfEncoderSampleIndex(start + 1);
++	return command_buffer()->computeCommandEncoder(desc.get());
++}
++
++MTL::BlitCommandEncoder *MDCommandBuffer::_new_blit_encoder() {
++	NS::UInteger start = _next_pass_sample();
++	if (start == MTL::CounterDontSample) {
++		return command_buffer()->blitCommandEncoder();
++	}
++	NS::SharedPtr<MTL::BlitPassDescriptor> desc = NS::TransferPtr(MTL::BlitPassDescriptor::alloc()->init());
++	MTL::BlitPassSampleBufferAttachmentDescriptor *attachment = desc->sampleBufferAttachments()->object(0);
++	attachment->setSampleBuffer(pass_timeline->samples.get());
++	attachment->setStartOfEncoderSampleIndex(start);
++	attachment->setEndOfEncoderSampleIndex(start + 1);
++	return command_buffer()->blitCommandEncoder(desc.get());
++}
++
+ MTL::CommandBuffer *MDCommandBuffer::command_buffer() {
+ 	DEV_ASSERT(state_begin);
+ 	if (commandBuffer.get() == nullptr) {
+@@ -236,6 +310,7 @@ void MDCommandBuffer::bind_pipeline(RDD::PipelineID p_pipeline) {
+ 			// and is due to the SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS flag.
+ 			render.desc->setDefaultRasterSampleCount(static_cast<NS::UInteger>(rp->sample_count));
+ 
++			_sample_render_pass(render.desc.get());
+ 			render.encoder = NS::RetainPtr(command_buffer()->renderCommandEncoder(render.desc.get()));
+ 			_encode_barrier(render.encoder.get());
+ 		}
+@@ -300,7 +375,7 @@ MTL::BlitCommandEncoder *MDCommandBuffer::_ensure_blit_encoder() {
+ 	}
+ 
+ 	type = MDCommandBufferStateType::Blit;
+-	blit.encoder = NS::RetainPtr(command_buffer()->blitCommandEncoder());
++	blit.encoder = NS::RetainPtr(_new_blit_encoder());
+ 	_encode_barrier(blit.encoder.get());
+ 
+ 	return blit.encoder.get();
+@@ -710,6 +785,7 @@ MTL::RenderCommandEncoder *MDCommandBuffer::get_new_render_encoder_with_descript
+ 			break;
+ 	}
+ 
++	_sample_render_pass(p_desc);
+ 	MTL::RenderCommandEncoder *enc = command_buffer()->renderCommandEncoder(p_desc);
+ 	_encode_barrier(enc);
+ 	return enc;
+@@ -1166,6 +1242,7 @@ void MDCommandBuffer::render_next_subpass() {
+ 		// the defaultRasterSampleCount from the pipeline's sample count.
+ 		render.desc = desc;
+ 	} else {
++		_sample_render_pass(desc.get());
+ 		render.encoder = NS::RetainPtr(command_buffer()->renderCommandEncoder(desc.get()));
+ 		_encode_barrier(render.encoder.get());
+ 
+@@ -1377,7 +1454,7 @@ void MDCommandBuffer::ComputeState::end_encoding() {
+ 
+ void MDCommandBuffer::_compute_set_dirty_state() {
+ 	if (compute.dirty.has_flag(ComputeState::DIRTY_PIPELINE)) {
+-		compute.encoder = NS::RetainPtr(command_buffer()->computeCommandEncoder(MTL::DispatchTypeConcurrent));
++		compute.encoder = NS::RetainPtr(_new_compute_encoder());
+ 		_encode_barrier(compute.encoder.get());
+ 		compute.encoder->setComputePipelineState(compute.pipeline->state.get());
+ 	}
+diff --git a/drivers/metal/metal3_objects.h b/drivers/metal/metal3_objects.h
+index 4e690cd..c6e6087 100644
+--- a/drivers/metal/metal3_objects.h
++++ b/drivers/metal/metal3_objects.h
+@@ -307,6 +307,18 @@ private:
+ 	void _end_blit();
+ 	MTL::BlitCommandEncoder *_ensure_blit_encoder();
+ 
++#pragma mark - Timestamps
++
++	/// Samples the passes encoded from the first timestamp write until the commit; null while no query was written.
++	std::shared_ptr<MDPassTimeline> pass_timeline;
++
++	/// Returns the index of the start sample of the next pass, whose end sample follows it, or MTL::CounterDontSample
++	/// when the pass timeline samples no further pass.
++	NS::UInteger _next_pass_sample();
++	void _sample_render_pass(MTL::RenderPassDescriptor *p_desc);
++	MTL::ComputeCommandEncoder *_new_compute_encoder();
++	MTL::BlitCommandEncoder *_new_blit_encoder();
++
+ 	enum class CopySource {
+ 		Buffer,
+ 		Texture,
+@@ -506,6 +518,8 @@ public:
+ 	void commit() override;
+ 	void end() override;
+ 
++	void timestamp_write(MDTimestampPool *p_pool, uint32_t p_index) override;
++
+ 	void bind_pipeline(RDD::PipelineID p_pipeline) override;
+ 
+ #pragma mark - Render Commands
+diff --git a/drivers/metal/metal_objects_shared.cpp b/drivers/metal/metal_objects_shared.cpp
+index 69a399f..3ac2c0f 100644
+--- a/drivers/metal/metal_objects_shared.cpp
++++ b/drivers/metal/metal_objects_shared.cpp
+@@ -898,3 +898,62 @@ std::shared_ptr<MDLibrary> MDLibrary::create(ShaderCacheEntry *p_entry,
+ 	p_entry->library = lib;
+ 	return lib;
+ }
++
++#pragma mark - MDPassTimeline
++
++void MDPassTimeline::_resolve() {
++	resolved = true;
++	uint32_t count = pass_count * 2;
++	times.resize(count);
++	if (count == 0) {
++		return;
++	}
++	for (uint32_t i = 0; i < count; i++) {
++		times[i] = 0;
++	}
++	NS::AutoreleasePool *pool = NS::AutoreleasePool::alloc()->init();
++	NS::Data *data = samples ? samples->resolveCounterRange(NS::Range(0, count)) : nullptr;
++	if (data != nullptr && data->length() >= count * sizeof(MTL::CounterResultTimestamp)) {
++		const MTL::CounterResultTimestamp *results = static_cast<const MTL::CounterResultTimestamp *>(data->mutableBytes());
++		// The GPU timestamps of Apple GPUs count nanoseconds on the host clock of the command buffer's GPU start and end
++		// times. A sample outside them is left over from an earlier use of the sample buffer, so it is not taken.
++		uint64_t earliest = 1;
++		uint64_t latest = UINT64_MAX;
++		if (command_buffer) {
++			CFTimeInterval start = command_buffer->GPUStartTime();
++			CFTimeInterval end = command_buffer->GPUEndTime();
++			if (start > 0 && end >= start) {
++				earliest = uint64_t(start * 1e9) - MIN(uint64_t(start * 1e9), uint64_t(1000000));
++				latest = uint64_t(end * 1e9) + 1000000;
++			}
++		}
++		for (uint32_t i = 0; i < count; i++) {
++			uint64_t time = results[i].timestamp;
++			if (time != MTL::CounterErrorValue && time >= earliest && time <= latest) {
++				times[i] = time;
++			}
++		}
++	}
++	pool->release();
++	samples.reset();
++	command_buffer.reset();
++}
++
++uint64_t MDPassTimeline::time_after(uint32_t p_passes) {
++	if (!resolved) {
++		_resolve();
++	}
++	uint64_t time = 0;
++	for (uint32_t pass = 0; pass < MIN(p_passes, pass_count); pass++) {
++		time = MAX(time, times[pass * 2 + 1]);
++	}
++	if (time != 0) {
++		return time;
++	}
++	for (uint32_t pass = p_passes; pass < pass_count; pass++) {
++		if (times[pass * 2] != 0) {
++			return times[pass * 2];
++		}
++	}
++	return 0;
++}
+diff --git a/drivers/metal/metal_objects_shared.h b/drivers/metal/metal_objects_shared.h
+index e5d01d9..71d4fc4 100644
+--- a/drivers/metal/metal_objects_shared.h
++++ b/drivers/metal/metal_objects_shared.h
+@@ -635,6 +635,39 @@ struct RenderStateBase {
+ 	BitField<DirtyFlag> dirty = DIRTY_NONE;
+ };
+ 
++/// The GPU times of the passes that one command buffer encodes after its first timestamp write. Each pass samples the
++/// GPU timestamp at its start and its end, the stage boundaries at which Apple GPUs sample counters. A timestamp written
++/// between passes reads the latest end of the passes before it, or, before the first pass, the start of the first
++/// pass after it, as Vulkan's bottom-of-pipe timestamps do.
++class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDPassTimeline {
++	/// Per sample, in nanoseconds; 0 for a sample that the GPU did not take, such as one of an empty pass.
++	LocalVector<uint64_t> times;
++	bool resolved = false;
++
++	void _resolve();
++
++public:
++	static constexpr uint32_t MAX_PASSES = 2048;
++
++	NS::SharedPtr<MTL::CounterSampleBuffer> samples;
++	/// The command buffer that encoded the passes, set when it is committed; its GPU start and end times bound the samples.
++	NS::SharedPtr<MTL::CommandBuffer> command_buffer;
++	uint32_t pass_count = 0;
++
++	/// Returns the time of a timestamp written after `p_passes` passes, in nanoseconds, or 0 when no pass around it ran.
++	/// Call it once the command buffer completed.
++	uint64_t time_after(uint32_t p_passes);
++};
++
++/// A timestamp query pool: for each query, the pass timeline of the command buffer that wrote it, and the passes before it.
++struct API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDTimestampPool {
++	struct Query {
++		std::shared_ptr<MDPassTimeline> timeline;
++		uint32_t passes = 0;
++	};
++	LocalVector<Query> queries;
++};
++
+ /// Abstract base class for Metal command buffers, shared between MTL3 and MTL4 implementations.
+ class API_AVAILABLE(macos(11.0), ios(14.0), tvos(14.0), visionos(2.0)) MDCommandBufferBase {
+ 	LocalVector<CFTypeRef> _retained_resources;
+@@ -687,6 +720,10 @@ public:
+ 
+ 	void retain_resource(CFTypeRef p_resource);
+ 
++	/// Records timestamp query `p_index` of `p_pool` at this point of the command buffer. The base records nothing, so
++	/// the query reads 0.
++	virtual void timestamp_write(MDTimestampPool *p_pool, uint32_t p_index) { p_pool->queries[p_index] = {}; }
++
+ #pragma mark - Render Commands
+ 
+ 	virtual void render_bind_uniform_sets(VectorView<RDD::UniformSetID> p_uniform_sets, RDD::ShaderID p_shader, uint32_t p_first_set_index, uint32_t p_set_count, uint32_t p_dynamic_offsets) = 0;
+diff --git a/drivers/metal/rendering_device_driver_metal.cpp b/drivers/metal/rendering_device_driver_metal.cpp
+index 90dae10..73aebea 100644
+--- a/drivers/metal/rendering_device_driver_metal.cpp
++++ b/drivers/metal/rendering_device_driver_metal.cpp
+@@ -2332,16 +2332,81 @@ void RenderingDeviceDriverMetal::command_trace_rays(CommandBufferID p_cmd_buffer
+ 
+ // ----- TIMESTAMP -----
+ 
++// Metal command buffers sample GPU timestamps only at the start and end of passes on Apple GPUs, so a query reads the
++// pass timeline of its command buffer (MDPassTimeline); results are in nanoseconds.
++
++MTL::CounterSampleBuffer *RenderingDeviceDriverMetal::new_timestamp_sample_buffer(uint32_t p_sample_count) {
++	if (!timestamp_counters_checked) {
++		timestamp_counters_checked = true;
++		if (device->supportsCounterSampling(MTL::CounterSamplingPointAtStageBoundary)) {
++			NS::Array *sets = device->counterSets();
++			for (NS::UInteger i = 0; sets != nullptr && i < sets->count(); i++) {
++				MTL::CounterSet *set = sets->object<MTL::CounterSet>(i);
++				if (set->name()->isEqualToString(MTL::CommonCounterSetTimestamp)) {
++					timestamp_counter_set = set;
++					timestamp_counter_set->retain();
++					break;
++				}
++			}
++		}
++	}
++	if (timestamp_counter_set == nullptr) {
++		return nullptr;
++	}
++	NS::SharedPtr<MTL::CounterSampleBufferDescriptor> desc = NS::TransferPtr(MTL::CounterSampleBufferDescriptor::alloc()->init());
++	desc->setCounterSet(timestamp_counter_set);
++	desc->setStorageMode(MTL::StorageModeShared);
++	desc->setSampleCount(p_sample_count);
++	NS::Error *error = nullptr;
++	MTL::CounterSampleBuffer *buffer = device->newCounterSampleBuffer(desc.get(), &error);
++	if (buffer == nullptr) {
++		// Without a sample buffer the queries read 0, as on devices that sample no timestamps.
++		timestamp_counter_set->release();
++		timestamp_counter_set = nullptr;
++	}
++	return buffer;
++}
++
+ RDD::QueryPoolID RenderingDeviceDriverMetal::timestamp_query_pool_create(uint32_t p_query_count) {
+-	return QueryPoolID(1);
++	MDTimestampPool *pool = memnew(MDTimestampPool);
++	pool->queries.resize(p_query_count);
++	return QueryPoolID(pool);
+ }
+ 
+ void RenderingDeviceDriverMetal::timestamp_query_pool_free(QueryPoolID p_pool_id) {
++	memdelete((MDTimestampPool *)p_pool_id.id);
+ }
+ 
+ void RenderingDeviceDriverMetal::timestamp_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) {
+-	// Metal doesn't support timestamp queries, so we just clear the buffer.
+-	bzero(r_results, p_query_count * sizeof(uint64_t));
++	MDTimestampPool *pool = (MDTimestampPool *)p_pool_id.id;
++	uint32_t count = MIN(p_query_count, pool->queries.size());
++	uint64_t latest = 0;
++	for (uint32_t i = 0; i < count; i++) {
++		const MDTimestampPool::Query &query = pool->queries[i];
++		uint64_t time = query.timeline ? query.timeline->time_after(query.passes) : 0;
++		// Queries are written in index order, so a later one never reads earlier than one before it.
++		if (time != 0) {
++			time = MAX(time, latest);
++			latest = time;
++		}
++		r_results[i] = time;
++	}
++	// A query without a time of its own, around which no pass ran, reads its neighbor's, so the time between two
++	// queries is never measured from 0.
++	uint64_t first = 0;
++	for (uint32_t i = 0; i < count && first == 0; i++) {
++		first = r_results[i];
++	}
++	uint64_t previous = first;
++	for (uint32_t i = 0; i < count; i++) {
++		if (r_results[i] == 0) {
++			r_results[i] = previous;
++		}
++		previous = r_results[i];
++	}
++	for (uint32_t i = count; i < p_query_count; i++) {
++		r_results[i] = previous;
++	}
+ }
+ 
+ uint64_t RenderingDeviceDriverMetal::timestamp_query_result_to_time(uint64_t p_result) {
+@@ -2349,9 +2414,17 @@ uint64_t RenderingDeviceDriverMetal::timestamp_query_result_to_time(uint64_t p_r
+ }
+ 
+ void RenderingDeviceDriverMetal::command_timestamp_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) {
++	MDTimestampPool *pool = (MDTimestampPool *)p_pool_id.id;
++	for (uint32_t i = 0; i < MIN(p_query_count, pool->queries.size()); i++) {
++		pool->queries[i] = {};
++	}
+ }
+ 
+ void RenderingDeviceDriverMetal::command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) {
++	MDTimestampPool *pool = (MDTimestampPool *)p_pool_id.id;
++	ERR_FAIL_UNSIGNED_INDEX(p_index, pool->queries.size());
++	MDCommandBufferBase *cb = (MDCommandBufferBase *)(p_cmd_buffer.id);
++	cb->timestamp_write(pool, p_index);
+ }
+ 
+ #pragma mark - Labels
+diff --git a/drivers/metal/rendering_device_driver_metal.h b/drivers/metal/rendering_device_driver_metal.h
+index 3fc39fa..d1f5002 100644
+--- a/drivers/metal/rendering_device_driver_metal.h
++++ b/drivers/metal/rendering_device_driver_metal.h
+@@ -488,6 +488,15 @@ public:
+ 
+ 	// ----- TIMESTAMP -----
+ 
++private:
++	bool timestamp_counters_checked = false;
++	MTL::CounterSet *timestamp_counter_set = nullptr;
++
++public:
++	/// Returns a new sample buffer of `p_sample_count` GPU timestamps for a command buffer's pass timeline, or nullptr when
++	/// the device does not sample timestamps at stage boundaries.
++	MTL::CounterSampleBuffer *new_timestamp_sample_buffer(uint32_t p_sample_count);
++
+ 	// Basic.
+ 	virtual QueryPoolID timestamp_query_pool_create(uint32_t p_query_count) override final;
+ 	virtual void timestamp_query_pool_free(QueryPoolID p_pool_id) override final;
+diff --git a/modules/gdscript/gdscript.cpp b/modules/gdscript/gdscript.cpp
+index f9f9567..107e253 100644
+--- a/modules/gdscript/gdscript.cpp
++++ b/modules/gdscript/gdscript.cpp
+@@ -2285,6 +2285,7 @@ void GDScriptLanguage::profiling_start() {
+ 		elem->self()->profile.last_frame_total_time = 0;
+ 		elem->self()->profile.native_calls.clear();
+ 		elem->self()->profile.last_native_calls.clear();
++		elem->self()->profile.accumulated_native_calls.clear();
+ 		elem = elem->next();
+ 	}
+ 
+@@ -2313,7 +2314,7 @@ int GDScriptLanguage::profiling_get_accumulated_data(ProfilingInfo *p_info_arr,
+ 
+ 	MutexLock lock(mutex);
+ 
+-	profiling_collate_native_call_data(true);
++	// Each function lists its own native calls since profiling started: those of the earlier frames and of this one.
+ 	SelfList<GDScriptFunction> *elem = function_list.first();
+ 	while (elem) {
+ 		if (current >= p_info_max) {
+@@ -2326,9 +2327,20 @@ int GDScriptLanguage::profiling_get_accumulated_data(ProfilingInfo *p_info_arr,
+ 		p_info_arr[current].signature = elem->self()->profile.signature;
+ 		current++;
+ 
++		HashMap<String, GDScriptFunction::Profile::NativeProfile> native_calls;
++		native_calls = elem->self()->profile.accumulated_native_calls;
++		for (const KeyValue<String, GDScriptFunction::Profile::NativeProfile> &E : elem->self()->profile.native_calls) {
++			GDScriptFunction::Profile::NativeProfile *total = native_calls.getptr(E.key);
++			if (total) {
++				total->call_count += E.value.call_count;
++				total->total_time += E.value.total_time;
++			} else {
++				native_calls.insert(E.key, E.value);
++			}
++		}
+ 		int nat_time = 0;
+-		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.native_calls.begin();
+-		while (nat_calls) {
++		HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = native_calls.begin();
++		while (nat_calls && current < p_info_max) {
+ 			p_info_arr[current].call_count = nat_calls->value.call_count;
+ 			p_info_arr[current].total_time = nat_calls->value.total_time;
+ 			p_info_arr[current].self_time = nat_calls->value.total_time;
+@@ -2367,7 +2379,7 @@ int GDScriptLanguage::profiling_get_frame_data(ProfilingInfo *p_info_arr, int p_
+ 
+ 			int nat_time = 0;
+ 			HashMap<String, GDScriptFunction::Profile::NativeProfile>::ConstIterator nat_calls = elem->self()->profile.last_native_calls.begin();
+-			while (nat_calls) {
++			while (nat_calls && current < p_info_max) {
+ 				p_info_arr[current].call_count = nat_calls->value.call_count;
+ 				p_info_arr[current].total_time = nat_calls->value.total_time;
+ 				p_info_arr[current].self_time = nat_calls->value.total_time;
+@@ -2619,6 +2631,15 @@ void GDScriptLanguage::frame() {
+ 			elem->self()->profile.last_frame_self_time = elem->self()->profile.frame_self_time.get();
+ 			elem->self()->profile.last_frame_total_time = elem->self()->profile.frame_total_time.get();
+ 			elem->self()->profile.last_native_calls = elem->self()->profile.native_calls;
++			for (const KeyValue<String, GDScriptFunction::Profile::NativeProfile> &E : elem->self()->profile.native_calls) {
++				GDScriptFunction::Profile::NativeProfile *total = elem->self()->profile.accumulated_native_calls.getptr(E.key);
++				if (total) {
++					total->call_count += E.value.call_count;
++					total->total_time += E.value.total_time;
++				} else {
++					elem->self()->profile.accumulated_native_calls.insert(E.key, E.value);
++				}
++			}
+ 			elem->self()->profile.frame_call_count.set(0);
+ 			elem->self()->profile.frame_self_time.set(0);
+ 			elem->self()->profile.frame_total_time.set(0);
+diff --git a/modules/gdscript/gdscript_compiler.cpp b/modules/gdscript/gdscript_compiler.cpp
+index 563d1ac..fab8b78 100644
+--- a/modules/gdscript/gdscript_compiler.cpp
++++ b/modules/gdscript/gdscript_compiler.cpp
+@@ -2464,7 +2464,8 @@ GDScriptFunction *GDScriptCompiler::_parse_function(Error &r_error, GDScript *p_
+ 	}
+ 
+ #ifdef DEBUG_ENABLED
+-	if (EngineDebugger::is_active()) {
++	// Signatures name the functions of script profiles, which the WASD Engine harness also takes without a debugger.
++	{
+ 		String signature;
+ 		// Path.
+ 		if (!p_script->get_script_path().is_empty()) {
+@@ -2632,7 +2633,8 @@ GDScriptFunction *GDScriptCompiler::_make_static_initializer(Error &r_error, GDS
+ 	}
+ 
+ #ifdef DEBUG_ENABLED
+-	if (EngineDebugger::is_active()) {
++	// Signatures name the functions of script profiles, which the WASD Engine harness also takes without a debugger.
++	{
+ 		String signature;
+ 		// Path.
+ 		if (!p_script->get_script_path().is_empty()) {
+diff --git a/modules/gdscript/gdscript_function.h b/modules/gdscript/gdscript_function.h
+index 8171a0f..b3e66cb 100644
+--- a/modules/gdscript/gdscript_function.h
++++ b/modules/gdscript/gdscript_function.h
+@@ -448,6 +448,8 @@ private:
+ 		} NativeProfile;
+ 		HashMap<String, NativeProfile> native_calls;
+ 		HashMap<String, NativeProfile> last_native_calls;
++		// The native calls of the frames before the current one since profiling started.
++		HashMap<String, NativeProfile> accumulated_native_calls;
+ 	} profile;
+ #endif
+ 
+diff --git a/modules/wasd_runtime/SCsub b/modules/wasd_runtime/SCsub
+new file mode 100644
+index 0000000..2ea80eb
+--- /dev/null
++++ b/modules/wasd_runtime/SCsub
+@@ -0,0 +1,9 @@
++#!/usr/bin/env python
++from misc.utility.scons_hints import *
++
++Import("env")
++Import("env_modules")
++
++env_wasd_runtime = env_modules.Clone()
++
++env_wasd_runtime.add_source_files(env.modules_sources, "*.cpp")
+diff --git a/modules/wasd_runtime/config.py b/modules/wasd_runtime/config.py
+new file mode 100644
+index 0000000..d22f945
+--- /dev/null
++++ b/modules/wasd_runtime/config.py
+@@ -0,0 +1,6 @@
++def can_build(env, platform):
++    return True
++
++
++def configure(env):
++    pass
+diff --git a/modules/wasd_runtime/register_types.cpp b/modules/wasd_runtime/register_types.cpp
+new file mode 100644
+index 0000000..2450616
+--- /dev/null
++++ b/modules/wasd_runtime/register_types.cpp
+@@ -0,0 +1,33 @@
++/**************************************************************************/
++/*  register_types.cpp                                                    */
++/**************************************************************************/
++/* The WASD Engine runtime module, which WASD Engine's LibGodot builds add */
++/* to Godot (wasdengine/libgodot/patches in the WASD Engine repository).   */
++/**************************************************************************/
++
++#include "register_types.h"
++
++#include "wasd_engine_runtime.h"
++
++#include "core/config/engine.h"
++#include "core/object/class_db.h"
++
++static WASDEngineRuntime *wasd_engine_runtime = nullptr;
++
++void initialize_wasd_runtime_module(ModuleInitializationLevel p_level) {
++	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
++		return;
++	}
++	GDREGISTER_ABSTRACT_CLASS(WASDEngineRuntime);
++	wasd_engine_runtime = memnew(WASDEngineRuntime);
++	Engine::get_singleton()->add_singleton(Engine::Singleton("WASDEngineRuntime", wasd_engine_runtime));
++}
++
++void uninitialize_wasd_runtime_module(ModuleInitializationLevel p_level) {
++	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
++		return;
++	}
++	Engine::get_singleton()->remove_singleton("WASDEngineRuntime");
++	memdelete(wasd_engine_runtime);
++	wasd_engine_runtime = nullptr;
++}
+diff --git a/modules/wasd_runtime/register_types.h b/modules/wasd_runtime/register_types.h
+new file mode 100644
+index 0000000..115a54d
+--- /dev/null
++++ b/modules/wasd_runtime/register_types.h
+@@ -0,0 +1,13 @@
++/**************************************************************************/
++/*  register_types.h                                                      */
++/**************************************************************************/
++/* The WASD Engine runtime module, which WASD Engine's LibGodot builds add */
++/* to Godot (wasdengine/libgodot/patches in the WASD Engine repository).   */
++/**************************************************************************/
++
++#pragma once
++
++#include "modules/register_module_types.h"
++
++void initialize_wasd_runtime_module(ModuleInitializationLevel p_level);
++void uninitialize_wasd_runtime_module(ModuleInitializationLevel p_level);
+diff --git a/modules/wasd_runtime/wasd_engine_runtime.cpp b/modules/wasd_runtime/wasd_engine_runtime.cpp
+new file mode 100644
+index 0000000..8f8a86d
+--- /dev/null
++++ b/modules/wasd_runtime/wasd_engine_runtime.cpp
+@@ -0,0 +1,58 @@
++/**************************************************************************/
++/*  wasd_engine_runtime.cpp                                               */
++/**************************************************************************/
++/* The WASD Engine runtime module, which WASD Engine's LibGodot builds add */
++/* to Godot (wasdengine/libgodot/patches in the WASD Engine repository).   */
++/**************************************************************************/
++
++#include "wasd_engine_runtime.h"
++
++#include "core/object/class_db.h"
++#include "core/object/script_language.h"
++#include "core/templates/local_vector.h"
++
++void WASDEngineRuntime::start_script_profiling(bool p_native_calls) {
++	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
++		ScriptLanguage *language = ScriptServer::get_language(i);
++		language->profiling_set_save_native_calls(p_native_calls);
++		language->profiling_start();
++	}
++}
++
++void WASDEngineRuntime::stop_script_profiling() {
++	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
++		ScriptServer::get_language(i)->profiling_stop();
++	}
++}
++
++Array WASDEngineRuntime::get_script_profile() const {
++	Array entries;
++	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
++		ScriptLanguage *language = ScriptServer::get_language(i);
++		LocalVector<ScriptLanguage::ProfilingInfo> info;
++		int count = 0;
++		// A language writes at most the array's size; a full array may have left entries out, so a larger one asks again.
++		for (uint32_t size = 4096; size <= (1u << 22); size *= 2) {
++			info.resize(size);
++			count = language->profiling_get_accumulated_data(info.ptr(), int(size));
++			if (count < int(size)) {
++				break;
++			}
++		}
++		for (int j = 0; j < count; j++) {
++			const ScriptLanguage::ProfilingInfo &entry = info[j];
++			if (entry.call_count == 0) {
++				continue;
++			}
++			Array row = { String(entry.signature), int64_t(entry.call_count), int64_t(entry.total_time), int64_t(entry.self_time) };
++			entries.push_back(row);
++		}
++	}
++	return entries;
++}
++
++void WASDEngineRuntime::_bind_methods() {
++	ClassDB::bind_method(D_METHOD("start_script_profiling", "native_calls"), &WASDEngineRuntime::start_script_profiling);
++	ClassDB::bind_method(D_METHOD("stop_script_profiling"), &WASDEngineRuntime::stop_script_profiling);
++	ClassDB::bind_method(D_METHOD("get_script_profile"), &WASDEngineRuntime::get_script_profile);
++}
+diff --git a/modules/wasd_runtime/wasd_engine_runtime.h b/modules/wasd_runtime/wasd_engine_runtime.h
+new file mode 100644
+index 0000000..06aa941
+--- /dev/null
++++ b/modules/wasd_runtime/wasd_engine_runtime.h
+@@ -0,0 +1,32 @@
++/**************************************************************************/
++/*  wasd_engine_runtime.h                                                 */
++/**************************************************************************/
++/* The WASD Engine runtime module, which WASD Engine's LibGodot builds add */
++/* to Godot (wasdengine/libgodot/patches in the WASD Engine repository).   */
++/**************************************************************************/
++
++#pragma once
++
++#include "core/object/object.h"
++#include "core/variant/array.h"
++
++/// Services of WASD Engine's LibGodot runtime for its harness script, as the engine singleton `WASDEngineRuntime`: the
++/// profilers of the script languages, which otherwise only a debugger starts.
++class WASDEngineRuntime : public Object {
++	GDCLASS(WASDEngineRuntime, Object);
++
++protected:
++	static void _bind_methods();
++
++public:
++	/// Clears and starts the profiler of every script language; with `p_native_calls`, a profile also lists the engine
++	/// methods that each function calls.
++	void start_script_profiling(bool p_native_calls);
++	/// Stops the profilers; the profile since the start stays readable.
++	void stop_script_profiling();
++	/// Returns one entry per function, or engine method a function called, that ran since profiling started:
++	/// [signature, calls, total microseconds, self microseconds]. A function's signature is
++	/// `<script path>::<line>::<function>`; an engine method's is `<script path>::0::<class>.<method>`, with the path
++	/// of the script whose function called it, and its self time is its total time.
++	Array get_script_profile() const;
++};

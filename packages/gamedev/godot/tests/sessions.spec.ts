@@ -30,13 +30,13 @@ afterEach(async () => {
   await dir?.cleanup()
 })
 
-async function setup(maxRuns = 4, admit: () => void = () => {}) {
+async function setup(maxRuns = 4, admit: () => void = () => {}, idleStopMs = 0) {
   dir = await scratch('sessions')
   ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(AgentRegistry)
   await ctx.plugin(LocalSubprocessRuntime)
-  const sessions = new GodotSessions(ctx, maxRuns, admit)
+  const sessions = new GodotSessions(ctx, maxRuns, admit, idleStopMs)
   ctx.effect(() => () => sessions.dispose())
   const sequence = new LogSequence()
   let count = 0
@@ -156,6 +156,63 @@ posix('GodotSessions', () => {
     await sessions.stop(one)
     const accepted = await sessions.replace(two, await launch())
     await accepted.stop()
+  })
+
+  it('stops the agent\'s game that went unused longest to start another Session\'s game, and says why in its view', async () => {
+    const { sessions, launch } = await setup(1, () => {}, 50)
+    const one = sessions.session((await fakeAgent(ctx, 'idle-1')).agent)
+    const two = sessions.session((await fakeAgent(ctx, 'idle-2')).agent)
+    const first = await sessions.replace(one, await launch())
+    await first.started()
+    await new Promise(resolve => setTimeout(resolve, 120))
+    const second = await sessions.replace(two, await launch())
+    expect(first.terminal).toBe(true)
+    expect(first.view()).toMatchObject({ phase: 'exited' })
+    expect(first.view().message).toMatch(/^WASD Engine stopped this game to start another Session's game: /u)
+    expect(first.view().message).toContain('this computer runs at most 1 game at once, ')
+    expect(first.view().message).toMatch(/and this one had gone unused for \d+ seconds?\. Call godot_run to start it again\.$/u)
+    await second.started()
+    await second.stop()
+  })
+
+  it('stops no game that a view shows, that a request uses, that the user started, or that went unused for less than the limit', async () => {
+    const { sessions, launch } = await setup(1, () => {}, 50)
+    const one = sessions.session((await fakeAgent(ctx, 'kept-1')).agent)
+    const two = sessions.session((await fakeAgent(ctx, 'kept-2')).agent)
+    const shown = await sessions.replace(one, await launch())
+    await shown.started()
+    const hide = shown.show()
+    await new Promise(resolve => setTimeout(resolve, 120))
+    const refused = await sessions.replace(two, await launch()).catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(TooManyRunsError)
+    expect((refused as Error).message).toBe('1 Godot game already runs, as many as this computer runs at once; stop one before starting another. '
+      + 'A game that an agent started makes room once it has gone unused for 1 second.')
+    hide()
+    // The view's end counts as a use, so the game has gone unused only since then.
+    expect(await sessions.replace(two, await launch()).catch((error: unknown) => error)).toBeInstanceOf(TooManyRunsError)
+    await sessions.stop(one)
+    const user = await sessions.replace(one, await launch({ game: {} }, 'user'))
+    await user.started()
+    await new Promise(resolve => setTimeout(resolve, 120))
+    expect(await sessions.replace(two, await launch()).catch((error: unknown) => error)).toBeInstanceOf(TooManyRunsError)
+    expect(user.terminal).toBe(false)
+    await user.stop()
+  })
+
+  it('admits one of two starts that meet one game they may stop', async () => {
+    const { sessions, launch } = await setup(1, () => {}, 50)
+    const idle = sessions.session((await fakeAgent(ctx, 'race-1')).agent)
+    const first = await sessions.replace(idle, await launch())
+    await first.started()
+    await new Promise(resolve => setTimeout(resolve, 120))
+    const [a, b] = await Promise.all(['race-2', 'race-3'].map(async (id) => {
+      const session = sessions.session((await fakeAgent(ctx, id)).agent)
+      return await sessions.replace(session, await launch()).then(run => run, (error: unknown) => error)
+    }))
+    const started = [a, b].filter((value): value is GodotRun => value instanceof GodotRun)
+    expect(started).toHaveLength(1)
+    expect([a, b].filter(value => value instanceof TooManyRunsError)).toHaveLength(1)
+    await started[0]?.stop()
   })
 
   it('names the limit in its refusal', () => {

@@ -68,6 +68,9 @@
       "path": "../../util/values"
     },
     {
+      "path": "../game-audio"
+    },
+    {
       "path": "../game-mcp"
     }
   ]

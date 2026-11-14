@@ -95,12 +95,12 @@ The runtime that the Desktop apps for macOS on Apple silicon and Windows x64 shi
 
 sclang starts in its IDE mode, which reads commands from its standard input, with a class library configuration that the server writes to `sclang_conf.yaml` in the worker's own folder, `<dataRoot>/workers/<pid>/<n>/`, which is sclang's working directory; the command line names the file relative to it, because sclang on Windows reads its arguments in the ANSI code page, which cannot hold every character of a user's folder name. For the shipped runtime, the configuration replaces the default class library paths with the runtime's class library; a configured sclang keeps its default paths, so its system-wide extensions load. Either way, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point sclang's user configuration and user data folders into `home/` in that folder on macOS and Linux, so the user's own extensions, quarks, and synthdefs stay out; sclang on Windows ignores both and uses the user's own `%LOCALAPPDATA%\SuperCollider` folder. On every platform the worker class skips the user's startup files. The configuration adds the folder of `WasdWorker.sc`, the worker class, which also makes `Server:boot` throw: there is no audio device, so code that boots a real-time server fails with a message that points to `render_audio`.
 
-Each Session that calls the tools gets its own interpreter ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), and its state persists between that Session's calls: environment variables such as `~kick`, interpreter variables `a` to `z`, SynthDefs added with `.add`, and anything else that code defines. Agents connected through WASD Engine's MCP server share one interpreter among themselves. An interpreter stops after `workerIdleTimeoutMs` without calls, and a fresh interpreter starts with none of that state.
+Each Session that calls the tools gets its own interpreter ([one worker per Session](../app-mcp/README.md#one-worker-per-session)), and its state persists between that Session's calls: environment variables such as `~kick`, interpreter variables `a` to `z`, SynthDefs added with `.add`, and anything else that code defines. Agents connected through WASD Engine's MCP server share one interpreter among themselves, unless their calls pass `session` names, which give each name the interpreter of a Session of its own ([connected agents' Sessions](../app-mcp/README.md#connected-agents-sessions)). An interpreter stops after `workerIdleTimeoutMs` without calls, and a fresh interpreter starts with none of that state.
 
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path argument is absolute. A failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `supercollider_<name>`, and share one interpreter among themselves.
+The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path argument is absolute. A failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `supercollider_<name>`, which also take `session` and `project`, and share one interpreter among themselves unless they pass `session`.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -178,7 +178,6 @@ The bridge leads the worker's process group and keeps sclang in it, and sclang r
 | [`src/sclang-output.ts`](src/sclang-output.ts) | Reply lines in sclang's post output, and the bounded output between them |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, the analysis report, and help text |
 | [`src/audio.ts`](src/audio.ts) | Float WAV reading and the gain of a normalized render |
-| [`src/png.ts`](src/png.ts) | PNG encoding of the waveform and spectrogram image |
 | [`src/schelp.ts`](src/schelp.ts) | Plain text of SCDoc help files |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
 | [`sc/WasdWorker.sc`](sc/WasdWorker.sc) | Worker class: boot, dispatch, JSON replies, one handler per method, and the `Server:boot` override |
@@ -288,7 +287,7 @@ Append-only: calls and their results follow the existing request prefix and do n
 These limits describe current gaps in the SuperCollider tools.
 
 - **Nothing plays aloud** — the tools run without an audio device and refuse to boot a real-time server, so neither the agent nor the user hears a sound through the tools; the user listens to the rendered files, in the game or elsewhere.
-- **Connected agents share one interpreter** — agents connected through WASD Engine's MCP server share its variables and SynthDefs, and a long render delays the others' calls.
+- **Connected agents share one interpreter unless they name sessions** — agents connected through WASD Engine's MCP server whose calls pass no `session` share its variables and SynthDefs, and a long render delays the others' calls.
 - **An idle Session loses its interpreter state** — a Session's interpreter stops after `workerIdleTimeoutMs` without calls, or when another Session needs its place among `maxWorkers`.
 - **Restarts lose interpreter state** — a crash, an expired `requestTimeoutMs` or `timeout_seconds`, a cancelled running call, or code that calls `0.exit` stops sclang; the variables and SynthDefs are gone, and the fresh interpreter starts with none.
 - **SuperCollider runs on macOS arm64, Windows x64, and Linux x64 only** — the Desktop apps for macOS on Apple silicon and Windows x64 ship the runtime, and a Linux checkout can install the release build; Intel Macs have no runtime, and the tools start no installed SuperCollider, so they report the missing runtime there unless `sclangPath` names a headless build.

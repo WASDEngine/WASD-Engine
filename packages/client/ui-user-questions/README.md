@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The Web client shows an agent's question beside the chat input. Users choose options, enter text, skip questions, and submit one answer batch. A timed card counts down; focus pauses it, editing or `Take time` holds it, and expiry lets the agent continue while the question stays answerable. Closing a card linked to a tool call hides it; its tool row reopens it and later shows recorded answers. The Host preserves the question across restart, while this browser preserves unfinished input across reload.
+The Web client shows an agent's question beside the chat input. Users choose options, enter text, attach images, skip questions, and submit one answer batch. A timed card counts down; focus pauses it, editing or `Take time` holds it, and expiry lets the agent continue while the question stays answerable. Closing a card linked to a tool call hides it; its tool row reopens it and later shows recorded answers. The Host preserves the question across restart, while this browser preserves unfinished input across reload.
 
 ## Table of Contents
 
@@ -32,6 +32,13 @@ When the agent asks a question, the attached card temporarily occupies the compo
 A multi-select draft keeps its selected labels while the user opens or edits the custom answer, so its submitted item may carry both `selected` and `custom`; a single-select custom answer remains exclusive. Question detail reuses the assistant-output `MarkdownText` primitive, including its GFM rendering and untrusted-content policy. The capped card keeps navigation and submission actions fixed while the question, long detail, and choices share an internal scroll region. A question appears in full up to three rendered lines; a longer one shows two, fades at the end of the second, and places a downward-chevron expand button there that expands it in place. Option descriptions use 13px text with a 20px line height and sit beside their label when they fit, otherwise below it; a description appears in full up to two lines, and a longer one shows one line with the same fade and expand button. Expanded copy keeps an upward-chevron collapse button on a line below it. Both buttons are named **Expand** or **Collapse**, show that name in a hover tooltip, and are described by the text they control. CSS scroll timelines decide which copy overflows; a browser without them shows all copy in full. "Skip" retains other drafts and emits the existing blank `{ selected: [] }` result for that item. Close is not an answer: a question the Host named by tool call only leaves the composer seat, and its `ask_user_question` tool call row brings the panel back; a request that carries no tool call has no row to return from, so closing it rejects the whole wait as `ASK_CANCELLED`.
 
 Fixed approval questions use the same pending-question and answer channel. A feature plugin can supply a higher-priority composer presentation. When none matches, the generic form keeps the offered options answerable; the caller still decides which responses grant permission.
+
+<a id="attaching-images"></a>
+### Attaching images
+
+While the composition has the browser upload service of `dsh-client-file-upload` and the Session reports its image limits, the card's footer has an attach button beside Skip, and the card also takes images pasted into it or dropped on it; a file dropped on the card never reaches the conversation's own drop target. Images attach to the shown question and upload to the Session at once, under the same limits as the composer's images, counted over the whole batch because one message carries them: a picked set that holds a file other than an accepted image, or breaks a limit, is refused whole, and the feedback names the limit. Each question shows its images as 64px thumbnails with an upload bar, a remove button, and the reason a failed upload gives. Images answer a question by themselves: an answer of images alone is submitted with the custom answer `See the images I attached.`, so it does not read as a skip, and skipping a question drops its images. The batch waits while an image uploads, and until a failed one is removed.
+
+On submit the card first steers one user message into the Session: for each question with images, the line `Images for my answer to "<question>":` and then its images. Only after the Host accepts it does the card send the batch. The agent waits inside the `ask_user_question` call, so its next model request carries the answers and the images together, each image with the read-only path of its stored copy, which tools such as `reference_save` and `image_generate` take. A refused message, such as for a model that takes no images, leaves the batch unsent and names the reason. Sent images stay on the card without a remove button and are not sent again when the batch is resubmitted. Images live in this browser only: unlike the text draft, a reload drops them. The images message appears in the conversation as the user's own message.
 
 ### Reading a settled question back
 
@@ -103,11 +110,19 @@ These pages cover the composer host, the tool seam, and the plan-mode consumer.
 <a id="model-experience"></a>
 ## Model Experience
 
-Indirectly, through `dsh-tool-ask-user`, whose model-visible schema and answer rendering this package presents in the Web client.
+### Answer images message
+
+#### What the model sees
+
+When the user attaches images to answers, a user message the card steers in just before it sends the answer batch, so the request that carries the `ask_user_question` result carries the message too: for each question with images, the line `Images for my answer to "<question>":` in the user's language, then that question's images, each with the read-only path of its stored copy. An answer of images alone carries the custom answer `See the images I attached.`, also in the user's language. Everything else the model sees comes from `dsh-tool-ask-user`, whose schema and answer rendering this package presents in the Web client.
+
+#### Token effect
+
+One short line per question with images, plus the images' own tokens; nothing without images.
 
 #### KV Cache effect
 
-No direct invalidation; `dsh-tool-ask-user` owns the model-visible tool call and result.
+Append-only: the message joins the conversation after the tool result; `dsh-tool-ask-user` owns the tool call and result.
 
 ## Known Limitations and Deferred Work
 
@@ -119,6 +134,8 @@ These limits define question-card ownership and cross-client behavior; they are 
 - **Unsubmitted drafts are local to one browser** — Session navigation, page reload, and browser restart preserve them, but another browser or device reconstructs only the Host-stored question.
 - **One request owns the question card at a time** — later pending requests remain in the session snapshot and become visible after the earlier request resolves.
 - **Questions appear in the active Session composer** — durable pending questions do not add a separate sidebar inbox; reopen the owning Session to answer one.
+- **Images of a continued question arrive on their own** — once a timed question has continued, its images message and its answer reach the agent as two steers, and an agent that is idle starts its turn on the first before the second arrives.
+- **Answer images are not dragged from the conversation** — the card takes files from the system and the clipboard, not an image dragged from the transcript.
 
 <a id="dev-note"></a>
 ### Dev Note

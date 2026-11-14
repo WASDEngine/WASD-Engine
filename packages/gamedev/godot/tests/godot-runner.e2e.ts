@@ -4,8 +4,11 @@
  * scene inspection, a performance sample and a cancelled one, frame-exact steps, a step that the Game tab ends,
  * lossless PNG frames of a simple scene, input and frames while game time stands still, a bounded game-time wait, a
  * cancelled input sequence, a queued input sequence that its real-time limit ends, a static check that runs no
- * autoload, a letterboxed stretch mode, a game on the Compatibility renderer, and JPEG frames of a scene that PNG
- * encoding cannot keep up with.
+ * autoload, a letterboxed stretch mode, a game on the Compatibility renderer, JPEG frames of a scene that PNG
+ * encoding cannot keep up with, GPU time and a script profile on WASD Engine's own runtime, a windowless game that
+ * presents its frames only while a Game tab displays it, a capture of a muted game's audio mix, and games that exit
+ * cleanly when they quit by themselves while their reads of frames from the GPU are in flight, or after turning VSync off
+ * on the Compatibility renderer.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -17,6 +20,7 @@ import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { GodotRunView } from '../src/types.ts'
 import { callTool, compose, text, type Composition } from './composition.ts'
 
 const GODOT_PLATFORMS: Partial<Record<NodeJS.Platform, { readonly name: string; readonly suffix: string }>> = {
@@ -48,7 +52,11 @@ const PROJECT = {
     '\tif event is InputEventKey and event.pressed and event.keycode == KEY_E:', '\t\tvar missing = null', '\t\tmissing.explode()',
     '\tif event is InputEventMouseButton and event.pressed:', '\t\tprint("click at ", event.position)', '',
   ].join('\n'),
-  'counter.gd': 'extends Node\nvar frames := 0\nfunc _process(_delta):\n\tframes += 1\n',
+  // Its _process spends more time in the engine methods it calls than in its own code.
+  'counter.gd': [
+    'extends Node', 'var frames := 0', 'var found := 0', 'func _process(_delta):', '\tframes += 1',
+    '\tfor _i in 20:', '\t\tfound = get_tree().root.find_children("*", "", true, false).size()', '',
+  ].join('\n'),
   'keys.gd': [
     'extends Node', 'func _unhandled_input(event):', '\tif event is InputEventKey and event.keycode == KEY_T and event.pressed:',
     '\t\tEngine.time_scale = 0.0 if Engine.time_scale > 0.0 else 1.0', '\t\tprint("time scale ", Engine.time_scale)',
@@ -94,6 +102,33 @@ const COMPATIBILITY_PROJECT = {
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
+// A game whose finish() reads its frame back from the GPU with a GDScript lambda in each of the next 10 frames, as a
+// game script may, and then quits while the latest reads are still in flight.
+const DOWNLOADS_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="DownloadsTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'class Pixels extends RefCounted:', '\tvar data := PackedByteArray()', 'var left := 0', 'func finish():', '\tleft = 10',
+    'func _process(_delta):', '\tif left == 0:', '\t\treturn', '\tvar pixels := Pixels.new()',
+    '\tvar texture := RenderingServer.texture_get_rd_texture(get_viewport().get_texture().get_rid())',
+    '\tRenderingServer.get_rendering_device().texture_get_data_async(texture, 0, func(data): pixels.data = data)',
+    '\tleft -= 1', '\tif left == 0:', '\t\tget_tree().quit()', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// A Compatibility renderer game whose finish() turns VSync off, as a game's settings may, and quits 10 frames later.
+const VSYNC_PROJECT = {
+  'project.godot': [
+    'config_version=5', '', '[application]', '', 'config/name="VSyncTest"', 'run/main_scene="res://main.tscn"',
+    'config/features=PackedStringArray("4.7", "GL Compatibility")', '', '[rendering]', '', 'renderer/rendering_method="gl_compatibility"', '',
+  ].join('\n'),
+  'main.gd': [
+    'extends Node2D', 'var left := 0', 'func finish():', '\tDisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)', '\tleft = 10',
+    'func _process(_delta):', '\tif left > 0:', '\t\tleft -= 1', '\t\tif left == 0:', '\t\t\tget_tree().quit()', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
 // A 1280x720 window of per-pixel value noise: a PNG encode of one frame takes far longer than the 33 ms between
 // frames at the default 30 frames per second, so the stream keeps sending JPEG frames.
 const NOISE_PROJECT = {
@@ -103,6 +138,17 @@ const NOISE_PROJECT = {
     '\tvar rect := TextureRect.new()', '\trect.texture = ImageTexture.create_from_image(noise.get_image(1280, 720))', '\tadd_child(rect)', '',
   ].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
+// A game that plays a looping 440 Hz tone at about -12 dBFS through an AudioStreamPlayer at -6 dB on the Master bus.
+const AUDIO_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="AudioTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'tone.gd': [
+    'extends AudioStreamPlayer', 'func _ready():', '\tvar wav := AudioStreamWAV.new()', '\twav.format = AudioStreamWAV.FORMAT_16_BITS', '\twav.mix_rate = 44100',
+    '\tvar data := PackedByteArray()', '\tdata.resize(44100 * 2)', '\tfor i in 44100:', '\t\tdata.encode_s16(i * 2, int(sin(TAU * 440.0 * i / 44100.0) * 8000.0))',
+    '\twav.data = data', '\twav.loop_mode = AudioStreamWAV.LOOP_FORWARD', '\twav.loop_end = 44100', '\tstream = wav', '\tvolume_db = -6.0', '\tplay()', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://tone.gd" id="1"]\n\n[node name="Main" type="Node"]\n\n[node name="Tone" type="AudioStreamPlayer" parent="."]\nscript = ExtResource("1")\n',
 }
 
 // Two scripts whose classes Godot finds only through the class cache that an import writes: player.gd extends Node2D
@@ -229,6 +275,23 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     return route
   }
   const counted = async (): Promise<number> => Number(text(await callTool(c, 'godot_eval', { expression: 'scene.get_node("Counter").frames' })).replace('int: ', ''))
+  const addProject = async (name: string, files: Record<string, string>): Promise<void> => {
+    const dir = join(c.dir.root, 'work', name)
+    await mkdir(dir, { recursive: true })
+    for (const [file, content] of Object.entries(files)) await writeFile(join(dir, file), content)
+  }
+  const endedRun = async (): Promise<GodotRunView> => {
+    const following = new AbortController()
+    try {
+      for await (const item of c.godot.follow(c.owner.agent.id, following.signal)) {
+        const run = item.type === 'snapshot' || item.type === 'run' ? item.run : null
+        if (run !== null && (run.phase === 'exited' || run.phase === 'crashed' || run.phase === 'failed')) return run
+      }
+      throw new Error('the follow stream ended before the run')
+    } finally {
+      following.abort()
+    }
+  }
 
   beforeAll(async () => {
     c = await compose({
@@ -360,6 +423,60 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect((await abandoned).isError).toBe(true)
     const next = await callTool(c, 'godot_performance', { seconds: 0.25 })
     expect(next.isError, text(next)).toBe(false)
+  }, 60_000)
+
+  it('measures GPU time and profiles the scripts on WASD Engine\'s own runtime', async () => {
+    const measured = await callTool(c, 'godot_performance', { seconds: 1 })
+    expect(measured.isError, text(measured)).toBe(false)
+    const value = measured.value as {
+      gpuMs?: { mean: number }
+      context: { wasdRuntime: boolean }
+      scriptProfile?: { frames: number; scripts: { path: string; functions: { name: string; engineCalls: { method: string }[] }[] }[] }
+    }
+    if (!value.context.wasdRuntime) {
+      expect(text(measured)).toContain('Scripts: this Godot runtime has no script profiler;')
+      return
+    }
+    // WASD Engine's runtime takes GPU timestamps on Metal, as Vulkan does elsewhere.
+    expect(value.gpuMs?.mean, text(measured)).toBeGreaterThan(0)
+    expect(value.scriptProfile?.frames).toBeGreaterThan(10)
+    const scripts = value.scriptProfile?.scripts ?? []
+    expect(scripts.map(script => script.path)).toEqual(expect.arrayContaining(['res://player.gd', 'res://counter.gd']))
+    expect(scripts.some(script => script.path.endsWith('wasd_harness.gd'))).toBe(false)
+    const processing = scripts.find(script => script.path === 'res://player.gd')?.functions.find(entry => entry.name === '_process')
+    expect(processing?.engineCalls.map(call => call.method)).toContain('Input.get_axis')
+    // An engine method that takes longer than the code of the function that calls it still counts toward that function.
+    const counting = scripts.find(script => script.path === 'res://counter.gd')?.functions
+    expect(counting?.map(entry => entry.name)).toEqual(['_process'])
+    expect(counting?.[0]?.engineCalls.map(call => call.method)).toContain('Node.find_children')
+    // A function's line is the first line of its body.
+    expect(text(measured)).toMatch(/\nres:\/\/player\.gd [\d.]+: [^\n]*_process \(line 6\)/u)
+  }, 60_000)
+
+  it('draws a windowless game without presenting it while no Game tab displays it, and presents it while one does', async () => {
+    const context = async (): Promise<{ presenting: boolean; frameCap: number; refreshRate: number }> => {
+      const measured = await callTool(c, 'godot_performance', { seconds: 0.25, scripts: false })
+      return (measured.value as { context: { presenting: boolean; frameCap: number; refreshRate: number } }).context
+    }
+    if (process.platform !== 'darwin') {
+      // A game with a window always presents.
+      expect(await context()).toMatchObject({ presenting: true })
+      return
+    }
+    const hidden = await context()
+    expect(hidden).toMatchObject({ presenting: false, frameCap: Math.round(hidden.refreshRate) })
+    const viewing = new AbortController()
+    const stream = c.godot.view(c.owner.agent.id, runId, viewing.signal)[Symbol.asyncIterator]()
+    await stream.next()
+    expect(await context()).toMatchObject({ presenting: true, frameCap: 0 })
+    const ended = stream.next()
+    viewing.abort()
+    await ended
+    expect(await context()).toMatchObject({ presenting: false })
+    // Screenshots still read the frames the game draws while it does not present.
+    const shot = await callTool(c, 'godot_screenshot')
+    expect(shot.isError, text(shot)).toBe(false)
+    expect(decodePng(Buffer.from(c.saved.at(-1)?.data as Uint8Array)).pixel(320, 20)).toEqual([51, 102, 204])
   }, 60_000)
 
   it('moves the player with an input action and reports the script error a key causes', async () => {
@@ -574,6 +691,33 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 
+  it('captures a muted game\'s audio mix as players hear it, with the player that played it, and saves it as WAV', async () => {
+    const dir = join(c.dir.root, 'work', 'audio')
+    await mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(AUDIO_PROJECT)) await writeFile(join(dir, name), content)
+    const started = await callTool(c, 'godot_run', { project: 'audio' })
+    expect(started.isError, text(started)).toBe(false)
+    expect(started.value).toMatchObject({ muted: true })
+    await callTool(c, 'godot_wait', { seconds: 0.2 })
+    const captured = await callTool(c, 'godot_audio', { seconds: 1, path: join(c.dir.root, 'data', 'tone.wav'), replace: true })
+    expect(captured.isError, text(captured)).toBe(false)
+    const value = captured.value as {
+      seconds: number
+      peakDb: number
+      dominantHz: number
+      muted: boolean
+      players: { path: string; stream: string; bus: string; starts: number }[]
+    }
+    expect(value).toMatchObject({ seconds: 1, muted: true, players: [{ path: '/root/Main/Tone', stream: 'AudioStreamWAV', bus: 'Master', starts: 1 }] })
+    // 8000 of 32767 at -6 dB: about -18.3 dBFS.
+    expect(value.peakDb).toBeGreaterThan(-19.5)
+    expect(value.peakDb).toBeLessThan(-17)
+    expect(Math.abs(value.dominantHz - 440)).toBeLessThan(15)
+    expect(text(captured)).toContain('The game runs muted (Dummy audio driver)')
+    expect((await stat(join(c.dir.root, 'data', 'tone.wav'))).size).toBe(44 + 44100 * 4)
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
   it('keeps streaming JPEG frames of a scene whose PNG encoding cannot keep up with the frame rate', async () => {
     const dir = join(c.dir.root, 'work', 'noise')
     await mkdir(dir, { recursive: true })
@@ -586,5 +730,29 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect([records[0]?.readUInt16LE(4), records[0]?.readUInt16LE(6)]).toEqual([1280, 720])
     expect(records.map(recordFormat).filter(format => format !== 'jpeg')).toEqual([])
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
+  it('ends a game that quits by itself while its own reads of frames from the GPU are in flight as exited', async () => {
+    await addProject('downloads', DOWNLOADS_PROJECT)
+    const started = await callTool(c, 'godot_run', { project: 'downloads', width: 640, height: 360 })
+    expect(started.isError, text(started)).toBe(false)
+    await callTool(c, 'godot_eval', { expression: 'scene.finish()' })
+    expect(await endedRun()).toMatchObject({ phase: 'exited', exitCode: 0 })
+  }, 240_000)
+
+  it('ends a Compatibility renderer game that turns VSync off and then quits by itself as exited', async () => {
+    await addProject('vsync', VSYNC_PROJECT)
+    const started = await callTool(c, 'godot_run', { project: 'vsync', width: 640, height: 360 })
+    expect(started.isError, text(started)).toBe(false)
+    // While a Game tab displays the game, each frame's swap waits for the display.
+    const viewing = new AbortController()
+    const stream = c.godot.view(c.owner.agent.id, (started.value as { runId: string }).runId, viewing.signal)[Symbol.asyncIterator]()
+    await stream.next()
+    await callTool(c, 'godot_wait', { seconds: 1.5 })
+    await callTool(c, 'godot_eval', { expression: 'scene.finish()' })
+    expect(await endedRun()).toMatchObject({ phase: 'exited', exitCode: 0 })
+    const closed = stream.next()
+    viewing.abort()
+    await closed
   }, 240_000)
 })

@@ -1,0 +1,116 @@
+diff --git a/editor/doc/editor_help.cpp b/editor/doc/editor_help.cpp
+index a469a50..68d63b9 100644
+--- a/editor/doc/editor_help.cpp
++++ b/editor/doc/editor_help.cpp
+@@ -3081,6 +3081,10 @@ void EditorHelp::_gen_doc_thread(void *p_udata) {
+ }
+ 
+ void EditorHelp::_gen_extensions_docs() {
++	if (doc_cleaned_up) {
++		return;
++	}
++
+ 	doc->generate((DocTools::GENERATE_FLAG_SKIP_BASIC_TYPES | DocTools::GENERATE_FLAG_EXTENSION_CLASSES_ONLY));
+ 
+ 	// Append extra doc data, as it gets overridden by the generation step.
+@@ -3093,6 +3097,10 @@ static void _load_script_doc_cache(bool p_changes) {
+ }
+ 
+ void EditorHelp::load_script_doc_cache() {
++	if (doc_cleaned_up) {
++		return;
++	}
++
+ 	if (!ProjectSettings::get_singleton()->is_project_loaded()) {
+ 		print_verbose("Skipping loading script doc cache since no project is open.");
+ 		return;
+@@ -3167,6 +3175,10 @@ static void _regenerate_script_doc_cache(bool p_changes) {
+ }
+ 
+ void EditorHelp::regenerate_script_doc_cache() {
++	if (doc_cleaned_up) {
++		return;
++	}
++
+ 	if (EditorFileSystem::get_singleton()->is_scanning()) {
+ 		// Wait until EditorFileSystem scanning is complete to use updated filesystem structure.
+ 		EditorFileSystem::get_singleton()->connect(SNAME("sources_changed"), callable_mp_static(_regenerate_script_doc_cache), CONNECT_ONE_SHOT);
+@@ -3252,6 +3264,10 @@ void EditorHelp::save_script_doc_cache() {
+ }
+ 
+ void EditorHelp::generate_doc(bool p_use_cache, bool p_use_script_cache) {
++	if (doc_cleaned_up) {
++		return;
++	}
++
+ 	doc_generation_count++;
+ 	OS::get_singleton()->benchmark_begin_measure("EditorHelp", vformat("Generate Documentation (Run %d)", doc_generation_count));
+ 
+@@ -3363,6 +3379,7 @@ void EditorHelp::update_doc() {
+ }
+ 
+ void EditorHelp::cleanup_doc() {
++	doc_cleaned_up = true;
+ 	_wait_for_thread();
+ 	memdelete(doc);
+ 	doc = nullptr;
+diff --git a/editor/doc/editor_help.h b/editor/doc/editor_help.h
+index 8b5786a..3e415e3 100644
+--- a/editor/doc/editor_help.h
++++ b/editor/doc/editor_help.h
+@@ -113,6 +113,9 @@ class EditorHelp : public VBoxContainer {
+ 	RichTextLabel *class_desc = nullptr;
+ 	inline static DocTools *doc = nullptr;
+ 	inline static DocTools *ext_doc = nullptr;
++	// Set by cleanup_doc. The documentation threads defer work to the main thread, which can run it after the editor
++	// has quit; that work does nothing once the documentation is cleaned up.
++	inline static bool doc_cleaned_up = false;
+ 
+ 	LineEdit *search = nullptr;
+ 	FindBar *find_bar = nullptr;
+diff --git a/platform/macos/embedded_gl_manager.mm b/platform/macos/embedded_gl_manager.mm
+index 8247ab0..92e940a 100644
+--- a/platform/macos/embedded_gl_manager.mm
++++ b/platform/macos/embedded_gl_manager.mm
+@@ -310,7 +310,13 @@
+ }
+ 
+ GLManagerEmbedded::GLManagerEmbedded() {
+-	display_semaphore = dispatch_semaphore_create(BUFFER_COUNT);
++	// libdispatch aborts when it frees a semaphore whose value is below the value that created it. The swaps that wait
++	// for the display link leave this one below BUFFER_COUNT when the display link stops first, as it does when VSync
++	// turns off, so it starts at 0 and gets its BUFFER_COUNT buffers as signals.
++	display_semaphore = dispatch_semaphore_create(0);
++	for (uint32_t i = 0; i < BUFFER_COUNT; i++) {
++		dispatch_semaphore_signal(display_semaphore);
++	}
+ 
+ 	create_display_link();
+ 
+diff --git a/main/main.cpp b/main/main.cpp
+index 2fc62fd..ba5261e 100644
+--- a/main/main.cpp
++++ b/main/main.cpp
+@@ -48,6 +48,7 @@
+ #include "core/io/image_loader.h"
+ #include "core/io/resource_loader.h"
+ #include "core/io/resource_saver.h"
++#include "core/object/callable_mp.h"
+ #include "core/object/class_db.h"
+ #include "core/object/message_queue.h"
+ #include "core/object/script_language.h"
+@@ -5267,6 +5268,14 @@ void Main::cleanup(bool p_force) {
+ 
+ 	WorkerThreadPool::get_singleton()->exit_languages_threads();
+ 
++	// The RenderingDevice calls and releases the callbacks of asynchronous buffer and texture downloads when their
++	// frames finish. A script callback, such as a GDScript lambda, must be released while its language still runs,
++	// so the frames in flight finish before the script languages do.
++	if (RenderingDevice::get_singleton()) {
++		RenderingServer::get_singleton()->call_on_render_thread(callable_mp(RenderingDevice::get_singleton(), &RenderingDevice::_flush_and_stall_for_all_frames).bind(true));
++		RenderingServer::get_singleton()->sync();
++	}
++
+ 	ScriptServer::finish_languages();
+ 
+ 	// Sync pending commands that may have been queued from a different thread during ScriptServer finalization
