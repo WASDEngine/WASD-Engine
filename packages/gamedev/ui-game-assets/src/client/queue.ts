@@ -1,8 +1,9 @@
 /**
  * The order of the pictures one window draws for agents. Requests start first come, first served, several at a time
  * within a total memory that each request counts for itself, so agents that look at different assets at once are
- * answered together while one large asset draws alone. A request cancelled while it waits leaves the queue, and one
- * cancelled while it draws gives up its place at once.
+ * answered together while one large asset draws alone. A request cancelled while it waits leaves the queue; one
+ * cancelled while it draws answers its caller at once and keeps its place until its drawing stops, since the memory it
+ * decodes stays in use until then.
  */
 
 /** A request waiting for its turn. */
@@ -36,8 +37,8 @@ export class DrawQueue {
   /**
    * Draw one picture when its turn comes: the earliest waiting request starts as soon as fewer than `limit` pictures
    * are being drawn and its memory fits within `maxBytes` beside theirs, or at once when nothing is being drawn.
-   * Cancelling the request rejects at once, takes it out of the queue, and frees its place while the draw stops at
-   * its next check of the signal.
+   * Cancelling the request rejects at once; a waiting request leaves the queue, and a drawing one keeps its place
+   * until the drawing settles, which it does at its next check of the signal.
    * @param bytes - the memory the draw takes, as its request counts it.
    * @param signal - the request's cancellation.
    * @param draw - the drawing.
@@ -70,10 +71,8 @@ export class DrawQueue {
     const cancel = (): void => {
       answer.reject(signal.reason)
       const index = this.waiting.indexOf(waiting)
-      if (index < 0) {
-        release()
-        return
-      }
+      // A drawing request gives up its place when its drawing settles.
+      if (index < 0) return
       this.waiting.splice(index, 1)
       // The request that left may have been the earliest one, too large to draw beside the pictures being drawn.
       this.pump()

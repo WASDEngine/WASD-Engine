@@ -101,7 +101,7 @@ function props(path: string, data: Uint8Array<ArrayBuffer>, overrides: Partial<I
   const format = formatOf(path)
   if (format === undefined) throw new Error(path)
   const slash = path.lastIndexOf('/')
-  const file: AssetFile = { data, absolutePath: `/p/${path}`, version: 'v1' }
+  const file: AssetFile = { data, version: 'v1' }
   return {
     asset: { path, name: path.slice(slash + 1), folder: slash < 0 ? '' : path.slice(0, slash), format },
     file,
@@ -119,7 +119,7 @@ function boomSources(): { readonly animations: AnimationSources; readonly read: 
   return {
     animations: { readText: async () => undefined, files: async () => BOOM, godot: async () => ({ files: [], projects: [] }) },
     read: async (path): Promise<RemoteResult<AssetFile>> => (BOOM.includes(path)
-      ? { ok: true, value: { data: pngFile(path), absolutePath: `/p/${path}`, version: 'v1' } }
+      ? { ok: true, value: { data: pngFile(path), version: 'v1' } }
       : { ok: false, error: new RemoteError('workspace-file/not-found', 'gone', { path }) }),
   }
 }

@@ -1,6 +1,7 @@
 /**
  * The window's queue of agent pictures: requests start in the order they came, several at a time within a total file
- * size, a larger file draws alone, and a cancelled request leaves the queue or gives up its place at once.
+ * size, a larger file draws alone, a request cancelled while it waits leaves the queue, and one cancelled while it
+ * draws keeps its place until its drawing stops.
  */
 import { describe, expect, it } from 'vitest'
 import { DrawQueue } from '../src/client/queue.ts'
@@ -112,7 +113,7 @@ describe('DrawQueue', () => {
     small.finish('small')
   })
 
-  it('gives up the place of a request cancelled while it draws, so the next one starts at once', async () => {
+  it('answers a request cancelled while it draws at once, and keeps its place until the drawing stops', async () => {
     const queue = new DrawQueue(1, 1000)
     const stuck = held()
     const next = held()
@@ -122,13 +123,31 @@ describe('DrawQueue', () => {
     expect(next.started).toBe(false)
     cancel.abort(new Error('the call timed out'))
     await expect(cancelled).rejects.toThrow('the call timed out')
-    expect(next.started).toBe(true)
-    // The cancelled drawing settling later changes nothing.
+    // The cancelled drawing still holds the memory it decodes, so the next one waits for it to stop.
+    await flush()
+    expect(next.started).toBe(false)
+    expect([queue.active, queue.queued]).toEqual([1, 1])
     stuck.finish('late')
+    await flush()
+    expect(next.started).toBe(true)
     next.finish('next')
     expect(await answer).toBe('next')
     await flush()
     expect([queue.active, queue.queued]).toEqual([0, 0])
+    // A cancelled drawing that fails as it stops frees its place the same way.
+    const failing = held()
+    const after = held()
+    const stop = new AbortController()
+    const failed = queue.run(1, stop.signal, failing.draw)
+    const later = queue.run(1, new AbortController().signal, after.draw)
+    stop.abort(new Error('cancelled'))
+    await expect(failed).rejects.toThrow('cancelled')
+    expect(after.started).toBe(false)
+    failing.fail(new Error('aborted while decoding'))
+    await flush()
+    expect(after.started).toBe(true)
+    after.finish('after')
+    expect(await later).toBe('after')
   })
 
   it('passes a failed drawing to its caller and goes on with the next request', async () => {

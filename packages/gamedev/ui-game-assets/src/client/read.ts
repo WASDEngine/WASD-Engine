@@ -1,112 +1,36 @@
 /**
- * Reading an asset and naming the files it refers to. The viewed file arrives through `workspaceFiles.readBytes`: one
- * complete read, or, for a file above the Host's complete-file cap, consecutive byte windows up to the configured
- * preview cap. Files a model or material names, such as textures, glTF buffers, and OBJ material libraries, load by URL
- * from the authenticated `/api/file` route, resolved against the viewed file's absolute path and only inside the
- * project folder; a name that leaves the project, a web address, and any path the route does not serve load nothing.
+ * Reading an asset and the files it names. Every read goes through the Host's `GET /api/game-assets.file` route, which
+ * serves a file inside the project folder the read names and refuses one whose real path lies outside that folder's,
+ * so that a link inside the project leads no read out of it: the viewed file, its first bytes, the Godot files and
+ * sprite sheets of its animations, and the textures, glTF buffers, and OBJ material libraries a model names, which the
+ * loaders fetch by the route's URL. A file a model or material names resolves against the viewed file's folder, an
+ * absolute name by its file name in that folder, and only inside the project folder; a web address and any other URL
+ * load nothing.
  */
-import type { WorkspaceByteReadOptions, WorkspaceFileBytes } from '@deepseek-ai/dsh-api-workspace-files/types'
-import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { fileMediaUrl } from '@deepseek-ai/dsh-util-workspace-path'
+import { RemoteError, type RemoteFailure, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 
 /** The viewed file's bytes and identity. */
 export interface AssetFile {
   /** The complete file. */
   readonly data: Uint8Array<ArrayBuffer>
-  /** Absolute path in the Host's filesystem, which related files resolve against. */
-  readonly absolutePath: string
-  /** The file's version when it was read. */
+  /** The file's version when it was read, as the `file` resource names versions. */
   readonly version: string
 }
 
-/**
- * Read one file or byte window of the Session's workspace.
- * @param path - workspace path.
- * @param options - the window; `{}` reads the complete file.
- * @param signal - cancellation.
- * @returns the bytes with the file's version and size, or the Remote failure.
- */
-export type ReadBytes = (
-  path: string,
-  options: WorkspaceByteReadOptions,
-  signal: AbortSignal,
-) => Promise<RemoteResult<WorkspaceFileBytes<Uint8Array<ArrayBuffer>>>>
+/** The route the Host serves a project's files on, relative to the page's base URI. */
+const ROUTE = 'api/game-assets.file'
 
-/** Times a windowed read starts over after the file changed between two windows. */
-const WINDOWED_ATTEMPTS = 2
+/** The response header naming the file's version. */
+const VERSION_HEADER = 'X-Asset-Version'
 
 /**
- * A workspace path as the Host's `workspaceFiles.readBytes` reads it inside the workspace. The Host reads a path whose
- * first segment is `~` in the home folder, so a relative path through a folder named `~` is sent as `./~/…`.
- * @param path - workspace path, relative to the workspace folder or absolute.
+ * A workspace path as the Host reads it inside the project folder. The Host reads a path whose first segment is `~` in
+ * the home folder, so a relative path through a folder named `~` is sent as `./~/…`.
+ * @param path - workspace path, relative to the project folder or absolute.
  * @returns the path to send.
  */
 export function readablePath(path: string): string {
   return path === '~' || path.startsWith('~/') || path.startsWith('~\\') ? `./${path}` : path
-}
-
-/**
- * Read a complete asset. A file above the Host's complete-file cap is read window by window; a file larger than
- * `maxBytes` fails with `workspace-file/too-large` naming `maxBytes`, and one that keeps changing while its windows
- * are read fails with `game-assets/changed`.
- * @param read - the bound byte read.
- * @param path - workspace path of the asset.
- * @param maxBytes - the largest file the viewer reads.
- * @param signal - cancellation.
- * @returns the file, or the failure to show.
- */
-export async function readAsset(read: ReadBytes, path: string, maxBytes: number, signal: AbortSignal): Promise<RemoteResult<AssetFile>> {
-  const whole = await read(path, {}, signal)
-  if (whole.ok) {
-    if (whole.value.data.byteLength > maxBytes) return tooLarge(path, maxBytes)
-    return { ok: true, value: { data: whole.value.data, absolutePath: whole.value.absolutePath, version: whole.value.version } }
-  }
-  if (whole.error.code !== 'workspace-file/too-large') return whole
-  for (let attempt = 0; attempt < WINDOWED_ATTEMPTS; attempt += 1) {
-    const result = await readWindows(read, path, maxBytes, signal)
-    if (result !== 'changed') return result
-  }
-  return { ok: false, error: new RemoteError('game-assets/changed', `"${path}" kept changing while it was read`, { path }) }
-}
-
-function tooLarge(path: string, limit: number): RemoteResult<never> {
-  return { ok: false, error: new RemoteError('workspace-file/too-large', `"${path}" exceeds the ${limit} byte preview cap`, { path, limit }) }
-}
-
-/**
- * Read a file window by window from its start.
- * @returns the file; a failure; or `changed` when the version moved between windows or the file ended early.
- */
-async function readWindows(
-  read: ReadBytes,
-  path: string,
-  maxBytes: number,
-  signal: AbortSignal,
-): Promise<RemoteResult<AssetFile> | 'changed'> {
-  const first = await read(path, { range: {} }, signal)
-  if (!first.ok) return first
-  const { version, absolutePath, bytes: size } = first.value
-  if (size !== undefined && size > maxBytes) return tooLarge(path, maxBytes)
-  const chunks: Uint8Array<ArrayBuffer>[] = [first.value.data]
-  let total = first.value.data.byteLength
-  let eof = first.value.eof
-  while (!eof) {
-    const window = await read(path, { range: { offset: total } }, signal)
-    if (!window.ok) return window
-    if (window.value.version !== version || window.value.data.byteLength === 0) return 'changed'
-    chunks.push(window.value.data)
-    total += window.value.data.byteLength
-    if (total > maxBytes) return tooLarge(path, maxBytes)
-    eof = window.value.eof
-  }
-  if (size !== undefined && total !== size) return 'changed'
-  const data = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    data.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return { ok: true, value: { data, absolutePath, version } }
 }
 
 /** Whether a path is absolute on POSIX, on Windows with a drive, or as a UNC path. */
@@ -114,56 +38,161 @@ function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(path) || path.startsWith('\\\\')
 }
 
-/** Whether a path is spelled for Windows: with a drive or as a UNC path. */
-function isWindowsPath(path: string): boolean {
-  return /^[A-Za-z]:[\\/]/u.test(path) || path.startsWith('\\\\')
+/**
+ * The route's URL for one file of a project.
+ * @param baseUri - the page's base URI, which carries the deployment prefix or the Desktop scheme.
+ * @param root - absolute project folder that the read stays inside.
+ * @param path - the file, relative to `root` or absolute.
+ * @param options - `max`, the largest file to serve; `length`, to read only the file's first bytes.
+ * @returns the URL, or undefined where the route reads nothing: a page that is not served over HTTP or the Desktop
+ * scheme, a path with a control character, or a folder or file on a UNC share, which a read would reach over the network.
+ */
+export function assetFileUrl(
+  baseUri: string,
+  root: string,
+  path: string,
+  options: { readonly max?: number; readonly length?: number } = {},
+): string | undefined {
+  if (!/^https?:/u.test(baseUri) && !baseUri.startsWith('dsh-app://app/')) return undefined
+  const unsafe = (value: string): boolean => /^[/\\]{2}/u.test(value) || /[\u0000-\u001f\u007f]/u.test(value)
+  if (!isAbsolutePath(root) || unsafe(root) || path === '' || unsafe(path)) return undefined
+  const params = new URLSearchParams({ root, path: readablePath(path) })
+  if (options.max !== undefined) params.set('max', String(options.max))
+  if (options.length !== undefined) params.set('length', String(options.length))
+  return new URL(`${ROUTE}?${params.toString()}`, baseUri).href
+}
+
+/** The JSON body of one of the route's refusals. */
+interface Refusal {
+  readonly code?: unknown
+  readonly message?: unknown
+  readonly limit?: unknown
+}
+
+/**
+ * The failure a refused read names.
+ * @param path - the file as the read named it.
+ * @param status - the route's status.
+ * @param body - the route's JSON body.
+ * @returns the failure: `workspace-file/not-found`, `workspace-file/too-large` with the cap, `game-assets/outside`,
+ * or `game-assets/unreadable`.
+ */
+function refusal(path: string, status: number, body: Refusal): RemoteFailure {
+  // The route's own words, for the agent; the tab shows its localized notice by the failure's code.
+  const why = typeof body.message === 'string' ? body.message : `"${path}" could not be read (${String(status)})`
+  if (status === 404) return new RemoteError('workspace-file/not-found', why, { path })
+  if (status === 413 && typeof body.limit === 'number') return new RemoteError('workspace-file/too-large', why, { path, limit: body.limit })
+  if (body.code === 'outside-project') return new RemoteError('game-assets/outside', why, { path })
+  return new RemoteError('game-assets/unreadable', why, { path })
+}
+
+/**
+ * Fetch one file or its first bytes from the route.
+ * @returns the response, or the failure to show; rejects with the signal's reason once it aborts.
+ */
+async function fetchFile(url: string | undefined, path: string, signal: AbortSignal): Promise<RemoteResult<Response>> {
+  if (url === undefined) return { ok: false, error: new RemoteError('game-assets/unreadable', `"${path}" is not a file the viewer reads from this page`, { path }) }
+  let response: Response
+  try {
+    response = await fetch(url, { signal, credentials: 'same-origin', cache: 'no-store' })
+  } catch (error) {
+    signal.throwIfAborted()
+    // TypeError: the request failed, as when the Host is gone.
+    return { ok: false, error: new RemoteError('game-assets/unreadable', `"${path}" could not be read: ${error instanceof Error ? error.message : String(error)}`, { path }) }
+  }
+  if (response.ok) return { ok: true, value: response }
+  let body: Refusal = {}
+  try {
+    body = await response.json() as Refusal
+  } catch {
+    // SyntaxError: a refusal without a JSON body names its status alone.
+  }
+  return { ok: false, error: refusal(path, response.status, body) }
+}
+
+/**
+ * Read a complete asset of a project.
+ * @param baseUri - the page's base URI.
+ * @param root - absolute project folder that the read stays inside.
+ * @param path - workspace path of the asset, relative to `root` or absolute.
+ * @param maxBytes - the largest file the viewer reads; a larger one fails with `workspace-file/too-large`.
+ * @param signal - cancellation.
+ * @returns the file, or the failure to show.
+ */
+export async function readAsset(
+  baseUri: string,
+  root: string,
+  path: string,
+  maxBytes: number,
+  signal: AbortSignal,
+): Promise<RemoteResult<AssetFile>> {
+  const response = await fetchFile(assetFileUrl(baseUri, root, path, { max: maxBytes }), path, signal)
+  if (!response.ok) return response
+  let data: Uint8Array<ArrayBuffer>
+  try {
+    data = new Uint8Array(await response.value.arrayBuffer())
+  } catch (error) {
+    signal.throwIfAborted()
+    // TypeError: the file changed or the connection ended while it streamed.
+    return { ok: false, error: new RemoteError('game-assets/unreadable', `"${path}" could not be read whole: ${error instanceof Error ? error.message : String(error)}`, { path }) }
+  }
+  if (data.byteLength > maxBytes) return { ok: false, error: new RemoteError('workspace-file/too-large', `"${path}" exceeds the ${String(maxBytes)} byte preview cap`, { path, limit: maxBytes }) }
+  return { ok: true, value: { data, version: response.value.headers.get(VERSION_HEADER) ?? '' } }
+}
+
+/**
+ * Read the first bytes of a project's file.
+ * @param baseUri - the page's base URI.
+ * @param root - absolute project folder that the read stays inside.
+ * @param path - workspace path, relative to `root` or absolute.
+ * @param length - most bytes to read.
+ * @param signal - cancellation.
+ * @returns the bytes, or undefined when the file cannot be read.
+ */
+export async function readHead(
+  baseUri: string,
+  root: string,
+  path: string,
+  length: number,
+  signal: AbortSignal,
+): Promise<Uint8Array | undefined> {
+  const response = await fetchFile(assetFileUrl(baseUri, root, path, { length }), path, signal)
+  if (!response.ok) return undefined
+  try {
+    return new Uint8Array(await response.value.arrayBuffer())
+  } catch {
+    // TypeError: the connection ended; a cancelled read rejects at its next step.
+    return undefined
+  }
 }
 
 /** A URL scheme of two letters or more, which a Windows drive such as `C:` is not. */
 const URL_SCHEME = /^[A-Za-z][A-Za-z\d+.-]+:/u
 
 /**
- * The project folder a file was read from: its absolute path without the segments of its workspace path, compared
- * without regard to case, as a case-insensitive filesystem may report them. A workspace path that is absolute, that
- * steps through `.` or `..`, or whose segments the absolute path does not end with, as when a link inside the project
- * leads elsewhere, gives the file's own folder.
- * @param absolutePath - the file's absolute path as the Host resolved it, in either separator spelling.
- * @param path - the workspace path it was read by.
- * @returns the folder, in the absolute path's spelling.
- */
-export function projectRootOf(absolutePath: string, path: string): string {
-  const separator = isWindowsPath(absolutePath) ? '\\' : '/'
-  const segments = absolutePath.split(/[\\/]/u)
-  const own = segments.slice(0, -1).join(separator)
-  const relative = path.split(/[\\/]/u).filter(segment => segment !== '')
-  if (isAbsolutePath(path) || relative.length === 0 || relative.some(segment => segment === '.' || segment === '..')) return own
-  const tail = segments.slice(-relative.length)
-  if (tail.length !== relative.length || tail.some((segment, index) => segment.toLowerCase() !== relative[index]?.toLowerCase())) return own
-  return segments.slice(0, -relative.length).join(separator)
-}
-
-/**
- * Resolve a file a model or material names against the viewed file, inside the project folder. A relative name
- * resolves against the viewed file's folder; an absolute name, often a path on the computer that authored the asset,
- * resolves to its file name in that folder, where game projects keep their textures.
- * @param base - absolute path of the viewed file, in either separator spelling.
+ * The path, relative to the project folder, of a file a model or material names. A relative name resolves against the
+ * viewed file's folder; an absolute name, often a path on the computer that authored the asset, resolves to its file
+ * name in that folder, where game projects keep their textures.
+ * @param root - absolute project folder.
+ * @param path - the viewed file, relative to `root` or absolute inside it.
  * @param reference - the name as the asset stores it, URL-decoded.
- * @param root - the project folder, which holds the viewed file.
- * @returns the absolute path to load, in the base's separator spelling, or undefined for a name that `..` leads out of
- * the project folder.
+ * @returns the `/`-separated path relative to `root`, or undefined for a name that `..` leads out of the project folder
+ * and for a viewed file outside it.
  */
-export function resolveRelated(base: string, reference: string, root: string): string | undefined {
-  const separator = isWindowsPath(base) ? '\\' : '/'
-  const normalizedBase = base.replaceAll('\\', '/')
-  const normalizedRoot = root.replaceAll('\\', '/').replace(/\/+$/u, '')
-  const folder = normalizedBase.slice(0, normalizedBase.lastIndexOf('/'))
-  const inside = folder === normalizedRoot ? '' : folder.startsWith(`${normalizedRoot}/`) ? folder.slice(normalizedRoot.length + 1) : undefined
-  if (inside === undefined) return undefined
-  const segments = inside.split('/').filter(segment => segment !== '')
-  const normalizedReference = reference.replaceAll('\\', '/')
-  const relative = isAbsolutePath(reference)
-    ? normalizedReference.slice(normalizedReference.lastIndexOf('/') + 1)
-    : normalizedReference
+export function relatedPath(root: string, path: string, reference: string): string | undefined {
+  const slashed = path.replaceAll('\\', '/')
+  let inside = slashed
+  if (isAbsolutePath(path)) {
+    const folder = root.replaceAll('\\', '/').replace(/\/+$/u, '')
+    // Windows compares paths without regard to case.
+    const fold = (value: string): string => (/^[A-Za-z]:\//u.test(folder) ? value.toLowerCase() : value)
+    if (!fold(slashed).startsWith(`${fold(folder)}/`)) return undefined
+    inside = slashed.slice(folder.length + 1)
+  }
+  const segments = inside.split('/').filter(segment => segment !== '' && segment !== '.')
+  segments.pop()
+  const named = reference.replaceAll('\\', '/')
+  const relative = isAbsolutePath(reference) ? named.slice(named.lastIndexOf('/') + 1) : named
   for (const segment of relative.split('/')) {
     if (segment === '' || segment === '.') continue
     if (segment === '..') {
@@ -173,19 +202,20 @@ export function resolveRelated(base: string, reference: string, root: string): s
     }
     segments.push(segment)
   }
-  return [normalizedRoot, ...segments].join('/').replaceAll('/', separator)
+  return segments.length === 0 ? undefined : segments.join('/')
 }
 
 /**
- * The URL of a file a model or material names, served by the authenticated `/api/file` route from inside the project.
+ * The URL of a file a model or material names, served by the route from inside the project folder.
  * @param baseUri - the page's base URI, which carries the deployment prefix or the Desktop scheme.
- * @param base - absolute path of the viewed file.
- * @param path - the viewed file's workspace path, which places the project folder in `base`.
+ * @param root - absolute project folder.
+ * @param path - the viewed file, relative to `root` or absolute inside it.
  * @param reference - the name as the loader requested it; `data:` and `blob:` URLs pass through.
- * @returns the URL to fetch, or undefined for a file that does not load: a web address or other URL, a name outside
- * the project, or a path the route does not serve, such as one with a control character or on a UNC share.
+ * @param maxBytes - the largest file the route serves for it.
+ * @returns the URL to fetch, or undefined for a file that does not load: a web address or other URL, a name outside the
+ * project, or a path the route does not serve, such as one with a control character or on a UNC share.
  */
-export function relatedUrl(baseUri: string, base: string, path: string, reference: string): string | undefined {
+export function relatedUrl(baseUri: string, root: string, path: string, reference: string, maxBytes: number): string | undefined {
   if (/^(?:data|blob):/iu.test(reference)) return reference
   let decoded = reference
   try {
@@ -194,13 +224,15 @@ export function relatedUrl(baseUri: string, base: string, path: string, referenc
     // URIError: a reference with a stray `%` is a literal file name, so it resolves as written.
   }
   if (URL_SCHEME.test(reference) || URL_SCHEME.test(decoded)) return undefined
-  const resolved = resolveRelated(base, decoded, projectRootOf(base, path))
-  return resolved === undefined ? undefined : fileMediaUrl(baseUri, resolved)
+  const resolved = relatedPath(root, path, decoded)
+  return resolved === undefined ? undefined : assetFileUrl(baseUri, root, resolved, { max: maxBytes })
 }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
-    /** The viewed file changed between the byte windows of every attempt to read it. */
-    'game-assets/changed': { readonly path: string }
+    /** The file's real path lies outside the project folder, as through a link inside the project. */
+    'game-assets/outside': { readonly path: string }
+    /** The file could not be read: no project folder to read it from, a failed request, or a refusal of its own. */
+    'game-assets/unreadable': { readonly path: string }
   }
 }

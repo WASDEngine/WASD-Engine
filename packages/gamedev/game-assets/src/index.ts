@@ -4,6 +4,8 @@
  * agents on the computer. `asset_view` asks the WASD Engine windows that may read the calling Session to draw the
  * asset through the forwarded `game-assets/render` request, which the Assets tab's browser half answers with the
  * asset's details and images; `show` emits `game-assets/reveal`, which opens the asset in that Session's Assets tab.
+ * The `GET /api/game-assets.file` route serves the Assets tab's reads of a project's files, each confined to the
+ * project folder by its real path, so that a link inside the project leads no read out of it.
  *
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  * @module @deepseek-ai/dsh-game-assets
@@ -16,11 +18,15 @@ import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-api-gateway'
 import type {} from '@deepseek-ai/dsh-attachment'
+import type {} from '@deepseek-ai/dsh-client-connection'
+import type {} from '@deepseek-ai/dsh-fs'
 import type {} from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
+import { ASSET_FILE_ROUTE, serveAssetFile } from './files.ts'
 import { assetMcpProvider } from './mcp.ts'
+import { MODEL_COST_LIMITS, ModelCosts } from './model-cost.ts'
 import { parseRenderResult } from './result.ts'
 import { ASSET_ERROR, assetToolDefinitions, MIN_IMAGE_EDGE, NO_WINDOW_MESSAGE, type AssetToolHost, type AssetToolSurface } from './tools.ts'
 import type { AssetRenderResult } from './types.ts'
@@ -109,6 +115,7 @@ export function apply(ctx: Context, config: Config): void {
     maxImageEdge: config.maxImageEdge,
     maxImagePixels: config.maxImagePixels,
     maxPreviewBytes: config.maxPreviewBytes,
+    modelCosts: new ModelCosts(MODEL_COST_LIMITS),
     async project(exec) {
       if (exec.agent === undefined) throw new HarnessError('The asset tools need a Session: they read its project folder.', ASSET_ERROR.window)
       return await ctx.workingDirectory.ensure(exec.agent, exec.signal)
@@ -150,5 +157,14 @@ export function apply(ctx: Context, config: Config): void {
   // Agents connected through WASD Engine's MCP server get the same tools.
   ctx.inject(['gameMcp'], (inner) => {
     inner.effect(() => inner.gameMcp.provide(assetMcpProvider(host)), 'game-assets: game MCP tools')
+  })
+  // The Assets tab's and the agents' pictures' reads of a project's files, confined to the project by real path.
+  ctx.inject(['connection', 'fs'], (inner) => {
+    inner.effect(() => inner.connection.fetch.register({
+      path: ASSET_FILE_ROUTE,
+      methods: ['GET', 'HEAD'],
+      requestBody: 'buffered',
+      fetch: request => serveAssetFile(request, { fs: inner.fs, maxBytes: config.maxPreviewBytes }),
+    }), 'game-assets: /api/game-assets.file')
   })
 }

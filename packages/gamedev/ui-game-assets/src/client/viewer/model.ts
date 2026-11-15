@@ -3,14 +3,17 @@
  * measuring it (bounds, geometry, materials and textures, bones, clips, and morph targets), and the stage that draws
  * one model at a time with orbit controls, room lighting, a ground grid sized to the model, its animations with a
  * seekable clock, its skeleton, and clay or wireframe shading. The stage draws only when something changed: a camera
- * move, a loaded texture, a resize, or a playing animation.
+ * move, a loaded texture, a resize, or a playing animation. Before a loader allocates what a file asks for, the memory
+ * is counted from the file and refused past {@link ModelSource.maxBytes}: a glTF description's own sizes and the files
+ * it names, a VOX file's meshes, and an FBX file's arrays; and every texture of every format is checked before it is
+ * decoded, its pixels against the viewer's cap and its file and decoded size against the textures' share of that memory.
  */
 import {
   AnimationMixer, Bone, Box3, BufferAttribute, BufferGeometry, Color, DirectionalLight, DoubleSide, GridHelper, Group, HemisphereLight,
-  InstancedMesh, LineBasicMaterial, LoaderUtils, LoadingManager, Material, Mesh, MeshStandardMaterial, NeutralToneMapping,
+  InstancedMesh, LineBasicMaterial, LoaderUtils, LoadingManager, Material, Mesh, MeshStandardMaterial, NeutralToneMapping, Object3D,
   PerspectiveCamera, PMREMGenerator,
   Points, PointsMaterial, PropertyBinding, Scene, SkeletonHelper, SkinnedMesh, SRGBColorSpace, Texture, Timer, Vector3,
-  WebGLRenderer, type AnimationAction, type AnimationClip, type Object3D,
+  WebGLRenderer, type AnimationAction, type AnimationClip,
 } from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
@@ -23,12 +26,15 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
 import { TGALoader } from 'three/examples/jsm/loaders/TGALoader.js'
-import { VOXLoader } from 'three/examples/jsm/loaders/VOXLoader.js'
+import { buildMesh, VOXLoader, type Chunk } from 'three/examples/jsm/loaders/VOXLoader.js'
 import type {
   AssetShading, ModelAssetDetails, ModelBoneDetails, ModelClipDetails, ModelMaterialDetails, ModelMorphDetails, ModelTextureDetails,
 } from '@deepseek-ai/dsh-game-assets/types'
 import { assertNever } from '@deepseek-ai/dsh-util-values'
 import type { ModelDecoder } from '../formats.ts'
+import { fbxBytes } from './fbx.ts'
+import { CheckedTextureLoader, CheckedTextures, TextureBudget } from './textures.ts'
+import { voxPlan } from './vox.ts'
 
 /** Counts shown beside a model. */
 export interface ModelStats {
@@ -73,19 +79,23 @@ export interface ModelSource {
   /** Called when a texture that loads after the model arrives, so the stage draws it. */
   readonly changed: () => void
   /**
-   * Largest number of bytes the model's description may size itself, beyond the files it is read from: the glTF
-   * accessors without a buffer view, which the loader fills, the Meshopt-compressed buffer views it decodes, and the
-   * instance matrices of `EXT_mesh_gpu_instancing` nodes.
+   * Largest number of bytes a model's loader may allocate beyond the files it is read from, as the file asks for them:
+   * a glTF description's accessors without a buffer view, which the loader fills, the Meshopt-compressed buffer views it
+   * decodes, and the instance matrices of `EXT_mesh_gpu_instancing` nodes; a VOX file's meshes; and an FBX file's
+   * nodes and arrays. A glTF model's file and the buffers and images it names take at most as many bytes together, and
+   * the model's textures at most as many again in their files and as many decoded.
    */
   readonly maxBytes: number
   /**
-   * Check an image a glTF model names before it is decoded, from its bytes.
-   * @param data - the image file, or the bytes of its buffer view.
-   * @param name - the name the model stores for the file; empty for an image inside a buffer.
+   * Check an image a model names before it is decoded, from its bytes.
+   * @param data - the image file, or the bytes of its glTF buffer view.
+   * @param name - a name whose extension picks the header to read: the name the model stores for the file, or a URL;
+   * empty for an image inside a glTF buffer.
+   * @returns the bytes the image takes decoded.
    * @throws {Error} when its header states more pixels than the viewer decodes, or no size the viewer reads; the model
    * then shows without the image and lists it as missing.
    */
-  readonly checkImage: (data: Uint8Array, name: string) => void
+  readonly checkImage: (data: Uint8Array, name: string) => number
 }
 
 /** A glTF model whose description gives a count or a byte stride that is not a whole number of items. */
@@ -96,14 +106,14 @@ export class ModelUnsizedError extends Error {
   }
 }
 
-/** A model whose description asks for more memory than {@link ModelSource.maxBytes}. */
+/** A model whose file asks its loader for more memory than {@link ModelSource.maxBytes}. */
 export class ModelTooLargeError extends Error {
   /**
-   * @param bytes - the bytes the description asks for.
+   * @param bytes - the bytes the file asks for.
    * @param limit - the most the viewer sets aside.
    */
   constructor(readonly bytes: number, readonly limit: number) {
-    super(`the model asks for ${String(bytes)} bytes of geometry, more than the ${String(limit)} the viewer sets aside`)
+    super(`the model asks for ${String(bytes)} bytes of memory, more than the ${String(limit)} the viewer sets aside`)
     this.name = 'ModelTooLargeError'
   }
 }
@@ -251,15 +261,61 @@ export function gltfDeclaredBytes(json: unknown): number {
   return total
 }
 
+/** Most distinct files one glTF model may name for the viewer to load with it, as the asset tools count them. */
+const MAX_GLTF_FILES = 1024
+
+/** Files whose sizes are asked for at once. */
+const SIZE_CONCURRENCY = 16
+
+/**
+ * The total size of the files a glTF model names, its buffers and images outside its own file, as the server states
+ * each file's size before any of them is read; a file that does not load counts nothing.
+ * @param json - the model's JSON.
+ * @param related - resolves a name to the URL the loader fetches it from.
+ * @param signal - cancellation.
+ * @returns the total in bytes.
+ * @throws {Error} when the model names more than {@link MAX_GLTF_FILES} distinct files.
+ */
+async function gltfFilesBytes(json: unknown, related: ModelSource['related'], signal: AbortSignal): Promise<number> {
+  const urls = new Set<string>()
+  for (const key of ['buffers', 'images']) {
+    for (const entry of gltfEntries(json, key)) {
+      const uri: unknown = Reflect.get(entry, 'uri')
+      const url = typeof uri === 'string' && !/^data:/iu.test(uri) ? related(uri) : undefined
+      if (url !== undefined) urls.add(url)
+    }
+  }
+  if (urls.size > MAX_GLTF_FILES) throw new Error(`the glTF model names ${String(urls.size)} files, more than the ${String(MAX_GLTF_FILES)} the viewer loads with one model`)
+  const size = async (url: string): Promise<number> => {
+    let response: Response
+    try {
+      response = await fetch(url, { method: 'HEAD', signal, credentials: 'same-origin' })
+    } catch {
+      // TypeError or AbortError: the loader's own fetch reports a file that does not load, and an abort ends the read.
+      return 0
+    }
+    const stated = Number(response.headers.get('X-Asset-Size') ?? response.headers.get('Content-Length'))
+    return response.ok && Number.isSafeInteger(stated) && stated > 0 ? stated : 0
+  }
+  const list = [...urls]
+  let total = 0
+  for (let start = 0; start < list.length; start += SIZE_CONCURRENCY) {
+    for (const bytes of await Promise.all(list.slice(start, start + SIZE_CONCURRENCY).map(size))) total += bytes
+    signal.throwIfAborted()
+  }
+  return total
+}
+
 /** Name of the GLTFLoader plugin that checks a model's images before they are decoded. */
 const CHECKED_IMAGES = 'wasd_checked_images'
 
 /**
  * A GLTFLoader plugin that checks each image a model names before the loader decodes it, from the bytes of its buffer
- * view or of the file its URI names, which the check fetches through the same URL as the loader. The loader shows the
- * model without an image that fails the check, as without one that does not load.
+ * view or of the file its URI names, which the check fetches through the same URL as the loader, and counts it against
+ * the model's texture budget once, however many textures use it. The loader shows the model without an image that
+ * fails the check, as without one that does not load.
  * @param parser - the loader's parser of one model.
- * @param check - the check, {@link ModelSource.checkImage}.
+ * @param budget - the model's texture budget, whose check is {@link ModelSource.checkImage}.
  * @param refused - told the name of each image that fails the check: the file name of its URI, else its own name or
  * its number.
  * @param signal - cancellation of the model's read.
@@ -267,7 +323,7 @@ const CHECKED_IMAGES = 'wasd_checked_images'
  */
 function checkedImages(
   parser: GLTFParser,
-  check: ModelSource['checkImage'],
+  budget: TextureBudget,
   refused: (name: string) => void,
   signal: AbortSignal,
 ): GLTFLoaderPlugin {
@@ -283,7 +339,7 @@ function checkedImages(
     const listed = typeof uri === 'string' && !/^data:/iu.test(uri) ? fileName(uri) : typeof own === 'string' && own !== '' ? own : `#/images/${String(sourceIndex)}`
     const verify = (data: Uint8Array, name: string): void => {
       try {
-        check(data, name)
+        budget.take(data, name)
       } catch (error) {
         refused(listed)
         throw error
@@ -383,6 +439,49 @@ async function objMaterials(
   return materials
 }
 
+/** The child elements of an XML node with a name, as the Collada loader finds them: direct children only. */
+function childrenNamed(node: Node, name: string): Node[] {
+  return [...node.childNodes].filter(child => child.nodeName === name)
+}
+
+/**
+ * The file names of a Collada file's images, as its loader reads them: the text of the first `init_from` of each image
+ * of each `library_images` of the `COLLADA` element.
+ * @param text - the file's text.
+ * @returns the names, in file order; none for a file without images or that is not XML.
+ */
+export function colladaImageNames(text: string): string[] {
+  // Most files hold no images; they are not parsed twice.
+  if (!text.includes('library_images')) return []
+  const document = new DOMParser().parseFromString(text, 'application/xml')
+  const names: string[] = []
+  for (const collada of childrenNamed(document, 'COLLADA').slice(0, 1)) {
+    for (const library of childrenNamed(collada, 'library_images')) {
+      for (const image of childrenNamed(library, 'image')) {
+        const name = childrenNamed(image, 'init_from')[0]?.textContent
+        if (name !== undefined && name !== null) names.push(name)
+      }
+    }
+  }
+  return names
+}
+
+/**
+ * The meshes of a VOX file without a scene graph, from which the loader builds no scene: one for each model that holds
+ * voxels, in file order.
+ * @param chunks - the models the loader read.
+ * @returns the meshes in one group.
+ */
+function voxModels(chunks: readonly Chunk[]): Group {
+  const group = new Group()
+  for (const chunk of chunks) {
+    // A model whose size no voxels follow has no data for the mesher, whatever the loader's types say.
+    const data: unknown = Reflect.get(chunk, 'data')
+    if (data instanceof Uint8Array) group.add(buildMesh(chunk))
+  }
+  return group
+}
+
 /**
  * The object for loose geometry: a mesh with a standard material, vertex colors when the geometry has them, and
  * computed normals when it has none, or points for geometry without faces.
@@ -411,6 +510,11 @@ function isMaterial(value: unknown): value is Material {
 /** Whether a value is a three.js texture. */
 function isTexture(value: unknown): value is Texture {
   return value instanceof Texture
+}
+
+/** Whether a value is a three.js object. */
+function isObject3D(value: unknown): value is Object3D {
+  return value instanceof Object3D
 }
 
 /** Whether an object is a bone. */
@@ -521,36 +625,49 @@ export function finiteBounds(root: Object3D): Box3 {
   return bounds
 }
 
+/** How the missing files list a texture embedded in the model that failed. */
+const EMBEDDED = '(embedded)'
+
 /**
  * Read a model.
  * @param source - the format, the bytes, and how related files resolve.
  * @param signal - cancellation; a model read after it is disposed and the read rejects with the reason.
  * @returns the model.
- * @throws {Error} when the file is not a valid model of its format.
+ * @throws {ModelTooLargeError} when the file asks its loader for more than {@link ModelSource.maxBytes};
+ * {@link ModelUnsizedError} for a glTF description whose sizes are not whole numbers; `VoxModelTooLargeError` and
+ * `VoxWorkTooLargeError` for a VOX file larger than MagicaVoxel makes; {Error} when the file is not a valid model of
+ * its format, an FBX array whose compressed data inflates past its stated length among them.
  */
 export async function loadModel(source: ModelSource, signal: AbortSignal): Promise<LoadedModel> {
   const manager = new LoadingManager()
   // The names the model stores, by the URL each one loads from, so failures and textures report those names.
   const references = new Map<string, string>()
   const missing: string[] = []
+  const listMissing = (name: string): void => {
+    if (!missing.includes(name)) missing.push(name)
+  }
   let outstanding = 0
   const settled = Promise.withResolvers<void>()
+  const budget = new TextureBudget(source.maxBytes, source.checkImage)
+  const textures = new CheckedTextures(budget, signal)
+  void settled.promise.then(() => { textures.dispose() })
   // A file the viewer does not load gets a `data:` URL without a comma, which fetches and images refuse without any
   // request; each is its own URL, also beside another model's in the loaders' shared request table, so its failure
   // names its own file.
   const refusals = `refused-${Math.random().toString(36).slice(2)}-`
   let refused = 0
+  // Where a name the model stores loads from: the related file, or for a Collada file the checked bytes of its image.
+  let redirect = (url: string): string | undefined => source.related(url)
   manager.setURLModifier((url) => {
-    const resolved = source.related(url) ?? `data:${refusals}${String(++refused)}`
+    const resolved = redirect(url) ?? `data:${refusals}${String(++refused)}`
     references.set(resolved, url)
     return resolved
   })
-  manager.addHandler(/\.tga$/iu, new TGALoader(manager))
   manager.onLoad = () => { source.changed() }
   manager.onProgress = () => { source.changed() }
   manager.onError = (url) => {
-    const name = fileName(references.get(url) ?? url)
-    if (!missing.includes(name)) missing.push(name)
+    const reference = references.get(url) ?? url
+    listMissing(/^(?:blob|data):/iu.test(reference) ? EMBEDDED : fileName(reference))
   }
   const itemStart = manager.itemStart.bind(manager)
   const itemEnd = manager.itemEnd.bind(manager)
@@ -565,57 +682,89 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
   }
   let root: Object3D
   let animations: readonly AnimationClip[] = []
-  switch (source.decoder) {
-    case 'gltf': {
-      // The loader allocates these arrays from the description's sizes alone, so a small file could ask for gigabytes.
-      const declared = gltfDeclaredBytes(gltfJson(source.data))
-      if (declared > source.maxBytes) throw new ModelTooLargeError(declared, source.maxBytes)
-      const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder)
-      const refused = (name: string): void => { if (!missing.includes(name)) missing.push(name) }
-      loader.register(parser => checkedImages(parser, source.checkImage, refused, signal))
-      const gltf = await loader.parseAsync(arrayBufferOf(source.data), '')
-      root = gltf.scene
-      animations = gltf.animations
-      break
+  // OBJ material libraries and FBX files ask the manager for a texture loader by each texture's name; every texture
+  // gets the checked one, a TGA name the one that reads TGA.
+  const checkTextures = (): void => {
+    manager.addHandler(/\.tga$/iu, new CheckedTextureLoader(manager, textures, 'tga'))
+    manager.addHandler(/(?:)/u, new CheckedTextureLoader(manager, textures, 'image'))
+  }
+  try {
+    switch (source.decoder) {
+      case 'gltf': {
+        // The loader allocates these arrays from the description's sizes alone, so a small file could ask for gigabytes.
+        const json = gltfJson(source.data)
+        const declared = gltfDeclaredBytes(json)
+        if (declared > source.maxBytes) throw new ModelTooLargeError(declared, source.maxBytes)
+        // The loader reads every buffer and image it names whole; together with the model they fit what one file may take.
+        const files = source.data.byteLength + await gltfFilesBytes(json, source.related, signal)
+        if (files > source.maxBytes) throw new ModelTooLargeError(files, source.maxBytes)
+        manager.addHandler(/\.tga$/iu, new TGALoader(manager))
+        const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder)
+        loader.register(parser => checkedImages(parser, budget, listMissing, signal))
+        const gltf = await loader.parseAsync(arrayBufferOf(source.data), '')
+        root = gltf.scene
+        animations = gltf.animations
+        break
+      }
+      case 'obj': {
+        checkTextures()
+        const text = new TextDecoder().decode(source.data)
+        const loader = new OBJLoader(manager)
+        const library = /^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/mu.exec(text)?.[1]
+        const materials = library === undefined ? undefined : await objMaterials(library, manager, source.related, signal)
+        if (library !== undefined && materials === undefined) listMissing(fileName(library))
+        if (materials !== undefined) loader.setMaterials(materials)
+        root = loader.parse(text)
+        break
+      }
+      case 'fbx': {
+        // The loader inflates each compressed array whole and makes JavaScript numbers of every value it reads.
+        const bytes = fbxBytes(source.data, source.maxBytes)
+        if (bytes > source.maxBytes) throw new ModelTooLargeError(bytes, source.maxBytes)
+        checkTextures()
+        root = new FBXLoader(manager).parse(arrayBufferOf(source.data), '')
+        animations = root.animations
+        break
+      }
+      case 'dae': {
+        // The loader decodes images with loaders of its own, from the checked bytes of each.
+        const text = new TextDecoder().decode(source.data)
+        await textures.prefetch(colladaImageNames(text), source.related, listMissing)
+        redirect = url => textures.checked(url)
+        const collada = new ColladaLoader(manager).parse(text, '')
+        if (collada === null) throw new Error('not a Collada file')
+        root = collada.scene
+        animations = collada.scene.animations
+        break
+      }
+      case 'stl':
+        root = objectOf(new STLLoader().parse(arrayBufferOf(source.data)), true)
+        break
+      case 'ply': {
+        // A PLY file with faces has an index; without one it is a point cloud.
+        const geometry = new PLYLoader().parse(arrayBufferOf(source.data))
+        root = objectOf(geometry, geometry.index !== null)
+        break
+      }
+      case 'vox': {
+        // The mesher sweeps every cell of each model's box, as many times as the scene places the model.
+        const plan = voxPlan(source.data)
+        if (plan.bytes > source.maxBytes) throw new ModelTooLargeError(plan.bytes, source.maxBytes)
+        const parsed = new VOXLoader().parse(arrayBufferOf(source.data))
+        // The loader's types promise a scene, but it builds none for a file without a scene graph.
+        const scene: unknown = Reflect.get(parsed, 'scene')
+        root = isObject3D(scene) ? scene : voxModels(parsed.chunks)
+        break
+      }
+      default:
+        return assertNever(source.decoder)
     }
-    case 'obj': {
-      const text = new TextDecoder().decode(source.data)
-      const loader = new OBJLoader(manager)
-      const library = /^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/mu.exec(text)?.[1]
-      const materials = library === undefined ? undefined : await objMaterials(library, manager, source.related, signal)
-      if (library !== undefined && materials === undefined) missing.push(fileName(library))
-      if (materials !== undefined) loader.setMaterials(materials)
-      root = loader.parse(text)
-      break
-    }
-    case 'fbx': {
-      root = new FBXLoader(manager).parse(arrayBufferOf(source.data), '')
-      animations = root.animations
-      break
-    }
-    case 'dae': {
-      const collada = new ColladaLoader(manager).parse(new TextDecoder().decode(source.data), '')
-      if (collada === null) throw new Error('not a Collada file')
-      root = collada.scene
-      animations = collada.scene.animations
-      break
-    }
-    case 'stl':
-      root = objectOf(new STLLoader().parse(arrayBufferOf(source.data)), true)
-      break
-    case 'ply': {
-      // A PLY file with faces has an index; without one it is a point cloud.
-      const geometry = new PLYLoader().parse(arrayBufferOf(source.data))
-      root = objectOf(geometry, geometry.index !== null)
-      break
-    }
-    case 'vox':
-      root = new VOXLoader().parse(arrayBufferOf(source.data)).scene
-      break
-    default:
-      return assertNever(source.decoder)
+  } catch (error) {
+    textures.dispose()
+    throw error
   }
   if (signal.aborted) {
+    textures.dispose()
     disposeObject(root)
     throw signal.reason
   }
@@ -626,7 +775,11 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
     const src = typeof image === 'object' && image !== null && 'src' in image && typeof image.src === 'string' ? image.src : undefined
     return src === undefined ? '' : fileName(references.get(src) ?? '')
   }
-  return { root, animations, stats: statsOf(root), missing, settled: settled.promise, textureName, dispose: () => { disposeObject(root) } }
+  const dispose = (): void => {
+    textures.dispose()
+    disposeObject(root)
+  }
+  return { root, animations, stats: statsOf(root), missing, settled: settled.promise, textureName, dispose }
 }
 
 /**

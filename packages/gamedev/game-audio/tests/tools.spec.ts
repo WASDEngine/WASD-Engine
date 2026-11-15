@@ -200,6 +200,14 @@ describe('audio_review', () => {
     await writeFile(join(c.work, 'audio/sfx/hum.wav'), pcmWav({ sampleRate: 48_000, frames: 48_000, loop: [24_000, 47_999] }))
     expect(await review('audio/sfx/hum.wav')).toBe('Loop seam: the loop\'s end at 1.000 s meets its start at 0.500 s without a click.')
     expect(c.requests.at(-1)?.loop).toEqual({ start: 0.5, end: 47_999 / 48_000 })
+    // A ping-pong loop the file stores has no seam either, and the review names how the stored loop plays.
+    await writeFile(join(c.work, 'audio/sfx/drone.wav'), pcmWav({ sampleRate: 48_000, frames: 48_000, loop: [24_000, 47_999], loopType: 1 }))
+    await writeFile(join(c.work, 'audio/sfx/drone.wav.import'), '[remap]\nimporter="wav"\n[params]\nedit/loop_mode=0\n')
+    const drone = text(await callTool(c, 'audio_review', { path: 'audio/sfx/drone.wav', picture: false })).split('\n')
+    expect(drone).toContain('Loop seam: none, since Godot plays the loop forward and then backward, turning at its ends without a jump.')
+    expect(drone).toContain('Godot imports it (wav) to loop back and forth between the points the file stores.')
+    expect(drone).toContain('The file stores a ping-pong loop from frame 24000 to frame 47999.')
+    expect(c.requests.at(-1)?.loop).toBeUndefined()
   })
 
   it('warns of samples that are NaN, infinite, or far beyond full scale, which a window measures as finite figures', async () => {

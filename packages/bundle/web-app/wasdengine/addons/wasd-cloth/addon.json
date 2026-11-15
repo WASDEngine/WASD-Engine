@@ -2,7 +2,7 @@
   "id": "wasd-cloth",
   "title": "WASD Cloth",
   "host": "godot",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "summary": "Cloth for 3D games: soft-body sheets with fabric presets, spring-bone chains for capes and skirts, wind zones, a flag shader, and a checker that measures cloth.",
   "useWhen": "A 3D game has cloth that moves: flags, banners, sails, curtains, capes, skirts, coat tails, hair, or cloth that the player pushes. Its sheets use SoftBody3D, which Jolt supports in Godot 4.7.",
   "avoidWhen": "2D games, or cloth that never moves: drape it in Blender with wasd-cloth-blender.",
@@ -30,6 +30,6 @@
   },
   "verified": {
     "godot": "4.7.2",
-    "date": "2026-11-13"
+    "date": "2026-11-14"
   }
 }

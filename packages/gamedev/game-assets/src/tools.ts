@@ -8,8 +8,8 @@
  * @module @deepseek-ai/dsh-game-assets/src/tools
  */
 import type { Stats } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { realpath, stat } from 'node:fs/promises'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -19,6 +19,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { describeDetails, describeSearch, describeSummary, sizeText, type ListedAsset, type ListedFolder } from './describe.ts'
 import { exportOf, formatOf, isBlendFormat, NAME_ORDER } from './formats.ts'
+import { MAX_NAMED_FILES, type ModelCosts } from './model-cost.ts'
 import { ANSWER_LIMITS, parseDetails } from './result.ts'
 import { scanProject, type ScanLimits } from './scan.ts'
 import type {
@@ -80,6 +81,8 @@ export interface AssetToolHost {
   readonly maxImagePixels: number
   /** Largest file a window reads to draw it, in bytes. */
   readonly maxPreviewBytes: number
+  /** What a window's draw of a model costs, which the tools tell the window. */
+  readonly modelCosts: ModelCosts
   /**
    * The project folder of one call: the calling Session's working directory.
    * @param exec - the call's execution.
@@ -252,6 +255,38 @@ export function windowPath(root: string | undefined, absolute: string): string {
 }
 
 /**
+ * The folder a window reads a call's files inside: the folder in the Session's header, against which the window
+ * resolves the Session's paths, when it holds the calling agent's project folder; the project folder otherwise, as for
+ * an agent working outside the Session's folder or a Session without one.
+ * @param header - the folder in the Session's header, or undefined when the header has none.
+ * @param project - the calling agent's project folder.
+ * @returns the absolute folder.
+ */
+export function readRoot(header: string | undefined, project: string): string {
+  if (header === undefined) return project
+  const inside = relative(header, project)
+  return inside === '' || (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) ? header : project
+}
+
+/**
+ * Whether a file's real path lies inside a folder's, every link followed, as the window's reads are confined.
+ * @param folder - absolute folder.
+ * @param path - absolute path of the file.
+ * @returns false also when either path cannot be resolved.
+ */
+async function insideByRealPath(folder: string, path: string): Promise<boolean> {
+  let real: [string, string]
+  try {
+    real = await Promise.all([realpath(folder), realpath(path)])
+  } catch {
+    // ENOENT, ELOOP, or EACCES: a path that does not resolve is not read.
+    return false
+  }
+  const inside = relative(real[0], real[1])
+  return inside !== '' && inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+}
+
+/**
  * A path a window gave, which names a file from the folder in the Session's header, as the calling agent names it.
  * @param root - the folder in the Session's header.
  * @param project - the calling agent's project folder: its working directory.
@@ -284,102 +319,7 @@ function callerDetails(details: AssetDetails, root: string, project: string): As
 }
 
 /** Most distinct files one glTF model may name for the window to load with it. */
-export const MAX_GLTF_FILES = 1024
-
-/** Files whose sizes are read at once while summing a glTF model's files. */
-const GLTF_STAT_CONCURRENCY = 16
-
-/** A URL scheme of two letters or more, which a Windows drive such as `C:` is not. */
-const URL_SCHEME = /^[A-Za-z][A-Za-z\d+.-]+:/u
-
-/** The magic `glTF` that starts a GLB file, and the type of a GLB file's JSON chunk. */
-const GLB_MAGIC = 0x46546c67
-const GLB_JSON_CHUNK = 0x4e4f534a
-
-/**
- * The JSON text of a glTF model as the window's loader finds it, whatever the file's name: a GLB file's JSON chunk,
- * the last one among its chunks up to the length its header states, or else the whole file's text, a byte order mark
- * dropped as the window drops it.
- * @param data - the model file.
- * @returns the text, or undefined where the loader finds none.
- */
-function gltfText(data: Buffer): string | undefined {
-  if (data.byteLength < 4 || data.readUInt32LE(0) !== GLB_MAGIC) return new TextDecoder().decode(data)
-  if (data.byteLength < 12 || data.readUInt32LE(4) < 2) return undefined
-  const contents = data.readUInt32LE(8) - 12
-  let json: string | undefined
-  for (let index = 0; index < contents;) {
-    // Each chunk: its length, its type, then its bytes; reading past the file fails the loader.
-    if (12 + index + 8 > data.byteLength) return undefined
-    const length = data.readUInt32LE(12 + index)
-    const start = 12 + index + 8
-    if (data.readUInt32LE(16 + index) === GLB_JSON_CHUNK) {
-      if (start + length > data.byteLength) return undefined
-      json = new TextDecoder().decode(data.subarray(start, start + length))
-    }
-    index += 8 + length
-  }
-  return json
-}
-
-/**
- * The total size of the files a glTF or GLB model names outside its own file, its buffers and images, which the window
- * loads with it. Names resolve as the window resolves them: from the model's folder, an absolute name by its file name
- * in that folder, and only inside the project folder; a web address or other URL, and a name that leads out of the
- * project, load nothing and count nothing. The sizes are read {@link GLTF_STAT_CONCURRENCY} at a time.
- * @param file - absolute path of the model file.
- * @param size - its size in bytes.
- * @param root - the project folder the window loads the model's files from.
- * @param maxBytes - the largest file the window reads; a larger model file, which the window refuses, counts nothing.
- * @param signal - the call's cancellation, checked before each read.
- * @returns the total size in bytes, 0 when the file names no other file or its description is not readable JSON.
- * @throws {HarnessError} `ASSET_TOO_LARGE` when the model names more than {@link MAX_GLTF_FILES} distinct files.
- */
-export async function gltfFilesBytes(file: string, size: number, root: string, maxBytes: number, signal: AbortSignal): Promise<number> {
-  if (size > maxBytes) return 0
-  let parsed: unknown
-  try {
-    const text = gltfText(await readFile(file))
-    if (text === undefined) return 0
-    parsed = JSON.parse(text)
-  } catch {
-    // ENOENT, EACCES, or SyntaxError: the window reports the file it cannot read.
-    return 0
-  }
-  const uris = (key: string): string[] => {
-    const list: unknown = typeof parsed === 'object' && parsed !== null ? Reflect.get(parsed, key) : undefined
-    if (!Array.isArray(list)) return []
-    return list.flatMap((entry: unknown) => {
-      const uri: unknown = typeof entry === 'object' && entry !== null ? Reflect.get(entry, 'uri') : undefined
-      return typeof uri === 'string' && !URL_SCHEME.test(uri) ? [uri] : []
-    })
-  }
-  const folder = dirname(file)
-  const named = new Set([...uris('buffers'), ...uris('images')].flatMap((uri) => {
-    let name = uri
-    try {
-      name = decodeURIComponent(uri)
-    } catch {
-      // URIError: a name with a stray `%` is a literal file name, as the window reads it.
-    }
-    if (URL_SCHEME.test(name)) return []
-    const slashed = name.replaceAll('\\', '/')
-    const path = isAbsolute(name) || /^[A-Za-z]:\//u.test(slashed) ? join(folder, basename(slashed)) : resolve(folder, slashed)
-    const inside = relative(root, path)
-    return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside) ? [] : [path]
-  }))
-  if (named.size > MAX_GLTF_FILES) {
-    fail(`The glTF model names ${String(named.size)} files, more than the ${String(MAX_GLTF_FILES)} the viewer loads with one model.`, ASSET_ERROR.tooLarge)
-  }
-  const paths = [...named]
-  let total = 0
-  for (let start = 0; start < paths.length; start += GLTF_STAT_CONCURRENCY) {
-    signal.throwIfAborted()
-    const sizes = await Promise.all(paths.slice(start, start + GLTF_STAT_CONCURRENCY).map(async path => (await statOf(path))?.size ?? 0))
-    for (const next of sizes) total += next
-  }
-  return total
-}
+export const MAX_GLTF_FILES = MAX_NAMED_FILES
 
 function folderOf(path: string): string {
   const slash = path.lastIndexOf('/')
@@ -606,9 +546,12 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       const info = await statOf(target.absolute)
       if (info === undefined) fail(`No file at ${target.path} in ${project}. List the project's assets with asset_search.`, ASSET_ERROR.missing)
       if (!info.isFile()) fail(`${target.path} is a folder, not an asset. List its assets with asset_search and folder.`, ASSET_ERROR.missing)
+      if (!await insideByRealPath(project, target.absolute)) {
+        fail(`${target.path} leads outside the project folder ${project} through a link, so the viewer does not read it.`, ASSET_ERROR.outside)
+      }
       let path = target.path
       let absolute = target.absolute
-      let bytes = info.size
+      let drawn = info
       let requested: string | undefined
       if (isBlendFormat(format)) {
         const scan = await scanProject(project, host.scanLimits, exec.signal)
@@ -619,26 +562,33 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
         requested = target.path
         path = exported.path
         absolute = resolve(project, exported.path)
-        bytes = exported.bytes
+        drawn = await statOf(absolute) ?? fail(`The model exported from ${target.path}, ${exported.path}, is no longer in the project.`, ASSET_ERROR.missing)
         format = exported.format
       }
-      const root = agent.session.header.cwd
+      const root = readRoot(agent.session.header.cwd, project)
       const sent = windowPath(root, absolute)
-      // A glTF or GLB model's buffers and images in files of their own load with it, from the project folder the window
-      // reads: the folder in the Session's header, or the model's own folder for a model outside it.
-      if (format.decoder === 'gltf') {
-        const folder = root === undefined || sent === absolute ? dirname(absolute) : root
-        const named = await gltfFilesBytes(absolute, bytes, folder, host.maxPreviewBytes, exec.signal)
-        if (bytes + named > host.maxPreviewBytes) {
-          fail(`${path} and the files it names take ${sizeText(bytes + named)}, more than the ${sizeText(host.maxPreviewBytes)} the viewer reads for one model.`, ASSET_ERROR.tooLarge)
+      let bytes = drawn.size
+      // A model's draw also reads the files it names and allocates what its files ask for, which the window's queue
+      // counts so that a heavy model draws alone.
+      if (format.kind === 'model' && format.decoder !== 'blend') {
+        const cost = await host.modelCosts.cost({
+          path: absolute, decoder: format.decoder, size: drawn.size, mtimeMs: drawn.mtimeMs, root, maxBytes: host.maxPreviewBytes,
+        }, exec.signal)
+        // A glTF model fails without its buffers, so it draws only when all of its files fit what the window reads.
+        if (format.decoder === 'gltf' && cost.named > MAX_GLTF_FILES) {
+          fail(`The glTF model names ${String(cost.named)} files, more than the ${String(MAX_GLTF_FILES)} the viewer loads with one model.`, ASSET_ERROR.tooLarge)
         }
-        bytes += named
+        if (format.decoder === 'gltf' && bytes + cost.namedBytes > host.maxPreviewBytes) {
+          fail(`${path} and the files it names take ${sizeText(bytes + cost.namedBytes)}, more than the ${sizeText(host.maxPreviewBytes)} the viewer reads for one model.`, ASSET_ERROR.tooLarge)
+        }
+        bytes += cost.namedBytes + cost.memory
       }
       const images = await surface.seesImages(exec)
       let answer: AssetRenderResult
       try {
         answer = await host.render(agent, {
           path: sent,
+          root,
           kind: format.kind,
           draw,
           images,
@@ -666,7 +616,7 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       return {
         path,
         ...requested === undefined ? {} : { requested },
-        details: detailsJson(root === undefined ? answer.details : callerDetails(answer.details, root, project)),
+        details: detailsJson(callerDetails(answer.details, root, project)),
         captions: answer.images.map(image => image.caption),
         images: kept,
         ...images ? {} : { imagesOmitted: true },

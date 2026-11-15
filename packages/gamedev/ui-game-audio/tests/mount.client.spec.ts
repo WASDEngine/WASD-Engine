@@ -120,7 +120,8 @@ describe('Audio tab registration', () => {
   it('declares the browser services it needs and validates its caps', () => {
     expect(inject).toEqual(['slots', 'locale', 'sidebarRightTabs', 'sessions', 'remote', 'remote.workspaceFiles'])
     expect(Config({})).toEqual({
-      maxFolders: 2000, maxSounds: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxDecodedSeconds: 1200, maxMeasuredSeconds: 300,
+      maxFolders: 2000, maxSounds: 5000, maxPreviewBytes: 256 * 1024 * 1024, maxDecodedSeconds: 1200, maxDecodedBytes: 512 * 1024 * 1024,
+      maxMeasuredSeconds: 300,
     })
     expect(() => Config({ maxSounds: 0 })).toThrow()
   })
@@ -142,10 +143,12 @@ describe('Audio tab registration', () => {
   })
 
   it('binds one state per Session to that Session\'s listing, header reads, and file reads, and releases it with the Session', async () => {
-    const f = await fixture({ maxFolders: 5, maxSounds: 5, maxPreviewBytes: 10, maxDecodedSeconds: 60, maxMeasuredSeconds: 30 })
+    const f = await fixture({
+      maxFolders: 5, maxSounds: 5, maxPreviewBytes: 10, maxDecodedSeconds: 60, maxDecodedBytes: 4096, maxMeasuredSeconds: 30,
+    })
     const face = f.face(S1)
     expect(f.face(S1).hooks.scan).toBe(face.hooks.scan)
-    expect(face).toMatchObject({ keyPrefix: S1, maxDecodedSeconds: 60, maxMeasuredSeconds: 30 })
+    expect(face).toMatchObject({ keyPrefix: S1, maxDecodedSeconds: 60, maxDecodedBytes: 4096, maxMeasuredSeconds: 30 })
     face.rescan()
     await vi.waitFor(() => { expect(face.hooks.probes.getSnapshot().get('jump.wav')?.probe).toMatchObject({ format: 'WAV', seconds: 0.1 }) })
     expect(f.workspaceFiles.list).toHaveBeenCalledWith(S1, '.', expect.any(AbortSignal))

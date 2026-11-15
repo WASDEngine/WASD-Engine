@@ -3,7 +3,8 @@
  * asset, asks the open window to draw it through the scoped `game-assets/render` request, validates the answer,
  * stores the images for a model that accepts them, reports the details, and opens the asset in the Assets tab.
  */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -11,7 +12,8 @@ import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import { Config } from '../src/index.ts'
 import { HarnessError } from '@deepseek-ai/dsh-error'
 import { ANSWER_LIMITS } from '../src/result.ts'
-import { callerPath, DEFAULT_LIMIT, gltfFilesBytes, MAX_GLTF_FILES, NO_WINDOW_MESSAGE, windowPath } from '../src/tools.ts'
+import { MODEL_COST_LIMITS, ModelCosts } from '../src/model-cost.ts'
+import { callerPath, DEFAULT_LIMIT, MAX_GLTF_FILES, NO_WINDOW_MESSAGE, readRoot, windowPath } from '../src/tools.ts'
 import { callTool, compose, fakeAgent, HERO, KNIGHT, PIXEL_PNG, text, type Composition } from './composition.ts'
 
 /** The largest file the window reads, by default. */
@@ -27,6 +29,19 @@ afterEach(async () => {
 async function composed(config: Partial<Config> = {}): Promise<Composition> {
   composition = await compose(config)
   return composition
+}
+
+/**
+ * The total size of the files a glTF model names, as a fresh cost counter finds them for the window.
+ * @param file - absolute path of the model.
+ * @param root - the folder the window reads from.
+ * @param signal - the call's cancellation.
+ * @returns the bytes.
+ */
+async function gltfFilesBytes(file: string, root: string, signal = new AbortController().signal): Promise<number> {
+  const info = await stat(file)
+  const cost = await new ModelCosts(MODEL_COST_LIMITS).cost({ path: file, decoder: 'gltf', size: info.size, mtimeMs: info.mtimeMs, root, maxBytes: MAX_BYTES }, signal)
+  return cost.namedBytes
 }
 
 describe('asset_search', () => {
@@ -71,6 +86,23 @@ describe('asset_search', () => {
     const limit = await callTool(c, 'asset_search', { limit: 0 })
     expect(text(limit)).toContain('limit must be an integer from 1 to 200.')
     expect(DEFAULT_LIMIT).toBe(50)
+  })
+
+  it('lists nothing that a link leads to outside the project, and what a link inside it leads to once', async () => {
+    const c = await composed()
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-game-assets-outside-'))
+    try {
+      await writeFile(join(outside, 'secret.png'), 'png')
+      await symlink(outside, join(c.work, 'elsewhere'))
+      await symlink(join(outside, 'secret.png'), join(c.work, 'art', 'linked.png'))
+      await symlink(join(c.work, 'art', 'ui'), join(c.work, 'ui-link'))
+      const listed = text(await callTool(c, 'asset_search', { query: 'secret' }))
+      expect(listed).toBe(`No assets matching "secret" in ${c.work}.`)
+      expect(text(await callTool(c, 'asset_search', { query: 'linked' }))).toContain('No assets matching')
+      expect(text(await callTool(c, 'asset_search', { query: 'icon' }))).toContain('1 asset matching "icon" in')
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
   })
 
   it('reports a walk cut short by its caps', async () => {
@@ -203,6 +235,60 @@ describe('asset_view', () => {
     expect(c.requests.map(request => [request.path, request.bytes])).toEqual([['models/knight.glb', 3], ['art/ui/icon.svg', 6]])
   })
 
+  it('refuses a file whose real path lies outside the project, as through a link, before asking the window', async () => {
+    const c = await composed()
+    c.openWindow({ details: HERO, images: [] })
+    const outside = await mkdtemp(join(tmpdir(), 'dsh-game-assets-outside-'))
+    try {
+      await writeFile(join(outside, 'secret.png'), 'png')
+      await symlink(join(outside, 'secret.png'), join(c.work, 'art', 'linked.png'))
+      await symlink(outside, join(c.work, 'elsewhere'))
+      for (const path of ['art/linked.png', 'elsewhere/secret.png']) {
+        const refused = await callTool(c, 'asset_view', { path })
+        expect(refused.isError).toBe(true)
+        expect(text(refused)).toContain(`${path} leads outside the project folder ${c.work} through a link, so the viewer does not read it.`)
+      }
+      expect(c.requests).toEqual([])
+      // A link that stays inside the project is read.
+      await symlink(join(c.work, 'art', 'hero.png'), join(c.work, 'art', 'hero-link.png'))
+      expect((await callTool(c, 'asset_view', { path: 'art/hero-link.png' })).isError).toBeFalsy()
+    } finally {
+      await rm(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('tells the window the folder every read of the draw stays inside', async () => {
+    expect(readRoot('/games/knight', '/games/knight/art')).toBe('/games/knight')
+    expect(readRoot('/games/knight', '/games/knight')).toBe('/games/knight')
+    // An agent working outside the Session's folder, or a Session without one, reads inside its own project.
+    expect(readRoot('/games/knight', '/elsewhere/knight')).toBe('/elsewhere/knight')
+    expect(readRoot(undefined, '/games/knight')).toBe('/games/knight')
+    const c = await composed()
+    c.openWindow({ details: HERO, images: [] })
+    await callTool(c, 'asset_view', { path: 'art/hero.png' })
+    expect(c.requests[0]).toMatchObject({ path: 'art/hero.png', root: c.work })
+    const loose = await fakeAgent(c.ctx, 'loose', 'vision')
+    await callTool(c, 'asset_view', { path: 'art/hero.png' }, loose)
+    expect(c.requests[1]).toMatchObject({ path: 'art/hero.png', root: c.work })
+  })
+
+  it('counts in the size it sends the window the files a model names and the memory they decode to', async () => {
+    const c = await composed()
+    c.openWindow({ details: KNIGHT, images: [] })
+    // A PNG header stating 64 × 32 pixels, which take 8 KB decoded.
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 64, 0, 0, 0, 32, 8, 6, 0, 0, 0,
+    ])
+    await mkdir(join(c.work, 'models', 'mat'), { recursive: true })
+    const library = 'newmtl skin\nmap_Kd skin.png\n'
+    await writeFile(join(c.work, 'models', 'mat', 'tree.mtl'), library)
+    await writeFile(join(c.work, 'models', 'mat', 'skin.png'), png)
+    const obj = 'mtllib mat/tree.mtl\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n'
+    await writeFile(join(c.work, 'models', 'tree.obj'), obj)
+    await callTool(c, 'asset_view', { path: 'models/tree.obj' })
+    expect(c.requests.at(-1)?.bytes).toBe(obj.length + library.length + png.byteLength + 64 * 32 * 4)
+  })
+
   it('validates its configuration', () => {
     expect(Config({})).toEqual({
       renderTimeoutMs: 120_000, imageEdge: 1024, maxImageEdge: 1568, maxImagePixels: 1_150_000,
@@ -291,11 +377,11 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     await mkdir(join(c.work, 'game', 'models'), { recursive: true })
     await writeFile(join(c.work, 'game', 'models', 'tree.bin'), Buffer.alloc(1000))
     await writeFile(join(c.work, 'game', 'models', 'reaching.gltf'), reaching)
-    const counted = await gltfFilesBytes(join(c.work, 'game', 'models', 'reaching.gltf'), 10, join(c.work, 'game'), MAX_BYTES, new AbortController().signal)
+    const counted = await gltfFilesBytes(join(c.work, 'game', 'models', 'reaching.gltf'), join(c.work, 'game'))
     expect(counted).toBe(1000)
     // Files whose JSON cannot be read add nothing.
     await writeFile(join(c.work, 'models', 'broken.gltf'), '{ not json')
-    expect(await gltfFilesBytes(join(c.work, 'models', 'broken.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(0)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'broken.gltf'), c.work)).toBe(0)
   })
 
   it('counts the files a GLB model or a large .gltf model names, as the window loads them', async () => {
@@ -328,7 +414,7 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     await callTool(c, 'asset_view', { path: 'models/large.gltf' })
     expect(c.requests.at(-1)?.bytes).toBe(Buffer.byteLength(large) + 3000)
     await writeFile(join(c.work, 'models', 'marked.gltf'), `\uFEFF${JSON.stringify({ asset: { version: '2.0' }, images: [{ uri: 'skin.png' }] })}`)
-    expect(await gltfFilesBytes(join(c.work, 'models', 'marked.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(3000)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'marked.gltf'), c.work)).toBe(3000)
   })
 
   it('refuses a glTF model whose files together are larger than the window reads, before asking the window', async () => {
@@ -356,7 +442,7 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     const named = (count: number): string => JSON.stringify({ asset: { version: '2.0' }, images: Array.from({ length: count }, (_, index) => ({ uri: `t${String(index)}.png` })) })
     await writeFile(join(c.work, 'models', 't0.png'), Buffer.alloc(7))
     await writeFile(join(c.work, 'models', 'many.gltf'), named(MAX_GLTF_FILES))
-    expect(await gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, MAX_BYTES, new AbortController().signal)).toBe(7)
+    expect(await gltfFilesBytes(join(c.work, 'models', 'many.gltf'), c.work)).toBe(7)
     await writeFile(join(c.work, 'models', 'too-many.gltf'), named(MAX_GLTF_FILES + 1))
     const refused = await callTool(c, 'asset_view', { path: 'models/too-many.gltf' })
     expect(refused.isError).toBe(true)
@@ -364,7 +450,7 @@ describe('asset_view for teammates, subagents, and connected agents', () => {
     expect(c.requests).toEqual([])
     const ended = new AbortController()
     ended.abort(new Error('the call ended'))
-    await expect(gltfFilesBytes(join(c.work, 'models', 'many.gltf'), 10, c.work, MAX_BYTES, ended.signal)).rejects.toThrow('the call ended')
+    await expect(gltfFilesBytes(join(c.work, 'models', 'many.gltf'), c.work, ended.signal)).rejects.toThrow('the call ended')
   })
 
   it('says how many clips, morph targets, and 2D animations a window counted beyond those it lists', async () => {

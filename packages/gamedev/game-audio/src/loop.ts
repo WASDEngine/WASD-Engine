@@ -20,9 +20,10 @@ export type PlayedLoop =
   | { readonly kind: 'unplaced'; readonly from: Exclude<LoopSource, 'whole'>; readonly loops: boolean }
 
 /**
- * The loop a game plays of a sound. Godot follows a WAV file's own loop points by default and on its `file` loop mode,
- * jumping back when playback reaches the loop's end frame. A sound that Godot does not repeat, and one that it has not
- * imported and that stores no loop points, repeats whole when it repeats at all.
+ * The loop a game plays of a sound. Godot follows a WAV file's own loop by default and on its `file` loop mode: a
+ * forward loop jumps back from its end frame to its start, a backward one jumps between the same two frames the other
+ * way, and a ping-pong one turns at its ends without a jump. A sound that Godot does not repeat, and one that it has not
+ * imported and that stores no loop, repeats whole when it repeats at all.
  * @param godot - how Godot imports the sound, when it has.
  * @param probe - what the sound's headers say: its sample rate and the loop a WAV file stores.
  * @returns the loop.
@@ -37,6 +38,7 @@ export function playedLoop(godot: GodotImport | undefined, probe: AudioProbe | u
   const fileLoop = probe?.loop
   if (godot === undefined || godot.loop === 'file') {
     if (fileLoop === undefined) return whole(false)
+    if (fileLoop.mode === 'ping-pong') return { kind: 'ping-pong' }
     return inFrames('file', godot !== undefined, fileLoop.start, fileLoop.end)
   }
   switch (godot.loop) {

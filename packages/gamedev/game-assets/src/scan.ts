@@ -2,12 +2,13 @@
  * The Host's walk of a game project for the asset tools: a breadth-first listing of the project folder that collects
  * every file of a listed format with its size. Like the Assets tab's scan, it skips hidden folders (a name starting
  * with `.`, such as `.godot` and `.git`) and `node_modules`, lists a folder reached again through a link once, and
- * stops at the folder and asset caps.
+ * stops at the folder and asset caps. A link is followed only when its real path lies inside the project folder's, so
+ * that a link inside the project lists nothing outside it.
  * @module @deepseek-ai/dsh-game-assets/src/scan
  */
 import type { Dirent } from 'node:fs'
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { formatOf, NAME_ORDER, type ExportCandidate } from './formats.ts'
 
 /** One asset the walk found. */
@@ -47,6 +48,17 @@ const LIST_CONCURRENCY = 8
 const SKIPPED_FOLDERS: ReadonlySet<string> = new Set(['node_modules'])
 
 /**
+ * Whether a real path lies inside a folder's real path, or is the folder.
+ * @param folder - the folder's real path.
+ * @param path - the real path.
+ * @returns whether `path` is `folder` or below it.
+ */
+export function insideFolder(folder: string, path: string): boolean {
+  const inside = relative(folder, path)
+  return inside === '' || (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))
+}
+
+/**
  * Whether the walk enters a folder.
  * @param name - the folder's name.
  * @returns false for a hidden folder and for `node_modules`.
@@ -65,7 +77,8 @@ export function entersFolder(name: string): boolean {
  */
 export async function scanProject(root: string, limits: ScanLimits, signal: AbortSignal): Promise<ProjectScan> {
   const assets: ProjectAsset[] = []
-  const seen = new Set<string>([await realpath(root)])
+  const realRoot = await realpath(root)
+  const seen = new Set<string>([realRoot])
   let pending: string[] = ['']
   let listed = 0
   let truncated = false
@@ -98,11 +111,13 @@ export async function scanProject(root: string, limits: ScanLimits, signal: Abor
         let file = entry.isFile()
         if (entry.isSymbolicLink()) {
           try {
+            // A link counts only where it leads inside the project.
+            if (!insideFolder(realRoot, await realpath(absolute))) continue
             const target = await stat(absolute)
             directory = target.isDirectory()
             file = target.isFile()
           } catch {
-            // ENOENT or EACCES: a dangling or unreadable link names nothing to list.
+            // ENOENT, ELOOP, or EACCES: a dangling, looping, or unreadable link names nothing to list.
             continue
           }
         }

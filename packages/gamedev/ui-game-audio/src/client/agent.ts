@@ -4,12 +4,12 @@
  * details do and the seam of the requested loop, and draws the waveform and spectrogram picture when asked. A failure
  * rejects with a {@link SoundError} whose code and message the agent receives.
  */
-import { AUDIO_ERROR, audioFormatOf, probeAudio } from '@deepseek-ai/dsh-game-audio/audio'
+import { AUDIO_ERROR, audioFormatOf } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasureRequest, AudioMeasureResult } from '@deepseek-ai/dsh-game-audio/types'
 import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { decodeSound, lengthBeforeDecoding, measureSound, pictureOf, SoundError, tooLong } from './decode.ts'
-import { memoryReader, type SoundFile } from './read.ts'
+import { decodeSound, measureSound, pictureOf, SoundError, type DecodeBounds } from './decode.ts'
+import type { SoundFile } from './read.ts'
 
 /**
  * Read a complete sound of the calling Session's workspace.
@@ -43,37 +43,28 @@ async function readOrFail(read: ReadSound, request: AudioMeasureRequest, signal:
 }
 
 /**
- * Answer one measure request. The sound must be no longer than the Audio tab decodes: as its headers vouch before the
- * decode, by the longer of the length they state and the least its size allows, and as decoded otherwise; the signal
- * ends the work at each step.
+ * Answer one measure request. The sound must be within what the Audio tab decodes, its length and the memory its
+ * samples take, as the decode plan counts them from the file before it decodes; the signal ends the work at each step.
  * @param request - the sound, the window, and the bounds.
  * @param read - reads sounds of the calling Session's workspace.
  * @param signal - the call's cancellation.
- * @param maxDecodedSeconds - the longest sound this window decodes, as for the Audio tab.
+ * @param limits - the longest sound and the most memory this window decodes, as for the Audio tab.
  * @returns the measurements, and the picture when the request asks for one.
- * @throws {SoundError} when the sound cannot be read, decoded, or measured, or is too long; the signal's reason when
- * the call ends.
+ * @throws {SoundError} when the sound cannot be read, decoded, or measured, or is too long or too large; the signal's
+ * reason when the call ends.
  */
 export async function answerMeasure(
   request: AudioMeasureRequest,
   read: ReadSound,
   signal: AbortSignal,
-  maxDecodedSeconds: number,
+  limits: Pick<DecodeBounds, 'maxSeconds' | 'maxBytes'>,
 ): Promise<AudioMeasureResult> {
   signal.throwIfAborted()
   const format = audioFormatOf(request.path)
   if (format === undefined) throw new SoundError(`${request.path} is not a sound the Audio panel plays.`, AUDIO_ERROR.format)
   const file = await readOrFail(read, request, signal)
   signal.throwIfAborted()
-  const probe = await probeAudio(memoryReader(file.data), file.data.byteLength)
-  signal.throwIfAborted()
-  const vouched = lengthBeforeDecoding(probe)
-  if (vouched !== undefined && vouched.seconds > maxDecodedSeconds) {
-    throw tooLong(request.path, vouched.seconds, maxDecodedSeconds, vouched.atLeast)
-  }
-  const buffer = await decodeSound(file.data, format, probe?.sampleRate, { maxSeconds: maxDecodedSeconds, signal })
-  // Headers that did not tell the length, or only estimated it, leave the check to the decoded sound.
-  if (buffer.duration > maxDecodedSeconds) throw tooLong(request.path, buffer.duration, maxDecodedSeconds)
+  const buffer = await decodeSound(file.data, format, { ...limits, name: request.path, signal })
   const { measurements, samples } = await measureSound(buffer, request, signal)
   if (!request.picture) return { measurements }
   return { measurements, picture: await pictureOf(samples, signal) }

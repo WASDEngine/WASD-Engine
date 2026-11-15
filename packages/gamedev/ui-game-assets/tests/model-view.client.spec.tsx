@@ -36,10 +36,22 @@ const viewer = vi.hoisted(() => ({
   stages: [] as unknown[],
   settled: Promise.withResolvers<undefined>(),
   tooLarge: false,
+  /** A VOX refusal the next load throws: a model too large on a side, or a scene of too many voxels. */
+  vox: undefined as 'side' | 'cells' | undefined,
 }))
 
 vi.mock('../src/client/viewer/index.ts', () => {
   class ModelTooLargeError extends Error {}
+  class VoxModelTooLargeError extends Error {
+    constructor(readonly size: { x: number; y: number; z: number }, readonly limit: number) {
+      super('too large')
+    }
+  }
+  class VoxWorkTooLargeError extends Error {
+    constructor(readonly cells: number, readonly limit: number) {
+      super('too many cells')
+    }
+  }
   /** Details whose bounds show whether the stage's clip posed the model when it was measured. */
   const describeModel = (): ModelAssetDetails => {
     const posed = (viewer.stages.at(-1) as FakeStage | undefined)?.posed === true
@@ -51,6 +63,8 @@ vi.mock('../src/client/viewer/index.ts', () => {
   }
   return {
     ModelTooLargeError,
+    VoxModelTooLargeError,
+    VoxWorkTooLargeError,
     ModelStage: class extends FakeStage {
       constructor() {
         super()
@@ -59,6 +73,8 @@ vi.mock('../src/client/viewer/index.ts', () => {
     },
     loadModel: async () => {
       if (viewer.tooLarge) throw new ModelTooLargeError('too large')
+      if (viewer.vox === 'side') throw new VoxModelTooLargeError({ x: 300, y: 2, z: 1024 }, 256)
+      if (viewer.vox === 'cells') throw new VoxWorkTooLargeError(Number.POSITIVE_INFINITY, 16_777_216)
       return { root: {}, animations: [{ name: 'Wave', duration: 1 }], stats: { triangles: 2, vertices: 4 }, missing: [], settled: viewer.settled.promise, textureName: () => '', dispose: () => {} }
     },
     describeModel,
@@ -73,7 +89,7 @@ function props(overrides: Partial<ModelViewProps> = {}): ModelViewProps {
   if (format === undefined) throw new Error('no format')
   return {
     asset: { path: 'models/robot.glb', name: 'robot.glb', folder: 'models', format },
-    file: { data: new Uint8Array([1, 2, 3]), absolutePath: '/p/models/robot.glb', version: 'v1' },
+    file: { data: new Uint8Array([1, 2, 3]), version: 'v1' },
     relatedUrl: () => undefined,
     maxBytes: 1024,
     maxDecodedPixels: 8192 * 8192,
@@ -87,6 +103,7 @@ beforeEach(() => {
   viewer.stages.length = 0
   viewer.settled = Promise.withResolvers<undefined>()
   viewer.tooLarge = false
+  viewer.vox = undefined
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} })
 })
 
@@ -126,5 +143,15 @@ describe('ModelView', () => {
     viewer.tooLarge = true
     render(<ModelView {...props()} />)
     expect((await screen.findByRole('alert')).textContent).toBe('viewer.modelTooLarge {"limit":"1.0KB"}')
+  })
+
+  it('shows a notice for a VOX model larger than MagicaVoxel makes, and for a scene that places too many voxels', async () => {
+    viewer.vox = 'side'
+    const view = render(<ModelView {...props()} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('viewer.voxTooLarge {"x":"300","y":"2","z":"1,024","limit":"256"}')
+    view.unmount()
+    viewer.vox = 'cells'
+    render(<ModelView {...props()} />)
+    expect((await screen.findByRole('alert')).textContent).toBe('viewer.voxTooMuch {"limit":"16,777,216"}')
   })
 })

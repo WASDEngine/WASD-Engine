@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /**
  * The Assets tab in the production right Sidebar, Slot renderer, and resource service: the guide offers it, the picker
- * sorts the project's assets into folders, searches them, and picks one from the keyboard, an image shows and reloads
- * when its file changes, a Blender file shows its export, and the scan's empty and failed states.
+ * sorts the project's assets into folders, searches them, and picks one from the keyboard, an image shows, read through
+ * the Host's project file route inside the Session's folder, and reloads when its file changes, a Blender file shows
+ * its export, and the scan's empty and failed states.
  */
-import type { WorkspaceDirectoryListing, WorkspaceFileBytes, WorkspaceFileStat } from '@deepseek-ai/dsh-api-workspace-files/types'
+import type { WorkspaceDirectoryListing, WorkspaceFileStat } from '@deepseek-ai/dsh-api-workspace-files/types'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { apply as resourcesApply, inject as resourcesInject } from '@deepseek-ai/dsh-client-resources/src/client/index.ts'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -20,7 +21,6 @@ const SESSION = 'assets-session' as SessionId
 const SHORTCUT_CATALOG: readonly never[] = []
 
 type Listing = RemoteResult<WorkspaceDirectoryListing>
-type Bytes = RemoteResult<WorkspaceFileBytes<Uint8Array<ArrayBuffer>>>
 
 /** The project: folders by workspace path. */
 const PROJECT: Readonly<Record<string, readonly string[]>> = {
@@ -89,17 +89,23 @@ async function boot(list: (path: string) => Promise<Listing> = async path => lis
     rightbar: { kind: 'single', scope: 'root' },
     'conversation.session.header.corner': { kind: 'single', scope: 'session' },
   })
-  await rt.sessions.add({ id: SESSION })
+  // The Host's list of Sessions names the Session's project folder, inside which the tab reads.
+  await rt.sessions.add({ id: SESSION, summary: { cwd: '/project' } })
   await rt.sessions.retainFor(rt.ctx, SESSION, { source: 'mainView' }).ready
   await rt.mount({ inject: [...resourcesInject], apply: resourcesApply })
   const listCalls = vi.fn((_sessionId: string, path: string, _signal: AbortSignal) => list(path))
   // A `.png` file is a PNG header stating 64 × 32 pixels, which the viewer reads before it decodes the image.
   const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 64, 0, 0, 0, 32, 8, 6, 0, 0, 0]
-  const readBytes = vi.fn(async (_sessionId: string, path: string): Promise<Bytes> => {
-    const data = Uint8Array.from(path.endsWith('.png') ? png : [1, 2, 3])
-    return { ok: true, value: { absolutePath: `/project/${path}`, version: 'v1', bytes: data.byteLength, offset: 0, data, eof: true } }
-  })
-  rt.remote.provideNamespaces({ workspaceFiles: { list: listCalls, readBytes } })
+  // The Host's project file route: each read names the project folder and the file.
+  const reads = vi.fn((_root: string | null, _path: string | null) => {})
+  vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    init?.signal?.throwIfAborted()
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    const path = url.searchParams.get('path') ?? ''
+    reads(url.searchParams.get('root'), path)
+    return new Response(Uint8Array.from(path.endsWith('.png') ? png : [1, 2, 3]), { headers: { 'X-Asset-Version': 'v1' } })
+  }))
+  rt.remote.provideNamespaces({ workspaceFiles: { list: listCalls } })
   // The `file` resource: each address reports version v1, then whatever the test pushes.
   const versions = new Map<string, (stat: WorkspaceFileStat) => void>()
   rt.ctx.effect(() => rt.ctx.resources.register({
@@ -129,7 +135,7 @@ async function boot(list: (path: string) => Promise<Listing> = async path => lis
   await rt.mount({ inject: [...inject], apply })
   const view = rt.renderSlot('rightbar', { width: 600, viewportWidth: 1440, canShow: true })
   const openAssets = (): void => { act(() => { rt.ctx.sidebarRight.openTab('assets') }) }
-  return { rt, view, listCalls, readBytes, versions, openAssets }
+  return { rt, view, listCalls, reads, versions, openAssets }
 }
 
 describe('Assets tab', () => {
@@ -201,7 +207,7 @@ describe('Assets tab', () => {
       return element as HTMLImageElement
     })
     expect(image.getAttribute('src')).toMatch(/^blob:assets\//u)
-    expect(h.readBytes).toHaveBeenCalledWith(SESSION, 'assets/textures/hero.png', {}, expect.any(AbortSignal))
+    expect(h.reads).toHaveBeenCalledWith('/project', 'assets/textures/hero.png')
     Object.defineProperty(image, 'naturalWidth', { value: 64 })
     Object.defineProperty(image, 'naturalHeight', { value: 32 })
     fireEvent.load(image)
@@ -220,9 +226,9 @@ describe('Assets tab', () => {
     fireEvent.change(search, { target: { value: 'grass' } })
     fireEvent.keyDown(search, { key: 'ArrowDown' })
     fireEvent.keyDown(search, { key: 'Enter' })
-    await waitFor(() => { expect(h.readBytes).toHaveBeenCalledOnce() })
+    await waitFor(() => { expect(h.reads).toHaveBeenCalledOnce() })
     act(() => { h.versions.get('assets/textures/grass.png')?.({ absolutePath: '/project/assets/textures/grass.png', version: 'v2' }) })
-    await waitFor(() => { expect(h.readBytes).toHaveBeenCalledTimes(2) })
+    await waitFor(() => { expect(h.reads).toHaveBeenCalledTimes(2) })
   })
 
   it('shows a Blender file through the model exported from it, and opens that model', async () => {
@@ -235,7 +241,7 @@ describe('Assets tab', () => {
     fireEvent.keyDown(search, { key: 'ArrowDown' })
     fireEvent.keyDown(search, { key: 'Enter' })
     expect(await screen.findByText('Showing archer.glb, exported from this Blender file.')).toBeTruthy()
-    await waitFor(() => { expect(h.readBytes).toHaveBeenCalledWith(SESSION, 'assets/models/archer.glb', {}, expect.any(AbortSignal)) })
+    await waitFor(() => { expect(h.reads).toHaveBeenCalledWith('/project', 'assets/models/archer.glb') })
     // The 3D view loads its three.js chunk first, which takes a while on a busy machine.
     expect(await screen.findByText('Showing 3D models needs WebGL, which is off or unavailable here.', {}, { timeout: 15_000 })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Open the model' }))

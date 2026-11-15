@@ -119,6 +119,72 @@ function packedStringArray(strings: readonly string[]): string {
   return `PackedStringArray(${strings.map(godotString).join(', ')})`
 }
 
+/** One entry of a Godot Dictionary literal: its key and value as their text. */
+export interface DictionaryEntry {
+  /** The key's literal, such as `"import_script/path"`. */
+  readonly key: string
+  /** The value's literal. */
+  readonly value: string
+}
+
+/**
+ * Split text at the characters a test picks outside strings and brackets.
+ * @returns the parts between those characters.
+ */
+function splitTopLevel(text: string, at: (char: string) => boolean): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let start = 0
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index] as string
+    if (inString) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') inString = false
+    } else if (char === '"') {
+      inString = true
+    } else if (char === '{' || char === '[' || char === '(') {
+      depth += 1
+    } else if (char === '}' || char === ']' || char === ')') {
+      depth = Math.max(0, depth - 1)
+    } else if (depth === 0 && at(char)) {
+      parts.push(text.slice(start, index))
+      start = index + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts
+}
+
+/**
+ * The entries of a Godot Dictionary literal, as `project.godot` stores one on one line or several.
+ * @param value - a value's text.
+ * @returns the entries in order, or undefined for a value that is not a Dictionary literal.
+ */
+export function dictionaryEntries(value: string): DictionaryEntry[] | undefined {
+  const text = value.trim()
+  if (!text.startsWith('{') || !text.endsWith('}')) return undefined
+  const entries: DictionaryEntry[] = []
+  for (const part of splitTopLevel(text.slice(1, -1), char => char === ',')) {
+    if (part.trim() === '') continue
+    const [key, ...rest] = splitTopLevel(part, char => char === ':')
+    if (key === undefined || rest.length === 0) return undefined
+    entries.push({ key: key.trim(), value: rest.join(':').trim() })
+  }
+  return entries
+}
+
+/**
+ * A Godot Dictionary literal as Godot writes one into `project.godot`: one entry a line between the braces.
+ * @param entries - the entries in order.
+ * @returns the literal; `{}` without entries.
+ */
+export function dictionaryLiteral(entries: readonly DictionaryEntry[]): string {
+  return entries.length === 0 ? '{}' : `{\n${entries.map(entry => `${entry.key}: ${entry.value}`).join(',\n')}\n}`
+}
+
 /** One key of a `project.godot` and its value text. */
 export interface ProjectKey {
   /** Section name; empty for a key before the first section header. */

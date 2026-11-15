@@ -85,3 +85,16 @@ box_size = Vector3(10, 10, 10)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 100, 0)
 script = ExtResource("1_sheet")
 fabric = "canvas"
+
+[node name="Pole" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 60.5, 1)
+
+[node name="Curtain" type="SoftBody3D" parent="."]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 10, 60, 0)
+script = ExtResource("1_sheet")
+fabric = "canvas"
+
+[node name="Awning" type="SoftBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 14, 60, 0)
+script = ExtResource("1_sheet")
+fabric = "canvas"

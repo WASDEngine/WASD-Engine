@@ -51,12 +51,11 @@ export interface AssetsTabInjected {
   readonly read: (path: string, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>
   /**
    * The URL of a file that a viewed model or material names, inside the project.
-   * @param base - absolute path of the viewed file.
-   * @param path - the viewed file's workspace path, which places the project folder in `base`.
+   * @param path - the viewed file's workspace path.
    * @param reference - the name as the loader requested it.
    * @returns the URL to load, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
+  readonly relatedUrl: (path: string, reference: string) => string | undefined
   /**
    * The `file` resource address of an asset, which reports its version as it changes.
    * @param path - workspace path.

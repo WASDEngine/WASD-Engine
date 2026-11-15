@@ -48,13 +48,14 @@ pin_rows = 2
 - `pinned_edges`: top, bottom, left, right, or a corner such as top_left; top is +Y when hanging and -Z when lying. `pin_rows = 2` stops stretching beside a pole.
 - `pin_target`: a node the pins move with, such as a pole, a BoneAttachment3D, or a ship; without it the pins stay put.
 - The default material is double-sided; a `material_override` of your own needs `cull_mode = CULL_DISABLED`.
+- While the game runs, a new `size`, `cell`, or `facing` builds the sheet again, at rest where it rests (by its `pin_target` if it has one), with its fabric's current settings; its motion starts over. New `pinned_edges` (assign a new array), `pin_rows`, or `pin_target` pin it again: points that leave a pinned edge let go, new ones hold where they are or, with a target, where they rest relative to it.
 
 Measured on Jolt at 60 ticks per second: 95% of edges within 2 to 5% of their length in a 6 m/s gust, nothing sinking into colliders, no explosions, 0.45 ms (leather) to 1.5 ms (silk) per sheet of 300 to 1,000 points.
 
 These break cloth without an error:
 - Scale on the sheet or a parent: soft bodies ignore it. Set `size` instead.
 - Moving it after it enters the tree misplaces it: free it and add a new one where it belongs.
-- Changing `fabric`, `precision`, or `linear_stiffness` after it enters the tree: Jolt keeps the stiffness and solver iterations it started with. Set them before `add_child`, or add a new sheet.
+- Changing `fabric`, `precision`, or `linear_stiffness` after it enters the tree: Jolt keeps the stiffness and solver iterations it started with until a new `size`, `cell`, or `facing` builds the sheet again. Set them before `add_child`, or add a new sheet.
 - Toggling its `process_mode` makes it grow.
 - `linear_stiffness` 1.0 explodes; the presets stay at 0.9.
 - A sheet that starts inside a collider, or a collider thinner than a cell, lets points through.

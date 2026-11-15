@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
  * Decoding and measuring in the window: a sound decodes at its own rate, an AIFF file with the audio tools' reader,
- * the measurements match the agent's figures, the picture is a PNG, the window answers an agent's measure request or
- * names why it cannot, and complete reads fall back to byte windows above the Host's cap.
+ * a sound past the window's length or memory cap is refused before it decodes, the decoder receives only the audio the
+ * plan counted, the measurements match the agent's figures, the picture is a PNG, the window answers an agent's measure
+ * request or names why it cannot, and complete reads fall back to byte windows above the Host's cap.
  */
 import { AUDIO_ERROR } from '@deepseek-ai/dsh-game-audio/audio'
 import { parseMeasureResult } from '@deepseek-ai/dsh-game-audio/src/result.ts'
@@ -10,15 +11,18 @@ import type { WorkspaceFileBytes } from '@deepseek-ai/dsh-api-workspace-files/ty
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerMeasure } from '../src/client/agent.ts'
-import { decodeSound, lengthBeforeDecoding, measureSound, pictureOf, SoundError, WHOLE_SOUND } from '../src/client/decode.ts'
+import { decodeSound, measureSound, pictureOf, SoundError, WHOLE_SOUND } from '../src/client/decode.ts'
 import { readSound, type ReadBytes, type SoundFile } from '../src/client/read.ts'
 import { aiffFile, FakeAudioBuffer, FakeOfflineAudioContext, installWebAudio, vbrMp3File, wavFile } from './webaudio.client.ts'
 
 const WAV = { label: 'WAV', mediaType: 'audio/wav', decoder: 'browser' } as const
 const AIFF = { label: 'AIFF', mediaType: 'audio/aiff', decoder: 'aiff' } as const
 
-/** A decode that may run as long as the Audio tab's default and is never cancelled. */
-const BOUNDS = { maxSeconds: 1200, signal: new AbortController().signal }
+/** The Audio tab's default caps. */
+const LIMITS = { maxSeconds: 1200, maxBytes: 512 * 1024 * 1024 }
+
+/** A decode within the Audio tab's default caps that is never cancelled. */
+const BOUNDS = { ...LIMITS, name: 'The sound', signal: new AbortController().signal }
 
 /** The signal of a measurement or drawing that is never cancelled. */
 const SIGNAL = BOUNDS.signal
@@ -44,7 +48,7 @@ afterEach(() => {
 
 describe('decodeSound and measureSound', () => {
   it('decodes at the rate the headers name and measures what audio_review reports', async () => {
-    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
+    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, BOUNDS)
     expect(FakeOfflineAudioContext.rates).toEqual([8000])
     const { measurements, samples } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
     expect(samples).toMatchObject({ sampleRate: 8000, channels: 2, frames: 4000 })
@@ -81,20 +85,27 @@ describe('decodeSound and measureSound', () => {
     expect((await seamOf({ ...firstHalf, loop: { start: 0.5, end: 0.5001 } })).seam).toBeUndefined()
   })
 
-  it('decodes at 48 kHz without a rate, AIFF with its own reader, and names a file that does not decode', async () => {
-    await decodeSound(wavFile({ sampleRate: 8000, channels: 1, samples: [0] }), WAV, undefined, BOUNDS)
+  it('decodes at 48 kHz a rate the context does not take, AIFF with its own reader, and names a file that does not decode', async () => {
+    await decodeSound(wavFile({ sampleRate: 2000, channels: 1, samples: [0] }), WAV, BOUNDS)
     expect(FakeOfflineAudioContext.rates).toEqual([48_000])
     const aiff = Uint8Array.from([
       ...'FORM'.split('').map(character => character.charCodeAt(0)), 0, 0, 0, 46, ...'AIFF'.split('').map(character => character.charCodeAt(0)),
       ...'COMM'.split('').map(character => character.charCodeAt(0)), 0, 0, 0, 18, 0, 1, 0, 0, 0, 1, 0, 16, 0x40, 0x0b, 0xfa, 0, 0, 0, 0, 0, 0, 0,
       ...'SSND'.split('').map(character => character.charCodeAt(0)), 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0x40, 0,
     ])
-    const decoded = await decodeSound(aiff, AIFF, undefined, BOUNDS)
+    const decoded = await decodeSound(aiff, AIFF, BOUNDS)
     expect([decoded.sampleRate, decoded.length, decoded.getChannelData(0)[0]]).toEqual([8000, 1, 0.5])
-    const failure = await decodeSound(new TextEncoder().encode('not audio'), WAV, undefined, BOUNDS).catch((error: unknown) => error)
+    // Content without audio the plan counts is refused before the browser sees it.
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
+    const failure = await decodeSound(new TextEncoder().encode('not audio'), WAV, BOUNDS).catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(SoundError)
-    expect(failure).toMatchObject({ code: AUDIO_ERROR.unreadable })
-    expect(String(failure)).toContain('The WAV file could not be decoded (Unable to decode audio data)')
+    expect(failure).toMatchObject({ code: AUDIO_ERROR.unreadable, message: 'The sound could not be decoded: The file holds no MPEG audio frames.' })
+    expect(decode).not.toHaveBeenCalled()
+    // A file the browser's decoder rejects names its reason.
+    decode.mockRejectedValueOnce(Object.assign(new Error('Unable to decode audio data'), { name: 'EncodingError' }))
+    const silence = wavFile({ sampleRate: 8000, channels: 1, samples: [0] })
+    const rejected = await decodeSound(silence, WAV, BOUNDS).catch((error: unknown) => error)
+    expect(String(rejected)).toContain('The WAV file could not be decoded (Unable to decode audio data)')
   })
 
   it('measures NaN, infinite, and far over full scale samples as finite figures that the audio tools accept', async () => {
@@ -119,7 +130,7 @@ describe('decodeSound and measureSound', () => {
       putImageData: (pixels: { data: Uint8ClampedArray }) => { drawn.push(pixels.data[3] ?? 0) },
     }) as never)
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => { done(new Blob([Uint8Array.of(0x89, 0x50, 0x4e, 0x47)])) })
-    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
+    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, BOUNDS)
     const picture = await pictureOf((await measureSound(buffer, { start: 0, maxSeconds: 300 }, SIGNAL)).samples, SIGNAL)
     expect(picture).toEqual({ data: 'iVBORw==', mediaType: 'image/png', layout: { width: 1024, height: 536, waveformPanels: 'channels', timeStep: 0.05, nyquist: 4000 } })
     expect(drawn).toEqual([255])
@@ -134,7 +145,7 @@ describe('decodeSound and measureSound', () => {
       putImageData: () => {},
     }) as never)
     vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((done: BlobCallback) => { done(new Blob([Uint8Array.of(0x89, 0x50, 0x4e, 0x47)])) })
-    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, 8000, BOUNDS)
+    const buffer = await decodeSound(wavFile({ sampleRate: 8000, channels: 2, samples: tone() }), WAV, BOUNDS)
     const page = new MessageChannel()
     const handled: string[] = []
     let doing = 'measuring'
@@ -163,7 +174,7 @@ describe('answerMeasure', () => {
   it('reads, decodes, and measures the requested window and loop, with the picture only when asked', async () => {
     const read = vi.fn(async () => file(wavFile({ sampleRate: 8000, channels: 2, samples: tone() })))
     const request = { path: 'sfx/tone.wav', start: 0, maxSeconds: 300, picture: false, maxBytes: 1000, loop: { start: 0.1 } }
-    const answer = await answerMeasure(request, read, new AbortController().signal, 1200)
+    const answer = await answerMeasure(request, read, new AbortController().signal, LIMITS)
     expect(read).toHaveBeenCalledWith('sfx/tone.wav', 1000, expect.any(AbortSignal))
     expect(answer.picture).toBeUndefined()
     expect(answer.measurements).toMatchObject({ sampleRate: 8000, seconds: 0.5, seam: { start: 0.1, end: 0.5 } })
@@ -174,7 +185,7 @@ describe('answerMeasure', () => {
   it('answers for a constant sound and a sine on a DC offset with figures the audio tools accept', async () => {
     const request = { path: 'sfx/hum.wav', start: 0, maxSeconds: 300, picture: false, maxBytes: 1 << 20 }
     const measure = (samples: number[]) =>
-      answerMeasure(request, async () => file(wavFile({ sampleRate: 8000, channels: 1, samples })), new AbortController().signal, 1200)
+      answerMeasure(request, async () => file(wavFile({ sampleRate: 8000, channels: 1, samples })), new AbortController().signal, LIMITS)
     const constant = await measure(new Array<number>(8000).fill(0.5))
     expect(constant.measurements.dominantFrequency).toBeUndefined()
     expect(constant.measurements.channelLevels[0]?.dcOffset).toBeCloseTo(0.5, 3)
@@ -185,7 +196,7 @@ describe('answerMeasure', () => {
   })
 
   it('names a sound that is not audio, gone, too large, or unreadable', async () => {
-    const fail = (read: Parameters<typeof answerMeasure>[1], path = 'sfx/boom.wav') => answerMeasure({ path, start: 0, maxSeconds: 300, picture: false, maxBytes: 2048 }, read, new AbortController().signal, 1200).catch((error: unknown) => error)
+    const fail = (read: Parameters<typeof answerMeasure>[1], path = 'sfx/boom.wav') => answerMeasure({ path, start: 0, maxSeconds: 300, picture: false, maxBytes: 2048 }, read, new AbortController().signal, LIMITS).catch((error: unknown) => error)
     expect(await fail(async () => file(new Uint8Array(0)), 'notes.txt')).toMatchObject({ code: AUDIO_ERROR.format })
     expect(await fail(async () => ({ ok: false, error: new RemoteError('workspace-file/not-found', 'gone', { path: 'x' }) }))).toMatchObject({
       code: AUDIO_ERROR.missing, message: 'sfx/boom.wav is no longer in the project.',
@@ -203,80 +214,91 @@ describe('the bounds of a decode', () => {
 
   it('refuses a sound longer than the window decodes before decoding it, as the Audio tab does', async () => {
     const long = wavFile({ sampleRate: 8000, channels: 1, samples: new Array<number>(16_000).fill(0) })
-    const failure = await answerMeasure(request, async () => file(long), new AbortController().signal, 1).catch((error: unknown) => error)
+    const failure = await answerMeasure(request, async () => file(long), new AbortController().signal, { ...LIMITS, maxSeconds: 1 })
+      .catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(SoundError)
     expect(failure).toMatchObject({ code: AUDIO_ERROR.tooLarge, message: 'music/ambience.wav is 2.0 s long, longer than the 1 s a WASD Engine window decodes, so it cannot be measured.' })
     expect(FakeOfflineAudioContext.rates).toEqual([])
     // The same sound within the cap decodes.
-    expect((await answerMeasure(request, async () => file(long), new AbortController().signal, 2)).measurements.seconds).toBe(2)
+    const within = await answerMeasure(request, async () => file(long), new AbortController().signal, { ...LIMITS, maxSeconds: 2 })
+    expect(within.measurements.seconds).toBe(2)
   })
 
   it('drops a request whose call ended before it reads, and stops an AIFF decode at its next slice', async () => {
     const ended = new AbortController()
     ended.abort(new Error('the call ended'))
     const read = vi.fn(async () => file(wavFile({ sampleRate: 8000, channels: 1, samples: [0] })))
-    await expect(answerMeasure(request, read, ended.signal, 1200)).rejects.toThrow('the call ended')
+    await expect(answerMeasure(request, read, ended.signal, LIMITS)).rejects.toThrow('the call ended')
     expect(read).not.toHaveBeenCalled()
     // Two slices of samples: the first runs, then the decode yields and finds the call ended.
     const stopping = new AbortController()
     const twoSlices = aiffFile({ sampleRate: 48_000, channels: 1, frames: (1 << 20) + 10 })
-    const decoding = decodeSound(twoSlices, AIFF, undefined, { maxSeconds: 1200, signal: stopping.signal })
+    const decoding = decodeSound(twoSlices, AIFF, { ...BOUNDS, signal: stopping.signal })
     stopping.abort(new Error('the call ended'))
     await expect(decoding).rejects.toThrow('the call ended')
   })
 
-  it('decodes an MP3 whose headers only estimate a length over the cap, and holds it to the cap once decoded', async () => {
-    // A 5.7 MB variable bit rate MP3 without a frame count: its quiet first frame, at 32 kbps, estimates 1425 s, while
-    // at 320 kbps it lasts at least 142.5 s.
+  it('decodes the frames of an MP3 whose first frame estimates it long, and hands the decoder those frames alone', async () => {
+    // A 5.7 MB file of three frames and zeros: its quiet first frame, at 32 kbps, estimates 1425 s.
     const mp3 = vbrMp3File(5_700_000)
-    const decoded = (seconds: number) => new FakeAudioBuffer({ length: seconds * 3000, numberOfChannels: 1, sampleRate: 3000 })
-    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData').mockImplementation(async () => decoded(240))
-    const theme = { ...request, path: 'music/theme.mp3' }
-    const measure = (maxDecodedSeconds: number) =>
-      answerMeasure(theme, async () => file(mp3), new AbortController().signal, maxDecodedSeconds).catch((error: unknown) => error)
-    expect(await measure(1200)).toMatchObject({ measurements: { seconds: 240 } })
-    // Decoded, it is as long as it is: over a lower cap it fails as a sound whose headers state its length does.
-    expect(await measure(200)).toMatchObject({
-      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is 240.0 s long, longer than the 200 s a WASD Engine window decodes, so it cannot be measured.',
-    })
-    // Longer than the cap even at its highest bit rate, it is refused before decoding.
-    decode.mockClear()
-    expect(await measure(100)).toMatchObject({
-      code: AUDIO_ERROR.tooLarge, message: 'music/theme.mp3 is at least 142.5 s long, longer than the 100 s a WASD Engine window decodes, so it cannot be measured.',
-    })
-    expect(decode).not.toHaveBeenCalled()
-  })
-
-  it('refuses before decoding a constant bit rate MP3 without a frame count whose estimate runs past the cap', async () => {
-    // MPEG-1 layer III at 32 kbps and 32 kHz: 144-byte frames, 47 MB of them, 11,750 s long; at the highest bit rate,
-    // 320 kbps, the size would allow 1175 s, under the cap.
-    const frame = [0xff, 0xfb, 0x18, 0x00, ...new Array<number>(140).fill(0)]
-    const mp3 = new Uint8Array(326_389 * 144)
-    for (let at = 0; at < mp3.length; at += 144) mp3.set(frame, at)
+    const seconds = (3 * 1152) / 44_100
     const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
-    const theme = { ...request, path: 'music/long.mp3', maxBytes: 1 << 26 }
-    const failure = await answerMeasure(theme, async () => file(mp3), new AbortController().signal, 1200).catch((error: unknown) => error)
-    expect(failure).toMatchObject({
-      code: AUDIO_ERROR.tooLarge, message: 'music/long.mp3 is 11750.0 s long, longer than the 1200 s a WASD Engine window decodes, so it cannot be measured.',
-    })
-    expect(decode).not.toHaveBeenCalled()
+      .mockImplementation(async () => new FakeAudioBuffer({ length: 3 * 1152, numberOfChannels: 2, sampleRate: 44_100 }))
+    const answer = await answerMeasure({ ...request, path: 'music/theme.mp3' }, async () => file(mp3), new AbortController().signal, { ...LIMITS, maxSeconds: 1 })
+    expect(answer.measurements.seconds).toBeCloseTo(seconds, 9)
+    expect(decode.mock.calls[0]?.[0].byteLength).toBe(104 + 626 + 626)
   })
 
-  it('refuses before decoding an MP3 whose frame count understates the length its size allows', async () => {
-    // An Info frame that counts 2 frames, at the head of a megabyte of 128 kbps frames: at least 25 s at 320 kbps.
+  it('refuses before decoding an MP3 whose frames run past the cap, whatever its frame count states', async () => {
+    // An Info frame that counts 2 frames, at the head of a megabyte of 128 kbps frames: 62.6 s.
     const frame = (body: readonly number[] = []) => [0xff, 0xfb, 0x90, 0x00, ...body, ...new Array<number>(413 - body.length).fill(0)]
     const info = frame([...new Array<number>(32).fill(0), ...Array.from('Info', character => character.charCodeAt(0)), 0, 0, 0, 1, 0, 0, 0, 2])
     const mp3 = new Uint8Array(1_000_000)
     mp3.set(info)
     for (let at = 417; at + 417 <= mp3.length; at += 417) mp3.set(frame(), at)
     const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
-    const failure = await answerMeasure({ ...request, path: 'sfx/hum.mp3' }, async () => file(mp3), new AbortController().signal, 10).catch((error: unknown) => error)
+    const failure = await answerMeasure({ ...request, path: 'sfx/hum.mp3' }, async () => file(mp3), new AbortController().signal, { ...LIMITS, maxSeconds: 10 }).catch((error: unknown) => error)
     expect(failure).toMatchObject({
-      code: AUDIO_ERROR.tooLarge, message: 'sfx/hum.mp3 is at least 25.0 s long, longer than the 10 s a WASD Engine window decodes, so it cannot be measured.',
+      code: AUDIO_ERROR.tooLarge, limit: { seconds: 10 }, message: 'sfx/hum.mp3 is longer than the 10 s a WASD Engine window decodes, so it cannot be measured.',
     })
     expect(decode).not.toHaveBeenCalled()
-    expect(lengthBeforeDecoding({ format: 'Ogg Vorbis', seconds: 1, minSeconds: 30 })).toEqual({ seconds: 30, atLeast: true })
-    expect(lengthBeforeDecoding({ format: 'WAV', seconds: 2 })).toEqual({ seconds: 2, atLeast: false })
+  })
+
+  it('refuses before decoding a FLAC file whose frames run past the cap, and one without frames', async () => {
+    const crc8 = (bytes: readonly number[]) => bytes.reduce((crc, value) => {
+      let next = crc ^ value
+      for (let bit = 0; bit < 8; bit++) next = (next & 0x80) !== 0 ? ((next << 1) ^ 0x07) & 0xff : (next << 1) & 0xff
+      return next
+    }, 0)
+    // STREAMINFO at 48 kHz stereo stating 1 sample, then frames of 4096 samples: 30 of them hold 2.56 s.
+    const info = [0x10, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0x0b, 0xb8, 0x02, 0xf0, 0, 0, 0, 1, ...new Array<number>(16).fill(0)]
+    const frames = Array.from({ length: 30 }, (_, index) => {
+      const header = [0xff, 0xf8, 0xc0, 0x18, index]
+      return [...header, crc8(header), ...new Array<number>(20).fill(0)]
+    }).flat()
+    const flacFile = Uint8Array.from([0x66, 0x4c, 0x61, 0x43, 0x80, 0, 0, 34, ...info, ...frames])
+    const decode = vi.spyOn(FakeOfflineAudioContext.prototype, 'decodeAudioData')
+    const theme = { ...request, path: 'music/theme.flac' }
+    const capped = { ...LIMITS, maxSeconds: 2 }
+    expect(await answerMeasure(theme, async () => file(flacFile), new AbortController().signal, capped).catch((error: unknown) => error))
+      .toMatchObject({ code: AUDIO_ERROR.tooLarge, message: 'music/theme.flac is longer than the 2 s a WASD Engine window decodes, so it cannot be measured.' })
+    // The review's crafted file: STREAMINFO and a megabyte of zeros, which once passed the length check.
+    const zeros = new Uint8Array(1024 * 1024)
+    zeros.set([0x66, 0x4c, 0x61, 0x43, 0x80, 0, 0, 34, ...info.map((value, index) => (index >= 14 && index < 18 ? 0 : value))])
+    expect(await answerMeasure(theme, async () => file(zeros), new AbortController().signal, LIMITS).catch((error: unknown) => error))
+      .toMatchObject({ code: AUDIO_ERROR.unreadable, message: 'music/theme.flac could not be decoded: The FLAC file holds no audio frames.' })
+    expect(decode).not.toHaveBeenCalled()
+  })
+
+  it('refuses before decoding a sound whose samples take more memory than the window gives one decode', async () => {
+    // Two seconds of mono at 8 kHz take 64,000 bytes as floats.
+    const long = wavFile({ sampleRate: 8000, channels: 1, samples: new Array<number>(16_000).fill(0) })
+    const small = { maxSeconds: 1200, maxBytes: 32_000 }
+    const failure = await answerMeasure(request, async () => file(long), new AbortController().signal, small)
+      .catch((error: unknown) => error)
+    expect(failure).toMatchObject({ code: AUDIO_ERROR.tooLarge, limit: { bytes: 32_000 } })
+    expect(String(failure)).toContain('music/ambience.wav takes up to 63KB once decoded, more than the 31KB a WASD Engine window decodes one sound into')
+    expect(FakeOfflineAudioContext.rates).toEqual([])
   })
 
   it('decodes a long AIFF file in a hidden window, whose timers Chromium throttles', async () => {
@@ -284,7 +306,7 @@ describe('the bounds of a decode', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
     try {
       const frames = (1 << 20) * 2 + 10
-      const decoded = await decodeSound(aiffFile({ sampleRate: 48_000, channels: 1, frames }), AIFF, undefined, BOUNDS)
+      const decoded = await decodeSound(aiffFile({ sampleRate: 48_000, channels: 1, frames }), AIFF, BOUNDS)
       expect(decoded.length).toBe(frames)
     } finally {
       vi.useRealTimers()
@@ -293,7 +315,7 @@ describe('the bounds of a decode', () => {
 
   it('refuses an AIFF file that an AudioBuffer cannot hold, or that is too long, before copying its samples', async () => {
     const decode = (data: Uint8Array<ArrayBuffer>, maxSeconds = 1200) =>
-      decodeSound(data, AIFF, undefined, { maxSeconds, signal: new AbortController().signal }).catch((error: unknown) => error)
+      decodeSound(data, AIFF, { ...BOUNDS, maxSeconds, name: 'The AIFF file' }).catch((error: unknown) => error)
     expect(await decode(aiffFile({ sampleRate: 8000, channels: 33, frames: 1 }))).toMatchObject({
       code: AUDIO_ERROR.unreadable, message: 'The AIFF file has 33 channels, more than the 32 the Audio panel plays.',
     })
@@ -307,13 +329,13 @@ describe('the bounds of a decode', () => {
     const rate = 22_254.545_454_545_45
     const tone = (frame: number): number => 0.5 * Math.sin(2 * Math.PI * 440 * frame / rate)
     const data = aiffFile({ sampleRate: rate, channels: 1, frames: 22_254, sample: tone })
-    const buffer = await decodeSound(data, AIFF, undefined, BOUNDS)
+    const buffer = await decodeSound(data, AIFF, BOUNDS)
     expect(buffer.sampleRate).toBeCloseTo(rate, 6)
     const { measurements } = await measureSound(buffer, { start: 0, maxSeconds: 300, loop: WHOLE_SOUND }, SIGNAL)
     expect(measurements.sampleRate).toBe(22_255)
     expect(measurements.seconds).toBeCloseTo(22_254 / rate, 9)
     expect(parseMeasureResult({ measurements }).measurements.sampleRate).toBe(22_255)
-    const answer = await answerMeasure({ ...request, path: 'sfx/classic.aif' }, async () => file(data), new AbortController().signal, 1200)
+    const answer = await answerMeasure({ ...request, path: 'sfx/classic.aif' }, async () => file(data), new AbortController().signal, LIMITS)
     expect(answer.measurements.sampleRate).toBe(22_255)
   })
 })

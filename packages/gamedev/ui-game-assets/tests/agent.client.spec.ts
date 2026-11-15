@@ -9,6 +9,7 @@ import type { AssetRenderRequest } from '@deepseek-ai/dsh-game-assets/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { answerRender, drawWeight, type AgentRenderSources } from '../src/client/agent.ts'
 import type { AssetFile } from '../src/client/read.ts'
+import { fbx, fbxFile, voxFile } from './model-files.client.ts'
 
 /** Tags of the pictures drawn into any canvas, in order. */
 let drawn: string[] = []
@@ -72,7 +73,7 @@ afterEach(() => {
 
 function request(path: string, overrides: Partial<AssetRenderRequest> = {}): AssetRenderRequest {
   return {
-    path, kind: 'image', images: true, bytes: 100, maxBytes: 1_000_000, maxPixels: 1_150_000, limits: ANSWER_LIMITS,
+    path, root: '/p', kind: 'image', images: true, bytes: 100, maxBytes: 1_000_000, maxPixels: 1_150_000, limits: ANSWER_LIMITS,
     draw: { views: ['iso'], shading: 'material', skeleton: false, size: 1024 },
     ...overrides,
   }
@@ -83,7 +84,7 @@ function sources(files: Readonly<Record<string, Uint8Array<ArrayBuffer>>>): Agen
     read: async (path) => {
       const data = files[path]
       if (data === undefined) throw new Error(path)
-      return { ok: true, value: { data, absolutePath: `/p/${path}`, version: 'v1' } satisfies AssetFile }
+      return { ok: true, value: { data, version: 'v1' } satisfies AssetFile }
     },
     readHead: async path => files[path]?.subarray(0, 64),
     animations: { readText: async () => undefined, files: async () => [], godot: async () => ({ files: [], projects: [] }) },
@@ -122,6 +123,29 @@ describe('agent pictures', () => {
     // First bytes that do not tell, or a read that failed, count the most pixels the window decodes.
     expect(await drawWeight(request('art/late.jpg'), files, LIMITS, signal)).toBe(100 + LIMITS.maxDecodedPixels * 4)
     expect(await drawWeight(request('art/gone.png'), files, LIMITS, signal)).toBe(100 + LIMITS.maxDecodedPixels * 4)
+  })
+
+  it('refuses a model that asks for more memory than the window sets aside, or a VOX model larger than MagicaVoxel makes, naming why', async () => {
+    const files = {
+      'models/huge.vox': voxFile([{ x: 1024, y: 1024, z: 1024 }]),
+      'models/placed.vox': voxFile([{ x: 200, y: 200, z: 200 }], [{ type: 'group', id: 0, children: [1, 1, 1] }, { type: 'shape', id: 1, models: [0] }]),
+      'models/arrays.fbx': fbxFile([{ name: 'Objects', children: [{ name: 'Vertices', properties: [fbx.doubles(1000, new Array<number>(1000).fill(0))] }] }]),
+    }
+    const models = { ...sources(files), viewer: () => import('../src/client/viewer/index.ts') }
+    const model = (path: string, maxBytes = 1_000_000) => request(path, { kind: 'model', maxBytes })
+    await expect(answerRender(model('models/huge.vox'), models, LIMITS, new AbortController().signal)).rejects.toMatchObject({
+      code: 'ASSET_TOO_LARGE',
+      message: 'models/huge.vox holds a VOX model of 1024 × 1024 × 1024 voxels; the viewer reads models up to 256 voxels on a side, as MagicaVoxel makes them.',
+    })
+    await expect(answerRender(model('models/placed.vox'), models, LIMITS, new AbortController().signal)).rejects.toMatchObject({
+      code: 'ASSET_TOO_LARGE',
+      message: 'models/placed.vox places VOX models that span more than 16777216 voxels in all, more than the viewer meshes for one file.',
+    })
+    await expect(answerRender(model('models/arrays.fbx', 4000), models, LIMITS, new AbortController().signal)).rejects.toMatchObject({
+      code: 'ASSET_TOO_LARGE',
+      // Two nodes and a thousand numbers: 8,400 bytes.
+      message: 'models/arrays.fbx asks for 8.2KB of memory to load, more than the 3.9KB the viewer sets aside for one model.',
+    })
   })
 
   it('refuses an image whose header states no size it reads, before decoding it', async () => {

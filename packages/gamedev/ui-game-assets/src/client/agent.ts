@@ -66,13 +66,12 @@ export interface AgentRenderSources {
   /** The reads that find an image's animations. */
   readonly animations: AnimationSources
   /**
-   * The URL of a file that a model names, inside the project.
-   * @param base - absolute path of the model file.
-   * @param path - the model's workspace path, which places the project folder in `base`.
+   * The URL of a file that a model names, inside the request's folder.
+   * @param path - the model's workspace path.
    * @param reference - the name as the model stores it.
    * @returns the URL, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
+  readonly relatedUrl: (path: string, reference: string) => string | undefined
   /** @returns the viewer's three.js chunk, loaded on first use. */
   readonly viewer: () => Promise<ViewerModule>
 }
@@ -167,6 +166,7 @@ function readFailure(path: string, result: RemoteResult<AssetFile>): AssetDrawEr
   const error = result.error
   if (error.code === 'workspace-file/not-found') return new AssetDrawError(`${path} is no longer in the project.`, 'ASSET_NOT_FOUND')
   if (error.code === 'workspace-file/too-large') return new AssetDrawError(`${path} is larger than ${fileSizeText(error.details.limit)}, too large to draw.`, 'ASSET_TOO_LARGE')
+  if (error.code === 'game-assets/outside') return new AssetDrawError(`${path} leads outside the project folder through a link, so the viewer does not read it.`, 'ASSET_OUTSIDE_PROJECT')
   return new AssetDrawError(`${path} could not be read: ${error.message}`, 'ASSET_UNREADABLE')
 }
 
@@ -227,15 +227,22 @@ async function answerModel(
     model = await viewer.loadModel({
       decoder: format.decoder,
       data: file.data,
-      related: reference => sources.relatedUrl(file.absolutePath, request.path, reference),
+      related: reference => sources.relatedUrl(request.path, reference),
       changed: () => {},
       maxBytes: request.maxBytes,
-      checkImage: (data, name) => { checkModelImage(data, name, limits.maxDecodedPixels) },
+      checkImage: (data, name) => checkModelImage(data, name, limits.maxDecodedPixels),
     }, signal)
   } catch (error) {
     signal.throwIfAborted()
     if (error instanceof viewer.ModelTooLargeError) {
-      throw new AssetDrawError(`${request.path} asks for ${fileSizeText(error.bytes)} of geometry, more than the ${fileSizeText(error.limit)} the viewer sets aside for one model.`, 'ASSET_TOO_LARGE')
+      throw new AssetDrawError(`${request.path} asks for ${fileSizeText(error.bytes)} of memory to load, more than the ${fileSizeText(error.limit)} the viewer sets aside for one model.`, 'ASSET_TOO_LARGE')
+    }
+    if (error instanceof viewer.VoxModelTooLargeError) {
+      const { x, y, z } = error.size
+      throw new AssetDrawError(`${request.path} holds a VOX model of ${x} × ${y} × ${z} voxels; the viewer reads models up to ${error.limit} voxels on a side, as MagicaVoxel makes them.`, 'ASSET_TOO_LARGE')
+    }
+    if (error instanceof viewer.VoxWorkTooLargeError) {
+      throw new AssetDrawError(`${request.path} places VOX models that span more than ${error.limit} voxels in all, more than the viewer meshes for one file.`, 'ASSET_TOO_LARGE')
     }
     throw new AssetDrawError(`${request.path} could not be read as ${format.label}: ${error instanceof Error ? error.message : String(error)}. It may be damaged or use a feature the viewer does not support.`, 'ASSET_UNREADABLE')
   }

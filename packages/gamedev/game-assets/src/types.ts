@@ -63,13 +63,23 @@ export interface AssetRenderRequest {
    * Session's header, against which the window resolves the Session's paths, or absolute for a file outside it.
    */
   readonly path: string
+  /**
+   * Absolute folder that every file the window reads for the draw lies inside by its real path: the folder in the
+   * Session's header, or the calling agent's project folder when that lies outside it or the header names none. A
+   * relative `path` is relative to it; a file whose real path leads out of it, as through a link, is not read.
+   */
+  readonly root: string
   /** Whether the asset is a picture or a model. */
   readonly kind: AssetKind
   /** What to draw. */
   readonly draw: AssetDrawOptions
   /** Whether to draw images; false asks for the details alone, as for a model that does not accept images. */
   readonly images: boolean
-  /** Size in bytes, when the call looked, of the file and of the buffers and images a glTF file names. */
+  /**
+   * The memory the draw takes as the Host counted it when the call looked, in bytes: the file's size, and for a model
+   * the sizes of the files it names that load with it and the memory its loader allocates beyond its files as they
+   * state it (its textures decoded, a VOX file's meshes, an FBX file's nodes and arrays).
+   */
   readonly bytes: number
   /** Largest file the window reads, in bytes. */
   readonly maxBytes: number

@@ -36,16 +36,16 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
   name: '@deepseek-ai/dsh-client-ui-game-assets'
 ```
 
-该行的 Host 半区什么也不做：这一行的存在只是为了让 Host 提供浏览器半区。浏览器半区需要右侧栏（[`ui-sidebar-right`](../../client/ui-sidebar-right/README.zh.md)）、[`dsh-api-workspace-files`](../../api/workspace-files/README.zh.md) 的 `workspaceFiles` Remote 及其 `file` 资源、Session Controller 的 sessions 服务，以及 [`api-remotes`](../../api/remotes/README.zh.md) 转发的事件。带 `disabled: true` 的 profile patch 条目 `- id: ui-game-assets` 会移除该标签页，此后不会有窗口为 agent 的 `asset_view` 绘制素材。设置 `config` 的 patch 可修改以下上限：
+该行的 Host 半区什么也不做：这一行的存在只是为了让 Host 提供浏览器半区。浏览器半区需要右侧栏（[`ui-sidebar-right`](../../client/ui-sidebar-right/README.zh.md)）、[`dsh-api-workspace-files`](../../api/workspace-files/README.zh.md) 的 `workspaceFiles` Remote 及其 `file` 资源、[`game-assets`](../game-assets/README.zh.md#reading-a-projects-files) 的项目文件路由、Session Controller 的 sessions 服务，以及 [`api-remotes`](../../api/remotes/README.zh.md) 转发的事件。带 `disabled: true` 的 profile patch 条目 `- id: ui-game-assets` 会移除该标签页，此后不会有窗口为 agent 的 `asset_view` 绘制素材。设置 `config` 的 patch 可修改以下上限：
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `maxFolders` | `2000` | 一次扫描在停止并提示列表不完整之前列出的文件夹数，包括项目文件夹本身 |
 | `maxAssets` | `5000` | 一次扫描在停止并提示列表不完整之前收集的素材数 |
-| `maxPreviewBytes` | `268435456`（256 MiB） | 查看器读取的最大文件，也是 glTF 模型的描述自行设定大小的内存上限；更大的素材改为显示提示 |
-| `maxDecodedPixels` | `67108864`（8192 × 8192） | 查看器解码的图片最多像素数，按其文件头在解码任何像素之前所述的尺寸计算，glTF 模型引用的图片同样适用；更大的图片改为显示提示，agent 为它绘制的图片以 `ASSET_TOO_LARGE` 失败 |
+| `maxPreviewBytes` | `268435456`（256 MiB） | 查看器读取的最大文件；也是模型加载器按文件要求在文件之外分配的内存上限、glTF 模型与其引用的文件合计的上限，以及模型的纹理在其文件中、解码后又各自的上限；更大的素材改为显示提示 |
+| `maxDecodedPixels` | `67108864`（8192 × 8192） | 查看器解码的图片最多像素数，按其文件头在解码任何像素之前所述的尺寸计算，模型引用的每个纹理同样适用；更大的图片改为显示提示，agent 为它绘制的图片以 `ASSET_TOO_LARGE` 失败 |
 | `maxAgentDraws` | `3` | 窗口为 agent 同时绘制的图片数；之后的请求排队等候 |
-| `maxAgentDrawBytes` | `67108864`（64 MiB） | 窗口为 agent 同时绘制的图片解码时的最大合计内存，按各请求计算的方式计算：图片计入其文件及其文件头所述的像素，前 256 KiB 未给出尺寸时计入 `maxDecodedPixels`，模型计入其文件以及 glTF 或 GLB 模型的缓冲区和图片；更大的绘制单独进行 |
+| `maxAgentDrawBytes` | `67108864`（64 MiB） | 窗口为 agent 同时绘制的图片解码时的最大合计内存，按各请求计算的方式计算：图片计入其文件及其文件头所述的像素，前 256 KiB 未给出尺寸时计入 `maxDecodedPixels`，模型按 Host 的计算计入：其文件、它引用的文件，以及其纹理、VOX 文件的网格与 FBX 文件的数组所占的内存；更大的绘制单独进行 |
 
 ### 标签页列出的内容
 
@@ -69,7 +69,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 - **自身的帧**：动画 GIF、WebP 或 PNG 的帧，用浏览器的 `ImageDecoder` 按各自的时长解码，命名为 `frames`。
 - **Godot 动画**：来自名称引用该图片的场景与资源，包括 SpriteFrames 动画（嵌入在场景中供 AnimatedSprite2D 使用，或保存为 `.tres`），其帧是该图片或图片的区域（AtlasTexture）；还有 Sprite2D 节点与 Godot 3 Sprite 节点的帧网格（`hframes` × `vframes`），覆盖整张纹理，或在开启 `region_enabled` 时覆盖其 `region_rect`，并像 Godot 一样切分为格子，由 AnimationPlayer 的动画的 `frame` 与 `frame_coords` 轨道驱动，没有轨道时则逐格播放。Godot 4 与 Godot 3 的文本格式都能读取；`res://` 路径相对于含有 `project.godot` 的文件夹解析，且绝不会走出该文件夹，会走出的帧被省去；路径中含有 `~` 段（Host 会在主文件夹中读取它）、含冒号的段（在 Windows 上表示驱动器或数据流）或仅由点和空格组成的段的帧同样被省去。网格的列数与行数最多为 Godot 的上限 16384，且最多播放其前 1024 个格子。
-- **精灵表 JSON**：图片旁同名的文件，如 Aseprite 与 TexturePacker 所写：每个帧标签是一个动画，可正向、反向或往返（ping-pong）播放，没有标签的文件播放所有帧。
+- **精灵表 JSON**：图片旁同名的文件，如 Aseprite 与 TexturePacker 所写：每个帧标签是一个动画，最多取前 1024 个指向帧的标签，可正向、反向或往返（ping-pong）播放，没有标签的文件播放所有帧。
 - **编号图片**：它旁边的图片，如 `walk_01.png` 到 `walk_12.png`，按编号顺序以每秒 12 帧播放。
 
 选中其中一个后，会在舞台上逐帧播放，像素按方块绘制：每一帧在其图片（图片自身的某一帧，或项目中的另一张图片）解码后显示，显示期间会解码下一帧的图片；已解码的图片在 64 Mi 像素的预算内保留，最久未显示的先被释放，再次显示时重新解码，因此任意长度的动画都会播放每一帧。标签页不在屏幕上时，动画停在当前位置等待。舞台下方的时间轴可暂停和播放、跳到某一帧、显示帧号，并把速度设为四分之一到两倍。菜单中的**精灵网格…**按读者给出的列数、行数与帧数把图片读作一张精灵表，会猜测一条方形帧的长条，在图片上绘制网格，并把它作为动画 `grid` 播放。在多个文件中重复的名称会加上文件名。
@@ -80,7 +80,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 详细信息列出尺寸与包围盒（无论正在播放哪个片段，都与 agent 的详细信息一样在模型的静止姿势下测量，且只计入位置为有限数值的顶点），然后是三角形、顶点、网格与节点，动画片段（选中一个即播放），以树形列出的骨骼（选中一根会在骨架上标出），每个网格的变形目标（各配一个滑块），带颜色、金属度、粗糙度、标志以及按槽位列出的纹理的材质，带尺寸的纹理，以及模型引用但缺失的文件。
 
-模型引用的文件从模型旁加载：glTF 的缓冲区与图片、OBJ 的材质库及其纹理，以及 FBX 与 Collada 的纹理。模型以绝对路径（例如创作该模型的计算机上的路径）保存的文件名，会按文件名从模型所在文件夹加载。文件只从项目文件夹内加载：经 `..` 走出项目文件夹的名称、网址或其他 URL，以及文件路由不提供的路径（例如含控制字符的路径，或位于 UNC 共享上的项目中的任何文件）都不会加载，并列为缺失。
+模型引用的文件从模型旁加载：glTF 的缓冲区与图片、OBJ 的材质库及其纹理，以及 FBX 与 Collada 的纹理，也包括 FBX 文件内嵌的图片。模型以绝对路径（例如创作该模型的计算机上的路径）保存的文件名，会按文件名从模型所在文件夹加载。文件只按其真实路径从项目文件夹内加载：经 `..` 走出项目文件夹的名称、项目内的链接引出项目文件夹的文件、网址或其他 URL，以及项目文件路由不提供的路径（例如含控制字符的路径，或位于 UNC 共享上的项目中的任何文件）都不会加载，并列为缺失。
 
 ### Blender 文件
 
@@ -88,12 +88,12 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 ### 失败
 
-文件已不存在、大于 `maxPreviewBytes`，或在分块读取大文件期间不断变化时，视图位置会显示提示；读取失败时提供**重试**。加载器无法读取的文件会提示该文件可能已损坏，或使用了查看器不支持的功能。若 glTF 模型的描述为加载器自行填充的数组（没有缓冲区视图的访问器、解码后的 Meshopt 压缩缓冲区视图，以及 `EXT_mesh_gpu_instancing` 节点每个图元的每个实例的实例矩阵）设定的大小超过 `maxPreviewBytes`，会在加载器分配任何数组之前提示它需要的内存过多，因此几百字节的描述无法让窗口分配数 GB 的内存。描述按 three.js 的方式读取，即 GLB 文件中无论位于何处的最后一个 JSON 块；给出的数量或字节步长不是整数的描述无法读取。glTF 模型引用的每张图片在解码前都按其文件头对照 `maxDecodedPixels` 检查；未通过检查的图片不显示在模型上，并列为缺失。浏览器不支持 WebGL 时会提示 3D 模型需要 WebGL。
+文件已不存在、大于 `maxPreviewBytes`，或其真实路径位于项目文件夹之外（例如经由链接）时，视图位置会显示提示；读取失败时（包括读取期间文件发生变化）提供**重试**。加载器无法读取的文件会提示该文件可能已损坏，或使用了查看器不支持的功能。在加载器分配文件所要求的内存之前，先根据文件计算这部分内存，要求超过 `maxPreviewBytes` 的模型会提示它需要的内存过多，因此几百字节的文件无法让窗口分配数 GB 的内存：glTF 描述中加载器自行填充的数组（没有缓冲区视图的访问器、解码后的 Meshopt 压缩缓冲区视图，以及 `EXT_mesh_gpu_instancing` 节点每个图元的每个实例的实例矩阵）；glTF 模型的文件及其引用的缓冲区与图片，按服务器在读取其中任何一个之前给出的大小计算；VOX 文件的网格，即每个被摆放的模型的包围盒中每个格子一个字节，每个暴露的面一个四边形；以及 FBX 文件的节点、字符串与数组，按加载器为它们生成的 JavaScript 数字计算。glTF 描述按 three.js 的方式读取，即 GLB 文件中无论位于何处的最后一个 JSON 块；给出的数量或字节步长不是整数、或引用超过 1,024 个文件的描述无法读取。压缩数据解压后超过其所述长度的 FBX 数组无法读取，而且解压不会超过该长度。大于 MagicaVoxel 所做的每边 256 个体素的 VOX 模型，以及所摆放模型的包围盒合计超过 256³ 个格子的场景（加载器会为每次摆放再生成一次模型网格），在生成任何网格之前就会提示过大。每种格式的每个纹理都会完整获取并在解码前检查，然后从检查过的字节解码：按其文件头对照 `maxDecodedPixels` 检查像素，并让其文件以及解码后占用的内存各自计入 `maxPreviewBytes`，同一模型的纹理共用这些额度；未通过的纹理不显示在模型上，并列为缺失，内嵌的纹理列为 `(embedded)`。浏览器不支持 WebGL 时会提示 3D 模型需要 WebGL。
 
 <a id="for-the-agent"></a>
 ### 面向 agent
 
-插件会答复 `asset_view` 为这个窗口可以读取的 Session 发出的 `game-assets/render` 请求：它通过 `workspaceFiles` 读取素材，测量面板所显示的同样的详细信息，并在屏幕外绘制图片。答复中的详细信息按请求携带的上限裁剪（[`src/client/answer.ts`](src/client/answer.ts)）：更长的列表保留前面的条目并统计全部数量，更长的名称以省略号结尾，更长的路径被省去，帧尺寸（例如带小数的 Godot 区域）以整数像素给出、超过请求的 `edge` 时省去，图片说明会缩短其中给出的片段或动画名称，以符合请求的 `caption` 长度；面板自身的详细信息保持完整。宽或高超过 `edge` 的图片以 `ASSET_TOO_LARGE` 失败，因为其详细信息无法给出它的尺寸。模型用标签页的光照、网格、骨架叠加以及白模或线框着色绘制，每个视角或姿势一格，输出为 JPEG；图片绘制在棋盘格上，小尺寸像素画按整数倍放大，按需附带网格与格子编号，或绘制为一张动画各帧的拼图，每帧标注其序号与时长，输出为 PNG。文件头所述像素超过 `maxDecodedPixels` 的图片会在解码任何像素之前以 `ASSET_TOO_LARGE` 失败，动画各帧所显示的其他图片也是如此。绘制的图片不保留图片的全尺寸副本：静态图片从已解码的图片直接绘制到所请求大小的图片中，动画的拼图只解码它所显示的自身帧，一次一帧，每帧按其格子的大小解码，与帧数无关。多个 agent 的请求（例如模型的并行调用、agent 团队的队友、子 agent，以及通过 MCP 服务器连接的 agent）按到达顺序绘制，最多同时绘制 `maxAgentDraws` 个，且同时解码的内存合计不超过 `maxAgentDrawBytes`；更大的绘制单独进行。请求计入其文件，对于图片还按其文件头所述的每个像素计入四个字节，three.js 解码的格式计入更多（TGA 为 12，HDR 与 EXR 为 24），这些在等待轮次之前从图片的前 256 KiB 读取；模型计入其文件以及 glTF 模型引用的缓冲区和图片。调用在请求等待期间结束时，该请求离开队列；在绘制期间结束时，它立即让出位置。每个请求都在它所注明的 Session 中读取并绘制。图片的 Godot 动画取自请求到达之后才开始的一次 Session 项目遍历，因此 agent 能找到它在调用前刚写入的场景或资源：在某次遍历开始之前到达的请求，在遍历进行期间以及结果新鲜期间共用这次遍历；遍历进行期间到达的请求共用下一次遍历，下一次遍历在当前遍历结束时开始。没有 WebGL 的窗口把模型交给另一个窗口。`game-assets/reveal` 通知会打开该 Session（若它不在屏幕上）及其素材标签页，并选中该素材；正在等待其 Session 出现在屏幕上的 reveal 会在另一个 reveal 到达时停止。
+插件会答复 `asset_view` 为这个窗口可以读取的 Session 发出的 `game-assets/render` 请求：它在请求所注明的文件夹内通过项目文件路由读取素材，测量面板所显示的同样的详细信息，并在屏幕外绘制图片。答复中的详细信息按请求携带的上限裁剪（[`src/client/answer.ts`](src/client/answer.ts)）：更长的列表保留前面的条目并统计全部数量，更长的名称以省略号结尾，更长的路径被省去，帧尺寸（例如带小数的 Godot 区域）以整数像素给出、超过请求的 `edge` 时省去，图片说明会缩短其中给出的片段或动画名称，以符合请求的 `caption` 长度；面板自身的详细信息保持完整。宽或高超过 `edge` 的图片以 `ASSET_TOO_LARGE` 失败，因为其详细信息无法给出它的尺寸。模型用标签页的光照、网格、骨架叠加以及白模或线框着色绘制，每个视角或姿势一格，输出为 JPEG；图片绘制在棋盘格上，小尺寸像素画按整数倍放大，按需附带网格与格子编号，或绘制为一张动画各帧的拼图，每帧标注其序号与时长，输出为 PNG。文件头所述像素超过 `maxDecodedPixels` 的图片会在解码任何像素之前以 `ASSET_TOO_LARGE` 失败，动画各帧所显示的其他图片也是如此；要求的内存超过 `maxPreviewBytes` 的模型，以及大于 MagicaVoxel 所做的 VOX 模型或场景同样如此，每种失败都会说明是什么过大。绘制的图片不保留图片的全尺寸副本：静态图片从已解码的图片直接绘制到所请求大小的图片中，动画的拼图只解码它所显示的自身帧，一次一帧，每帧按其格子的大小解码，与帧数无关。多个 agent 的请求（例如模型的并行调用、agent 团队的队友、子 agent，以及通过 MCP 服务器连接的 agent）按到达顺序绘制，最多同时绘制 `maxAgentDraws` 个，且同时解码的内存合计不超过 `maxAgentDrawBytes`；更大的绘制单独进行。请求计入其文件，对于图片还按其文件头所述的每个像素计入四个字节，three.js 解码的格式计入更多（TGA 为 12，HDR 与 EXR 为 24），这些在等待轮次之前从图片的前 256 KiB 读取；模型计入 Host 在调用发出请求之前计算的大小：其文件、它引用的文件，以及其纹理、VOX 文件的网格与 FBX 文件的数组所占的内存。调用在请求等待期间结束时，该请求离开队列；在绘制期间结束时，它保留位置，直到绘制停止。每个请求都在它所注明的 Session 中读取并绘制。图片的 Godot 动画取自请求到达之后才开始的一次 Session 项目遍历，因此 agent 能找到它在调用前刚写入的场景或资源：在某次遍历开始之前到达的请求，在遍历进行期间以及结果新鲜期间共用这次遍历；遍历进行期间到达的请求共用下一次遍历，下一次遍历在当前遍历结束时开始。没有 WebGL 的窗口把模型交给另一个窗口。`game-assets/reveal` 通知会打开该 Session（若它不在屏幕上）及其素材标签页，并选中该素材；正在等待其 Session 出现在屏幕上的 reveal 会在另一个 reveal 到达时停止。
 
 -----
 
@@ -107,11 +107,13 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 扫描通过 `workspaceFiles.list` 以广度优先方式遍历工作区，同时最多列出六个文件夹。它记录 Host 报告的文件夹路径集合，这些路径指向链接解析到的文件夹，因此指向已列出文件夹的链接或循环只会列出一次。以 `workspace-file/not-found` 失败的列出属于遍历期间被删除的文件夹；其他失败计为无法读取的文件夹。
 
-当前查看的文件通过 `workspaceFiles.readBytes` 读取：一次完整读取，或在 Host 的整文件上限拒绝后改为连续的字节窗口；若某个窗口的版本与第一个窗口不同，读取会重新开始一次。主体跟随该文件的 `file` 资源，每有新版本就重新读取。模型引用的文件通过已认证的 `/api/file` 路由按 URL 加载，加载器经由 `LoadingManager` 的 URL 修改器到达该路由，修改器会把每个名称相对于当前文件的绝对路径解析；修改器会记住每个名称，因此加载失败的纹理会以模型中保存的名称报告。该路由会提供任何绝对路径，因此修改器只保留项目文件夹内的名称；项目文件夹即当前文件的绝对路径去掉其工作区路径的各段（比较时不区分大小写），两者对不上时（例如经链接到达的文件）则为该文件自身所在的文件夹。被拒绝的名称会得到一个不含逗号的 `data:` URL，fetch 与图片都会在不发出任何请求的情况下拒绝它，因此它会像缺失文件一样失败，绝不会从页面的源或网络上获取。Host 会在主文件夹中读取首段为 `~` 的工作区路径，因此每次读取都把经过名为 `~` 的文件夹的路径以 `./~/…` 发送。
+标签页与 agent 的图片读取的每个文件都来自 Host 的 `GET /api/game-assets.file` 路由（[`src/client/read.ts`](src/client/read.ts)），请求注明项目文件夹与文件，路由只在文件的真实路径位于该文件夹的真实路径之内时提供该文件：当前查看的文件、图片的前几个字节、其动画所用的 Godot 文件与精灵表，以及模型引用的文件。标签页从 Host 的 Session 列表得知其 Session 的文件夹；图片使用其请求所注明的文件夹。路由在读取之前拒绝大于该次读取 `max` 的文件，其余文件以流的方式提供，文件在传输期间发生变化时，以错误结束响应。主体跟随该文件的 `file` 资源，每有新版本就重新读取。模型引用的文件按该路由的 URL 加载，加载器经由 `LoadingManager` 的 URL 修改器到达该路由，修改器会把每个名称相对于项目内当前文件所在的文件夹解析，绝对路径的名称则按文件名在该文件夹中解析；修改器会记住每个名称，因此加载失败的纹理会以模型中保存的名称报告。被拒绝的名称会得到一个不含逗号的 `data:` URL，fetch 与图片都会在不发出任何请求的情况下拒绝它，因此它会像缺失文件一样失败，绝不会从页面的源或网络上获取。Host 会在主文件夹中读取首段为 `~` 的工作区路径，因此每次读取都把经过名为 `~` 的文件夹的路径以 `./~/…` 发送。
+
+模型加载器之前各有一道检查（[`src/client/viewer/`](src/client/viewer/)）：`gltfDeclaredBytes` 计算 glTF 描述设定的大小，其引用的文件通过 `HEAD` 请求获取大小，每次 16 个；`voxPlan` 按 three.js 加载器的方式读取 VOX 文件的各块，并在其场景图生成的网格上累计格子与暴露的面，每个节点只计算一次，且不使用递归，因此无论场景图如何摆放模型，其自身的工作量都保持线性；`fbxBytes` 按加载器的方式遍历二进制 FBX 文件的节点记录，并把每个在上限内的压缩数组以 1 KiB 为一步解压到其所述长度为止。纹理经由 `CheckedTextures`：OBJ 材质库与 FBX 文件按每个纹理的名称向管理器索取纹理加载器，得到 `CheckedTextureLoader`，TGA 名称得到像 three.js 一样解码 TGA 的那一个；Collada 文件的图片由其加载器自带的加载器解码，因此在解析文件之前就获取并检查，加载器通过 `blob:` URL 得到检查过的字节；glTF 模型的图片在加载器解码之前由一个 GLTFLoader 插件检查。
 
 2D 视图与 agent 的图片在解码图片之前先读取其文件头（[`src/client/image-size.ts`](src/client/image-size.ts)）：PNG、JPEG、GIF、WebP、BMP、ICO、AVIF、TGA、HDR 与 EXR 在文件头中给出尺寸，读取器按文件的解码器读取它：浏览器支持的格式按内容而不按文件名读取，JPEG 跳过 libjpeg 会跳过的杂散字节，GIF 的画布像浏览器一样扩展到其第一帧，HDR 文件的文件头各行按 three.js 的方式读取，EXR 文件取其最后一个数据窗口。文件头未给出读取器能读取的尺寸的图片不会被解码，并显示为无法读取；SVG 没有尺寸，其图片按显示的大小绘制。浏览器支持的格式解码到图片元素中，2D 视图自身的元素通过同一个对象 URL 与之共用。图片的动画在其解码完成后查找：自身的帧通过 `ImageDecoder` 得到，它为取得时长把每一帧解码一次，绘制该帧时再解码一次；最近一次扫描中名称引用其文件的 Godot 文件，每次读取六个，最多 400 个，每个最大 1 MiB；其文件夹列表中同名的精灵表 JSON；以及该列表中的编号图片。Godot 读取器解析区段标题、属性及其值的变体语法，然后按 id 解析 SpriteFrames、AtlasTexture、Sprite2D、Animation 与 AnimationLibrary 资源。
 
-three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载；该分块中没有任何内容导入浏览器半区的其他模块，浏览器半区的其他模块也不导入该分块同样导入的值（例如 `@deepseek-ai/dsh-util-values` 的 `assertNever`），否则打包器会把它移入第三个分块，而查看器分块需要这个分块。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表是 `@deepseek-ai/dsh-game-assets/formats` 的副本，因为插件的浏览器包不能导入其他插件的值；[`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) 保证两者一致。
+three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载；该分块中没有任何内容导入浏览器半区的其他模块，浏览器半区的其他模块也不导入该分块同样导入的值（例如 `@deepseek-ai/dsh-util-values` 的 `assertNever`），否则打包器会把它移入第三个分块，而查看器分块需要这个分块；[`tests/bundle-split.client.spec.ts`](tests/bundle-split.client.spec.ts) 会在构建产物中检查这一点。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表是 `@deepseek-ai/dsh-game-assets/formats` 的副本，因为插件的浏览器包不能导入其他插件的值；[`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) 保证两者一致。
 
 | 文件 | 作用 |
 |---|---|
@@ -122,7 +124,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/client/tree.ts`](src/client/tree.ts) | 文件夹树、其行、要展开的文件夹与搜索 |
 | [`src/client/source.ts`](src/client/source.ts) | 单个 Session 的扫描与选择 |
 | [`src/client/walks.ts`](src/client/walks.ts) | 为一个会话绘制的图片所共用的项目遍历 |
-| [`src/client/read.ts`](src/client/read.ts) | 完整读取与分块读取，以及相关文件的 URL |
+| [`src/client/read.ts`](src/client/read.ts) | 通过项目文件路由读取，以及相关文件的 URL |
 | [`src/client/AssetsTab.tsx`](src/client/AssetsTab.tsx)、[`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 主体、其状态、其导航与下拉列表 |
 | [`src/client/AssetViewer.tsx`](src/client/AssetViewer.tsx) | 读取、重新加载、Blender 导出与读取失败 |
 | [`src/client/ImageView.tsx`](src/client/ImageView.tsx)、[`src/client/ModelView.tsx`](src/client/ModelView.tsx) | 带动画控件的 2D 与 3D 视图 |
@@ -134,7 +136,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/client/agent.ts`](src/client/agent.ts)、[`src/client/render2d.ts`](src/client/render2d.ts) | 答复渲染请求：解码、测量、绘制与编码 |
 | [`src/client/answer.ts`](src/client/answer.ts) | 按请求的上限裁剪答复的详细信息 |
 | [`src/client/queue.ts`](src/client/queue.ts) | 为 agent 同时绘制的图片的顺序与数量 |
-| [`src/client/viewer/`](src/client/viewer/) | 延迟加载的 three.js 分块：图片解码器、模型加载器、测量、舞台、骨架叠加，以及 agent 的模型格子 |
+| [`src/client/viewer/`](src/client/viewer/) | 延迟加载的 three.js 分块：图片解码器、模型加载器及其之前的内存检查（`vox.ts`、`fbx.ts`、`textures.ts`）、测量、舞台、骨架叠加，以及 agent 的模型格子 |
 | [`src/client/icon.tsx`](src/client/icon.tsx) | 标签页图标与 3D 模型文件图标 |
 | [`src/client/locales.ts`](src/client/locales.ts) | 八种语言的 `gameAssets` 词典 |
 
@@ -150,7 +152,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 - [游戏工具子系统页面](../../../docs/subsystems/gamedev.zh.md#assets-tab) —— 该标签页与制作美术素材的游戏工具之间的关系。
 - [game-assets](../game-assets/README.zh.md) —— agent 的素材工具，本标签页绘制它们的图片。
 - [ui-sidebar-right](../../client/ui-sidebar-right/README.zh.md) —— 右侧栏、其标签页注册表与引导页。
-- [dsh-api-workspace-files](../../api/workspace-files/README.zh.md) —— 该标签页使用的列出、字节读取与 `file` 资源。
+- [dsh-api-workspace-files](../../api/workspace-files/README.zh.md) —— 该标签页使用的列出与 `file` 资源。
 - [ui-sidebar-files](../../client/ui-sidebar-files/README.zh.md) —— 工作区文件树，它列出所有文件而不只是美术素材。
 
 -----
@@ -173,10 +175,10 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 - **列表不实时更新** —— 只有在标签页显示、打开下拉列表或使用刷新按钮时，列表才会跟随项目变化；当前查看的文件本身会随修改重新加载，但模型引用的文件和动画所用的 Godot 文件不会。
 - **不渲染 Blender 文件** —— Blender 文件只显示由它导出的模型；标签页不会启动 Blender 来转换。
 - **不支持压缩纹理** —— 需要 Draco 或 KTX2 解码器的 glTF 模型，以及 DDS 或 KTX 图片无法显示；Meshopt 压缩可以显示。
-- **相关文件来自 `/api/file`** —— 模型引用的纹理与缓冲区通过已认证的文件路由加载，因此该路由的字节上限（附件的 `maxImageBytes`）也限制其中每个文件；位于 UNC 共享上的项目，其路径不由该路由提供，因此其模型显示时不带所引用的文件。
+- **只通过 owner 的项目文件路由读取** —— 位于 UNC 共享上的项目，其路径不由该路由提供，因此不显示任何素材；无法访问 Connection 路由的窗口（例如 Live Share 观看者的窗口）也读取不到任何文件。
 - **每个模型视图一个 WebGL 上下文** —— 每次选择模型都会重新创建 3D 舞台，在较慢的 GPU 上需要片刻；agent 的图片在绘制其图块期间使用另一个上下文，一次只绘制一张图片的图块。
 - **每个窗口都会绘制** —— 每个可以读取该 Session 的 owner 窗口都会绘制该请求，Host 使用第一个答复，因此第二个窗口不会增加绘制能力。
-- **计入的大小** —— `maxAgentDrawBytes` 按请求计算的方式计入一次绘制：图片的文件及其文件头所述的像素，以及模型的文件和 glTF 模型的缓冲区与图片；模型引用的纹理和动画各帧所显示的其他图片在解码时不计入；OBJ、FBX 与 Collada 模型的纹理不按 `maxDecodedPixels` 检查，glTF 模型的纹理则会检查。
+- **计入的大小** —— `maxAgentDrawBytes` 按请求计算的方式计入一次绘制：图片的文件及其文件头所述的像素，以及按 Host 的计算计入的模型；动画各帧所显示的其他图片在解码时不计入，OBJ、Collada、STL 或 PLY 文件随文件增大的解析开销，以及 Host 不读取的纹理格式（只计入其文件）也是如此。
 - **自身的帧需要 `ImageDecoder`** —— 不支持它的浏览器（如 17 之前的 Safari）只显示动画图片的第一帧。
 - **固定的跳过规则** —— 扫描总是跳过隐藏文件夹与 `node_modules`；放在隐藏文件夹中的美术素材不会显示。
 

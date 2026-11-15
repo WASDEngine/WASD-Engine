@@ -3,12 +3,15 @@
  * checked archive into a staging folder inside the project and gains the files of its catalog overlay folders, or, when
  * WASD Engine wrote it, consists of those files alone; then,
  * holding the record's lock, the installer checks the project again, moves the folder into `res://addons/<folder>/`,
- * enables it in `project.godot` the way the editor's plugin switch does, writes its license into the project's
- * notices, and records it in `.wasdengine/addons.json`, and afterwards imports the project so the add-on's errors show
+ * enables it in `project.godot` the way the editor's plugin switch does, a setting whose value is a Dictionary by adding
+ * its entries to the project's own, writes its license into the project's notices, and records it in
+ * `.wasdengine/addons.json` with the values its settings replaced, and afterwards imports the project so the add-on's
+ * errors show
  * at once. `project.godot` and the notices are read and written at the moment each changes, and a step that fails puts
  * back only what the change itself did, keeping what others changed meanwhile; what it cannot put back, it names. A
  * removal scans the project for files that use the add-on first, then, holding the record's lock, takes out only paths
- * in the add-on's own folder in the same way. Every folder that a removal or a replacement takes out moves to a new
+ * in the add-on's own folder in the same way, and gives each setting it still holds the add-on's value the value it
+ * had before the installation. Every folder that a removal or a replacement takes out moves to a new
  * backup folder of the add-on, `.wasdengine/backups/<id>/<time>/`, and stays there. Every change stays inside the
  * project, whatever symbolic links lie on its way (`paths.ts`). A Blender extension unpacks once into the shared add-on
  * store, or is copied there from its catalog files when WASD Engine wrote it, and every Blender worker enables it by id;
@@ -27,8 +30,8 @@ import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catal
 import { standardLicenseText } from './licenses.ts'
 import { NOTICES_FILE, noticeSection, readNotice, removeNotice, writeNotice } from './notices.ts'
 import { projectEntry, projectFolder } from './paths.ts'
-import { ProjectFile, revertEdit } from './project-file.ts'
-import { lockRecord, readRecord, RECORD_FILE, STATE_DIR, type HeldRecord } from './record.ts'
+import { dictionaryEntries, dictionaryLiteral, ProjectFile, revertEdit, type DictionaryEntry } from './project-file.ts'
+import { lockRecord, readRecord, RECORD_FILE, SETTINGS_FILE, STATE_DIR, type HeldRecord, type SettingBefore } from './record.ts'
 import type {
   GameAddon,
   GameAddonInstallResult,
@@ -280,6 +283,58 @@ function outermost(paths: readonly string[]): string[] {
 /** A location inside the project as a project-relative path with `/` separators. */
 function projectRelative(root: string, location: string): string {
   return relative(root, location).split(sep).join('/')
+}
+
+/** One project setting of a catalog add-on. */
+type GodotSetting = NonNullable<NonNullable<GameAddon['godot']>['settings']>[number]
+
+/** Whether two value texts are the same value, as Godot writes them again with other spacing. */
+function sameValue(left: string, right: string): boolean {
+  return left.trim() === right.trim()
+}
+
+/** Whether two Dictionaries hold the same entries in the same order. */
+function sameEntries(left: readonly DictionaryEntry[], right: readonly DictionaryEntry[]): boolean {
+  return left.length === right.length
+    && left.every((entry, index) => entry.key === right[index]?.key && sameValue(entry.value, right[index].value))
+}
+
+/**
+ * What an add-on's settings set, as ids that others' settings share: each setting, or each entry of a Dictionary.
+ * @param settings - the add-on's settings.
+ * @returns the ids.
+ */
+function settingIds(settings: readonly GodotSetting[]): string[] {
+  return settings.flatMap((setting) => {
+    const entries = dictionaryEntries(setting.value)
+    const id = `${setting.section}\n${setting.key}`
+    return entries === undefined ? [id] : entries.map(entry => `${id}\n${entry.key}`)
+  })
+}
+
+/**
+ * The values an add-on's settings hold in a project before its installation changes them, to remember with it: the
+ * remembered values of an earlier installation, with the values of settings it did not have.
+ * @param project - `project.godot` before the installation.
+ * @param settings - the add-on's settings.
+ * @param remembered - what an earlier installation remembered.
+ * @param reinstall - whether the project has the add-on already, whose settings then hold the add-on's values.
+ * @returns what to remember, or undefined when an earlier installation remembered nothing, so nothing can be known.
+ */
+function settingsBefore(
+  project: ProjectFile,
+  settings: readonly GodotSetting[],
+  remembered: readonly SettingBefore[] | undefined,
+  reinstall: boolean,
+): SettingBefore[] | undefined {
+  if (remembered === undefined && reinstall) return undefined
+  const known = [...remembered ?? []]
+  for (const setting of settings) {
+    if (known.some(entry => entry.section === setting.section && entry.key === setting.key)) continue
+    const before = project.get(setting.section, setting.key)
+    known.push({ section: setting.section, key: setting.key, ...before === undefined ? {} : { before } })
+  }
+  return known
 }
 
 /**
@@ -746,9 +801,20 @@ export class GameAddonManager {
       const target = join(addons, godot.addonDir)
       await rename(staged.folder, target)
       rollback.add(async () => { await rename(target, staged.folder) }, `${folderPath} holds ${addon.title} ${addon.version}`)
-      const enabled = await editProject(projectDir, (project) => { this.enableInProject(project, addon) })
+      // What the settings held before is read in the same edit that changes them.
+      let remember: SettingBefore[] | undefined
+      const reinstall = record.entries.some(item => item.id === addon.id) || previous !== undefined
+      const enabled = await editProject(projectDir, (project) => {
+        remember = settingsBefore(project, godot.settings ?? [], record.settings.get(addon.id), reinstall)
+        this.enableInProject(project, addon)
+      })
       if (enabled === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`)
       rollback.add(async () => { await revertProject(projectDir, enabled) }, `project.godot enables ${addon.title}`)
+      // A setting the project did not have goes at the removal whether or not it is remembered.
+      if (remember !== undefined && remember.some(entry => entry.before !== undefined)) {
+        await record.writeSettings(new Map([...record.settings, [addon.id, remember]]))
+        rollback.add(async () => { await record.writeSettings(record.settings) }, `${STATE_DIR}/${SETTINGS_FILE} holds the settings ${addon.title} replaced`)
+      }
       const notice = await readNotice(projectDir, addon.id)
       await writeNotice(projectDir, noticeSection(addon, staged.licenseText), addon.id)
       rollback.add(async () => {
@@ -891,9 +957,16 @@ export class GameAddonManager {
         const others = [...(await this.presenceOf(projectDir, record.entries)).entries()]
           .filter(([other, state]) => other !== addon.id && state.state !== 'absent')
           .flatMap(([other]) => this.catalog.get(other)?.godot?.settings ?? [])
-        const shared = new Set(others.map(setting => `${setting.section}/${setting.key}`))
-        const disabled = await editProject(projectDir, (project) => { this.disableInProject(project, addon, shared) })
+        const shared = new Set(settingIds(others))
+        const remembered = record.settings.get(addon.id)
+        const disabled = await editProject(projectDir, (project) => { this.disableInProject(project, addon, shared, remembered) })
         if (disabled !== undefined) rollback.add(async () => { await revertProject(projectDir, disabled) }, `project.godot no longer enables ${addon.title}`)
+        if (remembered !== undefined) {
+          const kept = new Map(record.settings)
+          kept.delete(addon.id)
+          await record.writeSettings(kept)
+          rollback.add(async () => { await record.writeSettings(record.settings) }, `${STATE_DIR}/${SETTINGS_FILE} no longer holds the settings ${addon.title} replaced`)
+        }
         const notice = await removeNotice(projectDir, addon.id)
         if (notice !== undefined) rollback.add(async () => { await writeNotice(projectDir, notice, addon.id) }, `${NOTICES_FILE} no longer holds the notice of ${addon.title}`)
       }
@@ -1040,24 +1113,75 @@ export class GameAddonManager {
     return top === undefined ? standardLicenseText(addon.license, addon.copyright) : await readFile(join(staging, top), 'utf8')
   }
 
+  /**
+   * Enable an add-on in `project.godot`: its plugin, autoloads, and settings. A setting whose value is a Dictionary, as
+   * `[importer_defaults]` holds the import options of each importer, adds its entries to the project's own Dictionary,
+   * replacing only entries of the same key; a project's value that is no Dictionary, and any other setting, takes the
+   * add-on's value.
+   */
   private enableInProject(project: ProjectFile, addon: GameAddon): void {
     const godot = addon.godot as NonNullable<GameAddon['godot']>
     if (godot.plugin !== undefined) project.enablePlugin(`res://addons/${godot.addonDir}/${godot.plugin}`)
     for (const autoload of godot.autoloads ?? []) {
       if (project.autoload(autoload.name) !== autoload.path) project.addAutoload(autoload.name, autoload.path)
     }
-    for (const setting of godot.settings ?? []) project.set(setting.section, setting.key, setting.value)
+    for (const setting of godot.settings ?? []) {
+      const wanted = dictionaryEntries(setting.value)
+      const current = project.get(setting.section, setting.key)
+      const existing = current === undefined ? [] : dictionaryEntries(current)
+      if (wanted === undefined || existing === undefined) {
+        if (current === undefined || !sameValue(current, setting.value)) project.set(setting.section, setting.key, setting.value)
+        continue
+      }
+      const merged = existing.map(entry => wanted.find(own => own.key === entry.key) ?? entry)
+      for (const own of wanted) if (!existing.some(entry => entry.key === own.key)) merged.push(own)
+      if (current === undefined || !sameEntries(existing, merged)) project.set(setting.section, setting.key, dictionaryLiteral(merged))
+    }
   }
 
-  /** Take an add-on's plugin, autoloads, and settings out of `project.godot`, keeping settings in `shared`. */
-  private disableInProject(project: ProjectFile, addon: GameAddon, shared: ReadonlySet<string>): void {
+  /**
+   * Take an add-on's plugin, autoloads, and settings out of `project.godot`. A setting, or an entry of a Dictionary
+   * setting, that still holds the add-on's value gets back the value it had before the installation, or goes when it
+   * had none; one changed since keeps its value, and so does one that another installed add-on in `shared` sets.
+   * @param shared - ids of what other add-ons' settings set, from `settingIds`.
+   * @param remembered - the values the installation replaced, when it remembered them.
+   */
+  private disableInProject(
+    project: ProjectFile,
+    addon: GameAddon,
+    shared: ReadonlySet<string>,
+    remembered: readonly SettingBefore[] | undefined,
+  ): void {
     const godot = addon.godot as NonNullable<GameAddon['godot']>
     if (godot.plugin !== undefined) project.disablePlugin(`res://addons/${godot.addonDir}/${godot.plugin}`)
     for (const autoload of godot.autoloads ?? []) {
       if (project.autoload(autoload.name) === autoload.path) project.remove('autoload', autoload.name)
     }
     for (const setting of godot.settings ?? []) {
-      if (!shared.has(`${setting.section}/${setting.key}`)) project.remove(setting.section, setting.key)
+      const id = `${setting.section}\n${setting.key}`
+      const before = remembered?.find(entry => entry.section === setting.section && entry.key === setting.key)?.before
+      const current = project.get(setting.section, setting.key)
+      if (current === undefined) continue
+      const wanted = dictionaryEntries(setting.value)
+      const existing = dictionaryEntries(current)
+      if (wanted === undefined || existing === undefined) {
+        if (shared.has(id) || !sameValue(current, setting.value)) continue
+        if (before === undefined) project.remove(setting.section, setting.key)
+        else project.set(setting.section, setting.key, before)
+        continue
+      }
+      const earlier = before === undefined ? [] : dictionaryEntries(before) ?? []
+      const entries = [...existing]
+      for (const own of wanted) {
+        const at = entries.findIndex(entry => entry.key === own.key)
+        const held = entries[at]
+        if (held === undefined || shared.has(`${id}\n${own.key}`) || !sameValue(held.value, own.value)) continue
+        const previous = earlier.find(entry => entry.key === own.key)
+        if (previous === undefined) entries.splice(at, 1)
+        else entries[at] = previous
+      }
+      if (entries.length === 0 && before === undefined) project.remove(setting.section, setting.key)
+      else if (!sameEntries(existing, entries)) project.set(setting.section, setting.key, dictionaryLiteral(entries))
     }
   }
 

@@ -368,6 +368,30 @@ describe('sprite sheets, sequences, and grids', () => {
     expect(sampledFrames([0, 1], 4).map(entry => entry.index)).toEqual([0, 1])
   })
 
+  it('reads at most as many tags as an animation has frames, and names thousands of repeated tags in linear time', () => {
+    // A sheet JSON of 1 MiB holds about 37,000 same-named tags; every tag past the cap is left out.
+    const tags = Array.from({ length: 30_000 }, () => ({ name: 'a', from: 0, to: 0 }))
+    const json = { frames: [{ frame: { x: 0, y: 0, w: 8, h: 8 } }], meta: { image: 'hero.png', frameTags: tags } }
+    const animations = sheetAnimations(json, 'art/hero.png', 'art/hero.json')
+    expect(animations).toHaveLength(MAX_ANIMATION_FRAMES)
+    // Tags that name no frames do not count toward the cap.
+    const sparse = { ...json, meta: { image: 'hero.png', frameTags: [{ name: 'bad', from: 5, to: 9 }, ...tags.slice(0, 2)] } }
+    expect(sheetAnimations(sparse, 'art/hero.png', 'art/hero.json').map(animation => animation.name)).toEqual(['a', 'a'])
+    // Repeating one name thousands of times costs one lookup each, not one for every earlier repeat.
+    const repeated = Array.from({ length: 20_000 }, () => ({ name: 'walk', source: 'sheet' as const, definedIn: 'art/hero.json', frames: [], loop: true }))
+    const started = performance.now()
+    const named = uniqueNames(repeated)
+    expect(performance.now() - started).toBeLessThan(1000)
+    expect(named.slice(0, 3).map(animation => animation.name)).toEqual(['walk (hero.json)', 'walk (hero.json) 2', 'walk (hero.json) 3'])
+    expect(new Set(named.map(animation => animation.name)).size).toBe(20_000)
+  })
+
+  it('numbers a repeated name from 2, past the numbers other animations already hold', () => {
+    const animation = (name: string, definedIn?: string) => ({ name, source: 'godot' as const, frames: [], loop: true, ...definedIn === undefined ? {} : { definedIn } })
+    const unique = uniqueNames([animation('run 2'), animation('run'), animation('run'), animation('run 3'), animation('run'), animation('frames')])
+    expect(unique.map(entry => entry.name)).toEqual(['run 2', 'run', 'run 3', 'run 3 2', 'run 4', 'frames'])
+  })
+
   it('names repeated animations after their files, and reports details', () => {
     const unique = uniqueNames([
       { name: 'run', source: 'godot', definedIn: 'scenes/a.tscn', frames: [], loop: true },

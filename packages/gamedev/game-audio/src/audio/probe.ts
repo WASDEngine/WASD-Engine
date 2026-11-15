@@ -1,13 +1,12 @@
 /**
  * What an audio file's headers say without decoding it: its format and encoding, sample rate, channels, bit depth,
  * bit rate, length, and the loop points a WAV file stores. A probe reads a few small byte windows: the first 4 KiB,
- * the chunk headers of a WAV or AIFF file, the frame after an ID3 tag, the last 64 KiB of an Ogg file, whose final
- * page holds the length, and 4 KiB windows through an MP3 file without a frame count. WAV and AIFF lengths come from
- * their sample counts, FLAC lengths from STREAMINFO, MP3 lengths from the Xing, Info, or VBRI frame count less the LAME
- * encoder delay and padding, and Ogg lengths from the last page's granule position; an MP3 without a frame count is
- * estimated from its first frame's bit rate, which holds for the whole file when the frames found through it share it.
- * MP3, Ogg Vorbis, and Ogg Opus files also state the shortest length their size allows, which a frame count or granule
- * position that understates the length does not move.
+ * the chunk headers of a WAV or AIFF file, the frame after an ID3 tag, and the last 64 KiB of an Ogg file, whose final
+ * page holds the length. WAV and AIFF lengths come from their sample counts, FLAC lengths from STREAMINFO, MP3 lengths
+ * from the Xing, Info, or VBRI frame count less the LAME encoder delay and padding, and Ogg lengths from the last page's
+ * granule position; an MP3 without a frame count is estimated from its first frame's bit rate. These lengths are what
+ * the headers state, which a crafted file may understate: how much audio a decoder makes of a file is what
+ * `decodePlan` counts from all of its bytes.
  *
  * @module
  */
@@ -38,40 +37,28 @@ export interface AudioProbe {
   /** The length is an estimate from the bit rate of an MP3 file that states no frame count. */
   readonly estimated?: boolean
   /**
-   * With an estimated length, every frame found through the file has the first frame's bit rate, so the estimate is the
-   * length of a constant bit rate file; absent when the bit rates differ or too few frames were found to tell. An
-   * estimate from the first frame's bit rate runs long when that frame is quieter than the rest of a variable bit rate
-   * file.
+   * The first loop a WAV file's sampler chunk stores, in sample frames, its end inclusive, when its type is one Godot
+   * plays: forward, alternating (`ping-pong`), or backward. Godot ignores a loop of another type, which the sampler
+   * chunk reserves or leaves to a sampler's maker, so the probe reports none.
    */
-  readonly constantBitRate?: true
-  /**
-   * The shortest the sound can be, from its size at the highest bit rate its format carries: an MP3 file's bytes from
-   * the first frame on at the highest bit rate of its MPEG version and layer, which no frame exceeds, and an Ogg Vorbis
-   * or Opus file's bytes at {@link OGG_MAX_BITS_PER_CHANNEL} for each channel. A length the headers state below it
-   * understates the sound, as a frame count or a granule position may.
-   */
-  readonly minSeconds?: number
-  /** The first loop a WAV file's sampler chunk stores, in sample frames, its end inclusive. */
-  readonly loop?: { readonly start: number; readonly end: number }
+  readonly loop?: AudioFileLoop
 }
+
+/** A loop a WAV file's sampler chunk stores. */
+export interface AudioFileLoop {
+  /** First sample frame of the loop. */
+  readonly start: number
+  /** Last sample frame of the loop. */
+  readonly end: number
+  /** How the loop plays when it does not play forward: back and forth, or backward. */
+  readonly mode?: 'ping-pong' | 'backward'
+}
+
+/** How a sampler loop of each type plays, by its type number: 0 forward, 1 alternating, 2 backward. */
+const SAMPLER_LOOP_TYPES: readonly Pick<AudioFileLoop, 'mode'>[] = [{}, { mode: 'ping-pong' }, { mode: 'backward' }]
 
 /** Bytes of the first window, which holds every header but a WAV or AIFF file's later chunks and an ID3 tag's frames. */
 export const PROBE_HEAD_BYTES = 4096
-
-/**
- * Highest bit rate an Ogg stream carries for each channel, in bits per second, with room for the pages' own bytes:
- * an Opus stream carries at most 510 kbit/s, and libvorbis at its highest quality about 250 kbit/s a channel.
- */
-export const OGG_MAX_BITS_PER_CHANNEL: Readonly<Record<'vorbis' | 'opus', number>> = { vorbis: 1_000_000, opus: 600_000 }
-
-/** Frames read one after another from an MP3 file's first frame to tell a constant bit rate. */
-const RATE_FRAMES = 32
-
-/** Windows read through an MP3 file, each for one more frame's bit rate. */
-const RATE_WINDOWS = 8
-
-/** Bytes of each of those windows, enough for a frame of any bit rate and the next frame's header. */
-const RATE_WINDOW_BYTES = 4096
 
 /** Bytes at the end of an Ogg file searched for its last page, more than one page can hold. */
 export const PROBE_TAIL_BYTES = 65_536
@@ -241,8 +228,12 @@ async function probeWav(read: ByteReader, size: number, rf64: boolean): Promise<
       const rest = Math.max(0, size - offset - 8)
       dataBytes = length === 0 ? rest : Math.min(length, rest)
     } else if (id === 'smpl' && length >= 60) {
+      // The sampler data, then the first loop: its cue point, type, start, and end.
       const sampler = await read(offset + 8, 60)
-      if (sampler.length >= 60 && u32le(sampler, 28) > 0) loop = { start: u32le(sampler, 44), end: u32le(sampler, 48) }
+      const played = SAMPLER_LOOP_TYPES[u32le(sampler, 40)]
+      if (sampler.length >= 60 && u32le(sampler, 28) > 0 && played !== undefined) {
+        loop = { start: u32le(sampler, 44), end: u32le(sampler, 48), ...played }
+      }
     }
     offset += 8 + length + (length % 2)
   }
@@ -316,19 +307,24 @@ const MPEG_BITRATES: readonly (readonly number[])[] = [
 const MPEG_RATES: readonly (readonly number[])[] = [[11_025, 12_000, 8000], [], [22_050, 24_000, 16_000], [44_100, 48_000, 32_000]]
 
 /** One MPEG audio frame header. */
-interface MpegFrame {
+export interface MpegFrame {
   readonly mpeg1: boolean
   readonly layer: 1 | 2 | 3
   readonly sampleRate: number
   readonly kbps: number
-  /** Highest bit rate of the frame's version and layer. */
-  readonly maxKbps: number
   readonly channels: 1 | 2
   readonly samplesPerFrame: number
   readonly bytes: number
 }
 
-function mpegFrame(bytes: Uint8Array, offset: number): MpegFrame | undefined {
+/**
+ * Read the MPEG audio frame header at an offset.
+ * @param bytes - the bytes.
+ * @param offset - where the header would start.
+ * @returns the frame, or undefined where no valid header starts: a sync without a version, layer, bit rate, and sample
+ * rate that a decoder reads, or a free-format frame, whose size its header does not state.
+ */
+export function mpegFrame(bytes: Uint8Array, offset: number): MpegFrame | undefined {
   if (offset + 4 > bytes.length || byte(bytes, offset) !== 0xff || (byte(bytes, offset + 1) & 0xe0) !== 0xe0) return undefined
   const version = (byte(bytes, offset + 1) >> 3) & 3
   const layerBits = (byte(bytes, offset + 1) >> 1) & 3
@@ -346,7 +342,7 @@ function mpegFrame(bytes: Uint8Array, offset: number): MpegFrame | undefined {
     ? (Math.floor(12 * kbps * 1000 / sampleRate) + padding) * 4
     : Math.floor(samplesPerFrame / 8 * kbps * 1000 / sampleRate) + padding
   const channels = byte(bytes, offset + 3) >> 6 === 3 ? 1 : 2
-  return { mpeg1, layer, sampleRate, kbps, maxKbps: bitrates.at(-1) ?? kbps, channels, samplesPerFrame, bytes: frameBytes }
+  return { mpeg1, layer, sampleRate, kbps, channels, samplesPerFrame, bytes: frameBytes }
 }
 
 /** The frame count and encoder offsets of a Xing, Info, or VBRI frame. */
@@ -386,59 +382,17 @@ function frameCount(bytes: Uint8Array, offset: number, frame: MpegFrame): FrameC
   return undefined
 }
 
-/** Whether two frames belong to one stream: the same MPEG version, layer, and sample rate. */
-function sameStream(frame: MpegFrame, other: MpegFrame): boolean {
+/**
+ * Whether two frames belong to one stream: the same MPEG version, layer, and sample rate.
+ * @param frame - one frame.
+ * @param other - the other.
+ * @returns whether a decoder reads them as one stream.
+ */
+export function sameStream(frame: MpegFrame, other: MpegFrame): boolean {
   return frame.mpeg1 === other.mpeg1 && frame.layer === other.layer && frame.sampleRate === other.sampleRate
 }
 
-/**
- * The first frame of a window that belongs to a stream: a sync of the stream's version, layer, and rate whose next
- * frame, inside the window, syncs too.
- * @param bytes - the window.
- * @param stream - the stream's first frame.
- * @returns the frame, or undefined when the window holds none.
- */
-function frameIn(bytes: Uint8Array, stream: MpegFrame): MpegFrame | undefined {
-  for (let offset = 0; offset + 4 <= bytes.length; offset++) {
-    const frame = mpegFrame(bytes, offset)
-    if (frame === undefined || frame.bytes <= 4 || !sameStream(frame, stream)) continue
-    const next = mpegFrame(bytes, offset + frame.bytes)
-    if (next !== undefined && sameStream(next, stream)) return frame
-  }
-  return undefined
-}
-
-/**
- * Whether an MP3 file without a frame count has a constant bit rate: every frame found has the first frame's bit
- * rate, among up to {@link RATE_FRAMES} frames after it and one frame in each of {@link RATE_WINDOWS} windows spread
- * through the rest of the file, with at least one found.
- * @param read - reads byte windows of the file.
- * @param first - the window that holds the first frame.
- * @param offset - where in it the first frame starts.
- * @param start - where that window starts in the file.
- * @param size - the file's size.
- * @returns whether the bit rate is constant.
- */
-async function constantBitRate(read: ByteReader, first: Uint8Array, offset: number, start: number, size: number): Promise<boolean> {
-  const stream = mpegFrame(first, offset)
-  if (stream === undefined) return false
-  const rates: number[] = []
-  let at = offset + stream.bytes
-  for (let index = 0; index < RATE_FRAMES; index++) {
-    const frame = mpegFrame(first, at)
-    if (frame === undefined || frame.bytes <= 4 || !sameStream(frame, stream)) break
-    rates.push(frame.kbps)
-    at += frame.bytes
-  }
-  const audio = start + offset
-  for (let window = 1; window <= RATE_WINDOWS; window++) {
-    const frame = frameIn(await read(audio + Math.floor((size - audio) * window / (RATE_WINDOWS + 1)), RATE_WINDOW_BYTES), stream)
-    if (frame !== undefined) rates.push(frame.kbps)
-  }
-  return rates.length > 0 && rates.every(rate => rate === stream.kbps)
-}
-
-async function probeMpeg(first: Uint8Array, start: number, size: number, read: ByteReader): Promise<AudioProbe | undefined> {
+function probeMpeg(first: Uint8Array, start: number, size: number): AudioProbe | undefined {
   for (let offset = 0; offset + 4 <= first.length; offset++) {
     const frame = mpegFrame(first, offset)
     // A false sync inside a tag or junk is rejected unless the frame after it, when in the window, syncs too.
@@ -446,20 +400,18 @@ async function probeMpeg(first: Uint8Array, start: number, size: number, read: B
     if (offset + frame.bytes + 4 <= first.length && mpegFrame(first, offset + frame.bytes) === undefined) continue
     const label = frame.layer === 3 ? 'MP3' : `MPEG layer ${frame.layer === 1 ? 'I' : 'II'}`
     const bits = (size - start - offset) * 8
-    const minSeconds = bits / (frame.maxKbps * 1000)
     const count = frameCount(first, offset, frame)
     if (count !== undefined && count.frames > 0) {
       const seconds = Math.max(0, count.frames * frame.samplesPerFrame - count.trimmed) / frame.sampleRate
       const audioBytes = count.bytes ?? size - start - offset
       return {
         format: label, sampleRate: frame.sampleRate, channels: frame.channels, seconds,
-        ...seconds > 0 ? { bitrate: Math.round(audioBytes * 8 / seconds) } : {}, minSeconds,
+        ...seconds > 0 ? { bitrate: Math.round(audioBytes * 8 / seconds) } : {},
       }
     }
     return {
       format: label, sampleRate: frame.sampleRate, channels: frame.channels, bitrate: frame.kbps * 1000,
       seconds: bits / (frame.kbps * 1000), estimated: true,
-      ...await constantBitRate(read, first, offset, start, size) ? { constantBitRate: true } : {}, minSeconds,
     }
   }
   return undefined
@@ -472,15 +424,12 @@ async function probeOgg(head: Uint8Array, read: ByteReader, size: number): Promi
   let rate: number | undefined
   let channels: number | undefined
   let preSkip = 0
-  let codec: keyof typeof OGG_MAX_BITS_PER_CHANNEL | undefined
   if (byte(head, packet) === 1 && ascii(head, packet + 1, 6) === 'vorbis') {
     format = 'Ogg Vorbis'
-    codec = 'vorbis'
     channels = byte(head, packet + 11)
     rate = u32le(head, packet + 12)
   } else if (ascii(head, packet, 8) === 'OpusHead') {
     format = 'Ogg Opus'
-    codec = 'opus'
     channels = byte(head, packet + 9)
     preSkip = u16le(head, packet + 10)
     // Opus always decodes at 48 kHz; the header's rate is the source's, for information.
@@ -492,10 +441,6 @@ async function probeOgg(head: Uint8Array, read: ByteReader, size: number): Promi
     format,
     ...rate === undefined || rate <= 0 ? {} : { sampleRate: rate },
     ...channels === undefined || channels <= 0 ? {} : { channels },
-    // A granule position that understates the length does not shorten what the decoder decodes.
-    ...codec === undefined || channels === undefined || channels <= 0
-      ? {}
-      : { minSeconds: size * 8 / (channels * OGG_MAX_BITS_PER_CHANNEL[codec]) },
   }
   if (rate === undefined || rate <= 0) return facts
   const from = Math.max(0, size - PROBE_TAIL_BYTES)
@@ -536,5 +481,5 @@ export async function probeAudio(read: ByteReader, size: number): Promise<AudioP
     first = await read(start, PROBE_HEAD_BYTES)
   }
   if (ascii(first, 0, 4) === 'fLaC') return probeFlac(first, start, size)
-  return await probeMpeg(first, start, size, read)
+  return probeMpeg(first, start, size)
 }

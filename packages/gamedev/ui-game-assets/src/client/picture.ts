@@ -77,14 +77,19 @@ const BY_CONTENT: AssetFormat = { kind: 'image', label: 'image', decoder: 'brows
  * Check an image a model names before it is decoded: an image a three.js decoder reads by the format its name gives,
  * any other by its content, as the browser decodes it.
  * @param data - the image file, or the bytes of the buffer that holds it.
- * @param name - the name the model stores for it; empty for an image inside the model's buffers.
+ * @param name - the name the model stores for it, or a URL; empty for an image inside the model's buffers.
  * @param maxPixels - the most pixels the viewer decodes for one image.
+ * @returns the memory the image takes decoded: its pixels at what its decoder takes for each, and for an image that
+ * states no size, such as an SVG with only a viewBox, a square of {@link FALLBACK_EDGE}.
  * @throws {ImageTooLargeError} when its header states more pixels; {UnsizedImageError} when it states no size this
  * viewer reads.
  */
-export function checkModelImage(data: Uint8Array, name: string, maxPixels: number): void {
+export function checkModelImage(data: Uint8Array, name: string, maxPixels: number): number {
   const named = formatOf(name)
-  checkedImageSize(data, named?.kind === 'image' && named.decoder !== 'browser' ? named : BY_CONTENT, maxPixels)
+  const format = named?.kind === 'image' && named.decoder !== 'browser' ? named : BY_CONTENT
+  const size = checkedImageSize(data, format, maxPixels)
+  const pixels = size === undefined ? FALLBACK_EDGE * FALLBACK_EDGE : size.width * size.height
+  return pixels * DECODED_BYTES_PER_PIXEL[format.kind === 'image' ? format.decoder : 'browser']
 }
 
 /**

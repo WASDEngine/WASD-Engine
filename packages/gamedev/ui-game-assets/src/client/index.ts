@@ -3,15 +3,17 @@
  * title. The body lists the 2D and 3D art of the Session's game project in a searchable picker, sorted into the
  * project's folders, and shows the selected asset: images in a zoomable view that plays their 2D animations, and
  * models in a 3D view that three.js draws from a chunk loaded on first use, with their clips, skeleton, and details.
- * Each Session keeps its scan and choices until its scope ends. The plugin also answers the agent's asset tools: it
- * draws an asset for a `game-assets/render` request of a Session it may read, and opens an asset in the Session's
- * Assets tab for `game-assets/reveal`.
+ * Each Session keeps its scan and choices until its scope ends. Every file the tab and its pictures read comes through
+ * the Host's `GET /api/game-assets.file` route inside the Session's project folder, which a link inside the project
+ * cannot lead a read out of. The plugin also answers the agent's asset tools: it draws an asset for a
+ * `game-assets/render` request of a Session it may read, inside the folder the request names, and opens an asset in the
+ * Session's Assets tab for `game-assets/reveal`.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: the ctx.remote merge with the `workspaceFiles` namespace and the forwarded events, the `file` resource
-// protocol, the sessions service, the workspace's Session navigation, and the right Sidebar's registry, seats, and
-// navigation.
+// protocol, the sessions service and its list of Sessions with their folders, the workspace's Session navigation, and
+// the right Sidebar's registry, seats, and navigation.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/client'
@@ -22,7 +24,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetGrid, AssetReveal } from '@deepseek-ai/dsh-game-assets/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { RemoteError } from '@deepseek-ai/dsh-typert-protocol'
+import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import { answerRender, canDrawModels, drawWeight, HEAD_BYTES, type AgentRenderSources } from './agent.ts'
 import { MAX_TEXT_BYTES, type AnimationSources } from './animations2d.ts'
@@ -30,7 +32,7 @@ import { AssetsTab, AssetsTabTitle, type AssetsTabInjected } from './AssetsTab.t
 import { AssetsGlyph } from './icon.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { DrawQueue } from './queue.ts'
-import { readablePath, readAsset, relatedUrl } from './read.ts'
+import { readAsset, readHead, relatedUrl, type AssetFile } from './read.ts'
 import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
 import { AssetsSource } from './source.ts'
 import { ProjectWalks } from './walks.ts'
@@ -38,7 +40,7 @@ import { ProjectWalks } from './walks.ts'
 export type { AssetsTabInjected, AssetsTabProps, ViewerLimits } from './AssetsTab.tsx'
 export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from './formats.ts'
 export type { GameAssetsLocaleKey } from './locales.ts'
-export type { AssetFile, ReadBytes } from './read.ts'
+export type { AssetFile } from './read.ts'
 export type { AssetEntry, AssetScan, ListFolder, ScanLimits } from './scan.ts'
 export type { ScanState, ViewState } from './source.ts'
 export type { SpriteAnimation, SpriteFrame } from './sprites.ts'
@@ -66,7 +68,11 @@ export interface Config {
   maxFolders?: number
   /** Assets one scan collects before it stops and says the list is incomplete. */
   maxAssets?: number
-  /** Largest file the viewer reads, in bytes; a larger asset shows a notice instead. */
+  /**
+   * Largest file the viewer reads, in bytes; also the most memory a model's loader may allocate beyond its files as the
+   * file asks for it, the most a glTF model and the files it names take together, and the most a model's textures take
+   * in their files and again decoded. A larger asset shows a notice instead.
+   */
   maxPreviewBytes?: number
   /**
    * Most pixels, width times height, of an image the viewer decodes, as its header states them before any pixel is
@@ -77,8 +83,8 @@ export interface Config {
   maxAgentDraws?: number
   /**
    * Largest total memory in bytes that the pictures this window draws at once for agents decode, as each request counts
-   * it: an image its file and the pixels its header states, a model its file with a glTF model's buffers and images; a
-   * larger draw draws alone.
+   * it: an image its file and the pixels its header states, a model what the Host counted, its file, the files it names,
+   * and the memory its textures, a VOX file's meshes, and an FBX file's arrays take; a larger draw draws alone.
    */
   maxAgentDrawBytes?: number
 }
@@ -107,10 +113,14 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   const limits: ScanLimits = { maxFolders: config.maxFolders, maxAssets: config.maxAssets }
   const viewer = (): Promise<typeof import('./viewer/index.ts')> => import('./viewer/index.ts')
   const listOf = (sessionId: SessionId): ListFolder => (path, signal) => ctx.remote.workspaceFiles.list(sessionId, path, signal)
-  const readOf = (sessionId: SessionId) => (path: string, maxBytes: number, signal: AbortSignal) => readAsset(
-    (target, options, readSignal) => ctx.remote.workspaceFiles.readBytes(sessionId, readablePath(target), options, readSignal),
-    path, maxBytes, signal,
-  )
+  /** The Session's project folder, from the Host's list of Sessions; undefined until the list names one. */
+  const folderOf = (sessionId: SessionId): string | undefined => ctx.sessions.list.getSnapshot().byId[sessionId]?.cwd
+  type Read = (path: string, maxBytes: number, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>
+  const readIn = (root: string | undefined): Read => async (path, maxBytes, signal) => {
+    if (root === undefined) return { ok: false, error: new RemoteError('game-assets/unreadable', 'The Session names no project folder to read from.', { path }) }
+    return await readAsset(document.baseURI, root, path, maxBytes, signal)
+  }
+  const readOf = (sessionId: SessionId): Read => (path, maxBytes, signal) => readIn(folderOf(sessionId))(path, maxBytes, signal)
   // Each Session's state with the release of its Session-scope effect; both end with the Session or this plugin.
   const sources = new Map<SessionId, { readonly source: AssetsSource; readonly release: () => void }>()
   ctx.effect(() => () => {
@@ -156,9 +166,13 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
    * @param scanOf - the scan whose Godot files are read.
    * @returns the reads.
    */
-  const animationSources = (sessionId: SessionId, scanOf: (signal: AbortSignal) => Promise<AssetScan | undefined>): AnimationSources => ({
+  const animationSources = (
+    sessionId: SessionId,
+    read: (path: string, maxBytes: number, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>,
+    scanOf: (signal: AbortSignal) => Promise<AssetScan | undefined>,
+  ): AnimationSources => ({
     async readText(path, signal) {
-      const result = await readOf(sessionId)(path, MAX_TEXT_BYTES, signal)
+      const result = await read(path, MAX_TEXT_BYTES, signal)
       return result.ok ? new TextDecoder().decode(result.value.data) : undefined
     },
     async files(folder, signal) {
@@ -171,18 +185,17 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     },
   })
   // An agent that just wrote a Godot resource looks for it, so its pictures use a walk that started after its request.
-  const agentSources = (sessionId: SessionId, ticket: number): AgentRenderSources => ({
-    read: readOf(sessionId),
+  // Every read of a draw stays inside the folder its request names.
+  const agentSources = (sessionId: SessionId, ticket: number, root: string, maxBytes: number): AgentRenderSources => ({
+    read: readIn(root),
     async readHead(path, signal) {
-      const range = { offset: 0, length: HEAD_BYTES }
-      const head = await ctx.remote.workspaceFiles.readBytes(sessionId, readablePath(path), { range }, signal).catch(() => {
-        // AbortError or an assembly fault: the draw counts the file alone, and a cancelled one ends before its turn.
+      return await readHead(document.baseURI, root, path, HEAD_BYTES, signal).catch(() => {
+        // AbortError: the draw counts the file alone, and a cancelled one ends before its turn.
         return undefined
       })
-      return head?.ok === true ? head.value.data : undefined
     },
-    animations: animationSources(sessionId, signal => walks.get(sessionId, ticket, signal)),
-    relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
+    animations: animationSources(sessionId, readIn(root), signal => walks.get(sessionId, ticket, signal)),
+    relatedUrl: (path, reference) => relatedUrl(document.baseURI, root, path, reference, maxBytes),
     viewer,
   })
   const tabFace = (scopeKey: string): AssetsTabInjected => {
@@ -196,14 +209,18 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       setOpen: (keys) => { source.setOpen(keys) },
       setFilter: (filter) => { source.setFilter(filter) },
       read: (path, signal) => readOf(sessionId)(path, config.maxPreviewBytes, signal).catch((error: unknown) => {
-        // A Remote call rejects only for an assembly fault; the viewer shows it as a failed read.
-        ctx.logger.warn('ui-game-assets: reading an asset failed', error)
-        return { ok: false, error: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}) } as const
+        // A cancelled read rejects with its reason, whose answer the viewer drops; anything else is a fault to name.
+        if (!signal.aborted) ctx.logger.warn('ui-game-assets: reading an asset failed', error)
+        return { ok: false, error: new RemoteError('game-assets/unreadable', error instanceof Error ? error.message : String(error), { path }) } as const
       }),
-      relatedUrl: (base, path, reference) => relatedUrl(document.baseURI, base, path, reference),
+      relatedUrl: (path, reference) => {
+        const root = folderOf(sessionId)
+        return root === undefined ? undefined : relatedUrl(document.baseURI, root, path, reference, config.maxPreviewBytes)
+      },
       fileAddress: path => fileAddressFor(sessionId, undefined, path),
       animations: animationSources(
         sessionId,
+        readOf(sessionId),
         async signal => source.scanState.getSnapshot().scan ?? await walks.get(sessionId, walks.ticket(), signal),
       ),
       limits: { maxPreviewBytes: config.maxPreviewBytes, maxDecodedPixels: config.maxDecodedPixels },
@@ -234,7 +251,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     const sessionId = ctx.sessions.scopeOf(this)
     if (sessionId === undefined || (request.kind === 'model' && !(drawsModels ||= canDrawModels()))) return next()
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
-    const reads = agentSources(sessionId, walks.ticket())
+    const reads = agentSources(sessionId, walks.ticket(), fields.root, fields.maxBytes)
     // A draw counts the memory it decodes, which an image's header gives before the draw waits for its turn.
     return drawWeight(fields, reads, drawLimits, signal).then(
       weight => draws.run(weight, signal, () => answerRender(fields, reads, drawLimits, signal)),

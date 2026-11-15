@@ -158,7 +158,8 @@ function rect(value: unknown): PixelRect | undefined {
 
 /**
  * The animations of a sprite sheet JSON file, as Aseprite and TexturePacker write them: frames as a list or keyed by
- * name, each with its rectangle and duration, and Aseprite's frame tags as named animations.
+ * name, each with its rectangle and duration, and Aseprite's frame tags as named animations, the first
+ * {@link MAX_ANIMATION_FRAMES} of them that name frames.
  * @param json - the parsed file.
  * @param path - workspace path of the image the sheet describes.
  * @param sheetPath - workspace path of the JSON file.
@@ -186,6 +187,7 @@ export function sheetAnimations(json: unknown, path: string, sheetPath: string):
   const tags = Array.isArray(meta?.frameTags) ? meta.frameTags : []
   const animations: SpriteAnimation[] = []
   for (const tag of tags) {
+    if (animations.length >= MAX_ANIMATION_FRAMES) break
     const fields = record(tag)
     const from = fields?.from
     const to = fields?.to
@@ -303,7 +305,9 @@ export function ownFramesAnimation(path: string, durationsMs: readonly number[])
 }
 
 /**
- * Make names unique: a repeated name gains the file that defines it, then a number.
+ * Make names unique: a repeated name gains the file that defines it, then the lowest number from 2 that no earlier
+ * animation took. The work is linear in the number of animations: each name resumes counting where its last number
+ * was taken, since the names taken only grow.
  * @param animations - animations in order of preference.
  * @returns the same animations with unique names.
  */
@@ -311,11 +315,17 @@ export function uniqueNames(animations: readonly SpriteAnimation[]): SpriteAnima
   const counts = new Map<string, number>()
   for (const animation of animations) counts.set(animation.name, (counts.get(animation.name) ?? 0) + 1)
   const used = new Set<string>()
+  // The next number to try for each name that needed one.
+  const next = new Map<string, number>()
   return animations.map((animation) => {
     let name = animation.name
     if ((counts.get(name) ?? 0) > 1 && animation.definedIn !== undefined) name = `${name} (${animation.definedIn.slice(animation.definedIn.lastIndexOf('/', animation.definedIn.length - 2) + 1)})`
     let candidate = name
-    for (let number = 2; used.has(candidate); number += 1) candidate = `${name} ${number}`
+    if (used.has(candidate)) {
+      let number = next.get(name) ?? 2
+      for (candidate = `${name} ${String(number)}`; used.has(candidate); candidate = `${name} ${String(number)}`) number += 1
+      next.set(name, number + 1)
+    }
     used.add(candidate)
     return candidate === animation.name ? animation : { ...animation, name: candidate }
   })

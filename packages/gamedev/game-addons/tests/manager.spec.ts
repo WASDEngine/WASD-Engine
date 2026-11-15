@@ -392,6 +392,56 @@ describe('GameAddonManager.remove', () => {
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
   })
 
+  it('adds a Dictionary setting\'s entries to the project\'s own, and its removal gives back what was there', async () => {
+    const entries = catalogEntries()
+    const camera = entries['test-camera'] as { godot: { settings?: readonly unknown[] } }
+    // As Extra Import Hints sets the scene importer's import script and turns the Blender importer off.
+    camera.godot.settings = [
+      { section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd"}' },
+      { section: 'filesystem', key: 'import/blender/enabled', value: 'false' },
+    ]
+    const { manager, project } = await setup({ issues: [] }, entries)
+    const own = '\n[filesystem]\n\nimport/blender/enabled=true\n\n[importer_defaults]\n\nscene={\n"meshes/generate_lods": false,\n"import_script/path": "res://tools/mine.gd",\n"animation/fps": 30.0\n}\n'
+    await writeFile(join(project, 'project.godot'), PROJECT_GODOT + own)
+    await manager.install(project, 'test-camera', {}, signal)
+    const installed = new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8'))
+    // The project's other import defaults stay, in their order, and the add-on's entry takes the place of the project's.
+    expect(installed.get('importer_defaults', 'scene')).toBe('{\n"meshes/generate_lods": false,\n"import_script/path": "res://addons/test_camera/hints.gd",\n"animation/fps": 30.0\n}')
+    expect(installed.get('filesystem', 'import/blender/enabled')).toBe('false')
+    expect(JSON.parse(await readFile(join(project, '.wasdengine', 'addon-settings.json'), 'utf8'))).toEqual({
+      format: 1,
+      addons: {
+        'test-camera': [
+          { section: 'importer_defaults', key: 'scene', before: '{\n"meshes/generate_lods": false,\n"import_script/path": "res://tools/mine.gd",\n"animation/fps": 30.0\n}' },
+          { section: 'filesystem', key: 'import/blender/enabled', before: 'true' },
+        ],
+      },
+    })
+    // Reinstalling the same version repairs nothing and remembers the values from before the first installation.
+    expect((await manager.install(project, 'test-camera', {}, signal)).notes).toEqual([])
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT + own)
+    await expect(readFile(join(project, '.wasdengine', 'addon-settings.json'), 'utf8')).rejects.toThrow(/ENOENT/u)
+  })
+
+  it('takes out of a project without such settings only the entries the add-on added, and keeps entries changed since', async () => {
+    const entries = catalogEntries()
+    const camera = entries['test-camera'] as { godot: { settings?: readonly unknown[] } }
+    camera.godot.settings = [{ section: 'importer_defaults', key: 'scene', value: '{"import_script/path": "res://addons/test_camera/hints.gd"}' }]
+    const { manager, project } = await setup({ issues: [] }, entries)
+    await manager.install(project, 'test-camera', {}, signal)
+    await manager.remove(project, 'test-camera', signal)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    // An entry added after the installation stays at the removal, and so does the add-on's entry once changed.
+    await manager.install(project, 'test-camera', {}, signal)
+    const path = join(project, 'project.godot')
+    const edited = new ProjectFile(await readFile(path, 'utf8'))
+    edited.set('importer_defaults', 'scene', '{\n"import_script/path": "res://tools/other.gd",\n"nodes/root_type": "Node3D"\n}')
+    await writeFile(path, edited.toString())
+    await manager.remove(project, 'test-camera', signal)
+    expect(new ProjectFile(await readFile(path, 'utf8')).get('importer_defaults', 'scene')).toBe('{\n"import_script/path": "res://tools/other.gd",\n"nodes/root_type": "Node3D"\n}')
+  })
+
   it('keeps every backup of an add-on in a folder of its own, named in the result', async () => {
     const { manager, project } = await setup()
     // A copy changed by hand, which an installation with replace takes out.

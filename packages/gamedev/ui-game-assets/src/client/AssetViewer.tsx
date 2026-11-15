@@ -81,8 +81,8 @@ function failureText(failure: RemoteFailure, t: Translate): { readonly text: str
       return { text: t('viewer.notFound'), retry: false }
     case 'workspace-file/too-large':
       return { text: t('viewer.tooLarge', { limit: fileSizeText(failure.details.limit) }), retry: false }
-    case 'game-assets/changed':
-      return { text: t('viewer.changed'), retry: true }
+    case 'game-assets/outside':
+      return { text: t('viewer.outside'), retry: false }
     default:
       return { text: t('viewer.failed'), retry: true }
   }

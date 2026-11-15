@@ -1,29 +1,40 @@
 /**
  * Decoding a sound in the browser and measuring it as the agent's `audio_review` reports it. WAV, MP3, Ogg Vorbis and
  * Opus, and FLAC files decode with the browser's own decoder through an OfflineAudioContext at the file's own sample
- * rate, so the samples are not resampled; AIFF files, which browsers do not decode, use the audio tools' AIFF reader,
- * which fills the AudioBuffer a slice at a time so a long file neither holds a second copy nor blocks the page. A
- * measurement covers one stretch of the decoded sound and the seam of one loop, wherever that loop lies in the whole
- * sound. The picture is the one the audio tools draw, encoded as PNG on a canvas. Measuring and drawing run a slice at
- * a time, so a long sound does not block the page.
+ * rate, so the samples are not resampled. Before the browser decodes a file, the audio tools' decode plan counts the
+ * audio its bytes can yield, and a sound past either cap, its length or the memory its samples take, is refused; for
+ * MP3 and Ogg the browser receives only the frames and pages the plan counted, so it cannot decode more than the plan
+ * allows. AIFF files, which browsers do not decode, use the audio tools' AIFF reader, which fills the AudioBuffer a
+ * slice at a time so a long file neither holds a second copy nor blocks the page. A measurement covers one stretch of
+ * the decoded sound and the seam of one loop, wherever that loop lies in the whole sound. The picture is the one the
+ * audio tools draw, encoded as PNG on a canvas. Measuring and drawing run a slice at a time, so a long sound does not
+ * block the page.
  */
 import {
-  analyzeAudioSteps, AUDIO_ERROR, drawAudioImageSteps, finish, loopSeam, openAiff, seamFrames, STEP_FRAMES, stereoImageSteps,
-  type AudioFormat, type AudioProbe, type AudioSamples, type MeasureSteps, type RgbImage,
+  analyzeAudioSteps, AUDIO_ERROR, decodePlan, DecodePlanError, drawAudioImageSteps, finish, loopSeam, openAiff, seamFrames, STEP_FRAMES,
+  stereoImageSteps, type AudioFormat, type AudioSamples, type DecodePlan, type MeasureSteps, type RgbImage,
 } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioLoop, AudioMeasurements, AudioMeasureRequest, AudioPicture } from '@deepseek-ai/dsh-game-audio/types'
+import { fileSizeText } from '@deepseek-ai/dsh-client-ui-primitives'
+
+/** The cap that refused a sound: its length in seconds, or the memory its decoded samples take in bytes. */
+export type DecodeLimit = { readonly seconds: number } | { readonly bytes: number }
 
 /** A failure of decoding or measuring a sound, with the audio tools' error code. */
 export class SoundError extends Error {
   /**
    * @param message - what went wrong, for the agent.
    * @param code - one of the audio tools' error codes, `AUDIO_ERROR`.
+   * @param limit - for `AUDIO_TOO_LARGE`, the cap the sound is past.
    */
-  constructor(message: string, readonly code: string) {
+  constructor(message: string, readonly code: string, readonly limit?: DecodeLimit) {
     super(message)
     this.name = 'SoundError'
   }
 }
+
+/** Bytes one decoded sample of one channel takes in an AudioBuffer: a 32-bit float. */
+const BYTES_PER_SAMPLE = 4
 
 /** Sample rates an OfflineAudioContext accepts, and the rate of a file whose headers name none. */
 const LOWEST_RATE = 3000
@@ -39,10 +50,14 @@ const AIFF_SLICE_SAMPLES = 1 << 20
 /** Longest that measuring or drawing runs before it lets the page handle its events, in milliseconds. */
 const SLICE_MS = 10
 
-/** What a decode may cost: the longest sound it decodes, and its cancellation. */
+/** What a decode may cost: the longest sound it decodes, the most memory its samples take, and its cancellation. */
 export interface DecodeBounds {
-  /** Longest sound in seconds; a longer AIFF file is refused before its samples are copied. */
+  /** Longest sound in seconds; a longer one is refused before it decodes. */
   readonly maxSeconds: number
+  /** Most bytes the decoded samples take, four for each sample of each channel; a larger sound is refused before it decodes. */
+  readonly maxBytes: number
+  /** What a refusal names: the sound's path, or its kind of file. */
+  readonly name: string
   /** Ends the decode: an AIFF decode stops at its next slice, a browser decode before and after it runs. */
   readonly signal: AbortSignal
 }
@@ -77,7 +92,9 @@ async function decodeAiffSound(data: Uint8Array<ArrayBuffer>, bounds: DecodeBoun
   if (!(sound.sampleRate >= LOWEST_RATE && sound.sampleRate <= HIGHEST_RATE)) {
     throw new SoundError(`The AIFF file's sample rate, ${String(sound.sampleRate)} Hz, is outside the ${String(LOWEST_RATE)} to ${String(HIGHEST_RATE)} Hz the Audio panel plays.`, AUDIO_ERROR.unreadable)
   }
-  if (sound.frames / sound.sampleRate > bounds.maxSeconds) throw tooLong('The AIFF file', sound.frames / sound.sampleRate, bounds.maxSeconds)
+  if (sound.frames / sound.sampleRate > bounds.maxSeconds) throw tooLong(bounds.name, sound.frames / sound.sampleRate, bounds.maxSeconds, 'exact')
+  const bytes = sound.frames * sound.channels * BYTES_PER_SAMPLE
+  if (bytes > bounds.maxBytes) throw tooMuchMemory(bounds.name, bytes, bounds.maxBytes)
   const buffer = new AudioBuffer({ length: Math.max(1, sound.frames), numberOfChannels: sound.channels, sampleRate: sound.sampleRate })
   const sliceFrames = Math.max(1, Math.floor(AIFF_SLICE_SAMPLES / sound.channels))
   for (let first = 0; first < sound.frames; first += sliceFrames) {
@@ -95,65 +112,71 @@ async function decodeAiffSound(data: Uint8Array<ArrayBuffer>, bounds: DecodeBoun
 /**
  * The failure of a sound longer than a window decodes.
  * @param name - what the message names: the sound's path, or its kind of file.
- * @param seconds - its length, or the least it can be.
+ * @param seconds - its length, or the most a decode can yield of it; unused for `longer`.
  * @param maxSeconds - the longest sound a window decodes.
- * @param atLeast - whether `seconds` is the least the length can be rather than the length.
+ * @param measure - whether `seconds` is the length or the most a decode can yield, or the count stopped past the cap.
  * @returns the error, `AUDIO_TOO_LARGE`.
  */
-export function tooLong(name: string, seconds: number, maxSeconds: number, atLeast = false): SoundError {
-  const length = `${atLeast ? 'at least ' : ''}${seconds.toFixed(1)} s`
-  return new SoundError(`${name} is ${length} long, longer than the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`, AUDIO_ERROR.tooLarge)
-}
-
-/** The length a sound's headers vouch for before it decodes. */
-export interface VouchedLength {
-  /** Seconds the decoded sound reaches at least. */
-  readonly seconds: number
-  /** Whether the seconds are the shortest the sound's size allows, rather than the length its headers state. */
-  readonly atLeast: boolean
+export function tooLong(name: string, seconds: number, maxSeconds: number, measure: 'exact' | 'up-to' | 'longer'): SoundError {
+  const length = `${seconds.toFixed(1)} s`
+  const cap = `the ${String(maxSeconds)} s a WASD Engine window decodes, so it cannot be measured.`
+  const stated = measure === 'exact' ? `is ${length} long` : `can decode to as much as ${length}`
+  return new SoundError(measure === 'longer' ? `${name} is longer than ${cap}` : `${name} ${stated}, longer than ${cap}`, AUDIO_ERROR.tooLarge, { seconds: maxSeconds })
 }
 
 /**
- * The length a sound's headers vouch for before it decodes: the longer of the length they state and the shortest its
- * size allows, so that a frame count or granule position that understates the length does not let a long sound decode.
- * An MP3 length estimated from one frame's bit rate counts as stated only when the frames found through the file share
- * that bit rate; a variable bit rate file's estimate, which runs long when its first frame is quiet, refuses no sound
- * the decode would take.
- * @param probe - what the headers say.
- * @returns the length, or undefined when the headers do not tell.
+ * The failure of a sound whose decoded samples take more memory than a window gives one decode.
+ * @param name - what the message names: the sound's path, or its kind of file.
+ * @param bytes - the memory its samples take, at most.
+ * @param maxBytes - the most a window gives one decode.
+ * @returns the error, `AUDIO_TOO_LARGE`.
  */
-export function lengthBeforeDecoding(probe: AudioProbe | undefined): VouchedLength | undefined {
-  if (probe === undefined) return undefined
-  const stated = probe.estimated === true && probe.constantBitRate !== true ? undefined : probe.seconds
-  const least = probe.minSeconds
-  if (least !== undefined && (stated === undefined || least > stated)) return { seconds: least, atLeast: true }
-  return stated === undefined ? undefined : { seconds: stated, atLeast: false }
+export function tooMuchMemory(name: string, bytes: number, maxBytes: number): SoundError {
+  return new SoundError(`${name} takes up to ${fileSizeText(bytes)} once decoded, more than the ${fileSizeText(maxBytes)} a WASD Engine window decodes one sound into, so it cannot be measured.`, AUDIO_ERROR.tooLarge, { bytes: maxBytes })
 }
 
 /**
- * Decode a sound file.
+ * The plan of a browser decode, within the bounds.
+ * @returns the plan and the rate the decode runs at.
+ * @throws {SoundError} `AUDIO_UNREADABLE` for content the plan does not read or without audio, `AUDIO_TOO_LARGE` for a
+ * sound past either cap.
+ */
+function plannedDecode(data: Uint8Array, bounds: DecodeBounds): { readonly plan: DecodePlan; readonly rate: number } {
+  let plan: DecodePlan
+  try {
+    plan = decodePlan(data, bounds.maxSeconds)
+  } catch (error) {
+    if (!(error instanceof DecodePlanError)) throw error
+    throw new SoundError(`${bounds.name} could not be decoded: ${error.message}`, AUDIO_ERROR.unreadable)
+  }
+  if (plan.cut || plan.seconds > bounds.maxSeconds) throw tooLong(bounds.name, plan.seconds, bounds.maxSeconds, plan.cut ? 'longer' : plan.exact ? 'exact' : 'up-to')
+  const rate = plan.sampleRate >= LOWEST_RATE && plan.sampleRate <= HIGHEST_RATE ? Math.round(plan.sampleRate) : DEFAULT_RATE
+  // A file at a rate the context does not take is resampled to the context's rate.
+  const bytes = Math.ceil(plan.seconds * rate) * plan.channels * BYTES_PER_SAMPLE
+  if (bytes > bounds.maxBytes) throw tooMuchMemory(bounds.name, bytes, bounds.maxBytes)
+  return { plan, rate }
+}
+
+/**
+ * Decode a sound file, after its plan shows it within the bounds.
  * @param data - the complete file.
  * @param format - its listed format.
- * @param sampleRate - the rate its headers name, which the decoded samples keep.
- * @param bounds - the longest sound and the cancellation.
+ * @param bounds - the longest sound, the most memory, what a refusal names, and the cancellation.
  * @returns the decoded sound.
- * @throws {SoundError} `AUDIO_UNREADABLE` when the file does not decode, `AUDIO_TOO_LARGE` for an AIFF sound longer than
- * the bound; the signal's reason when it ends the decode.
+ * @throws {SoundError} `AUDIO_UNREADABLE` when the file does not decode, `AUDIO_TOO_LARGE` for a sound past either cap,
+ * refused before it decodes; the signal's reason when it ends the decode.
  */
-export async function decodeSound(
-  data: Uint8Array<ArrayBuffer>,
-  format: AudioFormat,
-  sampleRate: number | undefined,
-  bounds: DecodeBounds,
-): Promise<AudioBuffer> {
+export async function decodeSound(data: Uint8Array<ArrayBuffer>, format: AudioFormat, bounds: DecodeBounds): Promise<AudioBuffer> {
   bounds.signal.throwIfAborted()
   try {
     if (format.decoder === 'aiff') return await decodeAiffSound(data, bounds)
-    const rate = sampleRate !== undefined && sampleRate >= LOWEST_RATE && sampleRate <= HIGHEST_RATE ? Math.round(sampleRate) : DEFAULT_RATE
+    const { plan, rate } = plannedDecode(data, bounds)
     const context = new OfflineAudioContext({ numberOfChannels: 1, length: 1, sampleRate: rate })
     // decodeAudioData takes over the buffer it is given, so it receives a copy.
-    const decoded = await context.decodeAudioData(data.slice().buffer)
+    const decoded = await context.decodeAudioData(plan.data.slice().buffer)
     bounds.signal.throwIfAborted()
+    // The plan bounds the decode; a decoder that yields more is refused all the same.
+    if (decoded.duration > bounds.maxSeconds) throw tooLong(bounds.name, decoded.duration, bounds.maxSeconds, 'exact')
     return decoded
   } catch (error) {
     if (bounds.signal.aborted || error instanceof SoundError) throw error

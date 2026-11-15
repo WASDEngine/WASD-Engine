@@ -54,6 +54,12 @@
       "path": "../../api/gateway/tsconfig.host.json"
     },
     {
+      "path": "../../client/connection/tsconfig.host.json"
+    },
+    {
+      "path": "../../fs/fs"
+    },
+    {
       "path": "../../subagent/subagent"
     }
   ]

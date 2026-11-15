@@ -12,7 +12,7 @@ import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import { Button, fileSizeText, IconPauseOutlineRegular, IconPlayOutlineRegular, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { RemoteError, type RemoteFailure, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
-import { decodeSound, lengthBeforeDecoding, measureSound, SoundError, WHOLE_SOUND } from './decode.ts'
+import { decodeSound, measureSound, SoundError, WHOLE_SOUND, type DecodeLimit } from './decode.ts'
 import { clockText, decibelText, kilohertzText, lengthValue } from './format.ts'
 import { AudioGlyph, RepeatGlyph } from './icon.tsx'
 import type { NS } from './locales.ts'
@@ -73,13 +73,15 @@ export interface SoundPlayerProps extends PropsLocale<typeof NS> {
   readonly maxMeasuredSeconds: number
   /** Longest sound the player decodes, in seconds. */
   readonly maxDecodedSeconds: number
+  /** Most memory the player decodes one sound into, in bytes. */
+  readonly maxDecodedBytes: number
 }
 
 /** Where loading the selected sound stands. */
 type Load =
   | { readonly kind: 'loading' }
   | { readonly kind: 'failed'; readonly failure: RemoteFailure }
-  | { readonly kind: 'undecodable'; readonly tooLong?: number }
+  | { readonly kind: 'undecodable'; readonly limit?: DecodeLimit }
   | { readonly kind: 'ready'; readonly buffer: AudioBuffer; readonly probe: AudioProbe | undefined; readonly bytes: number; readonly version: string }
 
 function failureText(failure: RemoteFailure, t: SoundPlayerProps['t']): { readonly text: string; readonly retry: boolean } {
@@ -96,12 +98,24 @@ function failureText(failure: RemoteFailure, t: SoundPlayerProps['t']): { readon
 }
 
 /**
+ * The sentence for a sound the player does not decode.
+ * @param limit - the cap the sound is past, or undefined for a file that does not decode.
+ * @param t - copy.
+ * @returns the sentence.
+ */
+function undecodableText(limit: DecodeLimit | undefined, t: SoundPlayerProps['t']): string {
+  if (limit === undefined) return t('player.unreadable')
+  if ('seconds' in limit) return t('player.tooLarge', { limit: t('unit.seconds', { value: String(limit.seconds) }) })
+  return t('player.tooMuchAudio', { limit: fileSizeText(limit.bytes) })
+}
+
+/**
  * Render the selected sound's player.
  * @param props - the sound, its reads, the window player, and copy.
  * @returns the player.
  */
 export function SoundPlayer(props: SoundPlayerProps): ReactNode {
-  const { item, useResource, read, fileAddress, maxDecodedSeconds, t } = props
+  const { item, useResource, read, fileAddress, maxDecodedSeconds, maxDecodedBytes, t } = props
   const { path, format } = item.entry
   const resource = useResource<'file'>(fileAddress(path))
   const version = resource.status === 'live' ? resource.value?.version : undefined
@@ -122,17 +136,13 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
       const file = await read(path, controller.signal)
       if (!file.ok) return { kind: 'failed', failure: file.error }
       const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
-      const vouched = lengthBeforeDecoding(probe)
-      if (vouched !== undefined && vouched.seconds > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
       try {
-        const bounds = { maxSeconds: maxDecodedSeconds, signal: controller.signal }
-        const buffer = await decodeSound(file.value.data, format, probe?.sampleRate, bounds)
-        // Headers that did not tell the length, or only estimated it, leave the cap to the decoded sound.
-        if (buffer.duration > maxDecodedSeconds) return { kind: 'undecodable', tooLong: maxDecodedSeconds }
+        const bounds = { maxSeconds: maxDecodedSeconds, maxBytes: maxDecodedBytes, name: path, signal: controller.signal }
+        const buffer = await decodeSound(file.value.data, format, bounds)
         return { kind: 'ready', buffer, probe, bytes: file.value.data.byteLength, version: file.value.version }
       } catch (error) {
         if (!(error instanceof SoundError)) throw error
-        return error.code === AUDIO_ERROR.tooLarge ? { kind: 'undecodable', tooLong: maxDecodedSeconds } : { kind: 'undecodable' }
+        return error.code === AUDIO_ERROR.tooLarge && error.limit !== undefined ? { kind: 'undecodable', limit: error.limit } : { kind: 'undecodable' }
       }
     }
     void run().then((next) => {
@@ -145,7 +155,7 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
       setLoad({ kind: 'failed', failure: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}) })
     })
     return () => { controller.abort() }
-  }, [path, format, version, waiting, gone, attempt, read, maxDecodedSeconds])
+  }, [path, format, version, waiting, gone, attempt, read, maxDecodedSeconds, maxDecodedBytes])
 
   const header = (
     <div className={css.header}>
@@ -165,7 +175,7 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
   if (load.kind !== 'ready') {
     const { text, retry } = load.kind === 'failed'
       ? failureText(load.failure, t)
-      : { text: load.tooLong === undefined ? t('player.unreadable') : t('player.tooLarge', { limit: t('unit.seconds', { value: String(load.tooLong) }) }), retry: false }
+      : { text: undecodableText(load.limit, t), retry: false }
     return (
       <div className={css.root}>
         {header}

@@ -520,7 +520,8 @@ export class BlenderScripts {
   }
 
   /**
-   * Run one run of a call once a place is free.
+   * Run one run of a call once a place is free. The wait for a place ends at the call's deadline, so a run that other
+   * calls keep waiting reports that it did not start instead of holding up the call's report.
    * @returns the run's report, and how its process ended when it started.
    * @throws the abort reason after cancellation.
    */
@@ -534,10 +535,15 @@ export class BlenderScripts {
     const notStarted = (reason: string): { readonly report: ScriptRunReport } => ({
       report: { ...base, status: 'not-started', reason, durationMs: 0, files: [], totalFiles: 0 },
     })
+    const timeRanOut = `The call's ${String(Math.round(call.callTimeoutMs / 1000))} seconds ran out before the run could start.`
+    // The deadline ends the wait for a place, never a run that holds one: a started run stops at its own time limit.
+    const deadlineReached = new AbortController()
+    const timer = setTimeout(() => { deadlineReached.abort(new BlenderScriptError(timeRanOut)) }, Math.max(0, deadline - Date.now()))
     try {
-      return await this.slots.run(signal, async () => {
+      return await this.slots.run(AbortSignal.any([signal, deadlineReached.signal]), async () => {
+        clearTimeout(timer)
         const remaining = deadline - Date.now()
-        if (remaining <= 0) return notStarted(`The call's ${String(Math.round(call.callTimeoutMs / 1000))} seconds ran out before the run could start.`)
+        if (remaining <= 0) return notStarted(timeRanOut)
         if (this.closed) return notStarted('The Blender server shut down before the run could start.')
         const shortage = memoryShortage(this.options.minAvailableMemoryBytes, this.dependencies.machine.availableMemoryBytes)
         if (shortage !== undefined) return notStarted(lowMemoryMessage('a Blender script run', shortage))
@@ -557,7 +563,10 @@ export class BlenderScripts {
       })
     } catch (error) {
       signal.throwIfAborted()
+      if (error === deadlineReached.signal.reason) return notStarted(timeRanOut)
       return notStarted(`The run could not start: ${(error as Error).message}`)
+    } finally {
+      clearTimeout(timer)
     }
   }
 

@@ -34,12 +34,11 @@ export interface ModelViewProps {
   readonly file: AssetFile
   /**
    * The URL of a file the model names, inside the project.
-   * @param base - absolute path of the model file.
-   * @param path - the model's workspace path, which places the project folder in `base`.
+   * @param path - the model's workspace path.
    * @param reference - the name as the model stores it.
    * @returns the URL to load, or undefined for a file the viewer does not load.
    */
-  readonly relatedUrl: (base: string, path: string, reference: string) => string | undefined
+  readonly relatedUrl: (path: string, reference: string) => string | undefined
   /** Largest number of bytes a model's description may size itself, beyond its files; a larger model shows a notice. */
   readonly maxBytes: number
   /** Most pixels of an image a model names that the viewer decodes, as its header states them; a larger one fails the model. */
@@ -52,6 +51,28 @@ export interface ModelViewProps {
 }
 
 type ModelModule = typeof import('./viewer/index.ts')
+
+/** Why the view shows a notice instead of a model it read. */
+type Refusal =
+  /** The file asks for more memory than the viewer sets aside for one model. */
+  | { readonly kind: 'memory' }
+  /** A VOX model larger than MagicaVoxel makes. */
+  | { readonly kind: 'voxSide'; readonly x: number; readonly y: number; readonly z: number; readonly limit: number }
+  /** A VOX file whose scene places models that span more voxels than the viewer meshes for one file. */
+  | { readonly kind: 'voxCells'; readonly limit: number }
+
+/**
+ * The notice a load's failure shows, if the failure is a refusal.
+ * @param module - the viewer chunk, whose error classes the load throws.
+ * @param error - the failure.
+ * @returns the refusal, or undefined for a file that could not be read.
+ */
+function refusalOf(module: ModelModule, error: unknown): Refusal | undefined {
+  if (error instanceof module.ModelTooLargeError) return { kind: 'memory' }
+  if (error instanceof module.VoxModelTooLargeError) return { kind: 'voxSide', ...error.size, limit: error.limit }
+  if (error instanceof module.VoxWorkTooLargeError) return { kind: 'voxCells', limit: error.limit }
+  return undefined
+}
 
 /** The stage once its chunk loaded, or why there is none. */
 type StageState =
@@ -165,6 +186,33 @@ function Timeline({ stage, t }: { readonly stage: ModelStage; readonly t: Transl
 }
 
 /**
+ * The notice of a refusal.
+ * @param refusal - why the model shows no picture.
+ * @param maxBytes - the memory the viewer sets aside for one model.
+ * @param numbers - the reader's number format.
+ * @param t - copy.
+ * @returns the notice's text.
+ */
+function refusalText(refusal: Refusal, maxBytes: number, numbers: Intl.NumberFormat, t: Translate): string {
+  switch (refusal.kind) {
+    case 'memory':
+      return t('viewer.modelTooLarge', { limit: fileSizeText(maxBytes) })
+    case 'voxSide':
+      return t('viewer.voxTooLarge', {
+        x: numbers.format(refusal.x), y: numbers.format(refusal.y), z: numbers.format(refusal.z), limit: numbers.format(refusal.limit),
+      })
+    case 'voxCells':
+      return t('viewer.voxTooMuch', { limit: numbers.format(refusal.limit) })
+    default: {
+      // Not assertNever: the viewer chunk imports dsh-util-values, and a module this startup bundle shared with it would
+      // become a third chunk, which the Client module loader cannot require.
+      const unexpected: never = refusal
+      throw new Error(`unexpected refusal ${JSON.stringify(unexpected)}`)
+    }
+  }
+}
+
+/**
  * Show one model.
  * @param props - the asset, its bytes, the related-file resolver, the clip an agent asked for, and copy.
  * @returns the stage over its timeline, info bar, controls, and details.
@@ -173,7 +221,8 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const [stage, setStage] = useState<StageState>()
-  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed' | 'tooLarge'>('loading')
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'failed' | 'refused'>('loading')
+  const [refusal, setRefusal] = useState<Refusal>({ kind: 'memory' })
   const [details, setDetails] = useState<ModelAssetDetails>()
   const [clip, setClip] = useState<number>()
   const [playing, setPlaying] = useState(true)
@@ -245,10 +294,10 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
     void module.loadModel({
       decoder: format.decoder,
       data: file.data,
-      related: reference => relatedUrl(file.absolutePath, path, reference),
+      related: reference => relatedUrl(path, reference),
       changed: () => { drawn.requestRender() },
       maxBytes,
-      checkImage: (data, name) => { checkModelImage(data, name, maxDecodedPixels) },
+      checkImage: (data, name) => checkModelImage(data, name, maxDecodedPixels),
     }, controller.signal).then((model) => {
       if (controller.signal.aborted) {
         model.dispose()
@@ -285,7 +334,10 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
         setDetails({ ...module.describeModel(model, asset.format.label, file.data.byteLength), min: rest.min, max: rest.max })
       })
     }, (error: unknown) => {
-      if (!controller.signal.aborted) setPhase(error instanceof module.ModelTooLargeError ? 'tooLarge' : 'failed')
+      if (controller.signal.aborted) return
+      const refused = refusalOf(module, error)
+      if (refused !== undefined) setRefusal(refused)
+      setPhase(refused === undefined ? 'failed' : 'refused')
     })
     return () => { controller.abort() }
   }, [stage, file, path, format, relatedUrl, maxBytes, maxDecodedPixels, asset.format.label])
@@ -327,7 +379,7 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
   ]
   let status: ReactNode
   if (stage?.kind === 'unavailable') status = <div className={css.status} role="alert">{t('viewer.noWebgl')}</div>
-  else if (phase === 'tooLarge') status = <div className={css.status} role="alert">{t('viewer.modelTooLarge', { limit: fileSizeText(maxBytes) })}</div>
+  else if (phase === 'refused') status = <div className={css.status} role="alert">{refusalText(refusal, maxBytes, numbers, t)}</div>
   else if (stage?.kind === 'failed' || phase === 'failed') status = <div className={css.status} role="alert">{t('viewer.unreadable')}</div>
   else if (phase === 'loading') status = <div className={css.status} role="status" aria-label={t('viewer.loading', { name: asset.name })}><StateDot state="ongoing" /></div>
   const chooseShading = (next: 'material' | 'solid' | 'wireframe'): void => {

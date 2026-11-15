@@ -180,6 +180,11 @@ export function describeSearch(value: SearchValue): string {
   return lines.join('\n')
 }
 
+/** How a loop the file stores plays: forward, back and forth, or backward. */
+function fileLoopPlay(loop: NonNullable<AudioProbe['loop']>): string {
+  return loop.mode === undefined ? 'forward' : loop.mode === 'ping-pong' ? 'back and forth' : 'backward'
+}
+
 function godotLine(godot: GodotImport | undefined, sampleRate: number, fileLoop: AudioProbe['loop']): string {
   if (godot === undefined) return 'Godot has not imported it yet, so the game plays it with Godot\'s defaults once it does.'
   const extras = [godot.trim === true ? 'trims its silence' : undefined, godot.normalize === true ? 'normalizes its level' : undefined, godot.bpm === undefined ? undefined : `declares ${String(godot.bpm)} BPM`]
@@ -191,7 +196,7 @@ function godotLine(godot: GodotImport | undefined, sampleRate: number, fileLoop:
     case 'file':
       return fileLoop === undefined
         ? `Godot imports it (${godot.importer}) to follow the file's own loop points, and the file stores none, so it plays once${tail}.`
-        : `Godot imports it (${godot.importer}) to loop between the points the file stores${tail}.`
+        : `Godot imports it (${godot.importer}) to loop ${fileLoopPlay(fileLoop)} between the points the file stores${tail}.`
     case 'forward':
     case 'ping-pong':
     case 'backward': {
@@ -325,7 +330,8 @@ export function describeReview(facts: ReviewFacts): string {
     if (Math.abs(level.dcOffset) >= 0.01) lines.push(`Warning: the samples${of} have a DC offset of ${level.dcOffset.toFixed(3)}, which thumps when the sound starts and stops; filter it out with a high-pass.`)
   })
   if (facts.probe?.loop !== undefined) {
-    lines.push(`The file stores a loop from frame ${String(facts.probe.loop.start)} to frame ${String(facts.probe.loop.end)}.`)
+    const { start, end, mode } = facts.probe.loop
+    lines.push(`The file stores a ${mode ?? 'forward'} loop from frame ${String(start)} to frame ${String(end)}.`)
   }
   if (facts.picture !== undefined) lines.push(describeAudioImage(facts.picture))
   else if (facts.pictureOmitted === true) lines.push('Your model does not accept images, so no picture was drawn.')

@@ -73,6 +73,8 @@ export interface AudioTabInjected {
   readonly maxMeasuredSeconds: number
   /** Longest sound the player decodes, in seconds. */
   readonly maxDecodedSeconds: number
+  /** Most memory the player decodes one sound into, in bytes. */
+  readonly maxDecodedBytes: number
 }
 
 /** Full props of the Audio tab body. */
@@ -120,7 +122,7 @@ function emptyListText(filter: KindFilter, query: string, t: AudioTabProps['t'])
 export function AudioTab(props: AudioTabProps): ReactNode {
   const {
     useResource, useTabInfo, useScan, useView, useProbes, usePlayback, rescan, refresh, select, setQuery, setFilter, toggleFolder,
-    takeNavigation, read, fileAddress, playback, keyPrefix, maxMeasuredSeconds, maxDecodedSeconds, t,
+    takeNavigation, read, fileAddress, playback, keyPrefix, maxMeasuredSeconds, maxDecodedSeconds, maxDecodedBytes, t,
   } = props
   const id = useId()
   const scanState = useScan(state => state)
@@ -217,6 +219,7 @@ export function AudioTab(props: AudioTabProps): ReactNode {
                 onPlayed={onPlayed}
                 maxMeasuredSeconds={maxMeasuredSeconds}
                 maxDecodedSeconds={maxDecodedSeconds}
+                maxDecodedBytes={maxDecodedBytes}
                 t={t}
               />
             )}

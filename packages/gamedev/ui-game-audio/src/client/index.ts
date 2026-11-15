@@ -66,6 +66,11 @@ export interface Config {
   maxPreviewBytes?: number
   /** Longest sound the tab decodes, in seconds; a longer sound shows a notice instead. */
   maxDecodedSeconds?: number
+  /**
+   * Most memory the tab decodes one sound into, in bytes, at four for each sample of each channel; a sound whose samples
+   * would take more shows a notice instead.
+   */
+  maxDecodedBytes?: number
   /** Longest stretch from a sound's start that the tab's details measure, in seconds. */
   maxMeasuredSeconds?: number
 }
@@ -76,6 +81,7 @@ export const Config: z<Config, Required<Config>> = z.object({
   maxSounds: z.natural().min(1).default(5000),
   maxPreviewBytes: z.natural().min(1).default(256 * 1024 * 1024),
   maxDecodedSeconds: z.natural().min(1).default(1200),
+  maxDecodedBytes: z.natural().min(1).default(512 * 1024 * 1024),
   maxMeasuredSeconds: z.natural().min(1).default(300),
 })
 
@@ -178,6 +184,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
       keyPrefix: sessionId,
       maxMeasuredSeconds: config.maxMeasuredSeconds,
       maxDecodedSeconds: config.maxDecodedSeconds,
+      maxDecodedBytes: config.maxDecodedBytes,
     }
   }
 
@@ -205,7 +212,7 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     if (sessionId === undefined) return next()
     const { agent: _agent, signal = new AbortController().signal, ...fields } = request
     const read = readOf(sessionId)
-    return queue(() => answerMeasure(fields, read, signal, config.maxDecodedSeconds))
+    return queue(() => answerMeasure(fields, read, signal, { maxSeconds: config.maxDecodedSeconds, maxBytes: config.maxDecodedBytes }))
   }), 'ui-game-audio: measure sounds for agents')
   ctx.effect(() => ctx.remote.$on('game-audio/reveal', (reveal) => { revealSound(ctx, reveal) }), 'ui-game-audio: reveal sounds')
 }

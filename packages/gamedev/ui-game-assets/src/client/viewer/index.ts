@@ -9,3 +9,4 @@ export {
   bonesOf, describeModel, disposeObject, loadModel, ModelStage, ModelTooLargeError, morphTargetsOf, statsOf,
   type ClipClock, type LoadedModel, type ModelSource, type ModelStats, type MorphTargets,
 } from './model.ts'
+export { VoxModelTooLargeError, VoxWorkTooLargeError } from './vox.ts'

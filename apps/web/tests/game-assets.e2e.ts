@@ -37,7 +37,7 @@ const DONE = 'GAME_ASSETS_SCRIPT_DONE'
 /** The scripted turn. */
 const SCRIPT = [
   { name: 'asset_search', args: {} },
-  { name: 'asset_view', args: { path: 'models/robot.gltf', views: ['iso', 'front'], skeleton: true, size: 768 } },
+  { name: 'asset_view', args: { path: 'models/robot.gltf', views: ['iso', 'front'], skeleton: true, size: 768, details: true } },
   { name: 'asset_view', args: { path: 'models/robot.gltf', animation: 'Wave', frames: 4, shading: 'solid', size: 768 } },
   { name: 'asset_view', args: { path: 'art/hero_strip.png', grid: { columns: 4, rows: 1 } } },
   { name: 'asset_view', args: { path: 'art/hero_strip.png', grid: { columns: 4, rows: 1 }, animation: 'grid', show: true } },
@@ -391,22 +391,25 @@ function overlap(ctx: Context, count: number) {
 }
 
 /**
- * Hold the window's file reads and count the most open at once. Reads are held until `count` are open and half a second
- * more, in which a window that draws beyond its limit would open a further one, or until ten seconds after the first
- * read when fewer come. The reads of an image's first bytes, which size it before its draw waits for its turn, go on.
+ * Hold the window's reads of the drawn assets, which it makes through the Host's project file route, and count the
+ * most open at once. Reads are held until `count` are open and half a second more, in which a window that draws beyond
+ * its limit would open a further one, or until ten seconds after the first read when fewer come. The reads of an
+ * image's first bytes, which size it before its draw waits for its turn, and of the files a model names go on.
  * @param page - the window.
+ * @param assets - the drawn assets, as the window names them to the route.
  * @param count - the reads to wait for.
  * @returns the most reads that were open at once.
  */
-async function windowReads(page: Page, count: number): Promise<{ readonly peak: () => number }> {
+async function windowReads(page: Page, assets: readonly string[], count: number): Promise<{ readonly peak: () => number }> {
   let open = 0
   let peak = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const all = Promise.withResolvers<undefined>()
   const release = (): void => { all.resolve(undefined) }
-  await page.route(/readBytes/u, async (route) => {
-    // A window of given length is only ever an image's first bytes; a read of a whole file names none.
-    if (/"range":\{[^}]*"length":/u.test(route.request().postData() ?? '')) {
+  await page.route(/api\/game-assets\.file/u, async (route) => {
+    // A read of given length is only ever an image's first bytes, and a HEAD request only sizes a file a model names.
+    const url = new URL(route.request().url())
+    if (route.request().method() !== 'GET' || url.searchParams.has('length') || !assets.includes(url.searchParams.get('path') ?? '')) {
       await route.continue()
       return
     }
@@ -616,7 +619,7 @@ it('draws four different assets that one model turn asks for at once, three at a
   ]
   const adapter = new Router(step => (step === 0 ? calls(views.map((args, index) => ({ id: `view-${String(index)}`, name: 'asset_view', args }))) : say(DONE)))
   const { target, ctx, page } = await boot(adapter)
-  const reads = await windowReads(page, 3)
+  const reads = await windowReads(page, views.map(view => view.path), 3)
   const lead = await leadSession(target, adapter)
   const gate = overlap(ctx, views.length)
   const ended = turnEnd(ctx, lead)
@@ -634,7 +637,7 @@ it('draws four different assets that one model turn asks for at once, three at a
   expect(results.map(result => result.toolCallId)).toEqual(['view-0', 'view-1', 'view-2', 'view-3'])
   const expected = [
     ['Model models/robot.gltf (glTF', 'Skeleton: 2 bones', 'image/jpeg'],
-    ['Model models/crate.gltf (glTF', 'Geometry: 12 triangles and 8 vertices in 1 mesh', 'image/jpeg'],
+    ['Model models/crate.gltf (glTF', '12 triangles in 1 mesh', 'image/jpeg'],
     ['Image art/hero_strip.png (PNG', '64 × 16 pixels', 'image/png'],
     ['Image art/coin.png (PNG', '16 × 16 pixels', 'image/png'],
   ]
@@ -808,7 +811,7 @@ it('draws different assets for Claude Code and Codex calling through WASD Engine
     }
     const cases = [
       { client: claude, args: { path: 'models/robot.gltf', views: ['iso', 'front'], skeleton: true, size: 512 }, heading: 'iso, front views in its materials with the skeleton', mimeType: 'image/jpeg' },
-      { client: claude, args: { path: 'models/crate.gltf', views: ['top'], shading: 'wireframe', size: 512 }, heading: 'Geometry: 12 triangles and 8 vertices in 1 mesh', mimeType: 'image/jpeg' },
+      { client: claude, args: { path: 'models/crate.gltf', views: ['top'], shading: 'wireframe', size: 512, details: true }, heading: 'Geometry: 12 triangles and 8 vertices in 1 mesh', mimeType: 'image/jpeg' },
       { client: claude, args: { path: 'art/hero_strip.png', grid: { columns: 4, rows: 1 }, animation: 'grid' }, heading: 'all 4 frames of grid in order', mimeType: 'image/png' },
       { client: codex, args: { path: 'models/robot.gltf', animation: 'Wave', frames: 4, shading: 'solid', size: 512 }, heading: '4 poses of Wave across its 1.00 s', mimeType: 'image/jpeg' },
       { client: codex, args: { path: 'art/coin.png' }, heading: 'Image art/coin.png (PNG', mimeType: 'image/png' },

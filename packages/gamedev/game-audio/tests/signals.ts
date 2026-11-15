@@ -120,6 +120,8 @@ export function pcmWav(options: {
   readonly extensible?: boolean
   readonly before?: readonly (readonly [string, number])[]
   readonly loop?: readonly [number, number]
+  /** The sampler loop's type: 0 forward (the default), 1 alternating, 2 backward, others reserved. */
+  readonly loopType?: number
   readonly dataLength?: number
 }): Uint8Array<ArrayBuffer> {
   const sampleRate = options.sampleRate ?? 48_000
@@ -135,7 +137,7 @@ export function pcmWav(options: {
   body.text('fmt ').int(format.bytes.length, 4).append(format.bytes)
   body.text('data').int(options.dataLength ?? options.frames * block, 4).zeros(options.frames * block)
   if (options.loop !== undefined) {
-    body.text('smpl').int(60, 4).zeros(28).int(1, 4).int(0, 4).int(0, 4).int(0, 4).int(options.loop[0], 4).int(options.loop[1], 4).int(0, 4).int(0, 4)
+    body.text('smpl').int(60, 4).zeros(28).int(1, 4).int(0, 4).int(0, 4).int(options.loopType ?? 0, 4).int(options.loop[0], 4).int(options.loop[1], 4).int(0, 4).int(0, 4)
   }
   const finished = body.bytes
   return new Bytes().text('RIFF').int(finished.length, 4).append(finished).bytes

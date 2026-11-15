@@ -3,7 +3,7 @@
  * while keeping what others changed meanwhile.
  */
 import { describe, expect, it } from 'vitest'
-import { godotString, packedStrings, projectChanges, ProjectFile, revertEdit } from '../src/project-file.ts'
+import { dictionaryEntries, dictionaryLiteral, godotString, packedStrings, projectChanges, ProjectFile, revertEdit } from '../src/project-file.ts'
 import { PROJECT_GODOT } from './fixtures.ts'
 
 /** Apply an edit to a text. */
@@ -134,5 +134,21 @@ describe('Godot literals', () => {
     expect(godotString('a "b" \\c')).toBe('"a \\"b\\" \\\\c"')
     expect(packedStrings('PackedStringArray("a", "b \\"q\\"")')).toEqual(['a', 'b "q"'])
     expect(packedStrings('["a"]')).toEqual([])
+  })
+
+  it('reads a Dictionary\'s entries on one line or several, past commas and colons inside strings and brackets', () => {
+    expect(dictionaryEntries('{"import_script/path": "res://a.gd"}')).toEqual([{ key: '"import_script/path"', value: '"res://a.gd"' }])
+    const text = '{\n"nodes/root_type": "Node3D",\n"note": "a, b: \\"c\\"",\n"list": [1, {"x": 2}],\n"v": Vector3(1, 2, 3),\n}'
+    expect(dictionaryEntries(text)).toEqual([
+      { key: '"nodes/root_type"', value: '"Node3D"' },
+      { key: '"note"', value: '"a, b: \\"c\\""' },
+      { key: '"list"', value: '[1, {"x": 2}]' },
+      { key: '"v"', value: 'Vector3(1, 2, 3)' },
+    ])
+    expect(dictionaryEntries('{}')).toEqual([])
+    expect(dictionaryEntries('true')).toBeUndefined()
+    expect(dictionaryEntries('{"no colon"}')).toBeUndefined()
+    expect(dictionaryLiteral([{ key: '"a"', value: '1' }, { key: '"b"', value: '"x"' }])).toBe('{\n"a": 1,\n"b": "x"\n}')
+    expect(dictionaryLiteral([])).toBe('{}')
   })
 })

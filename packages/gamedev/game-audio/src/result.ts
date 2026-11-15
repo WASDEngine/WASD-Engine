@@ -90,7 +90,7 @@ const probe = z.object({
   bitrate: z.number().exactOptional(),
   seconds: z.number().exactOptional(),
   estimated: z.boolean().exactOptional(),
-  loop: z.object({ start: z.number(), end: z.number() }).exactOptional(),
+  loop: z.object({ start: z.number(), end: z.number(), mode: z.enum(['ping-pong', 'backward']).exactOptional() }).exactOptional(),
 })
 
 const godot = z.object({

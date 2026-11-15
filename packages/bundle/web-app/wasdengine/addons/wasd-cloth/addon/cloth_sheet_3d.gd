@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: CC0-1.0
 # A rectangle of cloth that the physics engine simulates while the game runs: a flag, banner, curtain, sail, awning,
 # hammock, or laundry that the player or the wind moves. It builds its own grid mesh, applies a fabric preset, pins
-# the named edges, and moves pinned points with `pin_target`. WasdClothWind3D zones blow on it. It needs Jolt Physics
-# (Project Settings > Physics > 3D > Physics Engine): with Godot Physics, soft bodies fall through static bodies.
+# the named edges, and moves pinned points with `pin_target`. While the game runs, a new size, cell, or facing builds
+# the sheet again, at rest where it rests, and new pins pin it again. WasdClothWind3D zones blow on it. It needs Jolt
+# Physics (Project Settings > Physics > 3D > Physics Engine): with Godot Physics, soft bodies fall through static bodies.
 @tool
 class_name WasdClothSheet3D
 extends SoftBody3D
@@ -16,27 +17,28 @@ enum Facing {
 }
 
 ## Width (local X) and height in meters; the height runs along local Y when VERTICAL and along local Z when HORIZONTAL.
+## A new size while the game runs builds the sheet again, as do a new facing and a new cell.
 @export var size := Vector2(1.0, 1.0):
 	set(value):
 		size = value.max(Vector2(0.05, 0.05))
-		_rebuild()
+		_reshape()
 
 @export var facing := Facing.VERTICAL:
 	set(value):
 		facing = value
-		_rebuild()
+		_reshape()
 
 ## Grid spacing in meters. 0.04 to 0.08 looks like cloth; each halving makes the sheet about four times as costly.
 @export_range(0.02, 0.5, 0.005, "suffix:m") var cell := 0.06:
 	set(value):
 		cell = clampf(value, 0.02, 0.5)
-		_rebuild()
+		_reshape()
 
 ## Fabric preset from WasdClothFabrics: silk, cotton, canvas, denim, leather, or rubber. It sets the mass from the
 ## area, the stiffness, the damping, and the precision when the sheet is added to its parent, before it enters the
 ## tree, and again whenever a setting changes after that. Jolt keeps the stiffness and the precision that a sheet has
-## when it enters the tree, so set them before. custom leaves those SoftBody3D properties as the scene or your code
-## set them.
+## when it enters the tree, or when a new size, cell, or facing builds it again, so set them before. custom leaves
+## those SoftBody3D properties as the scene or your code set them.
 @export_enum("silk", "cotton", "canvas", "denim", "leather", "rubber", "custom") var fabric := "cotton":
 	set(value):
 		fabric = value
@@ -52,21 +54,32 @@ enum Facing {
 			_apply_fabric()
 
 ## Edges whose points do not move: top, bottom, left, right, or a corner (top_left, top_right, bottom_left,
-## bottom_right). Top is +Y when VERTICAL and -Z when HORIZONTAL; left is -X.
-@export var pinned_edges := PackedStringArray(["top"])
+## bottom_right). Top is +Y when VERTICAL and -Z when HORIZONTAL; left is -X. While the game runs, assign a new array
+## to change them: the points of the new edges are pinned and the others let go.
+@export var pinned_edges := PackedStringArray(["top"]):
+	set(value):
+		pinned_edges = value
+		_repin()
 
 ## How many rows of points next to each pinned edge are pinned; 2 keeps the cloth from stretching at a pole or rail.
-@export_range(1, 4) var pin_rows := 1
+@export_range(1, 4) var pin_rows := 1:
+	set(value):
+		pin_rows = clampi(value, 1, 4)
+		_repin()
 
 ## A node that the pinned points move with, such as the pole, a character's BoneAttachment3D, or the ship the sail is
-## on. Empty keeps them where they start.
-@export var pin_target: NodePath
+## on. Empty keeps them where they start. The pins keep where they rest relative to it: as the sheet and the target
+## are placed when the sheet becomes ready, or when the target changes while the game runs.
+@export var pin_target: NodePath:
+	set(value):
+		pin_target = value
+		_repin()
 
 ## Render both faces with the default material. A material of your own needs cull_mode = CULL_DISABLED for the same.
 @export var double_sided := true:
 	set(value):
 		double_sided = value
-		_rebuild()
+		_apply_material()
 
 var _columns := 0
 var _rows := 0
@@ -78,6 +91,13 @@ var _pin_offsets: PackedVector3Array = []
 var _target: Node3D
 ## Whether the fabric was applied once; setters apply it again only after that.
 var _fabric_applied := false
+## Where the sheet rests without pin_target: as the scene placed it when it became ready, or where it rested relative
+## to a pin_target that was cleared.
+var _rest := Transform3D()
+## Where the sheet rests relative to pin_target.
+var _rest_in_target := Transform3D()
+## Whether a new grid waits for a disabled sheet to be enabled again, when the physics engine builds it.
+var _placing := false
 
 
 ## Builds the mesh only. A scene sets its SoftBody3D properties before it attaches this script, which runs _init(), and
@@ -88,9 +108,14 @@ func _init() -> void:
 
 ## Applies the fabric when the sheet gets its parent: a scene has set all of this node's properties by then, fabric
 ## among them, and the soft body does not exist yet, which the physics engine creates when the sheet enters the tree.
+## Places and pins a grid that was built while the sheet was disabled once the physics engine has built it, when the
+## sheet is enabled again.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_PARENTED:
 		_apply_fabric()
+	elif what == NOTIFICATION_ENABLED and _placing:
+		_placing = false
+		_place(_placement())
 
 
 func _ready() -> void:
@@ -104,7 +129,9 @@ func _ready() -> void:
 		push_warning("WASD Cloth: %s runs on the %s physics engine. Set [physics] 3d/physics_engine=\"Jolt Physics\" in project.godot; Godot Physics lets soft bodies fall through static bodies." % [name, engine])
 	if not global_basis.get_scale().is_equal_approx(Vector3.ONE):
 		push_warning("WASD Cloth: %s is scaled, and soft bodies ignore scale. Set size instead and keep the scale at 1." % name)
-	_pin()
+	# The physics engine places the sheet as the scene placed it once the transforms of this frame are sent.
+	_rest = global_transform
+	_pin(_rest)
 
 
 func _physics_process(_delta: float) -> void:
@@ -134,7 +161,9 @@ func grid_size() -> Vector2i:
 const EDGES: PackedStringArray = ["top", "bottom", "left", "right", "top_left", "top_right", "bottom_left", "bottom_right"]
 
 
-func _pin() -> void:
+## Pins the points of the named edges and finds pin_target. With a target, the pins move with it from their resting
+## places in `placement`.
+func _pin(placement: Transform3D) -> void:
 	_pinned = PackedInt32Array()
 	var seen := {}
 	for name_given in pinned_edges:
@@ -154,12 +183,103 @@ func _pin() -> void:
 		_target = get_node_or_null(pin_target) as Node3D
 		if _target == null:
 			push_warning("WASD Cloth: %s has no Node3D at pin_target %s; its pins stay where they are." % [name, pin_target])
+	_pin_offsets = PackedVector3Array()
 	if _target != null:
-		var to_target := _target.global_transform.affine_inverse() * global_transform
-		_pin_offsets = PackedVector3Array()
+		_rest_in_target = _target.global_transform.affine_inverse() * placement
 		for index in _pinned:
-			_pin_offsets.append(to_target * _local[index])
+			_pin_offsets.append(_rest_in_target * _local[index])
 	set_physics_process(_target != null)
+
+
+## Lets go of every pinned point, in the physics engine as well.
+func _unpin() -> void:
+	for index in _pinned:
+		set_point_pinned(index, false)
+	_pinned = PackedInt32Array()
+	_pin_offsets = PackedVector3Array()
+
+
+## Where the sheet rests now: relative to pin_target as the two rested when it was pinned, or where it rests alone.
+func _placement() -> Transform3D:
+	if _target != null and is_instance_valid(_target):
+		return _target.global_transform * _rest_in_target
+	return _rest
+
+
+## Whether the physics engine runs the sheet: in a running game, once the sheet is ready.
+func _simulating() -> bool:
+	return not Engine.is_editor_hint() and is_inside_tree() and is_node_ready()
+
+
+## Pins the sheet again after its pinned edges, pin rows, or pin target change while the game runs. Points no longer on
+## a pinned edge let go; the newly pinned ones hold where they are, and with a target they move with it from their
+## resting places, which stay where the sheet rested when the target changed.
+func _repin() -> void:
+	if not _simulating() or _placing:
+		return
+	var placement := _placement()
+	_unpin()
+	_rest = placement
+	_pin(placement)
+
+
+## Builds the grid again after its size, cell, or facing changes: the mesh alone before the sheet runs in a game, and
+## while it runs a new soft body, at rest where the sheet rests, pinned anew.
+func _reshape() -> void:
+	if not _simulating():
+		_rebuild()
+		return
+	var placement := _placement()
+	_unpin()
+	_rebuild()
+	if _restart_body():
+		_place(placement)
+	else:
+		_placing = true
+
+
+## Places a soft body the physics engine has just built from a new grid, and pins it. The engine builds it with the
+## mesh's own coordinates as world positions, so its points move to their resting places in `placement`; a sheet the
+## engine has not placed yet, before the transforms of the frame it became ready in are sent, keeps them, since the
+## engine then places the new body as it places a new sheet.
+func _place(placement: Transform3D) -> void:
+	# SoftBody3D makes itself top-level once the engine has placed it.
+	if top_level:
+		var body := get_physics_rid()
+		for index in _local.size():
+			PhysicsServer3D.soft_body_move_point(body, index, placement * _local[index])
+	_rest = placement
+	_pin(placement)
+
+
+## Has SoftBody3D hand the new mesh to the physics engine now, which builds the soft body from it with the sheet's
+## current mass, stiffness, damping, and precision: SoftBody3D removes the body of a disabled sheet whose disable_mode
+## is DISABLE_MODE_REMOVE and builds it again from its mesh when the sheet is enabled, so the sheet is disabled and
+## enabled at once, which children that inherit its process mode see too. A sheet that is disabled stays so; the
+## engine builds its body when it is enabled again.
+## Returns whether the engine built the body now.
+func _restart_body() -> bool:
+	var keep := disable_mode
+	if _enabled():
+		var mode := process_mode
+		disable_mode = DISABLE_MODE_REMOVE
+		process_mode = PROCESS_MODE_DISABLED
+		process_mode = mode
+		disable_mode = keep
+		return true
+	if keep != DISABLE_MODE_REMOVE:
+		disable_mode = DISABLE_MODE_REMOVE
+		disable_mode = keep
+		return true
+	return false
+
+
+## Whether the sheet is enabled: neither it nor the ancestor whose process mode it inherits is disabled.
+func _enabled() -> bool:
+	var node: Node = self
+	while node != null and node.process_mode == PROCESS_MODE_INHERIT:
+		node = node.get_parent()
+	return node == null or node.process_mode != PROCESS_MODE_DISABLED
 
 
 func _on_edge(edge: String, column: int, row: int) -> bool:
@@ -258,12 +378,22 @@ func _rebuild() -> void:
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var grid_mesh := ArrayMesh.new()
 	grid_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	if double_sided:
-		var material := StandardMaterial3D.new()
-		material.cull_mode = BaseMaterial3D.CULL_DISABLED
-		material.albedo_color = Color(0.82, 0.8, 0.76)
-		grid_mesh.surface_set_material(0, material)
 	mesh = grid_mesh
+	_apply_material()
 	# The mass follows the area; until the sheet gets its parent, the fabric waits for the scene's values.
 	if _fabric_applied:
 		_apply_fabric()
+
+
+## Gives the mesh the default double-sided material, or no material of its own. While the game runs the mesh is the
+## copy that SoftBody3D draws, which changes in place.
+func _apply_material() -> void:
+	var drawn := mesh as ArrayMesh
+	if drawn == null or drawn.get_surface_count() == 0:
+		return
+	var material: StandardMaterial3D = null
+	if double_sided:
+		material = StandardMaterial3D.new()
+		material.cull_mode = BaseMaterial3D.CULL_DISABLED
+		material.albedo_color = Color(0.82, 0.8, 0.76)
+	drawn.surface_set_material(0, material)

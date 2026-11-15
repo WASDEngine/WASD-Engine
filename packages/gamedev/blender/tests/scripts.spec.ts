@@ -157,6 +157,25 @@ describe('BlenderScripts', () => {
     expect(report.runs[1]).toMatchObject({ reason: 'The call\'s 1 seconds ran out before the run could start.', durationMs: 0, files: [], totalFiles: 0 })
   })
 
+  it('stops waiting for a place at the call\'s deadline while another call holds every place, and reports its runs', async () => {
+    const quick = await plan('quick.json', {})
+    const slow = await plan('slow.json', { sleepMs: 4000 })
+    const runner = scripts({ maxScripts: 1 })
+    const holder = new AbortController()
+    const holding = runner.run(call(slow), holder.signal)
+    // The other call takes the only place first.
+    await new Promise(resolve => setTimeout(resolve, 300))
+    const started = Date.now()
+    const report = await runner.run(call(quick, { callTimeoutMs: 600, runs: [{ args: [], name: 'first' }, { args: [] }] }), signal())
+    expect(Date.now() - started).toBeLessThan(2500)
+    expect(report.runs.map(run => run.status)).toEqual(['not-started', 'not-started'])
+    expect(report.runs[0]).toMatchObject({ name: 'first', reason: 'The call\'s 1 seconds ran out before the run could start.', durationMs: 0 })
+    expect(JSON.parse(await readFile(join(report.resultsDir, 'summary.json'), 'utf8'))).toEqual(JSON.parse(JSON.stringify(report)))
+    // The call that held the place goes on to its end, and cancelling it still cancels it.
+    holder.abort(new Error('done with the test'))
+    await expect(holding).rejects.toThrow('done with the test')
+  })
+
   it('starts no run while the computer has less memory available than a worker start needs', async () => {
     const script = await plan('any.json', {})
     const report = await scripts({ minAvailableMemoryBytes: GiB }, machine(GiB / 2)).run(call(script), signal())
