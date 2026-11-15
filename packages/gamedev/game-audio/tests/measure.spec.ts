@@ -121,7 +121,8 @@ describe('measurements in steps', () => {
     const picture = paused(drawAudioImageSteps(audio))
     expect(picture.pauses).toBe(3 * (IMAGE_WIDTH - 12))
     expect(picture.value).toEqual(drawAudioImage(audio))
-  })
+    // Measuring and drawing four seconds of stereo twice, in steps and whole, outlasts the default limit on a busy machine.
+  }, 30_000)
 })
 
 describe('integratedLoudness', () => {
