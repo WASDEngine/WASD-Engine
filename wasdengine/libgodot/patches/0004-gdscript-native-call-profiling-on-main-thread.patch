@@ -1,0 +1,164 @@
+diff --git a/modules/gdscript/gdscript_vm.cpp b/modules/gdscript/gdscript_vm.cpp
+index 6019897..a49ef8b 100644
+--- a/modules/gdscript/gdscript_vm.cpp
++++ b/modules/gdscript/gdscript_vm.cpp
+@@ -104,6 +104,9 @@ static String _get_var_type(const Variant *p_var) {
+ 	return basestr;
+ }
+ 
++// Native calls are profiled on the main thread alone, so every caller checks Thread::is_main_thread(): `profile.native_calls`
++// has no lock, and the main thread copies and clears it in GDScriptLanguage::frame(). A function on another thread is
++// timed as when native calls are not profiled.
+ void GDScriptFunction::_profile_native_call(uint64_t p_t_taken, const String &p_func_name, const String &p_instance_class_name) {
+ 	HashMap<String, Profile::NativeProfile>::Iterator inner_prof = profile.native_calls.find(p_func_name);
+ 	if (inner_prof) {
+@@ -1973,7 +1976,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ 				if (GDScriptLanguage::get_singleton()->profiling) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+-					if (GDScriptLanguage::get_singleton()->profile_native_calls && _profile_count_as_native(base_obj, *methodname)) {
++					if (GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread() && _profile_count_as_native(base_obj, *methodname)) {
+ 						_profile_native_call(t_taken, *methodname, base_class);
+ 					}
+ 					function_call_time += t_taken;
+@@ -2060,7 +2063,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2077,7 +2080,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ #ifdef DEBUG_ENABLED
+ 
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -2169,7 +2172,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2178,7 +2181,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				*ret = method->call(nullptr, argptrs, argc, err);
+ 
+ #ifdef DEBUG_ENABLED
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -2212,7 +2215,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2221,7 +2224,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				method->validated_call(nullptr, (const Variant **)argptrs, ret);
+ 
+ #ifdef DEBUG_ENABLED
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -2249,7 +2252,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				Variant **argptrs = instruction_args;
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2259,7 +2262,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				method->validated_call(nullptr, (const Variant **)argptrs, nullptr);
+ 
+ #ifdef DEBUG_ENABLED
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -2304,7 +2307,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2313,7 +2316,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				method->validated_call(base_obj, (const Variant **)argptrs, ret);
+ 
+ #ifdef DEBUG_ENABLED
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -2355,7 +2358,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				Variant **argptrs = instruction_args;
+ #ifdef DEBUG_ENABLED
+ 				uint64_t call_time = 0;
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					call_time = OS::get_singleton()->get_ticks_usec();
+ 				}
+ #endif
+@@ -2365,7 +2368,7 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 				method->validated_call(base_obj, (const Variant **)argptrs, nullptr);
+ 
+ #ifdef DEBUG_ENABLED
+-				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls) {
++				if (GDScriptLanguage::get_singleton()->profiling && GDScriptLanguage::get_singleton()->profile_native_calls && Thread::is_main_thread()) {
+ 					uint64_t t_taken = OS::get_singleton()->get_ticks_usec() - call_time;
+ 					_profile_native_call(t_taken, method->get_name(), method->get_instance_class());
+ 					function_call_time += t_taken;
+@@ -3997,7 +4000,8 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
+ 
+ 	OPCODES_OUT
+ #ifdef DEBUG_ENABLED
+-	if (GDScriptLanguage::get_singleton()->profiling) {
++	// A call that began before profiling started has no start time, so it adds no time, as it added no call.
++	if (GDScriptLanguage::get_singleton()->profiling && function_start_time != 0) {
+ 		uint64_t time_taken = OS::get_singleton()->get_ticks_usec() - function_start_time;
+ 		profile.total_time.add(time_taken);
+ 		profile.self_time.add(time_taken - function_call_time);
+diff --git a/modules/wasd_runtime/wasd_engine_runtime.cpp b/modules/wasd_runtime/wasd_engine_runtime.cpp
+index 8f8a86d..71b2ee0 100644
+--- a/modules/wasd_runtime/wasd_engine_runtime.cpp
++++ b/modules/wasd_runtime/wasd_engine_runtime.cpp
+@@ -55,4 +55,5 @@ void WASDEngineRuntime::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("start_script_profiling", "native_calls"), &WASDEngineRuntime::start_script_profiling);
+ 	ClassDB::bind_method(D_METHOD("stop_script_profiling"), &WASDEngineRuntime::stop_script_profiling);
+ 	ClassDB::bind_method(D_METHOD("get_script_profile"), &WASDEngineRuntime::get_script_profile);
++	ClassDB::bind_method(D_METHOD("is_native_call_profiling_thread_safe"), &WASDEngineRuntime::is_native_call_profiling_thread_safe);
+ }
+diff --git a/modules/wasd_runtime/wasd_engine_runtime.h b/modules/wasd_runtime/wasd_engine_runtime.h
+index 06aa941..39968e0 100644
+--- a/modules/wasd_runtime/wasd_engine_runtime.h
++++ b/modules/wasd_runtime/wasd_engine_runtime.h
+@@ -29,4 +29,8 @@ public:
+ 	/// `<script path>::<line>::<function>`; an engine method's is `<script path>::0::<class>.<method>`, with the path
+ 	/// of the script whose function called it, and its self time is its total time.
+ 	Array get_script_profile() const;
++	/// Whether profiling with native calls is safe while scripts run on other threads, as it is in this runtime, whose
++	/// GDScript times native calls on the main thread alone; runtimes without the method time them on every thread
++	/// without a lock.
++	bool is_native_call_profiling_thread_safe() const { return true; }
+ };

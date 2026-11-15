@@ -242,7 +242,7 @@ const MAX_TIMER_MS = 2 ** 31 - 1
 
 /**
  * The Godot release, `major.minor`, of the runtime that the plugin ships or installs: the start of `runtimeVersion`,
- * such as `4.7` for `4.7.2-wasd.3`, which the shipped and managed runtimes must match.
+ * such as `4.7` for `4.7.2-wasd.4`, which the shipped and managed runtimes must match.
  * @param config - the plugin configuration.
  * @returns the release, or undefined when `libgodotPath` and `runnerPath` name another runtime or `runtimeVersion` does not start with one.
  */
@@ -371,8 +371,8 @@ export default class GodotController extends TypertRemoteService {
   static inject = ['tools', 'systemPrompt', 'workingDirectory', 'subprocess', 'agents', 'typert']
   static Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.object({
     dataRoot: z.string().required(),
-    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.3'),
-    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json'),
+    runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.4'),
+    runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),

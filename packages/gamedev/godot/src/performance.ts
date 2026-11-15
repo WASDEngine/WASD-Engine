@@ -642,7 +642,8 @@ function functionText(entry: ScriptFunction): string {
 
 /** Why a profile that `engine_calls` asked for lists no engine methods: the runtime cannot time them safely. */
 const ENGINE_CALLS_REFUSED = 'Engine methods: this Godot runtime\'s profiler times them on every thread without a lock, which can crash a game '
-  + 'that runs scripts on other threads, so the profile leaves them out.'
+  + 'that runs scripts on other threads, so the profile leaves them out; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.4 '
+  + 'time them on the main thread alone.'
 
 /**
  * The script profile, or why there is none.

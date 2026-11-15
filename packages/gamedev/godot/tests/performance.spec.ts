@@ -269,7 +269,8 @@ describe('performance summary', () => {
     expect(unasked).not.toContain('Engine methods:')
     const refused = formatPerformance(summary, true, true)
     expect(refused).toContain(`${intro}\nEngine methods: this Godot runtime's profiler times them on every thread without a lock, which can crash a game `
-      + 'that runs scripts on other threads, so the profile leaves them out.\nres://player.gd')
+      + 'that runs scripts on other threads, so the profile leaves them out; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.4 time them on '
+      + 'the main thread alone.\nres://player.gd')
     expect(refused).not.toContain('engine_calls: true')
   })
 

@@ -22,7 +22,7 @@ import {
 
 /** The LibGodot runtime that the Desktop app ships, pinned at the version that `wasdengine/libgodot/build.sh` builds by default. */
 export const LIBGODOT_RUNTIME: PinnedRuntime = {
-  label: 'LibGodot', environmentPrefix: 'WASD_LIBGODOT', packageName: '@deepseek-ai/dsh-godot', folder: 'libgodot', version: '4.7.2-wasd.3',
+  label: 'LibGodot', environmentPrefix: 'WASD_LIBGODOT', packageName: '@deepseek-ai/dsh-godot', folder: 'libgodot', version: '4.7.2-wasd.4',
 }
 
 /** The Godot plugin's default `runtimeManifestUrl`; `wasdengine-libgodot.spec.ts` keeps the two equal. */

@@ -69,8 +69,8 @@ describe('configuration', () => {
 
   it('applies the documented defaults', () => {
     expect(GodotController.Config({ dataRoot: '/data' })).toEqual({
-      dataRoot: '/data', runtimeVersion: '4.7.2-wasd.3',
-      runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json',
+      dataRoot: '/data', runtimeVersion: '4.7.2-wasd.4',
+      runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json',
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,

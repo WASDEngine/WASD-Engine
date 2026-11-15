@@ -66,8 +66,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
-| `runtimeVersion` | `4.7.2-wasd.3` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
-| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.3/manifest.json` | 安装时下载的发布 manifest |
+| `runtimeVersion` | `4.7.2-wasd.4` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
+| `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json` | 安装时下载的发布 manifest |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
@@ -220,7 +220,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 `godot_performance` 向游戏发送一个 `performance` 请求，并在 Host 上汇总其回答。harness 以一次主循环迭代开始到下一次开始的时间作为一帧，并用引擎信号为各阶段计时：物理从本次迭代的第一个 `physics_frame` 到 harness 的 `_process`，harness 自身的工作从那里到 `process_frame`，脚本与节点从 `process_frame` 到 `RenderingServer.frame_pre_draw`，绘制从那里到 `frame_post_draw`；其他是帧的其余部分，例如等待帧率上限。GPU 与渲染 CPU 时间来自根视口的渲染时间测量，采样期间开启，之后关闭；渲染器不报告 GPU 时间时，结果会说明。上游 Godot 的 Metal 驱动不采集 GPU 时间戳，因此在 macOS 上，只有 WASD Engine 从 `4.7.2-wasd.3` 起的 LibGodot 构建会报告 GPU 时间：它们的 Metal 驱动在时间戳之后的每个通道（pass）开始和结束时采样 GPU 时钟，一个时间戳读取它之前各通道中最晚的结束时间，与 Vulkan 的时间戳相同。每个内置 `Performance` 监视器在开始和结束时各读取一次，因此对象数显示其变化，管线编译计入采样期间发生的次数。普查从根节点遍历场景树，不含内部子节点，最多 200,000 个节点；节点可以处理且其处理已开启时计为处理中。一次采样最多记录 20,000 帧，之后的帧只计数。测量期间游戏照常运行：结果计入暂停的帧，harness 时间包含从 GPU 取得 Game 标签页流式传输的帧（随后由工作线程编码），Metal 上的无窗口运行最多以显示器的刷新率显示帧，关闭 VSync 时也是如此。百分位数采用最近秩法，尖峰指长于中位数两倍的帧。游戏在采样的秒数加上 `requestTimeoutMs` 的真实时间后提前结束采样，调用被取消时也会结束采样。
 
-除非 `scripts` 为 false，采样随后再以同样的秒数，用 WASD Engine 的 LibGodot 构建中的脚本剖析器继续进行，它们为每个 GDScript 函数计时。剖析器会拖慢脚本，因此它们只在测完帧之后运行，帧时间不受其影响。结果为每个脚本给出其每帧的自身时间：在其函数的代码以及这些函数在有类型的值上调用的引擎方法中所花的时间，不含它们调用的脚本函数（后者计入各自的脚本），也不含在无类型的值上调用的引擎方法（剖析器不计入它们）。指定 `engine_calls` 时，剖析器还为函数在游戏主线程上调用的每个引擎方法计时，在函数下列出最耗时的那些，并把它们全部计入函数的自身时间，因此各脚本的时间之和就是该线程上全部 GDScript 的时间；为引擎方法计时会在剖析脚本期间拖慢每次引擎方法调用。harness 只在运行时的剖析器仅在主线程上记录引擎方法时才请求为它们计时，运行时通过其 `WASDEngineRuntime` 单例的 `is_native_call_profiling_thread_safe` 报告这一点；更早的运行时在每个线程上不加锁地记录，可能让在其他线程上运行脚本的游戏崩溃，因此在这些运行时上，结果会说明它略去了引擎方法。它列出最耗时的八个脚本，每个脚本中最耗时的三个函数及其每帧调用次数、自身与总时间以及函数体开始的行号，以及每个函数中最耗时的两个引擎方法。harness 自身的函数不计入。没有剖析器时（例如上游的 LibGodot 构建），结果会说明。
+除非 `scripts` 为 false，采样随后再以同样的秒数，用 WASD Engine 的 LibGodot 构建中的脚本剖析器继续进行，它们为每个 GDScript 函数计时。剖析器会拖慢脚本，因此它们只在测完帧之后运行，帧时间不受其影响。结果为每个脚本给出其每帧的自身时间：在其函数的代码以及这些函数在有类型的值上调用的引擎方法中所花的时间，不含它们调用的脚本函数（后者计入各自的脚本），也不含在无类型的值上调用的引擎方法（剖析器不计入它们）。指定 `engine_calls` 时，剖析器还为函数在游戏主线程上调用的每个引擎方法计时，在函数下列出最耗时的那些，并把它们全部计入函数的自身时间，因此各脚本的时间之和就是该线程上全部 GDScript 的时间；为引擎方法计时会在剖析脚本期间拖慢每次引擎方法调用。harness 只在运行时的剖析器仅在主线程上记录引擎方法时才请求为它们计时，运行时通过其 `WASDEngineRuntime` 单例的 `is_native_call_profiling_thread_safe` 报告这一点，WASD Engine 从 `4.7.2-wasd.4` 起的构建都会报告；更早的运行时在每个线程上不加锁地记录，可能让在其他线程上运行脚本的游戏崩溃，因此在这些运行时上，结果会说明它略去了引擎方法。它列出最耗时的八个脚本，每个脚本中最耗时的三个函数及其每帧调用次数、自身与总时间以及函数体开始的行号，以及每个函数中最耗时的两个引擎方法。harness 自身的函数不计入。没有剖析器时（例如上游的 LibGodot 构建），结果会说明。
 
 `godot_audio` 向游戏发送一个 `audio` 请求。harness 在 Master 总线效果链的末尾加入一个 `AudioEffectCapture`，因此采集的是完整的混音，之后再把它移除；Master 总线在效果之后才应用其音量，因此宿主按 harness 报告的音量与静音（开始时以及每次变化）缩放采样。静音运行的 `Dummy` 音频驱动不向任何设备播放，但照常混音，因此它的音频也能采集。harness 每帧从 4 秒的缓冲区取出采集到的音频；游戏两帧之间卡顿更久时会丢失音频，结果会说明丢了多少。采集期间，harness 跟踪每个 `AudioStreamPlayer`、`AudioStreamPlayer2D` 和 `AudioStreamPlayer3D`（最多 500 个，包括进入场景树的），并报告开始播放的那些及其流、总线、音量、开始次数和时间，以及每条总线的音量、静音、独奏、旁路、发送目标、效果和最大峰值。宿主用 [`@deepseek-ai/dsh-game-audio`](../game-audio/README.zh.md) 的测量和图像测量这些采样，与“音频”标签页测量声音文件的方式相同，并找出高于 -50 dBFS 的片段，短于 150 毫秒的间隔会并入。事件像 `godot_input` 那样从采集开始处播放，采集结束时仍在运行的事件会被取消。采集在其秒数加上 `requestTimeoutMs` 的真实时间后提前结束。`ctx.godot` 和其他插件可以通过 `GodotRun.audio` 采集，其可选的停止信号会提前结束采集，并保留截至当时的音频。
 
@@ -434,7 +434,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 在仓库根目录运行端到端测试套件，并把 `WASD_LIBGODOT_DIR` 设为包含 `godot_runner` 与 LibGodot 库的文件夹，库使用 `wasdengine/libgodot/build.sh` 安装时的文件名 `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`，例如已安装的 macOS 或 Linux 运行时。它检查一个从未导入过、脚本相互使用对方 `class_name` 类的项目，导入一个测试项目并运行（在 macOS 上无窗口运行），调用截图、输入、等待、日志、求值、场景树、性能、控制、检查和停止工具，检查超出单条消息大小的 `godot_eval` 值与打印行会被截短返回、游戏继续运行，在“游戏”标签页的视图打开与关闭时跟踪游戏的呈现，检查以 `--fixed-fps` 启动、无人显示的游戏保持隐藏时的帧率，读取帧路由，运行第二个项目（其拉伸模式会给游戏加上黑边），剖析一个脚本在工作线程上调用引擎方法的游戏，并用 `godot_audio` 采集第三个项目的音调；在 WASD Engine 自己的运行时上，还会检查 GPU 时间与脚本剖析。未设置该变量时，测试套件会被跳过。
 
 ```sh
-WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.3" \
+WASD_LIBGODOT_DIR="$HOME/.wasdengine/godot/runtime/4.7.2-wasd.4" \
 pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 ```
 
@@ -531,7 +531,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 以下限制描述 Godot 运行、“游戏”标签页和运行时当前的不足。
 
 - **游戏以宿主用户的全部权限运行** — 游戏、导入步骤和 `godot_check` 作为宿主的普通子进程运行。Session 权限模式（例如 `read-only` 或 `workspace-write`）的[沙箱](../../sandbox/sandbox-policy/README.zh.md)不约束它们，它们也从不像 `bash` 命令那样请求[批准](../../interaction/user-approval/README.zh.md)。`godot_run` 启动的游戏代码、`godot_check` 加载的脚本，以及 `godot_eval` 运行的表达式和代码（它们可以运行包括 `OS.execute` 在内的任意 GDScript），都能读写宿主用户可访问的所有文件并启动其他程序。`project` 接受绝对路径或工作目录之外的路径，因此 `godot_run` 和 `godot_check` 会运行宿主用户可读取的任何项目。
-- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.3`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
+- **托管运行时需要已发布的版本** — **安装 Godot** 从 `runtimeManifestUrl` 指定的 GitHub 发布版本下载 manifest 和归档，默认是 `WASDEngine/WASD-Engine` 的 `libgodot-4.7.2-wasd.4`。[LibGodot 运行时工作流](../../../wasdengine/libgodot/BUILD.md#release)必须先发布该版本；在此之前，安装会以 manifest 的 HTTP 状态失败，无法访问 GitHub 的宿主需要设置 `runnerPath` 与 `libgodotPath`。
 - **只有三个平台** — 发布工作流构建 macOS arm64、Linux x64 和 Windows x64。在其他平台上（例如 Intel Mac），安装会因 manifest 中没有对应构建而失败，游戏只能通过 `runnerPath` 与 `libgodotPath` 指定的本地 LibGodot 构建运行。
 - **macOS 以外会打开窗口** — LibGodot 补丁只在 macOS 上实现无窗口渲染。在 Linux 与 Windows 上，每次运行（包括每次 agent 运行）都会在宿主的桌面上打开游戏窗口。
 - **“游戏”标签页不支持手柄** — 标签页只转发键盘和鼠标输入，因此连接在浏览器所在计算机上的手柄无法控制游戏；agent 可以用 `godot_input` 发送手柄按钮和摇杆事件。
@@ -544,7 +544,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **每个 Session 一个游戏** — “游戏”标签页中的 **运行** 和 `godot_run` 会相互替换对方的运行，宿主在所有 Session 中最多同时运行运行上限个游戏。同时工作的 agent 需要各自的 Session：应用内的子 agent 本来就有，已连接的 agent 则给出 `session` 名称。
 - **隐藏的游戏继续运行** — 没有“游戏”标签页显示的游戏会一直运行到停止：最后一次被显示或使用后的 `hiddenDelayMs` 内以自身帧率（最高为屏幕刷新率）运行，之后以 `hiddenFps` 运行，因此仍会占用一些处理器与图形处理时间；运行上限限制了这样的游戏数，而且遇到已达上限的启动时，由 agent 启动且已闲置 `idleRunStopMs` 的游戏会被停止。Linux 与 Windows 上有窗口的游戏从不受限，并且总是呈现其帧。内存检查只针对启动：游戏启动后若继续增长，不会被停止。
 - **“游戏”标签页显示的游戏仍共享 GPU 与窗口服务器** — 没有显示的游戏会停止呈现，但两个“游戏”标签页同时显示的两个游戏都会呈现，繁忙的游戏仍会让另一个卡顿。只渲染不呈现的游戏仍占用 GPU 时间，因此另一个游戏的帧可能变慢，但不会卡顿。
-- **脚本剖析与 Metal 的 GPU 时间需要 WASD Engine 的运行时** — 除 WASD Engine 从 `4.7.2-wasd.3` 起的构建之外的 LibGodot 构建（例如 `runnerPath` 与 `libgodotPath` 指定的构建）没有不依赖调试器的脚本剖析器，在 macOS 上也没有 GPU 时间戳；这时 `godot_performance` 只报告帧时间，并说明原因。剖析器只为 GDScript 计时，其自身开销会拉长它报告的时间，因此这些时间用于在脚本之间比较，而不是与帧时间比较。`engine_calls` 只在剖析器仅在主线程上记录引擎方法的运行时上列出引擎方法，且只列出该线程上的调用，因此在工作线程上运行的函数不列出任何引擎方法。
+- **脚本剖析与 Metal 的 GPU 时间需要 WASD Engine 的运行时** — 除 WASD Engine 从 `4.7.2-wasd.3` 起的构建之外的 LibGodot 构建（例如 `runnerPath` 与 `libgodotPath` 指定的构建）没有不依赖调试器的脚本剖析器，在 macOS 上也没有 GPU 时间戳；这时 `godot_performance` 只报告帧时间，并说明原因。剖析器只为 GDScript 计时，其自身开销会拉长它报告的时间，因此这些时间用于在脚本之间比较，而不是与帧时间比较。`engine_calls` 只在剖析器仅在主线程上记录引擎方法的运行时（例如 WASD Engine 从 `4.7.2-wasd.4` 起的构建）上列出引擎方法，且只列出该线程上的调用，因此在工作线程上运行的函数不列出任何引擎方法。
 - **音频采集取 Master 总线的立体声混音** — 采集位于 Master 总线效果链的末尾，因此 Master 总线旁路其效果时得到的是静音，采集期间替换总线布局的游戏会在那里中断采集的音频；结果会说明这两种情况。在环绕声扬声器模式下，Master 总线的每个声道对都会写入采集，采集会把它们交错在一起，因此其音频不是立体声混音。
 - **Web 运行不是浏览器** — `web: true` 的 `godot_run` 使用桌面 OpenGL 驱动渲染，其限制大于浏览器中的 WebGL，例如 uniform 缓冲区为 64 KB，而 Apple GPU 上的 Chrome 只允许 16 KB；它还以原生代码在多个线程上运行，因此既不会显示实例 uniform 溢出，也不会显示浏览器单线程造成的卡顿；这些由 [Web 检查](#web-check)报告。
 - **Web 检查需要桌面应用，且只看到启动阶段** — 只有桌面应用提供检查所用的浏览器，因此在其他环境中 `wasd_export_web` 和 `wasd_release_game` 会报告检查无法运行。检查在没有输入的情况下只观察游戏开头的 `webCheckSeconds`，因此会漏掉只有在玩家操作之后或后续关卡中才出现的问题；其离屏页面还要把每一帧从 GPU 复制回来，这会多花几毫秒，而浏览器标签页没有这部分开销。
