@@ -3,7 +3,9 @@
  * through the vendored Loader, with a `gamedev` preset whose rows come from the shipped overlay: the `planning` group,
  * which isolates plan mode, `tool-todo`, and `todo-continuation`. A scripted model drives Agents bound to the presets,
  * so the reminder reaches the model through the preset's scoped events, an Agent of a preset without the plugin gets
- * none, and plan mode, whose service the preset hides from the plugin's own lookup, holds the reminder back.
+ * none, plan mode, whose service the preset hides from the plugin's own lookup, holds the reminder back, and the images
+ * a user attaches to an answer, which the question card steers in marked as part of the answer, do not stop it while a
+ * new instruction from the user does.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -21,13 +23,14 @@ import * as AgentPreset from '@deepseek-ai/dsh-agent-preset'
 import * as AgentPresetRegistry from '@deepseek-ai/dsh-agent-preset-registry'
 import { loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
 import * as Llm from '@deepseek-ai/dsh-llm'
-import { createUserMessage, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { createUserMessage, type MessageSource, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as PlanMode from '@deepseek-ai/dsh-plan-mode'
 import * as SessionStore from '@deepseek-ai/dsh-session'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import * as SessionProjection from '@deepseek-ai/dsh-session-projection'
 import * as SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
+import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 import * as Tools from '@deepseek-ai/dsh-tools'
@@ -217,6 +220,41 @@ describe('todo continuation in a Loader-booted gamedev preset', () => {
     await ask(agent, 'Go ahead.')
     expect(reminders(agent)).toEqual([{ kind: 'todo-continuation', form: 'notice', summary: '2 todos left' }])
     expect(adapter.requests).toHaveLength(6)
+  })
+
+  it('keeps reminding after the user answers with images, and follows the user once they steer the turn', async () => {
+    const booted = await boot()
+    // The Host's prompt for a question card's images carries `answersQuestion`; a typed instruction does not.
+    const steerer = (name: string, source: MessageSource, text: string) => defineContentToolFixture({
+      name,
+      description: `Stands for the user steering in: ${text}`,
+      parameters: {},
+      execute(_args, exec) {
+        exec.agent?.steer(createUserMessage({ content: [{ type: 'text', text }], source }))
+        return Promise.resolve([{ type: 'text', text: 'answered' }])
+      },
+    })
+    booted.tools.register(steerer('answer_with_images', { kind: 'user', rpcId: 'answer-1', answersQuestion: true } as MessageSource, 'Images for my answer:'))
+    booted.tools.register(steerer('steer_instruction', { kind: 'user', rpcId: 'steer-1' } as MessageSource, 'Stop after the terrain.'))
+    const answered = await startAgent(booted, 'answered', 'gamedev', [
+      toolCallResponse('w1', 'todo_write', { todos: OPEN_LIST }),
+      toolCallResponse('a1', 'answer_with_images', {}),
+      textResponse('I textured the terrain in the look you chose. Want me to do the trees next?'),
+      toolCallResponse('w2', 'todo_write', { todos: DONE_LIST }),
+      textResponse('Both are textured.'),
+    ])
+    const steered = await startAgent(booted, 'steered', 'gamedev', [
+      toolCallResponse('w1', 'todo_write', { todos: OPEN_LIST }),
+      toolCallResponse('s1', 'steer_instruction', {}),
+      textResponse('Stopping after the terrain, as you asked.'),
+    ])
+    await ask(answered.agent, 'Texture the terrain and the trees.')
+    await ask(steered.agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(answered.agent)).toEqual([{ kind: 'todo-continuation', form: 'notice', summary: '2 todos left' }])
+    expect(answered.adapter.requests).toHaveLength(5)
+    expect(reminders(steered.agent)).toEqual([])
+    expect(steered.adapter.requests).toHaveLength(3)
   })
 
   it('keeps the function plugin\'s namespace free of a default export, which would make the Loader discard it', () => {

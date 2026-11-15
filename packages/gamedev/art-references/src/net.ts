@@ -1,9 +1,9 @@
 /**
  * Web requests of the reference tools: one GET of a public web address, following redirects, within a time limit and a
- * size limit. The first address and every redirect's must resolve only to public internet addresses, so a page found
- * on the web cannot make the tools reach the user's computer or local network. Requests carry no cookies or other
- * credentials. The address check resolves the host before the request, so a host whose records change between the
- * check and the connection can still reach the address it changed to.
+ * size limit. For the first address and every redirect's, the host is resolved once, every address it resolves to must
+ * be on the public internet, and the request's connection goes to one of exactly those addresses, never to the host
+ * name, so a host whose records change between the check and the connection cannot reach this computer or its local
+ * network. Requests carry no cookies or other credentials.
  * @module @deepseek-ai/dsh-art-references/src/net
  */
 import { BlockList, isIP } from 'node:net'
@@ -13,6 +13,22 @@ export interface LookupAddress {
   readonly address: string
   /** 4 or 6. */
   readonly family: number
+}
+
+/** One response, with its body not yet read. */
+export interface WebResponse {
+  /** The HTTP status. */
+  readonly status: number
+  /**
+   * A response header.
+   * @param name - the header's name, in any case.
+   * @returns its value, or undefined when the response has none.
+   */
+  header(name: string): string | undefined
+  /** The body's bytes, decompressed when the server compressed them. */
+  readonly body: AsyncIterable<Uint8Array>
+  /** Stop reading the body and close the connection; reading after it ends early. */
+  cancel(): void
 }
 
 /** How the reference tools reach the web. */
@@ -25,12 +41,18 @@ export interface ReferenceWeb {
    */
   lookup(hostname: string, signal: AbortSignal): Promise<readonly LookupAddress[]>
   /**
-   * Send one request without following redirects.
-   * @param url - the address.
-   * @param init - headers, the manual redirect mode, and cancellation.
+   * Send one GET without following redirects, over a connection to one of `addresses`, which the caller checked; the
+   * request never resolves the host name itself, and through a proxy it asks the proxy to connect to that address.
+   * @param url - the address requested; its host name names the site to the server and its certificate.
+   * @param addresses - the addresses to connect to, in the order to try them; at least one.
+   * @param init - headers and cancellation.
    * @returns the response.
    */
-  fetch(url: string, init: { headers: Record<string, string>; redirect: 'manual'; signal: AbortSignal }): Promise<Response>
+  request(
+    url: URL,
+    addresses: readonly LookupAddress[],
+    init: { headers: Record<string, string>; signal: AbortSignal },
+  ): Promise<WebResponse>
   /** `User-Agent` of every request. */
   readonly userAgent: string
 }
@@ -54,7 +76,8 @@ for (const [network, prefix] of [
   ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4],
 ] as const) NOT_PUBLIC.addSubnet(network, prefix, 'ipv4')
 // ::/96 holds the unspecified and loopback addresses and the deprecated IPv4-compatible ones; IPv4-mapped addresses
-// (::ffff:0:0/96) are checked by the IPv4 address they carry.
+// (::ffff:0:0/96) are checked by the IPv4 address they carry. NAT64 (64:ff9b::/96, 64:ff9b:1::/48), Teredo
+// (2001::/32), and 6to4 (2002::/16) addresses can carry any IPv4 address, so none of them counts as public.
 for (const [network, prefix] of [
   ['::', 96], ['64:ff9b::', 96], ['64:ff9b:1::', 48], ['100::', 64], ['2001::', 32], ['2001:2::', 48],
   ['2001:10::', 28], ['2001:20::', 28], ['2001:db8::', 32], ['2002::', 16], ['fc00::', 7], ['fe80::', 10],
@@ -96,8 +119,8 @@ function mappedIpv4(address: string): string | undefined {
 /**
  * Whether an address is on the public internet.
  * @param address - an IPv4 or IPv6 address.
- * @returns false for private, loopback, link-local, shared, reserved, documentation, and multicast addresses, and for
- *   anything that is not an IP address.
+ * @returns false for private, loopback, link-local, shared, reserved, documentation, and multicast addresses, for
+ *   addresses that carry an IPv4 address of another network, and for anything that is not an IP address.
  */
 export function isPublicAddress(address: string): boolean {
   const family = isIP(address)
@@ -126,14 +149,24 @@ export function parseWebUrl(value: string): URL {
 }
 
 /**
- * Check that a host resolves only to public internet addresses.
+ * The host name of an address as a resolver takes it: an IPv6 literal without its brackets.
+ * @param url - the address.
+ * @returns the host name.
+ */
+export function bareHostname(url: URL): string {
+  return url.hostname.startsWith('[') && url.hostname.endsWith(']') ? url.hostname.slice(1, -1) : url.hostname
+}
+
+/**
+ * Resolve the host of an address once and check that every address it has is public.
  * @param web - how the tools reach the web.
  * @param url - the address to request.
  * @param signal - cancellation.
+ * @returns the host's addresses, every one of them public; the request connects only to these.
  * @throws WebRequestError when the host does not resolve, or resolves to any address that is not public.
  */
-export async function assertPublicHost(web: ReferenceWeb, url: URL, signal: AbortSignal): Promise<void> {
-  const hostname = url.hostname.startsWith('[') && url.hostname.endsWith(']') ? url.hostname.slice(1, -1) : url.hostname
+export async function publicAddresses(web: ReferenceWeb, url: URL, signal: AbortSignal): Promise<readonly LookupAddress[]> {
+  const hostname = bareHostname(url)
   let addresses: readonly LookupAddress[]
   if (isIP(hostname) !== 0) {
     addresses = [{ address: hostname, family: isIP(hostname) }]
@@ -149,6 +182,7 @@ export async function assertPublicHost(web: ReferenceWeb, url: URL, signal: Abor
   if (!addresses.every(entry => isPublicAddress(entry.address))) {
     throw new WebRequestError('is on this computer or a local network, which the reference tools never request.')
   }
+  return addresses
 }
 
 /** Limits and headers of one GET. */
@@ -187,34 +221,32 @@ function sizeText(bytes: number): string {
 }
 
 /**
- * Read a response body up to a byte limit.
+ * Read a response body up to a byte limit, then close the response.
  * @returns the bytes and whether the body was longer.
  * @throws WebRequestError when the body is longer and `truncate` is false.
  */
-async function readBody(response: Response, options: GetOptions): Promise<{ body: Buffer; truncated: boolean }> {
-  const declared = Number(response.headers.get('content-length') ?? Number.NaN)
-  if (!options.truncate && Number.isFinite(declared) && declared > options.maxBytes) {
-    await response.body?.cancel()
-    throw new WebRequestError(`is larger than ${sizeText(options.maxBytes)}.`)
-  }
-  if (response.body === null) return { body: Buffer.alloc(0), truncated: false }
-  const reader = response.body.getReader()
-  const chunks: Buffer[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const room = options.maxBytes - total
-    if (value.byteLength > room) {
-      await reader.cancel()
-      if (!options.truncate) throw new WebRequestError(`is larger than ${sizeText(options.maxBytes)}.`)
-      chunks.push(Buffer.from(value.buffer, value.byteOffset, room))
-      return { body: Buffer.concat(chunks), truncated: true }
+async function readBody(response: WebResponse, options: GetOptions): Promise<{ body: Buffer; truncated: boolean }> {
+  try {
+    const declared = Number(response.header('content-length') ?? Number.NaN)
+    if (!options.truncate && Number.isFinite(declared) && declared > options.maxBytes) {
+      throw new WebRequestError(`is larger than ${sizeText(options.maxBytes)}.`)
     }
-    chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength))
-    total += value.byteLength
+    const chunks: Buffer[] = []
+    let total = 0
+    for await (const value of response.body) {
+      const room = options.maxBytes - total
+      if (value.byteLength > room) {
+        if (!options.truncate) throw new WebRequestError(`is larger than ${sizeText(options.maxBytes)}.`)
+        chunks.push(Buffer.from(value.buffer, value.byteOffset, room))
+        return { body: Buffer.concat(chunks), truncated: true }
+      }
+      chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength))
+      total += value.byteLength
+    }
+    return { body: Buffer.concat(chunks), truncated: false }
+  } finally {
+    response.cancel()
   }
-  return { body: Buffer.concat(chunks), truncated: false }
 }
 
 /**
@@ -232,26 +264,26 @@ export async function getPublic(web: ReferenceWeb, address: string, options: Get
   let url = parseWebUrl(address)
   try {
     for (let redirects = 0; ; redirects++) {
-      await assertPublicHost(web, url, signal)
+      const addresses = await publicAddresses(web, url, signal)
       signal.throwIfAborted()
-      const response = await web.fetch(url.href, {
+      const response = await web.request(url, addresses, {
         headers: { 'user-agent': web.userAgent, 'accept': options.accept },
-        redirect: 'manual',
         signal,
       })
       if (response.status >= 300 && response.status < 400 && response.status !== 304) {
-        await response.body?.cancel()
-        const location = response.headers.get('location')
-        if (location === null) throw new WebRequestError(`answered HTTP ${response.status} without a new address.`)
+        response.cancel()
+        const location = response.header('location')
+        if (location === undefined) throw new WebRequestError(`answered HTTP ${response.status} without a new address.`)
         if (redirects >= MAX_REDIRECTS) throw new WebRequestError(`redirected more than ${MAX_REDIRECTS} times.`)
+        if (!URL.canParse(location, url)) throw new WebRequestError(`answered HTTP ${response.status} with an address that is not one.`)
         url = parseWebUrl(new URL(location, url).href)
         continue
       }
-      if (!response.ok) {
-        await response.body?.cancel()
+      if (response.status < 200 || response.status >= 300) {
+        response.cancel()
         throw new WebRequestError(`answered HTTP ${response.status}.`)
       }
-      const contentType = response.headers.get('content-type') ?? ''
+      const contentType = response.header('content-type') ?? ''
       const { body, truncated } = await readBody(response, options)
       return { url, contentType, mediaType: contentType.split(';')[0]?.trim().toLowerCase() ?? '', body, truncated }
     }

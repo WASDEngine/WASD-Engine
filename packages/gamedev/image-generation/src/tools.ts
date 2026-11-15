@@ -7,8 +7,8 @@
  * @module @deepseek-ai/dsh-image-generation/src/tools
  */
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname } from 'node:path'
+import { mkdir, open, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
+import { dirname, extname, relative } from 'node:path'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ImageApi } from './api.ts'
@@ -35,6 +35,18 @@ const MODEL_NAME = 'Nano Banana 2.1'
 /** The file type of each extension a path may end in. */
 const FORMATS: Readonly<Record<string, ImageFormat>> = { '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' }
 
+/**
+ * Whether a path names a file on another computer or a device rather than on this computer's disks: a Windows UNC
+ * path such as `\\host\share` or `//host/share`, or a device path such as `\\?\UNC\host\share` or `\\.\pipe\name`, with
+ * either slash. Opening one on Windows connects to that computer with the user's credentials, so the tool refuses them
+ * on every platform.
+ * @param path - the path as a call names it.
+ * @returns true for such a path.
+ */
+export function isNetworkPath(path: string): boolean {
+  return /^[\\/]{2}/u.test(path)
+}
+
 /** How one set of tool definitions reaches its callers. */
 export interface ImageToolSurface {
   /** How the `path` parameter describes the file a call writes to these callers. */
@@ -54,6 +66,7 @@ export interface ImageToolHost {
    * @param requested - the path the call names: absolute, or relative to the calling Session's working directory.
    * @param exec - the call's execution.
    * @returns the absolute path.
+   * @throws Error for a network path ({@link isNetworkPath}).
    */
   file(requested: string, exec: ToolRunContext): Promise<string>
 }
@@ -115,11 +128,19 @@ function formatOf(path: string): ImageFormat {
   return format
 }
 
+/** A call's hold on the file it writes, taken before the image is paid for. */
+interface Reservation {
+  /** Whether the call replaces an earlier file. */
+  readonly replaced: boolean
+  /** Give the path up after the call failed: remove what the reservation made, unless another writer changed it. */
+  release(): Promise<void>
+}
+
 /**
- * Whether a path holds a file, refusing one the call may not replace.
+ * Refuse a path that is a folder, or a file the call may not replace.
  * @throws Error when the path is a folder, or a file and `replace` is false.
  */
-async function existing(path: string, file: string, replace: boolean): Promise<boolean> {
+async function refuseExisting(path: string, file: string, replace: boolean): Promise<boolean> {
   let found
   try {
     found = await stat(path)
@@ -128,8 +149,55 @@ async function existing(path: string, file: string, replace: boolean): Promise<b
     throw error
   }
   if (!found.isFile()) throw new Error(`${file} is a folder; pass the path of a file.`)
-  if (!replace) throw new Error(`${file} already exists. Pass replace: true to overwrite it, or choose another path.`)
-  return true
+  if (replace) return true
+  if (found.size === 0) {
+    throw new Error(`${file} already exists as an empty file, which another image_generate call may still be making. Pass replace: true to overwrite it, or choose another path.`)
+  }
+  throw new Error(`${file} already exists. Pass replace: true to overwrite it, or choose another path.`)
+}
+
+/**
+ * Take the path of a call's image before the image is paid for. Without `replace`, the call creates the file, empty,
+ * only when no file has the path, so two parallel calls never both pay for one path and neither overwrites a file;
+ * the finished image then takes its place. With `replace`, the path must not be a folder.
+ * @param path - the file's absolute path.
+ * @param file - the path as the call named it.
+ * @param replace - whether an existing file is overwritten.
+ * @returns the reservation.
+ * @throws Error when the path is a folder, or a file and `replace` is false.
+ */
+async function reservePath(path: string, file: string, replace: boolean): Promise<Reservation> {
+  if (replace) return { replaced: await refuseExisting(path, file, true), release: () => Promise.resolve() }
+  await refuseExisting(path, file, false)
+  const createdFolder = await mkdir(dirname(path), { recursive: true })
+  let handle
+  try {
+    handle = await open(path, 'wx')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    // Another call or program created it since the check.
+    await refuseExisting(path, file, false)
+    throw error
+  }
+  let made
+  try {
+    made = await handle.stat()
+  } finally {
+    await handle.close()
+  }
+  return {
+    replaced: false,
+    async release() {
+      const now = await stat(path).catch(() => undefined)
+      if (now?.ino === made.ino && now.dev === made.dev && now.size === 0) await rm(path, { force: true })
+      if (createdFolder === undefined) return
+      // The folders the reservation made, deepest first, while each is empty; a folder in use stays.
+      for (let folder = dirname(path); !relative(createdFolder, folder).startsWith('..'); folder = dirname(folder)) {
+        const removed = await rmdir(folder).then(() => true, () => false)
+        if (!removed || folder === createdFolder) return
+      }
+    },
+  }
 }
 
 /** Write a file in place of any earlier one, through a temporary file beside it. */
@@ -225,13 +293,19 @@ export function imageToolDefinitions(host: ImageToolHost, surface: ImageToolSurf
       const first = images[0]
       const aspectRatio = args.aspect_ratio ?? (first === undefined ? '1:1' : closestAspectRatio(first.width, first.height))
       const path = await host.file(args.path, exec)
-      const replaced = await existing(path, args.path, args.replace === true)
-      const image = await host.api.generate({ prompt, images, aspectRatio, size }, exec.signal)
-      const saved = await encodeForSaving(image, format)
-      await writeImage(path, saved.data)
+      const reservation = await reservePath(path, args.path, args.replace === true)
+      let saved
+      try {
+        const image = await host.api.generate({ prompt, images, aspectRatio, size }, exec.signal)
+        saved = await encodeForSaving(image, format)
+        await writeImage(path, saved.data)
+      } catch (error) {
+        await reservation.release()
+        throw error
+      }
       return {
-        path, file: args.path, format, width: saved.width, height: saved.height, bytes: saved.data.byteLength, replaced,
-        images: [...requested], aspectRatio, size,
+        path, file: args.path, format, width: saved.width, height: saved.height, bytes: saved.data.byteLength,
+        replaced: reservation.replaced, images: [...requested], aspectRatio, size,
       }
     },
   })]

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Feedback dos agentes",
-    "description": "Permite que o agente e os agentes conectados ao WASD Engine enviem feedback sobre o WASD Engine à sua equipe e informa com que frequência os agentes usam cada ferramenta de jogo e servidor MCP."
+    "description": "Permite que o agente e os agentes conectados ao WASD Engine enviem feedback sobre o WASD Engine à sua equipe e informa com que frequência os agentes usam as ferramentas do WASD Engine, o que pode ser desativado nas Configurações."
   }
 }

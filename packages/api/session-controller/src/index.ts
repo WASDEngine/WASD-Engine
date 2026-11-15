@@ -461,7 +461,8 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * Admit one prompt after explicitly resuming its Session.
-   * @param request - Session identity, prompt content, source metadata, and delivery mode.
+   * @param request - Session identity, prompt content, source metadata, and delivery mode; a prompt that
+   *   `answersQuestion` must steer content.
    * @param signal - caller cancellation before prompt admission begins.
    * @returns acknowledgement that the Agent accepted the prompt.
    */
@@ -481,6 +482,10 @@ export class SessionController extends TypertRemoteService {
         { value: request.clientTimeZone },
       )
     }
+    // WASD Engine: part of an answer joins the turn that waits for it.
+    if (request.answersQuestion === true && (request.mode !== 'steer' || request.content.length === 0)) {
+      throw new RemoteError('gateway/bad-request', 'a prompt that answers a question must steer content', {})
+    }
     // The caller is recorded only when it is not the owner, so owner messages keep their exact source.
     const principal = principalOf(this.ctx.invocation)
     const source: MessageSource = {
@@ -488,6 +493,7 @@ export class SessionController extends TypertRemoteService {
       rpcId: request.requestId,
       ...(clientTimeZone === undefined ? {} : { clientTimeZone }),
       ...(principal === undefined ? {} : { principal }),
+      ...(request.answersQuestion === true ? { answersQuestion: true as const } : {}),
     }
     return this.commands.prompt(request, source)
   }

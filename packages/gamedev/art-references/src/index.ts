@@ -10,7 +10,6 @@
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  * @module @deepseek-ai/dsh-art-references
  */
-import { lookup } from 'node:dns/promises'
 import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -23,10 +22,11 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-web'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { ReferenceCache, ReferenceFinder, type SearchWeb } from './finder.ts'
+import { MAX_ANIMATION_PIXELS } from './images.ts'
 import { referenceMcpProvider } from './mcp.ts'
-import type { ReferenceWeb } from './net.ts'
 import { artReferencesPrompt } from './prompt.ts'
 import { referenceToolDefinitions, type ReferenceToolHost, type ReferenceToolSurface } from './tools.ts'
+import { createNodeWeb } from './transport.ts'
 
 export type * from './types.ts'
 
@@ -143,14 +143,7 @@ function sessionImages(ctx: Context): ReferenceToolSurface {
  */
 export function apply(ctx: Context, config: Config): void {
   if (!isAbsolute(config.dataRoot)) throw new Error(`Art references plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
-  const web: ReferenceWeb = {
-    userAgent: config.userAgent,
-    lookup: async (hostname, signal) => {
-      signal.throwIfAborted()
-      return await lookup(hostname, { all: true, order: 'verbatim' })
-    },
-    fetch: (url, init) => fetch(url, init),
-  }
+  const web = createNodeWeb({ userAgent: config.userAgent })
   const search: SearchWeb = async (query, maxResults, signal) => {
     const result = await ctx.web.search({ query, maxResults }, signal)
     return result.sources.map(source => ({ url: source.url, ...source.title === undefined ? {} : { title: source.title } }))
@@ -167,6 +160,8 @@ export function apply(ctx: Context, config: Config): void {
     sheetCell: config.sheetCell,
     sheetColumns: config.sheetColumns,
     concurrency: config.concurrency,
+  }, (error) => {
+    ctx.logger.warn(`art-references: a page or image failed: ${error instanceof Error ? error.message : String(error)}`)
   })
   const host: ReferenceToolHost = {
     finder,
@@ -177,7 +172,7 @@ export function apply(ctx: Context, config: Config): void {
     maxSaved: config.maxSaved,
     maxModelImages: config.maxModelImages,
     modelImageEdge: config.modelImageEdge,
-    frames: { maxFrames: config.framesMaxFrames, maxEdge: config.framesMaxEdge },
+    frames: { maxFrames: config.framesMaxFrames, maxEdge: config.framesMaxEdge, maxPixels: MAX_ANIMATION_PIXELS },
     async project(exec) {
       if (exec.agent === undefined) throw new Error('reference_save runs only inside a Session.')
       return await ctx.workingDirectory.ensure(exec.agent, exec.signal)

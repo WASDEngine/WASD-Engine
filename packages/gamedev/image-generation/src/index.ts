@@ -18,7 +18,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { ImageApi, type ImageAccess } from './api.ts'
 import { imageMcpProvider } from './mcp.ts'
-import { imageToolDefinitions, type ImageToolHost } from './tools.ts'
+import { imageToolDefinitions, isNetworkPath, type ImageToolHost } from './tools.ts'
 
 export type * from './types.ts'
 
@@ -73,6 +73,7 @@ export function apply(ctx: Context, config: Config): void {
     api,
     generationTimeoutMs: config.generationTimeoutMs,
     async file(requested, exec) {
+      if (isNetworkPath(requested)) throw new Error(`${requested} is a network path; pass a path on this computer.`)
       if (isAbsolute(requested)) return requested
       if (exec.agent === undefined) throw new Error('Pass path as an absolute path.')
       return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested)

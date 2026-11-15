@@ -13,12 +13,12 @@ import { MCP_INSTRUCTIONS } from '../src/prompt.ts'
 import { compose, type Composition } from './composition.ts'
 import { animatedGif, patternImage, previewPage } from './fixtures.ts'
 
-// The fake web's hosts resolve to a public address, and .lan hosts to a private one. The factory imports nothing that
-// imports this module, which would wait for the factory itself.
-vi.mock('node:dns/promises', async importOriginal => ({
-  ...await importOriginal<typeof import('node:dns/promises')>(),
-  lookup: (hostname: string) => Promise.resolve([{ address: hostname.endsWith('.lan') ? '192.168.1.20' : '93.184.216.34', family: 4 }]),
-}))
+// The plugin reaches the composition's fake web instead of this computer's. The factory imports nothing that imports
+// the transport, which would wait for the factory itself.
+vi.mock('../src/transport.ts', async () => {
+  const { pluginWeb } = await import('./fixtures.ts')
+  return { createNodeWeb: () => pluginWeb.current }
+})
 
 const TIMEOUT = 60_000
 
@@ -27,7 +27,6 @@ let composition: Composition | undefined
 afterEach(async () => {
   await composition?.cleanup()
   composition = undefined
-  vi.unstubAllGlobals()
 })
 
 /** The composition with a signed-in account, the game MCP server, and an official MCP client connected to it. */

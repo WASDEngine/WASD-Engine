@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/agent-feedback/README.md
 /:
-  en: 441be876438d35ef
-  zh: b1d0a0d0dfc0557b
+  en: 386756ab59092109
+  zh: a82112c6faa58020
 /deepseek-ai-dsh-agent-feedback:
   en: 485ec1a7e3234a16
   zh: 5953a920c9d4f871
 /deepseek-ai-dsh-agent-feedback/summary:
-  en: 371e9294faacc42f
-  zh: b4a28dcdef8b7952
+  en: 7a84ea174a3f710a
+  zh: f64fa323eae4ff34
 /deepseek-ai-dsh-agent-feedback/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,17 +18,17 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-agent-feedback/use-this-package/default-composition:
-  en: 77aece98e1ec5057
-  zh: 0b20c149bc86c844
+  en: a4412e8067fff795
+  zh: 275865d62b7f7b96
 /deepseek-ai-dsh-agent-feedback/use-this-package/the-feedback-tool:
-  en: 0c0bdcd9aeb44008
-  zh: 2f3d673fcc488858
+  en: 91a6d2247d1ef35a
+  zh: 3a2689904c0f046b
 /deepseek-ai-dsh-agent-feedback/use-this-package/the-usage-report:
-  en: 0a82308a9c9162d6
-  zh: ed45c34e00f9fc0b
+  en: b2d04f863824d8d5
+  zh: 024690b40a7d30fc
 /deepseek-ai-dsh-agent-feedback/understand-the-implementation:
-  en: a8a5249127579964
-  zh: 0c6b8347ee926c87
+  en: 6b2d26dbff38939a
+  zh: 871659047e553dfa
 /deepseek-ai-dsh-agent-feedback/further-exploration:
   en: 0b720da7fdcd82c7
   zh: d6645d2b11b75c85
@@ -51,17 +51,17 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-agent-feedback/model-experience/tool-results/what-the-model-sees:
-  en: 7b5000e2762db5eb
-  zh: 9b7cec1c0574f717
+  en: e925b6136916568e
+  zh: 665cbe93ae797f93
 /deepseek-ai-dsh-agent-feedback/model-experience/tool-results/token-effect:
-  en: b5d29a0f7e964ebe
-  zh: 9273c3e78dbcc14f
+  en: 2db190a05f8c6c46
+  zh: 48c2da2b77a95ade
 /deepseek-ai-dsh-agent-feedback/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: a38ada6d71b98d2c
 /deepseek-ai-dsh-agent-feedback/known-limitations-and-deferred-work:
-  en: 968898bf8f08eb25
-  zh: ca894b5ce82b9634
+  en: d7b37d13f86e8733
+  zh: 9271022fae234f77
 /deepseek-ai-dsh-agent-feedback/known-limitations-and-deferred-work/dev-note:
-  en: 398f9e90088b833f
-  zh: 577f70165ba4d9d1
+  en: 880f2ac470a67f0a
+  zh: b2795af5c51b4c9f

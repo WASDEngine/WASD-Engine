@@ -1,16 +1,18 @@
 /**
  * Reference searches. A search reads the pages a web search finds for each query, takes the image each page names for
  * link previews, or its first image without one, and the video it plays; a page the call names directly gives every
- * image it shows. Each image is downloaded within the size and time limits, checked to be a picture large enough to
- * study, and kept in the plugin's cache folder, where a later save finds it without downloading it again. The same
- * picture found twice, at another size or on another site, is kept once, and the rest are numbered on a contact sheet.
+ * image it shows. Each image is downloaded within the size and time limits, decoded once to check it is a picture
+ * large enough to study, and only then kept in the plugin's cache folder, where a later save finds it without
+ * downloading it again; a cached file that no longer decodes is dropped from the cache. The same picture found twice,
+ * at another size or on another site, is kept once, and the rest are numbered on a contact sheet. A page or image that
+ * fails in any way counts as unusable and never fails the search.
  * @module @deepseek-ai/dsh-art-references/src/finder
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { decodeHtml, readPageMedia } from './html.ts'
-import { drawContactSheet, fingerprint, fingerprintDistance, probeImage, UnreadableImage } from './images.ts'
+import { drawContactSheet, fingerprint, fingerprintDistance, probeImage, sheetPicture, UnreadableImage, type SheetEntry } from './images.ts'
 import { getPublic, WebRequestError, type ReferenceWeb } from './net.ts'
 import type { ReferenceCandidate, ReferenceImageFormat, ReferenceImageInfo } from './types.ts'
 
@@ -241,7 +243,7 @@ export class ReferenceCache {
   /**
    * Keep a downloaded image.
    * @param image - its address.
-   * @param data - its bytes.
+   * @param data - its bytes, which the caller decoded.
    * @param info - what it is.
    * @param origin - where it came from.
    * @returns the cached image.
@@ -255,6 +257,19 @@ export class ReferenceCache {
     await writeAtomically(join(this.images, `${key}.json`), Buffer.from(JSON.stringify(entry)))
     this.known.set(image, entry)
     return entry
+  }
+
+  /**
+   * Drop a cached download, such as one whose file no longer decodes, so the next request downloads it again.
+   * @param image - its address.
+   * @returns when its record and file are gone.
+   */
+  async forget(image: string): Promise<void> {
+    this.known.delete(image)
+    const key = this.key(image)
+    // The record goes first, so no reader finds a record whose file is gone.
+    await rm(join(this.images, `${key}.json`), { force: true })
+    await Promise.all(Object.values(IMAGE_EXTENSIONS).map(extension => rm(join(this.images, `${key}${extension}`), { force: true })))
   }
 
   /**
@@ -329,6 +344,15 @@ export async function writeAtomically(path: string, data: Buffer): Promise<void>
   }
 }
 
+/** Reports a page or image that failed for a reason other than the web or the file, such as a cache folder it cannot write. */
+export type ReportFailure = (error: unknown) => void
+
+/** A downloaded image that decodes, with the fingerprint of its first frame. */
+interface Decoded {
+  readonly cached: CachedImage
+  readonly print: bigint
+}
+
 /** Finds reference images on the web and draws their contact sheet. */
 export class ReferenceFinder {
   /**
@@ -336,37 +360,42 @@ export class ReferenceFinder {
    * @param search - the web search.
    * @param cache - the cache folder.
    * @param limits - the search's limits.
+   * @param report - told of each page or image that failed for a reason other than the web or the file, which the
+   *   search still counts as unusable.
    */
   constructor(
     private readonly web: ReferenceWeb,
     private readonly search: SearchWeb,
     readonly cache: ReferenceCache,
     private readonly limits: FinderLimits,
+    private readonly report: ReportFailure,
   ) {}
 
   /**
    * Download an image, or find its earlier download in the cache. An address that turns out to be a web page, such as
    * a wiki's page of one image file, gives the page's main image: the one it names for link previews, or else its
-   * first image.
+   * first image. The image decodes: a new download is decoded before it is cached, and a cached file that no longer
+   * decodes is dropped from the cache and downloaded again.
    * @param image - the image's address, or a page's.
    * @param origin - where it came from, recorded with a new download; a page fills in its title when the origin has
    *   none.
    * @param signal - cancellation.
    * @returns the cached image, whose `image` is the address of the image file downloaded.
-   * @throws WebRequestError when the download fails, or UnreadableImage when the file is not a reference image or the
-   *   page shows none.
+   * @throws WebRequestError when the download fails, or UnreadableImage when the file is not a reference image that
+   *   decodes or the page shows none.
    */
   async download(image: string, origin: ImageOrigin, signal: AbortSignal): Promise<CachedImage> {
-    return await this.downloadImage(image, origin, signal, true)
+    return (await this.obtain(image, origin, signal, true)).cached
   }
 
   /**
    * Read an image file on this computer, such as an image the user attached, to save as a reference. Saving copies
    * the file, which stays where it is.
    * @param path - absolute path of the file.
-   * @returns the image, titled by its file name unless the name is a content hash, as attachment files are.
+   * @returns the image, which decodes, titled by its file name unless the name is a content hash, as attachment files
+   *   are.
    * @throws UnreadableImage when the path names no file, the file is larger than an image download may be, or it is
-   *   not a reference image.
+   *   not a reference image that decodes.
    */
   async readLocal(path: string): Promise<CachedImage> {
     const file = await stat(path).catch((error: unknown) => {
@@ -374,18 +403,32 @@ export class ReferenceFinder {
     })
     if (!file.isFile()) throw new UnreadableImage('is not a file.')
     if (file.size > this.limits.maxImageBytes) throw new UnreadableImage(`is larger than ${Math.round(this.limits.maxImageBytes / (1024 * 1024))} MB.`)
-    const info = await probeImage(await readFile(path))
+    const data = await readFile(path).catch((error: unknown) => {
+      throw new UnreadableImage(`could not be read (${(error as NodeJS.ErrnoException).code ?? 'unknown error'}).`, { cause: error })
+    })
+    const info = await probeImage(data)
+    await fingerprint(data)
     const stem = basename(path).replace(/\.[^.]*$/u, '')
     return { ...info, image: path, path, page: path, title: HASH_NAME.test(stem) ? '' : stem, site: '', local: true }
   }
 
   /**
-   * Download one address, following a web page to its main image when `followPage` is true.
+   * Download one address and fingerprint it, following a web page to its main image when `followPage` is true. A new
+   * download is cached only once it decodes; a cached file that no longer decodes is dropped from the cache and
+   * downloaded again.
    * @throws as {@link ReferenceFinder.download}.
    */
-  private async downloadImage(image: string, origin: ImageOrigin, signal: AbortSignal, followPage: boolean): Promise<CachedImage> {
+  private async obtain(image: string, origin: ImageOrigin, signal: AbortSignal, followPage: boolean): Promise<Decoded> {
     const cached = await this.cache.find(image)
-    if (cached !== undefined) return cached
+    if (cached !== undefined) {
+      try {
+        return { cached, print: await fingerprint(await readFile(cached.path)) }
+      } catch (error) {
+        // A file an earlier version cached without decoding it, or one changed on disk: download it again.
+        if (!(error instanceof UnreadableImage)) throw error
+        await this.cache.forget(image)
+      }
+    }
     const response = await getPublic(this.web, image, {
       accept: IMAGE_ACCEPT, maxBytes: this.limits.maxImageBytes, truncate: false, timeoutMs: this.limits.imageTimeoutMs, signal,
     })
@@ -393,11 +436,23 @@ export class ReferenceFinder {
       const media = followPage ? readPageMedia(decodeHtml(response.body, response.contentType), response.url, 1) : undefined
       const main = media?.preview[0] ?? media?.shown[0]
       if (media === undefined || main === undefined) throw new UnreadableImage('is a web page, not an image file.')
-      return await this.downloadImage(main, { ...origin, title: origin.title || media.title }, signal, false)
+      return await this.obtain(main, { ...origin, title: origin.title || media.title }, signal, false)
     }
     if (response.mediaType.startsWith('text/')) throw new UnreadableImage('is a text file, not an image file.')
     const info = await probeImage(response.body)
-    return await this.cache.keep(image, response.body, info, origin)
+    const print = await fingerprint(response.body)
+    signal.throwIfAborted()
+    return { cached: await this.cache.keep(image, response.body, info, origin), print }
+  }
+
+  /**
+   * Count one failed page or image: a failure of the web or the file is expected, any other is reported.
+   * @param error - the failure.
+   * @param signal - the search's cancellation, whose reason is no failure of a page or image.
+   */
+  private failed(error: unknown, signal: AbortSignal): void {
+    if (signal.aborted || error instanceof WebRequestError || error instanceof UnreadableImage) return
+    this.report(error)
   }
 
   /**
@@ -415,11 +470,15 @@ export class ReferenceFinder {
       return await this.offers(source, signal)
     })
     signal.throwIfAborted()
-    let unusable = read.filter(result => result.status === 'rejected').length
+    let unusable = 0
     const offers: Offer[] = []
     const seen = new Set<string>()
     for (const result of read) {
-      if (result.status === 'rejected') continue
+      if (result.status === 'rejected') {
+        this.failed(result.reason, signal)
+        unusable++
+        continue
+      }
       if (result.value.length === 0) unusable++
       for (const offer of result.value) {
         if (seen.has(offer.image)) continue
@@ -430,16 +489,16 @@ export class ReferenceFinder {
     // Twice the sheet's images, so the sheet still fills when some downloads fail or repeat a picture.
     const tried = offers.slice(0, this.limits.maxCandidates * 2)
     const downloads = await eachLimited(tried, this.limits.concurrency, async (offer) => {
-      const cached = await this.download(offer.image, offer, signal)
+      const { cached, print } = await this.obtain(offer.image, offer, signal, true)
       if (Math.max(cached.width, cached.height) < this.limits.minImageEdge) throw new UnreadableImage('is too small to study.')
-      return { cached, offer, print: await fingerprint(await readFile(cached.path)) }
+      return { cached, offer, print }
     })
     signal.throwIfAborted()
     const kept: { cached: CachedImage; offer: Offer; print: bigint }[] = []
     let duplicates = 0
     for (const download of downloads) {
       if (download.status === 'rejected') {
-        if (!(download.reason instanceof WebRequestError || download.reason instanceof UnreadableImage)) throw download.reason
+        this.failed(download.reason, signal)
         unusable++
         continue
       }
@@ -449,7 +508,27 @@ export class ReferenceFinder {
       }
       if (kept.length < this.limits.maxCandidates) kept.push(download.value)
     }
-    const candidates = kept.map(({ cached, offer }, index): ReferenceCandidate => ({
+    // Each kept image is drawn for its cell; one that fails to draw is unusable like a failed download.
+    const pictures = await eachLimited(kept, this.limits.concurrency, async ({ cached }) => {
+      try {
+        return await sheetPicture(await readFile(cached.path), this.limits.sheetCell)
+      } catch (error) {
+        if (error instanceof UnreadableImage) await this.cache.forget(cached.image)
+        throw error
+      }
+    })
+    signal.throwIfAborted()
+    const shown: { cached: CachedImage; offer: Offer; picture: SheetEntry['picture'] }[] = []
+    for (const [index, entry] of kept.entries()) {
+      const result = pictures[index]
+      if (result?.status !== 'fulfilled') {
+        if (result !== undefined) this.failed(result.reason, signal)
+        unusable++
+        continue
+      }
+      shown.push({ cached: entry.cached, offer: entry.offer, picture: result.value })
+    }
+    const candidates = shown.map(({ cached, offer }, index): ReferenceCandidate => ({
       number: index + 1,
       image: cached.image,
       page: offer.page,
@@ -460,11 +539,12 @@ export class ReferenceFinder {
       format: cached.format, width: cached.width, height: cached.height, frames: cached.frames, delays: cached.delays,
     }))
     if (candidates.length === 0) return { candidates, pages: pages.length, unusable, duplicates }
-    const drawn = await drawContactSheet(await Promise.all(kept.map(async ({ cached }, index) => ({
-      data: await readFile(cached.path),
+    const drawn = await drawContactSheet(shown.map(({ cached, picture }, index) => ({
+      picture,
       number: index + 1,
       tag: cached.frames > 1 ? `${cached.format === 'gif' ? 'GIF' : 'ANIM'} ${String(cached.frames)}` : candidates[index]?.video === undefined ? '' : 'VIDEO',
-    }))), { cell: this.limits.sheetCell, columns: this.limits.sheetColumns })
+    })), { cell: this.limits.sheetCell, columns: this.limits.sheetColumns })
+    signal.throwIfAborted()
     const path = await this.cache.keepSheet(drawn.data)
     return { candidates, sheet: { path, ...drawn }, pages: pages.length, unusable, duplicates }
   }

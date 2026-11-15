@@ -7,7 +7,10 @@
  * `maxRemindersPerTurn` reminders. Subagent Sessions, turns that a tool
  * ended, turns the user stopped or steered, turns with a message from the
  * user waiting, turns in which a step stopped at the model's output limit, and
- * turns in plan mode are left alone.
+ * turns in plan mode are left alone. A message that carries part of the user's
+ * answer to the agent's question, such as images attached to an
+ * `ask_user_question` answer, which its source marks `answersQuestion`, is no
+ * steering: the turn goes on with its own list.
  * @module @deepseek-ai/dsh-todo-continuation
  */
 
@@ -18,7 +21,7 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-plan-mode'
 import { boundContextSummary, createUserMessage, lastAssistantStreamChunk } from '@deepseek-ai/dsh-llm'
-import type { ContextFormed } from '@deepseek-ai/dsh-llm'
+import type { ContextFormed, MessageSource } from '@deepseek-ai/dsh-llm'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import type { TodoItem } from '@deepseek-ai/dsh-tool-todo'
 
@@ -55,7 +58,10 @@ interface TurnState {
   endedByReply: boolean
   /** Steps the turn has started. */
   steps: number
-  /** Whether the user steered the turn after its first step, which then follows the user rather than its list. */
+  /**
+   * Whether the user steered the turn after its first step, which then follows the user rather than its list. Part of
+   * an answer to the agent's question is no steering.
+   */
   userSteered: boolean
   /**
    * Whether a step of the turn stopped at the model's output limit. The loop keeps that end reason for the rest of the
@@ -91,6 +97,17 @@ function reminderText(unfinished: readonly TodoItem[]): string {
  */
 function summaryOf(count: number): string {
   return boundContextSummary(`${count} ${count === 1 ? 'todo' : 'todos'} left`)
+}
+
+/**
+ * Whether a user message carries part of the user's answer to a question the
+ * agent asked, such as images attached to an `ask_user_question` answer, which
+ * the question card marks on the message's source.
+ * @param source - the message's source.
+ * @returns true for part of an answer.
+ */
+function answersQuestion(source: MessageSource): boolean {
+  return 'answersQuestion' in source && source.answersQuestion === true
 }
 
 /**
@@ -156,9 +173,11 @@ export function apply(ctx: Context, config: Config): void {
         return
       }
       case 'user/message': {
-        // The turn's own prompt enters in its first step; a user message in a later step steered it.
+        // The turn's own prompt enters in its first step; a user message in a later step steered it, unless it carries
+        // part of the answer the turn was waiting for.
         const state = turns.get(session)
-        if (state !== undefined && state.steps > 1 && event.data.source.kind === 'user') state.userSteered = true
+        const source = event.data.source
+        if (state !== undefined && state.steps > 1 && source.kind === 'user' && !answersQuestion(source)) state.userSteered = true
         return
       }
       case 'todo/write': {

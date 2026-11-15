@@ -15,19 +15,18 @@ import { artReferencesPrompt, MCP_INSTRUCTIONS } from '../src/prompt.ts'
 import { callTool, compose, imageNames, text, type Composition } from './composition.ts'
 import { animatedGif, patternImage, previewPage } from './fixtures.ts'
 
-// The fake web's hosts resolve to a public address, and .lan hosts to a private one. The factory imports nothing that
-// imports this module, which would wait for the factory itself.
-vi.mock('node:dns/promises', async importOriginal => ({
-  ...await importOriginal<typeof import('node:dns/promises')>(),
-  lookup: (hostname: string) => Promise.resolve([{ address: hostname.endsWith('.lan') ? '192.168.1.20' : '93.184.216.34', family: 4 }]),
-}))
+// The plugin reaches the composition's fake web instead of this computer's. The factory imports nothing that imports
+// the transport, which would wait for the factory itself.
+vi.mock('../src/transport.ts', async () => {
+  const { pluginWeb } = await import('./fixtures.ts')
+  return { createNodeWeb: () => pluginWeb.current }
+})
 
 let composition: Composition | undefined
 
 afterEach(async () => {
   await composition?.cleanup()
   composition = undefined
-  vi.unstubAllGlobals()
 })
 
 async function composed(config: Partial<ArtReferences.Config> = {}): Promise<Composition> {
@@ -211,6 +210,13 @@ describe('reference_save', () => {
       [{ subject: 'x', images: ['https://a.example/1.png', 'https://a.example/2.png', 'https://a.example/3.png'] }, 'images must name at most 2 images'],
       [{ subject: 'x', images: ['ftp://a.example/1.png'] }, 'The image ftp://a.example/1.png is not an http or https address.'],
       [{ subject: 'x', images: ['https://router.lan/cam.png'] }, 'https://router.lan/cam.png is on this computer or a local network'],
+      // Network paths would make Windows connect to that computer with the user's credentials.
+      [{ subject: 'x', images: ['\\\\attacker.example\\share\\ref.png'] }, 'is a network path; pass an image file on this computer or a web address.'],
+      [{ subject: 'x', images: ['//attacker.example/share/ref.png'] }, 'is a network path'],
+      [{ subject: 'x', images: ['\\\\?\\UNC\\attacker.example\\share\\ref.png'] }, 'is a network path'],
+      [{ subject: 'x', images: ['\\\\.\\pipe\\ref'] }, 'is a network path'],
+      [{ subject: 'x', images: ['file://attacker.example/share/ref.png'] }, 'names a file on another computer'],
+      [{ subject: 'x', images: ['file:////attacker.example/share/ref.png'] }, 'names a file on another computer'],
     ]
     for (const [args, message] of cases) {
       const result = await callTool(current, 'reference_save', args)
@@ -219,6 +225,57 @@ describe('reference_save', () => {
     }
     // Every call failed before saving, so no references folder was made.
     await expect(readdir(join(current.work, 'references'))).rejects.toThrow('ENOENT')
+    expect(current.web.requests).toEqual([])
+  })
+
+  it('lists an image that does not decode as not saved, and saves the rest with their sources', async () => {
+    const current = await composed()
+    const jpeg = await patternImage(400, 300, 30, 'jpeg')
+    current.web
+      .image('https://good.example/hero.png', await patternImage(128, 128, 31))
+      .image('https://bad.example/cut.jpg', jpeg.subarray(0, Math.floor(jpeg.length * 0.6)), 'image/jpeg')
+    const result = await callTool(current, 'reference_save', { subject: 'hero', images: ['https://good.example/hero.png', 'https://bad.example/cut.jpg'] })
+    expect(result.isError).toBe(false)
+    expect(text(result)).toContain('- references/hero/01-hero.png — 128×128 PNG\n- Not saved: https://bad.example/cut.jpg is a damaged image file that cannot be decoded (')
+    expect((await readdir(join(current.work, 'references', 'hero'))).sort()).toEqual(['01-hero.png', 'SOURCES.md'])
+    const sources = await readFile(join(current.work, 'references', 'hero', 'SOURCES.md'), 'utf8')
+    expect(sources).not.toContain('cut.jpg')
+    // Only damaged images fail the call, which then writes nothing.
+    const failed = await callTool(current, 'reference_save', { subject: 'villain', images: ['https://bad.example/cut.jpg'] })
+    expect(failed.isError).toBe(true)
+    await expect(readdir(join(current.work, 'references', 'villain'))).rejects.toThrow('ENOENT')
+  })
+
+  it('adds nothing when the same images are saved again, so a retried save makes no duplicates', async () => {
+    const current = await composed()
+    await knightWeb(current)
+    const images = ['https://itch.example/cover.png', 'https://gifs.example/slash.gif']
+    await callTool(current, 'reference_save', { subject: 'Knight', images })
+    const folder = join(current.work, 'references', 'knight')
+    const before = (await readdir(folder)).sort()
+    const sources = await readFile(join(folder, 'SOURCES.md'), 'utf8')
+    const again = await callTool(current, 'reference_save', { subject: 'Knight', images })
+    expect(again.isError).toBe(false)
+    expect(text(again).split('\n').slice(1, 3)).toEqual([
+      '- references/knight/01-cover.png — 320×256 PNG (saved earlier)',
+      '- references/knight/02-slash.gif — 48×48 GIF, 3 frames, 0.3 s; its frames, numbered with their timing: references/knight/02-slash.frames.png (saved earlier)',
+    ])
+    expect((await readdir(folder)).sort()).toEqual(before)
+    expect(await readFile(join(folder, 'SOURCES.md'), 'utf8')).toBe(sources)
+  })
+
+  it('writes nothing once its call is stopped, even while it is still drawing an animation\'s frames', async () => {
+    const current = await composed()
+    // A long animation whose frames sheet takes far longer to draw than the call is given; the time limit and the
+    // user's Stop both abort the call's signal.
+    current.web.image('https://gifs.example/long.gif', await animatedGif(400, 400, Array.from({ length: 160 }, () => 40), 7), 'image/gif')
+    const controller = new AbortController()
+    setTimeout(() => { controller.abort(new Error('reference_save timed out')) }, 40)
+    const result = await callTool(current, 'reference_save', { subject: 'dance', images: ['https://gifs.example/long.gif'] }, controller.signal)
+    expect(result.isError).toBe(true)
+    // The call's work goes on in the background until it sees the timeout; it must leave no file behind.
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    await expect(readdir(join(current.work, 'references', 'dance'))).rejects.toThrow('ENOENT')
   })
 })
 

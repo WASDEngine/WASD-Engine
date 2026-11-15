@@ -424,7 +424,7 @@ describe('QuestionComposer answer images', () => {
 })
 
 describe('answerImageIntake', () => {
-  it('uploads through the browser upload service and steers the message into the card\'s Session', async () => {
+  it('uploads through the browser upload service and steers the message into the card\'s Session as part of the answer', async () => {
     const ctx = new Context()
     const uploadImage = vi.fn(async () => ({
       ok: true as const,
@@ -440,7 +440,8 @@ describe('answerImageIntake', () => {
     expect(uploadImage).toHaveBeenCalledWith(SID, expect.any(File), 'image/png', 'a.png', expect.any(AbortSignal))
     await vi.waitFor(() => { expect(registry.ensure('card').getSnapshot().images[0]?.status).toBe('ready') })
     await expect(questionImageIntake?.send('card', () => 'Images:')).resolves.toMatchObject({ ok: true })
-    expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'Images:' }, { type: 'file', receiptId: 'receipt-a' }], 'steer')
+    // The source records that the message answers the question, so the agent's turn keeps its own course.
+    expect(prompt).toHaveBeenCalledWith([{ type: 'text', text: 'Images:' }, { type: 'file', receiptId: 'receipt-a' }], 'steer', undefined, undefined, { answersQuestion: true })
   })
 
   it('offers no image verbs while the composition has no browser upload service', () => {

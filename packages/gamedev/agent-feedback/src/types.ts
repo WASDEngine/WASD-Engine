@@ -27,16 +27,31 @@ export interface FeedbackReport {
   readonly model: string
 }
 
+/** One feedback as the WASD Engine site receives it: the request's JSON fields. */
+export interface SentFeedback {
+  readonly kind: FeedbackKind
+  readonly message: string
+  readonly about: string
+  readonly connected: boolean
+  readonly agent: string
+  readonly agent_title: string
+  readonly model: string
+  /** Empty when the app names no version. */
+  readonly app_version: string
+  /** The operating system as Node names it, such as `darwin`. */
+  readonly platform: string
+}
+
 /** What one count of a usage report is of: who called which tool of which game tool plugin or MCP server. */
 export interface ToolUsageKey {
   readonly agent: ReportingAgent
   /** Whether the server is an MCP server the user added rather than one of WASD Engine's game tool plugins. */
   readonly custom: boolean
-  /** The game tool plugin's MCP provider id, such as `godot`, or the added MCP server's name. */
+  /** The game tool plugin's MCP provider id, such as `godot`, or `added-mcp-servers` for every server the user added. */
   readonly server: string
   /** Display name of the server, such as Godot. */
   readonly serverTitle: string
-  /** The tool's name as connected agents call it, such as `godot_run`, or the added server's own name for it. */
+  /** The tool's name as connected agents call it, such as `godot_run`, or `all-tools` for the servers the user added. */
   readonly tool: string
 }
 

@@ -1,12 +1,15 @@
 /**
  * The model-facing feedback tool: `feedback_send` sends feedback about WASD Engine to the team that makes it, as the
- * account WASD Engine is signed in to. One set of definitions serves one surface: the Session's own agent, whose model
- * the feedback names, or agents connected through WASD Engine's MCP server, which name their model themselves and
- * whose client the server's `prepare` adds as `agent_id` and `agent_title`, parameters their tool listing leaves out.
+ * account WASD Engine is signed in to. Before it is sent, the message and its subject lose the user's home folder,
+ * account name, email addresses, and anything that looks like a key or token (`scrub.ts`), and the result shows every
+ * field as the site received it. One set of definitions serves one surface: the Session's own agent, whose model the
+ * feedback names, or agents connected through WASD Engine's MCP server, which name their model themselves and whose
+ * client the server's `prepare` adds as `agent_id` and `agent_title`, parameters their tool listing leaves out.
  * @module @deepseek-ai/dsh-agent-feedback/src/tools
  */
 import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import type { FeedbackKind, FeedbackReport, ReportingAgent } from './types.ts'
+import { scrubFeedback, type UserTraces } from './scrub.ts'
+import type { FeedbackKind, FeedbackReport, ReportingAgent, SentFeedback } from './types.ts'
 
 /** The kinds of feedback, in the order the tool lists them. */
 export const FEEDBACK_KINDS = ['bug', 'missing_feature', 'confusing', 'suggestion'] as const satisfies readonly FeedbackKind[]
@@ -43,9 +46,14 @@ export interface FeedbackToolHost {
    * Send the feedback to the WASD Engine site.
    * @param feedback - the feedback.
    * @param signal - cancellation.
+   * @returns every field the site received.
    * @throws an error whose message tells the agent why it was not sent and what to do.
    */
-  send(feedback: FeedbackReport, signal: AbortSignal): Promise<void>
+  send(feedback: FeedbackReport, signal: AbortSignal): Promise<SentFeedback>
+  /** The user's home folder and account name, which feedback never carries. */
+  readonly traces: UserTraces
+  /** Whether this computer's file system ignores the case of paths, as on macOS and Windows. */
+  readonly pathsIgnoreCase: boolean
   /**
    * The AI model a Session's agent runs on.
    * @param exec - the call's execution, with the Session's agent.
@@ -78,38 +86,90 @@ const CONNECTED_PARAMETERS = {
 /** Parameters that WASD Engine's MCP server sets and leaves out of the connected agents' tool listing. */
 export const SERVER_SET_PARAMETERS = ['agent_id', 'agent_title'] as const
 
+const STRING = { type: 'string', required: true } as const
+
 const OUTPUT = {
   schema: {
     type: 'object',
     additionalProperties: false,
     properties: {
       kind: { type: 'string', enum: [...FEEDBACK_KINDS], required: true },
-      about: { type: 'string', required: true },
+      about: STRING,
+      sent: {
+        type: 'object',
+        required: true,
+        additionalProperties: false,
+        description: 'Every field the WASD Engine site received.',
+        properties: {
+          kind: { type: 'string', enum: [...FEEDBACK_KINDS], required: true },
+          message: STRING,
+          about: STRING,
+          connected: { type: 'boolean', required: true },
+          agent: STRING,
+          agent_title: STRING,
+          model: STRING,
+          app_version: STRING,
+          platform: STRING,
+        },
+      },
+      redacted: { type: 'boolean', required: true, description: 'Whether personal details or secrets were replaced before sending.' },
     },
   },
-  render: (_args: unknown, value: { kind: FeedbackKind; about: string }) => [{
-    type: 'text' as const,
-    text: `Sent your ${KIND_NAMES[value.kind]}${value.about === '' ? '' : ` about ${value.about}`} to the WASD Engine team. They read it but do not reply here, so carry on with the user's task.`,
-  }],
+  render: (_args: unknown, value: FeedbackValue) => [{ type: 'text' as const, text: formatFeedback(value) }],
 } as const
 
-/** Check one call's feedback and send it. */
+/** The value of `feedback_send`. */
+interface FeedbackValue {
+  readonly kind: FeedbackKind
+  readonly about: string
+  readonly sent: SentFeedback
+  readonly redacted: boolean
+}
+
+/**
+ * The model-facing text of sent feedback: what was sent and to whom, then every field the site received.
+ * @param value - the call's value.
+ * @returns the text.
+ */
+export function formatFeedback(value: FeedbackValue): string {
+  const { sent } = value
+  return [
+    `Sent your ${KIND_NAMES[value.kind]}${value.about === '' ? '' : ` about ${value.about}`} to the WASD Engine team. They read it but do not reply here, so carry on with the user's task.`,
+    ...value.redacted ? ['Personal details and secrets in it were replaced before sending: the home folder with ~, the user\'s account name with <user>, email addresses with <email>, and keys or tokens with <redacted>.'] : [],
+    'What was sent:',
+    `kind: ${sent.kind}`,
+    `about: ${sent.about === '' ? '(nothing)' : sent.about}`,
+    `agent: ${sent.agent_title} (${sent.agent})`,
+    `model: ${sent.model === '' ? '(unknown)' : sent.model}`,
+    `app version: ${sent.app_version === '' ? '(none)' : sent.app_version}`,
+    `platform: ${sent.platform}`,
+    'message:',
+    sent.message,
+  ].join('\n')
+}
+
+/** Check one call's feedback, take the user's traces and secrets out of it, and send it. */
 async function send(
   host: FeedbackToolHost,
   args: { readonly kind: string; readonly message: string; readonly about?: string | undefined },
   agent: ReportingAgent,
   model: string | undefined,
   signal: AbortSignal,
-): Promise<{ kind: FeedbackKind; about: string }> {
-  const message = args.message.trim()
-  if (message === '') throw new Error('message must not be empty.')
-  if (message.length > MAX_MESSAGE_CHARACTERS) throw new Error(`message must be at most ${MAX_MESSAGE_CHARACTERS} characters; it has ${message.length}.`)
-  const about = (args.about ?? '').trim()
-  if (about.length > MAX_ABOUT_CHARACTERS) throw new Error(`about must be at most ${MAX_ABOUT_CHARACTERS} characters; it has ${about.length}.`)
+): Promise<FeedbackValue> {
+  const written = args.message.trim()
+  if (written === '') throw new Error('message must not be empty.')
+  if (written.length > MAX_MESSAGE_CHARACTERS) throw new Error(`message must be at most ${MAX_MESSAGE_CHARACTERS} characters; it has ${written.length}.`)
+  const writtenAbout = (args.about ?? '').trim()
+  if (writtenAbout.length > MAX_ABOUT_CHARACTERS) throw new Error(`about must be at most ${MAX_ABOUT_CHARACTERS} characters; it has ${writtenAbout.length}.`)
+  const scrubbed = scrubFeedback(written, host.traces, host.pathsIgnoreCase)
+  const scrubbedAbout = scrubFeedback(writtenAbout, host.traces, host.pathsIgnoreCase)
+  // Placeholders can be longer than what they replace, so the cleaned text is held to the site's limits again.
+  const message = cut(scrubbed, MAX_MESSAGE_CHARACTERS)
+  const about = cut(scrubbedAbout, MAX_ABOUT_CHARACTERS)
   // The parameter schema's enum admits only the kinds.
   const kind = args.kind as FeedbackKind
-  await host.send({ kind, message, about, agent, model: cut((model ?? '').trim(), MAX_MODEL_CHARACTERS) }, signal)
-  return { kind, about }
+  const sent = await host.send({ kind, message, about, agent, model: cut((model ?? '').trim(), MAX_MODEL_CHARACTERS) }, signal)
+  return { kind, about, sent, redacted: scrubbed !== written || scrubbedAbout !== writtenAbout }
 }
 
 /**

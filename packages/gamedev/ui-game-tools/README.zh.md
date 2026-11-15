@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Nano Banana、Poly Haven 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。
+在列出插件的地方查看并开关 agent（智能体）的游戏工具。「设置 › 内置插件」打开时先显示「游戏工具」标签页，列出 Blender、ElevenLabs、游戏扩展、GIMP、Godot、Nano Banana、Poly Haven 与 SuperCollider 及其标志，以及每个工具是否在运行。「插件」页面也有一个「游戏工具」标签页，显示同样的卡片，并为每个工具提供一个开关，用于在 profile 中关闭或开启该工具。两个标签页都不显示工具的应用程序是否已安装；安装问题由工具自身的结果报告。「设置 › 通用」还会显示工具使用报告的开关。
 
 ## 目录
 
@@ -46,6 +46,10 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 在插件页面的标签页中，只要 Host 管理着 profile，profile 挂载的每个工具都有一个开关。开关以工具的 Loader 条目调用 `pluginManager.setPluginEnabled`，[插件管理器](../../boot/plugin-manager/README.zh.md#use-this-package)把更改记录到 profile patch 中并应用：关闭工具时在该行的条目上设置 `disabled: true`，patch 中没有该条目时追加 `- id: <row>`；开启工具时删除不含其他内容的条目，否则设置 `disabled: false`。更改进行期间，开关保持禁用，旁边显示进度圆点，屏幕阅读器会播报正在更改的工具；更改结束后，原先持有焦点的开关重新获得焦点。应用成功的更改不再另行提示；需要重启才能生效的更改、被更高优先级的 patch 覆盖的更改以及失败的更改，都会显示一条写明工具与原因的 toast，即使用户离开该标签页或插件页面，toast 也会保留到淡出为止。profile patch 无法唯一定位的行，或插件管理需要的行，显示禁用的开关，悬停提示给出原因。Host 不管理 profile 时，卡片不带开关，并有一行文字说明原因。
 
+### 使用报告
+
+当 Host 提供 [`@deepseek-ai/dsh-agent-feedback`](../agent-feedback/README.zh.md) 的 `agent-feedback` 行时，设置 › 通用会紧接在 Session 日志上传行之后显示**发送工具使用报告**。它的开关显示该行由 Host 接受的 `usageReports`，并通过共享的设置表单写入更改，更改在应用运行时生效：关闭时，agent 的工具调用不再计数，也不发送用量报告，`feedback_send` 保留。写入进行中、表单尚未读取该设置，以及客户端无权更改设置时，开关处于禁用状态；toast 会说明更改是否已保存，被拒绝或失败的写入会让开关保持已接受的值。
+
 ### 重新读取与失败
 
 设置标签页每次挂载时读取插件清单。插件页面标签页同样在每次挂载时读取，并在每次开关更改、插件管理器每次宣布更改以及每次重连后再次读取，因此在插件页面别处或其他客户端中所做的更改也会显示在这里；之后的读取进行期间，它保留上一次读取的卡片。两个标签页在首次读取返回前显示占位卡片。首次读取失败时显示一条带**重试**的消息；没有 owner 权限的 Peer（例如 LiveShare 观看者）会看到只有 owner 才能查看游戏工具。插件页面上之后的读取失败时，卡片保留，其下方提供**重试**。
@@ -60,7 +64,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 本包通过两个页面的扩展点添加两个标签页，不修改任何一个页面。它的浏览器插件以 id `game-tools` 和顺序 5 把设置标签页注册到 `settings.plugins.tab`，排在清单的「插件列表」（顺序 10）之前；并在一个等待 `remote.pluginManager` 的 scope 中，以相同 id 和顺序 −10 把插件页面标签页注册到 `plugins.tab`，排在「已安装」之后、「发现」之前，同时注册 `shell.overlay` 条目 `game-tools.toast`，在标签页之外显示开关的 toast。每次注册都使用 `ctx.slots.inject()`，因此能跟随 slot 的延迟声明与 teardown；本包从其他插件只导入类型。
 
-插件激活期间不执行任何 Remote 调用。设置标签页在挂载 effect 中调用 `pluginInventory.list()`。插件页面标签页的控制器先读取 `pluginInventory.list()` 以获得 `managementAvailable`，再读取 `pluginManager.listPlugins()`，后者的每一行要么带 `patchId`，要么带 `readOnlyReason`。控制器把标签页状态保存在快照存储中，标签页与 toast 都读取它；控制器为读取编号，只采用最新一次读取的结果，并把开关的每个 `ChangeResult` 转换为一条提示；应用成功的写入会保留另一个工具的提示。两个标签页都按包名从 `GAME_TOOL_MODULES` 中挑选工具，web-app overlay 的漂移测试会把该列表与 overlay 中的工具行比对。
+插件还在一个等待 `configForms` 的 scope 中，只要 `configForms.whileServed(['agent-feedback'])` 成立，就以 id `agent-feedback.usage-reports` 和顺序 91 把使用报告开关注册到 `settings.general.item`，并注册它的 `shell.overlay` toast `agent-feedback.usage-reports.toast`。插件激活期间不执行任何 Remote 调用。设置标签页在挂载 effect 中调用 `pluginInventory.list()`。插件页面标签页的控制器先读取 `pluginInventory.list()` 以获得 `managementAvailable`，再读取 `pluginManager.listPlugins()`，后者的每一行要么带 `patchId`，要么带 `readOnlyReason`。控制器把标签页状态保存在快照存储中，标签页与 toast 都读取它；控制器为读取编号，只采用最新一次读取的结果，并把开关的每个 `ChangeResult` 转换为一条提示；应用成功的写入会保留另一个工具的提示。两个标签页都按包名从 `GAME_TOOL_MODULES` 中挑选工具，web-app overlay 的漂移测试会把该列表与 overlay 中的工具行比对。
 
 | 文件 | 作用 |
 |---|---|
@@ -72,6 +76,7 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 | [`src/client/GameToolsNoticeToast.tsx`](src/client/GameToolsNoticeToast.tsx) | 显示提示的 `shell.overlay` toast |
 | [`src/client/GameToolCard.tsx`](src/client/GameToolCard.tsx) | 两个标签页共用的卡片、占位卡片与读取失败提示 |
 | [`src/client/SettingsGameToolsTab.tsx`](src/client/SettingsGameToolsTab.tsx)、[`src/client/PluginsGameToolsTab.tsx`](src/client/PluginsGameToolsTab.tsx) | 两个标签页 |
+| [`src/client/usage-reports.ts`](src/client/usage-reports.ts)、[`src/client/UsageReportsRow.tsx`](src/client/UsageReportsRow.tsx) | 使用报告开关的写入、它在通用页中的行和 toast |
 | [`src/client/locales.ts`](src/client/locales.ts) | 八种语言的 `gameTools` 字典 |
 
 </details>

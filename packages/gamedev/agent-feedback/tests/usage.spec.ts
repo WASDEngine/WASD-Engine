@@ -1,15 +1,17 @@
 /**
  * The tool usage report: which calls count under which plugin or MCP server and agent, how counts merge, wait, and are
- * dropped, and, in a real Host composition, the reports the plugin sends to a fake WASD Engine site on its interval and
- * as it stops, for Sessions' calls and connected agents' calls.
+ * dropped, that they go only to the sign-in they were counted under, and, in a real Host composition, the reports the
+ * plugin sends to a fake WASD Engine site on its interval and as it stops, for Sessions' calls and connected agents'
+ * calls, never naming an MCP server the user added.
  */
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { UsageOutcome } from '../src/api.ts'
 import { WASD_ENGINE_AGENT } from '../src/tools.ts'
 import type { ToolUsageCount, ToolUsageKey } from '../src/types.ts'
-import { MAX_COUNT, MAX_REPORT_ENTRIES, sessionCallee, ToolUsageReport } from '../src/usage.ts'
+import { ADDED_SERVERS, MAX_COUNT, MAX_REPORT_ENTRIES, sessionCallee, ToolUsageReport } from '../src/usage.ts'
 import { callTool, compose, connect, TIMEOUT, TOKEN, type Composition } from './composition.ts'
+import * as AgentFeedback from '../src/index.ts'
 import { USAGE_PATH } from './fixtures.ts'
 
 let composition: Composition | undefined
@@ -25,31 +27,69 @@ function key(fields: Partial<ToolUsageKey> = {}): ToolUsageKey {
   return { agent: WASD_ENGINE_AGENT, custom: false, server: 'godot', serverTitle: 'Godot', tool: 'godot_run', ...fields }
 }
 
-/** A report whose sends answer with the outcomes a spec queues, recording what each sent. */
+/** A report signed in to `account.signIn` whose sends answer with the outcomes a spec queues, recording what each sent. */
 function recordingReport(outcomes: UsageOutcome[] = []) {
   const sent: Array<readonly ToolUsageCount[]> = []
+  const to: string[] = []
   const overflow = vi.fn()
+  const account: { signIn: string | undefined } = { signIn: 'sign-in-a' }
   const report = new ToolUsageReport({
-    send: (counts) => {
+    signIn: () => Promise.resolve(account.signIn),
+    send: (signIn, counts) => {
+      to.push(signIn)
       sent.push(counts)
       return Promise.resolve(outcomes.shift() ?? 'sent')
     },
     overflow,
   })
-  return { report, sent, overflow }
+  void report.begin()
+  return { report, sent, to, overflow, account }
 }
 
 describe('sessionCallee', () => {
-  it('counts a tool WASD Engine\'s MCP server offers under its plugin, an added server\'s tool under that server, and nothing else', () => {
+  it('counts a tool WASD Engine\'s MCP server offers under its plugin, every added server\'s tools under one unnamed key, and nothing else', () => {
     const owner = (name: string) => name === 'mcp__wasd_blender__execute_python' ? BLENDER_OWNER : undefined
     expect(sessionCallee('mcp__wasd_blender__execute_python', owner)).toEqual({ custom: false, server: 'blender', serverTitle: 'Blender', tool: 'blender_execute_python' })
-    expect(sessionCallee('mcp__github__create_issue', owner)).toEqual({ custom: true, server: 'github', serverTitle: 'github', tool: 'create_issue' })
-    expect(sessionCallee('mcp__my-server__list_files_0123456789ab', undefined)).toEqual({ custom: true, server: 'my-server', serverTitle: 'my-server', tool: 'list_files_0123456789ab' })
+    expect(ADDED_SERVERS).toEqual({ custom: true, server: 'added-mcp-servers', serverTitle: 'MCP servers the user added', tool: 'all-tools' })
+    expect(sessionCallee('mcp__github__create_issue', owner)).toEqual(ADDED_SERVERS)
+    expect(sessionCallee('mcp__acme-internal-crm__export_customers', undefined)).toEqual(ADDED_SERVERS)
     for (const name of ['read', 'web_search', 'mcp__', 'mcp__server', 'mcp__server__']) expect(sessionCallee(name, owner), name).toBeUndefined()
   })
 })
 
 describe('ToolUsageReport', () => {
+  it('sends counts only to the sign-in they were counted under, never to the next one', async () => {
+    const { report, sent, to, account } = recordingReport(['kept'])
+    report.count(key(), false)
+    // Signed out at the report: the counts wait.
+    account.signIn = undefined
+    await report.flush(new AbortController().signal)
+    expect(sent).toEqual([])
+    // Another account signs in: the counts of the first never reach it.
+    account.signIn = 'sign-in-b'
+    await report.flush(new AbortController().signal)
+    expect(sent).toEqual([])
+    report.count(key({ tool: 'godot_stop' }), false)
+    await report.flush(new AbortController().signal)
+    expect(to).toEqual(['sign-in-b'])
+    expect(sent).toEqual([[{ key: key({ tool: 'godot_stop' }), calls: 1, errors: 0 }]])
+  })
+
+  it('drops counts gathered while signed out, and those of another sign-in when the account service starts again', async () => {
+    const { report, sent, account } = recordingReport()
+    account.signIn = undefined
+    await report.begin()
+    report.count(key(), false)
+    account.signIn = 'sign-in-a'
+    await report.flush(new AbortController().signal)
+    expect(sent).toEqual([])
+    report.count(key(), false)
+    account.signIn = 'sign-in-c'
+    await report.begin()
+    await report.flush(new AbortController().signal)
+    expect(sent).toEqual([])
+  })
+
   it('counts calls and failures by key and sends them once', async () => {
     const { report, sent } = recordingReport()
     report.count(key(), false)
@@ -84,12 +124,14 @@ describe('ToolUsageReport', () => {
     let release: (outcome: UsageOutcome) => void = () => {}
     const sent: Array<readonly ToolUsageCount[]> = []
     const report = new ToolUsageReport({
-      send: (counts) => {
+      signIn: () => Promise.resolve('sign-in-a'),
+      send: (_signIn, counts) => {
         sent.push(counts)
         return sent.length === 1 ? new Promise<UsageOutcome>((resolve) => { release = resolve }) : Promise.resolve('sent')
       },
       overflow: () => {},
     })
+    void report.begin()
     report.count(key({ serverTitle: 'Old title' }), false)
     const first = report.flush(new AbortController().signal)
     report.count(key({ serverTitle: 'New title' }), false)
@@ -122,12 +164,14 @@ describe('ToolUsageReport', () => {
   it('keeps the counts when its send fails or is cancelled', async () => {
     const sends: string[] = []
     const report = new ToolUsageReport({
-      send: (_counts, signal) => {
+      signIn: () => Promise.resolve('sign-in-a'),
+      send: (_signIn, _counts, signal) => {
         sends.push(signal.aborted ? 'aborted' : 'sent')
         return signal.aborted ? Promise.reject(new Error('the report was cancelled')) : Promise.resolve('sent')
       },
       overflow: () => {},
     })
+    await report.begin()
     report.count(key(), false)
     await report.flush(AbortSignal.abort())
     expect(report.size).toBe(1)
@@ -185,14 +229,16 @@ describe('the plugin\'s usage reports', () => {
     await current.unload()
     expect(reported(current)).toEqual([
       ['wasd-engine', false, false, 'blender', 'blender_execute_python', 2, 0],
-      ['wasd-engine', false, true, 'github', 'create_issue', 1, 1],
+      ['wasd-engine', false, true, 'added-mcp-servers', 'all-tools', 1, 1],
       ['wasd-engine', false, false, 'feedback', 'feedback_send', 1, 0],
       ['codex-mcp-client', true, false, 'blender', 'blender_execute_python', 1, 0],
       ['codex-mcp-client', true, false, 'feedback', 'feedback_send', 1, 1],
     ])
     const calls = current.site.to(USAGE_PATH)[0]?.body.calls as Array<Record<string, unknown>>
     const titles = calls.map(call => [call.agent_title, call.server_title])
-    expect(titles).toEqual([['WASD Engine', 'Blender'], ['WASD Engine', 'github'], ['WASD Engine', 'Feedback'], ['Codex', 'Blender'], ['Codex', 'Feedback']])
+    expect(titles).toEqual([['WASD Engine', 'Blender'], ['WASD Engine', 'MCP servers the user added'], ['WASD Engine', 'Feedback'], ['Codex', 'Blender'], ['Codex', 'Feedback']])
+    // No report names an MCP server the user added or its tools.
+    expect(JSON.stringify(current.site.to(USAGE_PATH))).not.toMatch(/github|create_issue/u)
   }, TIMEOUT)
 
   it('sends a report every interval while calls are counted, and keeps counts through a signed-out or failing site', async () => {
@@ -210,7 +256,7 @@ describe('the plugin\'s usage reports', () => {
     await callTool(current, 'mcp__github__create_issue')
     await vi.waitFor(() => { expect(current.site.to(USAGE_PATH)).toHaveLength(2) }, { timeout: 5000 })
     expect(current.site.to(USAGE_PATH)[1]?.body.calls).toEqual([
-      expect.objectContaining({ server: 'github', tool: 'create_issue', calls: 2, errors: 0 }),
+      expect.objectContaining({ server: 'added-mcp-servers', tool: 'all-tools', calls: 2, errors: 0 }),
     ])
     // The site took them: no further report until another call.
     await new Promise(resolve => setTimeout(resolve, 1500))
@@ -228,12 +274,57 @@ describe('the plugin\'s usage reports', () => {
     expect(current.site.to(USAGE_PATH)).toHaveLength(1)
   }, TIMEOUT)
 
-  it('counts and sends nothing with usageReports off', async () => {
+  it('counts and sends nothing with usageReports off, and keeps feedback_send', async () => {
     const current = composition = await compose({ config: { usageReports: false } })
     current.ctx.tools.register(sessionTool('mcp__github__create_issue'))
     await callTool(current, 'mcp__github__create_issue')
+    expect(current.ctx.tools.definitions().map(definition => definition.name)).toContain('feedback_send')
+    const sent = await callTool(current, 'feedback_send', { kind: 'bug', message: 'Broken.' })
+    expect(sent.isError).toBe(false)
     await current.unload()
-    expect(current.site.requests).toEqual([])
+    expect(current.site.requests.map(request => request.path)).toEqual(['/api/v1/feedback'])
+  })
+
+  it('stops counting and drops what it counted when Settings turns usage reports off, and keeps feedback_send', async () => {
+    const live = { on: true }
+    const current = composition = await compose({
+      gameMcp: true,
+      liveConfig: { ...AgentFeedback.Config({ reportIntervalMs: 1000 }), usageReports: { get: () => live.on } },
+    })
+    const result = (tool: string) => ({
+      provider: 'godot', tool, args: {}, client: { id: 'claude-code', title: 'Claude Code' }, isError: false,
+    })
+    current.ctx.emit('game-mcp/tool-result', result('godot_run'))
+    live.on = false
+    current.ctx.emit('game-mcp/tool-result', result('godot_stop'))
+    // A report time passes while the switch is off: nothing is sent, and the earlier count is gone.
+    await new Promise(resolve => setTimeout(resolve, 1500))
+    expect(current.site.to(USAGE_PATH)).toEqual([])
+    expect((await callTool(current, 'feedback_send', { kind: 'bug', message: 'Broken.' })).isError).toBe(false)
+    live.on = true
+    current.ctx.emit('game-mcp/tool-result', result('godot_eval'))
+    await current.unload()
+    expect(reported(current)).toEqual([['claude-code', true, false, 'godot', 'godot_eval', 1, 0]])
+  }, TIMEOUT)
+
+  it('never sends calls counted under one sign-in to an account that signs in later', async () => {
+    const current = composition = await compose()
+    current.ctx.tools.register(sessionTool('mcp__wasd_godot__run'))
+    current.server?.provide({
+      id: 'godot', title: 'Godot', description: 'Godot tools.',
+      tools: () => [{ name: 'godot_run', definition: sessionTool('mcp__wasd_godot__run') }],
+      status: () => Promise.resolve({ state: 'ready' }),
+    })
+    current.ctx.emit('game-mcp/tool-result', {
+      provider: 'godot', tool: 'godot_run', args: {}, client: { id: 'claude-code', title: 'Claude Code' }, isError: false,
+    })
+    // The user signs out, and another account signs in before the next report.
+    current.account.token = 'another-account-token'
+    current.ctx.emit('game-mcp/tool-result', {
+      provider: 'godot', tool: 'godot_stop', args: {}, client: { id: 'claude-code', title: 'Claude Code' }, isError: false,
+    })
+    await current.unload()
+    expect(current.site.to(USAGE_PATH)).toEqual([])
   })
 })
 

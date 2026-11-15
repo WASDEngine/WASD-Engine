@@ -131,6 +131,43 @@ describe('image_generate', () => {
     expect(await readFile(join(current.work, 'art', 'taken.png'), 'utf8')).toBe('old')
   })
 
+  it('gives a path to one of two parallel calls, so the other is refused before it is charged', async () => {
+    const current = await composed()
+    const results = await Promise.all([1, 2].map(() => callTool(current, 'image_generate', { prompt: 'a coin', path: 'art/coin.png' })))
+    expect(results.map(result => result.isError).sort()).toEqual([false, true])
+    const refused = results.find(result => result.isError) as (typeof results)[number]
+    expect(text(refused)).toMatch(/art\/coin\.png already exists/u)
+    expect(current.api.requests).toHaveLength(1)
+    expect(await readFile(join(current.work, 'art', 'coin.png'))).toEqual(current.api.image.data)
+  })
+
+  it('refuses network paths, which Windows would open on another computer, before any request', async () => {
+    const current = await composed()
+    await mkdir(join(current.work, 'art'), { recursive: true })
+    await writeFile(join(current.work, 'art', 'ok.png'), await solidImage(64, 64))
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ prompt: 'a coin', path: '\\\\attacker.example\\share\\coin.png' }, 'is a network path; pass a path on this computer.'],
+      [{ prompt: 'a coin', path: '//attacker.example/share/coin.png' }, 'is a network path'],
+      [{ prompt: 'a coin', path: 'art/coin.png', images: ['\\\\?\\UNC\\attacker.example\\share\\ref.png'] }, 'is a network path'],
+      [{ prompt: 'a coin', path: 'art/coin.png', images: ['art/ok.png', '//attacker.example/share/ref.png'] }, 'is a network path'],
+    ]
+    for (const [args, message] of cases) {
+      const result = await callTool(current, 'image_generate', args)
+      expect(result.isError, JSON.stringify(args)).toBe(true)
+      expect(text(result)).toContain(message)
+    }
+    expect(current.api.requests).toEqual([])
+    expect(await files(current.work)).toEqual(['art/ok.png'])
+  })
+
+  it('leaves no file or folder behind when the image is not made', async () => {
+    const current = await composed()
+    current.api.failures.set('/v1/images/generate', { status: 503, message: 'The image service is temporarily unavailable. Try again later.' })
+    const result = await callTool(current, 'image_generate', { prompt: 'a coin', path: 'art/items/new/coin.png' })
+    expect(result.isError).toBe(true)
+    expect(await readdir(current.work)).toEqual([])
+  })
+
   it('replaces a file only when asked', async () => {
     const current = await composed()
     await mkdir(join(current.work, 'art'), { recursive: true })

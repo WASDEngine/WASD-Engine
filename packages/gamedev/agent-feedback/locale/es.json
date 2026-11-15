@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Comentarios de agentes",
-    "description": "Permite que el agente y los agentes conectados a WASD Engine envíen comentarios sobre WASD Engine a su equipo, e informa de la frecuencia con que los agentes usan cada herramienta de juego y servidor MCP."
+    "description": "Permite que el agente y los agentes conectados a WASD Engine envíen comentarios sobre WASD Engine a su equipo, e informa de la frecuencia con que los agentes usan las herramientas de WASD Engine, algo que puede desactivarse en Ajustes."
   }
 }

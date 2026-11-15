@@ -334,6 +334,18 @@ export interface SessionPromptRequest {
   /** Non-whitespace text or attachments; an empty array continues an eligible failed idle Session. */
   readonly content: readonly PromptContentPart[]
   readonly clientTimeZone?: string
+  /**
+   * WASD Engine: the prompt carries part of the user's answer to a question the agent asked with
+   * `ask_user_question`, such as images attached to the answer, not a new instruction. It must steer content; the
+   * accepted message's source records it.
+   */
+  readonly answersQuestion?: true
+}
+
+/** Optional facts of one prompt beside its content and delivery. */
+export interface SessionPromptOptions {
+  /** The prompt carries part of the user's answer to a question the agent asked; see {@link SessionPromptRequest}. */
+  readonly answersQuestion?: true
 }
 
 /** Receipt after one prompt enters the target Agent inbox. */
@@ -401,8 +413,17 @@ declare module '@deepseek-ai/dsh-llm' {
      * Browser prompt correlation, optional Host-validated time zone, and the
      * caller that submitted the prompt. `principal` is written only for a
      * caller other than the owner, so an absent `principal` means the owner.
+     * `answersQuestion` (WASD Engine) marks a steered message that carries part
+     * of the user's answer to the agent's `ask_user_question` call, such as its
+     * images; readers that do not know it treat the message as the user's.
      */
-    'user-rpc': { kind: 'user'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal }
+    'user-rpc': {
+      kind: 'user'
+      rpcId: SessionRequestId
+      clientTimeZone?: string
+      principal?: Principal
+      answersQuestion?: true
+    }
     /** Empty retry user message with browser prompt correlation and caller metadata. */
     'retry-rpc': { kind: 'retry'; rpcId: SessionRequestId; clientTimeZone?: string; principal?: Principal }
   }

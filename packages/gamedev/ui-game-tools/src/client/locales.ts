@@ -39,6 +39,10 @@ export const en = {
   disableFailed: 'Could not turn off {name}. {reason}',
   reasonUnknownPlugin: 'This profile no longer mounts it.',
   reasonUnknown: 'Something went wrong.',
+  usageReportsTitle: 'Send tool usage reports',
+  usageReportsDescription: 'Sends WASD Engine, for your account, how often agents use its tools, never what the tools were given or returned. Tools of MCP servers you added are counted together, without their names.',
+  usageReportsSaved: 'Usage reports setting saved',
+  usageReportsFailed: 'Could not save the usage reports setting',
 } satisfies Record<string, string>
 
 /** Keys of the `gameTools` locale namespace. */
@@ -86,6 +90,10 @@ export const zh = {
   disableFailed: '无法关闭 {name}：{reason}',
   reasonUnknownPlugin: '当前 profile 已不再加载它',
   reasonUnknown: '出现了问题',
+  usageReportsTitle: '发送工具使用报告',
+  usageReportsDescription: '为你的账户向 WASD Engine 发送智能体使用其工具的次数，从不发送工具收到或返回的内容。你添加的 MCP 服务器的工具合并计数，不含其名称。',
+  usageReportsSaved: '使用报告设置已保存',
+  usageReportsFailed: '无法保存使用报告设置',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** Japanese dictionary. */
@@ -123,6 +131,10 @@ export const ja = {
   disableFailed: '{name}をオフにできませんでした。{reason}',
   reasonUnknownPlugin: 'このプロファイルではもう読み込まれていません。',
   reasonUnknown: '問題が発生しました。',
+  usageReportsTitle: 'ツールの利用レポートを送信',
+  usageReportsDescription: 'エージェントが WASD Engine のツールを使った回数を、あなたのアカウントについて WASD Engine に送信します。ツールに渡された内容や返した内容は送信しません。追加した MCP サーバーのツールは、名前を含めずにまとめて数えます。',
+  usageReportsSaved: '利用レポートの設定を保存しました',
+  usageReportsFailed: '利用レポートの設定を保存できませんでした',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** Spanish dictionary. */
@@ -160,6 +172,10 @@ export const es = {
   disableFailed: 'No se pudo desactivar {name}. {reason}',
   reasonUnknownPlugin: 'Este perfil ya no lo carga.',
   reasonUnknown: 'Algo salió mal.',
+  usageReportsTitle: 'Enviar informes de uso de las herramientas',
+  usageReportsDescription: 'Envía a WASD Engine, para su cuenta, cuántas veces usan los agentes sus herramientas, nunca lo que las herramientas recibieron o devolvieron. Las herramientas de los servidores MCP que añadió se cuentan juntas, sin sus nombres.',
+  usageReportsSaved: 'Ajuste de los informes de uso guardado',
+  usageReportsFailed: 'No se pudo guardar el ajuste de los informes de uso',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** French dictionary. */
@@ -197,6 +213,10 @@ export const fr = {
   disableFailed: 'Impossible de désactiver {name}. {reason}',
   reasonUnknownPlugin: 'Ce profil ne le charge plus.',
   reasonUnknown: 'Une erreur s’est produite.',
+  usageReportsTitle: 'Envoyer les rapports d’utilisation des outils',
+  usageReportsDescription: 'Envoie à WASD Engine, pour votre compte, le nombre de fois où les agents utilisent ses outils, jamais ce que les outils ont reçu ou renvoyé. Les outils des serveurs MCP que vous avez ajoutés sont comptés ensemble, sans leurs noms.',
+  usageReportsSaved: 'Réglage des rapports d’utilisation enregistré',
+  usageReportsFailed: 'Impossible d’enregistrer le réglage des rapports d’utilisation',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** German dictionary. */
@@ -234,6 +254,10 @@ export const de = {
   disableFailed: '{name} konnte nicht ausgeschaltet werden. {reason}',
   reasonUnknownPlugin: 'Dieses Profil lädt es nicht mehr.',
   reasonUnknown: 'Etwas ist schiefgelaufen.',
+  usageReportsTitle: 'Berichte zur Werkzeugnutzung senden',
+  usageReportsDescription: 'Sendet WASD Engine für Ihr Konto, wie oft Agenten seine Werkzeuge verwenden, nie aber, was die Werkzeuge erhalten oder zurückgegeben haben. Werkzeuge von MCP-Servern, die Sie hinzugefügt haben, werden gemeinsam und ohne ihre Namen gezählt.',
+  usageReportsSaved: 'Einstellung für Nutzungsberichte gespeichert',
+  usageReportsFailed: 'Die Einstellung für Nutzungsberichte konnte nicht gespeichert werden',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** Russian dictionary. */
@@ -271,6 +295,10 @@ export const ru = {
   disableFailed: 'Не удалось выключить {name}. {reason}',
   reasonUnknownPlugin: 'Этот профиль его больше не загружает.',
   reasonUnknown: 'Что-то пошло не так.',
+  usageReportsTitle: 'Отправлять отчёты об использовании инструментов',
+  usageReportsDescription: 'Отправляет в WASD Engine для вашего аккаунта, сколько раз агенты используют его инструменты, но никогда не то, что инструменты получили или вернули. Инструменты добавленных вами MCP-серверов считаются вместе, без их названий.',
+  usageReportsSaved: 'Настройка отчётов об использовании сохранена',
+  usageReportsFailed: 'Не удалось сохранить настройку отчётов об использовании',
 } satisfies Record<GameToolsLocaleKey, string>
 
 /** Portuguese dictionary. */
@@ -308,4 +336,8 @@ export const pt = {
   disableFailed: 'Não foi possível desativar {name}. {reason}',
   reasonUnknownPlugin: 'Este perfil não o carrega mais.',
   reasonUnknown: 'Algo deu errado.',
+  usageReportsTitle: 'Enviar relatórios de uso das ferramentas',
+  usageReportsDescription: 'Envia ao WASD Engine, para a sua conta, quantas vezes os agentes usam as ferramentas dele, nunca o que as ferramentas receberam ou devolveram. As ferramentas dos servidores MCP que você adicionou são contadas juntas, sem os nomes.',
+  usageReportsSaved: 'Configuração dos relatórios de uso salva',
+  usageReportsFailed: 'Não foi possível salvar a configuração dos relatórios de uso',
 } satisfies Record<GameToolsLocaleKey, string>

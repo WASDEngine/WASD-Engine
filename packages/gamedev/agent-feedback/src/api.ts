@@ -4,13 +4,24 @@
  * in to, with its token in `x-dsh-auth-token`. Requests never follow redirects.
  * @module @deepseek-ai/dsh-agent-feedback/src/api
  */
-import type { FeedbackReport, ToolUsageCount } from './types.ts'
+import { createHash } from 'node:crypto'
+import type { FeedbackReport, SentFeedback, ToolUsageCount } from './types.ts'
 
 /** The site the app is signed in to, and the account token it issued. */
 export interface SiteAccess {
   /** Origin of the WASD Engine site, such as `https://app.wasdengine.com`. */
   readonly origin: string
   readonly token: string
+}
+
+/**
+ * A fingerprint of one sign-in: the same for every request of that sign-in, and another for another account or a later
+ * sign-in of the same account. It names no account and is never sent.
+ * @param access - the sign-in's site and token.
+ * @returns the fingerprint.
+ */
+export function signInOf(access: SiteAccess): string {
+  return createHash('sha256').update(`${access.origin}\n${access.token}`).digest('hex').slice(0, 32)
 }
 
 /** What the client needs from its plugin. */
@@ -37,7 +48,8 @@ export class FeedbackNotSent extends Error {
 
 /**
  * What became of a usage report: `sent`; `kept`, to send again with the next report, for a failure that may pass, such
- * as a sign-out, a busy site, or no network; or `dropped`, for a report the site refused as it is.
+ * as a sign-out, a busy site, or no network; or `dropped`, for a report the site refused as it is or one whose sign-in
+ * the app is no longer signed in to.
  */
 export type UsageOutcome = 'sent' | 'kept' | 'dropped'
 
@@ -61,34 +73,48 @@ export class ReportsApi {
   constructor(private readonly options: ReportsApiOptions) {}
 
   /**
+   * The sign-in the app is signed in to now.
+   * @returns its {@link signInOf} fingerprint, or undefined while WASD Engine is signed out.
+   */
+  async signIn(): Promise<string | undefined> {
+    const access = await this.options.access()
+    return access === undefined ? undefined : signInOf(access)
+  }
+
+  /**
    * Send one feedback.
    * @param feedback - the feedback.
    * @param signal - cancellation.
+   * @returns every field the site received, as it received them.
    * @throws FeedbackNotSent when WASD Engine is signed out or the site does not take the feedback, with what to do.
    */
-  async sendFeedback(feedback: FeedbackReport, signal: AbortSignal): Promise<void> {
+  async sendFeedback(feedback: FeedbackReport, signal: AbortSignal): Promise<SentFeedback> {
     const access = await this.options.access()
     if (access === undefined) {
       throw new FeedbackNotSent('WASD Engine is signed out, so the feedback was not sent. Ask the user to sign in to WASD Engine, then send it again.')
     }
+    const sent: SentFeedback = {
+      kind: feedback.kind,
+      message: feedback.message,
+      about: feedback.about,
+      connected: feedback.agent.connected,
+      agent: feedback.agent.id,
+      agent_title: feedback.agent.title,
+      model: feedback.model,
+      app_version: this.options.appVersion,
+      platform: this.options.platform,
+    }
     let response: Response
     try {
-      response = await this.post(access, '/api/v1/feedback', {
-        kind: feedback.kind,
-        message: feedback.message,
-        about: feedback.about,
-        connected: feedback.agent.connected,
-        agent: feedback.agent.id,
-        agent_title: feedback.agent.title,
-        model: feedback.model,
-        app_version: this.options.appVersion,
-        platform: this.options.platform,
-      }, signal)
+      response = await this.post(access, '/api/v1/feedback', sent, signal)
     } catch (error) {
       signal.throwIfAborted()
       throw new FeedbackNotSent('The feedback could not be sent: the WASD Engine site did not answer. Try again later.', { cause: error })
     }
-    if (response.ok) return
+    if (response.ok) {
+      await response.body?.cancel()
+      return sent
+    }
     const message = await siteMessage(response)
     switch (response.status) {
       case 401:
@@ -104,14 +130,17 @@ export class ReportsApi {
   }
 
   /**
-   * Send the tool calls counted since the last report.
+   * Send the tool calls counted since the last report, for the sign-in they were counted under.
+   * @param signIn - the {@link signInOf} fingerprint of that sign-in.
    * @param counts - one count per key, at most as many as the site takes in one report.
    * @param signal - cancellation.
-   * @returns what became of the report; it never throws for the site's answer or a network failure.
+   * @returns what became of the report: `dropped`, without a request, when the app is signed in to another sign-in
+   *   now; it never throws for the site's answer or a network failure.
    */
-  async sendUsage(counts: readonly ToolUsageCount[], signal: AbortSignal): Promise<UsageOutcome> {
+  async sendUsage(signIn: string, counts: readonly ToolUsageCount[], signal: AbortSignal): Promise<UsageOutcome> {
     const access = await this.options.access()
     if (access === undefined) return 'kept'
+    if (signInOf(access) !== signIn) return 'dropped'
     let response: Response
     try {
       response = await this.post(access, '/api/v1/tool-usage', {

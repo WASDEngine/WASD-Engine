@@ -201,13 +201,14 @@ function* startTags(html: string): Generator<StartTag> {
 }
 
 /**
- * Read what a page offers as reference images.
+ * Read what a page offers as reference images. Each kind of image is collected once per address and up to `maxImages`,
+ * so the work stays proportional to the page's length however many images it names.
  * @param html - the page's HTML.
  * @param page - the page's address, the base of relative addresses unless the page names another.
- * @param maxShown - most shown images to collect.
+ * @param maxImages - most preview images, and most other shown images, to collect.
  * @returns the page's media.
  */
-export function readPageMedia(html: string, page: URL, maxShown: number): PageMedia {
+export function readPageMedia(html: string, page: URL, maxImages: number): PageMedia {
   let base = page
   let title = ''
   let headTitle = ''
@@ -216,10 +217,16 @@ export function readPageMedia(html: string, page: URL, maxShown: number): PageMe
   const preview: string[] = []
   const schemaImages: string[] = []
   const shown: string[] = []
-  const addShown = (value: string | undefined): void => {
-    if (value === undefined || shown.length >= maxShown) return
+  const seenPreview = new Set<string>()
+  const seenSchema = new Set<string>()
+  const seenShown = new Set<string>()
+  // Resolve, de-duplicate, and keep an address while its list has room; vector and icon files never count.
+  const collect = (list: string[], seen: Set<string>, value: string | undefined): void => {
+    if (value === undefined || list.length >= maxImages) return
     const address = resolveAddress(value, base)
-    if (address !== undefined && !iconLike(address) && !shown.includes(address)) shown.push(address)
+    if (address === undefined || seen.has(address) || iconLike(address)) return
+    seen.add(address)
+    list.push(address)
   }
   for (const tag of startTags(html)) {
     const attrs = attributes(tag.attributes)
@@ -237,11 +244,9 @@ export function readPageMedia(html: string, page: URL, maxShown: number): PageMe
         const content = attrs.get('content') ?? ''
         if (content === '') break
         if (['og:image', 'og:image:url', 'og:image:secure_url', 'twitter:image', 'twitter:image:src'].includes(key)) {
-          const address = resolveAddress(content, base)
-          if (address !== undefined && !preview.includes(address)) preview.push(address)
+          collect(preview, seenPreview, content)
         } else if (key === 'image' || key === 'thumbnailurl') {
-          const address = resolveAddress(content, base)
-          if (address !== undefined) schemaImages.push(address)
+          collect(schemaImages, seenSchema, content)
         } else if (video === undefined && ['og:video:secure_url', 'og:video:url', 'og:video', 'twitter:player'].includes(key)) {
           video = resolveAddress(content, base)
         } else if (title === '' && (key === 'og:title' || key === 'twitter:title')) {
@@ -255,36 +260,40 @@ export function readPageMedia(html: string, page: URL, maxShown: number): PageMe
         const rel = (attrs.get('rel') ?? '').toLowerCase().split(/\s+/u)
         const href = attrs.get('href')
         if (href !== undefined && (rel.includes('image_src') || (attrs.get('itemprop') ?? '').toLowerCase() === 'image')) {
-          const address = resolveAddress(href, base)
-          if (address !== undefined) schemaImages.push(address)
+          collect(schemaImages, seenSchema, href)
         }
         break
       }
       case 'img': {
         if (declaredTiny(attrs)) break
         const srcset = attrs.get('srcset') ?? attrs.get('data-srcset')
-        addShown((srcset === undefined ? undefined : largestSource(srcset))
+        collect(shown, seenShown, (srcset === undefined ? undefined : largestSource(srcset))
           ?? attrs.get('data-src') ?? attrs.get('data-lazy-src') ?? attrs.get('data-original') ?? attrs.get('src'))
         break
       }
       case 'source': {
         const srcset = attrs.get('srcset') ?? attrs.get('data-srcset')
-        if (srcset !== undefined && !(attrs.get('type') ?? '').startsWith('video/')) addShown(largestSource(srcset))
+        if (srcset !== undefined && !(attrs.get('type') ?? '').startsWith('video/')) collect(shown, seenShown, largestSource(srcset))
         break
       }
       case 'video':
-        addShown(attrs.get('poster'))
+        collect(shown, seenShown, attrs.get('poster'))
         break
       case 'a': {
         const href = attrs.get('href')
-        if (href !== undefined && IMAGE_LINK.test(href.split(/[?#]/u)[0] ?? '')) addShown(href)
+        if (href !== undefined && IMAGE_LINK.test(href.split(/[?#]/u)[0] ?? '')) collect(shown, seenShown, href)
         break
       }
       default:
         break
     }
   }
-  for (const address of schemaImages) if (!preview.includes(address)) preview.push(address)
+  for (const address of schemaImages) {
+    if (preview.length >= maxImages) break
+    if (seenPreview.has(address)) continue
+    seenPreview.add(address)
+    preview.push(address)
+  }
   const clean = (value: string): string => {
     const collapsed = value.replace(/\s+/gu, ' ').trim()
     return collapsed.length <= MAX_TITLE ? collapsed : `${collapsed.slice(0, MAX_TITLE - 1).trimEnd()}…`
@@ -292,9 +301,9 @@ export function readPageMedia(html: string, page: URL, maxShown: number): PageMe
   return {
     title: clean(title === '' ? headTitle : title),
     site: clean(site),
-    preview: preview.filter(address => !iconLike(address)),
+    preview,
     ...video === undefined ? {} : { video },
-    shown: shown.filter(address => !preview.includes(address)),
+    shown: shown.filter(address => !seenPreview.has(address)),
   }
 }
 

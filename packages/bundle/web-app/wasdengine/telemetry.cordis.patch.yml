@@ -32,12 +32,14 @@
 
 # Agent feedback (packages/gamedev/agent-feedback): the feedback_send tool of
 # every Session and of the game tools' MCP server, and the usage report of how
-# often agents call each game tool and each MCP server the user added. Both post
-# to the WASDEngine Platform origin of the account sign-in (deepseek-account's
-# platformOrigin in packages/bundle/base/wasdengine/gateway.cordis.patch.yml)
-# for the signed-in account, and send nothing while signed out. `appVersion`
-# names the app in feedback; the Desktop app sets DSH_CLIENT_VERSION for its
-# Host. The Plugins page can switch the row off.
+# often agents call WASD Engine's tools, with the MCP servers the user added
+# counted together without their names. Both post to the WASDEngine Platform
+# origin of the account sign-in (deepseek-account's platformOrigin in
+# packages/bundle/base/wasdengine/gateway.cordis.patch.yml) for the signed-in
+# account, and send nothing while signed out. `appVersion` names the app in
+# feedback; the Desktop app sets DSH_CLIENT_VERSION for its Host. The Plugins
+# page can switch the row off, and Settings › General's usage reports switch
+# (ui-game-tools) writes the row's `usageReports` to turn the report alone off.
 - insert:
     - id: agent-feedback
       name: '@deepseek-ai/dsh-agent-feedback'

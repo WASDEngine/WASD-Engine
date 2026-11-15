@@ -3,8 +3,8 @@
  * at their size and time limits.
  */
 import { describe, expect, it } from 'vitest'
-import { getPublic, isPublicAddress, MAX_REDIRECTS, parseWebUrl, WebRequestError } from '../src/net.ts'
-import { FakeWeb } from './fixtures.ts'
+import { getPublic, isPublicAddress, MAX_REDIRECTS, parseWebUrl, WebRequestError, type LookupAddress } from '../src/net.ts'
+import { FakeWeb, PUBLIC_ADDRESS } from './fixtures.ts'
 
 function options(overrides: Partial<Parameters<typeof getPublic>[2]> = {}): Parameters<typeof getPublic>[2] {
   return { accept: 'image/*', maxBytes: 1024, truncate: false, timeoutMs: 5000, signal: new AbortController().signal, ...overrides }
@@ -21,8 +21,9 @@ describe('isPublicAddress', () => {
     for (const address of [
       '0.0.0.0', '10.1.2.3', '100.64.0.1', '127.0.0.1', '169.254.169.254', '172.16.5.4', '172.31.255.255', '192.0.2.1',
       '192.168.1.1', '198.18.0.1', '203.0.113.9', '224.0.0.1', '255.255.255.255', '::', '::1', '::127.0.0.1',
-      '::ffff:127.0.0.1', '::ffff:7f00:1', '0:0:0:0:0:ffff:a00:1', '64:ff9b::a00:1', 'fc00::1', 'fd12:3456::1', 'fe80::1',
-      'ff02::1', '2001:db8::1', '2002:c0a8:101::1', 'not-an-address',
+      '::ffff:127.0.0.1', '::ffff:7f00:1', '0:0:0:0:0:ffff:a00:1', '64:ff9b::a00:1', '64:ff9b:1::7f00:1', 'fc00::1', 'fd12:3456::1',
+      'fe80::1', 'ff02::1', '2001:db8::1', '2002:c0a8:101::1', '2002:7f00:1::1', '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+      'not-an-address',
     ]) {
       expect(isPublicAddress(address), address).toBe(false)
     }
@@ -59,6 +60,28 @@ describe('getPublic', () => {
     await expect(getPublic(web, 'http://[::1]/', options())).rejects.toThrow('is on this computer or a local network')
     await expect(getPublic(web, 'https://nowhere.missing/', options())).rejects.toThrow('names a host that does not resolve (nowhere.missing).')
     expect(web.requests).toEqual([])
+  })
+
+  it('connects each request to the addresses its one lookup checked, so changed records cannot move the connection', async () => {
+    // The host answers with a public address first, and with loopback for any later lookup.
+    const answers: string[][] = [[PUBLIC_ADDRESS], ['127.0.0.1']]
+    const rebinding: FakeWeb = Object.assign(new FakeWeb().serve('https://rebind.example/a.png', { type: 'image/png', body: 'ok' }), {
+      lookup: () => Promise.resolve((answers.shift() ?? ['127.0.0.1']).map(address => ({ address, family: 4 }))),
+    })
+    const got = await getPublic(rebinding, 'https://rebind.example/a.png', options())
+    expect(got.body.toString()).toBe('ok')
+    expect(rebinding.connections).toEqual([[PUBLIC_ADDRESS]])
+    // Its next request resolves again, gets loopback, and never connects.
+    await expect(getPublic(rebinding, 'https://rebind.example/a.png', options())).rejects.toThrow('is on this computer or a local network')
+    expect(rebinding.connections).toEqual([[PUBLIC_ADDRESS]])
+  })
+
+  it('refuses a host with any address that is not public, among public ones', async () => {
+    const mixed: FakeWeb = Object.assign(new FakeWeb().serve('https://mixed.example/', { body: 'x' }), {
+      lookup: () => Promise.resolve([{ address: PUBLIC_ADDRESS, family: 4 }, { address: '::ffff:10.0.0.1', family: 6 }]),
+    })
+    await expect(getPublic(mixed, 'https://mixed.example/', options())).rejects.toThrow('is on this computer or a local network')
+    expect(mixed.requests).toEqual([])
   })
 
   it('follows redirects, checking each new address, and refuses one into the local network', async () => {
@@ -102,10 +125,12 @@ describe('getPublic', () => {
 
   it('times out a request that does not answer, and rethrows the caller\'s cancellation', async () => {
     const hanging: FakeWeb = Object.assign(new FakeWeb(), {
-      fetch: (_url: string, init: { signal: AbortSignal }) => new Promise<Response>((_resolve, reject) => {
-        if (init.signal.aborted) reject(init.signal.reason as Error)
-        init.signal.addEventListener('abort', () => { reject(init.signal.reason as Error) }, { once: true })
-      }),
+      request: (_url: URL, _addresses: readonly LookupAddress[], init: { signal: AbortSignal }) => (
+        new Promise<never>((_resolve, reject) => {
+          if (init.signal.aborted) reject(init.signal.reason as Error)
+          init.signal.addEventListener('abort', () => { reject(init.signal.reason as Error) }, { once: true })
+        })
+      ),
     })
     await expect(getPublic(hanging, 'https://slow.example/', options({ timeoutMs: 20 }))).rejects.toThrow('did not answer within 20 ms.')
     const controller = new AbortController()

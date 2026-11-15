@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, ElevenLabs, the game add-ons, GIMP, Godot, Nano Banana, Poly Haven, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems.
+See and switch the agent's game tools where plugins are listed. Settings › Built-in plugins opens on a Game tools tab that lists Blender, ElevenLabs, the game add-ons, GIMP, Godot, Nano Banana, Poly Haven, and SuperCollider with their logos and whether each one runs. The Plugins page has a Game tools tab with the same cards and a switch for each tool, which turns it off or on in the profile. Neither tab shows whether a tool's application is installed; the tools' own results report setup problems. Settings › General also gets the switch for tool usage reports.
 
 ## Table of Contents
 
@@ -46,6 +46,10 @@ Each card shows the tool's logo, its title and description in the current langua
 
 On the Plugins page tab, each tool that the profile mounts has a switch while the Host manages the profile. The switch calls `pluginManager.setPluginEnabled` with the tool's Loader entry, and the [plugin manager](../../boot/plugin-manager/README.md#use-this-package) records the change in the profile patch and applies it: turning a tool off sets `disabled: true` on the row's entry there, adding `- id: <row>` when the patch has none, and turning it on removes an entry that holds nothing else, or sets `disabled: false`. While the change runs, the switch is disabled with a progress dot beside it, and screen readers hear which tool changes; a switch that had the focus gets it back when the change ends. A change that applies shows nothing more; a change that waits for a restart, one that a higher-priority patch overrides, and one that fails each show a toast that names the tool and the reason, and the toast stays until it fades, even after the person leaves the tab or the Plugins page. A row that the profile patch cannot address uniquely, or that plugin management needs, shows a disabled switch with the reason as its hover text. A Host that manages no profile shows the cards without switches and a line that says why.
 
+### Usage reports
+
+Settings › General shows **Send tool usage reports** while the Host serves the `agent-feedback` row of [`@deepseek-ai/dsh-agent-feedback`](../agent-feedback/README.md), right after the Session log upload row. Its switch shows the row's `usageReports` as the Host accepted it and writes the change through the shared settings form, which applies it while the app runs: off, agents' tool calls count nothing and no usage report is sent, while `feedback_send` stays. The switch is disabled while a write runs, before the form has read the setting, and for a client that may not change settings; a toast says whether the change was saved, and a refused or failed write leaves the switch at the accepted value.
+
 ### Reading again and failures
 
 The Settings tab reads the plugin inventory each time it mounts. The Plugins page tab also reads each time it mounts, and again after each switch change, each change that the plugin manager announces, and each reconnection, so a change made elsewhere on the Plugins page or in another client shows there too; during a later read it keeps the cards of the last one. Both tabs show placeholder cards until the first read answers. A failed first read shows a message with **Retry**, and a Peer without owner access, such as a LiveShare viewer, reads that only the owner can see the game tools. A failed later read on the Plugins page keeps the cards and offers **Retry** below them.
@@ -60,7 +64,7 @@ The Settings tab reads the plugin inventory each time it mounts. The Plugins pag
 
 The package adds two tabs through the extension points of their pages, without changing either page. Its browser plugin registers the Settings tab into `settings.plugins.tab` with id `game-tools` and order 5, before the inventory's Plugin list at order 10, and, in a scope that waits for `remote.pluginManager`, the Plugins page tab into `plugins.tab` with the same id and order −10, after Installed and before Discover, together with the `shell.overlay` entry `game-tools.toast`, which shows the switch toasts outside the tab. Every registration uses `ctx.slots.inject()`, so it follows late slot declaration and teardown; the package imports only types from other plugins.
 
-No Remote call runs while the plugin activates. The Settings tab calls `pluginInventory.list()` from its mount effect. The Plugins page tab's controller reads `pluginInventory.list()` for `managementAvailable` and then `pluginManager.listPlugins()`, whose rows carry either a `patchId` or a `readOnlyReason`. It keeps the tab state in a snapshot store, which the tab and the toast read, numbers its reads so that only the newest answer lands, and turns each `ChangeResult` of a switch into a notice; a write that applies leaves another tool's notice in place. Both tabs pick the tools by package name from `GAME_TOOL_MODULES`, which the web-app overlay drift spec compares with the overlay's tool rows.
+In a scope that waits for `configForms`, the plugin also registers the usage reports switch into `settings.general.item` with id `agent-feedback.usage-reports` and order 91 for as long as `configForms.whileServed(['agent-feedback'])` holds, and its `shell.overlay` toast `agent-feedback.usage-reports.toast`. No Remote call runs while the plugin activates. The Settings tab calls `pluginInventory.list()` from its mount effect. The Plugins page tab's controller reads `pluginInventory.list()` for `managementAvailable` and then `pluginManager.listPlugins()`, whose rows carry either a `patchId` or a `readOnlyReason`. It keeps the tab state in a snapshot store, which the tab and the toast read, numbers its reads so that only the newest answer lands, and turns each `ChangeResult` of a switch into a notice; a write that applies leaves another tool's notice in place. Both tabs pick the tools by package name from `GAME_TOOL_MODULES`, which the web-app overlay drift spec compares with the overlay's tool rows.
 
 | File | Role |
 |---|---|
@@ -72,6 +76,7 @@ No Remote call runs while the plugin activates. The Settings tab calls `pluginIn
 | [`src/client/GameToolsNoticeToast.tsx`](src/client/GameToolsNoticeToast.tsx) | The `shell.overlay` toast of the notices |
 | [`src/client/GameToolCard.tsx`](src/client/GameToolCard.tsx) | Cards, placeholders, and the read failure notice that both tabs share |
 | [`src/client/SettingsGameToolsTab.tsx`](src/client/SettingsGameToolsTab.tsx), [`src/client/PluginsGameToolsTab.tsx`](src/client/PluginsGameToolsTab.tsx) | The two tabs |
+| [`src/client/usage-reports.ts`](src/client/usage-reports.ts), [`src/client/UsageReportsRow.tsx`](src/client/UsageReportsRow.tsx) | The usage reports switch's writes, its General row, and its toast |
 | [`src/client/locales.ts`](src/client/locales.ts) | `gameTools` dictionaries in eight languages |
 
 </details>

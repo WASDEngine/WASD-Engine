@@ -7,17 +7,16 @@
  * server.
  * @module @deepseek-ai/dsh-art-references/src/tools
  */
-import { readFile } from 'node:fs/promises'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { siteOf, type CachedImage, type ReferenceFinder } from './finder.ts'
-import { modelCopy, probeImage, UnreadableImage, type FramesLayout } from './images.ts'
+import { modelCopy, UnreadableImage, type FramesLayout } from './images.ts'
 import { parseWebUrl, WebRequestError } from './net.ts'
-import { saveReferences, subjectFolder, REFERENCES_FOLDER } from './save.ts'
+import { prepareReference, saveReferences, subjectFolder, REFERENCES_FOLDER, type PreparedReference } from './save.ts'
 import type { ModelImage, ReferenceImageInfo } from './types.ts'
 
 /** Longest search query. */
@@ -139,6 +138,8 @@ const SAVED_SCHEMA = {
     durationMs: { type: 'integer' },
     video: { type: 'string' },
     framesFile: { type: 'string', description: 'The sheet of an animated image\'s frames, relative to the project.' },
+    framesCovered: { type: 'integer', description: 'Frames the frames sheet samples, when it covers only the first ones of a very long or large animation.' },
+    savedEarlier: { type: 'boolean', description: 'The file was already in the folder from an earlier save, so nothing was written.' },
   },
 } as const
 
@@ -229,8 +230,9 @@ export function formatSearch(value: SearchValue): string {
 export function formatSave(value: SaveValue): string {
   const lines = [`Saved ${value.saved.length} ${value.saved.length === 1 ? 'reference' : 'references'} for ${value.subject} in ${value.folder}, with their sources in ${value.sources}:`]
   for (const saved of value.saved) {
-    const frames = saved.framesFile === undefined ? '' : `; its frames, numbered with their timing: ${saved.framesFile}`
-    lines.push(`- ${saved.file} — ${describeImage(saved)}${frames}`)
+    const covered = saved.framesCovered === undefined ? 'its frames' : `its first ${saved.framesCovered} frames`
+    const frames = saved.framesFile === undefined ? '' : `; ${covered}, numbered with their timing: ${saved.framesFile}`
+    lines.push(`- ${saved.file} — ${describeImage(saved)}${frames}${saved.savedEarlier === true ? ' (saved earlier)' : ''}`)
   }
   for (const failed of value.failed) lines.push(`- Not saved: ${failed.image} ${failed.reason}`)
   if (value.imagesOmitted === true) lines.push('The images are not attached because your model does not take images.')
@@ -240,19 +242,40 @@ export function formatSave(value: SaveValue): string {
 }
 
 /**
- * The file an image argument names on this computer: an absolute path or a `file:` URL.
+ * Whether a path names a file on another computer or a device rather than on this computer's disks: a Windows UNC
+ * path such as `\\host\share` or `//host/share`, or a device path such as `\\?\UNC\host\share` or `\\.\pipe\name`, with
+ * either slash. Opening one on Windows connects to that computer with the user's credentials, so the tools refuse them
+ * on every platform.
+ * @param path - the path.
+ * @returns true for such a path.
+ */
+export function isNetworkPath(path: string): boolean {
+  return /^[\\/]{2}/u.test(path)
+}
+
+/**
+ * The file an image argument names on this computer: an absolute path or a `file:` URL without a host.
  * @param address - one image argument.
  * @returns the file's absolute path, or `undefined` for a web address.
+ * @throws Error for a network path or a `file:` URL that names another computer.
  */
 function localPath(address: string): string | undefined {
   if (address.startsWith('file:')) {
+    const url = URL.parse(address)
+    if (url !== null && url.host !== '' && url.host !== 'localhost') {
+      throw new Error(`The image ${address} names a file on another computer; pass an image file on this computer or a web address.`)
+    }
+    let path: string
     try {
-      return fileURLToPath(address)
+      path = fileURLToPath(address)
     } catch {
-      // TypeError: a file: URL naming another host or no absolute path; parseWebUrl refuses it as no web address.
+      // TypeError: a file: URL without an absolute path; parseWebUrl refuses it as no web address.
       return undefined
     }
+    if (isNetworkPath(path)) throw new Error(`The image ${address} names a file on another computer; pass an image file on this computer or a web address.`)
+    return path
   }
+  if (isNetworkPath(address)) throw new Error(`The image ${address} is a network path; pass an image file on this computer or a web address.`)
   return isAbsolute(address) ? address : undefined
 }
 
@@ -286,19 +309,29 @@ function searchArguments(
 }
 
 /**
- * The image a caller's model receives for one saved reference: its frames sheet for an animation, else the image.
- * @returns the image, named after the saved file.
+ * The image a caller's model receives for one reference: its frames sheet for an animation, else the image.
+ * @param host - the tools' limits.
+ * @param prepared - the reference, ready to save.
+ * @param name - the copy's file name, without its extension.
+ * @returns the image.
+ * @throws UnreadableImage when the image cannot be decoded.
  */
-async function savedImage(host: ReferenceToolHost, saved: SaveValue['saved'][number], project: string): Promise<ModelImage> {
-  const name = (saved.file.split('/').at(-1) ?? 'reference').replace(/\.[^.]*$/u, '')
-  if (saved.framesFile !== undefined) {
-    const sheet = await readFile(join(project, ...saved.framesFile.split('/')))
-    // A frames sheet that fits goes as drawn, a PNG, so pixel art and its labels keep sharp edges.
-    const { width, height } = await probeImage(sheet)
-    if (Math.max(width, height) <= host.modelImageEdge) return { data: sheet, mediaType: 'image/png', name: `${name}.frames.png` }
-    return await modelCopy(sheet, host.modelImageEdge, `${name}.frames`)
-  }
-  return await modelCopy(await readFile(saved.path), host.modelImageEdge, name)
+async function modelImage(host: ReferenceToolHost, prepared: PreparedReference, name: string): Promise<ModelImage> {
+  const { frames } = prepared
+  if (frames === undefined) return await modelCopy(prepared.data, host.modelImageEdge, name)
+  // A frames sheet that fits goes as drawn, a PNG, so pixel art and its labels keep sharp edges.
+  if (Math.max(frames.width, frames.height) <= host.modelImageEdge) return { data: frames.data, mediaType: 'image/png', name: `${name}.frames.png` }
+  return await modelCopy(frames.data, host.modelImageEdge, `${name}.frames`)
+}
+
+/**
+ * Why one image of a save was not saved.
+ * @param error - the image's failure.
+ * @returns the reason, which completes "<image> ...".
+ */
+function failureReason(error: unknown): string {
+  if (error instanceof WebRequestError || error instanceof UnreadableImage) return error.message
+  return `could not be saved: ${error instanceof Error ? error.message : String(error)}`
 }
 
 /**
@@ -408,24 +441,46 @@ export function referenceToolDefinitions(host: ReferenceToolHost, surface: Refer
           : host.finder.readLocal(path)
       }))
       exec.signal.throwIfAborted()
-      const ready: CachedImage[] = []
       const failed: { image: string; reason: string }[] = []
+      const ready: { address: string; image: CachedImage }[] = []
       for (const [index, download] of downloads.entries()) {
         const address = addresses[index] as string
-        if (download.status === 'fulfilled') ready.push(download.value)
-        else if (download.reason instanceof WebRequestError || download.reason instanceof UnreadableImage) {
-          failed.push({ image: address, reason: download.reason.message })
-        }
-        else throw download.reason
+        if (download.status === 'fulfilled') ready.push({ address, image: download.value })
+        else failed.push({ image: address, reason: failureReason(download.reason) })
       }
-      if (ready.length === 0) throw new Error(failed.map(entry => `${entry.image} ${entry.reason}`).join(' '))
-      const written = await saveReferences(project, subject, ready, host.frames, new Date())
-      const saved = written.map(({ delays, ...entry }) => {
+      // Everything the save writes and shows is drawn before the first file is written, so an image that cannot be
+      // drawn is listed as not saved instead of failing the save after its files were written.
+      const sees = ready.length > 0 && await surface.seesImages(exec)
+      const prepared: { item: PreparedReference; copy?: ModelImage }[] = []
+      for (const { address, image } of ready) {
+        try {
+          const item = await prepareReference(image, host.frames, exec.signal)
+          const copy = sees && prepared.length < host.maxModelImages
+            ? await modelImage(host, item, `reference-${String(prepared.length + 1)}`)
+            : undefined
+          prepared.push({ item, ...copy === undefined ? {} : { copy } })
+        } catch (error) {
+          exec.signal.throwIfAborted()
+          failed.push({ image: address, reason: failureReason(error) })
+        }
+      }
+      if (prepared.length === 0) throw new Error(failed.map(entry => `${entry.image} ${entry.reason}`).join(' '))
+      const written = await saveReferences(project, subject, prepared.map(entry => entry.item), new Date(), exec.signal)
+      const saved = written.map(({ delays, ...entry }, index) => {
         const durationMs = durationOf({ ...entry, delays })
-        return { ...entry, ...durationMs === undefined ? {} : { durationMs } }
+        const covered = prepared[index]?.item.frames?.covered
+        return {
+          ...entry,
+          ...durationMs === undefined ? {} : { durationMs },
+          ...covered === undefined || covered >= entry.frames || entry.framesFile === undefined ? {} : { framesCovered: covered },
+        }
       })
-      const sees = await surface.seesImages(exec)
-      const copies = sees ? await Promise.all(saved.slice(0, host.maxModelImages).map(entry => savedImage(host, entry, project))) : []
+      // Each copy is named after the file it shows.
+      const copies = prepared.flatMap((entry, index) => {
+        const name = (saved[index]?.file.split('/').at(-1) ?? 'reference').replace(/\.[^.]*$/u, '')
+        if (entry.copy === undefined) return []
+        return [{ ...entry.copy, name: entry.copy.name.replace(/^reference-\d+/u, name) }]
+      })
       const images = copies.length === 0 ? [] : await surface.keep(exec, copies)
       return {
         subject, folder, sources: `${folder}/SOURCES.md`, saved, failed, images: images.map(image => ({ ...image })),

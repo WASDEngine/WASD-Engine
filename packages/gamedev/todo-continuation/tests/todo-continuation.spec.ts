@@ -1,16 +1,17 @@
 /**
  * The todo continuation plugin in a composition with the real Agent loop, tool runtime, session projections, and
  * `todo_write` tool, driven by a scripted model: a turn that ends with unfinished todos continues with one reminder,
- * an unchanged list or the per-turn cap lets the turn end, and finished lists, lists from earlier turns, turns that a
- * tool ended, turns the user stopped or sent a message during, turns cut off at the output limit, turns in plan mode,
- * subagent Sessions, and an unloaded plugin get no reminder.
+ * also after the user answered the agent's question with images, an unchanged list or the per-turn cap lets the turn
+ * end, and finished lists, lists from earlier turns, turns that a tool ended, turns the user stopped or sent a message
+ * during, turns cut off at the output limit, turns in plan mode, subagent Sessions, and an unloaded plugin get no
+ * reminder.
  */
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { MessageSource, StreamChunk } from '@deepseek-ai/dsh-llm'
 import PlanModeController from '@deepseek-ai/dsh-plan-mode'
 import { SessionId, type SessionEvent, type TurnEndReason } from '@deepseek-ai/dsh-session'
 import { defineContentToolFixture } from '@deepseek-ai/dsh-tool-testkit'
@@ -82,6 +83,28 @@ async function compose(
     execute(_args, exec) {
       exec.concludeTurn()
       return Promise.resolve([{ type: 'text', text: 'ended' }])
+    },
+  }))
+  created.tools.register(defineContentToolFixture({
+    name: 'user_answers_with_images',
+    description: 'Stands for ask_user_question answered with images: the card steers them in as part of the answer.',
+    parameters: {},
+    execute(_args, exec) {
+      exec.agent?.steer(createUserMessage({
+        content: [{ type: 'text', text: 'Images for my answer to "Which look?":' }],
+        // The source a prompt with `answersQuestion` gets from the Session controller.
+        source: { kind: 'user', rpcId: 'answer-images-1', answersQuestion: true } as MessageSource,
+      }))
+      return Promise.resolve([{ type: 'text', text: '{"answers":[{"id":"look","selected":[],"custom":"See my images."}]}' }])
+    },
+  }))
+  created.tools.register(defineContentToolFixture({
+    name: 'user_steers_message',
+    description: 'Stands for the user steering the turn with a new instruction while it works.',
+    parameters: {},
+    execute(_args, exec) {
+      exec.agent?.steer(userMessage('Stop after the terrain.'))
+      return Promise.resolve([{ type: 'text', text: 'steered' }])
     },
   }))
   created.tools.register(defineContentToolFixture({
@@ -192,6 +215,26 @@ describe('a turn that ends with unfinished todos', () => {
     expect(turnEnds(agent)).toBe(1)
   })
 
+  it('keeps reminding after the user answers the agent\'s question with images, which carry part of the answer', async () => {
+    const context = await compose()
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      toolCallResponse('a1', 'user_answers_with_images', {}),
+      textResponse('I textured the terrain in the look you chose. Want me to do the trees next?'),
+      writeTodos('w2', DONE_LIST),
+      textResponse('Both are textured.'),
+    ])
+    await ask(agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(agent)).toEqual([{
+      text: TWO_PENDING_REMINDER,
+      source: { kind: 'todo-continuation', form: 'notice', summary: '2 todos left' },
+    }])
+    expect(JSON.stringify(adapter.requests[2]?.messages)).toContain('Images for my answer')
+    expect(adapter.requests).toHaveLength(5)
+    expect(turnEnds(agent)).toBe(1)
+  })
+
   it('reminds again after the list changes, up to the configured cap', async () => {
     const context = await compose({ maxRemindersPerTurn: 2 })
     const { agent, adapter } = await startAgent(context, [
@@ -291,6 +334,20 @@ describe('turns that get no reminder', () => {
     expect(turnEnds(agent)).toBe(2)
     expect(userTexts(agent)).toEqual(['Texture the terrain and the trees.', 'Use the bark texture for the trees.'])
     expect(JSON.stringify(adapter.requests[3]?.messages)).toContain('Use the bark texture for the trees.')
+  })
+
+  it('follows the user once they steer the turn with a new instruction', async () => {
+    const context = await compose()
+    const { agent, adapter } = await startAgent(context, [
+      writeTodos('w1', OPEN_LIST),
+      toolCallResponse('s1', 'user_steers_message', {}),
+      textResponse('Stopping after the terrain, as you asked.'),
+    ])
+    await ask(agent, 'Texture the terrain and the trees.')
+
+    expect(reminders(agent)).toEqual([])
+    expect(adapter.requests).toHaveLength(3)
+    expect(turnEnds(agent)).toBe(1)
   })
 
   it('leaves the next step to a message the user steered in while the turn was stopping', async () => {

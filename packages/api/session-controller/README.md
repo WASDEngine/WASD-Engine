@@ -27,7 +27,7 @@ Desktop analytics follows the [product collection policy](../../client/product-a
 <a id="use-this-package"></a>
 ## Use this package
 
-Prompt retries use the request identity in the first committed inbox insertion, including after the message is claimed or removed. Admission checks again after asynchronous attachment preparation, so concurrent retries accept one input. Acceptance acknowledges insertion, not execution or completion.
+Prompt retries use the request identity in the first committed inbox insertion, including after the message is claimed or removed. Admission checks again after asynchronous attachment preparation, so concurrent retries accept one input. Acceptance acknowledges insertion, not execution or completion. A steered prompt with `answersQuestion: true` (WASDEngine fork), which `session.prompt` sends for its `options`, records the same field on its user source: the message carries part of the user's answer to the agent's question, such as the images attached to an `ask_user_question` answer, not a new instruction. A queued or empty prompt with the field is refused with `gateway/bad-request`.
 
 The controller reads a Session's recorded preset through the optional `agentPresets.presetForSession(session)` service method. A null result means no preset was recorded; an absent service means preset identity is unavailable to the controller.
 

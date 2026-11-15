@@ -52,6 +52,8 @@ export interface SavedReference extends ReferenceImageInfo {
   readonly video?: string
   /** Path relative to the game project's folder of the sheet of an animated image's frames. */
   readonly framesFile?: string
+  /** Set when the file was already in the folder, byte for byte, from an earlier save, and this save wrote nothing. */
+  readonly savedEarlier?: true
 }
 
 /** An image a tool hands to its caller's model, encoded for sending. */

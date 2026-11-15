@@ -32,17 +32,24 @@ export const ROUTE = { provider: 'test', model: 'test-model' } as const
 /** Time limit of the specs that start the MCP server. */
 export const TIMEOUT = 60_000
 
-/** The fake account sign-in: whether it is signed in, and whether its service has stopped. */
+/** The fake account sign-in: whether it is signed in, with which token, and whether its service has stopped. */
 export interface FakeAccount {
   signedIn: boolean
+  /** The account token; another token stands for another account or a later sign-in. */
+  token: string
   /** Set once the sign-in's fiber stops; like the real provider, it then holds no session. */
   closed: boolean
 }
 
 /** What a spec composes. */
 export interface ComposeOptions {
-  /** Plugin configuration. */
-  readonly config?: Partial<AgentFeedback.Config>
+  /** Plugin configuration, as a profile row writes it; the plugin load validates it. */
+  readonly config?: Parameters<typeof AgentFeedback.Config>[0]
+  /**
+   * Validated configuration the plugin runs with in place of `config`, as the Loader hands it over, so a spec can
+   * change a live field such as `usageReports` the way Settings does.
+   */
+  readonly liveConfig?: AgentFeedback.Config
   /** Start WASD Engine's MCP server before the plugin. */
   readonly gameMcp?: boolean
   /** Provide a model service whose models have this display name. */
@@ -94,7 +101,7 @@ export async function compose(options: ComposeOptions = {}): Promise<Composition
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
-  const account: FakeAccount = { signedIn: true, closed: false }
+  const account: FakeAccount = { signedIn: true, token: TOKEN, closed: false }
   // The sign-in as a service of its own fiber, as the account plugin provides it.
   class FakeAccountService extends Service {
     constructor(inner: Context) {
@@ -107,7 +114,7 @@ export async function compose(options: ComposeOptions = {}): Promise<Composition
     }
 
     getPlatformSession() {
-      return Promise.resolve(account.signedIn && !account.closed ? { origin: site.origin, token: TOKEN, userId: null } : null)
+      return Promise.resolve(account.signedIn && !account.closed ? { origin: site.origin, token: account.token, userId: null } : null)
     }
   }
   await ctx.plugin(FakeAccountService)
@@ -121,7 +128,14 @@ export async function compose(options: ComposeOptions = {}): Promise<Composition
     await ctx.plugin(GameMcpServer, GameMcpServer.Config({ dataRoot: join(work, '.game-mcp'), port: 0 }))
     server = ctx.get('gameMcp')
   }
-  const fiber = ctx.plugin(AgentFeedback, AgentFeedback.Config(options.config ?? {}))
+  const live = options.liveConfig
+  const fiber = live === undefined
+    ? ctx.plugin(AgentFeedback, options.config ?? {})
+    : ctx.plugin({
+      name: AgentFeedback.name,
+      inject: AgentFeedback.inject,
+      apply: (inner: Context) => { AgentFeedback.apply(inner, live) },
+    })
   await fiber
   const agent = await fakeAgent(ctx, 'owner')
   return {

@@ -5,9 +5,18 @@
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import {
-  drawContactSheet, drawFramesSheet, drawLabel, fingerprint, fingerprintDistance, modelCopy, probeImage, sampledFrames, UnreadableImage,
+  drawContactSheet, drawFramesSheet, drawLabel, fingerprint, fingerprintDistance, MAX_ANIMATION_PIXELS, modelCopy, probeImage,
+  sampledFrames, sheetPicture, UnreadableImage,
 } from '../src/images.ts'
 import { animatedGif, patternImage } from './fixtures.ts'
+
+/** A JPEG cut short: the header reads, but its pixels do not decode. Browsers show what arrived. */
+async function cutJpeg(keep: number): Promise<Buffer> {
+  const jpeg = await patternImage(400, 300, 3, 'jpeg')
+  return jpeg.subarray(0, Math.floor(jpeg.length * keep))
+}
+
+const FRAMES = { maxFrames: 24, maxEdge: 512, maxPixels: MAX_ANIMATION_PIXELS }
 
 describe('probeImage', () => {
   it('reads a still image\'s type and size', async () => {
@@ -38,6 +47,19 @@ describe('fingerprint', () => {
     expect(fingerprintDistance(original, other)).toBeGreaterThan(6)
     expect(fingerprintDistance(0n, (1n << 64n) - 1n)).toBe(64)
   })
+
+  it('reports an image whose header reads but whose pixels do not decode as unreadable', async () => {
+    for (const keep of [0.6, 0.99]) {
+      const cut = await cutJpeg(keep)
+      // The header still reads, so the file passes for an image until it is decoded.
+      expect((await probeImage(cut)).format).toBe('jpeg')
+      const failure = await fingerprint(cut).then(() => undefined, (error: unknown) => error)
+      expect(failure, String(keep)).toBeInstanceOf(UnreadableImage)
+      expect((failure as Error).message).toMatch(/^is a damaged image file that cannot be decoded \(.+\)\.$/u)
+    }
+    await expect(sheetPicture(await cutJpeg(0.6), 96)).rejects.toBeInstanceOf(UnreadableImage)
+    await expect(modelCopy(await cutJpeg(0.6), 1024, 'cut')).rejects.toBeInstanceOf(UnreadableImage)
+  })
 })
 
 describe('drawLabel', () => {
@@ -52,7 +74,7 @@ describe('drawLabel', () => {
 
 describe('drawContactSheet', () => {
   it('lays the images out in rows of the configured columns as one JPEG', async () => {
-    const entries = await Promise.all([1, 2, 3, 4, 5].map(async number => ({ data: await patternImage(100 + number * 40, 90, number), number, tag: number === 2 ? 'GIF 8' : '' })))
+    const entries = await Promise.all([1, 2, 3, 4, 5].map(async number => ({ picture: await sheetPicture(await patternImage(100 + number * 40, 90, number), 96), number, tag: number === 2 ? 'GIF 8' : '' })))
     const sheet = await drawContactSheet(entries, { cell: 96, columns: 4 })
     expect([sheet.width, sheet.height]).toEqual([8 + 4 * (96 + 8), 8 + 2 * (96 + 8)])
     const meta = await sharp(sheet.data).metadata()
@@ -63,7 +85,7 @@ describe('drawContactSheet', () => {
     // Red, blue, green, and white pixels, row by row.
     const pixels = Buffer.from([255, 0, 0, 255, 0, 0, 255, 255, 0, 255, 0, 255, 255, 255, 255, 255])
     const pixel = await sharp(pixels, { raw: { width: 2, height: 2, channels: 4 } }).png().toBuffer()
-    const sheet = await drawContactSheet([{ data: pixel, number: 1, tag: '' }], { cell: 100, columns: 4 })
+    const sheet = await drawContactSheet([{ picture: await sheetPicture(pixel, 100), number: 1, tag: '' }], { cell: 100, columns: 4 })
     const { data, info } = await sharp(sheet.data).raw().toBuffer({ resolveWithObject: true })
     // The 2×2 picture becomes 100×100 in the cell: the pixel at (60, 60) of the cell is the bottom-right white block.
     const at = (x: number, y: number): number[] => {
@@ -80,11 +102,55 @@ describe('drawFramesSheet', () => {
     expect(sampledFrames(5, 24)).toEqual([0, 1, 2, 3, 4])
     expect(sampledFrames(48, 4)).toEqual([0, 12, 24, 36])
     const gif = await animatedGif(32, 32, [100, 100, 100, 100, 100, 100], 3)
-    const sheet = await drawFramesSheet(gif, await probeImage(gif), { maxFrames: 24, maxEdge: 512 })
+    const sheet = await drawFramesSheet(gif, await probeImage(gif), FRAMES, new AbortController().signal)
     const meta = await sharp(sheet.data).metadata()
     expect(meta.format).toBe('png')
     expect(Math.max(sheet.width, sheet.height)).toBeLessThanOrEqual(512)
     expect(sheet.width * sheet.height).toBeGreaterThan(6 * 64 * 64)
+    expect(sheet.covered).toBe(6)
+  })
+
+  it('draws each sampled frame from one decoding pass, scaled to its cell', async () => {
+    // Frame k fills with the k-th pattern; the middle of each cell must show that frame, not a neighbor.
+    const delays = Array.from({ length: 40 }, () => 50)
+    const gif = await animatedGif(96, 96, delays, 20)
+    const sheet = await drawFramesSheet(gif, await probeImage(gif), { ...FRAMES, maxFrames: 4 }, new AbortController().signal)
+    const { data, info } = await sharp(sheet.data).raw().toBuffer({ resolveWithObject: true })
+    const frames = await sharp(gif, { pages: -1 }).raw().toBuffer({ resolveWithObject: true })
+    const pageBytes = 96 * 96 * frames.info.channels
+    // Sampled frames 0, 10, 20, and 30 in two columns of square cells, each frame enlarged by a whole multiple and
+    // centered; compare a pixel inside each frame's right-hand blocks, away from the label in the top-left corner.
+    const cell = (info.width - 8) / 2 - 8
+    const factor = Math.floor(cell / 96)
+    const inset = Math.floor((cell - 96 * factor) / 2)
+    const [x, y] = [90, 42]
+    for (const [slot, frame] of [0, 10, 20, 30].entries()) {
+      const left = 8 + (slot % 2) * (cell + 8) + inset
+      const top = 8 + Math.floor(slot / 2) * (cell + 8) + inset
+      const sheetOffset = ((top + y * factor) * info.width + left + x * factor) * info.channels
+      const frameOffset = frame * pageBytes + (y * 96 + x) * frames.info.channels
+      const drawn = [...data.subarray(sheetOffset, sheetOffset + 3)]
+      const expected = [...frames.data.subarray(frameOffset, frameOffset + 3)]
+      drawn.forEach((channel, index) => { expect(Math.abs(channel - (expected[index] as number)), `frame ${frame}`).toBeLessThan(40) })
+    }
+  })
+
+  it('draws a long animation from its first frames that fit the pixel budget', async () => {
+    const gif = await animatedGif(40, 40, Array.from({ length: 30 }, () => 40), 5)
+    const sheet = await drawFramesSheet(gif, await probeImage(gif), { ...FRAMES, maxPixels: 40 * 40 * 12 }, new AbortController().signal)
+    expect(sheet.covered).toBe(12)
+  })
+
+  it('stops when its signal aborts, and reports frames that do not decode as unreadable', async () => {
+    const gif = await animatedGif(32, 32, [100, 100, 100], 3)
+    const controller = new AbortController()
+    controller.abort(new Error('stopped by the user'))
+    await expect(drawFramesSheet(gif, await probeImage(gif), FRAMES, controller.signal)).rejects.toThrow('stopped by the user')
+    // A GIF cut after its second frame, which a record still describes with four.
+    const whole = await animatedGif(64, 64, [80, 80, 80, 80], 9)
+    const cut = whole.subarray(0, Math.floor(whole.length * 0.5))
+    const info = { format: 'gif' as const, width: 64, height: 64, frames: 4, delays: [80, 80, 80, 80] }
+    await expect(drawFramesSheet(cut, info, FRAMES, new AbortController().signal)).rejects.toBeInstanceOf(UnreadableImage)
   })
 })
 
@@ -99,5 +165,14 @@ describe('modelCopy', () => {
     const copy = await modelCopy(await patternImage(32, 16, 5), 1024, 'sprite')
     const meta = await sharp(copy.data).metadata()
     expect([copy.mediaType, copy.name, meta.width, meta.height]).toEqual(['image/png', 'sprite.png', 256, 128])
+  })
+
+  it('keeps transparency as PNG, and an opaque mid-size image at its own size as JPEG', async () => {
+    const clear = Buffer.alloc(300 * 200 * 4, 0)
+    const transparent = await sharp(clear, { raw: { width: 300, height: 200, channels: 4 } }).png().toBuffer()
+    expect((await modelCopy(transparent, 1024, 'glass')).mediaType).toBe('image/png')
+    const copy = await modelCopy(await patternImage(600, 400, 6), 1024, 'photo')
+    const meta = await sharp(copy.data).metadata()
+    expect([copy.mediaType, meta.width, meta.height]).toEqual(['image/jpeg', 600, 400])
   })
 })

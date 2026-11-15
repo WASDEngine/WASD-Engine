@@ -1,15 +1,19 @@
 /**
  * What agents tell the WASD Engine team. The `feedback_send` tool of every Session and of WASD Engine's MCP server
- * sends feedback about WASD Engine, such as a tool that failed or a capability that was missing, and the usage report
- * counts how often agents call each MCP tool: the game tools WASD Engine's MCP server offers, under the plugin
- * connected agents know them by, and the tools of the MCP servers the user added, by WASD Engine's own agent and by
- * each connected agent. Both go to the WASD Engine site the app is signed in to, for its account; nothing is sent
- * while signed out, and a report holds names and counts only.
+ * sends feedback about WASD Engine, such as a tool that failed or a capability that was missing, without the user's
+ * home folder, account name, email addresses, or secrets, and the usage report counts how often agents call each MCP
+ * tool: the game tools WASD Engine's MCP server offers, under the plugin connected agents know them by, by WASD
+ * Engine's own agent and by each connected agent, and the tools of the MCP servers the user added together under one
+ * key that names none of them. Both go to the WASD Engine site the app is signed in to, for its account; nothing is
+ * sent while signed out, counts go only to the sign-in they were gathered under, and a report holds names and counts
+ * only. `usageReports`, which the usage reports switch in Settings › General changes while the app runs, turns the
+ * report off without stopping `feedback_send`; turned off, it drops the counts it holds and sends nothing.
  *
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  * @module @deepseek-ai/dsh-agent-feedback
  */
-import type { Context } from '@deepseek-ai/cordis'
+import { homedir, userInfo } from 'node:os'
+import type { Context, Volatile } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
@@ -19,6 +23,7 @@ import { TOOL_ABORTED, TOOL_ABORTED_BEFORE_DISPATCH, type ToolExecutionResult, t
 import { ReportsApi, type ReportsApiOptions, type SiteAccess, type UsageOutcome } from './api.ts'
 import { feedbackMcpProvider } from './mcp.ts'
 import { feedbackToolDefinitions, WASD_ENGINE_AGENT, type FeedbackToolHost } from './tools.ts'
+import type { UserTraces } from './scrub.ts'
 import { MAX_REPORT_ENTRIES, sessionCallee, ToolUsageReport } from './usage.ts'
 
 export type * from './types.ts'
@@ -31,8 +36,11 @@ export const inject = ['tools']
 
 /** Deployment configuration. */
 export interface Config {
-  /** Report how often agents call each MCP tool; false counts nothing and sends no reports. */
-  usageReports: boolean
+  /**
+   * Report how often agents call each MCP tool; false counts nothing, drops the counts held, sends no reports, and
+   * keeps `feedback_send`. The usage reports switch in Settings › General changes it while the app runs.
+   */
+  usageReports: Volatile<boolean>
   /** Milliseconds between two usage reports; a report is sent only when calls were counted since the last one. */
   reportIntervalMs: number
   /** Time limit of one request to the WASD Engine site, in milliseconds. */
@@ -47,8 +55,8 @@ export interface Config {
 }
 
 /** Validates the configuration when the plugin loads. */
-export const Config: z<Partial<Config>, Config> = z.object({
-  usageReports: z.boolean().default(true),
+export const Config = z.object({
+  usageReports: z.boolean().default(true).volatile(),
   reportIntervalMs: z.natural().min(1000).max(MAX_TIMER_DELAY_MS).default(60_000),
   requestTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(15_000),
   finalReportTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(3000),
@@ -98,23 +106,44 @@ async function siteAccess(account: Context['deepseekAccount'] | undefined, logge
 type ApiSettings = Omit<ReportsApiOptions, 'access'>
 
 /**
- * Count the MCP tool calls of Sessions' agents and of connected agents, and report them every `reportIntervalMs` and
- * once more as the plugin stops.
+ * The user's home folder and account name on this computer, which feedback never carries.
+ * @param logger - where an account name that cannot be read is reported.
+ * @returns them; empty for one that cannot be read.
+ */
+function userTraces(logger: Context['logger']): UserTraces {
+  let userName = ''
+  try {
+    userName = userInfo().username
+  } catch (error) {
+    logger.warn(`agent-feedback: the account name could not be read: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  return { home: homedir(), userName }
+}
+
+/**
+ * Count the MCP tool calls of Sessions' agents and of connected agents while `usageReports` is on, and report them
+ * every `reportIntervalMs` and once more as the plugin stops, each time only for the sign-in the calls were counted
+ * under. While it is off, calls count nothing and each report time drops the counts held.
  */
 function reportUsage(ctx: Context, settings: ApiSettings, config: Config): void {
   // The client of the reports' current account sign-in; none while no sign-in service runs.
   let api: ReportsApi | undefined
+  const reporting = (): boolean => config.usageReports.get()
   const report = new ToolUsageReport({
-    send: (counts, signal): Promise<UsageOutcome> => api === undefined ? Promise.resolve('kept') : api.sendUsage(counts, signal),
+    signIn: () => api === undefined ? Promise.resolve(undefined) : api.signIn(),
+    send: (signIn, counts, signal): Promise<UsageOutcome> => api === undefined ? Promise.resolve('kept') : api.sendUsage(signIn, counts, signal),
     overflow: () => { ctx.logger.warn(`agent-feedback: the usage report counts at most ${MAX_REPORT_ENTRIES} tools; calls of other tools wait for the next report`) },
   })
+  // Turned off, the report sends nothing, including what it counted before.
+  const flush = (signal: AbortSignal): Promise<void> => reporting() ? report.flush(signal) : report.clear()
   ctx.on('tools/result', (exec, result) => {
     // A call cancelled before its tool ran used nothing.
-    if (exec.agent === undefined || (result.isError && result.error.info?.code === TOOL_ABORTED_BEFORE_DISPATCH)) return
+    if (!reporting() || exec.agent === undefined || (result.isError && result.error.info?.code === TOOL_ABORTED_BEFORE_DISPATCH)) return
     const callee = sessionCallee(exec.name, name => ctx.get('gameMcp')?.toolOwner(name))
     if (callee !== undefined) report.count({ agent: WASD_ENGINE_AGENT, ...callee }, failed(result))
   })
   ctx.on('game-mcp/tool-result', (result) => {
+    if (!reporting()) return
     report.count({
       agent: { connected: true, id: result.client.id, title: result.client.title },
       custom: false,
@@ -130,14 +159,16 @@ function reportUsage(ctx: Context, settings: ApiSettings, config: Config): void 
     inner.effect(() => {
       const account = inner.deepseekAccount
       api = new ReportsApi({ ...settings, access: () => siteAccess(account, ctx.logger) })
+      // The calls counted from now on belong to the sign-in of this moment.
+      void report.begin()
       const lifetime = new AbortController()
-      const timer = setInterval(() => { void report.flush(lifetime.signal) }, config.reportIntervalMs)
+      const timer = setInterval(() => { void flush(lifetime.signal) }, config.reportIntervalMs)
       timer.unref()
       return async () => {
         clearInterval(timer)
         // A report on its way ends here and keeps its counts for the last report, which may take finalReportTimeoutMs.
         lifetime.abort()
-        await report.flush(AbortSignal.timeout(config.finalReportTimeoutMs))
+        await flush(AbortSignal.timeout(config.finalReportTimeoutMs))
         api = undefined
       }
     }, 'agent-feedback: usage reports')
@@ -145,8 +176,8 @@ function reportUsage(ctx: Context, settings: ApiSettings, config: Config): void 
 }
 
 /**
- * Register the feedback tool, offer it to WASD Engine's MCP server while that server runs, and, with `usageReports`,
- * count and report the agents' MCP tool calls.
+ * Register the feedback tool, offer it to WASD Engine's MCP server while that server runs, and, while `usageReports` is
+ * on, count and report the agents' MCP tool calls; turning it off leaves the feedback tool.
  * @param ctx - plugin context with the tool registry.
  * @param config - validated configuration.
  */
@@ -166,11 +197,13 @@ export function apply(ctx: Context, config: Config): void {
   const host: FeedbackToolHost = {
     send: (feedback, signal) => api.sendFeedback(feedback, signal),
     sessionModel: exec => sessionModel(ctx, exec),
+    traces: userTraces(ctx.logger),
+    pathsIgnoreCase: process.platform === 'darwin' || process.platform === 'win32',
   }
   for (const definition of feedbackToolDefinitions(host, 'session')) ctx.tools.register(definition)
   // Agents connected through WASD Engine's MCP server get the same tool.
   ctx.inject(['gameMcp'], (inner) => {
     inner.effect(() => inner.gameMcp.provide(feedbackMcpProvider(host)), 'agent-feedback: game MCP tools')
   })
-  if (config.usageReports) reportUsage(ctx, settings, config)
+  reportUsage(ctx, settings, config)
 }

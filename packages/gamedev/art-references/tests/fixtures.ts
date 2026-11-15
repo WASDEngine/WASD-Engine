@@ -1,9 +1,9 @@
 /**
- * Test pictures and a fake web: pages and image files served by address from memory, and host names that resolve to a
- * public address or, for `.lan` hosts, to a private one.
+ * Test pictures and a fake web: pages and image files served by address from memory, host names that resolve to a
+ * public address or, for `.lan` hosts, to a private one, and the addresses each request was told to connect to.
  */
 import sharp from 'sharp'
-import type { LookupAddress, ReferenceWeb } from '../src/net.ts'
+import type { LookupAddress, ReferenceWeb, WebResponse } from '../src/net.ts'
 
 /** A public address that fake hosts resolve to. */
 export const PUBLIC_ADDRESS = '93.184.216.34'
@@ -79,6 +79,10 @@ export class FakeWeb implements ReferenceWeb {
   readonly userAgent = 'test-agent'
   /** Addresses requested, in order. */
   readonly requests: string[] = []
+  /** The addresses each request was told to connect to, in order. */
+  readonly connections: string[][] = []
+  /** Host names resolved, in order. */
+  readonly lookups: string[] = []
   /** `User-Agent` and `Accept` headers of each request, in order. */
   readonly headers: Record<string, string>[] = []
   private readonly routes = new Map<string, FakeResponse>()
@@ -115,32 +119,52 @@ export class FakeWeb implements ReferenceWeb {
     return this.serve(address, { type, body: data })
   }
 
-  /**
-   * Whether a host is served by this web.
-   * @param address - an address.
-   * @returns true for a host with a route.
-   */
-  serves(address: string): boolean {
-    const host = new URL(address).host
-    return [...this.routes.keys()].some(route => new URL(route).host === host)
-  }
-
   lookup(hostname: string): Promise<readonly LookupAddress[]> {
+    this.lookups.push(hostname)
     if (hostname.endsWith('.missing')) return Promise.reject(Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' }))
     return Promise.resolve([{ address: hostname.endsWith('.lan') ? PRIVATE_ADDRESS : PUBLIC_ADDRESS, family: 4 }])
   }
 
-  fetch(url: string, init: { headers: Record<string, string>; signal: AbortSignal }): Promise<Response> {
+  request(
+    url: URL,
+    addresses: readonly LookupAddress[],
+    init: { headers: Record<string, string>; signal: AbortSignal },
+  ): Promise<WebResponse> {
     init.signal.throwIfAborted()
-    this.requests.push(url)
+    this.requests.push(url.href)
+    this.connections.push(addresses.map(entry => entry.address))
     this.headers.push(init.headers)
-    const route = this.routes.get(url)
-    if (route === undefined) return Promise.resolve(new Response('not found', { status: 404 }))
-    const body = route.body === undefined ? null : typeof route.body === 'string' ? route.body : new Uint8Array(route.body)
-    return Promise.resolve(new Response(body, {
-      status: route.status ?? 200,
-      headers: { ...route.type === undefined ? {} : { 'content-type': route.type }, ...route.headers },
-    }))
+    const route = this.routes.get(url.href)
+    if (route === undefined) return Promise.resolve(fakeResponse(404, { 'content-type': 'text/plain' }, Buffer.from('not found')))
+    const body = route.body === undefined ? Buffer.alloc(0) : typeof route.body === 'string' ? Buffer.from(route.body) : route.body
+    return Promise.resolve(fakeResponse(route.status ?? 200, { ...route.type === undefined ? {} : { 'content-type': route.type }, ...route.headers }, body))
+  }
+}
+
+/**
+ * The fake web a composed plugin reaches: each composition sets `current` before it loads the plugin, and the specs'
+ * mock of `src/transport.ts` hands it to the plugin in place of this computer's web.
+ */
+export const pluginWeb: { current: FakeWeb } = { current: new FakeWeb() }
+
+/**
+ * A response of the fake web, its body sent in chunks of at most 1 KB.
+ * @param status - the HTTP status.
+ * @param headers - its headers, by lowercase name.
+ * @param body - its body.
+ * @returns the response.
+ */
+export function fakeResponse(status: number, headers: Readonly<Record<string, string>>, body: Buffer): WebResponse {
+  let cancelled = false
+  return {
+    status,
+    header: name => headers[name.toLowerCase()],
+    body: (async function* () {
+      for (let offset = 0; offset < body.length && !cancelled; offset += 1024) yield body.subarray(offset, offset + 1024)
+    })(),
+    cancel() {
+      cancelled = true
+    },
   }
 }
 

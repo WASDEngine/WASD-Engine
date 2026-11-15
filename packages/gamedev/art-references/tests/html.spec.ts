@@ -30,6 +30,17 @@ describe('readPageMedia', () => {
     expect(media.video).toBeUndefined()
   })
 
+  it('collects each image once, and at most the limit of each kind, however many a page names', () => {
+    const previews = Array.from({ length: 32_000 }, (_, index) => `<meta property="og:image" content="https://e.co/${String(index % 20_000).padStart(6, '0')}.png">`)
+    const repeated = Array.from({ length: 2_000 }, () => '<meta itemprop="image" content="/same.png">')
+    const shown = Array.from({ length: 5_000 }, (_, index) => `<img src="/shown/${index % 3_000}.png">`)
+    const media = readPageMedia(`<html><head>${previews.join('')}${repeated.join('')}</head><body>${shown.join('')}</body></html>`, PAGE, 16)
+    expect(media.preview).toEqual(Array.from({ length: 16 }, (_, index) => `https://e.co/${String(index).padStart(6, '0')}.png`))
+    expect(media.shown).toEqual(Array.from({ length: 16 }, (_, index) => `https://art.example/shown/${index}.png`))
+    const once = readPageMedia(`<head>${repeated.join('')}</head>`, PAGE, 16)
+    expect(once.preview).toEqual(['https://art.example/same.png'])
+  })
+
   it('falls back to the title element and names the page\'s video', () => {
     const media = readPageMedia(`<title>
       Walk   cycle &#8211; reference</title>

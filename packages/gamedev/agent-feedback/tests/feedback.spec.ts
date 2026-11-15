@@ -2,6 +2,8 @@
  * The feedback tool as a Session's agent calls it: the real tool runtime and executor run each call against a fake WASD
  * Engine site with the account's token, naming WASD Engine's own agent and the model the Session runs on.
  */
+import { homedir, userInfo } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as AgentFeedback from '../src/index.ts'
 import { callTool, compose, ROUTE, text, TOKEN, type ComposeOptions, type Composition } from './composition.ts'
@@ -28,7 +30,19 @@ describe('feedback_send', () => {
       message: '  godot_run said the game was running,\nbut the main scene failed to compile.  ',
     })
     expect(result.isError).toBe(false)
-    expect(text(result)).toBe('Sent your bug report about godot_run to the WASD Engine team. They read it but do not reply here, so carry on with the user\'s task.')
+    expect(text(result)).toBe([
+      'Sent your bug report about godot_run to the WASD Engine team. They read it but do not reply here, so carry on with the user\'s task.',
+      'What was sent:',
+      'kind: bug',
+      'about: godot_run',
+      'agent: WASD Engine (wasd-engine)',
+      'model: DeepSeek-V4.1-Flash',
+      'app version: 0.1.3',
+      `platform: ${process.platform}`,
+      'message:',
+      'godot_run said the game was running,',
+      'but the main scene failed to compile.',
+    ].join('\n'))
     expect(current.site.requests.map(request => [request.method, request.path, request.token])).toEqual([['POST', FEEDBACK_PATH, TOKEN]])
     expect(current.site.requests[0]?.body).toEqual({
       kind: 'bug',
@@ -48,10 +62,30 @@ describe('feedback_send', () => {
     const kinds = { missing_feature: 'request for a missing feature', confusing: 'report of something confusing', suggestion: 'suggestion' } as const
     for (const [kind, words] of Object.entries(kinds)) {
       const result = await callTool(current, 'feedback_send', { kind, message: 'Something.' })
-      expect(text(result)).toBe(`Sent your ${words} to the WASD Engine team. They read it but do not reply here, so carry on with the user's task.`)
+      expect(text(result).split('\n')[0]).toBe(`Sent your ${words} to the WASD Engine team. They read it but do not reply here, so carry on with the user's task.`)
     }
     expect(current.site.requests.map(request => [request.body.kind, request.body.model, request.body.about, request.body.app_version]))
       .toEqual(Object.keys(kinds).map(kind => [kind, ROUTE.model, '', '']))
+  })
+
+  it('takes the home folder, the account name, email addresses, and secrets out of the feedback, and shows what it sent', async () => {
+    const current = await composed()
+    const home = homedir()
+    const name = userInfo().username
+    const result = await callTool(current, 'feedback_send', {
+      kind: 'bug',
+      about: join(home, 'Games', 'knight'),
+      message: `godot_run failed in ${join(home, 'Games', 'knight', 'project.godot')} for ${name}.\nMy key is sk-proj-${'Ab3'.repeat(12)} and my mail is player.one@example.com.`,
+    })
+    expect(result.isError).toBe(false)
+    const body = current.site.requests[0]?.body as Record<string, string>
+    const user = ['admin', 'administrator', 'default', 'dev', 'developer', 'guest', 'owner', 'root', 'test', 'ubuntu', 'user'].includes(name.toLowerCase()) ? name : '<user>'
+    expect(body.message).toBe(`godot_run failed in ${join('~', 'Games', 'knight', 'project.godot')} for ${user}.\nMy key is <redacted> and my mail is <email>.`)
+    expect(body.about).toBe(join('~', 'Games', 'knight'))
+    expect(JSON.stringify(body)).not.toContain(home)
+    // The result shows the agent and the user exactly what left the computer, and says what was replaced.
+    expect(text(result)).toContain('Personal details and secrets in it were replaced before sending:')
+    expect(text(result).endsWith(`message:\n${body.message}`)).toBe(true)
   })
 
   it('refuses feedback it cannot send, before any request', async () => {
@@ -102,7 +136,10 @@ describe('feedback_send', () => {
   })
 
   it('validates its configuration, and names no app version the site would refuse', async () => {
-    expect(AgentFeedback.Config({})).toEqual({ usageReports: true, reportIntervalMs: 60_000, requestTimeoutMs: 15_000, finalReportTimeoutMs: 3000, appVersion: '' })
+    const { usageReports, ...defaults } = AgentFeedback.Config({})
+    // The usage reports switch is a live reference, which Settings changes while the app runs.
+    expect(usageReports.get()).toBe(true)
+    expect(defaults).toEqual({ reportIntervalMs: 60_000, requestTimeoutMs: 15_000, finalReportTimeoutMs: 3000, appVersion: '' })
     expect(() => AgentFeedback.Config({ reportIntervalMs: 10 })).toThrow()
     const current = await composed({ config: { appVersion: '0.1.3 (dev build)' } })
     const result = await callTool(current, 'feedback_send', { kind: 'bug', message: 'Broken.' })

@@ -27,7 +27,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-提示重试按首次已提交入队记录中的请求标识去重，消息被领取或删除后仍然有效。异步附件准备结束后再次检查，因此并发重试只接受一条输入。接受确认入队，不代表执行或完成。
+提示重试按首次已提交入队记录中的请求标识去重，消息被领取或删除后仍然有效。异步附件准备结束后再次检查，因此并发重试只接受一条输入。接受确认入队，不代表执行或完成。带 `answersQuestion: true` 的插入提示（WASDEngine fork，由 `session.prompt` 的 `options` 发送）会在其用户来源上记录同一字段：这条消息是用户对智能体提问所作回答的一部分，例如附在 `ask_user_question` 回答上的图片，而不是新指令。排队或内容为空的提示带此字段会以 `gateway/bad-request` 被拒绝。
 
 控制器通过可选服务方法 `agentPresets.presetForSession(session)` 读取 Session 已记录的预设。null 结果表示未记录预设；服务缺席表示控制器无法获知预设身份。
 

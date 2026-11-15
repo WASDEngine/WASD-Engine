@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "智能体反馈",
-    "description": "让智能体和连接到 WASD Engine 的智能体向 WASD Engine 团队发送关于 WASD Engine 的反馈，并报告智能体使用每个游戏工具和 MCP 服务器的频率。"
+    "description": "让智能体和连接到 WASD Engine 的智能体向 WASD Engine 团队发送关于 WASD Engine 的反馈，并报告智能体使用 WASD Engine 工具的频率；报告可在设置中关闭。"
   }
 }

@@ -16,6 +16,7 @@ import type {
   SessionAddress,
   SessionAssistantStreamBaseline,
   SessionProjectionBaseline,
+  SessionPromptOptions,
   SessionRequestId,
 } from '../../types.ts'
 import type {
@@ -265,6 +266,8 @@ export class Session implements SessionFace {
    * @param mode - queue appends after the current turn; steer interrupts it.
    * @param signal - optional caller cancellation for the complete admission round-trip.
    * @param requestId - identity from {@link beginSubmission}; a failed identified prompt retires its echo.
+   * @param options - facts the message's source records, such as WASD Engine's `answersQuestion`; a subagent
+   *   address takes none.
    * @returns the prompt result (also mirrored into promptError on failure).
    */
   async prompt(
@@ -272,6 +275,7 @@ export class Session implements SessionFace {
     mode: 'queue' | 'steer',
     signal?: AbortSignal,
     requestId?: SessionRequestId,
+    options?: SessionPromptOptions,
   ): Promise<RemoteResult<{ accepted: true }>> {
     this.promptError = null
     this.lastAgentError = null
@@ -287,6 +291,7 @@ export class Session implements SessionFace {
         mode,
         content,
         clientTimeZone,
+        ...options?.answersQuestion === true ? { answersQuestion: true as const } : {},
       }, signal)
     } else if (content.some(part => part.type === 'file')) {
       result = {

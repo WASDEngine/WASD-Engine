@@ -47,7 +47,18 @@ describe('the feedback tool over WASD Engine\'s MCP server', () => {
       arguments: { kind: 'confusing', about: 'blender_export_gltf', message: 'The result does not say where the file went.', model: 'Claude Opus 5.5', agent_id: 'wasd-engine' },
     })
     expect(sent.isError).toBeFalsy()
-    expect(text(sent)).toBe('Sent your report of something confusing about blender_export_gltf to the WASD Engine team. They read it but do not reply here, so carry on with the user\'s task.')
+    expect(text(sent)).toBe([
+      'Sent your report of something confusing about blender_export_gltf to the WASD Engine team. They read it but do not reply here, so carry on with the user\'s task.',
+      'What was sent:',
+      'kind: confusing',
+      'about: blender_export_gltf',
+      'agent: Claude Code (claude-code)',
+      'model: Claude Opus 5.5',
+      'app version: (none)',
+      `platform: ${process.platform}`,
+      'message:',
+      'The result does not say where the file went.',
+    ].join('\n'))
     expect(current.site.requests.map(request => [request.path, request.token])).toEqual([[FEEDBACK_PATH, TOKEN]])
     expect(current.site.requests[0]?.body).toMatchObject({
       kind: 'confusing',

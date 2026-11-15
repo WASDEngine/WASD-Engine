@@ -1,9 +1,8 @@
 /**
  * A Host composition with the real Agent, tool, prompt, and executor services, a fake web search, a fake model that
  * takes images, a fake attachment store, and the art references plugin loaded with its validated configuration. The
- * plugin's own requests reach a {@link FakeWeb} through the global `fetch`, which the composition stubs, and host
- * names resolve through `node:dns/promises`, which each spec mocks: a private address for `.lan` hosts, a public one
- * otherwise.
+ * plugin's own requests reach a {@link FakeWeb}, which each spec's mock of `src/transport.ts` hands the plugin through
+ * {@link pluginWeb}: `.lan` hosts resolve to a private address, every other host to a public one.
  */
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -19,9 +18,8 @@ import * as NativeToolExecutor from '@deepseek-ai/dsh-tool-executor-native'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { WebSearchRequest, WebSearchResult } from '@deepseek-ai/dsh-web'
-import { vi } from 'vitest'
 import * as ArtReferences from '../src/index.ts'
-import { FakeWeb } from './fixtures.ts'
+import { FakeWeb, pluginWeb } from './fixtures.ts'
 
 /** The fake model and attachment store: whether the model takes images, and the images stored. */
 export interface FakeModel {
@@ -73,15 +71,7 @@ export async function compose(config: Partial<ArtReferences.Config> = {}): Promi
   const work = await mkdtemp(join(tmpdir(), 'dsh-art-references-work-'))
   const dataRoot = join(work, '.cache')
   const web = new FakeWeb()
-  const realFetch = globalThis.fetch
-  // Hosts under .example, .lan, and .missing are the fake web's, unknown ones included, so no test request leaves the
-  // computer; the MCP client's requests to the game MCP server go out unchanged.
-  vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-    return /\.(?:example|lan|missing)$/u.test(new URL(url).hostname)
-      ? web.fetch(url, init as { headers: Record<string, string>; signal: AbortSignal })
-      : realFetch(input, init)
-  })
+  pluginWeb.current = web
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, work)
   await ctx.plugin(SystemPrompt)
@@ -115,7 +105,6 @@ export async function compose(config: Partial<ArtReferences.Config> = {}): Promi
     await fiber
   } catch (error) {
     await ctx.fiber.dispose()
-    vi.unstubAllGlobals()
     await rm(work, { recursive: true, force: true })
     throw error
   }
@@ -125,7 +114,6 @@ export async function compose(config: Partial<ArtReferences.Config> = {}): Promi
     unload: () => fiber.dispose(),
     async cleanup() {
       await ctx.fiber.dispose()
-      vi.unstubAllGlobals()
       await rm(work, { recursive: true, force: true })
     },
   }
@@ -138,11 +126,17 @@ let calls = 0
  * @param composition - composition.
  * @param name - tool name.
  * @param args - arguments.
+ * @param signal - the call's cancellation, which a time limit or the user's Stop aborts.
  * @returns the settled result.
  */
-export function callTool(composition: Composition, name: string, args: Record<string, unknown> = {}): Promise<ToolExecutionResult> {
+export function callTool(
+  composition: Composition,
+  name: string,
+  args: Record<string, unknown> = {},
+  signal = new AbortController().signal,
+): Promise<ToolExecutionResult> {
   calls += 1
-  return executeToolFixture(composition.ctx, { signal: new AbortController().signal, callId: ToolCallId(`reference-${calls}`), name, arguments: args, agent: composition.agent })
+  return executeToolFixture(composition.ctx, { signal, callId: ToolCallId(`reference-${calls}`), name, arguments: args, agent: composition.agent })
 }
 
 /**

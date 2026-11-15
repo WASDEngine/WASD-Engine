@@ -4,7 +4,10 @@
  * and the card sends the uploaded ones as one steered user message just
  * before it submits the answer batch. The agent waits inside the
  * `ask_user_question` call until that batch arrives, so its next model
- * request carries the answers and the images together.
+ * request carries the answers and the images together. The message's source
+ * marks it as part of the answer (`answersQuestion`), so plugins that react
+ * to the user steering a turn, such as the todo continuation, tell it apart
+ * from a new instruction.
  */
 import type { Context } from '@deepseek-ai/cordis'
 import type { ImageAttachmentLimits, ImageMediaType } from '@deepseek-ai/dsh-attachment/types'
@@ -58,7 +61,8 @@ export type QuestionImageRefusal =
 export type QuestionImageUpload = (file: File, mediaType: ImageMediaType, signal: AbortSignal) => Promise<RemoteResult<ImageUploadValue>>
 
 /**
- * Steer one user message into the Session that owns the card.
+ * Steer one user message into the Session that owns the card, marked as part
+ * of the answer to the card's question.
  * @param content - text headings and upload receipts, in order.
  * @returns the Host's acceptance, or its refusal.
  */
@@ -387,8 +391,9 @@ export class QuestionImageRegistry {
 
 /**
  * The image verbs of one Session's cards: uploads go through the browser
- * upload service and the message through the Session's steer. A composition
- * without the upload service gets none, and its cards take no images.
+ * upload service and the message through the Session's steer, which records
+ * that it answers a question. A composition without the upload service gets
+ * none, and its cards take no images.
  * @param ctx - the plugin's Client context.
  * @param registry - the drafts of every live card.
  * @param sessionId - the Session the cards belong to.
@@ -410,7 +415,7 @@ export function answerImageIntake(
       async (content) => {
         const session = ctx.get('sessions')?.binding(sessionId)?.session
         if (session === undefined) throw new Error(`session ${String(sessionId)} is not open`)
-        return session.prompt(content, 'steer')
+        return session.prompt(content, 'steer', undefined, undefined, { answersQuestion: true })
       },
     ),
   }
