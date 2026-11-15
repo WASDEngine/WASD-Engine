@@ -2,19 +2,29 @@
  * The game library beside the Play page's site, Installed games: the downloads in progress with their progress, failed ones
  * with Try again, and the games installed on this computer, the last started first. Each game shows its picture from
  * the site, or its title on the site's dark card when it has none or the picture does not load; choosing the game opens
- * its page in the Play page, Play starts it, and its menu opens the page, updates a single-player game whose newer
- * version is out (an online game updates when it starts), and uninstalls it.
+ * its page in the Play page, Play starts it, and its menu opens the page, updates a single-player game while a newer
+ * build for this computer is out (an online game updates when it starts), and uninstalls it. A game says when its
+ * latest version has no download for this computer yet. A game WASD Engine took down offers only Uninstall, and one its
+ * creator removed says so and offers Play anyway beside Uninstall.
  */
-import { useId, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import {
-  Button, IconCloseOutlineRegular, IconEllipsisOutlineRegular, IconGlobeOutlineRegular, IconLayersOutlineRegular,
-  IconLoadingOutlineRegular, IconPlayOutlineRegular, IconRefreshOutlineRegular, IconTrashOutlineRegular,
-  IconWarningOutlineRegular, Menu, Tooltip, type MenuEntry,
+  Button, IconCloseOutlineRegular, IconEllipsisOutlineRegular, IconGlobeOutlineRegular, IconInfoOutlineRegular,
+  IconLayersOutlineRegular, IconLoadingOutlineRegular, IconPlayOutlineRegular, IconRefreshOutlineRegular,
+  IconTrashOutlineRegular, IconWarningOutlineRegular, Menu, Tooltip, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
-import type { WasdLibraryGame, WasdLibraryTask, WasdLibraryView } from '../types.ts'
+import type { WasdLibraryGame, WasdLibraryRefusal, WasdLibraryTask, WasdLibraryView } from '../types.ts'
 import type { NS } from './locales.ts'
 import css from './PlayLibrary.module.css'
+
+/** Why a game did not start: the Host's message, and the refusal that the row words itself. */
+export interface LaunchFailure {
+  /** The Host's message. */
+  readonly message: string
+  /** Why the library refused to start the game, when it did. */
+  readonly refusal?: WasdLibraryRefusal
+}
 
 /** The library's operations, each answering undefined once done, or why not. */
 export interface PlayLibraryActions {
@@ -27,8 +37,9 @@ export interface PlayLibraryActions {
   /**
    * Start an installed game.
    * @param id - the game's id.
+   * @param anyway - the player chose Play anyway for a game its creator removed.
    */
-  readonly launch: (id: string) => Promise<string | undefined>
+  readonly launch: (id: string, anyway: boolean) => Promise<LaunchFailure | undefined>
   /**
    * Delete an installed game.
    * @param id - the game's id.
@@ -130,25 +141,49 @@ function TaskRow({ task, t, install, dismiss }: { readonly task: WasdLibraryTask
   )
 }
 
-/** One installed game. */
+/**
+ * One installed game. Where the game stands comes from the library's view; a refusal to start it shows at once, until
+ * the view says the same.
+ */
 function GameRow({ game, t, install, launch, remove, openPage }: { readonly game: WasdLibraryGame } & Pick<PlayLibraryProps, 't' | 'install' | 'launch' | 'remove' | 'openPage'>) {
   const titleId = useId()
   const [starting, setStarting] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [message, setMessage] = useState<string>()
+  const [refusal, setRefusal] = useState<WasdLibraryRefusal>()
+  useEffect(() => { setRefusal(undefined) }, [game.availability, game.unavailableVersion])
   const settle = (done: Promise<string | undefined>): void => {
     setMessage(undefined)
+    setRefusal(undefined)
     void done.then(setMessage, (error: unknown) => { setMessage((error as Error).message) })
   }
-  const play = (): void => {
+  const play = (anyway: boolean): void => {
     setStarting(true)
-    settle(launch(game.id).finally(() => { setStarting(false) }))
+    setMessage(undefined)
+    setRefusal(undefined)
+    void launch(game.id, anyway).then((failure) => {
+      // A refusal is worded below in the player's language; any other failure shows the Host's message.
+      setRefusal(failure?.refusal)
+      setMessage(failure?.refusal === undefined ? failure?.message : undefined)
+    }, (error: unknown) => { setMessage((error as Error).message) }).finally(() => { setStarting(false) })
   }
+  const uninstall = (): void => { settle(remove(game.id)) }
+  const online = game.multiplayer !== undefined
+  const refused = refusal?.reason === 'taken_down' || refusal?.reason === 'removed' ? refusal.reason : undefined
+  const availability = game.availability ?? refused
+  const unavailable = availability === undefined
+    ? game.unavailableVersion ?? (refusal?.reason === 'unavailable' ? refusal.version : undefined)
+    : undefined
+  const updateVersion = online || availability !== undefined ? undefined : game.updateVersion
   const update = (): void => { settle(install(game.slug, 0)) }
-  const canUpdate = game.multiplayer === undefined && game.latestVersion > game.version
+  const platform = t(game.platform === 'macos' ? 'library.platform.macos' : 'library.platform.windows')
+  let standing: string | undefined
+  if (availability === 'taken_down') standing = t('library.takenDown')
+  else if (availability === 'removed') standing = t(online ? 'library.removedOnline' : 'library.removed')
+  else if (unavailable !== undefined) standing = t(online ? 'library.unavailableOnline' : 'library.unavailable', { version: unavailable, platform })
   const items: MenuEntry[] = [
     { id: 'page', label: t('library.openPage'), icon: <IconGlobeOutlineRegular size={14} /> },
-    ...canUpdate ? [{ id: 'update', label: t('library.update', { version: game.latestVersion }), icon: <IconRefreshOutlineRegular size={14} /> }] : [],
+    ...updateVersion === undefined ? [] : [{ id: 'update', label: t('library.update', { version: updateVersion }), icon: <IconRefreshOutlineRegular size={14} /> }],
     { type: 'separator', id: 'end' },
     { id: 'uninstall', label: t('library.uninstall'), icon: <IconTrashOutlineRegular size={14} />, danger: true },
   ]
@@ -156,10 +191,10 @@ function GameRow({ game, t, install, launch, remove, openPage }: { readonly game
     setMenuOpen(false)
     if (id === 'page') openPage(game.slug)
     else if (id === 'update') update()
-    else if (id === 'uninstall') settle(remove(game.id))
+    else if (id === 'uninstall') uninstall()
   }
   return (
-    <li className={css.row} data-state="installed">
+    <li className={css.row} data-state="installed" data-availability={availability}>
       <Cover title={game.title} url={game.coverUrl} />
       <div className={css.body}>
         <Tooltip label={game.title} side="top" delayMs={500} portal onlyWhenClipped>
@@ -169,22 +204,30 @@ function GameRow({ game, t, install, launch, remove, openPage }: { readonly game
         </Tooltip>
         <span className={css.meta}>
           <span>{t('library.version', { version: game.version })}</span>
-          {game.multiplayer !== undefined && (
+          {online && (
             <span className={css.metaPart}><IconGlobeOutlineRegular size={12} />{t('library.online')}</span>
           )}
-          {canUpdate && (
+          {updateVersion !== undefined && (
             <span className={css.metaPart}>
-              <Tooltip label={t('library.update', { version: game.latestVersion })} side="top" delayMs={500} portal>
+              <Tooltip label={t('library.update', { version: updateVersion })} side="top" delayMs={500} portal>
                 <button type="button" className={css.update} aria-describedby={titleId} onClick={update}>{t('library.updateShort')}</button>
               </Tooltip>
             </span>
           )}
         </span>
         <div className={css.actions}>
-          <button type="button" className={css.play} aria-describedby={titleId} onClick={play} disabled={starting}>
-            {starting ? <IconLoadingOutlineRegular size={14} className={css.spinner} /> : <IconPlayOutlineRegular size={14} />}
-            <span>{starting ? t('library.starting') : t('library.play')}</span>
-          </button>
+          {availability === 'taken_down' && (
+            <Button variant="outline" size="sm" aria-describedby={titleId} onClick={uninstall}>{t('library.uninstall')}</Button>
+          )}
+          {availability !== 'taken_down' && (
+            <button type="button" className={css.play} aria-describedby={titleId} onClick={() => { play(availability === 'removed') }} disabled={starting}>
+              {starting ? <IconLoadingOutlineRegular size={14} className={css.spinner} /> : <IconPlayOutlineRegular size={14} />}
+              <span>{starting ? t('library.starting') : t(availability === 'removed' ? 'library.playAnyway' : 'library.play')}</span>
+            </button>
+          )}
+          {availability === 'removed' && (
+            <Button variant="outline" size="sm" aria-describedby={titleId} onClick={uninstall}>{t('library.uninstall')}</Button>
+          )}
           <Menu
             open={menuOpen}
             onClose={() => { setMenuOpen(false) }}
@@ -209,6 +252,14 @@ function GameRow({ game, t, install, launch, remove, openPage }: { readonly game
             )}
           />
         </div>
+        {standing !== undefined && (
+          <p className={css.notice} role="status" data-tone={availability === undefined ? 'info' : 'warning'}>
+            {availability === undefined
+              ? <IconInfoOutlineRegular size={12} className={css.noticeIcon} />
+              : <IconWarningOutlineRegular size={12} className={css.noticeIcon} />}
+            <span>{standing}</span>
+          </p>
+        )}
         {message !== undefined && (
           <p className={css.notice} role="alert">
             <IconWarningOutlineRegular size={12} className={css.noticeIcon} />

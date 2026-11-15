@@ -8,13 +8,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { bindSnapshotSelector, makeTranslate } from '@deepseek-ai/dsh-client-test-runtime'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
-import { followGameLinks } from '../src/client/library.ts'
+import { followGameLinks, linkInstalls } from '../src/client/library.ts'
 import { en } from '../src/client/locales.ts'
 import { createPlayNavigator, gamePage, parseGameLink, PLAY_PANEL, type PlayNavigation } from '../src/client/play.ts'
 import { PlayBuildToggle, type PlayBuildToggleProps } from '../src/client/PlayBuildToggle.tsx'
 import { PlayPage, type PlayPageProps } from '../src/client/PlayPage.tsx'
-import { PlayLibrary } from '../src/client/PlayLibrary.tsx'
-import type { DesktopWasdLinksBridge, WasdLibraryView } from '../src/types.ts'
+import { PlayLibrary, type LaunchFailure } from '../src/client/PlayLibrary.tsx'
+import type { DesktopWasdLink, DesktopWasdLinksBridge, WasdLibraryGame, WasdLibraryView } from '../src/types.ts'
 
 afterEach(() => { cleanup() })
 
@@ -42,8 +42,8 @@ describe('game links', () => {
     expect(navigator.last()).toBe('https://site.test/games/sky-keep')
   })
 
-  it('takes the shell\'s links in order and opens each game link once', async () => {
-    const waiting = [['wasdengine://games/a?install=1', 'wasdengine://open', 'wasdengine://games/b'], ['wasdengine://games/c?v=2']]
+  /** The shell's bridge, which hands out the lists a spec queues, one list per take. */
+  function shell(waiting: DesktopWasdLink[][]) {
     let notify = (): void => {}
     const links: DesktopWasdLinksBridge = {
       take: vi.fn(() => Promise.resolve(waiting.shift() ?? [])),
@@ -52,15 +52,50 @@ describe('game links', () => {
         return () => { notify = () => {} }
       },
     }
+    return { links, notify: () => { notify() } }
+  }
+  const SITE = 'https://site.test'
+  const fromPlay = { kind: 'play', origin: SITE } as const
+
+  it('takes the shell\'s links in order and opens each game link once', async () => {
+    const { links, notify } = shell([
+      [{ url: 'wasdengine://games/a?install=1', source: fromPlay }, { url: 'wasdengine://open', source: fromPlay }, { url: 'wasdengine://games/b', source: fromPlay }],
+      [{ url: 'wasdengine://games/c?v=2', source: { kind: 'system' } }],
+    ])
     const opened: string[] = []
     const warn = vi.fn()
-    const stop = followGameLinks({ links, open: (link) => { opened.push(`${link.slug}:${String(link.install)}:${String(link.version)}`); return Promise.resolve(link.slug === 'b' ? 'refused' : undefined) }, warn })
+    const stop = followGameLinks({
+      links, site: () => Promise.resolve(SITE), warn,
+      open: (link) => { opened.push(`${link.slug}:${String(link.install)}:${String(link.version)}`); return Promise.resolve(link.slug === 'b' ? 'refused' : undefined) },
+    })
     await vi.waitFor(() => { expect(opened).toEqual(['a:true:undefined', 'b:false:undefined']) })
     notify()
     await vi.waitFor(() => { expect(opened).toHaveLength(3) })
     expect(opened[2]).toBe('c:false:2')
     expect(warn).toHaveBeenCalledWith('wasd-plugins: the game b did not start installing: refused', undefined)
     stop()
+  })
+
+  it('installs only for the site\'s Install button in the Play page, and opens the game\'s page for every other link', async () => {
+    const install = 'wasdengine://games/sky-keep?install=1'
+    const { links } = shell([[
+      { url: install, source: { kind: 'system' } },
+      { url: install, source: { kind: 'page' } },
+      { url: install, source: { kind: 'play', origin: 'https://ads.example' } },
+      { url: install, source: fromPlay },
+      // Whatever crosses from the main process is read as data.
+      { url: install, source: { kind: 'play' } as never },
+      { url: 42 as never, source: fromPlay },
+    ]])
+    const opened: boolean[] = []
+    const stop = followGameLinks({
+      links, site: () => Promise.resolve(SITE), warn: vi.fn(),
+      open: (link) => { opened.push(link.install); return Promise.resolve(undefined) },
+    })
+    await vi.waitFor(() => { expect(opened).toEqual([false, false, false, true, false]) })
+    stop()
+    expect(linkInstalls({ url: install, source: fromPlay }, SITE)).toBe(true)
+    expect(linkInstalls({ url: install, source: fromPlay }, 'https://other.test')).toBe(false)
   })
 })
 
@@ -103,13 +138,16 @@ describe('PlayBuildToggle', () => {
   })
 })
 
+/** How a spec answers a game's start. */
+type Launch = (id: string, anyway: boolean) => Promise<LaunchFailure | undefined>
+
 describe('PlayPage', () => {
-  function page(options: { readonly library?: WasdLibraryView; readonly launch?: (id: string) => Promise<string | undefined> } = {}) {
+  function page(options: { readonly library?: WasdLibraryView; readonly launch?: Launch } = {}) {
     const navigation = createSnapshotStore<PlayNavigation | undefined>(undefined)
     const library = createSnapshotStore<WasdLibraryView | undefined>(options.library)
     const actions = {
       install: vi.fn((_slug: string, _version: number) => Promise.resolve<string | undefined>(undefined)),
-      launch: vi.fn(options.launch ?? ((_id: string) => Promise.resolve<string | undefined>(undefined))),
+      launch: vi.fn(options.launch ?? ((_id: string, _anyway: boolean) => Promise.resolve<LaunchFailure | undefined>(undefined))),
       remove: vi.fn((_id: string) => Promise.resolve<string | undefined>(undefined)),
       dismiss: vi.fn(),
       openExternal: vi.fn(),
@@ -217,15 +255,24 @@ describe('PlayPage in the Desktop app', () => {
 describe('PlayLibrary in the Desktop app', () => {
   const COVER = 'https://site.test/game-files/covers/sky-keep.jpg'
 
-  function library(view: WasdLibraryView | undefined, launch?: (id: string) => Promise<string | undefined>) {
+  function library(view: WasdLibraryView | undefined, launch?: (id: string, anyway: boolean) => Promise<LaunchFailure | undefined>) {
     const actions = {
       install: vi.fn((_slug: string, _version: number) => Promise.resolve<string | undefined>(undefined)),
-      launch: vi.fn(launch ?? ((_id: string) => Promise.resolve<string | undefined>(undefined))),
+      launch: vi.fn(launch ?? ((_id: string, _anyway: boolean) => Promise.resolve<LaunchFailure | undefined>(undefined))),
       remove: vi.fn((_id: string) => Promise.resolve<string | undefined>(undefined)),
       dismiss: vi.fn(),
       openPage: vi.fn(),
     }
     return { actions, element: <PlayLibrary t={t} library={view} {...actions} /> }
+  }
+
+  const SKY_KEEP: WasdLibraryGame = {
+    id: 'g1', slug: 'sky-keep', title: 'Sky Keep', version: 1, latestVersion: 2, platform: 'macos', bytes: 10,
+    installedAt: '2026-11-13T00:00:00Z', coverUrl: COVER,
+  }
+  const ARENA: WasdLibraryGame = {
+    id: 'g2', slug: 'arena', title: 'Arena', version: 4, latestVersion: 5, multiplayer: 'dedicated', platform: 'macos', bytes: 10,
+    installedAt: '2026-11-13T00:00:00Z',
   }
 
   const VIEW: WasdLibraryView = {
@@ -234,11 +281,11 @@ describe('PlayLibrary in the Desktop app', () => {
       { slug: 'moon-run', title: 'Moon Run', version: 3, state: 'downloading', receivedBytes: 25, totalBytes: 100, coverUrl: 'https://site.test/game-files/covers/moon-run.jpg' },
       { slug: 'lost', title: 'Lost Game', version: 1, state: 'failed', receivedBytes: 0, totalBytes: 0, message: 'The download failed.' },
     ],
-    games: [
-      { id: 'g1', slug: 'sky-keep', title: 'Sky Keep', version: 1, latestVersion: 2, platform: 'macos', bytes: 10, installedAt: '2026-11-13T00:00:00Z', coverUrl: COVER },
-      { id: 'g2', slug: 'arena', title: 'Arena', version: 4, latestVersion: 5, multiplayer: 'dedicated', platform: 'macos', bytes: 10, installedAt: '2026-11-13T00:00:00Z' },
-    ],
+    games: [{ ...SKY_KEEP, updateVersion: 2 }, { ...ARENA, updateVersion: 5 }],
   }
+
+  /** The library with these games and no downloads. */
+  const only = (...games: WasdLibraryGame[]): WasdLibraryView => ({ supported: true, tasks: [], games })
 
   it('groups downloads and installed games, with progress, Try again, and the installed count', () => {
     const { actions, element } = library(VIEW)
@@ -271,7 +318,7 @@ describe('PlayLibrary in the Desktop app', () => {
   })
 
   it('plays a game, offers Update only for a single-player game, and its menu opens the page, updates, and uninstalls', async () => {
-    const { actions, element } = library(VIEW, (_id: string) => Promise.resolve<string | undefined>('Online games need a WASD Engine account.'))
+    const { actions, element } = library(VIEW, (_id: string) => Promise.resolve<LaunchFailure | undefined>({ message: 'Online games need a WASD Engine account.' }))
     render(element)
     expect(screen.getByText(en['library.online'])).toBeTruthy()
     // Only the single-player game offers Update; the online one updates when it starts.
@@ -282,7 +329,7 @@ describe('PlayLibrary in the Desktop app', () => {
     const plays = screen.getAllByRole('button', { name: en['library.play'] })
     expect(plays.map(button => button.getAttribute('aria-describedby') === null)).toEqual([false, false])
     await act(async () => { fireEvent.click(plays[1] as HTMLElement) })
-    expect(actions.launch).toHaveBeenCalledWith('g2')
+    expect(actions.launch).toHaveBeenCalledWith('g2', false)
     expect(screen.getAllByRole('alert').map(alert => alert.textContent)).toEqual(['The download failed.', 'Online games need a WASD Engine account.'])
 
     fireEvent.click(screen.getByRole('button', { name: 'More actions for Arena' }))
@@ -294,6 +341,57 @@ describe('PlayLibrary in the Desktop app', () => {
     expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([en['library.openPage'], 'Update to version 2', en['library.uninstall']])
     fireEvent.click(screen.getByRole('menuitem', { name: en['library.uninstall'] }))
     expect(actions.remove).toHaveBeenCalledWith('g1')
+  })
+
+  it('offers Update only while a newer build for this computer is out, and says when the latest version has none yet', () => {
+    const waiting: WasdLibraryGame = { ...SKY_KEEP, latestVersion: 3, updateVersion: 2, unavailableVersion: 3 }
+    const online: WasdLibraryGame = { ...ARENA, unavailableVersion: 5 }
+    const { element } = library(only(waiting, online))
+    render(element)
+    expect(screen.getAllByRole('button', { name: en['library.updateShort'] })).toHaveLength(1)
+    expect(screen.getAllByRole('status').map(note => note.textContent)).toEqual([
+      'Version 3 has no macOS download yet.',
+      'Version 5 has no macOS download yet, and online play needs it.',
+    ])
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for Sky Keep' }))
+    expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual([en['library.openPage'], 'Update to version 2', en['library.uninstall']])
+  })
+
+  it('offers only Uninstall for a game WASD Engine took down', () => {
+    const { actions, element } = library(only({ ...SKY_KEEP, availability: 'taken_down' }))
+    render(element)
+    expect(screen.queryByRole('button', { name: en['library.play'] })).toBeNull()
+    expect(screen.queryByRole('button', { name: en['library.updateShort'] })).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe(en['library.takenDown'])
+    fireEvent.click(screen.getByRole('button', { name: en['library.uninstall'] }))
+    expect(actions.remove).toHaveBeenCalledWith('g1')
+    expect(actions.launch).not.toHaveBeenCalled()
+  })
+
+  it('starts a game its creator removed only through Play anyway, and offers Uninstall beside it', async () => {
+    const { actions, element } = library(only({ ...ARENA, availability: 'removed' }))
+    render(element)
+    expect(screen.getByRole('status').textContent).toBe(en['library.removedOnline'])
+    expect(screen.queryByRole('button', { name: en['library.play'] })).toBeNull()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['library.playAnyway'] })) })
+    expect(actions.launch).toHaveBeenCalledWith('g2', true)
+    fireEvent.click(screen.getByRole('button', { name: en['library.uninstall'] }))
+    expect(actions.remove).toHaveBeenCalledWith('g2')
+  })
+
+  it('says a refusal in the player\'s language as soon as Play is refused', async () => {
+    const refusals: LaunchFailure[] = [
+      { message: 'The creator of Sky Keep removed it from WASD Engine.', refusal: { reason: 'removed' } },
+      { message: 'Version 3 of Sky Keep has no macOS download yet.', refusal: { reason: 'unavailable', version: 3 } },
+    ]
+    const { actions, element } = library(only(SKY_KEEP), () => Promise.resolve(refusals.shift()))
+    render(element)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['library.play'] })) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('status').textContent).toBe(en['library.removed'])
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: en['library.playAnyway'] })) })
+    expect(actions.launch.mock.calls).toEqual([['g1', false], ['g1', true]])
+    expect(screen.getByRole('status').textContent).toBe('Version 3 has no macOS download yet.')
   })
 
   it('shows placeholder rows until the library answers, then says how to install a game, or where games install', () => {

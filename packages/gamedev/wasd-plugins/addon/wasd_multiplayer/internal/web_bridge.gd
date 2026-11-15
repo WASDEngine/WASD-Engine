@@ -57,11 +57,14 @@ func is_framed() -> bool:
 	return available and bool(JavaScriptBridge.eval("window.parent !== window", true))
 
 
-## Posts a message to the framing page. The messages carry no secrets, so any origin may receive them.
-func post_parent(data: Dictionary) -> void:
+## Posts a message to the framing page when its origin is [param target_origin], the WASD website's: the browser drops
+## it for a page of any other origin.
+func post_parent(data: Dictionary, target_origin: String) -> void:
 	if not is_framed():
 		return
-	JavaScriptBridge.eval("window.parent.postMessage(%s, '*');" % JSON.stringify(data), true)
+	var script := "try { window.parent.postMessage(%s, %s); } catch (error) {" \
+			+ " console.warn('WASD Multiplayer: the message to the game page could not be sent.', error); }"
+	JavaScriptBridge.eval(script % [JSON.stringify(data), JSON.stringify(target_origin)], true)
 
 
 ## Opens [param url] in the sign-in window. Browsers allow it only right after a click or key press.

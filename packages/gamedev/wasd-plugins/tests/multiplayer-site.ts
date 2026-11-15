@@ -66,6 +66,8 @@ export interface SiteServer {
 export interface SiteOptions {
   /** The sizes the site lists; `error` answers 500. */
   readonly plans?: typeof PLANS | 'error'
+  /** The lobby statistics: `paused` past the relay's fair use, `unavailable` (503) while lobbies are off. */
+  readonly lobbies?: 'paused' | 'unavailable'
 }
 
 const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -113,7 +115,10 @@ export function multiplayerSite(options: SiteOptions = {}) {
     if (url.pathname === '/api/v1/servers/plans') return options.plans === 'error' ? json(500, {}) : json(200, options.plans ?? PLANS)
     if (!authorized) return failure(401, 'authentication_error', 'Missing, invalid, or expired WASD Engine token.')
     if (url.pathname === '/api/v1/play/stats') {
-      return json(200, { lobbies_open: 3, players_online: 7, relay: { bytes_this_month: 12.34e9, soft_cap_bytes: 2000e9 }, month: '2026-11' })
+      if (options.lobbies === 'unavailable') return failure(503, 'multiplayer_unavailable', 'Online play isn\'t available yet.')
+      const paused = options.lobbies === 'paused'
+      const relay = { bytes_this_month: paused ? 2001.2e9 : 12.34e9, soft_cap_bytes: 2000e9, available: !paused, paused_until: paused ? '2026-12-01T00:00:00Z' : null }
+      return json(200, { lobbies_open: 3, players_online: 7, relay, month: '2026-11' })
     }
     const build = /^\/api\/v1\/games\/([^/]+)\/server-builds$/u.exec(url.pathname)
     if (build !== null && method === 'POST') {

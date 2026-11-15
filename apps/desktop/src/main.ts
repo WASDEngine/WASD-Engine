@@ -68,7 +68,7 @@ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.t
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
 import { registerWasdengineGameLayers } from './wasdengine-game-layer.ts'
-import { registerWasdengineLinks, WasdLinkInbox } from './wasdengine-links.ts'
+import { guestLinkSource, registerWasdengineLinks, SYSTEM_LINK, WasdLinkInbox } from './wasdengine-links.ts'
 import { WASD_LINKS_IPC } from './wasdengine-links-names.ts'
 import { runWebCheckMode, webCheckCommand, webCheckRequest } from './wasdengine-web-check.ts'
 import { WasdengineUpdateDownloads } from './wasdengine-update-downloads.ts'
@@ -500,7 +500,7 @@ async function main(): Promise<void> {
   const applicationUrl = `${SCHEME}://app/`
   let hostUrl: string | undefined
   let hostCookie: string | undefined
-  const browserGuests = new DesktopBrowserGuests(() => hostUrl, url => wasdLinks.deliver(url))
+  const browserGuests = new DesktopBrowserGuests(() => hostUrl, (url, link) => wasdLinks.deliver(url, guestLinkSource(link)))
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let reportedLaunch = false
@@ -1649,7 +1649,7 @@ const ownsDesktopInstance = webCheck === undefined && claimDesktopSingleInstance
 if (ownsDesktopInstance) {
   // macOS hands over the link that starts the app before the app is ready, so the inbox listens from the start.
   app.on('open-url', (event, url) => {
-    if (!wasdLinks.deliver(url)) return
+    if (!wasdLinks.deliver(url, SYSTEM_LINK)) return
     event.preventDefault()
     focusPrimaryWindow()
   })

@@ -112,7 +112,7 @@ describe('wasd_multiplayer_setup', () => {
     const dir = await multiplayerProject()
     const definitions = multiplayerToolDefinitions(toolHost(site, dir).host, appSurface().surface)
     const { value, text } = await call(definitions, 'wasd_multiplayer_setup', { mode: 'dedicated' })
-    expect(value).toMatchObject({ project_dir: dir, mode: 'dedicated', max_players: 32, project_changed: true, addon_version: '1.0.0' })
+    expect(value).toMatchObject({ project_dir: dir, mode: 'dedicated', max_players: 32, project_changed: true, addon_version: '1.1.0' })
     expect(value.addon_files).toBeGreaterThan(5)
     expect(text).toContain('The game is set up for a dedicated server, up to 32 players.')
     expect(text).toContain('Next steps:\n- In the main scene: `if WasdMultiplayer.is_server(): WasdMultiplayer.serve()`')
@@ -312,6 +312,15 @@ describe('dedicated server tools in a Session', () => {
     await expect(call(definitions, 'wasd_server_logs')).rejects.toThrow(`This game has 2 servers; pass server, one of: ${first.id} (West), ${second.id} (East).`)
     expect((await call(definitions, 'wasd_lobby_stats')).text).toBe('Defenders has 3 open lobbies with 7 players. Relayed traffic this month: 12.3 GB of the 2000 GB fair-use level. Player-hosted multiplayer costs nothing.')
     expect(site.calls.at(-1)?.path).toBe(`/api/v1/play/stats?game_id=${GAME.id}`)
+  })
+
+  it('says when the relay is off for a game past its fair use, and when the site runs no lobbies', async () => {
+    const paused = multiplayerToolDefinitions(toolHost(multiplayerSite({ lobbies: 'paused' }), await multiplayerProject()).host, appSurface().surface)
+    const { value, text } = await call(paused, 'wasd_lobby_stats')
+    expect(value).toMatchObject({ relay_available: false, relay_paused_until: '2026-12-01T00:00:00Z', relay_gb_this_month: 2001.2, relay_soft_cap_gb: 2000 })
+    expect(text).toBe('Defenders has 3 open lobbies with 7 players. Relayed traffic this month: 2001.2 GB, past the 2000 GB fair-use level, so the relay is off for this game until 2026-12-01: players whose networks block a direct connection cannot join until then. Player-hosted multiplayer costs nothing.')
+    const off = multiplayerToolDefinitions(toolHost(multiplayerSite({ lobbies: 'unavailable' }), await multiplayerProject()).host, appSurface().surface)
+    await expect(call(off, 'wasd_lobby_stats')).rejects.toThrow('WASD Engine does not run player-hosted lobbies right now, so there are no lobby statistics. Try again later.')
   })
 })
 

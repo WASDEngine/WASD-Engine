@@ -144,13 +144,39 @@ export function providerToolCredit(provider: string): ToolCredit | undefined {
   return PROVIDER_CREDITS.get(provider) ?? toolCredit(provider)
 }
 
+/** File name extensions of model weights, which a credit leaves out. */
+const WEIGHTS_EXTENSION = /\.(?:gguf|ggml|ggjt|bin|safetensors|onnx|pt|pth|ckpt|llamafile|mlmodel|mlpackage|tflite)$/iu
+
 /**
- * A model name as a release credits it: trimmed, at most {@link MAX_MODEL_NAME} characters, without control characters.
+ * A model id or name reduced to what a public page may show: a name with a `/` or `\`, such as the file path a local
+ * model server reports as its model's id, a `file:` URL, or a provider's `org/model` id, becomes its last part, so no
+ * folder of the user's computer reaches the page, and a model file's extension goes.
+ */
+function shownModel(name: string): string {
+  let last = name.split(/[\\/]/u).map(part => part.trim()).filter(part => part !== '').at(-1) ?? ''
+  // A folder's dots and a drive or URL scheme alone, such as `C:` or `file:`, name no model.
+  if (last === '.' || last === '..' || (last !== name.trim() && last.endsWith(':'))) return ''
+  while (WEIGHTS_EXTENSION.test(last)) last = last.replace(WEIGHTS_EXTENSION, '').trim()
+  return last
+}
+
+/**
+ * A model name as a release credits it on the game's public page: a name that looks like a path keeps only its last
+ * part, without a model file's extension (`/Users/me/models/Qwen3-8B-Q4_K_M.gguf` credits `Qwen3-8B-Q4_K_M`); then it
+ * is trimmed, at most {@link MAX_MODEL_NAME} characters, without control characters. Cleaning a cleaned name changes
+ * nothing, so a credits file whose name differs from its cleaned form, such as a path an earlier version stored, credits
+ * no model.
  * @param name - the name.
  * @returns the cleaned name, or undefined when nothing is left.
  */
 export function modelName(name: string): string | undefined {
-  return cleanText(name, MAX_MODEL_NAME)
+  let current = name
+  for (;;) {
+    const cleaned = cleanText(shownModel(current), MAX_MODEL_NAME)
+    // A cut at the length limit can leave a model file's extension at the end, which the next round takes off.
+    if (cleaned === undefined || cleaned === current) return cleaned
+    current = cleaned
+  }
 }
 
 /**

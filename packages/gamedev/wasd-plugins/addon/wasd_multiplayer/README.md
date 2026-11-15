@@ -6,7 +6,7 @@ WASD Multiplayer is the Godot 4 add-on that connects a game to WASD Engine's onl
 
 ## Modes
 
-- **Player-hosted.** One player's game hosts a lobby and the other players connect to it over WebRTC. WASD brokers the connection: lobby codes, a list of public lobbies, the exchange of connection offers, and a relay for players whose networks block a direct connection. It costs nothing. The session ends when the host leaves, a host playing in a browser must keep the game's tab open and in front, and a native desktop build needs the webrtc-native extension for this mode. The server build can never host a lobby.
+- **Player-hosted.** One player's game hosts a lobby and the other players connect to it over WebRTC. WASD brokers the connection: lobby codes, a list of public lobbies, the exchange of connection offers, and a relay for players whose networks block a direct connection. It costs nothing; the relay has a monthly fair-use amount per game, past which it is off for that game until the next month. The session ends when the host leaves, a host playing in a browser must keep the game's tab open and in front, and a native desktop build needs the webrtc-native extension for this mode. The server build can never host a lobby.
 - **Dedicated server.** WASD runs the game's server build, and players join it over a secure WebSocket with a join ticket that expires after two minutes. The server decides what happens, the world stays when everyone leaves, and the game's owner pays a monthly price per server.
 
 Both modes set `multiplayer.multiplayer_peer` and leave the rest to Godot's own multiplayer: `@rpc`, `MultiplayerSpawner`, and `MultiplayerSynchronizer`, with peer 1 as the authority. Every player signs in with a WASD Engine account.
@@ -42,12 +42,12 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 
 | Member | What it does |
 |---|---|
-| `sign_in()` | Signs the player in. On a WASD game page the page answers at once; elsewhere a WASD sign-in window opens. |
+| `sign_in()` | Signs the player in. On a WASD game page the page answers at once; elsewhere a WASD sign-in window opens, and a desktop build that WASD Engine started signs in with the token it got. The sign-in then lasts while the game runs, up to a week. |
 | `host_lobby(options)` | Hosts a lobby; `options` takes `name`, `public`, `max_players` (2 to 16), and `data`. Resolves with `lobby` and `code`. |
 | `join_lobby(code)` | Joins a lobby by its code and resolves once connected to the host. |
 | `list_lobbies()` | Lists the public lobbies of this release that have room, as `lobbies`. |
 | `set_lobby(options)` | Changes the hosted lobby's `name`, `public`, `locked`, or `data`. |
-| `kick(peer_id)` | Removes a player from the hosted lobby or the server. |
+| `kick(peer_id)` | Removes a player from the hosted lobby, which their account can't join again, or from the server. |
 | `join_server(server_id)` | Joins the named server, or this release's running server with the fewest players, or else a sleeping one, which the connection wakes: `server_waking()` fires, and the join takes a few seconds longer. |
 | `list_servers()` | Lists this game's dedicated servers, as `servers`; a `sleeping` server wakes when a player joins it. |
 | `serve()` | In a dedicated server, listens on `WASD_PORT` and admits only players with a valid join ticket. |
@@ -55,7 +55,9 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | Read the current state. |
 | `stats()` | Traffic in bytes and packets, connected peers, and time per frame. |
 
-Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. `server_waking()` tells a joining player's game that the server is starting, so it can say so.
+Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. `server_waking()` tells a joining player's game that the server is starting, so it can say so. `lobby_closed` names why the lobby ended: `host_left`, `closed`, `replaced`, `kicked` (the host removed this player), `dropped` (the host could not connect to this player in time; joining again is allowed), `left`, or `signal_lost`.
+
+A host that does not hear from a joining player within 30 seconds drops that player, who may join again; `kick()` instead keeps the player's account out of the lobby for good. When a player's network blocks a direct connection and the relay is off for the game, a join that times out says so in its `message`.
 
 ## Configuration
 
@@ -65,13 +67,13 @@ Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `
 |---|---|---|
 | `mode` | `"player_hosted"` | `"player_hosted"` or `"dedicated"`. |
 | `max_players` | `8` | The lobby size `host_lobby()` offers by default. |
-| `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | The WASD play API and the website that signs players in. |
+| `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | The WASD play API and the website that signs players in. A Web build takes sign-in messages only from a framing page or a sign-in window of `app_origin`. |
 | `game_id` | `""` | The released game's id, which Release writes. |
 | `version` | `0` | The release; a Web build on WASD reads it from its own address instead. |
 | `count_traffic` | `true` | Count multiplayer traffic for `stats()`. |
 | `server_fps`, `server_idle_fps` | `0`, `10` | A dedicated server's frame rate while players are connected (`0` uses the physics rate) and while nobody is. |
 
-WASD tooling and WASD servers set environment variables, which override the file: `WASD_PLAY_TOKEN`, `WASD_API_ORIGIN`, `WASD_GAME_ID`, and `WASD_GAME_VERSION` on the desktop, and `WASD_SERVER`, `WASD_SERVER_ID`, `WASD_PORT`, `WASD_TICKET_KEY`, `WASD_STATUS_FILE`, and `WASD_CONTROL_FILE` on a server. A server listens on every interface, or on `WASD_BIND_ADDRESS` when set; test runs listen on `127.0.0.1` only.
+WASD tooling and WASD servers set environment variables, which override the file: `WASD_PLAY_TOKEN`, `WASD_API_ORIGIN`, `WASD_GAME_ID`, and `WASD_GAME_VERSION` on the desktop, and `WASD_SERVER`, `WASD_SERVER_ID`, `WASD_PORT`, `WASD_TICKET_KEY`, `WASD_STATUS_FILE`, and `WASD_CONTROL_FILE` on a server. Without a WASD game page to ask, the add-on renews its player token through the WASD play API half an hour before it expires, for up to a week after the first sign-in. A server listens on every interface, or on `WASD_BIND_ADDRESS` when set; test runs listen on `127.0.0.1` only.
 
 ## Test runs
 
@@ -82,3 +84,5 @@ With `WASD_MULTIPLAYER_TEST` set to `host`, `client`, or `server`, the add-on ru
 - Player-hosted play in a native desktop build needs the webrtc-native extension; a desktop test run uses the loopback WebSocket instead.
 - Traffic counts cover multiplayer payloads only, not WebSocket, TLS, DTLS, or IP overhead.
 - A host's lobby cannot move to another player when the host leaves.
+- A Web build on a page whose origin is not `app_origin`, such as a WASD game page opened under another of the site's hostnames, signs in through the WASD sign-in window instead of the page.
+- A desktop build's sign-in ends a week after WASD Engine started the game, when that WASD Engine sign-in ends, or when the computer sleeps past the token's expiry; start the game again from WASD Engine to play online.

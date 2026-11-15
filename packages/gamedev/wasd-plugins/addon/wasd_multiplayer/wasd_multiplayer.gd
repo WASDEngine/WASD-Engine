@@ -21,7 +21,8 @@ signal sign_in_failed(reason: String)
 signal lobby_joined(lobby: Dictionary)
 ## The lobby's name, visibility, lock, or data changed.
 signal lobby_updated(lobby: Dictionary)
-## The lobby ended: "host_left", "closed", "replaced", "kicked", "left", or "signal_lost".
+## The lobby ended: "host_left", "closed", "replaced", "kicked", "dropped" (the host could not connect to this player
+## in time), "left", or "signal_lost".
 signal lobby_closed(reason: String)
 ## A signed-in player joined. Peer 1 is the lobby host; a dedicated server is not a player.
 signal player_joined(peer_id: int, player: Dictionary)
@@ -39,7 +40,7 @@ signal server_waking()
 ## In a dedicated server: save now, the server quits on the next frames.
 signal server_stopping()
 
-const ADDON_VERSION := "1.0.0"
+const ADDON_VERSION := "1.1.0"
 const Tokens := preload("internal/tokens.gd")
 const Config := preload("internal/config.gd")
 const Api := preload("internal/api.gd")
@@ -55,7 +56,16 @@ const _WAKE_SECONDS := 75.0
 const _PENDING_SECONDS := 30.0
 const _STATUS_SECONDS := 5.0
 const _CONTROL_SECONDS := 1.0
+# A token from the WASD game page is asked for again this long before it expires; without such a page, the add-on
+# renews its token through the WASD service from this long before, trying again every minute.
 const _REFRESH_MARGIN_SECONDS := 300.0
+const _RENEW_MARGIN_SECONDS := 1800.0
+const _RENEW_RETRY_SECONDS := 60.0
+# A lobby host asks the lobby service for fresh relay credentials this long before its own run out, so players who
+# join late can still be relayed; while the relay is refused, it asks again this often.
+const _ICE_MARGIN_SECONDS := 3600.0
+const _ICE_RETRY_SECONDS := 60.0
+const _ICE_REFUSED_RETRY_SECONDS := 1800.0
 const _BUILD_PATH := "/games/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/versions/([0-9]+)/"
 
 enum _Role { NONE, HOST, JOINER, SERVER, CLIENT }
@@ -78,9 +88,15 @@ var _version := 0
 var _parent_wasd := false
 var _token_reply := {}
 var _refresh_asked_at := -1.0e9
+var _renewing := false
+var _renew_refused := ""
 var _lobby := {}
 var _peer_id := 0
 var _ice_servers: Array = []
+var _relay := {}
+var _relay_warned := ""
+var _ice_expires_at := 0.0
+var _ice_asked_at := -1.0e9
 var _rtc: WebRTCMultiplayerPeer
 var _connections := {}
 var _pending := {}
@@ -133,7 +149,7 @@ func _ready() -> void:
 	if _web.available:
 		_web.message.connect(_on_web_message)
 		_read_build_path()
-		_web.post_parent({"type": "wasd:play:hello", "v": 1})
+		_web.post_parent({"type": "wasd:play:hello", "v": 1}, config.app_origin)
 	else:
 		_read_desktop_token()
 	if _test != "":
@@ -148,6 +164,7 @@ func _process(_delta: float) -> void:
 	match _role:
 		_Role.HOST:
 			_expire_pending(now)
+			_maybe_refresh_ice(now)
 		_Role.SERVER:
 			_server_tick(now)
 	if _role != _Role.NONE:
@@ -203,7 +220,9 @@ func player_info(peer_id: int) -> Dictionary:
 
 
 ## Signs the player in to WASD. In a Web build on a WASD game page the page answers at once; elsewhere a WASD
-## sign-in window opens, which browsers allow only right after a click or key press, so call this from a button.
+## sign-in window opens, which browsers allow only right after a click or key press, so call this from a button. A
+## desktop build signs in with the token WASD Engine started it with. Either way the sign-in then lasts while the game
+## runs, up to a week.
 func sign_in() -> Dictionary:
 	if _test != "":
 		return {"ok": true, "player": _test_identity()}
@@ -213,14 +232,17 @@ func sign_in() -> Dictionary:
 		_read_desktop_token()
 		if _token_valid(0.0):
 			return {"ok": true, "player": _me.duplicate()}
-		return _sign_in_failure("sign_in_unavailable", "Online play needs the game's Web build on the WASD Engine " \
-				+ "website. On the desktop, use a multiplayer test run.")
+		if _token != "":
+			return _sign_in_failure("sign_in_expired", _expired_text())
+		return _sign_in_failure("sign_in_unavailable", "Online play needs a WASD sign-in: play the game's Web " \
+				+ "build on the WASD Engine website, or start the game from WASD Engine's game library. On this " \
+				+ "computer, use a multiplayer test run.")
 	var framed := _web.is_framed()
 	if framed:
 		framed = await _parent_is_wasd()
 	if framed:
 		_token_reply = {}
-		_web.post_parent({"type": "wasd:play:token-request", "v": 1})
+		_web.post_parent({"type": "wasd:play:token-request", "v": 1}, config.app_origin)
 		return _finish_sign_in(await _wait_token_reply(15.0, false))
 	if _game_id == "":
 		return _sign_in_failure("no_game_id", "This build has no WASD game id. Release the game with WASD Engine first.")
@@ -266,7 +288,8 @@ func host_lobby(options := {}) -> Dictionary:
 		return _done(_report(response))
 	var data: Dictionary = response.get("data", {})
 	_lobby = data.get("lobby", {}) if data.get("lobby") is Dictionary else {}
-	_ice_servers = data.get("ice_servers", []) if data.get("ice_servers") is Array else []
+	# The lobby service sends the ICE servers, relay credentials among them, over the signal socket (welcome).
+	_forget_ice()
 	_peer_id = 1
 	_rtc = WebRTCMultiplayerPeer.new()
 	var error := _rtc.create_server()
@@ -309,7 +332,7 @@ func join_lobby(code: String) -> Dictionary:
 		return _done(_report(response))
 	var data: Dictionary = response.get("data", {})
 	_lobby = data.get("lobby", {}) if data.get("lobby") is Dictionary else {}
-	_ice_servers = data.get("ice_servers", []) if data.get("ice_servers") is Array else []
+	_forget_ice()
 	_peer_id = int(data.get("peer_id", 0))
 	if _peer_id < 2:
 		return _done(_failure("join_failed", "The lobby service sent an invalid player number."))
@@ -369,7 +392,8 @@ func set_lobby(options: Dictionary) -> Dictionary:
 	return {"ok": true}
 
 
-## Removes a player from the hosted lobby or from this dedicated server.
+## Removes a player from the hosted lobby or from this dedicated server. A player removed from a lobby can't join it
+## again.
 func kick(peer_id: int) -> Dictionary:
 	if peer_id == 1 or not _players.has(peer_id):
 		return _failure("no_such_player", "No player %d is connected." % peer_id)
@@ -520,7 +544,8 @@ func _token_valid(margin_seconds: float) -> bool:
 
 func _read_desktop_token() -> void:
 	var token := OS.get_environment("WASD_PLAY_TOKEN").strip_edges()
-	if token != "":
+	# The token WASD Engine started the game with; a renewed one that outlives it stays.
+	if token != "" and float(Tokens.payload(token).get("exp", 0)) > _token_exp:
 		_accept_token(token, {})
 
 
@@ -543,6 +568,7 @@ func _accept_token(token: String, reply: Dictionary) -> bool:
 	var was_signed_in := is_signed_in()
 	_token = token
 	_token_exp = expires
+	_renew_refused = ""
 	_me = {"id": str(data.get("p", "")), "name": str(data.get("n", ""))}
 	var player_reply: Variant = reply.get("player")
 	if player_reply is Dictionary:
@@ -561,7 +587,7 @@ func _accept_token(token: String, reply: Dictionary) -> bool:
 func _parent_is_wasd() -> bool:
 	if _parent_wasd:
 		return true
-	_web.post_parent({"type": "wasd:play:hello", "v": 1})
+	_web.post_parent({"type": "wasd:play:hello", "v": 1}, config.app_origin)
 	var deadline := Time.get_ticks_msec() + 1500
 	while not _parent_wasd and Time.get_ticks_msec() < deadline:
 		await get_tree().create_timer(0.1, true, false, true).timeout
@@ -612,24 +638,73 @@ func _ensure_token() -> Dictionary:
 		return {"ok": true}
 	if _web.available and _parent_wasd:
 		return await sign_in()
+	if _token_valid(0.0) and _renew_refused == "":
+		await _renew_token()
+		if _token_valid(60.0):
+			return {"ok": true}
 	if _token != "":
-		return _failure("sign_in_expired", "The WASD sign-in expired. Call sign_in() again from a button press.")
+		return _failure("sign_in_expired", _expired_text())
 	return _failure("signed_out", "Sign in first: call sign_in() from a button press.")
 
 
+func _expired_text() -> String:
+	if not _web.available:
+		return "The WASD sign-in of this game ended. Start the game again from WASD Engine to play online."
+	return "The WASD sign-in expired. Call sign_in() again from a button press."
+
+
 func _maybe_refresh_token(now: float) -> void:
-	if _token == "" or not _parent_wasd or not _web.available:
+	if _token == "" or _test != "":
 		return
-	if _token_exp - now > _REFRESH_MARGIN_SECONDS or now - _refresh_asked_at < 60.0:
+	if _web.available and _parent_wasd:
+		# The WASD game page mints a fresh token for the game it frames.
+		if _token_exp - now > _REFRESH_MARGIN_SECONDS or now - _refresh_asked_at < 60.0:
+			return
+		_refresh_asked_at = now
+		_web.post_parent({"type": "wasd:play:token-request", "v": 1}, config.app_origin)
+		return
+	# No WASD page frames the game, as in a desktop build that WASD Engine's game library started: the add-on renews
+	# its token itself while it is still valid.
+	if _renewing or _renew_refused != "" or _token_exp <= now:
+		return
+	if _token_exp - now > _RENEW_MARGIN_SECONDS or now - _refresh_asked_at < _RENEW_RETRY_SECONDS:
 		return
 	_refresh_asked_at = now
-	_web.post_parent({"type": "wasd:play:token-request", "v": 1})
+	_renew_token()
+
+
+## Exchanges the still-valid token for a fresh one of the same player (POST /api/v1/play/token/renew). The WASD
+## service refuses for good once the sign-in is a week old, or ended (signed out), and then the token runs out; network
+## failures are tried again a minute later.
+func _renew_token() -> void:
+	if _renewing:
+		while _renewing:
+			await get_tree().process_frame
+		return
+	_renewing = true
+	var token := _token
+	var response := await _api.request(HTTPClient.METHOD_POST, "/api/v1/play/token/renew", null, token)
+	_renewing = false
+	if _token != token:
+		return
+	if response.get("ok", false):
+		var data: Dictionary = response.get("data", {})
+		if not _accept_token(str(data.get("token", "")), data):
+			push_warning("WASD Multiplayer: the WASD service renewed the sign-in with a token this game can't use.")
+		return
+	var status := int(response.get("status", 0))
+	if status == 401 or status == 403 or status == 404:
+		_renew_refused = str(response.get("error", "signed_out"))
+		push_warning("WASD Multiplayer: the WASD sign-in can't be renewed (%s): %s" % [_renew_refused,
+				str(response.get("message", ""))])
 
 
 func _on_web_message(from: String, origin: String, data: Dictionary) -> void:
 	if int(data.get("v", 1)) != 1:
 		return
-	if from == "popup" and Config.origin_of(origin) != Config.origin_of(config.app_origin):
+	# Only the WASD website signs players in: messages from a framing page or a window of another origin are ignored,
+	# so a page that frames the game elsewhere can't hand it a sign-in or claim to be its game page.
+	if Config.origin_of(origin) != Config.origin_of(config.app_origin):
 		return
 	var type := str(data.get("type", ""))
 	if type != "wasd:play:context" and type != "wasd:play:token":
@@ -693,8 +768,11 @@ func _on_signal_message(message: Dictionary) -> void:
 		"welcome":
 			if message.get("lobby") is Dictionary:
 				_lobby = message.get("lobby")
+			_take_ice(message)
 			if _role == _Role.JOINER and not _connections.has(1):
 				_create_connection(1, true)
+		"ice":
+			_take_ice(message)
 		"peer_joined":
 			if _role == _Role.HOST:
 				var id := int(message.get("peer_id", 0))
@@ -725,16 +803,34 @@ func _on_signal_message(message: Dictionary) -> void:
 			_end_lobby(str(message.get("reason", "closed")))
 		"kicked":
 			_end_lobby("kicked")
+		"dropped":
+			_end_lobby("dropped")
 		"error":
-			push_warning("WASD Multiplayer: the lobby service reported %s: %s" % [
-					str(message.get("code", "error")), str(message.get("message", ""))])
+			var code := str(message.get("code", "error"))
+			var text := str(message.get("message", ""))
+			# The lobby service turns a joiner away before its welcome with one error, then closes the socket.
+			if _role == _Role.JOINER and _connect_result.is_empty() and code in ["lobby_locked", "lobby_full",
+					"rate_limited"]:
+				_connect_result = _failure(code, text)
+				return
+			push_warning("WASD Multiplayer: the lobby service reported %s: %s" % [code, text])
 
 
-func _on_signal_closed(_code: int, _reason: String) -> void:
+func _on_signal_closed(code: int, reason: String) -> void:
 	if _leaving:
 		return
-	if _role == _Role.JOINER and _connect_result.is_empty():
-		_connect_result = _failure("signal_failed", "The lobby service closed the connection before the host answered.")
+	if _role == _Role.JOINER:
+		# The close says why the lobby service turned this player away or removed it, since its last message can be
+		# lost with the close: Godot's native WebSocketPeer drops a message that arrives together with the close.
+		var cause := _close_cause(code, reason)
+		if _connect_result.is_empty():
+			if cause.is_empty():
+				_connect_result = _failure("signal_failed",
+						"The lobby service closed the connection before the host answered.")
+			else:
+				_connect_result = _failure(cause[0], cause[1])
+		elif not cause.is_empty() and (cause[0] == "kicked" or cause[0] == "dropped"):
+			_end_lobby(cause[0])
 		return
 	if _role != _Role.HOST:
 		return
@@ -790,7 +886,8 @@ func _expire_pending(now: float) -> void:
 		if now - float(_pending[id].get("since", now)) > _PENDING_SECONDS:
 			_pending.erase(id)
 			_drop_connection(id)
-			_signal_send({"type": "kick", "peer_id": id})
+			# drop, unlike kick, lets the player try again.
+			_signal_send({"type": "drop", "peer_id": id})
 			push_warning("WASD Multiplayer: a player could not connect to this host in time and left the lobby.")
 
 
@@ -798,10 +895,82 @@ func _end_lobby(reason: String) -> void:
 	if _role != _Role.HOST and _role != _Role.JOINER:
 		return
 	if _role == _Role.JOINER and _connect_result.is_empty():
-		_connect_result = _failure(reason, "The lobby closed (%s)." % reason)
+		_connect_result = _failure(reason, _lobby_end_text(reason))
 		return
 	_teardown()
 	lobby_closed.emit(reason)
+
+
+## Why the lobby service closed this joiner's signal socket, as [error code, text], from the close's code and its
+## reason ("<error code>: <text>"); [] when the close does not say.
+func _close_cause(code: int, reason: String) -> Array:
+	var parts := reason.split(": ", true, 1)
+	if parts.size() == 2 and parts[0] in ["lobby_locked", "lobby_full", "rate_limited"]:
+		return [parts[0], parts[1]]
+	match code:
+		4001:
+			return ["kicked", _lobby_end_text("kicked")]
+		4002:
+			return ["dropped", _lobby_end_text("dropped")]
+	return []
+
+
+func _lobby_end_text(reason: String) -> String:
+	match reason:
+		"kicked":
+			return "The host removed this player from the lobby."
+		"dropped":
+			return "The host could not connect to this player in time. A strict network or firewall may block " \
+					+ "it." + _relay_note()
+	return "The lobby closed (%s)." % reason
+
+
+## Takes the ICE servers and the relay's state from the lobby service's welcome or ice message.
+func _take_ice(message: Dictionary) -> void:
+	var servers: Variant = message.get("ice_servers")
+	if servers is Array:
+		_ice_servers = servers
+	var relay: Variant = message.get("relay")
+	if not relay is Dictionary:
+		return
+	_relay = relay
+	var expires_in := float(_relay.get("expires_in", 0))
+	_ice_expires_at = Time.get_unix_time_from_system() + expires_in if expires_in > 0.0 else 0.0
+	var code := str(_relay.get("code", ""))
+	if bool(_relay.get("available", false)) or code == "":
+		_relay_warned = ""
+	elif code != _relay_warned:
+		_relay_warned = code
+		push_warning("WASD Multiplayer: " + str(_relay.get("message", "The relay is not available.")))
+
+
+func _forget_ice() -> void:
+	_ice_servers = []
+	_relay = {}
+	_relay_warned = ""
+	_ice_expires_at = 0.0
+	_ice_asked_at = -1.0e9
+
+
+## A lobby host asks again for relay credentials before its own run out, or while the relay is refused, so players who
+## join later can still be relayed.
+func _maybe_refresh_ice(now: float) -> void:
+	if _test != "" or _signal == null or not _signal.is_open() or _relay.is_empty():
+		return
+	if _ice_expires_at > 0.0:
+		if _ice_expires_at - now > _ICE_MARGIN_SECONDS or now - _ice_asked_at < _ICE_RETRY_SECONDS:
+			return
+	elif str(_relay.get("code", "")) == "" or now - _ice_asked_at < _ICE_REFUSED_RETRY_SECONDS:
+		return
+	_ice_asked_at = now
+	_signal.send({"type": "ice"})
+
+
+## Why a lobby connection may not open, when the relay is refused: the lobby service's own words.
+func _relay_note() -> String:
+	if _relay.is_empty() or bool(_relay.get("available", false)) or str(_relay.get("message", "")) == "":
+		return ""
+	return " " + str(_relay.get("message"))
 
 
 func _close_lobby_remote() -> void:
@@ -869,7 +1038,9 @@ func _await_connection(seconds: float) -> Dictionary:
 	while _connect_result.is_empty() and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
 	if _connect_result.is_empty():
-		return _failure("timeout", "The connection did not open in time. A strict network or firewall may block it.")
+		var note := _relay_note() if _role == _Role.JOINER else ""
+		return _failure("timeout", "The connection did not open in time. A strict network or firewall may block " \
+				+ "it." + note)
 	return _connect_result
 
 
@@ -1034,6 +1205,7 @@ func _teardown() -> void:
 	_rtc = null
 	_counter = null
 	_lobby = {}
+	_forget_ice()
 	_peer_id = 0
 	_hello = ""
 	_server = {}

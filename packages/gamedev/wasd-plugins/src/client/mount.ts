@@ -223,7 +223,12 @@ function registerUi(ctx: Context): void {
           },
           openExternal: (url) => { window.open(url, '_blank', 'noopener,noreferrer') },
           install: (slug, version) => outcome(remote.installGame(slug, version)),
-          launch: id => outcome(remote.launchGame(id)),
+          launch: async (id, anyway) => {
+            const result = await remote.launchGame(id, anyway)
+            if (!result.ok) return { message: result.error.message }
+            if (result.value.ok) return undefined
+            return { message: result.value.message, ...result.value.refusal === undefined ? {} : { refusal: result.value.refusal } }
+          },
           remove: id => outcome(remote.removeGame(id)),
           dismiss: (slug) => {
             void remote.dismissLibraryTask(slug).then((result) => {
@@ -265,10 +270,12 @@ function registerUi(ctx: Context): void {
         following?.stop()
         following = undefined
       }
-      // Only the Desktop shell hands the app game links: the site's Install buttons and pages opened at a game.
+      // Only the Desktop shell hands the app game links: the site's Install buttons and pages opened at a game. Only the
+      // Install button of the site in the Play page installs; the follower opens every other link's page.
       if (desktop.links !== undefined) {
         yield followGameLinks({
           links: desktop.links,
+          site: async () => new URL(await explore()).origin,
           open: async (link) => {
             inner.layout.selectPanel(PLAY_PANEL)
             navigator.go(gamePage(new URL(await explore()).origin, link))

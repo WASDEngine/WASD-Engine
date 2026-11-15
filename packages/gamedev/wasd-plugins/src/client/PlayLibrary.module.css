@@ -153,6 +153,7 @@
   }
 }
 
+.row[data-availability='taken_down'] .cover,
 .row[data-state='downloading'] .cover,
 .row[data-state='installing'] .cover {
   opacity: 0.7;
@@ -355,6 +356,10 @@
   flex: none;
   margin-top: 2px;
   color: var(--dsw-alias-state-danger-primary, #d64545);
+}
+
+.notice[data-tone='info'] .noticeIcon {
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .progress {

@@ -267,14 +267,45 @@ export type WasdBrowserOutcome =
 export type WasdMultiplayerMode = 'player_hosted' | 'dedicated'
 
 /**
+ * The storage identity that the Play page acquires its guest with through `dshDesktop.browser`. The Desktop shell
+ * recognizes the Play page's guest by it, because no Browser tab's storage identity can be it; both sides name the
+ * literal through this type, so they cannot differ.
+ */
+export type WasdPlayStorage = 'wasd-engine-play'
+
+/**
+ * Where a game link came from, as the Desktop shell saw it:
+ * - `play`: the Play page's own guest navigated its main frame to the link itself while that frame showed a page of
+ *   `origin`, as the site's Install button does. Only such a link installs a game, and only when `origin` is the
+ *   site's.
+ * - `page`: any other page in the app: a Browser tab, the agent's tabs among them, a frame inside a page, a window a
+ *   page opened, or a navigation of the Play page's guest that another frame started.
+ * - `system`: the operating system, such as a link opened in another application or on the app's command line.
+ */
+export type DesktopWasdLinkSource =
+  | { readonly kind: 'play'; readonly origin: string }
+  | { readonly kind: 'page' }
+  | { readonly kind: 'system' }
+
+/** A game link the Desktop shell was asked to open. */
+export interface DesktopWasdLink {
+  /** The `wasdengine://games/<slug>` link; the shell drops `install` from the links of sources that never install. */
+  readonly url: string
+  /** Where it came from. */
+  readonly source: DesktopWasdLinkSource
+}
+
+/**
  * The Desktop shell's WASD Engine game links, at `dshDesktop.wasdLinks` of the application page: the
  * `wasdengine://games/<slug>` links that the system or a Browser or Play page asked the app to open, such as the
  * site's Install buttons, which carry `install=1` and, for an earlier version of a single-player game, `v=<n>`. The
- * shell keeps them until the page takes them, also the one that started the app.
+ * shell keeps them, each with its source, until the page takes them, also the one that started the app. It passes a
+ * link that repeats one of the same source within seconds once, and a few links of one source a minute at most, so no
+ * page can keep pulling the window to the Play page.
  */
 export interface DesktopWasdLinksBridge {
   /** @returns the links that waited, oldest first; each is handed out once. */
-  take(): Promise<string[]>
+  take(): Promise<DesktopWasdLink[]>
   /**
    * Hear about new links, which {@link DesktopWasdLinksBridge.take} then returns.
    * @param listener - called after links arrive.
@@ -282,6 +313,13 @@ export interface DesktopWasdLinksBridge {
    */
   subscribe(listener: () => void): () => void
 }
+
+/**
+ * Where an installed game stands on the site when the site no longer offers it, as the site answered when the library
+ * last asked: `taken_down` when WASD Engine took it down, after which it never starts, or `removed` when its creator
+ * removed it, after which it starts only once the player confirms.
+ */
+export type WasdLibraryAvailability = 'taken_down' | 'removed'
 
 /** A game the library installed on this computer. */
 export interface WasdLibraryGame {
@@ -293,8 +331,21 @@ export interface WasdLibraryGame {
   readonly title: string
   /** The installed version. */
   readonly version: number
-  /** The site's latest version when the library last asked; above `version`, an update waits. */
+  /** The site's latest version when the library last asked. */
   readonly latestVersion: number
+  /**
+   * The newest version whose build for this computer the site offered when the library last asked, while it is newer
+   * than `version`: `latestVersion`, or an earlier version when the later ones have no build for this computer's
+   * system. A single-player game offers it as Update; absent when there is none or the game is no longer offered.
+   */
+  readonly updateVersion?: number
+  /**
+   * `latestVersion`, while it is newer than `version` and the site offered no build of it for this computer when the
+   * library last asked. An online game does not start until it has one, because online play needs the latest version.
+   */
+  readonly unavailableVersion?: number
+  /** Where the game stands on the site once the site no longer offers it; absent while it does, or before the library asked. */
+  readonly availability?: WasdLibraryAvailability
   /** How the game plays online; absent for a single-player game. An online game starts only at its latest version. */
   readonly multiplayer?: WasdMultiplayerMode
   /** The platform of the installed build. */
@@ -337,5 +388,17 @@ export interface WasdLibraryView {
   readonly supported: boolean
 }
 
-/** What happened to a library request: done, or why not. */
-export type WasdLibraryOutcome = { readonly ok: true } | { readonly ok: false; readonly message: string }
+/**
+ * Why the library refused to start a game, which the Play page says in the player's language: WASD Engine took the
+ * game down (`taken_down`); its creator removed it and the player did not confirm Play anyway (`removed`); or its
+ * latest version, which online play needs, has no build for this computer yet (`unavailable`, with that `version`).
+ */
+export type WasdLibraryRefusal =
+  | { readonly reason: 'taken_down' }
+  | { readonly reason: 'removed' }
+  | { readonly reason: 'unavailable'; readonly version: number }
+
+/** What happened to a library request: done, or why not, with the refusal when the library refused to start a game. */
+export type WasdLibraryOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly message: string; readonly refusal?: WasdLibraryRefusal }

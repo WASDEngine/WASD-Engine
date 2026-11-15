@@ -16,7 +16,7 @@ Call `wasd_multiplayer_guide` and show the person its comparison before setting 
 
 The tradeoffs to explain:
 
-- **Player-hosted (free).** One player's game hosts and the others join with a 6-letter code or from a public list. Good for co-op and matches with friends: 2 to 8 players, 16 at most. The session ends when the host leaves, a host in a browser must keep the game's tab open and in front, the host can cheat, and players see each other's IP addresses unless their connection is relayed.
+- **Player-hosted (free).** One player's game hosts and the others join with a 6-letter code or from a public list. Good for co-op and matches with friends: 2 to 8 players, 16 at most. The session ends when the host leaves, a host in a browser must keep the game's tab open and in front, the host can cheat, and players see each other's IP addresses unless their connection is relayed. The relay has a monthly fair-use amount per game; past it, players whose networks block a direct connection can't join until the next month, and `wasd_lobby_stats` says so.
 - **Dedicated server (monthly price per server).** WASD runs the game's server build in Oregon. The world persists, players join any time, the server decides what happens, and players' IP addresses stay hidden. Each size has fixed CPU, memory, monthly bandwidth, and storage.
 
 `wasd_server_create` and `wasd_server_change` never charge anything: they return a link that the person opens to confirm on wasdengine.com. Give the person the link, and report a server as created only after `wasd_server_status` shows it.
@@ -33,7 +33,8 @@ Write host-authoritative Godot multiplayer. Peer 1 (the lobby host or the dedica
 - In the world scene's `_ready`, spawn every entry of `WasdMultiplayer.players()`, then connect `player_joined` and `player_left`. Never spawn from `multiplayer.peer_connected`: the add-on reports only signed-in players, the lobby host is player 1 itself, and a dedicated server is not a player. Name each player node after its peer id and give the client authority over nothing but its input.
 - Spawn and free networked nodes only on peer 1, through a `MultiplayerSpawner`. Replicate positions and state with `MultiplayerSynchronizer`; clients send input with `@rpc("any_peer", "call_remote", "unreliable_ordered")` to peer 1, which validates it and moves the player. Check `multiplayer.is_server()` before running world logic.
 - One project builds the client and the server. Branch on `WasdMultiplayer.is_server()`: the server skips cameras, UI, audio, and effects, calls `serve()`, saves the world under `user://` every few minutes and on `server_stopping`, and keys saved player data by `player.id`, which stays the same for a player across devices.
-- Handle `lobby_closed` (the host left) and `connection_failed` by returning to the menu, and show `server_warning` messages as a banner.
+- Handle `lobby_closed` (the host left, or `dropped`: the host could not connect to this player, who may join again) and `connection_failed` by returning to the menu, show the result's `message` when a join fails, and show `server_warning` messages as a banner.
+- Offer `kick(peer_id)` only for removing a player for good: a kicked account can never join that lobby again.
 
 ## Keep it fast and within bandwidth
 

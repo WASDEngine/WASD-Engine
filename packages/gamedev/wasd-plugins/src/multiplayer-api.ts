@@ -115,11 +115,19 @@ const Backup = z.object({ id: z.string(), created_at: z.string().nullish(), byte
 /** One backup of a server's world. */
 export type ServerBackup = z.infer<typeof Backup>
 
-/** The player-hosted lobbies of a released game. */
+/**
+ * The player-hosted lobbies of a released game. The relay's fair use (`soft_cap_bytes`, 0 for none) pauses the relay
+ * for the game until `paused_until` once its traffic this month reaches it (`available: false`).
+ */
 export const LobbyStats = z.object({
   lobbies_open: z.number().int(),
   players_online: z.number().int(),
-  relay: z.object({ bytes_this_month: z.number(), soft_cap_bytes: z.number() }),
+  relay: z.object({
+    bytes_this_month: z.number(),
+    soft_cap_bytes: z.number(),
+    available: z.boolean().optional(),
+    paused_until: z.string().nullish(),
+  }),
   month: z.string(),
 })
 /** The player-hosted lobbies of a released game. */
@@ -176,6 +184,7 @@ export class MultiplayerApi {
     }
     if (response.status === 401) return new MultiplayerError('The WASD Engine sign-in has expired. Ask the user to sign in to WASD Engine again, then try again.', code)
     if (code === 'servers_unavailable') return new MultiplayerError('WASD Engine does not offer dedicated servers yet. Player-hosted multiplayer works without them.', code)
+    if (code === 'multiplayer_unavailable') return new MultiplayerError('WASD Engine does not run player-hosted lobbies right now, so there are no lobby statistics. Try again later.', code)
     if (response.status >= 500 || message === undefined) return new MultiplayerError(`WASD Engine could not ${doing} (HTTP ${response.status}). Try again later.`, code)
     return new MultiplayerError(`WASD Engine could not ${doing}: ${message}`, code)
   }

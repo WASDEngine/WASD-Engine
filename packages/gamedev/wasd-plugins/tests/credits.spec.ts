@@ -56,6 +56,21 @@ describe('tool names', () => {
       ],
     })).toEqual(['Godot with Phantom Camera, Beehave', 'Blender with MPFB (MakeHuman)'])
   })
+
+  it('credits a model that a path names by its file\'s name alone, so no folder of the computer reaches the game\'s page', () => {
+    expect(modelName('/Users/ada/models/Qwen3-8B-Q4_K_M.gguf')).toBe('Qwen3-8B-Q4_K_M')
+    expect(modelName('C:\\Users\\ada\\AppData\\Local\\models\\llama-3.1-8b.Q5_K_M.gguf')).toBe('llama-3.1-8b.Q5_K_M')
+    expect(modelName('file:///home/ada/weights/mistral-7b.safetensors')).toBe('mistral-7b')
+    expect(modelName('~/models/phi-4/')).toBe('phi-4')
+    expect(modelName('meta-llama/Llama-3.1-8B-Instruct')).toBe('Llama-3.1-8B-Instruct')
+    expect(modelName('ggml-model-q4_0.gguf.bin')).toBe('ggml-model-q4_0')
+    expect(modelName('llama3.1:8b')).toBe('llama3.1:8b')
+    for (const nothing of ['/', '/models/..', 'C:\\', 'file:///', ' / ']) expect(modelName(nothing), nothing).toBeUndefined()
+    // A cleaned name cleans to itself, as a stored credit must, also when the length limit cuts it at an extension.
+    const cut = `${'a'.repeat(55)}.gguf${'b'.repeat(10)}`
+    expect(modelName(cut)).toBe('a'.repeat(55))
+    expect(modelName('a'.repeat(55))).toBe('a'.repeat(55))
+  })
 })
 
 describe('CreditsLedger', () => {
@@ -139,7 +154,10 @@ describe('CreditsLedger', () => {
     await mkdir(join(dir, STATE_DIR), { recursive: true })
     await writeFile(join(dir, STATE_DIR, CREDITS_FILE), '{ not json')
     expect(await readCredits(dir)).toEqual({ models: [], tools: [] })
-    await writeFile(join(dir, STATE_DIR, CREDITS_FILE), JSON.stringify({ format: 1, models: [{ name: 'Kimi K3' }, { name: '' }, { vendor: 'x' }, 'GPT'], tools: ['gimp', 'unity', 'godot'] }))
+    // A model path an earlier version stored credits nothing.
+    await writeFile(join(dir, STATE_DIR, CREDITS_FILE), JSON.stringify({
+      format: 1, models: [{ name: 'Kimi K3' }, { name: '' }, { vendor: 'x' }, 'GPT', { name: '/Users/ada/models/qwen.gguf' }], tools: ['gimp', 'unity', 'godot'],
+    }))
     expect(await readCredits(dir)).toEqual({ models: [{ name: 'Kimi K3' }], tools: ['godot', 'gimp'] })
     await writeFile(join(dir, STATE_DIR, CREDITS_FILE), JSON.stringify({ format: 2, models: [{ name: 'Kimi K3' }], tools: ['gimp'] }))
     expect(await readCredits(dir)).toEqual({ models: [], tools: [] })

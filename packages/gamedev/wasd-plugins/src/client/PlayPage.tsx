@@ -19,14 +19,17 @@ import type { DesktopBrowserBridge, DesktopBrowserLeaseId } from '@deepseek-ai/d
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
-import type { WasdLibraryView } from '../types.ts'
+import type { WasdLibraryView, WasdPlayStorage } from '../types.ts'
 import type { NS } from './locales.ts'
 import { gamePage, IN_APP_AGENT, type PlayNavigation } from './play.ts'
 import { PlayLibrary, type PlayLibraryActions } from './PlayLibrary.tsx'
 import css from './PlayPage.module.css'
 
-/** The storage of the Play page's guest: its own, apart from every workspace's Browser tabs. */
-const PLAY_STORAGE = 'wasd-engine-play'
+/**
+ * The storage of the Play page's guest: its own, apart from every workspace's Browser tabs. The Desktop shell knows
+ * the guest by it, and lets only the site's Install button there install a game.
+ */
+const PLAY_STORAGE: WasdPlayStorage = 'wasd-engine-play'
 
 /** The Electron tag API the page drives. */
 interface PlayWebview extends HTMLElement {

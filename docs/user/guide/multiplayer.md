@@ -19,7 +19,7 @@ In both modes, every player signs in with a WASD Engine account before joining.
 
 ## Player-hosted games
 
-One player hosts a lobby, and friends join it with a 6-letter code or pick it from the list of public lobbies. WASD Engine introduces the players to each other and relays the connection for players whose networks block a direct one, at no cost. The host must keep the game's browser tab open and in front, because browsers pause hidden tabs, which pauses the game for everyone. When the host leaves, the session ends.
+One player hosts a lobby, and friends join it with a 6-letter code or pick it from the list of public lobbies. WASD Engine introduces the players to each other and relays the connection for players whose networks block a direct one, at no cost. The relay carries a fair-use amount of traffic per game each month; past it, the relay is off for that game until the next month, so players whose networks block a direct connection can't join until then, and the agent can tell you where your game stands. The host must keep the game's browser tab open and in front, because browsers pause hidden tabs, which pauses the game for everyone. When the host leaves, the session ends. A host can remove a player for good; a player the host's game could not connect to in time can simply join again.
 
 ## Dedicated servers
 
@@ -33,4 +33,4 @@ WASD Engine runs your game's server build, and players can join at any time. Eac
 
 ## Players sign in
 
-Players sign in with a WASD Engine account before they can join. On the game's page on the WASD Engine website, the page signs them in; when the game is opened from its own link, a sign-in window opens. A game sees each player's username and a player id that stays the same across devices, never an email address.
+Players sign in with a WASD Engine account before they can join. On the game's page on the WASD Engine website, the page signs them in; when the game is opened from its own link, a sign-in window opens. A game started from WASD Engine's game library uses the app's sign-in and stays signed in while it runs, for up to a week; signing out of WASD Engine ends it within the hour. A game sees each player's username and a player id that stays the same across devices, never an email address or account.

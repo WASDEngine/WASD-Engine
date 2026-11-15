@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto'
 import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
 import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import { DESKTOP_IPC } from './ipc.ts'
+import type { DesktopGuestLink } from './wasdengine-links.ts'
 
 interface GuestLease {
   readonly owner: WebContents
   readonly partition: string
+  readonly workspace: string
   attached: boolean
   guest?: WebContents
   releaseInput?: () => void
@@ -19,10 +21,11 @@ export class DesktopBrowserGuests {
 
   /**
    * @param hostUrl - current authenticated DSH Host, which guests cannot request.
-   * @param appLink - WASD Engine: takes a link of the app's own URL scheme that a guest navigates to or opens, and
-   *   answers whether it took it; the guest then stays where it is.
+   * @param appLink - WASD Engine: takes a link of the app's own URL scheme that a guest navigates to or opens, with
+   *   which guest and frame asked for it, and answers whether it took it; the guest then stays where it is.
    */
-  constructor(private readonly hostUrl: () => string | undefined, private readonly appLink: (url: string) => boolean = () => false) {}
+  constructor(private readonly hostUrl: () => string | undefined,
+    private readonly appLink: (url: string, link: DesktopGuestLink) => boolean = () => false) {}
 
   /**
    * Reserve one guest in a workspace's process-lifetime partition.
@@ -41,7 +44,7 @@ export class DesktopBrowserGuests {
       this.partitions.set(workspace, partition)
     }
     const lease = randomUUID() as DesktopBrowserLeaseId
-    this.leases.set(lease, { owner, partition, attached: false })
+    this.leases.set(lease, { owner, partition, workspace, attached: false })
     return { lease, partition }
   }
 
@@ -112,8 +115,13 @@ export class DesktopBrowserGuests {
         lease.releaseInput = attachInput(guest, id)
         guest.once('destroyed', () => { lease.releaseInput?.(); this.leases.delete(id) })
       })
+      // WASD Engine: the facts an app link carries, read here because a page cannot change which lease its guest has.
+      const appLink = (url: string, via: DesktopGuestLink['via']): boolean => {
+        const lease = attachedLease === undefined ? undefined : this.leases.get(attachedLease)
+        return this.appLink(url, { workspace: lease?.guest === guest ? lease.workspace : undefined, via, origin: guest.mainFrame.origin })
+      }
       guest.setWindowOpenHandler(({ url, postBody }) => {
-        if (this.appLink(url)) return { action: 'deny' }
+        if (appLink(url, 'window')) return { action: 'deny' }
         const lease = attachedLease === undefined ? undefined : this.leases.get(attachedLease)
         if (attachedLease !== undefined && lease?.guest === guest && lease.owner === owner && !owner.isDestroyed()
           && postBody === undefined && this.allowedNavigation(url)) {
@@ -123,7 +131,8 @@ export class DesktopBrowserGuests {
         return { action: 'deny' }
       })
       guest.on('will-frame-navigate', (event) => {
-        if (this.appLink(event.url)) {
+        const own = event.isMainFrame && event.initiator?.frameTreeNodeId === guest.mainFrame.frameTreeNodeId
+        if (appLink(event.url, own ? 'main-frame' : 'frame')) {
           event.preventDefault()
           return
         }

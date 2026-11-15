@@ -1,11 +1,13 @@
 /**
  * The window half of the game library: the Host's library stream, which the Play page shows, and, in the Desktop app,
- * the game links the shell hands the app (`dshDesktop.wasdLinks`), from the site's Install buttons in the system browser
- * or in the Play page. A window takes the waiting links when it starts and whenever the shell has new ones, and opens
- * each at its game's page, installing the game when the link asks to.
+ * the game links the shell hands the app (`dshDesktop.wasdLinks`), from the site's Install buttons in the Play page or
+ * the system browser, and from any other page in the app. A window takes the waiting links when it starts and whenever
+ * the shell has new ones, and opens each at its game's page. It installs the game only for a link the Play page's own
+ * guest followed in its main frame while that frame showed the site, as the site's Install button there does; a link
+ * from anywhere else opens the game's page, where the player chooses Install.
  */
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
-import type { DesktopWasdLinksBridge, WasdLibraryView } from '../types.ts'
+import type { DesktopWasdLink, DesktopWasdLinksBridge, WasdLibraryView } from '../types.ts'
 import { parseGameLink, type GameLink } from './play.ts'
 
 /** One item of the followed library stream. */
@@ -59,8 +61,11 @@ export function followLibrary(services: LibraryFollowerServices): () => void {
 export interface GameLinkServices {
   /** The Desktop shell's waiting game links. */
   readonly links: DesktopWasdLinksBridge
+  /** @returns the origin of the site the Play page shows. */
+  readonly site: () => Promise<string>
   /**
-   * Show a linked game, and install it when the link asks to.
+   * Show a linked game, and install it when `link.install` says to, which the follower allows only for the site's
+   * Install button in the Play page.
    * @param link - the link.
    * @returns undefined once done, or why the install did not start.
    */
@@ -70,19 +75,36 @@ export interface GameLinkServices {
 }
 
 /**
- * Take and open the shell's game links, oldest first, until the returned disposer runs.
- * @param services - the shell's links, the opener, and the warning sink.
+ * Whether a game link may install its game: only one the Play page's own guest followed in its main frame while that
+ * frame showed the site, as the site's Install button there does.
+ * @param link - the link as the shell handed it over.
+ * @param site - the origin of the site the Play page shows.
+ * @returns whether the link installs when it asks to.
+ */
+export function linkInstalls(link: DesktopWasdLink, site: string): boolean {
+  // The link crossed from the main process, so its source is read as data.
+  const source: unknown = link.source
+  return typeof source === 'object' && source !== null && 'kind' in source && source.kind === 'play'
+    && 'origin' in source && source.origin === site
+}
+
+/**
+ * Take and open the shell's game links, oldest first, until the returned disposer runs. Each opens its game's page;
+ * one that asks to install installs only when {@link linkInstalls} allows it.
+ * @param services - the shell's links, the site's origin, the opener, and the warning sink.
  * @returns the disposer that stops following.
  */
 export function followGameLinks(services: GameLinkServices): () => void {
   let stopped = false
   let draining: Promise<void> = Promise.resolve()
   const drain = async (): Promise<void> => {
-    for (const raw of await services.links.take()) {
+    for (const delivered of await services.links.take()) {
       if (stopped) return
-      const link = parseGameLink(raw)
+      const url: unknown = delivered.url
+      const link = typeof url === 'string' ? parseGameLink(url) : undefined
       if (link === undefined) continue
-      const failure = await services.open(link)
+      const install = link.install && linkInstalls(delivered, await services.site())
+      const failure = await services.open({ ...link, install })
       if (failure !== undefined) services.warn(`wasd-plugins: the game ${link.slug} did not start installing: ${failure}`, undefined)
     }
   }

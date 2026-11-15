@@ -571,15 +571,18 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
-   * Start an installed game; an online game first installs its newer version and signs in as the app's account.
+   * Start an installed game once the site still offers it; an online game first installs its newer version and signs
+   * in as the app's account. A game WASD Engine took down never starts, and one its creator removed starts only with
+   * `anyway`.
    * @param id - the game's id.
+   * @param anyway - the player confirmed Play anyway for a game its creator removed, which then starts without online play.
    * @param signal - stops waiting; an update the start began goes on.
-   * @returns once the game started, or why it did not.
+   * @returns once the game started, or why it did not, with the refusal when the library refused to start it.
    */
   @Remote
-  async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome> {
+  async launchGame(id: string, anyway: boolean, signal: AbortSignal): Promise<WasdLibraryOutcome> {
     if (this.games === undefined) return LIBRARY_ELSEWHERE
-    return await this.games.launch(id, signal)
+    return await this.games.launch(id, signal, anyway)
   }
 
   /**

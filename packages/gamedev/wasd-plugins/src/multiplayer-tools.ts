@@ -251,6 +251,7 @@ function modes(plans: ServerPlans | undefined): JsonValue[] {
       players: `2 to 8 is comfortable, ${String(MAX_LOBBY_PLAYERS)} at most.`,
       tradeoffs: [
         'One player\'s browser runs the game; WASD Engine introduces the players with a lobby code and relays connections that cannot go direct.',
+        'The free relay has a monthly fair-use amount per game; past it, players whose networks block a direct connection cannot join until the next month.',
         'The host\'s game tab has to stay open and in front: browsers pause hidden tabs, which pauses the game for everyone.',
         'The session ends when the host leaves.',
         'The host\'s upload speed limits how many can join.',
@@ -592,7 +593,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const lobbyStats = defineTool({
     name: 'wasd_lobby_stats',
-    description: 'Show the released game\'s player-hosted lobbies: how many are open, how many players are in them, and this month\'s relay traffic against the fair-use level. Player-hosted multiplayer is free; nothing is billed.',
+    description: 'Show the released game\'s player-hosted lobbies: how many are open, how many players are in them, and this month\'s relay traffic against the fair-use level, past which the relay is off for the game until the next month. Player-hosted multiplayer is free; nothing is billed.',
     parameters: { project: PROJECT },
     output: {
       schema: {
@@ -603,6 +604,8 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
           players_online: INTEGER,
           relay_gb_this_month: { type: 'number', required: true },
           relay_soft_cap_gb: { type: 'number', required: true },
+          relay_available: BOOLEAN,
+          relay_paused_until: { type: 'string', description: 'When the relay is back for the game, while its fair use is used up.' },
           month: STRING,
           for_user: FOR_USER,
         },
@@ -616,13 +619,20 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       const stats = await api.lobbyStats(game.id)
       const used = Math.round(stats.relay.bytes_this_month / 1e8) / 10
       const cap = Math.round(stats.relay.soft_cap_bytes / 1e8) / 10
+      const available = stats.relay.available ?? true
+      const pausedUntil = stats.relay.paused_until ?? undefined
+      let relay = `Relayed traffic this month: ${String(used)} GB of the ${String(cap)} GB fair-use level.`
+      if (stats.relay.soft_cap_bytes <= 0) relay = `Relayed traffic this month: ${String(used)} GB; the relay has no fair-use level.`
+      else if (!available) relay = `Relayed traffic this month: ${String(used)} GB, past the ${String(cap)} GB fair-use level, so the relay is off for this game until ${pausedUntil === undefined ? 'next month' : pausedUntil.slice(0, 10)}: players whose networks block a direct connection cannot join until then.`
       return {
         lobbies_open: stats.lobbies_open,
         players_online: stats.players_online,
         relay_gb_this_month: used,
         relay_soft_cap_gb: cap,
+        relay_available: available,
+        ...pausedUntil === undefined ? {} : { relay_paused_until: pausedUntil },
         month: stats.month,
-        for_user: `${game.title} has ${String(stats.lobbies_open)} open lobb${stats.lobbies_open === 1 ? 'y' : 'ies'} with ${String(stats.players_online)} player${stats.players_online === 1 ? '' : 's'}. Relayed traffic this month: ${String(used)} GB of the ${String(cap)} GB fair-use level. Player-hosted multiplayer costs nothing.`,
+        for_user: `${game.title} has ${String(stats.lobbies_open)} open lobb${stats.lobbies_open === 1 ? 'y' : 'ies'} with ${String(stats.players_online)} player${stats.players_online === 1 ? '' : 's'}. ${relay} Player-hosted multiplayer costs nothing.`,
       }
     },
   })
