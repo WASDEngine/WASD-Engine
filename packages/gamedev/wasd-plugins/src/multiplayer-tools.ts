@@ -1,13 +1,13 @@
 /**
  * The multiplayer tools: a Godot game goes online player-hosted, free, where one player's browser hosts and WASD
  * Engine introduces the players, or on a dedicated server that WASD Engine runs for a monthly price by size. The tools
- * explain both with the site's live prices, set a project up with the WASD Multiplayer add-on, test it on this
- * computer, and manage the game's servers. A tool that would cost money or replace a world never does it by itself:
- * `wasd_server_create` and `wasd_server_change` return a page where the user confirms on the site, and in a Session
- * WASD Engine's approval prompt asks first, as it does before `wasd_server_manage` restores a backup. Each result
- * carries `for_user`, plain text the agent passes on. One builder makes the Session's definitions, which ask through
- * the approval prompt and open the confirmation page in a window, and those of connected agents, which name projects
- * by absolute path and confirm through their own user.
+ * explain both with the site's live prices and the free servers WASD Engine gave the account, which cost nothing, set a
+ * project up with the WASD Multiplayer add-on, test it on this computer, and manage the game's servers. A tool that
+ * would cost money or replace a world never does it by itself: `wasd_server_create` and `wasd_server_change` return a
+ * page where the user confirms on the site, and in a Session WASD Engine's approval prompt asks first, as it does
+ * before `wasd_server_manage` restores a backup. Each result carries `for_user`, plain text the agent passes on. One
+ * builder makes the Session's definitions, which ask through the approval prompt and open the confirmation page in a
+ * window, and those of connected agents, which name projects by absolute path and confirm through their own user.
  * @module @deepseek-ai/dsh-wasd-plugins/src/multiplayer-tools
  */
 import { readFile, stat, writeFile } from 'node:fs/promises'
@@ -21,7 +21,7 @@ import {
   ADDON_DIR, hasMultiplayerAddon, MULTIPLAYER_MODES, pluginVersion, readMultiplayerConfig, replaceFolder, withMultiplayerAddon,
   writeMultiplayerConfig,
 } from './multiplayer-project.ts'
-import { createPrompt, deletePrompt, resizePrompt, restorePrompt, type LocalizedPrompt } from './multiplayer-prompts.ts'
+import { createFreePrompt, createPrompt, deletePrompt, resizePrompt, restorePrompt, type LocalizedPrompt } from './multiplayer-prompts.ts'
 import {
   clientConnected, estimateSizes, freePort, instanceProblems, instanceStats, planTest, readTestRecord, saveTestRecord, testRecord,
   type SizeEstimate,
@@ -167,7 +167,7 @@ export function describeState(state: string): string {
     case 'sleeping': return 'asleep with no players; a joining player wakes it'
     case 'stopped': return 'stopped'
     case 'stopped_bandwidth': return 'stopped until its bandwidth allowance resets'
-    case 'suspended': return 'suspended: no paid size covers it'
+    case 'suspended': return 'suspended: no paid size or free server covers it'
     case 'crashed': return 'crashed, restarting'
     case 'deleted': return 'deleted'
     default: return state
@@ -182,6 +182,7 @@ function gigabytes(bytes: number): string {
 /** One server as a result lists it for the model and the user. */
 function serverLine(server: ServerRecord): string {
   const parts = [`${server.name} (${server.size}, ${server.id}): ${describeState(server.state)}`]
+  if (server.granted === true) parts.push('free: one of the free servers WASD Engine gave the account')
   if (server.players_online !== null && server.players_online !== undefined) parts.push(`${String(server.players_online)} playing`)
   if (server.version !== null && server.version !== undefined) parts.push(`version ${String(server.version)}`)
   if (server.bandwidth !== null && server.bandwidth !== undefined) {
@@ -219,6 +220,25 @@ function findSize(plans: ServerPlans, id: string): ServerSize {
   const size = plans.sizes.find(candidate => candidate.id === id)
   if (size === undefined) throw new MultiplayerError(`There is no server size ${JSON.stringify(id)}; the sizes are ${plans.sizes.map(candidate => candidate.id).join(', ')}.`)
   return size
+}
+
+/**
+ * How many more servers of a size the signed-in account creates free.
+ * @param plans - the sizes, read with the sign-in.
+ * @param size - the size id.
+ * @returns 0 without free servers of the size left, or when the site sent none.
+ */
+function freeLeft(plans: ServerPlans, size: string): number {
+  return plans.grants?.find(grant => grant.size === size)?.available ?? 0
+}
+
+/** The free servers WASD Engine gave the account, as one sentence, or undefined without any. */
+function freeServersLine(plans: ServerPlans): string | undefined {
+  const grants = (plans.grants ?? []).filter(grant => grant.granted > 0)
+  if (grants.length === 0) return undefined
+  const names = new Map(plans.sizes.map(size => [size.id, size.name]))
+  const parts = grants.map(grant => `${String(grant.granted)} ${names.get(grant.size) ?? grant.size} (${String(grant.available)} left)`)
+  return `Free servers WASD Engine gave this account: ${parts.join(', ')}. A server of a size with one left costs nothing.`
 }
 
 /** The text a refused approval returns. */
@@ -360,6 +380,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
             : 'Sessions among friends work well player-hosted, and it costs nothing; the game can move to a dedicated server later without rewriting its networking.'
       const recommendation = { mode: dedicated ? 'dedicated' : 'player_hosted', reason }
       const sizes = plans === undefined ? [] : plans.sizes.map(size => sizeLine(size, plans.currency))
+      const free = plans === undefined ? undefined : freeServersLine(plans)
       const lines = [
         'There are two ways to put this game online, and players sign in with a WASD Engine account in both:',
         '- Player-hosted (free): one player hosts from their browser and friends join with a code. 2 to 8 players works well. The session ends when the host leaves, and the host\'s game tab has to stay open and in front.',
@@ -367,6 +388,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
           ? `- Dedicated server (a monthly price by size): WASD Engine runs the game's server, and anyone can join at any time. ${SLEEP_FALLBACK}`
           : `- Dedicated server (from ${formatPrice(Math.min(...plans.sizes.map(size => size.price_cents)), plans.currency)} a month): WASD Engine runs the game's server in ${plans.region.name}, and anyone can join at any time. ${plans.sleep?.summary ?? SLEEP_FALLBACK} ${plans.bandwidth_policy.at_limit}`,
         ...sizes.length === 0 ? [] : ['Server sizes:', ...sizes.map(line => `- ${line}`)],
+        ...free === undefined ? [] : [free],
         `Recommendation: ${dedicated ? 'a dedicated server' : 'player-hosted'}. ${reason}`,
         ...plansError === undefined ? [] : [`The server sizes could not be read: ${plansError}`],
       ]
@@ -639,7 +661,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const plansTool = defineTool({
     name: 'wasd_server_plans',
-    description: 'List the dedicated server sizes with their monthly prices, CPU, RAM, bandwidth, storage, and how many players each holds, from the WASD Engine site. After wasd_multiplayer_test, it also fits each size to what the test measured. Show the user the sizes and prices and let them choose; never pick a size for them.',
+    description: 'List the dedicated server sizes with their monthly prices, CPU, RAM, bandwidth, storage, and how many players each holds, from the WASD Engine site, and the free servers WASD Engine gave the signed-in account, which cost nothing. After wasd_multiplayer_test, it also fits each size to what the test measured. Show the user the sizes and prices and let them choose; never pick a size for them.',
     parameters: { project: PROJECT },
     output: {
       schema: {
@@ -655,6 +677,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
           estimate_basis: STRING,
           measured: { type: 'json', description: 'What the project\'s last wasd_multiplayer_test measured.' },
           estimates: { type: 'json', description: 'Each size fitted to that test.' },
+          free_servers: { type: 'json', description: 'The free servers WASD Engine gave the signed-in account, by size: how many, how many are in use, and how many more it creates free.' },
           for_user: FOR_USER,
         },
       },
@@ -681,6 +704,9 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
         `Bandwidth: emails at ${plans.bandwidth_policy.emails_at_percent.map(percent => `${String(percent)}%`).join(', ')}. ${plans.bandwidth_policy.at_limit}`,
         `Buying: ${plans.purchase.requires} The user confirms every purchase on the site.`,
       ]
+      const free = freeServersLine(plans)
+      if (free !== undefined) lines.push(free)
+      const grants = (plans.grants ?? []).filter(grant => grant.granted > 0)
       return {
         available: plans.available,
         currency: plans.currency,
@@ -691,6 +717,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
         estimate_basis: plans.estimate_basis,
         ...measured === undefined ? {} : { measured: json(measured) },
         ...estimates === undefined ? {} : { estimates: estimatesJson(estimates) },
+        ...grants.length === 0 ? {} : { free_servers: json(grants) },
         for_user: lines.join('\n'),
       }
     },
@@ -704,6 +731,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       server_id: { type: 'string' },
       size: { type: 'string' },
       price: { type: 'string', description: 'Monthly price of the size.' },
+      free: { type: 'boolean', description: 'true when one of the free servers WASD Engine gave the account covers it, so it costs nothing.' },
       confirm_url: { type: 'string', description: 'The page where the user confirms; nothing happens before that.' },
       expires_at: { type: 'string' },
       opened: { type: 'boolean', description: 'Whether WASD Engine opened the page in the user\'s browser.' },
@@ -727,7 +755,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const create = defineTool({
     name: 'wasd_server_create',
-    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account. Tell the user the size\'s monthly price and what it includes before calling it. The server then runs the newest release\'s server build.',
+    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free and needs no card. Tell the user the size\'s monthly price, or that it is free, and what it includes before calling it. The server then runs the newest release\'s server build.',
     parameters: {
       project: PROJECT,
       size: { type: 'string', required: true, description: 'Size id from wasd_server_plans, such as small.' },
@@ -743,9 +771,14 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       if (!plans.available) throw new MultiplayerError('WASD Engine does not sell dedicated servers yet. Player-hosted multiplayer works without them.', 'servers_unavailable')
       const size = findSize(plans, args.size)
       const price = formatPrice(size.price_cents, plans.currency)
-      const what = `This is a ${size.name} server for ${game.title} at ${price} a month.`
-      const answer = await surface.approve(exec, 'wasd_server_create', createPrompt(size.name, price, game.title, hostOf(access.origin)))
-      if (answer !== 'approved') return { status: answer, size: size.id, price, for_user: notApproved(answer, 'created or charged') }
+      const free = freeLeft(plans, size.id) > 0
+      const what = free
+        ? `This is a free ${size.name} server for ${game.title}: WASD Engine gave this account free ${size.name} servers, so it costs nothing.`
+        : `This is a ${size.name} server for ${game.title} at ${price} a month.`
+      const site = hostOf(access.origin)
+      const prompt = free ? createFreePrompt(size.name, game.title, site) : createPrompt(size.name, price, game.title, site)
+      const answer = await surface.approve(exec, 'wasd_server_create', prompt)
+      if (answer !== 'approved') return { status: answer, size: size.id, price, ...free ? { free } : {}, for_user: notApproved(answer, 'created or charged') }
       const pending = await api.create(game.id, size.id, args.name?.trim())
       const shown = await confirmation(pending.confirm_url, what, exec)
       return {
@@ -753,10 +786,13 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
         server_id: pending.server.id,
         size: size.id,
         price,
+        ...free ? { free } : {},
         confirm_url: pending.confirm_url,
         expires_at: pending.expires_at,
         opened: shown.opened,
-        confirm_message: `Confirm the ${size.name} game server for ${game.title} at ${price} a month on the WASD Engine site; nothing is charged until you confirm there.`,
+        confirm_message: free
+          ? `Confirm the free ${size.name} game server for ${game.title} on the WASD Engine site; nothing is charged.`
+          : `Confirm the ${size.name} game server for ${game.title} at ${price} a month on the WASD Engine site; nothing is charged until you confirm there.`,
         for_user: shown.forUser,
       }
     },
@@ -892,7 +928,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const change = defineTool({
     name: 'wasd_server_change',
-    description: 'Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. A bigger size is charged from now, prorated, and a smaller one credited; deleting stops the server, ends its billing, and deletes its world 7 days later. Tell the user the price difference or what deleting loses before calling it.',
+    description: 'Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. A bigger size is charged from now, prorated, and a smaller one credited, but a size with free servers left for the account (wasd_server_plans lists them) costs nothing; deleting stops the server, ends its billing, and deletes its world 7 days later. Tell the user the price difference or what deleting loses before calling it.',
     parameters: {
       project: PROJECT,
       server: SERVER,
@@ -927,21 +963,30 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       if (size.id === server.size) throw new MultiplayerError(`${server.name} is already ${size.name}.`)
       const current = plans.sizes.find(candidate => candidate.id === server.size)
       const price = formatPrice(size.price_cents, plans.currency)
-      const from = current === undefined ? server.size : `${current.name} (${formatPrice(current.price_cents, plans.currency)} a month)`
-      const answer = await surface.approve(exec, 'wasd_server_change', resizePrompt(server.name, from, `${size.name} (${price} a month)`, hostOf(access.origin)))
-      if (answer !== 'approved') return { status: answer, server_id: server.id, size: size.id, price, for_user: notApproved(answer, 'changed') }
+      const free = freeLeft(plans, size.id) > 0
+      const from = current === undefined
+        ? server.size
+        : `${current.name} (${server.granted === true ? 'free' : `${formatPrice(current.price_cents, plans.currency)} a month`})`
+      const to = `${size.name} (${free ? 'free' : `${price} a month`})`
+      const answer = await surface.approve(exec, 'wasd_server_change', resizePrompt(server.name, from, to, hostOf(access.origin)))
+      if (answer !== 'approved') return { status: answer, server_id: server.id, size: size.id, price, ...free ? { free } : {}, for_user: notApproved(answer, 'changed') }
       const pending = await api.resize(server.id, size.id)
-      const what = `This changes ${server.name} from ${from} to ${size.name} at ${price} a month.`
+      const what = free
+        ? `This changes ${server.name} from ${from} to ${size.name}, free: WASD Engine gave this account free ${size.name} servers.`
+        : `This changes ${server.name} from ${from} to ${size.name} at ${price} a month.`
       const shown = await confirmation(pending.confirm_url, what, exec)
       return {
         status: 'awaiting_confirmation' as const,
         server_id: server.id,
         size: size.id,
         price,
+        ...free ? { free } : {},
         confirm_url: pending.confirm_url,
         expires_at: pending.expires_at,
         opened: shown.opened,
-        confirm_message: `Confirm changing the server ${server.name} to ${size.name} at ${price} a month on the WASD Engine site.`,
+        confirm_message: free
+          ? `Confirm changing the server ${server.name} to a free ${size.name} on the WASD Engine site.`
+          : `Confirm changing the server ${server.name} to ${size.name} at ${price} a month on the WASD Engine site.`,
         for_user: shown.forUser,
       }
     },
@@ -957,13 +1002,13 @@ WASD Engine puts Godot games online two ways, and players sign in with a WASD En
 
 When the user wants multiplayer:
 1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up; then call wasd_multiplayer_setup with the mode they choose, and wasd_multiplayer_test once the game connects players.
-2. State the monthly price and what it includes before suggesting a server.
+2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.
 3. Let the user choose the size from wasd_server_plans; never pick one for them. wasd_server_create and wasd_server_change only open a page where the user confirms on the WASD Engine site; nothing is charged before that.
 4. Explain that the owner gets emails at 70%, 90%, and 100% of a server's monthly bandwidth, and that at 100% the server stops until its next billing month; suggest a smaller size when a server is mostly idle.
 5. When the world must keep going while nobody plays, tell the user to turn on Always on for the server on the WASD Engine site; only the sizes wasd_server_plans names offer it.`
 
 /** The multiplayer part of the `wasd` provider's MCP instructions. */
-export const MULTIPLAYER_MCP_INSTRUCTIONS = 'Multiplayer: a game goes online player-hosted, free, where one player\'s browser hosts and friends join with a code, or on a dedicated server that WASD Engine runs for a monthly price by size; players sign in with a WASD Engine account in both. Call wasd_multiplayer_guide first and show your user the comparison with its costs before wasd_multiplayer_setup. State the monthly price and what it includes before suggesting a server, and let your user choose the size from wasd_server_plans; never pick one. wasd_server_create and wasd_server_change return a page where your user confirms on the WASD Engine site, and nothing is charged before that: give them the page. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth and that at 100% the server stops until its next billing month. Pass confirm: true to wasd_server_manage restore only after your user agreed to replace the world.'
+export const MULTIPLAYER_MCP_INSTRUCTIONS = 'Multiplayer: a game goes online player-hosted, free, where one player\'s browser hosts and friends join with a code, or on a dedicated server that WASD Engine runs for a monthly price by size; players sign in with a WASD Engine account in both. Call wasd_multiplayer_guide first and show your user the comparison with its costs before wasd_multiplayer_setup. State the monthly price and what it includes before suggesting a server, or that it is free when wasd_server_plans lists free servers of that size left for your user\'s account, and let your user choose the size from wasd_server_plans; never pick one. wasd_server_create and wasd_server_change return a page where your user confirms on the WASD Engine site, and nothing is charged before that: give them the page. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth and that at 100% the server stops until its next billing month. Pass confirm: true to wasd_server_manage restore only after your user agreed to replace the world.'
 
 /** Description of the `project` parameter for agents connected through WASD Engine's MCP server. */
 const MCP_PROJECT = 'Absolute path of the folder that holds project.godot.'

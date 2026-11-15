@@ -1,7 +1,8 @@
 /**
  * The approval prompts of the multiplayer tools in WASD Engine's languages, which the Session's approval prompt shows
  * before a server purchase, a size change, a deletion, or a restore; `en` is also the audit text. A purchase or a
- * change still needs the user's confirmation on the site afterwards; the prompt says so, with the price.
+ * change still needs the user's confirmation on the site afterwards; the prompt says so, with the price, or that the
+ * server is free when WASD Engine gave the account free servers of its size.
  * @module @deepseek-ai/dsh-wasd-plugins/src/multiplayer-prompts
  */
 
@@ -34,10 +35,31 @@ export function createPrompt(size: string, price: string, game: string, site: st
 }
 
 /**
+ * The prompt before a new server that one of the account's free servers covers.
+ * @param size - the size's name, such as `Small`.
+ * @param game - the game's title.
+ * @param site - the site's host, such as `app.wasdengine.com`.
+ * @returns the prompt.
+ */
+export function createFreePrompt(size: string, game: string, site: string): LocalizedPrompt {
+  const quoted = JSON.stringify(game)
+  return {
+    en: `Create a free ${size} game server for ${quoted}? WASD Engine gave this account free ${size} servers, so it costs nothing. WASD Engine then opens a page on ${site} where you confirm.`,
+    zh: `要为 ${quoted} 创建一台免费的 ${size} 游戏服务器吗？WASD Engine 为此账号提供了免费的 ${size} 服务器，因此不收取任何费用。随后 WASD Engine 会打开 ${site} 上的页面，由你确认。`,
+    ja: `${quoted} の ${size} ゲームサーバーを無料で作成しますか？WASD Engine がこのアカウントに無料の ${size} サーバーを付与しているため、料金はかかりません。このあと WASD Engine が ${site} のページを開き、そこで確認します。`,
+    es: `¿Crear un servidor de juego ${size} gratuito para ${quoted}? WASD Engine le dio a esta cuenta servidores ${size} gratuitos, así que no cuesta nada. Después, WASD Engine abre una página en ${site} donde confirmas.`,
+    fr: `Créer un serveur de jeu ${size} gratuit pour ${quoted} ? WASD Engine a offert à ce compte des serveurs ${size} gratuits, il ne coûte donc rien. WASD Engine ouvre ensuite une page sur ${site} où vous confirmez.`,
+    de: `Einen kostenlosen ${size}-Spielserver für ${quoted} erstellen? WASD Engine hat diesem Konto kostenlose ${size}-Server gegeben, daher kostet er nichts. WASD Engine öffnet danach eine Seite auf ${site}, auf der du bestätigst.`,
+    ru: `Создать бесплатный игровой сервер ${size} для ${quoted}? WASD Engine выдал этому аккаунту бесплатные серверы ${size}, поэтому он ничего не стоит. Затем WASD Engine откроет страницу на ${site}, где вы подтвердите.`,
+    pt: `Criar um servidor de jogo ${size} gratuito para ${quoted}? O WASD Engine deu a esta conta servidores ${size} gratuitos, então ele não custa nada. Depois, o WASD Engine abre uma página em ${site} onde você confirma.`,
+  }
+}
+
+/**
  * The prompt before a new size.
  * @param server - the server's name.
- * @param from - the current size's name and price, such as `Small ($5 a month)`.
- * @param to - the new size's name and price.
+ * @param from - the current size's name and price, such as `Small ($5 a month)` or `Small (free)`.
+ * @param to - the new size's name and price, or `(free)`.
  * @param site - the site's host.
  * @returns the prompt.
  */

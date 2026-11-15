@@ -1,6 +1,7 @@
 /**
  * The WASD Engine site's multiplayer API as the multiplayer tools call it: the public server sizes
- * (`GET /api/v1/servers/plans`), a game's dedicated servers (`/api/v1/servers`), server builds
+ * (`GET /api/v1/servers/plans`, which also lists the free servers WASD Engine gave the account when read with its
+ * sign-in), a game's dedicated servers (`/api/v1/servers`), server builds
  * (`POST /api/v1/games/<id>/server-builds`), and the player-hosted lobby statistics (`GET /api/v1/play/stats`). Calls
  * carry the signed-in token in `x-dsh-auth-token`, never follow redirects, and turn the site's refusals into
  * {@link MultiplayerError}s whose messages say what the user or the agent can do. Prices and sizes always come from the
@@ -45,6 +46,17 @@ export const ServerSize = z.object({
 /** One server size, as the site sells it. */
 export type ServerSize = z.infer<typeof ServerSize>
 
+/** Free servers of one size that WASD Engine gave the signed-in account. */
+export const ServerGrant = z.object({
+  size: z.string(),
+  granted: z.number().int(),
+  in_use: z.number().int(),
+  // How many more servers of the size the account creates free.
+  available: z.number().int(),
+})
+/** Free servers of one size that WASD Engine gave the signed-in account. */
+export type ServerGrant = z.infer<typeof ServerGrant>
+
 /** The site's server sizes and the rules every size shares. */
 export const ServerPlans = z.object({
   currency: z.string(),
@@ -54,6 +66,8 @@ export const ServerPlans = z.object({
   purchase: z.object({ requires: z.string() }),
   estimate_basis: z.string(),
   available: z.boolean(),
+  // The signed-in account's free servers; a site reads them only with the sign-in, and sites before grants send none.
+  grants: z.array(ServerGrant).optional(),
   // How servers sleep without players and which sizes may stay on; sites before sleeping send none.
   sleep: z.object({
     after_minutes: z.number().int().nullish(),
@@ -94,6 +108,8 @@ export const ServerRecord = z.object({
   storage: z.object({ used_bytes: z.number(), limit_bytes: z.number() }).nullish(),
   last_backup_at: z.string().nullish(),
   price_cents: z.number().int().nullish(),
+  // Whether a free server WASD Engine gave the account covers it; its price_cents is then 0.
+  granted: z.boolean().nullish(),
   created_at: z.string().nullish(),
   always_on: z.boolean().nullish(),
   sleeps_after_minutes: z.number().int().nullish(),
@@ -208,7 +224,7 @@ export class MultiplayerApi {
 
   /**
    * Read the server sizes, which the site serves without a sign-in too.
-   * @returns the server sizes and their prices.
+   * @returns the server sizes and their prices, with the account's free servers when the sign-in came along.
    */
   async plans(): Promise<ServerPlans> {
     return await this.json(await this.call('GET', '/api/v1/servers/plans'), ServerPlans, 'read the server sizes')

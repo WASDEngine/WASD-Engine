@@ -60,6 +60,7 @@ export interface SiteServer {
   pending: { kind: string; size: string | null; confirm_url: string; expires_at: string } | null
   always_on?: boolean
   sleeps_after_minutes?: number | null
+  granted?: boolean
 }
 
 /** Options of {@link multiplayerSite}. */
@@ -68,6 +69,8 @@ export interface SiteOptions {
   readonly plans?: typeof PLANS | 'error'
   /** The lobby statistics: `paused` past the relay's fair use, `unavailable` (503) while lobbies are off. */
   readonly lobbies?: 'paused' | 'unavailable'
+  /** The free servers the account was given, which the sizes list only for a signed-in call. */
+  readonly grants?: readonly { size: string; granted: number; in_use: number; available: number }[]
 }
 
 const json = (status: number, body: unknown): Response => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -112,7 +115,10 @@ export function multiplayerSite(options: SiteOptions = {}) {
     else if (init?.body instanceof Blob) files = Object.keys(unzipSync(new Uint8Array(await init.body.arrayBuffer()))).sort()
     calls.push({ method, path: `${url.pathname}${url.search}`, authorized, ...body === undefined ? {} : { body }, ...files === undefined ? {} : { files } })
     if (init?.redirect !== 'error') throw new Error('the multiplayer API must not follow redirects')
-    if (url.pathname === '/api/v1/servers/plans') return options.plans === 'error' ? json(500, {}) : json(200, options.plans ?? PLANS)
+    if (url.pathname === '/api/v1/servers/plans') {
+      if (options.plans === 'error') return json(500, {})
+      return json(200, { ...options.plans ?? PLANS, ...authorized && options.grants !== undefined ? { grants: options.grants } : {} })
+    }
     if (!authorized) return failure(401, 'authentication_error', 'Missing, invalid, or expired WASD Engine token.')
     if (url.pathname === '/api/v1/play/stats') {
       if (options.lobbies === 'unavailable') return failure(503, 'multiplayer_unavailable', 'Online play isn\'t available yet.')
