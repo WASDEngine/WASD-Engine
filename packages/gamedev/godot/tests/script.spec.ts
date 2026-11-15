@@ -6,7 +6,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { callTool, compose, text, type Composition } from './composition.ts'
-import { configureFake, fakeLog } from './helpers.ts'
+import { configureFake, fakeLog, until } from './helpers.ts'
 
 let composition: Composition | undefined
 
@@ -209,6 +209,27 @@ describe('godot_script runs', () => {
       folders.push(basename(join((result.value as { folder: string }).folder, '..')))
     }
     expect((await readdir(join(c.project, '.godot', 'wasd-script-runs'))).sort()).toEqual(folders.slice(1).sort())
+  })
+
+  it('keeps the folder of a call that still runs, also beyond the newest calls, and deletes it once the call ended', async () => {
+    composition = await compose({ config: { keptScriptResults: 1, maxScripts: 2 } })
+    const c = composition
+    await mkdir(join(c.project, 'tests'), { recursive: true })
+    await writeFile(join(c.project, 'tests', 'run.gd'), 'extends SceneTree\n')
+    await configureFake(c.project, { script: { delayMs: 1500, files: { 'result.txt': 'done' } } })
+    const slow = callTool(c, 'godot_script', { script: 'res://tests/run.gd' })
+    // The slow run read its behavior once it logged its command line.
+    await until(async () => (await fakeLog(c.project)).some(entry => Array.isArray(entry.argv) && (entry.argv as string[]).includes('--script')))
+    await configureFake(c.project, { script: {} })
+    const root = join(c.project, '.godot', 'wasd-script-runs')
+    const quick = await callTool(c, 'godot_script', { script: 'res://tests/run.gd' })
+    expect(quick.isError, text(quick)).toBe(false)
+    expect(await readdir(root)).toHaveLength(2)
+    const finished = await slow
+    expect(finished.isError, text(finished)).toBe(false)
+    expect((finished.value as { files: string[] }).files).toEqual(['result.txt'])
+    await callTool(c, 'godot_script', { script: 'res://tests/run.gd' })
+    expect(await readdir(root)).toHaveLength(1)
   })
 
   it('refuses an empty or too long list of runs, a long run name, and a fixed frame rate outside its range', async () => {

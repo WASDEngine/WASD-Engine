@@ -1412,26 +1412,37 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       + 'milliseconds per frame in physics, scripts, and drawing, GPU time, draw calls, memory, object and orphan node counts, '
       + 'physics bodies, pipeline compilations, the most common node classes and scripts, and custom Performance monitors. '
       + 'Then, for as many seconds again, it profiles the game\'s scripts: milliseconds per frame of each script and its costliest '
-      + 'functions, with the engine methods they call.',
+      + 'functions, and with engine_calls the engine methods they call.',
     parameters: {
       seconds: {
         type: 'number',
         description: `Real seconds to measure, from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}. Default: ${PERFORMANCE_SECONDS.default}.`,
       },
       scripts: { type: 'boolean', description: 'Profile the scripts after measuring the frames. Default: true.' },
+      engine_calls: {
+        type: 'boolean',
+        description: 'Also time each engine method, such as Node.get_children, that the profiled functions call on the main thread, '
+          + 'and list the costliest under each function, to find calls that cost more than the code around them; timing them '
+          + 'slows every engine call while the scripts are profiled. Needs scripts. Default: false.',
+      },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ...PERFORMANCE_PROPERTIES, ...DIGEST_SCHEMA } },
-      render: (args, value) => textResult(formatPerformance(value, args.scripts !== false), formatDigest(value)),
+      render: (args, value) => textResult(
+        formatPerformance(value, args.scripts !== false, args.engine_calls === true),
+        formatDigest(value),
+      ),
     },
     async execute(args, exec) {
       const seconds = args.seconds ?? PERFORMANCE_SECONDS.default
       if (!(seconds >= PERFORMANCE_SECONDS.min && seconds <= PERFORMANCE_SECONDS.max)) {
         throw new Error(`seconds must be from ${PERFORMANCE_SECONDS.min} to ${PERFORMANCE_SECONDS.max}.`)
       }
+      const engineCalls = args.engine_calls === true
+      if (engineCalls && args.scripts === false) throw new Error('engine_calls times the engine methods of the profiled scripts, so it needs scripts.')
       return invoke(host, exec, async (_agent, session) => {
         const run = requireRunning(session)
-        const sample = await run.performance(seconds, args.scripts === false ? 0 : seconds, exec.signal)
+        const sample = await run.performance(seconds, args.scripts === false ? 0 : seconds, engineCalls, exec.signal)
         return summarizePerformance(sample, run.view().windowless)
       })
     },

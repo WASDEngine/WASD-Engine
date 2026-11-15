@@ -7,8 +7,10 @@
  * runs beside the Desktop app, whose GPU process it does not share. Nothing the page does reaches the screen or leaves
  * its build: the check talks to the page without a user gesture, and the page gets no dialogs, popups, fullscreen,
  * printing, downloads, permissions, or navigation to another origin. The mode prints its result by the deadline its
- * request names, and exits at once when the process that started it ends.
+ * request names, in a line of at most the request's `resultBytes`, and exits at once when the process that started it
+ * ends.
  */
+import { Buffer } from 'node:buffer'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -25,11 +27,20 @@ export const WEB_CHECK_ARGUMENT: WebCheckArgument = '--wasd-web-check'
 /** The prefix of the result line on stdout. */
 export const WEB_CHECK_MARKER: WebCheckMarker = 'WASD_WEB_CHECK '
 
-/** Most console messages a result carries. */
+/**
+ * Most distinct console messages of each kind, errors and warnings or the others, that the mode keeps; it counts the
+ * repeats of the ones it keeps.
+ */
 export const MAX_CONSOLE_LINES = 2000
 
 /** Longest console message a result carries, in UTF-16 code units. */
 export const MAX_CONSOLE_CHARS = 2000
+
+/**
+ * Most bytes of the result line when the request names none: the Godot plugin's default output limit of 1 MiB, less
+ * room for other output.
+ */
+export const DEFAULT_RESULT_BYTES = 960 * 1024
 
 /** Most frames a result carries; a check at 60 frames per second fills it in under three minutes. */
 export const MAX_FRAMES = 10_000
@@ -289,13 +300,95 @@ export function webCheckRequest(argv: readonly string[]): WebCheckLaunch | undef
   if (argument === undefined) return undefined
   const value: unknown = JSON.parse(argument.slice(WEB_CHECK_ARGUMENT.length + 1))
   if (typeof value !== 'object' || value === null) throw new Error('Web check: the request is not an object')
-  const { url, seconds, startTimeoutMs, deadlineMs, width, height } = value as Record<string, unknown>
+  const { url, seconds, startTimeoutMs, deadlineMs, width, height, resultBytes } = value as Record<string, unknown>
   if (typeof url !== 'string' || !/^http:\/\/127\.0\.0\.1:\d+\//u.test(url)) throw new Error('Web check: the request URL must be a loopback http URL')
   const positive = (field: unknown): field is number => typeof field === 'number' && Number.isFinite(field) && field > 0
   if (!positive(seconds) || !positive(startTimeoutMs) || !positive(deadlineMs) || !positive(width) || !positive(height)) {
     throw new Error('Web check: seconds, startTimeoutMs, deadlineMs, width, and height must be positive numbers')
   }
-  return { url, seconds, startTimeoutMs, deadlineMs, width: Math.round(width), height: Math.round(height) }
+  if (resultBytes !== undefined && !(Number.isInteger(resultBytes) && positive(resultBytes))) {
+    throw new Error('Web check: resultBytes must be a positive integer')
+  }
+  return {
+    url, seconds, startTimeoutMs, deadlineMs, width: Math.round(width), height: Math.round(height),
+    ...resultBytes === undefined ? {} : { resultBytes },
+  }
+}
+
+/**
+ * The page's console messages as the result carries them: each distinct message, shortened to
+ * {@link MAX_CONSOLE_CHARS}, once with how often the page printed it, in order of first appearance. Errors and warnings
+ * and the other messages each keep at most {@link MAX_CONSOLE_LINES} distinct messages, so a page that prints much else
+ * still reports its errors.
+ */
+export class ConsoleMessages {
+  private readonly messages = new Map<string, { readonly level: WebCheckConsoleLine['level']; readonly text: string; count: number }>()
+  private important = 0
+  private others = 0
+
+  /**
+   * Count one console message.
+   * @param level - its console level, as Electron reports it.
+   * @param message - its text.
+   */
+  add(level: WebCheckConsoleLine['level'], message: string): void {
+    const text = message.slice(0, MAX_CONSOLE_CHARS)
+    const key = `${level}\n${text}`
+    const known = this.messages.get(key)
+    if (known !== undefined) {
+      known.count += 1
+      return
+    }
+    const important = level === 'error' || level === 'warning'
+    if ((important ? this.important : this.others) >= MAX_CONSOLE_LINES) return
+    if (important) this.important += 1
+    else this.others += 1
+    this.messages.set(key, { level, text, count: 1 })
+  }
+
+  /** @returns the distinct messages in order of first appearance, each with its count when it repeated. */
+  lines(): WebCheckConsoleLine[] {
+    return [...this.messages.values()].map(({ level, text, count }) => count > 1 ? { level, text, count } : { level, text })
+  }
+}
+
+/**
+ * The result line of a sample, its marker and line break included, in at most `maxBytes` of UTF-8: when the whole
+ * sample does not fit, it keeps the console's errors and warnings first and then its other messages, each in order of
+ * first appearance, while they fit, and the long tasks that last longest when even those do not fit without the
+ * console. The other measurements always fit a line of 256 KiB: at most {@link MAX_FRAMES} frame intervals and draw
+ * call counts.
+ * @param sample - the measurements.
+ * @param maxBytes - most bytes of the line.
+ * @returns the line.
+ */
+export function resultLine(sample: WebCheckSample, maxBytes: number): string {
+  const line = (value: WebCheckSample): string => `${WEB_CHECK_MARKER}${JSON.stringify(value)}\n`
+  const whole = line(sample)
+  if (Buffer.byteLength(whole) <= maxBytes) return whole
+  let fitted: WebCheckSample = { ...sample, console: [] }
+  if (Buffer.byteLength(line(fitted)) > maxBytes) fitted = { ...fitted, longTasks: longestTasks(fitted, maxBytes, line) }
+  let room = maxBytes - Buffer.byteLength(line(fitted))
+  const important = (index: number): number => ['error', 'warning'].includes((sample.console[index] as WebCheckConsoleLine).level) ? 1 : 0
+  const order = [...sample.console.keys()].sort((left, right) => important(right) - important(left) || left - right)
+  const kept = new Set<number>()
+  for (const index of order) {
+    // An entry costs its JSON and the comma before it.
+    const bytes = Buffer.byteLength(JSON.stringify(sample.console[index])) + 1
+    if (bytes > room) continue
+    room -= bytes
+    kept.add(index)
+  }
+  return line({ ...fitted, console: sample.console.filter((_entry, index) => kept.has(index)) })
+}
+
+/** The longest of a sample's long tasks, in time order, as many as fit a line of `maxBytes` without the console. */
+function longestTasks(sample: WebCheckSample, maxBytes: number, line: (value: WebCheckSample) => string): WebCheckSample['longTasks'] {
+  const ranked = [...sample.longTasks].sort((left, right) => right[1] - left[1])
+  let count = ranked.length
+  const subset = (size: number): WebCheckSample['longTasks'] => ranked.slice(0, size).sort((left, right) => left[0] - right[0])
+  while (count > 0 && Buffer.byteLength(line({ ...sample, longTasks: subset(count) })) > maxBytes) count = Math.floor(count / 2)
+  return subset(count)
 }
 
 /**
@@ -445,14 +538,12 @@ export async function measureWebBuild(
   })
   const contents = window.webContents
   sealPage(contents, new URL(request.url).origin)
-  const messages: WebCheckConsoleLine[] = []
+  const messages = new ConsoleMessages()
   /** What the browser reported about the page while the check ran. */
   const reported: { crashed?: string; unresponsive: boolean } = { unresponsive: false }
   contents.setAudioMuted(true)
   contents.setFrameRate(60)
-  contents.on('console-message', (details) => {
-    if (messages.length < MAX_CONSOLE_LINES) messages.push({ level: details.level, text: details.message.slice(0, MAX_CONSOLE_CHARS) })
-  })
+  contents.on('console-message', (details) => { messages.add(details.level, details.message) })
   contents.on('render-process-gone', (_event, details) => { reported.crashed = details.reason })
   contents.on('unresponsive', () => { reported.unresponsive = true })
   try {
@@ -501,7 +592,7 @@ export async function measureWebBuild(
       frameMs: frames?.frameMs ?? [],
       drawCalls: frames?.drawCalls ?? [],
       programs: latest?.programs ?? 0,
-      console: messages,
+      console: messages.lines(),
       ...reported.crashed === undefined ? {} : { crashed: reported.crashed },
       unresponsive: reported.unresponsive || silent,
     }
@@ -583,7 +674,7 @@ export function runWebCheckMode(
     .then(() => measureWebBuild(BrowserWindow, request, deadline))
     .then((sample) => {
       if (finished) return
-      host.stdout.write(`${WEB_CHECK_MARKER}${JSON.stringify(sample)}\n`, () => { finish(0) })
+      host.stdout.write(resultLine(sample, request.resultBytes ?? DEFAULT_RESULT_BYTES), () => { finish(0) })
     }, (error: unknown) => {
       fail(error instanceof Error ? error.message : String(error))
     })

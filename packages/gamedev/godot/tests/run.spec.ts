@@ -101,6 +101,14 @@ describe('command lines', () => {
       .toEqual([...launcherArgv(windowed.runtime, process.pid, []), '--path', '/p', '--script', '/h.gd', '--', '--wasd-port=1', '--wasd-token=t'])
   })
 
+  it('repeats a fixed frame rate for the harness, which applies the frame rate cap that Godot does not apply to it', () => {
+    const fixed = runSpec('/bin/godot_runner', '/p', { muted: false, harnessPath: '/h.gd', engineArgs: ['--fixed-fps', '30', '--max-fps', '60'] })
+    expect(gameArgv(fixed, 1, 't')).toEqual([
+      ...launcherArgv(fixed.runtime, process.pid, []), '--path', '/p', '--script', '/h.gd', '--fixed-fps', '30', '--max-fps', '60',
+      '--', '--wasd-port=1', '--wasd-token=t', '--wasd-fixed-fps=30',
+    ])
+  })
+
   it('renders a Web run with the Compatibility renderer', () => {
     const web = runSpec('/bin/godot_runner', '/p', { muted: false, harnessPath: '/h.gd', web: true })
     expect(gameArgv(web, 1, 't')).toEqual([
@@ -430,6 +438,33 @@ posix('messages and requests', () => {
     const frozen = await running({ game: { freezeOn: 'wait' } }, { requestTimeoutMs: 200 })
     await expect(frozen.run.wait({ seconds: 5 }, signal)).rejects.toThrow(/The game stopped responding: it sent nothing for/u)
     await until(async () => (await fakeRequests(frozen.project)).some(request => request.type === 'cancel'))
+  })
+
+  it('stops reading the game while a hold lasts, without failing the requests that wait for it, and reads again after', async () => {
+    const { run } = await running({ game: { statusIntervalMs: 20, replies: { wait: 'none' } } }, { requestTimeoutMs: 200 })
+    const first = run.revision
+    await until(() => run.revision > first)
+    const release = run.holdReading()
+    const controller = new AbortController()
+    const waiting = run.wait({ seconds: 5 }, controller.signal)
+    let failure: unknown
+    waiting.catch((error: unknown) => { failure = error })
+    // Statuses the Host read before the hold still arrive.
+    await tick(100)
+    const held = run.revision
+    await tick(500)
+    expect(run.revision).toBe(held)
+    expect(failure).toBeUndefined()
+    release()
+    release()
+    await until(() => run.revision > held)
+    expect(failure).toBeUndefined()
+    controller.abort(new Error('done waiting'))
+    await expect(waiting).rejects.toThrow('done waiting')
+    // A stop reads the game again, so a held game still quits.
+    run.holdReading()
+    await run.stop()
+    expect(run.view().phase).toBe('exited')
   })
 
   it('refuses requests before the game connects', async () => {

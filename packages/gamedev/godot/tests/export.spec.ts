@@ -4,11 +4,14 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, exportDesktop, exportWeb, GodotExportError, HIDE_SPLASH_HEAD,
-  LARGE_PACK_BYTES, packNotes, textureImports, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, webNotes, withDesktopPreset, withTextureImports,
-  withWebPreset, type WebExportOptions,
+  LARGE_PACK_BYTES, packNotes, pendingExportRestores, replayExportRestore, textureImports, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, webNotes,
+  withDesktopPreset, withoutPreset, withTextureImports, withWebPreset, type WebExportOptions,
 } from '../src/export.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
-import { fakeLog, scratch, subprocessFixture, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
+import { compose } from './composition.ts'
+import {
+  configureFake, fakeLog, scratch, subprocessFixture, until, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture,
+} from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
 const signal = new AbortController().signal
@@ -30,11 +33,13 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
   const project = await writeProject(join(dir.root, 'game'), config)
   await before?.(project)
   const outputDir = join(project, '.wasdengine', 'web')
+  const restoreDir = join(dir.root, 'data', 'export-restore')
   const exportBuild = () => exportWeb({
     subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project, outputDir,
-    template: '/templates/web "release".zip', hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, ...overrides,
+    template: '/templates/web "release".zip', hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, restoreDir,
+    ...overrides,
   })
-  return { project, outputDir, run: exportBuild }
+  return { project, outputDir, restoreDir, run: exportBuild }
 }
 
 describe('withWebPreset', () => {
@@ -176,6 +181,17 @@ posix('exportWeb', () => {
   })
 })
 
+describe('withoutPreset', () => {
+  it('removes one preset by name and renumbers the rest, and leaves a text without it alone', () => {
+    const text = withDesktopPreset(withWebPreset('[preset.0]\n\nname="Linux"\nplatform="Linux"\n', '/t.zip', false), 'windows', '/w.exe', 'Game')
+    const kept = withoutPreset(text, WEB_EXPORT_PRESET)
+    expect(kept).toMatch(/^\[preset\.0\]\n\nname="Linux"[\s\S]*\[preset\.1\]\n\nname="WASD Engine Windows"/u)
+    expect(kept).not.toContain(WEB_EXPORT_PRESET)
+    expect(withoutPreset(kept, WEB_EXPORT_PRESET)).toBe(kept)
+    expect(withoutPreset(withWebPreset(undefined, '/t.zip', false), WEB_EXPORT_PRESET)).toBe('')
+  })
+})
+
 describe('withDesktopPreset', () => {
   it('builds one self-contained 64-bit Windows executable from the template', () => {
     const text = withDesktopPreset('[preset.0]\n\nname="Web"\nplatform="Web"\n', 'windows', '/t/win "x".exe', 'Tiny Farm')
@@ -256,12 +272,93 @@ posix('exportDesktop', () => {
     const project = await writeProject(join(dir.root, 'game'), config)
     await before?.(project)
     const outputDir = join(project, '.wasdengine', 'desktop', platform)
+    const restoreDir = join(dir.root, 'data', 'export-restore')
     const run = () => exportDesktop({
       subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project, outputDir,
-      platform, template: `/templates/${platform}`, hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal,
+      platform, template: `/templates/${platform}`, hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, restoreDir,
     })
-    return { project, outputDir, run }
+    return { project, outputDir, restoreDir, run }
   }
+
+  /** Run an export, and keep the project's files and the restore record as they were while it ran, as an app that quit then leaves them. */
+  async function interrupt(
+    project: string, restoreDir: string, run: () => Promise<unknown>,
+  ): Promise<{ readonly presets: string; readonly project: string }> {
+    const exporting = run()
+    let name: string
+    let record: string
+    let during: { readonly presets: string; readonly project: string }
+    try {
+      // The record appears by a rename of a temporary file beside it.
+      const records = async (): Promise<string[]> => (await readdir(restoreDir).catch(() => [])).filter(entry => entry.endsWith('.json'))
+      await until(async () => (await records()).length === 1)
+      name = (await records())[0] as string
+      record = await readFile(join(restoreDir, name), 'utf8')
+      during = { presets: await readFile(join(project, 'export_presets.cfg'), 'utf8'), project: await readFile(join(project, 'project.godot'), 'utf8') }
+    } finally {
+      await exporting
+    }
+    expect(await readdir(restoreDir)).toEqual([])
+    await writeFile(join(project, 'export_presets.cfg'), during.presets)
+    await writeFile(join(project, 'project.godot'), during.project)
+    await writeFile(join(restoreDir, name), record)
+    return during
+  }
+
+  it('returns the files of an export that the app quit during from its restore record, which it then deletes', async () => {
+    const original = '[preset.0]\n\nname="Linux"\nplatform="Linux"\n'
+    const { project, restoreDir, run } = await prepareDesktop('macos', { export: { files: { 'Fake game.zip': 'zip' }, delayMs: 300 } }, async (dir) => {
+      await writeFile(join(dir, 'export_presets.cfg'), original)
+    })
+    const settings = await readFile(join(project, 'project.godot'), 'utf8')
+    const during = await interrupt(project, restoreDir, run)
+    expect(during.presets).toContain(DESKTOP_EXPORT_PRESETS.macos)
+    expect(textureImports(during.project)).toEqual({ s3tc_bptc: 'true', etc2_astc: 'true' })
+    expect(await pendingExportRestores(restoreDir)).toEqual([project])
+    expect(await replayExportRestore(restoreDir, project)).toBe(true)
+    expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    expect(await readdir(restoreDir)).toEqual([])
+    expect(await replayExportRestore(restoreDir, project)).toBe(false)
+  })
+
+  it('returns the files of an interrupted export when the plugin starts', async () => {
+    const original = '[preset.0]\n\nname="Linux"\nplatform="Linux"\n'
+    const { project, restoreDir, run } = await prepareDesktop('macos', { export: { files: { 'Fake game.zip': 'zip' }, delayMs: 300 } }, async (dir) => {
+      await writeFile(join(dir, 'export_presets.cfg'), original)
+    })
+    const settings = await readFile(join(project, 'project.godot'), 'utf8')
+    await interrupt(project, restoreDir, run)
+    const plugin = await compose({ config: { dataRoot: join(restoreDir, '..') } })
+    try {
+      await until(async () => (await readdir(restoreDir)).length === 0)
+      expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
+      expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    } finally {
+      await plugin.cleanup()
+    }
+  })
+
+  it('keeps the changes made since the interrupted export, and the next export replays its record first', async () => {
+    const { project, restoreDir, run } = await prepareDesktop('windows', { export: { files: { 'Fake game.zip': 'zip' }, delayMs: 300 } })
+    const settings = await readFile(join(project, 'project.godot'), 'utf8')
+    const during = await interrupt(project, restoreDir, run)
+    // The user added a preset and a setting after the app quit.
+    const own = '[preset.1]\n\nname="Web"\nplatform="Web"'
+    await writeFile(join(project, 'export_presets.cfg'), `${during.presets}\n${own}\n`)
+    await writeFile(join(project, 'project.godot'), `${during.project}\n[display]\n\nwindow/size/viewport_width=640\n`)
+    await configureFake(project, { export: { files: { 'Fake game.zip': 'zip' } } })
+    await run()
+    const exportEntry = (await fakeLog(project)).filter(entry => entry.preset !== undefined).at(-1) as { presets: string; project: string }
+    // The second export saw the project as the user left it, without the first export's changes.
+    expect(exportEntry.presets.match(/name="WASD Engine Windows"/gu)).toHaveLength(1)
+    expect(exportEntry.presets).toContain('[preset.0]\n\nname="Web"')
+    expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe('[preset.0]\n\nname="Web"\nplatform="Web"\n')
+    const after = await readFile(join(project, 'project.godot'), 'utf8')
+    expect(after).toContain('window/size/viewport_width=640')
+    expect(textureImports(after)).toEqual(textureImports(settings))
+    expect(await readdir(restoreDir)).toEqual([])
+  })
 
   it('exports a macOS ZIP named after the game with both texture formats imported, then restores the project', async () => {
     const original = '[preset.0]\n\nname="Linux"\nplatform="Linux"\n'

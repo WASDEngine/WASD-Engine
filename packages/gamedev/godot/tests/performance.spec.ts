@@ -58,11 +58,30 @@ function reply(overrides: Partial<PerformanceReply> = {}): PerformanceReply {
     scripts: [],
     scriptSeconds: 0,
     scriptFrames: 0,
+    engineCalls: false,
     timedOut: false,
     cancelled: false,
     ...overrides,
   }
 }
+
+/** A script window that timed the engine methods each function calls, as `engine_calls` asks. */
+const TIMED_SCRIPTS = {
+  scriptProfiler: true,
+  scriptSeconds: 2.004,
+  scriptFrames: 100,
+  engineCalls: true,
+  scripts: [
+    ['res://player.gd::40::_physics_process', 100, 150_000, 30_000],
+    ['res://player.gd::0::CharacterBody3D.move_and_slide', 100, 80_000, 80_000],
+    ['res://player.gd::0::Node.get_node', 200, 1_000, 1_000],
+    ['res://player.gd::0::@implicit_new', 1, 10, 10],
+    ['res://player.gd::12::aim', 400, 20_000, 20_000],
+    ['res://enemy.gd::7::_process', 4000, 60_000, 50_000],
+    ['res://enemy.gd::0::Node3D.look_at', 4000, 5_000, 5_000],
+    ['res://level.tscn::GDScript_ab12::3::_on_timeout(lambda)', 2, 300, 300],
+  ],
+} satisfies Partial<PerformanceReply>
 
 describe('performance summary', () => {
   it('computes frame time percentiles, phase means, GPU times of the measured frames, and monitor changes', () => {
@@ -194,24 +213,11 @@ describe('performance summary', () => {
   })
 
   it('profiles scripts per frame: own time with the engine methods each function calls, by script and function', () => {
-    const summary = summarizePerformance(reply({
-      scriptProfiler: true,
-      scriptSeconds: 2.004,
-      scriptFrames: 100,
-      scripts: [
-        ['res://player.gd::40::_physics_process', 100, 150_000, 30_000],
-        ['res://player.gd::0::CharacterBody3D.move_and_slide', 100, 80_000, 80_000],
-        ['res://player.gd::0::Node.get_node', 200, 1_000, 1_000],
-        ['res://player.gd::0::@implicit_new', 1, 10, 10],
-        ['res://player.gd::12::aim', 400, 20_000, 20_000],
-        ['res://enemy.gd::7::_process', 4000, 60_000, 50_000],
-        ['res://enemy.gd::0::Node3D.look_at', 4000, 5_000, 5_000],
-        ['res://level.tscn::GDScript_ab12::3::_on_timeout(lambda)', 2, 300, 300],
-      ],
-    }), true)
+    const summary = summarizePerformance(reply(TIMED_SCRIPTS), true)
     expect(summary.scriptProfile).toEqual({
       seconds: 2,
       frames: 100,
+      engineCalls: true,
       msPerFrame: 1.863,
       scripts: [
         {
@@ -240,12 +246,31 @@ describe('performance summary', () => {
         },
       ],
     })
-    const text = formatPerformance(summary, true)
-    expect(text).toContain('Scripts, profiled for 2.00 s (100 frames) after the frames above; the profiler slows scripts, so compare these times with each other. '
+    const text = formatPerformance(summary, true, true)
+    expect(text).toContain('Scripts, profiled for 2.00 s (100 frames) after the frames above, with the engine methods they call on the main thread; '
+      + 'the profiler slows scripts, and timing engine methods slows them more, so compare these times with each other. '
       + 'Own time per frame (ms) counts a function\'s code and the engine methods it calls, not the script functions it calls: 1.86 in all.')
     expect(text).toContain('res://player.gd 1.31: _physics_process (line 40) 1.11, of which CharacterBody3D.move_and_slide 0.80, Node.get_node 0.01; '
       + 'aim (line 12) 0.20, 4 calls; @implicit_new (line 0) 0.00, 0.01 calls')
     expect(text).toContain('res://enemy.gd 0.55: _process (line 7) 0.55, 40 calls, of which Node3D.look_at 0.05')
+    expect(text).not.toContain('Engine methods:')
+  })
+
+  it('says what own time counts without engine methods, and why a runtime that cannot time them safely leaves them out', () => {
+    const functions = TIMED_SCRIPTS.scripts.filter(([signature]) => !/::0::[A-Z]/u.test(signature))
+    const untimed = { ...TIMED_SCRIPTS, engineCalls: false, scripts: functions }
+    const summary = summarizePerformance(reply(untimed), true)
+    expect(summary.scriptProfile?.engineCalls).toBe(false)
+    const intro = 'Scripts, profiled for 2.00 s (100 frames) after the frames above; the profiler slows scripts, so compare these times with each other. '
+      + 'Own time per frame (ms) counts a function\'s code and the engine methods it calls on typed values, not the script functions it calls '
+      + 'or engine methods called on untyped values: 1.00 in all.'
+    const unasked = formatPerformance(summary, true)
+    expect(unasked).toContain(`${intro} engine_calls: true also lists the costliest engine methods of each function.`)
+    expect(unasked).not.toContain('Engine methods:')
+    const refused = formatPerformance(summary, true, true)
+    expect(refused).toContain(`${intro}\nEngine methods: this Godot runtime's profiler times them on every thread without a lock, which can crash a game `
+      + 'that runs scripts on other threads, so the profile leaves them out.\nres://player.gd')
+    expect(refused).not.toContain('engine_calls: true')
   })
 
   it('explains a missing script profile only when the sample asked for one', () => {

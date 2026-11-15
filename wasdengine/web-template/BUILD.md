@@ -40,7 +40,7 @@ The longest task left is mostly the game's own: its scripts build the town in on
 
 ## Build locally
 
-Prerequisites: macOS or Linux, Git, Python 3.8 or newer, and [uv](https://docs.astral.sh/uv/), whose `uvx` runs SCons 4.11.1 under a uv-managed CPython 3.13. `build.sh` clones [emsdk](https://github.com/emscripten-core/emsdk) at the tag of Emscripten 4.0.20 into `<out>/emsdk` and installs that release, about 2 GB, unless `--emsdk` names a checkout that has it.
+Prerequisites: macOS or Linux, Git, Python 3.8 or newer, and [uv](https://docs.astral.sh/uv/), whose `uvx` runs SCons 4.11.1 under a uv-managed CPython 3.13.18. Godot's build scripts compress the data that they embed in the engine with that CPython's zlib, and the uv release decides which build of CPython 3.13.18 it downloads, so the published templates came from uv 0.13.8, which the release workflow pins; `build.sh` builds with another uv too and says that its template's digest may differ, and a uv older than the CPython release does not find it. `build.sh` clones [emsdk](https://github.com/emscripten-core/emsdk) at the tag of Emscripten 4.0.20 into `<out>/emsdk` and installs that release, about 2 GB, unless `--emsdk` names a checkout that has it.
 
 ```sh
 # Clone Godot 4.7.2-stable into /tmp/web-template/godot-4.7.2-stable, patch it, build the template, and package it.
@@ -91,7 +91,7 @@ python3 -B -m unittest discover --start-directory wasdengine/web-template --patt
 
 ## Release
 
-The Web export template workflow, [wasd-web-template.yml](../../.github/workflows/wasd-web-template.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-web-template.yml -f version=4.7.2-wasd.1 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory. The `build` job runs `build.sh` on macOS 26 (arm64) with an SCons cache keyed by the Godot ref, checks the output against `manifest.json`, writes the template's digest to the job summary, and uploads the three files as a workflow artifact that is kept for seven days.
+The Web export template workflow, [wasd-web-template.yml](../../.github/workflows/wasd-web-template.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-web-template.yml -f version=4.7.2-wasd.1 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory. The `build` job runs `build.sh` on macOS 26 (arm64) with uv 0.13.8 and an SCons cache keyed by the Godot ref, checks the output against `manifest.json`, writes the template's digest to the job summary, and uploads the three files as a workflow artifact that is kept for seven days.
 
 When the workflow runs on the default branch, the `release` job checks the files again and requires that the plugin's `webTemplateSha256` default in `packages/gamedev/godot/src/index.ts` names this build's template, because the plugin refuses any other. It then creates the release `web-template-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archive and the template and then `manifest.json`, and publishes the release as a pre-release, so that it never becomes the repository's latest release. The job fails when the release is already published. A run on another branch stops after the build.
 

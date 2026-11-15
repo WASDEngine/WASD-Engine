@@ -1,14 +1,14 @@
 /** Recordings on the Host: the frame stream a window reads, its upload, the saved video, and the failures on the way. */
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { HarnessRecordFrame } from '../src/protocol.ts'
 import type { GodotRun, RecordingParams, RecordingSink, RecordStopReply } from '../src/run.ts'
 import type { GodotVideoEncodeRequest, GodotVideoEncodeResult } from '../src/types.ts'
-import { GodotVideoError, GodotVideoRecorder, RECORD_HEADER_BYTES, videoPath, type VideoContext } from '../src/video.ts'
+import { GodotVideoError, GodotVideoRecorder, RECORD_HEADER_BYTES, RECORDINGS_GITIGNORE, videoPath, type VideoContext } from '../src/video.ts'
 
 const LIMITS = { quality: 0.9, bufferBytes: 1024 * 1024, maxBytes: 1024, windowTimeoutMs: 2000 }
 
@@ -16,18 +16,27 @@ function frame(index: number, timeMs: number, bytes = 4): HarnessRecordFrame {
   return { recording: 1, index, timeMs, width: 64, height: 36, image: Buffer.alloc(bytes, index) }
 }
 
-/** A running game whose recording sends `before` at its start and `after` when it stops. */
+/**
+ * A running game of the project in `root/game` whose recording sends `before` at its start and `after` when it stops,
+ * and which counts the holds on reading its connection.
+ */
 function fakeRun(before: readonly HarnessRecordFrame[], after: readonly HarnessRecordFrame[] = []) {
   const calls: string[] = []
   const started: RecordingParams[] = []
+  const reading = { holds: 0, releases: 0 }
   let sink: RecordingSink | undefined
   let shown = 0
   const run = {
     id: 'run-1',
+    project: { dir: join(root, 'game') },
     view: () => ({ launch: {} }),
     show() {
       shown += 1
       return () => { shown -= 1 }
+    },
+    holdReading() {
+      reading.holds += 1
+      return () => { reading.releases += 1 }
     },
     async startRecording(_id: number, params: RecordingParams, receiver: RecordingSink) {
       calls.push('start')
@@ -47,7 +56,7 @@ function fakeRun(before: readonly HarnessRecordFrame[], after: readonly HarnessR
   }
   // The recorder uses only these members of a run.
   const typed: GodotRun = run as never
-  return { run: typed, calls, started, shown: () => shown }
+  return { run: typed, calls, started, reading, shown: () => shown }
 }
 
 /** A window that reads every frame, uploads `video`, and answers. */
@@ -84,7 +93,10 @@ describe('GodotVideoRecorder', () => {
     expect(video).toMatchObject({ path: join(root, 'game', 'recordings', 'clip.mp4'), bytes: 9, codec: 'H.264', frames: 3, skipped: 2, fps: 20, fixedFps: false })
     expect(video.sheet?.times).toEqual([0, 0.1])
     expect(await readFile(video.path, 'utf8')).toBe('mp4 bytes')
+    // The project's recordings folder keeps its videos from Godot's import and from git.
     expect(existsSync(join(root, 'game', 'recordings', '.gdignore'))).toBe(true)
+    expect(await readFile(join(root, 'game', 'recordings', '.gitignore'), 'utf8')).toBe(RECORDINGS_GITIGNORE)
+    expect(game.reading).toEqual({ holds: 0, releases: 0 })
     expect(game.calls).toEqual(['start', 'input', 'stop'])
     expect(game.started).toEqual([{ fps: 20, maxWidth: 1280, quality: 0.9, frameStep: 0, frameMs: 0, frames: 0, seconds: 5.05 }])
     expect(screen.requests).toEqual([{ sessionId: 's1', runId: 'run-1', recording: 1, fps: 20, sheetFrames: 2, maxBytes: 1024 }])
@@ -110,6 +122,47 @@ describe('GodotVideoRecorder', () => {
     expect(screen.requests[0]?.fps).toBe(30)
     expect(video).toMatchObject({ fps: 30, fixedFps: true })
     expect(existsSync(join(root, '.gdignore'))).toBe(false)
+  })
+
+  it('marks only the project\'s own recordings folder, and leaves files that it already holds', async () => {
+    const recorder = new GodotVideoRecorder(LIMITS)
+    // Another folder named recordings, such as one of the game's sounds, keeps its assets visible to Godot.
+    const sounds = join(root, 'game', 'audio', 'recordings', 'clip.mp4')
+    await recorder.record(context(fakeRun([frame(0, 0)]).run, window(recorder, Buffer.from('x')).encode, sounds), REQUEST, new AbortController().signal)
+    expect(existsSync(join(root, 'game', 'audio', 'recordings', '.gdignore'))).toBe(false)
+    expect(existsSync(join(root, 'game', 'audio', 'recordings', '.gitignore'))).toBe(false)
+    const own = join(root, 'game', 'recordings')
+    await mkdir(own, { recursive: true })
+    await writeFile(join(own, '.gitignore'), '*\n')
+    await recorder.record(context(fakeRun([frame(0, 0)]).run, window(recorder, Buffer.from('x')).encode, join(own, 'clip.mp4')), REQUEST, new AbortController().signal)
+    expect(await readFile(join(own, '.gitignore'), 'utf8')).toBe('*\n')
+    expect(existsSync(join(own, '.gdignore'))).toBe(true)
+  })
+
+  it('stops reading the game while the window has not read half the buffer, and reads again once it caught up', async () => {
+    const recorder = new GodotVideoRecorder({ ...LIMITS, bufferBytes: 64 })
+    const frames = Array.from({ length: 6 }, (_unused, index) => frame(index, index * 50, 10))
+    const game = fakeRun(frames)
+    const read: Buffer[] = []
+    await recorder.record(context(game.run, window(recorder, Buffer.from('x'), read).encode), REQUEST, new AbortController().signal)
+    // The fourth frame brought 40 bytes, past the 32 at which the Host stops reading; the window read them down to 16.
+    expect(game.reading).toEqual({ holds: 1, releases: 1 })
+    const stream = read[0] as Buffer
+    expect(stream.length).toBe(6 * (RECORD_HEADER_BYTES + 10))
+  })
+
+  it('stops the recording when the window reads no frame while the Host stopped reading the game', async () => {
+    const recorder = new GodotVideoRecorder({ ...LIMITS, bufferBytes: 64, windowTimeoutMs: 1000 })
+    const game = fakeRun(Array.from({ length: 4 }, (_unused, index) => frame(index, index * 50, 10)))
+    // The window opens the stream but reads nothing.
+    const stalled = async (request: GodotVideoEncodeRequest): Promise<GodotVideoEncodeResult> => {
+      recorder.serve(new Request(`http://127.0.0.1/api/godot.recording?session=s1&run=run-1&recording=${request.recording}`))
+      return await new Promise(() => {})
+    }
+    await expect(recorder.record(context(game.run, stalled), { ...REQUEST, seconds: 5 }, new AbortController().signal))
+      .rejects.toThrow(new GodotVideoError('The WASD Engine window read no frame of the recording for 1 s, so the recording stopped.'))
+    expect(game.reading).toEqual({ holds: 1, releases: 1 })
+    expect(game.calls).toEqual(['start', 'stop'])
   })
 
   it('fails before the game records when no window reads the frames in time', async () => {

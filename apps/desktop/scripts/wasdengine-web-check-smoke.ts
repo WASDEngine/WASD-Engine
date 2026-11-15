@@ -3,9 +3,10 @@
  * assembled, signed, or notarized, from `smoke-packaged-runtime.ts`: it starts the application's Web check mode the way
  * the Godot plugin does — on macOS from the Web Check Helper bundle of `src/wasdengine-web-check-helper.ts`, elsewhere
  * from the application's executable — against a small loopback page that draws with WebGL, and requires a result that
- * saw the page start, draw frames, and log, with no crash and no stall. A helper that cannot start under the build's
- * signature, cannot find Electron's framework, or prints no result then fails packaging instead of every user's Web
- * check.
+ * saw the page start, run frames, and log, with no crash and no stall, and saw WebGL draw calls when the machine offers
+ * WebGL 2. A helper that cannot start under the build's signature, cannot find Electron's framework, or prints no result
+ * then fails packaging instead of every user's Web check; a packaging machine without a GPU, such as a CI runner, still
+ * passes on frames alone.
  * @module
  */
 import { spawn } from 'node:child_process'
@@ -18,12 +19,15 @@ import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
 import { WEB_CHECK_ARGUMENT, WEB_CHECK_MARKER, webCheckCommand } from '../src/wasdengine-web-check.ts'
 import { webCheckHelperExecutable } from '../src/wasdengine-web-check-helper.ts'
 
-/** The console message the smoke page logs once it removed its loading overlay. */
+/** The console message the smoke page logs once it removed its loading overlay; ` (WebGL 2)` or ` (no WebGL 2)` follows. */
 export const SMOKE_READY_MESSAGE = 'WASD Engine Web check smoke page started'
+
+/** What the ready message ends with when the page draws with WebGL 2. */
+export const SMOKE_WEBGL_SUFFIX = ' (WebGL 2)'
 
 /**
  * The smoke page: Godot's page shape as the check reads it (a `#status` loading overlay that the page removes once the
- * game runs), a WebGL 2 program, and one draw call per animation frame.
+ * game runs), and, where the machine offers WebGL 2, a program and one draw call per animation frame.
  */
 export const SMOKE_PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Web check smoke</title></head>
@@ -32,15 +36,23 @@ export const SMOKE_PAGE = `<!doctype html>
 <canvas id="canvas" width="64" height="64"></canvas>
 <script>
 const gl = document.getElementById('canvas').getContext('webgl2');
-const shader = (type, source) => { const made = gl.createShader(type); gl.shaderSource(made, source); gl.compileShader(made); return made; };
-const program = gl.createProgram();
-gl.attachShader(program, shader(gl.VERTEX_SHADER, '#version 300 es\\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); gl_PointSize = 8.0; }'));
-gl.attachShader(program, shader(gl.FRAGMENT_SHADER, '#version 300 es\\nprecision mediump float;\\nout vec4 color;\\nvoid main() { color = vec4(0.47, 0.33, 1.0, 1.0); }'));
-gl.linkProgram(program);
-gl.useProgram(program);
-const draw = () => { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.POINTS, 0, 1); requestAnimationFrame(draw); };
+if (gl) {
+  const shader = (type, source) => { const made = gl.createShader(type); gl.shaderSource(made, source); gl.compileShader(made); return made; };
+  const program = gl.createProgram();
+  gl.attachShader(program, shader(gl.VERTEX_SHADER, '#version 300 es\\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); gl_PointSize = 8.0; }'));
+  gl.attachShader(program, shader(gl.FRAGMENT_SHADER, '#version 300 es\\nprecision mediump float;\\nout vec4 color;\\nvoid main() { color = vec4(0.47, 0.33, 1.0, 1.0); }'));
+  gl.linkProgram(program);
+  gl.useProgram(program);
+}
+const draw = () => {
+  if (gl) { gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.POINTS, 0, 1); }
+  requestAnimationFrame(draw);
+};
 requestAnimationFrame(draw);
-setTimeout(() => { document.getElementById('status').remove(); console.log(${JSON.stringify(SMOKE_READY_MESSAGE)}); }, 100);
+setTimeout(() => {
+  document.getElementById('status').remove();
+  console.log(${JSON.stringify(SMOKE_READY_MESSAGE)} + (gl ? ${JSON.stringify(SMOKE_WEBGL_SUFFIX)} : ' (no WebGL 2)'));
+}, 100);
 </script>
 </body></html>
 `
@@ -51,8 +63,8 @@ export function smokeRequest(url: string): WebCheckRequest {
 }
 
 /**
- * What a smoke result lacks: a page that never started, crashed, stopped answering, drew no frames or WebGL calls,
- * linked no program, or whose console message never arrived.
+ * What a smoke result lacks: a page that never started, crashed, stopped answering, ran no animation frames, or whose
+ * console message never arrived; and, when that message says the page had WebGL 2, no linked program or draw calls.
  * @param sample - the result the Web check mode printed.
  * @returns one sentence per problem; empty when the result is complete.
  */
@@ -62,9 +74,13 @@ export function webCheckSmokeProblems(sample: WebCheckSample): string[] {
   if (sample.crashed !== undefined) problems.push(`the page's process ended: ${sample.crashed}`)
   if (sample.unresponsive) problems.push('the page stopped answering')
   if (sample.frameMs.length === 0) problems.push('the check saw no animation frames')
-  if (!sample.drawCalls.some(calls => calls > 0)) problems.push('the check saw no WebGL draw calls')
-  if (sample.programs < 1) problems.push('the check saw no WebGL program linked')
-  if (!sample.console.some(line => line.text.includes(SMOKE_READY_MESSAGE))) problems.push('the page\'s console message did not reach the result')
+  const ready = sample.console.find(line => line.text.includes(SMOKE_READY_MESSAGE))
+  if (ready === undefined) {
+    problems.push('the page\'s console message did not reach the result')
+  } else if (ready.text.endsWith(SMOKE_WEBGL_SUFFIX)) {
+    if (sample.programs < 1) problems.push('the check saw no WebGL program linked')
+    if (!sample.drawCalls.some(calls => calls > 0)) problems.push('the check saw no WebGL draw calls')
+  }
   return problems
 }
 

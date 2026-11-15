@@ -68,6 +68,8 @@ export const PerformanceReply = z.object({
   scripts: z.array(z.tuple([z.string(), Count, Count, Count])),
   scriptSeconds: z.number(),
   scriptFrames: Count,
+  /** Whether the script window timed the engine methods that each function calls. */
+  engineCalls: z.boolean(),
   timedOut: z.boolean(),
   cancelled: z.boolean(),
 })
@@ -106,13 +108,17 @@ const SCRIPT_FUNCTION = {
   },
 } as const
 
-/** The script profile of a sample: per frame of its script window, each script's own time and its costliest functions. */
+/**
+ * The script profile of a sample: per frame of its script window, each script's own time and its costliest functions,
+ * and whether the window timed the engine methods that functions call (`engineCalls`).
+ */
 const SCRIPT_PROFILE = {
   type: 'object',
   additionalProperties: false,
   properties: {
     seconds: NUMBER,
     frames: INTEGER,
+    engineCalls: BOOLEAN,
     msPerFrame: NUMBER,
     scripts: {
       type: 'array',
@@ -348,6 +354,7 @@ function summarizeScripts(reply: PerformanceReply): ScriptProfile | undefined {
   return {
     seconds: round(reply.scriptSeconds),
     frames,
+    engineCalls: reply.engineCalls,
     msPerFrame: perFrame(sum(scripts.map(script => script.time))),
     scripts: scripts.slice(0, LISTED_SCRIPTS).map(script => ({
       path: script.path,
@@ -633,12 +640,17 @@ function functionText(entry: ScriptFunction): string {
   return `${entry.name} (line ${String(entry.line)}) ${entry.msPerFrame.toFixed(2)}${calls}${engine}`
 }
 
+/** Why a profile that `engine_calls` asked for lists no engine methods: the runtime cannot time them safely. */
+const ENGINE_CALLS_REFUSED = 'Engine methods: this Godot runtime\'s profiler times them on every thread without a lock, which can crash a game '
+  + 'that runs scripts on other threads, so the profile leaves them out.'
+
 /**
  * The script profile, or why there is none.
  * @param summary - the summary.
  * @param requested - whether the sample asked for a script window.
+ * @param engineCallsRequested - whether the sample asked to time the engine methods that functions call.
  */
-function describeScripts(summary: PerformanceSummary, requested: boolean): string[] {
+function describeScripts(summary: PerformanceSummary, requested: boolean, engineCallsRequested: boolean): string[] {
   const profile = summary.scriptProfile
   if (profile === undefined) {
     if (!requested) return []
@@ -646,11 +658,19 @@ function describeScripts(summary: PerformanceSummary, requested: boolean): strin
       ? ['Scripts: the sample ended before its script window measured a frame.']
       : ['Scripts: this Godot runtime has no script profiler; WASD Engine\'s own LibGodot builds from 4.7.2-wasd.3 time every script function.']
   }
-  if (profile.scripts.length === 0) return [`Scripts: no script function ran during the ${profile.seconds.toFixed(2)} s script window.`]
+  const refused = engineCallsRequested && !profile.engineCalls ? [ENGINE_CALLS_REFUSED] : []
+  if (profile.scripts.length === 0) return [`Scripts: no script function ran during the ${profile.seconds.toFixed(2)} s script window.`, ...refused]
+  const window = `Scripts, profiled for ${profile.seconds.toFixed(2)} s (${count(profile.frames)} frames) after the frames above`
+  const intro = profile.engineCalls
+    ? `${window}, with the engine methods they call on the main thread; the profiler slows scripts, and timing engine methods slows `
+      + "them more, so compare these times with each other. Own time per frame (ms) counts a function's code and the engine methods "
+      + `it calls, not the script functions it calls: ${profile.msPerFrame.toFixed(2)} in all.`
+    : `${window}; the profiler slows scripts, so compare these times with each other. Own time per frame (ms) counts a function's `
+      + 'code and the engine methods it calls on typed values, not the script functions it calls or engine methods called on untyped '
+      + `values: ${profile.msPerFrame.toFixed(2)} in all.${engineCallsRequested ? '' : ' engine_calls: true also lists the costliest engine methods of each function.'}`
   return [
-    `Scripts, profiled for ${profile.seconds.toFixed(2)} s (${count(profile.frames)} frames) after the frames above; the profiler slows scripts, `
-      + "so compare these times with each other. Own time per frame (ms) counts a function's code and the engine methods it calls, "
-      + `not the script functions it calls: ${profile.msPerFrame.toFixed(2)} in all.`,
+    intro,
+    ...refused,
     ...profile.scripts.map(script => `${script.path} ${script.msPerFrame.toFixed(2)}: ${script.functions.map(functionText).join('; ')}`),
   ]
 }
@@ -659,15 +679,16 @@ function describeScripts(summary: PerformanceSummary, requested: boolean): strin
  * Describe a performance summary for the model.
  * @param summary - summary from {@link summarizePerformance}.
  * @param scriptsRequested - whether the sample asked for a script window, so that a missing profile is explained.
+ * @param engineCallsRequested - whether the sample asked to time engine methods, so that a profile without them is explained.
  * @returns paragraphs: the run and its limits, frame times, resources, the scene tree, and the script profile.
  */
-export function formatPerformance(summary: PerformanceSummary, scriptsRequested = false): string {
+export function formatPerformance(summary: PerformanceSummary, scriptsRequested = false, engineCallsRequested = false): string {
   const paragraphs = [
     describeRun(summary),
     describeFrames(summary),
     describeResources(summary),
     describeTree(summary),
-    describeScripts(summary, scriptsRequested),
+    describeScripts(summary, scriptsRequested, engineCallsRequested),
   ]
   return paragraphs
     .filter(lines => lines.length > 0)

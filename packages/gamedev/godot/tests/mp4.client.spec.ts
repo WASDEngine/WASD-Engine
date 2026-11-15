@@ -1,6 +1,19 @@
 /** The MP4 writer: one video track whose samples sit in one chunk after the movie box. */
 import { describe, expect, it } from 'vitest'
-import { writeMp4, type Mp4Sample, type Mp4Track } from '../src/client/mp4.ts'
+import { mp4File, type Mp4Sample, type Mp4Track } from '../src/client/mp4.ts'
+
+/** The file that {@link mp4File}'s parts make, as a Blob of them makes it. */
+function writeMp4(track: Mp4Track, samples: readonly Mp4Sample[]): Uint8Array {
+  const { parts, byteLength } = mp4File(track, samples)
+  const file = new Uint8Array(byteLength)
+  let offset = 0
+  for (const part of parts) {
+    file.set(part, offset)
+    offset += part.byteLength
+  }
+  expect(offset).toBe(byteLength)
+  return file
+}
 
 interface Box {
   readonly type: string
@@ -50,7 +63,16 @@ function samples(times: readonly number[], keys: readonly number[] = [0]): Mp4Sa
   return times.map((time, index) => ({ data: Uint8Array.of(index, index, index), time, key: keys.includes(index) }))
 }
 
-describe('writeMp4', () => {
+describe('mp4File', () => {
+  it('ends with the samples\' own data, so the file copies no frame', () => {
+    const frames = samples([0, 3000, 6000])
+    const { parts, byteLength } = mp4File(track(), frames)
+    expect(parts.slice(3)).toHaveLength(3)
+    for (const [index, sample] of frames.entries()) expect(parts[3 + index]).toBe(sample.data)
+    expect(byteLength).toBe(parts.reduce((total, part) => total + part.byteLength, 0))
+    expect(String.fromCharCode(...(parts[2] as Uint8Array).subarray(4, 8))).toBe('mdat')
+  })
+
   it('writes ftyp, then moov, then mdat with the samples in order, which the chunk offset points at', () => {
     const file = writeMp4(track(), samples([0, 3000, 6000, 9000], [0, 2]))
     expect(boxes(file).map(box => box.type)).toEqual(['ftyp', 'moov', 'mdat'])

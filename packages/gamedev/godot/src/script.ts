@@ -4,7 +4,8 @@
  * project with `--headless --script`, the way the command-line runners of test add-ons such as GUT and GdUnit4 run, once
  * or several times at once. Each call keeps its results in a folder of its own under the project's data folder: one
  * folder per run with the run's output and the files it wrote to the folder that `WASD_OUTPUT_DIR` names, and, for a
- * call with several runs, `summary.json`.
+ * call with several runs, `summary.json`. While the call runs, its folder also holds {@link RUNNING_MARKER}, which
+ * keeps other calls, also those of other Hosts, from deleting it.
  * @module @deepseek-ai/dsh-godot/src/script
  */
 import { randomBytes } from 'node:crypto'
@@ -58,6 +59,9 @@ export const OUTPUT_DIR_VARIABLE = 'WASD_OUTPUT_DIR'
 
 /** Name of a call's folder: the UTC time it began to the millisecond, then six random hexadecimal digits. */
 const CALL_FOLDER = /^\d{8}T\d{9}Z-[0-9a-f]{6}$/u
+
+/** File that a call's folder holds while the call runs: the id of the Host process that runs it. */
+export const RUNNING_MARKER = '.running'
 
 /** A script request that cannot run, with a message for the model. */
 export class GodotScriptError extends Error {
@@ -276,8 +280,9 @@ export function runFolderName(name: string): string {
 }
 
 /**
- * Create the folder of a new call under the project's data folder, and delete the oldest call folders there beyond
- * `kept`, the new one included.
+ * Create the folder of a new call under the project's data folder, marked as running until
+ * {@link finishCallFolder}, and delete the oldest call folders there beyond `kept`, the new one included, except those
+ * of calls that still run: folders whose {@link RUNNING_MARKER} names a process that exists.
  * @param projectDir - absolute project folder.
  * @param kept - call folders to keep, at least 1.
  * @param now - the time the call began, which names the folder.
@@ -289,12 +294,47 @@ export async function createCallFolder(projectDir: string, kept: number, now: Da
   const stamp = now.toISOString().replace(/[-:.]/gu, '')
   const dir = join(root, `${stamp}-${randomBytes(3).toString('hex')}`)
   await mkdir(dir, { recursive: true })
+  await writeFile(join(dir, RUNNING_MARKER), String(process.pid))
   const calls = (await readdir(root, { withFileTypes: true }))
     .filter(entry => entry.isDirectory() && CALL_FOLDER.test(entry.name))
     .map(entry => entry.name)
     .sort()
-  for (const stale of calls.slice(0, Math.max(0, calls.length - kept))) await rm(join(root, stale), { recursive: true, force: true })
+  for (const stale of calls.slice(0, Math.max(0, calls.length - kept))) {
+    if (!await callRunning(join(root, stale))) await rm(join(root, stale), { recursive: true, force: true })
+  }
   return dir
+}
+
+/**
+ * Mark a call's folder as finished, so that later calls may delete it.
+ * @param dir - the folder that {@link createCallFolder} created.
+ */
+export async function finishCallFolder(dir: string): Promise<void> {
+  await rm(join(dir, RUNNING_MARKER), { force: true })
+}
+
+/**
+ * Whether a call folder belongs to a call that still runs: its {@link RUNNING_MARKER} names a process that exists. A
+ * folder whose Host ended without finishing it counts as finished.
+ */
+async function callRunning(dir: string): Promise<boolean> {
+  let text: string
+  try {
+    text = await readFile(join(dir, RUNNING_MARKER), 'utf8')
+  } catch (error) {
+    // ENOENT: the call finished, or began before calls marked their folders.
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    throw error
+  }
+  const pid = Number(text.trim())
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+  } catch {
+    // ESRCH: no process has the id; EPERM: one of another user does, which no Host of this user is.
+    return false
+  }
+  return true
 }
 
 /**

@@ -16,7 +16,8 @@ import { webCheckHelperExecutable } from '../src/wasdengine-web-check-helper.ts'
 vi.mock('electron', () => ({}))
 
 const {
-  INSTRUMENTATION, READY_FRAMES, WEB_CHECK_ARGUMENT, WEB_CHECK_MARKER, measureWebBuild, runWebCheckMode, webCheckCommand, webCheckRequest,
+  ConsoleMessages, DEFAULT_RESULT_BYTES, INSTRUMENTATION, MAX_CONSOLE_CHARS, MAX_CONSOLE_LINES, READY_FRAMES, WEB_CHECK_ARGUMENT,
+  WEB_CHECK_MARKER, measureWebBuild, resultLine, runWebCheckMode, webCheckCommand, webCheckRequest,
 } = await import('../src/wasdengine-web-check.ts')
 
 const REQUEST: WebCheckLaunch = {
@@ -39,6 +40,83 @@ describe('webCheckRequest', () => {
       expect(() => webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify({ ...REQUEST, ...invalid })}`]))
         .toThrow('Web check: seconds, startTimeoutMs, deadlineMs, width, and height must be positive numbers')
     }
+  })
+
+  it('reads the bytes the result line may take, which must be a positive integer', () => {
+    expect(webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify({ ...REQUEST, resultBytes: 4096 })}`])).toEqual({ ...REQUEST, resultBytes: 4096 })
+    for (const resultBytes of [0, 1.5, '4096']) {
+      expect(() => webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify({ ...REQUEST, resultBytes })}`]))
+        .toThrow('Web check: resultBytes must be a positive integer')
+    }
+  })
+})
+
+describe('ConsoleMessages', () => {
+  it('keeps each distinct message once with how often it was printed, in order of first appearance', () => {
+    const messages = new ConsoleMessages()
+    messages.add('error', 'ERROR: lost')
+    messages.add('info', 'hello')
+    for (let index = 0; index < 5; index++) messages.add('error', 'ERROR: lost')
+    messages.add('warning', `WARNING: ${'w'.repeat(MAX_CONSOLE_CHARS * 2)}`)
+    messages.add('info', 'ERROR: lost')
+    expect(messages.lines()).toEqual([
+      { level: 'error', text: 'ERROR: lost', count: 6 },
+      { level: 'info', text: 'hello' },
+      { level: 'warning', text: `WARNING: ${'w'.repeat(MAX_CONSOLE_CHARS - 9)}` },
+      { level: 'info', text: 'ERROR: lost' },
+    ])
+  })
+
+  it('still keeps errors and warnings after the page printed as many other messages as it keeps', () => {
+    const messages = new ConsoleMessages()
+    for (let index = 0; index < MAX_CONSOLE_LINES + 10; index++) messages.add('info', `line ${String(index)}`)
+    messages.add('error', 'ERROR: late')
+    messages.add('info', 'line 0')
+    const lines = messages.lines()
+    expect(lines.filter(line => line.level === 'info')).toHaveLength(MAX_CONSOLE_LINES)
+    expect(lines.at(-1)).toEqual({ level: 'error', text: 'ERROR: late' })
+    expect(lines[0]).toEqual({ level: 'info', text: 'line 0', count: 2 })
+  })
+})
+
+describe('resultLine', () => {
+  const sample = (console: { level: 'debug' | 'info' | 'warning' | 'error'; text: string }[], longTasks: [number, number][] = [[10, 60]]) => ({
+    started: true, startMs: 1500, readyMs: 2000, longTasks, frameMs: [16.6, 16.8], drawCalls: [3, 4], programs: 2, console,
+    unresponsive: false,
+  })
+  const parse = (line: string): ReturnType<typeof sample> => JSON.parse(line.slice(WEB_CHECK_MARKER.length)) as ReturnType<typeof sample>
+
+  it('prints the whole sample when it fits', () => {
+    const whole = sample([{ level: 'info', text: 'hi' }])
+    expect(resultLine(whole, DEFAULT_RESULT_BYTES)).toBe(`${WEB_CHECK_MARKER}${JSON.stringify(whole)}\n`)
+  })
+
+  it('keeps the errors and warnings first, then other messages, in order of first appearance, within the bytes', () => {
+    const big = 'z'.repeat(1000)
+    const console = [
+      { level: 'info' as const, text: `first ${big}` },
+      { level: 'error' as const, text: `ERROR: one ${big}` },
+      { level: 'info' as const, text: `second ${big}` },
+      { level: 'warning' as const, text: `WARNING: two ${big}` },
+    ]
+    const base = Buffer.byteLength(resultLine(sample([]), DEFAULT_RESULT_BYTES))
+    // Room for three of the four messages.
+    const line = resultLine(sample(console), base + 3 * 1040)
+    expect(Buffer.byteLength(line)).toBeLessThanOrEqual(base + 3 * 1040)
+    expect(line.endsWith('\n')).toBe(true)
+    expect(parse(line).console.map(entry => entry.text.slice(0, 12))).toEqual([`first ${big}`, `ERROR: one ${big}`, `WARNING: two ${big}`].map(text => text.slice(0, 12)))
+    const tight = parse(resultLine(sample(console), base + 1040))
+    expect(tight.console.map(entry => entry.level)).toEqual(['error'])
+  })
+
+  it('keeps the longest tasks when even the measurements without the console are too long', () => {
+    // One task of 4 s among 5,000 short ones.
+    const tasks = Array.from({ length: 5000 }, (_unused, index): [number, number] => [index * 100, index === 2500 ? 4000 : 50 + index % 7])
+    const line = resultLine(sample([{ level: 'error', text: 'ERROR: x' }], tasks), 20_000)
+    expect(Buffer.byteLength(line)).toBeLessThanOrEqual(20_000)
+    const fitted = parse(line)
+    expect(fitted.longTasks).toContainEqual([250_000, 4000])
+    expect(fitted.longTasks.map(task => task[0])).toEqual([...fitted.longTasks.map(task => task[0])].sort((left, right) => left - right))
   })
 })
 
@@ -153,6 +231,7 @@ class StandInContents implements WebCheckContents {
   /** The gesture flag of each request, in order. */
   readonly gestures: (boolean | undefined)[] = []
   readonly navigations: ((details: Navigation) => void)[] = []
+  private readonly consoles: ((details: { level: 'debug' | 'info' | 'warning' | 'error'; message: string }) => void)[] = []
   open: Parameters<WebCheckContents['setWindowOpenHandler']>[0] | undefined
   private requests = 0
 
@@ -177,7 +256,13 @@ class StandInContents implements WebCheckContents {
 
   on(event: string, listener: (details: never, more: never) => void): this {
     if (event === 'will-frame-navigate' || event === 'will-redirect') this.navigations.push(listener as (details: Navigation) => void)
+    if (event === 'console-message') this.consoles.push(listener as (details: { level: 'debug' | 'info' | 'warning' | 'error'; message: string }) => void)
     return this
+  }
+
+  /** Print a console message, as the page would. */
+  log(level: 'debug' | 'info' | 'warning' | 'error', message: string): void {
+    for (const listener of this.consoles) listener({ level, message })
   }
 }
 
@@ -359,6 +444,28 @@ describe('runWebCheckMode', () => {
     }
     return { app, process: parent, exits, stdout, stderr, crash: (error) => { onCrash(error) } }
   }
+
+  it('prints a result line within the bytes the request names, keeping the page\'s errors', async () => {
+    const mode = host(Promise.resolve())
+    let windows: StandInWindow[] = []
+    // The page logs much before its error, while the check waits for it to draw.
+    const page = readyPage({
+      after: (request) => {
+        if (request !== 1) return
+        const contents = (windows[0] as StandInWindow).webContents
+        for (let index = 0; index < 300; index++) contents.log('info', `spam ${String(index)} ${'s'.repeat(200)}`)
+        contents.log('error', 'ERROR: the one that matters')
+      },
+    })
+    const stand = standIn(page)
+    windows = stand.windows
+    runWebCheckMode(mode.app, stand.Window, { ...REQUEST, seconds: 1, resultBytes: 8192 }, mode.process)
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mode.exits).toEqual([0])
+    expect(Buffer.byteLength(mode.stdout[0] ?? '')).toBeLessThanOrEqual(8192)
+    const result = JSON.parse(mode.stdout[0]?.slice(WEB_CHECK_MARKER.length) ?? '') as { console: { text: string }[] }
+    expect(result.console.map(line => line.text)).toContain('ERROR: the one that matters')
+  })
 
   it('prints the measurements, deletes its profile, and exits with 0', async () => {
     const mode = host(Promise.resolve())

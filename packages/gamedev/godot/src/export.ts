@@ -28,12 +28,20 @@
  * Godot reads export presets only from the project's `export_presets.cfg`, so a preset is written there for the export
  * alone: the file's original bytes are restored afterwards, or the file is removed when the project had none, and the
  * project's own presets never change.
+ *
+ * Before an export changes `export_presets.cfg` or `project.godot`, it writes a restore record into the plugin's
+ * `export-restore` folder: the files' earlier content and what the export wrote. An export that ends restores the files
+ * and deletes its record; when the app quits during an export, the next start of the plugin, and the next export of
+ * the project, replay the record ({@link replayExportRestore}).
  * @module @deepseek-ai/dsh-godot/src/export
  */
+import { Buffer } from 'node:buffer'
+import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
-import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
+import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import { z } from 'zod'
 import { turnOffBlenderImport } from './blender-import.ts'
 import { runGodotCommand } from './command.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
@@ -118,10 +126,15 @@ const SERVER_PRESET_FIELDS = [
   ...FILTER_FIELDS,
 ] as const
 
+/** Folder, in the plugin's data folder, that holds the restore records of the exports that change project files. */
+export const EXPORT_RESTORE_FOLDER = 'export-restore'
+
 /** Parameters of one export process. */
 export interface ExportOptions {
   /** Host subprocess service. */
   readonly subprocess: SubprocessRuntime
+  /** Absolute folder of the restore records, {@link EXPORT_RESTORE_FOLDER} in the plugin's data folder. */
+  readonly restoreDir: string
   /** Runtime to launch; its library must be an editor build. */
   readonly runtime: ResolvedGodotRuntime
   /** Absolute folder holding `project.godot`. */
@@ -206,6 +219,28 @@ export function customBootSplash(projectText: string): boolean {
 function withPreset(
   original: string | undefined, name: string, platform: string, fields: readonly string[], options: readonly string[],
 ): string {
+  const { prefix, blocks } = presetBlocks(original, name)
+  const index = blocks.length
+  blocks.push([
+    `[preset.${index}]`,
+    '',
+    `name=${quote(name)}`,
+    `platform=${quote(platform)}`,
+    ...fields,
+    '',
+    `[preset.${index}.options]`,
+    '',
+    ...options,
+  ].join('\n'))
+  return `${prefix === '' ? '' : `${prefix}\n\n`}${blocks.join('\n\n')}\n`
+}
+
+/**
+ * Split an `export_presets.cfg` text into the lines before its presets and its presets other than `name`, renumbered
+ * from 0 as Godot reads them.
+ * @returns the lines before the presets, the kept presets' text blocks, and whether a preset named `name` was left out.
+ */
+function presetBlocks(original: string | undefined, name: string): { prefix: string; blocks: string[]; removed: boolean } {
   const presets = new Map<number, PresetSections>()
   const other: string[] = []
   let current: string[] = other
@@ -226,29 +261,27 @@ function withPreset(
       current = (presets.get(index) as PresetSections).options as string[]
     }
   }
-  const kept = [...presets.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([, sections]) => sections)
-    .filter(sections => !sections.preset.some(line => line.trim() === `name=${quote(name)}`))
+  const all = [...presets.entries()].sort(([left], [right]) => left - right).map(([, sections]) => sections)
+  const kept = all.filter(sections => !sections.preset.some(line => line.trim() === `name=${quote(name)}`))
   const blocks = kept.map((sections, index) => [
     `[preset.${index}]`,
     ...sections.preset,
     ...sections.options === undefined ? [] : [`[preset.${index}.options]`, ...sections.options],
   ].join('\n').trimEnd())
-  const index = kept.length
-  blocks.push([
-    `[preset.${index}]`,
-    '',
-    `name=${quote(name)}`,
-    `platform=${quote(platform)}`,
-    ...fields,
-    '',
-    `[preset.${index}.options]`,
-    '',
-    ...options,
-  ].join('\n'))
-  const prefix = other.join('\n').trim()
-  return `${prefix === '' ? '' : `${prefix}\n\n`}${blocks.join('\n\n')}\n`
+  return { prefix: other.join('\n').trim(), blocks, removed: kept.length < all.length }
+}
+
+/**
+ * Remove the presets named `name` from an `export_presets.cfg` text, renumbering the others.
+ * @param text - the file's text.
+ * @param name - the preset's name.
+ * @returns the new text, which is empty when nothing else remains, or `text` itself when it has no such preset.
+ */
+export function withoutPreset(text: string, name: string): string {
+  const { prefix, blocks, removed } = presetBlocks(text, name)
+  if (!removed) return text
+  const body = [prefix, ...blocks].filter(part => part !== '').join('\n\n')
+  return body === '' ? '' : `${body}\n`
 }
 
 /**
@@ -451,6 +484,120 @@ async function readOptional(path: string): Promise<Buffer | undefined> {
   }
 }
 
+const TextureValue = z.string().nullable()
+
+/** A restore record as the file holds it. */
+const ExportRestoreRecord = z.strictObject({
+  format: z.literal(1),
+  projectDir: z.string().min(1),
+  /** The preset the export added to `export_presets.cfg`. */
+  preset: z.string().min(1),
+  presets: z.strictObject({
+    /** The file's bytes before the export, in base64, or null when the project had none. */
+    original: z.string().nullable(),
+    /** The text the export wrote. */
+    written: z.string(),
+  }),
+  /** For a desktop export: `project.godot` before and during the export, and the import settings it changed. */
+  project: z.strictObject({
+    original: z.string(),
+    written: z.string(),
+    before: z.strictObject({ s3tc_bptc: TextureValue.optional(), etc2_astc: TextureValue.optional() }),
+  }).optional(),
+})
+
+type ExportRestoreRecord = z.infer<typeof ExportRestoreRecord>
+
+/** The path of a project's restore record: one file per project, named by a digest of its absolute folder. */
+function restoreRecordPath(restoreDir: string, projectDir: string): string {
+  return join(restoreDir, `${createHash('sha256').update(resolve(projectDir)).digest('hex').slice(0, 32)}.json`)
+}
+
+/** Write a project's restore record before the export changes the project's files. */
+async function writeRestoreRecord(restoreDir: string, record: ExportRestoreRecord): Promise<void> {
+  await writeFileAtomic(restoreRecordPath(restoreDir, record.projectDir), `${JSON.stringify(record)}\n`, { mode: 0o600, dirMode: 0o700 })
+}
+
+/** Read a restore record; undefined when there is none or it is not one. */
+async function readRestoreRecord(path: string): Promise<ExportRestoreRecord | undefined> {
+  const bytes = await readOptional(path)
+  if (bytes === undefined) return undefined
+  let value: unknown
+  try {
+    value = JSON.parse(bytes.toString('utf8'))
+  } catch {
+    // SyntaxError: the plugin writes records atomically, so one that is not JSON was changed by hand and restores nothing.
+    return undefined
+  }
+  const parsed = ExportRestoreRecord.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
+
+/**
+ * Return the files of an export that ended without restoring them: `export_presets.cfg` gets its earlier bytes back
+ * while it holds what the export wrote, and otherwise loses only the export's preset, so changes made since stay; a
+ * desktop export's import settings in `project.godot` return to their earlier values.
+ */
+async function replayRecord(record: ExportRestoreRecord): Promise<void> {
+  const presetsPath = join(record.projectDir, PRESETS_FILE)
+  const presets = (await readOptional(presetsPath))?.toString('utf8')
+  if (presets !== undefined) {
+    const { original, written } = record.presets
+    if (presets === written) {
+      if (original === null) await rm(presetsPath, { force: true })
+      else await writeFile(presetsPath, Buffer.from(original, 'base64'))
+    } else {
+      const kept = withoutPreset(presets, record.preset)
+      if (kept === '' && original === null) await rm(presetsPath, { force: true })
+      else if (kept !== presets) await writeFile(presetsPath, kept)
+    }
+  }
+  if (record.project === undefined) return
+  const projectPath = join(record.projectDir, PROJECT_FILE)
+  const current = (await readOptional(projectPath))?.toString('utf8')
+  if (current === undefined) return
+  const before = Object.fromEntries(Object.entries(record.project.before).map(([format, value]) => [format, value ?? undefined]))
+  const restored = current === record.project.written ? record.project.original : withTextureImports(current, before)
+  if (restored !== current) await writeFile(projectPath, restored)
+}
+
+/**
+ * Return a project's files after an export of it that ended without restoring them, such as one during which the app
+ * quit: replay the restore record that the export left, then delete it. Run it where no export of the project runs.
+ * @param restoreDir - absolute folder of the restore records.
+ * @param projectDir - absolute project folder.
+ * @returns whether a record was replayed.
+ */
+export async function replayExportRestore(restoreDir: string, projectDir: string): Promise<boolean> {
+  const path = restoreRecordPath(restoreDir, projectDir)
+  const record = await readRestoreRecord(path)
+  if (record !== undefined) await replayRecord(record)
+  await rm(path, { force: true })
+  return record !== undefined
+}
+
+/**
+ * The projects that have a restore record: exports of them ended without restoring their files.
+ * @param restoreDir - absolute folder of the restore records.
+ * @returns absolute project folders.
+ */
+export async function pendingExportRestores(restoreDir: string): Promise<string[]> {
+  let names: string[]
+  try {
+    names = await readdir(restoreDir)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+  const projects: string[] = []
+  for (const name of names.filter(entry => /^[0-9a-f]{32}\.json$/u.test(entry)).sort()) {
+    const record = await readRestoreRecord(join(restoreDir, name))
+    if (record !== undefined) projects.push(record.projectDir)
+    else await rm(join(restoreDir, name), { force: true })
+  }
+  return projects
+}
+
 /** What one export run writes and checks. */
 interface ExportPlan {
   /** The export preset's name. */
@@ -481,6 +628,8 @@ interface ExportOutcome {
  * @throws {GodotExportError} when the process ends without writing the required files.
  */
 async function runExport(options: ExportOptions, plan: ExportPlan): Promise<ExportOutcome> {
+  // An export that the app quit during left the project's files changed.
+  await replayExportRestore(options.restoreDir, options.projectDir)
   // The export scans and imports the project like the import step.
   const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
   await mkdir(options.outputDir, { recursive: true })
@@ -489,7 +638,12 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
     await mkdir(options.outputDir, { recursive: true })
     const presetsPath = join(options.projectDir, PRESETS_FILE)
     const original = await readOptional(presetsPath)
-    await writeFile(presetsPath, plan.presets(original?.toString('utf8')))
+    const written = plan.presets(original?.toString('utf8'))
+    await writeRestoreRecord(options.restoreDir, {
+      format: 1, projectDir: options.projectDir, preset: plan.preset,
+      presets: { original: original?.toString('base64') ?? null, written },
+    })
+    await writeFile(presetsPath, written)
     let stdout: string
     let stderr: string
     let ended: string
@@ -507,6 +661,7 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
     } finally {
       if (original === undefined) await rm(presetsPath, { force: true })
       else await writeFile(presetsPath, original)
+      await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })
     }
     options.signal.throwIfAborted()
     const files: { path: string; bytes: number }[] = []
@@ -605,6 +760,8 @@ export function desktopFileName(name: string | undefined): string {
  * @throws {GodotExportError} when the process ends without writing the ZIP file.
  */
 export async function exportDesktop(options: DesktopExportOptions): Promise<GodotDesktopExport> {
+  // An export that the app quit during left the project's files changed.
+  await replayExportRestore(options.restoreDir, options.projectDir)
   const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
   const projectPath = join(options.projectDir, PROJECT_FILE)
   const name = parseProjectSettings(await readFile(projectPath, 'utf8')).name
@@ -623,13 +780,24 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
     let stdout: string
     let stderr: string
     let ended: string
-    await writeFile(presetsPath, withDesktopPreset(originalPresets?.toString('utf8'), options.platform, options.template, name ?? desktopFileName(name)))
+    const preset = DESKTOP_EXPORT_PRESETS[options.platform]
+    const writtenPresets = withDesktopPreset(originalPresets?.toString('utf8'), options.platform, options.template, name ?? desktopFileName(name))
+    await writeRestoreRecord(options.restoreDir, {
+      format: 1, projectDir: options.projectDir, preset,
+      presets: { original: originalPresets?.toString('base64') ?? null, written: writtenPresets },
+      ...exportText === projectText ? {} : {
+        project: {
+          original: projectText, written: exportText, before: Object.fromEntries(missing.map(format => [format, before[format] ?? null])),
+        },
+      },
+    })
+    await writeFile(presetsPath, writtenPresets)
     try {
       if (exportText !== projectText) await writeFile(projectPath, exportText)
       const outcome = await runGodotCommand({
         ...options,
         argv: launcherArgv(options.runtime, options.hostPid, [
-          '--headless', '--path', options.projectDir, '--export-release', DESKTOP_EXPORT_PRESETS[options.platform], join(options.outputDir, entry),
+          '--headless', '--path', options.projectDir, '--export-release', preset, join(options.outputDir, entry),
         ]),
         cwd: options.projectDir,
       })
@@ -646,6 +814,7 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
         const restored = current === exportText ? projectText : withTextureImports(current, earlier)
         if (restored !== current) await writeFile(projectPath, restored)
       }
+      await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })
     }
     options.signal.throwIfAborted()
     const files: { path: string; bytes: number }[] = []

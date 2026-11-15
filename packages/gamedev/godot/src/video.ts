@@ -7,7 +7,10 @@
  *
  * Each record of the frame stream is a u32 little-endian image length, u32 little-endian frame index, u32 little-endian
  * milliseconds into the video, u16 little-endian width, u16 little-endian height, then the bytes of a JPEG file. The
- * stream ends once the recording stopped and the window read every frame; frames never replace one another.
+ * stream ends once the recording stopped and the window read every frame; frames never replace one another. While the
+ * Host keeps {@link READ_PAUSE_BYTES} of frames that the window has not read, it stops reading the game's connection,
+ * so the game makes a recording by game frames wait and a real-time recording skip frames instead of the Host
+ * buffering them.
  * @module @deepseek-ai/dsh-godot/src/video
  */
 import { Buffer } from 'node:buffer'
@@ -31,8 +34,20 @@ export const RECORD_HEADER_BYTES = 16
 /** Real seconds after which the game ends a recording by game frames that has not reached its frames. */
 const FRAME_RECORDING_SECONDS = 3600
 
-/** Folder of a project that holds the videos saved without a path; a `.gdignore` file keeps Godot from importing them. */
+/**
+ * Folder of a project that holds the videos saved without a path; a `.gdignore` file keeps Godot from importing them,
+ * and a `.gitignore` file keeps them out of git.
+ */
 export const RECORDINGS_FOLDER = 'recordings'
+
+/** What the `.gitignore` file of a project's recordings folder holds: the videos and the uploads still being written. */
+export const RECORDINGS_GITIGNORE = '# Videos that WASD Engine recorded with godot_record.\n*.mp4\n.wasd-recording-*.part\n'
+
+/**
+ * Bytes of frames that the window has not read at which the Host stops reading the game's connection, or half of
+ * `bufferBytes` when that is less; it reads again once the window has read the frames down to half as many.
+ */
+export const READ_PAUSE_BYTES = 32 * 1024 * 1024
 
 const COMMON_HEADERS = { 'Cache-Control': 'no-store, no-transform', 'X-Content-Type-Options': 'nosniff' }
 
@@ -103,6 +118,11 @@ class Recording implements RecordingSink {
   private failure: Error | undefined
   private wake: (() => void) | undefined
   private readonly reading = Promise.withResolvers<void>()
+  private readonly pauseBytes: number
+  /** Releases the hold on the game's connection while the Host stops reading it. */
+  private release: (() => void) | undefined
+  /** Fails the recording when the window reads no frame for `windowTimeoutMs` while the Host stopped reading the game. */
+  private stall: NodeJS.Timeout | undefined
   /** Whether a window opened the frame stream. */
   streaming = false
   /** The uploaded video: its temporary file and size, once the upload completed. */
@@ -116,6 +136,8 @@ class Recording implements RecordingSink {
    * @param runId - the run that records.
    * @param folder - folder of the video's path, which also holds the upload until it moves there.
    * @param bufferBytes - bytes of frames kept for a window that reads them more slowly than the game captures them.
+   * @param windowTimeoutMs - longest time the window may read no frame while the Host stopped reading the game.
+   * @param hold - stops the Host reading the game's connection until the returned release is called.
    * @param stopped - called once when the recording fails, to end the steps that wait for it.
    */
   constructor(
@@ -124,8 +146,11 @@ class Recording implements RecordingSink {
     readonly runId: string,
     readonly folder: string,
     private readonly bufferBytes: number,
+    private readonly windowTimeoutMs: number,
+    private readonly hold: () => () => void,
     private readonly stopped: () => void,
   ) {
+    this.pauseBytes = Math.min(READ_PAUSE_BYTES, Math.floor(bufferBytes / 2))
     this.reading.promise.catch(() => {})
   }
 
@@ -136,6 +161,10 @@ class Recording implements RecordingSink {
     if (this.queued > this.bufferBytes) {
       this.fail(new GodotVideoError('The WASD Engine window encodes the video more slowly than the game records it, so the recording stopped; record fewer frames per second or a smaller max_width.'))
       return
+    }
+    if (this.release === undefined && this.queued >= this.pauseBytes) {
+      this.release = this.hold()
+      this.watchWindow()
     }
     this.notify()
   }
@@ -154,6 +183,7 @@ class Recording implements RecordingSink {
   /** The game captures no further frames; the stream ends after the queued ones. */
   end(): void {
     this.ended = true
+    this.readAgain()
     this.notify()
   }
 
@@ -161,9 +191,27 @@ class Recording implements RecordingSink {
   fail(error: Error): void {
     if (this.failure !== undefined) return
     this.failure = error
+    this.readAgain()
     this.reading.reject(error)
     this.notify()
     this.stopped()
+  }
+
+  /** Read the game's connection again, when the recording stopped the Host reading it. */
+  private readAgain(): void {
+    clearTimeout(this.stall)
+    this.stall = undefined
+    const release = this.release
+    this.release = undefined
+    release?.()
+  }
+
+  /** Fail the recording once the window has read no frame for `windowTimeoutMs`. */
+  private watchWindow(): void {
+    clearTimeout(this.stall)
+    this.stall = setTimeout(() => {
+      this.fail(new GodotVideoError(`The WASD Engine window read no frame of the recording for ${String(Math.round(this.windowTimeoutMs / 1000))} s, so the recording stopped.`))
+    }, this.windowTimeoutMs)
   }
 
   /** The error that stopped the recording, if one did. */
@@ -182,6 +230,10 @@ class Recording implements RecordingSink {
     if (this.failure !== undefined) return undefined
     const frame = this.queue.shift()
     if (frame !== undefined) this.queued -= frame.image.length
+    if (this.release !== undefined) {
+      if (this.queued <= this.pauseBytes / 2) this.readAgain()
+      else this.watchWindow()
+    }
     return frame
   }
 
@@ -271,7 +323,10 @@ export class GodotVideoRecorder {
     this.serial += 1
     const id = this.serial
     const local = new AbortController()
-    const recording = new Recording(id, context.sessionId, run.id, dirname(context.path), this.limits.bufferBytes, () => { local.abort() })
+    const recording = new Recording(
+      id, context.sessionId, run.id, dirname(context.path), this.limits.bufferBytes, this.limits.windowTimeoutMs,
+      () => run.holdReading(), () => { local.abort() },
+    )
     const key = recordingKey(context.sessionId, run.id, id)
     this.recordings.set(key, recording)
     const linked = AbortSignal.any([signal, local.signal])
@@ -319,7 +374,7 @@ export class GodotVideoRecorder {
       const upload = recording.upload
       if (upload === undefined) throw new GodotVideoError('The WASD Engine window answered without uploading the video.')
       await mkdir(dirname(context.path), { recursive: true })
-      await markRecordingsFolder(context.path)
+      if (dirname(context.path) === join(run.project.dir, RECORDINGS_FOLDER)) await markRecordingsFolder(dirname(context.path))
       await rename(upload.file, context.path)
       const video = result.data
       const inputError = await input
@@ -343,8 +398,9 @@ export class GodotVideoRecorder {
     } finally {
       inputStop.abort()
       local.abort()
-      if (started) await run.stopRecording(id, new AbortController().signal).catch(() => {})
+      // Ending the recording first reads the game's connection again, so the game's answer to the stop arrives.
       recording.fail(new GodotVideoError('The recording ended.'))
+      if (started) await run.stopRecording(id, new AbortController().signal).catch(() => {})
       hide()
       this.recordings.delete(key)
       if (recording.upload !== undefined) await rm(recording.upload.file, { force: true })
@@ -449,11 +505,17 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-/** Keep Godot from importing the videos of a project's recordings folder, so its editor and exports skip them. */
-async function markRecordingsFolder(path: string): Promise<void> {
-  if (basename(dirname(path)) !== RECORDINGS_FOLDER) return
-  const marker = join(dirname(path), '.gdignore')
-  if (!await exists(marker)) await writeFile(marker, '')
+/**
+ * Keep Godot from importing the videos of a project's recordings folder, so its editor and exports skip them, and keep
+ * them out of git; files that the folder already holds stay as they are.
+ * @param folder - the project's recordings folder.
+ */
+async function markRecordingsFolder(folder: string): Promise<void> {
+  const markers = [['.gdignore', ''], ['.gitignore', RECORDINGS_GITIGNORE]] as const
+  for (const [name, content] of markers) {
+    const marker = join(folder, name)
+    if (!await exists(marker)) await writeFile(marker, content)
+  }
 }
 
 function closeStream(stream: WriteStream): Promise<void> {

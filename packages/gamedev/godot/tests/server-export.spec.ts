@@ -28,7 +28,8 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
   const outputDir = join(project, '.wasdengine', 'server')
   const run = () => exportServer({
     subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project, outputDir,
-    template: '/templates/linux "release".x86_64', hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, ...overrides,
+    template: '/templates/linux "release".x86_64', hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal,
+    restoreDir: join(dir.root, 'data', 'export-restore'), ...overrides,
   })
   return { project, outputDir, run }
 }

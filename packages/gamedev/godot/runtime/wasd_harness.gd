@@ -19,9 +19,10 @@ extends SceneTree
 )
 ## WASD Engine game harness.
 ##
-## The Host runs a game as `--path <project> --script <this file> -- --wasd-port=<port> --wasd-token=<token> [--wasd-scene=<res path>]`.
-## As the main loop, the harness loads the project's main scene (or --wasd-scene), keeps running while the
-## game is paused, and serves one loopback TCP connection to the Host. Autoloads load as usual.
+## The Host runs a game as `--path <project> --script <this file> -- --wasd-port=<port> --wasd-token=<token>
+## [--wasd-scene=<res path>] [--wasd-fixed-fps=<fps>]`. As the main loop, the harness loads the project's main scene (or
+## --wasd-scene), keeps running while the game is paused, and serves one loopback TCP connection to the Host. Autoloads
+## load as usual. `--wasd-fixed-fps` repeats the game's own `--fixed-fps` option, which Godot keeps from the script.
 ##
 ## Wire format, both directions: a 4-byte little-endian length N, then N bytes holding a 1-byte kind and its payload.
 ## Kind 1 is a UTF-8 JSON object. Kind 2 (harness to Host) is a streamed frame: u32 sequence, u16 width, u16 height,
@@ -49,7 +50,14 @@ extends SceneTree
 ## after a delay that starts at 1 second and doubles each time, up to 8 seconds, until the next `stream` request.
 ##
 ## Messages to the Host wait in order and leave as fast as the connection takes them, so a slow reader never holds up
-## the game, and no frame is captured while earlier messages still wait. At exit the harness sends what is left.
+## the game, and no frame is captured while earlier messages still wait. At exit the harness sends what is left. No
+## message is larger than MAX_MESSAGE_BYTES, which the Host refuses by closing the connection: an answer that would be
+## larger becomes an error answer that says so, an image or audio answer too, a frame of the stream is dropped, a frame
+## of a recording counts as skipped, and logs go out in batches of at most LOG_BATCH_BYTES. A value that `eval` returns
+## keeps at most JSON_MAX_ITEMS items of each array or dictionary, packed arrays included, JSON_MAX_CHARS characters of
+## each string, and JSON_MAX_DEPTH levels, and about JSON_BUDGET characters in all; a marker that says how many items or
+## characters there were takes the place of the rest. A log entry keeps LOG_MAX_CHARS characters of its message and code
+## and LOG_MAX_FRAMES frames of its backtrace.
 ##
 ## `wait` and `step` frames count frames that the game ran after the request arrived; `wait` seconds count game
 ## time while the tree is not paused, which Engine.time_scale scales. Input sequences run one at a time in
@@ -76,23 +84,28 @@ extends SceneTree
 ## afterwards the measurement is off.
 ##
 ## With a positive `scriptSeconds`, the sample then continues for that many seconds of real time with the script
-## profilers of the `WASDEngineRuntime` singleton, which time every script function and the engine methods that each
-## one calls. Those seconds add nothing to the series, so the profilers' own cost stays out of the frame times. The
-## answer lists the profiled entries as `scripts`, [signature, calls, total microseconds, self microseconds], without
-## this harness's own functions: each function's entry is followed by the entries of the engine methods it called, whose
-## signatures name line 0. The functions with the most own time, their self time plus the time of those engine methods,
-## come first, in at most PERFORMANCE_MAX_SCRIPT_ENTRIES entries. The answer also carries the `scriptSeconds` and
-## `scriptFrames` of that window; `scriptProfiler` is false, and the window is skipped, when the runtime has no
-## profilers.
+## profilers of the `WASDEngineRuntime` singleton, which time every script function, and with `engineCalls` also the
+## engine methods that each one calls. Those seconds add nothing to the series, so the profilers' own cost stays out of
+## the frame times. The answer lists the profiled entries as `scripts`, [signature, calls, total microseconds, self
+## microseconds], without this harness's own functions: each function's entry is followed by the entries of the engine
+## methods it called, whose signatures name line 0. The functions with the most own time, their self time plus the time
+## of those engine methods, come first, in at most PERFORMANCE_MAX_SCRIPT_ENTRIES entries. The answer also carries the
+## `scriptSeconds` and `scriptFrames` of that window, and `engineCalls`, whether engine methods were timed;
+## `scriptProfiler` is false, and the window is skipped, when the runtime has no profilers. Engine methods are timed
+## only on a runtime whose singleton reports `is_native_call_profiling_thread_safe`: its profiler records them on the
+## main thread alone, while earlier runtimes record them on every thread without a lock, which can crash a game that
+## runs scripts on other threads.
 ##
 ## A `pace` request with a positive `maxFps` caps Engine.max_fps at that rate, or at the game's own cap when that is
 ## lower; `maxFps` 0 restores the game's own cap. The Host caps a game that nobody shows or uses and lifts the cap
-## before the requests it sends to a capped game. A boolean `present` says whether the game presents its frames to its
-## window. Without presenting, the root viewport leaves the screen and draws every frame into its texture, which
-## screenshots and streamed frames read, and the frame rate stays at most the screen's refresh rate, as presenting
-## paces it. A game that no view shows then never waits for the window server, which takes back the frames that a
-## window presents late while other processes present frames. The answer carries the resulting `maxFps` and
-## `presenting`.
+## before the requests it sends to a capped game. Godot applies no frame limit to a game with `--fixed-fps`, so while
+## the harness caps such a game, it sleeps at the start of each `_process` until the frame's share of the cap has
+## passed, as Godot's frame limiter does at the end of a frame; each frame still advances game time by one fixed step. A
+## boolean `present` says whether the game presents its frames to its window. Without presenting, the root viewport
+## leaves the screen and draws every frame into its texture, which screenshots and streamed frames read, and the frame
+## rate stays at most the screen's refresh rate, as presenting paces it. A game that no view shows then never waits for
+## the window server, which takes back the frames that a window presents late while other processes present frames. The
+## answer carries the resulting `maxFps` and `presenting`.
 ##
 ## An `audio` request captures the mix of the Master bus, as players hear it, for `seconds` of audio: an
 ## AudioEffectCapture at the end of the bus's effects takes the mix, whose Master volume the answer's `masterVolumes`
@@ -110,7 +123,22 @@ const KIND_RECORD := 4
 const KIND_AUDIO := 5
 const MAX_PENDING_LOGS := 4000
 const UNKNOWN_REFRESH_FPS := 60  # frame rate of a game that does not present, on a screen that reports no refresh rate
-const MAX_MESSAGE_BYTES := 64 * 1024 * 1024
+const MAX_MESSAGE_BYTES := 64 * 1024 * 1024  # largest message body, the kind byte included, that either side accepts
+const LOG_BATCH_BYTES := 8 * 1024 * 1024  # bytes of entries that one logs message carries at most
+# Characters of a log entry's message, and of its code, that it keeps with the marker of a longer one; the Host keeps as
+# many (MAX_LOG_MESSAGE_CHARS of src/run.ts), so the marker reaches it.
+const LOG_MAX_CHARS := 4000
+const LOG_MAX_FIELD_CHARS := 500  # characters of a log entry's function and file names, and of each backtrace frame's
+const LOG_MAX_FRAMES := 32  # backtrace frames a log entry keeps
+const JSON_MAX_CHARS := 16384  # characters of one string that an `eval` value keeps
+const JSON_MAX_ITEMS := 200  # items of one array or dictionary that an `eval` value keeps
+const JSON_MAX_DEPTH := 8  # levels of arrays and dictionaries that an `eval` value keeps
+const JSON_BUDGET := 1048576  # characters, about, that one `eval` value holds
+const JSON_ARRAY_TYPES := [
+	TYPE_ARRAY, TYPE_PACKED_BYTE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY,
+	TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY, TYPE_PACKED_VECTOR3_ARRAY,
+	TYPE_PACKED_COLOR_ARRAY, TYPE_PACKED_VECTOR4_ARRAY,
+]
 const USEC_PER_SECOND := 1000000.0
 const LOSSLESS_TEST_DELAY := 1.0  # seconds from a failed or slow PNG test, or a slow PNG frame, to the next test
 const LOSSLESS_TEST_MAX_DELAY := 8.0
@@ -144,6 +172,8 @@ const VIEW_MAX_NODES := 50000  # nodes a view visits to measure its subject
 const ISOLATE_LAYER := 20  # the render layer that an isolated view draws alone
 const RECORD_MAX_IN_FLIGHT := 6  # frames of a recording being copied or encoded at once
 const RECORD_MAX_OUTBOX := 48 * 1024 * 1024  # bytes waiting for the connection beyond which a real-time recording skips frames
+# Real seconds after a recording stopped capturing by which frames still being copied from the GPU count as skipped.
+const RECORD_FINISH_SECONDS := 10.0
 
 ## Where the root viewport's picture shows in an image of the game window: the picture fills `target` of an image of
 ## `size`, and black fills the rest. A zero `size` keeps the picture as it is. The main thread builds a layout when it
@@ -279,7 +309,7 @@ class HarnessLogger extends Logger:
 		return entries
 
 	func _log_message(message: String, error: bool) -> void:
-		_push({"level": "stderr" if error else "stdout", "message": message.trim_suffix("\n")})
+		_push({"level": "stderr" if error else "stdout", "message": bounded(message.trim_suffix("\n"), LOG_MAX_CHARS)})
 
 	func _log_error(function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, error_type: int, script_backtraces: Array[ScriptBacktrace]) -> void:
 		var level := "error"
@@ -292,20 +322,33 @@ class HarnessLogger extends Logger:
 				level = "shader_error"
 		var entry := {
 			"level": level,
-			"message": rationale if not rationale.is_empty() else code,
-			"function": function,
-			"file": file,
+			"message": bounded(rationale if not rationale.is_empty() else code, LOG_MAX_CHARS),
+			"function": bounded(function, LOG_MAX_FIELD_CHARS),
+			"file": bounded(file, LOG_MAX_FIELD_CHARS),
 			"line": line,
 		}
 		if not code.is_empty() and not rationale.is_empty():
-			entry["code"] = code
+			entry["code"] = bounded(code, LOG_MAX_CHARS)
 		var frames: Array[Dictionary] = []
 		for backtrace in script_backtraces:
 			for i in backtrace.get_frame_count():
-				frames.append({"function": backtrace.get_frame_function(i), "file": backtrace.get_frame_file(i), "line": backtrace.get_frame_line(i)})
+				if frames.size() >= LOG_MAX_FRAMES:
+					break
+				frames.append({
+					"function": bounded(backtrace.get_frame_function(i), LOG_MAX_FIELD_CHARS),
+					"file": bounded(backtrace.get_frame_file(i), LOG_MAX_FIELD_CHARS),
+					"line": backtrace.get_frame_line(i),
+				})
 		if not frames.is_empty():
 			entry["backtrace"] = frames
 		_push(entry)
+
+	## Returns `text`, or its start and a marker that names its length, in at most `limit` characters.
+	static func bounded(text: String, limit: int) -> String:
+		if text.length() <= limit:
+			return text
+		var marker := "… (%d characters)" % text.length()
+		return text.left(limit - marker.length()) + marker
 
 	func _push(entry: Dictionary) -> void:
 		entry["time_ms"] = Time.get_ticks_msec()
@@ -441,10 +484,15 @@ var _scene_override := ""
 var _rx := PackedByteArray()
 
 var _runtime: Object = null  # the WASDEngineRuntime singleton, when the runtime has it
+# Whether the runtime's profiler may time engine methods while scripts run on other threads.
+var _engine_calls_safe := false
 var _audio: AudioCapture = null  # the running audio capture
 
 var _stream_fps := 0.0
 var _own_max_fps := -1  # the game's own Engine.max_fps while the harness caps the frame rate, -1 while it does not
+var _fixed_fps := 0  # the game's --fixed-fps, which --wasd-fixed-fps repeats; 0 for none
+# Tick microseconds at which the next frame of a capped game with a fixed frame rate may start; 0 while uncapped.
+var _frame_due := 0
 var _pace_cap := 0  # the Host's frame rate cap, 0 for none
 var _presenting := true  # whether the root viewport presents its frames to the window
 var _present_cap := 0  # the screen's refresh rate while the game does not present, 0 while it does
@@ -490,9 +538,9 @@ var _last_mouse_mode := -1
 var _last_scene := ""
 # The running performance sample, or empty: {id, started, end, deadline (real seconds), frames, droppedFrames,
 # pausedFrames, physicsSteps, streamedFrames, series: {name: values}, monitorsStart, marks, phase, scriptSeconds,
-# scriptStart, scriptEnd, scriptFrames}, and, once the frame window ended, {framesEnded, monitorsEnd, custom}. `marks`
-# holds the tick microseconds at which the phases of the current frame began, 0 until they do, and its physics
-# microseconds. `phase` is "frames" during the frame window and "scripts" during the script window.
+# scriptStart, scriptEnd, scriptFrames, engineCalls}, and, once the frame window ended, {framesEnded, monitorsEnd,
+# custom}. `marks` holds the tick microseconds at which the phases of the current frame began, 0 until they do, and its
+# physics microseconds. `phase` is "frames" during the frame window and "scripts" during the script window.
 var _sample := {}
 
 
@@ -505,8 +553,12 @@ func _init() -> void:
 			_token = arg.trim_prefix("--wasd-token=")
 		elif arg.begins_with("--wasd-scene="):
 			_scene_override = arg.trim_prefix("--wasd-scene=")
+		elif arg.begins_with("--wasd-fixed-fps="):
+			_fixed_fps = maxi(0, arg.trim_prefix("--wasd-fixed-fps=").to_int())
 	if Engine.has_singleton(RUNTIME_SINGLETON):
 		_runtime = Engine.get_singleton(RUNTIME_SINGLETON)
+		_engine_calls_safe = (_runtime.has_method(&"is_native_call_profiling_thread_safe")
+				and _runtime.call(&"is_native_call_profiling_thread_safe") == true)
 	if _port > 0:
 		_peer.connect_to_host("127.0.0.1", _port)
 
@@ -535,8 +587,10 @@ func _finalize() -> void:
 
 
 func _process(delta: float) -> bool:
+	var physics_end := Time.get_ticks_usec()
+	var start := _hold_frame_cap(physics_end)
 	if not _sample.is_empty():
-		_sample_frame(Time.get_ticks_usec())
+		_sample_frame(start, physics_end)
 	_frame += 1
 	if _poll_connection():
 		var now := Time.get_ticks_usec() / USEC_PER_SECOND
@@ -738,6 +792,22 @@ func _leave_screen() -> void:
 	var viewport := root.get_viewport_rid()
 	RenderingServer.viewport_attach_to_screen(viewport, Rect2(), DisplayServer.INVALID_WINDOW_ID)
 	RenderingServer.viewport_set_update_mode(viewport, RenderingServer.VIEWPORT_UPDATE_ALWAYS)
+
+
+## Holds a capped game that has a fixed frame rate, which Godot does not limit, to Engine.max_fps: waits until the
+## frame's share of the cap has passed since the previous frame's start. Like Godot's frame limiter, the next start is
+## due one share later, but never more than one share before or after now, so a slow frame neither delays the following
+## ones nor lets them hurry. Returns the tick microseconds after the wait.
+func _hold_frame_cap(now_usec: int) -> int:
+	if _fixed_fps <= 0 or _own_max_fps < 0 or Engine.max_fps <= 0:
+		_frame_due = 0
+		return now_usec
+	var share := int(USEC_PER_SECOND / Engine.max_fps)
+	if _frame_due > now_usec:
+		OS.delay_usec(_frame_due - now_usec)
+		now_usec = Time.get_ticks_usec()
+	_frame_due = clampi((_frame_due if _frame_due > 0 else now_usec) + share, now_usec - share, now_usec + share)
+	return now_usec
 
 
 ## Caps Engine.max_fps at the lowest of the Host's cap, the screen's refresh rate while the game does not present, and
@@ -1144,12 +1214,17 @@ func _screenshot(id, message: Dictionary) -> void:
 	var format := str(message.get("format", "png"))
 	var window := _window_size()
 	facts.merge({"format": "jpeg" if format == "jpeg" else "png", "width": image.get_width(), "height": image.get_height(), "windowWidth": window.x, "windowHeight": window.y, "frame": _frame, "paused": paused})
+	var quality := clampf(float(message.get("quality", 0.85)), 0.1, 1.0)
+	_answer_image(id, facts, image.save_jpg_to_buffer(quality) if format == "jpeg" else image.save_png_to_buffer())
+
+
+## Answers request `id` with `facts`, then sends the image bytes; an image too large for a message is an error answer.
+func _answer_image(id, facts: Dictionary, bytes: PackedByteArray) -> void:
+	if not _fits(bytes.size() + 4):
+		var image := "the %dx%d image" % [int(facts["width"]), int(facts["height"])]
+		_reply_error(id, _too_large(image, bytes.size()) + "; ask for a smaller image or JPEG")
+		return
 	_reply(id, facts)
-	_send_image(id, image.save_jpg_to_buffer(clampf(float(message.get("quality", 0.85)), 0.1, 1.0)) if format == "jpeg" else image.save_png_to_buffer())
-
-
-## Sends the image bytes that answer request `id`.
-func _send_image(id, bytes: PackedByteArray) -> void:
 	var header := PackedByteArray()
 	header.resize(4)
 	header.encode_u32(0, int(id) if id != null else 0)
@@ -1187,7 +1262,9 @@ func _stream_frame(now: float) -> void:
 ## frame `frameMs` of video, never skipping one; it captures no further frame after `frames` frames when that is
 ## positive, or after `seconds` of real time. Frames go out as kind 4: u32 recording id, u32 frame index, u32
 ## milliseconds into the video, u16 width, u16 height, then the JPEG file. `stop` captures no further frames, or with
-## `wait` lets the recording reach its end, and answers once the captured frames went out.
+## `wait` lets the recording reach its end, and answers once the captured frames went out; a frame whose copy from the
+## GPU has not arrived RECORD_FINISH_SECONDS after the recording stopped capturing counts as skipped, so a recording
+## ends even while the GPU delivers no copies, and the next one can start.
 func _record(id, message: Dictionary, now: float) -> void:
 	var recording := int(message.get("recording", 0))
 	match str(message.get("action", "")):
@@ -1230,6 +1307,8 @@ func _advance_recording(now: float) -> void:
 	if _recording.is_empty():
 		return
 	var frames: Array = _recording["frames"]
+	if now >= float(_recording["until"]) + RECORD_FINISH_SECONDS:
+		_skip_record_readbacks(frames)
 	_finish_record_frames(frames)
 	var step: int = _recording["step"]
 	if now < float(_recording["until"]) and _record_due(now, step):
@@ -1260,6 +1339,15 @@ func _advance_recording(now: float) -> void:
 			_reply(recording["stop"], answer)
 		else:
 			_ended_recording = answer
+
+
+## Drops the frames whose copies from the GPU have not arrived, counting them as skipped.
+func _skip_record_readbacks(frames: Array) -> void:
+	for index in range(frames.size() - 1, -1, -1):
+		var frame := frames[index] as RecordFrame
+		if frame.readback != null and frame.readback.take()[0] == FrameReadback.PENDING:
+			frames.remove_at(index)
+			_recording["skipped"] += 1
 
 
 func _record_due(now: float, step: int) -> bool:
@@ -1339,7 +1427,9 @@ func _finish_record_frames(frames: Array) -> void:
 		payload.encode_u16(12, head.encoding.size.x)
 		payload.encode_u16(14, head.encoding.size.y)
 		payload.append_array(head.encoding.bytes)
-		_send(KIND_RECORD, payload)
+		if not _send(KIND_RECORD, payload):
+			_recording["skipped"] += 1
+			continue
 		_recording["sent"] += 1
 		_recording["size"] = head.encoding.size
 
@@ -1482,7 +1572,7 @@ func _eval(id, message: Dictionary, now: float) -> void:
 	if expression.has_execute_failed():
 		_reply_error(id, expression.get_error_text())
 		return
-	_reply(id, {"value": _to_json(value, 0), "valueType": type_string(typeof(value))})
+	_reply(id, {"value": _json_value(value), "valueType": type_string(typeof(value))})
 
 
 ## Adds the engine singletons, such as Input, OS, and ResourceLoader, and the project's autoloads to an Expression's
@@ -1534,7 +1624,7 @@ func _run_code(id, code: String, base: Object, deadline: float) -> void:
 	if not errors.is_empty():
 		_reply_error(id, "the code stopped at an error:\n%s" % _code_errors(errors, compiled[1]))
 		return
-	_reply(id, {"value": _to_json(value, 0), "valueType": type_string(typeof(value))})
+	_reply(id, {"value": _json_value(value), "valueType": type_string(typeof(value))})
 
 
 ## Compiles `code` as `run`'s body under `path`: first as one expression whose value `run` returns, then as statements.
@@ -1676,6 +1766,9 @@ func _finish_audio(_now: float, timed_out: bool, cancelled: bool) -> void:
 		if entry["starts"] > 0:
 			played.append(entry)
 	played.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["firstAt"] < b["firstAt"])
+	if not _fits(capture.data.size() + 4):
+		_reply_error(capture.id, _too_large("the captured audio", capture.data.size()) + "; capture fewer seconds")
+		return
 	_reply(capture.id, {
 		"sampleRate": capture.rate,
 		"channels": 2,
@@ -1855,8 +1948,8 @@ func _advance_views() -> void:
 			image.convert(Image.FORMAT_RGB8)
 		var facts: Dictionary = view["facts"]
 		facts.merge({"format": view["format"], "width": image.get_width(), "height": image.get_height(), "frame": _frame, "paused": paused})
-		_reply(view["id"], facts)
-		_send_image(view["id"], image.save_jpg_to_buffer(view["quality"]) if view["format"] == "jpeg" else image.save_png_to_buffer())
+		var bytes := image.save_jpg_to_buffer(view["quality"]) if view["format"] == "jpeg" else image.save_png_to_buffer()
+		_answer_image(view["id"], facts, bytes)
 	_views = remaining
 
 
@@ -2085,6 +2178,7 @@ func _start_sample(id, message: Dictionary, now: float) -> void:
 		"marks": {"process": 0, "physicsFirst": 0, "physicsUsec": 0, "nodes": 0, "draw": 0, "drawn": 0, "paused": paused},
 		"phase": "frames", "scriptSeconds": clampf(float(message.get("scriptSeconds", 0.0)), 0.0, 60.0),
 		"scriptStart": 0.0, "scriptEnd": 0.0, "scriptFrames": 0,
+		"engineCalls": message.get("engineCalls", false) == true and _engine_calls_safe,
 	}
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(), true)
 	physics_frame.connect(_on_sample_physics_frame)
@@ -2094,8 +2188,10 @@ func _start_sample(id, message: Dictionary, now: float) -> void:
 
 
 ## Records the frame that ended at `now_usec`, the start of this `_process`, and starts the marks of the next one.
-## A frame's physics steps run before its `_process`, so their time is known when the frame starts.
-func _sample_frame(now_usec: int) -> void:
+## A frame's physics steps run before its `_process`, so their time, until `physics_end_usec`, is known when the
+## frame starts. The wait for the frame cap of a game with a fixed frame rate, from `physics_end_usec` to `now_usec`,
+## counts in the frame that ended, where Godot's own frame limiter waits.
+func _sample_frame(now_usec: int, physics_end_usec: int) -> void:
 	if _sample["phase"] == "scripts":
 		_sample["scriptFrames"] += 1
 		return
@@ -2124,7 +2220,7 @@ func _sample_frame(now_usec: int) -> void:
 			series["primitives"].append(int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME)))
 			series["drawCalls"].append(int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
 	var physics_first: int = marks["physicsFirst"]
-	marks["physicsUsec"] = now_usec - physics_first if physics_first > 0 else 0
+	marks["physicsUsec"] = physics_end_usec - physics_first if physics_first > 0 else 0
 	marks["physicsFirst"] = 0
 	marks["process"] = now_usec
 	marks["nodes"] = 0
@@ -2165,7 +2261,7 @@ func _advance_sample(now: float) -> void:
 			_sample["phase"] = "scripts"
 			_sample["scriptStart"] = now
 			_sample["scriptEnd"] = now + float(_sample["scriptSeconds"])
-			_runtime.call(&"start_script_profiling", true)
+			_runtime.call(&"start_script_profiling", _sample["engineCalls"])
 		else:
 			_finish_sample(now, false, false)
 	elif _sample["phase"] == "scripts" and now >= float(_sample["scriptEnd"]):
@@ -2212,6 +2308,7 @@ func _finish_sample(now: float, timed_out: bool, cancelled: bool) -> void:
 		"scripts": scripts,
 		"scriptSeconds": now - float(sample["scriptStart"]) if sample["phase"] == "scripts" else 0.0,
 		"scriptFrames": sample["scriptFrames"],
+		"engineCalls": sample["engineCalls"] and sample["phase"] == "scripts",
 		"timedOut": timed_out,
 		"cancelled": cancelled,
 	})
@@ -2335,38 +2432,69 @@ func _performance_context() -> Dictionary:
 	}
 
 
-func _to_json(value, depth: int):
-	if depth > 8:
-		return str(value)
-	match typeof(value):
-		TYPE_NIL, TYPE_BOOL, TYPE_INT, TYPE_STRING:
+## Converts a value that `eval` returns for its JSON answer, within the bounds that the header describes.
+func _json_value(value) -> Variant:
+	return _to_json(value, 0, {"left": JSON_BUDGET})
+
+
+## Converts `value`, `depth` levels into a value, for JSON. `budget.left` counts down the characters left for the whole
+## value: once none are left, every further item is a marker, and each array and dictionary says how many it holds.
+func _to_json(value, depth: int, budget: Dictionary):
+	if budget["left"] <= 0:
+		return "…"
+	var kind := typeof(value)
+	match kind:
+		TYPE_NIL, TYPE_BOOL, TYPE_INT:
+			budget["left"] -= 8
 			return value
 		TYPE_FLOAT:
+			budget["left"] -= 16
 			return value if is_finite(value) else str(value)
-		TYPE_STRING_NAME, TYPE_NODE_PATH:
-			return str(value)
-		TYPE_ARRAY, TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY, TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY:
-			var items := []
-			for item in value:
-				if items.size() >= 200:
-					items.append("…")
-					break
-				items.append(_to_json(item, depth + 1))
-			return items
+		TYPE_STRING, TYPE_STRING_NAME, TYPE_NODE_PATH:
+			return _json_string(str(value), budget)
 		TYPE_DICTIONARY:
+			var size: int = value.size()
+			if depth >= JSON_MAX_DEPTH:
+				return "… (a Dictionary of %d entries)" % size
 			var result := {}
 			for key in value:
-				if result.size() >= 200:
+				if result.size() >= JSON_MAX_ITEMS or budget["left"] <= 0:
 					break
-				result[str(key)] = _to_json(value[key], depth + 1)
+				result[_json_string(str(key), budget)] = _to_json(value[key], depth + 1, budget)
+			if result.size() < size:
+				result["…"] = "%d entries in all" % size
 			return result
 		TYPE_OBJECT:
 			if value == null:
 				return null
+			budget["left"] -= 40
 			if value is Node:
-				return {"node": str(value.get_path()), "class": value.get_class()}
+				return {"node": _json_string(str(value.get_path()), budget), "class": value.get_class()}
 			return {"object": value.get_class(), "id": value.get_instance_id()}
-	return var_to_str(value)
+	if kind in JSON_ARRAY_TYPES:
+		var size: int = value.size()
+		if depth >= JSON_MAX_DEPTH:
+			return "… (%s of %d items)" % [type_string(kind), size]
+		var items := []
+		for index in mini(size, JSON_MAX_ITEMS):
+			if budget["left"] <= 0:
+				break
+			budget["left"] -= 2
+			items.append(_to_json(value[index], depth + 1, budget))
+		if items.size() < size:
+			items.append("… (%d items in all)" % size)
+		return items
+	# The other types, such as vectors, transforms, and colors, have a fixed size.
+	return _json_string(var_to_str(value), budget)
+
+
+## Returns `text`, or its first JSON_MAX_CHARS characters and a marker that names its length, and counts it in `budget`.
+func _json_string(text: String, budget: Dictionary) -> String:
+	var kept := text
+	if text.length() > JSON_MAX_CHARS:
+		kept = "%s… (%d characters)" % [text.left(JSON_MAX_CHARS), text.length()]
+	budget["left"] -= kept.length() + 2
+	return kept
 
 
 func _send_status_if_changed() -> void:
@@ -2391,12 +2519,28 @@ func _send_status_if_changed() -> void:
 	})
 
 
+## Sends the pending log entries, in messages of at most LOG_BATCH_BYTES of entries each.
 func _flush_logs() -> void:
 	if not _connected:
 		return
-	var entries := _logger.take()
-	if not entries.is_empty():
-		_send_json({"type": "logs", "entries": entries})
+	var batch := PackedStringArray()
+	var bytes := 0
+	for entry in _logger.take():
+		var json := JSON.stringify(entry)
+		var size := json.to_utf8_buffer().size() + 1
+		if not batch.is_empty() and bytes + size > LOG_BATCH_BYTES:
+			_send_logs(batch)
+			batch = PackedStringArray()
+			bytes = 0
+		batch.append(json)
+		bytes += size
+	if not batch.is_empty():
+		_send_logs(batch)
+
+
+## Sends one logs message of entries that JSON.stringify wrote.
+func _send_logs(entries: PackedStringArray) -> void:
+	_send(KIND_JSON, ('{"type":"logs","entries":[%s]}' % ",".join(entries)).to_utf8_buffer())
 
 
 func _reply(id, body: Dictionary) -> void:
@@ -2415,14 +2559,38 @@ func _reply_error(id, message: String) -> void:
 	_send_json({"type": "result", "id": id, "ok": false, "error": message})
 
 
+## Sends a JSON message. One larger than MAX_MESSAGE_BYTES, which the Host would refuse, is not sent: an answer becomes
+## an error answer that says how large it was, and other messages are dropped with a warning in the log.
 func _send_json(body: Dictionary) -> void:
-	_send(KIND_JSON, JSON.stringify(body).to_utf8_buffer())
+	var payload := JSON.stringify(body).to_utf8_buffer()
+	if _fits(payload.size()):
+		_send(KIND_JSON, payload)
+	elif body.get("type") == "result" and body.get("id") != null:
+		_send_json({"type": "result", "id": body["id"], "ok": false, "error": _too_large("the answer", payload.size())})
+	else:
+		var kind := str(body.get("type", ""))
+		push_warning("WASD Engine harness: dropped a %s message: %s" % [kind, _too_large("it", payload.size())])
 
 
-## Queues one message and sends as much as the connection takes now.
-func _send(kind: int, payload: PackedByteArray) -> void:
+## Whether a message with a payload of `bytes` fits within MAX_MESSAGE_BYTES, its kind byte included.
+func _fits(bytes: int) -> bool:
+	return bytes + 1 <= MAX_MESSAGE_BYTES
+
+
+## Says that `what` of `bytes` is larger than a message to the Host may be.
+func _too_large(what: String, bytes: int) -> String:
+	var limit := MAX_MESSAGE_BYTES - 1
+	return "%s takes %d bytes, more than the %d bytes that a message to WASD Engine may hold" % [what, bytes, limit]
+
+
+## Queues one message and sends as much as the connection takes now. Returns false, sending nothing, without a
+## connection and for a payload larger than MAX_MESSAGE_BYTES, which the Host would refuse.
+func _send(kind: int, payload: PackedByteArray) -> bool:
 	if not _connected:
-		return
+		return false
+	if not _fits(payload.size()):
+		push_warning("WASD Engine harness: dropped a message of kind %d: %s" % [kind, _too_large("it", payload.size())])
+		return false
 	var message := PackedByteArray()
 	message.resize(5)
 	message.encode_u32(0, payload.size() + 1)
@@ -2431,6 +2599,7 @@ func _send(kind: int, payload: PackedByteArray) -> void:
 	_outbox.append(message)
 	_outbox_bytes += message.size()
 	_flush_outbox()
+	return true
 
 
 ## Sends waiting messages, in order, as far as the connection takes them without waiting for it.

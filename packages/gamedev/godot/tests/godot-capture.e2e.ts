@@ -3,7 +3,8 @@
  * with lambdas, engine singletons, autoloads, `await`, and its compile and script errors, an expression with
  * singletons, a screenshot of a window region at full size, views of the game camera's picture at another size, of a
  * node from an angle, of a skeleton bone, of a node alone, and of a scene loaded alone whose script sets its material,
- * posed in an animation, and a recording whose frames a window reads and whose upload becomes the video file.
+ * posed in an animation, and a recording whose frames a window reads and whose upload becomes the video file, also one
+ * by game frames that a slow window reads, during which the Host stops reading the game and the game waits for it.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -14,8 +15,10 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { GodotRun } from '../src/run.ts'
 import type { GodotVideoEncodeEvent, GodotVideoEncodeResult } from '../src/types.ts'
+import { RECORDINGS_GITIGNORE } from '../src/video.ts'
 import { callTool, compose, text, type Composition } from './composition.ts'
 
 const GODOT_PLATFORMS: Partial<Record<NodeJS.Platform, { readonly name: string; readonly suffix: string }>> = {
@@ -74,6 +77,16 @@ const PROJECT = {
     'bones/0/position = Vector3(0, 1.1, 0)', 'bones/0/rotation = Quaternion(0, 0, 0, 1)', 'bones/0/scale = Vector3(1, 1, 1)', '',
     '[node name="Other" type="MeshInstance3D" parent="."]', 'transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5, 0.5, 0)', 'mesh = SubResource("box")', 'surface_material_override/0 = SubResource("blue")', '',
   ].join('\n'),
+}
+
+/** A 1920x1080 window of per-pixel value noise, whose JPEG frames are large. */
+const NOISE_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="NoiseTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'func _ready():', '\tvar noise := FastNoiseLite.new()', '\tnoise.noise_type = FastNoiseLite.TYPE_VALUE', '\tnoise.frequency = 1.0',
+    '\tvar rect := TextureRect.new()', '\trect.texture = ImageTexture.create_from_image(noise.get_image(1920, 1080))', '\tadd_child(rect)', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
@@ -258,6 +271,7 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
       expect(read.every((frame, index) => frame.index === index && frame.width === 640 && frame.height === 360)).toBe(true)
       expect(read.every((frame, index) => index === 0 || frame.timeMs > (read[index - 1] as { readonly timeMs: number }).timeMs)).toBe(true)
       expect(existsSync(join(path, '.gdignore'))).toBe(true)
+      expect(await readFile(join(path, '.gitignore'), 'utf8')).toBe(RECORDINGS_GITIGNORE)
       const saved = (recorded.value as { readonly path: string }).path
       expect(await readFile(saved, 'utf8')).toBe(`video of ${read.length} frames`)
       expect((await stat(saved)).size).toBe((recorded.value as { readonly bytes: number }).bytes)
@@ -292,4 +306,49 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
       stop()
     }
   }, 120_000)
+
+  it('stops reading a game that records by game frames while the window falls behind, and the game waits without losing a frame', async () => {
+    const dir = join(c.dir.root, 'work', 'noise')
+    await mkdir(dir, { recursive: true })
+    for (const [name, content] of Object.entries(NOISE_PROJECT)) await writeFile(join(dir, name), content)
+    const started = await callTool(c, 'godot_run', { project: 'noise', width: 1920, height: 1080, engine_args: ['--fixed-fps', '30'] })
+    expect(started.isError, text(started)).toBe(false)
+    const holds = vi.spyOn(GodotRun.prototype, 'holdReading')
+    const route = [...c.routes].find(candidate => candidate.path === '/api/godot.recording') as ConnectionFetchRoute
+    const upload = [...c.routes].find(candidate => candidate.path === '/api/godot.video') as ConnectionFetchRoute
+    const frames: Array<{ readonly index: number; readonly timeMs: number; readonly bytes: number }> = []
+    const stop = c.ctx.on('godot/record', async (request: GodotVideoEncodeEvent): Promise<GodotVideoEncodeResult> => {
+      const url = `http://127.0.0.1/api/godot.recording?session=${request.sessionId}&run=${request.runId}&recording=${request.recording}`
+      const reader = ((await route.fetch(new Request(url))).body as ReadableStream<Uint8Array>).getReader()
+      // A window that reads about 12 MB a second, far less than the game sends.
+      const chunks: Buffer[] = []
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(Buffer.from(value))
+        await new Promise(resolve => setTimeout(resolve, Math.ceil(value.byteLength / 12_000)))
+      }
+      const bytes = Buffer.concat(chunks)
+      for (let offset = 0; offset < bytes.length; offset += 16 + bytes.readUInt32LE(offset)) {
+        frames.push({ index: bytes.readUInt32LE(offset + 4), timeMs: bytes.readUInt32LE(offset + 8), bytes: bytes.readUInt32LE(offset) })
+      }
+      await upload.fetch(new Request(url.replace('godot.recording', 'godot.video'), { method: 'POST', body: new TextEncoder().encode('noise') }))
+      return { codec: 'H.264', frames: frames.length, seconds: frames.length / 30, width: 1920, height: 1080, bytes: 5 }
+    })
+    try {
+      const recorded = await callTool(c, 'godot_record', { seconds: 3, fps: 30, max_width: 1920, sheet_frames: 0, path: 'noise.mp4' })
+      expect(recorded.isError, text(recorded)).toBe(false)
+      expect((recorded.value as { readonly skipped: number }).skipped).toBe(0)
+      // The frames are large enough that the Host kept 32 MiB of them unread and stopped reading the game.
+      expect(frames.reduce((total, frame) => total + frame.bytes, 0)).toBeGreaterThan(64 * 1024 * 1024)
+      expect(holds).toHaveBeenCalled()
+      expect(frames.map(frame => frame.index)).toEqual(Array.from({ length: 90 }, (_unused, index) => index))
+      expect(frames.slice(0, 3).map(frame => frame.timeMs)).toEqual([0, 33, 67])
+      expect(text(await callTool(c, 'godot_eval', { expression: '1 + 1' }))).toBe('int: 2')
+    } finally {
+      stop()
+      holds.mockRestore()
+    }
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
 })

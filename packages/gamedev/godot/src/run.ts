@@ -18,6 +18,7 @@ import { assertNever } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { AudioReply } from './audio.ts'
 import { importFailure, type GodotImportOutcome, type ProjectImports } from './imports.ts'
+import { fixedFps } from './launch.ts'
 import { isErrorEntry, LogRing, type LogSequence } from './logs.ts'
 import { describeExit, formatSeconds, lastLines, parseEngineOutput, type EngineOutputLine } from './output.ts'
 import { PerformanceReply } from './performance.ts'
@@ -400,13 +401,15 @@ function sequenceNeeds(events: readonly GodotInputEvent[]): { readonly seconds: 
 }
 
 /**
- * Build the game's argv.
+ * Build the game's argv. A run with `--fixed-fps` also passes its rate to the harness as `--wasd-fixed-fps`, since Godot
+ * keeps the option from scripts, and the harness then applies the frame rate cap that Godot does not apply to it.
  * @param spec - run parameters.
  * @param port - loopback port of the run's server.
  * @param token - handshake token.
  * @returns the argv running the project with the harness as main loop.
  */
 export function gameArgv(spec: GodotRunSpec, port: number, token: string): string[] {
+  const fixed = fixedFps(spec.engineArgs)
   return launcherArgv(spec.runtime, spec.hostPid, [
     '--path', spec.project.dir,
     ...spec.windowless ? ['--embedded'] : [],
@@ -417,6 +420,7 @@ export function gameArgv(spec: GodotRunSpec, port: number, token: string): strin
     ...spec.engineArgs,
     '--', ...spec.args, `--wasd-port=${port}`, `--wasd-token=${token}`,
     ...spec.scene === undefined ? [] : [`--wasd-scene=${spec.scene}`],
+    ...fixed === undefined ? [] : [`--wasd-fixed-fps=${String(fixed)}`],
   ])
 }
 
@@ -496,6 +500,8 @@ export class GodotRun {
   /** Whether the harness presents the game's frames, as it does from its start. */
   private presenting = true
   private paceTimer: NodeJS.Timeout | undefined
+  /** Holders that stopped the Host reading the game's connection; see {@link GodotRun.holdReading}. */
+  private readonly readHolds = new Set<object>()
   private userInputInFlight = false
   private userQueue: GodotInputEvent[] = []
   private exitCode: number | null | undefined
@@ -701,6 +707,28 @@ export class GodotRun {
   }
 
   /**
+   * Stop reading the game's connection until the returned function is called, so that the game's messages wait in the
+   * connection, and the harness, once more than 48 MiB of its messages wait, makes a recording by game frames wait and
+   * a real-time recording skip frames. The Host reads again once every hold is released, and as the run stops. While a
+   * hold lasts, the game's silence does not fail the requests that wait for it; the requests' own limits still apply.
+   * @returns the release; later calls do nothing.
+   */
+  holdReading(): () => void {
+    const hold = {}
+    this.readHolds.add(hold)
+    if (this.readHolds.size === 1) this.connection?.pause()
+    return () => {
+      if (this.readHolds.delete(hold) && this.readHolds.size === 0) this.resumeReading()
+    }
+  }
+
+  /** Read the game's connection again; the game's silence counts from now. */
+  private resumeReading(): void {
+    this.lastActivity = Date.now()
+    this.connection?.resume()
+  }
+
+  /**
    * Capture the game window, or a region of it.
    * @param maxWidth - largest image width; wider windows and regions are scaled down.
    * @param signal - cancellation.
@@ -776,16 +804,18 @@ export class GodotRun {
 
   /**
    * Stop a recording: the game captures no further frames, or with `wait` lets the recording reach its `frames` or
-   * `seconds`, and answers once the captured frames reached the sink.
+   * `seconds`, and answers once the captured frames reached the sink. Only the game's silence bounds the wait for the
+   * answer, which follows the frames, so a sink that holds reading the connection ({@link GodotRun.holdReading}) delays
+   * it without failing it.
    * @param recording - id of the recording.
    * @param signal - cancellation.
-   * @param wait - let the recording reach its end, which only the game's silence bounds, instead of stopping it now.
+   * @param wait - let the recording reach its end instead of stopping it now.
    * @returns the frames sent and skipped, the seconds the recording ran, and the frame size.
    */
   async stopRecording(recording: number, signal: AbortSignal, wait = false): Promise<RecordStopReply> {
     try {
       const params = { action: 'stop', recording, ...wait ? { wait: true } : {} }
-      return RecordStopReply.parse((await this.send('record', params, { signal, bounded: !wait })).result)
+      return RecordStopReply.parse((await this.send('record', params, { signal, bounded: false })).result)
     } finally {
       this.recordingSinks.delete(recording)
     }
@@ -903,12 +933,15 @@ export class GodotRun {
    * time have passed since the game received it.
    * @param seconds - real seconds to sample frames.
    * @param scriptSeconds - real seconds to profile scripts after the frames; 0 profiles none.
+   * @param engineCalls - also time the engine methods each script function calls, where the runtime can do so safely;
+   *   the answer's `engineCalls` says whether it did.
    * @param signal - cancellation; the game also ends the sample.
    * @returns the per-frame series, monitors, scene census, script profile, and conditions that the game reported.
    */
-  async performance(seconds: number, scriptSeconds: number, signal: AbortSignal): Promise<PerformanceReply> {
+  async performance(seconds: number, scriptSeconds: number, engineCalls: boolean, signal: AbortSignal): Promise<PerformanceReply> {
     const timeoutMs = this.limitMs(seconds + scriptSeconds, 0)
-    return PerformanceReply.parse((await this.send('performance', { seconds, scriptSeconds, timeoutMs }, { signal, bounded: false })).result)
+    const params = { seconds, scriptSeconds, timeoutMs, ...engineCalls ? { engineCalls } : {} }
+    return PerformanceReply.parse((await this.send('performance', params, { signal, bounded: false })).result)
   }
 
   /**
@@ -1057,6 +1090,7 @@ export class GodotRun {
       return false
     }
     this.connection = socket
+    if (this.readHolds.size > 0) socket.pause()
     this.window = { width: hello.width, height: hello.height }
     this.renderer = `${hello.renderingDriver} / ${hello.renderingMethod}`
     this.godot = hello.godot
@@ -1323,18 +1357,24 @@ export class GodotRun {
     }
   }
 
-  /** Fail every waiting request once the harness has sent nothing for `requestTimeoutMs`. */
+  /**
+   * Fail every waiting request once the harness has sent nothing for `requestTimeoutMs`; while the Host holds reading
+   * the connection, it cannot tell, and checks again later.
+   */
   private armSilence(): void {
     if (this.silenceTimer !== undefined) return
+    const waitMs = this.readHolds.size > 0
+      ? this.spec.requestTimeoutMs
+      : Math.max(0, this.spec.requestTimeoutMs - (Date.now() - this.lastActivity))
     this.silenceTimer = setTimeout(() => {
       this.silenceTimer = undefined
       const silent = Date.now() - this.lastActivity
-      if (silent >= this.spec.requestTimeoutMs) {
+      if (silent >= this.spec.requestTimeoutMs && this.readHolds.size === 0) {
         this.rejectPending(new GodotRequestError(`The game stopped responding: it sent nothing for ${formatSeconds(silent)}.`))
         return
       }
       this.armSilence()
-    }, Math.max(0, this.spec.requestTimeoutMs - (Date.now() - this.lastActivity)))
+    }, waitMs)
   }
 
   private setStreaming(on: boolean): void {
@@ -1441,6 +1481,10 @@ export class GodotRun {
 
   private async shutdown(): Promise<void> {
     this.stopRequested = true
+    if (this.readHolds.size > 0) {
+      this.readHolds.clear()
+      this.resumeReading()
+    }
     const connection = this.connection
     if (connection !== undefined) {
       connection.write(encodeJsonMessage({ type: 'quit', id: 0, exitCode: 0 }))

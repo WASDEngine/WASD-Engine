@@ -391,14 +391,21 @@ export interface WebCheckRequest {
    * plugin's own deadline for the check, when it stops that process.
    */
   readonly deadlineMs: number
+  /**
+   * Most bytes of the result line, its marker and line break included, which the plugin keeps of the process's output;
+   * the mode leaves console messages out to stay within it. Default: 983,040 (960 KiB).
+   */
+  readonly resultBytes?: number
 }
 
-/** One console message of the checked page. */
+/** One distinct console message of the checked page. */
 export interface WebCheckConsoleLine {
   /** The console level, as Electron reports it. */
   readonly level: 'debug' | 'info' | 'warning' | 'error'
   /** The message text. */
   readonly text: string
+  /** How many times the page printed it at this level, when more than once. */
+  readonly count?: number
 }
 
 /** What a Web check mode measured in the page, as its result line carries it. */
@@ -420,7 +427,10 @@ export interface WebCheckSample {
   readonly drawCalls: readonly number[]
   /** WebGL programs the page linked. */
   readonly programs: number
-  /** The page's console messages, in order; Godot prints its errors and warnings there. */
+  /**
+   * The page's distinct console messages in order of first appearance; Godot prints its errors and warnings there.
+   * When not all of them fit the result, the errors and warnings are kept first.
+   */
   readonly console: readonly WebCheckConsoleLine[]
   /** Why the page's process ended during the check; absent when it kept running. */
   readonly crashed?: string

@@ -175,10 +175,16 @@ posix('observing the game', () => {
     expect(value(measured)).toMatchObject({ seconds: 0.5, frames: 0, windowless: false, sceneTree: { nodes: 1, classes: [{ name: 'Window', nodes: 1 }] } })
     // The game's own limit is the sample's seconds, twice with the script window, plus requestTimeoutMs.
     expect((await fakeRequests(c.project)).find(request => request.type === 'performance')).toMatchObject({ seconds: 0.5, scriptSeconds: 0.5, timeoutMs: 6000 })
+    // Engine methods are timed only when the call asks for them.
+    expect((await fakeRequests(c.project)).find(request => request.type === 'performance')).not.toHaveProperty('engineCalls')
     expect(text(measured)).toContain('Scripts: this Godot runtime has no script profiler;')
     const framesOnly = await callTool(c, 'godot_performance', { seconds: 0.5, scripts: false })
     expect(text(framesOnly)).not.toContain('Scripts:')
     expect((await fakeRequests(c.project)).filter(request => request.type === 'performance').at(-1)).toMatchObject({ scriptSeconds: 0, timeoutMs: 5500 })
+    await callTool(c, 'godot_performance', { seconds: 0.5, engine_calls: true })
+    expect((await fakeRequests(c.project)).filter(request => request.type === 'performance').at(-1)).toMatchObject({ scriptSeconds: 0.5, engineCalls: true })
+    expect(text(await callTool(c, 'godot_performance', { seconds: 0.5, scripts: false, engine_calls: true })))
+      .toContain('engine_calls times the engine methods of the profiled scripts, so it needs scripts.')
     expect(text(await callTool(c, 'godot_performance', { seconds: 30 }))).toContain('seconds must be from 0.25 to 20.')
     expect(text(await callTool(c, 'godot_performance', { seconds: 0.1 }))).toContain('seconds must be from 0.25 to 20.')
   })

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { WebCheckSample } from '../src/types.ts'
 import {
   checkWebBuild, GodotWebCheckError, parseWebCheckOutput, serveFolder, summarizeWebCheck, WEB_CHECK_ARGUMENT, WEB_CHECK_MARKER,
-  WEB_CHECK_MESSAGES, WEB_CHECK_UNAVAILABLE, webCheckMessages,
+  WEB_CHECK_MESSAGES, WEB_CHECK_OUTPUT_BYTES, WEB_CHECK_UNAVAILABLE, webCheckMessages,
 } from '../src/web-check.ts'
 import { scratch, subprocessFixture, type Scratch, type SubprocessFixture } from './helpers.ts'
 
@@ -93,6 +93,24 @@ describe('webCheckMessages', () => {
       { level: 'warning', text: 'WARNING: The Compatibility renderer does not support manually emitting particles.', count: 1 },
       { level: 'error', text: 'Uncaught TypeError: x is not a function', count: 1 },
     ])
+  })
+})
+
+describe('webCheckMessages with counts', () => {
+  it('adds how often the browser counted a message to the times it repeats', () => {
+    const output = `${WEB_CHECK_MARKER}${JSON.stringify({
+      ...HEALTHY,
+      console: [
+        { level: 'error', text: 'ERROR: Too many instances using shader instance variables.', count: 40 },
+        { level: 'info', text: 'loaded' },
+        { level: 'error', text: 'ERROR: Too many instances using shader instance variables.' },
+      ],
+    })}\n`
+    const sample = parseWebCheckOutput(output) as WebCheckSample
+    expect(sample.console[0]).toEqual({ level: 'error', text: 'ERROR: Too many instances using shader instance variables.', count: 40 })
+    expect(sample.console[1]).toEqual({ level: 'info', text: 'loaded' })
+    expect(webCheckMessages(sample.console)).toEqual([{ level: 'error', text: 'ERROR: Too many instances using shader instance variables.', count: 41 }])
+    expect(parseWebCheckOutput(output.replace('"count":40', '"count":0'))).toBeUndefined()
   })
 })
 
@@ -260,6 +278,33 @@ posix('checkWebBuild', () => {
   it('opens the served page in the browser and summarizes its result', async () => {
     const { check } = await setup({ result: HEALTHY })
     expect(await check()).toEqual({ ...summarizeWebCheck(HEALTHY, 7, 9000), seconds: 7 })
+  })
+
+  it('keeps a megabyte of the browser\'s output at least, and tells the browser how much the result line may take', async () => {
+    const dir = await scratch('web-check-output')
+    folders.push(dir)
+    const script = join(dir.root, 'browser.mjs')
+    // Two megabytes of other output, then a result of about 800 KB that names the request's resultBytes in an error.
+    await writeFile(script, `
+const argument = process.argv.find(arg => arg.startsWith(${JSON.stringify(`${WEB_CHECK_ARGUMENT}=`)}))
+const request = JSON.parse(argument.slice(${String(WEB_CHECK_ARGUMENT.length + 1)}))
+const filler = 'x'.repeat(1023) + '\\n'
+for (let index = 0; index < 2048; index++) process.stdout.write(filler)
+const console = Array.from({ length: 400 }, (_unused, index) => ({ level: 'info', text: 'log ' + index + ' ' + 'y'.repeat(2000) }))
+console.push({ level: 'error', text: 'ERROR: result bytes ' + request.resultBytes })
+const result = ${JSON.stringify(HEALTHY)}
+process.stdout.write(${JSON.stringify(WEB_CHECK_MARKER)} + JSON.stringify({ ...result, console }) + '\\n')
+`)
+    const host = await subprocessFixture()
+    hosts.push(host)
+    const outputDir = join(dir.root, 'web')
+    await mkdir(outputDir, { recursive: true })
+    await writeFile(join(outputDir, 'index.html'), '<canvas></canvas>')
+    const report = await checkWebBuild({
+      subprocess: host.subprocess, command: [process.execPath, script], outputDir, entry: 'index.html',
+      seconds: 7, startTimeoutMs: 9000, timeoutMs: 30_000, graceMs: 1000, outputBytes: 64 * 1024, signal,
+    })
+    expect(report.messages).toEqual([{ level: 'error', text: `ERROR: result bytes ${String(WEB_CHECK_OUTPUT_BYTES - 64 * 1024)}`, count: 1 }])
   })
 
   it('fails without a browser, and when the browser prints no result', async () => {

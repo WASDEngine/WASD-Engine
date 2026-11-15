@@ -4,7 +4,8 @@
  * The plugin serves the export folder on a loopback port and starts the browser that `webCheckCommand` names, the
  * Desktop app in its Web check mode, with `--wasd-web-check=` and a JSON {@link WebCheckRequest}. That process opens the
  * page in an offscreen window with its own GPU process, measures it, and prints one stdout line, {@link WEB_CHECK_MARKER}
- * and a JSON {@link WebCheckSample}, by the deadline that the request names, under the check's own. This module
+ * and a JSON {@link WebCheckSample}, by the deadline that the request names, under the check's own, and within the
+ * bytes of output that the check keeps, which the request names too. This module
  * validates that line and turns it into a {@link GodotWebCheck}: when the game started, its longest main-thread freeze,
  * its frame rate and draw calls, the errors and warnings it printed, whether it stopped answering, and findings that
  * explain the ones players notice and how to fix them.
@@ -40,6 +41,12 @@ export const WEB_CHECK_VIEWPORT = { width: 1280, height: 720 } as const
  * and exit before the check stops it; at most half the check's deadline.
  */
 export const WEB_CHECK_EXIT_MS = 10_000
+
+/** Bytes of the browser's output that a check keeps at least, more when `outputBytes` says so; the result line must fit. */
+export const WEB_CHECK_OUTPUT_BYTES = 1024 * 1024
+
+/** Bytes of the kept output that the result line leaves for other output, which a browser may print after it. */
+const WEB_CHECK_OUTPUT_MARGIN = 64 * 1024
 
 /** A main-thread task at least this long, in milliseconds, counts as a freeze. */
 const FREEZE_MS = 1000
@@ -100,7 +107,7 @@ export interface WebCheckOptions {
   readonly timeoutMs: number
   /** Subprocess termination grace. */
   readonly graceMs: number
-  /** Collected bytes kept per output stream; the result line must fit. */
+  /** Collected bytes kept per output stream; the check keeps at least {@link WEB_CHECK_OUTPUT_BYTES}. */
   readonly outputBytes: number
   /** Cancellation. */
   readonly signal: AbortSignal
@@ -115,6 +122,7 @@ export class GodotWebCheckError extends Error {
 export const WEB_CHECK_UNAVAILABLE = 'The Web check runs in the WASD Engine Desktop app, which opens the build in a browser of its own; here none is available.'
 
 const CONSOLE_LEVEL = z.enum(['debug', 'info', 'warning', 'error'])
+const CONSOLE_LINE = z.object({ level: CONSOLE_LEVEL, text: z.string(), count: z.number().int().positive().optional() })
 const SAMPLE = z.object({
   started: z.boolean(),
   startMs: z.number().nonnegative().optional(),
@@ -123,7 +131,7 @@ const SAMPLE = z.object({
   frameMs: z.array(z.number().nonnegative()),
   drawCalls: z.array(z.number().int().nonnegative()),
   programs: z.number().int().nonnegative(),
-  console: z.array(z.object({ level: CONSOLE_LEVEL, text: z.string() })),
+  console: z.array(CONSOLE_LINE),
   crashed: z.string().optional(),
   unresponsive: z.boolean(),
 })
@@ -145,9 +153,10 @@ export function parseWebCheckOutput(stdout: string): WebCheckSample | undefined 
   }
   const parsed = SAMPLE.safeParse(json)
   if (!parsed.success) return undefined
-  const { startMs, readyMs, crashed, ...sample } = parsed.data
+  const { startMs, readyMs, crashed, console, ...sample } = parsed.data
   return {
     ...sample,
+    console: console.map(({ count, ...line }) => count === undefined ? line : { ...line, count }),
     ...startMs === undefined ? {} : { startMs },
     ...readyMs === undefined ? {} : { readyMs },
     ...crashed === undefined ? {} : { crashed },
@@ -173,7 +182,7 @@ function messageLevel(level: WebCheckSample['console'][number]['level'], text: s
 /**
  * Collect the errors and warnings of a page's console: Godot's `ERROR:` and `WARNING:` messages, without the source
  * location line it prints after each, and the page's own errors, each with how often it was printed.
- * @param lines - the console messages, in order.
+ * @param lines - the console messages, in order, each with how often it was printed when more than once.
  * @returns the distinct messages in order of first appearance.
  */
 export function webCheckMessages(lines: WebCheckSample['console']): GodotWebCheckMessage[] {
@@ -184,9 +193,10 @@ export function webCheckMessages(lines: WebCheckSample['console']): GodotWebChec
     if (text === '' || /^at: /u.test(text)) continue
     const level = messageLevel(line.level, text)
     if (level === undefined) continue
+    const printed = line.count ?? 1
     const known = found.get(`${level}\n${text}`)
-    if (known === undefined) found.set(`${level}\n${text}`, { level, text, count: 1 })
-    else known.count += 1
+    if (known === undefined) found.set(`${level}\n${text}`, { level, text, count: printed })
+    else known.count += printed
   }
   return [...found.values()]
 }
@@ -343,6 +353,8 @@ export async function serveFolder(dir: string): Promise<ServedFolder> {
 export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebCheck> {
   if (options.command.length === 0) throw new GodotWebCheckError(WEB_CHECK_UNAVAILABLE)
   const served = await serveFolder(options.outputDir)
+  // The output keeps its end, where the result line is, so the line fits when it leaves room for what follows it.
+  const outputBytes = Math.max(options.outputBytes, WEB_CHECK_OUTPUT_BYTES)
   try {
     const request = {
       url: `${served.origin}/${options.entry.split('/').map(encodeURIComponent).join('/')}`,
@@ -351,6 +363,7 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
       ...WEB_CHECK_VIEWPORT,
       // From the browser's start: it prints what it measured by then, before this check's deadline stops it.
       deadlineMs: options.timeoutMs - Math.min(WEB_CHECK_EXIT_MS, options.timeoutMs / 2),
+      resultBytes: outputBytes - WEB_CHECK_OUTPUT_MARGIN,
     } satisfies WebCheckRequest
     const outcome = await runGodotCommand({
       subprocess: options.subprocess,
@@ -358,7 +371,7 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
       cwd: options.outputDir,
       timeoutMs: options.timeoutMs,
       graceMs: options.graceMs,
-      outputBytes: options.outputBytes,
+      outputBytes,
       signal: options.signal,
     })
     options.signal.throwIfAborted()

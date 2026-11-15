@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { WebCheckSample } from '@deepseek-ai/dsh-godot/types'
 import {
-  SMOKE_PAGE, SMOKE_READY_MESSAGE, smokeRequest, smokeWebCheck, webCheckSmokeProblems,
+  SMOKE_PAGE, SMOKE_READY_MESSAGE, SMOKE_WEBGL_SUFFIX, smokeRequest, smokeWebCheck, webCheckSmokeProblems,
 } from '../scripts/wasdengine-web-check-smoke.ts'
 import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
 import { WEB_CHECK_MARKER } from '../src/wasdengine-web-check.ts'
@@ -15,11 +15,11 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 
-/** A result of a page that started, drew, and logged. */
+/** A result of a page that started, drew with WebGL 2, and logged. */
 function completeSample(): WebCheckSample {
   return {
     started: true, startMs: 120, readyMs: 1100, longTasks: [], frameMs: [16.7, 16.6], drawCalls: [1, 1], programs: 1,
-    console: [{ level: 'info', text: SMOKE_READY_MESSAGE }], unresponsive: false,
+    console: [{ level: 'info', text: `${SMOKE_READY_MESSAGE}${SMOKE_WEBGL_SUFFIX}` }], unresponsive: false,
   }
 }
 
@@ -58,10 +58,22 @@ describe('webCheckSmokeProblems', () => {
       'the page\'s process ended: crashed',
       'the page stopped answering',
       'the check saw no animation frames',
-      'the check saw no WebGL draw calls',
-      'the check saw no WebGL program linked',
       'the page\'s console message did not reach the result',
     ])
+  })
+
+  it('requires a program and draw calls when the page had WebGL 2', () => {
+    expect(webCheckSmokeProblems({ ...completeSample(), drawCalls: [0, 0], programs: 0 })).toEqual([
+      'the check saw no WebGL program linked',
+      'the check saw no WebGL draw calls',
+    ])
+  })
+
+  it('accepts frames alone from a machine without WebGL 2, such as a GPU-less runner', () => {
+    const sample: WebCheckSample = {
+      ...completeSample(), drawCalls: [0, 0], programs: 0, console: [{ level: 'info', text: `${SMOKE_READY_MESSAGE} (no WebGL 2)` }],
+    }
+    expect(webCheckSmokeProblems(sample)).toEqual([])
   })
 })
 

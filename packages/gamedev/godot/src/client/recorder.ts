@@ -5,7 +5,7 @@
  * facts and a sheet of frames from across the recording, which the agent sees to judge motion.
  */
 import type { GodotVideoEncodeRequest, GodotVideoEncodeResult } from '../types.ts'
-import { writeMp4, type Mp4Sample, type Mp4Track } from './mp4.ts'
+import { mp4File, type Mp4Sample, type Mp4Track } from './mp4.ts'
 
 /** Bytes of one record header: u32 LE image length, u32 LE frame index, u32 LE milliseconds into the video, u16 LE width, u16 LE height. */
 export const RECORD_HEADER_BYTES = 16
@@ -60,9 +60,18 @@ export class RecordingStreamError extends Error {
   override readonly name = 'RecordingStreamError'
 }
 
-/** Incremental record parser; chunk boundaries may fall anywhere, including inside a header. */
+/**
+ * Incremental record parser; chunk boundaries may fall anywhere, including inside a header. It keeps the chunks of an
+ * incomplete record as they arrived and copies each image once, when its record is complete, so parsing a frame costs
+ * time in proportion to its size however many chunks carry it.
+ */
 export class RecordingParser {
-  private buffer = new Uint8Array(0)
+  /** Chunks that hold the bytes not yet parsed, from `offset` into the first one. */
+  private readonly chunks: Uint8Array[] = []
+  private offset = 0
+  private buffered = 0
+  /** The header of the record whose image is incomplete. */
+  private header: Omit<RecordingFrame, 'image'> & { readonly bytes: number } | undefined
 
   /**
    * Append one body chunk.
@@ -71,28 +80,50 @@ export class RecordingParser {
    * @throws {RecordingStreamError} when a header announces an empty or oversized image.
    */
   push(chunk: Uint8Array): RecordingFrame[] {
-    const joined = new Uint8Array(this.buffer.byteLength + chunk.byteLength)
-    joined.set(this.buffer)
-    joined.set(chunk, this.buffer.byteLength)
-    const frames: RecordingFrame[] = []
-    let offset = 0
-    while (joined.byteLength - offset >= RECORD_HEADER_BYTES) {
-      const view = new DataView(joined.buffer, joined.byteOffset + offset, RECORD_HEADER_BYTES)
-      const length = view.getUint32(0, true)
-      if (length < 1 || length > MAX_RECORD_IMAGE_BYTES) throw new RecordingStreamError(`A recording frame announced ${length} bytes.`)
-      if (joined.byteLength - offset - RECORD_HEADER_BYTES < length) break
-      const start = offset + RECORD_HEADER_BYTES
-      frames.push({
-        index: view.getUint32(4, true),
-        timeMs: view.getUint32(8, true),
-        width: view.getUint16(12, true),
-        height: view.getUint16(14, true),
-        image: joined.slice(start, start + length),
-      })
-      offset = start + length
+    if (chunk.byteLength > 0) {
+      this.chunks.push(chunk)
+      this.buffered += chunk.byteLength
     }
-    this.buffer = joined.slice(offset)
+    const frames: RecordingFrame[] = []
+    for (;;) {
+      if (this.header === undefined) {
+        if (this.buffered < RECORD_HEADER_BYTES) break
+        const view = new DataView(this.take(RECORD_HEADER_BYTES).buffer)
+        const bytes = view.getUint32(0, true)
+        if (bytes < 1 || bytes > MAX_RECORD_IMAGE_BYTES) throw new RecordingStreamError(`A recording frame announced ${bytes} bytes.`)
+        this.header = {
+          bytes,
+          index: view.getUint32(4, true),
+          timeMs: view.getUint32(8, true),
+          width: view.getUint16(12, true),
+          height: view.getUint16(14, true),
+        }
+      }
+      if (this.buffered < this.header.bytes) break
+      const { bytes, ...header } = this.header
+      this.header = undefined
+      frames.push({ ...header, image: this.take(bytes) })
+    }
     return frames
+  }
+
+  /** Copy the next `count` buffered bytes out of the chunks, which must hold them, and drop the chunks they used up. */
+  private take(count: number): Uint8Array<ArrayBuffer> {
+    const out = new Uint8Array(count)
+    let filled = 0
+    while (filled < count) {
+      const first = this.chunks[0] as Uint8Array
+      const part = Math.min(first.byteLength - this.offset, count - filled)
+      out.set(first.subarray(this.offset, this.offset + part), filled)
+      filled += part
+      this.offset += part
+      if (this.offset === first.byteLength) {
+        this.chunks.shift()
+        this.offset = 0
+      }
+    }
+    this.buffered -= count
+    return out
   }
 }
 
@@ -200,12 +231,12 @@ class SheetFrames {
       const x = (index % columns) * cellWidth
       const y = Math.floor(index / columns) * cellHeight
       context.drawImage(pick.bitmap, x, y, cellWidth, cellHeight)
-      const label = `${(pick.time / 1000).toFixed(2)} s`
-      const labelWidth = context.measureText(label).width + fontSize
+      const stamp = `${(pick.time / 1000).toFixed(2)} s`
+      const stampWidth = context.measureText(stamp).width + fontSize
       context.fillStyle = 'rgba(0, 0, 0, 0.65)'
-      context.fillRect(x, y, labelWidth, fontSize * 1.6)
+      context.fillRect(x, y, stampWidth, fontSize * 1.6)
       context.fillStyle = '#fff'
-      context.fillText(label, x + fontSize / 2, y + fontSize * 0.3)
+      context.fillText(stamp, x + fontSize / 2, y + fontSize * 0.3)
     }
     const jpeg = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
     return { jpeg, width: canvas.width, height: canvas.height, times: picks.map(pick => Math.round(pick.time) / 1000) }
@@ -356,14 +387,19 @@ export async function encodeRecording(
     await encoder.flush()
     if (failures[0] !== undefined) throw failures[0]
     if (samples.length === 0) throw new Error('The video encoder produced no frames.')
-    const file = writeMp4({ ...track, lastDuration: Math.round(TIMESCALE / request.fps) }, samples)
+    const file = mp4File({ ...track, lastDuration: Math.round(TIMESCALE / request.fps) }, samples)
     if (file.byteLength > request.maxBytes) throw new Error(`The video takes ${file.byteLength} bytes, more than the ${request.maxBytes} the Host accepts; record fewer seconds or a smaller max_width.`)
-    const uploaded = await transport.upload(new Blob([file], { type: 'video/mp4' }), signal)
+    // The Blob copies the parts, whose sample data are the encoded frames themselves; once it holds them, the frames
+    // can go.
+    const video = new Blob(file.parts, { type: 'video/mp4' })
+    const encoded = samples.length
+    samples.length = 0
+    const uploaded = await transport.upload(video, signal)
     if (!uploaded.ok) throw new Error(`The Host refused the video (HTTP ${uploaded.status}): ${await uploaded.text()}`)
     const drawn = await sheet.draw()
     return {
       codec: track.codec === 'avc' ? 'H.264' : 'VP9',
-      frames: samples.length,
+      frames: encoded,
       seconds: (lastTime + 1000 / request.fps) / 1000,
       width: track.width,
       height: track.height,

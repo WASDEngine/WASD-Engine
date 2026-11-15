@@ -1,6 +1,7 @@
 /**
- * An MP4 file (ISO base media file format) of one video track, written whole once every sample is known: `ftyp`, then
- * `moov` before `mdat`, so players start before the whole file arrived. The samples sit in one chunk in decode order;
+ * An MP4 file (ISO base media file format) of one video track, written once every sample is known: `ftyp`, then `moov`
+ * before `mdat`, so players start before the whole file arrived. The file is a list of parts that ends with the samples'
+ * own data, so making it copies no frame; a Blob of the parts is the file. The samples sit in one chunk in decode order;
  * `stts` holds their decode durations and `stss` the key frames. When the encoder reordered frames, `ctts` holds their
  * composition offsets and an edit list starts the presentation at the first frame. H.264 samples carry the encoder's
  * `avcC` record, VP9 samples a `vpcC` record of 8-bit 4:2:0 video.
@@ -9,7 +10,7 @@
 /** One encoded frame, in decode order. */
 export interface Mp4Sample {
   /** The frame's bytes: length-prefixed NAL units for H.264, a frame for VP9. */
-  readonly data: Uint8Array
+  readonly data: Uint8Array<ArrayBuffer>
   /** Presentation time in `timescale` units, from 0. */
   readonly time: number
   /** Whether the frame decodes alone. */
@@ -89,7 +90,7 @@ class Writer {
   }
 }
 
-function box(type: string, ...children: Uint8Array[]): Uint8Array {
+function box(type: string, ...children: Uint8Array[]): Uint8Array<ArrayBuffer> {
   const writer = new Writer()
   const size = 8 + children.reduce((total, child) => total + child.byteLength, 0)
   writer.u32(size).text(type)
@@ -97,7 +98,7 @@ function box(type: string, ...children: Uint8Array[]): Uint8Array {
   return writer.finish()
 }
 
-function fullBox(type: string, version: number, flags: number, body: Uint8Array): Uint8Array {
+function fullBox(type: string, version: number, flags: number, body: Uint8Array): Uint8Array<ArrayBuffer> {
   const head = new Writer().u8(version).u8(flags >> 16).u8(flags >> 8).u8(flags).finish()
   return box(type, head, body)
 }
@@ -142,14 +143,22 @@ function sampleEntry(track: Mp4Track): Uint8Array {
   return box('vp09', visual, fullBox('vpcC', 1, 0, config))
 }
 
+/** An MP4 file as its parts in file order: `ftyp`, `moov`, the `mdat` header, then each sample's data. */
+export interface Mp4File {
+  /** The parts; the samples' parts are their `data` arrays themselves. */
+  readonly parts: Uint8Array<ArrayBuffer>[]
+  /** Bytes of the whole file. */
+  readonly byteLength: number
+}
+
 /**
- * Write an MP4 file of one video track.
+ * Make an MP4 file of one video track.
  * @param track - codec, size, timescale, and codec record.
  * @param samples - encoded frames in decode order, the first at presentation time 0.
- * @returns the file's bytes.
+ * @returns the file's parts.
  * @throws {Error} without samples, or an H.264 track without its `avcC` record.
  */
-export function writeMp4(track: Mp4Track, samples: readonly Mp4Sample[]): Uint8Array<ArrayBuffer> {
+export function mp4File(track: Mp4Track, samples: readonly Mp4Sample[]): Mp4File {
   if (samples.length === 0) throw new Error('A video needs at least one frame.')
   // Decode times are the presentation times in order; composition times shift by the most that a frame decodes after
   // its presentation time would, so no frame shows before it decodes.
@@ -161,7 +170,7 @@ export function writeMp4(track: Mp4Track, samples: readonly Mp4Sample[]): Uint8A
   const duration = (dts.at(-1) as number) + track.lastDuration
   const dataBytes = samples.reduce((total, sample) => total + sample.data.byteLength, 0)
 
-  const build = (chunkOffset: number, wide: boolean): Uint8Array => {
+  const build = (chunkOffset: number, wide: boolean): Uint8Array<ArrayBuffer> => {
     const stts = new Writer()
     const timeRuns = runs(durations)
     stts.u32(timeRuns.length)
@@ -223,10 +232,9 @@ export function writeMp4(track: Mp4Track, samples: readonly Mp4Sample[]): Uint8A
   }
   const chunkOffset = ftyp.byteLength + moov.byteLength + mdatHeader
   moov = build(chunkOffset, wide)
-  const mdat = new Writer()
-  if (largeData) mdat.u32(1).text('mdat').u64(dataBytes + 16)
-  else mdat.u32(dataBytes + 8).text('mdat')
-  for (const sample of samples) mdat.bytes(sample.data)
-  const file = new Writer().bytes(ftyp).bytes(moov).bytes(mdat.finish())
-  return file.finish()
+  const mdat = largeData ? new Writer().u32(1).text('mdat').u64(dataBytes + 16) : new Writer().u32(dataBytes + 8).text('mdat')
+  return {
+    parts: [ftyp, moov, mdat.finish(), ...samples.map(sample => sample.data)],
+    byteLength: ftyp.byteLength + moov.byteLength + mdatHeader + dataBytes,
+  }
 }

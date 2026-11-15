@@ -31,10 +31,13 @@ emsdk_repository_url=https://github.com/emscripten-core/emsdk.git
 # The Emscripten release of Godot 4.7.2's own Web templates, whose page logs "Emscripten 4.0.20";
 # emsdk tags each Emscripten release with its version.
 emscripten_version=4.0.20
-# The SCons release that uvx runs, under a uv-managed CPython of this minor version, so
-# that the archives that Godot's build scripts compress with zlib come out alike everywhere.
+# The SCons release that uvx runs, under this uv-managed CPython release, so that the data
+# that Godot's build scripts compress with zlib come out alike everywhere. The uv release
+# picks the build of that CPython it downloads; uv 0.13.8 and CPython 3.13.18 built the
+# published templates, and the release workflow pins both.
 scons_version=4.11.1
-scons_python=3.13
+scons_python=3.13.18
+uv_version=0.13.8
 # The build name in the engine's version string, "4.7.2.stable.wasd", where Godot's own builds say "official".
 build_name=wasd
 
@@ -120,6 +123,10 @@ esac
 command -v git >/dev/null 2>&1 || die "git is required"
 command -v uvx >/dev/null 2>&1 || die "uv is required: install it from https://docs.astral.sh/uv/"
 command -v python3 >/dev/null 2>&1 || die "python3 (3.8 or newer) is required"
+uv_installed=$(uvx --version 2>/dev/null | awk '{ print $2 }') || uv_installed=unknown
+if [ "$uv_installed" != "$uv_version" ]; then
+  log "uv $uv_installed is installed, not uv $uv_version, which built the published templates; this template's digest may differ from theirs"
+fi
 
 template_py() { python3 -I "$script_dir/template.py" "$@"; }
 

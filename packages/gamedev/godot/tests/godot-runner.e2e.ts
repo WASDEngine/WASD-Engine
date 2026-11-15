@@ -8,7 +8,9 @@
  * encoding cannot keep up with, GPU time and a script profile on WASD Engine's own runtime, a windowless game that
  * presents its frames only while a Game tab displays it, a capture of a muted game's audio mix, and games that exit
  * cleanly when they quit by themselves while their reads of frames from the GPU are in flight, or after turning VSync off
- * on the Compatibility renderer.
+ * on the Compatibility renderer; values and printed lines too large for a message, which the game bounds and survives;
+ * engine method timing only on request and only where the runtime does it safely, also in a game whose scripts run on
+ * worker threads; and a hidden game with `--fixed-fps`, which the harness holds to the hidden frame rate.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -20,7 +22,7 @@ import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import type { GodotRunView } from '../src/types.ts'
+import type { GodotFollowItem, GodotRunView } from '../src/types.ts'
 import { callTool, compose, text, type Composition } from './composition.ts'
 
 const GODOT_PLATFORMS: Partial<Record<NodeJS.Platform, { readonly name: string; readonly suffix: string }>> = {
@@ -181,7 +183,43 @@ const ADDON_PROJECT = {
   'addons/vendor/nested/view.tscn': '[gd_scene format=3]\n\n[ext_resource type="PackedScene" path="res://addons/vendor/nested/code_edit.tscn" id="1_edit"]\n\n[node name="View" type="Control"]\n\n[node name="CodeEdit" parent="." instance=ExtResource("1_edit")]\n',
 }
 
+// A game whose _process starts 64 worker tasks a frame that call engine methods and waits for them in the next frame, as
+// games that build or simulate on WorkerThreadPool do, so the tasks run while each frame ends, when the profiler moves
+// and clears every function's engine method calls.
+const THREADS_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="ThreadsTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'var frames := 0', 'var task := -1', 'func _process(_delta):', '\tframes += 1',
+    '\tif task >= 0:', '\t\tWorkerThreadPool.wait_for_group_task_completion(task)', '\ttask = WorkerThreadPool.add_group_task(_work, 64)',
+    'func _exit_tree():', '\tif task >= 0:', '\t\tWorkerThreadPool.wait_for_group_task_completion(task)', '\t\ttask = -1',
+    'func _work(index: int) -> void:', '\tvar node := Node.new()', '\tfor i in 200:', '\t\tnode.set_name("n%d_%d" % [index, i])', '\t\tnode.get_name()',
+    '\tnode.free()', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+
+/** The first item of a Session's follow stream: the run and its logs as they are, without a request to the game. */
+async function snapshot(c: Composition): Promise<Extract<GodotFollowItem, { type: 'snapshot' }>> {
+  const following = new AbortController()
+  try {
+    for await (const item of c.godot.follow(c.owner.agent.id, following.signal)) {
+      if (item.type === 'snapshot') return item
+    }
+    throw new Error('the follow stream ended without a snapshot')
+  } finally {
+    following.abort()
+  }
+}
+
+/** Whether the runtime's profiler times engine methods on the main thread alone, as WASD Engine's do from patch 0004 on. */
+async function engineCallsSafe(c: Composition): Promise<boolean> {
+  const answer = await callTool(c, 'godot_eval', {
+    code: 'return Engine.has_singleton("WASDEngineRuntime") and Engine.get_singleton("WASDEngineRuntime").has_method("is_native_call_profiling_thread_safe")',
+  })
+  return text(answer) === 'bool: true'
+}
 
 /** The file format of a frame record's image. */
 function recordFormat(record: Buffer): 'png' | 'jpeg' | 'other' {
@@ -386,6 +424,30 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(position)).toBe('float: 300')
   }, 60_000)
 
+  it('bounds values that eval returns and lines that the game prints, and keeps running', async () => {
+    // As text, 80 MiB of bytes made a message larger than the Host takes, which closed the connection and ended the game.
+    const bytes = await callTool(c, 'godot_eval', { code: 'var bytes := PackedByteArray()\nbytes.resize(80 * 1024 * 1024)\nreturn bytes' })
+    expect(bytes.isError, text(bytes)).toBe(false)
+    const items = (bytes.value as { value: unknown[]; valueType: string }).value
+    expect((bytes.value as { valueType: string }).valueType).toBe('PackedByteArray')
+    expect(items).toHaveLength(201)
+    expect(items.slice(0, 3)).toEqual([0, 0, 0])
+    expect(items[200]).toBe('… (83886080 items in all)')
+    const long = await callTool(c, 'godot_eval', { expression: '"x".repeat(20000000)' })
+    expect((long.value as { value: string }).value).toBe(`${'x'.repeat(16_384)}… (20000000 characters)`)
+    const rows = await callTool(c, 'godot_eval', { code: 'var rows := []\nfor i in 300:\n\trows.append(PackedVector3Array([Vector3.ONE]))\nreturn rows' })
+    const listed = (rows.value as { value: unknown[] }).value
+    expect(listed).toHaveLength(201)
+    expect(listed[0]).toEqual(['Vector3(1, 1, 1)'])
+    expect(listed[200]).toBe('… (300 items in all)')
+    await callTool(c, 'godot_eval', { code: 'print("y".repeat(5000000))\nreturn 1' })
+    await callTool(c, 'godot_wait', { frames: 2 })
+    const printed = (await snapshot(c)).logs.findLast(entry => entry.message.startsWith('yyyy'))
+    expect(printed?.message).toHaveLength(4000)
+    expect(printed?.message.endsWith('… (5000000 characters)')).toBe(true)
+    expect(text(await callTool(c, 'godot_eval', { expression: 'scene.get_node("Player").position.x' }))).toMatch(/^float: /u)
+  }, 60_000)
+
   it('measures frame times, drawing, memory, and the scene census over real time', async () => {
     const measured = await callTool(c, 'godot_performance', { seconds: 1 })
     expect(measured.isError, text(measured)).toBe(false)
@@ -425,14 +487,19 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(next.isError, text(next)).toBe(false)
   }, 60_000)
 
-  it('measures GPU time and profiles the scripts on WASD Engine\'s own runtime', async () => {
-    const measured = await callTool(c, 'godot_performance', { seconds: 1 })
-    expect(measured.isError, text(measured)).toBe(false)
-    const value = measured.value as {
+  it('measures GPU time and profiles the scripts on WASD Engine\'s own runtime, timing engine methods on request', async () => {
+    type Profiled = {
       gpuMs?: { mean: number }
       context: { wasdRuntime: boolean }
-      scriptProfile?: { frames: number; scripts: { path: string; functions: { name: string; engineCalls: { method: string }[] }[] }[] }
+      scriptProfile?: {
+        frames: number
+        engineCalls: boolean
+        scripts: { path: string; functions: { name: string; engineCalls: { method: string }[] }[] }[]
+      }
     }
+    const measured = await callTool(c, 'godot_performance', { seconds: 1 })
+    expect(measured.isError, text(measured)).toBe(false)
+    const value = measured.value as Profiled
     if (!value.context.wasdRuntime) {
       expect(text(measured)).toContain('Scripts: this Godot runtime has no script profiler;')
       return
@@ -443,14 +510,29 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const scripts = value.scriptProfile?.scripts ?? []
     expect(scripts.map(script => script.path)).toEqual(expect.arrayContaining(['res://player.gd', 'res://counter.gd']))
     expect(scripts.some(script => script.path.endsWith('wasd_harness.gd'))).toBe(false)
-    const processing = scripts.find(script => script.path === 'res://player.gd')?.functions.find(entry => entry.name === '_process')
-    expect(processing?.engineCalls.map(call => call.method)).toContain('Input.get_axis')
-    // An engine method that takes longer than the code of the function that calls it still counts toward that function.
-    const counting = scripts.find(script => script.path === 'res://counter.gd')?.functions
-    expect(counting?.map(entry => entry.name)).toEqual(['_process'])
-    expect(counting?.[0]?.engineCalls.map(call => call.method)).toContain('Node.find_children')
+    // Without engine_calls, functions list no engine methods.
+    expect(value.scriptProfile?.engineCalls).toBe(false)
+    expect(scripts.every(script => script.functions.every(entry => entry.engineCalls.length === 0))).toBe(true)
+    expect(text(measured)).toContain('engine_calls: true also lists the costliest engine methods of each function.')
     // A function's line is the first line of its body.
     expect(text(measured)).toMatch(/\nres:\/\/player\.gd [\d.]+: [^\n]*_process \(line 6\)/u)
+    const timed = await callTool(c, 'godot_performance', { seconds: 1, engine_calls: true })
+    expect(timed.isError, text(timed)).toBe(false)
+    const profile = (timed.value as Profiled).scriptProfile
+    if (!await engineCallsSafe(c)) {
+      // A runtime that records engine methods on every thread without a lock leaves them out.
+      expect(profile?.engineCalls).toBe(false)
+      expect(text(timed)).toContain('Engine methods: this Godot runtime\'s profiler times them on every thread without a lock')
+      return
+    }
+    expect(profile?.engineCalls).toBe(true)
+    const profiled = profile?.scripts ?? []
+    const processing = profiled.find(script => script.path === 'res://player.gd')?.functions.find(entry => entry.name === '_process')
+    expect(processing?.engineCalls.map(call => call.method)).toContain('Input.get_axis')
+    // An engine method that takes longer than the code of the function that calls it still counts toward that function.
+    const counting = profiled.find(script => script.path === 'res://counter.gd')?.functions
+    expect(counting?.map(entry => entry.name)).toEqual(['_process'])
+    expect(counting?.[0]?.engineCalls.map(call => call.method)).toContain('Node.find_children')
   }, 60_000)
 
   it('draws a windowless game without presenting it while no Game tab displays it, and presents it while one does', async () => {
@@ -662,6 +744,22 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 
+  it('times the engine methods of a game whose scripts call them on worker threads as frames end, and the game keeps running', async () => {
+    await addProject('threads', THREADS_PROJECT)
+    const started = await callTool(c, 'godot_run', { project: 'threads', width: 320, height: 180 })
+    expect(started.isError, text(started)).toBe(false)
+    const safe = await engineCallsSafe(c)
+    for (let round = 0; round < 3; round += 1) {
+      const measured = await callTool(c, 'godot_performance', { seconds: 0.5, engine_calls: true })
+      expect(measured.isError, text(measured)).toBe(false)
+      const profile = (measured.value as { scriptProfile?: { engineCalls: boolean } }).scriptProfile
+      if ((measured.value as { context: { wasdRuntime: boolean } }).context.wasdRuntime) expect(profile?.engineCalls).toBe(safe)
+    }
+    const frames = Number(text(await callTool(c, 'godot_eval', { expression: 'scene.frames' })).replace('int: ', ''))
+    expect(frames).toBeGreaterThan(10)
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+
   it('runs a Compatibility renderer game at its window size, paced by the display, with full-size frames', async () => {
     const dir = join(c.dir.root, 'work', 'compatibility')
     await mkdir(dir, { recursive: true })
@@ -754,5 +852,44 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const closed = stream.next()
     viewing.abort()
     await closed
+  }, 240_000)
+})
+
+describe.skipIf(runner === undefined || library === undefined || !existsSync(runner) || !existsSync(library))('a game with a fixed frame rate on the real LibGodot runner', () => {
+  let c: Composition
+
+  beforeAll(async () => {
+    c = await compose({
+      game: {},
+      config: {
+        runnerPath: runner as string, libgodotPath: library as string, importBeforeRun: true,
+        startTimeoutMs: 60_000, requestTimeoutMs: 5000, stopGraceMs: 3000, hiddenFps: 10, hiddenDelayMs: 500,
+      },
+    })
+    for (const [name, content] of Object.entries(PROJECT)) await writeFile(join(c.project, name), content)
+  }, 60_000)
+
+  afterAll(async () => { await c?.cleanup() }, 30_000)
+
+  it('holds a windowless game with --fixed-fps that nobody shows to the hidden frame rate, and to the refresh rate while used', async () => {
+    const started = await callTool(c, 'godot_run', { width: 640, height: 360, engine_args: ['--fixed-fps', '60'] })
+    expect(started.isError, text(started)).toBe(false)
+    if (process.platform !== 'darwin') {
+      // A game with a window keeps its own frame rate.
+      expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+      return
+    }
+    // Godot applies no frame limit to a game with --fixed-fps, so such a game ran as fast as it could draw.
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    const hidden = (await snapshot(c)).run as GodotRunView
+    expect(hidden.fps).toBeGreaterThan(4)
+    expect(hidden.fps).toBeLessThanOrEqual(13)
+    // A request lifts the hidden cap; the game, which no Game tab displays, still presents nothing and draws at most at
+    // the display's refresh rate.
+    const measured = await callTool(c, 'godot_performance', { seconds: 1, scripts: false })
+    const value = measured.value as { fps: number; context: { refreshRate: number; presenting: boolean } }
+    expect(value.context.presenting).toBe(false)
+    expect(value.fps).toBeLessThan(Math.max(60, value.context.refreshRate) * 1.25)
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 })

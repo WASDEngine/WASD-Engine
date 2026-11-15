@@ -25,7 +25,9 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
-import { exportDesktop, exportServer, exportWeb, WEB_EXPORT_ENTRY } from './export.ts'
+import {
+  EXPORT_RESTORE_FOLDER, exportDesktop, exportServer, exportWeb, pendingExportRestores, replayExportRestore, WEB_EXPORT_ENTRY,
+} from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
@@ -43,7 +45,7 @@ import {
 import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRecordRequest } from './record.ts'
 import { ProcessSlots } from './slots.ts'
 import {
-  createCallFolder, DEFAULT_SCRIPT_SECONDS, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_RUN_NAME_CHARS,
+  createCallFolder, DEFAULT_SCRIPT_SECONDS, finishCallFolder, GodotScriptError, importReport, LISTED_ENGINE_ISSUES, MAX_RUN_NAME_CHARS,
   MAX_SCRIPT_CALL_SECONDS, MAX_SCRIPT_RUNS, MAX_SCRIPT_SECONDS, resolveScript, runFolderName, runScript, runScriptRuns, type EngineIssue,
   type GodotImportReport, type GodotScriptReport, type GodotScriptRunsReport, type ScriptRun, type ScriptRunTurns,
 } from './script.ts'
@@ -480,6 +482,14 @@ export default class GodotController extends TypertRemoteService {
       this.scriptSlots.close(new Error('The Godot plugin stopped before the script could start.'))
       await this.sessions.dispose()
     }, 'godot.runs')
+    ctx.effect(() => {
+      const stop = new AbortController()
+      const restored = this.restoreInterruptedExports(stop.signal)
+      return async () => {
+        stop.abort()
+        await restored
+      }
+    }, 'godot: restore after interrupted exports')
     const toolHost: GodotToolHost = {
       sessions: this.sessions,
       agentRunsMuted: config.agentRunsMuted,
@@ -693,6 +703,7 @@ export default class GodotController extends TypertRemoteService {
       this.requireMemory('a Godot Web export')
       return await this.imports.exclusive(project.dir, () => exportWeb({
         subprocess: this.ctx.subprocess,
+        restoreDir: this.restoreDir,
         runtime,
         projectDir: project.dir,
         outputDir: request.outputDir,
@@ -760,6 +771,7 @@ export default class GodotController extends TypertRemoteService {
       this.requireMemory(`a Godot ${DESKTOP_TEMPLATES[request.platform].platform} export`)
       return await this.imports.exclusive(project.dir, () => exportDesktop({
         subprocess: this.ctx.subprocess,
+        restoreDir: this.restoreDir,
         runtime,
         projectDir: project.dir,
         outputDir: request.outputDir,
@@ -796,6 +808,7 @@ export default class GodotController extends TypertRemoteService {
       this.requireMemory('a Godot dedicated server export')
       return await this.imports.exclusive(project.dir, () => exportServer({
         subprocess: this.ctx.subprocess,
+        restoreDir: this.restoreDir,
         runtime,
         projectDir: project.dir,
         outputDir: request.outputDir,
@@ -1082,6 +1095,35 @@ export default class GodotController extends TypertRemoteService {
     return { projectDir: project.dir, scripts, total: selection.total, ...importWarning === undefined ? {} : { importWarning } }
   }
 
+  /** Folder of the restore records that exports write before they change a project's files. */
+  private get restoreDir(): string {
+    return join(this.config.dataRoot, EXPORT_RESTORE_FOLDER)
+  }
+
+  /**
+   * Return the files of the projects whose exports the app quit during, each in the project's turn of exports, checks,
+   * and imports. A project that cannot be restored keeps its record, which its next export replays, and is logged.
+   * @param signal - ends the work when the plugin stops.
+   */
+  private async restoreInterruptedExports(signal: AbortSignal): Promise<void> {
+    let projects: string[]
+    try {
+      projects = await pendingExportRestores(this.restoreDir)
+    } catch (error) {
+      this.ctx.logger.warn(`Godot plugin: cannot read the export restore records: ${(error as Error).message}`)
+      return
+    }
+    for (const projectDir of projects) {
+      try {
+        await this.imports.exclusive(projectDir, () => replayExportRestore(this.restoreDir, projectDir), signal)
+      } catch (error) {
+        // A plugin that stops ends the work; its next start replays what is left.
+        if (signal.aborted) return
+        this.ctx.logger.warn(`Godot plugin: cannot restore the files of ${projectDir} after an interrupted export: ${(error as Error).message}`)
+      }
+    }
+  }
+
   /**
    * Refuse a start while the computer has less than `minAvailableMemoryBytes` available.
    * @throws {LowMemoryError} naming `what` when memory is short.
@@ -1141,36 +1183,40 @@ export default class GodotController extends TypertRemoteService {
       })
       : []
     const resultsDir = await createCallFolder(project.dir, this.config.keptScriptResults, new Date())
-    const turns = this.scriptTurns(project.dir, request.exclusive === true)
-    const common = request.args ?? []
-    if (requested === undefined) {
-      const run: ScriptRun = { args: common, folder: join(resultsDir, '1'), ownUserData: false }
-      const report = await turns.turn(() => runScript(options, script, fixedFps, run, seconds * 1000), signal)
-      if (importIssues.length === 0) return report
-      return {
-        ...report,
-        issues: [...importIssues, ...report.issues].slice(0, LISTED_ENGINE_ISSUES),
-        totalIssues: importIssues.length + report.totalIssues,
+    try {
+      const turns = this.scriptTurns(project.dir, request.exclusive === true)
+      const common = request.args ?? []
+      if (requested === undefined) {
+        const run: ScriptRun = { args: common, folder: join(resultsDir, '1'), ownUserData: false }
+        const report = await turns.turn(() => runScript(options, script, fixedFps, run, seconds * 1000), signal)
+        if (importIssues.length === 0) return report
+        return {
+          ...report,
+          issues: [...importIssues, ...report.issues].slice(0, LISTED_ENGINE_ISSUES),
+          totalIssues: importIssues.length + report.totalIssues,
+        }
       }
+      const runs = requested.map((run, index): ScriptRun => {
+        const folder = run.name === undefined ? '' : runFolderName(run.name)
+        return {
+          ...run.name === undefined ? {} : { name: run.name },
+          args: [...common, ...run.args ?? []],
+          folder: join(resultsDir, folder === '' ? String(index + 1) : `${String(index + 1)}-${folder}`),
+          ownUserData: true,
+        }
+      })
+      return await runScriptRuns(options, {
+        script,
+        ...fixedFps === undefined ? {} : { fixedFps },
+        runs,
+        timeoutMs: seconds * 1000,
+        deadline: Date.now() + MAX_SCRIPT_CALL_SECONDS * 1000,
+        resultsDir,
+        importIssues: importIssues.slice(0, LISTED_ENGINE_ISSUES),
+      }, turns)
+    } finally {
+      await finishCallFolder(resultsDir)
     }
-    const runs = requested.map((run, index): ScriptRun => {
-      const folder = run.name === undefined ? '' : runFolderName(run.name)
-      return {
-        ...run.name === undefined ? {} : { name: run.name },
-        args: [...common, ...run.args ?? []],
-        folder: join(resultsDir, folder === '' ? String(index + 1) : `${String(index + 1)}-${folder}`),
-        ownUserData: true,
-      }
-    })
-    return await runScriptRuns(options, {
-      script,
-      ...fixedFps === undefined ? {} : { fixedFps },
-      runs,
-      timeoutMs: seconds * 1000,
-      deadline: Date.now() + MAX_SCRIPT_CALL_SECONDS * 1000,
-      resultsDir,
-      importIssues: importIssues.slice(0, LISTED_ENGINE_ISSUES),
-    }, turns)
   }
 
   /**

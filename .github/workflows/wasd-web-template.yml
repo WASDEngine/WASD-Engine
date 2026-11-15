@@ -74,9 +74,13 @@ jobs:
           persist-credentials: false
           sparse-checkout: wasdengine/web-template
 
+      # build.sh runs SCons under the exact CPython that it names, which uv downloads; the uv release decides which
+      # build of that CPython it fetches. Both are those of run 43637540985, which built web-template-4.7.2-wasd.1, so
+      # a rebuild of the same sources writes the same template.
       - name: Set up uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
+          version: 0.13.8
           enable-cache: false
 
       # The key holds the Godot ref, so the cache keeps objects of one Godot

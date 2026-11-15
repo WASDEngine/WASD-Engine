@@ -330,7 +330,7 @@ async function runGame(section) {
             renderingMethod: 'forward_plus', renderingDriver: 'fake', adapter: '', adapterVendor: '', width: state.width, height: state.height, streamFps: 0,
             frameCap: 0, presenting: state.presenting, refreshRate: 60, wasdRuntime: section.wasdRuntime ?? false,
           },
-          scriptProfiler: section.wasdRuntime ?? false, scripts: [], scriptSeconds: 0, scriptFrames: 0,
+          scriptProfiler: section.wasdRuntime ?? false, scripts: [], scriptSeconds: 0, scriptFrames: 0, engineCalls: false,
           timedOut: false, cancelled: false,
         })
       }
