@@ -589,6 +589,7 @@
     { "path": "./packages/gamedev/blender" },
     { "path": "./packages/gamedev/gimp" },
     { "path": "./packages/gamedev/godot/tsconfig.host.json" },
+    { "path": "./packages/gamedev/godot-protocol" },
     { "path": "./packages/gamedev/supercollider" },
     { "path": "./packages/gamedev/game-mcp" },
     { "path": "./packages/gamedev/game-assets" },

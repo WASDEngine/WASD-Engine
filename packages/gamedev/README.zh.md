@@ -36,6 +36,7 @@ kind: "package-group"
 | [`game-mcp/`](game-mcp/README.zh.md) | 供这台电脑上其他智能体使用的 WASD Engine MCP 服务器：通过带令牌的回环 Streamable HTTP 提供游戏工具及其搜索、已连接智能体的游戏所在的会话，以及设置提示词 |
 | [`gimp/`](gimp/README.zh.md) | 通过 MCP 提供的 GIMP 3 工具，由 `gimp-console` 支撑 |
 | [`godot/`](godot/README.zh.md) | 通过 LibGodot 运行 Godot 游戏：`godot_*` 工具、`godot` Remote、画面路由与 Game 标签页 |
+| [`godot-protocol/`](godot-protocol/README.zh.md) | Godot 插件的 Host 请 WASD Engine 窗口把录制编码为视频的 `godot/record` 请求及窗口的答复，与 Remote 事件列表共用 |
 | [`game-addons/`](game-addons/README.zh.md) | 游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、列出该目录的系统提示词部分、搜索目录并在智能体判断游戏需要时把扩展安装到游戏项目中或从中移除的 `game_addons` 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框 |
 | [`image-generation/`](image-generation/README.zh.md) | 图像生成工具：用 Google 的 Nano Banana 2.1 根据提示词和最多 14 张用于编辑或参照的图像制作游戏美术、界面元素、概念图和贴图，以 PNG、JPEG 或 WebP 保存到游戏项目中；图像由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`polyhaven/`](polyhaven/README.zh.md) | Poly Haven 工具：搜索 Poly Haven 中 CC0 的 HDRI、纹理和 3D 模型资源库，显示素材的文件与预览图，并把一种格式和分辨率下载到游戏项目中，每个文件的摘要都经过校验 |

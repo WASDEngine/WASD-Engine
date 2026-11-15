@@ -106,7 +106,8 @@
     "@deepseek-ai/dsh-game-mcp": "workspace:*",
     "@modelcontextprotocol/client": "2.2.0",
     "@deepseek-ai/dsh-game-audio": "workspace:*",
-    "@deepseek-ai/dsh-scope": "workspace:*"
+    "@deepseek-ai/dsh-scope": "workspace:*",
+    "@deepseek-ai/dsh-godot-protocol": "workspace:*"
   },
   "files": [
     "icon.svg",

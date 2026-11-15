@@ -261,7 +261,8 @@ function validCategory(path: string, category: ProductPackagePolicy['category'])
     case 'sdk': return path === 'packages/sdk/client'
     case 'build': return path === 'packages/typert/generator'
     case 'web-distribution': return path === 'packages/client/web' || path === 'packages/client/ui-dockkit'
-    case 'declarations': return path === 'packages/util/package-manifest'
+    // WASDEngine fork: dsh-godot-protocol declares the godot/record request that the Godot plugin and the Remote event list share.
+    case 'declarations': return path === 'packages/util/package-manifest' || path === 'packages/gamedev/godot-protocol'
     default: return assertNever(category)
   }
 }

@@ -52,4 +52,5 @@ export const PRODUCT_PACKAGE_POLICY: Readonly<Record<string, ProductPackagePolic
   'packages/client/web': { category: 'web-distribution', reason: 'Browser boot kernel bundled into the Web distribution.' },
   'packages/client/ui-dockkit': { category: 'web-distribution', reason: 'Layout library bundled into the Web distribution.' },
   'packages/util/package-manifest': { category: 'declarations', reason: 'Shared package metadata declarations have no runtime mount.' },
+  'packages/gamedev/godot-protocol': { category: 'declarations', reason: 'WASDEngine fork: the godot/record request that the Godot plugin and the Remote event list share has no runtime mount (wasdengine/FORK.md).' },
 }

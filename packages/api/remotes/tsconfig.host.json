@@ -102,7 +102,7 @@
       "path": "../../gamedev/game-audio"
     },
     {
-      "path": "../../gamedev/godot/tsconfig.host.json"
+      "path": "../../gamedev/godot-protocol"
     },
     {
       "path": "../../gamedev/game-mcp"

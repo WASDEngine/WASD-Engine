@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/godot-protocol/README.md
+/:
+  en: 516da1ec7f43c19f
+  zh: 9aa198d36227e795
+/deepseek-ai-dsh-godot-protocol:
+  en: f0c72371cf798a34
+  zh: 2addb45701129dc8
+/deepseek-ai-dsh-godot-protocol/summary:
+  en: e23199b6c02f8391
+  zh: a2156c17685729bb
+/deepseek-ai-dsh-godot-protocol/table-of-contents:
+  en: 2e89ddb1e73218cb
+  zh: 8a6bc778724bb498
+/deepseek-ai-dsh-godot-protocol/use-this-package:
+  en: 00246e07d7d53923
+  zh: 2f4446e243396bc4
+/deepseek-ai-dsh-godot-protocol/model-experience:
+  en: b8ed0719399af04e
+  zh: 560d2b5f3e739967
+/deepseek-ai-dsh-godot-protocol/model-experience/kv-cache-effect:
+  en: 2ed74a2a33958543
+  zh: 7d63c3a3801bef13
+/deepseek-ai-dsh-godot-protocol/known-limitations-and-deferred-work:
+  en: 8457e781ce141998
+  zh: 11437371690af396
+/deepseek-ai-dsh-godot-protocol/known-limitations-and-deferred-work/dev-note:
+  en: b836f01bd0bceb4a
+  zh: 8122fa08b2aa95fa

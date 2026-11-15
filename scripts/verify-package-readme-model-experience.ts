@@ -187,6 +187,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/gamedev/ui-game-assets': { kind: 'indirect', reason: 'Browser-side Assets tab of the right Sidebar; registers nothing model-facing, and the details and pictures it draws for game-assets reach the model as asset_view results.' },
   'packages/gamedev/ui-game-audio': { kind: 'indirect', reason: 'Browser-side Audio tab; the measurements and picture it makes for dsh-game-audio reach models only through that package\'s audio_review result.' },
   'packages/gamedev/ui-game-tools': { kind: 'none', reason: 'Browser-side Game tools tabs; registers nothing model-facing.' },
+  'packages/gamedev/godot-protocol': { kind: 'none', reason: 'Type declarations of the godot/record request only; registers nothing model-facing.' },
   'packages/client/locale': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/client/web': { kind: 'none', reason: 'Browser-side UI plugin layer; registers nothing model-facing.' },
   'packages/context/file-reference': { kind: 'indirect', reason: 'The discovery seam and grammar delegate model guidance to the composed provider.' },

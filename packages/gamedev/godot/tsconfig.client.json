@@ -12,6 +12,9 @@
   ],
   "references": [
     {
+      "path": "../godot-protocol"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {
