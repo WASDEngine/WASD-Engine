@@ -4,7 +4,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, vi } from 'vitest'
-import { CALL_TOOL, GameToolCatalog, SEARCH_TOOL } from '../src/catalog.ts'
+import { CALL_TOOL, CREATE_PROJECT_TOOL, GameToolCatalog, SEARCH_TOOL } from '../src/catalog.ts'
 import type { GameMcpCall, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, GameMcpToolResult } from '../src/provider.ts'
 
 function echoDefinition(name = 'echo'): ToolDefinition {
@@ -59,19 +59,24 @@ describe('GameToolCatalog.tools', () => {
         { name: 'alpha_echo', definition: echoDefinition() },
         { name: 'alpha_bad name', definition: echoDefinition() },
       ]),
+      // The server's own tool names stay the server's.
+      provider('create', [{ name: CREATE_PROJECT_TOOL, definition: echoDefinition() }]),
     ], warn)
     expect(catalog.tools().map(entry => entry.tool.name)).toEqual(['alpha_echo'])
-    expect(warn).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalledTimes(4)
   })
 
-  it('lists the search and call tools first, then each tool with its title, schema, and read-only hint', () => {
+  it('lists the search, call, and create tools first, then each tool with its title, schema, and read-only hint', () => {
     const catalog = new GameToolCatalog(() => [
       provider('alpha', [{ name: 'alpha_echo', definition: echoDefinition(), readOnly: true, description: 'Echo for agents.' }]),
     ], () => {})
-    const [search, callTool, echo] = catalog.listing()
+    const [search, callTool, create, echo] = catalog.listing()
     expect(search).toMatchObject({ name: SEARCH_TOOL, annotations: { readOnlyHint: true } })
     expect(search?.inputSchema).toMatchObject({ properties: { plugin: { enum: ['alpha'] } } })
     expect(callTool).toMatchObject({ name: CALL_TOOL, inputSchema: { required: ['name'] } })
+    expect(create).toMatchObject({ name: CREATE_PROJECT_TOOL, title: 'Create game project', inputSchema: { required: ['name'] } })
+    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['name', 'location'])
+    expect(create?.annotations).toBeUndefined()
     expect(echo).toEqual({
       name: 'alpha_echo',
       title: 'ALPHA: echo',
@@ -90,6 +95,7 @@ describe('GameToolCatalog.instructions', () => {
     expect(text).toContain('BETA (beta_* tools): The beta tools.')
     expect(text).toContain('## ALPHA\n\nUse alpha_echo first.')
     expect(text).not.toContain('## BETA')
+    expect(text).toContain('When the user asks for a new game, create its project with create_game_project, which WASD Engine lists among the user\'s game projects, and make the game in the folder it returns.')
   })
 })
 

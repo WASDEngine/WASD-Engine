@@ -1,8 +1,8 @@
 /**
- * The server's tools: `search_game_tools` and `call_game_tool`, then every provider's tools in provider order.
- * The catalog lists them as MCP tools, searches them, writes the server instructions, and runs one call: it
- * prepares the call through the tool's provider, runs the tool's harness definition with an execution of its own,
- * and turns the value, or the failure, into an MCP result.
+ * The server's tools: `search_game_tools`, `call_game_tool`, and `create_game_project`, then every provider's tools in
+ * provider order. The catalog lists them as MCP tools, searches the providers' tools, writes the server instructions,
+ * and runs one call of a provider's tool: it prepares the call through the tool's provider, runs the tool's harness
+ * definition with an execution of its own, and turns the value, or the failure, into an MCP result.
  * @module @deepseek-ai/dsh-game-mcp/src/catalog
  */
 import { randomUUID } from 'node:crypto'
@@ -22,6 +22,9 @@ export const SEARCH_TOOL = 'search_game_tools'
 
 /** Name of the tool that calls another tool by name. */
 export const CALL_TOOL = 'call_game_tool'
+
+/** Name of the tool that creates a game project. */
+export const CREATE_PROJECT_TOOL = 'create_game_project'
 
 /** Pattern of a provider id. */
 export const PROVIDER_ID_PATTERN = /^[a-z][a-z0-9]{0,31}$/u
@@ -133,7 +136,7 @@ export class GameToolCatalog {
 
   private collect(providers: readonly GameMcpProvider[]): CatalogTool[] {
     const tools: CatalogTool[] = []
-    const names = new Set<string>([SEARCH_TOOL, CALL_TOOL])
+    const names = new Set<string>([SEARCH_TOOL, CALL_TOOL, CREATE_PROJECT_TOOL])
     for (const provider of providers) {
       for (const tool of provider.tools()) {
         if (!tool.name.startsWith(`${provider.id}_`) || !TOOL_NAME_PATTERN.test(tool.name)) {
@@ -169,7 +172,7 @@ export class GameToolCatalog {
 
   /**
    * List the tools for `tools/list`.
-   * @returns the MCP tools: the search and call tools, then the provider tools.
+   * @returns the MCP tools: the search, call, and create tools, then the provider tools.
    */
   listing(): McpToolListing[] {
     const all = this.providers()
@@ -205,6 +208,27 @@ export class GameToolCatalog {
           },
         },
       },
+      {
+        name: CREATE_PROJECT_TOOL,
+        title: 'Create game project',
+        description: 'Create a new game project in WASD Engine: a new folder for the game, which WASD Engine lists among the user\'s game projects. '
+          + 'Returns the folder\'s absolute path; make the game there, and pass the path as project to the game tools.',
+        inputSchema: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name'],
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Name of the game project, which names its folder and its entry in WASD Engine: one folder name, without / \\ : * ? " < > |, control characters, or a trailing period.',
+            },
+            location: {
+              type: 'string',
+              description: 'Absolute path of the folder to create the project\'s folder in, which WASD Engine creates when missing. Default: the WASD Engine folder in the user\'s Documents folder, where WASD Engine keeps game projects.',
+            },
+          },
+        },
+      },
       ...this.collect(all).map(({ provider, tool }): McpToolListing => ({
         name: tool.name,
         title: `${provider.title}: ${tool.name.slice(provider.id.length + 1).replaceAll('_', ' ')}`,
@@ -225,6 +249,7 @@ export class GameToolCatalog {
       'WASD Engine is the game development app open on this computer. Its MCP server gives you its game tools: '
         + `${providers.map(provider => `${provider.title} (${provider.id}_* tools): ${provider.description}`).join(' ')} `
         + `${SEARCH_TOOL} lists the tools and whether each plugin is ready, and ${CALL_TOOL} calls a tool by name. `
+        + `When the user asks for a new game, create its project with ${CREATE_PROJECT_TOOL}, which WASD Engine lists among the user's game projects, and make the game in the folder it returns. `
         + 'Every tool runs on this computer with the user\'s permissions. Where a section below names a tool without its plugin prefix, add the prefix, '
         + 'as in blender_scene_info.',
       ...providers.flatMap(provider => provider.instructions === undefined ? [] : [`## ${provider.title}\n\n${provider.instructions}`]),

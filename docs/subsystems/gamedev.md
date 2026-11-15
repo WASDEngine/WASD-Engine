@@ -389,7 +389,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 
 | Tools | Provider | How calls run |
 |---|---|---|
-| `search_game_tools`, `call_game_tool` | `game-mcp` | The server searches the providers' tools and their readiness, or calls one by name |
+| `search_game_tools`, `call_game_tool`, `create_game_project` | `game-mcp` | The server searches the providers' tools and their readiness, calls one by name, or creates a game project as the Create game project dialog does, through `gameProjectController`, without a Session |
 | `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
 | `polyhaven_*` | `polyhaven`, through `polyHavenMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) | The Session's own tool definitions, which need no Session; preview images return as JPEG bytes, and a download needs an absolute folder |
 | `asset_search`, `asset_view` | `asset`, through `assetMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) | The Session's own tool definitions, for the connected agent's Session of the game project it names as `project`; a window of WASD Engine draws the pictures, which return as image bytes |
@@ -404,7 +404,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 
 A plugin contributes tools with `ctx.gameMcp.provide()` for its own lifetime, and the server lists a tool only under its provider's prefix. A tool definition runs with an execution of the server's own, so harness tool policies, such as approval prompts, do not apply; the connected agent's harness applies its own.
 
-**Sessions.** Each Godot call names its project by absolute path, or reuses the agent's previous one. The server registers the folder as a game project unless a registered one contains it, and resolves the agent's Session in that project, creating it on first use: one Session per agent and game project, and one more for each `session` name that the agent's calls give, so agents that share one connection, such as the subagents of one session, run games of their own; all are remembered in `<dataRoot>/sessions.json`. The Session runs the game, so its run, logs, and Game tab are those of an ordinary Session, and the user can watch, pause, and play it there. The Blender, GIMP, and SuperCollider tools take `session` and `project` too: a call that gives a name runs in the same Session, and so in that Session's own workers, while calls without `session` share one worker of each application ([connected agents' Sessions](../../packages/gamedev/app-mcp/README.md#connected-agents-sessions)).
+**Sessions.** `create_game_project` registers a new game project with no Session; the window lists it under Game Projects. Each Godot call names its project by absolute path, or reuses the agent's previous one. The server registers the folder as a game project unless a registered one contains it, and resolves the agent's Session in that project, creating it on first use: one Session per agent and game project, and one more for each `session` name that the agent's calls give, so agents that share one connection, such as the subagents of one session, run games of their own; all are remembered in `<dataRoot>/sessions.json`. The Session runs the game, so its run, logs, and Game tab are those of an ordinary Session, and the user can watch, pause, and play it there. The Blender, GIMP, and SuperCollider tools take `session` and `project` too: a call that gives a name runs in the same Session, and so in that Session's own workers, while calls without `session` share one worker of each application ([connected agents' Sessions](../../packages/gamedev/app-mcp/README.md#connected-agents-sessions)).
 
 **The window.** `godot_run` emits the Host event `game-mcp/reveal` with the Session id. The Remote events allowlist forwards it to every window that may read the Session, and the `ui-game-mcp` row's browser plugin, [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.md), opens the Session there; the Game tab then opens for the run, as for any run an agent starts.
 
@@ -1024,12 +1024,12 @@ Source: [`packages/gamedev/game-mcp/src/types.ts`](../../packages/gamedev/game-m
 
 #### `game-mcp/tool-result` — emit
 
-A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.
+A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
 
 ```ts cordis-catalog
 /**
- * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused
- * call, and a call of an unknown tool do not emit it.
+ * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
+ * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
  * @mode emit
  * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
  */

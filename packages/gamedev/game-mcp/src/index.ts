@@ -1,13 +1,13 @@
 /**
  * WASD Engine's MCP server for other agents on this computer, such as Claude Code or Codex: a Streamable HTTP
  * endpoint on `127.0.0.1` that requires the token in the server's data folder and offers the game tools that
- * plugins contribute through `ctx.gameMcp.provide()`, a search over them, and a call by name. Games that a connected
- * agent starts run in a Session of the WASD Engine window, which the server asks the window to show. Every user signs
- * in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool call with a
- * message that asks the user to sign in; a Host without the account plugin runs every call. The `gameMcp`
- * Remote streams the endpoint, the setup prompt, and the agents seen to the window, the `game-mcp/reveal`
- * event asks the window to show a Session, and the `game-mcp/tool-result` event reports each finished call of a
- * provider tool.
+ * plugins contribute through `ctx.gameMcp.provide()`, a search over them, a call by name, and the creation of a game
+ * project, which opens no Session in it. Games that a connected agent starts run in a Session of the WASD Engine
+ * window, which the server asks the window to show. Every user signs in to WASD Engine, so while the account plugin
+ * reports no stored sign-in the server refuses each tool call with a message that asks the user to sign in; a Host
+ * without the account plugin runs every call. The `gameMcp` Remote streams the endpoint, the setup prompt, and the
+ * agents seen to the window, the `game-mcp/reveal` event asks the window to show a Session, and the
+ * `game-mcp/tool-result` event reports each finished call of a provider tool.
  * @module @deepseek-ai/dsh-game-mcp
  */
 import { isAbsolute, join } from 'node:path'
@@ -22,6 +22,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GameToolCatalog, PROVIDER_ID_PATTERN } from './catalog.ts'
 import { ClientDirectory } from './clients.ts'
 import { listenLoopback, LOOPBACK_HOST, type HttpListener } from './http.ts'
+import { createGameProject } from './projects.ts'
 import { setupPrompt } from './prompt.ts'
 import type { GameMcpCall, GameMcpClient, GameMcpProvider, GameMcpToolOwner } from './provider.ts'
 import { authInfoFor, createGameMcpHandler } from './server.ts'
@@ -114,6 +115,7 @@ export default class GameMcpServer extends TypertRemoteService {
       catalog: this.catalog,
       refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
+      createProject: (args, signal) => createGameProject(ctx, args, signal),
       progressIntervalMs: config.progressIntervalMs,
     }, (error) => { ctx.logger.debug(`game-mcp: ${error.message}`) })
     ctx.on('tools/change', () => { this.toolsChanged() })

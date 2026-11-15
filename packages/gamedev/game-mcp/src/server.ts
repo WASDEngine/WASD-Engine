@@ -1,9 +1,9 @@
 /**
  * The MCP protocol face of the server: a handler that serves the 2026-07-28 revision and, statelessly, the 2025
  * revisions, from one low-level MCP server per request whose tool list and instructions come from the catalog at
- * that moment. `tools/call` answers the search and call tools itself and runs every other name through the
- * catalog, once the service lets this call run: WASD Engine refuses every call while no one is signed in. The
- * caller's identity reaches each request as its authentication information.
+ * that moment. `tools/call` answers the search and call tools itself, hands the create tool to the service, and runs
+ * every other name through the catalog, once the service lets this call run: WASD Engine refuses every call while no
+ * one is signed in. The caller's identity reaches each request as its authentication information.
  *
  * The response to every request is an event stream that starts as soon as the request arrives and carries keep-alive
  * comments every 15 seconds, so an agent that waits a fixed time for a response to begin, as Claude Code waits 60
@@ -25,7 +25,7 @@ import {
   type InputRequiredResult, type McpHttpHandler, type ServerContext, type Tool,
 } from '@modelcontextprotocol/server'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { CALL_TOOL, SEARCH_TOOL, type GameToolCatalog, type McpCallResult } from './catalog.ts'
+import { CALL_TOOL, CREATE_PROJECT_TOOL, SEARCH_TOOL, type GameToolCatalog, type McpCallResult } from './catalog.ts'
 import { MAX_BODY_BYTES } from './http.ts'
 import type { GameMcpCall, GameMcpClient, GameMcpContent, JsonObject } from './provider.ts'
 import { UNKNOWN_CLIENT } from './clients.ts'
@@ -63,6 +63,13 @@ export interface GameMcpServing {
    * @returns the call.
    */
   call(client: GameMcpClient, signal: AbortSignal): GameMcpCall
+  /**
+   * Run one call of the create tool, which creates a game project without a Session.
+   * @param args - the agent's arguments.
+   * @param signal - the call's cancellation.
+   * @returns the MCP result; a refused or failed creation is an error result whose text says why.
+   */
+  createProject(args: JsonObject, signal: AbortSignal): Promise<McpCallResult>
   /** Interval in milliseconds of the progress notifications a running tool call sends to an agent that asked for progress. */
   readonly progressIntervalMs: number
 }
@@ -155,6 +162,7 @@ async function callTool(serving: GameMcpServing, name: string, args: JsonObject,
     const plugin = typeof args.plugin === 'string' ? args.plugin : undefined
     return { content: [{ type: 'text', text: await catalog.search(query, plugin, call.signal) }] }
   }
+  if (name === CREATE_PROJECT_TOOL) return serving.createProject(args, call.signal)
   let target = name
   let targetArgs = args
   if (name === CALL_TOOL) {
@@ -162,7 +170,7 @@ async function callTool(serving: GameMcpServing, name: string, args: JsonObject,
     if (args.arguments !== undefined && !isObject(args.arguments)) return errorResult(`${CALL_TOOL}: arguments must be an object.`)
     target = args.name
     targetArgs = args.arguments ?? {}
-    if (target === SEARCH_TOOL || target === CALL_TOOL) return callTool(serving, target, targetArgs, call)
+    if (target === SEARCH_TOOL || target === CALL_TOOL || target === CREATE_PROJECT_TOOL) return callTool(serving, target, targetArgs, call)
   }
   const entry = catalog.tools().find(candidate => candidate.tool.name === target)
   if (entry === undefined) return errorResult(`WASD Engine has no game tool named ${JSON.stringify(target)}; ${SEARCH_TOOL} lists the tools.`)

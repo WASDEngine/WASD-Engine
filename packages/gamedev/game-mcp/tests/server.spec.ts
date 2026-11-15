@@ -3,12 +3,13 @@
  * MCP client over Streamable HTTP, streams its view to the window, and withdraws a provider's tools with it.
  */
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import { GameProjectController } from '@deepseek-ai/dsh-api-workspace-controller'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AccountView, DeepSeekAccount } from '@deepseek-ai/dsh-deepseek-account'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -16,7 +17,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport, type Progress } from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpView } from '../src/index.ts'
+import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpToolResult, type GameMcpView } from '../src/index.ts'
 
 const TIMEOUT = 30_000
 
@@ -125,8 +126,8 @@ describe('GameMcpServer', () => {
     expect(client.getServerVersion()).toMatchObject({ name: 'wasd-engine', title: 'WASD Engine' })
     expect(client.getInstructions()).toContain('## Alpha\n\nCall alpha_echo to check the connection.')
     const { tools } = await client.listTools()
-    expect(tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool', 'alpha_echo', 'alpha_show'])
-    expect(tools[2]).toMatchObject({ annotations: { readOnlyHint: true }, inputSchema: { type: 'object', required: ['text'] } })
+    expect(tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool', 'create_game_project', 'alpha_echo', 'alpha_show'])
+    expect(tools[3]).toMatchObject({ annotations: { readOnlyHint: true }, inputSchema: { type: 'object', required: ['text'] } })
 
     expect(text(await client.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe('echo: hi')
     expect(text(await client.callTool({ name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: { text: 'by name' } } }))).toBe('echo: by name')
@@ -202,11 +203,12 @@ describe('GameMcpServer', () => {
     const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
     const client = await connect(view.url as string, token)
     // The tools stay listed, so the agent learns what signing in gives it.
-    expect((await client.listTools()).tools).toHaveLength(4)
+    expect((await client.listTools()).tools).toHaveLength(5)
     for (const call of [
       { name: 'alpha_echo', arguments: { text: 'hi' } },
       { name: 'search_game_tools', arguments: { query: 'echo' } },
       { name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: { text: 'hi' } } },
+      { name: 'create_game_project', arguments: { name: 'Game', location: root } },
     ]) {
       const refused = await client.callTool(call)
       expect(refused.isError).toBe(true)
@@ -216,6 +218,47 @@ describe('GameMcpServer', () => {
     expect(text(await client.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe('echo: hi')
     status = 'unreadable'
     expect(text(await client.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe(SIGNED_OUT_MESSAGE)
+  }, TIMEOUT)
+
+  it('creates game projects for a connected agent, by name and through call_game_tool, without a Session', async () => {
+    const registered: string[] = []
+    ctx.provide('workspaceRegistry', {
+      create: async (path: string) => {
+        const canonical = await realpath(path)
+        registered.push(canonical)
+        return { id: `w${registered.length}`, path: canonical, title: basename(canonical), sessionIds: [], createdAt: '', updatedAt: '' }
+      },
+    } as never)
+    const createSession = vi.fn()
+    ctx.provide('sessionController', { create: createSession, resolveAgent: createSession } as never)
+    const documents = join(await realpath(root), 'Documents')
+    new GameProjectController(ctx, { documentsDirectory: documents, documentsLookupTimeoutMs: 10_000, required: false }, () => Promise.resolve(''))
+    const events: Array<GameMcpToolResult | SessionId> = []
+    ctx.on('game-mcp/tool-result', (result) => { events.push(result) })
+    ctx.on('game-mcp/reveal', (sessionId) => { events.push(sessionId) })
+    const { server, view } = await start()
+    ctx.effect(() => server.provide(alpha))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const client = await connect(view.url as string, token)
+
+    const listed = (await client.listTools()).tools.find(tool => tool.name === 'create_game_project')
+    expect(listed).toMatchObject({ title: 'Create game project', inputSchema: { required: ['name'], properties: { name: { type: 'string' }, location: { type: 'string' } } } })
+    expect(listed?.annotations?.readOnlyHint).toBeUndefined()
+    expect(client.getInstructions()).toContain('When the user asks for a new game, create its project with create_game_project')
+
+    const first = await client.callTool({ name: 'create_game_project', arguments: { name: 'Space Frogs' } })
+    expect(first.isError).toBeFalsy()
+    expect(text(first)).toContain(`Created the game project "Space Frogs" in ${join(documents, 'WASD Engine', 'Space Frogs')}, which WASD Engine lists among the user's game projects.`)
+    const second = await client.callTool({ name: 'call_game_tool', arguments: { name: 'create_game_project', arguments: { name: 'Moon Miner', location: documents } } })
+    expect(text(second)).toContain(`Created the game project "Moon Miner" in ${join(documents, 'Moon Miner')}`)
+    const again = await client.callTool({ name: 'create_game_project', arguments: { name: 'Moon Miner', location: documents } })
+    expect(again.isError).toBe(true)
+    expect(text(again)).toBe(`${join(documents, 'Moon Miner')} already exists; pass another name or location.`)
+
+    expect(registered).toEqual([join(documents, 'WASD Engine', 'Space Frogs'), join(documents, 'Moon Miner')])
+    // The projects hold no Session, the window is asked to show none, and no provider tool ran.
+    expect(createSession).not.toHaveBeenCalled()
+    expect(events).toEqual([])
   }, TIMEOUT)
 
   it('refuses requests without the token, from foreign hosts and origins, and outside its endpoint', async () => {
@@ -249,9 +292,9 @@ describe('GameMcpServer', () => {
     expect(() => server.provide({ ...alpha, id: 'Not Valid' })).toThrow('invalid provider id')
     const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
     const client = await connect(view.url as string, token)
-    expect((await client.listTools()).tools).toHaveLength(4)
+    expect((await client.listTools()).tools).toHaveLength(5)
     dispose()
-    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool'])
+    expect((await client.listTools()).tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool', 'create_game_project'])
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: {} }))).toBe('WASD Engine offers no game tools right now.')
   }, TIMEOUT)
 

@@ -5607,8 +5607,8 @@ export const EVENT_API: readonly EventApiEntry[] = [
     name: 'game-mcp/tool-result',
     mode: 'emit',
     signature: '\'game-mcp/tool-result\'(result: GameMcpToolResult): void',
-    summary: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
-    description: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.',
+    summary: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.',
+    description: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.',
     parameters: [{ name: 'result', description: 'the provider, tool, arguments, calling agent, Session, and whether the call failed.' }],
   },
   {

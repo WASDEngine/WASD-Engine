@@ -389,7 +389,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 | 工具 | provider | 调用如何执行 |
 |---|---|---|
-| `search_game_tools`、`call_game_tool` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态，或按名调用其中一个 |
+| `search_game_tools`、`call_game_tool`、`create_game_project` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态、按名调用其中一个，或像「创建游戏项目」对话框那样通过 `gameProjectController` 创建游戏项目，且不创建 Session |
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |
@@ -404,7 +404,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 插件在自身生命周期内通过 `ctx.gameMcp.provide()` 贡献工具，服务器只在 provider 的前缀下列出工具。工具定义以服务器自己的执行上下文运行，因此 harness 的工具策略（例如批准提示）不适用；由已连接 agent 的 harness 应用它自己的策略。
 
-**Session。** 每次 Godot 调用都以绝对路径指定项目，或沿用该 agent 上一次的项目。除非已有注册的游戏项目包含该文件夹，服务器会把该文件夹注册为游戏项目，并在该项目中解析该 agent 的 Session，首次使用时创建：每个 agent 与游戏项目对应一个 Session，agent 的调用每给出一个 `session` 名称就再对应一个，因此共用同一连接的 agent（例如同一会话的多个子 agent）能运行各自的游戏；这些 Session 都记录在 `<dataRoot>/sessions.json` 中。游戏在这个 Session 中运行，因此它的运行、日志与 Game 标签页都与普通 Session 相同，用户可以在其中观看、暂停和游玩。Blender、GIMP 与 SuperCollider 工具也接受 `session` 与 `project`：给出名称的调用在同一个 Session 中运行，因而使用该 Session 自己的工作进程；未给出 `session` 的调用则共用每个应用的一个工作进程（[连接的 agent 的 Session](../../packages/gamedev/app-mcp/README.zh.md#connected-agents-sessions)）。
+**Session。** `create_game_project` 注册一个不含 Session 的新游戏项目，窗口把它列在「游戏项目」下。每次 Godot 调用都以绝对路径指定项目，或沿用该 agent 上一次的项目。除非已有注册的游戏项目包含该文件夹，服务器会把该文件夹注册为游戏项目，并在该项目中解析该 agent 的 Session，首次使用时创建：每个 agent 与游戏项目对应一个 Session，agent 的调用每给出一个 `session` 名称就再对应一个，因此共用同一连接的 agent（例如同一会话的多个子 agent）能运行各自的游戏；这些 Session 都记录在 `<dataRoot>/sessions.json` 中。游戏在这个 Session 中运行，因此它的运行、日志与 Game 标签页都与普通 Session 相同，用户可以在其中观看、暂停和游玩。Blender、GIMP 与 SuperCollider 工具也接受 `session` 与 `project`：给出名称的调用在同一个 Session 中运行，因而使用该 Session 自己的工作进程；未给出 `session` 的调用则共用每个应用的一个工作进程（[连接的 agent 的 Session](../../packages/gamedev/app-mcp/README.zh.md#connected-agents-sessions)）。
 
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
@@ -1024,12 +1024,12 @@ Source: [`packages/gamedev/game-mcp/src/types.ts`](../../packages/gamedev/game-m
 
 #### `game-mcp/tool-result` — emit
 
-A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused call, and a call of an unknown tool do not emit it.
+A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
 
 ```ts cordis-catalog
 /**
- * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused
- * call, and a call of an unknown tool do not emit it.
+ * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
+ * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
  * @mode emit
  * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
  */

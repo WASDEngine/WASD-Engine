@@ -171,8 +171,8 @@ export interface GameMcpToolResult {
 declare module '@deepseek-ai/cordis' {
   interface Events {
     /**
-     * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`, a refused
-     * call, and a call of an unknown tool do not emit it.
+     * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
+     * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
      * @mode emit
      * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
      */
