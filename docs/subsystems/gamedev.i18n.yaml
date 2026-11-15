@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/subsystems/gamedev.md
 /game-tools:
-  en: 055dc5ad15430aa7
-  zh: 0ec7b14063e25208
+  en: bd29c0d384935958
+  zh: e3260076649e510a
 /game-tools/composition:
   en: 4d470fb40f29ab23
   zh: 7349296eed44dc67
@@ -54,20 +54,20 @@
   en: a25b2ebe85722938
   zh: 8fe7fbff8e9e1a0f
 /game-tools/assets-tab:
-  en: b2904282f3338f10
-  zh: a3b92e613cb9c472
+  en: a01400cda7b95388
+  zh: 26f60b61ea412692
 /game-tools/audio-tab-and-audio-tools:
-  en: e59698b6c9423c38
-  zh: 7eca82eb4f9107a9
+  en: ecb65f5f096300b9
+  zh: 4f6a034e3491d4ab
 /game-tools/art-references:
-  en: c9bdbd9ea515733f
-  zh: d2b2a878cebf7e6c
+  en: 682fbe592a8e3564
+  zh: 965684c5d3537934
 /game-tools/mcp-server-for-other-agents:
   en: 809f12ef879eb264
   zh: bf98614646a9e28c
 /game-tools/agent-feedback-and-mcp-usage:
-  en: d1a56725964df9d8
-  zh: 1ce6fd547cd5daa9
+  en: 0b3933640d2876f7
+  zh: 2a5f7da74e738198
 /game-tools/agent-s-browser:
   en: f5bb3430cfa3433f
   zh: 84102920f1c0753b

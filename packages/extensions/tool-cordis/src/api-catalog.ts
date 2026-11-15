@@ -3145,7 +3145,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: '@Remote(\'prompt\') async prompt(request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue>',
         description: 'Admit one prompt after explicitly resuming its Session.',
-        parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
+        parameters: [{ name: 'request', description: 'Session identity, prompt content, source metadata, and delivery mode; a prompt that `answersQuestion` must steer content.' }, { name: 'signal', description: 'caller cancellation before prompt admission begins.' }],
         returns: 'acknowledgement that the Agent accepted the prompt.',
       },
       {
@@ -4751,10 +4751,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'whether the install started, or why not.',
       },
       {
-        signature: '@Remote async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>',
-        description: 'Start an installed game; an online game first installs its newer version and signs in as the app\'s account.',
-        parameters: [{ name: 'id', description: 'the game\'s id.' }, { name: 'signal', description: 'stops waiting; an update the start began goes on.' }],
-        returns: 'once the game started, or why it did not.',
+        signature: '@Remote async launchGame(id: string, anyway: boolean, signal: AbortSignal): Promise<WasdLibraryOutcome>',
+        description: 'Start an installed game once the site still offers it; an online game first installs its newer version and signs in as the app\'s account. A game WASD Engine took down never starts, and one its creator removed starts only with `anyway`.',
+        parameters: [{ name: 'id', description: 'the game\'s id.' }, { name: 'anyway', description: 'the player confirmed Play anyway for a game its creator removed, which then starts without online play.' }, { name: 'signal', description: 'stops waiting; an update the start began goes on.' }],
+        returns: 'once the game started, or why it did not, with the refusal when the library refused to start it.',
       },
       {
         signature: '@Remote async removeGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>',
@@ -6349,7 +6349,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'AssetRenderRequest',
-    declaration: 'export interface AssetRenderRequest {\n    readonly path: string;\n    readonly kind: AssetKind;\n    readonly draw: AssetDrawOptions;\n    readonly images: boolean;\n    readonly bytes: number;\n    readonly maxBytes: number;\n    readonly maxPixels: number;\n    readonly limits: AssetAnswerLimits;\n}',
+    declaration: 'export interface AssetRenderRequest {\n    readonly path: string;\n    readonly root: string;\n    readonly kind: AssetKind;\n    readonly draw: AssetDrawOptions;\n    readonly images: boolean;\n    readonly bytes: number;\n    readonly maxBytes: number;\n    readonly maxPixels: number;\n    readonly limits: AssetAnswerLimits;\n}',
   },
   {
     name: 'AssetRenderResult',
@@ -9901,7 +9901,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionPromptRequest',
-    declaration: 'export interface SessionPromptRequest {\n    readonly requestId: SessionRequestId;\n    readonly sessionId: SessionId;\n    readonly mode: \'queue\' | \'steer\';\n    readonly content: readonly PromptContentPart[];\n    readonly clientTimeZone?: string;\n}',
+    declaration: 'export interface SessionPromptRequest {\n    readonly requestId: SessionRequestId;\n    readonly sessionId: SessionId;\n    readonly mode: \'queue\' | \'steer\';\n    readonly content: readonly PromptContentPart[];\n    readonly clientTimeZone?: string;\n    readonly answersQuestion?: true;\n}',
   },
   {
     name: 'SessionPromptValue',
@@ -11248,12 +11248,20 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type WasdDesktopPlatform = \'windows\' | \'macos\';',
   },
   {
+    name: 'WasdLibraryAvailability',
+    declaration: 'export type WasdLibraryAvailability = \'taken_down\' | \'removed\';',
+  },
+  {
     name: 'WasdLibraryGame',
-    declaration: 'export interface WasdLibraryGame {\n    readonly id: string;\n    readonly slug: string;\n    readonly title: string;\n    readonly version: number;\n    readonly latestVersion: number;\n    readonly multiplayer?: WasdMultiplayerMode;\n    readonly platform: WasdDesktopPlatform;\n    readonly bytes: number;\n    readonly installedAt: string;\n    readonly coverUrl?: string;\n}',
+    declaration: 'export interface WasdLibraryGame {\n    readonly id: string;\n    readonly slug: string;\n    readonly title: string;\n    readonly version: number;\n    readonly latestVersion: number;\n    readonly updateVersion?: number;\n    readonly unavailableVersion?: number;\n    readonly availability?: WasdLibraryAvailability;\n    readonly multiplayer?: WasdMultiplayerMode;\n    readonly platform: WasdDesktopPlatform;\n    readonly bytes: number;\n    readonly installedAt: string;\n    readonly coverUrl?: string;\n}',
   },
   {
     name: 'WasdLibraryOutcome',
-    declaration: 'export type WasdLibraryOutcome = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly message: string;\n};',
+    declaration: 'export type WasdLibraryOutcome = {\n    readonly ok: true;\n} | {\n    readonly ok: false;\n    readonly message: string;\n    readonly refusal?: WasdLibraryRefusal;\n};',
+  },
+  {
+    name: 'WasdLibraryRefusal',
+    declaration: 'export type WasdLibraryRefusal = {\n    readonly reason: \'taken_down\';\n} | {\n    readonly reason: \'removed\';\n} | {\n    readonly reason: \'unavailable\';\n    readonly version: number;\n};',
   },
   {
     name: 'WasdLibraryTask',

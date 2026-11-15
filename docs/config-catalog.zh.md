@@ -77,13 +77,17 @@ export interface Config {
 ## `@deepseek-ai/dsh-agent-feedback`
 
 - `inject`: `tools`
-- `source`: [`packages/gamedev/agent-feedback/src/index.ts:33`](../packages/gamedev/agent-feedback/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/gamedev/agent-feedback/src/index.ts:38`](../packages/gamedev/agent-feedback/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration. */
 export interface Config {
-  /** Report how often agents call each MCP tool; false counts nothing and sends no reports. */
-  usageReports: boolean
+  /**
+   * Report how often agents call each MCP tool; false counts nothing, drops the counts held, sends no reports, and
+   * keeps `feedback_send`. The usage reports switch in Settings › General changes it while the app runs.
+   */
+  usageReports: Volatile<boolean>
   /** Milliseconds between two usage reports; a report is sent only when calls were counted since the last one. */
   reportIntervalMs: number
   /** Time limit of one request to the WASD Engine site, in milliseconds. */
@@ -1892,7 +1896,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-assets`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/game-assets/src/index.ts:38`](../packages/gamedev/game-assets/src/index.ts)
+- `source`: [`packages/gamedev/game-assets/src/index.ts:44`](../packages/gamedev/game-assets/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the asset tools. */
@@ -2017,7 +2021,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:72`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:74`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -4675,7 +4679,7 @@ export interface Config {
 
 ## `@deepseek-ai/dsh-todo-continuation`
 
-- `source`: [`packages/gamedev/todo-continuation/src/index.ts:34`](../packages/gamedev/todo-continuation/src/index.ts)
+- `source`: [`packages/gamedev/todo-continuation/src/index.ts:37`](../packages/gamedev/todo-continuation/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5940,6 +5944,7 @@ export interface Config {
 | `@deepseek-ai/dsh-experimental-webworker-packer` | — | [`packages/experimental/webworker-packer/src/index.ts`](../packages/experimental/webworker-packer/src/index.ts) |
 | `@deepseek-ai/dsh-experimental-webworker-runtime` | — | [`packages/experimental/webworker-runtime/src/index.ts`](../packages/experimental/webworker-runtime/src/index.ts) |
 | `@deepseek-ai/dsh-fs-patch` | — | [`packages/fs/fs-patch/src/index.ts`](../packages/fs/fs-patch/src/index.ts) |
+| `@deepseek-ai/dsh-godot-protocol` | — | [`packages/gamedev/godot-protocol/src/index.ts`](../packages/gamedev/godot-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-home-paths` | — | [`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts) |
 | `@deepseek-ai/dsh-hook-protocol` | — | [`packages/experimental/hook-protocol/src/index.ts`](../packages/experimental/hook-protocol/src/index.ts) |
 | `@deepseek-ai/dsh-http-proxy` | — | [`packages/util/http-proxy/src/index.ts`](../packages/util/http-proxy/src/index.ts) |

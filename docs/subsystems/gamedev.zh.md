@@ -2,7 +2,7 @@
 
 [English](gamedev.md) | 中文
 
-fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。原生 `reference_*` 工具在网上为 agent 即将制作的美术查找参考图像、动画和视频封面，并把选中的保存到游戏项目中，一个系统提示词段落让 agent 在制作美术之前收集它们。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。`feedback_send` 工具让 Session 的 agent 和连接的 agent 向 WASD Engine 团队发送关于 WASD Engine 的反馈，用量报告统计 agent 调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASDEngine 网站。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
+fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组让 agent（智能体）用 Blender、GIMP 与 SuperCollider 制作游戏素材，并运行、测试和游玩 Session 的 Godot 游戏。Blender、GIMP 与 SuperCollider 在 MCP 服务器之后无窗口运行；每个服务器把自己的工具提供给每个 Session，并为每个调用这些工具的 Session 运行一个长期运行的应用工作进程。Godot 通过 LibGodot（从不通过已安装的 Godot 编辑器）把每个 Session 的游戏作为独立进程运行，为 agent 提供原生 `godot_*` 工具，并把游戏画面推送到右侧 Sidebar 的 Game 标签页，用户在其中观看和游玩；旁边的「素材」标签页显示项目的图片与模型及其动画和详细信息，原生 `asset_*` 工具让 agent 查找这些素材，并看到该标签页为它们绘制的画面；「音频」标签页播放项目的音效、对白和音乐，原生 `audio_*` 工具让 agent 列出并测量这些声音。原生 `polyhaven_*` 工具在 Poly Haven 资源库中查找 CC0 的 HDRI、纹理和 3D 模型，并把它们下载到游戏项目中。原生 `elevenlabs_*` 工具为角色查找或克隆声音，并把语音、音效和音乐保存到游戏项目中；音频由 WASDEngine API 用 ElevenLabs 制作，费用计入已登录账号的套餐。原生 `image_generate` 工具用 Google 的 Nano Banana 2.1 制作游戏美术、界面元素、概念图和贴图，并保存到游戏项目中；图像由 WASDEngine API 制作，费用同样计入该套餐。原生 `reference_*` 工具在网上为 agent 即将制作的美术查找参考图像、动画和视频封面，并把选中的保存到游戏项目中，一个系统提示词段落让 agent 在制作美术之前收集它们。`game_addons` 工具把精选的第三方 Godot 与 Blender 扩展安装到游戏项目中，只有该项目的 Session 才能以技能形式看到它们的使用指南。一个专门的 MCP 服务器把同样的工具提供给这台电脑上的其他 agent（例如 Claude Code 或 Codex），它们的游戏在同一个 Game 标签页中播放。`feedback_send` 工具让 Session 的 agent 和连接的 agent 向 WASD Engine 团队发送关于 WASD Engine 的反馈，用量报告统计 agent 调用每个游戏工具的频率，并把用户添加的 MCP 服务器的工具作为一个总数统计，用户可以在「设置 › 通用」中关闭它；两者都以已登录账号的身份发送到 WASDEngine 网站。本页说明这些包如何相互连接，以及它们的进程之间交换的格式；配置、工具目录、模型可见文本与限制由各包的 README 说明。
 
 ## 组成
 
@@ -333,17 +333,17 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 数据 | 通道 | 时机 |
 |---|---|---|
 | 素材列表 | `workspaceFiles.list`，从工作区根目录起广度优先，同时最多列出六个文件夹，跳过隐藏文件夹与 `node_modules`；同时记录 Godot 场景与资源，以及包含 `project.godot` 的文件夹 | 标签页显示或下拉列表打开且上一次扫描早于 2 秒或其耗时的十倍时，以及用户按下刷新时 |
-| 当前查看的文件 | `workspaceFiles.readBytes`：一次完整读取，超过 Host 整文件上限时改为字节窗口 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
-| 图片的动画 | `workspaceFiles.readBytes`：读取名称指向该图片的 Godot 文件（最多 400 个）和旁边的精灵表 JSON；`workspaceFiles.list`：列出其文件夹以查找编号图片 | 图片显示时 |
-| 模型引用的文件 | `GET api/file?path=<absolute path>`，相对于当前文件所在文件夹解析，且只在项目文件夹内；网址、走出项目的名称以及该路由不提供的路径都不会加载 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
+| 当前查看的文件 | `GET api/game-assets.file?root=<project folder>&path=<file>`，即 `game-assets` 行的路由：只在文件的真实路径位于项目文件夹的真实路径之内时提供该文件，并在读取之前拒绝超过预览上限的文件 | 选择素材时，以及其 `file` 资源每报告一个新版本时 |
+| 图片的动画 | 同一路由，读取名称指向该图片的 Godot 文件（最多 400 个）和旁边的精灵表 JSON；`workspaceFiles.list`：列出其文件夹以查找编号图片 | 图片显示时 |
+| 模型引用的文件 | 同一路由，每个名称相对于项目内当前文件所在文件夹解析；网址、走出项目的名称、项目内的链接引出项目的文件，以及该路由不提供的路径都不会加载 | three.js 加载 glTF 缓冲区或图片、OBJ 材质库或纹理，或 FBX 与 Collada 纹理时 |
 
 该标签页不持有游戏进程，也不调用任何工具：它读取 agent 与游戏工具写入的文件，因此 GIMP 保存的纹理或 Blender 导出的模型会在列表重新扫描后出现，当前查看的文件也会随修改重新加载。
 
 **agent 的视图。** `game-assets` 行挂载 [`@deepseek-ai/dsh-game-assets`](../../packages/gamedev/game-assets/README.zh.md)，即原生 `asset_search` 与 `asset_view` 工具。`asset_search` 在 Host 上遍历项目文件夹。`asset_view` 让一个窗口用该标签页自己的查看器绘制素材：
 
-1. 工具解析出素材在 Session 工作目录内的路径、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：工作区路径（相对于 Session 头部记录的文件夹，窗口按该文件夹解析该 Session 的路径）、该文件以及 glTF 或 GLB 文件所引用的缓冲区和图片的大小、类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
+1. 工具解析出素材在 Session 工作目录内的路径（也按其真实路径检查）、格式以及 Blender 文件的导出。没有窗口连接到 Host 时，它立即以 `ASSET_NO_WINDOW` 失败；否则发出带作用域的 waterfall `game-assets/render`，附带调用它的 Agent、该调用的取消信号和一个 JSON 请求：绘制的每次读取都限定在其中的文件夹（Session 头部记录的文件夹包含工作目录时取该文件夹，窗口按它解析该 Session 的路径），以及相对于它的工作区路径；Host 计算的绘制开销，即该文件，对于模型还有它引用的文件，以及其纹理、VOX 文件的网格与 FBX 文件的数组所占的内存；类型、视角、着色、骨架、动画、帧、时间、网格、区域和尺寸、是否绘制图片，以及字节和面积上限。
 2. Remote events 白名单把该 waterfall 转发给每个可读取该 Session 的所有者窗口；第一个应答生效，无法处理的窗口（例如模型所需的 WebGL 不可用）用 `next()` 委托出去。
-3. 该标签页的浏览器插件通过 `workspaceFiles` 读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时解码的内存合计不超过 64 MiB，更大的绘制单独进行；图片计入其文件及其文件头所述的像素，这些在等待之前从其开头的字节读取，未注明像素时按 8192 × 8192 像素计入；文件头所述像素超过 8192 × 8192 的图片，以及其格式本应注明尺寸却未注明的图片，会在解码之前被拒绝：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
+3. 该标签页的浏览器插件通过项目文件路由读取素材，测量其面板显示的详细信息，并在屏幕外按请求到达的顺序绘制图片，最多同时处理三个请求，同时解码的内存合计不超过 64 MiB，更大的绘制单独进行；图片计入其文件及其文件头所述的像素，这些在等待之前从其开头的字节读取，未注明像素时按 8192 × 8192 像素计入，模型计入 Host 计算的开销；文件头所述像素超过 8192 × 8192 的图片，以及其格式本应注明尺寸却未注明的图片，会在解码之前被拒绝：模型以该标签页的光照、网格和骨架叠加，绘制为视角或姿势的 JPEG 图块；图片绘制在棋盘格上、带编号网格，或绘制为动画各帧的 PNG 拼图。
 4. Host 逐字段验证应答，把图片作为附件存储给接受图像的模型，并把详细信息作为文本返回；不接受图像的模型只得到详细信息，没有窗口应答的调用以 `ASSET_NO_WINDOW` 失败。
 
 `show` 发出 `game-assets/reveal`，附带 Session、素材、动画和网格；白名单把它转发给可读取该 Session 的窗口，这些窗口会在 Session 不在屏幕上时打开它，并打开其「素材」标签页，选中该素材，在图片上显示该网格并播放该动画。队友或子 agent 会在其子 agent 树的领导 agent 的 Session 中显示素材，也就是用户正在查看的 Session。
@@ -355,7 +355,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 `ui-game-audio` 行挂载 [`@deepseek-ai/dsh-client-ui-game-audio`](../../packages/gamedev/ui-game-audio/README.zh.md)：一个 Host 半区为空的浏览器插件，注册右侧栏的 `audio` 页面类型，其引导项顺序为 46，位于「素材」标签页的引导项之后。它的主体按文件夹列出 Session 所在游戏项目的音效、对白和音乐及其时长，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，并播放所选声音：提供可拖动的波形、按采样精确循环的重复播放、音量控件，以及格式、响度和峰值等详细信息。整个窗口共用一个 `AudioContext`，因此同一时间只播放一个声音。
 
-`game-audio` 行挂载 [`@deepseek-ai/dsh-game-audio`](../../packages/gamedev/game-audio/README.zh.md)，其 `audio_search` 与 `audio_review` 工具让无法收听的 Session agent 与已连接的 agent 列出声音并测量其中一个。Host 读取文件及其文件头，但不解码：`audio_review` 通过以发起调用的 Session 为作用域、被转发的 waterfall 事件 `game-audio/measure` 请求一个窗口，由浏览器解码 MP3、Ogg 和 FLAC，并在答复成为结果之前校验它；带 `show` 时，它发出 `game-audio/reveal`，在该 Session 的「音频」标签页中打开该声音。该包浏览器安全的 `./audio` 导出（客户端打包纯净性检查把它作为可内联的线路层放行）包含格式、文件头探测、测量和图像，因此标签页的详细信息、agent 得到的数值，以及 SuperCollider 的 `render_audio` 与 `analyze_audio` 以同样的方式测量声音。
+`game-audio` 行挂载 [`@deepseek-ai/dsh-game-audio`](../../packages/gamedev/game-audio/README.zh.md)，其 `audio_search` 与 `audio_review` 工具让无法收听的 Session agent 与已连接的 agent 列出声音并测量其中一个。Host 读取文件及其文件头，但不解码：`audio_review` 通过以发起调用的 Session 为作用域、被转发的 waterfall 事件 `game-audio/measure` 请求一个窗口，由浏览器解码 MP3、Ogg 和 FLAC，并在答复成为结果之前校验它；带 `show` 时，它发出 `game-audio/reveal`，在该 Session 的「音频」标签页中打开该声音。该包浏览器安全的 `./audio` 导出（客户端打包纯净性检查把它作为可内联的线路层放行）包含格式、文件头探测、在解码之前限定窗口解码量的解码计划、测量和图像，因此标签页的详细信息、agent 得到的数值，以及 SuperCollider 的 `render_audio` 与 `analyze_audio` 以同样的方式测量声音。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|
@@ -375,7 +375,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | 数据 | 通道 | 时机 |
 |---|---|---|
 | 搜索结果 | `ctx.web.search`，即 `web_search` 使用的搜索，由 WASDEngine 服务计价 | `reference_search` 调用的每个查询 |
-| 页面和图像 | 从 Host 发出的 HTTP GET，只发往公共互联网地址，每次重定向都重新检查，不带 cookie | 搜索找到或调用给出的页面，以及它们提供的图像 |
+| 页面和图像 | 从 Host 发出的 HTTP GET，直接或经由代理只连接到为主机及每次重定向的主机检查过的公共互联网地址，不带 cookie | 搜索找到或调用给出的页面，以及它们提供的图像 |
 | 联系表 | `<dataRoot>/sheets/` 中的 JPEG 文件、给接受图像的模型的附件，以及 agent 消息中的 Markdown 图像，聊天界面通过 `/api/file` 渲染 | 每次找到图像的 `reference_search` 调用 |
 | 答案图片 | 浏览器向会话上传图片，然后是一条带有这些图片的引导用户消息，模型看到每份存储副本的只读路径 | 用户为 `ask_user_question` 的答案附加图片时 |
 | 保存的参考 | `<project>/references/<subject>/` 中的文件，带 `SOURCES.md` 和帧表，以及 `<project>/references/.gdignore`；这台电脑上的图像文件从其路径复制 | 每次 `reference_save` 调用 |
@@ -413,13 +413,13 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="agent-feedback"></a>
 ## agent 反馈与 MCP 用量
 
-fork 的 [`telemetry.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/telemetry.cordis.patch.yml) 把 `agent-feedback` 行插入每个 Web 和 Desktop 配置，该行挂载 [`@deepseek-ai/dsh-agent-feedback`](../../packages/gamedev/agent-feedback/README.zh.md)。它的 `feedback_send` 工具把一条关于 WASD Engine 的反馈发送到 `POST /api/v1/feedback`，它的用量报告每分钟一次、并在 Host 停止时，把自上次报告以来统计的 MCP 工具调用发送到 `POST /api/v1/tool-usage`。两者都使用账号登录的 `getPlatformSession()` 给出的源和令牌，未登录时不发送任何内容；WASDEngine 网站为该账号保存两者。
+fork 的 [`telemetry.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/telemetry.cordis.patch.yml) 把 `agent-feedback` 行插入每个 Web 和 Desktop 配置，该行挂载 [`@deepseek-ai/dsh-agent-feedback`](../../packages/gamedev/agent-feedback/README.zh.md)。它的 `feedback_send` 工具把一条关于 WASD Engine 的反馈发送到 `POST /api/v1/feedback`，它的用量报告每分钟一次、并在 Host 停止时，把自上次报告以来统计的 MCP 工具调用发送到 `POST /api/v1/tool-usage`。两者都使用账号登录的 `getPlatformSession()` 给出的源和令牌，未登录时不发送任何内容；WASDEngine 网站为该账号保存两者。反馈在发送前去掉用户的主目录、账户名、电子邮件地址和像密钥的字符串，工具结果显示实际发送的文本。计数属于收集它们时的登录，因此未登录时或在先前的登录下收集的计数会被丢弃，绝不发送给当前登录的账号。只有用量报告随该行的实时字段 `usageReports` 停止；Host 提供该行时，「设置 › 通用」中的**发送工具使用报告**通过设置表单写入该字段，这个开关属于 [`ui-game-tools`](../../packages/gamedev/ui-game-tools/README.zh.md)。
 
 报告统计两类调用：
 
 | 调用 | 来源 | 计入 |
 |---|---|---|
-| Session 自身的调用 | `tools/result` | `gameMcp.toolOwner()` 为该工具找到的提供方，并使用连接 agent 所用的工具名；否则，名为 `mcp__<server>__<tool>` 的工具计入该服务器，视为用户添加的服务器；其他工具不计数 |
+| Session 自身的调用 | `tools/result` | `gameMcp.toolOwner()` 为该工具找到的提供方，并使用连接 agent 所用的工具名；否则，名为 `mcp__<server>__<tool>` 的工具对用户添加的所有 MCP 服务器只计入一个键，服务器为 `added-mcp-servers`、工具为 `all-tools`，不写出任何服务器或工具的名称；其他工具不计数 |
 | 连接 agent 的调用 | `game-mcp/tool-result` | 该调用的提供方和工具，并带有 agent 的客户端 id |
 
 `gameMcp.toolOwner(name)` 按连接 agent 所用的工具名，或按运行该工具的 harness 定义的名称查找工具，因此 Session 以 `mcp__wasd_blender__*` 调用的 Blender 工具，在两类调用中都计为 `blender_*`。
@@ -837,12 +837,15 @@ Owner of the export, release, and Browser tools and of the `wasdPlugins` Remote.
 @Remote async installGame(slug: string, version: number, signal: AbortSignal): Promise<WasdLibraryOutcome>
 
 /**
- * Start an installed game; an online game first installs its newer version and signs in as the app's account.
+ * Start an installed game once the site still offers it; an online game first installs its newer version and signs
+ * in as the app's account. A game WASD Engine took down never starts, and one its creator removed starts only with
+ * `anyway`.
  * @param id - the game's id.
+ * @param anyway - the player confirmed Play anyway for a game its creator removed, which then starts without online play.
  * @param signal - stops waiting; an update the start began goes on.
- * @returns once the game started, or why it did not.
+ * @returns once the game started, or why it did not, with the refusal when the library refused to start it.
  */
-@Remote async launchGame(id: string, signal: AbortSignal): Promise<WasdLibraryOutcome>
+@Remote async launchGame(id: string, anyway: boolean, signal: AbortSignal): Promise<WasdLibraryOutcome>
 
 /**
  * Delete an installed game and its files.
@@ -1058,5 +1061,5 @@ Ask the windows that may read a Session to encode a recording of its game into a
 
 Types: [Agent](core.zh.md) · [Scoped](scope.zh.md)
 
-Source: [`packages/gamedev/godot/src/types.ts`](../../packages/gamedev/godot/src/types.ts)
+Source: [`packages/gamedev/godot-protocol/src/types.ts`](../../packages/gamedev/godot-protocol/src/types.ts)
 <!-- END GENERATED cordis-surface -->

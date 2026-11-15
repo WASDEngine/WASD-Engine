@@ -91,6 +91,8 @@ jobs:
           packages/client/ui-conversation
           packages/client/ui-model-selection
           packages/api/session-controller/tests/session-models.host.spec.ts
+          packages/api/session-controller/tests/wasdengine-question-answer.host.spec.ts
+          packages/api/session-controller/tests/wasdengine-question-answer.client.spec.ts
           packages/client/ui-settings-models
           packages/experimental/client-ui-forge
           packages/experimental/liveshare/tests/endpoint-classification.client.spec.ts

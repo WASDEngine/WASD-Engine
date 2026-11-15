@@ -346,6 +346,7 @@ flowchart TD
     pkg_game_mcp["game-mcp"]
     pkg_gimp["gimp"]
     pkg_godot["godot"]
+    pkg_godot_protocol["godot-protocol"]
     pkg_image_generation["image-generation"]
     pkg_polyhaven["polyhaven"]
     pkg_supercollider["supercollider"]
@@ -1729,6 +1730,7 @@ flowchart TD
 | [`client-ui-game-mcp`](../packages/gamedev/ui-game-mcp) | `gamedev` | — |
 | [`client-ui-game-tools`](../packages/gamedev/ui-game-tools) | `gamedev` | — |
 | [`game-mcp`](../packages/gamedev/game-mcp) | `gamedev` | — |
+| [`godot-protocol`](../packages/gamedev/godot-protocol) | `gamedev` | — |
 | [`host-directory-picker`](../packages/host/directory-picker) | `host` | — |
 | [`host-directory-picker-browse`](../packages/host/directory-picker-browse) | `host` | — |
 | [`host-directory-picker-native`](../packages/host/directory-picker-native) | `host` | — |
