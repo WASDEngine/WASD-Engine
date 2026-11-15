@@ -1,12 +1,29 @@
 /** A project's state: files replaced whole, and one operation of a project at a time, by the folder's real path. */
+import type { PathLike } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ProjectQueue, writeWhole } from '../src/state.ts'
+
+/** A wait that the next lookup of a real path takes before it answers, such as a slow disk's. */
+const lookups = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    realpath: async (path: PathLike): Promise<string> => {
+      const hold = lookups.hold
+      lookups.hold = undefined
+      if (hold !== undefined) await hold
+      return await actual.realpath(path)
+    },
+  }
+})
 
 const folders: string[] = []
 afterEach(async () => {
+  lookups.hold = undefined
   await Promise.all(folders.splice(0).map(folder => rm(folder, { recursive: true, force: true })))
 })
 
@@ -61,6 +78,29 @@ describe('ProjectQueue', () => {
     first.resolve(undefined)
     await Promise.all([running, third])
     expect(events).toEqual(['first ends', 'third runs'])
+  })
+
+  it('queues operations in the order they were asked for, also when a later one finds its folder first', async () => {
+    const root = await scratch()
+    const queue = new ProjectQueue()
+    const events: string[] = []
+    const first = Promise.withResolvers<undefined>()
+    const found = Promise.withResolvers<undefined>()
+    lookups.hold = found.promise
+    const running = queue.run(root, signal, async () => {
+      events.push('first starts')
+      await first.promise
+      events.push('first ends')
+    })
+    const second = queue.run(root, signal, async () => { events.push('second runs') })
+    // The second call's folder would resolve now, while the first call's waits.
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(events).toEqual([])
+    found.resolve(undefined)
+    await vi.waitFor(() => { expect(events).toEqual(['first starts']) })
+    first.resolve(undefined)
+    await Promise.all([running, second])
+    expect(events).toEqual(['first starts', 'first ends', 'second runs'])
   })
 
   it('runs the next operation after one that failed', async () => {

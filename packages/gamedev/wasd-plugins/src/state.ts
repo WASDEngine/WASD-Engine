@@ -58,6 +58,8 @@ function after(earlier: Promise<void>, signal: AbortSignal): Promise<void> {
 export class ProjectQueue {
   /** Per project, the promise that settles once its latest operation, and every earlier one, ended. */
   private readonly tails = new Map<string, Promise<void>>()
+  /** Settles once the latest call found its project's real path; it never rejects. */
+  private resolving: Promise<string> = Promise.resolve('')
 
   /**
    * Run an operation once the project's earlier operations ended.
@@ -68,7 +70,11 @@ export class ProjectQueue {
    * @throws the signal's reason when it aborts during the wait, and the operation's failure.
    */
   async run<T>(projectDir: string, signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
-    const key = await realFolder(projectDir)
+    // Calls find their real paths one after another, so each takes its place in the queue in the order it was asked;
+    // otherwise a later call whose path resolved first would find no earlier operation and run beside it.
+    const resolved = this.resolving.then(() => realFolder(projectDir))
+    this.resolving = resolved
+    const key = await resolved
     const earlier = this.tails.get(key) ?? Promise.resolve()
     let end = (): void => {}
     const ended = new Promise<void>((resolveEnd) => { end = resolveEnd })
