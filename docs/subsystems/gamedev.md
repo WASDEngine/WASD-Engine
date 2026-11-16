@@ -6,7 +6,7 @@ The fork-owned [`packages/gamedev/`](../../packages/gamedev/README.md) group let
 
 ## Composition
 
-The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the eight tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets` and `game-assets`, which mount the [Assets tab and the asset tools](#assets-tab), `ui-game-audio` and `game-audio`, which mount the [Audio tab and the audio tools](#audio-tab), `art-references`, which mounts the [reference tools](#art-references), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` and `image-generation` rows keep no files there and set only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
+The WASDEngine patch file [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) is the last entry of the `@deepseek-ai/dsh-web-app` bundle's `dsh.bundle.patch` list, so every Web and Desktop profile inserts its rows: the eight tool rows below, `ui-game-tools`, which mounts the [Game tools tabs](#game-tools-tabs) and takes no configuration, `ui-game-assets` and `game-assets`, which mount the [Assets tab and the asset tools](#assets-tab), `ui-game-audio` and `game-audio`, which mount the [Audio tab and the audio tools](#audio-tab), `art-references`, which mounts the [reference tools](#art-references), `graphics-review`, which mounts the [graphics review](#graphics-review), and `game-mcp` and `ui-game-mcp`, the [MCP server for other agents](#mcp-server-for-other-agents) and its browser half. Each application row sets `dataRoot` to `dshHomePath('<row>')`: the row's folder under the harness home, `~/.wasdengine/<row>`, or `$DSH_HOME/<row>` when `DSH_HOME` is set; the `polyhaven` row keeps no files there and sets no configuration, and the `elevenlabs` and `image-generation` rows keep no files there and set only `apiOrigin`, the expression of the account sign-in's `inferenceOrigin`. The `game-addons` row also names its catalog, `wasdengine/addons/` of the `@deepseek-ai/dsh-web-app` package, and its Blender add-on store, `dshHomePath('game-addons', 'blender')`, which the `blender` row's `addonStore` names too. A profile patch turns a row off with `- id: <row>` and `disabled: true`, the entry that the switch on the Plugins page's Game tools tab also writes. [FORK.md](../../wasdengine/FORK.md#game-tools) records the fork change and what to check after an upstream merge.
 
 | Row | Package | Agent tools | Application process |
 |---|---|---|---|
@@ -382,6 +382,16 @@ The `art-references` row mounts [`@deepseek-ai/dsh-art-references`](../../packag
 
 The `.gdignore` file makes Godot skip the folder, so references are neither imported nor exported with the game; the Assets tab still lists them.
 
+<a id="graphics-review"></a>
+## Graphics review
+
+The `graphics-review` row mounts [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.md), whose `graphics_review` tool gives the Session's agent and connected agents a critique of an image of the game's graphics, such as a screenshot that `godot_screenshot` or `godot_view` saved at its `path`, with the WASD Engine tools and add-ons that would make it look better, and whose `graphics-review` system prompt section asks for a review after all graphics work. The model-facing texts call the reviewer a specialized graphics expert reviewer model; it is the WASD Engine account's model route, `deepseek-account`, with a reviewer's instructions that name the game tools and the catalog add-ons.
+
+| Data | Channel | When |
+|---|---|---|
+| The image | The file the call names, fitted to the reviewer's image limits and stored as an attachment | For each `graphics_review` call |
+| The review request | `ctx.llm.stream` on the account's route with the purpose `graphics-review`, which the WASDEngine gateway prices against the account's AI usage | For each `graphics_review` call |
+
 <a id="mcp-server-for-other-agents"></a>
 ## MCP server for other agents
 
@@ -396,6 +406,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
 | `image_generate` | `image`, through `imageMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/image-generation/src/mcp.ts) | The Session's own tool definition, which needs no Session; the file and every image need absolute paths, and the images are charged to the account WASD Engine is signed in to |
 | `reference_search`, `reference_save` | `reference`, through `referenceMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/art-references/src/mcp.ts) | The Session's own tool definitions, which need no Session; `reference_save` takes the game project's folder as `project`, an absolute path, and each result's images return as image bytes |
+| `graphics_review` | `graphics`, through `graphicsReviewMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) | The Session's own tool definition, which needs no Session; the image is an absolute path, and the review runs on the account's model route, which the account pays for |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
 | `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
@@ -531,6 +542,13 @@ Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system pr
 
 ```ts cordis-catalog
 /**
+ * The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics
+ * review. The service is reachable only once its catalog loaded.
+ * @returns the catalog's entries.
+ */
+catalogEntries(): readonly GameAddon[]
+
+/**
  * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
@@ -569,7 +587,9 @@ Owner of the MCP endpoint, its game tool providers, and the connected agents' Se
 
 ```ts cordis-catalog
 /**
- * Offer a plugin's game tools to connected agents for the calling plugin's lifetime.
+ * Offer a plugin's game tools to connected agents for the calling plugin's lifetime. When the provider's description
+ * makes the overview of the server instructions longer than 4,096 characters, the part that Claude Code passes to its
+ * model, a warning names the length.
  * @param provider - the plugin's identity, readiness, and tools; its tool names start with its id and an underscore.
  * @returns an idempotent disposer that withdraws the tools.
  * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.

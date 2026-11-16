@@ -132,6 +132,26 @@ posix('observing the game', () => {
     expect(text(await callTool(c, 'godot_screenshot', { max_width: 10 }))).toContain('max_width must be from 64 to 4096.')
   })
 
+  it('saves a screenshot and a view as .png files at the path a call gives, for tools that take an image file', async () => {
+    const c = await started()
+    const saved = join(c.dir.root, 'work', 'shots', 'frame.png')
+    const shot = await callTool(c, 'godot_screenshot', { path: 'shots/frame.png' })
+    expect(text(shot)).toContain(`Saved the image to ${saved}.`)
+    expect(value(shot)).toMatchObject({ savedPath: saved, image: { mediaType: 'image/png' } })
+    expect((await readFile(saved)).toString('latin1')).toBe('PNG-BYTES')
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots/frame.png' }))).toContain('already exists; pass replace: true to overwrite it')
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots/frame.png', replace: true }))).toContain(`Saved the image to ${saved}.`)
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots/frame.jpg' }))).toContain('path must end in .png.')
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots' }))).toContain('path must end in .png.')
+
+    const viewed = join(c.dir.root, 'work', 'shots', 'view.png')
+    const view = await callTool(c, 'godot_view', { width: 320, height: 180, path: 'shots/view.png' })
+    expect(text(view)).toContain(`Saved the image to ${viewed}.`)
+    expect(value(view)).toMatchObject({ width: 320, height: 180, savedPath: viewed })
+    expect((await readFile(viewed)).toString('latin1')).toBe('VIEW-PNG-BYTES')
+    expect(text(await callTool(c, 'godot_view', { path: 'shots/view.png' }))).toContain('already exists; pass replace: true to overwrite it')
+  })
+
   it.each([
     [{ model: 'blind' } as const, 'does not accept images'],
     [{ model: 'unknown' } as const, 'does not accept images'],

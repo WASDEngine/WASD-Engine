@@ -65,7 +65,8 @@ export async function createGameProject(ctx: Context, args: JsonObject, signal: 
         type: 'text',
         text: `Created the game project ${JSON.stringify(workspace.title)} in ${workspace.path}, which WASD Engine lists among the user's game projects. `
           + (git ? 'The folder holds a Git repository with one empty commit and nothing else. ' : 'The folder is empty, without a Git repository. ')
-          + 'Make the game in this folder, and pass its path as project to the game tools.',
+          + 'Make the game in this folder, and pass its path as project to the game tools. '
+          + 'Before you write code, plan the game around the plugins that the server instructions list, and read the guide of each one you will use.',
       }],
     }
   } catch (error) {

@@ -190,10 +190,10 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 |---|---|---|
 | `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败 |
 | `godot_stop` | 无 | 游戏结束后返回 `Stopped the game.`，或返回 `No game was running.` |
-| `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停 |
+| `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space`、`path`、`replace` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停；给出 `path`（`.png` 文件）时，还会把图像保存到那里，供接受图像文件的工具使用，例如 `graphics_review`；文件已存在时，除非 `replace` 为 true，否则拒绝 |
 | `godot_input` | `events`（最多 256 个）、`screenshot`、`coordinate_space` | 依次执行事件，其中的等待和按住按实际时间计算，然后报告事件数、帧数、秒数和当前帧；`screenshot: true` 会附加一张截图。序列在其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已执行的事件 |
 | `godot_wait` | `seconds` 或 `frames`、`screenshot` | 让游戏经过这么多未暂停的游戏时间或这么多帧（1 到 100000）；游戏暂停时拒绝 `seconds`；等待在其秒数（或按每秒 10 帧计的帧数）加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已经过的游戏时间和帧数，例如游戏自行暂停时 |
-| `godot_view` | `node` 或 `asset`、`bone`、`yaw`、`pitch`、`distance`、`radius`，或 `camera`；`fov`、`isolate`、`lighting`、`animation`、`time`、`width`、`height`（默认 1280x720，最大 4096） | 一张在游戏内部用独立相机、按独立尺寸绘制的游戏 3D 世界的 PNG 图像，不改变窗口或游戏相机，并附上相机的位置、方向和视野，以及取景的中心和半径；见[视图、代码与录制](#views-and-recordings) |
+| `godot_view` | `node` 或 `asset`、`bone`、`yaw`、`pitch`、`distance`、`radius`，或 `camera`；`fov`、`isolate`、`lighting`、`animation`、`time`、`width`、`height`（默认 1280x720，最大 4096）、`path`、`replace` | 一张在游戏内部用独立相机、按独立尺寸绘制的游戏 3D 世界的 PNG 图像，不改变窗口或游戏相机，并附上相机的位置、方向和视野，以及取景的中心和半径；给出 `path`（`.png` 文件）时，像截图一样还会保存到那里；见[视图、代码与录制](#views-and-recordings) |
 | `godot_record` | `seconds`（0.5 到 120）、`fps`、`max_width`、`path`、`replace`、`events`、`coordinate_space`、`sheet_frames`（默认 12，最多 24） | 在事件播放期间把游戏录制为 MP4 文件，返回文件路径、大小、编解码器、帧数、跳过的帧数、时长、帧率和帧尺寸，并附上一张取自整段录制的帧的 JPEG 拼图 |
 | `godot_control` | `action`（`pause`、`resume` 或 `step`）、`frames` | 暂停或继续游戏，或运行 `frames` 帧（默认 1，最多 100000）后再次暂停；单步期间游戏被暂停、继续或再次单步时（例如在“游戏”标签页中），以及按每秒 10 帧计的帧数加上 `requestTimeoutMs` 的实际时间过去后，单步提前结束，结果会写明原因；报告暂停状态和帧号 |
 | `godot_eval` | `expression` 或 `code`、`node`、`timeout_seconds`（code，默认 10，1 到 300） | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root`、`tree`、引擎单例和自动加载，以 `node` 处的节点或当前场景为基对象；或把 GDScript `code` 作为函数体运行；返回 JSON 形式的值及其 Godot 类型 |
@@ -264,7 +264,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
 - 截图、视图和录制拼图以 PNG 或 JPEG 字节形式直接放在结果中返回，而不是为模型路由保存附件，也不检查模型；截图或截图区域请求的宽度，以及视图请求的尺寸，使图像最长边至多 1,568 像素、面积至多 1,150,000 像素，即 agent 无需缩放即可接收的尺寸。
 
-`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" and set 3d/physics_engine="Jolt Physics" under [physics].` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_view`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目，也不为 `godot_record` 加，因为它会保存视频。
+`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。MCP 服务器指令的概述会列出该 provider 的描述：在指令给出 Godot 版本时，描述也给出该版本；它说明用户在 WASD Engine 窗口中观看并游玩游戏，而 agent 自己查看、游玩并测量游戏，并要求 agent 在每次改动后运行游戏并查看画面，因为能编译通过的代码在画面或玩法上仍可能出错。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" and set 3d/physics_engine="Jolt Physics" under [physics].` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_view`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目，也不为 `godot_record` 加，因为它会保存视频。
 
 <a id="game-tab"></a>
 ### “游戏”标签页

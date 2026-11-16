@@ -356,7 +356,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
   const replaceParameter = { type: 'boolean', description: 'Overwrite the file when it exists. Default: false.' } as const
   return [defineTool({
     name: 'elevenlabs_voices',
-    description: 'Find ElevenLabs voices for game characters, narrators, and announcers. Searches ElevenLabs\' Voice Library of thousands of voices by description, such as "gruff dwarf blacksmith", "old British wizard", or "cheerful robot", and by gender, age, accent, language, and use case; lists ElevenLabs\' default voices (source "default"); or lists the voices this account cloned (source "mine"). Lists each voice\'s id, name, labels, and description. Free.',
+    description: 'Find ElevenLabs voices for game characters, narrators, and announcers. Searches ElevenLabs\' Voice Library of thousands of voices by description, such as "gruff dwarf blacksmith", "old British wizard", or "cheerful robot", and by gender, age, accent, language, and use case; lists ElevenLabs\' default voices (source "default"); or lists the voices this account cloned (source "mine"). Lists each voice\'s id, name, labels, and description.',
     parameters: {
       query: { type: 'string', description: 'Words that describe the voice. Default: the most used voices.' },
       source: { type: 'string', enum: ['library', 'default', 'mine'], description: 'library: the Voice Library; default: ElevenLabs\' default voices; mine: the voices this account cloned. Default: library.' },
@@ -407,7 +407,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
     },
   }), defineTool({
     name: 'elevenlabs_speech',
-    description: 'Speak text in an ElevenLabs voice with Eleven v4 Turbo and save it as an .mp3 or .wav file, for character dialogue, narration, and announcer lines. Find a voice_id with elevenlabs_voices, and make one file per line. Audio tags in square brackets direct the delivery, such as [whispers], [laughs], [shouting], or [sarcastic]. Each call costs AI usage from the user\'s WASD Engine plan by its characters, so save and reuse lines instead of speaking them again.',
+    description: 'Speak text in an ElevenLabs voice with Eleven v4 Turbo and save it as an .mp3 or .wav file, for character dialogue, narration, and announcer lines. Find a voice_id with elevenlabs_voices, and make one file per line. Audio tags in square brackets direct the delivery, such as [whispers], [laughs], [shouting], or [sarcastic].',
     parameters: {
       text: { type: 'string', required: true, description: `What to say, at most ${MAX_SPEECH_CHARACTERS} characters.` },
       voice_id: { type: 'string', required: true, description: 'Voice id from elevenlabs_voices.' },
@@ -449,7 +449,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
     },
   }), defineTool({
     name: 'elevenlabs_sound_effect',
-    description: 'Make a sound effect from a description with ElevenLabs SFX v3 and save it as a .wav file, best for effects, or an .mp3 file, such as "sword strikes a wooden shield", "8-bit coin pickup", "footsteps on gravel", or "rain on a tin roof". Set duration_seconds for a fixed length, or leave it for ElevenLabs to choose; set loop for ambience and hums that repeat without a seam. Each call costs AI usage from the user\'s WASD Engine plan by the length of the sound.',
+    description: 'Make a sound effect from a description with ElevenLabs SFX v3 and save it as a .wav file, best for effects, or an .mp3 file, such as "sword strikes a wooden shield", "8-bit coin pickup", "footsteps on gravel", or "rain on a tin roof". Set duration_seconds for a fixed length, or leave it for ElevenLabs to choose; set loop for ambience and hums that repeat without a seam.',
     parameters: {
       prompt: { type: 'string', required: true, description: `What the sound is, at most ${MAX_PROMPT_CHARACTERS} characters.` },
       path: { type: 'string', required: true, description: `${pathDescription} Ends in .wav or .mp3.` },
@@ -480,7 +480,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
     },
   }), defineTool({
     name: 'elevenlabs_music',
-    description: 'Compose music from a description with ElevenLabs Music v2.5 and save it as an .mp3 file: genre, mood, instruments, tempo, and structure, such as "tense orchestral boss battle, driving strings and brass, 150 BPM". Set duration_seconds, and instrumental for background music without vocals. ElevenLabs refuses prompts that name artists or songs, and suggests another prompt. Each call costs AI usage from the user\'s WASD Engine plan by the length of the music, more than speech or sound effects, so keep pieces as short as the game needs.',
+    description: 'Compose music from a description with ElevenLabs Music v2.5 and save it as an .mp3 file: genre, mood, instruments, tempo, and structure, such as "tense orchestral boss battle, driving strings and brass, 150 BPM". Set duration_seconds, and instrumental for background music without vocals. ElevenLabs refuses prompts that name artists or songs, and suggests another prompt.',
     parameters: {
       prompt: { type: 'string', required: true, description: `What the music is, at most ${MAX_PROMPT_CHARACTERS} characters.` },
       path: { type: 'string', required: true, description: `${pathDescription} Ends in .mp3.` },
@@ -502,7 +502,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
     },
   }), defineTool({
     name: 'elevenlabs_clone_voice',
-    description: `Clone a voice from 1 to ${MAX_CLONE_SAMPLES} .wav or .mp3 recordings of one speaker, 10 seconds to 5 minutes in all and best 1 to 2 minutes of clear speech without music or noise, as a new voice that only this WASD Engine account can use. Clone only the user's own voice or a voice whose speaker gave the user express permission: ${surface.consentInstruction}. Needs a WASD Engine Pro or Max plan, which keeps up to 3 cloned voices; cloning itself costs nothing, and speech in the voice costs like any voice. Pass the new voice_id to elevenlabs_speech.`,
+    description: `Clone a voice from 1 to ${MAX_CLONE_SAMPLES} .wav or .mp3 recordings of one speaker, 10 seconds to 5 minutes in all and best 1 to 2 minutes of clear speech without music or noise, as a new voice that only this WASD Engine account can use. Clone only the user's own voice or a voice whose speaker gave the user express permission: ${surface.consentInstruction}. Needs a WASD Engine Pro or Max plan, which keeps up to 3 cloned voices. Pass the new voice_id to elevenlabs_speech.`,
     parameters: {
       name: { type: 'string', required: true, description: `Name of the voice, at most ${MAX_CLONE_NAME} characters, such as "Captain Rhea".` },
       samples: { type: 'array', required: true, items: { type: 'string' }, description: `${surface.samplesDescription} Each .wav or .mp3, at most ${MAX_CLONE_SAMPLE_BYTES / (1024 * 1024)} MB.` },

@@ -213,6 +213,7 @@
     "@deepseek-ai/dsh-godot": "workspace:*",
     "@deepseek-ai/dsh-image-generation": "workspace:*",
     "@deepseek-ai/dsh-art-references": "workspace:*",
+    "@deepseek-ai/dsh-graphics-review": "workspace:*",
     "@deepseek-ai/dsh-agent-feedback": "workspace:*",
     "@deepseek-ai/dsh-game-addons": "workspace:*",
     "@deepseek-ai/dsh-polyhaven": "workspace:*",

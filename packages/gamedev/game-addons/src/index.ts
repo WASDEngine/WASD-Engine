@@ -26,7 +26,7 @@ import { gameAddonMcpProvider } from './mcp.ts'
 import { PROMPT_SECTION, sessionPrompt } from './prompt.ts'
 import { gameAddonSkillProvider } from './skills.ts'
 import { gameAddonToolDefinition, SESSION_WORDING, type GameAddonToolHost } from './tools.ts'
-import type { GameAddonInstallResult, GameAddonRemoveResult, GameAddonsProjectView } from './types.ts'
+import type { GameAddon, GameAddonInstallResult, GameAddonRemoveResult, GameAddonsProjectView } from './types.ts'
 
 export type * from './types.ts'
 export { GameAddonCatalogError, loadCatalog, parseGuide, searchCatalog } from './catalog.ts'
@@ -132,6 +132,15 @@ export default class GameAddons extends TypertRemoteService {
       }
       inner.effect(() => inner.gameMcp.provide(gameAddonMcpProvider(mcpHost)), 'game-addons: game MCP tools')
     })
+  }
+
+  /**
+   * The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics
+   * review. The service is reachable only once its catalog loaded.
+   * @returns the catalog's entries.
+   */
+  catalogEntries(): readonly GameAddon[] {
+    return this.manager.catalog.entries
   }
 
   /**

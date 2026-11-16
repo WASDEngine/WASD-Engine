@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Revisión gráfica",
+    "description": "Permite que el agente y los agentes conectados pidan a un revisor especializado una crítica de cada imagen de los gráficos del juego, como una captura o un render, y sugerencias para que se vea mejor con las herramientas y complementos de WASD Engine."
+  }
+}

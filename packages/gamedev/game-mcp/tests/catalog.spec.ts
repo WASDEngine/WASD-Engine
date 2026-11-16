@@ -88,14 +88,39 @@ describe('GameToolCatalog.tools', () => {
 })
 
 describe('GameToolCatalog.instructions', () => {
-  it('introduces every provider and appends each provider\'s own instructions under its title', () => {
+  const PURPOSE = 'WASD Engine is the game development app open on this computer, and this server gives you its game tools. '
+    + 'They exist to raise the quality of the user\'s game beyond what code alone can make: real 3D models, art, sound, tested add-ons, '
+    + 'and a game you run and look at. Use them by default, and when you skip a tool or add-on that fits the work, tell the user why; '
+    + 'the reason must convince.'
+
+  it('opens with an overview: why to use the tools, what each provider adds, where the guides are, and what to say about skipped tools', () => {
     const catalog = new GameToolCatalog(() => [provider('alpha', [], { state: 'ready' }, 'Use alpha_echo first.'), provider('beta', [])], () => {})
-    const text = catalog.instructions()
-    expect(text).toContain('ALPHA (alpha_* tools): The alpha tools.')
-    expect(text).toContain('BETA (beta_* tools): The beta tools.')
-    expect(text).toContain('## ALPHA\n\nUse alpha_echo first.')
-    expect(text).not.toContain('## BETA')
-    expect(text).toContain('When the user asks for a new game, create its project with create_game_project, which WASD Engine lists among the user\'s game projects, and make the game in the folder it returns.')
+    expect(catalog.overview()).toBe([
+      PURPOSE,
+      'What each plugin adds:\n- ALPHA (alpha_*): The alpha tools.\n- BETA (beta_*): The beta tools.',
+      'For a new game, create its project with create_game_project and make the game in the folder it returns. '
+        + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
+        + 'instructions short, from search_game_tools with plugin set to its id and no query. '
+        + 'call_game_tool calls a tool your tool list lacks. '
+        + 'Every tool runs on this computer with the user\'s permissions. Guides name some tools without their plugin prefix: add it, as in '
+        + 'blender_scene_info.',
+      'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
+        + 'and if you use none, tell the user why. A reason convinces only when the tool cannot do what this game needs or would make it worse; '
+        + 'building faster, convenience, matching what you made in code, and not having looked are not reasons.',
+    ].join('\n\n'))
+    // Codex weighs the first 512 characters on their own.
+    expect(PURPOSE.length).toBeLessThanOrEqual(512)
+  })
+
+  it('appends each provider\'s guide under its title after the overview', () => {
+    const catalog = new GameToolCatalog(() => [provider('alpha', [], { state: 'ready' }, 'Use alpha_echo first.'), provider('beta', [])], () => {})
+    expect(catalog.instructions()).toBe(`${catalog.overview()}\n\n## ALPHA\n\nUse alpha_echo first.`)
+  })
+
+  it('says when no provider offers tools', () => {
+    const catalog = new GameToolCatalog(() => [], () => {})
+    expect(catalog.overview()).toContain(`${PURPOSE}\n\nNo plugin offers tools right now.\n\nFor a new game`)
+    expect(catalog.instructions()).toBe(catalog.overview())
   })
 })
 
@@ -113,12 +138,30 @@ describe('GameToolCatalog.search', () => {
     expect(text).toContain('- GAMMA (gamma_*, unavailable, 0 tools): The gamma tools. status read failed')
     expect(text).toContain('- alpha_echo: Echo the text back.')
     expect(text).toContain('- beta_fail: Always fails.')
+    expect(text).not.toContain('guide (')
+    expect(text.endsWith('Search with a query to see a tool\'s parameters, or set plugin to read that plugin\'s guide.')).toBe(true)
   })
 
   it('lists the matching tools with their parameters, best match first', async () => {
     const text = await catalog.search('echo text', undefined, new AbortController().signal)
     expect(text).toContain('alpha_echo (ALPHA): Echo the text back. Use it to check the connection.\n  - text (string, required): Text to echo.')
     expect(text).not.toContain('beta_fail (BETA)')
+  })
+
+  it('returns a plugin\'s guide with its tools when the search names the plugin and no words', async () => {
+    const guided = new GameToolCatalog(() => [
+      provider('alpha', [{ name: 'alpha_echo', definition: echoDefinition() }], { state: 'ready' }, 'Call echo first.'),
+      provider('beta', [], { state: 'starting', message: 'Beta starts.' }, 'Beta guide text.'),
+    ], () => {})
+    expect(await guided.search('', 'alpha', new AbortController().signal)).toBe([
+      'Plugins:\n- ALPHA (alpha_*, ready, 1 tools): The alpha tools.',
+      'ALPHA guide (where it names a tool without the alpha_ prefix, add the prefix):\n\nCall echo first.',
+      'Tools:\n- alpha_echo: Echo the text back.',
+      'Search with a query to see a tool\'s parameters.',
+    ].join('\n\n'))
+    expect(await guided.search('', 'beta', new AbortController().signal)).toContain('Beta guide text.\n\nTools: none right now.')
+    expect(await guided.search('echo', 'alpha', new AbortController().signal)).not.toContain('Call echo first.')
+    expect(await catalog.search('', 'alpha', new AbortController().signal)).not.toContain('guide (')
   })
 
   it('limits the search to one plugin, and says when nothing matches', async () => {

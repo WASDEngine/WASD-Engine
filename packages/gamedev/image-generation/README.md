@@ -59,7 +59,7 @@ The Game tools tabs of Settings › Built-in plugins and the Plugins page list t
 
 Nano Banana makes no transparent backgrounds, so the tool's description tells the agent to ask for one flat background color and make it transparent with GIMP, with a little tolerance for the JPEG's edges, and to make textures seamless with GIMP. Every image carries Google's invisible SynthID watermark.
 
-Agents connected through WASD Engine's MCP server reach the tool under the provider `image`, titled Nano Banana, without a Session: `path` and every image must be absolute paths. Their images are charged to the account WASD Engine is signed in to, and the server refuses every call while it is signed out.
+Agents connected through WASD Engine's MCP server reach the tool under the provider `image`, titled Nano Banana, without a Session: `path` and every image must be absolute paths. Their images are charged to the account WASD Engine is signed in to, and the server refuses every call while it is signed out. The provider's description in the overview of the server instructions, and its guide, ask the agent to prefer it to drawing 2D art itself, in GIMP or in code.
 
 ### Prices and the account
 
@@ -110,11 +110,11 @@ These pages cover the MCP server that offers the tool to other agents and how th
 
 #### What the model sees
 
-The Session's agent sees `image_generate`, with `prompt`, `path`, and the optional `images`, `aspect_ratio`, `size`, and `replace`. The description names the model, lists the kinds of game art, UI art, and textures it makes, says to pass images to work from references, to edit, or to keep a character, object, or style consistent, and to say what to take from each, says that Nano Banana makes no transparent backgrounds and how to get one with GIMP, how to ask for a texture and make it seamless with GIMP, to look at each result with `asset_view`, and that each image costs AI usage from the user's WASD Engine plan, more at 2K and 4K. A connected agent sees the same tool, with `path` and `images` described as absolute paths, and the provider's instructions under `## Nano Banana`.
+The Session's agent sees `image_generate`, with `prompt`, `path`, and the optional `images`, `aspect_ratio`, `size`, and `replace`. The description names the model, lists the kinds of game art, UI art, and textures it makes, says to pass images to work from references, to edit, or to keep a character, object, or style consistent, and to say what to take from each, says that Nano Banana makes no transparent backgrounds and how to get one with GIMP, how to ask for a texture and make it seamless with GIMP, to look at each result with `asset_view`, and to make the image again with a better prompt when it falls short. A connected agent sees the same tool, with `path` and `images` described as absolute paths, and the provider's instructions under `## Nano Banana`. No text the model sees says what an image costs, so the agent makes what the game needs; only the failure once the account's AI usage is used up asks it to pass on the upgrade to the user.
 
 #### Token effect
 
-The declaration comes to about 2,100 characters of JSON; the provider's instructions add about 900 characters to the MCP server's instructions.
+The declaration comes to about 2,000 characters of JSON; the provider's instructions add about 900 characters to the MCP server's instructions.
 
 #### KV Cache effect
 
@@ -124,7 +124,7 @@ The declaration is static, so it stays in the cached tool prefix.
 
 #### What the model sees
 
-A result is one or two sentences: the file, its pixel size and file size, whether it replaced a file, the model, size, and shape, and the images it was made from. A failure says what to change: an argument out of range, a path that exists, an image that is missing or not an image, a refusal by Google's safety filters, a used-up plan, or a signed-out app.
+A result is one or two sentences: the file, its pixel size and file size, whether it replaced a file, the model, size, and shape, and the images it was made from. A failure says what to change: an argument out of range, a path that exists, an image that is missing or not an image, a refusal by Google's safety filters, a used-up plan, whose message from the WASD Engine API names the account page where the user upgrades or turns on auto recharge and which the agent is asked to pass on to the user, or a signed-out app.
 
 #### Token effect
 

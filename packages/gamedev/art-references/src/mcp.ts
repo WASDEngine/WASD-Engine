@@ -97,7 +97,7 @@ export function referenceMcpProvider(host: ReferenceToolHost): GameMcpProvider {
   return {
     id: 'reference',
     title: 'Art references',
-    description: 'Find reference images, animations, and video posters on the web for art you are about to make, and save the ones you use into the game project.',
+    description: 'Find reference images and animations on the web before you make art, and save the ones you use into the game project.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),

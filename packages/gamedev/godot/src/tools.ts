@@ -287,10 +287,14 @@ export interface ScreenshotTaker {
    * @param maxWidth - largest image width the call asked for.
    * @param signal - cancellation.
    * @param region - part of the window to capture, in window pixels.
+   * @param save - receives the captured PNG bytes before the image is stored, as `godot_screenshot` saves them at its
+   * `path`.
    * @returns the screenshot as a result value holds it; input coordinates in screenshot pixels refer to its
    * `width` and `height`.
    */
-  capture(run: GodotRun, maxWidth: number, signal: AbortSignal, region?: ScreenshotRegion): Promise<ScreenshotValue>
+  capture(
+    run: GodotRun, maxWidth: number, signal: AbortSignal, region?: ScreenshotRegion, save?: (png: Buffer) => Promise<void>,
+  ): Promise<ScreenshotValue>
   /**
    * Store an image where the surface's callers receive it.
    * @param image - the image.
@@ -317,8 +321,8 @@ export interface GodotToolWording {
   readonly scriptPath: string
   /** The `godot_logs` description's sentence about reading without `since`. */
   readonly logsDefault: string
-  /** How the `godot_audio` description names the file path it accepts. */
-  readonly audioPath: string
+  /** How the descriptions of `godot_audio`, `godot_screenshot`, and `godot_view` name the file path they save at. */
+  readonly savePath: string
 }
 
 /** The callers that one set of Godot tool definitions serves. */
@@ -350,7 +354,7 @@ export const SESSION_WORDING: GodotToolWording = {
   checkPaths: 'files or folders, as res:// paths or relative to the working directory',
   scriptPath: 'a res:// path or a path relative to the working directory',
   logsDefault: 'Without since, returns the entries after the ones this Session last read.',
-  audioPath: 'a path relative to the working directory, or absolute',
+  savePath: 'a path relative to the working directory, or absolute',
 }
 
 /** A log entry as tools report it. */
@@ -580,8 +584,9 @@ export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'
       throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`)
     }
     return {
-      async capture(run, maxWidth, signal, region) {
+      async capture(run, maxWidth, signal, region, save) {
         const shot = await run.screenshot(maxWidth, signal, undefined, region)
+        await save?.(shot.image)
         const [image] = await attachments.saveImages([{ data: shot.image, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
         signal.throwIfAborted()
         const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
@@ -656,8 +661,9 @@ async function captureScreenshot(
   maxWidth: number,
   signal: AbortSignal,
   region?: ScreenshotRegion,
+  save?: (png: Buffer) => Promise<void>,
 ): Promise<ScreenshotValue> {
-  const shot = await taker.capture(run, maxWidth, signal, region)
+  const shot = await taker.capture(run, maxWidth, signal, region, save)
   const { width, height, windowWidth, windowHeight } = shot
   session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight, ...regionFields(shot) }
   return shot
@@ -690,9 +696,10 @@ async function screenshotAfter(
  * Refuse a path that holds a folder, or a file the call may not replace.
  * @param path - absolute path.
  * @param replace - whether a file may be replaced.
+ * @param extension - the extension of the file the call saves, such as `.wav`.
  * @throws Error when the path is a folder, or a file and `replace` is false.
  */
-async function refuseExisting(path: string, replace: boolean): Promise<void> {
+async function refuseExisting(path: string, replace: boolean, extension: string): Promise<void> {
   let found
   try {
     found = await stat(path)
@@ -701,7 +708,7 @@ async function refuseExisting(path: string, replace: boolean): Promise<void> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
     throw error
   }
-  if (found.isDirectory()) throw new Error(`${path} is a folder; pass the path of a .wav file.`)
+  if (found.isDirectory()) throw new Error(`${path} is a folder; pass the path of a ${extension} file.`)
   if (!replace) throw new Error(`${path} already exists; pass replace: true to overwrite it, or choose another path.`)
 }
 
@@ -976,17 +983,28 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         description: `Capture only this rectangle: x and y of its top left corner, width, and height. A region narrower than ${REGION_MIN_WIDTH} px grows by a whole factor, each window pixel a square.`,
       },
       coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of region: pixels of the latest screenshot, or of the game window. Default: screenshot.' },
+      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}, for a tool that takes an image file.` },
+      replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
     },
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { ...SCREENSHOT_PROPERTIES, ...DIGEST_SCHEMA } },
-      render: (_args, value) => [...textResult(describeScreenshot(value), formatDigest(value)), ...screenshotBlocks(value)],
+      schema: { type: 'object', additionalProperties: false, properties: { ...SCREENSHOT_PROPERTIES, savedPath: { type: 'string' }, ...DIGEST_SCHEMA } },
+      render: (_args, value) => [
+        ...textResult(describeScreenshot(value), value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`, formatDigest(value)),
+        ...screenshotBlocks(value),
+      ],
     },
     async execute(args, exec) {
       const maxWidth = boundedInteger(args.max_width, 'max_width', SCREENSHOT_WIDTH, 64, 4096)
+      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.png') throw new Error('path must end in .png.')
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
         const region = args.region === undefined ? undefined : windowRegion(args.region, args.coordinate_space ?? 'screenshot', session, run, maxWidth)
-        return captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal, region)
+        // The target is checked before the capture, so a refused path wastes no capture.
+        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
+        if (target !== undefined) await refuseExisting(target, args.replace === true, '.png')
+        const save = target === undefined ? undefined : (png: Buffer) => writeFileAtomic(target, png, { mode: 0o644 })
+        const shot = await captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal, region, save)
+        return target === undefined ? shot : { ...shot, savedPath: target }
       })
     },
   }), defineTool({
@@ -1128,6 +1146,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       time: { type: 'number', description: 'asset: seconds into the animation. Default: 0.' },
       width: { type: 'integer', description: `Image width in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.width}.` },
       height: { type: 'integer', description: `Image height in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.height}.` },
+      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}, for a tool that takes an image file.` },
+      replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
     },
     output: {
       schema: {
@@ -1141,6 +1161,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           camera: { type: 'json', required: true, description: 'The camera that drew the view: position, direction, and vertical fov.' },
           subject: { type: 'json', description: 'The framed center, radius in meters, and the camera\'s distance from the center.' },
           image: IMAGE_SCHEMA,
+          savedPath: { type: 'string' },
           ...DIGEST_SCHEMA,
         },
       },
@@ -1152,7 +1173,10 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         if (subject !== undefined && typeof subject.radius === 'number' && typeof subject.distance === 'number') {
           lines.push(`Framed ${subject.radius.toFixed(3)} m around ${formatVector(subject.center) ?? '?'} from ${subject.distance.toFixed(3)} m.`)
         }
-        return [...textResult(lines.join(' '), formatDigest(value)), ...imageBlocks(value.image)]
+        return [
+          ...textResult(lines.join(' '), value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`, formatDigest(value)),
+          ...imageBlocks(value.image),
+        ]
       },
     },
     async execute(args, exec) {
@@ -1168,8 +1192,12 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       if ((args.animation !== undefined || args.time !== undefined || args.lighting !== undefined) && args.asset === undefined) {
         throw new Error('animation, time, and lighting apply to an asset; name the asset.')
       }
+      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.png') throw new Error('path must end in .png.')
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
+        // The target is checked before the view is drawn, so a refused path wastes no drawing.
+        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
+        if (target !== undefined) await refuseExisting(target, args.replace === true, '.png')
         const taker = await surface.screenshots(exec, agent)
         const size = taker.fit(width, height)
         const params: ViewParams = {
@@ -1190,6 +1218,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...args.time === undefined ? {} : { time: args.time },
         }
         const drawn = await run.drawView(params, exec.signal)
+        if (target !== undefined) await writeFileAtomic(target, drawn.image, { mode: 0o644 })
         const image = await taker.store({ data: drawn.image, mediaType: 'image/png', width: drawn.meta.width, height: drawn.meta.height, name: `godot-view-${drawn.meta.frame}.png` }, exec.signal)
         return {
           width: drawn.meta.width,
@@ -1199,6 +1228,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           camera: drawn.meta.camera,
           ...drawn.meta.subject === undefined ? {} : { subject: drawn.meta.subject },
           image,
+          ...target === undefined ? {} : { savedPath: target },
         }
       })
     },
@@ -1463,7 +1493,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         description: `Input events to play from the capture's start, as godot_input takes them, at most ${MAX_INPUT_EVENTS}.`,
       },
       coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of the events\' x, y, dx, dy. Default: screenshot.' },
-      path: { type: 'string', description: `Save the capture as a 16-bit .wav file at this path, ${wording.audioPath}.` },
+      path: { type: 'string', description: `Save the capture as a 16-bit .wav file at this path, ${wording.savePath}.` },
       replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
     },
     output: {
@@ -1507,7 +1537,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         }
         // The target is checked before the capture, so a refused path wastes no capture.
         const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
-        if (target !== undefined) await refuseExisting(target, args.replace === true)
+        if (target !== undefined) await refuseExisting(target, args.replace === true, '.wav')
         const pictures = await surface.pictures(exec, agent)
         const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
         const audio: AudioSamples = {

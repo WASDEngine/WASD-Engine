@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Graphics review",
+    "description": "Let the agent and connected agents have a specialized reviewer critique each image of the game's graphics, such as a screenshot or a render, and suggest how to make it look better with WASD Engine's tools and add-ons."
+  }
+}

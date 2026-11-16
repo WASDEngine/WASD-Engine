@@ -19,7 +19,7 @@ import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { GameToolCatalog, PROVIDER_ID_PATTERN } from './catalog.ts'
+import { GameToolCatalog, OVERVIEW_LIMIT, PROVIDER_ID_PATTERN } from './catalog.ts'
 import { ClientDirectory } from './clients.ts'
 import { listenLoopback, LOOPBACK_HOST, type HttpListener } from './http.ts'
 import { createGameProject } from './projects.ts'
@@ -136,7 +136,9 @@ export default class GameMcpServer extends TypertRemoteService {
   }
 
   /**
-   * Offer a plugin's game tools to connected agents for the calling plugin's lifetime.
+   * Offer a plugin's game tools to connected agents for the calling plugin's lifetime. When the provider's description
+   * makes the overview of the server instructions longer than 4,096 characters, the part that Claude Code passes to its
+   * model, a warning names the length.
    * @param provider - the plugin's identity, readiness, and tools; its tool names start with its id and an underscore.
    * @returns an idempotent disposer that withdraws the tools.
    * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.
@@ -146,6 +148,11 @@ export default class GameMcpServer extends TypertRemoteService {
     const dispose = this.ctx.effect(() => {
       if (this.providers.some(existing => existing.id === provider.id)) throw new Error(`gameMcp.provide(): a provider already has the id "${provider.id}"`)
       this.providers.push(provider)
+      const overview = this.catalog.overview().length
+      if (overview > OVERVIEW_LIMIT) {
+        this.ctx.logger.warn(`game-mcp: with ${provider.title}, the overview of the server instructions comes to ${overview} characters, more than the `
+          + `${OVERVIEW_LIMIT} that Claude Code passes to its model; shorten the providers' descriptions`)
+      }
       this.toolsChanged()
       return () => {
         this.providers.splice(this.providers.indexOf(provider), 1)

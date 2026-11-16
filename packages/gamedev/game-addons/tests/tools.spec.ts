@@ -17,7 +17,8 @@ import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-app
 import { afterEach, describe, expect, it } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
 import { GameAddonManager } from '../src/manager.ts'
-import { gameAddonToolDefinition, SESSION_WORDING, TOOL_NAME } from '../src/tools.ts'
+import { MCP_WORDING } from '../src/mcp.ts'
+import { gameAddonToolDefinition, SESSION_WORDING, TOOL_NAME, type GameAddonToolWording } from '../src/tools.ts'
 import { fakeDownloads, scratch, URLS, writeCatalog, writeProject, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -39,7 +40,7 @@ interface Setup {
   readonly asked: ApprovalRequest[]
 }
 
-async function setup(): Promise<Setup> {
+async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<Setup> {
   dir = await scratch('tools')
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   const project = await writeProject(join(dir.root, 'work', 'game'))
@@ -75,7 +76,7 @@ async function setup(): Promise<Setup> {
       if (requested === undefined || requested === 'game') return project
       throw new Error(`No project.godot in ${requested}.`)
     },
-  }, SESSION_WORDING))
+  }, wording))
   const scope = ctx.plugin(() => {})
   const route = { provider: 'test', model: 'm' }
   const selection: Model = { current: () => route, select: () => {} }
@@ -154,6 +155,17 @@ describe('game_addons', () => {
     expect(text(removed)).toBe('Removed test-camera and its project.godot entries and notice. Its files moved to the backup .wasdengine/backups/test-camera/2026-11-11T12-00-00.000Z: addons/test_camera.')
     expect((await state.manager.presence(state.project)).get('test-camera')).toEqual({ state: 'absent' })
     expect(state.asked).toEqual([])
+  })
+
+  it('points a connected agent to an installed add-on\'s guide through the guide action, since it has no skills', async () => {
+    const state = await setup(MCP_WORDING)
+    expect(text(await call(state, { action: 'install', id: 'test-camera' }))).toBe([
+      `Installed Test Camera 1.2.0 (MIT) in ${state.project}: addons/test_camera.`,
+      'Read its guide with action guide and id test-camera before using the add-on.',
+      'Tell the user that you added it and why, with its license.',
+      'The project\'s import reported:\n- res://player.gd:4: Parse Error: x',
+    ].join('\n'))
+    expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; read each one's guide with action guide:\n- test-camera:`)
   })
 
   it('reports an add-on that is already installed without asking the model to tell the user again', async () => {

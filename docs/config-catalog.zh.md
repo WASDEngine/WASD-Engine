@@ -2187,6 +2187,37 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-godot -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-graphics-review -->
+<a id="deepseek-aidsh-graphics-review"></a>
+
+## `@deepseek-ai/dsh-graphics-review`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/graphics-review/src/index.ts:32`](../packages/gamedev/graphics-review/src/index.ts)
+
+```ts config-catalog
+/** Configuration of the `graphics-review` row; every field has a default. */
+export interface Config {
+  /** Provider route of the WASD Engine account, whose model reviews each image. */
+  provider: string
+  /** Model of that route; empty, the first listed model that takes images. */
+  model: string
+  /** Most tokens of one review. */
+  maxTokens: number
+  /** Time limit of one `graphics_review` call. */
+  timeoutMs: number
+  /** Largest image file read, in bytes. */
+  maxImageBytes: number
+  /** Longest side in pixels of the image sent. */
+  maxImageEdge: number
+  /** Most pixels of the image sent. */
+  maxImagePixels: number
+  /** Longest side in pixels that a smaller image, such as pixel art, is enlarged toward by whole pixels. */
+  minImageEdge: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-graphics-review -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-headless -->
 <a id="deepseek-aidsh-headless"></a>
 

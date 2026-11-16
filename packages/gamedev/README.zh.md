@@ -29,6 +29,7 @@ kind: "package-group"
 | [`agent-feedback/`](agent-feedback/README.zh.md) | 智能体反馈：每个会话和 MCP 服务器都提供 `feedback_send` 工具，向 WASD Engine 团队发送关于 WASD Engine 的反馈；用量报告统计智能体调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASD Engine 网站 |
 | [`app-mcp/`](app-mcp/README.zh.md) | 在 MCP stdio 服务器之后以无界面方式运行应用程序：把工作脚本复制出包外，监管一个 JSON 行协议的工作进程，并向 MCP 管理器注册该服务器；还提供 Blender、GIMP 与 SuperCollider 服务器共用的 Config 字段、应用程序查找与工具辅助函数 |
 | [`art-references/`](art-references/README.zh.md) | 面向智能体与已连接智能体的参考工具：`reference_search` 在网上为智能体即将制作的美术查找参考图像、动画和视频封面，并在一张联系表上编号；`reference_save` 把选中的参考连同来源保存到游戏项目的 `references/` 文件夹，Godot 不会把它纳入游戏；一个系统提示词段落让智能体在制作美术前收集参考，并在参考不一致时询问用户想要哪个方向 |
+| [`graphics-review/`](graphics-review/README.zh.md) | 面向智能体与已连接智能体的画面审查：`graphics_review` 把游戏画面的图片（例如 `godot_screenshot` 保存的截图）发给审查者，由它像游戏美术总监和技术美术那样点评，并指出能让画面更好看的 WASD Engine 工具和扩展；审查者是 WASD Engine 账号的模型路由，由账号付费；一个系统提示词段落要求在所有画面工作之后进行审查 |
 | [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑；Desktop 应用为 Apple 芯片 macOS 与 Windows x64 随附 `bpy` |
 | [`elevenlabs/`](elevenlabs/README.zh.md) | ElevenLabs 工具：为角色查找声音，或在取得同意后克隆用户自己的声音，并把 Eleven v4 Turbo 制作的语音、SFX v3 制作的音效和 Music v2.5 制作的音乐保存到游戏项目中；音频由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`game-assets/`](game-assets/README.zh.md) | 面向智能体与已连接智能体的素材工具：`asset_search` 列出游戏项目中的图片与模型，`asset_view` 让 WASD Engine 窗口像「素材」标签页那样绘制其中一个（可从任意方向，含骨架、动画片段与 2D 动画），并给出修改它所需的详细信息 |

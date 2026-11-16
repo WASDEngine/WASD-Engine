@@ -84,7 +84,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 由智能体判断何时值得安装某个扩展。插件在系统提示词中 Godot 游戏部分的位置添加 `game-addons` 部分。它告诉智能体：当手头的工作需要某个扩展的功能，而只用 Godot 或 Blender 会耗时更长或效果更差时，在该扩展有帮助的游戏阶段直接安装它，无需先征求用户同意；当引擎自带的节点和工具或一小段脚本就能完成时则不用它，也绝不因为以后可能用到而预先安装；安装之后，在使用扩展前先加载其指南，并告诉用户它添加了什么、为什么添加，以及许可证和许可证要求的署名。随后每个目录扩展占一行：其 id、应用、有帮助的阶段以及何时使用它。
 
-在任何审批策略下，`install` 和 `remove` 都不询问任何人，这与其他游戏工具相同，会话的权限模式也不限制它们。用户在“扩展”对话框中的点击会以同样的方式更改项目。连接的智能体会在 MCP 服务器的说明中读到相同的判断规则和列表，并由其自身的运行框架决定是否询问其用户。
+在任何审批策略下，`install` 和 `remove` 都不询问任何人，这与其他游戏工具相同，会话的权限模式也不限制它们。用户在“扩展”对话框中的点击会以同样的方式更改项目。连接的智能体会在 MCP 服务器的说明中读到相同的判断规则和列表，说明的概述和该工具的描述都会要求它们在规划游戏之前用 `action: search` 读完整个目录，并由其自身的运行框架决定是否询问其用户。
 
 ### 以技能形式提供的指南
 
@@ -150,7 +150,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型看到的内容
 
-会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后每个目录扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则和各行，只是以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。
+会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后每个目录扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则和各行，只是以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比从头写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读完整个目录，并安装每个合适的扩展。
 
 ##### 部分文本
 
@@ -181,7 +181,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### 模型看到的内容
 
-会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径。
+会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，描述末尾还有一句 `Before you plan a game, read the whole catalog with action search and no query.`，因为它的系统提示词中没有目录部分。
 
 #### Token 影响
 
@@ -209,7 +209,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### 模型看到的内容
 
-搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。
+搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称（对没有技能的连接智能体，则改为可显示指南的 `guide` 动作）、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。
 
 #### Token 影响
 

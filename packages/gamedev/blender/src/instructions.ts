@@ -1,10 +1,21 @@
-/** Model-facing identity of the Blender MCP server: its name and the instructions that the client adds to the agent's context. */
+/**
+ * Model-facing identity of the Blender MCP server: its name and the instructions that the client adds to the agent's
+ * context, and the description that agents connected through WASD Engine's MCP server read.
+ */
 
 /**
  * Name of the Blender MCP server: the MCP manager key, the tool namespace (`mcp__wasd_blender__<tool>`), and the heading
  * of the instructions in the system prompt. The `wasd_` prefix keeps it apart from a `blender` server that a user configures.
  */
 export const BLENDER_SERVER_NAME = 'wasd_blender'
+
+/**
+ * What the Blender tools do and add to the game, as the overview of WASD Engine's MCP server instructions lists them for
+ * connected agents: that the game's 3D models come from here rather than from primitives built in code.
+ */
+export const BLENDER_GAME_MCP_DESCRIPTION = 'Model, texture, rig, and animate 3D assets in a headless Blender and export them as .glb files: '
+  + 'real shapes, bevels, and baked textures that primitives built in code cannot match. Make every model the player sees here unless you '
+  + 'download it, and the parts of meshes the game builds at runtime; in Godot a .glb still takes the game\'s shaders, animation, and per-instance variation.'
 
 /** How to use the Blender tools, at most 6000 characters. */
 export const BLENDER_INSTRUCTIONS = `Blender runs headless behind these tools: there is no window, viewport, or screenshot. Blender keeps one session for each conversation: its open scene persists between calls until new_scene or open_blend replaces it, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, or stops after a long pause in the calls, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.
@@ -28,7 +39,7 @@ Game assets:
 
 Textures:
 1. Unwrap UVs: with the object active and selected, run bpy.ops.object.mode_set(mode='EDIT'), bpy.ops.mesh.select_all(action='SELECT'), and bpy.ops.uv.smart_project(island_margin=0.02), then return to mode='OBJECT'.
-2. Build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
+2. Use a Poly Haven texture when one suits the game's art style: download it and connect its maps as step 5 describes, instead of baking. Otherwise build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
 3. Bake it into images with Cycles: set scene.render.engine = 'CYCLES', scene.cycles.device = 'CPU', and scene.cycles.samples to about 8. Bake one object at a time, selected alone and active. Add an Image Texture node holding a new image, 512 pixels square for small props and 1024 or 2048 for large or close-up models, and make it the active node of each of the object's materials, then run bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=8). Where the material varies in roughness or relief, also bake type='ROUGHNESS' and type='NORMAL' into images whose colorspace_settings.name is 'Non-Color'. Set the render engine back afterwards.
 4. Paint what nodes cannot make, such as stripes, markings, or chipped paint, into the pixels with numpy: image.pixels.foreach_get into an array, change it, foreach_set, then image.update(). To paint on a particular face, read where it lies from its loop UVs in mesh.uv_layers.active.uv: u and v from 0 to 1 span the image's width and height, with pixel row 0 at the bottom.
 5. Connect each image to its Principled BSDF input in place of the procedural nodes, a normal image through a Normal Map node, save each as a PNG next to the model (set image.filepath_raw, then image.save()), and look at render_preview in material mode before export_gltf, which embeds the images in the .glb.

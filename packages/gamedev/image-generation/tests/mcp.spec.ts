@@ -50,9 +50,12 @@ function text(result: CallResult): string {
 }
 
 describe('the image tool over WASD Engine\'s MCP server', () => {
-  it('lists image_generate with its files named by absolute path, and the provider\'s instructions', async () => {
+  it('lists image_generate with its files named by absolute path, and the provider\'s instructions, which prefer it to drawing 2D art', async () => {
     const { client } = await connected()
     expect(client.getInstructions()).toContain(`## Nano Banana\n\n${MCP_INSTRUCTIONS}`)
+    expect(client.getInstructions()).toContain('\n- Nano Banana (image_*): Make game art, UI pieces, and textures with Google\'s Nano Banana 2.1. '
+      + 'Prefer it to drawing 2D art yourself.\n')
+    expect(MCP_INSTRUCTIONS).toContain('Prefer it to drawing 2D art yourself, in GIMP or in code, and use GIMP to edit what it makes.')
     const tools = (await client.listTools()).tools.filter(tool => tool.name.startsWith('image_'))
     expect(tools.map(tool => [tool.name, tool.annotations?.readOnlyHint ?? false])).toEqual([['image_generate', false]])
     const [tool] = tools

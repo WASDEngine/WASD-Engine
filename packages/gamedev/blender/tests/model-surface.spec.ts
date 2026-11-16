@@ -1,8 +1,11 @@
-/** Model-visible text of the Blender MCP server: its name, which qualifies every tool name, instructions, and tool declarations. */
+/**
+ * Model-visible text of the Blender MCP server: its name, which qualifies every tool name, instructions, and tool
+ * declarations, and the description that agents connected through WASD Engine's MCP server read.
+ */
 import { expect, it } from 'vitest'
 import { z } from 'zod'
 import { TOOL_CALL_RESERVE_MS } from '@deepseek-ai/dsh-app-mcp'
-import { BLENDER_INSTRUCTIONS, BLENDER_SERVER_NAME } from '../src/instructions.ts'
+import { BLENDER_GAME_MCP_DESCRIPTION, BLENDER_INSTRUCTIONS, BLENDER_SERVER_NAME } from '../src/instructions.ts'
 import { blenderTools } from '../src/tools.ts'
 
 // The budgets of the default Config, as the server passes them: a worker request may use the tool-call budget less the reserve.
@@ -12,6 +15,12 @@ const tools = blenderTools({
 
 it('names the server wasd_blender, so the model calls mcp__wasd_blender__<tool>', () => {
   expect(BLENDER_SERVER_NAME).toBe('wasd_blender')
+})
+
+it('tells connected agents to make the game\'s 3D models that they do not download in Blender rather than from primitives built in code', () => {
+  expect(BLENDER_GAME_MCP_DESCRIPTION).toBe('Model, texture, rig, and animate 3D assets in a headless Blender and export them as .glb files: '
+    + 'real shapes, bevels, and baked textures that primitives built in code cannot match. Make every model the player sees here unless you '
+    + 'download it, and the parts of meshes the game builds at runtime; in Godot a .glb still takes the game\'s shaders, animation, and per-instance variation.')
 })
 
 it('keeps the instructions within 6000 characters and names only tools the server provides', () => {

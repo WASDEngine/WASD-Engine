@@ -128,9 +128,17 @@ export interface GameMcpProvider {
   readonly id: string
   /** Display name, such as Godot. */
   readonly title: string
-  /** One sentence on what the plugin's tools do. */
+  /**
+   * What the plugin's tools do and what they add to the user's game, in one or two sentences. The overview that opens
+   * the server instructions lists every provider's description, and has to fit in their first 4,096 characters, the
+   * part that Claude Code passes to its model, so keep it short; `search_game_tools` lists it too.
+   */
   readonly description: string
-  /** How to use the tools, which the server adds to its instructions under the provider's title. */
+  /**
+   * The plugin's guide: how to get good results from its tools. The server instructions append it under the provider's
+   * title, after the overview, and `search_game_tools` with the provider's id and no query returns it, for agents whose
+   * client cut the instructions short.
+   */
   readonly instructions?: string
   /** @returns the tools offered now; the list may change while the application starts or reconnects. */
   tools(): readonly GameMcpTool[]

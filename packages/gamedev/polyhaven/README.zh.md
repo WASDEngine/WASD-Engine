@@ -63,7 +63,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 一次下载要么写入全部文件，要么一个也不写入。每个文件先流式写入目标旁边的临时文件，其大小和 MD5 摘要必须与 Poly Haven 文件列表一致，只有在所有文件都完好到达后，这些文件才替换各自的目标；失败或取消会让文件夹保持原样。已在原位且摘要相同的文件不会再次下载。内容不同的文件，例如用户编辑过的纹理，会在写入任何内容之前中止下载，除非 `replace` 为 true。文件列表中会离开下载文件夹的路径同样会中止下载。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `polyhaven` 下使用这些工具，不需要会话：`polyhaven_search` 与 `polyhaven_asset` 标记为只读，预览图以 JPEG 字节的形式跟在结果文本之后，`polyhaven_download` 要求 `directory` 为绝对路径。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `polyhaven` 下使用这些工具，不需要会话：`polyhaven_search` 与 `polyhaven_asset` 标记为只读，预览图以 JPEG 字节的形式跟在结果文本之后，`polyhaven_download` 要求 `directory` 为绝对路径。服务器指令概述中的提供方描述及其指南要求 agent 在制作或生成素材之前先到这里查找，并使用符合游戏美术风格的素材。
 
 ### Poly Haven 的条款
 
@@ -119,7 +119,7 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 
 #### Token 影响
 
-三个声明合计约 3,100 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 750 个字符。
+三个声明合计约 3,100 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 850 个字符。
 
 #### KV Cache 影响
 

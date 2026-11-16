@@ -26,7 +26,9 @@
 # `reference_search` and `reference_save`, which find reference images for art on the web, through the `web` row's
 # search and the pages it finds, and save the chosen ones into the game project's `references/` folder, with downloads
 # and contact sheets cached under `dataRoot`; its system prompt section has the agent gather references before it makes
-# art. `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`,
+# art. `graphics-review` gives the agent and connected agents `graphics_review`, which sends an image of the game's
+# graphics to the account's model route with a reviewer's instructions and returns the critique; its system prompt
+# section asks for a review after all graphics work. `godot` reads its `webCheckCommand` from `WASD_WEB_CHECK_COMMAND`,
 # which the Desktop app sets for its Host to the command that starts the app's Web check mode; without it, as in the
 # Web profile, Web checks are off.
 - insert:
@@ -81,6 +83,8 @@
       name: '@deepseek-ai/dsh-art-references'
       config:
         dataRoot: !!js dshHomePath('art-references')
+    - id: graphics-review
+      name: '@deepseek-ai/dsh-graphics-review'
     - id: game-mcp
       name: '@deepseek-ai/dsh-game-mcp'
       config:

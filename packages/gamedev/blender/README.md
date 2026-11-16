@@ -106,7 +106,7 @@ The Desktop app for Windows x64 ships the runtime's archive instead, in `runtime
 <a id="tools"></a>
 ### Tools
 
-The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, which also take `session` and `project` ([one Blender session per conversation](#one-blender-session)).
+The model calls each tool as `mcp__wasd_blender__<name>`, and every path argument is absolute. A result is text, and `render_preview` and `render` add one image; a failed call returns an error result whose text names the cause. Agents connected through WASD Engine's MCP server, [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md), call the same tools as `blender_<name>`, which also take `session` and `project` ([one Blender session per conversation](#one-blender-session)). The overview of that server's instructions describes the plugin to them with `BLENDER_GAME_MCP_DESCRIPTION` from [`src/instructions.ts`](src/instructions.ts): that Blender gives real shapes, bevels, and baked textures that primitives built in code cannot match, so every model the player sees that the agent does not download, and the parts of meshes the game builds at runtime, come from Blender, and that a `.glb` in Godot still takes the game's shaders, animation, and per-instance variation.
 
 | Tool | Arguments | Result |
 |---|---|---|
@@ -149,7 +149,7 @@ Each worker's `execute_python` namespace holds the module `wasd_addons`, which e
 
 Blender runs without a window, so the tools offer no viewport, no interface, and no window or area screenshot. Some operators need a window and fail in background Blender, so the server instructions tell the agent to prefer `bpy.data` edits over `bpy.ops` operators.
 
-The instructions also have the agent paint image textures for every model it makes, unless the user asks for flat colors, because glTF export keeps image textures but drops procedural shader nodes. The agent unwraps UVs with `bpy.ops.uv.smart_project`, builds the look from procedural nodes, bakes the color, and where the material varies the roughness and normal, into images with Cycles on the CPU, paints further details into the pixels with numpy, and connects the images to the Principled BSDF before export. These operators and the bake run in background Blender while the object is active and selected.
+The instructions also have the agent paint image textures for every model it makes, unless the user asks for flat colors, because glTF export keeps image textures but drops procedural shader nodes. The agent unwraps UVs with `bpy.ops.uv.smart_project` and uses a Poly Haven texture when one suits the game's art style; otherwise it builds the look from procedural nodes, bakes the color, and where the material varies the roughness and normal, into images with Cycles on the CPU, paints further details into the pixels with numpy, and connects the images to the Principled BSDF before export. These operators and the bake run in background Blender while the object is active and selected.
 
 The agent looks at the scene with `render_preview`. It renders from a temporary orthographic camera framed on every renderable object, or on the listed objects and their children with other geometry hidden, from the `iso`, `front`, `back`, `left`, `right`, or `top` view. The framing follows what a render shows: it includes objects and collections hidden only in the viewport and leaves out collections that are excluded from the view layer or hidden from renders; the result names listed objects that such a collection holds, since the preview cannot show them. `solid`, the default, is fast Workbench shading with outlines in material base colors; `material` renders node materials and textures with EEVEE at 16 samples, lit by the scene lights or by a temporary sun when the scene has none.
 
@@ -216,7 +216,7 @@ The same worker script runs under the bpy module (`<python> -I -X utf8 -B -u <sc
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, result text, and image files |
 | [`src/scripts.ts`](src/scripts.ts) | `run_script` runs: the shared places, the call and run folders, the processes, and the reports |
 | [`src/abort.ts`](src/abort.ts) | Cancellation of the server's waits |
-| [`src/instructions.ts`](src/instructions.ts) | Server name and instructions |
+| [`src/instructions.ts`](src/instructions.ts) | Server name and instructions, and the description that agents connected through WASD Engine's MCP server read |
 | [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | Worker: the protocol loop, one method per tool, and the script mode of `run_script` |
 
 The shared [`dsh-app-mcp`](../app-mcp/README.md) package owns the shared Config fields and the server registration, the server process, the worker protocol client, the supervisor, the result size bounds, the setup host, and the tool helpers, including `execute_python`.
@@ -292,7 +292,7 @@ Game assets:
 
 Textures:
 1. Unwrap UVs: with the object active and selected, run bpy.ops.object.mode_set(mode='EDIT'), bpy.ops.mesh.select_all(action='SELECT'), and bpy.ops.uv.smart_project(island_margin=0.02), then return to mode='OBJECT'.
-2. Build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
+2. Use a Poly Haven texture when one suits the game's art style: download it and connect its maps as step 5 describes, instead of baking. Otherwise build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
 3. Bake it into images with Cycles: set scene.render.engine = 'CYCLES', scene.cycles.device = 'CPU', and scene.cycles.samples to about 8. Bake one object at a time, selected alone and active. Add an Image Texture node holding a new image, 512 pixels square for small props and 1024 or 2048 for large or close-up models, and make it the active node of each of the object's materials, then run bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=8). Where the material varies in roughness or relief, also bake type='ROUGHNESS' and type='NORMAL' into images whose colorspace_settings.name is 'Non-Color'. Set the render engine back afterwards.
 4. Paint what nodes cannot make, such as stripes, markings, or chipped paint, into the pixels with numpy: image.pixels.foreach_get into an array, change it, foreach_set, then image.update(). To paint on a particular face, read where it lies from its loop UVs in mesh.uv_layers.active.uv: u and v from 0 to 1 span the image's width and height, with pixel row 0 at the bottom.
 5. Connect each image to its Principled BSDF input in place of the procedural nodes, a normal image through a Normal Map node, save each as a PNG next to the model (set image.filepath_raw, then image.save()), and look at render_preview in material mode before export_gltf, which embeds the images in the .glb.
@@ -302,7 +302,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### Token effect
 
-The section adds about 5,100 characters to every request while the server is connected.
+The section adds about 5,300 characters to every request while the server is connected.
 
 #### KV Cache effect
 

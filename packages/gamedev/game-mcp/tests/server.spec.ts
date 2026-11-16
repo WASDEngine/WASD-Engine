@@ -124,7 +124,12 @@ describe('GameMcpServer', () => {
 
     const client = await connect(url, token)
     expect(client.getServerVersion()).toMatchObject({ name: 'wasd-engine', title: 'WASD Engine' })
-    expect(client.getInstructions()).toContain('## Alpha\n\nCall alpha_echo to check the connection.')
+    const instructions = client.getInstructions() ?? ''
+    expect(instructions.startsWith('WASD Engine is the game development app open on this computer, and this server gives you its game tools. ')).toBe(true)
+    expect(instructions).toContain('What each plugin adds:\n- Alpha (alpha_*): Echoes text.\n\n')
+    expect(instructions.endsWith('\n\n## Alpha\n\nCall alpha_echo to check the connection.')).toBe(true)
+    expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'alpha' } })))
+      .toContain('Alpha guide (where it names a tool without the alpha_ prefix, add the prefix):\n\nCall alpha_echo to check the connection.')
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool', 'create_game_project', 'alpha_echo', 'alpha_show'])
     expect(tools[3]).toMatchObject({ annotations: { readOnlyHint: true }, inputSchema: { type: 'object', required: ['text'] } })
@@ -138,6 +143,17 @@ describe('GameMcpServer', () => {
     expect(text(unknown)).toContain('no game tool named "nope"')
     expect((await client.callTool({ name: 'call_game_tool', arguments: {} })).isError).toBe(true)
     expect((await client.callTool({ name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: 'x' } })).isError).toBe(true)
+  }, TIMEOUT)
+
+  it('warns when a provider\'s description makes the overview longer than agents such as Claude Code read', async () => {
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    const { server } = await start()
+    ctx.effect(() => server.provide(alpha))
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('overview'))
+    ctx.effect(() => server.provide({ ...alpha, id: 'wordy', title: 'Wordy', description: 'x'.repeat(4096), tools: () => [] }))
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(new RegExp(
+      '^game-mcp: with Wordy, the overview of the server instructions comes to \\d+ characters, more than the 4096 that Claude Code '
+      + 'passes to its model; shorten the providers\' descriptions$', 'u')))
   }, TIMEOUT)
 
   it('starts a long call\'s response at once and reports progress while it runs, on the 2026-07-28 revision', async () => {
@@ -244,7 +260,7 @@ describe('GameMcpServer', () => {
     const listed = (await client.listTools()).tools.find(tool => tool.name === 'create_game_project')
     expect(listed).toMatchObject({ title: 'Create game project', inputSchema: { required: ['name'], properties: { name: { type: 'string' }, location: { type: 'string' } } } })
     expect(listed?.annotations?.readOnlyHint).toBeUndefined()
-    expect(client.getInstructions()).toContain('When the user asks for a new game, create its project with create_game_project')
+    expect(client.getInstructions()).toContain('For a new game, create its project with create_game_project and make the game in the folder it returns.')
 
     const first = await client.callTool({ name: 'create_game_project', arguments: { name: 'Space Frogs' } })
     expect(first.isError).toBeFalsy()

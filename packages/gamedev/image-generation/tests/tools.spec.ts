@@ -51,6 +51,11 @@ async function sent(body: Record<string, unknown>): Promise<Sent[]> {
   }))
 }
 
+/** The WASD Engine API's refusal once the account's AI usage and credits are used up, as `billing.limit_message` words it. */
+const LIMIT = 'Usage limit reached: the AI usage that the WASD Engine Free plan includes this month, and your credits, are used up. '
+  + 'Your AI usage refreshes on December 3 (UTC). Upgrade your plan or turn on auto recharge on your account page at '
+  + 'https://app.wasdengine.com/account for more.'
+
 describe('image_generate', () => {
   it('makes an image from a prompt and saves it under the working directory with the account token', async () => {
     const current = await composed()
@@ -191,7 +196,8 @@ describe('image_generate', () => {
     const current = await composed()
     const path = '/v1/images/generate'
     const cases: Array<[number, string | undefined, string]> = [
-      [402, 'Usage limit reached: this month\'s AI usage is used up.', 'Usage limit reached: this month\'s AI usage is used up. Ask the user to upgrade their WASD Engine plan or turn on auto recharge, then try again.'],
+      // The API's message names the account page where the user pays; the agent passes it on.
+      [402, LIMIT, `${LIMIT} Pass this on to the user, then try again once they have upgraded their WASD Engine plan or turned on auto recharge.`],
       [422, 'Google\'s safety filters blocked this image (IMAGE_SAFETY). Change the prompt or the images.', 'Nano Banana could not make this image: Google\'s safety filters blocked this image (IMAGE_SAFETY). Change the prompt or the images.'],
       [429, 'Too many image generations for this account at once. Retry shortly.', 'Image generation is busy. Wait a few seconds, then try again.'],
       [503, 'The image service is temporarily unavailable. Try again later.', 'WASD Engine could not make this image (HTTP 503): The image service is temporarily unavailable. Try again later.'],

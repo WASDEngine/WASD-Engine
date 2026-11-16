@@ -65,7 +65,8 @@ describe('create_game_project', () => {
     const path = join(root, 'Documents', 'WASD Engine', 'Space Frogs')
     expect(result.isError).toBeUndefined()
     expect(text(result)).toBe(`Created the game project "Space Frogs" in ${path}, which WASD Engine lists among the user's game projects. `
-      + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools.')
+      + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools. '
+      + 'Before you write code, plan the game around the plugins that the server instructions list, and read the guide of each one you will use.')
     expect(existsSync(path)).toBe(true)
     expect(registered).toEqual([path])
     expect(commands.map(command => [command.args.find(arg => arg === 'init' || arg === 'commit'), command.cwd])).toEqual([['init', path], ['commit', path]])

@@ -104,7 +104,7 @@ export function audioMcpProvider(host: AudioToolHost): GameMcpProvider {
   return {
     id: 'audio',
     title: 'Audio',
-    description: 'List a game project\'s sound effects, dialogue, and music and measure them as WASD Engine\'s Audio panel plays them, with a picture of each sound\'s waveform and spectrogram.',
+    description: 'List a game project\'s sound effects, dialogue, and music, and measure each one with a picture of its waveform and spectrogram.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     // The tools run either way; audio_review alone needs a window to decode the sound.

@@ -80,12 +80,16 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
   it('names the Godot release of the shipped or installed runtime, and Jolt for a new project, in the instructions', async () => {
     const { client } = await connected({}, { runnerPath: '', libgodotPath: '' })
     expect(client.getInstructions()).toContain(
+      '- Godot (godot_*): Run the user\'s Godot 4.7 game in the WASD Engine window, where the user watches and plays it, and see, play, '
+      + 'and measure it yourself. Run it and look after every change: code that compiles can still look or play wrong.\n')
+    expect(client.getInstructions()).toContain(
       `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" `
       + 'and set 3d/physics_engine="Jolt Physics" under [physics].')
   }, TIMEOUT)
 
   it('names no Godot release in the instructions for configured runtime paths', async () => {
     const { client } = await connected()
+    expect(client.getInstructions()).toContain('- Godot (godot_*): Run the user\'s Godot game in the WASD Engine window,')
     expect(client.getInstructions()).toContain(MCP_INSTRUCTIONS)
     expect(client.getInstructions()).not.toContain('The godot_* tools run Godot')
   }, TIMEOUT)

@@ -84,7 +84,7 @@ The project's record may come from someone else, so a removal takes out only the
 
 The agent decides when an add-on is worth installing. The plugin adds the `game-addons` section to the system prompt, in the slot of the Godot games section. It tells the agent to install an add-on, without asking the user first, when the work at hand needs what the add-on does and plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps; to skip it when the engine's own nodes and tools or a short script do the job, and never to install one in case it is needed later; and, after an installation, to load the guide before using the add-on and to tell the user what it added and why, with the license and any credit the license requires. One line per catalog add-on follows: its id, application, the stages at which it helps, and when to use it.
 
-`install` and `remove` ask nobody under every approval policy, like the other game tools, and the Session's permission mode does not confine them. A user's click in the Add-ons dialog changes the project the same way. Connected agents read the same judgment and list in the MCP server's instructions, and their own harness decides whether to ask its user.
+`install` and `remove` ask nobody under every approval policy, like the other game tools, and the Session's permission mode does not confine them. A user's click in the Add-ons dialog changes the project the same way. Connected agents read the same judgment and list in the MCP server's instructions, whose overview, and the tool's description, ask them to read the whole catalog with `action: search` before they plan a game, and their own harness decides whether to ask its user.
 
 ### Guides as skills
 
@@ -150,7 +150,7 @@ Search scores each query word by the best field one of whose words it starts: 3 
 
 #### What the model sees
 
-The Session's agent sees the `game-addons` section just before the Godot games section: the section text below, then one line per catalog add-on, Godot add-ons first, in the form of the catalog line below. A connected agent reads the same judgment and lines in the MCP server's instructions under `## Game add-ons`, with the absolute `project`, the `guide` action, and Blender's `wasd_addons.enable` call in place of the guide skill.
+The Session's agent sees the `game-addons` section just before the Godot games section: the section text below, then one line per catalog add-on, Godot add-ons first, in the form of the catalog line below. A connected agent reads the same judgment and lines in the MCP server's instructions under `## Game add-ons`, with the absolute `project`, the `guide` action, and Blender's `wasd_addons.enable` call in place of the guide skill. Before that guide, which Claude Code's model reads only through `search_game_tools`, the overview of the instructions lists the provider's description: curated add-ons that do common game jobs better than code written from scratch, with examples, and the request to read the whole catalog with `game_addons` `action: search` before planning a game and to install each one that fits.
 
 ##### Section text
 
@@ -181,7 +181,7 @@ The text changes only with the shipped catalog, so it stays in the cached system
 
 #### What the model sees
 
-The Session's agent sees `game_addons` with `action` (`search`, `guide`, `install`, `remove`, or `list`) and the optional `query`, `host`, `stage`, `id`, `replace`, and `project`. The description names the kinds of add-ons the catalog holds and tells the model to install one itself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer, and then to tell the user what it added and its license. A connected agent sees the same tool with `project` as an absolute path.
+The Session's agent sees `game_addons` with `action` (`search`, `guide`, `install`, `remove`, or `list`) and the optional `query`, `host`, `stage`, `id`, `replace`, and `project`. The description names the kinds of add-ons the catalog holds and tells the model to install one itself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer, and then to tell the user what it added and its license. A connected agent sees the same tool with `project` as an absolute path, and a description that ends `Before you plan a game, read the whole catalog with action search and no query.`, since it has no catalog section in a system prompt.
 
 #### Token effect
 
@@ -209,7 +209,7 @@ An installation or removal changes the catalog, which reaches the model as a new
 
 #### What the model sees
 
-A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, notes such as a required credit or a skipped import, and up to 20 import problems, and asks the model to tell the user that it added the add-on, why, and its license, except when the project already had that version. A removal names the paths it took out, the backup that keeps them, and up to 20 files that still use the add-on.
+A search lists matching add-ons, about 300 to 600 characters each. An installation names the version, license, installed paths, the guide's skill name, or for a connected agent, which has no skills, the `guide` action that shows the guide, notes such as a required credit or a skipped import, and up to 20 import problems, and asks the model to tell the user that it added the add-on, why, and its license, except when the project already had that version. A removal names the paths it took out, the backup that keeps them, and up to 20 files that still use the add-on.
 
 #### Token effect
 

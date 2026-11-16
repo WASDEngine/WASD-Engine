@@ -234,6 +234,8 @@ After the server connects, the MCP client adds the instructions from [`src/instr
 ##### SuperCollider server instructions
 
 ```markdown
+For sound effects and music, prefer ElevenLabs' tools when you have them, and use SuperCollider when the user asks for it or ElevenLabs cannot make the sound the game needs.
+
 SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
@@ -254,7 +256,7 @@ Game audio:
 
 #### Token effect
 
-The section adds about 2,800 characters to every request while the server is connected.
+The section adds about 3,000 characters to every request while the server is connected.
 
 #### KV Cache effect
 

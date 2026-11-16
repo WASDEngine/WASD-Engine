@@ -33,8 +33,8 @@
   en: cac2147c1deb4142
   zh: 3d74fdadf5ea1eee
 /deepseek-ai-dsh-blender/use-this-package/tools:
-  en: 157408b22e408edc
-  zh: 0aa891f92cd688a1
+  en: 4adb489eccab13db
+  zh: 0c8898ea09937680
 /deepseek-ai-dsh-blender/use-this-package/one-blender-session-per-conversation:
   en: a17fe4008dad9306
   zh: 8bdfebb0a10fd986
@@ -42,8 +42,8 @@
   en: 77022a40a3a1a06e
   zh: a5b71bedd23057a6
 /deepseek-ai-dsh-blender/use-this-package/headless-operation:
-  en: 4f11dfa39b922f55
-  zh: b3d1ed5ee2e340ae
+  en: 78859bfcbe569d67
+  zh: 7161dec6b26da341
 /deepseek-ai-dsh-blender/use-this-package/checkpoints:
   en: cf8c0ae579760c2c
   zh: 1348b6819e4bd676
@@ -57,8 +57,8 @@
   en: 2b694dbcc59f8d0e
   zh: e4db8412ad1dc139
 /deepseek-ai-dsh-blender/understand-the-implementation:
-  en: 3f54e8c6530f9ac4
-  zh: a5221be57d45be44
+  en: 519a411c4ebdb7fc
+  zh: 6d5a3e5a4c0888a5
 /deepseek-ai-dsh-blender/understand-the-implementation/verify-against-real-blender:
   en: a4bce0fd8e55c76f
   zh: f83073a46b3921c0
@@ -90,8 +90,8 @@
   en: dc16c352b87e2012
   zh: 483f7d12c5739291
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/token-effect:
-  en: db48f58dc4ab2417
-  zh: 4fb12aa2835e5267
+  en: ae72b0e2b3814a4f
+  zh: cefbc8b3aa80f45a
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
   en: 457158b3658aae47
   zh: b6a061d2499c0716

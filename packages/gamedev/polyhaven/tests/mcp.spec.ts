@@ -50,9 +50,12 @@ function text(result: CallResult): string {
 }
 
 describe('the Poly Haven tools over WASD Engine\'s MCP server', () => {
-  it('lists the three tools, the read-only ones marked, with an absolute download folder that connected agents must pass', async () => {
+  it('lists the three tools, the read-only ones marked, with an absolute download folder that connected agents must pass, and asks to look here first', async () => {
     const { client } = await connected()
     expect(client.getInstructions()).toContain(`## Poly Haven\n\n${MCP_INSTRUCTIONS}`)
+    expect(client.getInstructions()).toContain('\n- Poly Haven (polyhaven_*): Find free CC0 HDRIs, textures, and 3D models on Poly Haven and '
+      + 'download them into the game. Look here before you make or generate an asset, and use what suits the game\'s art style.\n')
+    expect(MCP_INSTRUCTIONS).toContain('Look here before you make or generate a sky, texture, or model, and download what suits the game\'s art style.')
     const tools = (await client.listTools()).tools.filter(tool => tool.name.startsWith('polyhaven_'))
     expect(tools.map(tool => [tool.name, tool.annotations?.readOnlyHint ?? false])).toEqual([
       ['polyhaven_search', true], ['polyhaven_asset', true], ['polyhaven_download', false],

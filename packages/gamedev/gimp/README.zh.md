@@ -270,6 +270,8 @@ pnpm run test:e2e packages/gamedev/gimp/tests/gimp-worker.e2e.ts
 ##### GIMP 服务器指令
 
 ```markdown
+Prefer Nano Banana's image generation, when you have it, to drawing new 2D art here, and use GIMP to edit images: cut out backgrounds, recolor, resize, clean up, make textures seamless, and pack sprite sheets.
+
 GIMP 3 runs headless behind these tools: there is no window. GIMP keeps one session for each conversation: its open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, or stops after a long pause in the calls, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
@@ -296,7 +298,7 @@ close_image discards unsaved changes, so save first when they matter.
 
 #### Token 影响
 
-服务器保持连接期间，该部分为每个请求增加约 3,200 个字符。
+服务器保持连接期间，该部分为每个请求增加约 3,400 个字符。
 
 #### KV Cache 影响
 

@@ -61,7 +61,7 @@ export function apply(ctx: Context, config: Config): void {
     gameMcp: {
       id: 'gimp',
       title: 'GIMP',
-      description: 'Create and edit images in a headless GIMP 3: textures, sprites, and sprite sheets.',
+      description: 'Edit images in a headless GIMP 3: textures, sprites, and sprite sheets.',
       instructions: GIMP_INSTRUCTIONS,
     },
   })

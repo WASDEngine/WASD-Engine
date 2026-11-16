@@ -1,8 +1,9 @@
 /**
  * The server's tools: `search_game_tools`, `call_game_tool`, and `create_game_project`, then every provider's tools in
- * provider order. The catalog lists them as MCP tools, searches the providers' tools, writes the server instructions,
- * and runs one call of a provider's tool: it prepares the call through the tool's provider, runs the tool's harness
- * definition with an execution of its own, and turns the value, or the failure, into an MCP result.
+ * provider order. The catalog lists them as MCP tools, searches the providers' tools and returns a provider's guide,
+ * writes the server instructions, and runs one call of a provider's tool: it prepares the call through the tool's
+ * provider, runs the tool's harness definition with an execution of its own, and turns the value, or the failure, into
+ * an MCP result.
  * @module @deepseek-ai/dsh-game-mcp/src/catalog
  */
 import { randomUUID } from 'node:crypto'
@@ -40,6 +41,35 @@ const MAX_DETAILED = 12
 
 /** Longest parameter description quoted in a search result. */
 const PARAMETER_CHARS = 160
+
+/**
+ * Characters of a server's instructions that Claude Code passes to its model by default; it cuts the rest. The overview
+ * that opens the instructions has to fit in them, while the guides after it may be cut, because agents can read each
+ * one with `search_game_tools`.
+ */
+export const OVERVIEW_LIMIT = 4096
+
+/**
+ * The overview's first paragraph: why to use the tools, and that a skipped tool needs a reason. It stays within the
+ * first 512 characters, which OpenAI asks servers to keep self-contained for Codex.
+ */
+const PURPOSE = 'WASD Engine is the game development app open on this computer, and this server gives you its game tools. '
+  + 'They exist to raise the quality of the user\'s game beyond what code alone can make: real 3D models, art, sound, tested add-ons, '
+  + 'and a game you run and look at. Use them by default, and when you skip a tool or add-on that fits the work, tell the user why; '
+  + 'the reason must convince.'
+
+/** The overview's paragraph on a new game's project, the plugins' guides, and the server's own tools. */
+const WORKING = `For a new game, create its project with ${CREATE_PROJECT_TOOL} and make the game in the folder it returns. `
+  + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
+  + `instructions short, from ${SEARCH_TOOL} with plugin set to its id and no query. `
+  + `${CALL_TOOL} calls a tool your tool list lacks. `
+  + 'Every tool runs on this computer with the user\'s permissions. Guides name some tools without their plugin prefix: add it, as in '
+  + 'blender_scene_info.'
+
+/** The overview's paragraph on what the agent tells the user about the tools and add-ons it uses and skips. */
+const SKIPPING = 'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
+  + 'and if you use none, tell the user why. A reason convinces only when the tool cannot do what this game needs or would make it worse; '
+  + 'building faster, convenience, matching what you made in code, and not having looked are not reasons.'
 
 /** One tool of the catalog with the provider that offers it. */
 export interface CatalogTool {
@@ -183,13 +213,14 @@ export class GameToolCatalog {
         name: SEARCH_TOOL,
         title: 'Search game tools',
         description: `Search WASD Engine's game development tools${titles} by keyword. Lists the matching tools with their plugin, `
-          + 'description, and parameters, and whether each plugin is ready. Without a query, lists every tool.',
+          + 'description, and parameters, and whether each plugin is ready. Without a query, lists every tool; with plugin and no query, '
+          + 'also returns that plugin\'s guide, which says how to get good results from its tools.',
         inputSchema: {
           type: 'object',
           additionalProperties: false,
           properties: {
             query: { type: 'string', description: 'Words to look for in tool names and descriptions, such as "screenshot" or "export texture".' },
-            plugin: { type: 'string', enum: providers, description: 'Only the tools of this plugin.' },
+            plugin: { type: 'string', enum: providers, description: 'Only the tools of this plugin; without query, with its guide.' },
           },
         },
         annotations: { readOnlyHint: true },
@@ -240,29 +271,34 @@ export class GameToolCatalog {
   }
 
   /**
-   * Write the server instructions: what the server offers, then each provider's own instructions.
+   * Write the overview that opens the server instructions: that the tools exist to raise the game's quality, what each
+   * provider adds, in its description, where the guides are, and what to tell the user about skipped tools. It holds
+   * everything an agent must know, because harnesses may cut the instructions after {@link OVERVIEW_LIMIT} characters.
+   * @returns the overview.
+   */
+  overview(): string {
+    const providers = this.providers()
+    const plugins = providers.length === 0
+      ? 'No plugin offers tools right now.'
+      : `What each plugin adds:\n${providers.map(provider => `- ${provider.title} (${provider.id}_*): ${provider.description}`).join('\n')}`
+    return [PURPOSE, plugins, WORKING, SKIPPING].join('\n\n')
+  }
+
+  /**
+   * Write the server instructions: the overview, then each provider's guide under its title.
    * @returns the instructions.
    */
   instructions(): string {
-    const providers = this.providers()
-    const sections = [
-      'WASD Engine is the game development app open on this computer. Its MCP server gives you its game tools: '
-        + `${providers.map(provider => `${provider.title} (${provider.id}_* tools): ${provider.description}`).join(' ')} `
-        + `${SEARCH_TOOL} lists the tools and whether each plugin is ready, and ${CALL_TOOL} calls a tool by name. `
-        + `When the user asks for a new game, create its project with ${CREATE_PROJECT_TOOL}, which WASD Engine lists among the user's game projects, and make the game in the folder it returns. `
-        + 'Every tool runs on this computer with the user\'s permissions. Where a section below names a tool without its plugin prefix, add the prefix, '
-        + 'as in blender_scene_info.',
-      ...providers.flatMap(provider => provider.instructions === undefined ? [] : [`## ${provider.title}\n\n${provider.instructions}`]),
-    ]
-    return sections.join('\n\n')
+    const guides = this.providers().flatMap(provider => provider.instructions === undefined ? [] : [`## ${provider.title}\n\n${provider.instructions}`])
+    return [this.overview(), ...guides].join('\n\n')
   }
 
   /**
    * Search the tools.
    * @param query - words to look for; empty lists every tool.
-   * @param plugin - provider id that limits the search.
+   * @param plugin - provider id that limits the search; with an empty query, the result also holds the provider's guide.
    * @param signal - cancellation of the readiness reports.
-   * @returns the plugins' readiness and the matching tools as text.
+   * @returns the plugins' readiness, the guide of the one plugin searched without words, and the matching tools as text.
    */
   async search(query: string, plugin: string | undefined, signal: AbortSignal): Promise<string> {
     const all = this.providers()
@@ -286,7 +322,18 @@ export class GameToolCatalog {
     const header = `Plugins:\n${plugins.join('\n')}`
     if (words.length === 0) {
       const lines = tools.map(({ tool }) => `- ${tool.name}: ${firstSentence(descriptionOf(tool))}`)
-      return boundText(`${header}\n\nTools:\n${lines.join('\n')}\n\nSearch with a query to see a tool's parameters.`)
+      // Agents whose client cut the server instructions short read a plugin's guide here.
+      const guides = plugin === undefined
+        ? []
+        : providers.flatMap(provider => provider.instructions === undefined ? [] : [guideText(provider, provider.instructions)])
+      return boundText([
+        header,
+        ...guides,
+        lines.length === 0 ? 'Tools: none right now.' : `Tools:\n${lines.join('\n')}`,
+        plugin === undefined
+          ? 'Search with a query to see a tool\'s parameters, or set plugin to read that plugin\'s guide.'
+          : 'Search with a query to see a tool\'s parameters.',
+      ].join('\n\n'))
     }
     const scored = tools.map((entry, index) => ({ entry, index, score: score(entry, words) }))
       .filter(candidate => candidate.score > 0)
@@ -397,6 +444,17 @@ function score({ provider, tool }: CatalogTool, words: readonly string[]): numbe
     if (description.includes(word)) total += 1
   }
   return total
+}
+
+/**
+ * A provider's guide as a search returns it, outside the server instructions whose overview says to add a missing
+ * plugin prefix.
+ * @param provider - the provider.
+ * @param guide - its instructions.
+ * @returns the guide under a heading that says so.
+ */
+function guideText(provider: GameMcpProvider, guide: string): string {
+  return `${provider.title} guide (where it names a tool without the ${provider.id}_ prefix, add the prefix):\n\n${guide}`
 }
 
 /** A tool's name, plugin, description, and parameters as a search lists them. */

@@ -1,7 +1,7 @@
 /** The add-on tool for agents connected through WASD Engine's MCP server. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { loadCatalog } from '../src/catalog.ts'
-import { gameAddonMcpProvider, MCP_PROVIDER_ID } from '../src/mcp.ts'
+import { gameAddonMcpProvider, MCP_DESCRIPTION, MCP_PROVIDER_ID } from '../src/mcp.ts'
 import { mcpInstructions } from '../src/prompt.ts'
 import { TOOL_NAME, type GameAddonToolHost } from '../src/tools.ts'
 import { scratch, writeCatalog, type Scratch } from './fixtures.ts'
@@ -45,5 +45,15 @@ describe('gameAddonMcpProvider', () => {
     expect(provider.instructions).toBe(mcpInstructions(catalog.entries))
     expect(provider.instructions).toContain('wasd_addons.enable')
     expect(provider.instructions).toContain('- test-camera (Godot; prototype, polish): The camera must follow a moving target with smoothing.')
+  })
+
+  it('says what the add-ons add and asks for the whole catalog before a game is planned', async () => {
+    const provider = gameAddonMcpProvider((await host()).host)
+    expect(provider.description).toBe(MCP_DESCRIPTION)
+    expect(MCP_DESCRIPTION).toBe('Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than code written from '
+      + 'scratch: cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
+      + 'read the whole catalog with game_addons action search and install each one that fits.')
+    const [tool] = provider.tools()
+    expect(tool?.description).toBe(`${tool?.definition.description ?? ''} Before you plan a game, read the whole catalog with action search and no query.`)
   })
 })

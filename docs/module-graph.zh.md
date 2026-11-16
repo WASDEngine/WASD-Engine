@@ -349,6 +349,7 @@ flowchart TD
     pkg_gimp["gimp"]
     pkg_godot["godot"]
     pkg_godot_protocol["godot-protocol"]
+    pkg_graphics_review["graphics-review"]
     pkg_image_generation["image-generation"]
     pkg_polyhaven["polyhaven"]
     pkg_supercollider["supercollider"]
@@ -1049,6 +1050,8 @@ flowchart TD
   pkg_art_references --> pkg_tools
   pkg_elevenlabs --> pkg_tools
   pkg_game_audio --> pkg_tools
+  pkg_graphics_review --> pkg_llm
+  pkg_graphics_review --> pkg_tools
   pkg_image_generation --> pkg_tools
   pkg_polyhaven --> pkg_tools
   pkg_repeat_tool_reminder --> pkg_agent
@@ -1901,6 +1904,7 @@ flowchart TD
 | [`art-references`](../packages/gamedev/art-references) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`elevenlabs`](../packages/gamedev/elevenlabs) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`game-audio`](../packages/gamedev/game-audio) | `gamedev` | [`tools`](../packages/core/tools) |
+| [`graphics-review`](../packages/gamedev/graphics-review) | `gamedev` | [`llm`](../packages/llm/llm), [`tools`](../packages/core/tools) |
 | [`image-generation`](../packages/gamedev/image-generation) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`polyhaven`](../packages/gamedev/polyhaven) | `gamedev` | [`tools`](../packages/core/tools) |
 | [`repeat-tool-reminder`](../packages/guard/repeat-tool-reminder) | `guard` | [`agent`](../packages/core/agent), [`tools`](../packages/core/tools) |

@@ -51,10 +51,14 @@ function text(result: CallResult): string {
 }
 
 describe('the ElevenLabs tools over WASD Engine\'s MCP server', () => {
-  it('lists the six tools, the voice search marked read-only, files named by absolute path, and a clone needing consent', async () => {
+  it('lists the six tools, the voice search marked read-only, files named by absolute path, a clone needing consent, and its place before SuperCollider', async () => {
     const { client } = await connected()
     expect(client.getInstructions()).toContain(`## ElevenLabs\n\n${MCP_INSTRUCTIONS}`)
     expect(MCP_INSTRUCTIONS).toContain(CONSENT_STATEMENT)
+    expect(client.getInstructions()).toContain('\n- ElevenLabs (elevenlabs_*): Make character voices, sound effects, and music with ElevenLabs, and '
+      + 'clone the user\'s own voices. Prefer it to SuperCollider.\n')
+    expect(MCP_INSTRUCTIONS).toContain('Prefer it to SuperCollider for every sound effect and piece of music, and use SuperCollider only when the user '
+      + 'asks for it or ElevenLabs cannot make a sound.')
     const tools = (await client.listTools()).tools.filter(tool => tool.name.startsWith('elevenlabs_'))
     expect(tools.map(tool => [tool.name, tool.annotations?.readOnlyHint ?? false])).toEqual([
       ['elevenlabs_voices', true], ['elevenlabs_speech', false], ['elevenlabs_sound_effect', false], ['elevenlabs_music', false],

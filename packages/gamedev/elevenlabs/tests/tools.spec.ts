@@ -30,6 +30,11 @@ async function files(directory: string): Promise<string[]> {
   return entries.filter(entry => entry.isFile()).map(entry => join(entry.parentPath, entry.name).slice(directory.length + 1)).sort()
 }
 
+/** The WASD Engine API's refusal once the account's AI usage and credits are used up, as `billing.limit_message` words it. */
+const LIMIT = 'Usage limit reached: the AI usage that the WASD Engine Free plan includes this month, and your credits, are used up. '
+  + 'Your AI usage refreshes on December 3 (UTC). Upgrade your plan or turn on auto recharge on your account page at '
+  + 'https://app.wasdengine.com/account for more.'
+
 describe('elevenlabs_voices', () => {
   it('lists Voice Library voices with their labels, and sends the search with the account token to the API origin', async () => {
     const current = await composed()
@@ -125,7 +130,8 @@ describe('elevenlabs_speech', () => {
     const current = await composed()
     const args = { text: 'Hi.', voice_id: 'JBFqnCBsd6RMkjVDRZzb', path: 'line.mp3' }
     const cases: Array<[number, string | undefined, string]> = [
-      [402, 'Usage limit reached: the $2.00 of AI usage that the WASD Engine Free plan includes is used up.', 'Usage limit reached: the $2.00 of AI usage that the WASD Engine Free plan includes is used up. Ask the user to upgrade their WASD Engine plan or turn on auto recharge, then try again.'],
+      // The API's message names the account page where the user pays; the agent passes it on.
+      [402, LIMIT, `${LIMIT} Pass this on to the user, then try again once they have upgraded their WASD Engine plan or turned on auto recharge.`],
       [400, 'The voice Lydia has a custom price that WASD Engine does not offer. Choose another voice.', 'ElevenLabs could not make this audio: The voice Lydia has a custom price that WASD Engine does not offer. Choose another voice.'],
       [403, 'Confirm your email address first.', 'Confirm your email address first.'],
       [429, 'The audio service is busy. Retry shortly.', 'ElevenLabs is busy. Wait a few seconds, then try again.'],

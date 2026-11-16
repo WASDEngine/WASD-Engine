@@ -30,7 +30,7 @@ export const MCP_WORDING: GodotToolWording = {
   checkPaths: 'files or folders, as res:// paths or absolute paths',
   scriptPath: 'a res:// path or an absolute path inside the project',
   logsDefault: 'Without since, returns the entries after the ones you last read.',
-  audioPath: 'an absolute path',
+  savePath: 'an absolute path',
 }
 
 /** How connected agents use the Godot tools, before the sentence that names the Godot release. */
@@ -107,7 +107,7 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
       return id
     }
     return Promise.resolve({
-      async capture(run, maxWidth, signal, region) {
+      async capture(run, maxWidth, signal, region, save) {
         const view = run.view()
         let shot
         if (region === undefined) {
@@ -116,6 +116,7 @@ function mcpScreenshots(images: CapturedImages): GodotToolSurface['screenshots']
           const limit = Math.min(maxWidth, agentWidthLimit(region.width, region.height))
           shot = await run.screenshot(limit, signal, undefined, { ...region, minWidth: Math.min(region.minWidth, limit) })
         }
+        await save?.(shot.image)
         const id = keep('godot-screenshot', shot.image, 'image/png')
         return {
           width: shot.meta.width,
@@ -243,7 +244,8 @@ export function godotMcpProvider(
   return {
     id: 'godot',
     title: 'Godot',
-    description: 'Run, test, and play the user\'s Godot game inside the WASD Engine window.',
+    description: `Run the user's ${release === undefined ? 'Godot' : `Godot ${release}`} game in the WASD Engine window, where the user watches and plays it, `
+      + 'and see, play, and measure it yourself. Run it and look after every change: code that compiles can still look or play wrong.',
     instructions: release === undefined
       ? MCP_INSTRUCTIONS
       : `${MCP_INSTRUCTIONS}\nThe godot_* tools run Godot ${release}: write code for it, and in a new project.godot, start config/features `

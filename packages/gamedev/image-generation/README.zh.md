@@ -59,7 +59,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 Nano Banana 不生成透明背景，因此工具说明告诉 agent：请求一种单一的纯色背景，再用 GIMP 把它变为透明，并为 JPEG 的边缘留一点容差；贴图也用 GIMP 处理成无缝。每张图像都带有 Google 不可见的 SynthID 水印。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `image`（标题为 Nano Banana）下使用该工具，不需要会话：`path` 和每张图像都必须是绝对路径。它们的图像计入 WASD Engine 当前登录的账号，未登录时服务器拒绝所有调用。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `image`（标题为 Nano Banana）下使用该工具，不需要会话：`path` 和每张图像都必须是绝对路径。它们的图像计入 WASD Engine 当前登录的账号，未登录时服务器拒绝所有调用。服务器指令概述中的提供方描述及其指南要求 agent 优先使用它，而不是自己在 GIMP 中或用代码绘制 2D 美术。
 
 ### 价格与账号
 
@@ -110,11 +110,11 @@ WASD Engine API 按 Google 为 Nano Banana 2.1 定的 API 价格，根据 Google
 
 #### 模型可见内容
 
-会话的 agent 看到 `image_generate`，参数为 `prompt`、`path`，以及可选的 `images`、`aspect_ratio`、`size` 和 `replace`。说明写明了模型，列出它能制作的游戏美术、界面美术和贴图，说明可以传入图像作为参考、用来编辑，或让角色、物体或风格保持一致，并说明要从每张图像中取什么，说明 Nano Banana 不生成透明背景以及如何用 GIMP 得到透明背景，如何请求贴图并用 GIMP 处理成无缝，要用 `asset_view` 查看每个结果，以及每张图像都会消耗用户 WASD Engine 套餐的 AI 用量，2K 和 4K 更多。连接的 agent 看到同样的工具，其中 `path` 和 `images` 被描述为绝对路径，提供方说明位于 `## Nano Banana` 下。
+会话的 agent 看到 `image_generate`，参数为 `prompt`、`path`，以及可选的 `images`、`aspect_ratio`、`size` 和 `replace`。说明写明了模型，列出它能制作的游戏美术、界面美术和贴图，说明可以传入图像作为参考、用来编辑，或让角色、物体或风格保持一致，并说明要从每张图像中取什么，说明 Nano Banana 不生成透明背景以及如何用 GIMP 得到透明背景，如何请求贴图并用 GIMP 处理成无缝，要用 `asset_view` 查看每个结果，以及效果不够好时换个更好的提示词重新生成。连接的 agent 看到同样的工具，其中 `path` 和 `images` 被描述为绝对路径，提供方说明位于 `## Nano Banana` 下。模型看到的任何文字都不提每张图像的费用，因此 agent 会制作游戏真正需要的内容；只有在账号的 AI 用量用完、调用失败时，才会请它把升级的事转告用户。
 
 #### Token 影响
 
-声明约为 2,100 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 900 个字符。
+声明约为 2,000 个字符的 JSON；提供方说明为 MCP 服务器的说明增加约 900 个字符。
 
 #### KV Cache 影响
 
@@ -124,7 +124,7 @@ WASD Engine API 按 Google 为 Nano Banana 2.1 定的 API 价格，根据 Google
 
 #### 模型可见内容
 
-结果是一两句话：文件、像素尺寸和文件大小、是否替换了文件、模型、尺寸和形状，以及制作时用到的图像。失败时会说明要修改什么：超出范围的参数、已存在的路径、缺失或不是图像的文件、被 Google 安全过滤器拒绝、套餐用量已用完，或应用未登录。
+结果是一两句话：文件、像素尺寸和文件大小、是否替换了文件、模型、尺寸和形状，以及制作时用到的图像。失败时会说明要修改什么：超出范围的参数、已存在的路径、缺失或不是图像的文件、被 Google 安全过滤器拒绝、套餐用量已用完（WASD Engine API 的消息会给出用户升级或开启自动充值的账号页面，并请 agent 把这条消息转告用户），或应用未登录。
 
 #### Token 影响
 

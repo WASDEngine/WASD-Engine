@@ -102,7 +102,7 @@ export function assetMcpProvider(host: AssetToolHost): GameMcpProvider {
   return {
     id: 'asset',
     title: 'Assets',
-    description: 'List a game project\'s 2D art and 3D models and look at them as WASD Engine\'s Assets panel draws them, with the details needed to edit them.',
+    description: 'List a game project\'s 2D art and 3D models and look at them as WASD Engine draws them.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     // The tools run either way; asset_view alone needs a window to draw the asset.

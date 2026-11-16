@@ -217,13 +217,17 @@ export async function dispatchDeepSeekWeb<T>(
   if (!response.ok) {
     const status = response.status
     let message = `DeepSeek API error (HTTP ${status})`
+    let providerMessage: string | undefined
     let aborted: WebError | undefined
     try {
       const parsed: unknown = await response.json()
       if (isRecord(parsed)) {
         const detail = typeof parsed.error === 'string' ? parsed.error
           : isRecord(parsed.error) ? parsed.error.message : parsed.message
-        if (typeof detail === 'string' && detail.length > 0) message += `: ${detail}`
+        if (typeof detail === 'string' && detail.length > 0) {
+          providerMessage = detail
+          message += `: ${detail}`
+        }
       }
     } catch (error: unknown) {
       // An abort fired mid-body must surface as WEB_ABORTED, not be swallowed
@@ -244,6 +248,9 @@ export async function dispatchDeepSeekWeb<T>(
       throw aborted ?? accountRejectedError(message)
     }
     if (aborted !== undefined) throw aborted
+    // WASD Engine: the account service refuses the account's token once the account's usage is used up; the endpoint
+    // is not what the user must change, and the service's message says where the user pays.
+    if (status === 402 && auth.kind === 'account') throw accountUsageError(providerMessage)
     throw searchEndpointError(guidance, endpoint, message)
   }
   /* jscpd:ignore-end */
@@ -259,6 +266,20 @@ export async function dispatchDeepSeekWeb<T>(
       : `DeepSeek returned an unprocessable response body: ${String(error)}`
     throw searchEndpointError(guidance, endpoint, message, error)
   }
+}
+
+/**
+ * WASD Engine: replace endpoint guidance with the account service's own message when it refuses the account token
+ * because the account's usage is used up (HTTP 402); the message says where the user pays, so the model passes it on.
+ * @param providerMessage - the service's message, when the response body carried one.
+ * @returns the provider failure.
+ */
+function accountUsageError(providerMessage: string | undefined): WebError {
+  return new WebError(
+    `${providerMessage ?? 'The account used for this web request has no usage left (HTTP 402).'} `
+    + 'Pass this on to the user, then try again once the account has usage left.',
+    'WEB_PROVIDER_ERROR',
+  )
 }
 
 /** Replace endpoint guidance with sign-in guidance when DeepSeek rejects the account token. */

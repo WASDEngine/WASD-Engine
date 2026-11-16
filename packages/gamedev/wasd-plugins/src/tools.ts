@@ -672,8 +672,8 @@ export function wasdMcpProvider(
     id: 'wasd',
     title: 'WASD Engine',
     description: multiplayer.length === 0
-      ? 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.'
-      : 'Export the user\'s Godot game for the Web, Windows, and macOS, record its preview, release it on WASD Engine with a share link, and put it online: player-hosted for free, or on a dedicated server by monthly size.',
+      ? 'Export the game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.'
+      : 'Export the game for the Web, Windows, and macOS, record its preview, release it on WASD Engine with a share link, and put it online, player-hosted for free or on a dedicated server.',
     instructions: multiplayerInstructions === '' ? release : `${release}\n\n${multiplayerInstructions}`,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),

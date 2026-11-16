@@ -1760,6 +1760,12 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, and the `gameAddons` Remote.',
     methods: [
       {
+        signature: 'catalogEntries(): readonly GameAddon[]',
+        description: 'The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics review. The service is reachable only once its catalog loaded.',
+        parameters: [],
+        returns: 'the catalog\'s entries.',
+      },
+      {
         signature: '@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>',
         description: 'The catalog with each add-on\'s presence in the game project of a folder, for the Add-ons dialog.',
         parameters: [{ name: 'directory', description: 'absolute folder: the project folder or a folder up to three levels above it.' }, { name: 'signal', description: 'cancellation.' }],
@@ -1787,7 +1793,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     methods: [
       {
         signature: 'provide(provider: GameMcpProvider): () => void',
-        description: 'Offer a plugin\'s game tools to connected agents for the calling plugin\'s lifetime.',
+        description: 'Offer a plugin\'s game tools to connected agents for the calling plugin\'s lifetime. When the provider\'s description makes the overview of the server instructions longer than 4,096 characters, the part that Claude Code passes to its model, a warning names the length.',
         parameters: [{ name: 'provider', description: 'the plugin\'s identity, readiness, and tools; its tool names start with its id and an underscore.' }],
         returns: 'an idempotent disposer that withdraws the tools.',
         throws: ['when the id is not lowercase letters and digits starting with a letter, or another provider has it.'],
@@ -6516,6 +6522,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type BindingOrigin = \'created\' | \'referenced\' | \'discovered\' | \'tracked\';',
   },
   {
+    name: 'BlenderAddonSpec',
+    declaration: 'export interface BlenderAddonSpec {\n    readonly module: string;\n    readonly kind: \'extension\' | \'core\';\n    readonly files?: string;\n    readonly setup?: string;\n}',
+  },
+  {
     name: 'BoxProps',
     declaration: 'export interface BoxProps {\n    readonly flexDirection?: \'row\' | \'column\' | undefined;\n    readonly paddingX?: number | undefined;\n    readonly paddingY?: number | undefined;\n    readonly padding?: number | undefined;\n    readonly gap?: number | undefined;\n    readonly border?: boolean | string | undefined;\n    readonly borderColor?: string | undefined;\n    readonly children?: UiNode | undefined;\n}',
   },
@@ -7468,12 +7478,28 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GameAddon',
+    declaration: 'export interface GameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly copyright: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly archive?: GameAddonArchive;\n    readonly assets?: GameAddonAssets;\n    readonly icon?: GameAddonIcon;\n    readonly godot?: GodotAddonSpec;\n    readonly blender?: BlenderAddonSpec;\n    readonly conflicts?: readonly string[];\n    readonly verified: GameAddonVerification;\n}',
+  },
+  {
+    name: 'GameAddonArchive',
+    declaration: 'export interface GameAddonArchive {\n    readonly url: string;\n    readonly sha256: string;\n    readonly bytes: number;\n    readonly root: string;\n    readonly license?: string;\n}',
+  },
+  {
+    name: 'GameAddonAssets',
+    declaration: 'export interface GameAddonAssets {\n    readonly url: string;\n    readonly sha256: string;\n    readonly bytes: number;\n    readonly root: string;\n    readonly license: string;\n    readonly homepage: string;\n}',
+  },
+  {
     name: 'GameAddonAssetsView',
     declaration: 'export interface GameAddonAssetsView {\n    readonly license: string;\n    readonly bytes: number;\n    readonly homepage: string;\n}',
   },
   {
     name: 'GameAddonHost',
     declaration: 'export type GameAddonHost = \'godot\' | \'blender\';',
+  },
+  {
+    name: 'GameAddonIcon',
+    declaration: 'export interface GameAddonIcon {\n    readonly file: string;\n    readonly source: string;\n    readonly license: string;\n    readonly copyright?: string;\n}',
   },
   {
     name: 'GameAddonInstallResult',
@@ -7494,6 +7520,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GameAddonStage',
     declaration: 'export type GameAddonStage = \'prototype\' | \'content\' | \'polish\' | \'ship\';',
+  },
+  {
+    name: 'GameAddonVerification',
+    declaration: 'export interface GameAddonVerification {\n    readonly godot?: string;\n    readonly bpy?: string;\n    readonly date: string;\n}',
   },
   {
     name: 'GameAddonView',
@@ -7620,6 +7650,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GoalView extends GoalSnapshot {\n    readonly roundsStarted: number;\n    readonly createdAt: number;\n    readonly updatedAt: number;\n    readonly activation: GoalActivation;\n}',
   },
   {
+    name: 'GodotAddonSpec',
+    declaration: 'export interface GodotAddonSpec {\n    readonly addonDir: string;\n    readonly plugin?: string;\n    readonly autoloads?: readonly GodotAutoload[];\n    readonly settings?: readonly GodotProjectSetting[];\n    readonly importTwice?: boolean;\n    readonly overlay?: readonly string[];\n}',
+  },
+  {
+    name: 'GodotAutoload',
+    declaration: 'export interface GodotAutoload {\n    readonly name: string;\n    readonly path: string;\n}',
+  },
+  {
     name: 'GodotBacktraceFrame',
     declaration: 'export interface GodotBacktraceFrame {\n    readonly function: string;\n    readonly file: string;\n    readonly line: number;\n}',
   },
@@ -7686,6 +7724,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotMouseButton',
     declaration: 'export type GodotMouseButton = \'left\' | \'right\' | \'middle\' | \'wheel_up\' | \'wheel_down\' | \'wheel_left\' | \'wheel_right\';',
+  },
+  {
+    name: 'GodotProjectSetting',
+    declaration: 'export interface GodotProjectSetting {\n    readonly section: string;\n    readonly key: string;\n    readonly value: string;\n}',
   },
   {
     name: 'GodotRecordedImage',

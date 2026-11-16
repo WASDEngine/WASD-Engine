@@ -83,6 +83,7 @@ const GAME_AUDIO = { id: 'game-audio', name: '@deepseek-ai/dsh-game-audio' } as 
 
 /** The row the fork inserts after the audio tools: the agent's reference tools, which find and save reference art for the art it makes. */
 const ART_REFERENCES = { id: 'art-references', name: '@deepseek-ai/dsh-art-references' } as const
+const GRAPHICS_REVIEW = { id: 'graphics-review', name: '@deepseek-ai/dsh-graphics-review' } as const
 
 /** The row the fork inserts after the reference tools: the MCP server through which other agents on the computer use the game tools. */
 const GAME_MCP = { id: 'game-mcp', name: '@deepseek-ai/dsh-game-mcp' } as const
@@ -333,7 +334,7 @@ describe('WASDEngine overlay', () => {
   it('patches exactly the target rows and inserts only agent feedback, the gamedev preset, the game tools, their tabs, the Assets tab and tools, the Audio tab and tools, the reference tools, their MCP server, and WASD Engine Plugins', () => {
     expect([...new Set(rowPatches.map(patch => patch.id))].sort()).toEqual(Object.keys(TARGETS).sort())
     expect(allPatches.flatMap(patch => patch.insert ?? []).map(entry => entry.id))
-      .toEqual([AGENT_FEEDBACK.id, 'preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, ART_REFERENCES.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
+      .toEqual([AGENT_FEEDBACK.id, 'preset-gamedev', ...Object.keys(GAME_TOOLS), GAME_TOOLS_UI.id, GAME_ASSETS_UI.id, GAME_ASSETS.id, GAME_AUDIO_UI.id, GAME_AUDIO.id, ART_REFERENCES.id, GRAPHICS_REVIEW.id, GAME_MCP.id, GAME_MCP_UI.id, WASD_PLUGINS.id])
   })
 
   it('mounts agent feedback from a web-app dependency with the app\'s version, and the Plugins page can switch it off', () => {
@@ -358,6 +359,15 @@ describe('WASDEngine overlay', () => {
     expect(expression(configOf(entry).dataRoot, 'art-references.dataRoot')).toBe(`dshHomePath('${ART_REFERENCES.id}')`)
     expect(manifest(webAppDir).dependencies?.[ART_REFERENCES.name]).toBe('workspace:*')
     expect(PROTECTED_PLUGINS.has(ART_REFERENCES.name)).toBe(false)
+  })
+
+  it('mounts the graphics review from a web-app dependency with its defaults, which review on the account route, and the Plugins page may switch it off', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GRAPHICS_REVIEW.id)
+    expect(entry?.name).toBe(GRAPHICS_REVIEW.name)
+    expect(entry?.disabled).toBeUndefined()
+    expect(entry?.config).toBeUndefined()
+    expect(manifest(webAppDir).dependencies?.[GRAPHICS_REVIEW.name]).toBe('workspace:*')
+    expect(PROTECTED_PLUGINS.has(GRAPHICS_REVIEW.name)).toBe(false)
   })
 
   it('mounts WASD Engine Plugins from a web-app dependency, with its data folder, the agent\'s Browser tools where the Browser row mounts, and the plugin manager keeps it on', () => {
@@ -823,6 +833,19 @@ describe('gamedev preset', () => {
     const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
     expect(text).toContain('A new `project.godot` also sets `3d/physics_engine="Jolt Physics"` under `[physics]`')
     expect(text).toContain('Keep an existing project\'s physics engine')
+  })
+
+  it('has the persona and godot-project get each asset from a fitting download first, then from image_generate and ElevenLabs', () => {
+    const persona = String(configOf(gameRow('persona')).prefix)
+    expect(persona).toContain('The tested add-ons of game_addons and the CC0 assets of polyhaven_* are the exception: add them yourself when the game needs them.')
+    expect(persona).toContain('For each asset, first look for one to download from Poly Haven or a catalog add-on, and use it when it suits the game\'s art style. '
+      + 'Otherwise generate 2D art with image_generate instead of drawing it yourself in GIMP or code, and voices, sound effects, and music with the '
+      + 'elevenlabs_* tools instead of SuperCollider.')
+    const skill = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
+    expect(skill).toContain('Get each asset from the first source that suits the game\'s art style: download skies, textures, and models with `polyhaven_*` '
+      + 'or an add-on\'s assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing '
+      + 'them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider.')
+    expect(skill).toContain('Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound')
   })
 
   it('has godot-project export for the Web, Windows, and macOS with the built-in Godot before the editor command line', () => {

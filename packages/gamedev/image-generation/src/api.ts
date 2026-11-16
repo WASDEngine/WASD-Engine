@@ -157,7 +157,7 @@ export class ImageApi {
       case 401:
         return new ImageRequestError('The WASD Engine sign-in has expired. Ask the user to sign in to WASD Engine again, then try again.', status)
       case 402:
-        return new ImageRequestError(`${message ?? 'Usage limit reached.'} Ask the user to upgrade their WASD Engine plan or turn on auto recharge, then try again.`, status)
+        return new ImageRequestError(`${message ?? 'Usage limit reached.'} Pass this on to the user, then try again once they have upgraded their WASD Engine plan or turned on auto recharge.`, status)
       case 403:
         return new ImageRequestError(message ?? 'WASD Engine refused the signed-in account.', status)
       case 429:

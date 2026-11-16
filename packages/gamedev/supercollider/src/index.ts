@@ -61,7 +61,8 @@ export function apply(ctx: Context, config: Config): void {
     gameMcp: {
       id: 'supercollider',
       title: 'SuperCollider',
-      description: 'Make sound effects and music for the game in a headless SuperCollider: render sclang code offline to audio files and measure them.',
+      description: 'Make sound effects and music that ElevenLabs cannot make in a headless SuperCollider: render sclang code offline to audio '
+        + 'files and measure them.',
       instructions: SUPERCOLLIDER_INSTRUCTIONS,
     },
   })

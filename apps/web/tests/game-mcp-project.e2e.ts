@@ -1,8 +1,10 @@
 /**
- * A connected agent creates a game project through WASD Engine's MCP server in the shipped Web composition:
+ * A connected agent creates a game project through WASD Engine's MCP server in the shipped Web composition: the
+ * overview of the server instructions, with every shipped plugin, fits in the 4,096 characters that Claude Code keeps
+ * and puts a fitting download before Nano Banana and ElevenLabs, a plugin's guide comes from `search_game_tools`, and
  * `create_game_project` makes the folder in WASD Engine's folder for game projects with a Git repository and its one
- * commit, as the Create game project dialog does, and registers it with no Session, and the window's sidebar lists it as
- * a game project.
+ * commit, as the Create game project dialog does, and registers it with no Session, and the window's sidebar lists it
+ * as a game project.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -71,6 +73,29 @@ it('creates a game project for a connected agent, which the window lists as a ga
 
   client = new Client({ name: 'claude-code', version: '2.1.0' })
   await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } }))
+
+  // Claude Code passes its model the first 4,096 characters of the instructions: the overview, with every shipped
+  // plugin, fits in them, and a plugin's guide, which may come after the cut, is one search away.
+  const instructions = client.getInstructions() ?? ''
+  const overview = instructions.slice(0, instructions.indexOf('\n\n## '))
+  expect(overview.length).toBeGreaterThan(0)
+  expect(overview.length).toBeLessThanOrEqual(4096)
+  for (const plugin of ['Godot (godot_*)', 'Blender (blender_*)', 'Game add-ons (game_*)', 'Graphics review (graphics_*)', 'GIMP (gimp_*)', 'SuperCollider (supercollider_*)']) {
+    expect(overview).toContain(`\n- ${plugin}: `)
+  }
+  expect(overview).toContain('read the whole catalog with game_addons action search')
+  // Each asset comes from a fitting download first, then from Nano Banana and ElevenLabs.
+  for (const preference of [
+    'on Poly Haven and download them into the game. Look here before you make or generate an asset, and use what suits the game\'s art style.\n',
+    'with Google\'s Nano Banana 2.1. Prefer it to drawing 2D art yourself.\n',
+    'clone the user\'s own voices. Prefer it to SuperCollider.\n',
+  ]) {
+    expect(overview).toContain(preference)
+  }
+  expect(overview.endsWith('building faster, convenience, matching what you made in code, and not having looked are not reasons.')).toBe(true)
+  const guide = await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'blender' } })
+  expect((guide.content as { type: string; text?: string }[])[0]?.text).toContain('Blender guide (where it names a tool without the blender_ prefix, add the prefix):\n\nBlender runs headless')
+
   const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME } })
   const text = (result.content as { type: string; text?: string }[]).flatMap(block => block.type === 'text' ? [block.text ?? ''] : []).join('\n')
   expect(result.isError, text).toBeFalsy()
@@ -78,7 +103,8 @@ it('creates a game project for a connected agent, which the window lists as a ga
   // The folder sits in WASD Engine's folder for game projects, with the repository the dialog makes.
   const path = join(scaffold.workspaceCwd, 'Documents', 'WASD Engine', NAME)
   expect(text).toBe(`Created the game project "${NAME}" in ${path}, which WASD Engine lists among the user's game projects. `
-    + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools.')
+    + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools. '
+    + 'Before you write code, plan the game around the plugins that the server instructions list, and read the guide of each one you will use.')
   expect(execFileSync('git', ['-C', path, 'log', '--format=%s'], { encoding: 'utf8' }).trim()).toBe(`Create ${NAME}`)
   const workspace = ctx.workspaceRegistry.list().find(entry => entry.path === path)
   expect(workspace?.title).toBe(NAME)

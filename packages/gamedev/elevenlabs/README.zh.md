@@ -59,7 +59,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 `path` 相对于会话的工作目录，或为绝对路径；其扩展名决定文件类型：语音和音效为 `.mp3` 或 `.wav`，音乐为 `.mp3`。调用在付费请求之前检查路径和每个参数：路径指向文件夹，或指向已存在的文件而 `replace` 不为 true 时，不产生任何费用。文件先写入旁边的临时文件，因此要么完整出现，要么完全不出现。结果给出文件、大小、音频时长；对循环音效和音乐，还给出让它在 Godot 中循环的导入选项。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `elevenlabs` 下使用这些工具，不需要会话：`elevenlabs_voices` 标记为只读，语音、音效和音乐工具要求 `path` 为绝对路径，`elevenlabs_clone_voice` 要求 `samples` 为绝对路径并传入 `consent: true`。它们的音频费用计入 WASD Engine 已登录的账号；未登录时，服务器拒绝每次调用。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `elevenlabs` 下使用这些工具，不需要会话：`elevenlabs_voices` 标记为只读，语音、音效和音乐工具要求 `path` 为绝对路径，`elevenlabs_clone_voice` 要求 `samples` 为绝对路径并传入 `consent: true`。它们的音频费用计入 WASD Engine 已登录的账号；未登录时，服务器拒绝每次调用。服务器指令概述中的 provider 描述及其指南要求 agent 制作音效和音乐时优先使用这些工具，而不是 SuperCollider。
 
 ### 价格与账号
 
@@ -116,11 +116,11 @@ ElevenLabs 要求其账号持有者在每次克隆时确认拥有克隆该声音
 
 #### 模型可见内容
 
-会话的 agent 看到 `elevenlabs_voices`，带可选的 `query`、`source`、`gender`、`age`、`accent`、`language`、`use_case`、`page` 与 `limit`；`elevenlabs_speech`，带 `text`、`voice_id`、`path` 与可选的 `language`、`speed`、`stability`、`similarity`、`style`、`seed`、`previous_text`、`next_text` 和 `replace`；`elevenlabs_sound_effect`，带 `prompt`、`path` 与可选的 `duration_seconds`、`loop`、`prompt_influence` 和 `replace`；`elevenlabs_music`，带 `prompt`、`path` 与可选的 `duration_seconds`、`instrumental` 和 `replace`；`elevenlabs_clone_voice`，带 `name`、`samples` 与可选的 `description` 和 `remove_background_noise`；以及 `elevenlabs_delete_voice`，带 `voice_id`。描述给出模型名称和描述示例，提到音频标签，说明每次生成都会消耗用户 WASD Engine 套餐的 AI 用量，其中音乐最多，并说明克隆需要说话人的许可，由用户在 WASD Engine 中确认。连接的 agent 看到同样的工具，只是 `path` 和 `samples` 被描述为绝对路径，克隆工具多一个必填的 `consent`，并在 `## ElevenLabs` 下看到引用了同意声明的 provider 说明。
+会话的 agent 看到 `elevenlabs_voices`，带可选的 `query`、`source`、`gender`、`age`、`accent`、`language`、`use_case`、`page` 与 `limit`；`elevenlabs_speech`，带 `text`、`voice_id`、`path` 与可选的 `language`、`speed`、`stability`、`similarity`、`style`、`seed`、`previous_text`、`next_text` 和 `replace`；`elevenlabs_sound_effect`，带 `prompt`、`path` 与可选的 `duration_seconds`、`loop`、`prompt_influence` 和 `replace`；`elevenlabs_music`，带 `prompt`、`path` 与可选的 `duration_seconds`、`instrumental` 和 `replace`；`elevenlabs_clone_voice`，带 `name`、`samples` 与可选的 `description` 和 `remove_background_noise`；以及 `elevenlabs_delete_voice`，带 `voice_id`。描述给出模型名称和描述示例，提到音频标签，并说明克隆需要说话人的许可（由用户在 WASD Engine 中确认）以及 Pro 或 Max 套餐。连接的 agent 看到同样的工具，只是 `path` 和 `samples` 被描述为绝对路径，克隆工具多一个必填的 `consent`，并在 `## ElevenLabs` 下看到 provider 说明：它要求用 `audio_review` 检查每个结果、效果不够好时重新生成，并引用了同意声明。模型看到的任何文字都不提每次生成的费用，因此 agent 会制作游戏真正需要的内容；只有在账号的 AI 用量用完、调用失败时，才会请它把升级的事转告用户。
 
 #### Token 影响
 
-六个声明合计约 7,500 个字符的 JSON；provider 的说明为 MCP 服务器的说明增加约 1,300 个字符。
+六个声明合计约 7,000 个字符的 JSON；provider 的说明为 MCP 服务器的说明增加约 1,400 个字符。
 
 #### KV Cache 影响
 
@@ -130,7 +130,7 @@ ElevenLabs 要求其账号持有者在每次克隆时确认拥有克隆该声音
 
 #### 模型可见内容
 
-查找声音的结果先给出搜索和筛选条件，然后每个声音一行，列出其 ID、名称、标签以及截断到 160 个字符的描述，再说明是否还有下一页，以及 ID 应传给 `elevenlabs_speech`。生成的结果给出文件、大小、是否替换了已有文件、音频时长、模型，语音还给出声音和字符数；循环音效和音乐还附上让它们在 Godot 中循环的导入选项。失败时说明要改什么：超出范围的参数、已存在的路径、API 拒绝的声音、用完的套餐，或未登录的应用。克隆的结果给出声音、其 ID、录音以及账号保留了几个克隆声音；删除的结果给出声音和剩余的克隆声音数。
+查找声音的结果先给出搜索和筛选条件，然后每个声音一行，列出其 ID、名称、标签以及截断到 160 个字符的描述，再说明是否还有下一页，以及 ID 应传给 `elevenlabs_speech`。生成的结果给出文件、大小、是否替换了已有文件、音频时长、模型，语音还给出声音和字符数；循环音效和音乐还附上让它们在 Godot 中循环的导入选项。失败时说明要改什么：超出范围的参数、已存在的路径、API 拒绝的声音、用完的套餐（WASD Engine API 的消息会给出用户升级或开启自动充值的账号页面，并请 agent 把这条消息转告用户），或未登录的应用。克隆的结果给出声音、其 ID、录音以及账号保留了几个克隆声音；删除的结果给出声音和剩余的克隆声音数。
 
 #### Token 影响
 

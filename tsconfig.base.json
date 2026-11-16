@@ -501,6 +501,7 @@
       "@deepseek-ai/dsh-goal-round-driver": ["./packages/goal/goal-round-driver/src"],
       "@deepseek-ai/dsh-godot": ["./packages/gamedev/godot/src"],
       "@deepseek-ai/dsh-godot-protocol": ["./packages/gamedev/godot-protocol/src"],
+      "@deepseek-ai/dsh-graphics-review": ["./packages/gamedev/graphics-review/src"],
       "@deepseek-ai/dsh-harness-dev-context": ["./packages/context/harness-dev-context/src"],
       "@deepseek-ai/dsh-headless": ["./packages/bundle/headless/src"],
       "@deepseek-ai/dsh-home-paths": ["./packages/util/home-paths/src"],

@@ -106,7 +106,7 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。
+模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。该服务器指令的概述用 [`src/instructions.ts`](src/instructions.ts) 中的 `BLENDER_GAME_MCP_DESCRIPTION` 向它们介绍本插件：Blender 能做出代码构建的基本体无法企及的真实形状、倒角和烘焙纹理，因此玩家看到的每个模型（agent 下载的除外），以及游戏在运行时构建的网格的各个部件，都应来自 Blender；而 Godot 中的 `.glb` 仍会使用游戏的着色器、动画和逐实例变化。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
@@ -149,7 +149,7 @@ Session 的工作进程在其首次工具调用时启动，带有 Blender 的默
 
 Blender 在没有窗口的情况下运行，因此这些工具不提供视口、界面，也不提供窗口或区域截图。部分操作符需要窗口，在后台 Blender 中会失败，因此服务器指令要求 agent 优先直接编辑 `bpy.data`，而不是使用 `bpy.ops` 操作符。
 
-服务器指令还要求 agent 为它制作的每个模型绘制图像纹理（除非用户要求纯色），因为 glTF 导出保留图像纹理，却会丢弃程序化着色器节点。agent 用 `bpy.ops.uv.smart_project` 展开 UV，用程序化节点构建外观，用 CPU 上的 Cycles 把颜色烘焙到图像中（材质在粗糙度和起伏上有变化时，也烘焙粗糙度和法线），用 numpy 在像素上绘制更多细节，并在导出前把这些图像连接到 Principled BSDF。物体处于活动并被选中的状态时，这些操作符和烘焙可以在后台 Blender 中运行。
+服务器指令还要求 agent 为它制作的每个模型绘制图像纹理（除非用户要求纯色），因为 glTF 导出保留图像纹理，却会丢弃程序化着色器节点。agent 用 `bpy.ops.uv.smart_project` 展开 UV，有符合游戏美术风格的 Poly Haven 纹理时就使用它；否则用程序化节点构建外观，用 CPU 上的 Cycles 把颜色烘焙到图像中（材质在粗糙度和起伏上有变化时，也烘焙粗糙度和法线），用 numpy 在像素上绘制更多细节，并在导出前把这些图像连接到 Principled BSDF。物体处于活动并被选中的状态时，这些操作符和烘焙可以在后台 Blender 中运行。
 
 agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染，相机对准所有可渲染对象，或对准列出的对象及其子对象并隐藏其他几何体，视角为 `iso`、`front`、`back`、`left`、`right` 或 `top`。取景依据渲染所显示的内容：包括仅在视口中隐藏的对象和集合，不包括从视图层中排除或在渲染中隐藏的集合；对于此类集合中的已列出对象，结果会写明预览无法显示它们。默认的 `solid` 是快速的 Workbench 着色，带轮廓并使用材质基础色；`material` 用 EEVEE 以 16 个采样渲染节点材质和纹理，光照来自场景灯光，场景没有灯光时使用一个临时太阳光。
 
@@ -216,7 +216,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、结果文本和图像文件 |
 | [`src/scripts.ts`](src/scripts.ts) | `run_script` 的运行：共享的运行位置、调用与运行文件夹、进程和报告 |
 | [`src/abort.ts`](src/abort.ts) | 服务器等待的取消 |
-| [`src/instructions.ts`](src/instructions.ts) | 服务器名称和指令 |
+| [`src/instructions.ts`](src/instructions.ts) | 服务器名称和指令，以及通过 WASD Engine 的 MCP 服务器连接的 agent 读到的描述 |
 | [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | 工作进程：协议循环、每个工具对应的一个方法，以及 `run_script` 的脚本模式 |
 
 共享的 [`dsh-app-mcp`](../app-mcp/README.zh.md) 包负责共享的 Config 字段与服务器注册、服务器进程、工作进程协议客户端、监管器、结果大小上限、setup host（安装环境宿主）以及包括 `execute_python` 在内的工具辅助函数。
@@ -292,7 +292,7 @@ Game assets:
 
 Textures:
 1. Unwrap UVs: with the object active and selected, run bpy.ops.object.mode_set(mode='EDIT'), bpy.ops.mesh.select_all(action='SELECT'), and bpy.ops.uv.smart_project(island_margin=0.02), then return to mode='OBJECT'.
-2. Build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
+2. Use a Poly Haven texture when one suits the game's art style: download it and connect its maps as step 5 describes, instead of baking. Otherwise build the look in the material from procedural nodes that suit the game's art style: Noise, Voronoi, and Wave textures through Color Ramps for color variation, wood grain, or stone; an inverted Ambient Occlusion node as the mask for dirt in creases; a Bump node for surface relief.
 3. Bake it into images with Cycles: set scene.render.engine = 'CYCLES', scene.cycles.device = 'CPU', and scene.cycles.samples to about 8. Bake one object at a time, selected alone and active. Add an Image Texture node holding a new image, 512 pixels square for small props and 1024 or 2048 for large or close-up models, and make it the active node of each of the object's materials, then run bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'}, margin=8). Where the material varies in roughness or relief, also bake type='ROUGHNESS' and type='NORMAL' into images whose colorspace_settings.name is 'Non-Color'. Set the render engine back afterwards.
 4. Paint what nodes cannot make, such as stripes, markings, or chipped paint, into the pixels with numpy: image.pixels.foreach_get into an array, change it, foreach_set, then image.update(). To paint on a particular face, read where it lies from its loop UVs in mesh.uv_layers.active.uv: u and v from 0 to 1 span the image's width and height, with pixel row 0 at the bottom.
 5. Connect each image to its Principled BSDF input in place of the procedural nodes, a normal image through a Normal Map node, save each as a PNG next to the model (set image.filepath_raw, then image.save()), and look at render_preview in material mode before export_gltf, which embeds the images in the .glb.
@@ -302,7 +302,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### Token 影响
 
-服务器保持连接期间，该部分为每个请求增加约 5,100 个字符。
+服务器保持连接期间，该部分为每个请求增加约 5,300 个字符。
 
 #### KV Cache 影响
 

@@ -12,7 +12,7 @@ import { AppMcpConfig, registerAppMcpPlugin } from '@deepseek-ai/dsh-app-mcp'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-mcp-manager'
 import { BPY_VERSION_PATTERN, PYTHON_VERSION_PATTERN } from './environment.ts'
-import { BLENDER_INSTRUCTIONS, BLENDER_SERVER_NAME } from './instructions.ts'
+import { BLENDER_GAME_MCP_DESCRIPTION, BLENDER_INSTRUCTIONS, BLENDER_SERVER_NAME } from './instructions.ts'
 import type { BlenderBackend } from './types.ts'
 
 export type { BlenderBackend, BlenderServerOptions } from './types.ts'
@@ -109,7 +109,7 @@ export function apply(ctx: Context, config: Config): void {
     gameMcp: {
       id: 'blender',
       title: 'Blender',
-      description: 'Model, texture, and render 3D assets in a headless Blender, and export them as .glb files into the game.',
+      description: BLENDER_GAME_MCP_DESCRIPTION,
       instructions: BLENDER_INSTRUCTIONS,
     },
   })

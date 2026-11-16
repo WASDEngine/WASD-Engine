@@ -882,6 +882,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   WasdLinkRequests: 'gamedev.md',
   WasdLibraryView: 'gamedev.md',
   WasdLibraryOutcome: 'gamedev.md',
+  GameAddon: 'gamedev.md',
   GameAddonsProjectView: 'gamedev.md',
   GameAddonInstallResult: 'gamedev.md',
   GameAddonRemoveResult: 'gamedev.md',

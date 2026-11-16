@@ -7,7 +7,9 @@
 export const GIMP_SERVER_NAME = 'wasd_gimp'
 
 /** How to use the GIMP tools, at most 6000 characters. */
-export const GIMP_INSTRUCTIONS = `GIMP 3 runs headless behind these tools: there is no window. GIMP keeps one session for each conversation: its open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, or stops after a long pause in the calls, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
+export const GIMP_INSTRUCTIONS = `Prefer Nano Banana's image generation, when you have it, to drawing new 2D art here, and use GIMP to edit images: cut out backgrounds, recolor, resize, clean up, make textures seamless, and pack sprite sheets.
+
+GIMP 3 runs headless behind these tools: there is no window. GIMP keeps one session for each conversation: its open images persist between calls until close_image. Refer to an image by the integer id that new_image, open_image, or list_images returns, and to a layer by id or exact name (image_info lists them); call list_images before relying on earlier state. If GIMP restarts after a crash or a timeout, or stops after a long pause in the calls, open images and unsaved changes are lost: save .xcf files at milestones. The first result after a start names the GIMP version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game assets inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 

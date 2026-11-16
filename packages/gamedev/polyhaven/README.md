@@ -63,7 +63,7 @@ Without `resolution` a download takes `1k`, or the smallest resolution when the 
 
 A download writes all of its files or none. Each file streams into a temporary file beside its target, its size and MD5 digest must match Poly Haven's file list, and only when every file arrived intact do the files take their targets' places; a failure or cancellation leaves the folder as it was. A file already in place with the same digest is not downloaded again. A file with other contents, such as a texture the user edited, stops the download before anything is written unless `replace` is true. A path in the file list that would leave the download folder stops the download.
 
-Agents connected through WASD Engine's MCP server reach the tools under the provider `polyhaven`, without a Session: `polyhaven_search` and `polyhaven_asset` are marked read-only, the preview image arrives as JPEG bytes after the result's text, and `polyhaven_download` requires `directory` as an absolute path.
+Agents connected through WASD Engine's MCP server reach the tools under the provider `polyhaven`, without a Session: `polyhaven_search` and `polyhaven_asset` are marked read-only, the preview image arrives as JPEG bytes after the result's text, and `polyhaven_download` requires `directory` as an absolute path. The provider's description in the overview of the server instructions, and its guide, ask the agent to look here before it makes or generates an asset and to use what suits the game's art style.
 
 ### Poly Haven's terms
 
@@ -119,7 +119,7 @@ The Session's agent sees `polyhaven_search`, with the optional `query`, `type`, 
 
 #### Token effect
 
-The three declarations come to about 3,100 characters of JSON; the provider's instructions add about 750 characters to the MCP server's instructions.
+The three declarations come to about 3,100 characters of JSON; the provider's instructions add about 850 characters to the MCP server's instructions.
 
 #### KV Cache effect
 

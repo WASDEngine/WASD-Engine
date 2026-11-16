@@ -6,7 +6,7 @@ fork 自有的 [`packages/gamedev/`](../../packages/gamedev/README.zh.md) 包组
 
 ## 组成
 
-WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的八个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页与素材工具](#assets-tab)的 `ui-game-assets` 与 `game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`、挂载[参考工具](#art-references)的 `art-references`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 与 `image-generation` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
+WASDEngine 的 patch 文件 [`game-tools.cordis.patch.yml`](../../packages/bundle/web-app/wasdengine/game-tools.cordis.patch.yml) 是 `@deepseek-ai/dsh-web-app` 组合包 `dsh.bundle.patch` 列表的最后一项，因此每个 Web 与 Desktop profile 都会插入其中的各行：下表中的八个工具行、挂载[「游戏工具」标签页](#game-tools-tabs)且不接受配置的 `ui-game-tools`、挂载[「素材」标签页与素材工具](#assets-tab)的 `ui-game-assets` 与 `game-assets`、挂载[「音频」标签页与音频工具](#audio-tab)的 `ui-game-audio` 与 `game-audio`、挂载[参考工具](#art-references)的 `art-references`、挂载[画面审查](#graphics-review)的 `graphics-review`，以及[供其他 agent 使用的 MCP 服务器](#mcp-server-for-other-agents) `game-mcp` 与其浏览器部分 `ui-game-mcp`。每个应用行把 `dataRoot` 设为 `dshHomePath('<row>')`：该行在 harness 主目录下的文件夹，即 `~/.wasdengine/<row>`；设置了 `DSH_HOME` 时为 `$DSH_HOME/<row>`；`polyhaven` 行不在那里保存文件，也不设置任何配置；`elevenlabs` 与 `image-generation` 行不在那里保存文件，只设置 `apiOrigin`，即账号登录的 `inferenceOrigin` 的表达式。`game-addons` 行还会指定其目录，即 `@deepseek-ai/dsh-web-app` 包的 `wasdengine/addons/`，以及其 Blender 扩展存储目录 `dshHomePath('game-addons', 'blender')`，`blender` 行的 `addonStore` 也指向它。profile patch 用 `- id: <row>` 和 `disabled: true` 关闭某一行，「插件」页面「游戏工具」标签页上的开关写入的也是这一条目。[FORK.md](../../wasdengine/FORK.md#game-tools) 记录这项 fork 改动，以及合并上游后需要检查的内容。
 
 | 行 | 包 | agent 工具 | 应用进程 |
 |---|---|---|---|
@@ -382,6 +382,16 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 `.gdignore` 文件让 Godot 跳过该文件夹，因此参考既不会被导入，也不会随游戏导出；「素材」标签页仍会列出它们。
 
+<a id="graphics-review"></a>
+## 画面审查
+
+`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 保存到 `path` 的截图），并指出能让画面更好看的 WASD Engine 工具和扩展；它的 `graphics-review` 系统提示词段落要求在所有画面工作之后进行审查。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
+
+| 数据 | 通道 | 时机 |
+|---|---|---|
+| 图片 | 调用指定的文件，适配审查者的图片限制后存为附件 | 每次 `graphics_review` 调用 |
+| 审查请求 | 账号路由上的 `ctx.llm.stream`，purpose 为 `graphics-review`，由 WASDEngine 网关按账号的 AI 用量计价 | 每次 `graphics_review` 调用 |
+
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器
 
@@ -396,6 +406,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
 | `image_generate` | `image`，经由 [`src/mcp.ts`](../../packages/gamedev/image-generation/src/mcp.ts) 中的 `imageMcpProvider` | Session 自身的工具定义，不需要 Session；文件和每张图像都需要绝对路径，图像费用计入 WASD Engine 已登录的账号 |
 | `reference_search`、`reference_save` | `reference`，通过 [`src/mcp.ts`](../../packages/gamedev/art-references/src/mcp.ts) 中的 `referenceMcpProvider` | 会话自己的工具定义，不需要会话；`reference_save` 以绝对路径的 `project` 接受游戏项目文件夹，每个结果的图像以图像字节返回 |
+| `graphics_review` | `graphics`，通过 [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) 中的 `graphicsReviewMcpProvider` | 会话自身的工具定义，无需会话；图片为绝对路径，审查在账号的模型路由上运行，由账号付费 |
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
 | `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
@@ -531,6 +542,13 @@ Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system pr
 
 ```ts cordis-catalog
 /**
+ * The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics
+ * review. The service is reachable only once its catalog loaded.
+ * @returns the catalog's entries.
+ */
+catalogEntries(): readonly GameAddon[]
+
+/**
  * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
@@ -569,7 +587,9 @@ Owner of the MCP endpoint, its game tool providers, and the connected agents' Se
 
 ```ts cordis-catalog
 /**
- * Offer a plugin's game tools to connected agents for the calling plugin's lifetime.
+ * Offer a plugin's game tools to connected agents for the calling plugin's lifetime. When the provider's description
+ * makes the overview of the server instructions longer than 4,096 characters, the part that Claude Code passes to its
+ * model, a warning names the length.
  * @param provider - the plugin's identity, readiness, and tools; its tool names start with its id and an underscore.
  * @returns an idempotent disposer that withdraws the tools.
  * @throws when the id is not lowercase letters and digits starting with a letter, or another provider has it.

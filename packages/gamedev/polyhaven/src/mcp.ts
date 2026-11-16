@@ -12,6 +12,7 @@ import { polyHavenToolDefinitions, type PolyHavenToolHost, type PolyHavenToolSur
 
 /** How connected agents use the Poly Haven tools. */
 export const MCP_INSTRUCTIONS = 'Poly Haven is a free library of CC0 HDRI skies, tileable PBR textures, and 3D models that any game may use without attribution. '
+  + 'Look here before you make or generate a sky, texture, or model, and download what suits the game\'s art style. '
   + 'polyhaven_search finds assets from a description in any language; without a query it lists the most downloaded ones and their categories. '
   + 'polyhaven_asset shows one asset\'s formats, resolutions, and sizes, and its preview image. '
   + 'polyhaven_download saves one format and resolution into the folder you pass as directory, an absolute path such as <game project>/assets/polyhaven/<asset id>, '
@@ -78,7 +79,8 @@ export function polyHavenMcpProvider(host: PolyHavenToolHost): GameMcpProvider {
   return {
     id: 'polyhaven',
     title: 'Poly Haven',
-    description: 'Find free CC0 HDRIs, textures, and 3D models on Poly Haven, and download them into the user\'s game project.',
+    description: 'Find free CC0 HDRIs, textures, and 3D models on Poly Haven and download them into the game. Look here before you make or '
+      + 'generate an asset, and use what suits the game\'s art style.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),

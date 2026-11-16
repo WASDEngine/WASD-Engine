@@ -6,8 +6,8 @@
   en: bd29c0d384935958
   zh: e3260076649e510a
 /game-tools/composition:
-  en: 4d470fb40f29ab23
-  zh: 7349296eed44dc67
+  en: efa65249afdba7fc
+  zh: 0b0e40ec53e2341f
 /game-tools/application-mcp-servers:
   en: b9669e8ec35d2dad
   zh: b805abb2a443e963
@@ -60,11 +60,14 @@
   en: ecb65f5f096300b9
   zh: 4f6a034e3491d4ab
 /game-tools/art-references:
-  en: 682fbe592a8e3564
-  zh: 965684c5d3537934
+  en: f9e8ece8a7015811
+  zh: 747c12fe219e4512
+/game-tools/graphics-review:
+  en: 9192735e8f857b20
+  zh: 3d2fe0a516411c0b
 /game-tools/mcp-server-for-other-agents:
-  en: 1475c0b0d713381c
-  zh: 00e21113d469cb0e
+  en: 4a58054af7698663
+  zh: 81d74dea3576533d
 /game-tools/agent-feedback-and-mcp-usage:
   en: 0b3933640d2876f7
   zh: 2a5f7da74e738198

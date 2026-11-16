@@ -273,6 +273,16 @@ async function runGame(section) {
         if (!section.imageFirst) send(3, image)
         return
       }
+      case 'view': {
+        const id = Buffer.alloc(4)
+        id.writeUInt32LE(message.id, 0)
+        reply(message.id, {
+          format: 'png', width: message.width, height: message.height, frame: state.frame, paused: state.paused,
+          camera: { position: [0, 2, 6], direction: [0, -0.3, -1], fov: 35 },
+        })
+        send(3, Buffer.concat([id, Buffer.from('VIEW-PNG-BYTES', 'latin1')]))
+        return
+      }
       case 'input': {
         if (message.events.some(event => event.key === 'BadKey')) return fail(message.id, 'unknown key BadKey')
         // `timedOut` answers as a sequence that its real-time limit ended after half of its events.

@@ -37,15 +37,25 @@ export interface GameAddonToolHost {
   project(requested: string | undefined, exec: ToolRunContext): Promise<string>
 }
 
-/** How one surface's descriptions name projects. */
+/** How one surface's descriptions name projects, and how its results point to add-on guides. */
 export interface GameAddonToolWording {
   /** Description of the `project` parameter. */
   readonly project: string
+  /**
+   * The install result's sentence on where the installed add-on's guide is.
+   * @param id - the add-on id.
+   * @returns the sentence.
+   */
+  readonly installedGuide: (id: string) => string
+  /** The list result's words on where each listed add-on's guide is, after its count. */
+  readonly listedGuides: string
 }
 
-/** Wording of the Session's own tool. */
+/** Wording of the Session's own tool, whose agent reads an installed add-on's guide as the skill of its id. */
 export const SESSION_WORDING: GameAddonToolWording = {
   project: 'Folder containing project.godot, relative to the working directory. Default: the nearest project.godot.',
+  installedGuide: id => `Its guide is now the skill ${id}; load it before using the add-on.`,
+  listedGuides: 'each one\'s guide is listed as the skill of its id',
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -171,7 +181,7 @@ function renderView(view: ViewValue): string {
   ].join('\n')
 }
 
-function render(value: ToolValue): string {
+function render(value: ToolValue, wording: GameAddonToolWording): string {
   switch (value.action) {
     case 'search': {
       const addons = value.addons ?? []
@@ -182,7 +192,7 @@ function render(value: ToolValue): string {
     case 'list': {
       const addons = value.addons ?? []
       if (addons.length === 0) return `${value.projectDir ?? 'This project'} has no catalog add-ons. Search the catalog with action search.`
-      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; each one's guide is listed as the skill of its id:\n${addons.map(renderView).join('\n')}`
+      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; ${wording.listedGuides}:\n${addons.map(renderView).join('\n')}`
     }
     case 'guide': {
       const guide = value.guide
@@ -197,7 +207,7 @@ function render(value: ToolValue): string {
         install.unchanged
           ? `${install.title} ${install.version} was already installed${value.projectDir === undefined ? '' : ` in ${value.projectDir}`}; nothing was downloaded.`
           : `Installed ${install.title} ${install.version} (${install.license})${value.projectDir === undefined ? '' : ` in ${value.projectDir}`}${install.paths.length === 0 ? '' : `: ${install.paths.join(', ')}`}.`,
-        `Its guide is now the skill ${install.id}; load it before using the add-on.`,
+        wording.installedGuide(install.id),
         ...install.notes,
         ...install.unchanged ? [] : ['Tell the user that you added it and why, with its license.'],
       ]
@@ -227,7 +237,7 @@ function requireId(id: string | undefined, action: string): string {
 /**
  * Build the `game_addons` tool definition for one surface.
  * @param host - the manager and the project resolution of this surface.
- * @param wording - how the descriptions name projects.
+ * @param wording - how the descriptions name projects and the results point to add-on guides.
  * @returns the definition, not registered.
  */
 export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAddonToolWording): ToolDefinition {
@@ -247,7 +257,7 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
     },
     output: {
       schema: OUTPUT_SCHEMA,
-      render: (_args, value) => textBlocks(render(value)),
+      render: (_args, value) => textBlocks(render(value, wording)),
     },
     timeoutMs: CHANGE_TIMEOUT_MS,
     isConcurrencySafe: args => (args as { action?: unknown }).action !== 'install' && (args as { action?: unknown }).action !== 'remove',
