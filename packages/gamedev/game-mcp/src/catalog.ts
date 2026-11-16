@@ -63,8 +63,8 @@ const WORKING = `For a new game, create its project with ${CREATE_PROJECT_TOOL} 
   + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
   + `instructions short, from ${SEARCH_TOOL} with plugin set to its id and no query. `
   + `${CALL_TOOL} calls a tool your tool list lacks. `
-  + 'Every tool runs on this computer with the user\'s permissions. Guides name some tools without their plugin prefix: add it, as in '
-  + 'blender_scene_info.'
+  + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '
+  + 'as in blender_scene_info.'
 
 /** The overview's paragraph on what the agent tells the user about the tools and add-ons it uses and skips. */
 const SKIPPING = 'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
@@ -243,7 +243,7 @@ export class GameToolCatalog {
         name: CREATE_PROJECT_TOOL,
         title: 'Create game project',
         description: 'Create a new game project in WASD Engine: a new folder for the game, which WASD Engine lists among the user\'s game projects. '
-          + 'Returns the folder\'s absolute path; make the game there, and pass the path as project to the game tools.',
+          + 'Returns the folder\'s absolute path, where you make the game.',
         inputSchema: {
           type: 'object',
           additionalProperties: false,
@@ -251,7 +251,9 @@ export class GameToolCatalog {
           properties: {
             name: {
               type: 'string',
-              description: 'Name of the game project, which names its folder and its entry in WASD Engine: one folder name, without / \\ : * ? " < > |, control characters, or a trailing period.',
+              description: 'Name of the game project, which names its folder and its entry in WASD Engine: one folder name with a visible character, '
+                + 'without / \\ : * ? " < > |, control characters, or a trailing period, and neither .git nor a device name that Windows reserves, '
+                + 'such as CON or COM1.',
             },
             location: {
               type: 'string',
@@ -271,9 +273,10 @@ export class GameToolCatalog {
   }
 
   /**
-   * Write the overview that opens the server instructions: that the tools exist to raise the game's quality, what each
-   * provider adds, in its description, where the guides are, and what to tell the user about skipped tools. It holds
-   * everything an agent must know, because harnesses may cut the instructions after {@link OVERVIEW_LIMIT} characters.
+   * Write the overview that opens the server instructions: that the tools exist to raise the game's quality, where the
+   * guides are, what to tell the user about skipped tools, and then what each provider adds, in its description. It holds
+   * everything an agent must know, because harnesses may cut the instructions after {@link OVERVIEW_LIMIT} characters;
+   * an overview longer than that loses the end of the plugin list first, and `search_game_tools` lists every plugin.
    * @returns the overview.
    */
   overview(): string {
@@ -281,7 +284,7 @@ export class GameToolCatalog {
     const plugins = providers.length === 0
       ? 'No plugin offers tools right now.'
       : `What each plugin adds:\n${providers.map(provider => `- ${provider.title} (${provider.id}_*): ${provider.description}`).join('\n')}`
-    return [PURPOSE, plugins, WORKING, SKIPPING].join('\n\n')
+    return [PURPOSE, WORKING, SKIPPING, plugins].join('\n\n')
   }
 
   /**
@@ -448,13 +451,15 @@ function score({ provider, tool }: CatalogTool, words: readonly string[]): numbe
 
 /**
  * A provider's guide as a search returns it, outside the server instructions whose overview says to add a missing
- * plugin prefix.
+ * plugin prefix. Guides written for Sessions, such as Blender's, name the plugin's own tools without the prefix, and
+ * many guides name other plugins' tools by their full names, so the heading asks for the prefix only on the plugin's
+ * own tools, which the search result lists after the guide.
  * @param provider - the provider.
  * @param guide - its instructions.
  * @returns the guide under a heading that says so.
  */
 function guideText(provider: GameMcpProvider, guide: string): string {
-  return `${provider.title} guide (where it names a tool without the ${provider.id}_ prefix, add the prefix):\n\n${guide}`
+  return `${provider.title} guide (where it names one of the tools below without the ${provider.id}_ prefix, add the prefix):\n\n${guide}`
 }
 
 /** A tool's name, plugin, description, and parameters as a search lists them. */

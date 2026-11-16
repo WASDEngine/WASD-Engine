@@ -193,8 +193,9 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       properties: { project: PROJECT_PARAMETER, session: SESSION_PARAMETER, ...others },
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
-    // godot_check is not read-only: it may import the project first, which writes import data into it.
-    readOnly: ['godot_screenshot', 'godot_view', 'godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
+    // Clients may run read-only tools without asking. godot_screenshot and godot_view create and replace files with path
+    // and save, and godot_check may import the project first, which writes import data into it.
+    readOnly: ['godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
       const { project, session, ...rest } = args
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')

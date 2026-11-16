@@ -171,6 +171,9 @@ export const zh = {
   'action.close': '关闭',
   'error.exists': '已存在名为“{name}”的文件夹。请换一个名称，或打开现有文件夹。',
   'error.invalidName': '名称不能包含 / \\ : * ? " < > |，也不能以句点结尾。',
+  'error.invisibleName': '名称至少要包含一个可见字符。',
+  'error.deviceName': '“{name}”是 Windows 为设备保留的名称。请换一个名称。',
+  'error.gitName': '“{name}”是 Git 自己的文件夹的名称。请换一个名称。',
   'error.invalidDirectory': '请输入文件夹的完整路径。',
   'error.failed': '无法创建游戏项目：{message}',
 } satisfies Record<string, string>
@@ -197,6 +200,9 @@ export const en = {
   'action.close': 'Close',
   'error.exists': 'A folder named “{name}” is already there. Choose another name, or open the existing folder.',
   'error.invalidName': 'Use a name without / \\ : * ? " < > | that doesn’t end with a period.',
+  'error.invisibleName': 'Use a name with at least one visible character.',
+  'error.deviceName': '“{name}” is a name that Windows keeps for a device. Choose another name.',
+  'error.gitName': '“{name}” is the name of Git’s own folder. Choose another name.',
   'error.invalidDirectory': 'Enter the full path of a folder.',
   'error.failed': 'Couldn’t create the game project: {message}',
 } satisfies Record<GameProjectKey, string>
@@ -220,6 +226,9 @@ export const ja = {
   'action.close': '閉じる',
   'error.exists': '「{name}」という名前のフォルダーがすでにあります。別の名前を選ぶか、既存のフォルダーを開いてください。',
   'error.invalidName': '/ \\ : * ? " < > | を含まず、ピリオドで終わらない名前にしてください。',
+  'error.invisibleName': '目に見える文字を 1 文字以上含む名前にしてください。',
+  'error.deviceName': '「{name}」は Windows がデバイス用に予約している名前です。別の名前を選んでください。',
+  'error.gitName': '「{name}」は Git 自身のフォルダーの名前です。別の名前を選んでください。',
   'error.invalidDirectory': 'フォルダーのフルパスを入力してください。',
   'error.failed': 'ゲームプロジェクトを作成できませんでした: {message}',
 } satisfies Record<GameProjectKey, string>
@@ -243,6 +252,9 @@ export const es = {
   'action.close': 'Cerrar',
   'error.exists': 'Ya hay una carpeta llamada “{name}”. Elige otro nombre o abre la carpeta existente.',
   'error.invalidName': 'Usa un nombre sin / \\ : * ? " < > | que no termine en punto.',
+  'error.invisibleName': 'Usa un nombre con al menos un carácter visible.',
+  'error.deviceName': '“{name}” es un nombre que Windows reserva para un dispositivo. Elige otro nombre.',
+  'error.gitName': '“{name}” es el nombre de la carpeta propia de Git. Elige otro nombre.',
   'error.invalidDirectory': 'Escribe la ruta completa de una carpeta.',
   'error.failed': 'No se pudo crear el proyecto de juego: {message}',
 } satisfies Record<GameProjectKey, string>
@@ -266,6 +278,9 @@ export const fr = {
   'action.close': 'Fermer',
   'error.exists': 'Un dossier nommé « {name} » existe déjà. Choisissez un autre nom ou ouvrez le dossier existant.',
   'error.invalidName': 'Utilisez un nom sans / \\ : * ? " < > | qui ne se termine pas par un point.',
+  'error.invisibleName': 'Utilisez un nom qui contient au moins un caractère visible.',
+  'error.deviceName': '« {name} » est un nom que Windows réserve à un périphérique. Choisissez un autre nom.',
+  'error.gitName': '« {name} » est le nom du dossier propre à Git. Choisissez un autre nom.',
   'error.invalidDirectory': 'Saisissez le chemin complet d’un dossier.',
   'error.failed': 'Impossible de créer le projet de jeu : {message}',
 } satisfies Record<GameProjectKey, string>
@@ -289,6 +304,9 @@ export const de = {
   'action.close': 'Schließen',
   'error.exists': 'Ein Ordner mit dem Namen „{name}“ ist bereits vorhanden. Wählen Sie einen anderen Namen oder öffnen Sie den vorhandenen Ordner.',
   'error.invalidName': 'Verwenden Sie einen Namen ohne / \\ : * ? " < > |, der nicht mit einem Punkt endet.',
+  'error.invisibleName': 'Verwenden Sie einen Namen mit mindestens einem sichtbaren Zeichen.',
+  'error.deviceName': '„{name}“ ist ein Name, den Windows für ein Gerät reserviert. Wählen Sie einen anderen Namen.',
+  'error.gitName': '„{name}“ ist der Name des Ordners, den Git selbst verwendet. Wählen Sie einen anderen Namen.',
   'error.invalidDirectory': 'Geben Sie den vollständigen Pfad eines Ordners ein.',
   'error.failed': 'Das Spielprojekt konnte nicht erstellt werden: {message}',
 } satisfies Record<GameProjectKey, string>
@@ -312,6 +330,9 @@ export const ru = {
   'action.close': 'Закрыть',
   'error.exists': 'Папка с именем «{name}» уже существует. Выберите другое название или откройте существующую папку.',
   'error.invalidName': 'Используйте название без / \\ : * ? " < > |, которое не заканчивается точкой.',
+  'error.invisibleName': 'Используйте название хотя бы с одним видимым символом.',
+  'error.deviceName': '«{name}» — имя, которое Windows резервирует для устройства. Выберите другое название.',
+  'error.gitName': '«{name}» — имя собственной папки Git. Выберите другое название.',
   'error.invalidDirectory': 'Введите полный путь к папке.',
   'error.failed': 'Не удалось создать игровой проект: {message}',
 } satisfies Record<GameProjectKey, string>
@@ -335,6 +356,9 @@ export const pt = {
   'action.close': 'Fechar',
   'error.exists': 'Já existe uma pasta chamada “{name}”. Escolha outro nome ou abra a pasta existente.',
   'error.invalidName': 'Use um nome sem / \\ : * ? " < > | que não termine com ponto.',
+  'error.invisibleName': 'Use um nome com pelo menos um caractere visível.',
+  'error.deviceName': '“{name}” é um nome que o Windows reserva para um dispositivo. Escolha outro nome.',
+  'error.gitName': '“{name}” é o nome da pasta do próprio Git. Escolha outro nome.',
   'error.invalidDirectory': 'Digite o caminho completo de uma pasta.',
   'error.failed': 'Não foi possível criar o projeto de jogo: {message}',
 } satisfies Record<GameProjectKey, string>

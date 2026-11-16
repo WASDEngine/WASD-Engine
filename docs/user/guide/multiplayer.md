@@ -29,7 +29,7 @@ WASD Engine runs your game's server build, and players can join at any time. Eac
 - **Sleeping.** A server with no players for 15 minutes saves its world and sleeps, and it wakes in a few seconds when a player joins; the game can tell that player the server is starting. Sleeping keeps prices low. If your world has to keep going while nobody plays, turn on **Always on** for the server on the website's Game servers page; Medium and larger servers offer it.
 - **Backups.** A server is backed up every hour while players are on, when it goes to sleep, and before each update, and backups are kept for 7 days.
 - **Updates.** Releasing a new version of the game updates its servers, and players get a one-minute warning first. Players on an older version of the game cannot join a server that runs a newer one.
-- **Stopping and deleting.** A stopped server still counts toward the bill. Deleting a server ends its billing, and its data is deleted 7 days later.
+- **Stopping and deleting.** A stopped server still counts toward the bill, or toward your free servers. Deleting a paid server takes its monthly price off your bill, unless the confirmation page says another of your servers keeps it, such as a suspended server that starts again in its place; deleting a free one leaves your bill as it is, and the free server can cover another one. Either way, its data is deleted 7 days later.
 
 ## Players sign in
 

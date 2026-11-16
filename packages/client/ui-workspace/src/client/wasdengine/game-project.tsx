@@ -13,7 +13,7 @@ import { useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type { IWorkspaces, WorkspaceId } from '@deepseek-ai/dsh-api-workspace-controller/client'
-import type { GameProjectDefaults } from '@deepseek-ai/dsh-api-workspace-controller/types'
+import type { GameProjectDefaults, GameProjectNameProblem } from '@deepseek-ai/dsh-api-workspace-controller/types'
 // Type-only: pulls the generated `gameProject` and `pluginManager` Remote namespaces.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, Checkbox, IconCloseOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -37,6 +37,21 @@ const NS = 'gameProject'
 /** The bundle whose New Session option starts a Session in its own worktree. */
 export const WORKTREE_BUNDLE = '@deepseek-ai/dsh-experimental-forge-bundle'
 
+/**
+ * A character that the Host counts as visible in a game project name, as `GameProjectController` of
+ * `@deepseek-ai/dsh-api-workspace-controller` does: a letter, digit, punctuation mark, symbol, or spacing mark other
+ * than a default-ignorable code point and the blank Braille pattern. Create game project waits for one.
+ */
+const VISIBLE_CHARACTER = /(?![\p{Default_Ignorable_Code_Point}\u2800])[\p{L}\p{N}\p{P}\p{S}\p{Mc}]/u
+
+/** The message of each reason the Host gives for a refused name. */
+const NAME_PROBLEM_MESSAGES: Readonly<Record<GameProjectNameProblem, GameProjectKey>> = {
+  invisible: 'error.invisibleName',
+  unportable: 'error.invalidName',
+  device: 'error.deviceName',
+  git: 'error.gitName',
+}
+
 /** What the Host answered about game projects: `off` when it does not serve them. */
 export type GameProjectHost =
   | { readonly status: 'pending' }
@@ -54,10 +69,13 @@ export interface GameProjectState {
   readonly worktrees: WorktreeOffer
 }
 
-/** Outcome of one creation attempt; a failure carries the Host's error code and message. */
+/**
+ * Outcome of one creation attempt; a failure carries the Host's error code and message, and a refused name the Host's
+ * reason.
+ */
 export type GameProjectOutcome =
   | { readonly ok: true }
-  | { readonly ok: false; readonly code: string; readonly message: string }
+  | { readonly ok: false; readonly code: string; readonly message: string; readonly problem?: GameProjectNameProblem }
 
 /** Business face of the dialog. */
 export interface GameProjectDialogInjected {
@@ -172,7 +190,12 @@ export function applyGameProjects(ctx: Context, dependencies: GameProjectDepende
     const createGameProject = async (name: string, directory: string, worktrees: boolean): Promise<GameProjectOutcome> => {
       try {
         const created = await remote.create({ name, directory })
-        if (!created.ok) return { ok: false, code: created.error.code, message: created.error.message }
+        if (!created.ok) {
+          const { error } = created
+          return error.code === 'gameProject/invalid-name'
+            ? { ok: false, code: error.code, message: error.message, problem: error.details.problem }
+            : { ok: false, code: error.code, message: error.message }
+        }
         // Adoption is idempotent and merges the row into the Client list that navigation reads.
         const workspace = await dependencies.workspaces.create({ path: created.value.workspace.path })
         settle()
@@ -263,7 +286,7 @@ function GameProjectForm({ required, suggested, worktrees, flowAvailable, create
   const composing = useRef(false)
   const trimmedName = name.trim()
   const trimmedDirectory = directory.trim()
-  const blocked = creating || trimmedName === '' || trimmedDirectory === ''
+  const blocked = creating || !VISIBLE_CHARACTER.test(trimmedName) || trimmedDirectory === ''
   const title = required ? t('title.required') : t('title')
   const dismiss = (): void => {
     if (!required && !creating) close()
@@ -281,7 +304,7 @@ function GameProjectForm({ required, suggested, worktrees, flowAvailable, create
           setError(t('error.exists', { name: trimmedName }))
           break
         case 'gameProject/invalid-name':
-          setError(t('error.invalidName'))
+          setError(t(NAME_PROBLEM_MESSAGES[outcome.problem ?? 'unportable'], { name: trimmedName }))
           break
         case 'gameProject/invalid-directory':
           setError(t('error.invalidDirectory'))

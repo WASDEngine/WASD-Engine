@@ -1,8 +1,10 @@
 /**
  * WASDEngine fork guard for the `chat` copy: the failure rows of a turn that a sign-out stopped, that ran
- * without a sign-in, or that a restart closed name WASD Engine in every language, no message names DeepSeek
- * or DSH, the upstream dictionaries stay as upstream ships them, and the plugin registers the branded copy.
- * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
+ * without a sign-in, or that a restart closed name WASD Engine in every language, the Chinese running status
+ * of every Turn does not use DeepSeek's Chinese company name, no message names DeepSeek or DSH, every
+ * rewritten message keeps its placeholders, the upstream dictionaries stay as upstream ships them, and the
+ * plugin registers the branded copy. `wasdengine/FORK.md` (repository root) runs this spec after every
+ * upstream merge.
  */
 import { readFileSync } from 'node:fs'
 import { expect, it } from 'vitest'
@@ -12,11 +14,19 @@ import { WASDENGINE_CHAT_COPY } from '../src/client/wasdengine/locales.ts'
 
 const dictionaries = { zh, en, ja, es, fr, de, ru, pt }
 
-/** The upstream product names: DeepSeek for the account, DSH for the harness process. */
-const UPSTREAM_NAMES = /DeepSeek|\bDSH\b/u
+/** The upstream product names: DeepSeek for the account, also as its Chinese company name 深度求索, and DSH for the harness process. */
+const UPSTREAM_NAMES = /DeepSeek|深度求索|\bDSH\b/u
 
 /** The stopped row after a sign-out, the stopped row of a turn a restart closed, and the failure row without a sign-in. */
 const FAILURE_KEYS = ['message.failure.accountSignedOut', 'message.failure.interrupted', 'message.failure.accountSignInRequired'] as const
+
+/** The running status of every Turn, without and with its duration. */
+const RUNNING_KEYS = ['chat.deepDiving', 'chat.deepDivingFor'] as const
+
+/** The `{name}` placeholders of a message, sorted. */
+function placeholders(message: string): string[] {
+  return [...message.matchAll(/\{\w+\}/gu)].map(match => match[0]).sort()
+}
 
 it.each(Object.keys(dictionaries))('names WASD Engine instead of DeepSeek or DSH in %s', (id) => {
   const language = id as keyof typeof dictionaries
@@ -26,6 +36,22 @@ it.each(Object.keys(dictionaries))('names WASD Engine instead of DeepSeek or DSH
   for (const key of FAILURE_KEYS) {
     expect(dictionaries[language][key], key).toMatch(UPSTREAM_NAMES)
     expect(branded[key], key).toContain('WASD Engine')
+  }
+})
+
+it('words the Chinese running status without DeepSeek\'s Chinese company name, with its duration', () => {
+  const branded = brandChatDictionaries(dictionaries).zh
+  for (const key of RUNNING_KEYS) expect(zh[key], key).toMatch(UPSTREAM_NAMES)
+  expect(branded['chat.deepDiving']).toBe('深入思考中')
+  expect(branded['chat.deepDivingFor']).toBe('深入思考中，用时 {duration} ···')
+})
+
+it('keeps the placeholders of every message it rewrites', () => {
+  for (const [language, overrides] of Object.entries(WASDENGINE_CHAT_COPY)) {
+    const upstream: Readonly<Record<string, string>> = dictionaries[language as keyof typeof dictionaries]
+    for (const [key, message] of Object.entries(overrides)) {
+      expect(placeholders(message), `${language} ${key}`).toEqual(placeholders(upstream[key] ?? ''))
+    }
   }
 })
 

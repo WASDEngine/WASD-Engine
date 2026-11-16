@@ -83,6 +83,10 @@ const Pending = z.object({
   size: z.string().nullish(),
   confirm_url: z.string(),
   expires_at: z.string(),
+  // Of a purchase, resize, or resumption: whether a free server WASD Engine gave the account is held for what it asks
+  // for, and the monthly price it would then cost; sites before such holds send neither.
+  granted: z.boolean().nullish(),
+  price_cents: z.number().int().nullish(),
 })
 
 /** One dedicated server, as the site reports it. */

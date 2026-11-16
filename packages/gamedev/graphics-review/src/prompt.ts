@@ -35,14 +35,21 @@ const AFTER = 'Pass subject, what the image shows and what it is for, and goal, 
   + 'fixes until it says Ready. This is very important: never finish graphics work without a review.'
 
 /**
+ * How a Godot capture is saved for the review: `save` puts it where Godot neither imports nor exports it, the project's
+ * hidden `.wasdengine/screenshots/` folder, where a capture saved at a `path` in the project would ship in every export.
+ * The text names no folder, which the Godot tools own.
+ */
+const SAVE = 'with save set to true, which keeps the capture out of the game and its exports, and pass the file its result names'
+
+/**
  * The Session's `graphics-review` system prompt section.
  * @param godot - whether the Session has the Godot tools, whose captures can be saved for the review.
  * @returns the section text.
  */
 export function sessionPrompt(godot: boolean): string {
   const capture = godot
-    ? 'Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an '
-      + 'image you generated, a texture, or a sprite sheet.'
+    ? `Capture a game screenshot with godot_screenshot, or a closer look with godot_view, ${SAVE}; give path instead only to save the image `
+      + 'somewhere else. Or pass a render, an image you generated, a texture, or a sprite sheet.'
     : 'Pass a render, an image you generated, a texture, or a sprite sheet.'
   return `# Graphics review\n\n${WHAT} ${WHEN} ${capture} ${AFTER}`
 }
@@ -52,9 +59,9 @@ export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model. Af
   + 'then act on its critique and the WASD Engine tools and add-ons it names.'
 
 /** The plugin's guide for connected agents, which name every file by absolute path. */
-export const MCP_INSTRUCTIONS = `${WHAT} ${WHEN} Pass image, an absolute path of a PNG, JPEG, or WebP file: save a game screenshot with `
-  + 'godot_screenshot, or a closer look with godot_view, by giving path, or pass a Blender render, an image from image_generate, a texture, or a '
-  + `sprite sheet. ${AFTER}`
+export const MCP_INSTRUCTIONS = `${WHAT} ${WHEN} Pass image, an absolute path of a PNG, JPEG, or WebP file: capture a game screenshot with `
+  + `godot_screenshot, or a closer look with godot_view, ${SAVE} (give path instead only to save the image somewhere else); or pass a Blender `
+  + `render, an image from image_generate, a texture, or a sprite sheet. ${AFTER}`
 
 /**
  * The reviewer's instructions: what to look at, WASD Engine's tools, the add-on catalog, and the form of the reply.

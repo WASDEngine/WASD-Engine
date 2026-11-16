@@ -113,12 +113,47 @@ describe('game project creation', () => {
 
   it('refuses names that are not one portable folder name and parents that are not fully qualified', async () => {
     const { ctx, root, projects } = await harness()
-    for (const name of ['', '   ', '.', '..', 'a/b', 'a\\b', 'level:1', 'ends.', 'tab\there', 'x'.repeat(256)]) {
-      expect((await failure(projects.create({ name, directory: root }, signal()))).code).toBe('gameProject/invalid-name')
+    for (const name of ['.', '..', 'a/b', 'a\\b', 'level:1', 'ends.', 'con.', 'tab\there', 'x'.repeat(256)]) {
+      const refused = await failure(projects.create({ name, directory: root }, signal()))
+      expect(refused.code, JSON.stringify(name)).toBe('gameProject/invalid-name')
+      expect(refused.details, JSON.stringify(name)).toEqual({ name, problem: 'unportable' })
     }
     expect((await failure(projects.create({ name: 'Game', directory: 'relative/folder' }, signal()))).code)
       .toBe('gameProject/invalid-directory')
     expect(ctx.workspaceRegistry.list()).toEqual([])
+  })
+
+  it('refuses names without a visible character, Windows device names, and .git, with messages that say why', async () => {
+    const { ctx, root, projects } = await harness()
+    const cases: ReadonlyArray<readonly [string, 'invisible' | 'device' | 'git', string]> = [
+      ['', 'invisible', '"" has no visible characters'],
+      ['   ', 'invisible', '"   " has no visible characters'],
+      ['\u200b', 'invisible', '"\u200b" has no visible characters'],
+      ['\u200d\ufe0f\u3164', 'invisible', '"\u200d\ufe0f\u3164" has no visible characters'],
+      ['\u2800', 'invisible', '"\u2800" has no visible characters'],
+      ['\u0301', 'invisible', '"\u0301" has no visible characters'],
+      ['CON', 'device', '"CON" is a device name that Windows reserves'],
+      ['con.txt', 'device', '"con.txt" is a device name that Windows reserves'],
+      ['Nul.tar.gz', 'device', '"Nul.tar.gz" is a device name that Windows reserves'],
+      ['aux .png', 'device', '"aux .png" is a device name that Windows reserves'],
+      [' prn ', 'device', '" prn " is a device name that Windows reserves'],
+      ['COM1', 'device', '"COM1" is a device name that Windows reserves'],
+      ['lpt9.wav', 'device', '"lpt9.wav" is a device name that Windows reserves'],
+      ['COM\u00b9', 'device', '"COM\u00b9" is a device name that Windows reserves'],
+      ['.git', 'git', '".git" is the name of Git\'s own folder'],
+      ['.GIT', 'git', '".GIT" is the name of Git\'s own folder'],
+    ]
+    for (const [name, problem, message] of cases) {
+      const refused = await failure(projects.create({ name, directory: root }, signal()))
+      expect(refused.code, JSON.stringify(name)).toBe('gameProject/invalid-name')
+      expect(refused.details, JSON.stringify(name)).toEqual({ name, problem })
+      expect(refused.message).toBe(message)
+    }
+    expect(ctx.workspaceRegistry.list()).toEqual([])
+    // Names that only contain a device name, a hidden character among visible ones, or a dot-name other than .git are folders.
+    for (const name of ['Console', 'COM10', 'NUL Runner', 'Game\u200b', '.gitkeeper', 'Pixel ⚔']) {
+      await expect(projects.create({ name, directory: root }, signal()), name).resolves.toMatchObject({ workspace: { title: name } })
+    }
   })
 
   it('refuses a taken path and reports a parent it cannot create', async () => {

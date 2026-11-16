@@ -12,8 +12,13 @@ import { GameProjectController } from '@deepseek-ai/dsh-api-workspace-controller
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { McpCallResult } from '../src/catalog.ts'
 import { createGameProject } from '../src/projects.ts'
+import type { JsonObject } from '../src/provider.ts'
 
 const CREATED_AT = '2026-11-14T00:00:00.000Z'
+
+/** What the agent reads, after the quoted name, about a device name that Windows reserves. */
+const DEVICE_TEXT = 'is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², '
+  + 'COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.'
 
 let root: string
 let ctx: Context
@@ -64,9 +69,15 @@ describe('create_game_project', () => {
 
     const path = join(root, 'Documents', 'WASD Engine', 'Space Frogs')
     expect(result.isError).toBeUndefined()
+    // The plugins come from search_game_tools, whose list is complete where a cut overview's is not; add-ons install into a
+    // project.godot that the empty folder does not have yet; and the Blender, GIMP, and SuperCollider tools refuse project
+    // without session.
     expect(text(result)).toBe(`Created the game project "Space Frogs" in ${path}, which WASD Engine lists among the user's game projects. `
-      + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools. '
-      + 'Before you write code, plan the game around the plugins that the server instructions list, and read the guide of each one you will use.')
+      + 'The folder holds a Git repository with one empty commit and nothing else. '
+      + 'Before you write code, plan the game around the plugins that search_game_tools lists, and read the guide of each one you will use. '
+      + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
+      + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
+      + 'only together with session.')
     expect(existsSync(path)).toBe(true)
     expect(registered).toEqual([path])
     expect(commands.map(command => [command.args.find(arg => arg === 'init' || arg === 'commit'), command.cwd])).toEqual([['init', path], ['commit', path]])
@@ -83,12 +94,28 @@ describe('create_game_project', () => {
     expect(existsSync(join(root, 'Documents'))).toBe(false)
   })
 
+  it('trims the location as the dialog does, and creates the folder in the default folder for a null, empty, or blank one', async () => {
+    mountProjects()
+    const location = join(root, 'jams')
+    const spaced = await createGameProject(ctx, { name: 'Moon Miner', location: `  ${location} ` }, signal)
+    expect(spaced.isError).toBeUndefined()
+    expect(text(spaced)).toContain(`in ${join(location, 'Moon Miner')}, which WASD Engine lists`)
+    expect(existsSync(`${location} `)).toBe(false)
+    const omitted: JsonObject[] = [{ name: 'Null', location: null }, { name: 'Empty', location: '' }, { name: 'Blank', location: '   ' }]
+    for (const args of omitted) {
+      const result = await createGameProject(ctx, args, signal)
+      expect(result.isError, JSON.stringify(args)).toBeUndefined()
+    }
+    const documents = join(root, 'Documents', 'WASD Engine')
+    expect(registered).toEqual([join(location, 'Moon Miner'), join(documents, 'Null'), join(documents, 'Empty'), join(documents, 'Blank')])
+  })
+
   it('says when the folder holds no repository because Git is missing', async () => {
     mountProjects(() => Promise.reject(Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' })))
     const result = await createGameProject(ctx, { name: 'No Git', location: root }, signal)
 
     expect(result.isError).toBeUndefined()
-    expect(text(result)).toContain('The folder is empty, without a Git repository. Make the game in this folder')
+    expect(text(result)).toContain('The folder is empty, without a Git repository. Before you write code, plan the game')
     expect(registered).toEqual([join(root, 'No Git')])
   })
 
@@ -96,11 +123,17 @@ describe('create_game_project', () => {
     mountProjects()
     await mkdir(join(root, 'Taken'))
     await writeFile(join(root, 'file'), '')
-    const cases: Array<[Record<string, string | number>, string]> = [
+    const cases: Array<[JsonObject, string]> = [
       [{}, 'Pass name, the name of the game project.'],
       [{ name: 7 }, 'Pass name, the name of the game project.'],
       [{ name: 'Game', location: 7 }, 'location must be a string: the absolute path of the folder to create the project in.'],
       [{ name: 'a/b', location: root }, '"a/b" is not a folder name that every computer accepts. Pass a name without / \\ : * ? " < > |, control characters, or a trailing period, of at most 255 bytes.'],
+      [{ name: 'con.txt', location: root }, `"con.txt" ${DEVICE_TEXT}`],
+      // The text names every device name the Host refuses, the zeros and the superscript digits too.
+      [{ name: 'lpt²', location: root }, `"lpt²" ${DEVICE_TEXT}`],
+      [{ name: 'COM0.wav', location: root }, `"COM0.wav" ${DEVICE_TEXT}`],
+      [{ name: '\u200b', location: root }, 'The name "\u200b" has no visible characters. Pass a name that shows letters, digits, or symbols.'],
+      [{ name: '.git', location: root }, '".git" is the name of Git\'s own folder. Pass another name.'],
       [{ name: 'Game', location: 'games' }, 'location must be the absolute path of a folder, got "games".'],
       [{ name: 'Taken', location: root }, `${join(root, 'Taken')} already exists; pass another name or location.`],
     ]

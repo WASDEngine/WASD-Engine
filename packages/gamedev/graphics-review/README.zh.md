@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-画面审查插件让审查者点评游戏画面。完成画面工作之后，agent 截取结果，例如用 `godot_screenshot` 及其 `path`，再把图片连同它展示的内容和游戏想要的风格一起传给 `graphics_review`。审查者像游戏美术总监那样给出结论（Ready 或 Needs work）、评分、问题及其修正方法、要使用的 WASD Engine 工具和扩展，以及下一步。agent 修正问题并再次审查，直到结论为 Ready。连接的 agent 也能使用同一个工具。
+画面审查插件让审查者点评游戏画面。完成画面工作之后，agent 截取结果，例如用 `godot_screenshot` 及其 `save` 选项，再把图片连同它展示的内容和游戏想要的风格一起传给 `graphics_review`。审查者像游戏美术总监那样给出结论（Ready 或 Needs work）、评分、问题及其修正方法、要使用的 WASD Engine 工具和扩展，以及下一步。agent 修正问题并再次审查，直到结论为 Ready。连接的 agent 也能使用同一个工具。
 
 ## 目录
 
@@ -38,20 +38,21 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 |---|---|---|
 | `provider` | `deepseek-account` | WASD Engine 账号的 provider 路由，由它的模型审查每张图片 |
 | `model` | 空 | 该路由的模型；为空时选择列出的第一个接受图片的模型 |
-| `maxTokens` | `8192` | 一次审查最多的 token 数，包括推理 |
+| `maxTokens` | `16384` | 一次审查最多的 token 数，包括推理 |
+| `reasoningEffort` | `low` | 模型提供该推理强度时每次审查使用的推理强度；否则使用模型最低的推理强度 |
 | `timeoutMs` | `240000` | 一次 `graphics_review` 调用的时限 |
 | `maxImageBytes` | `52428800` | 读取的最大图片文件 |
 | `maxImageEdge` | `1568` | 发送的图片最长边的像素数 |
 | `maxImagePixels` | `1150000` | 发送的图片最多的像素数 |
-| `minImageEdge` | `512` | 较小的图片（例如像素画）按整数倍放大所朝向的最长边像素数 |
+| `minImagePixels` | `295936` | 发送的图片最少的像素数：较小的图片（例如像素画）按整数倍朝这个像素数放大，因为路由会把更小的图片按非整数倍放大；默认值是账号路由的 544×544 |
 
-插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中的每个扩展；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
+插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中的每个扩展；有 [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.zh.md) 的 `deepseekAccount` 服务时，路由在无人登录时列不出模型，审查会请用户登录；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
 
 ### 工具
 
-`graphics_review` 接受 `image`（PNG、JPEG 或 WebP 文件的路径，相对于工作目录或为绝对路径）、`subject`（图片展示的内容及其用途），以及可选的 `goal`（游戏想要的风格）和 `focus`（最需要关注的方面）。[`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot_screenshot` 和 `godot_view` 可以把图片保存到 `path` 供它使用；Blender 渲染图、`image_generate` 生成的图片、贴图或精灵表也都可以。工具在 `maxImageBytes` 之内读取文件，把图片转正，缩小到 `maxImageEdge` 和 `maxImagePixels` 之内，并把较小的图片按整数倍朝 `minImageEdge` 放大，使像素画保持清晰。它把图片保存为附件，并向账号的路由发送一次请求：审查者的说明作为系统提示词，图片和 agent 的描述作为用户消息。回复中推理之后的文本就是审查结果。文件缺失、路径是文件夹、`subject` 为空，或文件不是 PNG、JPEG、WebP 图片时，调用会在发出任何请求之前失败。
+`graphics_review` 接受 `image`（PNG、JPEG 或 WebP 文件的路径，相对于工作目录或为绝对路径）、`subject`（图片展示的内容及其用途），以及可选的 `goal`（游戏想要的风格）和 `focus`（最需要关注的方面）。[`@deepseek-ai/dsh-godot`](../godot/README.zh.md) 的 `godot_screenshot` 和 `godot_view` 把 `save` 设为 true 时会为它保存图片：在项目隐藏的 `.wasdengine/screenshots/` 文件夹中新建一个 PNG，Godot 会跳过这个文件夹，因此任何导出都不会带上它，而保存在项目内某个 `path` 的截图会随每次导出发布；Blender 渲染图、`image_generate` 生成的图片、贴图或精灵表也都可以。工具在 `maxImageBytes` 之内读取文件，把图片转正，并缩小到 `maxImageEdge` 和 `maxImagePixels` 之内。低于 `minImagePixels` 的图片按能达到该像素数的最小整数倍放大，或按上限允许的最大整数倍放大，这样路由不会再按非整数倍放大它，像素画保持清晰。它把图片保存为附件，并向账号的路由发送一次请求：审查者的说明作为系统提示词，图片和 agent 的描述作为用户消息，推理强度为 `reasoningEffort`，并受 `maxTokens` 限制。回复中推理之后的文本就是审查结果。文件缺失、路径是文件夹、设备或管道、`subject` 为空，或文件不是 PNG、JPEG、WebP 图片时，调用会在发出任何请求之前失败；调用被取消时会停止读取文件。
 
-账号像为任何模型调用付费一样为每次审查付费：WASD Engine 网关为这些 token 计价，并计入账号每月的 AI 用量。用量用完后，审查会以网关自己的消息失败，消息中写明用户升级或开启自动充值的账号页面，并请 agent 把它转告用户。其他失败不提及任何模型或 provider：登录缺失或被拒时请用户登录，路由繁忙时请等待几秒，其余失败请一分钟后重试。
+账号像为任何模型调用付费一样为每次审查付费：WASD Engine 网关为这些 token 计价，并计入账号每月的 AI 用量。用量用完后，审查会以网关自己的消息失败，消息中写明用户升级或开启自动充值的账号页面，并请 agent 把它转告用户。其他失败不提及任何模型或 provider，只在再次调用有用时才请 agent 重试。账号对已登录账号的拒绝（例如邮箱地址尚未确认或账号在候补名单中）会转告其原话。登录缺失或被拒，以及路由在无人登录时列不出模型，都会请用户登录。路由列出的模型都不接受图片（例如其模型列表把审查者留给更新版本的 WASD Engine）、配置的 `model` 不接受图片，或路由无法处理该请求时，会说明审查者不可用、更新 WASD Engine 可能使它恢复可用，并请 agent 在没有审查的情况下继续；路由要等 WASD Engine 更新后才提供的已配置 `model` 会请用户更新。每次重试都以同样方式失败的请求（例如无效请求或不支持的内容）会请 agent 换一张图片，或在没有审查的情况下继续。在写出任何文本之前就达到 `maxTokens` 的回复会请 agent 发送更近的视图或更窄的 `focus`，没有文本就结束的回复会请 agent 再调用一次。路由繁忙时请等待几秒，其余失败请一分钟后重试一次。
 
 ### 连接的 agent
 
@@ -65,7 +66,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、按 agent 的偏好顺序排列的 WASD Engine 工具（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、按 id 列出的目录扩展及其适用场景，以及回复的格式。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id、0.3 的 temperature 和 `maxTokens`。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
+面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、按 agent 的偏好顺序排列的 WASD Engine 工具（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、按 id 列出的目录扩展及其适用场景，以及回复的格式。请求通过 `ctx.llm.prepareCall` 准备，它绑定模型的推理强度：模型提供 `reasoningEffort` 时使用它，否则使用模型最低的推理强度，因为输出上限把推理也计算在内，而路由默认的推理强度可能把 `maxTokens` 全部用在推理上。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id 和 `maxTokens`，不设 temperature，因为模型推理时账号路由会忽略它。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
 
 | 文件 | 作用 |
 |---|---|
@@ -85,7 +86,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 这些页面介绍审查所用的截图、它建议的工具，以及把它提供给其他 agent 的 MCP 服务器。
 
-- [godot](../godot/README.zh.md) — `godot_screenshot` 和 `godot_view`，它们可以把图片保存到 `path`。
+- [godot](../godot/README.zh.md) — `godot_screenshot` 和 `godot_view`，它们可以用 `save` 为审查保存图片。
 - [game-addons](../game-addons/README.zh.md) — 审查者点名扩展所依据的目录。
 - [art-references](../art-references/README.zh.md) — 在审查所评判的美术之前收集的参考。
 - [game-mcp](../game-mcp/README.zh.md) — 面向本机 agent 的 MCP 服务器。
@@ -100,19 +101,19 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型可见内容
 
-当 Session 拥有 `graphics_review` 时，`graphics-review` 段落（标题为 `# Graphics review`）告诉 agent：这个工具把图片发给专门的画面专家审查模型，由它点评并指出要使用的 WASD Engine 工具和扩展；并要求 agent 在画面工作之后、宣布完成或继续下一步之前总是使用它。段落说明如何截取图片（Session 拥有 Godot 工具时，用 `godot_screenshot` 或 `godot_view` 及其 `path`）、要传入什么，以及按审查行事并再次审查直到结论为 Ready，最后强调画面工作必须经过审查才能结束。Web 和 Desktop profile 在拥有 Godot 工具时组成的段落如下：
+当 Session 拥有 `graphics_review` 时，`graphics-review` 段落（标题为 `# Graphics review`）告诉 agent：这个工具把图片发给专门的画面专家审查模型，由它点评并指出要使用的 WASD Engine 工具和扩展；并要求 agent 在画面工作之后、宣布完成或继续下一步之前总是使用它。Session 拥有 Godot 工具时，段落要求用 `godot_screenshot` 或 `godot_view` 及其 `save` 选项截取图片，它让截图不进入任何导出，只有要保存到别处时才给出它们的 `path`。段落还说明要传入什么，以及按审查行事并再次审查直到结论为 Ready，最后强调画面工作必须经过审查才能结束。Web 和 Desktop profile 在拥有 Godot 工具时组成的段落如下：
 
 ##### `graphics-review` 段落
 
 ```markdown
 # Graphics review
 
-graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
+graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, with save set to true, which keeps the capture out of the game and its exports, and pass the file its result names; give path instead only to save the image somewhere else. Or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
 ```
 
 #### Token 影响
 
-该段落约 1,000 个字符。
+该段落约 1,200 个字符。
 
 #### KV Cache 影响
 
@@ -126,7 +127,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### Token 影响
 
-该声明约 1,600 个字符的 JSON；provider 的描述为 MCP 服务器指令的概述增加约 210 个字符，它的指南在概述之后增加约 1,100 个字符。
+该声明约 1,600 个字符的 JSON；provider 的描述为 MCP 服务器指令的概述增加约 210 个字符，它的指南在概述之后增加约 1,250 个字符。
 
 #### KV Cache 影响
 
@@ -136,7 +137,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### 模型可见内容
 
-结果是 `Graphics review of <path>:` 以及 Markdown 格式的审查：结论（Ready 或 Needs work）及 1 到 10 的评分、做得好的地方、最多八个问题及其位置和修正方法、要使用的工具和扩展及各自的用法，以及下一步。失败时说明要改什么：文件缺失、路径是文件夹、文件不是 PNG、JPEG 或 WebP 图片，或 `subject` 为空；或者转告账号的 AI 用量已用完并给出用户付费的页面，或请用户登录、等待或重试。
+结果是 `Graphics review of <path>:` 以及 Markdown 格式的审查：结论（Ready 或 Needs work）及 1 到 10 的评分、做得好的地方、最多八个问题及其位置和修正方法、要使用的工具和扩展及各自的用法，以及下一步。失败时说明要改什么：文件缺失、路径是文件夹、设备或管道、文件不是 PNG、JPEG 或 WebP 图片，或 `subject` 为空；或者转告账号的 AI 用量已用完并给出用户付费的页面，或转告账号自己的拒绝；或者请用户登录、更新 WASD Engine，请 agent 换一张图片、发送更近的视图或更窄的关注点、等待或重试一次，并说明何时应在没有审查的情况下继续。
 
 #### Token 影响
 

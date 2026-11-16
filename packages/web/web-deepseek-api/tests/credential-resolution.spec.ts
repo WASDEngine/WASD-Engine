@@ -242,7 +242,7 @@ describe.each(OPERATIONS)('%s in a conversation on the DeepSeek account route', 
     })
     expect(await ready(ctx, operation, 'deepseek-account')).toBe(false)
     await expect(operate(ctx, operation, 'deepseek-account')).rejects.toMatchObject({
-      code: 'WEB_PROVIDER_ERROR', message: 'DeepSeek web credential resolution failed: Error: grant unreadable',
+      code: 'WEB_PROVIDER_ERROR', message: 'The WASD Engine sign-in for this web request could not be read: Error: grant unreadable',
     })
     expect(sent()).toEqual([])
   })

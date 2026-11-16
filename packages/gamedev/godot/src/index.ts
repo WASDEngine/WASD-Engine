@@ -512,6 +512,7 @@ export default class GodotController extends TypertRemoteService {
           run,
           path: videoPath(request.path, workingDirectory, run.project, new Date()),
           replace: request.replace,
+          ...request.path === undefined ? { newFile: true } : {},
           ...fixed === undefined ? {} : { fixedFps: fixed },
           encode: (encode, encodeSignal) => ctx.waterfall(
             scopeTarget(agent, agent), 'godot/record', { ...encode, agent, signal: encodeSignal },

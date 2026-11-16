@@ -12,7 +12,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import { defaultWorkspaceDirectory } from './default-directory.ts'
 import { workspaceView } from './feed.ts'
-import type { GameProjectCreateRequest, GameProjectCreateValue, GameProjectDefaults } from './types.ts'
+import type { GameProjectCreateRequest, GameProjectCreateValue, GameProjectDefaults, GameProjectNameProblem } from './types.ts'
 
 /** Folder under the Host account's Documents directory that holds new game projects. */
 export const GAME_PROJECTS_DIRECTORY = 'WASD Engine'
@@ -25,6 +25,22 @@ const FALLBACK_IDENTITY = ['-c', 'user.name=WASD Engine', '-c', 'user.email=nore
 
 /** Characters that Windows, macOS, or Linux refuse in a folder name, and control characters. */
 const RESERVED_NAME_CHARACTERS = /[<>:"/\\|?*\u0000-\u001f]/u
+
+/**
+ * A character that shows: a letter, digit, punctuation mark, symbol, or spacing mark other than a default-ignorable code
+ * point, such as U+3164 HANGUL FILLER, and the blank Braille pattern U+2800. The Create game project dialog keeps a copy
+ * in `game-project.tsx`, so that it waits for such a character before it offers Create game project.
+ */
+const VISIBLE_CHARACTER = /(?![\p{Default_Ignorable_Code_Point}\u2800])[\p{L}\p{N}\p{P}\p{S}\p{Mc}]/u
+
+/**
+ * A device name that Windows reserves, in any case, alone or followed by spaces and an extension, which Windows reads as
+ * the same device, such as `NUL.txt` or `aux .png`.
+ */
+const WINDOWS_DEVICE_NAME = /^(?:CON|PRN|AUX|NUL|COM[0-9\u00b9\u00b2\u00b3]|LPT[0-9\u00b9\u00b2\u00b3]) *(?:\..*)?$/iu
+
+/** The name of Git's own folder, which a folder name on a case-insensitive file system matches in any case. */
+const GIT_FOLDER = '.git'
 
 /** Longest folder name, in UTF-8 bytes, that common file systems store. */
 const MAX_NAME_BYTES = 255
@@ -177,14 +193,32 @@ async function succeeds(operation: Promise<unknown>): Promise<boolean> {
   return true
 }
 
-/** The trimmed name, or `gameProject/invalid-name` when it is not one portable folder name. */
+/** The diagnostic of each name problem, for the name as the request gave it. */
+const NAME_PROBLEM_MESSAGES: Readonly<Record<GameProjectNameProblem, (raw: string) => string>> = {
+  invisible: raw => `"${raw}" has no visible characters`,
+  unportable: raw => `"${raw}" is not a valid folder name`,
+  device: raw => `"${raw}" is a device name that Windows reserves`,
+  git: raw => `"${raw}" is the name of Git's own folder`,
+}
+
+/** The trimmed name, or `gameProject/invalid-name` with its problem when it is not one portable folder name. */
 function projectName(raw: string): string {
   const name = raw.trim()
-  if (name === '' || name === '.' || name === '..' || name.endsWith('.')
-    || RESERVED_NAME_CHARACTERS.test(name) || Buffer.byteLength(name, 'utf8') > MAX_NAME_BYTES) {
-    throw new RemoteError('gameProject/invalid-name', `"${raw}" is not a valid folder name`, { name: raw })
-  }
+  const problem = nameProblem(name)
+  if (problem !== undefined) throw new RemoteError('gameProject/invalid-name', NAME_PROBLEM_MESSAGES[problem](raw), { name: raw, problem })
   return name
+}
+
+/** Why a trimmed name is not one portable folder name, or undefined when it is one. */
+function nameProblem(name: string): GameProjectNameProblem | undefined {
+  if (!VISIBLE_CHARACTER.test(name)) return 'invisible'
+  if (name === '.' || name === '..' || name.endsWith('.')
+    || RESERVED_NAME_CHARACTERS.test(name) || Buffer.byteLength(name, 'utf8') > MAX_NAME_BYTES) {
+    return 'unportable'
+  }
+  if (name.toLowerCase() === GIT_FOLDER) return 'git'
+  if (WINDOWS_DEVICE_NAME.test(name)) return 'device'
+  return undefined
 }
 
 /** The normalized parent, or `gameProject/invalid-directory` when it is not fully qualified. */

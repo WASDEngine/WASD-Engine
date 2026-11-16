@@ -92,9 +92,11 @@ it('creates a game project for a connected agent, which the window lists as a ga
   ]) {
     expect(overview).toContain(preference)
   }
-  expect(overview.endsWith('building faster, convenience, matching what you made in code, and not having looked are not reasons.')).toBe(true)
+  // What to do and what to tell the user come before the plugin list, whose end a harness that cuts the instructions takes first.
+  expect(overview).toContain('building faster, convenience, matching what you made in code, and not having looked are not reasons.\n\nWhat each plugin adds:\n')
   const guide = await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'blender' } })
-  expect((guide.content as { type: string; text?: string }[])[0]?.text).toContain('Blender guide (where it names a tool without the blender_ prefix, add the prefix):\n\nBlender runs headless')
+  expect((guide.content as { type: string; text?: string }[])[0]?.text)
+    .toContain('Blender guide (where it names one of the tools below without the blender_ prefix, add the prefix):\n\nBlender runs headless')
 
   const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME } })
   const text = (result.content as { type: string; text?: string }[]).flatMap(block => block.type === 'text' ? [block.text ?? ''] : []).join('\n')
@@ -103,8 +105,11 @@ it('creates a game project for a connected agent, which the window lists as a ga
   // The folder sits in WASD Engine's folder for game projects, with the repository the dialog makes.
   const path = join(scaffold.workspaceCwd, 'Documents', 'WASD Engine', NAME)
   expect(text).toBe(`Created the game project "${NAME}" in ${path}, which WASD Engine lists among the user's game projects. `
-    + 'The folder holds a Git repository with one empty commit and nothing else. Make the game in this folder, and pass its path as project to the game tools. '
-    + 'Before you write code, plan the game around the plugins that the server instructions list, and read the guide of each one you will use.')
+    + 'The folder holds a Git repository with one empty commit and nothing else. '
+    + 'Before you write code, plan the game around the plugins that search_game_tools lists, and read the guide of each one you will use. '
+    + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
+    + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
+    + 'only together with session.')
   expect(execFileSync('git', ['-C', path, 'log', '--format=%s'], { encoding: 'utf8' }).trim()).toBe(`Create ${NAME}`)
   const workspace = ctx.workspaceRegistry.list().find(entry => entry.path === path)
   expect(workspace?.title).toBe(NAME)

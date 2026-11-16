@@ -1,10 +1,11 @@
 /** Recordings on the Host: the frame stream a window reads, its upload, the saved video, and the failures on the way. */
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { GodotProjectError } from '../src/project.ts'
 import type { HarnessRecordFrame } from '../src/protocol.ts'
 import type { GodotRun, RecordingParams, RecordingSink, RecordStopReply } from '../src/run.ts'
 import type { GodotVideoEncodeRequest, GodotVideoEncodeResult } from '../src/types.ts'
@@ -212,6 +213,65 @@ describe('GodotVideoRecorder', () => {
     expect(await readFile(path, 'utf8')).toBe('new')
   })
 
+  it('records to a path for one recording at a time, so the second of two at once fails before it records', async () => {
+    const path = join(root, 'game', 'films', 'clip.mp4')
+    const recorder = new GodotVideoRecorder(LIMITS)
+    const games = [fakeRun([frame(0, 0)]), fakeRun([frame(0, 0)])]
+    const results = await Promise.allSettled(games.map((game, index) => {
+      return recorder.record(context(game.run, window(recorder, Buffer.from(`video ${String(index)}`)).encode, path), REQUEST, new AbortController().signal)
+    }))
+    expect(results.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+    const saved = results.findIndex(result => result.status === 'fulfilled')
+    expect((results[1 - saved] as PromiseRejectedResult).reason).toMatchObject({
+      name: 'GodotVideoError', message: `${path} exists; pass replace: true to replace it, or another path.`,
+    })
+    expect(games[1 - saved]?.calls).toEqual([])
+    expect(await readFile(path, 'utf8')).toBe(`video ${String(saved)}`)
+  })
+
+  it('numbers the name that the plugin chose for a recording when another recording has it', async () => {
+    const path = join(root, 'game', 'recordings', 'Game_2026-11-15_09-05-03.mp4')
+    const recorder = new GodotVideoRecorder(LIMITS)
+    const videos = await Promise.all([0, 1].map(index => recorder.record(
+      context(fakeRun([frame(0, 0)]).run, window(recorder, Buffer.from(`video ${String(index)}`)).encode, path, { newFile: true }),
+      REQUEST, new AbortController().signal,
+    )))
+    const numbered = join(root, 'game', 'recordings', 'Game_2026-11-15_09-05-03_2.mp4')
+    expect(videos.map(video => video.path).sort()).toEqual([path, numbered])
+    expect((await Promise.all(videos.map(video => readFile(video.path, 'utf8')))).sort()).toEqual(['video 0', 'video 1'])
+  })
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reports the recording\'s own failure when the path it held cannot be given up', async () => {
+    const folder = join(root, 'locked')
+    await mkdir(folder)
+    const failing = async (): Promise<GodotVideoEncodeResult> => {
+      // A folder that cannot change keeps the empty file that the recording held.
+      await chmod(folder, 0o555)
+      throw new Error('This WASD Engine window has no H.264 or VP9 video encoder.')
+    }
+    try {
+      await expect(new GodotVideoRecorder(LIMITS).record(context(fakeRun([]).run, failing, join(folder, 'clip.mp4')), REQUEST, new AbortController().signal))
+        .rejects.toThrow('This WASD Engine window has no H.264 or VP9 video encoder.')
+      expect(await readFile(join(folder, 'clip.mp4'), 'utf8')).toBe('')
+    } finally {
+      await chmod(folder, 0o755)
+    }
+  })
+
+  it('gives up the path it held for a recording that saved nothing, and the folders it made for it', async () => {
+    const path = join(root, 'game', 'films', 'clip.mp4')
+    const failing = async (): Promise<GodotVideoEncodeResult> => { throw new Error('This WASD Engine window has no H.264 or VP9 video encoder.') }
+    await expect(new GodotVideoRecorder(LIMITS).record(context(fakeRun([]).run, failing, path), REQUEST, new AbortController().signal))
+      .rejects.toThrow('no H.264 or VP9 video encoder')
+    expect(existsSync(join(root, 'game'))).toBe(false)
+    await mkdir(join(root, 'game', 'films'), { recursive: true })
+    await writeFile(join(root, 'game', 'films', 'other.mp4'), 'other')
+    await expect(new GodotVideoRecorder(LIMITS).record(context(fakeRun([]).run, failing, path), REQUEST, new AbortController().signal))
+      .rejects.toThrow('no H.264 or VP9 video encoder')
+    expect(existsSync(path)).toBe(false)
+    expect(await readFile(join(root, 'game', 'films', 'other.mp4'), 'utf8')).toBe('other')
+  })
+
   it('answers missing parameters, unknown recordings, a second reader, and a large upload with their statuses', async () => {
     const recorder = new GodotVideoRecorder({ ...LIMITS, maxBytes: 4 })
     expect(recorder.serve(new Request('http://127.0.0.1/api/godot.recording?session=s1')).status).toBe(400)
@@ -237,6 +297,9 @@ describe('videoPath', () => {
   it('names a new file in the project\'s recordings folder after the project and the time', () => {
     expect(videoPath(undefined, '/work', project, new Date(2026, 10, 14, 9, 5, 3, 250))).toBe('/work/game/recordings/My-Game_2026-11-14_09-05-03.mp4')
     expect(videoPath(undefined, '/work', { dir: '/work/game' }, new Date(2026, 10, 14, 9, 5, 3, 250))).toBe('/work/game/recordings/game_2026-11-14_09-05-03.mp4')
+    // A long project name is cut, so the file's name stays within what file systems take.
+    expect(videoPath(undefined, '/work', { dir: '/work/game', name: 'A'.repeat(240) }, new Date(2026, 10, 14, 9, 5, 3)))
+      .toBe(`/work/game/recordings/${'A'.repeat(80)}_2026-11-14_09-05-03.mp4`)
   })
 
   it('takes an .mp4 path inside the working directory or the project folder', () => {
@@ -244,5 +307,11 @@ describe('videoPath', () => {
     expect(videoPath('/work/game/clip.MP4', '/elsewhere', project, new Date())).toBe('/work/game/clip.MP4')
     expect(() => videoPath('clip.mov', '/work', project, new Date())).toThrow(new GodotVideoError('path must name an .mp4 file, got "clip.mov".'))
     expect(() => videoPath('../outside.mp4', '/work', project, new Date())).toThrow(new GodotVideoError('path must lie inside the working directory or the project folder, got "../outside.mp4".'))
+  })
+
+  it('takes a res:// path in the project folder', () => {
+    expect(videoPath('res://films/intro.mp4', '/work', project, new Date())).toBe(join('/work/game', 'films', 'intro.mp4'))
+    expect(() => videoPath('res://../intro.mp4', '/work', project, new Date()))
+      .toThrow(new GodotProjectError('path "res://../intro.mp4" leads out of the project; a res:// path names a file inside it.', '/work/game'))
   })
 })

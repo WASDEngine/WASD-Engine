@@ -99,7 +99,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <a id="multiplayer"></a>
 ### 多人联机
 
-Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需要用 WASD Engine 账号登录。玩家主持是免费的：由一位玩家的游戏充当主机，网站用大厅代码让玩家相互发现，并为无法直连的连接提供中继；它适合 2 到 8 人（最多 16 人）的合作与派对游戏。专用服务器在 WASD Engine 的机器上运行游戏的服务器构建，按规格按月计费，任何人都可以随时加入；它适合持久世界和规模更大的游戏。没有玩家时服务器会休眠并保留其世界，有玩家加入时会在几秒内唤醒；在网站列出的规格上，所有者可以让它保持开启（Always on），让世界持续运转。规格、价格、地区、带宽规则和休眠规则都来自网站的 `GET /api/v1/servers/plans`，因此本包自身不给出任何价格。带着登录信息读取时，规格中还会列出 WASD Engine 赠送给该账号的免费服务器；某一规格还剩免费服务器时，该规格的服务器是免费的，工具会说明这一点，而不是给出价格。
+Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需要用 WASD Engine 账号登录。玩家主持是免费的：由一位玩家的游戏充当主机，网站用大厅代码让玩家相互发现，并为无法直连的连接提供中继；它适合 2 到 8 人（最多 16 人）的合作与派对游戏。专用服务器在 WASD Engine 的机器上运行游戏的服务器构建，按规格按月计费，任何人都可以随时加入；它适合持久世界和规模更大的游戏。没有玩家时服务器会休眠并保留其世界，有玩家加入时会在几秒内唤醒；在网站列出的规格上，所有者可以让它保持开启（Always on），让世界持续运转。规格、价格、地区、带宽规则和休眠规则都来自网站的 `GET /api/v1/servers/plans`，因此本包自身不给出任何价格。带着登录信息读取时，规格中还会列出 WASD Engine 赠送给该账号的免费服务器；某一规格还剩免费服务器时，只要用户确认时仍有剩余，该规格的服务器就是免费的，这由网站在确认时决定，工具会说明这一点，而不是给出价格。免费服务器改为没有剩余免费服务器的规格时，属于按该规格月价的新购买；删除免费服务器不会改变账单。
 
 | 工具 | 作用 |
 |---|---|
@@ -113,9 +113,9 @@ Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需�
 | `wasd_server_status` | 游戏的服务器：状态、地址、版本、玩家、本月带宽与存储用量，以及等待确认的页面 |
 | `wasd_server_logs` | 服务器最近的日志行，1 到 500 行 |
 | `wasd_server_manage` | 启动、停止、重启或备份服务器，列出其备份，或从备份恢复 |
-| `wasd_server_change` | 申请更换规格或删除服务器，并返回用户确认的页面 |
+| `wasd_server_change` | 申请更换规格或删除服务器（对仍待确认的购买，删除即取消这次购买），并返回用户确认的页面 |
 
-每个结果都带有 `for_user`，即供智能体转述的纯文本。没有任何工具会自行收费或删除：只有在已登录的用户于网站页面上确认之后，网站才会执行购买、更换规格或删除，而这需要账户中有有效的付款方式。在会话中，`wasd_server_create` 和 `wasd_server_change` 会先用窗口的语言通过审批提示征求同意，并给出该规格的月价，若该账号还剩该规格的免费服务器，则说明它是免费的，恢复备份也会征求同意；随后桌面窗口在系统浏览器中打开该页面，结果中也会给出该页面。连接的智能体的购买会在 `for_user` 中返回该页面，服务器还会向支持 URL 模式征询的客户端以征询形式发送该页面，详见 [game-mcp](../game-mcp/README.zh.md#confirmation-pages)；其恢复备份需要 `confirm: true`。服务器的月带宽用到 70%、90% 和 100% 时会给所有者发送邮件，用到 100% 时服务器停止，直到下一个计费月；没有工具出售额外带宽。
+每个结果都带有 `for_user`，即供智能体转述的纯文本。没有任何工具会自行收费或删除：只有在已登录的用户于网站页面上确认之后，网站才会执行购买、更换规格或删除，而这需要账户中有有效的付款方式。在会话中，`wasd_server_create` 和 `wasd_server_change` 会先用窗口的语言通过审批提示征求同意，并用该语言给出各规格及其月价，若该账号还剩该规格的免费服务器，则说明只要用户确认时仍有剩余，它就是免费的，恢复备份也会征求同意；随后桌面窗口在系统浏览器中打开该页面，结果中也会给出该页面。连接的智能体的购买会在 `for_user` 中返回该页面，服务器还会向支持 URL 模式征询的客户端以征询形式发送该页面，详见 [game-mcp](../game-mcp/README.zh.md#confirmation-pages)；其恢复备份需要 `confirm: true`。服务器的月带宽用到 70%、90% 和 100% 时会给所有者发送邮件，用到 100% 时服务器停止，直到下一个计费月；没有工具出售额外带宽。
 
 发布会顾及多人联机：在 `dedicated` 模式下，网页版发布之后，发布会通过 `ctx.godot.exportServer()` 导出 Linux 专用服务器构建，把 `server.x86_64` 连同导出时写在它旁边的 GDExtension 库一起打包为 ZIP，并以新版本号上传到 `POST /api/v1/games/<id>/server-builds?version=<n>`；网站随后在向玩家发出警告后把游戏的服务器切换到该构建。服务器构建失败时，网页版仍保持已发布，失败成为结果中的一条警告。
 
@@ -330,7 +330,7 @@ WASD Engine puts Godot games online two ways, and players sign in with a WASD En
 
 When the user wants multiplayer:
 1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up; then call wasd_multiplayer_setup with the mode they choose, and wasd_multiplayer_test once the game connects players.
-2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.
+2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free while one is left when the user confirms, so say that instead.
 3. Let the user choose the size from wasd_server_plans; never pick one for them. wasd_server_create and wasd_server_change only open a page where the user confirms on the WASD Engine site; nothing is charged before that.
 4. Explain that the owner gets emails at 70%, 90%, and 100% of a server's monthly bandwidth, and that at 100% the server stops until its next billing month; suggest a smaller size when a server is mostly idle.
 5. When the world must keep going while nobody plays, tell the user to turn on Always on for the server on the WASD Engine site; only the sizes wasd_server_plans names offer it.
@@ -338,7 +338,7 @@ When the user wants multiplayer:
 
 #### Token 影响
 
-十一个声明合计约 9,000 个字符的 JSON，该段落约 1,600 个字符；提供者的多人联机说明为 MCP 服务器的说明增加约 1,000 个字符。
+十一个声明合计约 9,000 个字符的 JSON，该段落约 1,600 个字符；提供者的多人联机说明为 MCP 服务器的说明增加约 1,050 个字符。
 
 #### KV Cache 影响
 
@@ -348,7 +348,7 @@ Godot 插件加载期间，声明和段落都是静态的，因此保留在已�
 
 #### 模型可见内容
 
-每个结果都是带有 `for_user` 的 JSON，由智能体转述：比较指南的对比与推荐；设置后的 GDScript 后续步骤；测试中已连接的客户端、测量结果、匹配的规格，以及某个实例报告的第一个问题；带价格的规格；待确认的购买或更改，附带其 `confirm_url` 以及窗口是否已打开它；以及网站报告的服务器、日志行和备份。审批被拒绝、取消或无人应答时，结果说明没有购买、更改或恢复任何东西。失败会说明该怎么做，例如登录、先发布一次，或在多台服务器中选择一台。
+每个结果都是带有 `for_user` 的 JSON，由智能体转述：比较指南的对比与推荐；设置后的 GDScript 后续步骤；测试中已连接的客户端、测量结果、匹配的规格，以及某个实例报告的第一个问题；带价格的规格；待确认的购买或更改，附带其 `confirm_url`、价格（或说明只要用户确认时仍剩该规格的免费服务器，它就是免费的）以及窗口是否已打开它；以及网站报告的服务器、日志行和备份。审批被拒绝、取消或无人应答时，结果说明没有购买、更改或恢复任何东西。失败会说明该怎么做，例如登录、先发布一次，或在多台服务器中选择一台。
 
 #### Token 影响
 

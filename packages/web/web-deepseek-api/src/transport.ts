@@ -184,10 +184,13 @@ export async function dispatchDeepSeekWeb<T>(
   const { body, decode, recordRequest, guidance } = request
   const auth = await authHeaders(options, request, signal)
   const { endpoint } = auth
-  await request.waitToSend?.(signal)
-  throwIfSearchAborted(signal)
+  // WASD Engine: a request with the account token names no upstream provider when it is cancelled.
+  const account = auth.kind === 'account'
+  try { await request.waitToSend?.(signal) }
+  catch (error: unknown) { throw account && error instanceof WebError && error.code === 'WEB_ABORTED' ? searchAborted(signal, error, true) : error }
+  throwIfSearchAborted(signal, account)
   recordRequest?.(endpoint)
-  throwIfSearchAborted(signal)
+  throwIfSearchAborted(signal, account)
   let response: Response
   /* jscpd:ignore-start */
   try {
@@ -205,7 +208,9 @@ export async function dispatchDeepSeekWeb<T>(
       ...signal !== undefined ? { signal } : {},
     })
   } catch (error: unknown) {
-    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
+    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error, account)
+    // WASD Engine: the account token goes only to the account service, so no endpoint the user set is at fault.
+    if (account) throw accountServiceFailure(`The web request could not reach the account service: ${String(error)}. Try again later.`, error)
     throw searchEndpointError(
       guidance,
       endpoint,
@@ -233,7 +238,7 @@ export async function dispatchDeepSeekWeb<T>(
       // An abort fired mid-body must surface as WEB_ABORTED, not be swallowed
       // into a generic HTTP-error message — cancellation is not a provider
       // error (the seam's cancellation contract).
-      if (signal?.aborted === true || isAbortError(error)) aborted = searchAborted(signal, error)
+      if (signal?.aborted === true || isAbortError(error)) aborted = searchAborted(signal, error, account)
       // Otherwise: the HTTP status is already captured in `message` above; a
       // malformed/non-JSON error body (normal for gateway 5xx/429s) can only
       // cost a richer provider message, never the real error.
@@ -245,22 +250,34 @@ export async function dispatchDeepSeekWeb<T>(
       // invalidates the token the status rejected.
       try { await auth.reject?.() }
       catch (_credentialRemovalFailed) { /* Report the original failure even if credential removal fails. */ }
-      throw aborted ?? accountRejectedError(message)
+      throw aborted ?? accountRejectedError()
     }
     if (aborted !== undefined) throw aborted
     // WASD Engine: the account service refuses the account's token once the account's usage is used up; the endpoint
     // is not what the user must change, and the service's message says where the user pays.
-    if (status === 402 && auth.kind === 'account') throw accountUsageError(providerMessage)
+    if (status === 402 && account) throw accountUsageError(providerMessage)
+    // WASD Engine: the account service words its own 429 and 5xx, such as a busy search service or a payment still
+    // processing, and its other refusals, such as a waitlisted account's 403; the endpoint is not at fault either.
+    if (account) {
+      if (status === 429 || status >= 500) {
+        throw accountServiceFailure(providerMessage ?? `The account service could not complete this web request (HTTP ${status}). Try again later.`)
+      }
+      throw accountRefusedError(status, providerMessage)
+    }
     throw searchEndpointError(guidance, endpoint, message)
   }
   /* jscpd:ignore-end */
 
   try {
     const payload: unknown = await response.json()
-    throwIfSearchAborted(signal)
+    throwIfSearchAborted(signal, account)
     return decode(payload)
   } catch (error: unknown) {
-    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
+    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error, account)
+    if (account) {
+      const detail = error instanceof WebError ? '' : `: ${String(error)}`
+      throw accountServiceFailure(`The account service's answer to this web request could not be read${detail}. Try again later.`, error)
+    }
     const message = error instanceof WebError
       ? error.message
       : `DeepSeek returned an unprocessable response body: ${String(error)}`
@@ -282,11 +299,44 @@ function accountUsageError(providerMessage: string | undefined): WebError {
   )
 }
 
-/** Replace endpoint guidance with sign-in guidance when DeepSeek rejects the account token. */
-function accountRejectedError(message: string): WebError {
+/**
+ * WASD Engine: a failed request with the account token that no setting of the user caused, without endpoint guidance
+ * or an upstream provider's name: the account service's own message, which it words itself for its HTTP 429 and 5xx,
+ * as when its search service is busy or an auto recharge payment is still processing, or what went wrong, then a
+ * request to pass it on if it keeps failing.
+ * @param message - the service's message, or what went wrong, ending in a full stop.
+ * @param cause - the underlying failure, when one exists.
+ * @returns the provider failure.
+ */
+function accountServiceFailure(message: string, cause?: unknown): WebError {
   return new WebError(
-    `${message}\n\nDeepSeek rejected the account sign-in used for this web request. `
-    + 'Guide the user to sign in to DeepSeek again; the endpoint does not need changing.',
+    `${message} If it keeps failing, pass this on to the user.`,
+    'WEB_PROVIDER_ERROR',
+    cause === undefined ? undefined : { cause },
+  )
+}
+
+/**
+ * WASD Engine: replace endpoint guidance with the account service's own message when it refuses the account token's
+ * request for a reason other than its sign-in, usage, or load, as for a waitlisted account or an email address not yet
+ * confirmed (HTTP 403); the token stays.
+ * @param status - the HTTP status.
+ * @param providerMessage - the service's message, when the response body carried one.
+ * @returns the provider failure.
+ */
+function accountRefusedError(status: number, providerMessage: string | undefined): WebError {
+  return new WebError(
+    `${providerMessage ?? `The account service refused this web request (HTTP ${status}).`} `
+    + 'Pass this on to the user if they have to act on it.',
+    'WEB_PROVIDER_ERROR',
+  )
+}
+
+/** WASD Engine: replace endpoint guidance with sign-in guidance when the account service rejects the account token. */
+function accountRejectedError(): WebError {
+  return new WebError(
+    'The account service rejected the WASD Engine sign-in used for this web request (HTTP 401). '
+    + 'Ask the user to sign in to WASD Engine again, then try again.',
     'WEB_PROVIDER_ERROR',
   )
 }
@@ -331,14 +381,15 @@ function searchEndpointError(
 async function authHeaders(
   auth: DeepSeekWebAuth, request: DeepSeekWebRequest<unknown>, signal?: AbortSignal,
 ): Promise<SearchAuth> {
-  throwIfSearchAborted(signal)
+  // WASD Engine: a cancellation names the source the operation tries first, then the one it reads.
+  throwIfSearchAborted(signal, auth.sources[0]?.kind === 'account')
   for (const source of auth.sources) {
-    throwIfSearchAborted(signal)
+    throwIfSearchAborted(signal, source.kind === 'account')
     switch (source.kind) {
       case 'misconfigured': throw new WebError(source.message, 'WEB_PROVIDER_MISCONFIGURED')
       case 'account': {
         const endpoint = joinPath(source.baseURL, request.path)
-        const token = await resolveCredential(() => source.resolveToken(endpoint), signal)
+        const token = await resolveCredential(() => source.resolveToken(endpoint), signal, true)
         if (token !== undefined && token.length > 0) return {
           kind: 'account', endpoint, headers: { 'x-dsh-auth-token': token },
           reject: async () => { await source.rejectToken(token) },
@@ -385,19 +436,21 @@ function assertNever(value: never): never {
  * already-cancelled search never starts the resolver.
  * @param resolve - the resolver; a synchronous throw is mapped like a rejection.
  * @param signal - abort signal for the surrounding search.
+ * @param account - WASD Engine: whether the resolver reads the account token, whose failures name the WASD Engine
+ *   sign-in and whose cancellation names no provider.
  * @returns the resolved credential, or undefined when the resolver supplied none.
  * @throws {@link WebError} `WEB_ABORTED` on cancellation, `WEB_PROVIDER_ERROR` when the resolver fails.
  */
 async function resolveCredential(
-  resolve: () => Promise<string | undefined>, signal?: AbortSignal,
+  resolve: () => Promise<string | undefined>, signal?: AbortSignal, account = false,
 ): Promise<string | undefined> {
-  throwIfSearchAborted(signal)
+  throwIfSearchAborted(signal, account)
   try {
     return await abortable(resolve(), signal)
   } catch (error: unknown) {
-    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error)
+    if (signal?.aborted === true || isAbortError(error)) throw searchAborted(signal, error, account)
     throw new WebError(
-      `DeepSeek web credential resolution failed: ${String(error)}`,
+      `${account ? 'The WASD Engine sign-in for this web request could not be read' : 'DeepSeek web credential resolution failed'}: ${String(error)}`,
       'WEB_PROVIDER_ERROR',
       { cause: error },
     )
@@ -428,19 +481,20 @@ function abortable<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
   })
 }
 
-/** Throw the provider's stable cancellation error when the caller already aborted. */
-function throwIfSearchAborted(signal?: AbortSignal): void {
-  if (signal?.aborted === true) throw searchAborted(signal)
+/** Throw the provider's stable cancellation error when the caller already aborted; `account` as {@link searchAborted}. */
+function throwIfSearchAborted(signal?: AbortSignal, account = false): void {
+  if (signal?.aborted === true) throw searchAborted(signal, undefined, account)
 }
 
 /**
  * Build the provider's stable cancellation error while retaining the caller's reason.
  * @param signal - the aborted caller signal; its reason becomes the cause.
  * @param fallback - the cause when the signal has not aborted, such as a fetch `AbortError`.
+ * @param account - WASD Engine: whether the request carries the account token, whose cancellation names no provider.
  * @returns a `WEB_ABORTED` error.
  */
-export function searchAborted(signal?: AbortSignal, fallback?: unknown): WebError {
-  return new WebError('DeepSeek web request aborted', 'WEB_ABORTED', {
+export function searchAborted(signal?: AbortSignal, fallback?: unknown, account = false): WebError {
+  return new WebError(account ? 'Web request aborted' : 'DeepSeek web request aborted', 'WEB_ABORTED', {
     cause: signal?.aborted === true ? signal.reason : fallback,
   })
 }

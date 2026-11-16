@@ -158,7 +158,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 无窗口游戏只在有显示器显示它时才呈现（present）其帧：显示该游戏的“游戏”标签页持有一个 `godot.view` 流，它计为一个显示。没有显示时，harness 把根视口从屏幕上分离，但仍让它把每一帧绘制到其纹理中，截图、录制和帧流读取的正是该纹理，帧率最多为屏幕的刷新率，与呈现时的节奏相同，使用 `--fixed-fps` 的游戏也是如此。一帧呈现时要等窗口服务器（window server）收回上一帧，而其他进程大量呈现帧时，它会迟迟才收回：在 Apple M3 Pro 上，一个游戏旁边另有一个呈现帧的游戏时，它每秒多次卡顿 100 到 600 毫秒；第二个游戏停止呈现后，尽管它仍绘制每一帧，第一个游戏便稳定地以每秒 120 帧运行。只渲染而不呈现的帧不会拖累第一个游戏，只占用处理器的繁忙游戏也不会。
 
-运行使用 `project` 参数指定的文件夹（相对于工作目录），否则使用最近的 `project.godot`：插件按名称顺序广度优先搜索工作目录及其下三层文件夹，并跳过 `.git`、`node_modules`、`.godot`、`.agents` 和 `.wasdengine`（WASD Engine 在其中保存项目状态，例如已移除扩展的备份）；`godot_check` 检查整个项目时也跳过这些文件夹。`scene` 必须是现有文件的 `res://` 路径或 `uid://` 引用；不指定时，游戏打开项目的主场景。`width` 与 `height` 一起设置窗口大小，取值为 1 到 16384 像素。不指定时，窗口采用项目的大小：`window/size/window_width_override` 与 `window_height_override` 为正时取它们，否则取 `viewport_width` 与 `viewport_height`；当该大小低于 `minWindowHeight` 且 `window/stretch/mode` 为 `canvas_items` 或 `viewport` 时，运行按使高度最接近 `minWindowHeight` 的整数倍放大窗口，因此 640x360 的像素画游戏以 1280x720 运行，像素保持方正，`godot_run` 的结果会写明放大倍数。拉伸模式为 `disabled` 的项目保持原大小，因为更大的窗口会显示更多的世界。
+运行使用 `project` 参数指定的文件夹（相对于工作目录），否则使用最近的 `project.godot`：插件按名称顺序广度优先搜索工作目录及其下三层文件夹，并跳过 `.git`、`node_modules`、`.godot`、`.agents` 和 `.wasdengine`（WASD Engine 在其中保存项目状态，例如已移除扩展的备份和 `save` 保存的图像）；`godot_check` 检查整个项目时也跳过这些文件夹。`scene` 必须是现有文件的 `res://` 路径或 `uid://` 引用；不指定时，游戏打开项目的主场景。`width` 与 `height` 一起设置窗口大小，取值为 1 到 16384 像素。不指定时，窗口采用项目的大小：`window/size/window_width_override` 与 `window_height_override` 为正时取它们，否则取 `viewport_width` 与 `viewport_height`；当该大小低于 `minWindowHeight` 且 `window/stretch/mode` 为 `canvas_items` 或 `viewport` 时，运行按使高度最接近 `minWindowHeight` 的整数倍放大窗口，因此 640x360 的像素画游戏以 1280x720 运行，像素保持方正，`godot_run` 的结果会写明放大倍数。拉伸模式为 `disabled` 的项目保持原大小，因为更大的窗口会显示更多的世界。
 
 `args` 在 `--` 之后、harness 自己的参数之前传给游戏，游戏用 `OS.get_cmdline_user_args()` 读取它们，因此游戏自带的捕获或测试模式无需等待请求的代码即可启动：最多 64 个参数，每个最多 4,096 个字符，且都不以 `--wasd-` 开头。`engine_args` 从固定列表中传递 Godot 命令行选项，并检查每个值：`--fixed-fps`、`--max-fps`、`--time-scale`、`--disable-vsync`、`--frame-delay`、`--delta-smoothing`、`--debug-collisions`、`--debug-paths`、`--debug-navigation`、`--debug-avoidance`、`--print-fps`、`--verbose` 和 `--language`；其他选项，例如 `--script`、`--path` 或 `--write-movie`，会被拒绝。使用 `--fixed-fps` 时，无论绘制一帧需要多久，每一帧都让游戏时间前进相同的步长，因此游戏以绘制速度而不是实际时间运行，`--max-fps` 也不会让它变慢；运行还会以 `--wasd-fixed-fps` 把该帧率传给 harness（因为 Godot 不把该选项交给脚本），harness 则让这样的游戏遵守上文的上限。运行的 `launch` 带有这两个列表，因此“游戏”标签页的 **Restart** 会再次传入它们。
 
@@ -190,11 +190,11 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 |---|---|---|
 | `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败 |
 | `godot_stop` | 无 | 游戏结束后返回 `Stopped the game.`，或返回 `No game was running.` |
-| `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space`、`path`、`replace` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停；给出 `path`（`.png` 文件）时，还会把图像保存到那里，供接受图像文件的工具使用，例如 `graphics_review`；文件已存在时，除非 `replace` 为 true，否则拒绝 |
+| `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space`、`path`、`replace`、`save` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停；给出 `path`（`.png` 文件）或 `save`（项目 `.wasdengine/screenshots` 文件夹中的新文件）时，还会把图像保存到那里，供接受图像文件的工具使用，例如 `graphics_review`；见[视图、代码与录制](#views-and-recordings) |
 | `godot_input` | `events`（最多 256 个）、`screenshot`、`coordinate_space` | 依次执行事件，其中的等待和按住按实际时间计算，然后报告事件数、帧数、秒数和当前帧；`screenshot: true` 会附加一张截图。序列在其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已执行的事件 |
 | `godot_wait` | `seconds` 或 `frames`、`screenshot` | 让游戏经过这么多未暂停的游戏时间或这么多帧（1 到 100000）；游戏暂停时拒绝 `seconds`；等待在其秒数（或按每秒 10 帧计的帧数）加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已经过的游戏时间和帧数，例如游戏自行暂停时 |
-| `godot_view` | `node` 或 `asset`、`bone`、`yaw`、`pitch`、`distance`、`radius`，或 `camera`；`fov`、`isolate`、`lighting`、`animation`、`time`、`width`、`height`（默认 1280x720，最大 4096）、`path`、`replace` | 一张在游戏内部用独立相机、按独立尺寸绘制的游戏 3D 世界的 PNG 图像，不改变窗口或游戏相机，并附上相机的位置、方向和视野，以及取景的中心和半径；给出 `path`（`.png` 文件）时，像截图一样还会保存到那里；见[视图、代码与录制](#views-and-recordings) |
-| `godot_record` | `seconds`（0.5 到 120）、`fps`、`max_width`、`path`、`replace`、`events`、`coordinate_space`、`sheet_frames`（默认 12，最多 24） | 在事件播放期间把游戏录制为 MP4 文件，返回文件路径、大小、编解码器、帧数、跳过的帧数、时长、帧率和帧尺寸，并附上一张取自整段录制的帧的 JPEG 拼图 |
+| `godot_view` | `node` 或 `asset`、`bone`、`yaw`、`pitch`、`distance`、`radius`，或 `camera`；`fov`、`isolate`、`lighting`、`animation`、`time`、`width`、`height`（默认 1280x720，最大 4096）、`path`、`replace`、`save` | 一张在游戏内部用独立相机、按独立尺寸绘制的游戏 3D 世界的 PNG 图像，不改变窗口或游戏相机，并附上相机的位置、方向和视野，以及取景的中心和半径；给出 `path` 或 `save` 时，像截图一样还会保存下来；见[视图、代码与录制](#views-and-recordings) |
+| `godot_record` | `seconds`（0.5 到 120）、`fps`、`max_width`、`path`、`replace`、`events`、`coordinate_space`、`sheet_frames`（默认 12，最多 24） | 在事件播放期间把游戏录制为 MP4 文件，返回文件路径、大小、编解码器、帧数、跳过的帧数、时长、帧率和帧尺寸，模型能看图像时并附上一张取自整段录制的帧的 JPEG 拼图 |
 | `godot_control` | `action`（`pause`、`resume` 或 `step`）、`frames` | 暂停或继续游戏，或运行 `frames` 帧（默认 1，最多 100000）后再次暂停；单步期间游戏被暂停、继续或再次单步时（例如在“游戏”标签页中），以及按每秒 10 帧计的帧数加上 `requestTimeoutMs` 的实际时间过去后，单步提前结束，结果会写明原因；报告暂停状态和帧号 |
 | `godot_eval` | `expression` 或 `code`、`node`、`timeout_seconds`（code，默认 10，1 到 300） | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root`、`tree`、引擎单例和自动加载，以 `node` 处的节点或当前场景为基对象；或把 GDScript `code` 作为函数体运行；返回 JSON 形式的值及其 Godot 类型 |
 | `godot_scene_tree` | `node`、`depth`（默认 6，最多 64）、`max_nodes`（默认 400，最多 5000） | 缩进的大纲，列出节点名称、类、脚本、位置、大小、隐藏节点、Label 与 Button 文本，以及被禁用的处理 |
@@ -248,23 +248,27 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 视图在捕获之前绘制 8 帧，让时间性抗锯齿等时间性效果稳定下来，之后释放其 SubViewport；它只绘制 3D，因此 2D 游戏改用截图区域。
 
+调用要求时，`godot_screenshot` 和 `godot_view` 还会把图像保存为 PNG 文件，供接受图像文件的工具使用，例如 `graphics_review`。使用 `save: true` 时，文件是 `.wasdengine`（项目中存放 WASD Engine 自身文件的文件夹）里 `screenshots` 文件夹中的新文件，像录制一样以项目名称（截取前 80 个字符）和时间命名，同一秒内之后的图像在时间后加上 `_2`、`_3` 等。调用在这两个文件夹缺失时创建它们，不写入其他任何文件夹：Godot 跳过隐藏文件夹，截图文件夹还会得到一个 `.gdignore` 文件，使 Godot 既不导入这些图像，也不把它们放进游戏的导出，以及一个 `.gitignore` 文件，使这些图像和未完成的写入不进入 git（文件夹中已有这些文件时则保留原样）；`.wasdengine` 或 `.wasdengine/screenshots` 不是文件夹（例如是文件或链接）时，调用以 `<path> is not a folder, so save cannot keep the image in <folder>; move <path> away, or pass path instead.` 失败。使用 `path` 时，文件恰好保存在那里；文件已存在时，除非 `replace` 为 true，否则拒绝；同时给出两者的调用以 `Give path or save, not both.` 失败。`godot_screenshot`、`godot_view`、`godot_audio` 或 `godot_record` 的 `path` 以 `res://` 开头时，指的是正在运行的游戏项目中的文件；离开项目的这类路径会失败。
+
+保存到不可替换路径的调用会在捕获之前占住该路径：只在没有文件占用该路径时创建一个空文件，捕获随后替换它；因此两个调用同时保存到同一路径时（例如 MCP 服务器同时运行的已连接 agent 的调用），第二个以 `<path> already exists; pass replace: true to overwrite it, or choose another path.` 失败，而不会替换第一个调用的文件。捕获失败时会删除这个空文件（除非期间有其他程序写入了它），以及调用为它创建的文件夹；即使无法删除它们，也报告捕获自身的失败。在模型不接受图像或没有附件存储的 Session 中，保存图像的调用仍会捕获并保存图像；结果省略图像，并[说明这一点](#model-experience)。
+
 带 `code` 的 `godot_eval` 把代码编译为一个继承 `Node` 的独立脚本中某个函数的函数体，该脚本的成员 `tree`、`root`、`scene` 和 `node` 分别保存场景树、根窗口、当前场景以及 `node` 处的对象，因此代码可以声明同名的自有变量：先作为返回其值的单个表达式，再作为语句。代码可以声明变量、循环、调用 lambda、按名称使用引擎单例（例如 `Input`、`OS`、`ResourceLoader` 和 `RenderingServer`）与自动加载，并 `await` 信号，例如 `get_tree().process_frame`，因此设置捕获或测试无需修改游戏代码；代码运行期间，脚本的节点是根节点的内部子节点。编译错误和脚本错误会带着它们在代码中的行号返回；结果最多等待 `timeout_seconds` 让 await 中的代码完成，超时后调用失败，代码在游戏中继续运行。`expression` 也可以按名称使用引擎单例和自动加载。
 
-`godot_record` 通过转发的 `godot/record` 请求，请一个可以读取该 Session 的 WASD Engine 窗口编码录制，没有窗口连接时立即失败。游戏录制期间，窗口从 `GET /api/godot.recording?session=<SessionId>&run=<runId>&recording=<id>` 读取帧：harness 像帧流那样不等待地从 GPU 复制每一帧，工作线程把它缩放到最多 `max_width` 像素（默认 1920）并以 `recordQuality` 编码为 JPEG，按实际时间每秒 `fps` 次（默认 30）。窗口解码这些帧，用 WebCodecs 编码为 H.264（浏览器没有 H.264 编码器时为 VP9），码率约为每像素 0.15 位，每 2 秒一个关键帧，写出采样时间等于各帧捕获时间的 MP4 文件（文件由编码后的帧本身组成，不复制它们），并在应答之前用 `POST /api/godot.video` 及同样的参数上传，应答附有一张拼图，含从第一帧到最后一帧均匀分布的 `sheet_frames` 帧，每帧标注其时间。宿主把上传的文件移到 `path`：工作目录或项目文件夹内的 `.mp4` 文件，或者项目 `recordings` 文件夹中以项目名称和时间命名的新文件；宿主会在该文件夹中写入 `.gdignore` 文件，使 Godot 不导入这些视频，并写入 `.gitignore` 文件，使这些视频和未完成的上传不进入 git（文件夹中已有这些文件时则保留原样）；除非设置了 `replace`，宿主拒绝覆盖已有文件。保存在其他任何文件夹（包括其他名为 `recordings` 的文件夹）中的视频不会标记文件夹。`events` 从录制开始时按 `godot_input` 的方式播放；录制结束时仍在播放的事件被取消，游戏会松开它们按住的键和按钮。
+`godot_record` 通过转发的 `godot/record` 请求，请一个可以读取该 Session 的 WASD Engine 窗口编码录制，没有窗口连接时立即失败。游戏录制期间，窗口从 `GET /api/godot.recording?session=<SessionId>&run=<runId>&recording=<id>` 读取帧：harness 像帧流那样不等待地从 GPU 复制每一帧，工作线程把它缩放到最多 `max_width` 像素（默认 1920）并以 `recordQuality` 编码为 JPEG，按实际时间每秒 `fps` 次（默认 30）。窗口解码这些帧，用 WebCodecs 编码为 H.264（浏览器没有 H.264 编码器时为 VP9），码率约为每像素 0.15 位，每 2 秒一个关键帧，写出采样时间等于各帧捕获时间的 MP4 文件（文件由编码后的帧本身组成，不复制它们），并在应答之前用 `POST /api/godot.video` 及同样的参数上传，应答附有一张拼图，含从第一帧到最后一帧均匀分布的 `sheet_frames` 帧，每帧标注其时间。宿主把上传的文件移到 `path`（工作目录或项目文件夹内的 `.mp4` 文件；除非设置了 `replace`，宿主拒绝覆盖那里的已有文件），或者移到项目 `recordings` 文件夹中以项目名称和时间命名的新文件（已有录制使用该名称时，像 `save` 命名的截图一样加上编号）；宿主会在该文件夹中写入 `.gdignore` 文件，使 Godot 不导入这些视频，并写入 `.gitignore` 文件，使这些视频和未完成的上传不进入 git（文件夹中已有这些文件时则保留原样）。录制从开始时就像截图一样占住其文件，因此第二个录制到同一 `path` 的录制会在录制之前失败。保存在其他任何文件夹（包括其他名为 `recordings` 的文件夹）中的视频不会标记文件夹。`events` 从录制开始时按 `godot_input` 的方式播放；录制结束时仍在播放的事件被取消，游戏会松开它们按住的键和按钮。
 
 使用 `--fixed-fps` 的运行改为按游戏帧录制：每 `round(固定帧率 / fps)` 帧捕获一帧，不跳过任何一帧，每帧在视频中占同样多的游戏帧；`seconds` 计的是视频的秒数，录制会等待游戏绘制完这些帧，因此无论游戏绘制得快慢，影片都保持节奏，就像 Godot 的 Movie Maker 模式那样；`events` 仍按实际时间播放。实时录制在有六帧正在复制或编码，或有 48 MiB 消息等待连接时跳过一帧，结果会统计跳过的帧数；按游戏帧的录制则改为等待。录制算作对该运行的一次显示，因此无窗口游戏保持自身帧率。窗口必须在 `requestTimeoutMs` 内开始读取。宿主保留的尚未被窗口读取的帧达到 32 MiB（或 `recordBufferBytes` 的一半，取较小者）时，宿主停止读取游戏的连接，直到窗口把它们读到只剩一半，因此游戏的消息在连接中等待：按游戏帧的录制会等待，实时录制会跳过帧，宿主不必保存每一帧；窗口最多同时编码六帧。宿主停止读取期间，窗口在 `requestTimeoutMs` 内没有读取任何帧时，或宿主保留的帧超过 `recordBufferBytes` 时，录制失败。录制停止捕获 10 s 后仍未从 GPU 复制完成的帧计为跳过，因此即使 GPU 不再交付复制，录制也会结束，下一次录制可以开始。录制不含音频。
 
 <a id="connected-agents"></a>
 ### 供已连接 agent 使用的工具
 
-通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十四个工具，它们由同一个 `godotToolDefinitions` 构建，区别有四点：
+通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的本机 agent 从插件位于 [`src/mcp.ts`](src/mcp.ts) 的 provider 获得同样的十五个工具，它们由同一个 `godotToolDefinitions` 构建，区别有四点：
 
 - 每个工具都接受 `project`：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身的绝对路径；省略时，调用沿用该 agent 上一次的项目，而在 agent 第一次调用之前会以 `Pass project: the absolute path of the folder that holds project.godot.` 失败。调用为该 agent 在这个游戏项目中自己的 Session 执行，MCP 服务器在首次使用时创建该 Session，因此运行、其日志与“游戏”标签页都属于这个 Session。
 - 每个工具都接受 `session`：一个为该 agent 在这个项目中选择另一个 Session 的名称，这样通过同一连接同时工作的 agent（例如同一会话的多个子 agent）就能各自运行自己的游戏；[MCP 服务器](../game-mcp/README.zh.md#games-in-the-wasd-engine-window)为每个名称创建一个 Session 并为其加上标题。省略 `project` 时，带名称的调用使用该 agent 上一次使用这个名称的调用所用的项目，否则使用它上一次调用的项目。指令会告诉同时工作的 agent 各自使用自己的名称。
 - `godot_run` 的描述说明游戏在 WASD Engine 窗口中播放；Session 自身的 `godot_check` 接受相对于工作目录的路径，这里改为接受绝对路径；`godot_logs` 读取 agent 上次读取之后的条目。
 - 截图、视图和录制拼图以 PNG 或 JPEG 字节形式直接放在结果中返回，而不是为模型路由保存附件，也不检查模型；截图或截图区域请求的宽度，以及视图请求的尺寸，使图像最长边至多 1,568 像素、面积至多 1,150,000 像素，即 agent 无需缩放即可接收的尺寸。
 
-`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。MCP 服务器指令的概述会列出该 provider 的描述：在指令给出 Godot 版本时，描述也给出该版本；它说明用户在 WASD Engine 窗口中观看并游玩游戏，而 agent 自己查看、游玩并测量游戏，并要求 agent 在每次改动后运行游戏并查看画面，因为能编译通过的代码在画面或玩法上仍可能出错。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" and set 3d/physics_engine="Jolt Physics" under [physics].` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_screenshot`、`godot_view`、`godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示，不为 `godot_check` 加，因为它的导入会写入项目，也不为 `godot_record` 加，因为它会保存视频。
+`godot_run` 还会请 WASD Engine 窗口显示该 Session，随后其“游戏”标签页会为这次运行打开。MCP 服务器指令的概述会列出该 provider 的描述：在指令给出 Godot 版本时，描述也给出该版本；它说明用户在 WASD Engine 窗口中观看并游玩游戏，而 agent 自己查看、游玩并测量游戏，并要求 agent 在每次改动后运行游戏并查看画面，因为能编译通过的代码在画面或玩法上仍可能出错。provider 向 `search_game_tools` 报告运行时的就绪状态：`ready`；托管运行时安装期间为 `starting`；否则为带有运行时消息的 `unavailable`。它的指令以 `The godot_* tools run Godot 4.7: write code for it, and in a new project.godot, start config/features with "4.7" and set 3d/physics_engine="Jolt Physics" under [physics].` 结尾，写明与系统提示词部分相同的 Godot 版本；该部分不写明版本时，指令省略这句话。provider 为 `godot_logs`、`godot_scene_tree` 与 `godot_performance` 加上 MCP 的只读提示（客户端可以不经询问就运行带有该提示的工具），不为 `godot_screenshot` 或 `godot_view` 加，因为它们会用 `path` 和 `save` 创建并替换图像文件，不为 `godot_check` 加，因为它的导入会写入项目，也不为 `godot_record` 加，因为它会保存视频。
 
 <a id="game-tab"></a>
 ### “游戏”标签页
@@ -419,6 +423,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/script.ts`](src/script.ts) | `godot_script` 运行与供其他插件使用的导入报告 |
 | [`src/record.ts`](src/record.ts) | 供其他插件使用的录制：请求、其取值范围与截取时钟 |
 | [`src/project.ts`](src/project.ts) | 项目搜索、`project.godot` 设置和 `res://` 路径 |
+| [`src/captures.ts`](src/captures.ts) | 捕获所保存的文件：文件名、截图文件夹及其标记文件，以及让两次保存不落到同一路径的占位 |
 | [`src/blender-import.ts`](src/blender-import.ts) | 在含有 `.blend` 文件的项目中关闭 Blender 导入器 |
 | [`src/input.ts`](src/input.ts)、[`src/logs.ts`](src/logs.ts) | 输入校验与截图坐标；日志环形缓冲区及其游标 |
 | [`src/follow.ts`](src/follow.ts)、[`src/frames.ts`](src/frames.ts) | 跟随流和帧路由 |
@@ -466,11 +471,11 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### Token 影响
 
-默认配置下，14 个声明合计约 16,800 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_view` 与 `godot_input` 最大，各约 2,500 个字符，`godot_script` 其次，约 2,400 个字符。
+默认配置下，15 个声明合计约 20,900 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_view` 与 `godot_audio` 最大，分别约 3,000 与 2,900 个字符，`godot_input` 其次，约 2,500 个字符。
 
 #### KV Cache 影响
 
-同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 14 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
+同一配置总是生成相同的声明，并在第一个请求之前注册，因此工具定义前缀保持稳定。修改 `agentRunsMuted` 会改变 `godot_run` 的声明，禁用该行会移除全部 15 个声明；任一变化都可能从第一个变化的定义开始使缓存复用失效。
 
 ### 系统提示词中的 Godot 部分
 
@@ -508,7 +513,7 @@ Released games play in browsers, where Godot draws with its Compatibility render
 
 #### 模型可见内容
 
-每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存；`godot_view` 附一张 PNG 图像 `godot-view-<frame>.png`，`godot_record` 附一张 JPEG 拼图 `godot-recording-sheet.jpg`（`sheet_frames` 为 0 时不附），文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。导入未正常结束的 `godot_check` 的结果以 `The Godot import step before the check ended abnormally (<exit>), so errors about class_name classes or imported assets may be false.` 开头，或者其中的 `ended abnormally (<exit>)` 换成 `did not finish within <seconds>`。
+每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存；`godot_view` 附一张 PNG 图像 `godot-view-<frame>.png`，`godot_record` 附一张 JPEG 拼图 `godot-recording-sheet.jpg`（`sheet_frames` 为 0 时不附；Session 收不到图像时也不附，并写明 `You receive no images in this Session, so this result leaves the sheet of frames out; the saved video holds them.`），文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。把图像保存到文件的 `godot_screenshot` 或 `godot_view` 写明 `Saved the image to <path>.`；在模型不接受图像或没有附件存储的 Session 中，它不附图像块，尺寸取保存的图像的尺寸，并写明 `You receive no images in this Session, so this result leaves the image out; the saved file holds it.`。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。导入未正常结束的 `godot_check` 的结果以 `The Godot import step before the check ended abnormally (<exit>), so errors about class_name classes or imported assets may be false.` 开头，或者其中的 `ended abnormally (<exit>)` 换成 `did not finish within <seconds>`。
 
 ##### 缺少运行时的消息
 
@@ -564,7 +569,7 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **录制需要带 WebCodecs 的 WASD Engine 窗口** — `godot_record` 在已连接的 Desktop 或 Web 窗口中编码，因此没有窗口连接时，或在没有 WebCodecs `VideoEncoder` 的浏览器中，它会失败。录制不含音频；游戏慢于其 `fps` 时，实时录制会跳过帧，`--fixed-fps` 可保留每一帧。
 - **视图只在运行中的游戏内绘制 3D** — `godot_view` 需要运行中的游戏和 3D 世界；绘制 `asset` 时使用项目对它的导入，因此文件改动后尚未重新导入的项目会绘制旧的导入结果；它还会运行资源场景的脚本，这些脚本可能依赖游戏的其余部分。`isolate` 在视图的若干帧期间给节点的几何体和所有灯光加上渲染层 20，因此使用第 20 层或在此期间读取层的游戏会看到这一变化。
 - **游戏运行期间窗口无法变大** — macOS 嵌入式显示服务器拒绝游戏发起的窗口缩放，因此更大的窗口需要用 `godot_run` 并指定 `width` 和 `height`；`godot_view` 无需更大的窗口即可以任意尺寸绘制。
-- **截图需要支持图像的路由** — 在不支持图像输入或没有附件存储的模型路由上，`godot_screenshot` 和 `screenshot` 选项会失败，agent 在那里无法看到游戏；`godot_input` 和 `godot_wait` 会在执行操作之前失败。
+- **截图需要支持图像的路由** — 在不支持图像输入或没有附件存储的模型路由上，不带 `path` 或 `save` 的 `godot_screenshot` 和 `godot_view` 以及 `screenshot` 选项会失败，agent 在那里无法看到游戏；`godot_input` 和 `godot_wait` 会在执行操作之前失败。带 `path` 或 `save` 时，这两个工具保存图像并在结果中省略它，因此 agent 无需看到图像，也能把文件交给接受图像文件的工具；`godot_record` 在这种路由上保存视频，但不附帧拼图。
 
 <a id="dev-note"></a>
 ### 开发备注

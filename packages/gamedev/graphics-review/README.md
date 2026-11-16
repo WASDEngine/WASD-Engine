@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The graphics review plugin has a reviewer critique the game's graphics. After graphics work, the agent captures the result, for example with `godot_screenshot` and its `path`, and passes the image to `graphics_review` with what it shows and the look the game is going for. The reviewer answers as a game art director would, with a verdict, Ready or Needs work, a score, the problems with their fixes, the WASD Engine tools and add-ons to use, and the next step. The agent fixes the problems and reviews again until the verdict is Ready. Connected agents get the same tool.
+The graphics review plugin has a reviewer critique the game's graphics. After graphics work, the agent captures the result, for example with `godot_screenshot` and its `save` option, and passes the image to `graphics_review` with what it shows and the look the game is going for. The reviewer answers as a game art director would, with a verdict, Ready or Needs work, a score, the problems with their fixes, the WASD Engine tools and add-ons to use, and the next step. The agent fixes the problems and reviews again until the verdict is Ready. Connected agents get the same tool.
 
 ## Table of Contents
 
@@ -38,20 +38,21 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
 |---|---|---|
 | `provider` | `deepseek-account` | Provider route of the WASD Engine account, whose model reviews each image |
 | `model` | Empty | Model of that route; empty picks the first listed model that takes images |
-| `maxTokens` | `8192` | Most tokens of one review, reasoning included |
+| `maxTokens` | `16384` | Most tokens of one review, reasoning included |
+| `reasoningEffort` | `low` | Reasoning effort of each review when the model offers it; otherwise the model's least effort |
 | `timeoutMs` | `240000` | Time limit of one `graphics_review` call |
 | `maxImageBytes` | `52428800` | Largest image file read |
 | `maxImageEdge` | `1568` | Longest side in pixels of the image sent |
 | `maxImagePixels` | `1150000` | Most pixels of the image sent |
-| `minImageEdge` | `512` | Longest side in pixels that a smaller image, such as pixel art, is enlarged toward by whole pixels |
+| `minImagePixels` | `295936` | Fewest pixels of the image sent: a smaller image, such as pixel art, is enlarged by whole pixels toward them, since the route scales a smaller image up by a fraction; the default is the account route's 544×544 |
 
-The plugin needs the `tools` and `workingDirectory` services, and the `llm` and `attachments` services to review. With the `systemPrompt` service it adds the `graphics-review` section, with the `gameAddons` service of [`@deepseek-ai/dsh-game-addons`](../game-addons/README.md) the reviewer may name every catalog add-on, and with the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md) it offers the tool to connected agents. The Plugins page's switch turns the row off.
+The plugin needs the `tools` and `workingDirectory` services, and the `llm` and `attachments` services to review. With the `systemPrompt` service it adds the `graphics-review` section, with the `gameAddons` service of [`@deepseek-ai/dsh-game-addons`](../game-addons/README.md) the reviewer may name every catalog add-on, with the `deepseekAccount` service of [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.md) a route that lists no model while no one is signed in asks for a sign-in, and with the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md) it offers the tool to connected agents. The Plugins page's switch turns the row off.
 
 ### The tool
 
-`graphics_review` takes `image`, the path of a PNG, JPEG, or WebP file, relative to the working directory or absolute; `subject`, what the image shows and what it is for; and the optional `goal`, the look the game is going for, and `focus`, what to look at most. `godot_screenshot` and `godot_view` of [`@deepseek-ai/dsh-godot`](../godot/README.md) save their image at a `path` for it; a Blender render, an image from `image_generate`, a texture, or a sprite sheet works too. The tool reads the file within `maxImageBytes`, turns it upright, scales it down to `maxImageEdge` and `maxImagePixels`, and enlarges a smaller image by whole pixels toward `minImageEdge`, so pixel art stays crisp. It saves the image as an attachment and sends one request to the account's route: the reviewer's instructions as the system prompt, and the image with the agent's words as the user message. The reply's text, after any reasoning, is the review. A missing file, a folder, an empty `subject`, and a file that is not a PNG, JPEG, or WebP image fail before any request.
+`graphics_review` takes `image`, the path of a PNG, JPEG, or WebP file, relative to the working directory or absolute; `subject`, what the image shows and what it is for; and the optional `goal`, the look the game is going for, and `focus`, what to look at most. `godot_screenshot` and `godot_view` of [`@deepseek-ai/dsh-godot`](../godot/README.md) save their image for it with `save` set to true, as a new PNG in the project's hidden `.wasdengine/screenshots/` folder, which Godot skips, so no export carries it, while a capture saved at a `path` inside the project would ship in every export; a Blender render, an image from `image_generate`, a texture, or a sprite sheet works too. The tool reads the file within `maxImageBytes`, turns it upright, and scales it down to `maxImageEdge` and `maxImagePixels`. It enlarges an image below `minImagePixels` by the smallest whole factor that reaches them, or the largest one the upper limits allow, so the route does not scale it up by a fraction and pixel art stays crisp. It saves the image as an attachment and sends one request to the account's route: the reviewer's instructions as the system prompt, and the image with the agent's words as the user message, at `reasoningEffort` within `maxTokens`. The reply's text, after any reasoning, is the review. A missing file, a folder, a device or pipe, an empty `subject`, and a file that is not a PNG, JPEG, or WebP image fail before any request, and a cancelled call stops reading the file.
 
-The account pays for each review as for any model call: the WASD Engine gateway prices the tokens and counts them against the account's monthly AI usage. Once that usage is used up, the review fails with the gateway's own message, which names the account page where the user upgrades or turns on auto recharge, and asks the agent to pass it on to the user. Other failures name no model or provider: a missing or rejected sign-in asks the user to sign in, a busy route asks to wait a few seconds, and any other failure asks to try again in a minute.
+The account pays for each review as for any model call: the WASD Engine gateway prices the tokens and counts them against the account's monthly AI usage. Once that usage is used up, the review fails with the gateway's own message, which names the account page where the user upgrades or turns on auto recharge, and asks the agent to pass it on to the user. Other failures name no model or provider and ask for another call only when one can help. The account's own refusal of a signed-in account, such as an unconfirmed email address or the waitlist, passes on its words. A missing or rejected sign-in, and a route that lists no model while no one is signed in, ask the user to sign in. A route that lists no model that takes images, as when its listing holds the reviewer back for a newer WASD Engine, a configured `model` that takes none, or a route that cannot serve the request says the reviewer is not available, that updating WASD Engine may bring it back, and to go on without a review; a configured `model` that the route refuses until WASD Engine updates asks the user to update. A request that fails the same way on every try, such as an invalid request or unsupported content, asks for another image or to go on without a review. A reply that reaches `maxTokens` before any text asks for a closer view or a narrower `focus`, and one that ends without text for one more call. A busy route asks to wait a few seconds, and any other failure asks to try again in a minute, once.
 
 ### Connected agents
 
@@ -65,7 +66,7 @@ Agents connected through WASD Engine's MCP server reach the tool under the provi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The model-facing texts call the reviewer a specialized graphics expert reviewer model and never mention its cost; the reviewer is the account's model route with the reviewer's instructions in [`src/prompt.ts`](src/prompt.ts), which list what to look at; WASD Engine's tools in the order the agents prefer them, with a download that suits the game's art style first and generated 2D art before art drawn by hand or in code; the catalog add-ons by id with when each helps; and the form of the reply. The request carries the purpose `graphics-review`, the calling Session's id when the call has one, a temperature of 0.3, and `maxTokens`. A reply that reaches `maxTokens` keeps its text with a note that the review stops there. Sharp loads at the first review.
+The model-facing texts call the reviewer a specialized graphics expert reviewer model and never mention its cost; the reviewer is the account's model route with the reviewer's instructions in [`src/prompt.ts`](src/prompt.ts), which list what to look at; WASD Engine's tools in the order the agents prefer them, with a download that suits the game's art style first and generated 2D art before art drawn by hand or in code; the catalog add-ons by id with when each helps; and the form of the reply. The request is prepared with `ctx.llm.prepareCall`, which binds the model's reasoning efforts: it asks for `reasoningEffort` when the model offers it and otherwise for the model's least effort, because the output limit counts the reasoning and the route's default effort can spend all of `maxTokens` on it. It carries the purpose `graphics-review`, the calling Session's id when the call has one, and `maxTokens`, and no temperature, which the account route ignores while the model reasons. A reply that reaches `maxTokens` keeps its text with a note that the review stops there. Sharp loads at the first review.
 
 | File | Role |
 |---|---|
@@ -85,7 +86,7 @@ The model-facing texts call the reviewer a specialized graphics expert reviewer 
 
 These pages cover the captures the review takes, the tools it suggests, and the MCP server that offers it to other agents.
 
-- [godot](../godot/README.md) — `godot_screenshot` and `godot_view`, which save their image at a `path`.
+- [godot](../godot/README.md) — `godot_screenshot` and `godot_view`, which save their image for the review with `save`.
 - [game-addons](../game-addons/README.md) — the catalog the reviewer names add-ons from.
 - [art-references](../art-references/README.md) — references gathered before the art that the review judges.
 - [game-mcp](../game-mcp/README.md) — the MCP server for agents on this computer.
@@ -100,19 +101,19 @@ These pages cover the captures the review takes, the tools it suggests, and the 
 
 #### What the model sees
 
-While the Session has `graphics_review`, the `graphics-review` section, under `# Graphics review`, tells the agent that the tool sends an image to a specialized graphics expert reviewer model, which critiques it and names the WASD Engine tools and add-ons to use, and to always use it after graphics work, before it calls the work done or moves on. It says how to capture the image, with `godot_screenshot` or `godot_view` and their `path` while the Session has the Godot tools, what to pass, and to act on the review and review again until it says Ready, and it ends by stressing that graphics work never ends without a review. As the Web and Desktop profiles compose it, with the Godot tools:
+While the Session has `graphics_review`, the `graphics-review` section, under `# Graphics review`, tells the agent that the tool sends an image to a specialized graphics expert reviewer model, which critiques it and names the WASD Engine tools and add-ons to use, and to always use it after graphics work, before it calls the work done or moves on. While the Session has the Godot tools, it says to capture the image with `godot_screenshot` or `godot_view` and their `save` option, which keeps the capture out of every export, and to give their `path` only to save it elsewhere. It says what to pass and to act on the review and review again until it says Ready, and it ends by stressing that graphics work never ends without a review. As the Web and Desktop profiles compose it, with the Godot tools:
 
 ##### The `graphics-review` section
 
 ```markdown
 # Graphics review
 
-graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
+graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, with save set to true, which keeps the capture out of the game and its exports, and pass the file its result names; give path instead only to save the image somewhere else. Or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
 ```
 
 #### Token effect
 
-The section comes to about 1,000 characters.
+The section comes to about 1,200 characters.
 
 #### KV Cache effect
 
@@ -126,7 +127,7 @@ The section changes only when the Godot tools join or leave the Session's tools,
 
 #### Token effect
 
-The declaration comes to about 1,600 characters of JSON; the provider's description adds about 210 characters to the overview of the MCP server's instructions, and its guide about 1,100 characters after it.
+The declaration comes to about 1,600 characters of JSON; the provider's description adds about 210 characters to the overview of the MCP server's instructions, and its guide about 1,250 characters after it.
 
 #### KV Cache effect
 
@@ -136,7 +137,7 @@ The declaration is static, so it stays in the cached tool prefix.
 
 #### What the model sees
 
-A result is `Graphics review of <path>:` and the review in Markdown: the verdict, Ready or Needs work, with a score from 1 to 10, what works, up to eight problems with where they are and their fixes, the tools and add-ons to use with what to do with each, and the next step. A failure says what to change: a missing file, a folder, a file that is not a PNG, JPEG, or WebP image, or an empty `subject`; or it passes on the account's used-up AI usage with the page where the user pays, or asks to sign in, wait, or try again.
+A result is `Graphics review of <path>:` and the review in Markdown: the verdict, Ready or Needs work, with a score from 1 to 10, what works, up to eight problems with where they are and their fixes, the tools and add-ons to use with what to do with each, and the next step. A failure says what to change: a missing file, a folder, a device or pipe, a file that is not a PNG, JPEG, or WebP image, or an empty `subject`; or it passes on the account's used-up AI usage with the page where the user pays, or the account's own refusal; or it asks to sign in, to update WASD Engine, to send another image, a closer view, or a narrower focus, to wait, or to try again once, and says when to go on without a review instead.
 
 #### Token effect
 

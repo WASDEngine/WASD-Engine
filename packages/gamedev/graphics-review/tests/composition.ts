@@ -1,7 +1,7 @@
 /**
- * A Host composition with the real Agent, tool, prompt, and executor services, a fake model service whose
- * `deepseek-account` route records each request and answers with a scripted reply, a fake attachment store, a fake
- * add-on catalog, and the graphics review plugin loaded with its validated configuration.
+ * A Host composition with the real Agent, model, tool, prompt, and executor services, a scripted `deepseek-account`
+ * route that records each request and answers with a scripted reply, a fake account sign-in, a fake attachment store, a
+ * fake add-on catalog, a fake game MCP server, and the graphics review plugin loaded with its validated configuration.
  */
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -9,7 +9,12 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry, { type Agent, type Model } from '@deepseek-ai/dsh-agent'
 import { createInboxStub, provideWorkingDirectoryFixture } from '@deepseek-ai/dsh-agent-loop-testkit'
-import { ToolCallId, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import type { GameMcpProvider } from '@deepseek-ai/dsh-game-mcp'
+import LlmRuntime, {
+  LlmAdapter, LlmError, ReasoningEffortId, ToolCallId,
+  type BuiltinLlmFailureCode, type GenerateOptions, type LlmModelInfo, type LlmModelReasoningInfo, type LlmResolvedModelInfo,
+  type PreparedAdapterCall, type StreamChunk,
+} from '@deepseek-ai/dsh-llm'
 import { Session, SessionId } from '@deepseek-ai/dsh-session'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -18,10 +23,22 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import ToolRuntime, { type ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import * as GraphicsReview from '../src/index.ts'
 
-/** The fake model service: its listed models, what each takes, the requests it received, and its next reply. */
+/** The efforts of the account route's models, least first, with its default of `high`. */
+export const ACCOUNT_REASONING: LlmModelReasoningInfo = {
+  efforts: ['off', 'low', 'high', 'max'].map(id => ({ id: ReasoningEffortId(id), name: id })),
+  defaultEffort: ReasoningEffortId('high'),
+}
+
+/** The scripted route: its listed models, what each takes, the requests it received, and its next reply. */
 export interface FakeModels {
-  /** Models of the `deepseek-account` route, with whether each takes images. */
+  /** Models the `deepseek-account` route lists, with whether each takes images. */
   models: { id: string; images: boolean }[]
+  /** What listing the models throws; undefined, the listing answers. */
+  listFailure: Error | undefined
+  /** Reasoning efforts of every model; undefined, the models offer none. */
+  reasoning: LlmModelReasoningInfo | undefined
+  /** Failure codes the route refuses models with before any request, by model id. */
+  refusals: Record<string, BuiltinLlmFailureCode>
   /** Requests received, in order. */
   readonly requests: GenerateOptions[]
   /** The next reply: chunks to stream, or an error the stream throws. */
@@ -30,20 +47,39 @@ export interface FakeModels {
   readonly stored: { readonly name: string; readonly mediaType: string; readonly data: Buffer }[]
 }
 
+/** The fake account sign-in. */
+export interface FakeAccount {
+  signedIn: boolean
+  /** Whether reading the sign-in fails. */
+  unreadable: boolean
+}
+
 /** A running composition owned by one spec. */
 export interface Composition {
   readonly ctx: Context
   readonly models: FakeModels
+  readonly account: FakeAccount
+  /** The providers the fake game MCP server offers. */
+  readonly providers: readonly GameMcpProvider[]
   /** The Agent's working directory, the game project. */
   readonly work: string
   /** The calling Agent. */
   readonly agent: Agent
+  /** Dispose the graphics review plugin's fiber. */
+  unload(): Promise<void>
   cleanup(): Promise<void>
 }
 
+/** Which optional services the composition runs; each runs unless set to false. */
+export interface ComposeOptions {
+  readonly addons?: boolean
+  readonly account?: boolean
+  readonly attachments?: boolean
+}
+
 /**
- * The chunks of a reply that streams text and stops.
- * @param text - the reply's text.
+ * The chunks of a reply that reasons, streams text, and stops.
+ * @param text - the reply's text; empty, the reply holds only its reasoning.
  * @param kind - how it ends.
  * @returns the chunks.
  */
@@ -52,9 +88,11 @@ export function textReply(text: string, kind: 'stop' | 'max-tokens' = 'stop'): S
     { type: 'block-start', index: 0, blockType: 'reasoning' },
     { type: 'reasoning-delta', index: 0, text: 'Looking at the image.' },
     { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'Looking at the image.' } },
-    { type: 'block-start', index: 1, blockType: 'text' },
-    { type: 'text-delta', index: 1, text },
-    { type: 'block-end', index: 1, block: { type: 'text', text } },
+    ...text === '' ? [] : [
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text },
+      { type: 'block-end', index: 1, block: { type: 'text', text } },
+    ] satisfies StreamChunk[],
     { type: 'finish', reason: { kind } },
   ]
 }
@@ -67,6 +105,39 @@ export function textReply(text: string, kind: 'stop' | 'max-tokens' = 'stop'): S
  */
 export function failedReply(code: string, message: string): StreamChunk[] {
   return [{ type: 'finish', reason: { kind: 'error', failure: { code, message } } }]
+}
+
+/** The `deepseek-account` route as the review sees it: the listed models, their facts, and the scripted reply. */
+class ScriptedRoute extends LlmAdapter {
+  constructor(private readonly script: FakeModels) {
+    super()
+  }
+
+  override listModels(provider: string): Promise<readonly LlmModelInfo[]> {
+    if (this.script.listFailure !== undefined) return Promise.reject(this.script.listFailure)
+    return Promise.resolve(this.script.models.map(model => ({ provider, id: model.id, name: model.id })))
+  }
+
+  override resolveModel(provider: string, model: string): Promise<LlmResolvedModelInfo> {
+    const images = this.script.models.find(entry => entry.id === model)?.images === true
+    const { reasoning } = this.script
+    return Promise.resolve({
+      provider, id: model, name: model, inputModalities: images ? ['text', 'image'] : ['text'], ...reasoning === undefined ? {} : { reasoning },
+    })
+  }
+
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
+    const refusal = this.script.refusals[model]
+    if (refusal !== undefined) throw new LlmError(`DeepSeek model "${model}" is held back for DeepSeek Harness 99.0.0`, refusal)
+    return super.prepareCall(provider, model, signal)
+  }
+
+  async* stream(request: GenerateOptions): AsyncIterable<StreamChunk> {
+    this.script.requests.push(request)
+    const reply = this.script.reply
+    if (reply instanceof Error) throw reply
+    yield* reply
+  }
 }
 
 async function fakeAgent(ctx: Context, id: string): Promise<Agent> {
@@ -87,10 +158,10 @@ async function fakeAgent(ctx: Context, id: string): Promise<Agent> {
 /**
  * Compose the services, the fakes, and the plugin.
  * @param config - plugin configuration.
- * @param options - whether the add-on catalog service runs.
+ * @param options - which optional services run.
  * @returns the composition; call cleanup in teardown.
  */
-export async function compose(config: Partial<GraphicsReview.Config> = {}, options: { addons?: boolean } = {}): Promise<Composition> {
+export async function compose(config: Partial<GraphicsReview.Config> = {}, options: ComposeOptions = {}): Promise<Composition> {
   const work = await mkdtemp(join(tmpdir(), 'dsh-graphics-review-work-'))
   const ctx = new Context()
   provideWorkingDirectoryFixture(ctx, work)
@@ -99,31 +170,32 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
   await ctx.plugin(SessionProjectionRegistry)
   await ctx.plugin(NativeToolExecutor)
   await ctx.plugin(AgentRegistry)
-  const models: FakeModels = { models: [{ id: 'reviewer', images: true }], requests: [], reply: textReply('**Verdict:** Ready, 8/10.'), stored: [] }
-  ctx.provide('llm', {
-    listModels: (provider: string) => provider === 'deepseek-account'
-      ? Promise.resolve(models.models.map(model => ({ provider, id: model.id, name: model.id })))
-      : Promise.reject(new Error(`No provider named ${provider}`)),
-    resolveModelInfo: (_provider: string, model: string) => Promise.resolve({
-      inputModalities: models.models.find(entry => entry.id === model)?.images === true ? ['text', 'image'] : ['text'],
-    }),
-    async* stream(request: GenerateOptions) {
-      models.requests.push(request)
-      const reply = models.reply
-      if (reply instanceof Error) throw reply
-      yield* reply
-    },
-  } as never)
-  let attachments = 0
-  ctx.provide('attachments', {
-    saveImages(inputs: readonly { data: Buffer; mediaType: string; name: string }[]) {
-      return Promise.resolve(inputs.map((input) => {
-        models.stored.push({ name: input.name, mediaType: input.mediaType, data: input.data })
-        attachments += 1
-        return { attachmentId: `attachment-${attachments}`, mediaType: input.mediaType, bytes: input.data.byteLength, width: 1, height: 1, name: input.name }
-      }))
-    },
-  } as never)
+  await ctx.plugin(LlmRuntime)
+  const models: FakeModels = {
+    models: [{ id: 'reviewer', images: true }], listFailure: undefined, reasoning: ACCOUNT_REASONING, refusals: {}, requests: [],
+    reply: textReply('**Verdict:** Ready, 8/10.'), stored: [],
+  }
+  ctx.llm.registerAdapter(['deepseek-account'], new ScriptedRoute(models))
+  const account: FakeAccount = { signedIn: true, unreadable: false }
+  if (options.account !== false) {
+    ctx.provide('deepseekAccount', {
+      getState: () => account.unreadable
+        ? Promise.reject(new Error('the stored sign-in cannot be read'))
+        : Promise.resolve({ status: account.signedIn ? 'credential-stored' : 'signed-out' }),
+    } as never)
+  }
+  if (options.attachments !== false) {
+    let attachments = 0
+    ctx.provide('attachments', {
+      saveImages(inputs: readonly { data: Buffer; mediaType: string; name: string }[]) {
+        return Promise.resolve(inputs.map((input) => {
+          models.stored.push({ name: input.name, mediaType: input.mediaType, data: input.data })
+          attachments += 1
+          return { attachmentId: `attachment-${attachments}`, mediaType: input.mediaType, bytes: input.data.byteLength, width: 1, height: 1, name: input.name }
+        }))
+      },
+    } as never)
+  }
   if (options.addons !== false) {
     ctx.provide('gameAddons', {
       catalogEntries: () => [
@@ -132,6 +204,13 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
       ],
     } as never)
   }
+  const providers: GameMcpProvider[] = []
+  ctx.provide('gameMcp', {
+    provide(provider: GameMcpProvider) {
+      providers.push(provider)
+      return () => { providers.splice(providers.indexOf(provider), 1) }
+    },
+  } as never)
   const fiber = ctx.plugin(GraphicsReview, GraphicsReview.Config(config))
   try {
     await fiber
@@ -142,7 +221,8 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
   }
   const agent = await fakeAgent(ctx, 'owner')
   return {
-    ctx, models, work, agent,
+    ctx, models, account, providers, work, agent,
+    unload: () => fiber.dispose(),
     async cleanup() {
       await ctx.fiber.dispose()
       await rm(work, { recursive: true, force: true })
@@ -153,15 +233,17 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
 let calls = 0
 
 /**
- * Call the tool as the composition's Agent.
+ * Call the tool, as the composition's Agent unless `withAgent` is false.
  * @param composition - composition.
  * @param args - arguments.
+ * @param withAgent - whether the call comes from the composition's Agent.
  * @returns the settled result.
  */
-export function review(composition: Composition, args: Record<string, unknown>): Promise<ToolExecutionResult> {
+export function review(composition: Composition, args: Record<string, unknown>, withAgent = true): Promise<ToolExecutionResult> {
   calls += 1
   return executeToolFixture(composition.ctx, {
-    signal: new AbortController().signal, callId: ToolCallId(`review-${calls}`), name: 'graphics_review', arguments: args, agent: composition.agent,
+    signal: new AbortController().signal, callId: ToolCallId(`review-${calls}`), name: 'graphics_review', arguments: args,
+    ...withAgent ? { agent: composition.agent } : {},
   })
 }
 

@@ -1,8 +1,8 @@
 /**
  * The image a review sends: the agent's PNG, JPEG, or WebP file, read within a size limit, turned upright, scaled down
- * to the reviewer's image limits, and a small image, such as pixel art, enlarged by whole pixels so its pixels stay
- * crisp. It goes as PNG, or as JPEG when it has no transparency and the PNG would be large. Sharp loads at the first
- * review.
+ * to the reviewer's image limits, and a small image, such as pixel art, enlarged by whole pixels until it reaches the
+ * reviewer route's pixel floor, below which the route would scale it up by a fraction and blur its pixels. It goes as
+ * PNG, or as JPEG when it has no transparency and the PNG would be large. Sharp loads at the first review.
  * @module @deepseek-ai/dsh-graphics-review/src/image
  */
 import { readFile, stat } from 'node:fs/promises'
@@ -29,8 +29,11 @@ export interface ImageLimits {
   readonly maxEdge: number
   /** Most pixels of the image sent. */
   readonly maxPixels: number
-  /** Longest side in pixels that a smaller image is enlarged toward, by whole pixels. */
-  readonly minEdge: number
+  /**
+   * Fewest pixels of the image sent: a smaller image is enlarged by the smallest whole factor that reaches them, or by
+   * the largest one that the other limits allow.
+   */
+  readonly minPixels: number
 }
 
 /** The image of one review, as it is sent. */
@@ -61,27 +64,29 @@ export class UnreadableImage extends Error {
  * @returns the size, and whether it enlarges by whole pixels.
  */
 export function sentSize(width: number, height: number, limits: ImageLimits): { width: number; height: number; enlarged: boolean } {
-  const down = Math.min(1, limits.maxEdge / Math.max(width, height), Math.sqrt(limits.maxPixels / (width * height)))
-  if (down < 1) return { width: Math.max(1, Math.floor(width * down)), height: Math.max(1, Math.floor(height * down)), enlarged: false }
+  const area = width * height
   const longest = Math.max(width, height)
-  if (longest >= limits.minEdge) return { width, height, enlarged: false }
-  // A whole factor keeps each source pixel a square block, within both upper limits.
-  const factor = Math.max(1, Math.min(
-    Math.floor(limits.minEdge / longest),
-    Math.floor(limits.maxEdge / longest),
-    Math.floor(Math.sqrt(limits.maxPixels / (width * height))),
-  ))
+  const down = Math.min(1, limits.maxEdge / longest, Math.sqrt(limits.maxPixels / area))
+  if (down < 1) return { width: Math.max(1, Math.floor(width * down)), height: Math.max(1, Math.floor(height * down)), enlarged: false }
+  if (area >= limits.minPixels) return { width, height, enlarged: false }
+  // A whole factor keeps each source pixel a square block: the smallest that reaches the floor, within both upper limits.
+  const factor = Math.min(
+    Math.ceil(Math.sqrt(limits.minPixels / area)), Math.floor(limits.maxEdge / longest), Math.floor(Math.sqrt(limits.maxPixels / area)),
+  )
   return { width: width * factor, height: height * factor, enlarged: factor > 1 }
 }
 
 /**
- * Read an image file for a review.
+ * Read an image file for a review. Only a regular file is opened, so a device or a named pipe, which reports no size and
+ * may never end, is refused without reading it.
  * @param path - absolute path of the file.
  * @param limits - the review's limits.
+ * @param signal - cancellation, which stops the read and the steps after it.
  * @returns the image to send.
- * @throws UnreadableImage when the path is missing, a folder, too large, or not a PNG, JPEG, or WebP image.
+ * @throws UnreadableImage when the path is missing, a folder, not a regular file, too large, or not a PNG, JPEG, or
+ *   WebP image.
  */
-export async function readReviewImage(path: string, limits: ImageLimits): Promise<ReviewImage> {
+export async function readReviewImage(path: string, limits: ImageLimits, signal: AbortSignal): Promise<ReviewImage> {
   let found
   try {
     found = await stat(path)
@@ -90,10 +95,20 @@ export async function readReviewImage(path: string, limits: ImageLimits): Promis
     throw error
   }
   if (found.isDirectory()) throw new UnreadableImage(`${path} is a folder; pass the path of a PNG, JPEG, or WebP image.`)
+  if (!found.isFile()) {
+    throw new UnreadableImage(`${path} is a device, pipe, or socket, not an image file; pass the path of a PNG, JPEG, or WebP image.`)
+  }
   if (found.size > limits.maxBytes) {
     throw new UnreadableImage(`${path} is larger than ${Math.floor(limits.maxBytes / (1024 * 1024))} MB; pass a smaller image, such as a screenshot.`)
   }
-  const file = await readFile(path)
+  let file
+  try {
+    file = await readFile(path, { signal })
+  } catch (error) {
+    // A cancelled read ends with the call's own reason.
+    signal.throwIfAborted()
+    throw error
+  }
   const load = requireSharp()
   let meta
   try {
@@ -101,6 +116,7 @@ export async function readReviewImage(path: string, limits: ImageLimits): Promis
   } catch (error) {
     throw new UnreadableImage(`${path} is not an image WASD Engine can read; pass a PNG, JPEG, or WebP image.`, { cause: error })
   }
+  signal.throwIfAborted()
   if (!FORMATS.has(meta.format)) throw new UnreadableImage(`${path} is a ${meta.format} file; pass a PNG, JPEG, or WebP image.`)
   const { width, height } = meta.autoOrient
   const size = sentSize(width, height, limits)

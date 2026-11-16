@@ -29,7 +29,7 @@ const call: GameMcpCall = {
 describe('graphicsReviewMcpProvider', () => {
   const reviewed: string[] = []
   const provider = graphicsReviewMcpProvider({
-    limits: { maxBytes: 1024 * 1024, maxEdge: 1568, maxPixels: 1_150_000, minEdge: 512 },
+    limits: { maxBytes: 1024 * 1024, maxEdge: 1568, maxPixels: 1_150_000, minPixels: 544 * 544 },
     timeoutMs: 60_000,
     review: (request) => {
       reviewed.push(request.subject)
@@ -37,8 +37,10 @@ describe('graphicsReviewMcpProvider', () => {
     },
   })
 
-  it('offers graphics_review under the graphics prefix, read-only, with its description in the overview and its guide after it', () => {
+  it('offers graphics_review under the graphics prefix, read-only, with its description in the overview and its guide after it', async () => {
     expect(provider).toMatchObject({ id: MCP_PROVIDER_ID, title: 'Graphics review', description: MCP_DESCRIPTION, instructions: MCP_INSTRUCTIONS })
+    // The review needs no application, so the provider is always ready.
+    await expect(provider.status(new AbortController().signal)).resolves.toEqual({ state: 'ready' })
     const [tool] = provider.tools()
     expect(tool).toMatchObject({ name: 'graphics_review', readOnly: true })
     const catalog = new GameToolCatalog(() => [provider], () => {})

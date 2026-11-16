@@ -6,7 +6,8 @@
  * model-facing texts call it a specialized graphics expert reviewer model and mention no cost. The Session's agent
  * gets the tool and a `graphics-review` system prompt section that asks for a review after all graphics work; agents
  * connected through WASD Engine's MCP server get the same tool under the provider `graphics`. With the `gameAddons`
- * service, the reviewer may name every catalog add-on.
+ * service, the reviewer may name every catalog add-on; with the `deepseekAccount` service, a route that lists no model
+ * while no one is signed in asks for a sign-in.
  * @module @deepseek-ai/dsh-graphics-review
  */
 import { isAbsolute, resolve } from 'node:path'
@@ -34,8 +35,10 @@ export interface Config {
   provider: string
   /** Model of that route; empty, the first listed model that takes images. */
   model: string
-  /** Most tokens of one review. */
+  /** Most tokens of one review, its reasoning included. */
   maxTokens: number
+  /** Reasoning effort of each review when the model offers it; otherwise the model's least effort. */
+  reasoningEffort: string
   /** Time limit of one `graphics_review` call. */
   timeoutMs: number
   /** Largest image file read, in bytes. */
@@ -44,19 +47,24 @@ export interface Config {
   maxImageEdge: number
   /** Most pixels of the image sent. */
   maxImagePixels: number
-  /** Longest side in pixels that a smaller image, such as pixel art, is enlarged toward by whole pixels. */
-  minImageEdge: number
+  /**
+   * Fewest pixels of the image sent: a smaller image, such as pixel art, is enlarged by whole pixels toward them, since
+   * the route scales an image below them up by a fraction, which blurs its pixels. The default is the account route's
+   * 544×544.
+   */
+  minImagePixels: number
 }
 
 export const Config: z<Partial<Config>, Config> = z.object({
   provider: z.string().min(1).default('deepseek-account'),
   model: z.string().default(''),
-  maxTokens: z.natural().min(256).default(8192),
+  maxTokens: z.natural().min(256).default(16_384),
+  reasoningEffort: z.string().min(1).default('low'),
   timeoutMs: z.natural().min(1000).default(240_000),
   maxImageBytes: z.natural().min(1).default(50 * 1024 * 1024),
   maxImageEdge: z.natural().min(64).default(1568),
   maxImagePixels: z.natural().min(4096).default(1_150_000),
-  minImageEdge: z.natural().default(512),
+  minImagePixels: z.natural().default(544 * 544),
 })
 
 /**
@@ -81,10 +89,11 @@ export function apply(ctx: Context, config: Config): void {
     provider: config.provider,
     ...config.model === '' ? {} : { model: config.model },
     maxTokens: config.maxTokens,
+    reasoningEffort: config.reasoningEffort,
   }
   const base: Omit<GraphicsReviewHost, 'image'> = {
     limits: {
-      maxBytes: config.maxImageBytes, maxEdge: config.maxImageEdge, maxPixels: config.maxImagePixels, minEdge: config.minImageEdge,
+      maxBytes: config.maxImageBytes, maxEdge: config.maxImageEdge, maxPixels: config.maxImagePixels, minPixels: config.minImagePixels,
     },
     timeoutMs: config.timeoutMs,
     review: (request, signal) => reviewImage(ctx, settings, { ...request, addons: catalogAddons(ctx) }, signal),

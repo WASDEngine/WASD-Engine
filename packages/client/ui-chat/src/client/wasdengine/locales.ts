@@ -1,16 +1,20 @@
 /**
  * WASD Engine copy owned by ui-chat (fork-owned; `wasdengine/FORK.md` lists the fork changes): the
  * failure rows of a turn that a sign-out stopped, that ran without a sign-in, or that a restart closed
- * name WASD Engine instead of DeepSeek or DSH.
+ * name WASD Engine instead of DeepSeek or DSH, and the Chinese running status does not use DeepSeek's
+ * Chinese company name.
  */
 
 /**
  * `chat` namespace messages the fork rewrites, by language: the stopped row after the user signs
  * out, the stopped row of a turn that a restart closed after the process exited, and the failure row
- * of a turn whose model request found no sign-in.
+ * of a turn whose model request found no sign-in; in Chinese also the running status of every Turn,
+ * without and with its `{duration}`, which upstream words as 深度求索中.
  */
 export const WASDENGINE_CHAT_COPY: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   zh: {
+    'chat.deepDiving': '深入思考中',
+    'chat.deepDivingFor': '深入思考中，用时 {duration} ···',
     'message.failure.accountSignedOut': '任务已因退出 WASD Engine 登录而停止。',
     'message.failure.interrupted': 'WASD Engine 进程在本轮完成前退出（例如被强制结束、崩溃或关闭超时），重新启动后本轮已中止。未完成的工具调用结果未知。',
     'message.failure.accountSignInRequired': '请先登录 WASD Engine，并确认请求地址支持账号认证。',

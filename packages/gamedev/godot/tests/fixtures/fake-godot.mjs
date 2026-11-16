@@ -244,6 +244,11 @@ async function runGame(section) {
     if (behavior === 'error') return fail(message.id, `fake ${message.type} failure`)
     if (behavior === 'noerror') return fail(message.id, undefined)
     if (typeof behavior === 'string' && behavior.startsWith('slow:')) await sleep(Number(behavior.slice(5)))
+    // `failAfter:<ms>` refuses the request once that many milliseconds have passed.
+    if (typeof behavior === 'string' && behavior.startsWith('failAfter:')) {
+      await sleep(Number(behavior.slice('failAfter:'.length)))
+      return fail(message.id, `fake ${message.type} failure`)
+    }
     switch (message.type) {
       case 'stream':
         stopStream()

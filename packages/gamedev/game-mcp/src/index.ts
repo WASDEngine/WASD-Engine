@@ -2,12 +2,14 @@
  * WASD Engine's MCP server for other agents on this computer, such as Claude Code or Codex: a Streamable HTTP
  * endpoint on `127.0.0.1` that requires the token in the server's data folder and offers the game tools that
  * plugins contribute through `ctx.gameMcp.provide()`, a search over them, a call by name, and the creation of a game
- * project, which opens no Session in it. Games that a connected agent starts run in a Session of the WASD Engine
- * window, which the server asks the window to show. Every user signs in to WASD Engine, so while the account plugin
- * reports no stored sign-in the server refuses each tool call with a message that asks the user to sign in; a Host
- * without the account plugin runs every call. The `gameMcp` Remote streams the endpoint, the setup prompt, and the
- * agents seen to the window, the `game-mcp/reveal` event asks the window to show a Session, and the
- * `game-mcp/tool-result` event reports each finished call of a provider tool.
+ * project, which opens no Session in it. The listener starts with the plugin, before the other plugins that provide game
+ * tools have loaded, so the server answers requests only once the Loader's tree has settled, or after `readyTimeoutMs`:
+ * MCP has no way to send an agent new instructions, and an agent keeps the overview it received when it connected. Games
+ * that a connected agent starts run in a Session of the WASD Engine window, which the server asks the window to show.
+ * Every user signs in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool
+ * call with a message that asks the user to sign in; a Host without the account plugin runs every call. The `gameMcp`
+ * Remote streams the endpoint, the setup prompt, and the agents seen to the window, the `game-mcp/reveal` event asks the
+ * window to show a Session, and the `game-mcp/tool-result` event reports each finished call of a provider tool.
  * @module @deepseek-ai/dsh-game-mcp
  */
 import { isAbsolute, join } from 'node:path'
@@ -17,6 +19,7 @@ import { localhostAllowedHostnames, localhostAllowedOrigins, hostHeaderValidatio
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
+import { deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GameToolCatalog, OVERVIEW_LIMIT, PROVIDER_ID_PATTERN } from './catalog.ts'
@@ -44,7 +47,22 @@ export interface Config {
    * progress; agents such as Claude Code give up on a call that reports nothing for 5 minutes.
    */
   progressIntervalMs: number
+  /**
+   * Longest time in milliseconds that the first requests wait for the composition to finish loading its plugins, so
+   * that a plugin that never finishes delays agents no longer; the default stays under the 10 seconds that Codex gives
+   * a server to start.
+   */
+  readyTimeoutMs: number
 }
+
+/** The part of the Loader that the server waits for. */
+interface LoaderReadiness {
+  /** @returns once the Loader's tree has no pending import or plugin start. */
+  await(): Promise<void>
+}
+
+/** Code of the deadline of the wait for the composition. */
+const READY_TIMEOUT_CODE = 'GAME_MCP_READY_TIMEOUT'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -80,6 +98,7 @@ export default class GameMcpServer extends TypertRemoteService {
     dataRoot: z.string().required(),
     port: z.natural().max(65_535).default(9273),
     progressIntervalMs: z.natural().min(1).default(30_000),
+    readyTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(8_000),
   })
 
   private readonly providers: GameMcpProvider[] = []
@@ -94,6 +113,8 @@ export default class GameMcpServer extends TypertRemoteService {
   private token: string | undefined
   private message: string | undefined
   private toolNames = ''
+  /** The wait for the composition, which the first request that reaches the MCP handler starts. */
+  private composition: Promise<void> | undefined
 
   /**
    * @param ctx - plugin context; the listener lives as long as it.
@@ -272,7 +293,38 @@ export default class GameMcpServer extends TypertRemoteService {
     const before = this.clients.list().map(client => client.id).join('\n')
     const client = this.clients.identify(parsed, request.headers.get('user-agent') ?? '', Date.now())
     if (this.clients.list().map(seen => seen.id).join('\n') !== before) this.changed()
+    // The instructions of `initialize` and `server/discover` stay with the agent for its connection.
+    await this.composed()
     return this.handler.fetch(request, { authInfo: authInfoFor(token, client), ...parsed === undefined ? {} : { parsedBody: parsed } })
+  }
+
+  /**
+   * Wait, once for the plugin's lifetime, until the composition has loaded its plugins: the Loader's settlement, which
+   * joins every entry's import and start and so the providers that register as their plugins start. The wait ends
+   * after `readyTimeoutMs`, with a warning, or when the plugin stops; a Host without a Loader is complete already.
+   * @returns once the composition has settled or the wait has ended.
+   */
+  private composed(): Promise<void> {
+    this.composition ??= this.awaitComposition()
+    return this.composition
+  }
+
+  private async awaitComposition(): Promise<void> {
+    const loader: LoaderReadiness | undefined = this.ctx.get('loader')
+    if (loader === undefined) return
+    using limit = deadline(this.lifetime.signal, this.config.readyTimeoutMs, READY_TIMEOUT_CODE)
+    const ended = new Promise<void>((resolve) => {
+      if (limit.signal.aborted) resolve()
+      else limit.signal.addEventListener('abort', () => { resolve() }, { once: true })
+    })
+    const settled = loader.await().catch((error: unknown) => {
+      // The boot reports a tree that failed to load; the server answers with the providers it has.
+      this.ctx.logger.warn(`game-mcp: the plugins could not be awaited: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    await Promise.race([settled, ended])
+    if (timeoutOf(limit.signal, READY_TIMEOUT_CODE) === undefined) return
+    this.ctx.logger.warn(`game-mcp: the plugins did not finish loading within ${String(this.config.readyTimeoutMs)} ms, so agents that connect `
+      + `now get the instructions of the providers registered so far: ${JSON.stringify(this.providers.map(provider => provider.title))}`)
   }
 
   /**

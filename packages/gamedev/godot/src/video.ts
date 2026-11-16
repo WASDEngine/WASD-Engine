@@ -16,10 +16,12 @@
 import { Buffer } from 'node:buffer'
 import { randomBytes } from 'node:crypto'
 import { createWriteStream, type WriteStream } from 'node:fs'
-import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { mkdir, rename, rm } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { z } from 'zod'
 import { delay } from './abort.ts'
+import { captureStem, holdNewPath, holdPath, markCaptureFolder, type CaptureProject, type PathHold } from './captures.ts'
+import { resolveResFile } from './project.ts'
 import type { HarnessRecordFrame } from './protocol.ts'
 import type { GodotRun, RecordingSink, RecordStopReply } from './run.ts'
 import type { GodotVideo, GodotVideoRequest } from './tools.ts'
@@ -94,6 +96,11 @@ export interface VideoContext {
   readonly path: string
   /** Whether an existing file at `path` may be replaced. */
   readonly replace: boolean
+  /**
+   * Whether the plugin chose the name at `path` for a new file, which then takes `_2`, `_3`, and so on after the name
+   * when a file has it, so `replace` does not apply.
+   */
+  readonly newFile?: boolean
   /** Godot's fixed frames per second, when the run started with `--fixed-fps`. */
   readonly fixedFps?: number
   /**
@@ -265,25 +272,21 @@ function refusal(status: 400 | 404 | 409 | 413, text: string): Response {
 }
 
 /**
- * The path a video is saved to: the call's path, relative to the working directory, inside the working directory or
- * the project folder; or a new file in the project's `recordings` folder.
+ * The path a video is saved to: the call's path, relative to the working directory or a `res://` path in the project,
+ * inside the working directory or the project folder; or a new file in the project's `recordings` folder.
  * @param requested - the call's path, or undefined.
  * @param workingDirectory - absolute Session working directory.
  * @param project - absolute project folder and its name.
  * @param now - the time that names a new file, in the computer's time zone.
  * @returns the absolute path.
  * @throws {GodotVideoError} for a path that does not end with `.mp4` or lies outside both folders.
+ * @throws {GodotProjectError} for a `res://` path that leads out of the project.
  */
-export function videoPath(
-  requested: string | undefined, workingDirectory: string, project: { readonly dir: string; readonly name?: string }, now: Date,
-): string {
-  if (requested === undefined) {
-    const two = (value: number): string => String(value).padStart(2, '0')
-    const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}_${two(now.getHours())}-${two(now.getMinutes())}-${two(now.getSeconds())}`
-    const stem = (project.name ?? basename(project.dir)).replace(/[^A-Za-z0-9._-]+/gu, '-').replace(/^-+|-+$/gu, '') || 'game'
-    return join(project.dir, RECORDINGS_FOLDER, `${stem}_${stamp}.mp4`)
-  }
-  const path = isAbsolute(requested) ? resolve(requested) : resolve(workingDirectory, requested)
+export function videoPath(requested: string | undefined, workingDirectory: string, project: CaptureProject, now: Date): string {
+  if (requested === undefined) return join(project.dir, RECORDINGS_FOLDER, `${captureStem(project, now)}.mp4`)
+  const path = requested.startsWith('res://')
+    ? resolveResFile(project.dir, requested)
+    : isAbsolute(requested) ? resolve(requested) : resolve(workingDirectory, requested)
   if (!path.toLowerCase().endsWith('.mp4')) throw new GodotVideoError(`path must name an .mp4 file, got ${JSON.stringify(requested)}.`)
   const inside = (folder: string): boolean => {
     const rest = relative(folder, path)
@@ -312,19 +315,28 @@ export class GodotVideoRecorder {
    * @param request - duration, frame rate, size, events, and sheet.
    * @param signal - cancellation; it stops the recording and saves nothing.
    * @returns the saved video and its frame sheet.
-   * @throws {GodotVideoError} when no window reads the frames in time, the window falls behind or fails, or the file
-   * cannot be saved.
+   * @throws {GodotVideoError} when the path is taken and the context may not replace it, no window reads the frames in
+   * time, the window falls behind or fails, or the file cannot be saved.
    */
   async record(context: VideoContext, request: GodotVideoRequest, signal: AbortSignal): Promise<GodotVideo> {
     const { run } = context
-    if (!context.replace && await exists(context.path)) {
-      throw new GodotVideoError(`${context.path} exists; pass replace: true to replace it, or another path.`)
+    // A recording that may not replace a file holds its path from the start, so a second recording to the path fails,
+    // or takes the next number of a name that the plugin chose, before it records instead of replacing the first one's
+    // video.
+    let path = context.path
+    let hold: PathHold | undefined
+    if (context.newFile === true) {
+      ({ path, hold } = await holdNewPath(context.path))
+    } else if (!context.replace) {
+      hold = await holdPath(path)
+      if (hold === undefined) throw new GodotVideoError(`${path} exists; pass replace: true to replace it, or another path.`)
     }
+    let saved = false
     this.serial += 1
     const id = this.serial
     const local = new AbortController()
     const recording = new Recording(
-      id, context.sessionId, run.id, dirname(context.path), this.limits.bufferBytes, this.limits.windowTimeoutMs,
+      id, context.sessionId, run.id, dirname(path), this.limits.bufferBytes, this.limits.windowTimeoutMs,
       () => run.holdReading(), () => { local.abort() },
     )
     const key = recordingKey(context.sessionId, run.id, id)
@@ -373,13 +385,15 @@ export class GodotVideoRecorder {
       if (!result.success) throw new GodotVideoError(`The WASD Engine window answered with malformed video facts: ${result.error.issues[0]?.message ?? 'unknown field'}.`)
       const upload = recording.upload
       if (upload === undefined) throw new GodotVideoError('The WASD Engine window answered without uploading the video.')
-      await mkdir(dirname(context.path), { recursive: true })
-      if (dirname(context.path) === join(run.project.dir, RECORDINGS_FOLDER)) await markRecordingsFolder(dirname(context.path))
-      await rename(upload.file, context.path)
+      const folder = dirname(path)
+      await mkdir(folder, { recursive: true })
+      if (folder === join(run.project.dir, RECORDINGS_FOLDER)) await markCaptureFolder(folder, RECORDINGS_GITIGNORE)
+      await rename(upload.file, path)
+      saved = true
       const video = result.data
       const inputError = await input
       return {
-        path: context.path,
+        path,
         bytes: upload.bytes,
         codec: video.codec,
         frames: video.frames,
@@ -404,6 +418,7 @@ export class GodotVideoRecorder {
       hide()
       this.recordings.delete(key)
       if (recording.upload !== undefined) await rm(recording.upload.file, { force: true })
+      if (!saved) await hold?.release()
       await input
     }
   }
@@ -493,29 +508,6 @@ function recordingKey(sessionId: string, runId: string, id: number): string {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new GodotVideoError(String(error))
-}
-
-async function exists(path: string): Promise<boolean> {
-  try {
-    await stat(path)
-    return true
-  } catch {
-    // ENOENT or ENOTDIR: nothing is there.
-    return false
-  }
-}
-
-/**
- * Keep Godot from importing the videos of a project's recordings folder, so its editor and exports skip them, and keep
- * them out of git; files that the folder already holds stay as they are.
- * @param folder - the project's recordings folder.
- */
-async function markRecordingsFolder(folder: string): Promise<void> {
-  const markers = [['.gdignore', ''], ['.gitignore', RECORDINGS_GITIGNORE]] as const
-  for (const [name, content] of markers) {
-    const marker = join(folder, name)
-    if (!await exists(marker)) await writeFile(marker, content)
-  }
 }
 
 function closeStream(stream: WriteStream): Promise<void> {

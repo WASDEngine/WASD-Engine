@@ -75,7 +75,18 @@ describe('GameToolCatalog.tools', () => {
     expect(search?.inputSchema).toMatchObject({ properties: { plugin: { enum: ['alpha'] } } })
     expect(callTool).toMatchObject({ name: CALL_TOOL, inputSchema: { required: ['name'] } })
     expect(create).toMatchObject({ name: CREATE_PROJECT_TOOL, title: 'Create game project', inputSchema: { required: ['name'] } })
+    // The Blender, GIMP, and SuperCollider tools take project only with session, so the description sends the path to no
+    // tool's project; the call's result says how the game tools take it.
+    expect(create?.description).toBe('Create a new game project in WASD Engine: a new folder for the game, which WASD Engine lists among the user\'s '
+      + 'game projects. Returns the folder\'s absolute path, where you make the game.')
     expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['name', 'location'])
+    expect(create?.inputSchema.properties).toMatchObject({
+      name: {
+        description: 'Name of the game project, which names its folder and its entry in WASD Engine: one folder name with a visible character, '
+          + 'without / \\ : * ? " < > |, control characters, or a trailing period, and neither .git nor a device name that Windows reserves, '
+          + 'such as CON or COM1.',
+      },
+    })
     expect(create?.annotations).toBeUndefined()
     expect(echo).toEqual({
       name: 'alpha_echo',
@@ -93,20 +104,25 @@ describe('GameToolCatalog.instructions', () => {
     + 'and a game you run and look at. Use them by default, and when you skip a tool or add-on that fits the work, tell the user why; '
     + 'the reason must convince.'
 
-  it('opens with an overview: why to use the tools, what each provider adds, where the guides are, and what to say about skipped tools', () => {
+  const WORKING = 'For a new game, create its project with create_game_project and make the game in the folder it returns. '
+    + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
+    + 'instructions short, from search_game_tools with plugin set to its id and no query. '
+    + 'call_game_tool calls a tool your tool list lacks. '
+    + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '
+    + 'as in blender_scene_info.'
+
+  const SKIPPING = 'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
+    + 'and if you use none, tell the user why. A reason convinces only when the tool cannot do what this game needs or would make it worse; '
+    + 'building faster, convenience, matching what you made in code, and not having looked are not reasons.'
+
+  it('opens with an overview: why to use the tools, where the guides are, what to say about skipped tools, then what each provider adds', () => {
     const catalog = new GameToolCatalog(() => [provider('alpha', [], { state: 'ready' }, 'Use alpha_echo first.'), provider('beta', [])], () => {})
+    // A harness that cuts the instructions short cuts the end of the plugin list first.
     expect(catalog.overview()).toBe([
       PURPOSE,
+      WORKING,
+      SKIPPING,
       'What each plugin adds:\n- ALPHA (alpha_*): The alpha tools.\n- BETA (beta_*): The beta tools.',
-      'For a new game, create its project with create_game_project and make the game in the folder it returns. '
-        + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
-        + 'instructions short, from search_game_tools with plugin set to its id and no query. '
-        + 'call_game_tool calls a tool your tool list lacks. '
-        + 'Every tool runs on this computer with the user\'s permissions. Guides name some tools without their plugin prefix: add it, as in '
-        + 'blender_scene_info.',
-      'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
-        + 'and if you use none, tell the user why. A reason convinces only when the tool cannot do what this game needs or would make it worse; '
-        + 'building faster, convenience, matching what you made in code, and not having looked are not reasons.',
     ].join('\n\n'))
     // Codex weighs the first 512 characters on their own.
     expect(PURPOSE.length).toBeLessThanOrEqual(512)
@@ -119,7 +135,7 @@ describe('GameToolCatalog.instructions', () => {
 
   it('says when no provider offers tools', () => {
     const catalog = new GameToolCatalog(() => [], () => {})
-    expect(catalog.overview()).toContain(`${PURPOSE}\n\nNo plugin offers tools right now.\n\nFor a new game`)
+    expect(catalog.overview()).toBe([PURPOSE, WORKING, SKIPPING, 'No plugin offers tools right now.'].join('\n\n'))
     expect(catalog.instructions()).toBe(catalog.overview())
   })
 })
@@ -150,12 +166,14 @@ describe('GameToolCatalog.search', () => {
 
   it('returns a plugin\'s guide with its tools when the search names the plugin and no words', async () => {
     const guided = new GameToolCatalog(() => [
-      provider('alpha', [{ name: 'alpha_echo', definition: echoDefinition() }], { state: 'ready' }, 'Call echo first.'),
+      provider('alpha', [{ name: 'alpha_echo', definition: echoDefinition() }], { state: 'ready' }, 'Call echo first, then beta_fail.'),
       provider('beta', [], { state: 'starting', message: 'Beta starts.' }, 'Beta guide text.'),
     ], () => {})
+    // The heading asks for the prefix only on the plugin's own tools, which the result lists after the guide, so a guide's full
+    // name of another plugin's tool, such as beta_fail, stays as it is.
     expect(await guided.search('', 'alpha', new AbortController().signal)).toBe([
       'Plugins:\n- ALPHA (alpha_*, ready, 1 tools): The alpha tools.',
-      'ALPHA guide (where it names a tool without the alpha_ prefix, add the prefix):\n\nCall echo first.',
+      'ALPHA guide (where it names one of the tools below without the alpha_ prefix, add the prefix):\n\nCall echo first, then beta_fail.',
       'Tools:\n- alpha_echo: Echo the text back.',
       'Search with a query to see a tool\'s parameters.',
     ].join('\n\n'))

@@ -77,6 +77,22 @@ async function call(definitions: readonly ToolDefinition[], name: string, args: 
 
 const stats = (fields: Record<string, unknown>) => `WASD_TEST_STATS ${JSON.stringify({ connected: true, bytes_in: 0, bytes_out: 0, packets_in: 0, packets_out: 0, tick_ms_avg: 0.5, tick_ms_max: 2, rss_bytes: 10 * 1024 * 1024, seconds: 30, ...fields })}\n`
 
+/**
+ * A deletion said to end the server's billing outright, in each language: a paid server's unit can stay on the bill
+ * for a suspended server that starts again in its place, and a free server has no billing.
+ */
+const BILLING_ENDS = new RegExp([
+  'billing ends', '计费结束', '課金が終わり', 'facturación termina', 'facturation prend fin', 'Abrechnung endet', 'оплата прекратится', 'cobrança termina',
+].join('|'), 'u')
+
+/** Every language of a prompt names sizes, prices, and free servers in its own words, never in English. */
+function expectLocalizedSizes(prompt: LocalizedPrompt | undefined): void {
+  expect(Object.keys(prompt ?? {}).sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+  for (const [locale, text] of Object.entries(prompt ?? {})) {
+    if (locale !== 'en') expect(text, locale).not.toMatch(/\(free\)|a month/u)
+  }
+}
+
 describe('wasd_multiplayer_guide', () => {
   it('compares both modes with the site\'s live prices while signed out, and recommends a dedicated server for a persistent world', async () => {
     const site = multiplayerSite()
@@ -258,10 +274,18 @@ describe('dedicated server tools in a Session', () => {
     const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
     const resized = await call(definitions, 'wasd_server_change', { size: 'medium' })
     expect(asked[0]?.prompt.en).toBe('Change the server "Main" from Small ($5 a month) to Medium ($10 a month)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    // Each language names the sizes' prices in its own words.
+    expect(asked[0]?.prompt.zh).toBe('要把服务器 "Main" 从 Small（每月 $5）改为 Medium（每月 $10）吗？随后 WASD Engine 会打开 site.test 上的页面，你在那里确认更改；之后账单才会变化。')
+    expect(asked[0]?.prompt.de).toBe('Den Server "Main" von Small ($5 im Monat) auf Medium ($10 im Monat) ändern? WASD Engine öffnet danach eine Seite auf site.test, auf der du die Änderung bestätigst; erst dann ändert sich deine Rechnung.')
+    expectLocalizedSizes(asked[0]?.prompt)
     expect(resized.value).toMatchObject({ status: 'awaiting_confirmation', server_id: main.id, size: 'medium', price: '$10', opened: false })
     expect(resized.text).toBe(`Open this page to confirm: ${resized.value.confirm_url as string} This changes Main from Small ($5 a month) to Medium at $10 a month. Nothing happens until you confirm there.`)
     const deleted = await call(definitions, 'wasd_server_change', { delete: true })
-    expect(asked[1]?.prompt.en).toContain('Delete the server "Main"? It stops for every player, its billing ends, and its world is deleted 7 days later.')
+    // A suspended server of the size that was paid for before starts again on the unit, and the page then names it.
+    expect(asked[1]?.prompt.en).toBe('Delete the server "Main"? It stops for every player and its world is deleted 7 days later. Its monthly price comes off your bill, unless the confirmation page says another of your servers keeps it. WASD Engine then opens a page on site.test where you confirm.')
+    expect(asked[1]?.prompt.zh).toBe('要删除服务器 "Main" 吗？它会对所有玩家停止，7 天后其世界数据会被删除。它的月费会从账单中去掉，除非确认页面说明你的另一台服务器会接替它。随后 WASD Engine 会打开 site.test 上的页面，由你确认。')
+    expect(Object.values(asked[1]?.prompt ?? {}).join('\n')).not.toMatch(BILLING_ENDS)
+    expect(deleted.text).toContain('This deletes Main: it stops for every player and its world is deleted 7 days later; its monthly price comes off the bill, unless the confirmation page says another of the account\'s servers keeps it.')
     expect(deleted.value).toMatchObject({ status: 'awaiting_confirmation', server_id: main.id })
     expect(links).toHaveLength(2)
     expect(site.calls.filter(entry => entry.method === 'PATCH' || entry.method === 'DELETE').map(entry => [entry.method, entry.path, entry.body])).toEqual([
@@ -270,6 +294,26 @@ describe('dedicated server tools in a Session', () => {
     ])
     await expect(call(definitions, 'wasd_server_change', {})).rejects.toThrow('Pass either size or delete: true.')
     await expect(call(definitions, 'wasd_server_change', { size: 'small' })).rejects.toThrow('Main is already Small.')
+  })
+
+  it('cancels a purchase still awaiting confirmation, which never ran and was never charged, instead of deleting a server', async () => {
+    const site = multiplayerSite()
+    const { surface, asked } = appSurface('approved', false)
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    await call(definitions, 'wasd_server_create', { size: 'small' })
+    const cancelled = await call(definitions, 'wasd_server_change', { delete: true })
+    expect(asked[1]?.prompt.en).toBe('Cancel the purchase of the server "Defenders"? It never ran and was never charged, so cancelling it costs nothing. WASD Engine then opens a page on site.test where you confirm.')
+    expect(asked[1]?.prompt.zh).toBe('要取消服务器 "Defenders" 的购买吗？它从未运行，也从未扣费，因此取消不会产生任何费用。随后 WASD Engine 会打开 site.test 上的页面，由你确认。')
+    expect(Object.keys(asked[1]?.prompt ?? {}).sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+    expect(Object.values(asked[1]?.prompt ?? {}).join('\n')).not.toMatch(BILLING_ENDS)
+    expect(`${cancelled.text}\n${asked[1]?.prompt.en ?? ''}`).not.toMatch(/stops for every player|monthly price|world is deleted/u)
+    expect(cancelled.value).toMatchObject({
+      status: 'awaiting_confirmation', confirm_message: 'Confirm cancelling the purchase of the server Defenders on the WASD Engine site; nothing is charged.',
+    })
+    expect(cancelled.text).toContain('This cancels the purchase of Defenders: it never ran and was never charged, so cancelling it costs nothing.')
+    expect(site.calls.filter(entry => entry.method === 'DELETE')).toHaveLength(1)
+    const declined = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, appSurface('declined').surface)
+    expect((await call(declined, 'wasd_server_change', { delete: true })).value.for_user).toBe('The user declined, so nothing was cancelled.')
   })
 
   it('reports, logs, deploys, backs up, and restores the game\'s server, asking before a restore', async () => {
@@ -362,6 +406,7 @@ describe('multiplayer tools of connected agents', () => {
     const provider = wasdMcpProvider([], { claim: () => Promise.resolve() }, tools, MULTIPLAYER_MCP_INSTRUCTIONS)
     expect(provider.tools().map(entry => entry.name)).toEqual([...MULTIPLAYER_TOOLS])
     expect(provider.instructions).toContain(MULTIPLAYER_MCP_INSTRUCTIONS)
+    expect(MULTIPLAYER_MCP_INSTRUCTIONS).toContain('State the monthly price and what it includes before suggesting a server, or that it is free while one is left when your user confirms, if wasd_server_plans lists free servers of that size left for your user\'s account,')
   })
 })
 
@@ -372,7 +417,7 @@ describe('free servers WASD Engine gave the account', () => {
     const site = multiplayerSite({ grants: GRANTS })
     const signedIn = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, appSurface().surface)
     const plans = await call(signedIn, 'wasd_server_plans')
-    expect(plans.text).toContain('Free servers WASD Engine gave this account: 2 Small (1 left), 1 Large (0 left). A server of a size with one left costs nothing.')
+    expect(plans.text).toContain('Free servers WASD Engine gave this account: 2 Small (1 left), 1 Large (0 left). A server of a size with one left is free while one is still left when the user confirms it on the site.')
     expect(plans.value.free_servers).toEqual(GRANTS)
     expect((await call(signedIn, 'wasd_multiplayer_guide')).text).toContain('Free servers WASD Engine gave this account: 2 Small (1 left)')
     const signedOut = multiplayerToolDefinitions(toolHost(site, await multiplayerProject(), { access: null }).host, appSurface().surface)
@@ -381,48 +426,113 @@ describe('free servers WASD Engine gave the account', () => {
     expect(anonymous.value.free_servers).toBeUndefined()
   })
 
-  it('creates a server of a size with a free one left as free, and charges for a size without', async () => {
+  it('creates a server of a size with a free one left as free while one is left when the user confirms, and charges for a size without', async () => {
     const site = multiplayerSite({ grants: GRANTS })
     const { surface, asked } = appSurface()
     const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
     const free = await call(definitions, 'wasd_server_create', { size: 'small' })
-    expect(asked[0]?.prompt.en).toBe('Create a free Small game server for "Defenders"? WASD Engine gave this account free Small servers, so it costs nothing. WASD Engine then opens a page on site.test where you confirm.')
-    expect(Object.keys(asked[0]?.prompt ?? {}).sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+    // The site decides whether the server is free only when the user confirms there.
+    expect(asked[0]?.prompt.en).toBe('Create a free Small game server for "Defenders"? WASD Engine gave this account free Small servers, and it is free while one of them is left when you confirm. WASD Engine then opens a page on site.test where you confirm; if none is left by then, the page shows the price instead.')
+    expect(asked[0]?.prompt.zh).toBe('要为 "Defenders" 创建一台免费的 Small 游戏服务器吗？WASD Engine 为此账号提供了免费的 Small 服务器，只要你确认时还剩一台，它就是免费的。随后 WASD Engine 会打开 site.test 上的页面，由你确认；如果到那时一台都不剩，页面会改为显示价格。')
+    expect(asked[0]?.prompt.fr).toBe('Créer un serveur de jeu Small gratuit pour "Defenders" ? WASD Engine a offert à ce compte des serveurs Small gratuits, et il est gratuit tant qu’il en reste un quand vous confirmez. WASD Engine ouvre ensuite une page sur site.test où vous confirmez ; s’il n’en reste plus d’ici là, la page affiche le prix à la place.')
+    expectLocalizedSizes(asked[0]?.prompt)
     expect(free.value).toMatchObject({ status: 'awaiting_confirmation', size: 'small', price: '$5', free: true })
-    expect(free.value.confirm_message).toBe('Confirm the free Small game server for Defenders on the WASD Engine site; nothing is charged.')
-    expect(free.text).toContain('This is a free Small server for Defenders: WASD Engine gave this account free Small servers, so it costs nothing.')
+    expect(free.value.confirm_message).toBe('Confirm the Small game server for Defenders on the WASD Engine site; it is free while one of your free Small servers is left when you confirm.')
+    expect(free.text).toContain('This is a Small server for Defenders, free while one of the free Small servers WASD Engine gave this account is left when you confirm; if none is left by then, the page shows its price, $5 a month, instead. Nothing happens until you confirm there.')
+    expect(`${free.text}\n${String(free.value.confirm_message)}\n${asked[0]?.prompt.en ?? ''}`).not.toMatch(/costs nothing|nothing is charged/u)
     // Every free Large server is in use, so another one is a purchase.
     const paid = await call(definitions, 'wasd_server_create', { size: 'large' })
     expect(asked[1]?.prompt.en).toBe('Create a Large game server for "Defenders" at $20 a month? WASD Engine then opens a page on site.test where you confirm and pay; nothing is charged before that.')
     expect(paid.value.free).toBeUndefined()
     expect(paid.text).toContain('This is a Large server for Defenders at $20 a month.')
-    const declined = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, appSurface('declined').surface)
+    // The pending free Small server holds the last free one, so another Small server is a purchase.
+    expect((await call(definitions, 'wasd_server_create', { size: 'small' })).value.free).toBeUndefined()
+    const declined = multiplayerToolDefinitions(toolHost(multiplayerSite({ grants: GRANTS }), await multiplayerProject()).host, appSurface('declined').surface)
     expect((await call(declined, 'wasd_server_create', { size: 'small' })).value).toEqual({
       status: 'declined', size: 'small', price: '$5', free: true, for_user: 'The user declined, so nothing was created or charged.',
     })
   })
 
-  it('names a free server\'s size as free when it changes size, and the new size too when a free one is left', async () => {
+  it('names a free server\'s size as free when it changes size, the new size too while a free one is left, and a paid size as a new purchase', async () => {
     const site = multiplayerSite({ grants: [{ size: 'medium', granted: 1, in_use: 0, available: 1 }] })
     const main = site.addServer({ granted: true })
     const { surface, asked } = appSurface('approved', false)
     const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
     expect((await call(definitions, 'wasd_server_status')).text).toContain(`Main (small, ${main.id}): running; free: one of the free servers WASD Engine gave the account; 3 playing`)
     const free = await call(definitions, 'wasd_server_change', { size: 'medium' })
-    expect(asked[0]?.prompt.en).toBe('Change the server "Main" from Small (free) to Medium (free)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(asked[0]?.prompt.en).toBe('Change the server "Main" from Small (free) to Medium (free)? WASD Engine gave this account free Medium servers, and the new size is free while one of them is left when you confirm. WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(asked[0]?.prompt.zh).toBe('要把服务器 "Main" 从 Small（免费）改为 Medium（免费）吗？WASD Engine 为此账号提供了免费的 Medium 服务器，只要你确认时还剩一台，新规格就是免费的。随后 WASD Engine 会打开 site.test 上的页面，你在那里确认更改；之后账单才会变化。')
+    expectLocalizedSizes(asked[0]?.prompt)
     expect(free.value).toMatchObject({ status: 'awaiting_confirmation', size: 'medium', price: '$10', free: true })
-    expect(free.text).toContain('This changes Main from Small (free) to Medium, free: WASD Engine gave this account free Medium servers.')
-    expect(free.value.confirm_message).toBe('Confirm changing the server Main to a free Medium on the WASD Engine site.')
+    expect(free.text).toContain('This changes Main from Small (free) to Medium, free while one of the free Medium servers WASD Engine gave this account is left when you confirm; if none is left by then, the page shows its price, $10 a month, instead.')
+    expect(free.value.confirm_message).toBe('Confirm changing the server Main to Medium on the WASD Engine site; it is free while one of your free Medium servers is left when you confirm.')
+    // A free server moved to a size without a free one left is bought at that size's price; nothing credits it.
     const paid = await call(definitions, 'wasd_server_change', { size: 'large' })
-    expect(asked[1]?.prompt.en).toBe('Change the server "Main" from Small (free) to Large ($20 a month)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(asked[1]?.prompt.en).toBe('Change the server "Main" from Small (free) to Large ($20 a month)? Large is a new purchase at $20 a month, and the free Small server stays on this account for another server. WASD Engine then opens a page on site.test where you confirm and pay; nothing is charged before that.')
+    expect(asked[1]?.prompt.ja).toBe('サーバー "Main" を Small（無料）から Large（月額 $20）に変更しますか？Large は月額 $20 の新規購入となり、無料の Small サーバーは別のサーバー用にこのアカウントに残ります。このあと WASD Engine が site.test のページを開き、そこで確認して支払います。それまで料金はかかりません。')
+    expectLocalizedSizes(asked[1]?.prompt)
     expect(paid.value.free).toBeUndefined()
+    expect(paid.text).toContain('This changes Main from Small (free) to Large, a new purchase at $20 a month; the free Small server stays on the account for another server.')
+    expect(paid.value.confirm_message).toBe('Confirm changing the server Main to Large, a new purchase at $20 a month, on the WASD Engine site; nothing is charged until you confirm there.')
+  })
+
+  it('asks again for the same free size as free while the server\'s own pending resize holds the free server', async () => {
+    const site = multiplayerSite({ grants: [{ size: 'medium', granted: 1, in_use: 0, available: 1 }] })
+    site.addServer({ granted: true })
+    const { surface, asked } = appSurface('approved', false)
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    await call(definitions, 'wasd_server_change', { size: 'medium' })
+    // The unconfirmed resize holds the free Medium server, which the sizes then count as taken.
+    expect((await call(definitions, 'wasd_server_plans')).value.free_servers).toEqual([{ size: 'medium', granted: 1, in_use: 0, available: 0 }])
+    // A new request replaces the server's own one, so the site covers it with the same free server.
+    const again = await call(definitions, 'wasd_server_change', { size: 'medium' })
+    expect(asked[1]?.prompt.en).toBe(asked[0]?.prompt.en)
+    expect(again.value).toMatchObject({ status: 'awaiting_confirmation', size: 'medium', free: true })
+    expect(again.text).toContain('This changes Main from Small (free) to Medium, free while one of the free Medium servers WASD Engine gave this account is left')
+  })
+
+  it('deletes a free server without a change to the bill', async () => {
+    const site = multiplayerSite()
+    site.addServer({ granted: true })
+    const { surface, asked } = appSurface('approved', false)
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    const deleted = await call(definitions, 'wasd_server_change', { delete: true })
+    expect(asked[0]?.prompt.en).toBe('Delete the free server "Main"? It stops for every player and its world is deleted 7 days later; your bill does not change, and the free server can cover another one. WASD Engine then opens a page on site.test where you confirm.')
+    expect(asked[0]?.prompt.zh).toBe('要删除免费服务器 "Main" 吗？它会对所有玩家停止，7 天后其世界数据会被删除；你的账单不会变化，这个免费名额可以留给另一台服务器。随后 WASD Engine 会打开 site.test 上的页面，由你确认。')
+    expect(Object.keys(asked[0]?.prompt ?? {}).sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+    expect(deleted.value).toMatchObject({ status: 'awaiting_confirmation', confirm_message: 'Confirm deleting the server Main on the WASD Engine site; its world is deleted 7 days later.' })
+    expect(deleted.text).toContain('This deletes Main: it stops for every player and its world is deleted 7 days later; it is one of the account\'s free servers, so the bill does not change.')
+    expect(`${deleted.text}\n${Object.values(asked[0]?.prompt ?? {}).join('\n')}`).not.toMatch(BILLING_ENDS)
+  })
+
+  it('names a size the site no longer lists by its id, and as free while a free server covers it', async () => {
+    const site = multiplayerSite()
+    site.addServer({ size: 'tiny' })
+    site.addServer({ name: 'Spare', size: 'tiny', granted: true })
+    const { surface, asked } = appSurface('approved', false)
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    const [paid, free] = (await call(definitions, 'wasd_server_status')).value.servers as { id: string }[]
+    await call(definitions, 'wasd_server_change', { server: paid?.id, size: 'small' })
+    expect(asked[0]?.prompt.en).toBe('Change the server "Main" from tiny to Small ($5 a month)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(asked[0]?.prompt.zh).toBe('要把服务器 "Main" 从 tiny 改为 Small（每月 $5）吗？随后 WASD Engine 会打开 site.test 上的页面，你在那里确认更改；之后账单才会变化。')
+    await call(definitions, 'wasd_server_change', { server: free?.id, size: 'small' })
+    expect(asked[1]?.prompt.en).toContain('Change the server "Spare" from tiny (free) to Small ($5 a month)? Small is a new purchase at $5 a month, and the free tiny server stays')
+    expect(asked[1]?.prompt.pt).toContain('Mudar o servidor "Spare" de tiny (grátis) para Small ($5 por mês)?')
+  })
+})
+
+describe('wasd_server_create and wasd_server_change descriptions', () => {
+  it('say that only the site decides a free server when the user confirms, and what a change does to a paid and a free server\'s bill', () => {
+    const definitions = multiplayerToolDefinitions(toolHost(multiplayerSite(), '/game').host, appSurface().surface)
+    expect(tool(definitions, 'wasd_server_create').description).toBe('Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the newest release\'s server build.')
+    expect(tool(definitions, 'wasd_server_change').description).toBe('Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. For a paid server, a bigger size is charged from the confirmation, prorated, and a smaller one credited. A free server (wasd_server_status marks it) moved to a size without free servers left becomes a new purchase at that size\'s monthly price, with no credit. A size with free servers left for the account (wasd_server_plans lists them) is free while one is left when the user confirms. Deleting stops the server and deletes its world 7 days later; a paid server\'s monthly price comes off the bill unless the confirmation page says another of the account\'s servers keeps it, and a free one changes no bill. Deleting a server whose purchase still awaits confirmation cancels that purchase, which never ran or charged anything. Tell the user the price difference or what deleting loses before calling it.')
   })
 })
 
 describe('MULTIPLAYER_PROMPT', () => {
   it('states the four rules the agent follows before any cost', () => {
     expect(MULTIPLAYER_PROMPT).toContain('1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up')
-    expect(MULTIPLAYER_PROMPT).toContain('2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.')
+    expect(MULTIPLAYER_PROMPT).toContain('2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free while one is left when the user confirms, so say that instead.')
     expect(MULTIPLAYER_PROMPT).toContain('3. Let the user choose the size from wasd_server_plans; never pick one for them.')
     expect(MULTIPLAYER_PROMPT).toContain('4. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth, and that at 100% the server stops until its next billing month')
   })

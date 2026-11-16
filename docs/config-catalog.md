@@ -1951,7 +1951,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:37`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:40`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1965,6 +1965,12 @@ export interface Config {
    * progress; agents such as Claude Code give up on a call that reports nothing for 5 minutes.
    */
   progressIntervalMs: number
+  /**
+   * Longest time in milliseconds that the first requests wait for the composition to finish loading its plugins, so
+   * that a plugin that never finishes delays agents no longer; the default stays under the 10 seconds that Codex gives
+   * a server to start.
+   */
+  readyTimeoutMs: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
@@ -2191,7 +2197,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-graphics-review`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/graphics-review/src/index.ts:32`](../packages/gamedev/graphics-review/src/index.ts)
+- `source`: [`packages/gamedev/graphics-review/src/index.ts:33`](../packages/gamedev/graphics-review/src/index.ts)
 
 ```ts config-catalog
 /** Configuration of the `graphics-review` row; every field has a default. */
@@ -2200,8 +2206,10 @@ export interface Config {
   provider: string
   /** Model of that route; empty, the first listed model that takes images. */
   model: string
-  /** Most tokens of one review. */
+  /** Most tokens of one review, its reasoning included. */
   maxTokens: number
+  /** Reasoning effort of each review when the model offers it; otherwise the model's least effort. */
+  reasoningEffort: string
   /** Time limit of one `graphics_review` call. */
   timeoutMs: number
   /** Largest image file read, in bytes. */
@@ -2210,8 +2218,12 @@ export interface Config {
   maxImageEdge: number
   /** Most pixels of the image sent. */
   maxImagePixels: number
-  /** Longest side in pixels that a smaller image, such as pixel art, is enlarged toward by whole pixels. */
-  minImageEdge: number
+  /**
+   * Fewest pixels of the image sent: a smaller image, such as pixel art, is enlarged by whole pixels toward them, since
+   * the route scales an image below them up by a fraction, which blurs its pixels. The default is the account route's
+   * 544×544.
+   */
+  minImagePixels: number
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-graphics-review -->

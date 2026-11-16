@@ -47,12 +47,15 @@ describe('gameAddonMcpProvider', () => {
     expect(provider.instructions).toContain('- test-camera (Godot; prototype, polish): The camera must follow a moving target with smoothing.')
   })
 
-  it('says what the add-ons add and asks for the whole catalog before a game is planned', async () => {
+  it('says what the add-ons add, asks for the whole catalog before a game is planned, and the install once project.godot exists', async () => {
     const provider = gameAddonMcpProvider((await host()).host)
     expect(provider.description).toBe(MCP_DESCRIPTION)
-    expect(MCP_DESCRIPTION).toBe('Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than code written from '
-      + 'scratch: cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
-      + 'read the whole catalog with game_addons action search and install each one that fits.')
+    // An installation needs the project.godot that a new game project's folder does not have yet.
+    expect(MCP_DESCRIPTION).toBe('Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than new code: '
+      + 'cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
+      + 'read the whole catalog with game_addons action search; install what fits once project.godot exists.')
+    // Every provider's description shares the overview's 4,096 characters, so this one grew no longer.
+    expect(MCP_DESCRIPTION.length).toBeLessThanOrEqual(341)
     const [tool] = provider.tools()
     expect(tool?.description).toBe(`${tool?.definition.description ?? ''} Before you plan a game, read the whole catalog with action search and no query.`)
   })

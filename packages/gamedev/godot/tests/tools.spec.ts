@@ -1,12 +1,17 @@
 /** The godot_* tools run, observe, and drive the Session's game through the real tool pipeline. */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { chmod, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SCREENSHOTS_GITIGNORE } from '../src/captures.ts'
+import { GodotRun } from '../src/run.ts'
 import { DIGEST_ENTRIES, formatDigest, formatLogEntry, formatTree, STARTUP_ENTRIES, TEXT_BUDGET, toolLogEntry } from '../src/tools.ts'
+import type { GodotVideoEncodeEvent, GodotVideoEncodeResult } from '../src/types.ts'
 import { callTool, compose, text, type Composition, type CompositionOptions } from './composition.ts'
 import { configureFake, fakeLog, fakeRequests, until } from './helpers.ts'
 
@@ -152,6 +157,164 @@ posix('observing the game', () => {
     expect(text(await callTool(c, 'godot_view', { path: 'shots/view.png' }))).toContain('already exists; pass replace: true to overwrite it')
   })
 
+  it('saves at a res:// path in the running game\'s project, and refuses one that leads out of it', async () => {
+    const c = await started()
+    const shot = await callTool(c, 'godot_screenshot', { path: 'res://shots/frame.png' })
+    expect(value(shot)).toMatchObject({ savedPath: join(c.project, 'shots', 'frame.png') })
+    expect((await readFile(join(c.project, 'shots', 'frame.png'))).toString('latin1')).toBe('PNG-BYTES')
+    const view = await callTool(c, 'godot_view', { width: 320, height: 180, path: 'res://shots/view.png' })
+    expect(value(view)).toMatchObject({ savedPath: join(c.project, 'shots', 'view.png') })
+    const unsaved = await callTool(c, 'godot_view', { width: 320, height: 180 })
+    expect(value(unsaved)).not.toHaveProperty('savedPath')
+    expect(text(unsaved)).not.toContain('Saved the image')
+    expect(unsaved.content.at(-1)).toMatchObject({ type: 'image' })
+    const audio = await callTool(c, 'godot_audio', { seconds: 0.25, path: 'res://captures/mix.wav' })
+    expect(value(audio)).toMatchObject({ savedPath: join(c.project, 'captures', 'mix.wav') })
+    expect(existsSync(join(c.dir.root, 'work', 'res:'))).toBe(false)
+    for (const [tool, path] of [['godot_screenshot', 'res://../frame.png'], ['godot_view', 'res://../view.png'], ['godot_audio', 'res://../mix.wav']] as const) {
+      expect(text(await callTool(c, tool, { path }))).toContain(`path ${JSON.stringify(path)} leads out of the project; a res:// path names a file inside it.`)
+    }
+  })
+
+  it('saves a screenshot and a view as new files in WASD Engine\'s screenshots folder of the project, which Godot does not import', async () => {
+    const c = await setup()
+    const imports = async (): Promise<number> => (await fakeLog(c.project)).filter(entry => (entry.argv as string[] | undefined)?.includes('--import')).length
+    // An import keeps its start to the millisecond, so a script written in that millisecond reads as changed after it;
+    // the game's start keeps the script older.
+    await writeFile(join(c.project, 'player.gd'), 'extends Node\n')
+    // A screenshots folder of the game's own stays as it is.
+    await mkdir(join(c.project, 'screenshots'))
+    await writeFile(join(c.project, 'screenshots', 'title.png'), 'GAME-ART')
+    expect((await callTool(c, 'godot_run')).isError).toBe(false)
+    await callTool(c, 'godot_check')
+    expect(await imports()).toBe(1)
+    const folder = join(c.project, '.wasdengine', 'screenshots')
+    const shot = await callTool(c, 'godot_screenshot', { save: true })
+    const results = [shot, await callTool(c, 'godot_screenshot', { save: true }), await callTool(c, 'godot_view', { width: 320, height: 180, save: true })]
+    const paths = results.map(result => value(result).savedPath as string)
+    for (const path of paths) expect(path).toMatch(new RegExp(`^${folder.replaceAll('/', '\\/')}\\/Fake-game_\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}(_\\d+)?\\.png$`, 'u'))
+    expect(new Set(paths).size).toBe(3)
+    expect(text(shot)).toContain(`Saved the image to ${paths[0]}.`)
+    expect(shot.content.at(-1)).toMatchObject({ type: 'image' })
+    expect((await readFile(paths[0] as string)).toString('latin1')).toBe('PNG-BYTES')
+    expect((await readFile(paths[2] as string)).toString('latin1')).toBe('VIEW-PNG-BYTES')
+    expect(existsSync(join(folder, '.gdignore'))).toBe(true)
+    expect(await readFile(join(folder, '.gitignore'), 'utf8')).toBe(SCREENSHOTS_GITIGNORE)
+    expect((await readdir(join(c.project, '.wasdengine'))).sort()).toEqual(['screenshots'])
+    expect((await readdir(join(c.project, 'screenshots'))).sort()).toEqual(['title.png'])
+    // Godot skips the folder, so the next check finds nothing new to import; an image saved elsewhere is new to it.
+    await callTool(c, 'godot_check')
+    expect(await imports()).toBe(1)
+    await callTool(c, 'godot_screenshot', { path: 'res://art/frame.png' })
+    await callTool(c, 'godot_check')
+    expect(await imports()).toBe(2)
+    await rm(folder, { recursive: true })
+    await mkdir(folder)
+    await writeFile(join(folder, '.gitignore'), '*\n')
+    await callTool(c, 'godot_screenshot', { save: true })
+    // Marker files that the folder holds stay as they are.
+    expect(await readFile(join(folder, '.gitignore'), 'utf8')).toBe('*\n')
+    expect(existsSync(join(folder, '.gdignore'))).toBe(true)
+    for (const tool of ['godot_screenshot', 'godot_view']) {
+      expect(text(await callTool(c, tool, { save: true, path: 'frame.png' }))).toBe('Error: Give path or save, not both.')
+    }
+  }, PROCESSES_TIMEOUT)
+
+  it('refuses to save in a .wasdengine or screenshots entry of the project that is not a folder', async () => {
+    const c = await started()
+    const state = join(c.project, '.wasdengine')
+    const refusal = (path: string): string => `${path} is not a folder, so save cannot keep the image in ${join(state, 'screenshots')}; `
+      + `move ${path} away, or pass path instead.`
+    await writeFile(state, 'not a folder')
+    expect(text(await callTool(c, 'godot_screenshot', { save: true }))).toBe(`Error: ${refusal(state)}`)
+    await rm(state)
+    await symlink(join(c.dir.root, 'nowhere'), state)
+    expect(text(await callTool(c, 'godot_view', { save: true }))).toBe(`Error: ${refusal(state)}`)
+    await rm(state)
+    await mkdir(state)
+    await writeFile(join(state, 'screenshots'), 'not a folder')
+    expect(text(await callTool(c, 'godot_screenshot', { save: true }))).toBe(`Error: ${refusal(join(state, 'screenshots'))}`)
+    expect(await readFile(join(state, 'screenshots'), 'utf8')).toBe('not a folder')
+    expect((await readdir(state)).sort()).toEqual(['screenshots'])
+  })
+
+  it('saves to a path for one call at a time, so the second of two calls at once finds the first one\'s file', async () => {
+    const c = await started({ game: { game: { replies: { screenshot: 'slow:200', view: 'slow:200', audio: 'slow:200' } } } })
+    const saves = [
+      ['godot_screenshot', { path: 'shots/same.png' }, 'PNG-BYTES'],
+      ['godot_view', { path: 'shots/same-view.png' }, 'VIEW-PNG-BYTES'],
+      ['godot_audio', { seconds: 0.25, path: 'shots/same.wav' }, 'RIFF'],
+    ] as const
+    for (const [tool, args, bytes] of saves) {
+      const results = await Promise.all([callTool(c, tool, args), callTool(c, tool, args)])
+      const path = join(c.dir.root, 'work', args.path)
+      expect(results.map(result => result.isError)).toContain(false)
+      expect(results.filter(result => result.isError).map(text)).toEqual([`Error: ${path} already exists; pass replace: true to overwrite it, or choose another path.`])
+      expect((await readFile(path)).toString('latin1').slice(0, bytes.length)).toBe(bytes)
+    }
+  })
+
+  it('gives up the file it held for a capture that failed', async () => {
+    const c = await started({ game: { game: { replies: { screenshot: 'error', view: 'error' } } } })
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots/frame.png' }))).toContain('fake screenshot failure')
+    expect(text(await callTool(c, 'godot_view', { path: 'shots/deeper/view.png' }))).toContain('fake view failure')
+    expect(existsSync(join(c.dir.root, 'work', 'shots'))).toBe(false)
+    expect(text(await callTool(c, 'godot_screenshot', { save: true }))).toContain('fake screenshot failure')
+    expect((await readdir(join(c.project, '.wasdengine', 'screenshots'))).sort()).toEqual(['.gdignore', '.gitignore'])
+    await configureFake(c.project, { game: {} })
+    await callTool(c, 'godot_run')
+    expect(text(await callTool(c, 'godot_screenshot', { path: 'shots/frame.png' }))).toContain('Saved the image to')
+  })
+
+  it.skipIf(process.getuid?.() === 0)('reports the capture\'s own failure when the file it held cannot be removed', async () => {
+    const c = await started({ game: { game: { replies: { screenshot: 'failAfter:1000' } } } })
+    const locked = join(c.dir.root, 'work', 'locked')
+    await mkdir(locked)
+    const call = callTool(c, 'godot_screenshot', { path: 'locked/frame.png' })
+    try {
+      await until(() => existsSync(join(locked, 'frame.png')))
+      // A folder that cannot change keeps the empty file that the call held.
+      await chmod(locked, 0o555)
+      expect(text(await call)).toBe('Error: fake screenshot failure')
+      expect(await readFile(join(locked, 'frame.png'), 'utf8')).toBe('')
+    } finally {
+      await chmod(locked, 0o755)
+    }
+  })
+
+  it.each([
+    ['vision', 12, true],
+    ['blind', 0, false],
+  ] as const)('records the game for a %s model, with a sheet of frames only when the model sees images', async (model, sheetFrames, sheet) => {
+    const c = await started({ model })
+    const start = vi.spyOn(GodotRun.prototype, 'startRecording').mockImplementation(async (recording, _params, sink) => {
+      sink.frame({ recording, index: 0, timeMs: 0, width: 64, height: 36, image: Buffer.from('JPEG-BYTES') })
+    })
+    const stop = vi.spyOn(GodotRun.prototype, 'stopRecording').mockImplementation(async recording => ({ recording, frames: 1, skipped: 0, seconds: 0.5, width: 64, height: 36 }))
+    const route = (path: string): ConnectionFetchRoute => [...c.routes].find(candidate => candidate.path === path) as ConnectionFetchRoute
+    const asked: number[] = []
+    // The WASD Engine window: it reads the frames, uploads the video, and answers with a sheet when asked for one.
+    const window = c.ctx.on('godot/record', async (request: GodotVideoEncodeEvent): Promise<GodotVideoEncodeResult> => {
+      asked.push(request.sheetFrames)
+      const url = `http://127.0.0.1/api/godot.recording?session=${request.sessionId}&run=${request.runId}&recording=${request.recording}`
+      await (await route('/api/godot.recording').fetch(new Request(url))).arrayBuffer()
+      await route('/api/godot.video').fetch(new Request(url.replace('godot.recording', 'godot.video'), { method: 'POST', body: new TextEncoder().encode('video') }))
+      return { codec: 'H.264', frames: 1, seconds: 0.5, width: 64, height: 36, bytes: 5, ...request.sheetFrames === 0 ? {} : { sheet: { data: 'AAAA', width: 2, height: 2, times: [0] } } }
+    })
+    try {
+      const result = await callTool(c, 'godot_record', { seconds: 0.5 })
+      expect(text(result)).toMatch(/^Recorded 0\.50 s at 30 fps, at real time: 1 frames of 64x36 px in H\.264, saved to .+\.mp4 \(1 KB\)/u)
+      expect(asked).toEqual([sheetFrames])
+      expect(result.content.some(block => block.type === 'image')).toBe(sheet)
+      expect(text(result).includes('You receive no images in this Session, so this result leaves the sheet of frames out; the saved video holds them.')).toBe(!sheet)
+      expect(await readFile(value(result).path as string, 'utf8')).toBe('video')
+    } finally {
+      window()
+      start.mockRestore()
+      stop.mockRestore()
+    }
+  })
+
   it.each([
     [{ model: 'blind' } as const, 'does not accept images'],
     [{ model: 'unknown' } as const, 'does not accept images'],
@@ -160,6 +323,35 @@ posix('observing the game', () => {
   ])('refuses screenshots the model cannot see: %j', async (options, message) => {
     const c = await started(options)
     expect(text(await callTool(c, 'godot_screenshot'))).toContain(message)
+    expect(text(await callTool(c, 'godot_view'))).toContain(message)
+  })
+
+  it.each([
+    [{ model: 'blind' } as const],
+    [{ model: 'none' } as const],
+    [{ attachments: false }],
+  ])('saves the capture of a call that saves it, and leaves out the image the model cannot see: %j', async (options) => {
+    const c = await started(options)
+    const shot = await callTool(c, 'godot_screenshot', { save: true })
+    const saved = value(shot).savedPath as string
+    expect(value(shot)).toMatchObject({ width: 640, height: 360, windowWidth: 640, windowHeight: 360, paused: false })
+    expect(value(shot)).not.toHaveProperty('image')
+    expect(shot.content.some(block => block.type === 'image')).toBe(false)
+    expect(text(shot)).toMatch(/^Screenshot at frame \d+: 640x360 px of a 640x360 px game window\. /u)
+    expect(text(shot)).toContain(`Saved the image to ${saved}.\n\nYou receive no images in this Session, so this result leaves the image out; the saved file holds it.`)
+    expect((await readFile(saved)).toString('latin1')).toBe('PNG-BYTES')
+    // Mouse coordinates in screenshot pixels refer to the saved image.
+    expect(text(await callTool(c, 'godot_input', { events: [{ kind: 'mouse_button', button: 'left', pressed: true, x: 100, y: 50 }] }))).toContain('Sent 1 events')
+    const view = await callTool(c, 'godot_view', { width: 320, height: 180, path: 'view.png' })
+    expect(value(view)).toMatchObject({ width: 320, height: 180, savedPath: join(c.dir.root, 'work', 'view.png') })
+    expect(value(view)).not.toHaveProperty('image')
+    expect(view.content.some(block => block.type === 'image')).toBe(false)
+    expect(text(view)).toContain('You receive no images in this Session, so this result leaves the image out; the saved file holds it.')
+    expect((await readFile(join(c.dir.root, 'work', 'view.png'))).toString('latin1')).toBe('VIEW-PNG-BYTES')
+    expect(c.saved).toEqual([])
+    expect((await fakeRequests(c.project)).filter(request => request.type === 'input').map(request => request.events)).toEqual([
+      [{ kind: 'mouse_button', button: 'left', pressed: true, x: 100, y: 50 }],
+    ])
   })
 
   it('evaluates expressions and describes the scene tree', async () => {

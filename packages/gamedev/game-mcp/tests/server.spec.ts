@@ -16,7 +16,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport, type Progress } from '@modelcontextprotocol/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpToolResult, type GameMcpView } from '../src/index.ts'
 
 const TIMEOUT = 30_000
@@ -126,10 +126,10 @@ describe('GameMcpServer', () => {
     expect(client.getServerVersion()).toMatchObject({ name: 'wasd-engine', title: 'WASD Engine' })
     const instructions = client.getInstructions() ?? ''
     expect(instructions.startsWith('WASD Engine is the game development app open on this computer, and this server gives you its game tools. ')).toBe(true)
-    expect(instructions).toContain('What each plugin adds:\n- Alpha (alpha_*): Echoes text.\n\n')
+    expect(instructions).toContain('are not reasons.\n\nWhat each plugin adds:\n- Alpha (alpha_*): Echoes text.\n\n## Alpha\n\n')
     expect(instructions.endsWith('\n\n## Alpha\n\nCall alpha_echo to check the connection.')).toBe(true)
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'alpha' } })))
-      .toContain('Alpha guide (where it names a tool without the alpha_ prefix, add the prefix):\n\nCall alpha_echo to check the connection.')
+      .toContain('Alpha guide (where it names one of the tools below without the alpha_ prefix, add the prefix):\n\nCall alpha_echo to check the connection.')
     const { tools } = await client.listTools()
     expect(tools.map(tool => tool.name)).toEqual(['search_game_tools', 'call_game_tool', 'create_game_project', 'alpha_echo', 'alpha_show'])
     expect(tools[3]).toMatchObject({ annotations: { readOnlyHint: true }, inputSchema: { type: 'object', required: ['text'] } })
@@ -143,6 +143,91 @@ describe('GameMcpServer', () => {
     expect(text(unknown)).toContain('no game tool named "nope"')
     expect((await client.callTool({ name: 'call_game_tool', arguments: {} })).isError).toBe(true)
     expect((await client.callTool({ name: 'call_game_tool', arguments: { name: 'alpha_echo', arguments: 'x' } })).isError).toBe(true)
+  }, TIMEOUT)
+
+  it('answers an agent that connects while the plugins load once the composition has loaded them, so the instructions name every provider', async () => {
+    const loaded = Promise.withResolvers<undefined>()
+    ctx.provide('loader', { await: () => loaded.promise })
+    const { server, view, views } = await start()
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const connecting = connect(view.url as string, token)
+    // The server has the agent's first request before the plugin that offers Alpha loads.
+    await vi.waitFor(() => { expect(views.at(-1)?.clients).toMatchObject([{ id: 'claude-code' }]) }, { timeout: TIMEOUT })
+    ctx.effect(() => server.provide(alpha))
+    loaded.resolve(undefined)
+    const client = await connecting
+    expect(client.getInstructions()).toContain('\n- Alpha (alpha_*): Echoes text.')
+    expect((await client.listTools()).tools.map(tool => tool.name)).toContain('alpha_echo')
+  }, TIMEOUT)
+
+  it('stops waiting for the composition after readyTimeoutMs, once, and says so', async () => {
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    // A plugin that never finishes loading keeps the Loader from settling.
+    ctx.provide('loader', { await: () => new Promise<void>(() => {}) })
+    const { server, view } = await start({ readyTimeoutMs: 200 })
+    ctx.effect(() => server.provide(alpha))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const started = performance.now()
+    const first = await connect(view.url as string, token)
+    expect(performance.now() - started).toBeGreaterThanOrEqual(150)
+    expect(first.getInstructions()).toContain('\n- Alpha (alpha_*): Echoes text.')
+    const second = await connect(view.url as string, token, 'codex-mcp-client')
+    expect(text(await second.callTool({ name: 'alpha_echo', arguments: { text: 'hi' } }))).toBe('echo: hi')
+    const timedOut = warn.mock.calls.filter(([message]) => typeof message === 'string' && message.includes('did not finish loading'))
+    expect(timedOut).toEqual([['game-mcp: the plugins did not finish loading within 200 ms, so agents that connect now get the '
+      + 'instructions of the providers registered so far: ["Alpha"]']])
+  }, TIMEOUT)
+
+  it('answers with the providers it has when the wait for the composition fails, and says why', async () => {
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    ctx.provide('loader', { await: () => Promise.reject(new Error('the tree failed to load')) })
+    const { server, view } = await start()
+    ctx.effect(() => server.provide(alpha))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const client = await connect(view.url as string, token)
+    expect(client.getInstructions()).toContain('\n- Alpha (alpha_*): Echoes text.')
+    expect(warn).toHaveBeenCalledWith('game-mcp: the plugins could not be awaited: the tree failed to load')
+  }, TIMEOUT)
+
+  it('settles a request\'s wait for the composition as soon as the plugin stops, releasing the wait\'s deadline', async () => {
+    const warn = vi.spyOn(ctx.logger, 'warn').mockImplementation(() => {})
+    // A delay that no timer of the SDK or the client uses picks the wait's deadline out of the timers.
+    const readyTimeoutMs = 43_210
+    const timers = vi.spyOn(globalThis, 'setTimeout')
+    const cleared = vi.spyOn(globalThis, 'clearTimeout')
+    onTestFinished(() => {
+      timers.mockRestore()
+      cleared.mockRestore()
+    })
+    ctx.provide('loader', { await: () => new Promise<void>(() => {}) })
+    const fiber = ctx.plugin(GameMcpServer, GameMcpServer.Config({ dataRoot: join(root, 'data'), port: 0, readyTimeoutMs }))
+    await fiber
+    const server = ctx.get('gameMcp') as GameMcpServer
+    const watching = new AbortController()
+    const views: GameMcpView[] = []
+    void (async () => {
+      for await (const view of server.watch(watching.signal)) views.push(view)
+    })()
+    ctx.effect(() => () => { watching.abort() })
+    await vi.waitFor(() => { expect(views.at(-1)?.state).toBe('listening') }, { timeout: TIMEOUT })
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const client = new Client({ name: 'claude-code', version: '2.1.0' })
+    const connecting = client.connect(new StreamableHTTPClientTransport(new URL(views.at(-1)?.url as string), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    }))
+    await vi.waitFor(() => { expect(views.at(-1)?.clients).toMatchObject([{ id: 'claude-code' }]) }, { timeout: TIMEOUT })
+    // The agent's first request waits on the deadline that the wait set.
+    const started = timers.mock.calls.findIndex(([, delay]) => delay === readyTimeoutMs)
+    expect(started).toBeGreaterThanOrEqual(0)
+    // The spied overloads type the timer as any; the test only compares it.
+    const deadline: unknown = timers.mock.results[started]?.value
+    expect(deadline).toBeDefined()
+    expect(cleared).not.toHaveBeenCalledWith(deadline)
+    await fiber.dispose()
+    // The stop settled the wait, which released its deadline at once instead of after readyTimeoutMs.
+    await vi.waitFor(() => { expect(cleared).toHaveBeenCalledWith(deadline) }, { timeout: 5_000 })
+    await expect(connecting).rejects.toThrow()
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('did not finish loading'))
   }, TIMEOUT)
 
   it('warns when a provider\'s description makes the overview longer than agents such as Claude Code read', async () => {

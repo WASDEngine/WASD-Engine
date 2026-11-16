@@ -21,7 +21,10 @@ import {
   ADDON_DIR, hasMultiplayerAddon, MULTIPLAYER_MODES, pluginVersion, readMultiplayerConfig, replaceFolder, withMultiplayerAddon,
   writeMultiplayerConfig,
 } from './multiplayer-project.ts'
-import { createFreePrompt, createPrompt, deletePrompt, resizePrompt, restorePrompt, type LocalizedPrompt } from './multiplayer-prompts.ts'
+import {
+  createFreePrompt, createPrompt, deletePrompt, resizePrompt, restorePrompt, sizeLabels, type DeletedServer, type LocalizedPrompt,
+  type PromptSize,
+} from './multiplayer-prompts.ts'
 import {
   clientConnected, estimateSizes, freePort, instanceProblems, instanceStats, planTest, readTestRecord, saveTestRecord, testRecord,
   type SizeEstimate,
@@ -232,13 +235,37 @@ function freeLeft(plans: ServerPlans, size: string): number {
   return plans.grants?.find(grant => grant.size === size)?.available ?? 0
 }
 
+/**
+ * Whether the server's own pending resize to a size holds one of the account's free servers of it. The sizes no
+ * longer count that one as left, but a new request for the size replaces the server's own and takes it over.
+ * @param server - the server, as the site reports it.
+ * @param size - the size id.
+ * @returns false also for a site that does not say what a pending request holds.
+ */
+function holdsFree(server: ServerRecord, size: string): boolean {
+  return server.pending?.kind === 'resize' && server.pending.size === size && server.pending.granted === true
+}
+
 /** The free servers WASD Engine gave the account, as one sentence, or undefined without any. */
 function freeServersLine(plans: ServerPlans): string | undefined {
   const grants = (plans.grants ?? []).filter(grant => grant.granted > 0)
   if (grants.length === 0) return undefined
   const names = new Map(plans.sizes.map(size => [size.id, size.name]))
   const parts = grants.map(grant => `${String(grant.granted)} ${names.get(grant.size) ?? grant.size} (${String(grant.available)} left)`)
-  return `Free servers WASD Engine gave this account: ${parts.join(', ')}. A server of a size with one left costs nothing.`
+  return `Free servers WASD Engine gave this account: ${parts.join(', ')}. A server of a size with one left is free while one is still left when the user confirms it on the site.`
+}
+
+/**
+ * What a result tells the user of a server that one of the account's free servers would cover: only the site decides,
+ * when the user confirms, and it asks for the price once none is left.
+ */
+function freeWhileLeft(size: string, price: string): string {
+  return `free while one of the free ${size} servers WASD Engine gave this account is left when you confirm; if none is left by then, the page shows its price, ${price} a month, instead.`
+}
+
+/** What the confirmation page's message says of a server that one of the account's free servers would cover. */
+function freeOnConfirm(size: string): string {
+  return `it is free while one of your free ${size} servers is left when you confirm.`
 }
 
 /** The text a refused approval returns. */
@@ -731,7 +758,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       server_id: { type: 'string' },
       size: { type: 'string' },
       price: { type: 'string', description: 'Monthly price of the size.' },
-      free: { type: 'boolean', description: 'true when one of the free servers WASD Engine gave the account covers it, so it costs nothing.' },
+      free: { type: 'boolean', description: 'true when one of the free servers WASD Engine gave the account was left for it: it is free while one is left when the user confirms on the site.' },
       confirm_url: { type: 'string', description: 'The page where the user confirms; nothing happens before that.' },
       expires_at: { type: 'string' },
       opened: { type: 'boolean', description: 'Whether WASD Engine opened the page in the user\'s browser.' },
@@ -755,7 +782,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const create = defineTool({
     name: 'wasd_server_create',
-    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free and needs no card. Tell the user the size\'s monthly price, or that it is free, and what it includes before calling it. The server then runs the newest release\'s server build.',
+    description: 'Create a dedicated server for the released game, of a size the user chose from wasd_server_plans. It never charges by itself: it returns a page on the WASD Engine site where the user confirms and pays, which needs a valid payment method on their account; a size of which wasd_server_plans lists free servers left for the account is free while one is left when the user confirms, and then needs no card. Tell the user the size\'s monthly price, or that it is free while one of those free servers is left, and what it includes before calling it. The server then runs the newest release\'s server build.',
     parameters: {
       project: PROJECT,
       size: { type: 'string', required: true, description: 'Size id from wasd_server_plans, such as small.' },
@@ -773,7 +800,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       const price = formatPrice(size.price_cents, plans.currency)
       const free = freeLeft(plans, size.id) > 0
       const what = free
-        ? `This is a free ${size.name} server for ${game.title}: WASD Engine gave this account free ${size.name} servers, so it costs nothing.`
+        ? `This is a ${size.name} server for ${game.title}, ${freeWhileLeft(size.name, price)}`
         : `This is a ${size.name} server for ${game.title} at ${price} a month.`
       const site = hostOf(access.origin)
       const prompt = free ? createFreePrompt(size.name, game.title, site) : createPrompt(size.name, price, game.title, site)
@@ -791,7 +818,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
         expires_at: pending.expires_at,
         opened: shown.opened,
         confirm_message: free
-          ? `Confirm the free ${size.name} game server for ${game.title} on the WASD Engine site; nothing is charged.`
+          ? `Confirm the ${size.name} game server for ${game.title} on the WASD Engine site; ${freeOnConfirm(size.name)}`
           : `Confirm the ${size.name} game server for ${game.title} at ${price} a month on the WASD Engine site; nothing is charged until you confirm there.`,
         for_user: shown.forUser,
       }
@@ -928,7 +955,7 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
 
   const change = defineTool({
     name: 'wasd_server_change',
-    description: 'Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. A bigger size is charged from now, prorated, and a smaller one credited, but a size with free servers left for the account (wasd_server_plans lists them) costs nothing; deleting stops the server, ends its billing, and deletes its world 7 days later. Tell the user the price difference or what deleting loses before calling it.',
+    description: 'Change a dedicated server\'s size, or delete the server. It never changes the bill by itself: it returns a page on the WASD Engine site where the user confirms. For a paid server, a bigger size is charged from the confirmation, prorated, and a smaller one credited. A free server (wasd_server_status marks it) moved to a size without free servers left becomes a new purchase at that size\'s monthly price, with no credit. A size with free servers left for the account (wasd_server_plans lists them) is free while one is left when the user confirms. Deleting stops the server and deletes its world 7 days later; a paid server\'s monthly price comes off the bill unless the confirmation page says another of the account\'s servers keeps it, and a free one changes no bill. Deleting a server whose purchase still awaits confirmation cancels that purchase, which never ran or charged anything. Tell the user the price difference or what deleting loses before calling it.',
     parameters: {
       project: PROJECT,
       server: SERVER,
@@ -942,19 +969,28 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       const { api, access } = await signedIn(host, exec.signal)
       const game = await releasedGame(projectDir, access)
       const server = await chooseServer(api, game.id, args.server)
+      const granted = server.granted === true
       if (args.delete === true) {
-        const answer = await surface.approve(exec, 'wasd_server_change', deletePrompt(server.name, hostOf(access.origin)))
-        if (answer !== 'approved') return { status: answer, server_id: server.id, for_user: notApproved(answer, 'deleted') }
+        // Deleting a server whose purchase still awaits confirmation cancels that purchase, on the site's page too.
+        const deleted: DeletedServer = server.state === 'awaiting_confirmation' ? 'purchase' : granted ? 'free' : 'paid'
+        const answer = await surface.approve(exec, 'wasd_server_change', deletePrompt(server.name, deleted, hostOf(access.origin)))
+        if (answer !== 'approved') return { status: answer, server_id: server.id, for_user: notApproved(answer, deleted === 'purchase' ? 'cancelled' : 'deleted') }
         const pending = await api.remove(server.id)
-        const what = `This deletes ${server.name}: it stops for every player, its billing ends, and its world is deleted 7 days later.`
-        const shown = await confirmation(pending.confirm_url, what, exec)
+        const what: Record<DeletedServer, string> = {
+          purchase: `This cancels the purchase of ${server.name}: it never ran and was never charged, so cancelling it costs nothing.`,
+          free: `This deletes ${server.name}: it stops for every player and its world is deleted 7 days later; it is one of the account's free servers, so the bill does not change.`,
+          paid: `This deletes ${server.name}: it stops for every player and its world is deleted 7 days later; its monthly price comes off the bill, unless the confirmation page says another of the account's servers keeps it.`,
+        }
+        const shown = await confirmation(pending.confirm_url, what[deleted], exec)
         return {
           status: 'awaiting_confirmation' as const,
           server_id: server.id,
           confirm_url: pending.confirm_url,
           expires_at: pending.expires_at,
           opened: shown.opened,
-          confirm_message: `Confirm deleting the server ${server.name} on the WASD Engine site; its world is deleted 7 days later.`,
+          confirm_message: deleted === 'purchase'
+            ? `Confirm cancelling the purchase of the server ${server.name} on the WASD Engine site; nothing is charged.`
+            : `Confirm deleting the server ${server.name} on the WASD Engine site; its world is deleted 7 days later.`,
           for_user: shown.forUser,
         }
       }
@@ -963,17 +999,23 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       if (size.id === server.size) throw new MultiplayerError(`${server.name} is already ${size.name}.`)
       const current = plans.sizes.find(candidate => candidate.id === server.size)
       const price = formatPrice(size.price_cents, plans.currency)
-      const free = freeLeft(plans, size.id) > 0
-      const from = current === undefined
-        ? server.size
-        : `${current.name} (${server.granted === true ? 'free' : `${formatPrice(current.price_cents, plans.currency)} a month`})`
-      const to = `${size.name} (${free ? 'free' : `${price} a month`})`
-      const answer = await surface.approve(exec, 'wasd_server_change', resizePrompt(server.name, from, to, hostOf(access.origin)))
+      const free = freeLeft(plans, size.id) > 0 || holdsFree(server, size.id)
+      const from: PromptSize = {
+        name: current?.name ?? server.size,
+        price: current === undefined ? undefined : formatPrice(current.price_cents, plans.currency),
+        free: granted,
+      }
+      const fromLabel = sizeLabels(from).en
+      const answer = await surface.approve(exec, 'wasd_server_change', resizePrompt(server.name, from, { name: size.name, price, free }, hostOf(access.origin)))
       if (answer !== 'approved') return { status: answer, server_id: server.id, size: size.id, price, ...free ? { free } : {}, for_user: notApproved(answer, 'changed') }
       const pending = await api.resize(server.id, size.id)
+      // A free server moved to a size without a free one left is bought at that size's price, with no credit.
+      const purchase = granted && !free
       const what = free
-        ? `This changes ${server.name} from ${from} to ${size.name}, free: WASD Engine gave this account free ${size.name} servers.`
-        : `This changes ${server.name} from ${from} to ${size.name} at ${price} a month.`
+        ? `This changes ${server.name} from ${fromLabel} to ${size.name}, ${freeWhileLeft(size.name, price)}`
+        : purchase
+          ? `This changes ${server.name} from ${fromLabel} to ${size.name}, a new purchase at ${price} a month; the free ${from.name} server stays on the account for another server.`
+          : `This changes ${server.name} from ${fromLabel} to ${size.name} at ${price} a month.`
       const shown = await confirmation(pending.confirm_url, what, exec)
       return {
         status: 'awaiting_confirmation' as const,
@@ -985,8 +1027,10 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
         expires_at: pending.expires_at,
         opened: shown.opened,
         confirm_message: free
-          ? `Confirm changing the server ${server.name} to a free ${size.name} on the WASD Engine site.`
-          : `Confirm changing the server ${server.name} to ${size.name} at ${price} a month on the WASD Engine site.`,
+          ? `Confirm changing the server ${server.name} to ${size.name} on the WASD Engine site; ${freeOnConfirm(size.name)}`
+          : purchase
+            ? `Confirm changing the server ${server.name} to ${size.name}, a new purchase at ${price} a month, on the WASD Engine site; nothing is charged until you confirm there.`
+            : `Confirm changing the server ${server.name} to ${size.name} at ${price} a month on the WASD Engine site.`,
         for_user: shown.forUser,
       }
     },
@@ -1002,13 +1046,13 @@ WASD Engine puts Godot games online two ways, and players sign in with a WASD En
 
 When the user wants multiplayer:
 1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up; then call wasd_multiplayer_setup with the mode they choose, and wasd_multiplayer_test once the game connects players.
-2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.
+2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free while one is left when the user confirms, so say that instead.
 3. Let the user choose the size from wasd_server_plans; never pick one for them. wasd_server_create and wasd_server_change only open a page where the user confirms on the WASD Engine site; nothing is charged before that.
 4. Explain that the owner gets emails at 70%, 90%, and 100% of a server's monthly bandwidth, and that at 100% the server stops until its next billing month; suggest a smaller size when a server is mostly idle.
 5. When the world must keep going while nobody plays, tell the user to turn on Always on for the server on the WASD Engine site; only the sizes wasd_server_plans names offer it.`
 
 /** The multiplayer part of the `wasd` provider's MCP instructions. */
-export const MULTIPLAYER_MCP_INSTRUCTIONS = 'Multiplayer: a game goes online player-hosted, free, where one player\'s browser hosts and friends join with a code, or on a dedicated server that WASD Engine runs for a monthly price by size; players sign in with a WASD Engine account in both. Call wasd_multiplayer_guide first and show your user the comparison with its costs before wasd_multiplayer_setup. State the monthly price and what it includes before suggesting a server, or that it is free when wasd_server_plans lists free servers of that size left for your user\'s account, and let your user choose the size from wasd_server_plans; never pick one. wasd_server_create and wasd_server_change return a page where your user confirms on the WASD Engine site, and nothing is charged before that: give them the page. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth and that at 100% the server stops until its next billing month. Pass confirm: true to wasd_server_manage restore only after your user agreed to replace the world.'
+export const MULTIPLAYER_MCP_INSTRUCTIONS = 'Multiplayer: a game goes online player-hosted, free, where one player\'s browser hosts and friends join with a code, or on a dedicated server that WASD Engine runs for a monthly price by size; players sign in with a WASD Engine account in both. Call wasd_multiplayer_guide first and show your user the comparison with its costs before wasd_multiplayer_setup. State the monthly price and what it includes before suggesting a server, or that it is free while one is left when your user confirms, if wasd_server_plans lists free servers of that size left for your user\'s account, and let your user choose the size from wasd_server_plans; never pick one. wasd_server_create and wasd_server_change return a page where your user confirms on the WASD Engine site, and nothing is charged before that: give them the page. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth and that at 100% the server stops until its next billing month. Pass confirm: true to wasd_server_manage restore only after your user agreed to replace the world.'
 
 /** Description of the `project` parameter for agents connected through WASD Engine's MCP server. */
 const MCP_PROJECT = 'Absolute path of the folder that holds project.godot.'

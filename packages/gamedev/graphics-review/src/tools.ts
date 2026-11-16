@@ -44,7 +44,7 @@ export interface GraphicsReviewWording {
 /** Wording of the Session's own tool. */
 export const SESSION_WORDING: GraphicsReviewWording = {
   image: 'Path of the PNG, JPEG, or WebP image to review, relative to the working directory or absolute: a game screenshot that '
-    + 'godot_screenshot or godot_view saved at their path, a render, a generated image, a texture, or a sprite sheet.',
+    + 'godot_screenshot or godot_view saved with save set to true, a render, a generated image, a texture, or a sprite sheet.',
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -88,7 +88,7 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
       const subject = args.subject.trim()
       if (subject === '') throw new Error('Pass subject: what the image shows and what it is for.')
       const path = await host.image(args.image, exec)
-      const image = await readReviewImage(path, host.limits)
+      const image = await readReviewImage(path, host.limits, exec.signal)
       exec.signal.throwIfAborted()
       const goal = args.goal?.trim()
       const focus = args.focus?.trim()

@@ -4,7 +4,7 @@
  * fake Godot game, with screenshots as PNG bytes and the window asked to show the Session that runs the game.
  */
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import GameMcpServer, { type GameMcpView } from '@deepseek-ai/dsh-game-mcp'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -111,15 +111,20 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_script')?.inputSchema.required).toEqual(['script'])
     expect(godot.find(tool => tool.name === 'godot_script')?.description).toContain('a res:// path or an absolute path inside the project')
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
-    expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBe(true)
-    expect(godot.find(tool => tool.name === 'godot_performance')?.annotations?.readOnlyHint).toBe(true)
-    expect(godot.find(tool => tool.name === 'godot_view')?.annotations?.readOnlyHint).toBe(true)
-    // A recording saves a video file.
+    expect(godot.filter(tool => tool.annotations?.readOnlyHint === true).map(tool => tool.name)).toEqual(['godot_scene_tree', 'godot_performance', 'godot_logs'])
+    // Screenshots and views save image files with path or save, and a recording saves a video file.
+    expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBeUndefined()
+    expect(godot.find(tool => tool.name === 'godot_view')?.annotations?.readOnlyHint).toBeUndefined()
     expect(godot.find(tool => tool.name === 'godot_record')?.annotations?.readOnlyHint).toBeUndefined()
     // A check may import the project first, which writes its import data.
     expect(godot.find(tool => tool.name === 'godot_check')?.annotations?.readOnlyHint).toBeUndefined()
     expect(godot.find(tool => tool.name === 'godot_audio')?.description).toContain('Listen to the running game')
     expect(JSON.stringify(godot.find(tool => tool.name === 'godot_audio')?.inputSchema.properties?.path)).toContain('an absolute path')
+    for (const name of ['godot_screenshot', 'godot_view']) {
+      const properties = godot.find(tool => tool.name === name)?.inputSchema.properties
+      expect(JSON.stringify(properties?.path)).toContain('an absolute path')
+      expect(JSON.stringify(properties?.save)).toContain('in the project\'s .wasdengine/screenshots folder')
+    }
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'godot' } }))).toContain('- Godot (godot_*, ready, 15 tools)')
   }, TIMEOUT)
 
@@ -183,6 +188,27 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     // The agent keeps its Session.
     await client.callTool({ name: 'godot_run', arguments: {} })
     expect(created).toHaveLength(1)
+    await client.callTool({ name: 'godot_stop', arguments: {} })
+  }, TIMEOUT)
+
+  it('saves captures in WASD Engine\'s screenshots folder of the project or at a res:// path, and one call at a time to a path', async () => {
+    const { client, project } = await connected({ replies: { screenshot: 'slow:200' } })
+    expect((await client.callTool({ name: 'godot_run', arguments: { project } })).isError).toBeFalsy()
+    const shot = await client.callTool({ name: 'godot_screenshot', arguments: { save: true } })
+    const saved = /Saved the image to (?<path>.+\.png)\./u.exec(text(shot))?.groups?.path as string
+    expect(basename(saved)).toMatch(/^Fake-game_[\d_-]+\.png$/u)
+    expect(await realpath(dirname(saved))).toBe(join(await realpath(project), '.wasdengine', 'screenshots'))
+    expect((await readFile(saved)).toString('latin1')).toBe('PNG-BYTES')
+    expect(images(shot)).toHaveLength(1)
+    const view = await client.callTool({ name: 'godot_view', arguments: { width: 320, height: 180, path: 'res://art/view.png' } })
+    expect(view.isError, text(view)).toBeFalsy()
+    expect((await readFile(join(project, 'art', 'view.png'))).toString('latin1')).toBe('VIEW-PNG-BYTES')
+    // Calls run at the same time; of two that save to one path, the second finds the first one's file.
+    const target = join(project, 'same.png')
+    const both = await Promise.all([0, 1].map(() => client.callTool({ name: 'godot_screenshot', arguments: { path: target } })))
+    expect(both.map(result => result.isError === true).sort()).toEqual([false, true])
+    expect(text(both.find(result => result.isError === true) as CallResult)).toContain(`${target} already exists; pass replace: true to overwrite it`)
+    expect((await readFile(target)).toString('latin1')).toBe('PNG-BYTES')
     await client.callTool({ name: 'godot_stop', arguments: {} })
   }, TIMEOUT)
 

@@ -135,17 +135,34 @@ describe('Create game project dialog', () => {
   })
 
   it.each([
-    ['gameProject/exists', 'A folder named “Space Frogs” is already there. Choose another name, or open the existing folder.'],
-    ['gameProject/invalid-name', 'Use a name without / \\ : * ? " < > | that doesn’t end with a period.'],
-    ['gameProject/invalid-directory', 'Enter the full path of a folder.'],
-    ['gameProject/create-failed', 'Couldn’t create the game project: disk full'],
-  ])('explains a %s refusal and keeps the draft', async (code, message) => {
-    dialog({ outcome: { ok: false, code, message: 'disk full' } })
-    fireEvent.change(nameField(), { target: { value: 'Space Frogs' } })
+    ['gameProject/exists', undefined, 'Space Frogs', 'A folder named “Space Frogs” is already there. Choose another name, or open the existing folder.'],
+    ['gameProject/invalid-name', 'unportable', 'Space: Frogs', 'Use a name without / \\ : * ? " < > | that doesn’t end with a period.'],
+    // A refusal without a reason gets the message of the characters a folder name cannot hold.
+    ['gameProject/invalid-name', undefined, 'Space: Frogs', 'Use a name without / \\ : * ? " < > | that doesn’t end with a period.'],
+    ['gameProject/invalid-name', 'device', 'con.txt', '“con.txt” is a name that Windows keeps for a device. Choose another name.'],
+    ['gameProject/invalid-name', 'git', '.git', '“.git” is the name of Git’s own folder. Choose another name.'],
+    ['gameProject/invalid-name', 'invisible', 'Space Frogs', 'Use a name with at least one visible character.'],
+    ['gameProject/invalid-directory', undefined, 'Space Frogs', 'Enter the full path of a folder.'],
+    ['gameProject/create-failed', undefined, 'Space Frogs', 'Couldn’t create the game project: disk full'],
+  ] as const)('explains a %s refusal (%s) and keeps the draft', async (code, problem, name, message) => {
+    dialog({ outcome: { ok: false, code, message: 'disk full', ...problem === undefined ? {} : { problem } } })
+    fireEvent.change(nameField(), { target: { value: name } })
     fireEvent.click(createButton())
     await settle()
     expect(screen.getByRole('alert').textContent).toBe(message)
-    expect(nameField().value).toBe('Space Frogs')
+    expect(nameField().value).toBe(name)
+    expect(createButton().hasAttribute('disabled')).toBe(false)
+  })
+
+  it('offers Create only once the name has a visible character, as the Host requires', () => {
+    const { createGameProject } = dialog()
+    for (const value of ['   ', '\u200b', '\u200d\u3164', '\u2800']) {
+      fireEvent.change(nameField(), { target: { value } })
+      expect(createButton().hasAttribute('disabled'), JSON.stringify(value)).toBe(true)
+      fireEvent.keyDown(nameField(), { key: 'Enter' })
+    }
+    expect(createGameProject).not.toHaveBeenCalled()
+    fireEvent.change(nameField(), { target: { value: '\u200bFrogs' } })
     expect(createButton().hasAttribute('disabled')).toBe(false)
   })
 
@@ -268,6 +285,12 @@ describe('game project registration', () => {
     const { create, adopt, startSession, face } = await bench()
     create.mockResolvedValueOnce({ ok: false, error: { code: 'gameProject/exists', message: 'taken', details: { path: '/x' } } } as never)
     await expect(face().createGameProject('Taken', DOCUMENTS, false)).resolves.toEqual({ ok: false, code: 'gameProject/exists', message: 'taken' })
+    // A refused name carries the Host's reason, which picks the dialog's message.
+    create.mockResolvedValueOnce({
+      ok: false, error: { code: 'gameProject/invalid-name', message: 'reserved', details: { name: 'CON', problem: 'device' } },
+    } as never)
+    await expect(face().createGameProject('CON', DOCUMENTS, false))
+      .resolves.toEqual({ ok: false, code: 'gameProject/invalid-name', message: 'reserved', problem: 'device' })
     expect(adopt).not.toHaveBeenCalled()
     expect(startSession).not.toHaveBeenCalled()
   })

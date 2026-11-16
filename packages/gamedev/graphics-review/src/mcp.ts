@@ -14,8 +14,8 @@ export const MCP_PROVIDER_ID = 'graphics'
 
 /** Wording for connected agents, which name every file by absolute path. */
 export const MCP_WORDING: GraphicsReviewWording = {
-  image: 'Absolute path of the PNG, JPEG, or WebP image to review: a game screenshot that godot_screenshot or godot_view saved at their '
-    + 'path, a Blender render, an image from image_generate, a texture, or a sprite sheet.',
+  image: 'Absolute path of the PNG, JPEG, or WebP image to review: a game screenshot that godot_screenshot or godot_view saved with save '
+    + 'set to true, a Blender render, an image from image_generate, a texture, or a sprite sheet.',
 }
 
 /**

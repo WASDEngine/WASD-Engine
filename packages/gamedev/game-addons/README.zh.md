@@ -150,7 +150,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型看到的内容
 
-会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后每个目录扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则和各行，只是以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比从头写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读完整个目录，并安装每个合适的扩展。
+会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后每个目录扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则和各行，只是以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比新写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读完整个目录，并在 `project.godot` 存在之后安装合适的扩展：安装需要它，而新游戏项目的文件夹里还没有它。
 
 ##### 部分文本
 

@@ -22,10 +22,13 @@ export const MCP_WORDING: GameAddonToolWording = {
   listedGuides: 'read each one\'s guide with action guide',
 }
 
-/** What the add-ons add, and when to read the catalog, as the server instructions list it. */
-export const MCP_DESCRIPTION = 'Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than code written from '
-  + 'scratch: cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
-  + 'read the whole catalog with game_addons action search and install each one that fits.'
+/**
+ * What the add-ons add, when to read the catalog, and when to install, as the server instructions list it: an
+ * installation needs the project's project.godot, which a new game project's folder does not have yet.
+ */
+export const MCP_DESCRIPTION = 'Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than new code: '
+  + 'cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
+  + 'read the whole catalog with game_addons action search; install what fits once project.godot exists.'
 
 /** The sentence that the tool's description adds for connected agents, which have no catalog in a system prompt. */
 const CATALOG_FIRST = 'Before you plan a game, read the whole catalog with action search and no query.'

@@ -99,7 +99,7 @@ Last, a release uploads what the game was made with, which Explore and the game'
 <a id="multiplayer"></a>
 ### Multiplayer
 
-A Godot game goes online one of two ways, and players sign in with a WASD Engine account in both. Player-hosted is free: one player's game hosts, the site introduces the players with a lobby code, and it relays connections that cannot go direct; it suits co-op and party games of 2 to 8 players, at most 16. A dedicated server runs the game's server build on WASD Engine's machines for a monthly price by size, and anyone can join at any time; it suits persistent worlds and larger games. A server without players sleeps, keeping its world, and a joining player wakes it in a few seconds; on the sizes the site names, its owner keeps it on instead (Always on), so the world keeps going. The sizes, their prices, the region, the bandwidth rule, and the sleep rules come from the site's `GET /api/v1/servers/plans`, so the package states no price of its own. Read with the sign-in, the sizes also list the free servers WASD Engine gave the account; a server of a size with one left is free, and the tools say so instead of its price.
+A Godot game goes online one of two ways, and players sign in with a WASD Engine account in both. Player-hosted is free: one player's game hosts, the site introduces the players with a lobby code, and it relays connections that cannot go direct; it suits co-op and party games of 2 to 8 players, at most 16. A dedicated server runs the game's server build on WASD Engine's machines for a monthly price by size, and anyone can join at any time; it suits persistent worlds and larger games. A server without players sleeps, keeping its world, and a joining player wakes it in a few seconds; on the sizes the site names, its owner keeps it on instead (Always on), so the world keeps going. The sizes, their prices, the region, the bandwidth rule, and the sleep rules come from the site's `GET /api/v1/servers/plans`, so the package states no price of its own. Read with the sign-in, the sizes also list the free servers WASD Engine gave the account; a server of a size with one left is free while one is left when the user confirms, which the site decides then, and the tools say so instead of its price. A free server moved to a size without one left becomes a new purchase at that size's monthly price, and deleting a free server leaves the bill as it is.
 
 | Tool | What it does |
 |---|---|
@@ -113,9 +113,9 @@ A Godot game goes online one of two ways, and players sign in with a WASD Engine
 | `wasd_server_status` | The game's servers: state, address, version, players, bandwidth and storage this month, and any page that waits for confirmation |
 | `wasd_server_logs` | A server's latest log lines, 1 to 500 |
 | `wasd_server_manage` | Starts, stops, restarts, or backs up a server, lists its backups, or restores one |
-| `wasd_server_change` | Asks for another size, or for the server's deletion, and returns the page where the user confirms |
+| `wasd_server_change` | Asks for another size, or for the server's deletion, which for a purchase still awaiting confirmation cancels that purchase, and returns the page where the user confirms |
 
-Every result carries `for_user`, plain text for the agent to pass on. No tool charges or deletes anything by itself: the site applies a purchase, a size change, or a deletion only once the signed-in user confirms on its page, which needs a valid payment method on the account. In a Session, `wasd_server_create` and `wasd_server_change` first ask through the approval prompt, in the window's language, with the size's monthly price, or that the server is free when the account has a free server of its size left, and a restore asks too; then a Desktop window opens the page in the system browser, and the result names the page as well. A connected agent's purchase returns the page in `for_user`, which the server also sends as a URL elicitation to a client that supports one, as [game-mcp](../game-mcp/README.md#confirmation-pages) describes, and its restore needs `confirm: true`. A server's monthly bandwidth sends the owner emails at 70%, 90%, and 100%, and at 100% the server stops until its next billing month; no tool sells more.
+Every result carries `for_user`, plain text for the agent to pass on. No tool charges or deletes anything by itself: the site applies a purchase, a size change, or a deletion only once the signed-in user confirms on its page, which needs a valid payment method on the account. In a Session, `wasd_server_create` and `wasd_server_change` first ask through the approval prompt, in the window's language, with the sizes and their monthly prices in that language, or that the server is free while the account has a free server of its size left when the user confirms, and a restore asks too; then a Desktop window opens the page in the system browser, and the result names the page as well. A connected agent's purchase returns the page in `for_user`, which the server also sends as a URL elicitation to a client that supports one, as [game-mcp](../game-mcp/README.md#confirmation-pages) describes, and its restore needs `confirm: true`. A server's monthly bandwidth sends the owner emails at 70%, 90%, and 100%, and at 100% the server stops until its next billing month; no tool sells more.
 
 Releases carry multiplayer: in `dedicated` mode, after the Web build is released, the release exports the Linux dedicated server build with `ctx.godot.exportServer()`, zips `server.x86_64` with any GDExtension libraries the export wrote next to it, and uploads it to `POST /api/v1/games/<id>/server-builds?version=<n>` with the new version's number; the site then moves the game's servers to it after a warning to their players. A server build that fails leaves the Web version released and becomes a warning of the result.
 
@@ -330,7 +330,7 @@ WASD Engine puts Godot games online two ways, and players sign in with a WASD En
 
 When the user wants multiplayer:
 1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up; then call wasd_multiplayer_setup with the mode they choose, and wasd_multiplayer_test once the game connects players.
-2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.
+2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free while one is left when the user confirms, so say that instead.
 3. Let the user choose the size from wasd_server_plans; never pick one for them. wasd_server_create and wasd_server_change only open a page where the user confirms on the WASD Engine site; nothing is charged before that.
 4. Explain that the owner gets emails at 70%, 90%, and 100% of a server's monthly bandwidth, and that at 100% the server stops until its next billing month; suggest a smaller size when a server is mostly idle.
 5. When the world must keep going while nobody plays, tell the user to turn on Always on for the server on the WASD Engine site; only the sizes wasd_server_plans names offer it.
@@ -338,7 +338,7 @@ When the user wants multiplayer:
 
 #### Token effect
 
-The eleven declarations come to about 9,000 characters of JSON, and the section to about 1,600 characters; the provider's multiplayer instructions add about 1,000 characters to the MCP server's instructions.
+The eleven declarations come to about 9,000 characters of JSON, and the section to about 1,600 characters; the provider's multiplayer instructions add about 1,050 characters to the MCP server's instructions.
 
 #### KV Cache effect
 
@@ -348,7 +348,7 @@ The declarations and the section are static while the Godot plugin is loaded, so
 
 #### What the model sees
 
-Each result is JSON with `for_user`, which the agent passes on: the guide's comparison and recommendation; setup's next steps in GDScript; the test's connected clients, measurements, fitted size, and the first problem an instance reported; the sizes with prices; a pending purchase or change with its `confirm_url` and whether a window opened it; servers, log lines, and backups as the site reports them. A declined, cancelled, or unanswered approval returns that nothing was bought, changed, or restored. Failures carry what to do, such as signing in, releasing once first, or choosing among several servers.
+Each result is JSON with `for_user`, which the agent passes on: the guide's comparison and recommendation; setup's next steps in GDScript; the test's connected clients, measurements, fitted size, and the first problem an instance reported; the sizes with prices; a pending purchase or change with its `confirm_url`, its price or that it is free while a free server of its size is left when the user confirms, and whether a window opened it; servers, log lines, and backups as the site reports them. A declined, cancelled, or unanswered approval returns that nothing was bought, changed, or restored. Failures carry what to do, such as signing in, releasing once first, or choosing among several servers.
 
 #### Token effect
 

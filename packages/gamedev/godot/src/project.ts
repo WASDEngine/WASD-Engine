@@ -184,10 +184,11 @@ export async function readGodotProject(dir: string): Promise<GodotProject> {
 /**
  * Resolve the project a request names, or the nearest one below the working directory.
  * @param workingDirectory - absolute Session working directory.
- * @param requested - folder or `project.godot` path relative to the working directory; undefined searches.
+ * @param requested - folder or `project.godot` path, absolute or relative to the working directory; undefined searches.
  * @param signal - cancellation.
  * @returns the project with its settings.
- * @throws {GodotProjectError} when no `project.godot` is found.
+ * @throws {GodotProjectError} when no `project.godot` is found, with a message that names the absolute folder and suits
+ *   callers that name folders by absolute path as well as those that name them relative to the working directory.
  */
 export async function resolveGodotProject(
   workingDirectory: string,
@@ -198,7 +199,7 @@ export async function resolveGodotProject(
     const target = resolve(workingDirectory, requested)
     const dir = basename(target) === PROJECT_FILE ? dirname(target) : target
     if (!await isFile(join(dir, PROJECT_FILE))) {
-      throw new GodotProjectError(`No project.godot in ${dir}; pass the folder that contains project.godot, relative to the working directory.`, dir)
+      throw new GodotProjectError(`No project.godot in ${dir}; pass the folder that holds project.godot, or create the Godot project there first.`, dir)
     }
     signal.throwIfAborted()
     return readGodotProject(dir)
@@ -313,4 +314,18 @@ export function resolveProjectPath(projectDir: string, workingDirectory: string,
   const absolute = path.startsWith('res://') ? join(projectDir, path.slice('res://'.length)) : resolve(workingDirectory, path)
   const inside = relative(projectDir, absolute)
   return inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside) ? undefined : absolute
+}
+
+/**
+ * Resolve the `res://` path of a file that a call saves, such as a screenshot or a recording, to its absolute path in
+ * the project.
+ * @param projectDir - absolute project folder.
+ * @param path - the path as the call gave it, starting with `res://`.
+ * @returns the absolute path.
+ * @throws {GodotProjectError} when the path leads out of the project.
+ */
+export function resolveResFile(projectDir: string, path: string): string {
+  const absolute = resolveProjectPath(projectDir, projectDir, path)
+  if (absolute === undefined) throw new GodotProjectError(`path ${JSON.stringify(path)} leads out of the project; a res:// path names a file inside it.`, projectDir)
+  return absolute
 }

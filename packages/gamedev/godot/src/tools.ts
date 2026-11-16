@@ -8,11 +8,9 @@
  * @module @deepseek-ai/dsh-godot/src/tools
  */
 import { Buffer } from 'node:buffer'
-import { stat } from 'node:fs/promises'
 import { extname } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
-import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import type { AttachmentId, AttachmentStore, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import { analyzeAudio, describeAudioImage, drawAudioImage, type AudioSamples } from '@deepseek-ai/dsh-game-audio/audio'
@@ -21,12 +19,14 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { applyMasterVolume, AUDIO_PROPERTIES, describeAudio, encodeWav, summarizeAudio } from './audio.ts'
+import { holdCaptureFile, newScreenshotFile, type CaptureFile } from './captures.ts'
 import type { CheckReport, CheckRequest } from './check.ts'
 import { hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { isErrorEntry } from './logs.ts'
 import { fixedFps, GODOT_ENGINE_OPTIONS, MAX_FIXED_FPS } from './launch.ts'
 import { MAX_VIDEO_SECONDS } from './video.ts'
 import { formatPerformance, PERFORMANCE_PROPERTIES, summarizePerformance } from './performance.ts'
+import { resolveResFile } from './project.ts'
 import { MAX_INPUT_EVENTS, type GodotRun, type ScreenshotRegion, type ViewParams } from './run.ts'
 import {
   DEFAULT_SCRIPT_SECONDS, MAX_SCRIPT_CALL_SECONDS, MAX_SCRIPT_RUNS, MAX_SCRIPT_SECONDS, OUTPUT_DIR_VARIABLE,
@@ -115,7 +115,8 @@ export interface GodotToolHost {
    */
   script(agent: Agent, request: GodotScriptRequest, signal: AbortSignal): Promise<GodotScriptReport | GodotScriptRunsReport>
   /**
-   * Resolve a file path as the model gave it: absolute, or relative to the Session's working directory.
+   * Resolve a file path as the model gave it: absolute, or relative to the Session's working directory. The tools
+   * resolve a `res://` path themselves, in the running game's project.
    * @param agent - calling Session.
    * @param path - the path.
    * @param signal - cancellation.
@@ -132,7 +133,10 @@ export interface GodotVideoRequest {
   readonly fps: number
   /** Largest frame width in pixels; smaller windows keep their size. */
   readonly maxWidth: number
-  /** Where to save the video, relative to the working directory or absolute; a new file under `recordings/` when undefined. */
+  /**
+   * Where to save the video, relative to the working directory, absolute, or a `res://` path in the project; a new
+   * file under `recordings/` when undefined.
+   */
   readonly path?: string
   /** Input events the game receives from the recording's start, in window pixels. */
   readonly events?: readonly GodotInputEvent[]
@@ -264,8 +268,21 @@ const SCREENSHOT_SCHEMA = { type: 'object', additionalProperties: false, propert
 /** A screenshot as a result value holds it: its size, the game window it shows, and the stored image. */
 export type ScreenshotValue = InferValue<typeof SCREENSHOT_SCHEMA>
 
+/** A screenshot without its stored image, as a call that saves the image holds it for callers that receive no images. */
+type CapturedScreenshot = Omit<ScreenshotValue, 'image'>
+
 /** A stored image as a result value holds it: the attachment reference, or the image id for connected agents. */
 export type ImageValue = InferValue<typeof IMAGE_SCHEMA>
+
+/** The `save` parameter of `godot_screenshot` and `godot_view`. */
+const SAVE_DESCRIPTION = 'true also saves the image as a new .png file in the project\'s .wasdengine/screenshots folder, which Godot '
+  + 'neither imports nor exports, for a tool that takes an image file; the result names the file. Not with path.'
+
+/** The sentence of a result that saved its image and leaves the image out for callers that receive no images. */
+const IMAGE_LEFT_OUT = 'You receive no images in this Session, so this result leaves the image out; the saved file holds it.'
+
+/** The sentence of a recording's result that leaves the sheet of frames out for callers that receive no images. */
+const SHEET_LEFT_OUT = 'You receive no images in this Session, so this result leaves the sheet of frames out; the saved video holds them.'
 
 /** An image the game or a window made for a tool call, which the surface stores for its callers. */
 export interface MadeImage {
@@ -287,8 +304,8 @@ export interface ScreenshotTaker {
    * @param maxWidth - largest image width the call asked for.
    * @param signal - cancellation.
    * @param region - part of the window to capture, in window pixels.
-   * @param save - receives the captured PNG bytes before the image is stored, as `godot_screenshot` saves them at its
-   * `path`.
+   * @param save - receives the captured PNG bytes before the image is stored, as `godot_screenshot` saves them to the
+   * file it holds.
    * @returns the screenshot as a result value holds it; input coordinates in screenshot pixels refer to its
    * `width` and `height`.
    */
@@ -337,13 +354,15 @@ export interface GodotToolSurface {
    */
   screenshots(exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker>
   /**
-   * Resolve where a call's pictures go, such as an audio capture's waveform, which a result can do without.
+   * Resolve where a call's pictures go, which a result can do without: an audio capture's waveform, a recording's sheet
+   * of frames, or the image of a capture that the call saves to a file, which the file holds whether or not the callers
+   * receive it.
    * @param exec - the tool call.
    * @param agent - calling Session.
-   * @returns what stores the call's pictures, or undefined when the callers receive no images, so that the result keeps
-   * to text.
+   * @returns the call's screenshot taker, or undefined when the callers receive no images, so that the result keeps to
+   * text.
    */
-  pictures(exec: ToolRunContext, agent: Agent): Promise<Pick<ScreenshotTaker, 'store'> | undefined>
+  pictures(exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker | undefined>
   /** Description text for these callers. */
   readonly wording: GodotToolWording
 }
@@ -459,7 +478,7 @@ function sizeText(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function describeScreenshot(shot: ScreenshotValue): string {
+function describeScreenshot(shot: CapturedScreenshot): string {
   const paused = shot.paused ? ' (paused)' : ''
   if (shot.x !== undefined && shot.y !== undefined && shot.regionWidth !== undefined && shot.regionHeight !== undefined) {
     return `Screenshot at frame ${shot.frame}${paused}: ${shot.width}x${shot.height} px showing the ${shot.regionWidth}x${shot.regionHeight} px region at (${shot.x}, ${shot.y}) of a ${shot.windowWidth}x${shot.windowHeight} px game window. Mouse coordinates for godot_input are pixels of this image, which map into that region.`
@@ -566,44 +585,59 @@ async function storeImage(attachments: AttachmentStore, made: MadeImage, signal:
 }
 
 /**
+ * The screenshot taker of the Session's own tools, whose images become attachments that the Session's model receives,
+ * measured as that model sees them, or why the Session's model cannot receive images.
+ * @param ctx - plugin context with the optional attachment and model services.
+ * @param exec - the tool call.
+ * @param agent - calling Session.
+ * @returns the taker, or the failure message of a call that needs the model to see its images.
+ */
+async function sessionTaker(ctx: Context, exec: ToolRunContext, agent: Agent): Promise<ScreenshotTaker | string> {
+  const attachments = ctx.get('attachments')
+  const llm = ctx.get('llm')
+  const route = agent.model.current()
+  if (attachments === undefined || llm === undefined || route === undefined) {
+    return 'Screenshots need an attachment store and a resolved model route, and this Session has neither.'
+  }
+  const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
+  if (info.inputModalities?.includes('image') !== true) {
+    return `The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`
+  }
+  return {
+    async capture(run, maxWidth, signal, region, save) {
+      const shot = await run.screenshot(maxWidth, signal, undefined, region)
+      await save?.(shot.image)
+      const [image] = await attachments.saveImages([{ data: shot.image, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
+      signal.throwIfAborted()
+      const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
+      return {
+        width: seen.width,
+        height: seen.height,
+        windowWidth: shot.meta.windowWidth,
+        windowHeight: shot.meta.windowHeight,
+        ...regionFields(shot.meta),
+        frame: shot.meta.frame,
+        paused: shot.meta.paused,
+        image,
+      }
+    },
+    store: (made, signal) => storeImage(attachments, made, signal),
+    fit: (width, height) => ({ width, height }),
+  }
+}
+
+/**
  * The screenshots of the Session's own tools: each image becomes an attachment that the Session's model receives,
  * measured as that model sees it.
  * @param ctx - plugin context with the optional attachment and model services.
- * @returns the screenshot resolution of {@link GodotToolSurface}.
+ * @returns the screenshot resolution of {@link GodotToolSurface}, which fails for a Session whose model cannot receive
+ *   images.
  */
 export function sessionScreenshots(ctx: Context): GodotToolSurface['screenshots'] {
   return async (exec, agent) => {
-    const attachments = ctx.get('attachments')
-    const llm = ctx.get('llm')
-    const route = agent.model.current()
-    if (attachments === undefined || llm === undefined || route === undefined) {
-      throw new Error('Screenshots need an attachment store and a resolved model route, and this Session has neither.')
-    }
-    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-    if (info.inputModalities?.includes('image') !== true) {
-      throw new Error(`The model "${route.model}" does not accept images, so it cannot see screenshots; switch to an image-capable model.`)
-    }
-    return {
-      async capture(run, maxWidth, signal, region, save) {
-        const shot = await run.screenshot(maxWidth, signal, undefined, region)
-        await save?.(shot.image)
-        const [image] = await attachments.saveImages([{ data: shot.image, mediaType: 'image/png', name: `godot-frame-${shot.meta.frame}.png` }]) as [ImageAttachmentRef]
-        signal.throwIfAborted()
-        const seen = await attachments.readImageRequest(image, llm.imageRequestTarget(route.provider, route.model, image), signal)
-        return {
-          width: seen.width,
-          height: seen.height,
-          windowWidth: shot.meta.windowWidth,
-          windowHeight: shot.meta.windowHeight,
-          ...regionFields(shot.meta),
-          frame: shot.meta.frame,
-          paused: shot.meta.paused,
-          image,
-        }
-      },
-      store: (made, signal) => storeImage(attachments, made, signal),
-      fit: (width, height) => ({ width, height }),
-    }
+    const taker = await sessionTaker(ctx, exec, agent)
+    if (typeof taker === 'string') throw new Error(taker)
+    return taker
   }
 }
 
@@ -628,21 +662,28 @@ export function regionFields(meta: {
 }
 
 /**
- * The pictures of the Session's own tools, such as an audio capture's waveform: each becomes an attachment that the
- * Session's model receives. A Session whose model does not accept images keeps none, so its results keep to text.
+ * The pictures of the Session's own tools, such as an audio capture's waveform or the image of a capture that the call
+ * saves to a file: each becomes an attachment that the Session's model receives. A Session whose model does not accept
+ * images keeps none, so its results keep to text.
  * @param ctx - plugin context with the optional attachment and model services.
  * @returns the picture resolution of {@link GodotToolSurface}.
  */
 export function sessionPictures(ctx: Context): GodotToolSurface['pictures'] {
   return async (exec, agent) => {
-    const attachments = ctx.get('attachments')
-    const llm = ctx.get('llm')
-    const route = agent.model.current()
-    if (attachments === undefined || llm === undefined || route === undefined) return undefined
-    const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-    if (info.inputModalities?.includes('image') !== true) return undefined
-    return { store: (made, signal) => storeImage(attachments, made, signal) }
+    const taker = await sessionTaker(ctx, exec, agent)
+    return typeof taker === 'string' ? undefined : taker
   }
+}
+
+/**
+ * Remember a screenshot's size and region, which later input coordinates in screenshot pixels refer to.
+ * @param session - the calling Session's Godot state.
+ * @param run - running game.
+ * @param shot - the screenshot as a result value holds it.
+ */
+function rememberScreenshot(session: GodotSession, run: GodotRun, shot: CapturedScreenshot): void {
+  const { width, height, windowWidth, windowHeight } = shot
+  session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight, ...regionFields(shot) }
 }
 
 /**
@@ -664,8 +705,41 @@ async function captureScreenshot(
   save?: (png: Buffer) => Promise<void>,
 ): Promise<ScreenshotValue> {
   const shot = await taker.capture(run, maxWidth, signal, region, save)
-  const { width, height, windowWidth, windowHeight } = shot
-  session.screenshot = { runId: run.id, width, height, windowWidth, windowHeight, ...regionFields(shot) }
+  rememberScreenshot(session, run, shot)
+  return shot
+}
+
+/**
+ * Capture a screenshot that a call saves to a file while its callers receive no images; afterwards input coordinates
+ * in screenshot pixels refer to the saved image.
+ * @param session - the calling Session's Godot state.
+ * @param run - running game.
+ * @param maxWidth - largest captured width.
+ * @param signal - cancellation.
+ * @param region - part of the window to capture, in window pixels.
+ * @param save - receives the captured PNG bytes.
+ * @returns the screenshot without an image.
+ */
+async function captureUnseen(
+  session: GodotSession,
+  run: GodotRun,
+  maxWidth: number,
+  signal: AbortSignal,
+  region: ScreenshotRegion | undefined,
+  save: (png: Buffer) => Promise<void>,
+): Promise<CapturedScreenshot> {
+  const { meta, image } = await run.screenshot(maxWidth, signal, undefined, region)
+  await save(image)
+  const shot = {
+    width: meta.width,
+    height: meta.height,
+    windowWidth: meta.windowWidth,
+    windowHeight: meta.windowHeight,
+    ...regionFields(meta),
+    frame: meta.frame,
+    paused: meta.paused,
+  }
+  rememberScreenshot(session, run, shot)
   return shot
 }
 
@@ -692,24 +766,59 @@ async function screenshotAfter(
   }
 }
 
+/** The arguments that name the file a call saves its capture to: `path` and `replace`, or `save`. */
+interface SaveArgs {
+  readonly path?: string | undefined
+  readonly replace?: boolean | undefined
+  readonly save?: boolean | undefined
+}
+
 /**
- * Refuse a path that holds a folder, or a file the call may not replace.
- * @param path - absolute path.
- * @param replace - whether a file may be replaced.
- * @param extension - the extension of the file the call saves, such as `.wav`.
- * @throws Error when the path is a folder, or a file and `replace` is false.
+ * Check the arguments that name the file a call saves its capture to.
+ * @param args - the call's arguments.
+ * @param extension - the extension that a path must end in, such as `.png`.
+ * @throws Error for both `path` and `save`, or a path with another extension.
  */
-async function refuseExisting(path: string, replace: boolean, extension: string): Promise<void> {
-  let found
+function checkSaveArgs(args: SaveArgs, extension: string): void {
+  if (args.path !== undefined && args.save === true) throw new Error('Give path or save, not both.')
+  if (args.path !== undefined && extname(args.path).toLowerCase() !== extension) throw new Error(`path must end in ${extension}.`)
+}
+
+/**
+ * Hold the file that a call saves its capture to, before the capture: with `save`, a new file in the project's
+ * screenshots folder; with `path`, that path, where a `res://` path names a file in the running game's project.
+ * @param host - plugin operations, which resolve other paths.
+ * @param agent - calling Session.
+ * @param run - running game.
+ * @param args - the call's checked arguments.
+ * @param extension - the file's extension, such as `.png`.
+ * @param signal - cancellation.
+ * @returns the held file, or undefined for a call that saves nothing.
+ * @throws Error when the path is a folder, a file that the call may not replace, or a `res://` path that leads out of
+ *   the project.
+ */
+async function holdSaveFile(
+  host: GodotToolHost, agent: Agent, run: GodotRun, args: SaveArgs, extension: string, signal: AbortSignal,
+): Promise<CaptureFile | undefined> {
+  if (args.save === true) return await newScreenshotFile(run.project, new Date())
+  if (args.path === undefined) return undefined
+  const path = args.path.startsWith('res://') ? resolveResFile(run.project.dir, args.path) : await host.resolvePath(agent, args.path, signal)
+  return await holdCaptureFile(path, args.replace === true, extension)
+}
+
+/**
+ * Run a capture that saves to a held file, and give the file up when the capture fails.
+ * @param file - the held file, or undefined for a call that saves nothing.
+ * @param capture - the capture, which writes the file.
+ * @returns the capture's value.
+ */
+async function savingTo<T>(file: CaptureFile | undefined, capture: () => Promise<T>): Promise<T> {
   try {
-    found = await stat(path)
+    return await capture()
   } catch (error) {
-    // Only a path that does not exist yet is free; any other failure stops the call.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    await file?.release()
     throw error
   }
-  if (found.isDirectory()) throw new Error(`${path} is a folder; pass the path of a ${extension} file.`)
-  if (!replace) throw new Error(`${path} already exists; pass replace: true to overwrite it, or choose another path.`)
 }
 
 /**
@@ -983,28 +1092,45 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         description: `Capture only this rectangle: x and y of its top left corner, width, and height. A region narrower than ${REGION_MIN_WIDTH} px grows by a whole factor, each window pixel a square.`,
       },
       coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of region: pixels of the latest screenshot, or of the game window. Default: screenshot.' },
-      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}, for a tool that takes an image file.` },
+      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}.` },
       replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
+      save: { type: 'boolean', description: SAVE_DESCRIPTION },
     },
     output: {
-      schema: { type: 'object', additionalProperties: false, properties: { ...SCREENSHOT_PROPERTIES, savedPath: { type: 'string' }, ...DIGEST_SCHEMA } },
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { ...SCREENSHOT_PROPERTIES, image: IMAGE_OBJECT, savedPath: { type: 'string' }, ...DIGEST_SCHEMA },
+      },
       render: (_args, value) => [
-        ...textResult(describeScreenshot(value), value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`, formatDigest(value)),
-        ...screenshotBlocks(value),
+        ...textResult(
+          describeScreenshot(value),
+          value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`,
+          value.image === undefined ? IMAGE_LEFT_OUT : '',
+          formatDigest(value),
+        ),
+        ...value.image === undefined ? [] : imageBlocks(value.image),
       ],
     },
     async execute(args, exec) {
       const maxWidth = boundedInteger(args.max_width, 'max_width', SCREENSHOT_WIDTH, 64, 4096)
-      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.png') throw new Error('path must end in .png.')
+      checkSaveArgs(args, '.png')
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
         const region = args.region === undefined ? undefined : windowRegion(args.region, args.coordinate_space ?? 'screenshot', session, run, maxWidth)
-        // The target is checked before the capture, so a refused path wastes no capture.
-        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
-        if (target !== undefined) await refuseExisting(target, args.replace === true, '.png')
-        const save = target === undefined ? undefined : (png: Buffer) => writeFileAtomic(target, png, { mode: 0o644 })
-        const shot = await captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal, region, save)
-        return target === undefined ? shot : { ...shot, savedPath: target }
+        // The file is held before the capture, so a refused path wastes no capture.
+        const file = await holdSaveFile(host, agent, run, args, '.png', exec.signal)
+        return await savingTo(file, async () => {
+          if (file === undefined) {
+            return await captureScreenshot(await surface.screenshots(exec, agent), session, run, maxWidth, exec.signal, region)
+          }
+          // A call that saves the image saves it also for callers that receive no images.
+          const taker = await surface.pictures(exec, agent)
+          const shot = taker === undefined
+            ? await captureUnseen(session, run, maxWidth, exec.signal, region, file.write)
+            : await captureScreenshot(taker, session, run, maxWidth, exec.signal, region, file.write)
+          return { ...shot, savedPath: file.path }
+        })
       })
     },
   }), defineTool({
@@ -1146,8 +1272,9 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       time: { type: 'number', description: 'asset: seconds into the animation. Default: 0.' },
       width: { type: 'integer', description: `Image width in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.width}.` },
       height: { type: 'integer', description: `Image height in pixels, up to ${VIEW_SIZE.max}. Default: ${VIEW_SIZE.height}.` },
-      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}, for a tool that takes an image file.` },
+      path: { type: 'string', description: `Also save the image as a .png file at this path, ${wording.savePath}.` },
       replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
+      save: { type: 'boolean', description: SAVE_DESCRIPTION },
     },
     output: {
       schema: {
@@ -1160,7 +1287,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           paused: BOOLEAN,
           camera: { type: 'json', required: true, description: 'The camera that drew the view: position, direction, and vertical fov.' },
           subject: { type: 'json', description: 'The framed center, radius in meters, and the camera\'s distance from the center.' },
-          image: IMAGE_SCHEMA,
+          image: IMAGE_OBJECT,
           savedPath: { type: 'string' },
           ...DIGEST_SCHEMA,
         },
@@ -1174,8 +1301,13 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           lines.push(`Framed ${subject.radius.toFixed(3)} m around ${formatVector(subject.center) ?? '?'} from ${subject.distance.toFixed(3)} m.`)
         }
         return [
-          ...textResult(lines.join(' '), value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`, formatDigest(value)),
-          ...imageBlocks(value.image),
+          ...textResult(
+            lines.join(' '),
+            value.savedPath === undefined ? '' : `Saved the image to ${value.savedPath}.`,
+            value.image === undefined ? IMAGE_LEFT_OUT : '',
+            formatDigest(value),
+          ),
+          ...value.image === undefined ? [] : imageBlocks(value.image),
         ]
       },
     },
@@ -1192,44 +1324,48 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       if ((args.animation !== undefined || args.time !== undefined || args.lighting !== undefined) && args.asset === undefined) {
         throw new Error('animation, time, and lighting apply to an asset; name the asset.')
       }
-      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.png') throw new Error('path must end in .png.')
+      checkSaveArgs(args, '.png')
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
-        // The target is checked before the view is drawn, so a refused path wastes no drawing.
-        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
-        if (target !== undefined) await refuseExisting(target, args.replace === true, '.png')
-        const taker = await surface.screenshots(exec, agent)
-        const size = taker.fit(width, height)
-        const params: ViewParams = {
-          width: size.width,
-          height: size.height,
-          ...args.node === undefined ? {} : { node: args.node },
-          ...args.asset === undefined ? {} : { asset: args.asset },
-          ...args.bone === undefined ? {} : { bone: args.bone },
-          ...args.yaw === undefined ? {} : { yaw: args.yaw },
-          ...args.pitch === undefined ? {} : { pitch: args.pitch },
-          ...args.distance === undefined ? {} : { distance: args.distance },
-          ...args.radius === undefined ? {} : { radius: args.radius },
-          ...camera === undefined ? {} : { camera },
-          ...args.fov === undefined ? {} : { fov: args.fov },
-          ...args.isolate === true ? { isolate: true } : {},
-          ...args.lighting === undefined ? {} : { lighting: args.lighting },
-          ...args.animation === undefined ? {} : { animation: args.animation },
-          ...args.time === undefined ? {} : { time: args.time },
-        }
-        const drawn = await run.drawView(params, exec.signal)
-        if (target !== undefined) await writeFileAtomic(target, drawn.image, { mode: 0o644 })
-        const image = await taker.store({ data: drawn.image, mediaType: 'image/png', width: drawn.meta.width, height: drawn.meta.height, name: `godot-view-${drawn.meta.frame}.png` }, exec.signal)
-        return {
-          width: drawn.meta.width,
-          height: drawn.meta.height,
-          frame: drawn.meta.frame,
-          paused: drawn.meta.paused,
-          camera: drawn.meta.camera,
-          ...drawn.meta.subject === undefined ? {} : { subject: drawn.meta.subject },
-          image,
-          ...target === undefined ? {} : { savedPath: target },
-        }
+        // The file is held before the view is drawn, so a refused path wastes no drawing.
+        const file = await holdSaveFile(host, agent, run, args, '.png', exec.signal)
+        return await savingTo(file, async () => {
+          // A call that saves the image saves it also for callers that receive no images.
+          const taker = file === undefined ? await surface.screenshots(exec, agent) : await surface.pictures(exec, agent)
+          const size = taker === undefined ? { width, height } : taker.fit(width, height)
+          const params: ViewParams = {
+            width: size.width,
+            height: size.height,
+            ...args.node === undefined ? {} : { node: args.node },
+            ...args.asset === undefined ? {} : { asset: args.asset },
+            ...args.bone === undefined ? {} : { bone: args.bone },
+            ...args.yaw === undefined ? {} : { yaw: args.yaw },
+            ...args.pitch === undefined ? {} : { pitch: args.pitch },
+            ...args.distance === undefined ? {} : { distance: args.distance },
+            ...args.radius === undefined ? {} : { radius: args.radius },
+            ...camera === undefined ? {} : { camera },
+            ...args.fov === undefined ? {} : { fov: args.fov },
+            ...args.isolate === true ? { isolate: true } : {},
+            ...args.lighting === undefined ? {} : { lighting: args.lighting },
+            ...args.animation === undefined ? {} : { animation: args.animation },
+            ...args.time === undefined ? {} : { time: args.time },
+          }
+          const drawn = await run.drawView(params, exec.signal)
+          await file?.write(drawn.image)
+          const image = taker === undefined
+            ? undefined
+            : await taker.store({ data: drawn.image, mediaType: 'image/png', width: drawn.meta.width, height: drawn.meta.height, name: `godot-view-${drawn.meta.frame}.png` }, exec.signal)
+          return {
+            width: drawn.meta.width,
+            height: drawn.meta.height,
+            frame: drawn.meta.frame,
+            paused: drawn.meta.paused,
+            camera: drawn.meta.camera,
+            ...drawn.meta.subject === undefined ? {} : { subject: drawn.meta.subject },
+            ...image === undefined ? {} : { image },
+            ...file === undefined ? {} : { savedPath: file.path },
+          }
+        })
       })
     },
   }), defineTool({
@@ -1265,6 +1401,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           inputError: { type: 'string' },
           sheetTimes: { type: 'array', items: { type: 'number' } },
           sheet: IMAGE_OBJECT,
+          sheetLeftOut: { type: 'boolean', description: 'Whether the result has no sheet because the Session receives no images.' },
           ...DIGEST_SCHEMA,
         },
       },
@@ -1276,6 +1413,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         if (value.sheetTimes !== undefined && value.sheetTimes.length > 0) {
           lines.push(`The sheet shows ${value.sheetTimes.length} frames left to right, top to bottom, at ${value.sheetTimes.map(time => `${time.toFixed(2)} s`).join(', ')}.`)
         }
+        if (value.sheetLeftOut === true) lines.push(SHEET_LEFT_OUT)
         return [...textResult(lines.join('\n'), formatDigest(value)), ...value.sheet === undefined ? [] : imageBlocks(value.sheet)]
       },
     },
@@ -1296,21 +1434,23 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           }
           delivered = screenshotToWindow(events, frame)
         }
-        const taker = sheetFrames > 0 ? await surface.screenshots(exec, agent) : undefined
+        // The video needs no images, so a Session that receives none records it and goes without the sheet.
+        const pictures = sheetFrames > 0 ? await surface.pictures(exec, agent) : undefined
+        const sheetLeftOut = sheetFrames > 0 && pictures === undefined
         const fixed = fixedFps(run.view().launch.engineArgs ?? [])
         const fps = args.fps ?? (fixed === undefined ? 30 : fixed / Math.ceil(fixed / 60))
         const video = await host.record(agent, run, {
           seconds: args.seconds,
           fps,
           maxWidth,
-          sheetFrames,
+          sheetFrames: pictures === undefined ? 0 : sheetFrames,
           replace: args.replace === true,
           ...args.path === undefined ? {} : { path: args.path },
           ...delivered === undefined ? {} : { events: delivered },
         }, exec.signal)
-        const sheet = taker === undefined || video.sheet === undefined
+        const sheet = pictures === undefined || video.sheet === undefined
           ? undefined
-          : await taker.store({ data: video.sheet.data, mediaType: 'image/jpeg', width: video.sheet.width, height: video.sheet.height, name: 'godot-recording-sheet.jpg' }, exec.signal)
+          : await pictures.store({ data: video.sheet.data, mediaType: 'image/jpeg', width: video.sheet.width, height: video.sheet.height, name: 'godot-recording-sheet.jpg' }, exec.signal)
         return {
           path: video.path,
           bytes: video.bytes,
@@ -1325,6 +1465,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...video.inputError === undefined ? {} : { inputError: video.inputError },
           ...video.sheet === undefined ? {} : { sheetTimes: [...video.sheet.times] },
           ...sheet === undefined ? {} : { sheet },
+          ...sheetLeftOut ? { sheetLeftOut: true } : {},
         }
       })
     },
@@ -1523,7 +1664,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       if (!(seconds >= AUDIO_SECONDS.min && seconds <= AUDIO_SECONDS.max)) {
         throw new Error(`seconds must be from ${AUDIO_SECONDS.min} to ${AUDIO_SECONDS.max}.`)
       }
-      if (args.path !== undefined && extname(args.path).toLowerCase() !== '.wav') throw new Error('path must end in .wav.')
+      checkSaveArgs(args, '.wav')
       const events = args.events === undefined ? undefined : parseInputEvents(args.events, MAX_INPUT_EVENTS)
       return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
@@ -1535,23 +1676,25 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           }
           delivered = screenshotToWindow(events, frame)
         }
-        // The target is checked before the capture, so a refused path wastes no capture.
-        const target = args.path === undefined ? undefined : await host.resolvePath(agent, args.path, exec.signal)
-        if (target !== undefined) await refuseExisting(target, args.replace === true, '.wav')
-        const pictures = await surface.pictures(exec, agent)
-        const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
-        const audio: AudioSamples = {
-          sampleRate: meta.sampleRate, channels: 2, frames: meta.frames,
-          samples: applyMasterVolume(samples.subarray(0, meta.frames * 2), meta.masterVolumes),
-        }
-        const summary = summarizeAudio(meta, audio, analyzeAudio(audio))
-        if (target !== undefined) await writeFileAtomic(target, encodeWav(audio), { mode: 0o644 })
-        if (pictures === undefined || audio.frames === 0) return { ...summary, ...target === undefined ? {} : { savedPath: target } }
-        const { image, layout } = drawAudioImage(audio)
-        const picture = await pictures.store({
-          data: encodePng(image), mediaType: 'image/png', width: image.width, height: image.height, name: `godot-audio-${String(meta.frame)}.png`,
-        }, exec.signal)
-        return { ...summary, ...target === undefined ? {} : { savedPath: target }, picture, pictureText: describeAudioImage(layout) }
+        // The file is held before the capture, so a refused path wastes no capture.
+        const file = await holdSaveFile(host, agent, run, args, '.wav', exec.signal)
+        return await savingTo(file, async () => {
+          const pictures = await surface.pictures(exec, agent)
+          const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
+          const audio: AudioSamples = {
+            sampleRate: meta.sampleRate, channels: 2, frames: meta.frames,
+            samples: applyMasterVolume(samples.subarray(0, meta.frames * 2), meta.masterVolumes),
+          }
+          const summary = summarizeAudio(meta, audio, analyzeAudio(audio))
+          await file?.write(encodeWav(audio))
+          const saved = file === undefined ? {} : { savedPath: file.path }
+          if (pictures === undefined || audio.frames === 0) return { ...summary, ...saved }
+          const { image, layout } = drawAudioImage(audio)
+          const picture = await pictures.store({
+            data: encodePng(image), mediaType: 'image/png', width: image.width, height: image.height, name: `godot-audio-${String(meta.frame)}.png`,
+          }, exec.signal)
+          return { ...summary, ...saved, picture, pictureText: describeAudioImage(layout) }
+        })
       })
     },
   }), defineTool({

@@ -140,7 +140,7 @@ describe('DeepSeek web credential order', () => {
     await expect(search([accountSource(() => Promise.reject(new Error('account storage failed'))), keySource(keyRef(resolve))]))
       .rejects.toThrow(expect.objectContaining({
         code: 'WEB_PROVIDER_ERROR',
-        message: 'DeepSeek web credential resolution failed: Error: account storage failed',
+        message: 'The WASD Engine sign-in for this web request could not be read: Error: account storage failed',
       }))
     expect(resolve).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
@@ -209,9 +209,8 @@ describe('DeepSeek web account authentication', () => {
     const error = await rejectedWebError(search([accountSource(async () => 'account-token')]))
     expect(error).toMatchObject({
       code: 'WEB_PROVIDER_ERROR',
-      message: 'DeepSeek API error (HTTP 401): invalid token\n\n'
-        + 'DeepSeek rejected the account sign-in used for this web request. '
-        + 'Guide the user to sign in to DeepSeek again; the endpoint does not need changing.',
+      message: 'The account service rejected the WASD Engine sign-in used for this web request (HTTP 401). '
+        + 'Ask the user to sign in to WASD Engine again, then try again.',
     })
   })
 
@@ -295,10 +294,10 @@ describe('DeepSeek web account authentication', () => {
     expect(rejectToken).not.toHaveBeenCalled()
   })
 
-  it('keeps endpoint guidance for other account-authenticated HTTP failures', async () => {
+  it('gives the account service\'s words instead of endpoint guidance for other account-authenticated HTTP failures', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({}, { status: 503 })))
     const error = await rejectedWebError(search([accountSource(async () => 'account-token')]))
-    expect(error.message).toContain('If that endpoint is not intended')
+    expect(error.message).not.toContain('If that endpoint is not intended')
   })
 
   it('maps a synchronous resolver throw to WEB_PROVIDER_ERROR', async () => {
@@ -306,7 +305,7 @@ describe('DeepSeek web account authentication', () => {
     await expect(search([accountSource(() => { throw new Error('account service threw') })]))
       .rejects.toThrow(expect.objectContaining({
         code: 'WEB_PROVIDER_ERROR',
-        message: 'DeepSeek web credential resolution failed: Error: account service threw',
+        message: 'The WASD Engine sign-in for this web request could not be read: Error: account service threw',
       }))
     expect(fetchMock).not.toHaveBeenCalled()
   })

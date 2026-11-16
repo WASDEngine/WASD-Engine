@@ -57,7 +57,8 @@ export interface SiteServer {
   state: string
   players_online: number
   version: number | null
-  pending: { kind: string; size: string | null; confirm_url: string; expires_at: string } | null
+  /** A request awaiting confirmation; a purchase or a resize says whether a free server covers it, and its price. */
+  pending: { kind: string; size: string | null; confirm_url: string; expires_at: string; granted?: boolean; price_cents?: number } | null
   always_on?: boolean
   sleeps_after_minutes?: number | null
   granted?: boolean
@@ -69,7 +70,10 @@ export interface SiteOptions {
   readonly plans?: typeof PLANS | 'error'
   /** The lobby statistics: `paused` past the relay's fair use, `unavailable` (503) while lobbies are off. */
   readonly lobbies?: 'paused' | 'unavailable'
-  /** The free servers the account was given, which the sizes list only for a signed-in call. */
+  /**
+   * The free servers the account was given, which the sizes list only for a signed-in call; `available` is how many
+   * are left before pending purchases and resizes, which each hold one while a free server of their size is left.
+   */
   readonly grants?: readonly { size: string; granted: number; in_use: number; available: number }[]
 }
 
@@ -101,8 +105,20 @@ export function multiplayerSite(options: SiteOptions = {}) {
   const calls: SiteCall[] = []
   const builds: { game: string; version: string | null; files: string[] }[] = []
   let next = 1
+  // Free servers of a size left for a request: a server's new request replaces its own pending one.
+  const left = (size: string, without?: string): number => {
+    const held = [...servers.values()]
+      .filter(server => server.id !== without && server.pending?.granted === true && server.pending.size === size).length
+    return Math.max(0, (options.grants?.find(grant => grant.size === size)?.available ?? 0) - held)
+  }
   const pending = (server: SiteServer, kind: string, size: string | null) => {
-    server.pending = { kind, size, confirm_url: `${ORIGIN}/servers/confirm/token-${String(next++)}`, expires_at: '2026-11-13T00:00:00Z' }
+    const claims = kind === 'create' || kind === 'resize'
+    const granted = claims && size !== null && left(size, server.id) > 0
+    const price = PLANS.sizes.find(candidate => candidate.id === size)?.price_cents ?? 0
+    server.pending = {
+      kind, size, confirm_url: `${ORIGIN}/servers/confirm/token-${String(next++)}`, expires_at: '2026-11-13T00:00:00Z',
+      ...claims ? { granted, price_cents: granted ? 0 : price } : {},
+    }
     return json(202, { server: serverJson(server), confirm_url: server.pending.confirm_url, expires_at: server.pending.expires_at })
   }
   const fetchSite: typeof fetch = async (input, init) => {
@@ -117,7 +133,8 @@ export function multiplayerSite(options: SiteOptions = {}) {
     if (init?.redirect !== 'error') throw new Error('the multiplayer API must not follow redirects')
     if (url.pathname === '/api/v1/servers/plans') {
       if (options.plans === 'error') return json(500, {})
-      return json(200, { ...options.plans ?? PLANS, ...authorized && options.grants !== undefined ? { grants: options.grants } : {} })
+      const grants = options.grants?.map(grant => ({ ...grant, available: left(grant.size) }))
+      return json(200, { ...options.plans ?? PLANS, ...authorized && grants !== undefined ? { grants } : {} })
     }
     if (!authorized) return failure(401, 'authentication_error', 'Missing, invalid, or expired WASD Engine token.')
     if (url.pathname === '/api/v1/play/stats') {

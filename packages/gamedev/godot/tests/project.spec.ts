@@ -97,6 +97,14 @@ describe('resolveGodotProject', () => {
     await expect(resolveGodotProject(root, 'file', signal)).rejects.toThrow(GodotProjectError)
   })
 
+  it('words a missing project.godot for callers that name folders relative to the working directory or absolute', async () => {
+    await mkdir(join(root, 'new-game'))
+    const message = `No project.godot in ${join(root, 'new-game')}; pass the folder that holds project.godot, or create the Godot project there first.`
+    await expect(resolveGodotProject(root, 'new-game', signal)).rejects.toThrow(new GodotProjectError(message, join(root, 'new-game')))
+    // Agents connected through WASD Engine's MCP server name the folder by its absolute path.
+    await expect(resolveGodotProject(join(root, 'new-game'), join(root, 'new-game'), signal)).rejects.toThrow(message)
+  })
+
   it.skipIf(process.platform === 'win32')('reports file system failures other than absence', async () => {
     await symlink(join(root, 'loop-b'), join(root, 'loop-a'))
     await symlink(join(root, 'loop-a'), join(root, 'loop-b'))

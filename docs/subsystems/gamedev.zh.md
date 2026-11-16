@@ -385,12 +385,12 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="graphics-review"></a>
 ## 画面审查
 
-`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 保存到 `path` 的截图），并指出能让画面更好看的 WASD Engine 工具和扩展；它的 `graphics-review` 系统提示词段落要求在所有画面工作之后进行审查。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
+`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 用 `save` 保存的截图），并指出能让画面更好看的 WASD Engine 工具和扩展；它的 `graphics-review` 系统提示词段落要求在所有画面工作之后进行审查。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|
 | 图片 | 调用指定的文件，适配审查者的图片限制后存为附件 | 每次 `graphics_review` 调用 |
-| 审查请求 | 账号路由上的 `ctx.llm.stream`，purpose 为 `graphics-review`，由 WASDEngine 网关按账号的 AI 用量计价 | 每次 `graphics_review` 调用 |
+| 审查请求 | 在账号路由上用 `ctx.llm.prepareCall` 以低推理强度准备的请求，purpose 为 `graphics-review`，由 WASDEngine 网关按账号的 AI 用量计价 | 每次 `graphics_review` 调用 |
 
 <a id="mcp-server-for-other-agents"></a>
 ## 供其他 agent 使用的 MCP 服务器

@@ -177,10 +177,18 @@ export type WorkspaceFollowFrame =
 
 // WASD Engine game projects (fork-owned block; `wasdengine/FORK.md` lists the fork changes).
 
+/**
+ * Why a name is not one game project folder name: `invisible` when it has no visible character, a blank name included;
+ * `unportable` for `.` or `..`, a character that Windows, macOS, or Linux refuse in a folder name, a control character,
+ * a trailing period, or more than 255 UTF-8 bytes; `device` for a device name that Windows reserves, with or without an
+ * extension, such as `CON` or `com1.txt`; `git` for `.git`, the name of Git's own folder.
+ */
+export type GameProjectNameProblem = 'invisible' | 'unportable' | 'device' | 'git'
+
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
-    /** The game project name is not one folder name every desktop system accepts. */
-    'gameProject/invalid-name': { readonly name: string }
+    /** The game project name is not one folder name every desktop system accepts; `problem` says why. */
+    'gameProject/invalid-name': { readonly name: string; readonly problem: GameProjectNameProblem }
     /** The location is not a fully qualified directory path. */
     'gameProject/invalid-directory': { readonly path: string }
     /** A file or folder already uses the project's path. */

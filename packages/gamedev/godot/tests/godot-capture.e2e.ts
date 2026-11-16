@@ -1,21 +1,23 @@
 /**
  * The capture tools against the real LibGodot runner, on a 3D scene: launch options that the game reads, GDScript code
  * with lambdas, engine singletons, autoloads, `await`, and its compile and script errors, an expression with
- * singletons, a screenshot of a window region at full size, views of the game camera's picture at another size, of a
- * node from an angle, of a skeleton bone, of a node alone, and of a scene loaded alone whose script sets its material,
- * posed in an animation, and a recording whose frames a window reads and whose upload becomes the video file, also one
- * by game frames that a slow window reads, during which the Host stops reading the game and the game waits for it.
+ * singletons, a screenshot of a window region at full size, saved where Godot's import leaves it alone, views of the
+ * game camera's picture at another size, of a node from an angle, of a skeleton bone, of a node alone, and of a scene
+ * loaded alone whose script sets its material, posed in an animation, and a recording whose frames a window reads and
+ * whose upload becomes the video file, also one by game frames that a slow window reads, during which the Host stops
+ * reading the game and the game waits for it.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
  */
 import { Buffer } from 'node:buffer'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { ProjectImports } from '../src/imports.ts'
 import { GodotRun } from '../src/run.ts'
 import type { GodotVideoEncodeEvent, GodotVideoEncodeResult } from '../src/types.ts'
 import { RECORDINGS_GITIGNORE } from '../src/video.ts'
@@ -196,13 +198,37 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(waiting)).toContain('the code did not finish within its time limit')
   }, 240_000)
 
-  it('captures a region of the window at its own pixels, grown by a whole factor', async () => {
-    const shot = await callTool(c, 'godot_screenshot', { region: { x: 100, y: 50, width: 200, height: 150 }, coordinate_space: 'window' })
+  it('captures a region of the window at its own pixels, grown by a whole factor, and saves it where Godot does not import it', async () => {
+    const shot = await callTool(c, 'godot_screenshot', { region: { x: 100, y: 50, width: 200, height: 150 }, coordinate_space: 'window', save: true })
     expect(shot.isError, text(shot)).toBe(false)
     expect(text(shot)).toContain('showing the 200x150 px region at (100, 50) of a 640x360 px game window')
     const image = decodePng(lastImage())
     expect([image.width, image.height]).toEqual([600, 450])
-  }, 60_000)
+    const folder = join(c.project, '.wasdengine', 'screenshots')
+    const saved = (shot.value as { readonly savedPath: string }).savedPath
+    expect(dirname(saved)).toBe(folder)
+    expect((await readFile(saved)).equals(lastImage())).toBe(true)
+    expect(existsSync(join(folder, '.gdignore'))).toBe(true)
+    const importing = vi.spyOn(ProjectImports.prototype, 'import')
+    try {
+      // A script that changed makes the next check import the project, and Godot's import leaves the image alone.
+      await writeFile(join(c.project, 'game_state.gd'), PROJECT['game_state.gd'])
+      const imported = await callTool(c, 'godot_check', { paths: ['res://game_state.gd'] })
+      expect(imported.isError, text(imported)).toBe(false)
+      expect(importing).toHaveBeenCalledTimes(1)
+      expect((await readdir(folder)).sort()).toEqual(['.gdignore', '.gitignore', basename(saved)])
+      const importedFiles = existsSync(join(c.project, '.godot', 'imported')) ? await readdir(join(c.project, '.godot', 'imported')) : []
+      expect(importedFiles.filter(name => name.startsWith(basename(saved)))).toEqual([])
+      // An image saved after that import is no change that the next check imports.
+      importing.mockClear()
+      expect((await callTool(c, 'godot_screenshot', { save: true })).isError).toBe(false)
+      const checked = await callTool(c, 'godot_check', { paths: ['res://game_state.gd'] })
+      expect(checked.isError, text(checked)).toBe(false)
+      expect(importing).not.toHaveBeenCalled()
+    } finally {
+      importing.mockRestore()
+    }
+  }, 240_000)
 
   it('draws views: the game camera at another size, a node from an angle, a bone, a node alone, and a scene alone', async () => {
     const wide = await callTool(c, 'godot_view', { width: 1280, height: 720 })

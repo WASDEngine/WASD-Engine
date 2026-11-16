@@ -18,8 +18,8 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-game-mcp/use-this-package/default-composition:
-  en: 5c2355a37ca461a1
-  zh: 15f3b54f79ee592f
+  en: 3519e7945f153cfe
+  zh: 12c71bd3d5b73112
 /deepseek-ai-dsh-game-mcp/use-this-package/set-up-another-agent:
   en: af8a8dbba87fb0de
   zh: 499d6100839b82c1
@@ -27,11 +27,11 @@
   en: b191aac1e330f433
   zh: e7819ff655b12550
 /deepseek-ai-dsh-game-mcp/use-this-package/server-instructions:
-  en: 9941f21c60cf859c
-  zh: 3f4503f15545aa5b
+  en: 23d7629ed9d7ad9d
+  zh: e16c181db191f35f
 /deepseek-ai-dsh-game-mcp/use-this-package/create-game-projects:
-  en: f865854613c1c0cb
-  zh: 59d6c841da98f66f
+  en: cd0211dab7716c86
+  zh: 505e30338805593a
 /deepseek-ai-dsh-game-mcp/use-this-package/games-in-the-wasd-engine-window:
   en: 5222bced0ad9e772
   zh: 602f28a2c8bbceb9
@@ -45,8 +45,8 @@
   en: e123eb4425dee9ae
   zh: 9642dc88ea1f8d1a
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
-  en: 416182bf2bc9497c
-  zh: 060c40218b5397ff
+  en: 7693db9ce75958d5
+  zh: 36b5284212829d5b
 /deepseek-ai-dsh-game-mcp/further-exploration:
   en: 1a07bf592f9be374
   zh: 51ba9e326a697e4f
@@ -69,8 +69,8 @@
   en: cf2f5f1ec8b5d835
   zh: 07e43db94e996ae3
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/what-the-model-sees:
-  en: e8901d8f82b42b07
-  zh: ecfc4d4aa924d81f
+  en: 5e07abdc20133ccc
+  zh: 417171930b17c4a6
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-list-and-instructions/token-effect:
   en: 94453dec78a1e693
   zh: ec5c032ee4cd28d2
@@ -81,8 +81,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: 5bd2e4d416fa75ad
-  zh: a670aee170f93c8f
+  en: 5d3f55c3cfab9d44
+  zh: d80719ca0aace597
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
@@ -90,8 +90,8 @@
   en: 7d053967b4d79221
   zh: 8cace89f19a37967
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work:
-  en: 2249665d27e10e98
-  zh: b5ac9fc1be061ae8
+  en: c2ae8eb5da57444a
+  zh: d9490731dbc16762
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: 4e818dd6d00e4020
   zh: d442e9314c4b27e6

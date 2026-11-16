@@ -142,13 +142,15 @@ const NOISE_PROJECT = {
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
 
-// A game that plays a looping 440 Hz tone at about -12 dBFS through an AudioStreamPlayer at -6 dB on the Master bus.
+// A game that plays a looping 440 Hz tone at about -12 dBFS through an AudioStreamPlayer at -6 dB on the Master bus. The
+// tone lasts four seconds before it loops, so a one-second capture never spans the loop point, where Godot's mix of a
+// looping AudioStreamWAV can hold one stray sample that would set the measured peak.
 const AUDIO_PROJECT = {
   'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="AudioTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
   'tone.gd': [
     'extends AudioStreamPlayer', 'func _ready():', '\tvar wav := AudioStreamWAV.new()', '\twav.format = AudioStreamWAV.FORMAT_16_BITS', '\twav.mix_rate = 44100',
-    '\tvar data := PackedByteArray()', '\tdata.resize(44100 * 2)', '\tfor i in 44100:', '\t\tdata.encode_s16(i * 2, int(sin(TAU * 440.0 * i / 44100.0) * 8000.0))',
-    '\twav.data = data', '\twav.loop_mode = AudioStreamWAV.LOOP_FORWARD', '\twav.loop_end = 44100', '\tstream = wav', '\tvolume_db = -6.0', '\tplay()', '',
+    '\tvar data := PackedByteArray()', '\tdata.resize(44100 * 4 * 2)', '\tfor i in 44100 * 4:', '\t\tdata.encode_s16(i * 2, int(sin(TAU * 440.0 * i / 44100.0) * 8000.0))',
+    '\twav.data = data', '\twav.loop_mode = AudioStreamWAV.LOOP_FORWARD', '\twav.loop_end = 44100 * 4', '\tstream = wav', '\tvolume_db = -6.0', '\tplay()', '',
   ].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://tone.gd" id="1"]\n\n[node name="Main" type="Node"]\n\n[node name="Tone" type="AudioStreamPlayer" parent="."]\nscript = ExtResource("1")\n',
 }

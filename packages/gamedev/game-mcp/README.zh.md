@@ -41,6 +41,7 @@ WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasdengi
 | `dataRoot` | 必填 | 访问令牌（`token`）与已连接 agent 的 Session 绑定（`sessions.json`）所在的绝对路径文件夹；相对路径会使插件加载失败 |
 | `port` | `9273` | 端点的回环端口，0 到 65,535 的整数；0 表示选择空闲端口。端口被其他程序占用时，服务器在 Host 重启前改用一个空闲端口，并在其视图中说明 |
 | `progressIntervalMs` | `30000` | 运行中的工具调用向请求了进度的 agent 发送进度通知的间隔（毫秒），至少为 1 的整数 |
+| `readyTimeoutMs` | `8000` | 最初的请求等待组合加载完其插件的最长时间（毫秒，见[服务器指令](#server-instructions)），至少为 1 的整数；默认值低于 Codex 给服务器启动留出的 10 秒 |
 
 profile patch 用 `- id: game-mcp` 与 `disabled: true` 关闭服务器。
 
@@ -85,12 +86,14 @@ tool_timeout_sec = 1800
 <a id="server-instructions"></a>
 ### 服务器指令
 
-服务器发给每个 agent 的指令以一段概述开头，由 [`src/catalog.ts`](src/catalog.ts) 写成四段：这些工具的作用是让用户游戏的质量超出单靠代码所能达到的水平，因此 agent 默认使用它们，并在跳过某个适合当前工作的工具时告诉用户原因；每个插件能带来什么，每个 provider 一行，包含其标题、工具前缀和 `description`；新游戏从 `create_game_project` 开始，agent 在首次使用某个插件的工具之前先阅读该插件的指南，以及指南在哪里；agent 的计划和最终总结要列出它使用的工具和扩展，并说明为什么跳过每个适合当前工作的工具或扩展，或者为什么一个都不用，而只有工具做不到游戏所需的事情，或会让游戏变差，才算理由。每个 provider 的 `instructions`，即它的指南，跟在 `## <title>` 之下。agent 的 harness 可能截断过长的指令：Claude Code 只把前 4,096 个字符交给它的模型，OpenAI 也要求服务器让前 512 个字符对 Codex 自成一体。因此第一段控制在 512 个字符以内，整段概述必须容纳在 4,096 个字符之内，而带 `plugin` 且不带查询的 `search_game_tools` 会返回该插件的指南，并在前面加一行，请 agent 为指南中省略前缀的工具名加上该插件的前缀。某个 provider 的注册使概述超过 4,096 个字符时，服务器会记录一条给出长度的警告。
+服务器发给每个 agent 的指令以一段概述开头，由 [`src/catalog.ts`](src/catalog.ts) 写成四段：这些工具的作用是让用户游戏的质量超出单靠代码所能达到的水平，因此 agent 默认使用它们，并在跳过某个适合当前工作的工具时告诉用户原因；新游戏从 `create_game_project` 开始，agent 在首次使用某个插件的工具之前先阅读该插件的指南，指南在哪里，以及有些指南提到本插件的工具时省略了它的前缀；agent 的计划和最终总结要列出它使用的工具和扩展，并说明为什么跳过每个适合当前工作的工具或扩展，或者为什么一个都不用，而只有工具做不到游戏所需的事情，或会让游戏变差，才算理由；最后是每个插件能带来什么，每个 provider 一行，包含其标题、工具前缀和 `description`。每个 provider 的 `instructions`，即它的指南，跟在 `## <title>` 之下。agent 的 harness 可能截断过长的指令：Claude Code 只把前 4,096 个字符交给它的模型，OpenAI 也要求服务器让前 512 个字符对 Codex 自成一体。因此第一段控制在 512 个字符以内，整段概述必须容纳在 4,096 个字符之内，而概述一旦变长，最先被截掉的是插件列表的末尾，`search_game_tools` 会列出完整的插件列表；带 `plugin` 且不带查询的 `search_game_tools` 会返回该插件的指南，并在前面加一行：指南提到本插件自己的某个工具（结果在指南之后列出这些工具）而省略前缀时，请 agent 加上该插件的前缀。某个 provider 的注册使概述超过 4,096 个字符时，服务器会记录一条给出长度的警告，而 [`wasdengine-game-mcp-overview.spec.ts`](../../bundle/web-app/tests/wasdengine-game-mcp-overview.spec.ts) 用每个随产品发布的 provider 构建概述，概述超长时就会失败。
+
+MCP 只发送一次指令，即在对 `initialize` 或 `server/discover` 的回答中，agent 在整个连接期间都保留这份指令；而监听器随插件一起启动，早于提供游戏工具的那些插件加载完成。因此服务器要等 Loader 的树稳定下来才回答请求：这种稳定涵盖每个插件的导入和启动，也就涵盖了随插件启动而注册的 provider；在应用启动时连接的 agent 会等待回答，而不会收到一份缺少最后加载的插件的概述。令牌放行的第一个请求开始这次等待；等待在 `readyTimeoutMs` 之后结束，并记录一条警告，列出到那时已注册的 provider，或在插件停止时结束；之后的请求不再等待，没有 Loader 的 Host 会立即回答。
 
 <a id="create-game-projects"></a>
 ### 创建游戏项目
 
-`create_game_project` 通过 Workspace 控制器的 [`gameProjectController`](../../../docs/subsystems/workspace.zh.md#ctxgameprojectcontroller--gameprojectcontroller)（即「创建游戏项目」对话框的 Host 部分）为已连接 agent 创建游戏项目：在 `location`（一个绝对路径，缺失时会被创建）中创建名为 `name` 的文件夹，省略 `location` 时则创建在对话框建议的文件夹 `<Documents>/WASD Engine` 中；Git 可用时，文件夹中有一个带有一个空提交的 Git 仓库；然后注册该文件夹，标题为文件夹名，窗口把它列在「游戏项目」下。这次调用不打开任何 Session，因此在用户打开该项目，或某个游戏工具调用指定它并在其中启动该 agent 的 Session 之前，项目不含 Session。结果给出该文件夹的绝对路径，供 agent 之后的调用使用。名称不是单个可移植的文件夹名、`location` 不是绝对路径、路径已存在、Host 没有游戏项目控制器，或者调用省略 `location` 而 Host 找不到 Documents 文件夹时，调用都会得到说明原因的错误结果，且不会创建任何内容。这次调用不发出 `game-mcp/tool-result`，该事件只报告 provider 工具。
+`create_game_project` 通过 Workspace 控制器的 [`gameProjectController`](../../../docs/subsystems/workspace.zh.md#ctxgameprojectcontroller--gameprojectcontroller)（即「创建游戏项目」对话框的 Host 部分）为已连接 agent 创建游戏项目：在 `location`（一个绝对路径，缺失时会被创建，并像对话框那样去掉两端的空格）中创建名为 `name` 的文件夹，省略 `location` 或其为 null 或空白时，则创建在对话框建议的文件夹 `<Documents>/WASD Engine` 中；Git 可用时，文件夹中有一个带有一个空提交的 Git 仓库；然后注册该文件夹，标题为文件夹名，窗口把它列在「游戏项目」下。这次调用不打开任何 Session，因此在用户打开该项目，或某个游戏工具调用指定它并在其中启动该 agent 的 Session 之前，项目不含 Session。结果给出该文件夹的绝对路径，供 agent 之后的调用使用，请 agent 在安装扩展之前先写好游戏的 `project.godot`（安装需要它），并说明 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`。名称不是单个可移植的文件夹名、`location` 不是绝对路径、路径已存在、Host 没有游戏项目控制器，或者调用省略 `location` 而 Host 找不到 Documents 文件夹时，调用都会得到说明原因的错误结果，且不会创建任何内容；对于名称，文本由 Host 给出的原因决定：没有可见字符、含有某些计算机拒绝的字符或长度、是 Windows 保留的设备名（如 `CON` 或 `com1.txt`），或是 `.git`。这次调用不发出 `game-mcp/tool-result`，该事件只报告 provider 工具。
 
 <a id="games-in-the-wasd-engine-window"></a>
 ### WASD Engine 窗口中的游戏
@@ -118,13 +121,13 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 <details>
 <summary>实现细节——点击展开</summary>
 
-监听器只绑定 `127.0.0.1`。每个请求都必须指向端点路径，通过 MCP SDK 的 localhost Host 与 Origin 检查（以阻止 DNS 重绑定和来自浏览器页面的跨站请求），并携带令牌，令牌以常数时间比较校验；其他请求得到 404、403 或 401。POST 请求体在 4 MiB 以内读取。MCP SDK 的 `createMcpHandler` 为每个请求创建一个低层 MCP 服务器，以无状态方式提供 2026-07-28 协议修订版以及 2025 年的各修订版；其工具列表与指令取自当时的目录；工具列表的变化会送达通过 `subscriptions/listen` 订阅的 agent。
+监听器只绑定 `127.0.0.1`。每个请求都必须指向端点路径，通过 MCP SDK 的 localhost Host 与 Origin 检查（以阻止 DNS 重绑定和来自浏览器页面的跨站请求），并携带令牌，令牌以常数时间比较校验；其他请求得到 404、403 或 401。POST 请求体在 4 MiB 以内读取。被放行的请求会立即计入见过的 agent，然后如[服务器指令](#server-instructions)所述等待组合，等待通过用 `ctx.get('loader')` 读到的 Loader 服务的 `await()` 进行。MCP SDK 的 `createMcpHandler` 为每个请求创建一个低层 MCP 服务器，以无状态方式提供 2026-07-28 协议修订版以及 2025 年的各修订版；其工具列表与指令取自当时的目录；工具列表的变化会送达通过 `subscriptions/listen` 订阅的 agent。
 
 无状态服务不保留连接，因此服务器自行识别每个请求的 agent：依据 2026-07-28 请求信封中的客户端信息、同一 User-Agent 较早发出的 `initialize` 请求中的客户端信息、User-Agent 的产品名，否则视为通用 agent。agent 的名称不会成为 Session 列表中的标题；设置面板显示 Host 启动以来见过的 agent。
 
 | 文件 | 作用 |
 |---|---|
-| [`src/index.ts`](src/index.ts) | `GameMcpServer`：Config、provider 注册表、监听器生命周期、请求检查与 `gameMcp.watch` 流 |
+| [`src/index.ts`](src/index.ts) | `GameMcpServer`：Config、provider 注册表、监听器生命周期、请求检查、对组合的等待与 `gameMcp.watch` 流 |
 | [`src/http.ts`](src/http.ts) | 回环监听器，以及 Node 请求与 Web 标准请求、响应之间的转换 |
 | [`src/server.ts`](src/server.ts) | MCP 处理器、`tools/list` 与 `tools/call` 处理函数，以及确认页面的 URL 征询 |
 | [`src/catalog.ts`](src/catalog.ts) | 工具收集、列出、带插件指南的搜索、指令及其概述，以及执行单次调用 |
@@ -173,7 +176,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### 模型可见内容
 
-已连接 agent 的模型会看到 `search_game_tools`、`call_game_tool`、`create_game_project`，以及每个 provider 工具，其描述与输入 schema 由 [`src/catalog.ts`](src/catalog.ts) 列出——Godot 工具使用 Session 自身的工具描述，并改用面向绝对项目路径的措辞；Blender、GIMP 与 SuperCollider 工具使用其服务器自身的描述，并加上 `session` 与 `project`；还会看到服务器指令：先是一段概述，说明为什么要使用这些工具、每个插件能带来什么、指南在哪里，以及跳过工具和扩展时要告诉用户什么，然后是每个插件在 `## <title>` 下的指南。agent 自身的 harness 决定如何呈现它们。
+已连接 agent 的模型会看到 `search_game_tools`、`call_game_tool`、`create_game_project`，以及每个 provider 工具，其描述与输入 schema 由 [`src/catalog.ts`](src/catalog.ts) 列出——Godot 工具使用 Session 自身的工具描述，并改用面向绝对项目路径的措辞；Blender、GIMP 与 SuperCollider 工具使用其服务器自身的描述，并加上 `session` 与 `project`；还会看到服务器指令：先是一段概述，说明为什么要使用这些工具、指南在哪里、跳过工具和扩展时要告诉用户什么，以及每个插件能带来什么，然后是每个插件在 `## <title>` 下的指南。agent 自身的 harness 决定如何呈现它们。
 
 #### Token 影响
 
@@ -187,7 +190,7 @@ Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 在其中制作游戏的要求，以及请 agent 围绕指令所列的插件规划游戏、并阅读它将使用的每个插件的指南的要求。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 围绕 `search_game_tools` 所列的插件规划游戏并阅读它将使用的每个插件的指南的要求、请 agent 在其中制作游戏并在安装扩展之前先写好 `project.godot` 的要求，以及如何把该文件夹传给游戏工具的说明，其中 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`；被拒绝的名称会得到与 Host 给出的原因相应的文本，例如 `"con.txt" is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.`。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
 
 #### Token 影响
 
@@ -209,7 +212,8 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **只创建新文件夹**——`create_game_project` 只创建新的文件夹；已有的文件夹会在某个游戏工具调用第一次指定它时成为游戏项目，同时创建发起调用的 agent 的 Session。新项目不会成为之后 Godot 调用的默认项目；在某次调用传入 `project` 之前，这些调用仍使用该 agent 上一次的项目。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
-- **指令被 harness 截断**——Claude Code 只把指令的前 4,096 个字符交给它的模型，因此概述之后的指南只能通过 `search_game_tools` 到达它，而概述必须容纳在其中：在随附的十四个 provider 下，概述约 3,980 个字符，新 provider 的那一行大约还有 110 个字符可用；某次注册使概述变长超限时，服务器会发出警告。
+- **指令被 harness 截断**——Claude Code 只把指令的前 4,096 个字符交给它的模型，因此概述之后的指南只能通过 `search_game_tools` 到达它，而概述必须容纳在其中：在随附的十四个 provider 下，概述约 3,990 个字符，新 provider 的那一行大约还有 100 个字符可用；某次注册使概述变长超限时，服务器会发出警告。概述超长时，被截掉的是排在最后的插件列表的末尾。
+- **启动时的等待**——在 WASD Engine 启动期间连接的 agent 会等待插件加载，最多等待 `readyTimeoutMs`；更晚才加载完的插件不在该 agent 的概述中（MCP 只发送一次概述），它会通过其工具的 `tools/list_changed` 和 `search_game_tools` 到达该 agent。
 - **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；它们对 Blender、GIMP 与 SuperCollider 工具的调用若未给出 `session`，则各共用一个 worker。
 - **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。
 - **确认页面按进程有效**——封存确认状态的密钥存在于服务器进程中，因此 Host 重启后的重试会被拒绝；客户端展示过的页面仍然有效，指明该页面的工具可以列出等待确认的内容，`wasd_server_status` 即是如此。
