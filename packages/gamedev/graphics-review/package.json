@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-graphics-review",
   "description": "Graphics review for the agent: a specialized reviewer critiques an image of the game's graphics, such as a screenshot, render, texture, or sprite, and says how to make it look better with WASD Engine's tools and add-ons, for every Session and for connected agents",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publishConfig": {
     "access": "public"
   },
