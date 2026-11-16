@@ -3,7 +3,7 @@
  * MCP client over Streamable HTTP, streams its view to the window, and withdraws a provider's tools with it.
  */
 import { once } from 'node:events'
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createServer, request as httpRequest, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -337,7 +337,8 @@ describe('GameMcpServer', () => {
     const events: Array<GameMcpToolResult | SessionId> = []
     ctx.on('game-mcp/tool-result', (result) => { events.push(result) })
     ctx.on('game-mcp/reveal', (sessionId) => { events.push(sessionId) })
-    const { server, view } = await start()
+    // The system's temporary folder holds the test's Documents folder.
+    const { server, view } = await start({ temporaryFolders: [] })
     ctx.effect(() => server.provide(alpha))
     const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
     const client = await connect(view.url as string, token)
@@ -360,6 +361,37 @@ describe('GameMcpServer', () => {
     // The projects hold no Session, the window is asked to show none, and no provider tool ran.
     expect(createSession).not.toHaveBeenCalled()
     expect(events).toEqual([])
+  }, TIMEOUT)
+
+  it('keeps an agent\'s work in the system\'s temporary folders out of the game projects by default', async () => {
+    // The system's temporary folder holds the test's folder, as it holds an agent's scratch folder.
+    const scratch = join(await realpath(root), 'scratch')
+    await mkdir(scratch)
+    const register = vi.fn()
+    ctx.provide('workspaceRegistry', { list: () => [], create: register, archivedSessionIds: [] } as never)
+    const sessionId = brandString<SessionId>('scratch-session')
+    const createSession = vi.fn(async () => ({ sessionId }))
+    ctx.provide('sessionController', { create: createSession, resolveAgent: async () => ({ agent: { id: sessionId } }) } as never)
+    const createProject = vi.fn()
+    ctx.provide('gameProjectController', { defaults: vi.fn(), create: createProject } as never)
+    const { server, view } = await start()
+    ctx.effect(() => server.provide({
+      id: 'scratch',
+      title: 'Scratch',
+      description: 'Echoes text in the agent\'s Session of a game project.',
+      tools: () => [{ name: 'scratch_echo', definition: echo, prepare: async (args, call) => ({ args, agent: await call.session(scratch) }) }],
+      status: () => Promise.resolve({ state: 'ready' }),
+    }))
+    const token = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    const client = await connect(view.url as string, token)
+
+    expect(text(await client.callTool({ name: 'scratch_echo', arguments: { text: 'hi' } }))).toBe('echo: hi')
+    expect(register).not.toHaveBeenCalled()
+    expect(createSession).toHaveBeenCalledWith({ cwd: scratch })
+    const refused = await client.callTool({ name: 'create_game_project', arguments: { name: 'Game', location: scratch } })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain(`${scratch} is in a temporary folder, whose files the system may delete, so WASD Engine creates no game project there.`)
+    expect(createProject).not.toHaveBeenCalled()
   }, TIMEOUT)
 
   it('refuses requests without the token, from foreign hosts and origins, and outside its endpoint', async () => {
@@ -420,7 +452,12 @@ describe('GameMcpServer', () => {
     expect(view.prompt).toBeUndefined()
   }, TIMEOUT)
 
-  it('refuses a relative data folder', () => {
+  it('refuses a relative data folder or temporary folder', async () => {
     expect(() => new GameMcpServer(ctx, GameMcpServer.Config({ dataRoot: 'relative' }))).toThrow('dataRoot must be an absolute path')
+    const other = new Context()
+    onTestFinished(() => other.fiber.dispose())
+    await other.plugin(TypertRegistry)
+    expect(() => new GameMcpServer(other, GameMcpServer.Config({ dataRoot: root, temporaryFolders: [root, 'scratch'] })))
+      .toThrow('temporaryFolders must hold absolute paths, got "scratch".')
   })
 })

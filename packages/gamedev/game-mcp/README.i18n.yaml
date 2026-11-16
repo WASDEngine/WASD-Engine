@@ -18,8 +18,8 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-game-mcp/use-this-package/default-composition:
-  en: 3519e7945f153cfe
-  zh: 12c71bd3d5b73112
+  en: 66b48d979671c33f
+  zh: 361f9f18fd2e7e3b
 /deepseek-ai-dsh-game-mcp/use-this-package/set-up-another-agent:
   en: af8a8dbba87fb0de
   zh: 499d6100839b82c1
@@ -30,11 +30,14 @@
   en: 23d7629ed9d7ad9d
   zh: e16c181db191f35f
 /deepseek-ai-dsh-game-mcp/use-this-package/create-game-projects:
-  en: cd0211dab7716c86
-  zh: 505e30338805593a
+  en: b3cbc25867cc2d68
+  zh: 39e1218039bd0ea9
 /deepseek-ai-dsh-game-mcp/use-this-package/games-in-the-wasd-engine-window:
-  en: 5222bced0ad9e772
-  zh: 602f28a2c8bbceb9
+  en: b258aec353606b93
+  zh: 33104d96e8a3e98c
+/deepseek-ai-dsh-game-mcp/use-this-package/temporary-folders:
+  en: 7f82176b800ae2b6
+  zh: b0760697ac222cd8
 /deepseek-ai-dsh-game-mcp/use-this-package/provide-tools:
   en: 0314afb470b817f1
   zh: 2ecd6e9dec8467ad
@@ -48,8 +51,8 @@
   en: 5c11d33b621e3440
   zh: c303cecee1118abd
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
-  en: 7693db9ce75958d5
-  zh: 36b5284212829d5b
+  en: 0cb5e82eb1b96520
+  zh: 13f939d968877da6
 /deepseek-ai-dsh-game-mcp/further-exploration:
   en: 1a07bf592f9be374
   zh: 51ba9e326a697e4f
@@ -84,8 +87,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: 03762a5245b3128f
-  zh: 81425e5a828e237e
+  en: a5a17daaf73c6dd7
+  zh: dd888e063cf26c69
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
@@ -93,8 +96,8 @@
   en: 7d053967b4d79221
   zh: 8cace89f19a37967
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work:
-  en: 8368b9c5ecb00ff4
-  zh: 5876f56217cf62fa
+  en: ebef25b1a8839cf4
+  zh: d6ece35578bb2ea1
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: 4e818dd6d00e4020
   zh: d442e9314c4b27e6

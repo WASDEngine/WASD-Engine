@@ -1,8 +1,9 @@
 /**
  * A connected agent gets one Session per game project: the registration that contains the named folder, or a new
- * one for it, holds the Session, which is created once, remembered across restarts, and recreated when it is gone.
+ * one for it, holds the Session, which is created once, remembered across restarts, and recreated when it is gone. A
+ * folder in a temporary folder that no registration contains gets no registration: its Session works in the folder.
  */
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -47,7 +48,7 @@ class Fakes {
   }
 
   readonly controller = {
-    create: vi.fn(async ({ workspaceId }: { workspaceId: string }) => {
+    create: vi.fn(async ({ workspaceId }: { workspaceId?: string; cwd?: string }) => {
       const sessionId = brandString<SessionId>(`session-${this.created.length + 1}`)
       this.created.push(sessionId)
       this.workspaces.find(workspace => workspace.id === workspaceId)?.sessionIds.push(sessionId)
@@ -81,8 +82,20 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-function sessions(file = join(root, 'data', 'sessions.json')): ExternalSessions {
-  return new ExternalSessions(ctx, file)
+/**
+ * The connected agents' Sessions.
+ * @param file - the bindings file.
+ * @param temporaryFolders - the temporary folders; by default none, so the test's folder, which the system's temporary
+ *   folder holds, gets registrations.
+ * @returns the Sessions.
+ */
+function sessions(file = join(root, 'data', 'sessions.json'), temporaryFolders: readonly string[] = []): ExternalSessions {
+  return new ExternalSessions(ctx, file, temporaryFolders)
+}
+
+/** The requests of the Sessions the controller created. */
+function createRequests(): unknown[] {
+  return fakes.controller.create.mock.calls.map(([request]) => request)
 }
 
 describe('ExternalSessions.agent', () => {
@@ -196,7 +209,7 @@ describe('ExternalSessions.agent', () => {
     await writeFile(join(root, 'file.txt'), 'x')
     await expect(store.agent(CLAUDE, join(root, 'file.txt'), signal)).rejects.toThrow('is not a folder')
     const bare = new Context()
-    await expect(new ExternalSessions(bare, join(root, 'sessions.json')).agent(CLAUDE, root, signal)).rejects.toThrow('keeps no game projects')
+    await expect(new ExternalSessions(bare, join(root, 'sessions.json'), []).agent(CLAUDE, root, signal)).rejects.toThrow('keeps no game projects')
     await bare.fiber.dispose()
   })
 
@@ -208,5 +221,98 @@ describe('ExternalSessions.agent', () => {
     await writeFile(file, JSON.stringify({ version: 99, sessions: [] }))
     expect((await sessions(file).agent(CLAUDE, join(root, 'game'), signal)).id).toBe('session-2')
     expect(warn).toHaveBeenCalledTimes(2)
+  })
+
+  it('skips remembered Sessions it cannot read, and keeps the ones it can', async () => {
+    const file = join(root, 'sessions.json')
+    const stale = brandString<SessionId>('stale')
+    const kept = brandString<SessionId>('kept')
+    fakes.workspaces.push({ id: 'game', path: join(root, 'game'), sessionIds: [stale, kept] })
+    fakes.agents.set(stale, { id: stale } as Agent).set(kept, { id: kept } as Agent)
+    const unreadable = [
+      null,
+      'claude-code',
+      { workspaceId: 'game', client: 7, sessionId: stale },
+      { workspaceId: 'game', client: 'claude-code' },
+      { workspaceId: 'game', client: 'claude-code', name: 7, sessionId: stale },
+      // A Session works in a game project or in a temporary folder, never both, and always in one of them.
+      { workspaceId: 'game', directory: join(root, 'game'), client: 'claude-code', sessionId: stale },
+      { client: 'claude-code', sessionId: stale },
+    ]
+    const readable = { workspaceId: 'game', client: 'codex', sessionId: kept }
+    await writeFile(file, JSON.stringify({ version: 1, sessions: [...unreadable, readable] }))
+    const store = sessions(file)
+    expect((await store.agent(CLAUDE, join(root, 'game'), signal)).id).toBe('session-1')
+    expect((await store.agent(CODEX, join(root, 'game'), signal)).id).toBe(kept)
+    expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({
+      version: 1, sessions: [readable, { workspaceId: 'game', client: 'claude-code', sessionId: 'session-1' }],
+    })
+  })
+})
+
+describe('ExternalSessions.agent in a temporary folder', () => {
+  it('registers no game project: each agent\'s Session, and each named one, works in the folder and is remembered', async () => {
+    const temporary = join(root, 'tmp')
+    const scratch = join(temporary, 'scratch', 'game')
+    await mkdir(scratch, { recursive: true })
+    Object.assign(fakes.controller, { rename: vi.fn(async () => {}) })
+    const store = sessions(undefined, [temporary])
+    const shared = await store.agent(CLAUDE, scratch, signal)
+    const builder = await store.agent(CLAUDE, scratch, signal, 'Builder')
+    const codex = await store.agent(CODEX, scratch, signal)
+    expect(new Set([shared.id, builder.id, codex.id]).size).toBe(3)
+    expect(fakes.registry.create).not.toHaveBeenCalled()
+    expect(createRequests()).toEqual([{ cwd: scratch }, { cwd: scratch }, { cwd: scratch }])
+    expect(JSON.parse(await readFile(join(root, 'data', 'sessions.json'), 'utf8'))).toEqual({
+      version: 1,
+      sessions: [
+        { directory: scratch, client: 'claude-code', sessionId: shared.id },
+        { directory: scratch, client: 'claude-code', name: 'builder', sessionId: builder.id },
+        { directory: scratch, client: 'codex', sessionId: codex.id },
+      ],
+    })
+    // After a Host restart, the agent and each name find their Sessions again.
+    expect((await sessions(undefined, [temporary]).agent(CLAUDE, scratch, signal)).id).toBe(shared.id)
+    expect((await sessions(undefined, [temporary]).agent(CLAUDE, scratch, signal, 'BUILDER')).id).toBe(builder.id)
+    expect(fakes.controller.create).toHaveBeenCalledTimes(3)
+  })
+
+  it('uses a game project registered there, and registers a folder outside the temporary folders', async () => {
+    const temporary = join(root, 'tmp')
+    await mkdir(join(temporary, 'kept', 'game'), { recursive: true })
+    fakes.workspaces.push({ id: 'kept', path: join(temporary, 'kept'), sessionIds: [] })
+    const store = sessions(undefined, [temporary])
+    const kept = await store.agent(CLAUDE, join(temporary, 'kept', 'game'), signal)
+    expect(fakes.workspaces[0]?.sessionIds).toEqual([kept.id])
+    await store.agent(CLAUDE, join(root, 'game'), signal)
+    expect(fakes.registry.create).toHaveBeenCalledTimes(1)
+    expect(fakes.registry.create).toHaveBeenCalledWith(join(root, 'game'))
+    expect(createRequests()).toEqual([{ workspaceId: 'kept' }, { workspaceId: 'w2' }])
+  })
+
+  it('finds a temporary folder that a symbolic link names, as /tmp names /private/tmp on macOS', async () => {
+    const real = join(root, 'private', 'tmp')
+    await mkdir(join(real, 'game'), { recursive: true })
+    // A junction on Windows, which needs no privilege; other systems ignore the type.
+    await symlink(real, join(root, 'tmp'), 'junction')
+    const store = sessions(undefined, [join(root, 'tmp')])
+    await store.agent(CLAUDE, join(root, 'tmp', 'game'), signal)
+    await store.agent(CODEX, join(real, 'game'), signal)
+    expect(fakes.registry.create).not.toHaveBeenCalled()
+    expect(createRequests()).toEqual([{ cwd: join(real, 'game') }, { cwd: join(real, 'game') }])
+  })
+
+  it('creates a new Session when the remembered one was archived or no longer exists', async () => {
+    const temporary = join(root, 'tmp')
+    await mkdir(join(temporary, 'game'), { recursive: true })
+    const store = sessions(undefined, [temporary])
+    const first = await store.agent(CLAUDE, join(temporary, 'game'), signal)
+    fakes.archivedSessionIds.push(first.id)
+    const second = await store.agent(CLAUDE, join(temporary, 'game'), signal)
+    expect(second.id).not.toBe(first.id)
+    fakes.agents.delete(second.id)
+    const third = await store.agent(CLAUDE, join(temporary, 'game'), signal)
+    expect(third.id).not.toBe(second.id)
+    expect(fakes.registry.create).not.toHaveBeenCalled()
   })
 })

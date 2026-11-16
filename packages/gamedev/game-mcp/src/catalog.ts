@@ -271,7 +271,7 @@ export class GameToolCatalog {
             },
             location: {
               type: 'string',
-              description: 'Absolute path of the folder to create the project\'s folder in, which WASD Engine creates when missing. Default: the WASD Engine folder in the user\'s Documents folder, where WASD Engine keeps game projects.',
+              description: 'Absolute path of the folder to create the project\'s folder in, which WASD Engine creates when missing, outside temporary folders such as /tmp. Default: the WASD Engine folder in the user\'s Documents folder, where WASD Engine keeps game projects.',
             },
           },
         },

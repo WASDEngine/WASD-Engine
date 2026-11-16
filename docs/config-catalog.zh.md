@@ -1953,7 +1953,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:43`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:45`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1973,6 +1973,13 @@ export interface Config {
    * a server to start.
    */
   readyTimeoutMs: number
+  /**
+   * Absolute folders where agents keep throwaway work, such as Claude Code's scratchpad under /tmp: a call that names a
+   * folder in one, which no game project contains, runs in a Session outside every game project instead of registering
+   * the folder as one, and `create_game_project` refuses a location in one. Default: the Host's temporary folder and,
+   * outside Windows, /tmp and /var/tmp.
+   */
+  temporaryFolders: string[]
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->

@@ -6,6 +6,7 @@
  * tools have loaded, so the server answers requests only once the Loader's tree has settled, or after `readyTimeoutMs`:
  * MCP has no way to send an agent new instructions, and an agent keeps the overview it received when it connected. Games
  * that a connected agent starts run in a Session of the WASD Engine window, which the server asks the window to show.
+ * A folder in a temporary folder, such as an agent's scratch folder, never becomes a game project through the server.
  * Every user signs in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool
  * call with a message that asks the user to sign in; a Host without the account plugin runs every call. A Free account
  * whose AI usage is used up is offered the upgrade to Pro when a tool that spends that usage fails, and a user who stays
@@ -33,6 +34,7 @@ import { setupPrompt } from './prompt.ts'
 import type { GameMcpCall, GameMcpClient, GameMcpProvider, GameMcpToolOwner } from './provider.ts'
 import { authInfoFor, createGameMcpHandler } from './server.ts'
 import { ExternalSessions } from './sessions.ts'
+import { systemTemporaryFolders } from './temporary-folders.ts'
 import { authorizes, loadToken } from './token.ts'
 import type { GameMcpServerState, GameMcpView } from './types.ts'
 
@@ -56,6 +58,13 @@ export interface Config {
    * a server to start.
    */
   readyTimeoutMs: number
+  /**
+   * Absolute folders where agents keep throwaway work, such as Claude Code's scratchpad under /tmp: a call that names a
+   * folder in one, which no game project contains, runs in a Session outside every game project instead of registering
+   * the folder as one, and `create_game_project` refuses a location in one. Default: the Host's temporary folder and,
+   * outside Windows, /tmp and /var/tmp.
+   */
+  temporaryFolders: string[]
 }
 
 /** The part of the Loader that the server waits for. */
@@ -112,6 +121,7 @@ export default class GameMcpServer extends TypertRemoteService {
     port: z.natural().max(65_535).default(9273),
     progressIntervalMs: z.natural().min(1).default(30_000),
     readyTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(8_000),
+    temporaryFolders: z.array(z.string()).default(systemTemporaryFolders()),
   })
 
   private readonly providers: GameMcpProvider[] = []
@@ -133,11 +143,13 @@ export default class GameMcpServer extends TypertRemoteService {
 
   /**
    * @param ctx - plugin context; the listener lives as long as it.
-   * @param config - validated configuration; a relative `dataRoot` fails the plugin load.
+   * @param config - validated configuration; a relative `dataRoot` or temporary folder fails the plugin load.
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'gameMcp', { namespace: 'gameMcp' })
     if (!isAbsolute(config.dataRoot)) throw new Error(`Game MCP plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
+    const relative = config.temporaryFolders.find(folder => !isAbsolute(folder))
+    if (relative !== undefined) throw new Error(`Game MCP plugin: temporaryFolders must hold absolute paths, got ${JSON.stringify(relative)}.`)
     this.freePlan = new FreePlan(ctx, join(config.dataRoot, FREE_PLAN_FILE), () => { this.toolsChanged() })
     this.catalog = new GameToolCatalog(() => this.providers, (message) => { ctx.logger.warn(message) }, (result) => {
       try {
@@ -147,12 +159,12 @@ export default class GameMcpServer extends TypertRemoteService {
         ctx.logger.warn(`game-mcp: a game-mcp/tool-result listener failed: ${error instanceof Error ? error.message : String(error)}`)
       }
     }, provider => provider.spendsUsage !== true || !this.freePlan.hiding())
-    this.sessions = new ExternalSessions(ctx, join(config.dataRoot, 'sessions.json'))
+    this.sessions = new ExternalSessions(ctx, join(config.dataRoot, 'sessions.json'), config.temporaryFolders)
     this.handler = createGameMcpHandler({
       catalog: this.catalog,
       refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
-      createProject: (args, signal) => createGameProject(ctx, args, signal),
+      createProject: (args, signal) => createGameProject(ctx, args, signal, config.temporaryFolders),
       usageOffer: failure => this.freePlan.offer(failure),
       stayOnFree: () => this.freePlan.stayOnFree(),
       note: client => this.notes.note(

@@ -2,14 +2,16 @@
  * The Sessions through which connected agents work: one per agent and game project, and one more for each Session name
  * that the agent's calls give, so agents that share one connection, such as the subagents of one session, can each run
  * a game of their own. A call names a directory; the game project registration that contains it, or a new one for the
- * directory itself, holds the agent's Sessions, which are created on first use and remembered in a JSON file, so the
- * agent keeps its Sessions, and the Sessions their games, across agent and Host restarts. The agent's unnamed Session
+ * directory itself, holds the agent's Sessions. A directory in a temporary folder that no registration contains, such as
+ * an agent's scratch folder, gets no registration: its Sessions work in the directory outside every game project, so
+ * throwaway work stays out of the user's game projects. Sessions are created on first use and remembered in a JSON file,
+ * so the agent keeps its Sessions, and the Sessions their games, across agent and Host restarts. The agent's unnamed Session
  * stays untitled and blank until someone prompts in it, so New Session in that game project opens it, and its Game tab,
  * rather than a second blank Session; a named Session is titled with the agent and the name.
  * @module @deepseek-ai/dsh-game-mcp/src/sessions
  */
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute, sep } from 'node:path'
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -19,6 +21,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { Workspace } from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type { GameMcpClient } from './provider.ts'
+import { inTemporaryFolder, within } from './temporary-folders.ts'
 
 /** Format version of the bindings file. */
 const FILE_VERSION = 1
@@ -26,9 +29,11 @@ const FILE_VERSION = 1
 /** Longest Session name a call may give, after trimming. */
 export const MAX_SESSION_NAME_CHARS = 40
 
-/** One remembered Session: the game project registration, the agent, the Session name if any, and the Session. */
-interface Binding {
-  readonly workspaceId: string
+/** Where a remembered Session works: in the game project registration that holds it, or in a temporary folder that none contains. */
+type Place = { readonly workspaceId: string } | { readonly directory: string }
+
+/** One remembered Session: where it works, the agent, the Session name if any, and the Session. */
+type Binding = Place & {
   readonly client: string
   /** The Session name in lowercase; absent for the agent's unnamed Session. */
   readonly name?: string
@@ -40,15 +45,24 @@ export class GameMcpSessionError extends Error {
   override name = 'GameMcpSessionError'
 }
 
-function bindingKey(workspaceId: string, client: string, name: string | undefined): string {
-  return name === undefined ? `${workspaceId}\n${client}` : `${workspaceId}\n${client}\n${name}`
+function bindingKey(place: Place, client: string, name: string | undefined): string {
+  return JSON.stringify(['workspaceId' in place ? ['workspace', place.workspaceId] : ['directory', place.directory], client, name ?? null])
 }
 
-function isBinding(value: unknown): value is Binding {
-  if (typeof value !== 'object' || value === null) return false
-  const record = value as Record<string, unknown>
-  return typeof record.workspaceId === 'string' && typeof record.client === 'string' && typeof record.sessionId === 'string'
-    && (record.name === undefined || typeof record.name === 'string')
+/**
+ * The binding that one entry of the bindings file records.
+ * @param value - the entry.
+ * @returns the binding with the entry's known fields, or undefined when the entry records none.
+ */
+function bindingOf(value: unknown): Binding | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const { workspaceId, directory, client, name, sessionId } = value as Record<string, unknown>
+  if (typeof client !== 'string' || typeof sessionId !== 'string' || (name !== undefined && typeof name !== 'string')) return undefined
+  const rest = { client, ...name === undefined ? {} : { name }, sessionId }
+  // A Session works in a game project registration or in a temporary folder outside every one, never both.
+  if (typeof workspaceId === 'string' && directory === undefined) return { workspaceId, ...rest }
+  if (typeof directory === 'string' && workspaceId === undefined) return { directory, ...rest }
+  return undefined
 }
 
 /**
@@ -75,8 +89,7 @@ export function sessionName(name: string): { readonly title: string; readonly ke
 function containing(workspaces: readonly Workspace[], path: string): Workspace | undefined {
   let best: Workspace | undefined
   for (const workspace of workspaces) {
-    const root = workspace.path.endsWith(sep) ? workspace.path : `${workspace.path}${sep}`
-    if (workspace.path !== path && !path.startsWith(root)) continue
+    if (!within(workspace.path, path)) continue
     if (best === undefined || workspace.path.length > best.path.length) best = workspace
   }
   return best
@@ -92,11 +105,13 @@ export class ExternalSessions {
   /**
    * @param ctx - Host context with the optional Workspace registry and Session controller.
    * @param file - absolute path of the bindings file.
+   * @param temporaryFolders - absolute folders in which a directory that no registration contains gets none.
    */
-  constructor(private readonly ctx: Context, private readonly file: string) {}
+  constructor(private readonly ctx: Context, private readonly file: string, private readonly temporaryFolders: readonly string[]) {}
 
   /**
-   * Resolve the Agent of an agent's Session in the game project that holds a directory.
+   * Resolve the Agent of an agent's Session in the game project that holds a directory, or, for a directory in a
+   * temporary folder that no game project holds, in the directory without a game project.
    * @param client - calling agent.
    * @param directory - absolute path of an existing directory.
    * @param signal - cancellation before the Session is created or resumed.
@@ -122,12 +137,14 @@ export class ExternalSessions {
       throw new GameMcpSessionError('This WASD Engine Host keeps no game projects, so connected agents cannot run games through it.')
     }
     signal.throwIfAborted()
-    const workspace = containing(registry.list(), canonical) ?? await registry.create(canonical)
-    const key = bindingKey(workspace.id, client.id, named?.key)
+    const workspace = containing(registry.list(), canonical)
+      ?? (await inTemporaryFolder(this.temporaryFolders, canonical) ? undefined : await registry.create(canonical))
+    const place: Place = workspace === undefined ? { directory: canonical } : { workspaceId: workspace.id }
+    const key = bindingKey(place, client.id, named?.key)
     return this.serialize(key, async () => {
       const bindings = await this.load()
       const stored = bindings.get(key)
-      if (stored !== undefined && workspace.sessionIds.includes(brandString<SessionId>(stored.sessionId))
+      if (stored !== undefined && (workspace === undefined || workspace.sessionIds.includes(brandString<SessionId>(stored.sessionId)))
         && !registry.archivedSessionIds.includes(brandString<SessionId>(stored.sessionId))) {
         const resumed = await controller.resolveAgent(brandString<SessionId>(stored.sessionId))
         if ('agent' in resumed) return resumed.agent
@@ -137,7 +154,7 @@ export class ExternalSessions {
       }
       signal.throwIfAborted()
       // Untitled: until someone prompts in it, the Session is blank, and New Session in the game project opens it.
-      const created = await controller.create({ workspaceId: workspace.id })
+      const created = await controller.create(workspace === undefined ? { cwd: canonical } : { workspaceId: workspace.id })
       const resolved = await controller.resolveAgent(created.sessionId)
       if ('error' in resolved) throw new GameMcpSessionError(`WASD Engine cannot open the Session of ${client.title}: ${resolved.error.message}`)
       if (named !== undefined) {
@@ -149,7 +166,7 @@ export class ExternalSessions {
         }
       }
       const binding: Binding = {
-        workspaceId: workspace.id, client: client.id, ...named === undefined ? {} : { name: named.key }, sessionId: created.sessionId,
+        ...place, client: client.id, ...named === undefined ? {} : { name: named.key }, sessionId: created.sessionId,
       }
       bindings.set(key, binding)
       await this.save(bindings)
@@ -190,7 +207,10 @@ export class ExternalSessions {
         this.ctx.logger.warn(`game-mcp: ${this.file} has an unknown format; connected agents get new Sessions`)
         return bindings
       }
-      for (const entry of entries) if (isBinding(entry)) bindings.set(bindingKey(entry.workspaceId, entry.client, entry.name), entry)
+      for (const entry of entries) {
+        const binding = bindingOf(entry)
+        if (binding !== undefined) bindings.set(bindingKey(binding, binding.client, binding.name), binding)
+      }
       return bindings
     })().catch((error: unknown) => {
       // A failed read is retried by the next call instead of failing every later one.
@@ -206,9 +226,7 @@ export class ExternalSessions {
    */
   private save(bindings: Map<string, Binding>): Promise<void> {
     const write = this.saving.then(async () => {
-      const sessions = [...bindings.values()].map(({ workspaceId, client, name, sessionId }) => ({
-        workspaceId, client, ...name === undefined ? {} : { name }, sessionId,
-      }))
+      const sessions = [...bindings.values()]
       await writeFileAtomic(this.file, `${JSON.stringify({ version: FILE_VERSION, sessions }, null, 2)}\n`, { mode: 0o600 })
     })
     this.saving = write.catch(() => {

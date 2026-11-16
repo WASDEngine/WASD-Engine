@@ -42,6 +42,7 @@ WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasdengi
 | `port` | `9273` | 端点的回环端口，0 到 65,535 的整数；0 表示选择空闲端口。端口被其他程序占用时，服务器在 Host 重启前改用一个空闲端口，并在其视图中说明 |
 | `progressIntervalMs` | `30000` | 运行中的工具调用向请求了进度的 agent 发送进度通知的间隔（毫秒），至少为 1 的整数 |
 | `readyTimeoutMs` | `8000` | 最初的请求等待组合加载完其插件的最长时间（毫秒，见[服务器指令](#server-instructions)），至少为 1 的整数；默认值低于 Codex 给服务器启动留出的 10 秒 |
+| `temporaryFolders` | Host 的临时文件夹，以及 Windows 以外系统上的 `/tmp` 与 `/var/tmp` | agent 存放一次性工作的绝对路径文件夹，其中的文件夹不会经由服务器成为游戏项目（[临时文件夹](#temporary-folders)）；相对路径会使插件加载失败，`[]` 关闭这条规则 |
 
 profile patch 用 `- id: game-mcp` 与 `disabled: true` 关闭服务器。
 
@@ -93,12 +94,17 @@ MCP 只发送一次指令，即在对 `initialize` 或 `server/discover` 的回�
 <a id="create-game-projects"></a>
 ### 创建游戏项目
 
-`create_game_project` 通过 Workspace 控制器的 [`gameProjectController`](../../../docs/subsystems/workspace.zh.md#ctxgameprojectcontroller--gameprojectcontroller)（即「创建游戏项目」对话框的 Host 部分）为已连接 agent 创建游戏项目：在 `location`（一个绝对路径，缺失时会被创建，并像对话框那样去掉两端的空格）中创建名为 `name` 的文件夹，省略 `location` 或其为 null 或空白时，则创建在对话框建议的文件夹 `<Documents>/WASD Engine` 中；Git 可用时，文件夹中有一个带有一个空提交的 Git 仓库；然后注册该文件夹，标题为文件夹名，窗口把它列在「游戏项目」下。这次调用不打开任何 Session，因此在用户打开该项目，或某个游戏工具调用指定它并在其中启动该 agent 的 Session 之前，项目不含 Session。结果给出该文件夹的绝对路径，供 agent 之后的调用使用，请 agent 在安装扩展之前先写好游戏的 `project.godot`（安装需要它），并说明 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`。名称不是单个可移植的文件夹名、`location` 不是绝对路径、路径已存在、Host 没有游戏项目控制器，或者调用省略 `location` 而 Host 找不到 Documents 文件夹时，调用都会得到说明原因的错误结果，且不会创建任何内容；对于名称，文本由 Host 给出的原因决定：没有可见字符、含有某些计算机拒绝的字符或长度、是 Windows 保留的设备名（如 `CON` 或 `com1.txt`），或是 `.git`。这次调用不发出 `game-mcp/tool-result`，该事件只报告 provider 工具。
+`create_game_project` 通过 Workspace 控制器的 [`gameProjectController`](../../../docs/subsystems/workspace.zh.md#ctxgameprojectcontroller--gameprojectcontroller)（即「创建游戏项目」对话框的 Host 部分）为已连接 agent 创建游戏项目：在 `location`（一个绝对路径，缺失时会被创建，并像对话框那样去掉两端的空格）中创建名为 `name` 的文件夹，省略 `location` 或其为 null 或空白时，则创建在对话框建议的文件夹 `<Documents>/WASD Engine` 中；Git 可用时，文件夹中有一个带有一个空提交的 Git 仓库；然后注册该文件夹，标题为文件夹名，窗口把它列在「游戏项目」下。这次调用不打开任何 Session，因此在用户打开该项目，或某个游戏工具调用指定它并在其中启动该 agent 的 Session 之前，项目不含 Session。结果给出该文件夹的绝对路径，供 agent 之后的调用使用，请 agent 在安装扩展之前先写好游戏的 `project.godot`（安装需要它），并说明 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`。名称不是单个可移植的文件夹名、`location` 不是绝对路径或位于[临时文件夹](#temporary-folders)中、路径已存在、Host 没有游戏项目控制器，或者调用省略 `location` 而 Host 找不到 Documents 文件夹时，调用都会得到说明原因的错误结果，且不会创建任何内容；对于名称，文本由 Host 给出的原因决定：没有可见字符、含有某些计算机拒绝的字符或长度、是 Windows 保留的设备名（如 `CON` 或 `com1.txt`），或是 `.git`。这次调用不发出 `game-mcp/tool-result`，该事件只报告 provider 工具。
 
 <a id="games-in-the-wasd-engine-window"></a>
 ### WASD Engine 窗口中的游戏
 
-Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身；省略 `project` 时，调用使用该 agent 上一次的项目。服务器解析在该项目中运行这个 agent 游戏的 Session：包含该文件夹的已注册游戏项目，或为该文件夹新建的注册，为每个 agent 保存一个 Session；Session 在首次使用时创建，并记录在 `<dataRoot>/sessions.json` 中，因此 agent 在重启后仍保有它的 Session 与游戏。离开了游戏项目、已归档或已不存在的 Session 会被新的 Session 取代。Godot 调用还可以给出 `session`：一个 1 到 40 个字符、不含控制字符的名称；每个名称在该项目中为该 agent 选择另一个 Session，标题为 `<agent>: <name>`，只有大小写不同的名称选择同一个 Session。共用同一连接、因而共用同一身份的 agent（例如同一 Claude Code 会话中同时工作的多个子 agent）各自给出自己的名称，就能各自运行自己的游戏，而不会重启另一个 agent 正在测试的游戏；某个名称的第一次调用省略 `project` 时，使用该 agent 最近的项目。`godot_run` 会携带该 Session 发出 `game-mcp/reveal`，窗口随即通过 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 打开该 Session，「游戏」标签页也会像对待任何由 agent 启动的运行一样为这次运行打开。
+Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、其上方至多三层的文件夹，或 `project.godot` 文件本身；省略 `project` 时，调用使用该 agent 上一次的项目。服务器解析在该项目中运行这个 agent 游戏的 Session：包含该文件夹的已注册游戏项目，或为该文件夹新建的注册，为每个 agent 保存一个 Session；位于[临时文件夹](#temporary-folders)中、且没有已注册游戏项目包含的文件夹不会被注册，该 agent 的 Session 在这个文件夹中工作，不属于任何游戏项目。每个 Session 在首次使用时创建，并记录在 `<dataRoot>/sessions.json` 中，因此 agent 在重启后仍保有它的 Session 与游戏。离开了游戏项目、已归档或已不存在的 Session 会被新的 Session 取代。Godot 调用还可以给出 `session`：一个 1 到 40 个字符、不含控制字符的名称；每个名称在该项目中为该 agent 选择另一个 Session，标题为 `<agent>: <name>`，只有大小写不同的名称选择同一个 Session。共用同一连接、因而共用同一身份的 agent（例如同一 Claude Code 会话中同时工作的多个子 agent）各自给出自己的名称，就能各自运行自己的游戏，而不会重启另一个 agent 正在测试的游戏；某个名称的第一次调用省略 `project` 时，使用该 agent 最近的项目。`godot_run` 会携带该 Session 发出 `game-mcp/reveal`，窗口随即通过 [`@deepseek-ai/dsh-client-ui-game-mcp`](../ui-game-mcp/README.zh.md) 打开该 Session，「游戏」标签页也会像对待任何由 agent 启动的运行一样为这次运行打开。
+
+<a id="temporary-folders"></a>
+### 临时文件夹
+
+agent 会在一次性文件夹中测试和试验，例如 Claude Code 位于 `/tmp` 下的 scratchpad；如果每个这样的文件夹都成为游戏项目，用户自己的项目就会淹没在「游戏项目」列表中。因此服务器不在 `temporaryFolders` 中注册游戏项目：默认是 Host 的临时文件夹（由 `TMPDIR`、`TMP` 或 `TEMP` 指定），以及 Windows 以外系统上的 `/tmp` 与 `/var/tmp`。路径的规范写法（解析符号链接后的写法，例如 macOS 上 `/tmp` 指向 `/private/tmp`）等于某个临时文件夹或位于其下时，该路径就在临时文件夹中；尚不存在的路径按其最近的已存在文件夹来写。游戏工具调用指定位于临时文件夹中、且没有已注册游戏项目包含的文件夹时，调用在该 agent 于这个文件夹中的 Session 里运行，该 Session 不属于任何游戏项目：Session 列表像对待所有空白 Session 一样，只在它打开时把它显示在「未分组」下，而窗口仍会为 `godot_run` 打开它。位于临时文件夹中的已注册游戏项目（例如用户自己添加的）仍然保存其 agent 的 Session。`create_game_project` 拒绝位于临时文件夹中的 `location`，并告诉 agent 省略 `location`、传入一个长期保留的文件夹，或自己创建一次性文件夹；无论 Documents 文件夹在哪里，它仍会在 `<Documents>/WASD Engine` 中创建项目。
 
 ### 提供工具
 
@@ -143,6 +149,7 @@ MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `i
 | [`src/projects.ts`](src/projects.ts) | `create_game_project`：其参数、默认位置，以及通过 `gameProjectController` 的创建 |
 | [`src/clients.ts`](src/clients.ts) | agent 身份与已见过的 agent |
 | [`src/sessions.ts`](src/sessions.ts) | 已连接 agent 的 Session 与 `sessions.json` |
+| [`src/temporary-folders.ts`](src/temporary-folders.ts) | 默认的临时文件夹，以及某个路径是否位于其中 |
 | [`src/token.ts`](src/token.ts)、[`src/prompt.ts`](src/prompt.ts) | 令牌文件与校验，以及设置提示词 |
 | [`src/provider.ts`](src/provider.ts)、[`src/types.ts`](src/types.ts) | provider 契约与 `game-mcp/tool-result` 事件、浏览器安全的视图类型与 `game-mcp/reveal` 事件 |
 
@@ -199,7 +206,7 @@ Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 围绕 `search_game_tools` 所列的插件规划游戏并阅读它将使用的每个插件的指南的要求、请 agent 在其中制作游戏并在安装扩展之前先写好 `project.godot` 的要求，以及如何把该文件夹传给游戏工具的说明，其中 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`；被拒绝的名称会得到与 Host 给出的原因相应的文本，例如 `"con.txt" is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.`。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`对于用量已用完的 Free 账号，一次消耗该用量的工具调用失败后：用户拒绝升级页面时返回 `This tool is not available now. Go on with the work using WASD Engine's other game tools.`；不展示页面的客户端则收到一段文本，请 agent 连同页面把这一选择转告用户。这些 provider 关闭或重新开启之后，agent 收到的第一个结果末尾会附上列出它们的提示。
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 围绕 `search_game_tools` 所列的插件规划游戏并阅读它将使用的每个插件的指南的要求、请 agent 在其中制作游戏并在安装扩展之前先写好 `project.godot` 的要求，以及如何把该文件夹传给游戏工具的说明，其中 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`；被拒绝的名称会得到与 Host 给出的原因相应的文本，例如 `"con.txt" is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.`，位于临时文件夹中的 `location` 会得到 `<location> is in a temporary folder, whose files the system may delete, so WASD Engine creates no game project there.` 以及应改做什么的说明。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`对于用量已用完的 Free 账号，一次消耗该用量的工具调用失败后：用户拒绝升级页面时返回 `This tool is not available now. Go on with the work using WASD Engine's other game tools.`；不展示页面的客户端则收到一段文本，请 agent 连同页面把这一选择转告用户。这些 provider 关闭或重新开启之后，agent 收到的第一个结果末尾会附上列出它们的提示。
 
 #### Token 影响
 
@@ -219,7 +226,8 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **完全信任**——持有令牌者可以用用户的权限在 Blender 和 GIMP 中运行 Python、在 SuperCollider 中运行 sclang 代码、在游戏中求值表达式并运行游戏，WASD Engine 不会请求批准；agent 按其自身规则请求批准。提示词中包含令牌，因此用户只应把它粘贴到这台电脑上的 agent 中。
 - **单一端口**——第二个 Host（例如与 Desktop 应用同时运行的 `dsh web`）会发现端口已被占用并改用一个空闲端口，其 URL 只在该 Host 的设置内容中显示。
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
-- **只创建新文件夹**——`create_game_project` 只创建新的文件夹；已有的文件夹会在某个游戏工具调用第一次指定它时成为游戏项目，同时创建发起调用的 agent 的 Session。新项目不会成为之后 Godot 调用的默认项目；在某次调用传入 `project` 之前，这些调用仍使用该 agent 上一次的项目。
+- **只创建新文件夹**——`create_game_project` 只创建新的文件夹；已有的、不在临时文件夹中的文件夹会在某个游戏工具调用第一次指定它时成为游戏项目，同时创建发起调用的 agent 的 Session。新项目不会成为之后 Godot 调用的默认项目；在某次调用传入 `project` 之前，这些调用仍使用该 agent 上一次的项目。
+- **按位置判断临时**——服务器按文件夹所在的位置判断一次性工作：agent 存放在其他位置的文件夹仍会成为游戏项目，而用户保留在临时文件夹中的游戏只有在用户添加它之后才会成为游戏项目。不属于任何游戏项目的 Session 在打开其他 Session 后就会离开 Session 列表，其标题栏也不显示「扩展」「导出 / 分享」与「多人联机」按钮，因为这些按钮作用于游戏项目。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
 - **指令被 harness 截断**——Claude Code 只把指令的前 4,096 个字符交给它的模型，因此概述之后的指南只能通过 `search_game_tools` 到达它，而概述必须容纳在其中：在随附的十四个 provider 下，概述约 4,045 个字符，新 provider 的那一行大约还有 50 个字符可用；某次注册使概述变长超限时，服务器会发出警告。概述超长时，被截掉的是排在最后的插件列表的末尾。
 - **启动时的等待**——在 WASD Engine 启动期间连接的 agent 会等待插件加载，最多等待 `readyTimeoutMs`；更晚才加载完的插件不在该 agent 的概述中（MCP 只发送一次概述），它会通过其工具的 `tools/list_changed` 和 `search_game_tools` 到达该 agent。

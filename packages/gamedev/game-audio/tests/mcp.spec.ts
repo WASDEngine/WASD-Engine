@@ -60,7 +60,8 @@ async function connected(registered: readonly string[] = []) {
     },
   } as never)
   await ctx.plugin(TypertRegistry)
-  await ctx.plugin(GameMcpServer, GameMcpServer.Config({ dataRoot: join(work, '.game-mcp'), port: 0 }))
+  // The system's temporary folder holds the test's game projects, which the server registers.
+  await ctx.plugin(GameMcpServer, GameMcpServer.Config({ dataRoot: join(work, '.game-mcp'), port: 0, temporaryFolders: [] }))
   const server = ctx.get('gameMcp') as GameMcpServer
   const views: GameMcpView[] = []
   const stop = new AbortController()

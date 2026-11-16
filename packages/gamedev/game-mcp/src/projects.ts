@@ -2,14 +2,17 @@
  * The `create_game_project` tool: a connected agent creates a game project as the Create game project dialog does,
  * through the Workspace controller's `gameProjectController`, in the location the call names or in WASD Engine's
  * folder for game projects. The call opens no Session, so the project shows in the window with none; its Sessions start
- * when the user opens it or when a game tool call names it.
+ * when the user opens it or when a game tool call names it. A location in a temporary folder is refused, so an agent's
+ * throwaway work stays out of the user's game projects.
  * @module @deepseek-ai/dsh-game-mcp/src/projects
  */
+import { isAbsolute } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { GameProjectNameProblem } from '@deepseek-ai/dsh-api-workspace-controller'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import { SEARCH_TOOL, type McpCallResult } from './catalog.ts'
 import type { JsonObject } from './provider.ts'
+import { inTemporaryFolder } from './temporary-folders.ts'
 
 function errorResult(text: string): McpCallResult {
   return { isError: true, content: [{ type: 'text', text }] }
@@ -50,6 +53,17 @@ function failureText(error: unknown): string {
 }
 
 /**
+ * What the agent reads about a location in a temporary folder.
+ * @param location - the location as the call gave it, without the spaces around it.
+ * @returns the text.
+ */
+function temporaryLocationText(location: string): string {
+  return `${location} is in a temporary folder, whose files the system may delete, so WASD Engine creates no game project there. `
+    + 'Leave location out to create the project in WASD Engine\'s folder for game projects, or pass a folder that lasts. '
+    + 'To try something out in a temporary folder, make the folder yourself and pass it as project: the game tools work in it without a game project.'
+}
+
+/**
  * Create a game project for a connected agent: a new folder with a Git repository when Git is available, registered
  * as a game project, with no Session.
  * @param ctx - Host context with the optional game project controller.
@@ -58,9 +72,12 @@ function failureText(error: unknown): string {
  *   `location` stands for the dialog's suggested folder, `<Documents>/WASD Engine`.
  * @param signal - the call's cancellation; it stops the Documents lookup or a running Git command, and a folder
  *   created before it is still registered.
+ * @param temporaryFolders - absolute folders in which a `location` is refused.
  * @returns the result that names the new folder, or an error result that says why nothing was created.
  */
-export async function createGameProject(ctx: Context, args: JsonObject, signal: AbortSignal): Promise<McpCallResult> {
+export async function createGameProject(
+  ctx: Context, args: JsonObject, signal: AbortSignal, temporaryFolders: readonly string[],
+): Promise<McpCallResult> {
   const { name, location } = args
   if (typeof name !== 'string') return errorResult('Pass name, the name of the game project.')
   if (location !== undefined && location !== null && typeof location !== 'string') {
@@ -69,6 +86,8 @@ export async function createGameProject(ctx: Context, args: JsonObject, signal: 
   const requested = typeof location === 'string' ? location.trim() : ''
   const projects = ctx.get('gameProjectController')
   if (projects === undefined) return errorResult('This WASD Engine keeps no game projects, so it cannot create one.')
+  // A relative location is the game project controller's to refuse.
+  if (isAbsolute(requested) && await inTemporaryFolder(temporaryFolders, requested)) return errorResult(temporaryLocationText(requested))
   try {
     const directory = requested === '' ? (await projects.defaults(signal)).directory : requested
     if (directory === null) {
