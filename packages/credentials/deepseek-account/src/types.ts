@@ -87,6 +87,13 @@ export interface AccountAllowance {
    * report everything left, and the service reports no credits or auto recharge. Absent otherwise.
    */
   readonly unlimited?: true
+  /** The account's plan; absent from services that do not report it. */
+  readonly plan?: 'free' | 'pro' | 'max'
+  /**
+   * Whether the service refuses the account's AI usage now: the allowance and the credits are used up. Absent from
+   * services that do not report it.
+   */
+  readonly usedUp?: boolean
 }
 /**
  * WASD Engine: auto recharge, which charges the account's saved card for more credits each time its AI usage and

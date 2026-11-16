@@ -59,7 +59,7 @@ The Game tools tabs of Settings › Built-in plugins and the Plugins page list t
 
 Nano Banana makes no transparent backgrounds, so the tool's description tells the agent to ask for one flat background color and make it transparent with GIMP, with a little tolerance for the JPEG's edges, and to make textures seamless with GIMP. Every image carries Google's invisible SynthID watermark.
 
-Agents connected through WASD Engine's MCP server reach the tool under the provider `image`, titled Nano Banana, without a Session: `path` and every image must be absolute paths. Their images are charged to the account WASD Engine is signed in to, and the server refuses every call while it is signed out. The provider's description in the overview of the server instructions, and its guide, ask the agent to prefer it to drawing 2D art itself, in GIMP or in code.
+Agents connected through WASD Engine's MCP server reach the tool under the provider `image`, titled Nano Banana, without a Session: `path` and every image must be absolute paths. Their images are charged to the account WASD Engine is signed in to, and the server refuses every call while it is signed out. The provider's description in the overview of the server instructions, and its guide, ask the agent to prefer it to drawing 2D art itself, in GIMP or in code. The provider spends the account's AI usage (`spendsUsage`), so while a Free account whose usage is used up stays on Free, the server offers connected agents none of its tools ([Free accounts whose usage is used up](../game-mcp/README.md#free-accounts-whose-usage-is-used-up)).
 
 ### Prices and the account
 

@@ -59,7 +59,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 `path` 相对于会话的工作目录，或为绝对路径；其扩展名决定文件类型：语音和音效为 `.mp3` 或 `.wav`，音乐为 `.mp3`。调用在付费请求之前检查路径和每个参数：路径指向文件夹，或指向已存在的文件而 `replace` 不为 true 时，不产生任何费用。文件先写入旁边的临时文件，因此要么完整出现，要么完全不出现。结果给出文件、大小、音频时长；对循环音效和音乐，还给出让它在 Godot 中循环的导入选项。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `elevenlabs` 下使用这些工具，不需要会话：`elevenlabs_voices` 标记为只读，语音、音效和音乐工具要求 `path` 为绝对路径，`elevenlabs_clone_voice` 要求 `samples` 为绝对路径并传入 `consent: true`。它们的音频费用计入 WASD Engine 已登录的账号；未登录时，服务器拒绝每次调用。服务器指令概述中的 provider 描述及其指南要求 agent 制作音效和音乐时优先使用这些工具，而不是 SuperCollider。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `elevenlabs` 下使用这些工具，不需要会话：`elevenlabs_voices` 标记为只读，语音、音效和音乐工具要求 `path` 为绝对路径，`elevenlabs_clone_voice` 要求 `samples` 为绝对路径并传入 `consent: true`。它们的音频费用计入 WASD Engine 已登录的账号；未登录时，服务器拒绝每次调用。服务器指令概述中的 provider 描述及其指南要求 agent 制作音效和音乐时优先使用这些工具，而不是 SuperCollider。该 provider 会消耗账号的 AI 用量（`spendsUsage`），因此用量已用完的 Free 账号继续使用 Free 期间，服务器不向连接的 agent 提供它的任何工具（[用完 AI 用量的 Free 账号](../game-mcp/README.zh.md#free-accounts-whose-usage-is-used-up)）。
 
 ### 价格与账号
 

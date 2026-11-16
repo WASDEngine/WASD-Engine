@@ -1953,12 +1953,12 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:40`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:43`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute folder of the access token and of the connected agents' Session bindings. */
+  /** Absolute folder of the access token, of the connected agents' Session bindings, and of a choice to stay on Free. */
   dataRoot: string
   /** Loopback port of the endpoint; while another program holds it, the server listens on a free port for that Host run. */
   port: number

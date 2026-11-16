@@ -75,7 +75,7 @@ The page and image requests go only to public internet addresses: for the first 
 
 ### Connected agents
 
-Agents connected through WASD Engine's MCP server reach the tools under the provider `reference`, titled Art references, without a Session. `reference_save` takes `project`, the absolute path of an existing game project folder, and saves into its `references/` folder. Each result sends its images as image bytes after its text.
+Agents connected through WASD Engine's MCP server reach the tools under the provider `reference`, titled Art references, without a Session. `reference_save` takes `project`, the absolute path of an existing game project folder, and saves into its `references/` folder. Each result sends its images as image bytes after its text. The provider spends the account's AI usage (`spendsUsage`), since the account service prices its web searches, so while a Free account whose usage is used up stays on Free, the server offers connected agents none of its tools ([Free accounts whose usage is used up](../game-mcp/README.md#free-accounts-whose-usage-is-used-up)).
 
 -----
 

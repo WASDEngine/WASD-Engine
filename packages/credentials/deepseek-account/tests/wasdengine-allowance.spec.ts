@@ -88,6 +88,17 @@ it('projects the Unlimited tier, and drops a malformed flag', async () => {
   }
 })
 
+it('projects the plan and whether the usage is used up, and drops malformed ones', async () => {
+  const allowance = { remaining_percent: 0, remaining_share: 0, refreshes_at: '2026-12-01T00:00:00Z', plan: 'free', used_up: true }
+  await expect(readBalance({ normal_wallets: [], bonus_wallets: [], allowance })).resolves.toEqual({
+    status: 'ready', value: [], bonusWallets: [],
+    allowance: { remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z', plan: 'free', usedUp: true },
+  })
+  const malformed = await readBalance({ normal_wallets: [], bonus_wallets: [], allowance: { ...allowance, plan: 'gold', used_up: 'yes' } })
+  expect(malformed.status === 'ready' ? malformed.allowance : undefined)
+    .toEqual({ remainingPercent: 0, remainingShare: 0, refreshesAt: '2026-12-01T00:00:00Z' })
+})
+
 it.each([
   { credits_allowance_percent: -1, auto_recharge: { enabled: 'yes', failure: null } },
   { credits_allowance_percent: 8.5, auto_recharge: { enabled: true, failure: 7 } },

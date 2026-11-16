@@ -236,7 +236,7 @@ export function formatSave(value: SaveValue): string {
   }
   for (const failed of value.failed) lines.push(`- Not saved: ${failed.image} ${failed.reason}`)
   if (value.imagesOmitted === true) lines.push('The images are not attached because your model does not take images.')
-  lines.push('Work from them now: pass these files to image_generate in images and say what to take from each, such as the '
+  lines.push('Work from them now: pass these files to image_generate in images, when you have it, and say what to take from each, such as the '
     + 'proportions and palette; compare what you make in Blender or GIMP with them; and follow a frames sheet\'s frame count and timing.')
   return lines.join('\n')
 }
@@ -394,7 +394,7 @@ export function referenceToolDefinitions(host: ReferenceToolHost, surface: Refer
   }), defineTool({
     name: 'reference_save',
     description: `Save reference images into the game project's ${REFERENCES_FOLDER}/<subject>/ folder, with each `
-      + 'image\'s source in its SOURCES.md, to study them, pass them to image_generate in images, and compare your '
+      + 'image\'s source in its SOURCES.md, to study them, pass them to image_generate in images when you have it, and compare your '
       + 'work with them. A GIF or animated WebP also gets a sheet of its frames, numbered with each frame\'s timing. '
       + `Godot leaves ${REFERENCES_FOLDER}/ out of the game, so saving references adds no asset to it. Shows you each `
       + 'saved image larger, or an animation\'s frames.',

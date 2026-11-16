@@ -36,14 +36,17 @@
   en: 5222bced0ad9e772
   zh: 602f28a2c8bbceb9
 /deepseek-ai-dsh-game-mcp/use-this-package/provide-tools:
-  en: f4bea212b6a0ad79
-  zh: 958bd18498860503
+  en: 0314afb470b817f1
+  zh: 2ecd6e9dec8467ad
 /deepseek-ai-dsh-game-mcp/use-this-package/long-calls:
   en: 657bca21a4f7cded
   zh: 1fea7f3492ad2621
 /deepseek-ai-dsh-game-mcp/use-this-package/confirmation-pages:
-  en: e123eb4425dee9ae
-  zh: 9642dc88ea1f8d1a
+  en: 88ee23a17f3fd509
+  zh: c70c89bc534aa229
+/deepseek-ai-dsh-game-mcp/use-this-package/free-accounts-whose-usage-is-used-up:
+  en: 5c11d33b621e3440
+  zh: c303cecee1118abd
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
   en: 7693db9ce75958d5
   zh: 36b5284212829d5b
@@ -81,8 +84,8 @@
   en: 5399a2acb9dc48cb
   zh: 82b13390782ef9d1
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/what-the-model-sees:
-  en: 5d3f55c3cfab9d44
-  zh: d80719ca0aace597
+  en: 03762a5245b3128f
+  zh: 81425e5a828e237e
 /deepseek-ai-dsh-game-mcp/model-experience/connected-agents-tool-results/token-effect:
   en: 7ad0cb0ff72a0b69
   zh: a35ea36f3c813ab5
@@ -90,8 +93,8 @@
   en: 7d053967b4d79221
   zh: 8cace89f19a37967
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work:
-  en: ba85808721de64f4
-  zh: 1ddea31b517657b9
+  en: 8368b9c5ecb00ff4
+  zh: 5876f56217cf62fa
 /deepseek-ai-dsh-game-mcp/known-limitations-and-deferred-work/dev-note:
   en: 4e818dd6d00e4020
   zh: d442e9314c4b27e6

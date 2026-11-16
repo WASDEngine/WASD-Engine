@@ -62,6 +62,7 @@ export function imageMcpProvider(host: ImageToolHost): GameMcpProvider {
     title: 'Nano Banana',
     description: 'Make game art, UI pieces, and textures with Google\'s Nano Banana 2.1. Prefer it to drawing 2D art yourself.',
     instructions: MCP_INSTRUCTIONS,
+    spendsUsage: true,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

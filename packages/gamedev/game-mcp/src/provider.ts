@@ -140,6 +140,12 @@ export interface GameMcpProvider {
    * client cut the instructions short.
    */
   readonly instructions?: string
+  /**
+   * Whether the plugin's tools spend the AI usage of the WASD Engine account, as generations that the account service
+   * prices do. While the account is on Free with its usage used up and the user chose to stay on Free, connected agents
+   * are offered none of such a provider: no tool, overview line, guide, or search entry (`free-plan.ts`).
+   */
+  readonly spendsUsage?: boolean
   /** @returns the tools offered now; the list may change while the application starts or reconnects. */
   tools(): readonly GameMcpTool[]
   /**

@@ -419,7 +419,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 **窗口。** `godot_run` 携带 Session id 发出 Host 事件 `game-mcp/reveal`。Remote 事件白名单把它转发给每个可以读取该 Session 的窗口，`ui-game-mcp` 行的浏览器插件 [`@deepseek-ai/dsh-client-ui-game-mcp`](../../packages/gamedev/ui-game-mcp/README.zh.md) 随即在其中打开该 Session；之后 Game 标签页会像对待任何由 agent 启动的运行一样为这次运行打开。
 
-**设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
+**设置。** 每位用户都先登录 WASD Engine；账号插件报告没有已存储的登录时，服务器拒绝工具调用。AI 用量已用完的 Free 账号在消耗该用量的工具失败时会收到升级到 Pro 的提议；其用户继续使用 Free 期间，服务器不向连接的 agent 提供工具会消耗该用量的 provider，即 ElevenLabs、Nano Banana、画面审查和美术参考，之前已连接的 agent 会在下一个工具结果中收到提示（[用完 AI 用量的 Free 账号](../../packages/gamedev/game-mcp/README.zh.md#free-accounts-whose-usage-is-used-up)）。同一个浏览器插件随后在两处提供「使用其他智能体设置」：桌面引导的最后一步 `settings.account.onboarding.agents`，以及设置中的「其他智能体」分区。两处都显示 AI 智能体的标志，并在显示期间跟随 `gameMcp.watch` 流：服务器状态、端点、带令牌的设置提示词，以及 Host 启动以来见过的 agent。[LiveShare](liveshare.zh.md) 把 `gameMcp/watch` 归为仅所有者可用，并且从不把 `gameMcp` 命名空间提供给分享的观看者。
 
 <a id="agent-feedback"></a>
 ## agent 反馈与 MCP 用量

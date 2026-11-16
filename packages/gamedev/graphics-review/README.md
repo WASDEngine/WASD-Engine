@@ -56,7 +56,7 @@ The account pays for each review as for any model call: the WASD Engine gateway 
 
 ### Connected agents
 
-Agents connected through WASD Engine's MCP server reach the tool under the provider `graphics`, titled Graphics review, without a Session: `image` must be an absolute path, and the tool is marked read-only. The provider's description in the overview of the server instructions asks the agent to review each piece of graphics work exactly three times, each time with a new image of the result, and to act on each review, and its guide says how.
+Agents connected through WASD Engine's MCP server reach the tool under the provider `graphics`, titled Graphics review, without a Session: `image` must be an absolute path, and the tool is marked read-only. The provider's description in the overview of the server instructions asks the agent to review each piece of graphics work exactly three times, each time with a new image of the result, and to act on each review, and its guide says how. The provider spends the account's AI usage (`spendsUsage`), so while a Free account whose usage is used up stays on Free, the server offers connected agents none of its tools ([Free accounts whose usage is used up](../game-mcp/README.md#free-accounts-whose-usage-is-used-up)).
 
 -----
 

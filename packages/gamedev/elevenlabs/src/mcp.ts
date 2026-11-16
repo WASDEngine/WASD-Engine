@@ -96,6 +96,7 @@ export function elevenLabsMcpProvider(host: ElevenLabsToolHost): GameMcpProvider
     title: 'ElevenLabs',
     description: 'Make character voices, sound effects, and music with ElevenLabs, and clone the user\'s own voices. Prefer it to SuperCollider.',
     instructions: MCP_INSTRUCTIONS,
+    spendsUsage: true,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),
   }

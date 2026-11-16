@@ -6047,7 +6047,7 @@ export const EVENT_API: readonly EventApiEntry[] = [
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AccountAllowance',
-    declaration: 'export interface AccountAllowance {\n    readonly remainingPercent: number;\n    readonly remainingShare: number;\n    readonly refreshesAt: string;\n    readonly creditsPercent?: number;\n    readonly autoRecharge?: AccountAutoRecharge;\n    readonly unlimited?: true;\n}',
+    declaration: 'export interface AccountAllowance {\n    readonly remainingPercent: number;\n    readonly remainingShare: number;\n    readonly refreshesAt: string;\n    readonly creditsPercent?: number;\n    readonly autoRecharge?: AccountAutoRecharge;\n    readonly unlimited?: true;\n    readonly plan?: \'free\' | \'pro\' | \'max\';\n    readonly usedUp?: boolean;\n}',
   },
   {
     name: 'AccountAutoRecharge',
@@ -7559,7 +7559,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpProvider',
-    declaration: 'export interface GameMcpProvider {\n    readonly id: string;\n    readonly title: string;\n    readonly description: string;\n    readonly instructions?: string;\n    tools(): readonly GameMcpTool[];\n    status(signal: AbortSignal): Promise<GameMcpProviderStatus>;\n}',
+    declaration: 'export interface GameMcpProvider {\n    readonly id: string;\n    readonly title: string;\n    readonly description: string;\n    readonly instructions?: string;\n    readonly spendsUsage?: boolean;\n    tools(): readonly GameMcpTool[];\n    status(signal: AbortSignal): Promise<GameMcpProviderStatus>;\n}',
   },
   {
     name: 'GameMcpProviderStatus',

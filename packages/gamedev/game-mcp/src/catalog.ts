@@ -3,7 +3,8 @@
  * provider order. The catalog lists them as MCP tools, searches the providers' tools and returns a provider's guide,
  * writes the server instructions, and runs one call of a provider's tool: it prepares the call through the tool's
  * provider, runs the tool's harness definition with an execution of its own, and turns the value, or the failure, into
- * an MCP result.
+ * an MCP result. Connected agents see only the providers the server offers them now (`offered`); finding the owner of
+ * a Session's tool call sees every provider.
  * @module @deepseek-ai/dsh-game-mcp/src/catalog
  */
 import { randomUUID } from 'node:crypto'
@@ -13,6 +14,7 @@ import type { ContentBlock, ToolCallId } from '@deepseek-ai/dsh-llm'
 import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type { ToolExecutionToken, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import type { UsageOffer } from './free-plan.ts'
 import type {
   GameMcpCall, GameMcpConfirmation, GameMcpContent, GameMcpPreparedCall, GameMcpProvider, GameMcpProviderStatus,
   GameMcpTool, GameMcpToolOwner, GameMcpToolResult, JsonObject,
@@ -92,6 +94,11 @@ export interface McpCallResult {
   readonly isError?: boolean
   /** The page where the user confirms what the call asked for, which the server may send as an elicitation. */
   readonly confirmation?: GameMcpConfirmation
+  /**
+   * The choice to put to the user in place of this failed call, whose Free account has used up its AI usage: upgrade
+   * to Pro, or stay on Free (`free-plan.ts`).
+   */
+  readonly usageOffer?: UsageOffer
 }
 
 function isRecord(value: JsonValue | undefined): value is JsonObject {
@@ -149,19 +156,26 @@ export class GameToolCatalog {
    * @param providers - the registered providers, in registration order.
    * @param warn - reports a provider tool that the catalog leaves out.
    * @param finished - receives each call that {@link GameToolCatalog.run} finished, once its result is made.
+   * @param offered - whether connected agents are offered a provider now; every provider by default.
    */
   constructor(
     private readonly providers: () => readonly GameMcpProvider[],
     private readonly warn: (message: string) => void,
     private readonly finished: (result: GameMcpToolResult) => void = () => {},
+    private readonly offered: (provider: GameMcpProvider) => boolean = () => true,
   ) {}
+
+  /** The providers connected agents are offered now, in registration order. */
+  private offeredProviders(): readonly GameMcpProvider[] {
+    return this.providers().filter(provider => this.offered(provider))
+  }
 
   /**
    * Collect the tools that the server offers now.
-   * @returns every provider tool whose name has its provider's prefix and is not taken, in provider order.
+   * @returns every tool of an offered provider whose name has its provider's prefix and is not taken, in provider order.
    */
   tools(): CatalogTool[] {
-    return this.collect(this.providers())
+    return this.collect(this.offeredProviders())
   }
 
   private collect(providers: readonly GameMcpProvider[]): CatalogTool[] {
@@ -205,7 +219,7 @@ export class GameToolCatalog {
    * @returns the MCP tools: the search, call, and create tools, then the provider tools.
    */
   listing(): McpToolListing[] {
-    const all = this.providers()
+    const all = this.offeredProviders()
     const providers = all.map(provider => provider.id)
     const titles = all.length === 0 ? '' : ` (${all.map(provider => provider.title).join(', ')})`
     return [
@@ -280,7 +294,7 @@ export class GameToolCatalog {
    * @returns the overview.
    */
   overview(): string {
-    const providers = this.providers()
+    const providers = this.offeredProviders()
     const plugins = providers.length === 0
       ? 'No plugin offers tools right now.'
       : `What each plugin adds:\n${providers.map(provider => `- ${provider.title} (${provider.id}_*): ${provider.description}`).join('\n')}`
@@ -292,7 +306,7 @@ export class GameToolCatalog {
    * @returns the instructions.
    */
   instructions(): string {
-    const guides = this.providers().flatMap(provider => provider.instructions === undefined ? [] : [`## ${provider.title}\n\n${provider.instructions}`])
+    const guides = this.offeredProviders().flatMap(provider => provider.instructions === undefined ? [] : [`## ${provider.title}\n\n${provider.instructions}`])
     return [this.overview(), ...guides].join('\n\n')
   }
 
@@ -304,7 +318,7 @@ export class GameToolCatalog {
    * @returns the plugins' readiness, the guide of the one plugin searched without words, and the matching tools as text.
    */
   async search(query: string, plugin: string | undefined, signal: AbortSignal): Promise<string> {
-    const all = this.providers()
+    const all = this.offeredProviders()
     const providers = all.filter(provider => plugin === undefined || provider.id === plugin)
     if (providers.length === 0) return plugin === undefined ? 'WASD Engine offers no game tools right now.' : `No plugin is named ${JSON.stringify(plugin)}.`
     const tools = this.collect(all).filter(entry => providers.includes(entry.provider))

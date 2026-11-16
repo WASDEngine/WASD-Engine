@@ -148,7 +148,7 @@ describe('reference_save', () => {
       '- references/knight/01-pixel-knight-pack.png — 320×256 PNG',
       '- references/knight/02-sword-slash.gif — 48×48 GIF, 3 frames, 0.3 s; its frames, numbered with their timing: references/knight/02-sword-slash.frames.png',
       '- Not saved: https://gone.example/missing.png answered HTTP 404.',
-      'Work from them now: pass these files to image_generate in images and say what to take from each, such as the proportions and palette; compare what you make in Blender or GIMP with them; and follow a frames sheet\'s frame count and timing.',
+      'Work from them now: pass these files to image_generate in images, when you have it, and say what to take from each, such as the proportions and palette; compare what you make in Blender or GIMP with them; and follow a frames sheet\'s frame count and timing.',
     ].join('\n'))
     expect((await readdir(join(current.work, 'references', 'knight'))).sort()).toEqual([
       '01-pixel-knight-pack.png', '02-sword-slash.frames.png', '02-sword-slash.gif', 'SOURCES.md',

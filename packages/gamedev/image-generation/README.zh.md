@@ -59,7 +59,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 Nano Banana 不生成透明背景，因此工具说明告诉 agent：请求一种单一的纯色背景，再用 GIMP 把它变为透明，并为 JPEG 的边缘留一点容差；贴图也用 GIMP 处理成无缝。每张图像都带有 Google 不可见的 SynthID 水印。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `image`（标题为 Nano Banana）下使用该工具，不需要会话：`path` 和每张图像都必须是绝对路径。它们的图像计入 WASD Engine 当前登录的账号，未登录时服务器拒绝所有调用。服务器指令概述中的提供方描述及其指南要求 agent 优先使用它，而不是自己在 GIMP 中或用代码绘制 2D 美术。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `image`（标题为 Nano Banana）下使用该工具，不需要会话：`path` 和每张图像都必须是绝对路径。它们的图像计入 WASD Engine 当前登录的账号，未登录时服务器拒绝所有调用。服务器指令概述中的提供方描述及其指南要求 agent 优先使用它，而不是自己在 GIMP 中或用代码绘制 2D 美术。该提供方 会消耗账号的 AI 用量（`spendsUsage`），因此用量已用完的 Free 账号继续使用 Free 期间，服务器不向连接的 agent 提供它的任何工具（[用完 AI 用量的 Free 账号](../game-mcp/README.zh.md#free-accounts-whose-usage-is-used-up)）。
 
 ### 价格与账号
 

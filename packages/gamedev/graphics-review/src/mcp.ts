@@ -37,6 +37,7 @@ export function graphicsReviewMcpProvider(host: Omit<GraphicsReviewHost, 'image'
     title: 'Graphics review',
     description: MCP_DESCRIPTION,
     instructions: MCP_INSTRUCTIONS,
+    spendsUsage: true,
     tools: () => [tool],
     status: () => Promise.resolve({ state: 'ready' }),
   }

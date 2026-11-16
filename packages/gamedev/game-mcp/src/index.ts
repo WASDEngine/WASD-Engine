@@ -7,7 +7,9 @@
  * MCP has no way to send an agent new instructions, and an agent keeps the overview it received when it connected. Games
  * that a connected agent starts run in a Session of the WASD Engine window, which the server asks the window to show.
  * Every user signs in to WASD Engine, so while the account plugin reports no stored sign-in the server refuses each tool
- * call with a message that asks the user to sign in; a Host without the account plugin runs every call. The `gameMcp`
+ * call with a message that asks the user to sign in; a Host without the account plugin runs every call. A Free account
+ * whose AI usage is used up is offered the upgrade to Pro when a tool that spends that usage fails, and a user who stays
+ * on Free is offered no such tool until the usage refreshes (`free-plan.ts`). The `gameMcp`
  * Remote streams the endpoint, the setup prompt, and the agents seen to the window, the `game-mcp/reveal` event asks the
  * window to show a Session, and the `game-mcp/tool-result` event reports each finished call of a provider tool.
  * @module @deepseek-ai/dsh-game-mcp
@@ -24,6 +26,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GameToolCatalog, OVERVIEW_LIMIT, PROVIDER_ID_PATTERN } from './catalog.ts'
 import { ClientDirectory } from './clients.ts'
+import { FREE_PLAN_FILE, FreePlan, ProviderNotes } from './free-plan.ts'
 import { listenLoopback, LOOPBACK_HOST, type HttpListener } from './http.ts'
 import { createGameProject } from './projects.ts'
 import { setupPrompt } from './prompt.ts'
@@ -38,7 +41,7 @@ export type * from './provider.ts'
 
 /** Plugin configuration. */
 export interface Config {
-  /** Absolute folder of the access token and of the connected agents' Session bindings. */
+  /** Absolute folder of the access token, of the connected agents' Session bindings, and of a choice to stay on Free. */
   dataRoot: string
   /** Loopback port of the endpoint; while another program holds it, the server listens on a free port for that Host run. */
   port: number
@@ -81,6 +84,16 @@ function plainResponse(status: number, text: string, headers: Record<string, str
   return new Response(text, { status, headers: { 'content-type': 'text/plain; charset=utf-8', ...headers } })
 }
 
+/**
+ * Whether a request's answer carries the server instructions, which an agent keeps for its connection.
+ * @param parsed - the request's JSON body.
+ * @returns true for `initialize` and `server/discover`.
+ */
+function receivesInstructions(parsed: JsonValue | undefined): boolean {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return false
+  return parsed.method === 'initialize' || parsed.method === 'server/discover'
+}
+
 function parseBody(body: Uint8Array | undefined): JsonValue | undefined {
   if (body === undefined || body.byteLength === 0) return undefined
   try {
@@ -103,6 +116,8 @@ export default class GameMcpServer extends TypertRemoteService {
 
   private readonly providers: GameMcpProvider[] = []
   private readonly clients = new ClientDirectory()
+  private readonly freePlan: FreePlan
+  private readonly notes = new ProviderNotes()
   private readonly catalog: GameToolCatalog
   private readonly sessions: ExternalSessions
   private readonly handler: McpHttpHandler
@@ -123,6 +138,7 @@ export default class GameMcpServer extends TypertRemoteService {
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'gameMcp', { namespace: 'gameMcp' })
     if (!isAbsolute(config.dataRoot)) throw new Error(`Game MCP plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
+    this.freePlan = new FreePlan(ctx, join(config.dataRoot, FREE_PLAN_FILE), () => { this.toolsChanged() })
     this.catalog = new GameToolCatalog(() => this.providers, (message) => { ctx.logger.warn(message) }, (result) => {
       try {
         ctx.emit('game-mcp/tool-result', result)
@@ -130,13 +146,18 @@ export default class GameMcpServer extends TypertRemoteService {
         // A listener's failure must not turn the agent's finished call into a failed request.
         ctx.logger.warn(`game-mcp: a game-mcp/tool-result listener failed: ${error instanceof Error ? error.message : String(error)}`)
       }
-    })
+    }, provider => provider.spendsUsage !== true || !this.freePlan.hiding())
     this.sessions = new ExternalSessions(ctx, join(config.dataRoot, 'sessions.json'))
     this.handler = createGameMcpHandler({
       catalog: this.catalog,
       refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
       createProject: (args, signal) => createGameProject(ctx, args, signal),
+      usageOffer: failure => this.freePlan.offer(failure),
+      stayOnFree: () => this.freePlan.stayOnFree(),
+      note: client => this.notes.note(
+        client.id, this.freePlan.hiding(), () => this.providers.filter(provider => provider.spendsUsage === true),
+      ),
       progressIntervalMs: config.progressIntervalMs,
     }, (error) => { ctx.logger.debug(`game-mcp: ${error.message}`) })
     ctx.on('tools/change', () => { this.toolsChanged() })
@@ -295,6 +316,9 @@ export default class GameMcpServer extends TypertRemoteService {
     if (this.clients.list().map(seen => seen.id).join('\n') !== before) this.changed()
     // The instructions of `initialize` and `server/discover` stay with the agent for its connection.
     await this.composed()
+    // While the user stays on Free, the request lists the providers that spend the account's usage once it has some again.
+    await this.freePlan.refresh()
+    if (receivesInstructions(parsed)) this.notes.instructed(client.id, this.freePlan.hiding())
     return this.handler.fetch(request, { authInfo: authInfoFor(token, client), ...parsed === undefined ? {} : { parsedBody: parsed } })
   }
 

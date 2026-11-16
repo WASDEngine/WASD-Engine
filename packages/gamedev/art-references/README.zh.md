@@ -75,7 +75,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 连接的 agent
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `reference`（标题为 Art references）下使用这些工具，无需会话。`reference_save` 接受 `project`，即一个已存在的游戏项目文件夹的绝对路径，并保存到其 `references/` 文件夹。每个结果在文字之后以图像字节发送其图像。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `reference`（标题为 Art references）下使用这些工具，无需会话。`reference_save` 接受 `project`，即一个已存在的游戏项目文件夹的绝对路径，并保存到其 `references/` 文件夹。每个结果在文字之后以图像字节发送其图像。该 provider 会消耗账号的 AI 用量（`spendsUsage`），因为账号服务会为其网络搜索计费，因此用量已用完的 Free 账号继续使用 Free 期间，服务器不向连接的 agent 提供它的任何工具（[用完 AI 用量的 Free 账号](../game-mcp/README.zh.md#free-accounts-whose-usage-is-used-up)）。
 
 -----
 

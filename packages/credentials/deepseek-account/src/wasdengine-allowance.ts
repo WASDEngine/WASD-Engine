@@ -2,8 +2,8 @@
  * WASD Engine's allowance, auto recharge, and referral link (fork-owned; `wasdengine/FORK.md` lists the fork changes).
  * The WASD Engine account service reports beside the wallets how much of the plan's monthly AI usage is left, the
  * credits left as a share of that allowance, the auto recharge switch, whether the account is on the Unlimited tier,
- * and the account's referral link, never a dollar amount; and it switches auto recharge at `set_auto_recharge`. A
- * malformed report is dropped, so it never fails the wallet read.
+ * the account's plan and whether its AI usage is used up, and the account's referral link, never a dollar amount; and
+ * it switches auto recharge at `set_auto_recharge`. A malformed report is dropped, so it never fails the wallet read.
  */
 import { z } from 'zod'
 import type { AccountAllowance, AccountAutoRechargeChange, AccountReferral } from './types.ts'
@@ -24,6 +24,8 @@ export const allowance = z.object({
   credits_allowance_percent: z.number().int().min(0).optional().catch(undefined),
   auto_recharge: autoRecharge,
   unlimited: z.boolean().optional().catch(undefined),
+  plan: z.enum(['free', 'pro', 'max']).optional().catch(undefined),
+  used_up: z.boolean().optional().catch(undefined),
 }).optional().catch(undefined)
 
 /** The `referral` of a user summary; a malformed one parses as absent. {@link projectReferral} checks its link. */
@@ -43,6 +45,8 @@ export function projectAllowance(left: Exclude<z.infer<typeof allowance>, undefi
       enabled: recharge.enabled, ...(recharge.failure === null ? {} : { failure: recharge.failure }),
     } }),
     ...(left.unlimited === true ? { unlimited: true as const } : {}),
+    ...(left.plan === undefined ? {} : { plan: left.plan }),
+    ...(left.used_up === undefined ? {} : { usedUp: left.used_up }),
   }
 }
 

@@ -102,7 +102,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 ### 提供工具
 
-`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、用一两句话说明其工具做什么、为用户游戏带来什么的 `description`（指令概述会列出它）、可选的 `instructions`（即它的指南）、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory, name)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session；工具还可以通过 `confirmation(value)` 指明一个页面，用户在该页面上确认成功的调用所申请的内容。只有当工具名称以 provider id 加下划线开头，且之前的工具和服务器自身的工具都没有使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具记入该游戏的制作信息。`ctx.gameMcp.toolOwner(name)` 按连接 agent 所用的工具名，或按运行该工具的 harness 定义的名称，查找当前提供该工具的 provider，并返回 provider 的 id 和标题，以及连接 agent 所用的工具名；[agent 反馈](../agent-feedback/README.zh.md) 借此把 Session 自身对 provider 工具的调用计入该 provider。
+`ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、用一两句话说明其工具做什么、为用户游戏带来什么的 `description`（指令概述会列出它）、可选的 `instructions`（即它的指南）、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，并通过 `call.session(directory, name)` 选择调用所用的 Agent），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session；工具还可以通过 `confirmation(value)` 指明一个页面，用户在该页面上确认成功的调用所申请的内容。工具会消耗账号 AI 用量的 provider 设置 `spendsUsage`，这样在 Free 账号继续使用 Free 期间，服务器会把它略去（[用完 AI 用量的 Free 账号](#free-accounts-whose-usage-is-used-up)）。只有当工具名称以 provider id 加下划线开头，且之前的工具和服务器自身的工具都没有使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具记入该游戏的制作信息。`ctx.gameMcp.toolOwner(name)` 按连接 agent 所用的工具名，或按运行该工具的 harness 定义的名称，查找当前提供该工具的 provider，并返回 provider 的 id 和标题，以及连接 agent 所用的工具名；[agent 反馈](../agent-feedback/README.zh.md) 借此把 Session 自身对 provider 工具的调用计入该 provider。
 
 ### 长时间调用
 
@@ -112,6 +112,15 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 ### 确认页面
 
 当工具指明了确认页面（例如用户在 WASD Engine 网站上确认的游戏服务器购买）时，如果 agent 的客户端在 2026-07-28 修订版上声明了 URL 模式征询（`elicitation.url`），调用会以一个需要输入的结果到达该客户端，其中包含该页面和要确认的内容。客户端向用户展示该页面并重试调用；重试返回调用的内容，并附上一行说明用户如何回应，而不会再次运行工具。其他所有客户端只收到内容本身，其中也给出了该页面，因为以无状态方式提供的 2025 修订版不会随调用携带客户端能力。内容放在不透明的 `requestState` 中传递，用服务器进程的密钥封存，绑定到 `tools/call` 和发起调用的 agent，有效期 30 分钟；被改动的状态会被拒绝。
+
+<a id="free-accounts-whose-usage-is-used-up"></a>
+### 用完 AI 用量的 Free 账号
+
+有四个 provider 的工具会消耗 WASD Engine 账号的 AI 用量：ElevenLabs、Nano Banana、画面审查，以及账号服务会为其网络搜索计费的美术参考，它们用 `spendsUsage` 标记自己。当其中某个工具的调用失败、且消息说明已达到用量上限时，服务器通过账号插件的余额读取账号的套餐和用量，WASD Engine 账号服务会在其中报告 `plan` 和 `used_up`。对于用量已用完的 Free 账号，服务器会用一个选择代替这次失败交给用户（[`src/free-plan.ts`](src/free-plan.ts)）：在账号服务的 `/upgrade?plan=pro` 页面升级到 Pro（该页面会直接进入 Pro 的结账），或者继续使用 Free：WASD Engine 仍可继续使用，但生成的音频、视频、3D 模型、动画和图形的质量会下降。在 2026-07-28 修订版上声明了 URL 模式征询的客户端，会像展示[确认页面](#confirmation-pages)一样展示该页面和这条提醒：拒绝打开即继续使用 Free，重试只告诉 agent 该工具现在不可用；打开或忽略该页面则保留这些工具。其他所有客户端会收到一段文本，由 agent 连同页面一起转告用户；除非用户升级，否则继续使用 Free。付费套餐用完用量的情况，以及所有其他失败，都保持原样。
+
+用户继续使用 Free 期间，服务器不向连接的 agent 提供这些 provider：它们的工具从 `tools/list`、`search_game_tools` 以及指令的概述和指南中移除，按名称调用也找不到这样的工具，也不会告诉 agent 原因。这一选择持续到账号服务报告的用量刷新时间，并保存在 `<dataRoot>/free-plan.json` 中，因此重启后依然有效。选择有效期间，当上一次读取已满一分钟时，请求会再次读取账号；读到仍有用量（例如升级或获得新额度之后）即结束这一选择，工具随之恢复；用量再次用完时，会再次询问用户。Session 自身的 agent 不受影响。
+
+MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `initialize` 或 `server/discover` 的应答中发送一次。因此服务器为每个 agent 记住它上次收到指令或提示时这些 provider 是否已关闭；这些 provider 关闭或重新开启之后，agent 收到的第一个工具结果末尾会附上一次提示：`Note: WASD Engine turned off these game tools for now: <title> (<id>_*), …. Do not call them, even where the server instructions or a guide name them; use WASD Engine's other game tools instead.`，或者说明它们已重新可用，agent 的工具列表缺少它们时可通过 `call_game_tool` 调用。两条提示都不说明原因。服务器未见过其接收指令的 agent（例如 WASD Engine 重启之后）被视为收到的是这些 provider 开启时的指令。
 
 -----
 
@@ -190,7 +199,7 @@ Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP
 
 #### 模型可见内容
 
-provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 围绕 `search_game_tools` 所列的插件规划游戏并阅读它将使用的每个插件的指南的要求、请 agent 在其中制作游戏并在安装扩展之前先写好 `project.godot` 的要求，以及如何把该文件夹传给游戏工具的说明，其中 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`；被拒绝的名称会得到与 Host 给出的原因相应的文本，例如 `"con.txt" is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.`。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`
+provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预览图、素材工具绘制的图片、音频审阅的波形与频谱图、参考工具的联系表和保存的参考，以及 Blender、GIMP 和 SuperCollider 服务器发送的图像则作为图像附上。失败会变成带有错误消息的错误结果，例如 `Pass project: the absolute path of the folder that holds project.godot.`。`search_game_tools` 以文本返回插件行、不带查询时所搜索插件的指南，以及工具列表。`create_game_project` 返回一句给出新游戏项目及其文件夹的话、一句说明该文件夹是否包含 Git 仓库的话、请 agent 围绕 `search_game_tools` 所列的插件规划游戏并阅读它将使用的每个插件的指南的要求、请 agent 在其中制作游戏并在安装扩展之前先写好 `project.godot` 的要求，以及如何把该文件夹传给游戏工具的说明，其中 Blender、GIMP 和 SuperCollider 的工具只在同时给出 `session` 时才接受 `project`；被拒绝的名称会得到与 Host 给出的原因相应的文本，例如 `"con.txt" is not a folder name that every computer accepts: Windows reserves CON, PRN, AUX, NUL, COM0 to COM9, COM¹, COM², COM³, LPT0 to LPT9, LPT¹, LPT², and LPT³ for devices, with or without an extension. Pass another name.`。WASD Engine 未登录时，每次调用都返回错误结果 `WASD Engine is signed out, and its game tools need a signed-in user. Ask the user to open WASD Engine and sign in, then call the tool again.`对于用量已用完的 Free 账号，一次消耗该用量的工具调用失败后：用户拒绝升级页面时返回 `This tool is not available now. Go on with the work using WASD Engine's other game tools.`；不展示页面的客户端则收到一段文本，请 agent 连同页面把这一选择转告用户。这些 provider 关闭或重新开启之后，agent 收到的第一个结果末尾会附上列出它们的提示。
 
 #### Token 影响
 
@@ -216,6 +225,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **启动时的等待**——在 WASD Engine 启动期间连接的 agent 会等待插件加载，最多等待 `readyTimeoutMs`；更晚才加载完的插件不在该 agent 的概述中（MCP 只发送一次概述），它会通过其工具的 `tools/list_changed` 和 `search_game_tools` 到达该 agent。
 - **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；它们对 Blender、GIMP 与 SuperCollider 工具的调用若未给出 `session`，则各共用一个 worker。
 - **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。
+- **Free 选择与指令**——用户选择继续使用 Free 之后，agent 在连接时收到的指令仍保留消耗用量的 provider 的行和指南，只有其下一个工具结果中的提示说明它们已关闭；它们的工具会从其列表中移除，对它们的调用也找不到工具。服务器对每个 agent 身份只提示一次，因此同一 agent 的两个实例（例如两个 Claude Code 会话）中，只有先发起调用的那个会收到提示。其他 provider 的指南和描述仍可能提到这些工具，例如 SuperCollider 的描述提到了 ElevenLabs。
 - **确认页面按进程有效**——封存确认状态的密钥存在于服务器进程中，因此 Host 重启后的重试会被拒绝；客户端展示过的页面仍然有效，指明该页面的工具可以列出等待确认的内容，`wasd_server_status` 即是如此。
 
 <a id="dev-note"></a>

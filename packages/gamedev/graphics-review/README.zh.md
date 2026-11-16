@@ -56,7 +56,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 连接的 agent
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `graphics`（标题为 Graphics review）下使用该工具，无需 Session：`image` 必须是绝对路径，工具标记为只读。服务器指令概述中的 provider 描述要求 agent 对每项画面工作恰好审查三次，每次都发送结果的新图片，并按每次审查行事，它的指南说明了具体做法。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `graphics`（标题为 Graphics review）下使用该工具，无需 Session：`image` 必须是绝对路径，工具标记为只读。服务器指令概述中的 provider 描述要求 agent 对每项画面工作恰好审查三次，每次都发送结果的新图片，并按每次审查行事，它的指南说明了具体做法。该 provider 会消耗账号的 AI 用量（`spendsUsage`），因此用量已用完的 Free 账号继续使用 Free 期间，服务器不向连接的 agent 提供它的任何工具（[用完 AI 用量的 Free 账号](../game-mcp/README.zh.md#free-accounts-whose-usage-is-used-up)）。
 
 -----
 
