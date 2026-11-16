@@ -365,10 +365,64 @@ describe('multiplayer tools of connected agents', () => {
   })
 })
 
+describe('free servers WASD Engine gave the account', () => {
+  const GRANTS = [{ size: 'small', granted: 2, in_use: 1, available: 1 }, { size: 'large', granted: 1, in_use: 1, available: 0 }]
+
+  it('lists the account\'s free servers with the sizes, only when signed in', async () => {
+    const site = multiplayerSite({ grants: GRANTS })
+    const signedIn = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, appSurface().surface)
+    const plans = await call(signedIn, 'wasd_server_plans')
+    expect(plans.text).toContain('Free servers WASD Engine gave this account: 2 Small (1 left), 1 Large (0 left). A server of a size with one left costs nothing.')
+    expect(plans.value.free_servers).toEqual(GRANTS)
+    expect((await call(signedIn, 'wasd_multiplayer_guide')).text).toContain('Free servers WASD Engine gave this account: 2 Small (1 left)')
+    const signedOut = multiplayerToolDefinitions(toolHost(site, await multiplayerProject(), { access: null }).host, appSurface().surface)
+    const anonymous = await call(signedOut, 'wasd_server_plans')
+    expect(anonymous.text).not.toContain('Free servers')
+    expect(anonymous.value.free_servers).toBeUndefined()
+  })
+
+  it('creates a server of a size with a free one left as free, and charges for a size without', async () => {
+    const site = multiplayerSite({ grants: GRANTS })
+    const { surface, asked } = appSurface()
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    const free = await call(definitions, 'wasd_server_create', { size: 'small' })
+    expect(asked[0]?.prompt.en).toBe('Create a free Small game server for "Defenders"? WASD Engine gave this account free Small servers, so it costs nothing. WASD Engine then opens a page on site.test where you confirm.')
+    expect(Object.keys(asked[0]?.prompt ?? {}).sort()).toEqual(['de', 'en', 'es', 'fr', 'ja', 'pt', 'ru', 'zh'])
+    expect(free.value).toMatchObject({ status: 'awaiting_confirmation', size: 'small', price: '$5', free: true })
+    expect(free.value.confirm_message).toBe('Confirm the free Small game server for Defenders on the WASD Engine site; nothing is charged.')
+    expect(free.text).toContain('This is a free Small server for Defenders: WASD Engine gave this account free Small servers, so it costs nothing.')
+    // Every free Large server is in use, so another one is a purchase.
+    const paid = await call(definitions, 'wasd_server_create', { size: 'large' })
+    expect(asked[1]?.prompt.en).toBe('Create a Large game server for "Defenders" at $20 a month? WASD Engine then opens a page on site.test where you confirm and pay; nothing is charged before that.')
+    expect(paid.value.free).toBeUndefined()
+    expect(paid.text).toContain('This is a Large server for Defenders at $20 a month.')
+    const declined = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, appSurface('declined').surface)
+    expect((await call(declined, 'wasd_server_create', { size: 'small' })).value).toEqual({
+      status: 'declined', size: 'small', price: '$5', free: true, for_user: 'The user declined, so nothing was created or charged.',
+    })
+  })
+
+  it('names a free server\'s size as free when it changes size, and the new size too when a free one is left', async () => {
+    const site = multiplayerSite({ grants: [{ size: 'medium', granted: 1, in_use: 0, available: 1 }] })
+    const main = site.addServer({ granted: true })
+    const { surface, asked } = appSurface('approved', false)
+    const definitions = multiplayerToolDefinitions(toolHost(site, await multiplayerProject()).host, surface)
+    expect((await call(definitions, 'wasd_server_status')).text).toContain(`Main (small, ${main.id}): running; free: one of the free servers WASD Engine gave the account; 3 playing`)
+    const free = await call(definitions, 'wasd_server_change', { size: 'medium' })
+    expect(asked[0]?.prompt.en).toBe('Change the server "Main" from Small (free) to Medium (free)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(free.value).toMatchObject({ status: 'awaiting_confirmation', size: 'medium', price: '$10', free: true })
+    expect(free.text).toContain('This changes Main from Small (free) to Medium, free: WASD Engine gave this account free Medium servers.')
+    expect(free.value.confirm_message).toBe('Confirm changing the server Main to a free Medium on the WASD Engine site.')
+    const paid = await call(definitions, 'wasd_server_change', { size: 'large' })
+    expect(asked[1]?.prompt.en).toBe('Change the server "Main" from Small (free) to Large ($20 a month)? WASD Engine then opens a page on site.test where you confirm the change; your bill changes only after that.')
+    expect(paid.value.free).toBeUndefined()
+  })
+})
+
 describe('MULTIPLAYER_PROMPT', () => {
   it('states the four rules the agent follows before any cost', () => {
     expect(MULTIPLAYER_PROMPT).toContain('1. Call wasd_multiplayer_guide first and show the user its comparison with the costs before setting anything up')
-    expect(MULTIPLAYER_PROMPT).toContain('2. State the monthly price and what it includes before suggesting a server.')
+    expect(MULTIPLAYER_PROMPT).toContain('2. State the monthly price and what it includes before suggesting a server; when wasd_server_plans lists free servers of a size left for the account, a server of that size is free, so say that instead.')
     expect(MULTIPLAYER_PROMPT).toContain('3. Let the user choose the size from wasd_server_plans; never pick one for them.')
     expect(MULTIPLAYER_PROMPT).toContain('4. Explain that the owner gets emails at 70%, 90%, and 100% of a server\'s monthly bandwidth, and that at 100% the server stops until its next billing month')
   })

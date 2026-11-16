@@ -10,7 +10,7 @@ description: Add online multiplayer to a Godot game with WASD Engine. Load befor
 Call `wasd_multiplayer_guide` and show the person its comparison before setting anything up. Then follow four rules:
 
 1. Show the two-mode comparison before any setup, including that every player signs in with a WASD Engine account in both modes.
-2. State the monthly price and what it includes before suggesting a server. Read sizes and prices from `wasd_server_plans`; never quote them from memory.
+2. State the monthly price and what it includes before suggesting a server. Read sizes and prices from `wasd_server_plans`; never quote them from memory. When it lists free servers of a size left for the account, a server of that size is free: say so instead of its price.
 3. Let the person choose the size; never pick one for them.
 4. Explain that a server stops for the rest of its billing month when its bandwidth runs out, after emails at 70%, 90%, and 100%, and suggest a smaller size when a server is mostly idle.
 

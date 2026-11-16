@@ -23,7 +23,7 @@ One player hosts a lobby, and friends join it with a 6-letter code or pick it fr
 
 ## Dedicated servers
 
-WASD Engine runs your game's server build, and players can join at any time. Each server size has a monthly price and fixed amounts of CPU, memory, monthly bandwidth, and storage; the WASD Engine website and the agent show the current sizes and prices. Any account with a valid payment method can buy a server, on any plan, and nothing is charged until you confirm the purchase on the website.
+WASD Engine runs your game's server build, and players can join at any time. Each server size has a monthly price and fixed amounts of CPU, memory, monthly bandwidth, and storage; the WASD Engine website and the agent show the current sizes and prices. Any account with a valid payment method can buy a server, on any plan, and nothing is charged until you confirm the purchase on the website. If WASD Engine gave your account free servers, the agent and the website show servers of those sizes as free, and confirming one needs no card.
 
 - **Bandwidth.** You get an email when a server has used 70%, 90%, and 100% of its monthly bandwidth. At 100% the server stops for the rest of its billing month and starts again when the allowance resets; nothing extra is ever charged.
 - **Sleeping.** A server with no players for 15 minutes saves its world and sleeps, and it wakes in a few seconds when a player joins; the game can tell that player the server is starting. Sleeping keeps prices low. If your world has to keep going while nobody plays, turn on **Always on** for the server on the website's Game servers page; Medium and larger servers offer it.
