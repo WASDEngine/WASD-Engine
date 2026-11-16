@@ -22,6 +22,9 @@ const LIMIT = 'Usage limit reached: the AI usage that the WASD Engine Free plan 
   + 'Your AI usage refreshes on December 3 (UTC). Upgrade your plan or turn on auto recharge on your account page at '
   + 'https://app.wasdengine.com/account for more.'
 
+/** A review in the form the reviewer's instructions ask for: notes and the tools and add-ons to consider. */
+const NOTES = '**How to make it better:** The trees are cones: model them in Blender.\n**Tools and add-ons to consider:** sapling-tree-gen for the trees.'
+
 async function png(path: string, width: number, height: number, alpha = true): Promise<void> {
   await mkdir(join(path, '..'), { recursive: true })
   const channels = alpha ? 4 : 3
@@ -32,16 +35,17 @@ describe('graphics_review', () => {
   it('sends the image and the agent\'s words to the account\'s model with the reviewer\'s instructions, and returns the review', async () => {
     current = await compose()
     await png(join(current.work, 'shots', 'forest.png'), 800, 450)
-    current.models.reply = textReply('**Verdict:** Needs work, 5/10.\n**Next step:** Model the trees in Blender.')
+    current.models.reply = textReply(NOTES)
     const result = await review(current, {
       image: 'shots/forest.png', subject: 'the forest level at dusk from the player\'s camera', goal: 'cozy low-poly', focus: 'the lighting',
     })
     expect(result.isError).toBe(false)
-    expect(text(result)).toBe(`Graphics review of ${join(current.work, 'shots', 'forest.png')}:\n\n**Verdict:** Needs work, 5/10.\n**Next step:** Model the trees in Blender.`)
+    expect(text(result)).toBe(`Graphics review of ${join(current.work, 'shots', 'forest.png')}:\n\n${NOTES}`)
 
     const [request] = current.models.requests
     expect(request).toMatchObject({ provider: 'deepseek-account', model: 'reviewer', maxTokens: 8192, purpose: 'graphics-review', sessionId: current.agent.session.id })
     expect(request?.system).toContain('Review it as a senior game art director and technical artist reviews a teammate\'s work')
+    expect(request?.system).toContain('Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail.')
     expect(request?.system).toContain('  - sky3d (Godot): A 3D game needs a sky that changes with the time of day.')
     expect(request?.system).toContain('  - sapling-tree-gen (Blender): A level needs trees in several variations.')
     const [message] = request?.messages ?? []
@@ -96,7 +100,7 @@ describe('graphics_review', () => {
     expect(text(await review(current, { image: 'a.png', subject: 'a crate' }))).toContain('The graphics reviewer needs WASD Engine to be signed in.')
     current.models.reply = textReply('   ')
     expect(text(await review(current, { image: 'a.png', subject: 'a crate' }))).toContain('The graphics reviewer returned no review. Try again.')
-    current.models.reply = textReply('**Verdict:** Needs work', 'max-tokens')
+    current.models.reply = textReply('**How to make it better:** Model the trees', 'max-tokens')
     expect(text(await review(current, { image: 'a.png', subject: 'a crate' }))).toContain('(The review stops here: it reached its length limit.)')
     current.models.models = []
     expect(text(await review(current, { image: 'a.png', subject: 'a crate' }))).toContain('The graphics reviewer needs WASD Engine to be signed in.')

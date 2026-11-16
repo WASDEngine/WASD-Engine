@@ -1,5 +1,5 @@
 ---
-description: "Graphics review for the agent: graphics_review sends an image of the game's graphics, which the agent captured or made, to a reviewer that critiques it as a game art director and technical artist would and names the WASD Engine tools and add-ons that would make it look better; the reviewer is the WASD Engine account's model route, which the account pays for as for any model call, and a system prompt section asks for a review after all graphics work, for every Session and for connected agents."
+description: "Graphics review for the agent: graphics_review sends an image of the game's graphics, which the agent captured or made, to a reviewer that critiques it as a game art director and technical artist would and names the WASD Engine tools and add-ons that would make it look better; the reviewer is the WASD Engine account's model route, which the account pays for as for any model call, and a system prompt section asks for exactly three reviews of each piece of graphics work, for every Session and for connected agents."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The graphics review plugin has a reviewer critique the game's graphics. After graphics work, the agent captures the result, for example with `godot_screenshot` and its `path`, and passes the image to `graphics_review` with what it shows and the look the game is going for. The reviewer answers as a game art director would, with a verdict, Ready or Needs work, a score, the problems with their fixes, the WASD Engine tools and add-ons to use, and the next step. The agent fixes the problems and reviews again until the verdict is Ready. Connected agents get the same tool.
+The graphics review plugin has a reviewer critique the game's graphics. After graphics work, the agent captures the result, for example with `godot_screenshot` and its `path`, and passes the image to `graphics_review` with what it shows and the look the game is going for. The reviewer answers as a game art director would, with notes on how to make the image look better and the WASD Engine tools and add-ons to consider, never a score. The agent reviews each piece of graphics work exactly three times, acting on each review. Connected agents get the same tool.
 
 ## Table of Contents
 
@@ -55,7 +55,7 @@ The account pays for each review as for any model call: the WASD Engine gateway 
 
 ### Connected agents
 
-Agents connected through WASD Engine's MCP server reach the tool under the provider `graphics`, titled Graphics review, without a Session: `image` must be an absolute path, and the tool is marked read-only. The provider's description in the overview of the server instructions asks the agent to send an image of the result after any graphics work and to act on the review, and its guide says how.
+Agents connected through WASD Engine's MCP server reach the tool under the provider `graphics`, titled Graphics review, without a Session: `image` must be an absolute path, and the tool is marked read-only. The provider's description in the overview of the server instructions asks the agent to review each piece of graphics work exactly three times, each time with a new image of the result, and to act on each review, and its guide says how.
 
 -----
 
@@ -65,7 +65,7 @@ Agents connected through WASD Engine's MCP server reach the tool under the provi
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The model-facing texts call the reviewer a specialized graphics expert reviewer model and never mention its cost; the reviewer is the account's model route with the reviewer's instructions in [`src/prompt.ts`](src/prompt.ts), which list what to look at; WASD Engine's tools in the order the agents prefer them, with a download that suits the game's art style first and generated 2D art before art drawn by hand or in code; the catalog add-ons by id with when each helps; and the form of the reply. The request carries the purpose `graphics-review`, the calling Session's id when the call has one, a temperature of 0.3, and `maxTokens`. A reply that reaches `maxTokens` keeps its text with a note that the review stops there. Sharp loads at the first review.
+The model-facing texts call the reviewer a specialized graphics expert reviewer model and never mention its cost; the reviewer is the account's model route with the reviewer's instructions in [`src/prompt.ts`](src/prompt.ts), which list what to look at; WASD Engine's tools in the order the agents prefer them, with a download that suits the game's art style first and generated 2D art before art drawn by hand or in code; the catalog add-ons by id with when each helps; and the form of the reply, notes and the tools and add-ons to consider, with no score, grade, or verdict. The request carries the purpose `graphics-review`, the calling Session's id when the call has one, a temperature of 0.3, and `maxTokens`. A reply that reaches `maxTokens` keeps its text with a note that the review stops there. Sharp loads at the first review.
 
 | File | Role |
 |---|---|
@@ -100,19 +100,19 @@ These pages cover the captures the review takes, the tools it suggests, and the 
 
 #### What the model sees
 
-While the Session has `graphics_review`, the `graphics-review` section, under `# Graphics review`, tells the agent that the tool sends an image to a specialized graphics expert reviewer model, which critiques it and names the WASD Engine tools and add-ons to use, and to always use it after graphics work, before it calls the work done or moves on. It says how to capture the image, with `godot_screenshot` or `godot_view` and their `path` while the Session has the Godot tools, what to pass, and to act on the review and review again until it says Ready, and it ends by stressing that graphics work never ends without a review. As the Web and Desktop profiles compose it, with the Godot tools:
+While the Session has `graphics_review`, the `graphics-review` section, under `# Graphics review`, tells the agent that the tool sends an image to a specialized graphics expert reviewer model, which critiques it with notes and names the WASD Engine tools and add-ons to consider, and to review each piece of graphics work exactly three times, no more and no less: capture the result, review it, act on the review, and repeat with a new capture until the work has had three reviews, then act on the third and move on. It says how to capture the image, with `godot_screenshot` or `godot_view` and their `path` while the Session has the Godot tools, what to pass, how to act on a review, and that a failed call does not count, and it ends by stressing that graphics work never ends with fewer than three reviews or gets more than three. As the Web and Desktop profiles compose it, with the Godot tools:
 
 ##### The `graphics-review` section
 
 ```markdown
 # Graphics review
 
-graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
+graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and gives notes on how to make it look better, naming the WASD Engine tools and add-ons to consider. Review each piece of graphics work exactly three times, no more and no less: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review, act on the review, and repeat with a new capture until that work has had three reviews; then act on the third review and move on without a fourth. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. To act on a review, make the changes its notes ask for with the tools and add-ons it names. A call that fails does not count as a review. This is very important: never finish graphics work with fewer than three reviews, and never review it more than three times.
 ```
 
 #### Token effect
 
-The section comes to about 1,000 characters.
+The section comes to about 1,250 characters.
 
 #### KV Cache effect
 
@@ -122,11 +122,11 @@ The section changes only when the Godot tools join or leave the Session's tools,
 
 #### What the model sees
 
-`graphics_review` with `image` and `subject`, and the optional `goal` and `focus`. The description says that a specialized graphics expert reviewer model critiques an image of the game's graphics the way a game art director and technical artist would, what it looks at, that it says how to make the image look better and which WASD Engine tools and add-ons to use, to always call it after graphics work, and what the review holds. A connected agent sees the same tool with `image` as an absolute path, the provider's description in the overview of the server instructions, and its guide under `## Graphics review`.
+`graphics_review` with `image` and `subject`, and the optional `goal` and `focus`. The description says that a specialized graphics expert reviewer model critiques an image of the game's graphics the way a game art director and technical artist would, what it looks at, that it gives notes on how to make the image look better and names the WASD Engine tools and add-ons to consider, to call it exactly three times for each piece of graphics work, each time with a new image of the result, and what the review holds. A connected agent sees the same tool with `image` as an absolute path, the provider's description in the overview of the server instructions, and its guide under `## Graphics review`.
 
 #### Token effect
 
-The declaration comes to about 1,600 characters of JSON; the provider's description adds about 210 characters to the overview of the MCP server's instructions, and its guide about 1,100 characters after it.
+The declaration comes to about 1,700 characters of JSON; the provider's description adds about 270 characters to the overview of the MCP server's instructions, and its guide about 1,300 characters after it.
 
 #### KV Cache effect
 
@@ -136,7 +136,7 @@ The declaration is static, so it stays in the cached tool prefix.
 
 #### What the model sees
 
-A result is `Graphics review of <path>:` and the review in Markdown: the verdict, Ready or Needs work, with a score from 1 to 10, what works, up to eight problems with where they are and their fixes, the tools and add-ons to use with what to do with each, and the next step. A failure says what to change: a missing file, a folder, a file that is not a PNG, JPEG, or WebP image, or an empty `subject`; or it passes on the account's used-up AI usage with the page where the user pays, or asks to sign in, wait, or try again.
+A result is `Graphics review of <path>:` and the review in Markdown: up to eight notes on how to make the image look better, the most important first, each with what to change, where in the image, and how, and the WASD Engine tools and add-ons to consider with what to do with each; it holds no score, grade, or verdict. A failure says what to change: a missing file, a folder, a file that is not a PNG, JPEG, or WebP image, or an empty `subject`; or it passes on the account's used-up AI usage with the page where the user pays, or asks to sign in, wait, or try again.
 
 #### Token effect
 
@@ -153,6 +153,7 @@ Append-only in the conversation.
 These limits define what the review offers; they are current package constraints.
 
 - **One still image** — a review judges one frame, so motion, animation timing, and other angles need images of their own, such as frames from `godot_record` or views from `godot_view`.
+- **Three reviews by instruction** — the agents' texts ask for exactly three reviews of each piece of graphics work, but the tool keeps no count, and each review sees only its own image, not the earlier reviews of the same work.
 - **The account's route only** — the review runs on the WASD Engine account's model route whatever model the Session uses, and fails while WASD Engine is signed out.
 - **Generic conversation row** — the Web UI shows the call in the generic tool row; the review is its text.
 

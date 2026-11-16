@@ -59,10 +59,11 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
   return defineTool({
     name: TOOL_NAME,
     description: 'Have a specialized graphics expert reviewer model critique an image of the game\'s graphics, the way a game art director '
-      + 'and technical artist would: readability, art direction, lighting, materials, shapes, composition, UI, and technical flaws. It says '
-      + 'how to make the image look better and which WASD Engine tools and add-ons to use. Always call it after graphics work, with an image '
-      + 'of the result, before you call the work done. Returns a verdict, Ready or Needs work, with a score from 1 to 10, what works, the '
-      + 'problems with their fixes, the tools and add-ons to use, and the next step.',
+      + 'and technical artist would: readability, art direction, lighting, materials, shapes, composition, UI, and technical flaws. It gives '
+      + 'notes on how to make the image look better and names the WASD Engine tools and add-ons to consider. Call it exactly three times for '
+      + 'each piece of graphics work, no more and no less: after the work, then after acting on the first review, then after acting on the '
+      + 'second, each time with a new image of the result; act on the third review too, then move on. Returns the notes, the most important '
+      + 'first, each with where it applies and how, and the tools and add-ons to consider, each with what to do with it.',
     parameters: {
       image: { type: 'string', required: true, description: wording.image },
       subject: {

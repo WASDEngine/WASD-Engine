@@ -1,5 +1,5 @@
 ---
-description: "面向 agent 的画面审查：graphics_review 把 agent 截取或制作的游戏画面图片发给审查者，由它像游戏美术总监和技术美术那样点评，并指出能让画面更好看的 WASD Engine 工具和扩展；审查者是 WASD Engine 账号的模型路由，账号像为任何模型调用付费一样为其付费；一个系统提示词段落要求在所有画面工作之后进行审查，适用于每个 Session 和连接的 agent。"
+description: "面向 agent 的画面审查：graphics_review 把 agent 截取或制作的游戏画面图片发给审查者，由它像游戏美术总监和技术美术那样点评，并指出能让画面更好看的 WASD Engine 工具和扩展；审查者是 WASD Engine 账号的模型路由，账号像为任何模型调用付费一样为其付费；一个系统提示词段落要求每项画面工作恰好审查三次，适用于每个 Session 和连接的 agent。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-画面审查插件让审查者点评游戏画面。完成画面工作之后，agent 截取结果，例如用 `godot_screenshot` 及其 `path`，再把图片连同它展示的内容和游戏想要的风格一起传给 `graphics_review`。审查者像游戏美术总监那样给出结论（Ready 或 Needs work）、评分、问题及其修正方法、要使用的 WASD Engine 工具和扩展，以及下一步。agent 修正问题并再次审查，直到结论为 Ready。连接的 agent 也能使用同一个工具。
+画面审查插件让审查者点评游戏画面。完成画面工作之后，agent 截取结果，例如用 `godot_screenshot` 及其 `path`，再把图片连同它展示的内容和游戏想要的风格一起传给 `graphics_review`。审查者像游戏美术总监那样给出让图片更好看的改进意见，以及可以考虑使用的 WASD Engine 工具和扩展，从不打分。agent 对每项画面工作恰好审查三次，并按每次审查修改。连接的 agent 也能使用同一个工具。
 
 ## 目录
 
@@ -55,7 +55,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 连接的 agent
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `graphics`（标题为 Graphics review）下使用该工具，无需 Session：`image` 必须是绝对路径，工具标记为只读。服务器指令概述中的 provider 描述要求 agent 在任何画面工作之后发送结果的图片并按审查行事，它的指南说明了具体做法。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在 provider `graphics`（标题为 Graphics review）下使用该工具，无需 Session：`image` 必须是绝对路径，工具标记为只读。服务器指令概述中的 provider 描述要求 agent 对每项画面工作恰好审查三次，每次都发送结果的新图片，并按每次审查行事，它的指南说明了具体做法。
 
 -----
 
@@ -65,7 +65,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 <details>
 <summary>实现内部细节——点击展开</summary>
 
-面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、按 agent 的偏好顺序排列的 WASD Engine 工具（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、按 id 列出的目录扩展及其适用场景，以及回复的格式。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id、0.3 的 temperature 和 `maxTokens`。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
+面向模型的文字把审查者称为专门的画面专家审查模型，从不提及其费用；审查者是账号的模型路由，配合 [`src/prompt.ts`](src/prompt.ts) 中审查者的说明，其中列出要关注的方面、按 agent 的偏好顺序排列的 WASD Engine 工具（先是符合游戏美术风格的可下载素材，再是生成的 2D 美术，最后才是手绘或用代码绘制的美术）、按 id 列出的目录扩展及其适用场景，以及回复的格式：改进意见和可以考虑使用的工具和扩展，不含评分、等级或结论。请求带有 purpose `graphics-review`、调用有 Session 时的 Session id、0.3 的 temperature 和 `maxTokens`。达到 `maxTokens` 的回复保留其文本，并注明审查在此结束。Sharp 在第一次审查时加载。
 
 | 文件 | 作用 |
 |---|---|
@@ -100,19 +100,19 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型可见内容
 
-当 Session 拥有 `graphics_review` 时，`graphics-review` 段落（标题为 `# Graphics review`）告诉 agent：这个工具把图片发给专门的画面专家审查模型，由它点评并指出要使用的 WASD Engine 工具和扩展；并要求 agent 在画面工作之后、宣布完成或继续下一步之前总是使用它。段落说明如何截取图片（Session 拥有 Godot 工具时，用 `godot_screenshot` 或 `godot_view` 及其 `path`）、要传入什么，以及按审查行事并再次审查直到结论为 Ready，最后强调画面工作必须经过审查才能结束。Web 和 Desktop profile 在拥有 Godot 工具时组成的段落如下：
+当 Session 拥有 `graphics_review` 时，`graphics-review` 段落（标题为 `# Graphics review`）告诉 agent：这个工具把图片发给专门的画面专家审查模型，由它给出改进意见并指出可以考虑使用的 WASD Engine 工具和扩展；并要求 agent 对每项画面工作恰好审查三次，不多也不少：截取结果、审查、按审查行事，再用新的截图重复，直到这项工作经过三次审查，然后按第三次审查行事并继续下一步。段落说明如何截取图片（Session 拥有 Godot 工具时，用 `godot_screenshot` 或 `godot_view` 及其 `path`）、要传入什么、如何按审查行事，以及失败的调用不算一次审查，最后强调画面工作的审查不能少于三次，也不能多于三次。Web 和 Desktop profile 在拥有 Godot 工具时组成的段落如下：
 
 ##### `graphics-review` 段落
 
 ```markdown
 # Graphics review
 
-graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use. Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the fixes until it says Ready. This is very important: never finish graphics work without a review.
+graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and technical artist would and gives notes on how to make it look better, naming the WASD Engine tools and add-ons to consider. Review each piece of graphics work exactly three times, no more and no less: once you change what the player sees, such as a model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review, act on the review, and repeat with a new capture until that work has had three reviews; then act on the third review and move on without a fourth. Capture a game screenshot with godot_screenshot, or a closer look with godot_view, and give path to save it; or pass a render, an image you generated, a texture, or a sprite sheet. Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user's request or the style of its references. To act on a review, make the changes its notes ask for with the tools and add-ons it names. A call that fails does not count as a review. This is very important: never finish graphics work with fewer than three reviews, and never review it more than three times.
 ```
 
 #### Token 影响
 
-该段落约 1,000 个字符。
+该段落约 1,250 个字符。
 
 #### KV Cache 影响
 
@@ -122,11 +122,11 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### 模型可见内容
 
-`graphics_review`，带 `image` 和 `subject`，以及可选的 `goal` 和 `focus`。描述说明：专门的画面专家审查模型会像游戏美术总监和技术美术那样点评游戏画面的图片，说明它关注的方面，说明它会给出让图片更好看的方法以及要使用的 WASD Engine 工具和扩展，要求在画面工作之后总是调用它，并说明审查包含的内容。连接的 agent 看到同一个工具，其中 `image` 为绝对路径，还会在服务器指令概述中看到 provider 的描述，并在 `## Graphics review` 下看到它的指南。
+`graphics_review`，带 `image` 和 `subject`，以及可选的 `goal` 和 `focus`。描述说明：专门的画面专家审查模型会像游戏美术总监和技术美术那样点评游戏画面的图片，说明它关注的方面，说明它会给出让图片更好看的改进意见并指出可以考虑使用的 WASD Engine 工具和扩展，要求对每项画面工作恰好调用三次、每次都使用结果的新图片，并说明审查包含的内容。连接的 agent 看到同一个工具，其中 `image` 为绝对路径，还会在服务器指令概述中看到 provider 的描述，并在 `## Graphics review` 下看到它的指南。
 
 #### Token 影响
 
-该声明约 1,600 个字符的 JSON；provider 的描述为 MCP 服务器指令的概述增加约 210 个字符，它的指南在概述之后增加约 1,100 个字符。
+该声明约 1,700 个字符的 JSON；provider 的描述为 MCP 服务器指令的概述增加约 270 个字符，它的指南在概述之后增加约 1,300 个字符。
 
 #### KV Cache 影响
 
@@ -136,7 +136,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### 模型可见内容
 
-结果是 `Graphics review of <path>:` 以及 Markdown 格式的审查：结论（Ready 或 Needs work）及 1 到 10 的评分、做得好的地方、最多八个问题及其位置和修正方法、要使用的工具和扩展及各自的用法，以及下一步。失败时说明要改什么：文件缺失、路径是文件夹、文件不是 PNG、JPEG 或 WebP 图片，或 `subject` 为空；或者转告账号的 AI 用量已用完并给出用户付费的页面，或请用户登录、等待或重试。
+结果是 `Graphics review of <path>:` 以及 Markdown 格式的审查：最多八条让图片更好看的改进意见（最重要的在前，每条说明要改什么、在图片中的位置以及怎么改），以及可以考虑使用的 WASD Engine 工具和扩展及各自的用法；其中没有评分、等级或结论。失败时说明要改什么：文件缺失、路径是文件夹、文件不是 PNG、JPEG 或 WebP 图片，或 `subject` 为空；或者转告账号的 AI 用量已用完并给出用户付费的页面，或请用户登录、等待或重试。
 
 #### Token 影响
 
@@ -153,6 +153,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 这些限制界定了审查能提供什么；它们是本包当前的约束。
 
 - **只看一张静止图片**——一次审查只评判一帧，因此动作、动画节奏和其他角度需要单独的图片，例如 `godot_record` 的帧或 `godot_view` 的视图。
+- **按说明审查三次**——agent 的文字要求对每项画面工作恰好审查三次，但工具不计数，而且每次审查只看到自己的图片，看不到同一项工作之前的审查。
 - **只用账号的路由**——无论 Session 使用哪个模型，审查都在 WASD Engine 账号的模型路由上运行，WASD Engine 未登录时审查会失败。
 - **通用的对话行**——Web UI 用通用的工具行显示这次调用；审查结果就是它的文本。
 
