@@ -46,6 +46,9 @@ const PERMANENT = [
   'INVALID_MODEL_CONTEXT', 'INVALID_MODEL_MAX_TOKENS', 'INVALID_MODEL_REASONING', 'INVALID_PREPARED_CALL',
 ]
 
+/** A review in the form the reviewer's instructions ask for: notes and the tools and add-ons to consider. */
+const NOTES = '**How to make it better:** The trees are cones: model them in Blender.\n**Tools and add-ons to consider:** sapling-tree-gen for the trees.'
+
 async function png(path: string, width: number, height: number, alpha = true): Promise<void> {
   await mkdir(join(path, '..'), { recursive: true })
   const channels = alpha ? 4 : 3
@@ -56,16 +59,17 @@ describe('graphics_review', () => {
   it('sends the image and the agent\'s words to the account\'s model with the reviewer\'s instructions, and returns the review', async () => {
     current = await compose()
     await png(join(current.work, 'shots', 'forest.png'), 800, 450)
-    current.models.reply = textReply('**Verdict:** Needs work, 5/10.\n**Next step:** Model the trees in Blender.')
+    current.models.reply = textReply(NOTES)
     const result = await review(current, {
       image: 'shots/forest.png', subject: 'the forest level at dusk from the player\'s camera', goal: 'cozy low-poly', focus: 'the lighting',
     })
     expect(result.isError).toBe(false)
-    expect(text(result)).toBe(`Graphics review of ${join(current.work, 'shots', 'forest.png')}:\n\n**Verdict:** Needs work, 5/10.\n**Next step:** Model the trees in Blender.`)
+    expect(text(result)).toBe(`Graphics review of ${join(current.work, 'shots', 'forest.png')}:\n\n${NOTES}`)
 
     const [request] = current.models.requests
     expect(request).toMatchObject({ provider: 'deepseek-account', model: 'reviewer', purpose: 'graphics-review', sessionId: current.agent.session.id })
     expect(request?.system).toContain('Review it as a senior game art director and technical artist reviews a teammate\'s work')
+    expect(request?.system).toContain('Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail.')
     expect(request?.system).toContain('  - sky3d (Godot): A 3D game needs a sky that changes with the time of day.')
     expect(request?.system).toContain('  - sapling-tree-gen (Blender): A level needs trees in several variations.')
     const [message] = request?.messages ?? []
@@ -164,8 +168,8 @@ describe('graphics_review', () => {
     current.models.reply = textReply('   ')
     expect(await call()).toContain('The graphics reviewer finished without writing a review. Check that the image shows the graphics to review '
       + 'and that subject describes it, then call it once more; if it again writes none, go on without a review and tell the user.')
-    current.models.reply = textReply('**Verdict:** Needs work', 'max-tokens')
-    expect(await call()).toContain('**Verdict:** Needs work\n\n(The review stops here: it reached its length limit.)')
+    current.models.reply = textReply('**How to make it better:** Model the trees', 'max-tokens')
+    expect(await call()).toContain('**How to make it better:** Model the trees\n\n(The review stops here: it reached its length limit.)')
   })
 
   it('tells a missing sign-in apart from a route that offers no reviewer or needs a newer WASD Engine, before any request', async () => {
@@ -211,9 +215,9 @@ describe('graphics_review', () => {
     current.models.listFailure = new Error('the listing broke')
     expect(await call()).toContain(TRY_AGAIN)
     current.models.listFailure = undefined
-    current.models.reply = textReply('**Verdict:** Ready, 8/10.').filter(chunk => chunk.type !== 'finish')
+    current.models.reply = textReply('**How to make it better:** Model the trees in Blender.').filter(chunk => chunk.type !== 'finish')
     expect(await call()).toContain(TRY_AGAIN)
-    current.models.reply = textReply('**Verdict:** Ready, 8/10.')
+    current.models.reply = textReply('**How to make it better:** Model the trees in Blender.')
     current.ctx.on('llm/stream', () => { throw new Error('a stream listener failed') })
     const failed = await call()
     expect(failed).toContain(TRY_AGAIN)

@@ -45,7 +45,7 @@ const GAME_TOOLS_OVERLAY = fileURLToPath(new URL('../../../bundle/web-app/wasden
 const TOKEN = 'wasd-account-token'
 
 /** The review the loopback API's model writes. */
-const REVIEW = '**Verdict:** Ready, 9/10.\n**What works:** Crisp pixels and a clear silhouette.'
+const REVIEW = '**How to make it better:** Outline the knight in one darker shade.\n**Tools and add-ons to consider:** GIMP for the outline.'
 
 /** The listing's text-only model, which the review passes over. */
 const PRO = { id: 'deepseek-v4-pro', input_modalities: ['text'], output_modalities: ['text'], api_capabilities: { anthropic_messages: {} } }

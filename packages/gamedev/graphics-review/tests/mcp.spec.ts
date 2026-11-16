@@ -33,7 +33,7 @@ describe('graphicsReviewMcpProvider', () => {
     timeoutMs: 60_000,
     review: (request) => {
       reviewed.push(request.subject)
-      return Promise.resolve('**Verdict:** Ready, 9/10.')
+      return Promise.resolve('**How to make it better:** Raise the title\'s contrast against the sky.')
     },
   })
 
@@ -55,7 +55,7 @@ describe('graphicsReviewMcpProvider', () => {
     const catalog = new GameToolCatalog(() => [provider], () => {})
     const [entry] = catalog.tools()
     const done = await catalog.run(entry!, { image, subject: 'the title screen' }, call)
-    expect(done).toEqual({ content: [{ type: 'text', text: `Graphics review of ${image}:\n\n**Verdict:** Ready, 9/10.` }] })
+    expect(done).toEqual({ content: [{ type: 'text', text: `Graphics review of ${image}:\n\n**How to make it better:** Raise the title's contrast against the sky.` }] })
     expect(reviewed).toEqual(['the title screen'])
     const refused = await catalog.run(entry!, { image: 'shot.png', subject: 'the title screen' }, call)
     expect(refused).toEqual({ isError: true, content: [{ type: 'text', text: 'image must be an absolute path, got "shot.png".' }] })

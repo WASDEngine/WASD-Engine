@@ -173,7 +173,7 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
   await ctx.plugin(LlmRuntime)
   const models: FakeModels = {
     models: [{ id: 'reviewer', images: true }], listFailure: undefined, reasoning: ACCOUNT_REASONING, refusals: {}, requests: [],
-    reply: textReply('**Verdict:** Ready, 8/10.'), stored: [],
+    reply: textReply('**How to make it better:** Model the trees in Blender.'), stored: [],
   }
   ctx.llm.registerAdapter(['deepseek-account'], new ScriptedRoute(models))
   const account: FakeAccount = { signedIn: true, unreadable: false }

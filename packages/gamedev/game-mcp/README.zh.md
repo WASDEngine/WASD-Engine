@@ -180,7 +180,7 @@ Godot 调用以绝对路径指定项目：包含 `project.godot` 的文件夹、
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、画面审查、反馈工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 36,000 个字符（其中约 4,000 个是概述，约 7,300 个是含目录的游戏扩展指南），92 个工具声明约 131,500 个字符的 JSON，其中约 12,600 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数。Claude Code 把指令的前 4,096 个字符交给它的模型，即概述和第一份指南的开头；agent 的 harness 决定其余部分有多少进入它的请求。
+Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、画面审查、反馈工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 36,300 个字符（其中约 4,000 个是概述，约 7,300 个是含目录的游戏扩展指南），92 个工具声明约 131,700 个字符的 JSON，其中约 12,600 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数。Claude Code 把指令的前 4,096 个字符交给它的模型，即概述和第一份指南的开头；agent 的 harness 决定其余部分有多少进入它的请求。
 
 #### KV Cache 影响
 
@@ -212,7 +212,7 @@ provider 工具的结果是其渲染出的文本，Godot 截图、Poly Haven 预
 - **空白 Session**——已连接 agent 的 Session 没有轮次，因此 Session 列表把它显示为「新会话」，在其游戏项目中点击「新会话」会打开它；在尚未登录任何 provider 时，窗口显示它会弹出「开始使用」对话框。
 - **只创建新文件夹**——`create_game_project` 只创建新的文件夹；已有的文件夹会在某个游戏工具调用第一次指定它时成为游戏项目，同时创建发起调用的 agent 的 Session。新项目不会成为之后 Godot 调用的默认项目；在某次调用传入 `project` 之前，这些调用仍使用该 agent 上一次的项目。
 - **没有对话记录**——已连接 agent 的工具调用显示在它自己的 harness 中，而不在 Session 里；Session 在「游戏」标签页中显示它的游戏。
-- **指令被 harness 截断**——Claude Code 只把指令的前 4,096 个字符交给它的模型，因此概述之后的指南只能通过 `search_game_tools` 到达它，而概述必须容纳在其中：在随附的十四个 provider 下，概述约 3,990 个字符，新 provider 的那一行大约还有 100 个字符可用；某次注册使概述变长超限时，服务器会发出警告。概述超长时，被截掉的是排在最后的插件列表的末尾。
+- **指令被 harness 截断**——Claude Code 只把指令的前 4,096 个字符交给它的模型，因此概述之后的指南只能通过 `search_game_tools` 到达它，而概述必须容纳在其中：在随附的十四个 provider 下，概述约 4,045 个字符，新 provider 的那一行大约还有 50 个字符可用；某次注册使概述变长超限时，服务器会发出警告。概述超长时，被截掉的是排在最后的插件列表的末尾。
 - **启动时的等待**——在 WASD Engine 启动期间连接的 agent 会等待插件加载，最多等待 `readyTimeoutMs`；更晚才加载完的插件不在该 agent 的概述中（MCP 只发送一次概述），它会通过其工具的 `tools/list_changed` 和 `search_game_tools` 到达该 agent。
 - **无状态服务**——同一 agent 的两个实例在每个项目中共用它的 Session、项目默认值与游戏，除非它们的 Godot 调用给出不同的 `session` 名称；它们对 Blender、GIMP 与 SuperCollider 工具的调用若未给出 `session`，则各共用一个 worker。
 - **2025 客户端的取消**——使用 2025 修订版的客户端以 `notifications/cancelled` 请求取消调用，该请求到达的是另一个独立的服务器，无法到达正在运行的调用，因此调用只会在其请求关闭或其工具的时限到达时结束。

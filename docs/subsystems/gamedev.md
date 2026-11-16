@@ -385,7 +385,7 @@ The `.gdignore` file makes Godot skip the folder, so references are neither impo
 <a id="graphics-review"></a>
 ## Graphics review
 
-The `graphics-review` row mounts [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.md), whose `graphics_review` tool gives the Session's agent and connected agents a critique of an image of the game's graphics, such as a screenshot that `godot_screenshot` or `godot_view` saved with `save`, with the WASD Engine tools and add-ons that would make it look better, and whose `graphics-review` system prompt section asks for a review after all graphics work. The model-facing texts call the reviewer a specialized graphics expert reviewer model; it is the WASD Engine account's model route, `deepseek-account`, with a reviewer's instructions that name the game tools and the catalog add-ons.
+The `graphics-review` row mounts [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.md), whose `graphics_review` tool gives the Session's agent and connected agents a critique of an image of the game's graphics, such as a screenshot that `godot_screenshot` or `godot_view` saved with `save`: notes on how to make it look better and the WASD Engine tools and add-ons to consider, with no score or verdict. Its `graphics-review` system prompt section asks for exactly three reviews of each piece of graphics work, no more and no less. The model-facing texts call the reviewer a specialized graphics expert reviewer model; it is the WASD Engine account's model route, `deepseek-account`, with a reviewer's instructions that name the game tools and the catalog add-ons.
 
 | Data | Channel | When |
 |---|---|---|

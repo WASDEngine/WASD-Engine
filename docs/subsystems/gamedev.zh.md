@@ -385,7 +385,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="graphics-review"></a>
 ## 画面审查
 
-`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 用 `save` 保存的截图），并指出能让画面更好看的 WASD Engine 工具和扩展；它的 `graphics-review` 系统提示词段落要求在所有画面工作之后进行审查。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
+`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 用 `save` 保存的截图）：给出让画面更好看的改进意见以及可以考虑使用的 WASD Engine 工具和扩展，不给评分或结论。它的 `graphics-review` 系统提示词段落要求每项画面工作恰好审查三次，不多也不少。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|

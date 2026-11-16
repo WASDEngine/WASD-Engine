@@ -1,7 +1,9 @@
 /**
  * What the agents read about the graphics review and what the reviewer reads: the Session's system prompt section, the
  * MCP provider's description and guide, and the reviewer's instructions with WASD Engine's tools and the add-on
- * catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model and never mention a cost.
+ * catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model, ask for exactly three
+ * reviews of each piece of graphics work, and never mention a cost; the reviewer replies with notes and the tools and
+ * add-ons to consider, never with a rating.
  * @module @deepseek-ai/dsh-graphics-review/src/prompt
  */
 
@@ -23,16 +25,18 @@ export interface ReviewAddon {
 
 /** What a review does, which every surface's text starts from. */
 const WHAT = 'graphics_review sends an image to a specialized graphics expert reviewer model, which critiques it as a game art director and '
-  + 'technical artist would and says how to make it look better, naming the WASD Engine tools and add-ons to use.'
+  + 'technical artist would and gives notes on how to make it look better, naming the WASD Engine tools and add-ons to consider.'
 
-/** When to use it; both surfaces state it the same way. */
-const WHEN = 'Always use it after graphics work: once you change what the player sees, such as a model, texture, sprite, animation, UI, '
-  + 'lighting, effect, or level, capture the result and pass it to graphics_review before you call the work done or move on.'
+/** When to use it and how often; both surfaces state it the same way. */
+const WHEN = 'Review each piece of graphics work exactly three times, no more and no less: once you change what the player sees, such as a '
+  + 'model, texture, sprite, animation, UI, lighting, effect, or level, capture the result and pass it to graphics_review, act on the '
+  + 'review, and repeat with a new capture until that work has had three reviews; then act on the third review and move on without a fourth.'
 
 /** What to do with the review. */
 const AFTER = 'Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user\'s request or '
-  + 'the style of its references. Then act on the review: fix its problems with the tools and add-ons it names, and review again after the '
-  + 'fixes until it says Ready. This is very important: never finish graphics work without a review.'
+  + 'the style of its references. To act on a review, make the changes its notes ask for with the tools and add-ons it names. A call that '
+  + 'fails does not count as a review. This is very important: never finish graphics work with fewer than three reviews, and never review '
+  + 'it more than three times.'
 
 /**
  * How a Godot capture is saved for the review: `save` puts it where Godot neither imports nor exports it, the project's
@@ -55,8 +59,8 @@ export function sessionPrompt(godot: boolean): string {
 }
 
 /** What the plugin adds, as the overview of WASD Engine's MCP server instructions lists it. */
-export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model. After any graphics work, always send it an image of the result, '
-  + 'then act on its critique and the WASD Engine tools and add-ons it names.'
+export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model. Review each piece of graphics work exactly three times, no more '
+  + 'and no less: each time, send it a new image of the result, then act on its notes and the WASD Engine tools and add-ons it names.'
 
 /** The plugin's guide for connected agents, which name every file by absolute path. */
 export const MCP_INSTRUCTIONS = `${WHAT} ${WHEN} Pass image, an absolute path of a PNG, JPEG, or WebP file: capture a game screenshot with `
@@ -85,7 +89,7 @@ Judge the image for what it is: a game screenshot, a close view of one model, a 
 - UI and text: legibility, contrast, alignment, spacing, hierarchy, and consistency with the game's style.
 - Technical flaws: aliasing, z-fighting, clipping, misaligned tiles, mixed pixel sizes, blurred or filtered pixel art, and stretched images.
 
-For each problem, say how to fix it with WASD Engine's tools, preferring an asset to download when one suits the game's art style, then generated 2D art over art drawn by hand or in code:
+For each note, say how to make the change with WASD Engine's tools, preferring an asset to download when one suits the game's art style, then generated 2D art over art drawn by hand or in code:
 - polyhaven_* (Poly Haven): free CC0 HDRI skies, PBR textures, and models, the first choice when one suits the game's art style.
 - image_generate (Nano Banana): concept art, sprites, textures, UI pieces, icons, and backgrounds, made from references. Prefer it to painting 2D art in GIMP or drawing it in code.
 - Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets, bake procedural materials into image textures, and export .glb files. Prefer it for every 3D model the player sees that no download provides, and for the parts of meshes that the game builds at runtime, over primitives and meshes built in code.
@@ -94,11 +98,8 @@ For each problem, say how to fix it with WASD Engine's tools, preferring an asse
 - Godot: WorldEnvironment (sky, fog, volumetric fog, glow, SSAO, SSIL, SDFGI, tonemapping, adjustments), lights and shadows, StandardMaterial3D and shaders, particles, decals, MultiMesh, CanvasItem shaders and lights, texture filtering, and camera settings.${catalog}
 Name the tool or add-on and what to do with it. Suggest only what fits this image and this game.
 
-Reply in Markdown, in at most 600 words, in this form:
-**Verdict:** Ready or Needs work, and a score from 1 to 10 for how good it looks for this game.
-**What works:** one to three short points.
-**Problems:** the most important first, at most eight; for each, what is wrong, where in the image, and the fix.
-**Tools and add-ons to use:** each with what to do with it.
-**Next step:** the one change that would improve the image most.
-Say Ready only when what is left is minor polish. Base every point on what the image shows; when one image cannot show something, such as motion or another angle, say which image would.`
+Reply in Markdown, in at most 600 words, with only these two parts:
+**How to make it better:** notes, the most important first, at most eight; for each, what to change, where in the image, and how.
+**Tools and add-ons to consider:** each WASD Engine tool or add-on that would help, with what to do with it.
+Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail. Leave out praise and what already works; give only notes on how to do better. Base every note on what the image shows; when one image cannot show something, such as motion or another angle, say which image would.`
 }
