@@ -8,12 +8,13 @@
  * its build: the check talks to the page without a user gesture, and the page gets no dialogs, popups, fullscreen,
  * printing, downloads, permissions, or navigation to another origin. The mode prints its result by the deadline its
  * request names, in a line of at most the request's `resultBytes`, and exits at once when the process that started it
- * ends.
+ * ends. When the request names a `screenshot` file, the mode saves the page there as a JPEG image as it last drew it.
  */
 import { Buffer } from 'node:buffer'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import type {
   App, BrowserWindowConstructorOptions, Debugger, RenderProcessGoneDetails, WebContentsConsoleMessageEventParams,
 } from 'electron'
@@ -68,6 +69,9 @@ const PARENT_POLL_MS = 1000
 
 /** The browser session of the check's page, which keeps nothing on disk. */
 const PARTITION = 'wasd-web-check'
+
+/** JPEG quality of the screenshot, from 0 to 100. */
+export const SCREENSHOT_QUALITY = 80
 
 /**
  * Script that runs in every frame of the page before the frame's own scripts: it records main-thread tasks of 50 ms
@@ -177,6 +181,20 @@ export interface WebCheckSession {
   on(event: 'will-download', listener: (event: { preventDefault(): void }) => void): unknown
 }
 
+/** What the mode uses of a captured image of the page. */
+export interface WebCheckImage {
+  /** @returns whether the image holds no pixels. */
+  isEmpty(): boolean
+  /** @returns the image's size in pixels. */
+  getSize(): { readonly width: number; readonly height: number }
+  /**
+   * Encode the image as a JPEG file.
+   * @param quality - from 0 to 100.
+   * @returns the file's bytes.
+   */
+  toJPEG(quality: number): Uint8Array
+}
+
 /** What the mode uses of the page's web contents. */
 export interface WebCheckContents {
   /** The page's browser session. */
@@ -198,6 +216,11 @@ export interface WebCheckContents {
    * @returns its value.
    */
   executeJavaScript(code: string, userGesture?: boolean): Promise<unknown>
+  /**
+   * Capture the page as it last drew it.
+   * @returns the image, empty when the page drew nothing yet.
+   */
+  capturePage(): Promise<WebCheckImage>
   /**
    * Mute the page.
    * @param muted - whether it is muted.
@@ -300,8 +323,11 @@ export function webCheckRequest(argv: readonly string[]): WebCheckLaunch | undef
   if (argument === undefined) return undefined
   const value: unknown = JSON.parse(argument.slice(WEB_CHECK_ARGUMENT.length + 1))
   if (typeof value !== 'object' || value === null) throw new Error('Web check: the request is not an object')
-  const { url, seconds, startTimeoutMs, deadlineMs, width, height, resultBytes } = value as Record<string, unknown>
+  const { url, seconds, startTimeoutMs, deadlineMs, width, height, resultBytes, screenshot } = value as Record<string, unknown>
   if (typeof url !== 'string' || !/^http:\/\/127\.0\.0\.1:\d+\//u.test(url)) throw new Error('Web check: the request URL must be a loopback http URL')
+  if (screenshot !== undefined && (typeof screenshot !== 'string' || !isAbsolute(screenshot))) {
+    throw new Error('Web check: screenshot must be an absolute file path')
+  }
   const positive = (field: unknown): field is number => typeof field === 'number' && Number.isFinite(field) && field > 0
   if (!positive(seconds) || !positive(startTimeoutMs) || !positive(deadlineMs) || !positive(width) || !positive(height)) {
     throw new Error('Web check: seconds, startTimeoutMs, deadlineMs, width, and height must be positive numbers')
@@ -312,6 +338,7 @@ export function webCheckRequest(argv: readonly string[]): WebCheckLaunch | undef
   return {
     url, seconds, startTimeoutMs, deadlineMs, width: Math.round(width), height: Math.round(height),
     ...resultBytes === undefined ? {} : { resultBytes },
+    ...screenshot === undefined ? {} : { screenshot },
   }
 }
 
@@ -476,6 +503,34 @@ function pageRead(answer: Answer): PageRead | undefined {
   }
 }
 
+/**
+ * Save the page as it last drew it as a JPEG file.
+ * @param contents - the page.
+ * @param path - absolute path of the file, which the save replaces.
+ * @param waitMs - the longest wait for the capture.
+ * @returns the image's size, or undefined when the page was gone, drew nothing, or did not give its image within the
+ *   wait, or when the file could not be written.
+ */
+async function saveScreenshot(
+  contents: WebCheckContents, path: string, waitMs: number,
+): Promise<{ width: number; height: number } | undefined> {
+  if (contents.isDestroyed() || waitMs <= 0) return undefined
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const silence = new Promise<undefined>((resolve) => { timer = setTimeout(() => { resolve(undefined) }, waitMs) })
+  // A window destroyed during the capture rejects it, like a page that never answers: the result has no screenshot.
+  const captured = contents.capturePage().catch(() => undefined)
+  const image = await Promise.race([captured, silence]).finally(() => { clearTimeout(timer) })
+  if (image === undefined || image.isEmpty()) return undefined
+  const { width, height } = image.getSize()
+  try {
+    await writeFile(path, image.toJPEG(SCREENSHOT_QUALITY))
+  } catch {
+    // A folder that vanished or refuses the file leaves the result without a screenshot, which the plugin then omits.
+    return undefined
+  }
+  return { width, height }
+}
+
 /** Whether a URL is on an origin. */
 function onOrigin(url: string, origin: string): boolean {
   return URL.canParse(url) && new URL(url).origin === origin
@@ -506,7 +561,8 @@ function sealPage(contents: WebCheckContents, origin: string): void {
  * Open the page offscreen and measure it: wait from opening the page up to the request's start timeout for the game to
  * start and draw {@link READY_FRAMES} frames, then watch it for the request's seconds. A page that does not answer the
  * check's last request is reported unresponsive, without frames, since the frames it measured before it froze no
- * longer describe it. Every wait ends by `deadline`, so the measurement does too.
+ * longer describe it. Unless the page's process ended, the measurement then saves the page as it last drew it where
+ * the request's `screenshot` names a file. Every wait ends by `deadline`, so the measurement does too.
  * @param BrowserWindow - Electron's window class.
  * @param request - what to open and how long to watch.
  * @param deadline - `Date.now()` time by which the measurement ends.
@@ -584,6 +640,10 @@ export async function measureWebBuild(
     const latest = watched ?? read
     // The frames since the game started until it drew steadily, else the watched ones; none from a page that went silent.
     const frames = silent ? undefined : readyMs === undefined ? read : watched
+    // The page as players last saw it: the watched game, or the loading or broken page that never drew steadily.
+    const screenshot = request.screenshot === undefined || reported.crashed !== undefined
+      ? undefined
+      : await saveScreenshot(contents, request.screenshot, Math.min(ANSWER_MS, deadline - Date.now()))
     return {
       started: read?.started ?? false,
       ...read?.startMs === undefined ? {} : { startMs: read.startMs },
@@ -595,6 +655,7 @@ export async function measureWebBuild(
       console: messages.lines(),
       ...reported.crashed === undefined ? {} : { crashed: reported.crashed },
       unresponsive: reported.unresponsive || silent,
+      ...screenshot === undefined ? {} : { screenshot },
     }
   } finally {
     if (!window.isDestroyed()) window.destroy()

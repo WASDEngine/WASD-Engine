@@ -21,6 +21,8 @@
  * carries out on a Browser tab in the right Sidebar through the same Remote.
  * @module @deepseek-ai/dsh-wasd-plugins
  */
+import type { Buffer } from 'node:buffer'
+import { readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,7 +57,9 @@ import {
 import { GameLibrary } from './library.ts'
 import { startDetached, systemUnpack } from './library-process.ts'
 import { encodePreview, savePreview } from './preview.ts'
-import { accountKey, DESKTOP_BUILD_DIR, linkedGame, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, type SiteAccess } from './release.ts'
+import {
+  accountKey, DESKTOP_BUILD_DIR, linkedGame, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, WEB_CHECK_SCREENSHOT, type SiteAccess,
+} from './release.ts'
 import { signInLink } from './site-sign-in.ts'
 import { ProjectQueue } from './state.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
@@ -378,7 +382,22 @@ export default class WasdPlugins extends TypertRemoteService {
           return zip ? { ...exported, zip: await zipWebBuild(exported, signal) } : exported
         }),
         // The build's folder is the project's `.wasdengine/web`, where exportWeb writes it.
-        checkWeb: (outputDir, signal) => this.projects.run(resolve(outputDir, '..', '..'), signal, () => scope.godot.checkWeb({ outputDir }, signal)),
+        checkWeb: (outputDir, signal) => this.projects.run(resolve(outputDir, '..', '..'), signal, () => {
+          return scope.godot.checkWeb({ outputDir, screenshot: resolve(outputDir, '..', WEB_CHECK_SCREENSHOT) }, signal)
+        }),
+        webCheckView: async (path, exec) => {
+          if (exec.agent === undefined) return undefined
+          const images = await modelImages(ctx, exec, exec.agent)
+          if (images.kind !== 'ready') return undefined
+          let data: Buffer
+          try {
+            data = await readFile(path)
+          } catch {
+            // A screenshot removed since the check leaves the result's text, which names its file.
+            return undefined
+          }
+          return await images.save(data, 'image/jpeg', basename(path), exec.signal)
+        },
         exportDesktop: (projectDir, platforms, signal) => this.projects.run(projectDir, signal, async () => {
           const builds = []
           const warnings = []
@@ -445,7 +464,9 @@ export default class WasdPlugins extends TypertRemoteService {
           return releaseGame(request, {
             access: () => this.access(),
             exportWeb: (projectDir, outputDir, exportSignal) => scope.godot.exportWeb({ projectDir, outputDir }, exportSignal),
-            checkWeb: (outputDir, checkSignal) => scope.godot.checkWeb({ outputDir }, checkSignal),
+            checkWeb: (outputDir, checkSignal) => {
+              return scope.godot.checkWeb({ outputDir, screenshot: resolve(outputDir, '..', WEB_CHECK_SCREENSHOT) }, checkSignal)
+            },
             exportDesktop: (projectDir, platform, outputDir, exportSignal) => {
               return scope.godot.exportDesktop({ projectDir, platform, outputDir }, exportSignal)
             },

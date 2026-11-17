@@ -159,12 +159,19 @@ describe('WASD Engine Plugins composition', () => {
         await writeFile(join(outputDir, 'Space Game.zip'), `${platform} zip`)
         return { projectDir, platform, outputDir, entry: 'Space Game.zip', bytes: `${platform} zip`.length, warnings: [] }
       },
-      checkWeb({ outputDir }: { readonly outputDir: string }) {
+      checkWeb({ outputDir, screenshot }: { readonly outputDir: string; readonly screenshot?: string }) {
         checked.push(outputDir)
+        expect(screenshot).toBe(join(outputDir, '..', 'web-check.jpg'))
+        if (outputDir.includes('broken')) {
+          return Promise.resolve({
+            seconds: 20, started: false, longestFreezeSeconds: 0, freezes: 0, programs: 0, messages: [], moreMessages: 0,
+            findings: ['The game did not start within 180 s of opening the page, so the check saw only its loading.'], problems: ['the game did not start'],
+          })
+        }
         return Promise.resolve({
           seconds: 20, started: true, startSeconds: 2, readySeconds: 2.5, longestFreezeSeconds: 0.3, freezes: 0, fps: 60,
           slowestFrameMs: 18,
-          drawCalls: { median: 40, max: 50 }, programs: 12, messages: [], moreMessages: 0, findings: [],
+          drawCalls: { median: 40, max: 50 }, programs: 12, messages: [], moreMessages: 0, findings: [], problems: [],
         })
       },
     } as never)
@@ -207,6 +214,15 @@ describe('WASD Engine Plugins composition', () => {
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })
     const exported = await call('wasd_export_desktop', { project: 'space', platforms: ['macos'] })
     expect(text(exported)).toContain(`- macOS: ${join(root, 'space', '.wasdengine', 'desktop', 'macos', 'Space Game.zip')}`)
+
+    // A build that players could not play in a browser reaches no site, and the agent hears why.
+    await mkdir(join(root, 'broken'))
+    await writeFile(join(root, 'broken', 'project.godot'), '[application]\nconfig/name="Broken Game"\n')
+    const stopped = await call('wasd_release_game', { project: 'broken' })
+    expect(stopped.isError).toBe(true)
+    expect(text(stopped)).toContain('Nothing was released: the Web check found problems that stop a release, so players could not play this build in a browser.')
+    expect(text(stopped)).toContain('Problems that stop a release: the game did not start.')
+    expect(site.games.size).toBe(2)
   })
 
   it('packs the Web build into a ZIP file for game sites, and builds each mobile platform it can into the project\'s mobile folder', async () => {

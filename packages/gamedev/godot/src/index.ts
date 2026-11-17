@@ -310,7 +310,7 @@ Test a Godot project with the godot_* tools:
 5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.
 The user can watch and play the running game in the Game panel.
 
-Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses. Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere; run a game on another renderer with godot_run web: true to see it as players will. A Web export ends with a Web check of the build in a browser: fix the freezes and errors it reports.`
+Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses, without a RenderingDevice: compute shaders, FogVolumes, and volumetric fog do nothing there. Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere; give desktop-only work a path for browsers, and run the game with godot_run web: true to see it as players will. A Web export ends with a Web check of the build in a browser, with a screenshot: while you build, fix the freezes and errors it reports. When the user asks to release, export, or share the game, do only that, without changing the game, and tell them what the check found.`
 }
 
 /** Why `godot_record` cannot record: no WASD Engine window encodes the video. */
@@ -782,15 +782,20 @@ export default class GodotController extends TypertRemoteService {
    * Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that
    * `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and
    * report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed,
-   * and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For
-   * other plugins on the Host; the Game tab does not call it.
-   * @param request - the export folder and its page.
+   * findings about them, the problems that make the build unfit to publish, and, when the request names a file, a
+   * screenshot of the page as the check last saw it. A check takes one of the `maxHeadlessProcesses` slots of script
+   * checks and exports. For other plugins on the Host; the Game tab does not call it.
+   * @param request - the export folder, its page, and where to save the screenshot.
    * @param signal - cancellation; it stops the browser.
    * @returns what the check saw.
    * @throws {GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.
    * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.
+   * @throws {Error} when the request names a screenshot path that is not absolute.
    */
   async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck> {
+    if (request.screenshot !== undefined && !isAbsolute(request.screenshot)) {
+      throw new Error(`A Web check's screenshot must be an absolute path, not ${JSON.stringify(request.screenshot)}.`)
+    }
     if (this.config.webCheckCommand.length === 0) throw new GodotWebCheckError(WEB_CHECK_UNAVAILABLE)
     return await this.headless.run(signal, async () => {
       this.requireMemory('a Web check')
@@ -804,6 +809,7 @@ export default class GodotController extends TypertRemoteService {
         timeoutMs: this.config.webCheckTimeoutMs,
         graceMs: this.config.stopGraceMs,
         outputBytes: this.config.processOutputBytes,
+        ...request.screenshot === undefined ? {} : { screenshot: request.screenshot },
         signal,
       })
     })

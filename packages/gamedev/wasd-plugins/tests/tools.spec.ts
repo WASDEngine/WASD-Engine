@@ -28,7 +28,20 @@ const WEB_CHECK: GodotWebCheck = {
   ],
   moreMessages: 2,
   findings: ['The page froze for up to 30.2 s at a time.', 'Particles emitted with emit_particle() never appear.'],
+  problems: ['the build printed 1 error'],
+  screenshot: { path: '/work/game/.wasdengine/web-check.jpg', width: 1280, height: 720 },
 }
+
+/** A Web check that found nothing that stops a release, as a release that went out carries it. */
+const RELEASED_CHECK: GodotWebCheck = {
+  ...WEB_CHECK,
+  messages: [{ level: 'warning', text: 'WARNING: The Compatibility renderer does not support manually emitting particles.', count: 1 }],
+  moreMessages: 0,
+  problems: [],
+}
+
+/** The screenshot as the calling Session's model receives it. */
+const SHOT = { attachmentId: 'shot', mediaType: 'image/jpeg', bytes: 9, width: 1280, height: 720, name: 'web-check.jpg' } as ImageAttachmentRef
 
 function host(
   preview: Partial<RecordedPreview> = {}, scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>> = {},
@@ -52,6 +65,10 @@ function host(
       calls.push(['check', outputDir])
       if (outputDir.startsWith('/work/broken/')) return Promise.reject(new Error('The Web check\'s browser ended (exit code 1) without a result.'))
       return Promise.resolve(WEB_CHECK)
+    },
+    webCheckView: (path) => {
+      calls.push(['view', path])
+      return Promise.resolve({ width: 1280, height: 720, image: SHOT })
     },
     exportDesktop: (projectDir, platforms) => {
       calls.push(['desktop', projectDir, platforms])
@@ -141,13 +158,17 @@ describe('wasdToolDefinitions', () => {
     expect(release.parameters).not.toHaveProperty('properties.model')
   })
 
-  it('passes check on and renders the release\'s Web check, or why it could not run', async () => {
-    const checked = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheck: WEB_CHECK }) }
+  it('passes check on and renders the release\'s Web check with its screenshot, or why it could not run', async () => {
+    const checked = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheck: RELEASED_CHECK }) }
     const release = wasdToolDefinitions(checked, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
-    const text = textOf(release.output.render({}, await release.execute({}, exec) as JsonValue))
+    const blocks = release.output.render({}, await release.execute({}, exec) as JsonValue)
+    const text = textOf(blocks)
     expect(text).toContain('Share link: https://site.test/games/neon\n')
     expect(text).toContain('\nWeb check: a browser opened the build, Godot started the game after 3.4 s,')
-    expect(text).toContain('\n- Particles emitted with emit_particle() never appear.\nNotes:\n- Note one.')
+    expect(text).toContain('\n- Particles emitted with emit_particle() never appear.\nScreenshot of the page as the check last saw it (1280x720): /work/game/.wasdengine/web-check.jpg\nNotes:\n- Note one.')
+    expect(text).not.toContain('Problems that stop a release')
+    expect(checked.calls).toEqual([['view', '/work/game/.wasdengine/web-check.jpg']])
+    expect(blocks.at(-1)).toEqual({ type: 'image', attachment: SHOT })
     const failing = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheckError: 'The Web check runs in the WASD Engine Desktop app.' }) }
     const failed = wasdToolDefinitions(failing, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
     expect(textOf(failed.output.render({}, await failed.execute({}, exec) as JsonValue)))
@@ -283,8 +304,10 @@ describe('wasdToolDefinitions', () => {
     const stub = host()
     const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
     const value = await exporter.execute({}, exec) as JsonValue
-    expect(stub.calls).toEqual([['export', '/work/game'], ['check', '/work/game/.wasdengine/web']])
-    const text = textOf(exporter.output.render({}, value))
+    expect(stub.calls).toEqual([['export', '/work/game'], ['check', '/work/game/.wasdengine/web'], ['view', '/work/game/.wasdengine/web-check.jpg']])
+    const blocks = exporter.output.render({}, value)
+    expect(blocks.at(-1)).toEqual({ type: 'image', attachment: SHOT })
+    const text = textOf(blocks)
     expect(text).toBe([
       'Exported /work/game for the Web into /work/game/.wasdengine/web: index.html (2.0 MB). Open index.html through a web server, not from the file system.',
       'Web check: a browser opened the build, Godot started the game after 3.4 s, it drew frames steadily from 52.3 s on, and the check watched it run for 20 s without input: longest freeze 30.2 s (4 of a second or more); 30 fps, slowest frame 917 ms; 2915 draw calls per frame (median, up to 5193); 226 shader programs.',
@@ -295,7 +318,32 @@ describe('wasdToolDefinitions', () => {
       'Findings:',
       '- The page froze for up to 30.2 s at a time.',
       '- Particles emitted with emit_particle() never appear.',
+      'Problems that stop a release: the build printed 1 error.',
+      'Screenshot of the page as the check last saw it (1280x720): /work/game/.wasdengine/web-check.jpg',
     ].join('\n'))
+  })
+
+  it('leaves the screenshot out of results for connected agents, and of Sessions whose model cannot see it', async () => {
+    const stub = host()
+    const exporter = wasdToolDefinitions(stub, LENGTHS, 'connected').find(definition => definition.name === 'wasd_export_web')!
+    const value = await exporter.execute({}, exec) as JsonValue
+    expect(stub.calls).toEqual([['export', '/work/game'], ['check', '/work/game/.wasdengine/web']])
+    expect(value).not.toHaveProperty('webCheckView')
+    const blind = { ...host(), webCheckView: () => Promise.resolve(undefined) }
+    const own = wasdToolDefinitions(blind, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
+    const seen = await own.execute({}, exec) as JsonValue
+    expect(seen).not.toHaveProperty('webCheckView')
+    expect(own.output.render({}, seen).map(block => block.type)).toEqual(['text'])
+  })
+
+  it('tells the agent that a release checks the build first and changes nothing in the game', () => {
+    const definitions = wasdToolDefinitions(host(), LENGTHS)
+    const release = definitions.find(definition => definition.name === 'wasd_release_game')!
+    expect(release.description).toContain('Before anything is uploaded, a Web check opens the build in a browser: when the game does not start, crashes, stops answering, or prints errors there, the call publishes nothing and fails with what the check saw and a screenshot of the page.')
+    expect(release.description).toContain('release the game as it is: do not change it in the same turn.')
+    expect(release.parameters).toMatchObject({ properties: { check: { description: expect.stringContaining('Pass false only when the user, told what the check found, asks to release the build as it is.') as string } } })
+    const exporter = definitions.find(definition => definition.name === 'wasd_export_web')!
+    expect(exporter.parameters).toMatchObject({ properties: { check: { description: expect.stringContaining('with what they mean for players and a screenshot of the page') as string } } })
   })
 
   it('skips the Web check on request, and reports a check that could not run without failing the export', async () => {
@@ -386,5 +434,25 @@ describe('wasdMcpProvider', () => {
     }, {}, exec)
     expect(content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('Recorded the game\'s preview') as string })
     expect(content[1]).toEqual({ type: 'image', data: Buffer.from('JPEG').toString('base64'), mimeType: 'image/jpeg' })
+  })
+
+  it('returns the Web check\'s screenshot to connected agents from its file, and the text alone without it', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-tools-'))
+    folders.push(dir)
+    await writeFile(join(dir, 'web-check.jpg'), 'SHOT')
+    const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits())
+    expect(provider.instructions).toContain('Release the game as it is: wasd_release_game first checks the Web build in a browser and publishes nothing when the game does not start, crashes, stops answering, or prints errors there; then tell the user what the check found, and change the game only when they ask.')
+    const exporter = provider.tools().find(tool => tool.name === 'wasd_export_web')!
+    const release = provider.tools().find(tool => tool.name === 'wasd_release_game')!
+    const exported = JSON.parse(JSON.stringify({
+      projectDir: dir, outputDir: join(dir, 'web'), entry: 'index.html', files: [{ path: 'index.html', bytes: 1 }], totalBytes: 1, warnings: [],
+      webCheck: { ...RELEASED_CHECK, screenshot: { path: join(dir, 'web-check.jpg'), width: 64, height: 36 } },
+    })) as JsonValue
+    const content = await exporter.content!(exported, {}, exec)
+    expect(content[0]).toMatchObject({ type: 'text', text: expect.stringContaining(`Screenshot of the page as the check last saw it (64x36): ${join(dir, 'web-check.jpg')}`) as string })
+    expect(content[1]).toEqual({ type: 'image', data: Buffer.from('SHOT').toString('base64'), mimeType: 'image/jpeg' })
+    const gone = JSON.parse(JSON.stringify({ ...RELEASED, webCheck: { ...RELEASED_CHECK, screenshot: { path: join(dir, 'gone.jpg'), width: 64, height: 36 } } })) as JsonValue
+    const released = await release.content!(gone, {}, exec)
+    expect(released.map(block => block.type)).toEqual(['text'])
   })
 })

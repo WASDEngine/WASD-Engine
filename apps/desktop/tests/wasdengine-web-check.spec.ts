@@ -3,12 +3,14 @@
  * started, keeps its page from putting anything on screen, reports a page that stops answering, and ends by its deadline
  * or when the process that started it ends.
  */
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { runInNewContext, Script } from 'node:vm'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
-  WebCheckApp, WebCheckContents, WebCheckLaunch, WebCheckProcess, WebCheckSession, WebCheckWindow, WebCheckWindowClass,
+  WebCheckApp, WebCheckContents, WebCheckImage, WebCheckLaunch, WebCheckProcess, WebCheckSession, WebCheckWindow, WebCheckWindowClass,
 } from '../src/wasdengine-web-check.ts'
 import { WASDENGINE_DESKTOP_BRAND } from '../src/wasdengine-brand.ts'
 import { webCheckHelperExecutable } from '../src/wasdengine-web-check-helper.ts'
@@ -16,8 +18,8 @@ import { webCheckHelperExecutable } from '../src/wasdengine-web-check-helper.ts'
 vi.mock('electron', () => ({}))
 
 const {
-  ConsoleMessages, DEFAULT_RESULT_BYTES, INSTRUMENTATION, MAX_CONSOLE_CHARS, MAX_CONSOLE_LINES, READY_FRAMES, WEB_CHECK_ARGUMENT,
-  WEB_CHECK_MARKER, measureWebBuild, resultLine, runWebCheckMode, webCheckCommand, webCheckRequest,
+  ConsoleMessages, DEFAULT_RESULT_BYTES, INSTRUMENTATION, MAX_CONSOLE_CHARS, MAX_CONSOLE_LINES, READY_FRAMES, SCREENSHOT_QUALITY,
+  WEB_CHECK_ARGUMENT, WEB_CHECK_MARKER, measureWebBuild, resultLine, runWebCheckMode, webCheckCommand, webCheckRequest,
 } = await import('../src/wasdengine-web-check.ts')
 
 const REQUEST: WebCheckLaunch = {
@@ -39,6 +41,15 @@ describe('webCheckRequest', () => {
     for (const invalid of [{ seconds: 0 }, { deadlineMs: undefined }, { deadlineMs: -1 }]) {
       expect(() => webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify({ ...REQUEST, ...invalid })}`]))
         .toThrow('Web check: seconds, startTimeoutMs, deadlineMs, width, and height must be positive numbers')
+    }
+  })
+
+  it('reads the absolute path where the page\'s screenshot goes, and refuses any other', () => {
+    const shot = { ...REQUEST, screenshot: '/game/.wasdengine/web-check.jpg' }
+    expect(webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify(shot)}`])).toEqual(shot)
+    for (const screenshot of ['web-check.jpg', 7]) {
+      expect(() => webCheckRequest([`${WEB_CHECK_ARGUMENT}=${JSON.stringify({ ...REQUEST, screenshot })}`]))
+        .toThrow('Web check: screenshot must be an absolute file path')
     }
   })
 
@@ -180,10 +191,12 @@ interface Page {
   readonly freezeFrom?: number
   /** Runs after each request the page answered, with the request's 1-based number. */
   readonly after?: (request: number) => void
+  /** What capturing the page gives: an image of this size, an empty image, or no answer at all. Default: empty. */
+  readonly capture?: { readonly width: number; readonly height: number } | 'empty' | 'never'
 }
 
 /** A page that drew the frames the check waits for by its first answer, 1.5 s after it started. */
-function readyPage(options: Pick<Page, 'freezeFrom' | 'after'> = {}): Page {
+function readyPage(options: Pick<Page, 'freezeFrom' | 'after' | 'capture'> = {}): Page {
   return {
     state: {
       started: true,
@@ -237,8 +250,24 @@ class StandInContents implements WebCheckContents {
 
   constructor(private readonly page: Page) {}
 
+  /** The JPEG qualities that the page's captures were encoded at. */
+  readonly encoded: number[] = []
+
   isDestroyed(): boolean { return false }
   loadURL(): Promise<void> { return Promise.resolve() }
+  capturePage(): Promise<WebCheckImage> {
+    const capture = this.page.capture ?? 'empty'
+    if (capture === 'never') return new Promise<WebCheckImage>(() => undefined)
+    const size = capture === 'empty' ? { width: 0, height: 0 } : capture
+    return Promise.resolve({
+      isEmpty: () => capture === 'empty',
+      getSize: () => size,
+      toJPEG: (quality) => {
+        this.encoded.push(quality)
+        return new TextEncoder().encode(`jpeg ${String(size.width)}x${String(size.height)}`)
+      },
+    })
+  }
   setAudioMuted(): void { /* The stand-in plays no sound. */ }
   setFrameRate(): void { /* The stand-in draws when the test says. */ }
   setWindowOpenHandler(handler: Parameters<WebCheckContents['setWindowOpenHandler']>[0]): void { this.open = handler }
@@ -378,6 +407,51 @@ describe('measureWebBuild', () => {
     const sample = await measuring
     expect(sample).toMatchObject({ started: true, frameMs: [], drawCalls: [], unresponsive: true })
     expect(sample).not.toHaveProperty('readyMs')
+  })
+
+  it('saves the page as it last drew it where the request names a file, and reports its size', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'wasd-web-check-shot-'))
+    try {
+      const path = join(folder, 'web-check.jpg')
+      const page = readyPage({ capture: { width: 1280, height: 720 } })
+      const { Window, windows } = standIn(page)
+      const measuring = measureWebBuild(Window, { ...REQUEST, screenshot: path }, Date.now() + REQUEST.deadlineMs)
+      await vi.advanceTimersByTimeAsync(REQUEST.seconds * 1000 + 1000)
+      expect(await measuring).toMatchObject({ started: true, screenshot: { width: 1280, height: 720 } })
+      expect(readFileSync(path, 'utf8')).toBe('jpeg 1280x720')
+      expect((windows[0] as StandInWindow).webContents.encoded).toEqual([SCREENSHOT_QUALITY])
+      // Without a file named, the check captures nothing.
+      const unasked = standIn(readyPage({ capture: { width: 1280, height: 720 } }))
+      const plain = measureWebBuild(unasked.Window, REQUEST, Date.now() + REQUEST.deadlineMs)
+      await vi.advanceTimersByTimeAsync(REQUEST.seconds * 1000 + 1000)
+      expect(await plain).not.toHaveProperty('screenshot')
+      expect((unasked.windows[0] as StandInWindow).webContents.encoded).toEqual([])
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
+  })
+
+  it('reports no screenshot of a page that drew nothing, gave no image in time, or could not be saved', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'wasd-web-check-shot-'))
+    try {
+      const path = join(folder, 'web-check.jpg')
+      for (const capture of ['empty', 'never'] as const) {
+        const { Window } = standIn(readyPage({ capture }))
+        const measuring = measureWebBuild(Window, { ...REQUEST, screenshot: path }, Date.now() + REQUEST.deadlineMs)
+        const done = settled(measuring)
+        await vi.advanceTimersByTimeAsync(REQUEST.deadlineMs)
+        expect(done(), capture).toBe(true)
+        expect(await measuring, capture).not.toHaveProperty('screenshot')
+      }
+      expect(existsSync(path)).toBe(false)
+      const unwritable = measureWebBuild(
+        standIn(readyPage({ capture: { width: 64, height: 36 } })).Window, { ...REQUEST, screenshot: join(folder, 'gone', 'web-check.jpg') }, Date.now() + REQUEST.deadlineMs,
+      )
+      await vi.advanceTimersByTimeAsync(REQUEST.seconds * 1000 + 1000)
+      expect(await unwritable).not.toHaveProperty('screenshot')
+    } finally {
+      rmSync(folder, { recursive: true, force: true })
+    }
   })
 
   it('ends by its deadline when the game does not start', async () => {

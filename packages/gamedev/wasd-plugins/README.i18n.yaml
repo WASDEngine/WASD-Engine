@@ -21,8 +21,8 @@
   en: 3ff876a2d2fbf047
   zh: e7c04ef34f9fc7b0
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-tools:
-  en: 9d37e6a637538fa7
-  zh: ec06a422c2c329ea
+  en: d10daff3a6458c19
+  zh: b591b9b4093ce691
 /deepseek-ai-dsh-wasd-plugins/use-this-package/multiplayer:
   en: a1ccdc5b119c2553
   zh: caa41a671457ce9f
@@ -54,11 +54,11 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/what-the-model-sees:
-  en: 9b8b31e76ba83f91
-  zh: 9e0c3112f9963168
+  en: 5446290a1f550820
+  zh: c17b9199624ea597
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/token-effect:
-  en: da6099d32f8a316f
-  zh: e1867ad5c38eded1
+  en: 7884030712b794ba
+  zh: e71b90470ab0dea2
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-declarations/kv-cache-effect:
   en: 206f2b3c2d289a21
   zh: f5084c9373791a6d
@@ -66,11 +66,11 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/what-the-model-sees:
-  en: 2469e5da790b9073
-  zh: 4632d3eff0b1a4f9
+  en: 00254ad410db6baa
+  zh: bdc051f57577d27f
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/token-effect:
-  en: f2931a936966fbb4
-  zh: b18e21f2fbad9aa5
+  en: 5696b2ff3cc72f8f
+  zh: c36967eda1ec5994
 /deepseek-ai-dsh-wasd-plugins/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009
@@ -132,8 +132,8 @@
   en: 43e4e62288bc3cfc
   zh: cd166a9550050f24
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-export-share-prompts/what-the-model-sees:
-  en: 0802d2b49596df37
-  zh: 8f439adb47591dc9
+  en: a7e28f58633bca78
+  zh: e8cfb1a5e1fd4e3a
 /deepseek-ai-dsh-wasd-plugins/model-experience/the-export-share-prompts/token-effect:
   en: babaf360115caa29
   zh: 9e12cd097cb08a0c
@@ -141,8 +141,8 @@
   en: 8007e4a49e9bbf1a
   zh: a6884bc6a71f6ba3
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work:
-  en: 10ea96cc0bd3539e
-  zh: ba4e6693dc1bb6e8
+  en: aa76a554075a4e53
+  zh: 980801a69e7ee98c
 /deepseek-ai-dsh-wasd-plugins/known-limitations-and-deferred-work/dev-note:
   en: 40634518ba5c4d88
   zh: 9e28d2c464e5e2c7

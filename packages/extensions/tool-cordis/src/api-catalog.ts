@@ -1955,10 +1955,10 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck>',
-        description: 'Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed, and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For other plugins on the Host; the Game tab does not call it.',
-        parameters: [{ name: 'request', description: 'the export folder and its page.' }, { name: 'signal', description: 'cancellation; it stops the browser.' }],
+        description: 'Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed, findings about them, the problems that make the build unfit to publish, and, when the request names a file, a screenshot of the page as the check last saw it. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'the export folder, its page, and where to save the screenshot.' }, { name: 'signal', description: 'cancellation; it stops the browser.' }],
         returns: 'what the check saw.',
-        throws: ['{GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.'],
+        throws: ['{GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.', '{Error} when the request names a screenshot path that is not absolute.'],
       },
       {
         signature: 'async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>',
@@ -7838,7 +7838,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotWebCheck',
-    declaration: 'export interface GodotWebCheck {\n    readonly seconds: number;\n    readonly started: boolean;\n    readonly startSeconds?: number;\n    readonly readySeconds?: number;\n    readonly longestFreezeSeconds: number;\n    readonly freezes: number;\n    readonly fps?: number;\n    readonly slowestFrameMs?: number;\n    readonly drawCalls?: {\n        readonly median: number;\n        readonly max: number;\n    };\n    readonly programs: number;\n    readonly messages: readonly GodotWebCheckMessage[];\n    readonly moreMessages: number;\n    readonly findings: readonly string[];\n    readonly crashed?: string;\n}',
+    declaration: 'export interface GodotWebCheck {\n    readonly seconds: number;\n    readonly started: boolean;\n    readonly startSeconds?: number;\n    readonly readySeconds?: number;\n    readonly longestFreezeSeconds: number;\n    readonly freezes: number;\n    readonly fps?: number;\n    readonly slowestFrameMs?: number;\n    readonly drawCalls?: {\n        readonly median: number;\n        readonly max: number;\n    };\n    readonly programs: number;\n    readonly messages: readonly GodotWebCheckMessage[];\n    readonly moreMessages: number;\n    readonly findings: readonly string[];\n    readonly problems: readonly string[];\n    readonly crashed?: string;\n    readonly screenshot?: GodotWebCheckScreenshot;\n}',
   },
   {
     name: 'GodotWebCheckMessage',
@@ -7846,7 +7846,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotWebCheckRequest',
-    declaration: 'export interface GodotWebCheckRequest {\n    readonly outputDir: string;\n    readonly entry?: string;\n}',
+    declaration: 'export interface GodotWebCheckRequest {\n    readonly outputDir: string;\n    readonly entry?: string;\n    readonly screenshot?: string;\n}',
+  },
+  {
+    name: 'GodotWebCheckScreenshot',
+    declaration: 'export interface GodotWebCheckScreenshot {\n    readonly path: string;\n    readonly width: number;\n    readonly height: number;\n}',
   },
   {
     name: 'GodotWebExport',

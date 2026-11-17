@@ -1,6 +1,7 @@
 /**
  * The text of a Web check in the results of `wasd_export_web` and `wasd_release_game`: what the check did, what it
- * measured, the errors and warnings, and the findings of the Godot plugin's report.
+ * measured, the errors and warnings, the findings and the problems that stop a release of the Godot plugin's report,
+ * and where its screenshot is.
  * @module @deepseek-ai/dsh-wasd-plugins/src/web-check-text
  */
 import type { GodotWebCheck } from '@deepseek-ai/dsh-godot'
@@ -11,7 +12,8 @@ export type WebCheckView = Omit<GodotWebCheck, 'messages'> & {
 }
 
 /**
- * Describe a Web check: what it did, what it measured, the errors and warnings, and the findings.
+ * Describe a Web check: what it did, what it measured, the errors and warnings, the findings, the problems that stop a
+ * release, and the screenshot's file.
  * @param check - the report.
  * @returns the text, one paragraph or list item per line.
  */
@@ -35,5 +37,9 @@ export function formatWebCheck(check: WebCheckView): string {
     if (check.moreMessages > 0) lines.push(`- … and ${String(check.moreMessages)} more.`)
   }
   if (check.findings.length > 0) lines.push('Findings:', ...check.findings.map(finding => `- ${finding}`))
+  if (check.problems.length > 0) lines.push(`Problems that stop a release: ${check.problems.join('; ')}.`)
+  if (check.screenshot !== undefined) {
+    lines.push(`Screenshot of the page as the check last saw it (${String(check.screenshot.width)}x${String(check.screenshot.height)}): ${check.screenshot.path}`)
+  }
   return lines.join('\n')
 }

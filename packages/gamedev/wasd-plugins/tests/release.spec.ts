@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { unzipSync } from 'fflate'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { ReleaseFolders } from '../src/folders.ts'
 import { PREVIEW_DIR } from '../src/preview.ts'
 import {
-  accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView, releaseGame, ReleaseError, STATE_DIR,
+  accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal,
   type ReleaseDependencies, type SiteAccess,
 } from '../src/release.ts'
 
@@ -174,6 +174,21 @@ function releaseFolders(): ReleaseFolders {
   return new ReleaseFolders(join(dir, 'release-folders'))
 }
 
+/** A Web check that found nothing that stops a release. */
+const CLEAN_CHECK: GodotWebCheck = {
+  seconds: 20, started: true, startSeconds: 1.6, readySeconds: 2.4, longestFreezeSeconds: 1.2, freezes: 1, fps: 60, slowestFrameMs: 40,
+  drawCalls: { median: 900, max: 922 }, programs: 120, messages: [], moreMessages: 0, findings: [], problems: [],
+}
+
+/** A Web check of a Forward+ build whose FogVolume shader the browser refused, with its screenshot. */
+const BROKEN_CHECK: GodotWebCheck = {
+  ...CLEAN_CHECK,
+  longestFreezeSeconds: 8,
+  messages: [{ level: 'error', text: 'ERROR: shader type fog not supported in OpenGL renderer', count: 1 }],
+  findings: ['FogVolume shaders (`shader_type fog`) do not run on the Web, so that fog is missing there.'],
+  problems: ['the build printed 1 error'],
+}
+
 function dependencies(
   fetchSite: typeof fetch, access: SiteAccess | null = ACCESS, releasedFrom = releaseFolders(), tempDir = tmpdir(),
 ): ReleaseDependencies & { exports: string[]; folders: ReleaseFolders; failDesktop?: GodotDesktopPlatform } {
@@ -300,6 +315,79 @@ describe('releaseGame', () => {
     await expect(releaseGame({ projectDir: other, desktop: ['windows', 'macos'] }, failing, signal)).rejects.toThrow(/macos export ended/u)
     expect(quiet.calls).toEqual([])
     expect(quiet.games.size).toBe(0)
+  })
+
+  it('checks the Web build while the desktop builds export, and releases it with the check once it found nothing that stops a release', async () => {
+    const dir = await project()
+    const server = site()
+    const base = dependencies(server.fetch)
+    const events: string[] = []
+    let finish: (check: GodotWebCheck) => void = () => undefined
+    const deps: ReleaseDependencies = {
+      ...base,
+      checkWeb: (outputDir) => {
+        events.push(`check ${outputDir}`)
+        return new Promise((resolve) => { finish = resolve })
+      },
+      exportDesktop: async (projectDir, platform, outputDir, desktopSignal) => {
+        events.push(`desktop ${platform}`)
+        const built = await base.exportDesktop(projectDir, platform, outputDir, desktopSignal)
+        // The site has heard nothing while the check still runs.
+        setTimeout(() => {
+          events.push(`site calls ${String(server.calls.length)}`)
+          finish(CLEAN_CHECK)
+        }, 20)
+        return built
+      },
+    }
+    const released = await releaseGame({ projectDir: dir, desktop: ['windows'] }, deps, signal)
+    expect(events).toEqual([`check ${join(dir, STATE_DIR, 'web')}`, 'desktop windows', 'site calls 0'])
+    expect(released.webCheck).toEqual(CLEAN_CHECK)
+    expect(server.games.get('game-1')?.versions).toBe(1)
+  })
+
+  it('releases nothing when the Web check finds that players could not play the build, and says what it found', async () => {
+    const dir = await project()
+    const server = site()
+    const broken: GodotWebCheck = { ...BROKEN_CHECK, screenshot: { path: join(dir, STATE_DIR, 'web-check.jpg'), width: 1280, height: 720 } }
+    const deps: ReleaseDependencies = { ...dependencies(server.fetch), checkWeb: () => Promise.resolve(broken) }
+    const refusal = await releaseGame({ projectDir: dir, desktop: ['windows'] }, deps, signal).catch((error: unknown) => error)
+    expect(refusal).toBeInstanceOf(WebCheckRefusal)
+    expect(refusal).toBeInstanceOf(ReleaseError)
+    expect((refusal as WebCheckRefusal).check).toBe(broken)
+    expect((refusal as Error).message).toBe([
+      'Nothing was released: the Web check found problems that stop a release, so players could not play this build in a browser.',
+      'Web check: a browser opened the build, Godot started the game after 1.6 s, it drew frames steadily from 2.4 s on, and the check watched it run for 20 s without input: longest freeze 8 s (1 of a second or more); 60 fps, slowest frame 40 ms; 900 draw calls per frame (median, up to 922); 120 shader programs.',
+      'Errors and warnings the build printed:',
+      '- ERROR: shader type fog not supported in OpenGL renderer',
+      'Findings:',
+      '- FogVolume shaders (`shader_type fog`) do not run on the Web, so that fog is missing there.',
+      'Problems that stop a release: the build printed 1 error.',
+      `Screenshot of the page as the check last saw it (1280x720): ${join(dir, STATE_DIR, 'web-check.jpg')}`,
+      'Export notes:',
+      '- Renders with the Compatibility renderer.',
+      'Tell the user what the check found. Change the game only when they ask you to; when they ask to publish this build as it is, call wasd_release_game again with check set to false.',
+    ].join('\n'))
+    // Nothing reached the site: no game, no version, and no link to one.
+    expect(server.calls).toEqual([])
+    expect(server.games.size).toBe(0)
+    await expect(readFile(join(dir, STATE_DIR, LINK_FILE), 'utf8')).rejects.toThrow()
+    // Asked to, the release goes out without the check.
+    const unchecked: ReleaseDependencies = { ...deps, checkWeb: () => Promise.reject(new Error('the check must not run')) }
+    const released = await releaseGame({ projectDir: dir, check: false }, unchecked, signal)
+    expect(released).toMatchObject({ version: 1 })
+    expect(released).not.toHaveProperty('webCheck')
+  })
+
+  it('releases with the reason when the Web check could not run', async () => {
+    const dir = await project()
+    const server = site()
+    const deps: ReleaseDependencies = {
+      ...dependencies(server.fetch),
+      checkWeb: () => Promise.reject(new Error('The Web check runs in the WASD Engine Desktop app, which opens the build in a browser of its own; here none is available.')),
+    }
+    const released = await releaseGame({ projectDir: dir }, deps, signal)
+    expect(released).toMatchObject({ version: 1, webCheckError: 'The Web check runs in the WASD Engine Desktop app, which opens the build in a browser of its own; here none is available.' })
   })
 
   it('names where each download stands in the site\'s malware scan', async () => {

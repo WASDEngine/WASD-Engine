@@ -7,12 +7,13 @@
  * and a JSON {@link WebCheckSample}, by the deadline that the request names, under the check's own, and within the
  * bytes of output that the check keeps, which the request names too. This module
  * validates that line and turns it into a {@link GodotWebCheck}: when the game started, its longest main-thread freeze,
- * its frame rate and draw calls, the errors and warnings it printed, whether it stopped answering, and findings that
- * explain the ones players notice and how to fix them.
+ * its frame rate and draw calls, the errors and warnings it printed, whether it stopped answering, findings that
+ * explain the ones players notice and how to fix them, the problems that make the build unfit to publish, and the
+ * screenshot of the page that the browser saved where the request named a file.
  * @module @deepseek-ai/dsh-godot/src/web-check
  */
 import { createReadStream } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -84,6 +85,13 @@ const MESSAGE_FINDINGS: readonly { readonly match: RegExp; readonly finding: str
     finding: 'FogVolume shaders (`shader_type fog`) do not run on the Web, so that fog is missing there.',
   },
   {
+    match: new RegExp([
+      'RenderingDevice', 'Texture(?:2D|3D|Layered|Cubemap)RD', 'CompositorEffect', '(?:get|create_local)_rendering_device', 'compute_list_',
+      'shader_create_from_spirv', '(?:storage|uniform)_buffer_create', 'uniform_set_create',
+    ].join('|'), 'u'),
+    finding: 'The game uses the RenderingDevice, which Web builds do not have: the Compatibility renderer has none, so `RenderingServer.get_rendering_device()` and `create_local_rendering_device()` return null, and compute shaders, RenderingDevice textures such as `Texture2DRD`, and `CompositorEffect`s do nothing or fail there. Give that work a path without the RenderingDevice, such as `SoftBody3D` sheets on Jolt for cloth, and look at it with godot_run with web set to true.',
+  },
+  {
     match: /only available (?:when using|with) the Forward\+ renderer/u,
     finding: 'TAA and FSR exist only in Forward+, so on the Web the edges they smoothed, such as alpha-tested leaves and shadow edges, show their raw pixels.',
   },
@@ -109,6 +117,8 @@ export interface WebCheckOptions {
   readonly graceMs: number
   /** Collected bytes kept per output stream; the check keeps at least {@link WEB_CHECK_OUTPUT_BYTES}. */
   readonly outputBytes: number
+  /** Absolute path of the JPEG file where the browser saves the page as it last saw it; none saves no screenshot. */
+  readonly screenshot?: string
   /** Cancellation. */
   readonly signal: AbortSignal
 }
@@ -134,6 +144,7 @@ const SAMPLE = z.object({
   console: z.array(CONSOLE_LINE),
   crashed: z.string().optional(),
   unresponsive: z.boolean(),
+  screenshot: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
 })
 
 /**
@@ -153,13 +164,14 @@ export function parseWebCheckOutput(stdout: string): WebCheckSample | undefined 
   }
   const parsed = SAMPLE.safeParse(json)
   if (!parsed.success) return undefined
-  const { startMs, readyMs, crashed, console, ...sample } = parsed.data
+  const { startMs, readyMs, crashed, console, screenshot, ...sample } = parsed.data
   return {
     ...sample,
     console: console.map(({ count, ...line }) => count === undefined ? line : { ...line, count }),
     ...startMs === undefined ? {} : { startMs },
     ...readyMs === undefined ? {} : { readyMs },
     ...crashed === undefined ? {} : { crashed },
+    ...screenshot === undefined ? {} : { screenshot },
   }
 }
 
@@ -202,13 +214,36 @@ export function webCheckMessages(lines: WebCheckSample['console']): GodotWebChec
 }
 
 /**
+ * What makes a checked build unfit to publish, one short clause each.
+ * @param sample - what the page measured.
+ * @param messages - the errors and warnings the build printed.
+ * @returns the clauses: a game that did not start or never drew steadily, a page that ended or stopped answering for
+ *   good, and printed errors; none for a build players can play.
+ */
+function webCheckProblems(sample: WebCheckSample, messages: readonly GodotWebCheckMessage[]): string[] {
+  const problems: string[] = []
+  if (!sample.started) problems.push('the game did not start')
+  else if (sample.readyMs === undefined) problems.push('the game never drew frames steadily')
+  if (sample.crashed !== undefined) problems.push(`the page's process ended (${sample.crashed})`)
+  // A page that answered again drew frames afterwards; one without frames stopped answering for good.
+  if (sample.unresponsive && sample.frameMs.length === 0) problems.push('the page stopped answering')
+  const errors = messages.filter(message => message.level === 'error').length
+  if (errors > 0) problems.push(`the build printed ${String(errors)} ${errors === 1 ? 'error' : 'different errors'}`)
+  return problems
+}
+
+/**
  * Turn a check's measurements into its report.
  * @param sample - what the page measured.
  * @param watchSeconds - seconds the check watched the started game.
  * @param startTimeoutMs - how long the check waited for the game to start.
- * @returns the report, its findings included.
+ * @param screenshotPath - where the request asked the browser to save its screenshot, which the report names when the
+ *   sample says the browser saved one.
+ * @returns the report, its findings and problems included.
  */
-export function summarizeWebCheck(sample: WebCheckSample, watchSeconds: number, startTimeoutMs: number): GodotWebCheck {
+export function summarizeWebCheck(
+  sample: WebCheckSample, watchSeconds: number, startTimeoutMs: number, screenshotPath?: string,
+): GodotWebCheck {
   const messages = webCheckMessages(sample.console)
   const longest = sample.longTasks.reduce((most, [, duration]) => Math.max(most, duration), 0)
   const freezes = sample.longTasks.filter(([, duration]) => duration >= FREEZE_MS).length
@@ -256,7 +291,11 @@ export function summarizeWebCheck(sample: WebCheckSample, watchSeconds: number, 
     messages: messages.slice(0, WEB_CHECK_MESSAGES),
     moreMessages: Math.max(0, messages.length - WEB_CHECK_MESSAGES),
     findings,
+    problems: webCheckProblems(sample, messages),
     ...sample.crashed === undefined ? {} : { crashed: sample.crashed },
+    ...sample.screenshot === undefined || screenshotPath === undefined
+      ? {}
+      : { screenshot: { path: screenshotPath, ...sample.screenshot } },
   }
 }
 
@@ -345,13 +384,16 @@ export async function serveFolder(dir: string): Promise<ServedFolder> {
 }
 
 /**
- * Check a Web export: serve it, open it in the check's browser, and report what the browser saw.
- * @param options - the build, the browser, and the limits.
+ * Check a Web export: serve it, open it in the check's browser, and report what the browser saw, with the screenshot
+ * that the browser saved where `screenshot` names a file, which the check first deletes.
+ * @param options - the build, the browser, the limits, and where the screenshot goes.
  * @returns the report.
  * @throws {GodotWebCheckError} when no browser is configured, or the browser ends without a result.
  */
 export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebCheck> {
   if (options.command.length === 0) throw new GodotWebCheckError(WEB_CHECK_UNAVAILABLE)
+  // An earlier check's screenshot would outlive a check that saves none.
+  if (options.screenshot !== undefined) await rm(options.screenshot, { force: true })
   const served = await serveFolder(options.outputDir)
   // The output keeps its end, where the result line is, so the line fits when it leaves room for what follows it.
   const outputBytes = Math.max(options.outputBytes, WEB_CHECK_OUTPUT_BYTES)
@@ -364,6 +406,7 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
       // From the browser's start: it prints what it measured by then, before this check's deadline stops it.
       deadlineMs: options.timeoutMs - Math.min(WEB_CHECK_EXIT_MS, options.timeoutMs / 2),
       resultBytes: outputBytes - WEB_CHECK_OUTPUT_MARGIN,
+      ...options.screenshot === undefined ? {} : { screenshot: options.screenshot },
     } satisfies WebCheckRequest
     const outcome = await runGodotCommand({
       subprocess: options.subprocess,
@@ -381,7 +424,7 @@ export async function checkWebBuild(options: WebCheckOptions): Promise<GodotWebC
       const tail = lastLines(outcome.stderr, 10) || lastLines(outcome.stdout, 10)
       throw new GodotWebCheckError(`The Web check's browser ${ended} without a result.${tail === '' ? '' : `\nLast output:\n${tail}`}`)
     }
-    return summarizeWebCheck(sample, options.seconds, options.startTimeoutMs)
+    return summarizeWebCheck(sample, options.seconds, options.startTimeoutMs, options.screenshot)
   } finally {
     await served.close()
   }
