@@ -40,7 +40,7 @@ signal server_waking()
 ## In a dedicated server: save now, the server quits on the next frames.
 signal server_stopping()
 
-const ADDON_VERSION := "1.1.0"
+const ADDON_VERSION := "1.2.0"
 const Tokens := preload("internal/tokens.gd")
 const Config := preload("internal/config.gd")
 const Api := preload("internal/api.gd")
@@ -66,6 +66,11 @@ const _RENEW_RETRY_SECONDS := 60.0
 const _ICE_MARGIN_SECONDS := 3600.0
 const _ICE_RETRY_SECONDS := 60.0
 const _ICE_REFUSED_RETRY_SECONDS := 1800.0
+# How long a joiner waits before each attempt to get its dropped signal socket back, the last one repeating.
+const _REJOIN_DELAYS: Array[float] = [2.0, 4.0, 8.0, 15.0, 30.0]
+# The lobby service's closes that no reconnect changes: a replacing socket of the same player (4000), a bad ticket
+# (4401), a refused origin, host, or removed account (4403), a closed lobby (4404), and a locked or full one (4409).
+const _SIGNAL_REFUSALS: Array[int] = [4000, 4401, 4403, 4404, 4409]
 const _BUILD_PATH := "/games/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/versions/([0-9]+)/"
 
 enum _Role { NONE, HOST, JOINER, SERVER, CLIENT }
@@ -746,6 +751,7 @@ func _open_signal(base_url: String, ticket: String) -> Dictionary:
 	_signal_url = base_url + ("&" if base_url.contains("?") else "?") + "ticket=" + ticket.uri_encode()
 	_signal_retries = 0
 	_signal = SignalClient.new()
+	_signal.opened.connect(_on_signal_opened)
 	_signal.received.connect(_on_signal_message)
 	_signal.closed.connect(_on_signal_closed)
 	if _signal.open(_signal_url) != OK:
@@ -781,10 +787,13 @@ func _on_signal_message(message: Dictionary) -> void:
 							"since": Time.get_unix_time_from_system()}
 					_create_connection(id, false)
 		"peer_left":
+			# A connected joiner's game stays connected while its signal socket comes back, and it leaves when that
+			# connection ends; only a joiner that never connected is dropped here.
 			if _role == _Role.HOST:
 				var id := int(message.get("peer_id", 0))
-				_pending.erase(id)
-				_drop_connection(id)
+				if _pending.has(id):
+					_pending.erase(id)
+					_drop_connection(id)
 		"offer", "answer":
 			var connection: WebRTCPeerConnection = _connections.get(int(message.get("from", 0)))
 			if connection != null:
@@ -816,6 +825,10 @@ func _on_signal_message(message: Dictionary) -> void:
 			push_warning("WASD Multiplayer: the lobby service reported %s: %s" % [code, text])
 
 
+func _on_signal_opened() -> void:
+	_signal_retries = 0
+
+
 func _on_signal_closed(code: int, reason: String) -> void:
 	if _leaving:
 		return
@@ -831,18 +844,31 @@ func _on_signal_closed(code: int, reason: String) -> void:
 				_connect_result = _failure(cause[0], cause[1])
 		elif not cause.is_empty() and (cause[0] == "kicked" or cause[0] == "dropped"):
 			_end_lobby(cause[0])
+		elif code not in _SIGNAL_REFUSALS:
+			# The game stays connected to the host without the socket, which comes back so the lobby service keeps
+			# counting this player and the host can still remove it.
+			_reopen_signal(_REJOIN_DELAYS[mini(_signal_retries, _REJOIN_DELAYS.size() - 1)])
 		return
 	if _role != _Role.HOST:
 		return
 	# The lobby stays open for 30 seconds after its host's signal socket drops, so try to get back in time.
-	if _signal_retries >= 4:
+	if code in _SIGNAL_REFUSALS or _signal_retries >= 4:
 		_end_lobby("signal_lost")
 		return
+	_reopen_signal(2.0 * (_signal_retries + 1))
+
+
+## Opens the signal socket again with the same ticket after [param delay] seconds, unless the session ended or a new
+## session opened its own socket meanwhile. A failed attempt closes it again, which counts as the next retry.
+func _reopen_signal(delay: float) -> void:
 	_signal_retries += 1
-	await get_tree().create_timer(2.0 * _signal_retries, true, false, true).timeout
-	if _role == _Role.HOST and _signal != null and not _signal.is_active():
-		if _signal.open(_signal_url) != OK:
-			_end_lobby("signal_lost")
+	var socket := _signal
+	var role := _role
+	await get_tree().create_timer(delay, true, false, true).timeout
+	if _role != role or _signal == null or _signal != socket or _signal.is_active():
+		return
+	if _signal.open(_signal_url) != OK and _role == _Role.HOST:
+		_end_lobby("signal_lost")
 
 
 func _create_connection(id: int, offer: bool) -> bool:

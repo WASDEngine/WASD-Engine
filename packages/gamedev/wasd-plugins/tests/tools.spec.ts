@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type ReleaseModel, type WasdToolHost } from '../src/tools.ts'
+import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type WasdToolAudience, type WasdToolHost } from '../src/tools.ts'
 import type { WasdDesktopPlatform, WasdDownloadStatus, WasdMobilePlatform } from '../src/types.ts'
 import type { GodotWebCheck } from '@deepseek-ai/dsh-godot'
 
@@ -33,12 +33,12 @@ const WEB_CHECK: GodotWebCheck = {
 function host(
   preview: Partial<RecordedPreview> = {}, scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>> = {},
   mobileFailures: Partial<Record<WasdMobilePlatform, string>> = {},
-): WasdToolHost & { calls: unknown[]; models: ReleaseModel[] } {
+): WasdToolHost & { calls: unknown[]; audiences: WasdToolAudience[] } {
   const calls: unknown[] = []
-  const models: ReleaseModel[] = []
+  const audiences: WasdToolAudience[] = []
   return {
     calls,
-    models,
+    audiences,
     project: requested => Promise.resolve(requested === undefined ? '/work/game' : `/work/${requested}`),
     file: requested => Promise.resolve(requested.startsWith('/') ? requested : `/work/${requested}`),
     exportWeb: (projectDir, zip) => {
@@ -89,9 +89,9 @@ function host(
         started: false, paused: false, ...preview,
       })
     },
-    release: (request, _exec, model) => {
+    release: (request, _exec, audience) => {
       calls.push(['release', request])
-      models.push(model)
+      audiences.push(audience)
       return Promise.resolve({
         title: 'Neon Drift', version: 3, url: 'https://site.test/games/neon?v=3', gameUrl: 'https://site.test/games/neon', playUrl: 'https://games.test/x/index.html',
         totalBytes: 50 * 1024 * 1024, warnings: ['Note one.'],
@@ -137,7 +137,7 @@ describe('wasdToolDefinitions', () => {
     expect(text).toContain('The game is public: Explore lists it.')
     expect(text).not.toContain('download')
     expect(text).toContain('- Note one.')
-    expect(stub.models).toEqual([{ kind: 'session' }])
+    expect(stub.audiences).toEqual(['session'])
     expect(release.parameters).not.toHaveProperty('properties.model')
   })
 
@@ -158,14 +158,24 @@ describe('wasdToolDefinitions', () => {
     expect(stub.calls).toEqual([['release', { projectDir: '/work/game', check: false }]])
   })
 
-  it('credits the model a connected agent names, cleaned, and no model when it names none', async () => {
+  it('offers model to connected agents, and releases as a connected agent, whose model its call credits', async () => {
     const stub = host()
     const release = wasdToolDefinitions(stub, LENGTHS, 'connected').find(definition => definition.name === 'wasd_release_game')!
-    expect(release.parameters).toMatchObject({ properties: { model: { type: 'string' } } })
-    await release.execute({ project: '/work/neon', model: '  Claude\tOpus   5.5 ' }, exec)
-    await release.execute({ project: '/work/neon', model: '   ' }, exec)
-    await release.execute({ project: '/work/neon' }, exec)
-    expect(stub.models).toEqual([{ kind: 'named', name: 'Claude Opus 5.5' }, { kind: 'named' }, { kind: 'named' }])
+    expect(release.parameters).toMatchObject({
+      properties: {
+        model: {
+          type: 'string',
+          description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5; at most 60 characters. The game\'s page '
+            + 'credits it beside the game tools and add-ons that made the game. Default: the model you named for this project before, else your '
+            + 'application\'s name.',
+        },
+      },
+    })
+    await release.execute({ project: 'neon', model: 'Claude Opus 5.5' }, exec)
+    await release.execute({ project: 'neon' }, exec)
+    // The model is the credits' to take from the call, so the release itself is asked for none.
+    expect(stub.calls).toEqual([['release', { projectDir: '/work/neon' }], ['release', { projectDir: '/work/neon' }]])
+    expect(stub.audiences).toEqual(['connected', 'connected'])
   })
 
   it('passes visibility and desktop platforms on, each platform once in build order, and renders the downloads', async () => {
@@ -348,15 +358,18 @@ describe('wasdMcpProvider', () => {
     expect(await exporter.prepare!({ project: '/game' }, call as never)).toEqual({ args: { project: '/game' } })
     expect(await desktop.prepare!({ project: '/game', platforms: ['windows'] }, call as never)).toEqual({ args: { project: '/game', platforms: ['windows'] } })
     expect(call.session).not.toHaveBeenCalled()
-    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n', model: 'Claude Code' }, agent })
+    // A release names no model for its application: the credits know what the agent named for the project before.
+    expect(await release.prepare!({ project: '/game', notes: 'n' }, call as never)).toEqual({ args: { project: '/game', notes: 'n' }, agent })
     expect(release.inputSchema?.properties).toMatchObject({ new_game: { type: 'boolean' }, model: { type: 'string' } })
-    expect(await release.prepare!({ project: '/game', new_game: true, model: ' Claude Opus 5.5 ' }, call as never))
-      .toEqual({ args: { project: '/game', new_game: true, model: 'Claude Opus 5.5' }, agent })
-    expect(ledger.claim.mock.calls).toEqual([['claude-code', '/game', call.signal], ['claude-code', '/game', call.signal]])
+    expect(await release.prepare!({ project: '/game', new_game: true, model: 'Claude Opus 5.5' }, call as never))
+      .toEqual({ args: { project: '/game', new_game: true, model: 'Claude Opus 5.5' }, agent, model: 'Claude Opus 5.5' })
+    // The release credits the agent before it runs, with the model the call named.
+    expect(ledger.claim.mock.calls).toEqual([[call.client, '/game', undefined, call.signal], [call.client, '/game', 'Claude Opus 5.5', call.signal]])
     expect(await recorder.prepare!({ project: '/game', seconds: 3 }, call as never)).toEqual({ args: { project: '/game', seconds: 3 }, agent })
     expect(call.session.mock.calls).toEqual([['/game'], ['/game'], ['/game']])
     const refusing = { ...call, client: { id: 'agent', title: 'Connected agent' }, session: vi.fn(() => Promise.reject(new Error('The Host cannot create the Session.'))) }
     expect(await release.prepare!({ project: '/game' }, refusing as never)).toEqual({ args: { project: '/game' } })
+    expect(await release.prepare!({ project: '/game', model: 'Qwen3' }, refusing as never)).toEqual({ args: { project: '/game', model: 'Qwen3' }, model: 'Qwen3' })
     await expect(release.prepare!({ project: '/game', model: 5 }, call as never)).rejects.toThrow('model must be a string.')
     await expect(recorder.prepare!({ project: '/game' }, refusing as never)).rejects.toThrow('cannot create the Session')
     expect(await provider.status(new AbortController().signal)).toEqual({ state: 'ready' })

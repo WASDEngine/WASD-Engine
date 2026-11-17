@@ -14,7 +14,9 @@
  * its build, preview recordings, and releases run one at a time, whether a Session's agent or a connected agent called
  * them, because each rewrites or reads the project's state folder. Each release also uploads what the
  * game was made with: the AI models and game tools that worked on the project, which the plugin records in the
- * project's `.wasdengine/credits.json` as Sessions' agents and connected agents call game tools, and its add-ons.
+ * project's `.wasdengine/credits.json` as Sessions' agents and connected agents call game tools, and its add-ons. A
+ * connected agent is credited by the model it names when it creates the project, runs the game, or releases it, and
+ * until then by its application's name.
  * With `browser` on, as in the Desktop app, the Session's agent also gets the `browser_*` tools, which the window
  * carries out on a Browser tab in the right Sidebar through the same Remote.
  * @module @deepseek-ai/dsh-wasd-plugins
@@ -29,7 +31,7 @@ import { resolveGodotProject } from '@deepseek-ai/dsh-godot'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
-import type {} from '@deepseek-ai/dsh-game-mcp'
+import type { GameMcpClient } from '@deepseek-ai/dsh-game-mcp'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -37,7 +39,10 @@ import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
-import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER, type ModelCredit, type ToolCredit } from './credits.ts'
+import {
+  connectedAgent, CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER,
+  type ModelCredit, type ToolCredit,
+} from './credits.ts'
 import { MOBILE_BUILD_DIR, zipWebBuild } from './exports.ts'
 import { ReleaseFolders } from './folders.ts'
 import { LinkRequests } from './links.ts'
@@ -286,7 +291,10 @@ export default class WasdPlugins extends TypertRemoteService {
       const tool = providerToolCredit(result.provider)
       if (result.isError || (tool === undefined && result.provider !== WASD_PROVIDER)) return
       const requested = namesProject(result.tool) ? projectArgument(result.args) : undefined
-      this.track(this.creditConnected(result.client.id, requested, result.agent, tool))
+      this.track(this.creditConnected(result.client, requested, result.agent, tool, result.model))
+    })
+    ctx.on('game-mcp/project-created', (created) => {
+      this.track(this.credits.created(connectedAgent(created.client), created.path, created.model))
     })
     this.browserRequestQueue = new BrowserRequestQueue(config.browserClaimTimeoutMs, this.lifetime.signal)
     this.linkQueue = new LinkRequests(config.linkClaimTimeoutMs, this.lifetime.signal)
@@ -432,7 +440,7 @@ export default class WasdPlugins extends TypertRemoteService {
             ...view === undefined ? {} : { view },
           }
         }),
-        release: (request, exec, model) => this.projects.run(request.projectDir, exec.signal, () => {
+        release: (request, exec, audience) => this.projects.run(request.projectDir, exec.signal, () => {
           const agent = exec.agent
           return releaseGame(request, {
             access: () => this.access(),
@@ -446,9 +454,8 @@ export default class WasdPlugins extends TypertRemoteService {
             folders: this.folders,
             tempDir: tmpdir(),
             credits: async (projectDir) => {
-              let credited: ModelCredit | undefined
-              if (model.kind === 'named') credited = model.name === undefined ? undefined : { name: model.name }
-              else credited = agent === undefined ? undefined : await this.sessionModel(agent, exec.signal)
+              // A connected agent's release credited the agent already, and its Session runs the window's model.
+              const credited = audience === 'session' && agent !== undefined ? await this.sessionModel(agent, exec.signal) : undefined
               return await this.credits.release(projectDir, credited)
             },
             // A release runs the game for a missing preview only in a Session, which the game plays in.
@@ -464,9 +471,13 @@ export default class WasdPlugins extends TypertRemoteService {
       for (const definition of wasdToolDefinitions(host, lengths)) scope.tools.register(definition)
       // Agents connected through WASD Engine's MCP server get the same tools, whose release also takes their model.
       const connected = wasdToolDefinitions(host, lengths, 'connected')
-      const claim = async (client: string, project: string, signal: AbortSignal): Promise<void> => {
+      const claim = async (client: GameMcpClient, project: string, model: string | undefined, signal: AbortSignal): Promise<void> => {
         const projectDir = await this.projectOf(project, undefined, signal)
-        if (projectDir !== undefined) await this.credits.claim(client, projectDir)
+        if (projectDir === undefined) return
+        const claimed = this.credits.claim(connectedAgent(client), projectDir, model)
+        this.track(claimed)
+        // The release waits for the change, whose credits it collects; one that failed credits nothing and fails no release.
+        await claimed.catch(() => {})
       }
       const multiplayerHost: MultiplayerToolHost = {
         project: (requested, exec) => host.project(requested, exec),
@@ -737,15 +748,16 @@ export default class WasdPlugins extends TypertRemoteService {
   }
 
   /**
-   * Credit a connected agent's game tool call: the tool, to the project the call named or the call's Session works in.
-   * The Session's model is the window's, not the connected agent's, so the call credits no model.
+   * Credit a connected agent's game tool call: the tool, and the agent by the model it names, to the project the call
+   * named or the call's Session works in. The Session's model is the window's, not the connected agent's, so the call
+   * never credits it.
    */
   private async creditConnected(
-    client: string, requested: string | undefined, agent: Agent | undefined, tool: ToolCredit | undefined,
+    client: GameMcpClient, requested: string | undefined, agent: Agent | undefined, tool: ToolCredit | undefined, model: string | undefined,
   ): Promise<void> {
     const signal = this.lifetime.signal
     const base = agent === undefined ? undefined : await this.ctx.workingDirectory.ensure(agent, signal)
-    await this.credits.connected(client, await this.projectOf(requested, base, signal), tool)
+    await this.credits.connected(connectedAgent(client), await this.projectOf(requested, base, signal), tool, model)
   }
 
   /**

@@ -3,8 +3,10 @@
  * renews itself where no WASD game page frames the game and stops once the site refuses, a lobby host takes its ICE
  * servers from the lobby service's welcome and asks for fresh ones before they run out, a joiner that never connects
  * is dropped rather than kicked, a refused relay is named in a failed join, and a closed signal socket's code and
- * reason say why a join ended. The add-on talks to stand-ins of the WASD play API and the signal socket, so no WASD
- * service runs.
+ * reason say why a join ended. Once players are connected, a dropped signal socket ends nothing: the host keeps a
+ * connected joiner when the lobby service says it left, gets four tries again after each reconnect that opens, and a
+ * joiner opens its socket again unless the close says no reconnect can help. The add-on talks to stand-ins of the WASD
+ * play API and the signal socket, so no WASD service runs.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -60,6 +62,11 @@ const TEST_SCRIPT = [
   '',
   'class FakeSignal extends "res://addons/wasd_multiplayer/internal/signal_client.gd":',
   '\tvar sent: Array = []',
+  '\tvar opens := 0',
+  '',
+  '\tfunc open(_url: String) -> Error:',
+  '\t\topens += 1',
+  '\t\treturn OK',
   '',
   '\tfunc send(message: Dictionary) -> bool:',
   '\t\tsent.append(message)',
@@ -67,6 +74,9 @@ const TEST_SCRIPT = [
   '',
   '\tfunc is_open() -> bool:',
   '\t\treturn true',
+  '',
+  '\tfunc is_active() -> bool:',
+  '\t\treturn false',
   '',
   '\tfunc poll(_now: float) -> void:',
   '\t\tpass',
@@ -131,6 +141,21 @@ const TEST_SCRIPT = [
   '\tmp._on_signal_message({"type": "ice", "ice_servers": [], "relay": {"available": false, "code": "relay_paused",',
   '\t\t\t"message": "The relay is off for this game."}})',
   '\tresults["relay_note"] = mp._relay_note()',
+  '\tmp._connections[3] = "connected"',
+  '\tmp._players[3] = {"id": "player3", "name": "Cal"}',
+  '\tmp._connections[4] = "connecting"',
+  '\tmp._pending[4] = {"name": "Dee", "player_id": "player4", "since": Time.get_unix_time_from_system()}',
+  '\tmp._on_signal_message({"type": "peer_left", "peer_id": 3})',
+  '\tmp._on_signal_message({"type": "peer_left", "peer_id": 4})',
+  '\tresults["peer_left_keeps_connected"] = mp._connections.has(3) and not mp._connections.has(4) \\',
+  '\t\t\tand not mp._pending.has(4)',
+  '\tfor _i in 6:',
+  '\t\tmp._on_signal_closed(1006, "")',
+  '\t\tmp._on_signal_opened()',
+  '\tresults["host_retries_reset"] = mp._role == 1',
+  '\tfor _i in 5:',
+  '\t\tmp._on_signal_closed(1006, "")',
+  '\tresults["host_gives_up"] = mp._role == 0',
   '',
   '\tmp._role = 2',
   '\tvar causes := []',
@@ -143,6 +168,18 @@ const TEST_SCRIPT = [
   '\tmp._connect_result = {}',
   '\tmp._on_signal_closed(4409, "lobby_locked: That lobby is locked.")',
   '\tresults["close_message"] = str(mp._connect_result.get("message", ""))',
+  '\tvar rejoin := FakeSignal.new()',
+  '\tmp._signal = rejoin',
+  '\tmp._signal_retries = 0',
+  '\tmp._connect_result = {"ok": true}',
+  '\tmp._on_signal_closed(1006, "")',
+  '\tawait get_tree().create_timer(2.5).timeout',
+  '\tresults["joiner_reopens"] = rejoin.opens == 1 and mp._role == 2',
+  '\tfor code in [4000, 4401, 4403, 4404, 4409]:',
+  '\t\tmp._on_signal_closed(code, "")',
+  '\tresults["joiner_stays_after_refusals"] = mp._signal_retries == 1 and mp._role == 2',
+  '\tmp._on_signal_closed(4001, "")',
+  '\tresults["joiner_kicked_leaves"] = mp._role == 0',
   '\tmp._role = 0',
   '\tmp._signal = null',
   '\tprint("ADDON_RESULT " + JSON.stringify(results))',
@@ -177,7 +214,7 @@ describe.skipIf(godot === undefined)('the WASD Multiplayer add-on on the real Li
   const folders: string[] = []
   afterAll(async () => { await Promise.all(folders.map(folder => rm(folder, { recursive: true, force: true }))) })
 
-  it('signs in only from its site, renews its token, takes ICE from the welcome, and says why a join ended', async () => {
+  it('signs in, renews its token, takes ICE from the welcome, says why a join ended, and outlasts a dropped signal socket', async () => {
     if (godot === undefined) return
     const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-addon-'))
     folders.push(dir)
@@ -200,6 +237,12 @@ describe.skipIf(godot === undefined)('the WASD Multiplayer add-on on the real Li
       relay_note: ' The relay is off for this game.',
       close_causes: ['dropped', 'kicked', 'lobby_full', 'lobby_locked', 'rate_limited', 'signal_failed'],
       close_message: 'That lobby is locked.',
+      peer_left_keeps_connected: true,
+      host_retries_reset: true,
+      host_gives_up: true,
+      joiner_reopens: true,
+      joiner_stays_after_refusals: true,
+      joiner_kicked_leaves: true,
     })
   })
 })

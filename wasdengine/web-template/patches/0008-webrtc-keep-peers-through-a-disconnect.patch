@@ -1,0 +1,49 @@
+diff --git a/modules/webrtc/webrtc_multiplayer_peer.cpp b/modules/webrtc/webrtc_multiplayer_peer.cpp
+index f6e890d..efd9060 100644
+--- a/modules/webrtc/webrtc_multiplayer_peer.cpp
++++ b/modules/webrtc/webrtc_multiplayer_peer.cpp
+@@ -31,6 +31,10 @@
+ #include "webrtc_multiplayer_peer.h"
+ 
+ #include "core/object/class_db.h"
++#include "core/os/os.h"
++
++// How long a peer stays while its connection is disconnected, about as long as ICE waits for consent (RFC 7675).
++static constexpr uint64_t DISCONNECTED_TIMEOUT_MSEC = 30000;
+ 
+ void WebRTCMultiplayerPeer::_bind_methods() {
+ 	ClassDB::bind_method(D_METHOD("create_server", "channels_config"), &WebRTCMultiplayerPeer::create_server, DEFVAL(Array()));
+@@ -83,7 +87,20 @@ void WebRTCMultiplayerPeer::poll() {
+ 				continue;
+ 			case WebRTCPeerConnection::STATE_CONNECTED:
+ 				// Good to go, go ahead and check channel state.
++				peer->disconnected_at = 0;
+ 				break;
++			case WebRTCPeerConnection::STATE_DISCONNECTED: {
++				// ICE lost its path, as a short network outage makes it, and usually finds it again: the peer stays while
++				// its channels stay open, until the connection fails or stays disconnected for DISCONNECTED_TIMEOUT_MSEC.
++				const uint64_t now = OS::get_singleton()->get_ticks_msec();
++				if (peer->disconnected_at == 0) {
++					peer->disconnected_at = now;
++				} else if (now - peer->disconnected_at > DISCONNECTED_TIMEOUT_MSEC) {
++					remove.push_back(E.key);
++					continue;
++				}
++				break;
++			}
+ 			default:
+ 				// Peer is closed or in error state. Got to next peer.
+ 				remove.push_back(E.key);
+diff --git a/modules/webrtc/webrtc_multiplayer_peer.h b/modules/webrtc/webrtc_multiplayer_peer.h
+index 309da76..6e49bd6 100644
+--- a/modules/webrtc/webrtc_multiplayer_peer.h
++++ b/modules/webrtc/webrtc_multiplayer_peer.h
+@@ -60,6 +60,8 @@ private:
+ 		Ref<WebRTCPeerConnection> connection;
+ 		List<Ref<WebRTCDataChannel>> channels;
+ 		bool connected;
++		// When the connection turned STATE_DISCONNECTED, in OS ticks (msec); 0 while it is not.
++		uint64_t disconnected_at = 0;
+ 
+ 		ConnectedPeer() {
+ 			connected = false;

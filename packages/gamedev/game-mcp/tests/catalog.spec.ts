@@ -79,12 +79,18 @@ describe('GameToolCatalog.tools', () => {
     // tool's project; the call's result says how the game tools take it.
     expect(create?.description).toBe('Create a new game project in WASD Engine: a new folder for the game, which WASD Engine lists among the user\'s '
       + 'game projects. Returns the folder\'s absolute path, where you make the game.')
-    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['name', 'location'])
+    expect(Object.keys(create?.inputSchema.properties ?? {})).toEqual(['name', 'location', 'model'])
     expect(create?.inputSchema.properties).toMatchObject({
       name: {
         description: 'Name of the game project, which names its folder and its entry in WASD Engine: one folder name with a visible character, '
           + 'without / \\ : * ? " < > |, control characters, or a trailing period, and neither .git nor a device name that Windows reserves, '
           + 'such as CON or COM1.',
+      },
+      // The agent names the model it is where it starts a game, so the game's page can credit it.
+      model: {
+        type: 'string',
+        description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your '
+          + 'work on the project.',
       },
     })
     expect(create?.annotations).toBeUndefined()
@@ -229,17 +235,22 @@ describe('GameToolCatalog.run', () => {
       .toEqual({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }] })
   })
 
-  it('reports each finished call with its provider, prepared arguments, Session, and whether it failed', async () => {
+  it('reports each finished call with its provider, prepared arguments, Session, named model, and whether it failed', async () => {
     const agent = { id: brandString<SessionId>('session-1') } as Agent
     const finished: GameMcpToolResult[] = []
     const catalog = new GameToolCatalog(() => [], () => {}, (result) => { finished.push(result) })
     const alpha = provider('alpha', [])
     await catalog.run({ provider: alpha, tool: { name: 'alpha_echo', definition: echoDefinition(), prepare: async () => ({ args: { text: 'prepared' }, agent }) } }, { text: 'hi' }, call())
+    await catalog.run({
+      provider: alpha,
+      tool: { name: 'alpha_echo', definition: echoDefinition(), prepare: async () => ({ args: { text: 'named' }, model: 'Claude Fable 5.2' }) },
+    }, { text: 'hi', model: 'Claude Fable 5.2' }, call())
     await catalog.run({ provider: alpha, tool: { name: 'alpha_fail', definition: failing } }, {}, call())
     await catalog.run({ provider: alpha, tool: { name: 'alpha_echo', definition: echoDefinition(), prepare: () => Promise.reject(new Error('no project')) } }, { text: 'x' }, call())
     const client = { id: 'claude-code', title: 'Claude Code' }
     expect(finished).toEqual([
       { provider: 'alpha', tool: 'alpha_echo', args: { text: 'prepared' }, client, agent, isError: false },
+      { provider: 'alpha', tool: 'alpha_echo', args: { text: 'named' }, client, model: 'Claude Fable 5.2', isError: false },
       { provider: 'alpha', tool: 'alpha_fail', args: {}, client, isError: true },
       { provider: 'alpha', tool: 'alpha_echo', args: { text: 'x' }, client, isError: true },
     ])

@@ -85,10 +85,10 @@ export interface GameMcpServing {
   /**
    * Run one call of the create tool, which creates a game project without a Session.
    * @param args - the agent's arguments.
-   * @param signal - the call's cancellation.
+   * @param call - the calling agent and the call's cancellation.
    * @returns the MCP result; a refused or failed creation is an error result whose text says why.
    */
-  createProject(args: JsonObject, signal: AbortSignal): Promise<McpCallResult>
+  createProject(args: JsonObject, call: GameMcpCall): Promise<McpCallResult>
   /**
    * The choice to put to the user in place of a failed call of a tool that spends the account's AI usage.
    * @param failure - the failed call's text.
@@ -234,7 +234,7 @@ async function callTool(serving: GameMcpServing, name: string, args: JsonObject,
     const plugin = typeof args.plugin === 'string' ? args.plugin : undefined
     return { content: [{ type: 'text', text: await catalog.search(query, plugin, call.signal) }] }
   }
-  if (name === CREATE_PROJECT_TOOL) return serving.createProject(args, call.signal)
+  if (name === CREATE_PROJECT_TOOL) return serving.createProject(args, call)
   let target = name
   let targetArgs = args
   if (name === CALL_TOOL) {

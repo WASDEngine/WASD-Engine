@@ -1,6 +1,7 @@
 /**
- * The state WASD Engine keeps for a game project, in a hidden folder inside it, and the two rules its changes follow:
- * every file is replaced whole, and one project's exports, recordings, and releases run one at a time.
+ * The state WASD Engine keeps for a game project, in a hidden folder inside it, and the rules its changes follow:
+ * every file is replaced whole, one project's exports, recordings, and releases run one at a time, and a project is
+ * known by its real path.
  * @module @deepseek-ai/dsh-wasd-plugins/src/state
  */
 import { randomUUID } from 'node:crypto'
@@ -50,6 +51,27 @@ function after(earlier: Promise<void>, signal: AbortSignal): Promise<void> {
 }
 
 /**
+ * The real paths of project folders, found one after another: callers that queue work by a project's real path, so two
+ * paths of one folder, such as one through a symbolic link, share a queue, take their places in the order they asked;
+ * otherwise a later call whose path resolved first would find no earlier work and run beside it.
+ */
+export class RealFolders {
+  /** Settles once the latest call found its project's real path; it never rejects. */
+  private resolving: Promise<string> = Promise.resolve('')
+
+  /**
+   * Find a project folder's real path, after the folders of every earlier call.
+   * @param projectDir - absolute project folder.
+   * @returns its real path, or the path itself when it cannot be resolved.
+   */
+  find(projectDir: string): Promise<string> {
+    const resolved = this.resolving.then(() => realFolder(projectDir))
+    this.resolving = resolved
+    return resolved
+  }
+}
+
+/**
  * The operations of each game project, one at a time and in the order they asked: the exports, preview recordings,
  * and releases that rewrite a project's state folder and its link to its game, whether a Session's agent or an agent
  * connected through WASD Engine's MCP server started them. A project is known by its real path, so two paths of one
@@ -58,8 +80,7 @@ function after(earlier: Promise<void>, signal: AbortSignal): Promise<void> {
 export class ProjectQueue {
   /** Per project, the promise that settles once its latest operation, and every earlier one, ended. */
   private readonly tails = new Map<string, Promise<void>>()
-  /** Settles once the latest call found its project's real path; it never rejects. */
-  private resolving: Promise<string> = Promise.resolve('')
+  private readonly folders = new RealFolders()
 
   /**
    * Run an operation once the project's earlier operations ended.
@@ -70,11 +91,7 @@ export class ProjectQueue {
    * @throws the signal's reason when it aborts during the wait, and the operation's failure.
    */
   async run<T>(projectDir: string, signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
-    // Calls find their real paths one after another, so each takes its place in the queue in the order it was asked;
-    // otherwise a later call whose path resolved first would find no earlier operation and run beside it.
-    const resolved = this.resolving.then(() => realFolder(projectDir))
-    this.resolving = resolved
-    const key = await resolved
+    const key = await this.folders.find(projectDir)
     const earlier = this.tails.get(key) ?? Promise.resolve()
     let end = (): void => {}
     const ended = new Promise<void>((resolveEnd) => { end = resolveEnd })
@@ -92,7 +109,7 @@ export class ProjectQueue {
 }
 
 /**
- * The key of a project folder in a {@link ProjectQueue}.
+ * The path that names a project folder whichever way a caller reached it.
  * @param projectDir - absolute project folder.
  * @returns its real path, or the path itself when it cannot be resolved.
  */

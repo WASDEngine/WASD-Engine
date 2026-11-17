@@ -1953,7 +1953,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:45`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:47`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -5468,7 +5468,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:81`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:86`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
