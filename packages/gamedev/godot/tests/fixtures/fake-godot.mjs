@@ -4,9 +4,9 @@
 // line it received to `.fake-godot.log` there; the names are hidden, as Godot's import skips hidden files, so they never
 // count as project changes. Modes follow the Host's command lines: `--import` runs the import step, which writes the
 // class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
-// `--export-release` writes the configured export files next to the requested page, records the export presets, the
-// `project.godot` it saw, and the size of the boot splash image it names, appends the configured `appendProject` text
-// to `project.godot` when there is one, and
+// `--export-release` writes the configured export files next to the requested page, in subfolders as their names say,
+// records the export presets, the `project.godot` it saw, the size of the boot splash image it names, and the Android
+// export's environment variables, appends the configured `appendProject` text to `project.godot` when there is one, and
 // records `exported` at its end, `--headless ... --script` runs the `script` section, which writes its `files` into the
 // folder that WASD_OUTPUT_DIR names and records `scripted` with that folder, HOME, and its start and end times at its
 // end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
@@ -409,6 +409,12 @@ async function runInstance(section) {
   await finish(behavior)
 }
 
+/** The environment variables an export records, which the Android export sets for Godot. */
+const EXPORT_ENV = [
+  'HOME', 'JAVA_HOME', 'ANDROID_HOME', 'GODOT_ANDROID_KEYSTORE_RELEASE_PATH', 'GODOT_ANDROID_KEYSTORE_RELEASE_USER',
+  'GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD',
+]
+
 async function runExport(section) {
   const page = args[args.indexOf('--export-release') + 2]
   const presets = join(project, 'export_presets.cfg')
@@ -421,11 +427,15 @@ async function runExport(section) {
     presets: existsSync(presets) ? readFileSync(presets, 'utf8') : null,
     project: settings,
     splashBytes: splashFile !== undefined && existsSync(splashFile) ? readFileSync(splashFile).length : null,
+    env: Object.fromEntries(EXPORT_ENV.filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]])),
   })
   if (section.appendProject !== undefined) appendFileSync(join(project, 'project.godot'), section.appendProject)
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
-  for (const [name, text] of Object.entries(section.files ?? {})) writeFileSync(join(dirname(page), name), text)
+  for (const [name, text] of Object.entries(section.files ?? {})) {
+    mkdirSync(dirname(join(dirname(page), name)), { recursive: true })
+    writeFileSync(join(dirname(page), name), text)
+  }
   record({ exported: true })
   await finish(section)
 }

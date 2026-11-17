@@ -63,6 +63,10 @@ describe('configuration', () => {
     [{ dataRoot: '/data', webTemplateArchiveUrl: 'file:///t.tpz' }, 'webTemplateArchiveUrl must be an http or https URL'],
     [{ dataRoot: '/data', windowsTemplateArchiveUrl: 'nope' }, 'windowsTemplateArchiveUrl must be an http or https URL'],
     [{ dataRoot: '/data', macosTemplatePath: 'macos.zip' }, 'macosTemplatePath must be an absolute path'],
+    [{ dataRoot: '/data', iosTemplateArchiveUrl: 'ftp://t.tpz' }, 'iosTemplateArchiveUrl must be an http or https URL'],
+    [{ dataRoot: '/data', androidTemplatePath: 'android.apk' }, 'androidTemplatePath must be an absolute path'],
+    [{ dataRoot: '/data', androidJavaPath: 'jdk' }, 'androidJavaPath must be an absolute path'],
+    [{ dataRoot: '/data', androidSdkPath: 'sdk' }, 'androidSdkPath must be an absolute path'],
   ])('fails loud for %j', (config, message) => {
     expect(() => new GodotController(new Context(), GodotController.Config(config))).toThrow(message)
   })
@@ -93,6 +97,16 @@ describe('configuration', () => {
       serverTemplateEntry: 'templates/linux_release.x86_64',
       serverTemplateSha256: 'd9f79ab89b5ae369aeed11c6052d402e8218cd503bf85b4a235f9c30c46a7c63',
       serverTemplatePath: '',
+      androidTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      androidTemplateEntry: 'templates/android_release.apk',
+      androidTemplateSha256: '6d1bb2cfa126a1b1c87e064a35b3cbd181bef0ec784dec1efd1d64dffa8be6cb',
+      androidTemplatePath: '',
+      iosTemplateArchiveUrl: 'https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz',
+      iosTemplateEntry: 'templates/ios.zip',
+      iosTemplateSha256: 'fd3280d10dc75356dded006f6f8813f40a5aebd32d128592b781256d8ffbdff4',
+      iosTemplatePath: '',
+      androidJavaPath: '',
+      androidSdkPath: '',
       exportTimeoutMs: 600_000,
       maxInstances: 4, instanceMemoryBytes: 2 * 1024 ** 3, instanceCores: 1,
       webCheckCommand: [], webCheckSeconds: 20, webCheckStartTimeoutMs: 180_000, webCheckTimeoutMs: 300_000,

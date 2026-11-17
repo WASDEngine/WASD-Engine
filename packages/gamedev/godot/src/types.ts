@@ -473,6 +473,61 @@ export interface GodotDesktopExport {
   readonly warnings: readonly string[]
 }
 
+/**
+ * A mobile platform a mobile export builds for: `android`, Android phones and tablets with 64-bit ARM processors, or
+ * `ios`, iPhone and iPad through an Xcode project.
+ */
+export type GodotMobilePlatform = 'android' | 'ios'
+
+/** What a mobile export builds, and where. */
+export interface GodotMobileExportRequest {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The platform to build for. */
+  readonly platform: GodotMobilePlatform
+  /** Absolute folder the export empties and fills with the build. */
+  readonly outputDir: string
+  /**
+   * The Apple Developer Team ID, 10 capital letters and digits, that an iOS build's Xcode project signs with. Without
+   * one, the project takes the team of the Mac's Apple Development certificates when they name exactly one, and
+   * otherwise leaves the team for Xcode to ask for. Android builds ignore it.
+   */
+  readonly appleTeamId?: string
+}
+
+/** The key that signed an Android build. */
+export interface GodotAndroidSigning {
+  /** Absolute path of the keystore that holds the key. */
+  readonly keystore: string
+  /** Whether this export created the keystore, which signs every later Android build of this computer's games too. */
+  readonly created: boolean
+}
+
+/**
+ * A finished mobile export: for Android, one APK file named after the game, signed and ready to install; for iOS, an
+ * Xcode project that builds the app on a Mac.
+ */
+export interface GodotMobileExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The platform it builds for. */
+  readonly platform: GodotMobilePlatform
+  /** Absolute folder holding the build. */
+  readonly outputDir: string
+  /** The APK file's name inside `outputDir`, such as `Tiny Farm.apk`, or the Xcode project's, such as `TinyFarm.xcodeproj`. */
+  readonly entry: string
+  /** Size in bytes of the APK file, or of every file the iOS export wrote. */
+  readonly bytes: number
+  /** The app's Android package name or iOS bundle identifier, such as `com.wasdengine.game.tiny_farm`. */
+  readonly identifier: string
+  /** The key that signed an Android build; absent for iOS. */
+  readonly signing?: GodotAndroidSigning
+  /** The Team ID an iOS build's Xcode project signs with; absent when Xcode asks for the team, and for Android. */
+  readonly appleTeamId?: string
+  /** Godot's export warnings; at most 10. */
+  readonly warnings: readonly string[]
+}
+
 /** Parameters of a dedicated server export. */
 export interface GodotServerExportRequest {
   /** Absolute folder holding `project.godot`. */

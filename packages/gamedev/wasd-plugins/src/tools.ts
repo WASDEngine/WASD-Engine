@@ -1,6 +1,7 @@
 /**
  * The model-facing tools of WASD Engine Plugins: `wasd_export_web` builds a Godot project for the Web,
- * `wasd_export_desktop` builds it for Windows and macOS, `wasd_record_preview` records the game's preview, an
+ * `wasd_export_desktop` builds it for Windows and macOS, `wasd_export_mobile` builds it for Android and iOS,
+ * `wasd_record_preview` records the game's preview, an
  * animation for the site, a GIF for link previews, and a still, and `wasd_release_game` builds the project and
  * publishes the build as the next version of its game on the WASD Engine site, public or private, with the preview
  * and, when asked, desktop downloads. The same
@@ -13,13 +14,16 @@ import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import type { GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
+import { APPLE_TEAM_ID, type GodotWebCheck, type GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME, modelName } from './credits.ts'
+import { MOBILE_PLATFORM_NAMES, MOBILE_PLATFORMS } from './exports.ts'
 import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
-import type { WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdRelease } from './types.ts'
+import type {
+  WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdMobileExport, WasdMobilePlatform, WasdRelease, WasdWebZip,
+} from './types.ts'
 import { formatWebCheck } from './web-check-text.ts'
 
 /** What a preview recording asks for. */
@@ -102,10 +106,11 @@ export interface WasdToolHost {
   /**
    * Export a project for the Web into its `.wasdengine/web` folder.
    * @param projectDir - absolute project folder.
+   * @param zip - whether to also pack the build into one ZIP file in its `.wasdengine/web-zip` folder.
    * @param signal - cancellation.
-   * @returns the exported files.
+   * @returns the exported files, and the ZIP file when `zip` asked for one.
    */
-  exportWeb(projectDir: string, signal: AbortSignal): Promise<GodotWebExport>
+  exportWeb(projectDir: string, zip: boolean, signal: AbortSignal): Promise<GodotWebExport & { readonly zip?: WasdWebZip }>
   /**
    * Check a Web build in a browser: watch the game start and run without input.
    * @param outputDir - absolute folder of the Web build.
@@ -123,6 +128,19 @@ export interface WasdToolHost {
    * @returns the builds.
    */
   exportDesktop(projectDir: string, platforms: readonly WasdDesktopPlatform[], signal: AbortSignal): Promise<WasdDesktopExport>
+  /**
+   * Export a project for mobile platforms into its `.wasdengine/mobile/<platform>` folders, one platform after the
+   * other; a platform that fails is reported, and the others still build.
+   * @param projectDir - absolute project folder.
+   * @param platforms - the platforms, in the order they build.
+   * @param appleTeamId - the Team ID the iOS Xcode project signs with; undefined finds the Mac's one team, else none.
+   * @param signal - cancellation.
+   * @returns the builds and the platforms that failed.
+   * @throws {Error} with every platform's failure when none builds.
+   */
+  exportMobile(
+    projectDir: string, platforms: readonly WasdMobilePlatform[], appleTeamId: string | undefined, signal: AbortSignal,
+  ): Promise<WasdMobileExport>
   /**
    * Record the game's preview in the Session of the call's Agent and save it in the project's preview folder.
    * @param request - project, length, input, and the still's moment.
@@ -170,6 +188,11 @@ const WARNINGS = { type: 'array', required: true, items: { type: 'string' } } as
 const PROJECT = {
   type: 'string',
   description: 'Folder containing project.godot, relative to the working directory. Default: the nearest one.',
+} as const
+
+const ZIP = {
+  type: 'boolean',
+  description: 'true also packs the build into one ZIP file named after the game, with index.html at its root, in the project\'s .wasdengine/web-zip folder: the file game sites such as itch.io take as an HTML5 game. Default: false.',
 } as const
 
 const CHECK = {
@@ -288,10 +311,10 @@ const BUILD_CONTENTS: Readonly<Record<WasdDesktopPlatform, string>> = {
   macos: 'a ZIP file with the game\'s Mac app, for Intel and Apple silicon Macs',
 }
 
-/** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
 /** How players get a release's desktop builds. */
 const INSTALLED_BY_APP = 'Players get the downloads through the share page\'s Install with WASD Engine button: the WASD Engine app installs the build for their computer, keeps it up to date, and starts it.'
 
+/** How a downloaded build first opens, which every desktop result says, since neither build has a publisher's signature. */
 const FIRST_OPEN = 'Neither build is signed by a publisher, so a downloaded copy asks before it first runs: on Windows, SmartScreen\'s "Windows protected your PC" needs More info, then Run anyway; on a Mac, Gatekeeper blocks the first open until the user chooses Open Anyway in System Settings > Privacy & Security.'
 
 /** What a release result adds after a download's size when the share page does not offer the download yet, or never will. */
@@ -319,6 +342,46 @@ function downloadsNote(statuses: readonly WasdDownloadStatus[]): string {
 }
 
 const PLATFORMS_SCHEMA = { type: 'array', items: { type: 'string', enum: DESKTOP_PLATFORMS } } as const
+
+const MOBILE_PLATFORMS_SCHEMA = { type: 'array', items: { type: 'string', enum: MOBILE_PLATFORMS } } as const
+
+/** How the user gets an Android build onto a device, and keeps its key. */
+function androidNote(build: { readonly keystore?: string; readonly keystoreCreated?: boolean }): string {
+  return [
+    'To install it, copy it to the phone or tablet and open it there, allowing installs from that app when Android asks, or run adb install with the device connected.',
+    'Stores that take APK files take it as it is; Google Play takes new apps only as Android App Bundles, which this export does not build.',
+    ...build.keystore === undefined ? [] : [
+      `It is signed with ${build.keystoreCreated === true ? 'a key the export just created for' : 'the key of'} this computer's Android builds, ${build.keystore}: keep a copy of that file and of release-key.json beside it, since an installed app updates only to a build signed with the same key.`,
+    ],
+  ].join(' ')
+}
+
+/** How the user turns an iOS build into the app. */
+function iosNote(build: { readonly appleTeamId?: string }): string {
+  return [
+    'Open it in Xcode on a Mac;',
+    build.appleTeamId === undefined
+      ? 'Xcode asks for the Apple developer team to sign with, under Signing & Capabilities, where a free Apple account works for the user\'s own devices.'
+      : `it signs with the Apple developer team ${build.appleTeamId}, which Signing & Capabilities can change.`,
+    'Then Run installs it on a connected iPhone or iPad, and Product > Archive builds it for TestFlight and the App Store, which need a paid Apple Developer Program membership.',
+  ].join(' ')
+}
+
+/** What each mobile build holds, by platform, as results describe it. */
+const MOBILE_CONTENTS: Readonly<Record<WasdMobilePlatform, string>> = {
+  android: 'an APK file for Android phones and tablets with 64-bit ARM processors',
+  ios: 'an Xcode project for iPhone and iPad, with the files it builds from beside it',
+}
+
+/**
+ * The mobile platforms of a call, each once, in build order.
+ * @param requested - the call's platforms; undefined picks every platform.
+ * @returns the platforms.
+ */
+function mobilePlatformsOf(requested: readonly WasdMobilePlatform[] | undefined): WasdMobilePlatform[] {
+  if (requested === undefined) return [...MOBILE_PLATFORMS]
+  return MOBILE_PLATFORMS.filter(platform => requested.includes(platform))
+}
 
 /**
  * The platforms of a call, each once, in build order.
@@ -356,8 +419,8 @@ function describeRecording(value: RecordedPreviewValue): string {
 export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths, audience: WasdToolAudience = 'session'): ToolDefinition[] {
   return [defineTool({
     name: 'wasd_export_web',
-    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve. The Web build renders with the Compatibility renderer. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, and the errors the build printed. The first export downloads Godot\'s Web template, about 10 MB. To publish the game for others to play, call wasd_release_game instead.',
-    parameters: { project: PROJECT, check: CHECK },
+    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve, and with zip also one ZIP file of it for game sites such as itch.io. The Web build renders with the Compatibility renderer. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, and the errors the build printed. The first export downloads Godot\'s Web template, about 10 MB. To publish the game on WASD Engine for others to play, call wasd_release_game instead.',
+    parameters: { project: PROJECT, check: CHECK, zip: ZIP },
     output: {
       schema: {
         type: 'object',
@@ -368,6 +431,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           entry: STRING,
           files: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { path: STRING, bytes: INTEGER } } },
           totalBytes: INTEGER,
+          zip: { type: 'object', additionalProperties: false, properties: { file: STRING, bytes: INTEGER } },
           warnings: WARNINGS,
           webCheck: WEB_CHECK_SCHEMA,
           webCheckError: { type: 'string' },
@@ -378,6 +442,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
         text: withWarnings(
           [
             `Exported ${value.projectDir} for the Web into ${value.outputDir}: ${value.files.map(file => file.path).join(', ')} (${megabytes(value.totalBytes)}). Open ${value.entry} through a web server, not from the file system.`,
+            ...value.zip === undefined ? [] : [`Packed it into ${value.zip.file} (${megabytes(value.zip.bytes)}), with index.html at its root: upload that file to a game site such as itch.io as an HTML5 game, or unpack it on any static web server.`],
             ...webCheckText(value),
           ].join('\n'),
           value.warnings,
@@ -385,9 +450,12 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
       }],
     },
     async execute(args, exec) {
-      const exported = await host.exportWeb(await host.project(args.project, exec), exec.signal)
+      const exported = await host.exportWeb(await host.project(args.project, exec), args.zip === true, exec.signal)
       const checked = args.check === false ? {} : await webCheckFields(host, exported.outputDir, exec.signal)
-      return { ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings], ...checked }
+      return {
+        ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings],
+        ...exported.zip === undefined ? {} : { zip: { ...exported.zip } }, ...checked,
+      }
     },
   }), defineTool({
     name: 'wasd_export_desktop',
@@ -420,6 +488,63 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
       if (platforms.length === 0) throw new Error('platforms must name at least one of "windows" and "macos".')
       const exported = await host.exportDesktop(await host.project(args.project, exec), platforms, exec.signal)
       return { projectDir: exported.projectDir, builds: exported.builds.map(build => ({ ...build })), warnings: [...exported.warnings] }
+    },
+  }), defineTool({
+    name: 'wasd_export_mobile',
+    description: 'Export the Godot game for phones and tablets with the built-in Godot, into the project\'s .wasdengine/mobile folder: android builds one APK file for Android phones and tablets with 64-bit ARM processors, signed and ready to install, and ios builds an Xcode project, which Xcode on a Mac turns into the iPhone and iPad app. An Android export needs a Java runtime and the Android SDK on this computer, which Android Studio installs, and signs every Android build of this computer\'s games with one key, which the first Android export creates. A platform that cannot build is reported while the other still builds. The first export for each platform downloads its Godot template, about 99 MB for Android and 189 MB for iOS.',
+    parameters: {
+      project: PROJECT,
+      platforms: { ...MOBILE_PLATFORMS_SCHEMA, description: 'The platforms to build for. Default: both, ["android", "ios"].' },
+      apple_team_id: { type: 'string', description: 'The Apple Developer Team ID, 10 capital letters and digits such as ABCDE12345, that the iOS Xcode project signs with, when the user gives one. Default: the one team of this Mac\'s Apple Development certificates; without one, Xcode asks for the team.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          projectDir: STRING,
+          builds: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                platform: STRING, file: STRING, bytes: INTEGER, identifier: STRING,
+                keystore: { type: 'string' }, keystoreCreated: { type: 'boolean' }, appleTeamId: { type: 'string' },
+              },
+            },
+          },
+          failures: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, error: STRING } } },
+          warnings: WARNINGS,
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: withWarnings([
+          `Exported ${value.projectDir} for phones and tablets:`,
+          ...value.builds.map((build) => {
+            const platform = build.platform as WasdMobilePlatform
+            const what = `- ${MOBILE_PLATFORM_NAMES[platform]}: ${build.file} (${megabytes(build.bytes)}), ${MOBILE_CONTENTS[platform]}, ${platform === 'android' ? 'package' : 'bundle identifier'} ${build.identifier}.`
+            return `${what} ${platform === 'android' ? androidNote(build) : iosNote(build)}`
+          }),
+          ...value.failures.map(failure => `- ${MOBILE_PLATFORM_NAMES[failure.platform as WasdMobilePlatform]} did not build: ${failure.error}`),
+        ].join('\n'), value.warnings),
+      }],
+    },
+    async execute(args, exec) {
+      const platforms = mobilePlatformsOf(args.platforms)
+      if (platforms.length === 0) throw new Error('platforms must name at least one of "android" and "ios".')
+      if (args.apple_team_id !== undefined && !APPLE_TEAM_ID.test(args.apple_team_id)) {
+        throw new Error(`apple_team_id is 10 capital letters and digits, such as ABCDE12345, not ${JSON.stringify(args.apple_team_id)}.`)
+      }
+      const exported = await host.exportMobile(await host.project(args.project, exec), platforms, args.apple_team_id, exec.signal)
+      return {
+        projectDir: exported.projectDir,
+        builds: exported.builds.map(build => ({ ...build })),
+        failures: exported.failures.map(failure => ({ ...failure })),
+        warnings: [...exported.warnings],
+      }
     },
   }), defineTool({
     name: 'wasd_record_preview',
@@ -575,6 +700,9 @@ const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type
   wasd_export_desktop: {
     project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
   },
+  wasd_export_mobile: {
+    project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
+  },
   wasd_record_preview: {
     project: { type: 'string', description: 'Absolute path of the folder that holds project.godot.' },
   },
@@ -667,13 +795,13 @@ export function wasdMcpProvider(
   definitions: readonly ToolDefinition[], credits: ConnectedCredits, multiplayer: readonly GameMcpTool[] = [], multiplayerInstructions = '',
 ): GameMcpProvider {
   const tools = [...definitions.map(definition => mcpTool(definition, credits)), ...multiplayer]
-  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, and wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.'
+  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.'
   return {
     id: 'wasd',
     title: 'WASD Engine',
     description: multiplayer.length === 0
-      ? 'Export the game for the Web, Windows, and macOS, record its preview, and release it on WASD Engine with a share link.'
-      : 'Export the game for the Web, Windows, and macOS, record its preview, release it on WASD Engine with a share link, and put it online, player-hosted for free or on a dedicated server.',
+      ? 'Export the game for the Web, Windows, macOS, Android, and iOS, record its preview, and release it on WASD Engine with a share link.'
+      : 'Export the game for the Web, Windows, macOS, Android, and iOS, record its preview, release it on WASD Engine with a share link, and put it online, player-hosted for free or on a dedicated server.',
     instructions: multiplayerInstructions === '' ? release : `${release}\n\n${multiplayerInstructions}`,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),

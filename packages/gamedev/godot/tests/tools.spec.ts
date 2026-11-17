@@ -13,7 +13,7 @@ import { GodotRun } from '../src/run.ts'
 import { DIGEST_ENTRIES, formatDigest, formatLogEntry, formatTree, STARTUP_ENTRIES, TEXT_BUDGET, toolLogEntry } from '../src/tools.ts'
 import type { GodotVideoEncodeEvent, GodotVideoEncodeResult } from '../src/types.ts'
 import { callTool, compose, text, type Composition, type CompositionOptions } from './composition.ts'
-import { configureFake, fakeLog, fakeRequests, until } from './helpers.ts'
+import { configureFake, fakeLog, fakeRequests, scratch, until } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
 /** Deadline of a spec that starts several fake Godot processes, which a loaded machine starts slowly. */
@@ -801,6 +801,53 @@ posix('godot_check', () => {
     const starts = log.flatMap((entry, index) => (entry.argv as string[] | undefined)?.includes('--export-release') === true ? [index] : [])
     // The second export starts after the first one ended.
     expect(log.slice(starts[0], starts[1]).some(entry => entry.exported === true)).toBe(true)
+  }, PROCESSES_TIMEOUT)
+
+  it('exports for Android with the configured JDK and SDK and the key it generates, and for iOS for the team it is given', async () => {
+    const tools = await scratch('android-tools')
+    try {
+      const java = join(tools.root, 'jdk')
+      await mkdir(join(java, 'bin'), { recursive: true })
+      await writeFile(join(java, 'bin', 'java'), '')
+      // keytool writes the keystore it is asked for.
+      await writeFile(join(java, 'bin', 'keytool'), '#!/bin/sh\nwhile [ $# -gt 0 ]; do [ "$1" = -keystore ] && out="$2"; shift; done\nprintf key > "$out"\n')
+      await chmod(join(java, 'bin', 'keytool'), 0o755)
+      const sdk = join(tools.root, 'sdk')
+      await mkdir(join(sdk, 'platform-tools'), { recursive: true })
+      await mkdir(join(sdk, 'build-tools', '36.0.0'), { recursive: true })
+      await writeFile(join(sdk, 'platform-tools', 'adb'), '')
+      await writeFile(join(sdk, 'build-tools', '36.0.0', 'apksigner'), '')
+      // The fake export does not read the templates, so any existing file stands in for them.
+      const template = fileURLToPath(import.meta.url)
+      const c = await setup({
+        game: { export: { files: { 'Fake game.apk': 'apk', 'Fakegame.xcodeproj/project.pbxproj': 'DEVELOPMENT_TEAM = ABCDE12345;\n' } } },
+        config: { androidTemplatePath: template, iosTemplatePath: template, androidJavaPath: java, androidSdkPath: sdk },
+      })
+      const signal = new AbortController().signal
+      const android = await c.godot.exportMobile({ projectDir: c.project, platform: 'android', outputDir: join(c.dir.root, 'android') }, signal)
+      const keystore = join(c.dir.root, 'data', 'android', 'release.keystore')
+      expect(android).toMatchObject({ entry: 'Fake game.apk', identifier: 'com.wasdengine.game.fake_game', signing: { keystore, created: true } })
+      const ios = await c.godot.exportMobile({ projectDir: c.project, platform: 'ios', outputDir: join(c.dir.root, 'ios'), appleTeamId: 'ABCDE12345' }, signal)
+      expect(ios).toMatchObject({ entry: 'Fakegame.xcodeproj', identifier: 'com.wasdengine.game.fake-game', appleTeamId: 'ABCDE12345' })
+      type ExportEntry = { preset: string; env: Record<string, string> }
+      const exports = (await fakeLog(c.project)).filter(entry => entry.preset !== undefined) as ExportEntry[]
+      expect(exports.map(entry => entry.preset)).toEqual(['WASD Engine Android', 'WASD Engine iOS'])
+      // Godot's Android export reads its editor settings from a home folder of its own, which the export removes again.
+      expect(exports[0]?.env).toMatchObject({ JAVA_HOME: java, ANDROID_HOME: sdk, GODOT_ANDROID_KEYSTORE_RELEASE_PATH: keystore, GODOT_ANDROID_KEYSTORE_RELEASE_USER: 'release' })
+      expect(exports[0]?.env.HOME).not.toBe(exports[1]?.env.HOME)
+      expect(existsSync(exports[0]?.env.HOME as string)).toBe(false)
+      const again = await c.godot.exportMobile({ projectDir: c.project, platform: 'android', outputDir: join(c.dir.root, 'android') }, signal)
+      expect(again.signing).toEqual({ keystore, created: false })
+    } finally {
+      await tools.cleanup()
+    }
+  }, PROCESSES_TIMEOUT)
+
+  it('tells a computer without an Android SDK what to install before it downloads the Android template', async () => {
+    const c = await setup({ config: { androidJavaPath: join('/', 'missing', 'jdk'), androidSdkPath: join('/', 'missing', 'sdk') } })
+    const failure = c.godot.exportMobile({ projectDir: c.project, platform: 'android', outputDir: join(c.dir.root, 'android') }, new AbortController().signal)
+    await expect(failure).rejects.toThrow(/fix androidJavaPath[\s\S]*fix androidSdkPath[\s\S]*Android Studio/u)
+    expect(existsSync(join(c.dir.root, 'data', 'templates'))).toBe(false)
   }, PROCESSES_TIMEOUT)
 
   it('imports a project for a check before or after a Web export of it, never during one', async () => {

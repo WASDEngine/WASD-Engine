@@ -4,6 +4,8 @@
  * @module @deepseek-ai/dsh-godot
  */
 import { randomUUID } from 'node:crypto'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { homedir, tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,13 +26,15 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { delay, untilAborted, untilSettledOrAborted } from './abort.ts'
+import { ANDROID_KEY_FOLDER, androidExportEnvironment, ensureAndroidKeystore, findAndroidToolchain } from './android.ts'
 import { checkProject, selectScripts, type CheckReport, type CheckRequest } from './check.ts'
 import {
-  EXPORT_RESTORE_FOLDER, exportDesktop, exportServer, exportWeb, pendingExportRestores, replayExportRestore, WEB_EXPORT_ENTRY,
+  EXPORT_RESTORE_FOLDER, exportDesktop, exportMobile, exportServer, exportWeb, pendingExportRestores, replayExportRestore, WEB_EXPORT_ENTRY,
 } from './export.ts'
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
+import { detectAppleTeam } from './ios.ts'
 import { runInstanceGroup } from './instances.ts'
 import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { defaultWindowSize, fixedFps, MAX_FIXED_FPS, parseEngineArgs, parseGameArgs } from './launch.ts'
@@ -54,13 +58,16 @@ import { GodotVideoError, GodotVideoRecorder, videoPath } from './video.ts'
 import { checkWebBuild, GodotWebCheckError, WEB_CHECK_UNAVAILABLE } from './web-check.ts'
 import type {
   GodotControlRequest, GodotDesktopExport, GodotDesktopExportRequest, GodotDesktopPlatform, GodotFollowItem, GodotInputEvent,
-  GodotInstancesReport, GodotInstancesRequest, GodotRunRequest, GodotRunStarter, GodotRunView, GodotRuntimeView, GodotServerExport,
-  GodotServerExportRequest, GodotViewItem, GodotWebCheck, GodotWebCheckRequest, GodotWebExport, GodotWebExportRequest,
+  GodotInstancesReport, GodotInstancesRequest, GodotMobileExport, GodotMobileExportRequest, GodotMobilePlatform, GodotRunRequest,
+  GodotRunStarter, GodotRunView, GodotRuntimeView, GodotServerExport, GodotServerExportRequest, GodotViewItem, GodotWebCheck,
+  GodotWebCheckRequest, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
 import { ExportTemplateManager } from './export-template.ts'
 
 export type * from './types.ts'
-export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
+export { GodotAndroidToolchainError } from './android.ts'
+export { APPLE_TEAM_ID } from './ios.ts'
+export { desktopFileName, GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './export-template.ts'
@@ -204,6 +211,32 @@ export interface Config {
   serverTemplateSha256: string
   /** Absolute Linux x86_64 release template to use instead of the download; empty downloads it. */
   serverTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which an Android export downloads only its template. */
+  androidTemplateArchiveUrl: string
+  /** Path of the Android release template APK inside that archive. */
+  androidTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  androidTemplateSha256: string
+  /** Absolute Android release template APK to use instead of the download; empty downloads it. */
+  androidTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which an iOS export downloads only its template. */
+  iosTemplateArchiveUrl: string
+  /** Path of the iOS template ZIP inside that archive. */
+  iosTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  iosTemplateSha256: string
+  /** Absolute iOS template ZIP to use instead of the download; empty downloads it. */
+  iosTemplatePath: string
+  /**
+   * Absolute JDK folder, holding `bin/java` and `bin/keytool`, that Android exports sign their builds with; empty finds
+   * one in `JAVA_HOME`, Android Studio, or the usual JDK installations.
+   */
+  androidJavaPath: string
+  /**
+   * Absolute Android SDK folder, holding `platform-tools` and `build-tools`, that Android exports use; empty finds one in
+   * `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or where Android Studio installs it.
+   */
+  androidSdkPath: string
   /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
   /** Most headless instances one group of `runInstances` starts at once on any computer. */
@@ -305,20 +338,37 @@ function validateConfig(config: Config): void {
     const path = config[`${field}Path`]
     if (path !== '' && !isAbsolute(path)) throw new Error(`Godot plugin: ${field}Path must be an absolute path, got ${JSON.stringify(path)}.`)
   }
+  for (const field of ['androidJavaPath', 'androidSdkPath'] as const) {
+    const path = config[field]
+    if (path !== '' && !isAbsolute(path)) throw new Error(`Godot plugin: ${field} must be an absolute path, got ${JSON.stringify(path)}.`)
+  }
 }
 
 /** The export templates the configuration names, by the prefix of their fields. */
-const TEMPLATE_FIELDS = ['webTemplate', 'windowsTemplate', 'macosTemplate', 'serverTemplate'] as const
+const TEMPLATE_FIELDS = ['webTemplate', 'windowsTemplate', 'macosTemplate', 'serverTemplate', 'androidTemplate', 'iosTemplate'] as const
 
 /** A group of headless instances that the plugin refuses before starting any. */
 export class GodotInstancesError extends Error {
   override name = 'GodotInstancesError'
 }
 
-/** Each desktop platform's template: the prefix of its configuration fields, the name messages use, and its file extension. */
-const DESKTOP_TEMPLATES: Readonly<Record<GodotDesktopPlatform, { readonly field: 'windowsTemplate' | 'macosTemplate'; readonly platform: string; readonly extension: string }>> = {
+/** A platform's template: the prefix of its configuration fields, the name messages use, and its file extension. */
+interface PlatformTemplate {
+  readonly field: typeof TEMPLATE_FIELDS[number]
+  readonly platform: string
+  readonly extension: string
+}
+
+/** Each desktop platform's template. */
+const DESKTOP_TEMPLATES: Readonly<Record<GodotDesktopPlatform, PlatformTemplate>> = {
   windows: { field: 'windowsTemplate', platform: 'Windows', extension: '.exe' },
   macos: { field: 'macosTemplate', platform: 'macOS', extension: '.zip' },
+}
+
+/** Each mobile platform's template. */
+const MOBILE_TEMPLATES: Readonly<Record<GodotMobilePlatform, PlatformTemplate>> = {
+  android: { field: 'androidTemplate', platform: 'Android', extension: '.apk' },
+  ios: { field: 'iosTemplate', platform: 'iOS', extension: '.zip' },
 }
 
 /**
@@ -419,6 +469,16 @@ export default class GodotController extends TypertRemoteService {
     serverTemplateEntry: z.string().default('templates/linux_release.x86_64'),
     serverTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('d9f79ab89b5ae369aeed11c6052d402e8218cd503bf85b4a235f9c30c46a7c63'),
     serverTemplatePath: z.string().default(''),
+    androidTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    androidTemplateEntry: z.string().default('templates/android_release.apk'),
+    androidTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('6d1bb2cfa126a1b1c87e064a35b3cbd181bef0ec784dec1efd1d64dffa8be6cb'),
+    androidTemplatePath: z.string().default(''),
+    iosTemplateArchiveUrl: z.string().default('https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz'),
+    iosTemplateEntry: z.string().default('templates/ios.zip'),
+    iosTemplateSha256: z.string().pattern(/^[0-9a-f]{64}$/u).default('fd3280d10dc75356dded006f6f8813f40a5aebd32d128592b781256d8ffbdff4'),
+    iosTemplatePath: z.string().default(''),
+    androidJavaPath: z.string().default(''),
+    androidSdkPath: z.string().default(''),
     exportTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(600_000),
     maxInstances: z.number().step(1).min(1).default(4),
     instanceMemoryBytes: z.number().step(1).min(0).default(2 * 1024 ** 3),
@@ -440,6 +500,7 @@ export default class GodotController extends TypertRemoteService {
   private readonly runtime: GodotRuntimeManager
   private readonly templates: ExportTemplateManager
   private readonly desktopTemplates: Readonly<Record<GodotDesktopPlatform, ExportTemplateManager>>
+  private readonly mobileTemplates: Readonly<Record<GodotMobilePlatform, ExportTemplateManager>>
   private readonly serverTemplates: ExportTemplateManager
   private readonly runtimeWatchers = new Set<() => void>()
   private readonly videos: GodotVideoRecorder
@@ -471,10 +532,9 @@ export default class GodotController extends TypertRemoteService {
       for (const watcher of [...this.runtimeWatchers]) watcher()
     })
     this.templates = templateManager(config, 'webTemplate', 'Web', '.zip')
-    const desktopTemplate = ({ field, platform, extension }: typeof DESKTOP_TEMPLATES[GodotDesktopPlatform]) => {
-      return templateManager(config, field, platform, extension)
-    }
-    this.desktopTemplates = { windows: desktopTemplate(DESKTOP_TEMPLATES.windows), macos: desktopTemplate(DESKTOP_TEMPLATES.macos) }
+    const platformTemplate = ({ field, platform, extension }: PlatformTemplate) => templateManager(config, field, platform, extension)
+    this.desktopTemplates = { windows: platformTemplate(DESKTOP_TEMPLATES.windows), macos: platformTemplate(DESKTOP_TEMPLATES.macos) }
+    this.mobileTemplates = { android: platformTemplate(MOBILE_TEMPLATES.android), ios: platformTemplate(MOBILE_TEMPLATES.ios) }
     this.serverTemplates = templateManager(config, 'serverTemplate', 'Linux server', '.x86_64')
     ctx.effect(() => async () => {
       this.runtime.dispose()
@@ -784,6 +844,67 @@ export default class GodotController extends TypertRemoteService {
         outputBytes: this.config.processOutputBytes,
         signal,
       }), signal)
+    })
+  }
+
+  /**
+   * Export a project for one mobile platform with the built-in runtime: for Android, one APK file named after the game
+   * for 64-bit ARM phones and tablets, signed with this computer's Android key, which the first Android export
+   * generates; for iOS, an Xcode project that builds the app on a Mac, signed for the request's Team ID, else the one
+   * team of the Mac's Apple Development certificates, else none, so that Xcode asks. An Android export first finds a
+   * JDK and the Android SDK (`androidJavaPath`, `androidSdkPath`). The first export for a platform downloads its
+   * template, about 99 MB for Android and 189 MB for iOS. While the export runs, the project imports the ETC2/ASTC
+   * textures mobile builds need. The export, which imports the project, waits until the project's import steps and
+   * checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.
+   * @param request - absolute project folder, platform, output folder, and for iOS the Team ID.
+   * @param signal - cancellation; it stops the export process.
+   * @returns the build.
+   * @throws {GodotProjectError} without `project.godot` in the project folder.
+   * @throws {GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.
+   * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
+   * @throws {GodotExportError} when the export writes no build.
+   * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+   */
+  async exportMobile(request: GodotMobileExportRequest, signal: AbortSignal): Promise<GodotMobileExport> {
+    const project = await resolveGodotProject(request.projectDir, '.', signal)
+    // A computer that cannot build for Android learns it before the template downloads.
+    const toolchain = request.platform === 'android'
+      ? await findAndroidToolchain({
+        javaPath: this.config.androidJavaPath, sdkPath: this.config.androidSdkPath,
+        env: process.env, platform: process.platform, home: homedir(),
+      })
+      : undefined
+    const runtime = await this.requireRuntime(signal)
+    const template = await this.mobileTemplates[request.platform].resolve(signal)
+    const limits = {
+      timeoutMs: this.config.exportTimeoutMs, graceMs: this.config.stopGraceMs, outputBytes: this.config.processOutputBytes, signal,
+    }
+    return await this.headless.run(signal, async () => {
+      this.requireMemory(`a Godot ${MOBILE_TEMPLATES[request.platform].platform} export`)
+      const common = {
+        ...limits, subprocess: this.ctx.subprocess, restoreDir: this.restoreDir, runtime, projectDir: project.dir,
+        outputDir: request.outputDir, template, hostPid: process.pid,
+      }
+      if (toolchain === undefined) {
+        const appleTeamId = request.appleTeamId ?? await detectAppleTeam({
+          ...limits, subprocess: this.ctx.subprocess, platform: process.platform, now: new Date(),
+        })
+        return await this.imports.exclusive(project.dir, () => exportMobile({ ...common, platform: 'ios', appleTeamId }), signal)
+      }
+      const keystore = await ensureAndroidKeystore({
+        ...limits, subprocess: this.ctx.subprocess, folder: join(this.config.dataRoot, ANDROID_KEY_FOLDER), java: toolchain.java,
+        platform: process.platform, env: process.env,
+      })
+      // Godot keeps editor settings of the export's own here, filled from the environment instead of the user's.
+      const home = await mkdtemp(join(tmpdir(), 'wasd-godot-android-'))
+      try {
+        return await this.imports.exclusive(project.dir, () => exportMobile({
+          ...common, platform: 'android', env: androidExportEnvironment(toolchain, keystore, home, process.env), keystore: keystore.path,
+          keystoreCreated: keystore.created, now: new Date(),
+        }), signal)
+      } finally {
+        await rm(home, { recursive: true, force: true })
+      }
     })
   }
 

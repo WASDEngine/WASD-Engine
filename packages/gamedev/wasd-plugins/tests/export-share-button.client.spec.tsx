@@ -4,7 +4,7 @@
  * may prompt, in the New Session row only while the Session is blank, it opens a dialog with three choices. Sharing on
  * Explore or with a private link names the last release and whether the choice changes who can find the game, takes
  * notes and the desktop downloads to offer, offers a new game once the project has one, says when the folder is a copy,
- * and asks the agent to share; exporting takes the platforms and asks the agent to build them.
+ * and asks the agent to share; exporting takes the platforms, desktop, Web, and mobile, and asks the agent to build them.
  */
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -17,7 +17,7 @@ import {
   ExportShareButton, type ExportShareButtonProps, type ExportShareInjected, type ExportSharePlacement,
 } from '../src/client/ExportShareButton.tsx'
 import { en } from '../src/client/locales.ts'
-import { exportArguments, shareArguments } from '../src/client/mount.ts'
+import { exportCalls, shareArguments } from '../src/client/mount.ts'
 import type { WasdProjectView } from '../src/types.ts'
 
 afterEach(() => { cleanup() })
@@ -76,6 +76,17 @@ async function confirm(dialog: HTMLElement, label: string): Promise<void> {
   await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: label })) })
 }
 
+/** The text of the element an attribute of a control names, as assistive technology reads it. */
+function named(control: HTMLElement, attribute: 'aria-labelledby' | 'aria-describedby'): string | undefined {
+  const id = control.getAttribute(attribute)
+  return id === null ? undefined : document.getElementById(id)?.textContent ?? undefined
+}
+
+const name = (box: HTMLInputElement): string | undefined => named(box, 'aria-labelledby')
+const description = (box: HTMLInputElement): string | undefined => named(box, 'aria-describedby')
+/** The platform whose mark the checkbox's row shows. */
+const mark = (box: HTMLInputElement): string | null | undefined => box.closest('label')?.querySelector('[data-platform-logo]')?.getAttribute('data-platform-logo')
+
 describe('ExportShareButton', () => {
   it('shows only for a game project Session the Peer may prompt', () => {
     button({})
@@ -112,10 +123,13 @@ describe('ExportShareButton', () => {
     const notes = within(dialog).getByRole('textbox', { name: en['share.notes'] })
     expect(notes.getAttribute('aria-describedby')).toBeTruthy()
     fireEvent.change(notes, { target: { value: '  New boss  ' } })
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['desktop.macos'] }))
-    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['desktop.windows'] }))
+    // Both downloads start checked.
+    const macos = within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['desktop.macos'] })
+    const windows = within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['desktop.windows'] })
+    expect([windows.checked, macos.checked]).toEqual([true, true])
+    fireEvent.click(macos)
     await confirm(dialog, en['share.confirmExplore'])
-    expect(startShare).toHaveBeenCalledWith(SESSION, { visibility: 'public', notes: 'New boss', target: 'linked', desktop: ['windows', 'macos'] })
+    expect(startShare).toHaveBeenCalledWith(SESSION, { visibility: 'public', notes: 'New boss', target: 'linked', desktop: ['windows'] })
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -126,7 +140,7 @@ describe('ExportShareButton', () => {
     fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(en['share.private'], 'u') }))
     expect(within(dialog).getByText(t('share.toPrivate', { title: 'Neon Drift' }))).toBeTruthy()
     await confirm(dialog, en['share.confirmPrivate'])
-    expect(shared.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'private', notes: '', target: 'linked', desktop: [] })
+    expect(shared.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'private', notes: '', target: 'linked', desktop: ['windows', 'macos'] })
     cleanup()
 
     // A private game's dialog starts on the private link, and Explore says the game joins it.
@@ -137,25 +151,44 @@ describe('ExportShareButton', () => {
     fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(en['share.explore'], 'u') }))
     expect(within(dialog).getByText(t('share.toPublic', { title: 'Neon Drift' }))).toBeTruthy()
     await confirm(dialog, en['share.confirmExplore'])
-    expect(unlisted.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'linked', desktop: [] })
+    expect(unlisted.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'linked', desktop: ['windows', 'macos'] })
   })
 
-  it('exports for the checked platforms, both at first, and needs at least one', async () => {
+  it('exports for the checked platforms, the two desktop ones at first, and needs at least one', async () => {
     const { startExport, startShare } = button({ path: '/games/neon' })
     const dialog = await openDialog()
     fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(en['share.export'], 'u') }))
     expect(within(dialog).queryByRole('textbox')).toBeNull()
     expect(within(dialog).getByText(en['export.where'])).toBeTruthy()
-    const windows = within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['desktop.windows'] })
-    const macos = within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['desktop.macos'] })
-    expect([windows.checked, macos.checked]).toEqual([true, true])
+    const boxes = within(dialog).getAllByRole<HTMLInputElement>('checkbox')
+    expect(boxes.map(name)).toEqual([en['desktop.windows'], en['desktop.macos'], en['export.web'], en['export.android'], en['export.ios']])
+    expect(boxes.map(box => box.checked)).toEqual([true, true, false, false, false])
+    // Each row shows its platform's mark, and its checkbox is described by what the platform builds.
+    expect(boxes.map(mark)).toEqual(['windows', 'macos', 'web', 'android', 'ios'])
+    expect(boxes.map(description)).toEqual([
+      en['export.windowsHint'], en['export.macosHint'], en['export.webHint'], en['export.androidHint'], en['export.iosHint'],
+    ])
+    const [windows, macos] = boxes as [HTMLInputElement, HTMLInputElement]
     fireEvent.click(windows)
     fireEvent.click(macos)
     expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: en['share.confirmExport'] }).disabled).toBe(true)
+    // The platforms build in the order the list shows them, whatever order they were checked in.
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['export.ios'] }))
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['export.web'] }))
     fireEvent.click(macos)
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['export.android'] }))
     await confirm(dialog, en['share.confirmExport'])
-    expect(startExport).toHaveBeenCalledWith(SESSION, ['macos'])
+    expect(startExport).toHaveBeenCalledWith(SESSION, ['macos', 'web', 'android', 'ios'])
     expect(startShare).not.toHaveBeenCalled()
+  })
+
+  it('keeps the downloads of a share to the desktop builds, each with its mark', async () => {
+    button({ path: '/games/neon' })
+    const dialog = await openDialog()
+    const downloads = within(dialog).getAllByRole<HTMLInputElement>('checkbox')
+    expect(downloads.map(name)).toEqual([en['desktop.windows'], en['desktop.macos']])
+    expect(downloads.map(mark)).toEqual(['windows', 'macos'])
+    expect(downloads.map(description)).toEqual([undefined, undefined])
   })
 
   it('offers to release as a new game once the project has a game', async () => {
@@ -163,7 +196,7 @@ describe('ExportShareButton', () => {
     let dialog = await openDialog()
     expect(within(dialog).queryByRole('checkbox', { name: en['share.newGame'] })).toBeNull()
     await confirm(dialog, en['share.confirmExplore'])
-    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'linked', desktop: [] })
+    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'linked', desktop: ['windows', 'macos'] })
     cleanup()
 
     const released = button({ path: '/games/neon', view: PUBLIC_GAME })
@@ -172,15 +205,17 @@ describe('ExportShareButton', () => {
     expect(newGame.checked).toBe(false)
     expect(within(dialog).getByText(t('share.newGameHint', { title: 'Neon Drift' }))).toBeTruthy()
     fireEvent.click(newGame)
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: en['desktop.windows'] }))
     // A new game starts with the visibility chosen, so nothing changes for the existing game.
     fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(en['share.private'], 'u') }))
     expect(within(dialog).queryByText(t('share.toPrivate', { title: 'Neon Drift' }))).toBeNull()
     await confirm(dialog, en['share.confirmPrivate'])
-    expect(released.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'private', notes: '', target: 'new', desktop: [] })
-    // The choices start over each time the dialog opens.
+    expect(released.startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'private', notes: '', target: 'new', desktop: ['macos'] })
+    // The choices start over each time the dialog opens, both downloads checked again.
     dialog = await openDialog()
     expect(within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['share.newGame'] }).checked).toBe(false)
     expect(within(dialog).getByRole<HTMLInputElement>('radio', { name: new RegExp(en['share.explore'], 'u') }).checked).toBe(true)
+    expect(within(dialog).getByRole<HTMLInputElement>('checkbox', { name: en['desktop.windows'] }).checked).toBe(true)
   })
 
   it('says when the folder shares its game with another, and sends the choice of the same game unless a new game is checked', async () => {
@@ -189,11 +224,11 @@ describe('ExportShareButton', () => {
     let dialog = await openDialog()
     expect(within(dialog).getByText(t('share.copy', { folder: '/games/neon' }))).toBeTruthy()
     await confirm(dialog, en['share.confirmExplore'])
-    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'same', desktop: [] })
+    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'same', desktop: ['windows', 'macos'] })
     dialog = await openDialog()
     fireEvent.click(within(dialog).getByRole('checkbox', { name: en['share.newGame'] }))
     await confirm(dialog, en['share.confirmExplore'])
-    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'new', desktop: [] })
+    expect(startShare).toHaveBeenLastCalledWith(SESSION, { visibility: 'public', notes: '', target: 'new', desktop: ['windows', 'macos'] })
   })
 
   it('keeps the dialog open with the reason when the prompt is refused, and refuses a project without project.godot', async () => {
@@ -218,6 +253,16 @@ describe('prompt arguments', () => {
     expect(shareArguments({ visibility: 'private', notes: 'x', target: 'new', desktop: ['windows', 'macos'] }))
       .toBe('{"visibility":"private","desktop":["windows","macos"],"new_game":true}')
     expect(shareArguments({ visibility: 'public', notes: '', target: 'same', desktop: ['macos'] })).toBe('{"visibility":"public","desktop":["macos"],"new_game":false}')
-    expect(exportArguments(['windows'])).toBe('{"platforms":["windows"]}')
+  })
+
+  it('list the export\'s tool calls with their arguments, one line each, desktop then Web then mobile', () => {
+    expect(exportCalls(['windows', 'macos'])).toBe('- `wasd_export_desktop` {"platforms":["windows","macos"]}')
+    expect(exportCalls(['macos', 'web', 'android', 'ios'])).toBe([
+      '- `wasd_export_desktop` {"platforms":["macos"]}', '- `wasd_export_web` {"zip":true}', '- `wasd_export_mobile` {"platforms":["android","ios"]}',
+    ].join('\n'))
+    expect(exportCalls(['web'])).toBe('- `wasd_export_web` {"zip":true}')
+    expect(makeTranslate(en)('export.prompt', { calls: exportCalls(['ios']) })).toBe(
+      'Export this game with these tool calls, one after another, then tell me where each file is and how to open, install, or upload it:\n- `wasd_export_mobile` {"platforms":["ios"]}',
+    )
   })
 })

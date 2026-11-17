@@ -1968,6 +1968,13 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no ZIP file.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
+        signature: 'async exportMobile(request: GodotMobileExportRequest, signal: AbortSignal): Promise<GodotMobileExport>',
+        description: 'Export a project for one mobile platform with the built-in runtime: for Android, one APK file named after the game for 64-bit ARM phones and tablets, signed with this computer\'s Android key, which the first Android export generates; for iOS, an Xcode project that builds the app on a Mac, signed for the request\'s Team ID, else the one team of the Mac\'s Apple Development certificates, else none, so that Xcode asks. An Android export first finds a JDK and the Android SDK (`androidJavaPath`, `androidSdkPath`). The first export for a platform downloads its template, about 99 MB for Android and 189 MB for iOS. While the export runs, the project imports the ETC2/ASTC textures mobile builds need. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
+        parameters: [{ name: 'request', description: 'absolute project folder, platform, output folder, and for iOS the Team ID.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
+        returns: 'the build.',
+        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
+      },
+      {
         signature: 'async exportServer(request: GodotServerExportRequest, signal: AbortSignal): Promise<GodotServerExport>',
         description: 'Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`, with the pack embedded and the visuals of every resource stripped, which a game server host starts with `--headless`. The first export downloads the Linux release template. Like a Web export, the export waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
@@ -7654,6 +7661,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GodotAddonSpec {\n    readonly addonDir: string;\n    readonly plugin?: string;\n    readonly autoloads?: readonly GodotAutoload[];\n    readonly settings?: readonly GodotProjectSetting[];\n    readonly importTwice?: boolean;\n    readonly overlay?: readonly string[];\n}',
   },
   {
+    name: 'GodotAndroidSigning',
+    declaration: 'export interface GodotAndroidSigning {\n    readonly keystore: string;\n    readonly created: boolean;\n}',
+  },
+  {
     name: 'GodotAutoload',
     declaration: 'export interface GodotAutoload {\n    readonly name: string;\n    readonly path: string;\n}',
   },
@@ -7720,6 +7731,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'GodotLogLevel',
     declaration: 'export type GodotLogLevel = \'stdout\' | \'stderr\' | \'warning\' | \'error\' | \'script_error\' | \'shader_error\';',
+  },
+  {
+    name: 'GodotMobileExport',
+    declaration: 'export interface GodotMobileExport {\n    readonly projectDir: string;\n    readonly platform: GodotMobilePlatform;\n    readonly outputDir: string;\n    readonly entry: string;\n    readonly bytes: number;\n    readonly identifier: string;\n    readonly signing?: GodotAndroidSigning;\n    readonly appleTeamId?: string;\n    readonly warnings: readonly string[];\n}',
+  },
+  {
+    name: 'GodotMobileExportRequest',
+    declaration: 'export interface GodotMobileExportRequest {\n    readonly projectDir: string;\n    readonly platform: GodotMobilePlatform;\n    readonly outputDir: string;\n    readonly appleTeamId?: string;\n}',
+  },
+  {
+    name: 'GodotMobilePlatform',
+    declaration: 'export type GodotMobilePlatform = \'android\' | \'ios\';',
   },
   {
     name: 'GodotMouseButton',

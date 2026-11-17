@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web、wasd_export_desktop、wasd_record_preview 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版、Windows 版和 macOS 版，录制其预览 GIF 与静态图，并作为带分享链接的编号版本发布到 WASD Engine 网站，可公开在探索页上或设为私密，并可附带桌面版下载；多人联机工具，借助 WASD Multiplayer 插件让游戏免费由玩家主持上线，或使用由用户在网站上确认的专用服务器上线；桌面应用中智能体的 browser_* 工具，在右侧边栏的浏览器标签页中操作；wasdPlugins Remote；会话标题栏与新会话页面上的“导出 / 分享”按钮；会话标题栏中的“多人联机”按钮；侧边栏顶部的“游玩”与“创作”切换及“游玩”页面，即应用内的 WASD Engine 网站游戏，以及桌面应用中安装、更新并启动其桌面版构建的游戏库；以及输入框推理等级选择器旁的首次构建提示。"
+description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web、wasd_export_desktop、wasd_export_mobile、wasd_record_preview 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版、Windows 版、macOS 版、Android 版和 iOS 版，录制其预览 GIF 与静态图，并作为带分享链接的编号版本发布到 WASD Engine 网站，可公开在探索页上或设为私密，并可附带桌面版下载；多人联机工具，借助 WASD Multiplayer 插件让游戏免费由玩家主持上线，或使用由用户在网站上确认的专用服务器上线；桌面应用中智能体的 browser_* 工具，在右侧边栏的浏览器标签页中操作；wasdPlugins Remote；会话标题栏与新会话页面上的“导出 / 分享”按钮；会话标题栏中的“多人联机”按钮；侧边栏顶部的“游玩”与“创作”切换及“游玩”页面，即应用内的 WASD Engine 网站游戏，以及桌面应用中安装、更新并启动其桌面版构建的游戏库；以及输入框推理等级选择器旁的首次构建提示。"
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-WASD Engine 插件包含 WASD Engine 始终开启的功能。它把 Godot 游戏导出为网页版、Windows 版和 macOS 版，并作为带预览的编号版本发布到 WASD Engine 网站，可公开，也可只通过私密链接访问。它让游戏上线：免费由玩家主持，或使用付费的专用服务器。会话的智能体与连接的智能体共享这些工具；“导出 / 分享”与“多人联机”按钮请智能体处理。侧边栏的“游玩”切换在应用内展示已发布的游戏，桌面应用在那里安装并启动它们的桌面版构建。桌面应用中的智能体还会在浏览器标签页中浏览网页，新游戏会显示一条建议使用 Max 推理等级的提示。
+WASD Engine 插件包含 WASD Engine 始终开启的功能。它把 Godot 游戏导出为网页版、桌面版和移动端版本，并作为带预览的编号版本发布到 WASD Engine 网站，可公开，也可只通过私密链接访问。它让游戏上线：免费由玩家主持，或使用付费的专用服务器。会话的智能体与连接的智能体共享这些工具；“导出 / 分享”与“多人联机”按钮请智能体处理。侧边栏的“游玩”切换在应用内展示已发布的游戏，桌面应用在那里安装并启动它们的桌面版构建。桌面应用中的智能体还会在浏览器标签页中浏览网页，新游戏会显示一条建议使用 Max 推理等级的提示。
 
 ## 目录
 
@@ -75,8 +75,9 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 | 工具 | 作用 |
 |---|---|
-| `wasd_export_web` | 通过 `ctx.godot.exportWeb()` 把 Godot 项目导出到其 `.wasdengine/web/` 文件夹：一个单线程构建，包含 `index.html`、引擎和数据包，任何静态网页服务器都能提供服务。第一次导出会下载 Godot 的 Web 模板，约 10 MB。随后，除非 `check` 为 `false`，`ctx.godot.checkWeb()` 会在桌面应用的浏览器中打开构建，结果会报告这次 [Web 检查](../godot/README.zh.md#web-check) |
+| `wasd_export_web` | 通过 `ctx.godot.exportWeb()` 把 Godot 项目导出到其 `.wasdengine/web/` 文件夹：一个单线程构建，包含 `index.html`、引擎和数据包，任何静态网页服务器都能提供服务。第一次导出会下载 Godot 的 Web 模板，约 10 MB。随后，除非 `check` 为 `false`，`ctx.godot.checkWeb()` 会在桌面应用的浏览器中打开构建，结果会报告这次 [Web 检查](../godot/README.zh.md#web-check)。`zip` 为 `true` 时，它还会把构建打包成一个以游戏命名、根目录为 `index.html` 的 ZIP 文件，放在 `.wasdengine/web-zip/` 中并替换该文件夹中之前的归档：这正是 itch.io 等游戏网站接受的 HTML5 游戏文件 |
 | `wasd_export_desktop` | 通过 `ctx.godot.exportDesktop()` 依次为 `platforms` 指定的平台（默认 `windows` 和 `macos`）导出 Godot 项目，写入 `.wasdengine/desktop/<platform>/`：每个平台一个以游戏命名的 ZIP 文件，内含一个包含整个游戏、适用于 64 位 Windows 的 `.exe`，或适用于 Intel 与 Apple 芯片 Mac、经过临时签名的游戏应用。每个平台第一次导出会下载对应的 Godot 模板，Windows 约 38 MB，macOS 约 123 MB |
+| `wasd_export_mobile` | 通过 `ctx.godot.exportMobile()` 依次为 `platforms` 指定的平台（默认 `android` 和 `ios`）导出 Godot 项目，写入 `.wasdengine/mobile/<platform>/`：Android 为一个以游戏命名、适用于 64 位 ARM 手机和平板的 APK 文件，用这台电脑的 Android 密钥签名，该密钥由第一次 Android 导出创建；iOS 为一个适用于 iPhone 和 iPad 的 Xcode 项目及其构建所需的文件，按 `apple_team_id` 签名，否则使用这台 Mac 唯一的 Apple 开发者团队，否则不设团队，由 Xcode 询问。Android 导出需要电脑上有 JDK 与 Android SDK，Android Studio 会安装它们。某个平台失败时，结果会报告它，另一个平台照常构建；只有所有平台都失败时调用才失败。每个平台第一次导出会下载对应的 Godot 模板，Android 约 99 MB，iOS 约 189 MB |
 | `wasd_record_preview` | 通过 `ctx.godot.record()` 录制游戏的预览：录制运行中的游戏 `seconds` 秒（默认 `previewSeconds`，最多 `previewMaxSeconds`），同时从开头播放 `events`（格式与 `godot_input` 相同），保存为 `.wasdengine/preview/preview.webp`（探索页和游戏页面播放的动画）、`preview.gif`（分享链接的链接预览显示的 GIF），以及一张在 `still_at`（默认取中间）截取的静态图，即 `preview.png` 或 `preview.jpg` 中较小的一个。没有运行中的游戏时，它会启动游戏，并在 `previewStartSeconds` 秒后开始录制。结果会把静态图展示给模型，便于智能体重新录制 |
 | `wasd_release_game` | 导出项目，把构建连同游戏的预览上传到网站的游戏 API，作为该游戏的下一个版本（1、2、3……），并返回分享链接。在一个网站上的第一次发布会创建游戏，标题取自 `project.godot`，除非 `title` 另有指定；`notes` 最多 1,000 个字符，显示在游戏页面上；`preview_image`（PNG、JPEG 或 WebP 文件）和 `preview_gif`（GIF 文件）会替代录制的静态图和 GIF；`new_game` 为 `true` 时改为发布一个新游戏的第 1 版，为 `false` 时为与其他文件夹共用游戏的文件夹确认项目的游戏；从这个版本起，`visibility` 为 `public` 时游戏列在网站的探索页上，为 `private` 时不出现在探索页上、只能通过链接访问，不传时保持游戏原有的可见性（新游戏为公开）；`desktop` 指定平台（`windows` 和 `macos`），发布会导出这些平台的构建并作为该版本的下载上传；`check` 为 `false` 时跳过 Web 检查。结果给出游戏是否公开、分享链接、该版本的链接、每个下载链接及其在网站恶意软件扫描中的状态、游戏页面所列的制作信息，以及所发布构建的 Web 检查 |
 
@@ -123,9 +124,9 @@ Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需�
 
 ### “导出 / 分享”与“多人联机”按钮
 
-当会话属于某个游戏项目，并且 Peer 可以向该会话发送提示并调用 `wasdPlugins/project` 时，“导出 / 分享”按钮出现在会话标题栏中。空白会话的标题栏在首次发送提示之前不显示操作，因此会话仍为空白时，按钮改为出现在新会话页面上，位于游戏项目与智能体预设选择器那一行的右端、分支控件之前。它打开一个有三个选项的对话框：“分享到探索页”“私密链接”和“导出 Windows 和 macOS 版本”。对话框默认选中“分享到探索页”，私密游戏则默认选中“私密链接”，并拒绝没有 `project.godot` 的文件夹。
+当会话属于某个游戏项目，并且 Peer 可以向该会话发送提示并调用 `wasdPlugins/project` 时，“导出 / 分享”按钮出现在会话标题栏中。空白会话的标题栏在首次发送提示之前不显示操作，因此会话仍为空白时，按钮改为出现在新会话页面上，位于游戏项目与智能体预设选择器那一行的右端、分支控件之前。它打开一个有三个选项的对话框：“分享到探索页”“私密链接”和“导出桌面、移动和网页版本”。对话框默认选中“分享到探索页”，私密游戏则默认选中“私密链接”，并拒绝没有 `project.godot` 的文件夹。
 
-两个分享选项都会显示项目最近一次发布、它是否在探索页上及其页面链接，说明所选项会让游戏离开探索页还是出现在探索页上，并接受可选的更新说明，以及要提供的桌面版下载（Windows 和 macOS，默认不勾选）。它们会用窗口的语言向会话发送一条提示，请智能体运行游戏，在游戏进行时用 `wasd_record_preview` 录制预览，然后用对话框所选的参数（作为一个 JSON 对象引用：`visibility`，勾选了下载时还有 `desktop`，项目已有游戏时还有 `new_game`）以及这些更新说明（或根据改动自行撰写的说明）调用 `wasd_release_game`，并回复分享链接，因此录制、构建和上传会作为用户可以观看的一轮对话运行。项目已有游戏时，对话框提供“作为新游戏发布”；对于与另一个文件夹共用游戏的文件夹，对话框会写出那个文件夹；随后参数中的 `new_game` 为 `true` 时创建新游戏，为 `false` 时确认共用的游戏。导出选项接受要构建的平台（默认都勾选），并请智能体用它们调用 `wasd_export_desktop`，再说明每个文件在哪里、怎样打开。
+两个分享选项都会显示项目最近一次发布、它是否在探索页上及其页面链接，说明所选项会让游戏离开探索页还是出现在探索页上，并接受可选的更新说明，以及要提供的桌面版下载（Windows 和 macOS，每次打开对话框时都默认勾选）。它们会用窗口的语言向会话发送一条提示，请智能体运行游戏，在游戏进行时用 `wasd_record_preview` 录制预览，然后用对话框所选的参数（作为一个 JSON 对象引用：`visibility`，勾选了下载时还有 `desktop`，项目已有游戏时还有 `new_game`）以及这些更新说明（或根据改动自行撰写的说明）调用 `wasd_release_game`，并回复分享链接，因此录制、构建和上传会作为用户可以观看的一轮对话运行。项目已有游戏时，对话框提供“作为新游戏发布”；对于与另一个文件夹共用游戏的文件夹，对话框会写出那个文件夹；随后参数中的 `new_game` 为 `true` 时创建新游戏，为 `false` 时确认共用的游戏。导出选项列出各个平台及其构建内容：默认勾选的 Windows 和 macOS，网页版（供游戏网站使用的 ZIP 文件），需要电脑上装有 Android Studio 的 Android，以及在 Mac 上构建的 Xcode 项目 iOS。它请智能体依次执行所勾选平台的工具调用：用桌面平台调用 `wasd_export_desktop`，以 `zip` 为 `true` 调用 `wasd_export_web`，用移动平台调用 `wasd_export_mobile`，每个调用都与作为一个 JSON 对象的参数列在一起，再说明每个文件在哪里，以及怎样打开、安装或上传。与 WASD Engine 网站的下载按钮一样，每个平台行以及分享的每个下载项都用其文字的颜色显示该平台的标志：Windows 为四个窗格，macOS 与 iOS 为 Apple 标志，网页版为 HTML5 标志，Android 为 Android 机器人（[`PlatformLogo.tsx`](src/client/PlatformLogo.tsx)）。Apple、HTML5 与 Android 的路径来自 Simple Icons（CC0-1.0）；这些标志分别归 Microsoft、Apple Inc.、W3C 与 Google 所有。HTML5 标志由 W3C 以知识共享署名 3.0 许可提供；Android 机器人复制或改编自 Google 创作并分享的作品，并按知识共享署名 3.0 许可中所述的条款使用。
 
 当会话属于某个游戏项目，并且 Peer 可以向该会话发送提示并调用 `wasdPlugins/multiplayer` 时，“多人联机”按钮出现在会话标题栏中“导出 / 分享”旁边。它的对话框在设置之前展示两种方式及各自的费用；游戏采用玩家主持后说明这是免费的；对专用服务器游戏则列出其服务器及状态、玩家人数和本月带宽占比，并链接到网站的服务器页面。它的按钮以窗口的语言向会话发送一条提示，请智能体设置多人联机、测试多人联机，或展示服务器规格及其价格，因此用户在对话中做出选择并确认；对话框本身不做任何更改。
 
@@ -222,7 +223,8 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 | [`src/multiplayer-prompts.ts`](src/multiplayer-prompts.ts) | 八种语言的审批提示 |
 | [`src/links.ts`](src/links.ts)、[`src/client/links.ts`](src/client/links.ts) | 等待窗口的确认页面，以及打开它们的桌面窗口 |
 | [`addon/wasd_multiplayer/`](addon/wasd_multiplayer/README.zh.md) | 设置时复制到项目中的 WASD Multiplayer 插件 |
-| [`src/zip.ts`](src/zip.ts) | 上传所用的流式 ZIP 写入器 |
+| [`src/zip.ts`](src/zip.ts) | 上传与网页版构建 ZIP 文件所用的流式 ZIP 写入器 |
+| [`src/exports.ts`](src/exports.ts) | 移动端构建与网页版构建 ZIP 文件所在的文件夹，以及该 ZIP 文件的打包 |
 | [`src/library.ts`](src/library.ts)、[`src/library-process.ts`](src/library-process.ts) | 游戏库：安装、更新、启动和移除，以及解压构建和启动游戏的系统工具 |
 | [`src/client/`](src/client/) | “导出 / 分享”与“多人联机”按钮、“游玩”与“创作”切换、带游戏库和游戏链接的“游玩”页面、首次构建提示、它们的文案、提示语和 Remote 挂载 |
 
@@ -237,7 +239,7 @@ Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列
 
 这些页面介绍导出、向其他智能体提供工具的 MCP 服务器，以及托管已发布游戏的网站。
 
-- [Godot 包](../godot/README.zh.md#web-export) — 无窗口的 Web 与桌面版导出及其模板。
+- [Godot 包](../godot/README.zh.md#web-export) — 无窗口的 Web、桌面版与移动端导出及其模板。
 - [game-mcp](../game-mcp/README.zh.md) — 面向本机智能体的 MCP 服务器。
 - [游戏工具子系统页面](../../../docs/subsystems/gamedev.zh.md) — 游戏工具、会话与窗口如何连接。
 - [侧边栏浏览器](../../client/ui-sidebar-browser/README.zh.md) — 智能体的浏览器所操作的右侧边栏浏览器标签页。
@@ -251,7 +253,7 @@ Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列
 
 #### 模型可见内容
 
-会话的智能体看到 `wasd_export_web`（可选参数 `project` 和 `check`）、`wasd_export_desktop`（可选参数 `project` 和 `platforms`）、`wasd_record_preview`（可选参数 `project`、`seconds`、`events`（其描述说明这些对象遵循 `godot_input` 的事件格式，由 Godot 插件校验）、`coordinate_space` 和 `still_at`）以及 `wasd_release_game`（可选参数 `project`、`notes`、`title`、`preview_image`、`preview_gif`、`new_game`、`visibility`、`desktop` 和 `check`，其描述说明 Web 检查打开什么、报告什么）。录制工具的描述要求模型先让游戏进入实际玩法，并在静态图没有很好地展示游戏时重新录制；发布工具的描述说明公开游戏会列在探索页上而私密游戏不会，并要求模型先录制预览，且只在用户要求时才发布，因为每次调用都会发布一个版本，还说明游戏页面会列出它的模型、为项目工作过的游戏工具以及项目的插件。连接的智能体看到同样的工具，参数为绝对路径，发布还有 `model` 参数，要求填写该智能体所用模型的名称；它还会在 `## WASD Engine` 下看到提供者的说明，其中要求传入 `model`。
+会话的智能体看到 `wasd_export_web`（可选参数 `project`、`check` 和 `zip`）、`wasd_export_desktop`（可选参数 `project` 和 `platforms`）、`wasd_export_mobile`（可选参数 `project`、`platforms` 和 `apple_team_id`，其描述说明每个平台构建什么、Android 需要 JDK 与 Android SDK，以及同一个密钥为每个 Android 构建签名）、`wasd_record_preview`（可选参数 `project`、`seconds`、`events`（其描述说明这些对象遵循 `godot_input` 的事件格式，由 Godot 插件校验）、`coordinate_space` 和 `still_at`）以及 `wasd_release_game`（可选参数 `project`、`notes`、`title`、`preview_image`、`preview_gif`、`new_game`、`visibility`、`desktop` 和 `check`，其描述说明 Web 检查打开什么、报告什么）。录制工具的描述要求模型先让游戏进入实际玩法，并在静态图没有很好地展示游戏时重新录制；发布工具的描述说明公开游戏会列在探索页上而私密游戏不会，并要求模型先录制预览，且只在用户要求时才发布，因为每次调用都会发布一个版本，还说明游戏页面会列出它的模型、为项目工作过的游戏工具以及项目的插件。连接的智能体看到同样的工具，参数为绝对路径，发布还有 `model` 参数，要求填写该智能体所用模型的名称；它还会在 `## WASD Engine` 下看到提供者的说明，其中要求传入 `model`。
 
 #### Token 影响
 
@@ -265,11 +267,11 @@ Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列
 
 #### 模型可见内容
 
-`wasd_export_web` 给出输出文件夹、其中的文件及其大小，并说明要通过网页服务器打开 `index.html`。`wasd_export_desktop` 给出每个平台的 ZIP 文件、其大小和内容，并说明下载的副本首次运行前 Windows SmartScreen 和 macOS Gatekeeper 会先询问，以及如何放行。`wasd_record_preview` 给出动画、GIF 和静态图文件及其帧数、时长、尺寸、字节数和各自的用途，说明录制是否启动了游戏或游戏是否始终处于暂停状态，并在模型接受图片时把静态图作为图片展示。`wasd_release_game` 给出标题、版本、游戏公开在探索页上还是私密、分享链接、该版本的链接、每个下载链接及其恶意软件扫描状态，以及游戏页面所列的制作信息，例如 `Made with, as the game's page credits it: Claude Opus 5.5, Godot, Blender with MPFB (MakeHuman).`，说明分享页面列出更早的版本并接受评论，说明玩家通过分享页面上的“使用 WASD Engine 安装”按钮用 WASD Engine 应用安装这些下载（应用还会让它们保持最新），或者分享页面在每个下载的恶意软件扫描通过后才提供它、永远不提供扫描标记或无法扫描的下载，并说明分享链接在链接预览中显示 GIF、在浏览器中打开时运行游戏。两者都会列出关于网页版构建的说明，例如 Forward+ 项目使用兼容性渲染器或数据包超过 100 MiB，以及导出的警告，并以 Web 检查结尾：一段测量结果、构建打印的错误和警告及其次数，以及诸如 `The page froze for up to 30.2 s at a time (5 freezes of a second or more), drawing nothing and answering no input; …` 的发现，或者 `Web check: it could not run:` 加上原因。失败会附带原因，例如未登录的提示、Godot 的导出错误、电脑可用内存不足以编码的录制，或者对于与另一个文件夹共用游戏的文件夹，需要询问用户的问题以及回答它的 `new_game` 取值。
+`wasd_export_web` 给出输出文件夹、其中的文件及其大小，说明要通过网页服务器打开 `index.html`，带 `zip` 时还会给出 ZIP 文件并说明把它作为 HTML5 游戏上传到游戏网站。`wasd_export_mobile` 给出每个平台的构建、其大小、内容和应用的标识符；对 Android，说明怎样把 APK 安装到设备上、Google Play 只接受以 Android App Bundle 提交的新应用而本导出不构建它，以及签名所用的密钥库并建议保留一份副本；对 iOS，说明怎样在 Xcode 中构建并运行项目、由哪个团队签名或由 Xcode 询问；并说明某个平台为何没有构建。`wasd_export_desktop` 给出每个平台的 ZIP 文件、其大小和内容，并说明下载的副本首次运行前 Windows SmartScreen 和 macOS Gatekeeper 会先询问，以及如何放行。`wasd_record_preview` 给出动画、GIF 和静态图文件及其帧数、时长、尺寸、字节数和各自的用途，说明录制是否启动了游戏或游戏是否始终处于暂停状态，并在模型接受图片时把静态图作为图片展示。`wasd_release_game` 给出标题、版本、游戏公开在探索页上还是私密、分享链接、该版本的链接、每个下载链接及其恶意软件扫描状态，以及游戏页面所列的制作信息，例如 `Made with, as the game's page credits it: Claude Opus 5.5, Godot, Blender with MPFB (MakeHuman).`，说明分享页面列出更早的版本并接受评论，说明玩家通过分享页面上的“使用 WASD Engine 安装”按钮用 WASD Engine 应用安装这些下载（应用还会让它们保持最新），或者分享页面在每个下载的恶意软件扫描通过后才提供它、永远不提供扫描标记或无法扫描的下载，并说明分享链接在链接预览中显示 GIF、在浏览器中打开时运行游戏。两者都会列出关于网页版构建的说明，例如 Forward+ 项目使用兼容性渲染器或数据包超过 100 MiB，以及导出的警告，并以 Web 检查结尾：一段测量结果、构建打印的错误和警告及其次数，以及诸如 `The page froze for up to 30.2 s at a time (5 freezes of a second or more), drawing nothing and answering no input; …` 的发现，或者 `Web check: it could not run:` 加上原因。失败会附带原因，例如未登录的提示、Godot 的导出错误、电脑可用内存不足以编码的录制，或者对于与另一个文件夹共用游戏的文件夹，需要询问用户的问题以及回答它的 `new_game` 取值。
 
 #### Token 影响
 
-结果约几百个字符，桌面版导出会因首次运行说明多出约 300 个字符，带下载的发布会因玩家如何安装的说明多出约 200 个字符，下载仍在等待恶意软件扫描的发布再多出约 200 个字符，外加最多十条说明；导出或发布的 Web 检查对没有问题的构建增加约 400 个字符，对错误和发现很多的构建最多增加约 5,000 个字符；录制还会附带一张图片，即按模型的图片尺寸计算的静态图。
+结果约几百个字符，桌面版导出会因首次运行说明多出约 300 个字符，移动端导出每个平台会因安装、构建和保管密钥的说明多出约 500 个字符，带下载的发布会因玩家如何安装的说明多出约 200 个字符，下载仍在等待恶意软件扫描的发布再多出约 200 个字符，外加最多十条说明；导出或发布的 Web 检查对没有问题的构建增加约 400 个字符，对错误和发现很多的构建最多增加约 5,000 个字符；录制还会附带一张图片，即按模型的图片尺寸计算的静态图。
 
 #### KV Cache 影响
 
@@ -362,11 +364,11 @@ Godot 插件加载期间，声明和段落都是静态的，因此保留在已�
 
 #### 模型可见内容
 
-分享会以窗口的语言发送一条用户消息，例如“在 WASD Engine 上发布这个游戏。先用 godot_run 运行游戏并进入实际玩法，再用 wasd_record_preview 录制预览，并传入能展示游戏实际玩法的输入事件；查看它返回的静态画面，如果没有很好地展示游戏，就重新录制。然后使用参数 {"visibility":"private","desktop":["windows"]} 调用 wasd_release_game，并附上简短的更新说明，概括自上次发布以来的改动，最后把分享链接给我。”，或附上用户更新说明的同一请求。勾选“作为新游戏发布”时，请求要求发布新游戏，参数中含有 `"new_game":true`；对于与另一个文件夹共用游戏的文件夹，请求要求发布已有游戏的下一个版本，参数中含有 `"new_game":false`。导出会发送“把这个游戏导出为桌面版：使用参数 {"platforms":["windows","macos"]} 调用 wasd_export_desktop，然后告诉我每个文件在哪里、怎么打开。”“多人联机”对话框的按钮发送三条消息之一，例如“为这个游戏加入在线多人联机：调用 wasd_multiplayer_guide，向我展示两种方式及其费用，并在设置任何东西之前让我选择。”
+分享会以窗口的语言发送一条用户消息，例如“在 WASD Engine 上发布这个游戏。先用 godot_run 运行游戏并进入实际玩法，再用 wasd_record_preview 录制预览，并传入能展示游戏实际玩法的输入事件；查看它返回的静态画面，如果没有很好地展示游戏，就重新录制。然后使用参数 {"visibility":"private","desktop":["windows"]} 调用 wasd_release_game，并附上简短的更新说明，概括自上次发布以来的改动，最后把分享链接给我。”，或附上用户更新说明的同一请求。勾选“作为新游戏发布”时，请求要求发布新游戏，参数中含有 `"new_game":true`；对于与另一个文件夹共用游戏的文件夹，请求要求发布已有游戏的下一个版本，参数中含有 `"new_game":false`。导出会发送“用下面这些工具调用依次导出这个游戏，然后告诉我每个文件在哪里，以及怎么打开、安装或上传：”，后面每个工具调用占一行，例如 ``- `wasd_export_desktop` {"platforms":["windows","macos"]}``、``- `wasd_export_web` {"zip":true}`` 和 ``- `wasd_export_mobile` {"platforms":["android","ios"]}``。“多人联机”对话框的按钮发送三条消息之一，例如“为这个游戏加入在线多人联机：调用 wasd_multiplayer_guide，向我展示两种方式及其费用，并在设置任何东西之前让我选择。”
 
 #### Token 影响
 
-一条用户消息（英文）：分享约 480 个字符，导出约 170 个字符。
+一条用户消息（英文）：分享约 480 个字符，导出约 170 到 270 个字符。
 
 #### KV Cache 影响
 
@@ -384,7 +386,8 @@ Godot 插件加载期间，声明和段落都是静态的，因此保留在已�
 - **私密即不公开列出** — 私密游戏不会出现在探索页上，但任何拿到链接的人都能游玩、评论和下载其构建；先公开后改为私密的游戏仍保留原来的链接。删除游戏需要调用网站的 API。
 - **发布之后才有扫描结果** — 发布结果按网站对上传的回复给出每个下载的扫描状态，通常为 `pending`；工具不会等待扫描，因此构建是否通过要看分享页面。
 - **未签名的桌面版构建** — Windows 构建没有 Authenticode 签名，Mac 应用只有临时签名且未经公证，因此下载的副本首次运行前 SmartScreen 和 Gatekeeper 会先询问；签名需要游戏作者自己的证书，而导出不接受证书。
-- **基于 Godot 模板的桌面版构建** — 桌面版导出打包官方的 Godot 4.7.2 模板，每个平台第一次导出时下载（Windows 约 38 MB，macOS 约 123 MB）；Windows 构建只能在 64 位 x86 Windows 上运行，缺少该平台库文件的 GDExtension 的功能不会进入构建。
+- **基于 Godot 模板的桌面版与移动端构建** — 桌面版与移动端导出打包官方的 Godot 4.7.2 模板，每个平台第一次导出时下载（Windows 约 38 MB，macOS 约 123 MB，Android 约 99 MB，iOS 约 189 MB）；Windows 构建只能在 64 位 x86 Windows 上运行，Android 构建只能在 64 位 ARM 设备上运行，缺少该平台库文件的 GDExtension 的功能不会进入构建。
+- **移动端构建不是应用商店安装包** — Android 导出构建的是 APK，而不是 Google Play 对新应用要求的 Android App Bundle，并且需要 JDK 与 Android SDK，插件从不安装它们；iOS 导出构建的是 Xcode 项目，只有 Mac 上的 Xcode 能用用户自己的 Apple 开发者团队把它构建成应用，其 iOS 模拟器的 Godot 库只能在 Intel Mac 上运行。对话框无法在智能体尝试之前知道电脑上是否有 Android 工具。
 - **预览来自截图** — 每一帧都是一次截图请求，因此预览最多以 `previewFrameMs` 的间隔播放，运行缓慢的游戏会跳帧；GIF 每帧最多 256 种颜色，动画为有损压缩，两者都没有声音。
 - **无输入的后备录制** — 发布为没有预览的游戏录制的预览显示游戏自行运行的前几秒，常常是标题画面；带 `events` 的录制才会展示实际玩法。
 - **按登录的网站发布** — 项目发布到应用所登录的网站；登录另一个网站会在那里创建另一个游戏。

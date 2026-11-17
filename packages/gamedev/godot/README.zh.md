@@ -61,7 +61,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath`、`webTemplatePath`、`windowsTemplatePath`、`macosTemplatePath` 或 `serverTemplatePath` 为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl`、`webTemplateArchiveUrl`、`windowsTemplateArchiveUrl`、`macosTemplateArchiveUrl` 或 `serverTemplateArchiveUrl` 不是 http 或 https URL 时，加载失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath`、`androidJavaPath`、`androidSdkPath` 或某个 `*TemplatePath` 字段为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 或某个 `*TemplateArchiveUrl` 字段不是 http 或 https URL 时，加载失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
@@ -114,6 +114,16 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `serverTemplateEntry` | `templates/linux_release.x86_64` | Linux x86_64 发布模板在该归档中的路径 |
 | `serverTemplateSha256` | `d9f79ab8…a7c63` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
 | `serverTemplatePath` | `''` | 用来代替下载的绝对路径 Linux x86_64 发布模板 |
+| `androidTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Android 的[移动端导出](#mobile-export)只从中下载其模板；须为 http 或 https URL |
+| `androidTemplateEntry` | `templates/android_release.apk` | Android 发布模板 APK 在该归档中的路径 |
+| `androidTemplateSha256` | `6d1bb2cf…8be6cb` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `androidTemplatePath` | `''` | 用来代替下载的绝对路径 Android 发布模板 APK |
+| `iosTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；iOS 的[移动端导出](#mobile-export)只从中下载其模板；须为 http 或 https URL |
+| `iosTemplateEntry` | `templates/ios.zip` | iOS 模板 ZIP 在该归档中的路径 |
+| `iosTemplateSha256` | `fd3280d1…ffbdff4` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `iosTemplatePath` | `''` | 用来代替下载的绝对路径 iOS 模板 ZIP |
+| `androidJavaPath` | `''` | Android 导出用来运行 Godot 签名的 JDK 绝对路径文件夹，其中有 `bin/java` 与 `bin/keytool`；为空时按[移动端导出](#mobile-export)所述自动查找 |
+| `androidSdkPath` | `''` | Android 导出使用的 Android SDK 绝对路径文件夹，其中有 `platform-tools/adb` 与 `build-tools/<版本>/apksigner`；为空时自动查找 |
 | `exportTimeoutMs` | `600000` | 一次导出（包括它启动的资源导入）的截止时间 |
 | `maxInstances` | `4` | 在任何电脑上，一个[实例组](#instance-groups)同时启动的无窗口实例数上限；电脑自身的上限可能更低 |
 | `instanceMemoryBytes` | `2147483648`（2 GiB） | 为实例组中每个实例预留的电脑物理内存：一个实例组最多包含电脑内存除以该值后四舍五入的实例数；`0` 表示不考虑内存 |
@@ -346,6 +356,19 @@ Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了
 
 每个平台的第一次导出会像 Web 导出下载自己的模板一样下载其模板：`windowsTemplateEntry` 约 38 MB，以 `templates/<sha256>.exe` 发布；`macosTemplateEntry` 约 123 MB，以 `templates/<sha256>.zip` 发布。
 
+<a id="mobile-export"></a>
+### 移动端导出
+
+`ctx.godot.exportMobile({ projectDir, platform, outputDir, appleTeamId }, signal)` 为其他 Host 插件把项目导出为 `android` 或 `ios` 版本，例如 WASD Engine 插件，它的 `wasd_export_mobile` 工具会调用它。一个无窗口 Godot 进程以预设 `WASD Engine Android` 或 `WASD Engine iOS` 运行 `--export-release`；预设文件、输出文件夹、`maxHeadlessProcesses` 空位、内存检查、启动画面和恢复记录与桌面版导出相同。导出在运行期间开启 `import_etc2_astc`，因为没有 ETC2/ASTC 纹理时 Godot 不会导出这两个平台。结果给出构建、它的大小、应用的标识符以及最多十条说明。Godot 没有写出构建时，错误会列出 Godot 的错误行及其后续行，例如 `due to configuration errors:` 之后列出的原因。
+
+Android 导出写出一个以游戏命名的 APK 文件，命名方式与桌面版导出的 ZIP 文件相同。Godot 不经 Gradle 构建，直接用发布模板 APK 打包：只包含 64 位 ARM（`arm64-v8a`），带有网络权限，包名为 `com.wasdengine.game.<名称>`（取游戏名中的小写 ASCII 字母、数字和下划线），版本号为自 1970 年起的分钟数，因此每次构建都能覆盖安装之前的版本。Godot 用 Android SDK build-tools 中的 `apksigner` 为 APK 签名，它运行在 Java 上；在编辑器设置给出 JDK 和带有 `platform-tools/adb` 的 SDK 之前，Godot 拒绝导出。插件使用 `androidJavaPath` 与 `androidSdkPath`，否则依次采用 `JAVA_HOME`、Android Studio 自带的 JDK，以及系统安装程序、Homebrew、Eclipse Adoptium、Microsoft 和 `/usr/lib/jvm` 中第一个可用的 JDK，并依次采用 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 和 Android Studio 安装 SDK 的文件夹中第一个可用的 SDK；两者缺一时，导出在下载模板之前就失败，错误会说明缺少什么，并指出 Android Studio 能同时安装两者。Godot 以导出自己的临时主文件夹运行，在其中根据 `JAVA_HOME` 与 `ANDROID_HOME` 创建编辑器设置，因此用户自己的 Godot 编辑器设置既不生效也不会被修改；导出结束后删除该文件夹。
+
+这台电脑上所有游戏的 Android 构建都用同一个密钥签名，因为已安装的应用只能更新为用同一密钥签名的构建。第一次 Android 导出用 JDK 的 `keytool` 在 `dataRoot` 下生成 `android/release.keystore`，这是一个 PKCS #12 密钥库，含一个有效期 10,000 天的 2048 位 RSA 密钥；它的别名和随机密码写入旁边的 `android/release-key.json`。密码通过环境变量交给 `keytool`，两个文件都只有用户本人可读。同时开始的多次导出只生成一个密钥；密钥库缺少可读的密码文件时，导出会失败，而不是替换密钥。当 Host 的环境同时设置了 Godot 自己的三个发布密钥变量 `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`、`GODOT_ANDROID_KEYSTORE_RELEASE_USER` 和 `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD` 时，改用它们指定的密钥。密钥只通过这些变量交给 Godot，从不写入 `export_presets.cfg`。
+
+iOS 导出写出一个以游戏名中的 ASCII 字母和数字命名的 Xcode 项目（`<名称>.xcodeproj`），旁边是它构建所需的文件：数据包、适用于 iPhone 和 iOS 模拟器的 Godot 库，以及应用的资源；Mac 上的 Xcode 由它构建应用。项目的 bundle identifier 与 macOS 构建一样为 `com.wasdengine.game.<名称>`，目标设备为 iPhone 和 iPad。Godot 需要 Team ID 才能写出项目的签名设置，因此导出采用 `appleTeamId`（10 位大写字母和数字），否则在 `security find-certificate` 只列出一个团队时采用这台 Mac 上有效的 Apple Development 证书的 Team ID，否则不设团队：此时先以占位值 `WASDNOTEAM` 导出，再把它从 `project.pbxproj` 和 `export_options.plist` 中删除，让 Xcode 询问团队。Godot 4.7.2 每次 iOS 导出都会因为已不存在的设置 `application/boot_splash/fullsize` 打印一条警告，导出会把它略去。
+
+每个平台的第一次导出会像 Web 导出下载自己的模板一样下载其模板：`androidTemplateEntry` 压缩后约 99 MB，以 `templates/<sha256>.apk` 发布；`iosTemplateEntry` 压缩后约 189 MB，以 `templates/<sha256>.zip` 发布。
+
 <a id="server-export"></a>
 ### 专用服务器导出
 
@@ -378,11 +401,13 @@ Godot 的 Blender 场景导入器通过运行编辑器设置所指定的 Blender
 | `payload/<hash>/wasd_harness.gd`、`payload/<hash>/wasd_check.gd` | harness 与检查脚本在 Desktop 应用归档之外的副本；`<hash>` 是脚本 SHA-256 的前 16 位十六进制数字 | 脚本不变时复用；旧版本保留 |
 | `runtime/<runtimeVersion>/` | 托管运行时：runner、LibGodot 库和 `runtime.json` | 保留；新的 `runtimeVersion` 会安装在它旁边 |
 | `runtime/.download-<id>.tar.gz`、`runtime/.staging-<id>/`、`runtime/<runtimeVersion>.lock` | 进行中安装的归档、解压出的文件和写入锁 | 安装结束时删除 |
-| `templates/<sha256>.zip`、`templates/<sha256>.exe`、`templates/<sha256>.x86_64` | 下载的 Web、macOS、Windows 和 Linux 服务器导出模板，各自以其固定的 SHA-256 命名 | 保留；新的 SHA-256 会在旁边另行下载 |
+| `templates/<sha256>.zip`、`templates/<sha256>.exe`、`templates/<sha256>.x86_64`、`templates/<sha256>.apk` | 下载的 Web、macOS、iOS、Windows、Linux 服务器和 Android 导出模板，各自以其固定的 SHA-256 命名 | 保留；新的 SHA-256 会在旁边另行下载 |
+| `android/release.keystore`、`android/release-key.json` | 为每个 Android 构建签名的密钥及其别名和密码，只有用户本人可读 | 保留：删除后下一次 Android 导出会生成新密钥，已安装的应用将无法更新为它的构建 |
+| `android/release.keystore.lock` | Android 导出生成密钥期间的写入锁 | 密钥生成后删除 |
 | `templates/.download-<id>.<ext>`、`templates/<sha256>.<ext>.lock` | 进行中的模板下载及其写入锁 | 下载结束时删除 |
-| `export-restore/<digest>.json` | 进行中导出的恢复记录：项目的 `export_presets.cfg`（以及桌面版导出的 `project.godot` 设置）原来的内容，以及导出写入的内容；`<digest>` 对应项目文件夹 | 导出恢复文件后删除；中断的导出留下的记录在插件下次启动或该项目下次导出时重放并删除 |
+| `export-restore/<digest>.json` | 进行中导出的恢复记录：项目的 `export_presets.cfg`（以及桌面版或移动端导出的 `project.godot` 设置）原来的内容，以及导出写入的内容；`<digest>` 对应项目文件夹 | 导出恢复文件后删除；中断的导出留下的记录在插件下次启动或该项目下次导出时重放并删除 |
 
-插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储，导出写入调用方指定的文件夹。
+插件不会在 `dataRoot` 下写入其他内容；截图进入附件存储，导出写入调用方指定的文件夹，Android 导出的临时主文件夹位于系统临时文件夹中。
 
 <a id="plugin-icon"></a>
 ### 插件图标
@@ -419,8 +444,10 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/check.ts`](src/check.ts) | 静态脚本检查及其之前的导入 |
 | [`src/imports.ts`](src/imports.ts) | 运行、检查、脚本与其他插件的导入步骤，同一项目的导入步骤、检查与 Web 导出的执行顺序，以及项目自上次导入以来是否有改动 |
 | [`src/command.ts`](src/command.ts) | 运行到结束并收集输出的 Godot 命令：导入步骤、检查、导出以及实例组中的每个实例 |
-| [`src/export.ts`](src/export.ts) | Web、桌面版与专用服务器的导出预设和导出 |
-| [`src/export-template.ts`](src/export-template.ts) | 从导出模板归档中下载单个模板项，用于 Web、Windows、macOS 与 Linux 服务器模板 |
+| [`src/export.ts`](src/export.ts) | Web、桌面版、移动端与专用服务器的导出预设和导出 |
+| [`src/android.ts`](src/android.ts) | Android 导出使用的 JDK 与 Android SDK、为其构建签名的密钥，以及其 Godot 进程的环境 |
+| [`src/ios.ts`](src/ios.ts) | iOS 导出的 Apple 开发者团队：这台 Mac 证书的 Team ID，以及占位值的删除 |
+| [`src/export-template.ts`](src/export-template.ts) | 从导出模板归档中下载单个模板项，用于 Web、Windows、macOS、Android、iOS 与 Linux 服务器模板 |
 | [`src/instances.ts`](src/instances.ts) | 带有各自环境的无窗口实例组 |
 | [`src/script.ts`](src/script.ts) | `godot_script` 运行与供其他插件使用的导入报告 |
 | [`src/record.ts`](src/record.ts) | 供其他插件使用的录制：请求、其取值范围与截取时钟 |
@@ -563,7 +590,9 @@ No Godot runtime is installed. Install the WASD Engine Godot runtime from the Ga
 - **在 Windows Desktop 上，游戏画面中的应用快捷键暂停** — 画面获得焦点期间，任何应用快捷键或菜单加速键都不会执行，直到按 Shift+Esc 或点击其他位置释放焦点。
 - **按住 Shift 时按 Esc 会释放游戏画面** — 画面把按住 Shift 时按下的 Esc 视为 Shift+Esc，因此用 Shift 奔跑的游戏在玩家奔跑时收不到 Esc；指针锁定期间，Esc 在按键 100 毫秒后才送达游戏。
 - **不支持 C# 脚本** — WASD Engine 的 LibGodot 构建时不含 .NET，因此 C# 脚本无法加载，插件也从不改用 .NET 版 Godot 编辑器。
-- **仅支持 Web、Windows、macOS 与 Linux 服务器导出** — [`exportWeb`](#web-export)、[`exportDesktop`](#desktop-export) 与 [`exportServer`](#server-export) 通过 WASD Engine 插件的工具导出网页版、64 位 x86 Windows 版、Mac 版和 Linux x86_64 专用服务器；`godot_*` 工具不导出任何内容，Linux 桌面版、ARM 版 Windows 与移动端导出需要同一版本的 Godot 编辑器及其导出模板，由 Agent 在 shell 中运行，桌面版构建也没有发布者签名。
+- **仅支持 Web、Windows、macOS、Android、iOS 与 Linux 服务器导出** — [`exportWeb`](#web-export)、[`exportDesktop`](#desktop-export)、[`exportMobile`](#mobile-export) 与 [`exportServer`](#server-export) 通过 WASD Engine 插件的工具导出网页版、64 位 x86 Windows 版、Mac 版、64 位 ARM Android 设备版、iPhone 与 iPad 版和 Linux x86_64 专用服务器；`godot_*` 工具不导出任何内容，Linux 桌面版与 ARM 版 Windows 导出需要同一版本的 Godot 编辑器及其导出模板，由 Agent 在 shell 中运行，桌面版构建也没有发布者签名。
+- **Android 构建是 APK 文件** — 导出不经 Gradle 构建直接打包模板，因此不会生成 Google Play 对新应用要求的 Android App Bundle，也不包含 32 位或 x86 代码；它需要电脑上有 JDK 与 Android SDK，插件会查找它们，但从不安装。
+- **iOS 构建是 Xcode 项目** — 导出可在任何电脑上写出项目，但应用只能在 Mac 上的 Xcode 中构建；Godot 4.7.2 的 iOS 模拟器库只适用于 Intel Mac，因此 Apple 芯片 Mac 只能在 iPhone 或 iPad 上运行应用，不能在模拟器中运行。
 - **实例组共享 Host 的上限** — 一个实例组算作一个无窗口进程，其中的实例不是游戏运行，因此“游戏”标签页从不显示它们，运行上限也不计入它们；实例组改由 `maxInstances` 以及电脑的内存和处理器限制。
 - **不检查配置的运行时的版本** — harness 与检查脚本继承 Godot 的 `Logger` 类、读取 `ScriptBacktrace` 帧，并按名称关闭 Godot 4.7 的 GDScript 警告；`runnerPath` 与 `libgodotPath` 指定的 LibGodot 构建若缺少这些类或其中某个警告名称，则无法启动运行或检查。
 - **harness 会替换自定义主循环** — 运行通过 `--script` 传入 harness，因此 `application/run/main_loop_type` 指定了自有 `SceneTree` 或 `MainLoop` 类的项目会改由 harness 运行。

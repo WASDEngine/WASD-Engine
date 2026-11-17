@@ -1,6 +1,6 @@
 /* Export / Share button in the WASD Engine purple: a compact control after the agent preset label in the Session
    header, and a control of the New Session row's 28px height before its branch controls. Its dialog lists the three
-   choices as selectable rows, then the fields of the selected one. */
+   choices as selectable rows, then the fields of the selected one, which scroll in a short window. */
 
 .trigger {
   display: inline-flex;
@@ -47,24 +47,38 @@
   flex: none;
 }
 
+/* The dialog is wider than the default so that each platform's description fits on one line, and grows to the height
+   of the window at most; in a shorter one its choices and fields scroll above the buttons. */
+.dialog {
+  width: min(480px, 100%);
+  max-height: 100%;
+}
+
+.content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Sections stand 16px apart, the rows of a section 8px to 12px, and a name 2px above its description; every line of
+   text sets its own height. */
 .body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .choices {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .choice {
   position: relative;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 12px;
+  padding: 12px 14px;
   border: 0.5px solid var(--dsw-alias-border-primary, rgb(127 127 127 / 30%));
   border-radius: var(--dsw-radius-sm);
   cursor: pointer;
@@ -98,6 +112,7 @@
   outline-offset: 1px;
 }
 
+/* The 18px icon sits on the label's 20px line. */
 .choiceIcon {
   flex: none;
   margin-top: 1px;
@@ -117,8 +132,9 @@
 
 .choiceLabel {
   color: var(--dsw-alias-label-primary);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 20px;
 }
 
 .status {
@@ -129,6 +145,7 @@
   margin: 0;
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
+  line-height: 20px;
 }
 
 .status a {
@@ -139,12 +156,14 @@
   margin: 0;
   color: var(--dsw-alias-label-secondary);
   font-size: 13px;
+  line-height: 20px;
 }
 
 .warning {
   margin: 0;
   color: var(--dsw-alias-label-warning, #d97706);
   font-size: 13px;
+  line-height: 20px;
   /* Folder paths in the notices can be long runs without spaces. */
   overflow-wrap: anywhere;
 }
@@ -152,7 +171,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -164,6 +183,7 @@
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
   font-weight: 500;
+  line-height: 20px;
 }
 
 .notes {
@@ -186,33 +206,77 @@
   outline-offset: 0;
 }
 
+/* The downloads of a share: the platforms' names side by side. */
 .platforms {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 8px 24px;
 }
 
+/* The Export choice's platforms: one row each, the name over what the platform builds. */
 .platformList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
-/* Each platform's hint sits under its label: the checkbox's 16px box and 6px gap indent it. */
-.platformRow {
+/* A platform row: the checkbox, the platform's mark, then its name and description, which the whole row toggles. */
+.platform {
+  display: grid;
+  grid-template-columns: 16px 16px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: start;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+/* The checkbox looks like the primitives' Checkbox, centered on the name's 20px line as the mark is. */
+.platformBox {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--dsw-alias-brand-primary);
+  cursor: inherit;
+}
+
+.platformBox:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+.platform:has(.platformBox:disabled) {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.platformLogo {
+  margin-top: 2px;
+}
+
+.platformText {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 2px;
+  min-width: 0;
 }
 
-.platformRow > .hint {
-  padding-left: 22px;
+.platformName {
+  font-size: 14px;
+  line-height: 20px;
 }
 
 .hint {
   color: var(--dsw-alias-label-tertiary);
   font-size: 12px;
+  line-height: 18px;
+}
+
+/* The note under the Export choice's platforms, set apart from the last of them. */
+.fieldNote {
+  margin-top: 4px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .footer {

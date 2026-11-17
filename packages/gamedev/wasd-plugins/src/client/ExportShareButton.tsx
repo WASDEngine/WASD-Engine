@@ -2,31 +2,43 @@
  * The Export / Share button of a game project's Session: in the Session header after the agent preset label, and in
  * the New Session row before the branch controls while the Session is blank, since the header shows no actions until
  * the first prompt. It opens a dialog with three choices: share the game on WASD Engine's Explore page, share it with
- * a private link that stays off Explore, or export it for Windows and macOS on this computer. Sharing names the
+ * a private link that stays off Explore, or export it on this computer for Windows, macOS, the Web, Android, and iOS,
+ * as files to share or upload anywhere, each platform listed with its mark (`PlatformLogo.tsx`). Sharing names the
  * project's last release and whether the choice changes who can find the game, takes optional release notes and the
- * desktop downloads to offer on the game's page, offers to release as a new game once the project has a game, and says
- * when the folder releases the same game as another folder, as a copy does. Each choice asks the Session's agent to do
- * the work, so the recording, the builds, and the upload run as a turn the user watches in the chat. The button shows
- * only for a Session of a game project whose Peer may prompt it.
+ * desktop downloads to offer on the game's page, Windows and macOS checked each time the dialog opens, offers to
+ * release as a new game once the project has a game, and says when the folder releases the same game as another folder,
+ * as a copy does. Each choice asks the Session's agent to do the work, so the recording, the builds, and the upload run
+ * as a turn the user watches in the chat. The button shows only for a Session of a game project whose Peer may prompt
+ * it.
  */
 import { useId, useState } from 'react'
 import {
   Button, Checkbox, IconDownloadOutlineRegular, IconGlobeOutlineRegular, IconLinkOutlineRegular, IconLoadingOutlineRegular,
   IconShareOutlineRegular, Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { PlatformLogo } from './PlatformLogo.tsx'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { WasdDesktopPlatform, WasdProjectView, WasdVisibility } from '../types.ts'
+import type { WasdDesktopPlatform, WasdMobilePlatform, WasdProjectView, WasdVisibility } from '../types.ts'
 import type { NS, WasdPluginsUiKey } from './locales.ts'
 import css from './ExportShareButton.module.css'
 
 /** Longest release notes the dialog takes; the release tool keeps at most 1000 characters. */
 export const NOTES_LIMIT = 1000
 
-/** The desktop platforms the dialog offers, in the order they build. */
+/** The desktop platforms the dialog offers as downloads of a share, in the order they build. */
 export const DESKTOP_PLATFORMS: readonly WasdDesktopPlatform[] = ['windows', 'macos']
+
+/** A platform the Export choice builds files for: a desktop platform, `web`, or a mobile platform. */
+export type ExportPlatform = WasdDesktopPlatform | 'web' | WasdMobilePlatform
+
+/** The platforms the Export choice offers, in the order it lists and builds them. */
+export const EXPORT_PLATFORMS: readonly ExportPlatform[] = ['windows', 'macos', 'web', 'android', 'ios']
+
+/** The platforms the Export choice starts with checked: the desktop builds, which need nothing else on this computer. */
+export const DEFAULT_EXPORT_PLATFORMS: readonly ExportPlatform[] = ['windows', 'macos']
 
 /**
  * Which game a share from the dialog goes to: `linked`, the project's game, or a new game for a project without one;
@@ -70,12 +82,12 @@ export interface ExportShareInjected {
    */
   readonly startShare: (sessionId: SessionId, request: ShareRequest) => Promise<string | undefined>
   /**
-   * Ask the Session's agent to export the game for desktop platforms.
+   * Ask the Session's agent to export the game for platforms.
    * @param sessionId - the Session.
-   * @param platforms - the platforms, in build order.
+   * @param platforms - the platforms, in {@link EXPORT_PLATFORMS} order.
    * @returns undefined once the prompt is queued, else why it was not.
    */
-  readonly startExport: (sessionId: SessionId, platforms: readonly WasdDesktopPlatform[]) => Promise<string | undefined>
+  readonly startExport: (sessionId: SessionId, platforms: readonly ExportPlatform[]) => Promise<string | undefined>
 }
 
 /** Props of {@link ExportShareButton}; the New Session options pass the same Session props as the header actions. */
@@ -102,18 +114,64 @@ const CHOICES: readonly ChoiceCopy[] = [
   { choice: 'export', icon: IconDownloadOutlineRegular, label: 'share.export', hint: 'share.exportHint', confirm: 'share.confirmExport' },
 ]
 
-const PLATFORM_LABELS: Readonly<Record<WasdDesktopPlatform, WasdPluginsUiKey>> = { windows: 'desktop.windows', macos: 'desktop.macos' }
-const PLATFORM_HINTS: Readonly<Record<WasdDesktopPlatform, WasdPluginsUiKey>> = { windows: 'export.windowsHint', macos: 'export.macosHint' }
+const PLATFORM_LABELS: Readonly<Record<ExportPlatform, WasdPluginsUiKey>> = {
+  windows: 'desktop.windows', macos: 'desktop.macos', web: 'export.web', android: 'export.android', ios: 'export.ios',
+}
+const PLATFORM_HINTS: Readonly<Record<ExportPlatform, WasdPluginsUiKey>> = {
+  windows: 'export.windowsHint', macos: 'export.macosHint', web: 'export.webHint', android: 'export.androidHint', ios: 'export.iosHint',
+}
 
 /**
  * A set of platforms with one switched.
+ * @param order - every platform of the list, in its order.
  * @param platforms - the platforms.
  * @param platform - the platform to switch.
  * @param on - whether it is in the set afterwards.
- * @returns the platforms in build order.
+ * @returns the platforms in the list's order.
  */
-function toggled(platforms: readonly WasdDesktopPlatform[], platform: WasdDesktopPlatform, on: boolean): WasdDesktopPlatform[] {
-  return DESKTOP_PLATFORMS.filter(item => item === platform ? on : platforms.includes(item))
+function toggled<P extends ExportPlatform>(order: readonly P[], platforms: readonly P[], platform: P, on: boolean): P[] {
+  return order.filter(item => item === platform ? on : platforms.includes(item))
+}
+
+/**
+ * One platform of a list: its checkbox, mark, and name, and what it builds when the list says so. The whole row toggles
+ * the checkbox, which takes the name as its label and the hint as its description.
+ * @param props.platform - the platform.
+ * @param props.name - the platform's localized name.
+ * @param props.hint - what the platform builds; absent in a list of names only.
+ * @param props.checked - whether the platform is in the set.
+ * @param props.onChange - receives the requested checked state.
+ * @param props.disabled - whether the row refuses changes.
+ * @param props.id - unique prefix of the row's element ids.
+ * @returns the row.
+ */
+function PlatformOption({ platform, name, hint, checked, onChange, disabled, id }: {
+  readonly platform: ExportPlatform
+  readonly name: string
+  readonly hint?: string
+  readonly checked: boolean
+  readonly onChange: (next: boolean) => void
+  readonly disabled: boolean
+  readonly id: string
+}) {
+  return (
+    <label className={css.platform}>
+      <input
+        type="checkbox"
+        className={css.platformBox}
+        checked={checked}
+        disabled={disabled}
+        aria-labelledby={`${id}-name`}
+        aria-describedby={hint === undefined ? undefined : `${id}-hint`}
+        onChange={(event) => { onChange(event.target.checked) }}
+      />
+      <PlatformLogo platform={platform} size={16} className={css.platformLogo} />
+      <span className={css.platformText}>
+        <span id={`${id}-name`} className={css.platformName}>{name}</span>
+        {hint !== undefined && <span id={`${id}-hint`} className={css.hint}>{hint}</span>}
+      </span>
+    </label>
+  )
 }
 
 /**
@@ -133,8 +191,8 @@ export function ExportShareButton({
   const [choice, setChoice] = useState<Choice>('explore')
   const [notes, setNotes] = useState('')
   const [newGame, setNewGame] = useState(false)
-  const [downloads, setDownloads] = useState<readonly WasdDesktopPlatform[]>([])
-  const [platforms, setPlatforms] = useState<readonly WasdDesktopPlatform[]>(DESKTOP_PLATFORMS)
+  const [downloads, setDownloads] = useState<readonly WasdDesktopPlatform[]>(DESKTOP_PLATFORMS)
+  const [platforms, setPlatforms] = useState<readonly ExportPlatform[]>(DEFAULT_EXPORT_PLATFORMS)
   const [sending, setSending] = useState(false)
   const [failure, setFailure] = useState<string>()
   const id = useId()
@@ -144,6 +202,7 @@ export function ExportShareButton({
     setOpen(true)
     setFailure(undefined)
     setNewGame(false)
+    setDownloads(DESKTOP_PLATFORMS)
     setChoice('explore')
     setLoaded({ state: 'loading' })
     void readProject(projectDir).then((result) => {
@@ -195,6 +254,8 @@ export function ExportShareButton({
       <Modal
         open={open}
         onClose={close}
+        className={css.dialog ?? ''}
+        contentClassName={css.content ?? ''}
         title={t('share.title')}
         closeLabel={t('share.close')}
         description={t('share.description')}
@@ -270,11 +331,13 @@ export function ExportShareButton({
                 <legend className={css.label}>{t('share.downloads')}</legend>
                 <div className={css.platforms}>
                   {DESKTOP_PLATFORMS.map(platform => (
-                    <Checkbox
+                    <PlatformOption
                       key={platform}
+                      platform={platform}
+                      id={`${id}-download-${platform}`}
+                      name={t(PLATFORM_LABELS[platform])}
                       checked={downloads.includes(platform)}
-                      onChange={(on) => { setDownloads(current => toggled(current, platform, on)) }}
-                      label={t(PLATFORM_LABELS[platform])}
+                      onChange={(on) => { setDownloads(current => toggled(DESKTOP_PLATFORMS, current, platform, on)) }}
                       disabled={sending || notGodot}
                     />
                   ))}
@@ -293,19 +356,20 @@ export function ExportShareButton({
             <fieldset className={css.field}>
               <legend className={css.label}>{t('export.platforms')}</legend>
               <div className={css.platformList}>
-                {DESKTOP_PLATFORMS.map(platform => (
-                  <div key={platform} className={css.platformRow}>
-                    <Checkbox
-                      checked={platforms.includes(platform)}
-                      onChange={(on) => { setPlatforms(current => toggled(current, platform, on)) }}
-                      label={t(PLATFORM_LABELS[platform])}
-                      disabled={sending || notGodot}
-                    />
-                    <span className={css.hint}>{t(PLATFORM_HINTS[platform])}</span>
-                  </div>
+                {EXPORT_PLATFORMS.map(platform => (
+                  <PlatformOption
+                    key={platform}
+                    platform={platform}
+                    id={`${id}-export-${platform}`}
+                    name={t(PLATFORM_LABELS[platform])}
+                    hint={t(PLATFORM_HINTS[platform])}
+                    checked={platforms.includes(platform)}
+                    onChange={(on) => { setPlatforms(current => toggled(EXPORT_PLATFORMS, current, platform, on)) }}
+                    disabled={sending || notGodot}
+                  />
                 ))}
               </div>
-              <span className={css.hint}>{t('export.where')}</span>
+              <span className={css.fieldNote}>{t('export.where')}</span>
             </fieldset>
           )}
           {failure !== undefined && <p className={css.warning} role="alert">{failure}</p>}

@@ -409,7 +409,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `graphics_review` | `graphics`, through `graphicsReviewMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) | The Session's own tool definition, which needs no Session; the image is an absolute path, and the review runs on the account's model route, which the account pays for |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
-| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
+| `wasd_export_web`, `wasd_export_desktop`, `wasd_export_mobile`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
 | `feedback_send` | `feedback`, through `feedbackMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) | The Session's own tool definition with `model`, which needs no Session; the provider adds the calling agent's client, and the feedback goes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images, run as the agent's Session of the call's `session` name, or without a Session |
 
@@ -731,6 +731,26 @@ async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<Godo
  * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>
+
+/**
+ * Export a project for one mobile platform with the built-in runtime: for Android, one APK file named after the game
+ * for 64-bit ARM phones and tablets, signed with this computer's Android key, which the first Android export
+ * generates; for iOS, an Xcode project that builds the app on a Mac, signed for the request's Team ID, else the one
+ * team of the Mac's Apple Development certificates, else none, so that Xcode asks. An Android export first finds a
+ * JDK and the Android SDK (`androidJavaPath`, `androidSdkPath`). The first export for a platform downloads its
+ * template, about 99 MB for Android and 189 MB for iOS. While the export runs, the project imports the ETC2/ASTC
+ * textures mobile builds need. The export, which imports the project, waits until the project's import steps and
+ * checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.
+ * @param request - absolute project folder, platform, output folder, and for iOS the Team ID.
+ * @param signal - cancellation; it stops the export process.
+ * @returns the build.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.
+ * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
+ * @throws {GodotExportError} when the export writes no build.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+ */
+async exportMobile(request: GodotMobileExportRequest, signal: AbortSignal): Promise<GodotMobileExport>
 
 /**
  * Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`,

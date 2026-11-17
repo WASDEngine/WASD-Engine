@@ -89,12 +89,13 @@ WASD Engine orchestrates agents to create art, music, and game logic, so your vi
 
 ## Build true multiplayer games.
 
-WASD Engine hosts your game on the web, packages it for Mac and Windows, gets every update to your players, and runs the servers for your online games.
+WASD Engine hosts your game on the web, packages it for Mac, Windows, Android, and iOS, gets every update to your players, and runs the servers for your online games.
 
 1. **Web games.** Export / Share puts your game on its own page at wasdengine.com, playable in any browser from a link. List it on Explore or keep the link private.
 2. **Mac & Windows downloads.** Add downloads to the same page: WASD Engine exports a Windows .exe and a Mac app for you, and players who use WASD Engine install your game in one click.
-3. **Over-the-air updates.** Release a new version and it reaches every player: the web page plays it at once, installed games get the update, and online games update with their servers, so everyone plays the same version.
-4. **Multiplayer, servers included.** Ask your agent to "make this game multiplayer for up to 8 friends." It adds online play to your game, and WASD Engine runs the rest: player sign-in, lobbies, the connections between players, and the game servers. Player-hosted games are free: one player hosts a lobby and friends join with a 6-letter code. Dedicated servers start at $5 a month: players join any time, a server sleeps while nobody plays and wakes in seconds, and your world is backed up every hour. The [multiplayer guide](../docs/user/guide/multiplayer.md) compares the two.
+3. **Phones, tablets, and other sites.** Export / Share also builds your game into files you keep: an Android app (with Android Studio installed), an Xcode project for iPhone and iPad, and a Web build ready for itch.io or any web host.
+4. **Over-the-air updates.** Release a new version and it reaches every player: the web page plays it at once, installed games get the update, and online games update with their servers, so everyone plays the same version.
+5. **Multiplayer, servers included.** Ask your agent to "make this game multiplayer for up to 8 friends." It adds online play to your game, and WASD Engine runs the rest: player sign-in, lobbies, the connections between players, and the game servers. Player-hosted games are free: one player hosts a lobby and friends join with a 6-letter code. Dedicated servers start at $5 a month: players join any time, a server sleeps while nobody plays and wakes in seconds, and your world is backed up every hour. The [multiplayer guide](../docs/user/guide/multiplayer.md) compares the two.
 
 ## Built from plugins. Shaped by you.
 

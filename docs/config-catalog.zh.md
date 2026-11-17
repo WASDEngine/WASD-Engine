@@ -2034,7 +2034,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:74`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:81`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2171,6 +2171,32 @@ export interface Config {
   serverTemplateSha256: string
   /** Absolute Linux x86_64 release template to use instead of the download; empty downloads it. */
   serverTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which an Android export downloads only its template. */
+  androidTemplateArchiveUrl: string
+  /** Path of the Android release template APK inside that archive. */
+  androidTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  androidTemplateSha256: string
+  /** Absolute Android release template APK to use instead of the download; empty downloads it. */
+  androidTemplatePath: string
+  /** Godot export templates archive of the runtime's Godot version, from which an iOS export downloads only its template. */
+  iosTemplateArchiveUrl: string
+  /** Path of the iOS template ZIP inside that archive. */
+  iosTemplateEntry: string
+  /** Lowercase hex SHA-256 of that template; change it together with the archive. */
+  iosTemplateSha256: string
+  /** Absolute iOS template ZIP to use instead of the download; empty downloads it. */
+  iosTemplatePath: string
+  /**
+   * Absolute JDK folder, holding `bin/java` and `bin/keytool`, that Android exports sign their builds with; empty finds
+   * one in `JAVA_HOME`, Android Studio, or the usual JDK installations.
+   */
+  androidJavaPath: string
+  /**
+   * Absolute Android SDK folder, holding `platform-tools` and `build-tools`, that Android exports use; empty finds one in
+   * `ANDROID_HOME`, `ANDROID_SDK_ROOT`, or where Android Studio installs it.
+   */
+  androidSdkPath: string
   /** Deadline of one export, the asset import it starts included, in milliseconds. */
   exportTimeoutMs: number
   /** Most headless instances one group of `runInstances` starts at once on any computer. */
@@ -5442,7 +5468,7 @@ export type ApprovalPolicy = 'ask' | 'never'
 ## `@deepseek-ai/dsh-wasd-plugins`
 
 - `inject`: `tools` · `workingDirectory` · `typert`
-- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:80`](../packages/gamedev/wasd-plugins/src/index.ts)
+- `source`: [`packages/gamedev/wasd-plugins/src/index.ts:81`](../packages/gamedev/wasd-plugins/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */

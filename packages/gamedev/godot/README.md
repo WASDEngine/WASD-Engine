@@ -61,7 +61,7 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 
 ### Configuration
 
-[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `webTemplatePath`, `windowsTemplatePath`, `macosTemplatePath`, or `serverTemplatePath` holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl`, `webTemplateArchiveUrl`, `windowsTemplateArchiveUrl`, `macosTemplateArchiveUrl`, or `serverTemplateArchiveUrl` is not an http or https URL.
+[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `androidJavaPath`, `androidSdkPath`, or one of the `*TemplatePath` fields holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl` or one of the `*TemplateArchiveUrl` fields is not an http or https URL.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -114,6 +114,16 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `serverTemplateEntry` | `templates/linux_release.x86_64` | Path of the Linux x86_64 release template inside that archive |
 | `serverTemplateSha256` | `d9f79ab8…a7c63` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
 | `serverTemplatePath` | `''` | Absolute Linux x86_64 release template to use instead of the download |
+| `androidTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | Godot export templates archive of the runtime's Godot version, from which a [mobile export](#mobile-export) for Android downloads only its template; an http or https URL |
+| `androidTemplateEntry` | `templates/android_release.apk` | Path of the Android release template APK inside that archive |
+| `androidTemplateSha256` | `6d1bb2cf…8be6cb` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
+| `androidTemplatePath` | `''` | Absolute Android release template APK to use instead of the download |
+| `iosTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | Godot export templates archive of the runtime's Godot version, from which a [mobile export](#mobile-export) for iOS downloads only its template; an http or https URL |
+| `iosTemplateEntry` | `templates/ios.zip` | Path of the iOS template ZIP inside that archive |
+| `iosTemplateSha256` | `fd3280d1…ffbdff4` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
+| `iosTemplatePath` | `''` | Absolute iOS template ZIP to use instead of the download |
+| `androidJavaPath` | `''` | Absolute JDK folder, holding `bin/java` and `bin/keytool`, that Android exports run Godot's signing with; empty finds one, as [Mobile export](#mobile-export) describes |
+| `androidSdkPath` | `''` | Absolute Android SDK folder, holding `platform-tools/adb` and `build-tools/<version>/apksigner`, that Android exports use; empty finds one |
 | `exportTimeoutMs` | `600000` | Deadline of one export, the asset import it starts included |
 | `maxInstances` | `4` | Most headless instances that one [instance group](#instance-groups) starts at once on any computer; the computer's own limit can be lower |
 | `instanceMemoryBytes` | `2147483648` (2 GiB) | Physical memory of the computer for each instance of a group: a group holds at most the computer's memory divided by this, rounded to the nearest whole number; `0` leaves memory out |
@@ -346,6 +356,19 @@ A desktop build draws its boot splash as it starts, from the image that `applica
 
 The first export for each platform downloads its template the way the Web export downloads its own: `windowsTemplateEntry`, about 38 MB, published as `templates/<sha256>.exe`, and `macosTemplateEntry`, about 123 MB, published as `templates/<sha256>.zip`.
 
+<a id="mobile-export"></a>
+### Mobile export
+
+`ctx.godot.exportMobile({ projectDir, platform, outputDir, appleTeamId }, signal)` exports a project for `android` or `ios` for other Host plugins, such as WASD Engine Plugins, whose `wasd_export_mobile` tool calls it. One headless Godot process runs `--export-release` with the preset `WASD Engine Android` or `WASD Engine iOS`; the presets file, the output folder, the `maxHeadlessProcesses` slot, the memory check, the boot splash, and the restore record work as for a desktop export, and the export turns on `import_etc2_astc` for its run, since Godot exports neither platform without ETC2/ASTC textures. The result names the build, its size, the app's identifier, and up to ten notes. When Godot writes no build, the error lists Godot's error lines with the lines that continue them, such as the reasons after `due to configuration errors:`.
+
+An Android export writes one APK file named after the game, as a desktop export names its ZIP file. Godot packs it from the release template APK without a Gradle build: for 64-bit ARM (`arm64-v8a`) only, with the internet permission, the package name `com.wasdengine.game.<name>` from the game's name in lowercase ASCII letters, digits, and underscores, and a version code that counts the minutes since 1970, so each build installs over an earlier one. Godot signs the APK with `apksigner` from the Android SDK's build-tools, which runs on Java, and refuses to export until its editor settings name a JDK and an SDK with `platform-tools/adb`. The plugin takes `androidJavaPath` and `androidSdkPath`, else the first usable JDK of `JAVA_HOME`, Android Studio's bundled JDK, and the JDKs of the system's installers, Homebrew, Eclipse Adoptium, Microsoft, and `/usr/lib/jvm`, and the first usable SDK of `ANDROID_HOME`, `ANDROID_SDK_ROOT`, and the folder where Android Studio installs it; without both it fails before the template downloads, with a message that names what is missing and Android Studio, which installs both. Godot runs with a temporary home folder of the export's own, in which it creates editor settings from `JAVA_HOME` and `ANDROID_HOME`, so the user's own Godot editor settings neither apply nor change; the folder is removed afterwards.
+
+Every Android build of this computer's games is signed with one key, since an installed app updates only to a build signed with the same key. The first Android export generates it with the JDK's `keytool` into `android/release.keystore` under `dataRoot`, a PKCS #12 keystore with a 2048-bit RSA key valid for 10,000 days, and its alias and random password into `android/release-key.json` beside it; the password reaches `keytool` through an environment variable, and both files are readable by the user alone. Exports that start together generate one key between them, and a keystore without a readable password file fails the export instead of being replaced. Godot's own release key variables, `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`, `GODOT_ANDROID_KEYSTORE_RELEASE_USER`, and `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD`, name another key when the Host's environment sets all three. The key reaches Godot through those variables, never through `export_presets.cfg`.
+
+An iOS export writes an Xcode project named after the game in ASCII letters and digits (`<name>.xcodeproj`), with the files it builds from beside it: the pack, the Godot library for iPhone and the iOS Simulator, and the app's resources; Xcode on a Mac builds the app from it. The project's bundle identifier is `com.wasdengine.game.<name>`, as a macOS build's, and its targeted devices are iPhone and iPad. Godot requires a Team ID to write the project's signing settings, so the export takes `appleTeamId`, 10 capital letters and digits, else the Team ID of the Mac's valid Apple Development certificates when `security find-certificate` lists exactly one team, else none: it then exports with the stand-in `WASDNOTEAM` and removes it from `project.pbxproj` and `export_options.plist` afterwards, so that Xcode asks for the team. The export leaves out a warning about `application/boot_splash/fullsize` that Godot 4.7.2 prints for every iOS export, since that setting no longer exists.
+
+The first export for each platform downloads its template the way the Web export downloads its own: `androidTemplateEntry`, about 99 MB compressed, published as `templates/<sha256>.apk`, and `iosTemplateEntry`, about 189 MB compressed, published as `templates/<sha256>.zip`.
+
 <a id="server-export"></a>
 ### Dedicated server export
 
@@ -378,11 +401,13 @@ Godot's Blender scene importer converts a `.blend` file by running the Blender e
 | `payload/<hash>/wasd_harness.gd`, `payload/<hash>/wasd_check.gd` | Copies of the harness and the check script outside the Desktop application archive; `<hash>` is the first 16 hex digits of the script's SHA-256 | Reused while the script is unchanged; earlier versions stay |
 | `runtime/<runtimeVersion>/` | The managed runtime: the runner, the LibGodot library, and `runtime.json` | Kept; a new `runtimeVersion` installs beside it |
 | `runtime/.download-<id>.tar.gz`, `runtime/.staging-<id>/`, `runtime/<runtimeVersion>.lock` | The archive, the extracted files, and the writer lock of an install in progress | Removed when the install ends |
-| `templates/<sha256>.zip`, `templates/<sha256>.exe`, `templates/<sha256>.x86_64` | The downloaded Web, macOS, Windows, and Linux server export templates, each named after its pinned SHA-256 | Kept; a new SHA-256 downloads beside them |
+| `templates/<sha256>.zip`, `templates/<sha256>.exe`, `templates/<sha256>.x86_64`, `templates/<sha256>.apk` | The downloaded Web, macOS, iOS, Windows, Linux server, and Android export templates, each named after its pinned SHA-256 | Kept; a new SHA-256 downloads beside them |
+| `android/release.keystore`, `android/release-key.json` | The key that signs every Android build, with its alias and password, readable by the user alone | Kept: removing them makes the next Android export generate a new key, and installed apps then do not update to its builds |
+| `android/release.keystore.lock` | The writer lock while an Android export generates the key | Removed when the key exists |
 | `templates/.download-<id>.<ext>`, `templates/<sha256>.<ext>.lock` | A template download in progress and its writer lock | Removed when the download ends |
-| `export-restore/<digest>.json` | The restore record of an export in progress: the earlier content of the project's `export_presets.cfg`, and of a desktop export's `project.godot` settings, and what the export wrote; `<digest>` names the project folder | Removed when the export restored the files; a record that an interrupted export left is replayed and removed at the plugin's next start or the project's next export |
+| `export-restore/<digest>.json` | The restore record of an export in progress: the earlier content of the project's `export_presets.cfg`, and of a desktop or mobile export's `project.godot` settings, and what the export wrote; `<digest>` names the project folder | Removed when the export restored the files; a record that an interrupted export left is replayed and removed at the plugin's next start or the project's next export |
 
-The plugin writes nothing else under `dataRoot`; screenshots go to the attachment store, and an export writes into the folder its caller names.
+The plugin writes nothing else under `dataRoot`; screenshots go to the attachment store, an export writes into the folder its caller names, and an Android export's temporary home folder lives in the system's temporary folder.
 
 <a id="plugin-icon"></a>
 ### Plugin icon
@@ -419,8 +444,10 @@ In the macOS Desktop app, the page has `dshDesktop.gameLayer`, and a run that th
 | [`src/check.ts`](src/check.ts) | Static script check and the import before it |
 | [`src/imports.ts`](src/imports.ts) | The import step of runs, checks, scripts, and other plugins, the order of one project's import steps, checks, and Web exports, and whether a project changed since its last import |
 | [`src/command.ts`](src/command.ts) | A Godot command that runs to its end with its output collected: the import step, the check, the exports, and each instance of a group |
-| [`src/export.ts`](src/export.ts) | The Web, desktop, and dedicated server export presets and exports |
-| [`src/export-template.ts`](src/export-template.ts) | The download of one template entry from the export templates archive, for the Web, Windows, macOS, and Linux server templates |
+| [`src/export.ts`](src/export.ts) | The Web, desktop, mobile, and dedicated server export presets and exports |
+| [`src/android.ts`](src/android.ts) | The JDK and Android SDK of Android exports, the key that signs their builds, and the environment of their Godot process |
+| [`src/ios.ts`](src/ios.ts) | The Apple Developer team of iOS exports: the Team ID of the Mac's certificates, and the removal of the stand-in |
+| [`src/export-template.ts`](src/export-template.ts) | The download of one template entry from the export templates archive, for the Web, Windows, macOS, Android, iOS, and Linux server templates |
 | [`src/instances.ts`](src/instances.ts) | Groups of headless instances with their own environment |
 | [`src/script.ts`](src/script.ts) | `godot_script` runs and the import report for other plugins |
 | [`src/record.ts`](src/record.ts) | Recordings for other plugins: the request, its ranges, and the capture clock |
@@ -563,7 +590,9 @@ These limits describe current gaps of the Godot runs, the Game tab, and the runt
 - **Application shortcuts pause in the game view on Windows Desktop** — while the view has focus, no application shortcut or menu accelerator runs until Shift+Esc or a click elsewhere releases it.
 - **Esc with Shift held releases the game view** — the view takes Esc pressed while Shift is held as Shift+Esc, so a game that runs on Shift does not receive Esc while the player runs, and while the pointer is locked, Esc reaches the game 100 ms after the key.
 - **No C# scripts** — the WASD Engine LibGodot is built without .NET, so C# scripts do not load, and the plugin never falls back to a .NET Godot editor.
-- **Web, Windows, macOS, and Linux server exports only** — [`exportWeb`](#web-export), [`exportDesktop`](#desktop-export), and [`exportServer`](#server-export) export for the Web, 64-bit x86 Windows, Macs, and a Linux x86_64 dedicated server, through WASD Engine Plugins' tools; the `godot_*` tools export nothing, Linux desktop, Windows on ARM, and mobile exports need a Godot editor of the same version with its export templates, which the agent runs from the shell, and desktop builds carry no publisher's signature.
+- **Web, Windows, macOS, Android, iOS, and Linux server exports only** — [`exportWeb`](#web-export), [`exportDesktop`](#desktop-export), [`exportMobile`](#mobile-export), and [`exportServer`](#server-export) export for the Web, 64-bit x86 Windows, Macs, 64-bit ARM Android devices, iPhone and iPad, and a Linux x86_64 dedicated server, through WASD Engine Plugins' tools; the `godot_*` tools export nothing, Linux desktop and Windows on ARM exports need a Godot editor of the same version with its export templates, which the agent runs from the shell, and desktop builds carry no publisher's signature.
+- **Android builds are APK files** — the export packs the template without a Gradle build, so it builds no Android App Bundle, which Google Play takes for new apps, and no 32-bit or x86 code; it needs a JDK and the Android SDK on the computer, which the plugin finds but never installs.
+- **iOS builds are Xcode projects** — the export writes the project on any computer, but the app builds only in Xcode on a Mac, and Godot 4.7.2's iOS Simulator library is for Intel Macs only, so Apple silicon Macs run the app on an iPhone or iPad, not in the Simulator.
 - **Instance groups share the Host's limits** — a group of instances counts as one headless process, and its instances are not game runs, so the Game tab never shows them and the run limit does not count them; `maxInstances` and the computer's memory and processors bound a group instead.
 - **A configured runtime is not version-checked** — the harness and the check script extend Godot's `Logger` class, read `ScriptBacktrace` frames, and turn off the GDScript warnings of Godot 4.7 by name; a LibGodot build that `runnerPath` and `libgodotPath` name and that lacks those classes or one of those warning names cannot start a run or a check.
 - **The harness replaces a custom main loop** — runs pass the harness with `--script`, so a project whose `application/run/main_loop_type` names its own `SceneTree` or `MainLoop` class runs under the harness instead.

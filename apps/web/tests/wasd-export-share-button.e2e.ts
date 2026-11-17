@@ -21,10 +21,13 @@ const MODEL = 'scripted'
 const SESSION = SessionId('wasd-release-blank')
 const COPY_SESSION = SessionId('wasd-release-copy')
 const RECORD = 'First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well.'
-const SHARE_PROMPT = `Release this game on WASD Engine. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public"} and short release notes about what changed since the last release, and give me the share link.`
+const SHARE_PROMPT = `Release this game on WASD Engine. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"]} and short release notes about what changed since the last release, and give me the share link.`
 const PRIVATE_PROMPT = `Release this game on WASD Engine. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"private","desktop":["windows"]} and these release notes, and give me the share link.\n\nRelease notes: Friends only`
-const EXPORT_PROMPT = 'Export this game for desktop computers: call wasd_export_desktop with the arguments {"platforms":["windows","macos"]}, then tell me where each file is and how to open it.'
-const NEW_GAME_PROMPT = `Release this game on WASD Engine as a new game. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","new_game":true} and short release notes about what is in this version, and give me the share link.`
+const EXPORT_PROMPT = [
+  'Export this game with these tool calls, one after another, then tell me where each file is and how to open, install, or upload it:',
+  '- `wasd_export_desktop` {"platforms":["windows","macos"]}', '- `wasd_export_web` {"zip":true}', '- `wasd_export_mobile` {"platforms":["android"]}',
+].join('\n')
+const NEW_GAME_PROMPT = `Release this game on WASD Engine as a new game. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"],"new_game":true} and short release notes about what is in this version, and give me the share link.`
 
 /** Answers every request with one text block and keeps the requests. */
 class AnsweringAdapter extends LlmAdapter {
@@ -113,14 +116,16 @@ describe('web e2e: Export / Share button of a game project Session', () => {
     expect(tripwire.pageErrors).toEqual([])
   }, 120_000)
 
-  it('asks the agent for a private link with the downloads the user checks, and for a desktop export', async () => {
+  it('asks the agent for a private link with the downloads the user checks, and for an export to desktop, the Web, and Android', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-wasd-export-share-private'))
     const headerButton = page.locator('button[data-placement="header"]')
     await headerButton.click({ timeout: 30_000 })
     let dialog = page.getByRole('dialog', { name: 'Export / Share' })
     await dialog.getByRole('radio', { name: /Private link/u }).check()
     await dialog.getByRole('textbox', { name: 'Release notes' }).fill('Friends only')
-    await dialog.getByRole('checkbox', { name: 'Windows' }).check()
+    // Both downloads start checked; the user keeps only Windows.
+    expect(await dialog.getByRole('checkbox', { name: 'Windows' }).isChecked()).toBe(true)
+    await dialog.getByRole('checkbox', { name: 'macOS' }).uncheck()
     let settled = scaffold.whenTurnSettled()
     await dialog.getByRole('button', { name: 'Create private link', exact: true }).click()
     expect(await settled).toBe(SESSION)
@@ -128,9 +133,12 @@ describe('web e2e: Export / Share button of a game project Session', () => {
 
     await headerButton.click()
     dialog = page.getByRole('dialog', { name: 'Export / Share' })
-    await dialog.getByRole('radio', { name: /Export for Windows and macOS/u }).check()
+    await dialog.getByRole('radio', { name: /Export for desktop, mobile, and Web/u }).check()
     expect(await dialog.getByRole('checkbox', { name: 'Windows' }).isChecked()).toBe(true)
     expect(await dialog.getByRole('checkbox', { name: 'macOS' }).isChecked()).toBe(true)
+    expect(await dialog.getByRole('checkbox', { name: 'iOS', exact: true }).isChecked()).toBe(false)
+    await dialog.getByRole('checkbox', { name: 'Android', exact: true }).check()
+    await dialog.getByRole('checkbox', { name: 'Web', exact: true }).check()
     settled = scaffold.whenTurnSettled()
     await dialog.getByRole('button', { name: 'Export', exact: true }).click()
     expect(await settled).toBe(SESSION)

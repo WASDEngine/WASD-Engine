@@ -409,7 +409,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `graphics_review` | `graphics`，通过 [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) 中的 `graphicsReviewMcpProvider` | 会话自身的工具定义，无需会话；图片为绝对路径，审查在账号的模型路由上运行，由账号付费 |
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
-| `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
+| `wasd_export_web`、`wasd_export_desktop`、`wasd_export_mobile`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
 | `feedback_send` | `feedback`，经由 [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) 中的 `feedbackMcpProvider` | Session 自身带有 `model` 的工具定义，不需要 Session；提供方加入调用方 agent 的客户端，反馈发送到 WASD Engine 已登录的网站 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交；调用以该 agent 与调用中 `session` 名称同名的 Session 运行，或不带 Session 运行 |
 
@@ -731,6 +731,26 @@ async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<Godo
  * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
  */
 async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Promise<GodotDesktopExport>
+
+/**
+ * Export a project for one mobile platform with the built-in runtime: for Android, one APK file named after the game
+ * for 64-bit ARM phones and tablets, signed with this computer's Android key, which the first Android export
+ * generates; for iOS, an Xcode project that builds the app on a Mac, signed for the request's Team ID, else the one
+ * team of the Mac's Apple Development certificates, else none, so that Xcode asks. An Android export first finds a
+ * JDK and the Android SDK (`androidJavaPath`, `androidSdkPath`). The first export for a platform downloads its
+ * template, about 99 MB for Android and 189 MB for iOS. While the export runs, the project imports the ETC2/ASTC
+ * textures mobile builds need. The export, which imports the project, waits until the project's import steps and
+ * checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.
+ * @param request - absolute project folder, platform, output folder, and for iOS the Team ID.
+ * @param signal - cancellation; it stops the export process.
+ * @returns the build.
+ * @throws {GodotProjectError} without `project.godot` in the project folder.
+ * @throws {GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.
+ * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
+ * @throws {GodotExportError} when the export writes no build.
+ * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
+ */
+async exportMobile(request: GodotMobileExportRequest, signal: AbortSignal): Promise<GodotMobileExport>
 
 /**
  * Export a project as a Linux x86_64 dedicated server with the built-in runtime: one executable, `server.x86_64`,

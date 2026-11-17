@@ -5,11 +5,12 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop, exportWeb,
-  GodotExportError, LARGE_PACK_BYTES, packNotes, pendingExportRestores, replayExportRestore, textureImports, WASD_SPLASH_IMAGES,
-  wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE, webNotes, withDesktopPreset, withExportSplash, withoutPreset,
-  withTextureImports, withWebPreset, type WebExportOptions,
+  androidVersionCode, bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop,
+  exportMobile, exportWeb, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes, pendingExportRestores, replayExportRestore,
+  textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE, webNotes, withDesktopPreset,
+  withExportSplash, withMobilePreset, withoutPreset, withTextureImports, withWebPreset, type WebExportOptions,
 } from '../src/export.ts'
+import { IOS_SPLASH_SETTING_WARNING, UNSET_TEAM_ID } from '../src/ios.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
 import { compose } from './composition.ts'
 import {
@@ -527,5 +528,132 @@ posix('exportDesktop', () => {
     await expect(failure).rejects.toBeInstanceOf(GodotExportError)
     await expect(failure).rejects.toThrow(/The Godot macOS export ended \(.*\) without writing Fake game\.zip\.[\s\S]*ETC2 ASTC/u)
     expect(await readdir(outputDir)).toEqual([])
+  })
+})
+
+describe('withMobilePreset', () => {
+  it('packs the Android template for 64-bit ARM without Gradle, signed, with the package, version code, and internet', () => {
+    const text = withMobilePreset(undefined, '/templates/android "release".apk', { platform: 'android', packageName: 'com.wasdengine.game.tiny_farm', versionCode: 29_914_733 })
+    expect(text).toContain(`name="${MOBILE_EXPORT_PRESETS.android}"\nplatform="Android"`)
+    for (const line of [
+      'custom_template/debug="/templates/android \\"release\\".apk"', 'custom_template/release="/templates/android \\"release\\".apk"',
+      'gradle_build/use_gradle_build=false', 'architectures/arm64-v8a=true', 'architectures/armeabi-v7a=false', 'architectures/x86_64=false',
+      'version/code=29914733', 'package/unique_name="com.wasdengine.game.tiny_farm"', 'package/signed=true', 'permissions/internet=true',
+    ]) expect(text.split('\n')).toContain(line)
+    // The key reaches Godot through the environment, never through the presets file.
+    expect(text).not.toMatch(/keystore/u)
+  })
+
+  it('writes the iOS Xcode project only, with the team and the bundle identifier', () => {
+    const text = withMobilePreset('[preset.0]\n\nname="Web"\nplatform="Web"\n', '/templates/ios.zip', { platform: 'ios', bundleIdentifier: 'com.wasdengine.game.tiny-farm', teamId: 'ABCDE12345' })
+    expect(text).toContain(`[preset.1]\n\nname="${MOBILE_EXPORT_PRESETS.ios}"\nplatform="iOS"`)
+    for (const line of [
+      'custom_template/release="/templates/ios.zip"', 'architectures/arm64=true', 'application/app_store_team_id="ABCDE12345"',
+      'application/bundle_identifier="com.wasdengine.game.tiny-farm"', 'application/export_project_only=true',
+    ]) expect(text.split('\n')).toContain(line)
+  })
+
+  it('counts Android version codes in minutes, so each build is newer than the last', () => {
+    expect(androidVersionCode(new Date('2026-11-16T00:00:00Z'))).toBe(29_913_120)
+    expect(androidVersionCode(new Date('2026-11-16T00:01:00Z'))).toBe(29_913_121)
+  })
+})
+
+posix('exportMobile', () => {
+  const ANDROID_ENV = {
+    JAVA_HOME: '/jdk', ANDROID_HOME: '/sdk', GODOT_ANDROID_KEYSTORE_RELEASE_PATH: '/keys/release.keystore',
+    GODOT_ANDROID_KEYSTORE_RELEASE_USER: 'release', GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: 'secret',
+  }
+
+  async function prepareMobile(config: FakeGodotConfig, name = 'Fake game') {
+    const dir = await scratch('export-mobile')
+    folders.push(dir)
+    const host = await subprocessFixture()
+    hosts.push(host)
+    const project = await writeProject(join(dir.root, 'game'), config, { name })
+    const common = {
+      subprocess: host.subprocess, runtime: { kind: 'libgodot' as const, runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project,
+      hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, restoreDir: join(dir.root, 'data', 'export-restore'),
+    }
+    return { project, common }
+  }
+
+  it('exports a signed APK named after the game with the environment it is given, then restores the project', async () => {
+    const { project, common } = await prepareMobile({ export: { files: { 'Fake game.apk': 'apk!' } } })
+    const settings = await readFile(join(project, 'project.godot'), 'utf8')
+    const outputDir = join(project, '.wasdengine', 'mobile', 'android')
+    const exported = await exportMobile({
+      ...common, outputDir, platform: 'android', template: '/templates/android.apk', env: ANDROID_ENV,
+      keystore: '/keys/release.keystore', keystoreCreated: true, now: new Date('2026-11-16T00:00:00Z'),
+    })
+    expect(exported).toEqual({
+      projectDir: project, platform: 'android', outputDir, entry: 'Fake game.apk', bytes: 4, identifier: 'com.wasdengine.game.fake_game',
+      signing: { keystore: '/keys/release.keystore', created: true }, warnings: [],
+    })
+    const log = await fakeLog(project)
+    const exportEntry = log.find(entry => entry.preset !== undefined) as ExportEntry & { env: Record<string, string> }
+    expect(exportEntry.preset).toBe(MOBILE_EXPORT_PRESETS.android)
+    expect(exportEntry.env).toMatchObject(ANDROID_ENV)
+    expect(exportEntry.presets).toContain('package/unique_name="com.wasdengine.game.fake_game"')
+    expect(exportEntry.presets).toContain('version/code=29913120')
+    // Godot exports for Android only with ETC2/ASTC imported, and the build shows WASD Engine's boot splash.
+    expect(textureImports(exportEntry.project)).toEqual({ etc2_astc: 'true' })
+    expect(exportEntry.splashBytes).toBe(SPLASH.dark.length)
+    expect((log[0] as { argv: string[] }).argv.slice(3, 6)).toEqual(['--export-release', MOBILE_EXPORT_PRESETS.android, join(outputDir, 'Fake game.apk')])
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    expect(await exists(join(project, 'export_presets.cfg'))).toBe(false)
+  })
+
+  it('exports an Xcode project that asks for the team when it has none, without Godot\'s stray splash warning', async () => {
+    const pbxproj = ['\t\t\t\t\t\tDevelopmentTeam = WASDNOTEAM;', '\t\t\t\tDEVELOPMENT_TEAM = WASDNOTEAM;', '\t\t\t\tPRODUCT_NAME = Fakegame;', ''].join('\n')
+    const plist = '<dict>\n    <key>method</key>\n    <string>app-store</string>\n\n    <key>teamID</key>\n    <string>WASDNOTEAM</string>\n</dict>\n'
+    const { project, common } = await prepareMobile({
+      export: {
+        files: { 'Fakegame.xcodeproj/project.pbxproj': pbxproj, 'Fakegame/export_options.plist': plist, 'Fakegame.pck': 'pck' },
+        stderr: `WARNING: ${IOS_SPLASH_SETTING_WARNING}\nWARNING: Icon is small.\n`,
+      },
+    })
+    const outputDir = join(project, '.wasdengine', 'mobile', 'ios')
+    const exported = await exportMobile({ ...common, outputDir, platform: 'ios', template: '/templates/ios.zip', appleTeamId: undefined })
+    const pbxprojAfter = '\t\t\t\tPRODUCT_NAME = Fakegame;\n'
+    const options = '<dict>\n    <key>method</key>\n    <string>app-store</string>\n</dict>\n'
+    expect(await readFile(join(outputDir, 'Fakegame.xcodeproj', 'project.pbxproj'), 'utf8')).toBe(pbxprojAfter)
+    expect(await readFile(join(outputDir, 'Fakegame', 'export_options.plist'), 'utf8')).toBe(options)
+    // The size counts every file of the project, as the team's removal left them.
+    expect(exported).toEqual({
+      projectDir: project, platform: 'ios', outputDir, entry: 'Fakegame.xcodeproj', bytes: pbxprojAfter.length + options.length + 'pck'.length,
+      identifier: 'com.wasdengine.game.fake-game', warnings: ['Icon is small.'],
+    })
+    const exportEntry = (await fakeLog(project)).find(entry => entry.preset !== undefined) as ExportEntry
+    expect(exportEntry.presets).toContain(`application/app_store_team_id="${UNSET_TEAM_ID}"`)
+    expect(textureImports(exportEntry.project)).toEqual({ etc2_astc: 'true' })
+  })
+
+  it('signs the Xcode project for the team it is given', async () => {
+    const pbxproj = '\t\t\t\tDEVELOPMENT_TEAM = ABCDE12345;\n'
+    const { project, common } = await prepareMobile({ export: { files: { 'Fakegame.xcodeproj/project.pbxproj': pbxproj } } })
+    const outputDir = join(project, '.wasdengine', 'mobile', 'ios')
+    const exported = await exportMobile({ ...common, outputDir, platform: 'ios', template: '/templates/ios.zip', appleTeamId: 'ABCDE12345' })
+    expect(exported.appleTeamId).toBe('ABCDE12345')
+    const exportEntry = (await fakeLog(project)).find(entry => entry.preset !== undefined) as ExportEntry
+    expect(exportEntry.presets).toContain('application/app_store_team_id="ABCDE12345"')
+    expect(await readFile(join(outputDir, 'Fakegame.xcodeproj', 'project.pbxproj'), 'utf8')).toBe(pbxproj)
+  })
+
+  it('reports Godot\'s errors when the export writes no APK file', async () => {
+    const stderr = [
+      'ERROR: Cannot export project with preset "WASD Engine Android" due to configuration errors:',
+      'A valid Java SDK path is required in Editor Settings.', '', '   at: _fs_changed (editor/editor_node.cpp:1234)', 'WARNING: Unrelated.', '',
+    ].join('\n')
+    const { project, common } = await prepareMobile({ export: { files: {}, stderr } })
+    const failure = exportMobile({
+      ...common, outputDir: join(project, '.wasdengine', 'mobile', 'android'), platform: 'android', template: '/templates/android.apk', env: ANDROID_ENV,
+      keystore: '/keys/release.keystore', keystoreCreated: false, now: new Date(),
+    })
+    await expect(failure).rejects.toBeInstanceOf(GodotExportError)
+    const message = (await failure.catch((error: unknown) => error) as Error).message
+    expect(message).toMatch(/^The Godot Android export ended \(.*\) without writing Fake game\.apk\.\nLast output:\n/u)
+    // Godot's reasons follow its error line, which the message keeps with them, and nothing after the message's end.
+    expect(message.split('\nLast output:\n')[1]).toBe(stderr.split('\n').slice(0, 2).join('\n'))
   })
 })

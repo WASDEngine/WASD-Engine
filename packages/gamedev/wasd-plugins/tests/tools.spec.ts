@@ -7,7 +7,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type ReleaseModel, type WasdToolHost } from '../src/tools.ts'
-import type { WasdDesktopPlatform, WasdDownloadStatus } from '../src/types.ts'
+import type { WasdDesktopPlatform, WasdDownloadStatus, WasdMobilePlatform } from '../src/types.ts'
 import type { GodotWebCheck } from '@deepseek-ai/dsh-godot'
 
 const LENGTHS = { seconds: 4, maxSeconds: 10 }
@@ -32,6 +32,7 @@ const WEB_CHECK: GodotWebCheck = {
 
 function host(
   preview: Partial<RecordedPreview> = {}, scans: Partial<Record<WasdDesktopPlatform, WasdDownloadStatus>> = {},
+  mobileFailures: Partial<Record<WasdMobilePlatform, string>> = {},
 ): WasdToolHost & { calls: unknown[]; models: ReleaseModel[] } {
   const calls: unknown[] = []
   const models: ReleaseModel[] = []
@@ -40,9 +41,12 @@ function host(
     models,
     project: requested => Promise.resolve(requested === undefined ? '/work/game' : `/work/${requested}`),
     file: requested => Promise.resolve(requested.startsWith('/') ? requested : `/work/${requested}`),
-    exportWeb: (projectDir) => {
-      calls.push(['export', projectDir])
-      return Promise.resolve({ projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024, warnings: [] })
+    exportWeb: (projectDir, zip) => {
+      calls.push(zip ? ['export', projectDir, 'zip'] : ['export', projectDir])
+      return Promise.resolve({
+        projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024, warnings: [],
+        ...zip ? { zip: { file: `${projectDir}/.wasdengine/web-zip/Neon Drift.zip`, bytes: 1536 * 1024 } } : {},
+      })
     },
     checkWeb: (outputDir) => {
       calls.push(['check', outputDir])
@@ -55,6 +59,22 @@ function host(
         projectDir,
         builds: platforms.map(platform => ({ platform, file: `${projectDir}/.wasdengine/desktop/${platform}/Neon Drift.zip`, bytes: (platform === 'windows' ? 39 : 61) * 1024 * 1024 })),
         warnings: ['Code signing: Using ad-hoc signature.'],
+      })
+    },
+    exportMobile: (projectDir, platforms, appleTeamId) => {
+      calls.push(['mobile', projectDir, platforms, appleTeamId])
+      const built = platforms.filter(platform => mobileFailures[platform] === undefined)
+      if (built.length === 0) return Promise.reject(new Error(platforms.map(platform => mobileFailures[platform]).join('\n')))
+      return Promise.resolve({
+        projectDir,
+        builds: built.map(platform => platform === 'android'
+          ? { platform, file: `${projectDir}/.wasdengine/mobile/android/Neon Drift.apk`, bytes: 26 * 1024 * 1024, identifier: 'com.wasdengine.game.neon_drift', keystore: '/home/.wasdengine/godot/android/release.keystore', keystoreCreated: true }
+          : { platform, file: `${projectDir}/.wasdengine/mobile/ios/NeonDrift.xcodeproj`, bytes: 367 * 1024 * 1024, identifier: 'com.wasdengine.game.neon-drift', ...appleTeamId === undefined ? {} : { appleTeamId } }),
+        failures: platforms.flatMap((platform) => {
+          const error = mobileFailures[platform]
+          return error === undefined ? [] : [{ platform, error }]
+        }),
+        warnings: [],
       })
     },
     recordPreview: (request) => {
@@ -211,6 +231,44 @@ describe('wasdToolDefinitions', () => {
     await expect(exporter.execute({ platforms: [] }, exec)).rejects.toThrow('platforms must name at least one')
   })
 
+  it('exports the project for phones and tablets, both platforms unless the call names some, and says how each build installs', async () => {
+    const stub = host()
+    const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_mobile')!
+    const value = await exporter.execute({}, exec) as JsonValue
+    await exporter.execute({ project: 'neon', platforms: ['ios', 'android', 'ios'], apple_team_id: 'ABCDE12345' }, exec)
+    expect(stub.calls).toEqual([['mobile', '/work/game', ['android', 'ios'], undefined], ['mobile', '/work/neon', ['android', 'ios'], 'ABCDE12345']])
+    const text = textOf(exporter.output.render({}, value))
+    expect(text).toContain('Exported /work/game for phones and tablets:')
+    expect(text).toContain('- Android: /work/game/.wasdengine/mobile/android/Neon Drift.apk (26.0 MB), an APK file for Android phones and tablets with 64-bit ARM processors, package com.wasdengine.game.neon_drift. To install it, copy it to the phone or tablet and open it there')
+    expect(text).toContain('Google Play takes new apps only as Android App Bundles, which this export does not build.')
+    expect(text).toContain('It is signed with a key the export just created for this computer\'s Android builds, /home/.wasdengine/godot/android/release.keystore: keep a copy of that file and of release-key.json beside it')
+    expect(text).toContain('- iOS: /work/game/.wasdengine/mobile/ios/NeonDrift.xcodeproj (367.0 MB), an Xcode project for iPhone and iPad, with the files it builds from beside it, bundle identifier com.wasdengine.game.neon-drift. Open it in Xcode on a Mac; Xcode asks for the Apple developer team to sign with')
+    expect(text).toContain('Product > Archive builds it for TestFlight and the App Store')
+    const team = textOf(exporter.output.render({}, await exporter.execute({ platforms: ['ios'], apple_team_id: 'ABCDE12345' }, exec) as JsonValue))
+    expect(team).toContain('it signs with the Apple developer team ABCDE12345, which Signing & Capabilities can change.')
+    await expect(exporter.execute({ platforms: [] }, exec)).rejects.toThrow('platforms must name at least one of "android" and "ios".')
+    await expect(exporter.execute({ apple_team_id: 'abcde12345' }, exec)).rejects.toThrow('apple_team_id is 10 capital letters and digits, such as ABCDE12345, not "abcde12345".')
+    await expect(exporter.execute({ platforms: ['windows'] }, exec)).rejects.toThrow(/invalid arguments: "platforms\[0\]"/u)
+  })
+
+  it('builds the other mobile platform when one fails, and says why that one did not build', async () => {
+    const missing = 'An Android export needs a Java runtime and the Android SDK on this computer.'
+    const exporter = wasdToolDefinitions(host({}, {}, { android: missing }), LENGTHS).find(definition => definition.name === 'wasd_export_mobile')!
+    const value = await exporter.execute({}, exec) as JsonValue
+    expect(value).toMatchObject({ builds: [{ platform: 'ios' }], failures: [{ platform: 'android', error: missing }] })
+    expect(textOf(exporter.output.render({}, value))).toContain(`- Android did not build: ${missing}`)
+    await expect(exporter.execute({ platforms: ['android'] }, exec)).rejects.toThrow(missing)
+  })
+
+  it('packs the Web build into one ZIP file for game sites when asked', async () => {
+    const stub = host()
+    const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
+    const value = await exporter.execute({ zip: true, check: false }, exec) as JsonValue
+    expect(stub.calls).toEqual([['export', '/work/game', 'zip']])
+    expect(value).toMatchObject({ zip: { file: '/work/game/.wasdengine/web-zip/Neon Drift.zip', bytes: 1536 * 1024 } })
+    expect(textOf(exporter.output.render({}, value))).toContain('Packed it into /work/game/.wasdengine/web-zip/Neon Drift.zip (1.5 MB), with index.html at its root: upload that file to a game site such as itch.io as an HTML5 game, or unpack it on any static web server.')
+  })
+
   it('exports the nearest project, names the folder to serve, and reports the Web check', async () => {
     const stub = host()
     const exporter = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_export_web')!
@@ -274,10 +332,13 @@ describe('wasdMcpProvider', () => {
     const provider = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), ledger)
     expect(provider.id).toBe('wasd')
     const tools = provider.tools()
-    expect(tools.map(tool => tool.name)).toEqual(['wasd_export_web', 'wasd_export_desktop', 'wasd_record_preview', 'wasd_release_game'])
+    expect(tools.map(tool => tool.name)).toEqual(['wasd_export_web', 'wasd_export_desktop', 'wasd_export_mobile', 'wasd_record_preview', 'wasd_release_game'])
     type Tool = typeof tools[number]
-    const [exporter, desktop, recorder, release] = tools as [Tool, Tool, Tool, Tool]
+    const [exporter, desktop, mobile, recorder, release] = tools as [Tool, Tool, Tool, Tool, Tool]
     await expect(desktop.prepare!({ project: 'relative' }, { session: vi.fn() } as never)).rejects.toThrow(/project must be an absolute path/u)
+    await expect(mobile.prepare!({ project: 'relative' }, { session: vi.fn() } as never)).rejects.toThrow(/project must be an absolute path/u)
+    expect(provider.description).toContain('Export the game for the Web, Windows, macOS, Android, and iOS')
+    expect(provider.instructions).toContain('wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder')
     expect(release.inputSchema?.required).toEqual(['project'])
     const agent = { id: 'session' }
     const call = { client: { id: 'claude-code', title: 'Claude Code' }, signal: new AbortController().signal, session: vi.fn(() => Promise.resolve(agent)), reveal: vi.fn() }

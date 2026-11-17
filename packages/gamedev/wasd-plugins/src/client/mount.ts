@@ -28,14 +28,18 @@ import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type {} from '@deepseek-ai/dsh-wasd-plugins/remote'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
-import type { WasdBrowserRequests, WasdDesktopPlatform, WasdLibraryOutcome, WasdLibraryView, WasdLinkRequests } from '../types.ts'
+import type {
+  WasdBrowserRequests, WasdDesktopPlatform, WasdLibraryOutcome, WasdLibraryView, WasdLinkRequests, WasdMobilePlatform,
+} from '../types.ts'
 import { followBrowserRequests } from './browser.ts'
 import { createDismissedProjects, dismissProject, FIRST_BUILD_EFFORT, watchHoldsNothing } from './first-build.ts'
 import { FirstBuildTip, type FirstBuildTipInjected } from './FirstBuildTip.tsx'
 import { desktopBridges, followGameLinks, followLibrary } from './library.ts'
 import { followLinkRequests } from './links.ts'
 import { de, en, es, fr, ja, NS, pt, ru, zh, type WasdPluginsUiKey } from './locales.ts'
-import { ExportShareButton, type ExportShareInjected, type ExportSharePlacement, type ReleaseTarget, type ShareRequest } from './ExportShareButton.tsx'
+import {
+  ExportShareButton, type ExportPlatform, type ExportShareInjected, type ExportSharePlacement, type ReleaseTarget, type ShareRequest,
+} from './ExportShareButton.tsx'
 import { MultiplayerButton, type MultiplayerButtonInjected, type MultiplayerRequest } from './MultiplayerButton.tsx'
 import { createPlayNavigator, gamePage, PLAY_PANEL } from './play.ts'
 import { PlayBuildToggle, type PlayBuildToggleInjected } from './PlayBuildToggle.tsx'
@@ -82,12 +86,20 @@ export function shareArguments(request: ShareRequest): string {
 }
 
 /**
- * The `wasd_export_desktop` arguments an export asks for, as the prompt quotes them.
- * @param platforms - the platforms.
- * @returns the arguments as one JSON object.
+ * The tool calls an export asks for, as the prompt lists them, one per line: `wasd_export_desktop` for Windows and
+ * macOS, `wasd_export_web` with its ZIP file for the Web, and `wasd_export_mobile` for Android and iOS, each with its
+ * arguments as one JSON object.
+ * @param platforms - the platforms, in the order the dialog lists them.
+ * @returns the lines.
  */
-export function exportArguments(platforms: readonly WasdDesktopPlatform[]): string {
-  return JSON.stringify({ platforms })
+export function exportCalls(platforms: readonly ExportPlatform[]): string {
+  const desktop = platforms.filter((platform): platform is WasdDesktopPlatform => platform === 'windows' || platform === 'macos')
+  const mobile = platforms.filter((platform): platform is WasdMobilePlatform => platform === 'android' || platform === 'ios')
+  return [
+    ...desktop.length === 0 ? [] : [`- \`wasd_export_desktop\` ${JSON.stringify({ platforms: desktop })}`],
+    ...platforms.includes('web') ? [`- \`wasd_export_web\` ${JSON.stringify({ zip: true })}`] : [],
+    ...mobile.length === 0 ? [] : [`- \`wasd_export_mobile\` ${JSON.stringify({ platforms: mobile })}`],
+  ].join('\n')
 }
 
 function registerUi(ctx: Context): void {
@@ -116,8 +128,8 @@ function registerUi(ctx: Context): void {
         const values = { arguments: shareArguments(request) }
         return send(sessionId, request.notes === '' ? t(prompt, values) : t(withNotes, { ...values, notes: request.notes }))
       },
-      startExport(sessionId: SessionId, platforms: readonly WasdDesktopPlatform[]) {
-        return send(sessionId, t('export.prompt', { arguments: exportArguments(platforms) }))
+      startExport(sessionId: SessionId, platforms: readonly ExportPlatform[]) {
+        return send(sessionId, t('export.prompt', { calls: exportCalls(platforms) }))
       },
     })
     yield ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({

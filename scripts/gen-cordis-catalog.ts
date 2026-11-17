@@ -866,6 +866,8 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotWebCheckRequest: 'gamedev.md',
   GodotDesktopExport: 'gamedev.md',
   GodotDesktopExportRequest: 'gamedev.md',
+  GodotMobileExport: 'gamedev.md',
+  GodotMobileExportRequest: 'gamedev.md',
   GodotRecordRequest: 'gamedev.md',
   GodotRecording: 'gamedev.md',
   GameMcpToolResult: 'gamedev.md',

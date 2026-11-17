@@ -1,14 +1,14 @@
 /**
  * WASD Engine Plugins: WASD Engine's own features, which stay on in every profile (the plugin manager refuses to
- * switch this row off). It exports Godot games for the Web, Windows, and macOS, records their previews, and releases
- * them to the WASD Engine site the app is signed in to, as numbered versions with share links, an animated preview, and
- * desktop downloads, public on the site's Explore page or private, through the `wasd_export_web`,
- * `wasd_export_desktop`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and of WASD Engine's
- * MCP server, and puts games online through the multiplayer tools: player-hosted for free, or on dedicated servers the
- * site sells by monthly size, which the user always confirms on the site. The `wasdPlugins` Remote tells the window
- * what each project released and set up for multiplayer and where the site's Explore page is, for the Export / Share
- * and Multiplayer buttons of game project Sessions and Explore Games in the sidebar, and hands windows the
- * confirmation pages the tools open.
+ * switch this row off). It exports Godot games for the Web, Windows, macOS, Android, and iOS, records their previews,
+ * and releases them to the WASD Engine site the app is signed in to, as numbered versions with share links, an animated
+ * preview, and desktop downloads, public on the site's Explore page or private, through the `wasd_export_web`,
+ * `wasd_export_desktop`, `wasd_export_mobile`, `wasd_record_preview`, and `wasd_release_game` tools of every Session and
+ * of WASD Engine's MCP server, and puts games online through the multiplayer tools: player-hosted for free, or on
+ * dedicated servers the site sells by monthly size, which the user always confirms on the site. The `wasdPlugins`
+ * Remote tells the window what each project released and set up for multiplayer and where the site's Explore page is,
+ * for the Export / Share and Multiplayer buttons of game project Sessions and Explore Games in the sidebar, and hands
+ * windows the confirmation pages the tools open.
  * Under `dataRoot` it records which folders on this computer released each game, so a copied project folder asks
  * before its release adds to the game it shares with the folder it was copied from. A project's exports, Web checks of
  * its build, preview recordings, and releases run one at a time, whether a Session's agent or a connected agent called
@@ -38,6 +38,7 @@ import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { BROWSER_PROMPT, BrowserRequestQueue, browserToolDefinitions, modelImages, sessionBrowserScreenshots } from './browser.ts'
 import { CreditsLedger, isGameWork, modelName, namesProject, providerToolCredit, sessionToolCredit, WASD_PROVIDER, type ModelCredit, type ToolCredit } from './credits.ts'
+import { MOBILE_BUILD_DIR, zipWebBuild } from './exports.ts'
 import { ReleaseFolders } from './folders.ts'
 import { LinkRequests } from './links.ts'
 import { MultiplayerApi } from './multiplayer-api.ts'
@@ -54,8 +55,8 @@ import { signInLink } from './site-sign-in.ts'
 import { ProjectQueue } from './state.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'
 import type {
-  WasdBrowserOutcome, WasdBrowserRequests, WasdLibraryOutcome, WasdLibraryView, WasdLinkRequests, WasdMultiplayerView,
-  WasdProjectView, WasdSiteLinks,
+  WasdBrowserOutcome, WasdBrowserRequests, WasdLibraryOutcome, WasdLibraryView, WasdLinkRequests, WasdMobileBuild, WasdMobileFailure,
+  WasdMultiplayerView, WasdProjectView, WasdSiteLinks,
 } from './types.ts'
 
 export type * from './types.ts'
@@ -363,9 +364,10 @@ export default class WasdPlugins extends TypertRemoteService {
           return (await resolveGodotProject(base, requested, exec.signal)).dir
         },
         file: async (requested, exec) => resolve(await this.base(requested, exec), requested),
-        exportWeb: (projectDir, signal) => this.projects.run(projectDir, signal, () => {
+        exportWeb: (projectDir, zip, signal) => this.projects.run(projectDir, signal, async () => {
           const outputDir = resolve(projectDir, STATE_DIR, WEB_BUILD_DIR)
-          return scope.godot.exportWeb({ projectDir, outputDir }, signal)
+          const exported = await scope.godot.exportWeb({ projectDir, outputDir }, signal)
+          return zip ? { ...exported, zip: await zipWebBuild(exported, signal) } : exported
         }),
         // The build's folder is the project's `.wasdengine/web`, where exportWeb writes it.
         checkWeb: (outputDir, signal) => this.projects.run(resolve(outputDir, '..', '..'), signal, () => scope.godot.checkWeb({ outputDir }, signal)),
@@ -379,6 +381,30 @@ export default class WasdPlugins extends TypertRemoteService {
             warnings.push(...exported.warnings)
           }
           return { projectDir, builds, warnings: [...new Set(warnings)] }
+        }),
+        exportMobile: (projectDir, platforms, appleTeamId, signal) => this.projects.run(projectDir, signal, async () => {
+          const builds: WasdMobileBuild[] = []
+          const failures: WasdMobileFailure[] = []
+          const warnings = []
+          for (const platform of platforms) {
+            const outputDir = resolve(projectDir, STATE_DIR, MOBILE_BUILD_DIR, platform)
+            try {
+              const request = { projectDir, platform, outputDir, ...appleTeamId === undefined ? {} : { appleTeamId } }
+              const exported = await scope.godot.exportMobile(request, signal)
+              builds.push({
+                platform, file: join(exported.outputDir, exported.entry), bytes: exported.bytes, identifier: exported.identifier,
+                ...exported.signing === undefined ? {} : { keystore: exported.signing.keystore, keystoreCreated: exported.signing.created },
+                ...exported.appleTeamId === undefined ? {} : { appleTeamId: exported.appleTeamId },
+              })
+              warnings.push(...exported.warnings)
+            } catch (error) {
+              signal.throwIfAborted()
+              // Each platform builds on its own: the export reports this one's failure and goes on.
+              failures.push({ platform, error: (error as Error).message })
+            }
+          }
+          if (builds.length === 0) throw new Error(failures.map(failure => failure.error).join('\n'))
+          return { projectDir, builds, failures, warnings: [...new Set(warnings)] }
         }),
         recordPreview: (request, exec) => this.projects.run(request.projectDir, exec.signal, async () => {
           if (exec.agent === undefined) throw new Error('A preview recording runs the game in a Session; call it from one.')

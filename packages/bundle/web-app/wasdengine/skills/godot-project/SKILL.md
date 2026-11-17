@@ -70,7 +70,7 @@ Get each asset from the first source that suits the game's art style: download s
 
 ## Export
 
-Export only when the user asks. The built-in Godot exports with `wasd_export_web` (Web) and `wasd_export_desktop` (Windows, macOS), and `wasd_release_game` publishes the game on WASD Engine with a share link. Other platforms, and sessions without these tools, need a Godot editor of the same version and its export templates; find it as Find the engine describes, then run:
+Export only when the user asks. The built-in Godot exports with `wasd_export_web` (Web), `wasd_export_desktop` (Windows, macOS), and `wasd_export_mobile` (Android, iOS), and `wasd_release_game` publishes the game on WASD Engine with a share link. Other platforms, and sessions without these tools, need a Godot editor of the same version and its export templates; find it as Find the engine describes, then run:
 
 ```sh
 godot --headless --path <project-dir> --export-release "<preset name>" <output-path>

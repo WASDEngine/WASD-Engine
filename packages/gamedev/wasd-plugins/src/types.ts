@@ -124,6 +124,58 @@ export interface WasdDesktopExport {
   readonly warnings: readonly string[]
 }
 
+/**
+ * A mobile platform a game builds for: `android`, Android phones and tablets with 64-bit ARM processors, or `ios`,
+ * iPhone and iPad through an Xcode project.
+ */
+export type WasdMobilePlatform = 'android' | 'ios'
+
+/** One mobile build an export wrote into the project's `.wasdengine/mobile/<platform>/` folder. */
+export interface WasdMobileBuild {
+  /** The platform it runs on. */
+  readonly platform: WasdMobilePlatform
+  /** Absolute path of the Android APK file, or of the iOS Xcode project's `.xcodeproj` folder. */
+  readonly file: string
+  /** Size in bytes of the APK file, or of the Xcode project with every file it builds from. */
+  readonly bytes: number
+  /** The app's Android package name or iOS bundle identifier. */
+  readonly identifier: string
+  /** For Android, the absolute path of the keystore whose key signed the APK. */
+  readonly keystore?: string
+  /** For Android, whether this export created that keystore. */
+  readonly keystoreCreated?: boolean
+  /** For iOS, the Team ID the Xcode project signs with; absent when Xcode asks for the team. */
+  readonly appleTeamId?: string
+}
+
+/** A mobile platform an export could not build, and why. */
+export interface WasdMobileFailure {
+  /** The platform. */
+  readonly platform: WasdMobilePlatform
+  /** What went wrong, and what to install or change. */
+  readonly error: string
+}
+
+/** A finished mobile export: each platform builds on its own, so one can fail while the other builds. */
+export interface WasdMobileExport {
+  /** Absolute folder holding `project.godot`. */
+  readonly projectDir: string
+  /** The builds, in platform order. */
+  readonly builds: readonly WasdMobileBuild[]
+  /** The platforms that did not build, in platform order. */
+  readonly failures: readonly WasdMobileFailure[]
+  /** The exports' warnings. */
+  readonly warnings: readonly string[]
+}
+
+/** A Web build packed into one ZIP file for game sites, in the project's `.wasdengine/web-zip/` folder. */
+export interface WasdWebZip {
+  /** Absolute path of the ZIP file. */
+  readonly file: string
+  /** The ZIP file's size in bytes. */
+  readonly bytes: number
+}
+
 /** A dedicated server build that a release stored. */
 export interface WasdServerBuild {
   /** The release it belongs to. */

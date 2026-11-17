@@ -24,8 +24,8 @@
   en: cc31369797b3b01a
   zh: 2bdd59780bc3df73
 /deepseek-ai-dsh-godot/use-this-package/configuration:
-  en: b842dd7e01145695
-  zh: 7e58065f545e102b
+  en: 11b1506721d7119e
+  zh: b47c476dff63706a
 /deepseek-ai-dsh-godot/use-this-package/godot-runtime:
   en: 7999ee631747ad49
   zh: 44e14379a0147c1c
@@ -60,8 +60,11 @@
   en: 5675fdbd697dcbd1
   zh: 703bae7af2b23c35
 /deepseek-ai-dsh-godot/use-this-package/desktop-export:
-  en: fc13653c2e17d54c
-  zh: 4390eb9d44e5a706
+  en: fafb8b4e128ad6c3
+  zh: adc5c20485cbb2ba
+/deepseek-ai-dsh-godot/use-this-package/mobile-export:
+  en: 7f6a0f7f595c2618
+  zh: e2d7a3b89e2afd36
 /deepseek-ai-dsh-godot/use-this-package/dedicated-server-export:
   en: 7f77edd94928da05
   zh: c969261551cf3b26
@@ -78,14 +81,14 @@
   en: f911ab6c26b9eb2c
   zh: bebd823198dfbd45
 /deepseek-ai-dsh-godot/use-this-package/files-under-the-data-directory:
-  en: 86b4f586d60966c8
-  zh: bd4e984f4f8f3983
+  en: d52091a8d734e916
+  zh: e3c90b119ef6f3e4
 /deepseek-ai-dsh-godot/use-this-package/plugin-icon:
   en: 6ed9f9b1dac1df20
   zh: e4cb319cf1d360f9
 /deepseek-ai-dsh-godot/understand-the-implementation:
-  en: 9e60a14528510506
-  zh: 9e93f09067ae43c1
+  en: 4d2b43063914c1a2
+  zh: b2773ef80ba73559
 /deepseek-ai-dsh-godot/understand-the-implementation/verify-against-a-real-runtime:
   en: 5c9871d3d2ff3324
   zh: 5113cd2233285616
@@ -138,8 +141,8 @@
   en: 00af0e13a5a63f94
   zh: d47c97c3223c19f5
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work:
-  en: 4352441d4a0f3c69
-  zh: c3b4cc83e4954d29
+  en: aae4e0697d43b054
+  zh: 2b99c171f132d82a
 /deepseek-ai-dsh-godot/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

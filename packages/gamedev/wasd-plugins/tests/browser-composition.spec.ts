@@ -29,7 +29,7 @@ import { MULTIPLAYER_PROMPT, MULTIPLAYER_TOOLS } from '../src/multiplayer-tools.
 import { GAME, multiplayerProject, multiplayerSite, ORIGIN, removeProjects, TOKEN } from './multiplayer-site.ts'
 
 const BROWSER_TOOLS = ['browser_click', 'browser_open', 'browser_read', 'browser_screenshot', 'browser_type']
-const RELEASE_TOOLS = ['wasd_export_desktop', 'wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
+const RELEASE_TOOLS = ['wasd_export_desktop', 'wasd_export_mobile', 'wasd_export_web', 'wasd_record_preview', 'wasd_release_game']
 const cleanups: (() => Promise<void>)[] = []
 
 afterEach(async () => {
@@ -207,6 +207,54 @@ describe('WASD Engine Plugins composition', () => {
       .toEqual({ godot: true, game: { title: 'Space Game', url: `${SITE}/games/space-game-1`, version: 3, visibility: 'private' } })
     const exported = await call('wasd_export_desktop', { project: 'space', platforms: ['macos'] })
     expect(text(exported)).toContain(`- macOS: ${join(root, 'space', '.wasdengine', 'desktop', 'macos', 'Space Game.zip')}`)
+  })
+
+  it('packs the Web build into a ZIP file for game sites, and builds each mobile platform it can into the project\'s mobile folder', async () => {
+    const { ctx, root, toolNames, call } = await compose({})
+    const missing = 'An Android export needs a Java runtime and the Android SDK on this computer.'
+    const mobile: string[] = []
+    ctx.provide('godot', {
+      async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(join(outputDir, 'index.html'), '<html>game</html>')
+        await writeFile(join(outputDir, 'index.pck'), 'pack')
+        const files = [{ path: 'index.html', bytes: 17 }, { path: 'index.pck', bytes: 4 }]
+        return { projectDir, outputDir, entry: 'index.html', files, totalBytes: 21, warnings: [] }
+      },
+      async exportMobile(request: { readonly projectDir: string; readonly platform: string; readonly outputDir: string }) {
+        mobile.push(request.outputDir)
+        if (request.platform === 'android') throw new Error(missing)
+        await mkdir(join(request.outputDir, 'SpaceGame.xcodeproj'), { recursive: true })
+        await writeFile(join(request.outputDir, 'SpaceGame.xcodeproj', 'project.pbxproj'), 'project')
+        const exported = { projectDir: request.projectDir, platform: 'ios', outputDir: request.outputDir, entry: 'SpaceGame.xcodeproj', bytes: 7 }
+        return { ...exported, identifier: 'com.wasdengine.game.space-game', warnings: [] }
+      },
+    } as never)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
+    const text = (result: Awaited<ReturnType<typeof call>>) => result.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+    await mkdir(join(root, 'space'))
+    await writeFile(join(root, 'space', 'project.godot'), '[application]\nconfig/name="Space Game"\n')
+
+    const web = await call('wasd_export_web', { project: 'space', zip: true, check: false })
+    const archive = join(root, 'space', '.wasdengine', 'web-zip', 'Space Game.zip')
+    expect(text(web)).toContain(`Packed it into ${archive} (`)
+    const zip = await readFile(archive)
+    // A ZIP file with the build's files at its root, the page first.
+    expect(zip.subarray(0, 4).toString('latin1')).toBe('PK\x03\x04')
+    expect(zip.subarray(30, 40).toString('utf8')).toBe('index.html')
+    expect(zip.includes(Buffer.from('index.pck'))).toBe(true)
+    // A later export replaces the archive.
+    await call('wasd_export_web', { project: 'space', zip: true, check: false })
+    expect(await readdir(join(root, 'space', '.wasdengine', 'web-zip'))).toEqual(['Space Game.zip'])
+
+    const built = await call('wasd_export_mobile', { project: 'space' })
+    expect(built.isError).toBe(false)
+    expect(mobile).toEqual([join(root, 'space', '.wasdengine', 'mobile', 'android'), join(root, 'space', '.wasdengine', 'mobile', 'ios')])
+    expect(text(built)).toContain(`- iOS: ${join(root, 'space', '.wasdengine', 'mobile', 'ios', 'SpaceGame.xcodeproj')} (0.0 MB), an Xcode project for iPhone and iPad`)
+    expect(text(built)).toContain(`- Android did not build: ${missing}`)
+    const refused = await call('wasd_export_mobile', { project: 'space', platforms: ['android'] })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain(missing)
   })
 
   it('runs one project\'s exports and releases one at a time, from a Session and a connected agent, by the folder\'s real path', async () => {
