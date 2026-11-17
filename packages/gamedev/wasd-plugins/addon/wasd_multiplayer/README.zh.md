@@ -57,7 +57,7 @@ func _ready() -> void:
 
 信号：`signed_in(player)`、`sign_in_failed(reason)`、`lobby_joined(lobby)`、`lobby_updated(lobby)`、`lobby_closed(reason)`、`player_joined(peer_id, player)`、`player_left(peer_id)`、`connected()`、`connection_failed(reason)`、`server_warning(seconds, reason, message)`、`server_waking()` 和 `server_stopping()`。专用服务器会在 WASD 停止它之前收到 `server_stopping()`，没有玩家而进入休眠时也会收到；请在该处理函数中保存世界。`server_waking()` 告诉正在加入的玩家的游戏服务器正在启动，以便游戏向玩家说明。`lobby_closed` 说明大厅结束的原因：`host_left`、`closed`、`replaced`、`kicked`（主机移出了这名玩家）、`dropped`（主机未能及时连上这名玩家；可以再次加入）、`left` 或 `signal_lost`。
 
-主机在 30 秒内没有连上正在加入的玩家时，会放弃该玩家，该玩家可以再次加入；`kick()` 则让该玩家的账号永久无法加入这个大厅。当玩家的网络无法直连而该游戏的中继已停用时，超时的加入会在 `message` 中说明这一点。
+主机在 30 秒内没有连上正在加入的玩家时，会放弃该玩家，该玩家可以再次加入；`kick()` 则让该玩家的账号永久无法加入这个大厅。当玩家的网络无法直连而该游戏的中继已停用时，超时的加入会在 `message` 中说明这一点。连接成功后，玩家与 WASD 大厅服务的连接断开再恢复期间仍留在游戏中：附加组件会自行重连，先在 2 秒后，之后间隔逐渐变长，主机在此期间保留该玩家。主机的连接连续四次重试失败（约 20 秒）时，会以 `signal_lost` 结束大厅，因为主机离开 30 秒后 WASD 会关闭大厅。
 
 ## 配置
 
