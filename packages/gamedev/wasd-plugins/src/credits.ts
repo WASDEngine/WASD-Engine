@@ -5,13 +5,15 @@
  * releases name the model that released them; the add-ons come from the project's add-on record,
  * `.wasdengine/addons.json`, at each release. One {@link CreditsLedger} owns the credits files of this process, writes
  * each project's file one change at a time, and attributes the tool calls of agents connected through WASD Engine's MCP
- * server that name no project to the project the same agent used last.
+ * server that name no project to the project the same agent used last. A connected agent runs a model that WASD Engine
+ * cannot see, so the agent names it: its work on a project is credited to the model it named for the project last,
+ * which the file keeps by the agent's application, and until it names one, to its application's name.
  * @module @deepseek-ai/dsh-wasd-plugins/src/credits
  */
 import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { STATE_DIR, writeWhole } from './state.ts'
+import { RealFolders, STATE_DIR, writeWhole } from './state.ts'
 
 /** File name of a project's credits inside its state folder. */
 export const CREDITS_FILE = 'credits.json'
@@ -27,6 +29,9 @@ export const MAX_MODEL_CREDITS = 6
 
 /** Longest model name in characters. */
 export const MAX_MODEL_NAME = 60
+
+/** Most connected applications whose named model a project keeps; a new one past it replaces the earliest. */
+export const MAX_AGENT_MODELS = 8
 
 /** Most add-ons a release credits. */
 export const MAX_ADDON_CREDITS = 24
@@ -61,10 +66,31 @@ export interface GameCredits {
   readonly addons: readonly AddonCredit[]
 }
 
-/** The models and tools a project's credits file holds. */
+/** An agent connected through WASD Engine's MCP server, as a game's credits know it. */
+export interface ConnectedAgent {
+  /** Id of the agent's application, as the server identifies it, such as `claude-code`. */
+  readonly id: string
+  /**
+   * The application's name as a credit holds it, such as `Claude Code`, which stands for the agent's model until the
+   * agent names one; absent for an agent whose requests name no application.
+   */
+  readonly title?: string
+}
+
+/** The model that a connected agent's application named for a project. */
+export interface AgentModel {
+  /** Id of the application, such as `claude-code`. */
+  readonly id: string
+  /** The model's name, as a credit holds it. */
+  readonly model: string
+}
+
+/** The models and tools a project's credits file holds, and the models its connected agents named. */
 export interface ProjectCredits {
   readonly models: readonly ModelCredit[]
   readonly tools: readonly ToolCredit[]
+  /** The model each connected application named for the project last, in the order the applications first named one. */
+  readonly agents: readonly AgentModel[]
 }
 
 /** Display names of the tools. */
@@ -179,6 +205,19 @@ export function modelName(name: string): string | undefined {
   }
 }
 
+/** The id WASD Engine's MCP server gives an agent whose requests name no application; its title names no model. */
+const UNNAMED_AGENT = 'agent'
+
+/**
+ * A connected agent as a game's credits know it.
+ * @param client - the agent's application, by the id and display name WASD Engine's MCP server gives it.
+ * @returns the agent, with its application's name as a credit holds it, unless its requests name no application.
+ */
+export function connectedAgent(client: { readonly id: string; readonly title: string }): ConnectedAgent {
+  const title = client.id === UNNAMED_AGENT ? undefined : modelName(client.title)
+  return title === undefined ? { id: client.id } : { id: client.id, title }
+}
+
 /**
  * Text as a credit holds it: control characters and runs of white space become one space, trimmed, and cut after the
  * last whole character (grapheme) that keeps it within `max` code points, the unit the site counts.
@@ -224,10 +263,23 @@ const ModelEntry = z.union([
   z.strictObject({ name: z.string().refine(name => modelName(name) === name, 'must be a cleaned model name') }),
 ])
 
+/** Pattern of a connected application's id, as WASD Engine's MCP server writes it. */
+const AGENT_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+
+/** Longest connected application's id, as WASD Engine's MCP server writes it. */
+const MAX_AGENT_ID = 64
+
+const AgentEntry = z.strictObject({
+  id: z.string().max(MAX_AGENT_ID).regex(AGENT_ID_PATTERN),
+  model: z.string().refine(name => modelName(name) === name, 'must be a cleaned model name'),
+})
+
 const CreditsFile = z.object({
   format: z.literal(CREDITS_FORMAT),
   models: z.array(z.unknown()),
   tools: z.array(z.unknown()),
+  // A file without the list, as earlier versions wrote it, or with something else in its place, names no agent's model.
+  agents: z.array(z.unknown()).optional().catch(undefined),
 })
 
 const AddonRecord = z.object({
@@ -245,7 +297,16 @@ function modelKey(model: ModelCredit): string {
 }
 
 function creditKeys(credits: ProjectCredits): string[] {
-  return [...credits.models.map(modelKey), ...credits.tools.map(tool => `tool:${tool}`)]
+  return [
+    ...credits.models.map(modelKey),
+    ...credits.tools.map(tool => `tool:${tool}`),
+    ...credits.agents.map(agent => `agent:${agent.id}=${agent.model}`),
+  ]
+}
+
+/** Whether two readings of a project's credits hold the same credits in the same order. */
+function sameCredits(left: ProjectCredits, right: ProjectCredits): boolean {
+  return creditKeys(left).join('\n') === creditKeys(right).join('\n')
 }
 
 function creditsPath(projectDir: string): string {
@@ -273,18 +334,23 @@ async function readJson(path: string): Promise<unknown> {
  * Read a project's credits file. Entries this version does not know, and a file that is missing or not this format,
  * credit nothing.
  * @param projectDir - absolute folder holding `project.godot`.
- * @returns the models and tools.
+ * @returns the models and tools, and the model each connected application named, each application once.
  */
 export async function readCredits(projectDir: string): Promise<ProjectCredits> {
   const parsed = CreditsFile.safeParse(await readJson(creditsPath(projectDir)))
-  if (!parsed.success) return { models: [], tools: [] }
+  if (!parsed.success) return { models: [], tools: [], agents: [] }
   const models: ModelCredit[] = []
   for (const entry of parsed.data.models) {
     const model = ModelEntry.safeParse(entry)
     if (model.success && !models.some(seen => modelKey(seen) === modelKey(model.data))) models.push(model.data)
   }
   const tools = TOOL_CREDITS.filter(tool => parsed.data.tools.includes(tool))
-  return { models: models.slice(-MAX_MODEL_CREDITS), tools }
+  const agents: AgentModel[] = []
+  for (const entry of parsed.data.agents ?? []) {
+    const agent = AgentEntry.safeParse(entry)
+    if (agent.success && !agents.some(seen => seen.id === agent.data.id)) agents.push(agent.data)
+  }
+  return { models: models.slice(-MAX_MODEL_CREDITS), tools, agents: agents.slice(-MAX_AGENT_MODELS) }
 }
 
 /**
@@ -321,75 +387,150 @@ function merged(current: ProjectCredits, models: readonly ModelCredit[], tools: 
   return {
     models: allModels.slice(-MAX_MODEL_CREDITS),
     tools: TOOL_CREDITS.filter(tool => current.tools.includes(tool) || tools.includes(tool)),
+    agents: current.agents,
   }
+}
+
+/**
+ * Put one model credit in the place of another.
+ * @param models - the credited models.
+ * @param from - the credit to replace.
+ * @param to - the credit that takes its place.
+ * @returns the models with `to` where `from` was, or without `from` when they credit `to` already; unchanged when they
+ * do not credit `from`.
+ */
+function replaced(models: readonly ModelCredit[], from: ModelCredit, to: ModelCredit): readonly ModelCredit[] {
+  if (modelKey(from) === modelKey(to)) return models
+  const credited = models.some(model => modelKey(model) === modelKey(to))
+  return models.flatMap(model => modelKey(model) !== modelKey(from) ? [model] : credited ? [] : [to])
+}
+
+/**
+ * Credit a connected agent's work on a project. An agent that names its model is credited by it, and the project keeps
+ * the name for the agent's application, whose own name it replaces among the credits. An agent that names none is
+ * credited by the model its application named for the project last, else by its application's name.
+ * @param current - the credits now.
+ * @param agent - the connected agent.
+ * @param named - the model the agent names, cleaned; undefined when it names none.
+ * @param tools - tools to credit.
+ * @returns the credits afterwards.
+ */
+function creditedTo(
+  current: ProjectCredits, agent: ConnectedAgent, named: string | undefined, tools: readonly ToolCredit[],
+): ProjectCredits {
+  const before = current.agents.find(entry => entry.id === agent.id)
+  if (named === undefined) {
+    const name = before?.model ?? agent.title
+    return merged(current, name === undefined ? [] : [{ name }], tools)
+  }
+  const model: ModelCredit = { name: named }
+  if (before === undefined) {
+    const models = agent.title === undefined ? current.models : replaced(current.models, { name: agent.title }, model)
+    const agents = [...current.agents, { id: agent.id, model: named }].slice(-MAX_AGENT_MODELS)
+    return merged({ ...current, models, agents }, [model], tools)
+  }
+  // Another spelling of the model it named before names the same model, whose credit keeps its first spelling.
+  const agents = modelKey({ name: before.model }) === modelKey(model)
+    ? current.agents
+    : current.agents.map(entry => entry === before ? { id: agent.id, model: named } : entry)
+  return merged({ ...current, agents }, [model], tools)
 }
 
 async function writeCredits(projectDir: string, credits: ProjectCredits): Promise<void> {
   await mkdir(join(projectDir, STATE_DIR), { recursive: true })
-  await writeWhole(creditsPath(projectDir), `${JSON.stringify({ format: CREDITS_FORMAT, models: credits.models, tools: credits.tools }, null, 2)}\n`)
+  const file = {
+    format: CREDITS_FORMAT,
+    models: credits.models,
+    tools: credits.tools,
+    // A project that no connected agent named a model for keeps the file earlier versions wrote.
+    ...credits.agents.length === 0 ? {} : { agents: credits.agents },
+  }
+  await writeWhole(creditsPath(projectDir), `${JSON.stringify(file, null, 2)}\n`)
 }
 
-/** Owner of the credits files that this process writes, and of what connected agents used before they named a project. */
+/**
+ * Owner of the credits files that this process writes, and of what connected agents used before they named a project.
+ * It knows a project by its real path, so two paths of one folder, such as one through a symbolic link, change one file
+ * in turn.
+ */
 export class CreditsLedger {
-  /** Each project's latest change, which the next change waits for. */
+  /** Each project's latest change, by the project's real path, which the next change waits for. */
   private readonly changes = new Map<string, Promise<void>>()
-  /** Each project's credits as this ledger last wrote or read them, which a call that adds nothing skips writing. */
-  private readonly known = new Map<string, ReadonlySet<string>>()
+  /**
+   * Each project's credits as this ledger last wrote or read them, by the project's real path, which a call that changes
+   * nothing in them skips reading.
+   */
+  private readonly known = new Map<string, ProjectCredits>()
+  private readonly folders = new RealFolders()
   /** The project each connected agent used last. */
   private readonly clientProjects = new Map<string, string>()
   /** Tools each connected agent used before it named a project. */
   private readonly unattributed = new Map<string, Set<ToolCredit>>()
 
   /**
-   * Credit models and tools to a project. A call that adds nothing this ledger has not seen in the file returns at once.
+   * Credit models and tools to a project. A call that adds nothing this ledger has not seen in the file writes nothing.
    * @param projectDir - absolute folder holding `project.godot`.
    * @param models - models that worked on the project.
    * @param tools - tools whose calls succeeded for the project.
    * @returns once the file holds them.
    */
   async add(projectDir: string, models: readonly ModelCredit[], tools: readonly ToolCredit[]): Promise<void> {
-    const keys = creditKeys({ models, tools })
-    const known = this.known.get(projectDir)
-    if (known !== undefined && keys.every(key => known.has(key))) return
-    await this.change(projectDir, async () => {
-      const current = await readCredits(projectDir)
-      const next = merged(current, models, tools)
-      if (creditKeys(next).join('\n') !== creditKeys(current).join('\n')) await writeCredits(projectDir, next)
-      this.known.set(projectDir, new Set(creditKeys(next)))
-    })
+    await this.apply(projectDir, current => merged(current, models, tools))
   }
 
   /**
-   * Credit a connected agent's successful tool call. A call that names no project credits the project the agent used
-   * last; before the agent used one, the tool waits for the next call that names one, or for {@link CreditsLedger.claim}.
-   * @param client - the connected agent's id.
+   * Credit a connected agent's successful tool call: the tool, and the agent, by the model the call names, else by the
+   * model its application named for the project last, else by its application's name. A call that names no project
+   * credits the project the agent used last; before the agent used one, the tool waits for the next call that names one,
+   * or for {@link CreditsLedger.claim} or {@link CreditsLedger.created}.
+   * @param agent - the connected agent.
    * @param projectDir - absolute folder holding `project.godot` that the call worked on, when it named one.
    * @param tool - the tool the call credits, if any.
+   * @param model - the name of the model the agent says it is, as the call gave it; undefined when it gave none.
    * @returns once the file holds the credits.
    */
-  async connected(client: string, projectDir: string | undefined, tool: ToolCredit | undefined): Promise<void> {
-    const target = projectDir ?? this.clientProjects.get(client)
+  async connected(agent: ConnectedAgent, projectDir: string | undefined, tool: ToolCredit | undefined, model?: string): Promise<void> {
+    const target = projectDir ?? this.clientProjects.get(agent.id)
     if (target === undefined) {
       if (tool === undefined) return
-      const waiting = this.unattributed.get(client) ?? new Set<ToolCredit>()
+      const waiting = this.unattributed.get(agent.id) ?? new Set<ToolCredit>()
       waiting.add(tool)
-      this.unattributed.set(client, waiting)
+      this.unattributed.set(agent.id, waiting)
       return
     }
-    const waiting = this.claimWaiting(client, target)
-    await this.add(target, [], tool === undefined ? waiting : [...waiting, tool])
+    const waiting = this.claimWaiting(agent.id, target)
+    const named = model === undefined ? undefined : modelName(model)
+    await this.apply(target, current => creditedTo(current, agent, named, tool === undefined ? waiting : [...waiting, tool]))
   }
 
   /**
-   * Make a project the one a connected agent works on, and credit it with the tools the agent used before it named a
-   * project, as a release by that agent does before it reads the credits.
-   * @param client - the connected agent's id.
+   * Make a project the one a connected agent works on, and credit it with the agent, as {@link CreditsLedger.connected}
+   * does, and with the tools the agent used before it named a project, as a release by that agent does before it reads
+   * the credits.
+   * @param agent - the connected agent.
    * @param projectDir - absolute folder holding `project.godot`.
+   * @param model - the name of the model the agent says it is, as the release gave it; undefined when it gave none.
    * @returns once the file holds the credits.
    */
-  async claim(client: string, projectDir: string): Promise<void> {
-    const waiting = this.claimWaiting(client, projectDir)
-    if (waiting.length > 0) await this.add(projectDir, [], waiting)
+  async claim(agent: ConnectedAgent, projectDir: string, model?: string): Promise<void> {
+    const waiting = this.claimWaiting(agent.id, projectDir)
+    const named = model === undefined ? undefined : modelName(model)
+    await this.apply(projectDir, current => creditedTo(current, agent, named, waiting))
+  }
+
+  /**
+   * Make a game project that a connected agent created the one it works on, and credit it with the model the agent
+   * named and with the tools the agent used before it named a project. Creating a project is no work on a game, so an
+   * agent that named no model is not credited by its application's name until a game tool call of its succeeds.
+   * @param agent - the connected agent.
+   * @param projectDir - absolute folder of the new game project, which holds no `project.godot` yet.
+   * @param model - the name of the model the agent says it is, as the creation gave it; undefined when it gave none.
+   * @returns once the file holds the credits; a creation with nothing to credit writes no file.
+   */
+  async created(agent: ConnectedAgent, projectDir: string, model?: string): Promise<void> {
+    const waiting = this.claimWaiting(agent.id, projectDir)
+    const named = model === undefined ? undefined : modelName(model)
+    await this.apply(projectDir, current => named === undefined ? merged(current, [], waiting) : creditedTo(current, agent, named, waiting))
   }
 
   /**
@@ -404,7 +545,7 @@ export class CreditsLedger {
     const addons = await readAddonCredits(projectDir)
     const tools: ToolCredit[] = ['godot', ...addons.flatMap(addon => addon.host === undefined ? [] : [addon.host])]
     await this.add(projectDir, models, tools)
-    await this.changes.get(projectDir)
+    await this.changes.get(await this.folders.find(projectDir))
     const credits = merged(await readCredits(projectDir), models, tools)
     return { models: credits.models, tools: credits.tools, addons }
   }
@@ -416,16 +557,35 @@ export class CreditsLedger {
     return waiting
   }
 
-  private async change(projectDir: string, run: () => Promise<void>): Promise<void> {
-    const previous = this.changes.get(projectDir) ?? Promise.resolve()
+  /**
+   * Change a project's credits, one change at a time. A change that leaves the credits this ledger last saw in the file
+   * as they are writes nothing.
+   * @param projectDir - absolute folder of the project, by any of its paths.
+   * @param change - the credits afterwards, from the credits now; it may run twice.
+   * @returns once the file holds the changed credits.
+   */
+  private async apply(projectDir: string, change: (current: ProjectCredits) => ProjectCredits): Promise<void> {
+    const project = await this.folders.find(projectDir)
+    const known = this.known.get(project)
+    if (known !== undefined && sameCredits(change(known), known)) return
+    await this.change(project, async () => {
+      const current = await readCredits(project)
+      const next = change(current)
+      if (!sameCredits(next, current)) await writeCredits(project, next)
+      this.known.set(project, next)
+    })
+  }
+
+  private async change(project: string, run: () => Promise<void>): Promise<void> {
+    const previous = this.changes.get(project) ?? Promise.resolve()
     const next = previous.then(run)
     // The next change runs after this one also when this one fails; its caller receives the failure.
     const settled = next.catch(() => {})
-    this.changes.set(projectDir, settled)
+    this.changes.set(project, settled)
     try {
       await next
     } finally {
-      if (this.changes.get(projectDir) === settled) this.changes.delete(projectDir)
+      if (this.changes.get(project) === settled) this.changes.delete(project)
     }
   }
 }

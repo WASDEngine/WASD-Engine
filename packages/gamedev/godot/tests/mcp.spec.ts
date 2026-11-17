@@ -112,6 +112,14 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.find(tool => tool.name === 'godot_script')?.inputSchema.required).toEqual(['script'])
     expect(godot.find(tool => tool.name === 'godot_script')?.description).toContain('a res:// path or an absolute path inside the project')
     expect(godot.find(tool => tool.name === 'godot_run')?.description?.startsWith(MCP_WORDING.run)).toBe(true)
+    // The run alone takes the name of the agent's model, which the game's page credits.
+    expect(godot.filter(tool => tool.inputSchema.properties?.model !== undefined).map(tool => tool.name)).toEqual(['godot_run'])
+    expect(godot.find(tool => tool.name === 'godot_run')?.inputSchema.properties?.model).toEqual({
+      type: 'string',
+      description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your '
+        + 'work on the project; pass it when you first run a game.',
+    })
+    expect(MCP_INSTRUCTIONS).toContain('When you first run a game, pass model, the name of the AI model you are, so the game\'s page credits it.')
     expect(godot.filter(tool => tool.annotations?.readOnlyHint === true).map(tool => tool.name)).toEqual(['godot_scene_tree', 'godot_performance', 'godot_logs'])
     // Screenshots and views save image files with path or save, and a recording saves a video file.
     expect(godot.find(tool => tool.name === 'godot_screenshot')?.annotations?.readOnlyHint).toBeUndefined()
@@ -189,6 +197,29 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     // The agent keeps its Session.
     await client.callTool({ name: 'godot_run', arguments: {} })
     expect(created).toHaveLength(1)
+    await client.callTool({ name: 'godot_stop', arguments: {} })
+  }, TIMEOUT)
+
+  it('reports the model an agent names on godot_run with the call, and runs the game without it', async () => {
+    const { client, project, ctx } = await connected()
+    const runs: Array<{ model: string | undefined; parameters: string[]; isError: boolean }> = []
+    ctx.on('game-mcp/tool-result', (result) => {
+      if (result.tool === 'godot_run') runs.push({ model: result.model, parameters: Object.keys(result.args), isError: result.isError })
+    })
+    const named = await client.callTool({ name: 'godot_run', arguments: { project, model: 'Claude Fable 5.2' } })
+    expect(named.isError, text(named)).toBeFalsy()
+    expect(text(named)).toContain('The game is running: Fake game')
+    const unnamed = await client.callTool({ name: 'godot_run', arguments: {} })
+    expect(unnamed.isError, text(unnamed)).toBeFalsy()
+    const refused = await client.callTool({ name: 'godot_run', arguments: { model: 5 } })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toBe('model must be a string.')
+    // The run itself receives the project and no model; a call that was refused before it ran reports none.
+    expect(runs).toEqual([
+      { model: 'Claude Fable 5.2', parameters: ['project'], isError: false },
+      { model: undefined, parameters: ['project'], isError: false },
+      { model: undefined, parameters: ['model'], isError: true },
+    ])
     await client.callTool({ name: 'godot_stop', arguments: {} })
   }, TIMEOUT)
 

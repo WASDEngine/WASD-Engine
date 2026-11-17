@@ -6,7 +6,7 @@
  * and, when asked, desktop downloads. The same
  * definitions serve the Session's own agent, which may name the project relative to its working directory, and agents
  * connected through WASD Engine's MCP server, which name it by absolute path, run the game in a Session of theirs, and
- * name their own model for the game's credits.
+ * name their own model for the game's credits, which a release's call credits before the release collects them.
  * @module @deepseek-ai/dsh-wasd-plugins/src/tools
  */
 import { readFile } from 'node:fs/promises'
@@ -14,10 +14,10 @@ import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'
 import type { GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
-import type { GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
+import type { GameMcpClient, GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
-import { MAX_MODEL_NAME, modelName } from './credits.ts'
+import { MAX_MODEL_NAME } from './credits.ts'
 import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
 import type { WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdRelease } from './types.ts'
 import { formatWebCheck } from './web-check-text.ts'
@@ -134,17 +134,12 @@ export interface WasdToolHost {
    * Export a project for the Web and release the build with the game's preview and what the game was made with.
    * @param request - project, notes, title, preview files, and whether to start a new game.
    * @param exec - the call's execution: its cancellation, and its Agent, whose Session can record a missing preview.
-   * @param model - the model the release credits.
+   * @param audience - who releases: a Session's own agent, whose model the release credits, or a connected agent, whom
+   *   its call credited already ({@link ConnectedCredits.claim}), in a Session that runs the window's model.
    * @returns the release.
    */
-  release(request: ReleaseRequest, exec: ToolRunContext, model: ReleaseModel): Promise<WasdRelease>
+  release(request: ReleaseRequest, exec: ToolRunContext, audience: WasdToolAudience): Promise<WasdRelease>
 }
-
-/**
- * The model a release credits: the calling Session's own model, or the model a connected agent named for itself,
- * absent when it named none.
- */
-export type ReleaseModel = { readonly kind: 'session' } | { readonly kind: 'named'; readonly name?: string }
 
 /** Who calls the tools: a Session's own agent, or an agent connected through WASD Engine's MCP server. */
 export type WasdToolAudience = 'session' | 'connected'
@@ -152,13 +147,17 @@ export type WasdToolAudience = 'session' | 'connected'
 /** What the MCP tools need from the plugin's credits. */
 export interface ConnectedCredits {
   /**
-   * Credit the project that a connected agent's release names with the tools that agent used before it named a project.
-   * @param client - the connected agent's id.
+   * Credit the project that a connected agent's release names: with the agent, by the model the release names, else by
+   * the model its application named for the project last, else by its application's name, and with the tools that agent
+   * used before it named a project.
+   * @param client - the connected agent.
    * @param project - absolute folder holding `project.godot`, as the release names it.
+   * @param model - the name of the model the agent says it is, as the release gave it; undefined when it gave none.
    * @param signal - cancellation.
-   * @returns once the project's credits hold those tools; a project that cannot be read credits nothing.
+   * @returns once the project's credits hold them; a project that cannot be read, or whose credits cannot be written,
+   *   credits nothing.
    */
-  claim(client: string, project: string, signal: AbortSignal): Promise<void>
+  claim(client: GameMcpClient, project: string, model: string | undefined, signal: AbortSignal): Promise<void>
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -460,7 +459,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
 }
 
 /** Description of the release's `model` argument, which only connected agents get. */
-const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5; at most ${MAX_MODEL_NAME} characters. The game's page credits it beside the game tools and add-ons that made the game. Default: your application's name.`
+const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5; at most ${MAX_MODEL_NAME} characters. The game's page credits it beside the game tools and add-ons that made the game. Default: the model you named for this project before, else your application's name.`
 
 /**
  * Build the release tool.
@@ -542,7 +541,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         ...args.visibility === undefined ? {} : { visibility: args.visibility },
         ...args.desktop === undefined ? {} : { desktop: platformsOf(args.desktop) },
         ...args.check === undefined ? {} : { check: args.check },
-      }, exec, audience === 'session' ? { kind: 'session' } : namedModel(args))
+      }, exec, audience)
       const { webCheck, webCheckError, ...rest } = released
       return {
         ...rest,
@@ -555,16 +554,6 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
       }
     },
   })
-}
-
-/**
- * The model a connected agent's release names.
- * @param args - the release's arguments; `model` is there for connected agents.
- * @returns the named model.
- */
-function namedModel(args: object): ReleaseModel {
-  const given = 'model' in args && typeof args.model === 'string' ? modelName(args.model) : undefined
-  return given === undefined ? { kind: 'named' } : { kind: 'named', name: given }
 }
 
 /** Absolute-path arguments of the tools offered to connected agents, by tool. */
@@ -584,9 +573,6 @@ const MCP_PATHS: Readonly<Record<string, Readonly<Record<string, { readonly type
     preview_gif: { type: 'string', description: 'Absolute path of an animated GIF that link previews of the share link show, and that Explore and the game\'s page then play in place of the recorded animation. Default: the GIF that wasd_record_preview saved, with its animation.' },
   },
 }
-
-/** The id WASD Engine's MCP server gives an agent whose requests name no application; its title names no model. */
-const UNNAMED_CLIENT = 'agent'
 
 /**
  * Tools that run the game in the connected agent's Session for the project: the recording, which needs the Session,
@@ -612,9 +598,9 @@ async function recordingContent(definition: ToolDefinition, value: RecordedPrevi
 }
 
 /**
- * Offer one tool to agents connected through WASD Engine's MCP server, which name paths absolutely. A release credits
- * the model the agent names, else the agent's application, and first credits the project with the tools the agent used
- * before it named a project.
+ * Offer one tool to agents connected through WASD Engine's MCP server, which name paths absolutely. A release first
+ * credits the project with the agent, by the model it names, and with the tools the agent used before it named a
+ * project, and reports the named model with the call.
  * @param definition - the tool, as {@link wasdToolDefinitions} builds it for connected agents.
  * @param credits - the plugin's credits.
  * @returns the server tool.
@@ -638,15 +624,14 @@ function mcpTool(definition: ToolDefinition, credits: ConnectedCredits): GameMcp
       // The game plays in the connected agent's Session of the project, in the WASD Engine window's Game tab.
       if (definition.name === 'wasd_record_preview') return { args, agent: await call.session(args.project as string) }
       if (args.model !== undefined && typeof args.model !== 'string') throw new Error('model must be a string.')
-      await credits.claim(call.client.id, args.project as string, call.signal)
-      const model = (typeof args.model === 'string' ? modelName(args.model) : undefined)
-        ?? (call.client.id === UNNAMED_CLIENT ? undefined : call.client.title)
-      const released = model === undefined ? args : { ...args, model }
+      const model = typeof args.model === 'string' ? args.model : undefined
+      await credits.claim(call.client, args.project as string, model, call.signal)
+      const named = model === undefined ? {} : { model }
       try {
-        return { args: released, agent: await call.session(args.project as string) }
+        return { args, agent: await call.session(args.project as string), ...named }
       } catch {
         // Without a Session the release still goes out; it only cannot record a missing preview.
-        return { args: released }
+        return { args, ...named }
       }
     },
     ...definition.name === 'wasd_record_preview'

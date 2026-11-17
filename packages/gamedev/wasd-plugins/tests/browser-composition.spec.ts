@@ -313,8 +313,84 @@ describe('WASD Engine Plugins composition', () => {
     expect([...site.games.values()][0]?.credits).toEqual({
       models: [{ name: 'vision' }], tools: ['godot', 'gimp'], addons: [{ id: 'phantom-camera', title: 'Phantom Camera', host: 'godot' }],
     })
+    // Until the connected agent names its model, its application's name stands for it.
     ctx.emit('game-mcp/tool-result', { provider: 'godot', tool: 'godot_run', args: { project: game }, client, isError: false })
-    await expect.poll(credits).toEqual({ format: 1, models: [{ name: 'vision' }], tools: ['godot', 'blender', 'gimp'] })
+    await expect.poll(credits).toEqual({ format: 1, models: [{ name: 'vision' }, { name: 'Claude Code' }], tools: ['godot', 'blender', 'gimp'] })
+    ctx.emit('game-mcp/tool-result', { provider: 'godot', tool: 'godot_run', args: { project: game }, client, model: ' Claude Fable 5.2 ', isError: false })
+    const named = { models: [{ name: 'vision' }, { name: 'Claude Fable 5.2' }], tools: ['godot', 'blender', 'gimp'] }
+    await expect.poll(credits).toEqual({ format: 1, ...named, agents: [{ id: 'claude-code', model: 'Claude Fable 5.2' }] })
+    // A release from the window credits the model of the connected agent that made the game beside its own.
+    const again = await call('wasd_release_game', { project: 'space' })
+    expect(again.content.flatMap(block => block.type === 'text' ? [block.text] : []).join(''))
+      .toContain('Made with, as the game\'s page credits it: vision, Claude Fable 5.2, Godot with Phantom Camera, Blender, GIMP.')
+    expect([...site.games.values()][0]?.credits).toEqual({ ...named, addons: [{ id: 'phantom-camera', title: 'Phantom Camera', host: 'godot' }] })
+  })
+
+  it('credits a connected agent\'s release with the model it names, which replaces its application\'s name, and with that model afterwards', async () => {
+    const { ctx, root, toolNames } = await compose({})
+    const site = gamesSite('token-1')
+    vi.stubGlobal('fetch', site.fetch)
+    cleanups.push(async () => { vi.unstubAllGlobals() })
+    ctx.provide('deepseekAccount', {
+      getState: () => Promise.resolve({ links: { usageUrl: `${SITE}/account/usage` } }),
+      getPlatformSession: () => Promise.resolve({ origin: SITE, token: 'token-1', userId: 'user-1' }),
+    } as never)
+    const providers: GameMcpProvider[] = []
+    ctx.provide('gameMcp', { provide: (provider: GameMcpProvider) => { providers.push(provider); return () => {} } } as never)
+    ctx.provide('godot', {
+      async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(join(outputDir, 'index.html'), 'game')
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+      },
+    } as never)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
+    await expect.poll(() => providers.length).toBe(1)
+    const game = join(root, 'space')
+    await mkdir(game)
+    await writeFile(join(game, 'project.godot'), '[application]\nconfig/name="Space Game"\n')
+    const release = providers[0]!.tools().find(tool => tool.name === 'wasd_release_game')!
+    const connected = async (project: string, model?: string) => {
+      const signal = new AbortController().signal
+      const client = { id: 'claude-code', title: 'Claude Code' }
+      const session = () => Promise.reject(new Error('The Host cannot create the Session.'))
+      const args = { project, check: false, ...model === undefined ? {} : { model } }
+      const prepared = await release.prepare!(args, { client, signal, session, reveal: () => {} })
+      const released = await release.definition.execute(prepared.args, { signal } as ToolRunContext)
+      const { credits, warnings } = released as { readonly credits?: readonly string[]; readonly warnings: readonly string[] }
+      return { model: prepared.model, credits, warnings }
+    }
+
+    expect(await connected(game)).toMatchObject({ model: undefined, credits: ['Claude Code', 'Godot'] })
+    expect(await connected(game, 'Claude Fable 5.2')).toMatchObject({ model: 'Claude Fable 5.2', credits: ['Claude Fable 5.2', 'Godot'] })
+    expect(await connected(game)).toMatchObject({ model: undefined, credits: ['Claude Fable 5.2', 'Godot'] })
+    const stored = { models: [{ name: 'Claude Fable 5.2' }], tools: ['godot'], addons: [] }
+    expect([...site.games.values()][0]).toMatchObject({ versions: 3, credits: stored })
+
+    // Credits that cannot be read or written fail no release: the version goes out, and its result says what is missing.
+    const broken = join(root, 'broken')
+    await mkdir(join(broken, '.wasdengine', 'credits.json'), { recursive: true })
+    await writeFile(join(broken, 'project.godot'), '[application]\nconfig/name="Broken Game"\n')
+    const unstored = await connected(broken, 'Claude Fable 5.2')
+    expect(unstored.credits).toBeUndefined()
+    expect(unstored.warnings).toHaveLength(1)
+    expect(unstored.warnings[0]).toMatch(/^The version is released, but what the game was made with was not stored: /u)
+    expect(site.games.size).toBe(2)
+  })
+
+  it('credits a game project that a connected agent created with the model the agent named', async () => {
+    const { ctx, root } = await compose({})
+    const client = { id: 'claude-code', title: 'Claude Code' }
+    const credits = (folder: string) => readFile(join(root, folder, '.wasdengine', 'credits.json'), 'utf8').then((text): unknown => JSON.parse(text), () => undefined)
+    await mkdir(join(root, 'named'))
+    await mkdir(join(root, 'unnamed'))
+    ctx.emit('game-mcp/project-created', { client, path: join(root, 'unnamed') })
+    ctx.emit('game-mcp/project-created', { client, path: join(root, 'named'), model: 'Claude Fable 5.2' })
+    await expect.poll(() => credits('named')).toEqual({ format: 1, models: [{ name: 'Claude Fable 5.2' }], tools: [], agents: [{ id: 'claude-code', model: 'Claude Fable 5.2' }] })
+    // The agent works on the project it created last: a call that names no project credits it, by the model it named.
+    ctx.emit('game-mcp/tool-result', { provider: 'blender', tool: 'blender_run', args: {}, client, isError: false })
+    await expect.poll(() => credits('named')).toMatchObject({ models: [{ name: 'Claude Fable 5.2' }], tools: ['blender'] })
+    expect(await credits('unnamed')).toBeUndefined()
   })
 
   it('credits a built-in provider\'s model as WASD Engine\'s built-in AI', async () => {

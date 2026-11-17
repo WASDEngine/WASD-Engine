@@ -399,8 +399,8 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 
 | Tools | Provider | How calls run |
 |---|---|---|
-| `search_game_tools`, `call_game_tool`, `create_game_project` | `game-mcp` | The server searches the providers' tools and their readiness, calls one by name, or creates a game project as the Create game project dialog does, through `gameProjectController`, without a Session |
-| `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes |
+| `search_game_tools`, `call_game_tool`, `create_game_project` | `game-mcp` | The server searches the providers' tools and their readiness, calls one by name, or creates a game project as the Create game project dialog does, through `gameProjectController`, without a Session, and with `model`, the name of the agent's own AI model, for the game's credits |
+| `godot_*` | `godot`, through `godotMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) | The Session's own tool definitions, built by `godotToolDefinitions` with wording for absolute project paths, for the connected agent's Session; screenshots return as PNG bytes, and `godot_run` also takes `model`, the name of the agent's own AI model, for the game's credits |
 | `polyhaven_*` | `polyhaven`, through `polyHavenMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) | The Session's own tool definitions, which need no Session; preview images return as JPEG bytes, and a download needs an absolute folder |
 | `asset_search`, `asset_view` | `asset`, through `assetMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) | The Session's own tool definitions, for the connected agent's Session of the game project it names as `project`; a window of WASD Engine draws the pictures, which return as image bytes |
 | `elevenlabs_*` | `elevenlabs`, through `elevenLabsMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) | The Session's own tool definitions, which need no Session; each file and recording needs an absolute path, a clone needs `consent: true` from the agent's user, and the audio is charged to the account WASD Engine is signed in to |
@@ -409,7 +409,7 @@ The `game-mcp` row mounts [`@deepseek-ai/dsh-game-mcp`](../../packages/gamedev/g
 | `graphics_review` | `graphics`, through `graphicsReviewMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) | The Session's own tool definition, which needs no Session; the image is an absolute path, and the review runs on the account's model route, which the account pays for |
 | `audio_search`, `audio_review` | `audio`, through `audioMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) | The Session's own tool definitions, run in the connected agent's Session of the absolute `project` it names; a WASD Engine window measures the sound, and the picture returns as PNG bytes |
 | `game_addons` | `game`, through `gameAddonMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) | The Session's own tool definition, which needs no Session; projects are absolute folders, and an agent reads a guide with the `guide` action |
-| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, which the game's page credits with the tools and add-ons that made the game; the tools connected agents used reach the credits through `game-mcp/tool-result`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
+| `wasd_export_web`, `wasd_export_desktop`, `wasd_record_preview`, `wasd_release_game`, `wasd_multiplayer_*`, `wasd_lobby_stats`, `wasd_server_*` | `wasd`, through `wasdMcpProvider` in [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) and `multiplayerMcpTools` in [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) | The Session's own tool definitions; `project`, `preview_image`, and `preview_gif` are absolute paths. The exports and the multiplayer tools need no Session; the recording, and a release that records a missing preview, run the game in the connected agent's Session of the project, a recording returns its still as image bytes, and a release publishes to the site WASD Engine is signed in to. The release also takes `model`, the name of the agent's own AI model, as `create_game_project` and `godot_run` do: the game's page credits it with the tools and add-ons that made the game, and until an agent names one, its application's name stands for it. The tools connected agents used, and the models they named, reach the credits through `game-mcp/tool-result` and `game-mcp/project-created`. A server purchase or change returns the site's confirmation page, which a client with URL elicitation shows its user |
 | `feedback_send` | `feedback`, through `feedbackMcpProvider` in [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) | The Session's own tool definition with `model`, which needs no Session; the provider adds the calling agent's client, and the feedback goes to the site WASD Engine is signed in to |
 | `blender_*`, `gimp_*`, `supercollider_*` | `blender`, `gimp`, `supercollider`, through `offerAppTools` in [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.md) | The MCP client's registered `mcp__wasd_blender__*`, `mcp__wasd_gimp__*`, and `mcp__wasd_supercollider__*` definitions, whose results pass on with their images, run as the agent's Session of the call's `session` name, or without a Session |
 
@@ -1020,6 +1020,24 @@ Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game
 
 ### `game-mcp/*` events
 
+<a id="game-mcpproject-created--emit"></a>
+
+#### `game-mcp/project-created` — emit
+
+A connected agent's `create_game_project` created a game project, before the agent receives the result; a call that created none does not emit it.
+
+```ts cordis-catalog
+/**
+ * A connected agent's `create_game_project` created a game project, before the agent receives the result; a call
+ * that created none does not emit it.
+ * @mode emit
+ * @param created - the calling agent, the new folder, and the model the agent named.
+ */
+'game-mcp/project-created'(created: GameMcpProjectCreated): void
+```
+
+Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
+
 <a id="game-mcpreveal--emit"></a>
 
 #### `game-mcp/reveal` — emit
@@ -1051,7 +1069,7 @@ A connected agent's call of a provider tool finished, after its result was made;
  * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
  * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
  * @mode emit
- * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
+ * @param result - the provider, tool, arguments, calling agent, Session, named model, and whether the call failed.
  */
 'game-mcp/tool-result'(result: GameMcpToolResult): void
 ```

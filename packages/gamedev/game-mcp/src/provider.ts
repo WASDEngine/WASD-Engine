@@ -1,7 +1,8 @@
 /**
  * What a game tool plugin contributes to WASD Engine's MCP server through `ctx.gameMcp.provide()`: its identity, its
- * readiness, and its tools, each backed by a harness tool definition that the server runs for connected agents; and the
- * `game-mcp/tool-result` event, which reports each finished call of those tools.
+ * readiness, and its tools, each backed by a harness tool definition that the server runs for connected agents; the
+ * `game-mcp/tool-result` event, which reports each finished call of those tools; and the `game-mcp/project-created`
+ * event, which reports each game project that `create_game_project` created.
  * @module @deepseek-ai/dsh-game-mcp/src/provider
  */
 import type {} from '@deepseek-ai/cordis'
@@ -60,12 +61,17 @@ export interface GameMcpCall {
   reveal(sessionId: SessionId): void
 }
 
-/** The arguments and Agent of one prepared call. */
+/** The arguments and Agent of one prepared call, and the AI model the calling agent named in it. */
 export interface GameMcpPreparedCall {
   /** Arguments the tool definition receives. */
   readonly args: JsonObject
   /** Agent the definition runs as; absent for a tool that needs no Session. */
   readonly agent?: Agent
+  /**
+   * The name of the AI model the calling agent says it is, as the call gave it, for a tool whose arguments take one;
+   * the call's `game-mcp/tool-result` passes it on.
+   */
+  readonly model?: string
 }
 
 /** The content of a successful call, at once or later. */
@@ -178,8 +184,20 @@ export interface GameMcpToolResult {
   readonly client: GameMcpClient
   /** Agent of the Session the call ran in; absent for a tool that needs no Session and for a call whose preparation failed. */
   readonly agent?: Agent
+  /** The name of the AI model the calling agent says it is, as the call gave it; absent when the call named none. */
+  readonly model?: string
   /** Whether the agent received an error result. */
   readonly isError: boolean
+}
+
+/** One game project that a connected agent created with `create_game_project`, as the `game-mcp/project-created` event reports it. */
+export interface GameMcpProjectCreated {
+  /** The calling agent. */
+  readonly client: GameMcpClient
+  /** Absolute path of the new game project's folder. */
+  readonly path: string
+  /** The name of the AI model the calling agent says it is, as the call gave it; absent when the call named none. */
+  readonly model?: string
 }
 
 declare module '@deepseek-ai/cordis' {
@@ -188,8 +206,15 @@ declare module '@deepseek-ai/cordis' {
      * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
      * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
      * @mode emit
-     * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
+     * @param result - the provider, tool, arguments, calling agent, Session, named model, and whether the call failed.
      */
     'game-mcp/tool-result'(result: GameMcpToolResult): void
+    /**
+     * A connected agent's `create_game_project` created a game project, before the agent receives the result; a call
+     * that created none does not emit it.
+     * @mode emit
+     * @param created - the calling agent, the new folder, and the model the agent named.
+     */
+    'game-mcp/project-created'(created: GameMcpProjectCreated): void
   }
 }

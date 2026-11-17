@@ -17,7 +17,9 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport, type Progress } from '@modelcontextprotocol/client'
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import GameMcpServer, { SIGNED_OUT_MESSAGE, type Config, type GameMcpProvider, type GameMcpToolResult, type GameMcpView } from '../src/index.ts'
+import GameMcpServer, {
+  SIGNED_OUT_MESSAGE, type Config, type GameMcpProjectCreated, type GameMcpProvider, type GameMcpToolResult, type GameMcpView,
+} from '../src/index.ts'
 
 const TIMEOUT = 30_000
 
@@ -337,6 +339,8 @@ describe('GameMcpServer', () => {
     const events: Array<GameMcpToolResult | SessionId> = []
     ctx.on('game-mcp/tool-result', (result) => { events.push(result) })
     ctx.on('game-mcp/reveal', (sessionId) => { events.push(sessionId) })
+    const created: GameMcpProjectCreated[] = []
+    ctx.on('game-mcp/project-created', (project) => { created.push(project) })
     // The system's temporary folder holds the test's Documents folder.
     const { server, view } = await start({ temporaryFolders: [] })
     ctx.effect(() => server.provide(alpha))
@@ -344,14 +348,20 @@ describe('GameMcpServer', () => {
     const client = await connect(view.url as string, token)
 
     const listed = (await client.listTools()).tools.find(tool => tool.name === 'create_game_project')
-    expect(listed).toMatchObject({ title: 'Create game project', inputSchema: { required: ['name'], properties: { name: { type: 'string' }, location: { type: 'string' } } } })
+    expect(listed).toMatchObject({
+      title: 'Create game project',
+      inputSchema: { required: ['name'], properties: { name: { type: 'string' }, location: { type: 'string' }, model: { type: 'string' } } },
+    })
     expect(listed?.annotations?.readOnlyHint).toBeUndefined()
     expect(client.getInstructions()).toContain('For a new game, create its project with create_game_project and make the game in the folder it returns.')
 
     const first = await client.callTool({ name: 'create_game_project', arguments: { name: 'Space Frogs' } })
     expect(first.isError).toBeFalsy()
     expect(text(first)).toContain(`Created the game project "Space Frogs" in ${join(documents, 'WASD Engine', 'Space Frogs')}, which WASD Engine lists among the user's game projects.`)
-    const second = await client.callTool({ name: 'call_game_tool', arguments: { name: 'create_game_project', arguments: { name: 'Moon Miner', location: documents } } })
+    const second = await client.callTool({
+      name: 'call_game_tool',
+      arguments: { name: 'create_game_project', arguments: { name: 'Moon Miner', location: documents, model: 'Claude Fable 5.2' } },
+    })
     expect(text(second)).toContain(`Created the game project "Moon Miner" in ${join(documents, 'Moon Miner')}`)
     const again = await client.callTool({ name: 'create_game_project', arguments: { name: 'Moon Miner', location: documents } })
     expect(again.isError).toBe(true)
@@ -361,6 +371,12 @@ describe('GameMcpServer', () => {
     // The projects hold no Session, the window is asked to show none, and no provider tool ran.
     expect(createSession).not.toHaveBeenCalled()
     expect(events).toEqual([])
+    // Each created project is reported with the agent that created it and the model it named; the refused one is not.
+    const agent = { id: 'claude-code', title: 'Claude Code' }
+    expect(created).toEqual([
+      { client: agent, path: join(documents, 'WASD Engine', 'Space Frogs') },
+      { client: agent, path: join(documents, 'Moon Miner'), model: 'Claude Fable 5.2' },
+    ])
   }, TIMEOUT)
 
   it('keeps an agent\'s work in the system\'s temporary folders out of the game projects by default', async () => {

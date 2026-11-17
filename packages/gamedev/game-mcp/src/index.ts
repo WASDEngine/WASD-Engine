@@ -12,7 +12,9 @@
  * whose AI usage is used up is offered the upgrade to Pro when a tool that spends that usage fails, and a user who stays
  * on Free is offered no such tool until the usage refreshes (`free-plan.ts`). The `gameMcp`
  * Remote streams the endpoint, the setup prompt, and the agents seen to the window, the `game-mcp/reveal` event asks the
- * window to show a Session, and the `game-mcp/tool-result` event reports each finished call of a provider tool.
+ * window to show a Session, the `game-mcp/tool-result` event reports each finished call of a provider tool, and the
+ * `game-mcp/project-created` event reports each game project an agent created. Both carry the AI model the agent named
+ * in the call, when the tool takes one.
  * @module @deepseek-ai/dsh-game-mcp
  */
 import { isAbsolute, join } from 'node:path'
@@ -164,7 +166,7 @@ export default class GameMcpServer extends TypertRemoteService {
       catalog: this.catalog,
       refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
-      createProject: (args, signal) => createGameProject(ctx, args, signal, config.temporaryFolders),
+      createProject: (args, call) => createGameProject(ctx, args, call, config.temporaryFolders),
       usageOffer: failure => this.freePlan.offer(failure),
       stayOnFree: () => this.freePlan.stayOnFree(),
       note: client => this.notes.note(

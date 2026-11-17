@@ -399,8 +399,8 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 | 工具 | provider | 调用如何执行 |
 |---|---|---|
-| `search_game_tools`、`call_game_tool`、`create_game_project` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态、按名调用其中一个，或像「创建游戏项目」对话框那样通过 `gameProjectController` 创建游戏项目，且不创建 Session |
-| `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回 |
+| `search_game_tools`、`call_game_tool`、`create_game_project` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态、按名调用其中一个，或像「创建游戏项目」对话框那样通过 `gameProjectController` 创建游戏项目，不创建 Session，并接受 `model`，即 agent 自身 AI 模型的名称，用于游戏的制作信息 |
+| `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回，`godot_run` 还接受 `model`，即 agent 自身 AI 模型的名称，用于游戏的制作信息 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |
 | `elevenlabs_*` | `elevenlabs`，经由 [`src/mcp.ts`](../../packages/gamedev/elevenlabs/src/mcp.ts) 中的 `elevenLabsMcpProvider` | Session 自身的工具定义，不需要 Session；每个文件和录音都需要绝对路径，克隆需要 agent 的用户确认后传入 `consent: true`，音频费用计入 WASD Engine 已登录的账号 |
@@ -409,7 +409,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 | `graphics_review` | `graphics`，通过 [`src/mcp.ts`](../../packages/gamedev/graphics-review/src/mcp.ts) 中的 `graphicsReviewMcpProvider` | 会话自身的工具定义，无需会话；图片为绝对路径，审查在账号的模型路由上运行，由账号付费 |
 | `audio_search`、`audio_review` | `audio`，经由 [`src/mcp.ts`](../../packages/gamedev/game-audio/src/mcp.ts) 中的 `audioMcpProvider` | Session 自身的工具定义，在已连接 agent 于其指定的绝对路径 `project` 中的 Session 里运行；由 WASD Engine 窗口测量声音，图像以 PNG 字节返回 |
 | `game_addons` | `game`，经由 [`src/mcp.ts`](../../packages/gamedev/game-addons/src/mcp.ts) 中的 `gameAddonMcpProvider` | Session 自身的工具定义，不需要 Session；项目以绝对路径的文件夹指定，智能体用 `guide` 动作阅读指南 |
-| `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，游戏页面会把它与制作游戏的工具和插件一起列出；连接的智能体用过的工具经由 `game-mcp/tool-result` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
+| `wasd_export_web`、`wasd_export_desktop`、`wasd_record_preview`、`wasd_release_game`、`wasd_multiplayer_*`、`wasd_lobby_stats`、`wasd_server_*` | `wasd`，经由 [`src/tools.ts`](../../packages/gamedev/wasd-plugins/src/tools.ts) 中的 `wasdMcpProvider` 与 [`src/multiplayer-tools.ts`](../../packages/gamedev/wasd-plugins/src/multiplayer-tools.ts) 中的 `multiplayerMcpTools` | Session 自身的工具定义；`project`、`preview_image` 与 `preview_gif` 是绝对路径。导出与多人联机工具不需要 Session；录制以及为缺少预览的游戏录制预览的发布，会在该连接智能体对应此项目的 Session 中运行游戏，录制把静态图作为图像字节返回，发布到 WASD Engine 已登录的网站。发布还接受 `model`，即该智能体自身 AI 模型的名称，`create_game_project` 与 `godot_run` 也接受它：游戏页面会把它与制作游戏的工具和插件一起列出，在智能体指明模型之前，由其所在应用的名称代替。连接的智能体用过的工具及其指明的模型，经由 `game-mcp/tool-result` 与 `game-mcp/project-created` 记入制作信息。服务器的购买或更改会返回网站的确认页面，支持 URL 征询的客户端会把它展示给用户 |
 | `feedback_send` | `feedback`，经由 [`src/mcp.ts`](../../packages/gamedev/agent-feedback/src/mcp.ts) 中的 `feedbackMcpProvider` | Session 自身带有 `model` 的工具定义，不需要 Session；提供方加入调用方 agent 的客户端，反馈发送到 WASD Engine 已登录的网站 |
 | `blender_*`、`gimp_*`、`supercollider_*` | `blender`、`gimp`、`supercollider`，经由 [`@deepseek-ai/dsh-app-mcp`](../../packages/gamedev/app-mcp/README.zh.md) 中的 `offerAppTools` | MCP 客户端注册的 `mcp__wasd_blender__*`、`mcp__wasd_gimp__*` 与 `mcp__wasd_supercollider__*` 定义，其结果连同图像一起转交；调用以该 agent 与调用中 `session` 名称同名的 Session 运行，或不带 Session 运行 |
 
@@ -1020,6 +1020,24 @@ Source: [`packages/gamedev/game-audio/src/types.ts`](../../packages/gamedev/game
 
 ### `game-mcp/*` events
 
+<a id="game-mcpproject-created--emit"></a>
+
+#### `game-mcp/project-created` — emit
+
+A connected agent's `create_game_project` created a game project, before the agent receives the result; a call that created none does not emit it.
+
+```ts cordis-catalog
+/**
+ * A connected agent's `create_game_project` created a game project, before the agent receives the result; a call
+ * that created none does not emit it.
+ * @mode emit
+ * @param created - the calling agent, the new folder, and the model the agent named.
+ */
+'game-mcp/project-created'(created: GameMcpProjectCreated): void
+```
+
+Source: [`packages/gamedev/game-mcp/src/provider.ts`](../../packages/gamedev/game-mcp/src/provider.ts)
+
 <a id="game-mcpreveal--emit"></a>
 
 #### `game-mcp/reveal` — emit
@@ -1051,7 +1069,7 @@ A connected agent's call of a provider tool finished, after its result was made;
  * A connected agent's call of a provider tool finished, after its result was made; `search_game_tools`,
  * `create_game_project`, a refused call, and a call of an unknown tool do not emit it.
  * @mode emit
- * @param result - the provider, tool, arguments, calling agent, Session, and whether the call failed.
+ * @param result - the provider, tool, arguments, calling agent, Session, named model, and whether the call failed.
  */
 'game-mcp/tool-result'(result: GameMcpToolResult): void
 ```

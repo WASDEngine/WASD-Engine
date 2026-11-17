@@ -3,7 +3,8 @@
  * the connected agent's Session in the game project it names, so its games play in the WASD Engine window's Game
  * tab. Every tool takes `project`, an absolute path that defaults to the agent's previous one, and `session`, a name
  * that gives agents sharing one connection Sessions, and games, of their own; images travel as their PNG or JPEG bytes,
- * screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's Game tab.
+ * screenshots sized for agent image limits; and `godot_run` asks the window to show the Session's Game tab and takes
+ * `model`, the name of the AI model the agent is, which the server reports with the call for the game's credits.
  * @module @deepseek-ai/dsh-godot/src/mcp
  */
 import { randomUUID } from 'node:crypto'
@@ -35,7 +36,7 @@ export const MCP_WORDING: GodotToolWording = {
 
 /** How connected agents use the Godot tools, before the sentence that names the Godot release. */
 export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* tools. Pass project, the absolute path of the folder that holds project.godot, to your first Godot call; later calls default to it.
-1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too.
+1. godot_run starts or restarts the game and reports import and startup errors. The game plays inside the WASD Engine window, where the user watches and can play it too. When you first run a game, pass model, the name of the AI model you are, so the game's page credits it.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner, once or many times at once.
@@ -50,6 +51,14 @@ const PROJECT_PARAMETER = {
 const SESSION_PARAMETER = {
   type: 'string',
   description: 'Name of a Session of your own, such as your task, for agents that work at the same time: each name runs its own game. Use one name in all your Godot calls. Default: your shared Session.',
+} as const
+
+/** The tool whose calls name the AI model the calling agent is: every agent that makes a game runs it. */
+const MODEL_TOOL = 'godot_run'
+
+const MODEL_PARAMETER = {
+  type: 'string',
+  description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your work on the project; pass it when you first run a game.',
 } as const
 
 /** The bytes and media type of each call's images, by image id. */
@@ -183,6 +192,7 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
   const { properties, required } = definition.parameters
   const { project: own, ...others } = isObject(properties) ? properties : {}
   const namesProject = own !== undefined
+  const namesModel = definition.name === MODEL_TOOL
   const requiredNames = isStringList(required) ? required.filter(name => name !== 'project') : []
   return {
     name: definition.name,
@@ -190,16 +200,20 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
     inputSchema: {
       type: 'object',
       additionalProperties: false,
-      properties: { project: PROJECT_PARAMETER, session: SESSION_PARAMETER, ...others },
+      properties: { project: PROJECT_PARAMETER, session: SESSION_PARAMETER, ...namesModel ? { model: MODEL_PARAMETER } : {}, ...others },
       ...requiredNames.length === 0 ? {} : { required: requiredNames },
     },
     // Clients may run read-only tools without asking. godot_screenshot and godot_view create and replace files with path
     // and save, and godot_check may import the project first, which writes import data into it.
     readOnly: ['godot_logs', 'godot_scene_tree', 'godot_performance'].includes(definition.name),
     async prepare(args, call) {
-      const { project, session, ...rest } = args
+      const { project, session, ...own } = args
+      // Only the tool that offers model takes it out of the arguments; another tool's model would be its own.
+      const { model, ...unnamed } = own
+      const rest = namesModel ? unnamed : own
       if (project !== undefined && typeof project !== 'string') throw new Error('project must be a string.')
       if (session !== undefined && typeof session !== 'string') throw new Error('session must be a string.')
+      if (namesModel && model !== undefined && typeof model !== 'string') throw new Error('model must be a string.')
       // A Session's first call without project uses the agent's most recent project in any of its Sessions.
       const key = projectKey(call.client.id, session)
       const requested = project ?? projects.get(key) ?? projects.get(call.client.id)
@@ -212,7 +226,11 @@ function mcpTool(definition: ToolDefinition, images: CapturedImages, projects: M
       projects.set(call.client.id, found.dir)
       // The window shows the Session, whose Game tab opens for a run an agent starts.
       if (definition.name === 'godot_run') call.reveal(agent.id)
-      return { args: namesProject ? { ...rest, project: found.dir } : rest, agent }
+      return {
+        args: namesProject ? { ...rest, project: found.dir } : rest,
+        agent,
+        ...namesModel && typeof model === 'string' ? { model } : {},
+      }
     },
     content(value, args, exec) {
       const captured = images.get(exec)

@@ -3,8 +3,8 @@
  * overview of the server instructions, with every shipped plugin, fits in the 4,096 characters that Claude Code keeps
  * and puts a fitting download before Nano Banana and ElevenLabs, a plugin's guide comes from `search_game_tools`, and
  * `create_game_project` makes the folder in WASD Engine's folder for game projects with a Git repository and its one
- * commit, as the Create game project dialog does, and registers it with no Session, and the window's sidebar lists it
- * as a game project.
+ * commit, as the Create game project dialog does, and registers it with no Session, the window's sidebar lists it as a
+ * game project, and the project's credits hold the model the agent named.
  */
 import { execFileSync } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -98,14 +98,15 @@ it('creates a game project for a connected agent, which the window lists as a ga
   expect((guide.content as { type: string; text?: string }[])[0]?.text)
     .toContain('Blender guide (where it names one of the tools below without the blender_ prefix, add the prefix):\n\nBlender runs headless')
 
-  const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME } })
+  // The agent names the model it is, which WASD Engine cannot see, so the game's page can credit it.
+  const result = await client.callTool({ name: 'create_game_project', arguments: { name: NAME, model: 'Claude Fable 5.2' } })
   const text = (result.content as { type: string; text?: string }[]).flatMap(block => block.type === 'text' ? [block.text ?? ''] : []).join('\n')
   expect(result.isError, text).toBeFalsy()
 
   // The folder sits in WASD Engine's folder for game projects, with the repository the dialog makes.
   const path = join(scaffold.workspaceCwd, 'Documents', 'WASD Engine', NAME)
   expect(text).toBe(`Created the game project "${NAME}" in ${path}, which WASD Engine lists among the user's game projects. `
-    + 'The folder holds a Git repository with one empty commit and nothing else. '
+    + 'The folder holds a Git repository with one empty commit and no game files yet. '
     + 'Before you write code, plan the game around the plugins that search_game_tools lists, and read the guide of each one you will use. '
     + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
     + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
@@ -115,6 +116,12 @@ it('creates a game project for a connected agent, which the window lists as a ga
   expect(workspace?.title).toBe(NAME)
   expect(workspace?.sessionIds).toEqual([])
   expect(ctx.sessions.list()).toHaveLength(liveSessions)
+  // WASD Engine Plugins credits the new game with the named model, which a release from the window uploads later.
+  await vi.waitFor(async () => {
+    expect(JSON.parse(await readFile(join(path, '.wasdengine', 'credits.json'), 'utf8'))).toEqual({
+      format: 1, models: [{ name: 'Claude Fable 5.2' }], tools: [], agents: [{ id: 'claude-code', model: 'Claude Fable 5.2' }],
+    })
+  }, { timeout: 10_000 })
 
   // The window lists the project as a game project, folded, and showing it opened no Session.
   const row = sessions.locator(`[role="treeitem"][data-row-key="workspace:${String(workspace?.id)}"]`)
