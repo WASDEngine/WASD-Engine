@@ -98,9 +98,9 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `recordQuality` | `0.92` | [`godot_record`](#views-and-recordings) 捕获的帧的 JPEG 质量，0.1 到 1 |
 | `recordBufferBytes` | `1073741824`（1 GiB） | 窗口编码录制慢于游戏捕获帧时，宿主为其保留的已捕获帧的字节数；保留的帧达到 32 MiB（或此值的一半，取较小者）时，宿主停止读取游戏；需要超过此值时，录制停止并失败 |
 | `maxVideoBytes` | `4294967296`（4 GiB） | `godot_record` 保存的视频的最大大小 |
-| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz` | 包含运行时 Godot 版本 Web 模板的导出模板归档；[Web 导出](#web-export)只从中下载该模板；须为 http 或 https URL。默认值是 WASD Engine 构建的模板 |
+| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.2/web-template-4.7.2-wasd.2.tpz` | 包含运行时 Godot 版本 Web 模板的导出模板归档；[Web 导出](#web-export)只从中下载该模板；须为 http 或 https URL。默认值是 WASD Engine 构建的模板 |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
-| `webTemplateSha256` | `477a8c0b…48a65d` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
+| `webTemplateSha256` | `65287ea6…c72c2a` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
 | `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
 | `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Windows 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
 | `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | 64 位 x86 Windows 发布模板在该归档中的路径 |

@@ -98,9 +98,9 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 | `recordQuality` | `0.92` | JPEG quality of the frames that [`godot_record`](#views-and-recordings) captures, 0.1 to 1 |
 | `recordBufferBytes` | `1073741824` (1 GiB) | Bytes of captured frames that the Host keeps for a window that encodes a recording more slowly than the game captures it; from 32 MiB of them, or half of this when that is less, the Host stops reading the game, and a recording that needs more than this stops and fails |
 | `maxVideoBytes` | `4294967296` (4 GiB) | Largest video that `godot_record` saves |
-| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz` | Export templates archive that holds the Web template of the runtime's Godot version, from which a [Web export](#web-export) downloads only that template; an http or https URL. The default is WASD Engine's build of the template |
+| `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.2/web-template-4.7.2-wasd.2.tpz` | Export templates archive that holds the Web template of the runtime's Godot version, from which a [Web export](#web-export) downloads only that template; an http or https URL. The default is WASD Engine's build of the template |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | Path of the single-threaded Web release template inside that archive |
-| `webTemplateSha256` | `477a8c0b…48a65d` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
+| `webTemplateSha256` | `65287ea6…c72c2a` | Lowercase hex SHA-256 the downloaded template must have; change it together with the archive |
 | `webTemplatePath` | `''` | Absolute Web release template ZIP to use instead of the download |
 | `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | Godot export templates archive of the runtime's Godot version, from which a [desktop export](#desktop-export) for Windows downloads only its template; an http or https URL |
 | `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | Path of the 64-bit x86 Windows release template inside that archive |

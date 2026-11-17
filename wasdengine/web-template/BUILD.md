@@ -69,17 +69,17 @@ To export with a local build, set the Godot plugin's `webTemplatePath` to `<out>
 ```json
 {
   "format": 1,
-  "version": "4.7.2-wasd.1",
+  "version": "4.7.2-wasd.2",
   "godot": "4.7.2-stable",
   "emscripten": "4.0.20",
   "template": {
     "entry": "templates/web_nothreads_release.zip",
-    "bytes": 39820685,
+    "bytes": 39821076,
     "sha256": "<SHA-256 digest of web_nothreads_release.zip>"
   },
   "archive": {
-    "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.1/web-template-4.7.2-wasd.1.tpz",
-    "bytes": 10192534,
+    "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.2/web-template-4.7.2-wasd.2.tpz",
+    "bytes": 10192828,
     "sha256": "<SHA-256 digest of the archive>"
   }
 }
@@ -95,7 +95,7 @@ python3 -B -m unittest discover --start-directory wasdengine/web-template --patt
 
 ## Release
 
-The Web export template workflow, [wasd-web-template.yml](../../.github/workflows/wasd-web-template.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-web-template.yml -f version=4.7.2-wasd.1 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory. The `build` job runs `build.sh` on macOS 26 (arm64) with uv 0.13.8 and an SCons cache keyed by the Godot ref, checks the output against `manifest.json`, writes the template's digest to the job summary, and uploads the three files as a workflow artifact that is kept for seven days.
+The Web export template workflow, [wasd-web-template.yml](../../.github/workflows/wasd-web-template.yml), runs only when dispatched, from the Actions tab or with `gh workflow run wasd-web-template.yml -f version=4.7.2-wasd.2 -f godot_ref=4.7.2-stable`. Its `check` job runs `bash -n` and ShellCheck on `build.sh` and the tests in this directory. The `build` job runs `build.sh` on macOS 26 (arm64) with uv 0.13.8 and an SCons cache keyed by the Godot ref, checks the output against `manifest.json`, writes the template's digest to the job summary, and uploads the three files as a workflow artifact that is kept for seven days.
 
 When the workflow runs on the default branch, the `release` job checks the files again and requires that the plugin's `webTemplateSha256` default in `packages/gamedev/godot/src/index.ts` names this build's template, because the plugin refuses any other. It then creates the release `web-template-<version>` as a draft at the run's commit, or moves a draft that an earlier failed run left to that commit, attaches the archive and the template and then `manifest.json`, and publishes the release as a pre-release, so that it never becomes the repository's latest release. The job fails when the release is already published. A run on another branch stops after the build.
 

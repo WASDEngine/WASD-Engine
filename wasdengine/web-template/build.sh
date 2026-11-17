@@ -18,7 +18,7 @@
 #                               missing from it are applied, and it is never re-cloned or reset
 #   --emsdk <dir>               use this emsdk checkout, with Emscripten 4.0.20 installed,
 #                               instead of installing one into <out>/emsdk
-#   --version <version>         template version (default 4.7.2-wasd.1)
+#   --version <version>         template version (default 4.7.2-wasd.2)
 #   --jobs <n>                  parallel SCons jobs (default: Godot's choice from the CPU count)
 #   --scons-cache <dir>         SCons cache directory (Godot's cache_path option)
 #   --repository <owner/name>   GitHub repository whose release web-template-<version> hosts
@@ -73,7 +73,7 @@ godot_ref=4.7.2-stable
 godot_ref_given=false
 source_dir=
 emsdk_dir=
-version=4.7.2-wasd.1
+version=4.7.2-wasd.2
 jobs=
 scons_cache=
 repository=WASDEngine/WASD-Engine
