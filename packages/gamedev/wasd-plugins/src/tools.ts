@@ -112,13 +112,22 @@ export interface WasdToolHost {
    */
   exportWeb(projectDir: string, zip: boolean, signal: AbortSignal): Promise<GodotWebExport & { readonly zip?: WasdWebZip }>
   /**
-   * Check a Web build in a browser: watch the game start and run without input.
+   * Check a Web build in a browser: watch the game start and run without input, and save a screenshot of the page
+   * beside the build's folder.
    * @param outputDir - absolute folder of the Web build.
    * @param signal - cancellation.
    * @returns what the check saw.
    * @throws {Error} with the reason when the check cannot run.
    */
   checkWeb(outputDir: string, signal: AbortSignal): Promise<GodotWebCheck>
+  /**
+   * Store a Web check's screenshot where the calling Session's model receives it.
+   * @param path - absolute path of the screenshot's JPEG file.
+   * @param exec - the call's execution, whose Agent's Session receives the image.
+   * @returns the stored image and the size that model sees; undefined without a Session, for a model that takes no
+   *   images, or when the file cannot be read.
+   */
+  webCheckView(path: string, exec: ToolRunContext): Promise<StoredScreenshot | undefined>
   /**
    * Export a project for desktop platforms into its `.wasdengine/desktop/<platform>` folders, one platform after the
    * other.
@@ -194,9 +203,14 @@ const ZIP = {
   description: 'true also packs the build into one ZIP file named after the game, with index.html at its root, in the project\'s .wasdengine/web-zip folder: the file game sites such as itch.io take as an HTML5 game. Default: false.',
 } as const
 
-const CHECK = {
+const EXPORT_CHECK = {
   type: 'boolean',
-  description: 'false skips the Web check, which opens the exported build in a browser of WASD Engine\'s own, watches the game start and run for a short while without input, and reports how long it took to start, how long the page froze, its frame rate and draw calls, and the errors and warnings it printed, with what they mean for players. Default: true.',
+  description: 'false skips the Web check, which opens the exported build in a browser of WASD Engine\'s own, watches the game start and run for a short while without input, and reports how long it took to start, how long the page froze, its frame rate and draw calls, and the errors and warnings it printed, with what they mean for players and a screenshot of the page. Default: true.',
+} as const
+
+const RELEASE_CHECK = {
+  type: 'boolean',
+  description: 'false releases without the Web check, which otherwise opens the build in a browser of WASD Engine\'s own before anything is uploaded and stops the release when the game does not start, crashes, stops answering, or prints errors there. Pass false only when the user, told what the check found, asks to release the build as it is. Default: true.',
 } as const
 
 const WEB_CHECK_SCHEMA = {
@@ -216,8 +230,17 @@ const WEB_CHECK_SCHEMA = {
     messages: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { level: STRING, text: STRING, count: INTEGER } } },
     moreMessages: INTEGER,
     findings: { type: 'array', required: true, items: { type: 'string' } },
+    problems: { type: 'array', required: true, items: { type: 'string' } },
     crashed: { type: 'string' },
+    screenshot: { type: 'object', additionalProperties: false, properties: { path: STRING, width: INTEGER, height: INTEGER } },
   },
+} as const
+
+/** A Web check's screenshot as the calling Session's model receives it. */
+const WEB_CHECK_VIEW_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: { width: INTEGER, height: INTEGER, image: IMAGE_SCHEMA },
 } as const
 
 /**
@@ -262,7 +285,41 @@ function copyWebCheck(check: GodotWebCheck): WebCheckValue {
     ...check.drawCalls === undefined ? {} : { drawCalls: { ...check.drawCalls } },
     messages: check.messages.map(message => ({ ...message })),
     findings: [...check.findings],
+    problems: [...check.problems],
+    ...check.screenshot === undefined ? {} : { screenshot: { ...check.screenshot } },
   }
+}
+
+/** A Web check's screenshot as tool results carry it for the calling Session's model. */
+type WebCheckViewValue = InferValue<typeof WEB_CHECK_VIEW_SCHEMA>
+
+/**
+ * Store a Web check's screenshot for the calling Session's model, for a Session's own agent; connected agents receive
+ * the screenshot's file in the call's content instead ({@link checkContent}).
+ * @param host - plugin operations.
+ * @param webCheck - the call's check, when it ran.
+ * @param exec - the call's execution.
+ * @param audience - who called the tool.
+ * @returns the result's view field, none when there is no screenshot or no model to see it.
+ */
+async function webCheckViewField(
+  host: WasdToolHost, webCheck: WebCheckValue | undefined, exec: ToolRunContext, audience: WasdToolAudience,
+): Promise<{ webCheckView?: WebCheckViewValue }> {
+  const path = webCheck?.screenshot?.path
+  if (audience !== 'session' || path === undefined) return {}
+  const view = await host.webCheckView(path, exec)
+  return view === undefined ? {} : { webCheckView: { ...view, image: { ...view.image } } }
+}
+
+/**
+ * The image block of a result's Web check screenshot.
+ * @param value - the result's view field.
+ * @returns the block, none without a view.
+ */
+function webCheckImage(value: { readonly webCheckView?: WebCheckViewValue }): { type: 'image'; attachment: StoredScreenshot['image'] }[] {
+  if (value.webCheckView === undefined) return []
+  const { image } = value.webCheckView
+  return [{ type: 'image', attachment: { ...image, attachmentId: brandString<AttachmentId>(image.attachmentId) } }]
 }
 
 const RECORDING_SCHEMA = {
@@ -418,8 +475,8 @@ function describeRecording(value: RecordedPreviewValue): string {
 export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths, audience: WasdToolAudience = 'session'): ToolDefinition[] {
   return [defineTool({
     name: 'wasd_export_web',
-    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve, and with zip also one ZIP file of it for game sites such as itch.io. The Web build renders with the Compatibility renderer. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, and the errors the build printed. The first export downloads Godot\'s Web template, about 10 MB. To publish the game on WASD Engine for others to play, call wasd_release_game instead.',
-    parameters: { project: PROJECT, check: CHECK, zip: ZIP },
+    description: 'Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project\'s .wasdengine/web folder, which any static web server can serve, and with zip also one ZIP file of it for game sites such as itch.io. The Web build renders with the Compatibility renderer, which has no RenderingDevice, so the result names the project files that use features Web builds lack. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, the errors the build printed, the problems that would stop a release, and a screenshot of the page. The first export downloads Godot\'s Web template, about 10 MB. To publish the game on WASD Engine for others to play, call wasd_release_game instead.',
+    parameters: { project: PROJECT, check: EXPORT_CHECK, zip: ZIP },
     output: {
       schema: {
         type: 'object',
@@ -434,6 +491,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           warnings: WARNINGS,
           webCheck: WEB_CHECK_SCHEMA,
           webCheckError: { type: 'string' },
+          webCheckView: WEB_CHECK_VIEW_SCHEMA,
         },
       },
       render: (_args, value) => [{
@@ -446,14 +504,17 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
           ].join('\n'),
           value.warnings,
         ),
-      }],
+      }, ...webCheckImage(value)],
     },
     async execute(args, exec) {
       const exported = await host.exportWeb(await host.project(args.project, exec), args.zip === true, exec.signal)
-      const checked = args.check === false ? {} : await webCheckFields(host, exported.outputDir, exec.signal)
+      const checked: { readonly webCheck?: WebCheckValue; readonly webCheckError?: string } = args.check === false
+        ? {}
+        : await webCheckFields(host, exported.outputDir, exec.signal)
+      const view = await webCheckViewField(host, checked.webCheck, exec, audience)
       return {
         ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings],
-        ...exported.zip === undefined ? {} : { zip: { ...exported.zip } }, ...checked,
+        ...exported.zip === undefined ? {} : { zip: { ...exported.zip } }, ...checked, ...view,
       }
     },
   }), defineTool({
@@ -595,7 +656,7 @@ const MODEL_ARGUMENT = `The name of the AI model you are, as its maker writes it
 function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): ToolDefinition {
   return defineTool({
     name: 'wasd_release_game',
-    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game\'s page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. A game set up for a dedicated server also gets its server build stored with the version, and its servers switch to it. Every call publishes a new version, so call it only when the user asks to release, publish, or share the game.',
+    description: 'Release the Godot game on WASD Engine: export it for the Web, upload the build as the game\'s next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine\'s Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game\'s page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game\'s page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game\'s page credits what made the game: your model, the game tools that worked on the project, and its add-ons. A game set up for a dedicated server also gets its server build stored with the version, and its servers switch to it. Before anything is uploaded, a Web check opens the build in a browser: when the game does not start, crashes, stops answering, or prints errors there, the call publishes nothing and fails with what the check saw and a screenshot of the page. Every call that passes publishes a new version, so call it only when the user asks to release, publish, or share the game, and release the game as it is: do not change it in the same turn.',
     parameters: {
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
@@ -605,7 +666,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
       visibility: { type: 'string', enum: ['public', 'private'], description: 'public lists the game on WASD Engine\'s Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game\'s current visibility; a new game is public.' },
       desktop: { ...PLATFORMS_SCHEMA, description: 'Also build the game for these desktop platforms and offer each build as a download of this version on the game\'s page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.' },
-      check: CHECK,
+      check: RELEASE_CHECK,
       ...audience === 'connected' ? { model: { type: 'string', description: MODEL_ARGUMENT } } : {},
     },
     output: {
@@ -631,6 +692,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           warnings: WARNINGS,
           webCheck: WEB_CHECK_SCHEMA,
           webCheckError: { type: 'string' },
+          webCheckView: WEB_CHECK_VIEW_SCHEMA,
         },
       },
       render: (_args, value) => [{
@@ -650,7 +712,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
           'Sent in Messages or posted on Reddit, Discord, Slack, or Telegram, the share link shows the game\'s GIF (its picture while it has none); opened in a browser, it plays the game.',
           ...webCheckText(value),
         ].join('\n'), value.warnings),
-      }],
+      }, ...webCheckImage(value)],
     },
     async execute(args, exec) {
       const projectDir = await host.project(args.project, exec)
@@ -668,14 +730,16 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         ...args.check === undefined ? {} : { check: args.check },
       }, exec, audience)
       const { webCheck, webCheckError, ...rest } = released
+      const copied = webCheck === undefined ? undefined : copyWebCheck(webCheck)
       return {
         ...rest,
         downloads: rest.downloads.map(download => ({ ...download })),
         ...credits === undefined ? {} : { credits: [...credits] },
         ...released.serverBuild === undefined ? {} : { serverBuild: { ...released.serverBuild } },
         warnings: [...warnings],
-        ...webCheck === undefined ? {} : { webCheck: copyWebCheck(webCheck) },
+        ...copied === undefined ? {} : { webCheck: copied },
         ...webCheckError === undefined ? {} : { webCheckError },
+        ...await webCheckViewField(host, copied, exec, audience),
       }
     },
   })
@@ -725,6 +789,33 @@ async function recordingContent(definition: ToolDefinition, value: RecordedPrevi
   return [...text, { type: 'image', data: (await readFile(value.image)).toString('base64'), mimeType }]
 }
 
+/** Tools whose results carry a Web check, whose screenshot connected agents receive as an image. */
+const CHECKED_TOOLS: ReadonlySet<string> = new Set(['wasd_export_web', 'wasd_release_game'])
+
+/**
+ * The content a connected agent receives from a Web export or a release: the text, then the Web check's screenshot from
+ * its file, when the check saved one.
+ * @param definition - the export or release tool.
+ * @param value - the call's result.
+ * @param args - the call's arguments.
+ * @returns the text and the screenshot.
+ */
+async function checkContent(
+  definition: ToolDefinition, value: { readonly webCheck?: WebCheckValue }, args: JsonObject,
+): Promise<GameMcpContent[]> {
+  const text = definition.output.render(args, value as never).flatMap(block => block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [])
+  const path = value.webCheck?.screenshot?.path
+  if (path === undefined) return text
+  let data: string
+  try {
+    data = (await readFile(path)).toString('base64')
+  } catch {
+    // A screenshot removed since the check leaves the text, which names its file.
+    return text
+  }
+  return [...text, { type: 'image', data, mimeType: 'image/jpeg' }]
+}
+
 /**
  * Offer one tool to agents connected through WASD Engine's MCP server, which name paths absolutely. A release first
  * credits the project with the agent, by the model it names, and with the tools the agent used before it named a
@@ -764,7 +855,9 @@ function mcpTool(definition: ToolDefinition, credits: ConnectedCredits): GameMcp
     },
     ...definition.name === 'wasd_record_preview'
       ? { content: (value, args) => recordingContent(definition, value as RecordedPreviewValue, args) }
-      : {},
+      : CHECKED_TOOLS.has(definition.name)
+        ? { content: (value, args) => checkContent(definition, value as { readonly webCheck?: WebCheckValue }, args) }
+        : {},
   }
 }
 
@@ -780,7 +873,7 @@ export function wasdMcpProvider(
   definitions: readonly ToolDefinition[], credits: ConnectedCredits, multiplayer: readonly GameMcpTool[] = [], multiplayerInstructions = '',
 ): GameMcpProvider {
   const tools = [...definitions.map(definition => mcpTool(definition, credits)), ...multiplayer]
-  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Releasing needs WASD Engine to be signed in.'
+  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the name of the AI model you are, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Release the game as it is: wasd_release_game first checks the Web build in a browser and publishes nothing when the game does not start, crashes, stops answering, or prints errors there; then tell the user what the check found, and change the game only when they ask. Releasing needs WASD Engine to be signed in.'
   return {
     id: 'wasd',
     title: 'WASD Engine',

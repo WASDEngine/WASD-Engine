@@ -16,7 +16,7 @@ import { brandString } from '@deepseek-ai/dsh-brand'
 import {
   ExportShareButton, type ExportShareButtonProps, type ExportShareInjected, type ExportSharePlacement,
 } from '../src/client/ExportShareButton.tsx'
-import { en } from '../src/client/locales.ts'
+import { de, en, es, fr, ja, pt, ru, zh } from '../src/client/locales.ts'
 import { exportCalls, shareArguments } from '../src/client/mount.ts'
 import type { WasdProjectView } from '../src/types.ts'
 
@@ -247,6 +247,24 @@ describe('ExportShareButton', () => {
   })
 })
 
+describe('prompt copy', () => {
+  const SHARE_KEYS = [
+    'share.prompt', 'share.promptWithNotes', 'share.promptNewGame', 'share.promptNewGameWithNotes', 'share.promptSameGame', 'share.promptSameGameWithNotes',
+  ] as const
+
+  it('asks the agent, in every language, to release or export the game as it is and to report the Web check instead of fixing it', () => {
+    for (const key of SHARE_KEYS) {
+      expect(en[key], key).toContain('Keep the game as it is: change none of its files, and if wasd_release_game stops because its Web check found problems, tell me what the check found instead of fixing them.')
+    }
+    expect(en['export.prompt']).toContain('without changing any of its files')
+    // Each translation names the release tool in that sentence as well as in the call it asks for.
+    for (const [language, copy] of Object.entries({ zh, ja, es, fr, de, ru, pt })) {
+      for (const key of SHARE_KEYS) expect(copy[key].split('wasd_release_game').length - 1, `${language} ${key}`).toBe(2)
+      expect(copy['export.prompt'], language).toMatch(/web|веб/iu)
+    }
+  })
+})
+
 describe('prompt arguments', () => {
   it('quote the visibility, the downloads when there are any, and the game choice of a project that has a game', () => {
     expect(shareArguments({ visibility: 'public', notes: '', target: 'linked', desktop: [] })).toBe('{"visibility":"public"}')
@@ -262,7 +280,7 @@ describe('prompt arguments', () => {
     ].join('\n'))
     expect(exportCalls(['web'])).toBe('- `wasd_export_web` {"zip":true}')
     expect(makeTranslate(en)('export.prompt', { calls: exportCalls(['ios']) })).toBe(
-      'Export this game with these tool calls, one after another, then tell me where each file is and how to open, install, or upload it:\n- `wasd_export_mobile` {"platforms":["ios"]}',
+      'Export this game as it is now with these tool calls, one after another, without changing any of its files, then tell me where each file is, how to open, install, or upload it, and what any Web check found:\n- `wasd_export_mobile` {"platforms":["ios"]}',
     )
   })
 })

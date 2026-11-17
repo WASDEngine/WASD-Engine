@@ -196,7 +196,7 @@ A connected agent's model sees `search_game_tools`, `call_game_tool`, `create_ga
 
 #### Token effect
 
-With all fourteen providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the art references, the graphics review, the feedback tool, the game add-ons, and WASD Engine Plugins, the instructions come to about 31,800 characters, about 4,100 of them the overview and 6,000 the Blender guide, the largest, and the 92 tool declarations to about 133,800 characters of JSON, about 12,600 of them the `session` and `project` arguments of the 40 Blender, GIMP, and SuperCollider tools. Claude Code passes its model the first 4,096 characters of the instructions, the overview and the start of the first guide; the agent's harness decides how much of the rest enters its requests.
+With all fourteen providers of the Web and Desktop profiles, Godot, Blender, GIMP, SuperCollider, Poly Haven, ElevenLabs, Nano Banana, the asset tools, the audio tools, the art references, the graphics review, the feedback tool, the game add-ons, and WASD Engine Plugins, the instructions come to about 33,200 characters, about 4,100 of them the overview and 6,000 the Blender guide, the largest, and the 92 tool declarations to about 133,800 characters of JSON, about 12,600 of them the `session` and `project` arguments of the 40 Blender, GIMP, and SuperCollider tools. Claude Code passes its model the first 4,096 characters of the instructions, the overview and the start of the first guide; the agent's harness decides how much of the rest enters its requests.
 
 #### KV Cache effect
 

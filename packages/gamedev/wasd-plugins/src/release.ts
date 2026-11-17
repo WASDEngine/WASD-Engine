@@ -42,12 +42,16 @@ import { readMultiplayerConfig, writeMultiplayerConfig, type MultiplayerConfig }
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
 import { STATE_DIR, writeWhole } from './state.ts'
 import type { WasdDownload, WasdMultiplayerMode, WasdProjectView, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
+import { formatWebCheck } from './web-check-text.ts'
 import { writeZip } from './zip.ts'
 
 export { STATE_DIR }
 
 /** The Web build's folder inside {@link STATE_DIR}. */
 export const WEB_BUILD_DIR = 'web'
+
+/** The Web check's screenshot inside {@link STATE_DIR}, beside the Web build's folder, so the build's files stay as exported. */
+export const WEB_CHECK_SCREENSHOT = 'web-check.jpg'
 
 /** The game link file inside {@link STATE_DIR}. */
 export const LINK_FILE = 'game.json'
@@ -86,6 +90,27 @@ export interface SiteAccess {
 /** A release that could not finish; the message says what the user or the agent can do. */
 export class ReleaseError extends Error {
   override name = 'ReleaseError'
+}
+
+/**
+ * A release that its Web check stopped before anything reached the site, because players could not play the build in a
+ * browser ({@link GodotWebCheck.problems}). Its message holds the check's report, the export's notes, and what to do.
+ */
+export class WebCheckRefusal extends ReleaseError {
+  override name = 'WebCheckRefusal'
+
+  /**
+   * @param check - the check, with at least one problem.
+   * @param notes - the Web export's notes and warnings.
+   */
+  constructor(readonly check: GodotWebCheck, notes: readonly string[]) {
+    super([
+      'Nothing was released: the Web check found problems that stop a release, so players could not play this build in a browser.',
+      formatWebCheck(check),
+      ...notes.length === 0 ? [] : ['Export notes:', ...notes.map(note => `- ${note}`)],
+      'Tell the user what the check found. Change the game only when they ask you to; when they ask to publish this build as it is, call wasd_release_game again with check set to false.',
+    ].join('\n'))
+  }
 }
 
 const GameRecord = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), version: z.number().int().min(0) })
@@ -424,7 +449,10 @@ export interface ReleaseRequest {
   readonly visibility?: WasdVisibility
   /** Desktop platforms to build the game for and offer as downloads of this version. Default: none. */
   readonly desktop?: readonly GodotDesktopPlatform[]
-  /** `false` skips the Web check of the build. Default: the check runs, while the release builds and uploads. */
+  /**
+   * `false` releases without the Web check of the build. Default: the check runs while the desktop builds export, and a
+   * check that finds problems that stop a release ({@link WebCheckRefusal}) stops it before anything reaches the site.
+   */
   readonly check?: boolean
 }
 
@@ -652,16 +680,21 @@ async function storeServerBuild(
 }
 
 /**
- * Export a project for the Web, and for the desktop platforms the request names, and release the build as the next
- * version of the signed-in account's game, or as the first version of a new game, with the desktop builds as its
- * downloads and what the game was made with.
- * @param request - project, notes, title, preview files, whether to start a new game, visibility, and desktop platforms.
- * @param dependencies - sign-in, exports, HTTP, release folders, temporary files, the preview recording, and the credits.
+ * Export a project for the Web, and for the desktop platforms the request names, check the Web build in a browser,
+ * unless the request turns the check off, and release the build as the next version of the signed-in account's game,
+ * or as the first version of a new game, with the desktop builds as its downloads and what the game was made with.
+ * The check runs while the desktop builds export and ends before anything reaches the site; a check that could not run
+ * stops nothing.
+ * @param request - project, notes, title, preview files, whether to start a new game, visibility, desktop platforms,
+ *   and whether to check the Web build.
+ * @param dependencies - sign-in, exports, the Web check, HTTP, release folders, temporary files, the preview recording,
+ *   and the credits.
  * @param signal - cancellation; a version the site already stored stays released.
- * @returns the release, its share links, its downloads, and its credits.
+ * @returns the release, its share links, its downloads, its credits, and its Web check.
  * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
  * and has not said which game it releases ({@link copyQuestion}, before the export), for a private release to a site
  * without private games (before the upload), and when the site refuses or fails.
+ * @throws {WebCheckRefusal} when the Web check found problems that stop a release, before anything reaches the site.
  */
 export async function releaseGame(request: ReleaseRequest, dependencies: ReleaseDependencies, signal: AbortSignal): Promise<WasdRelease> {
   const notes = (request.notes ?? '').trim()
@@ -698,7 +731,8 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     multiplayer = await pointConfig(request.projectDir, multiplayer, game.id, access.origin)
   }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
-  // The Web check watches the build while the release builds and uploads; a release that fails stops it.
+  // The Web check watches the build while the desktop builds export, and ends before anything reaches the site; a
+  // release that fails before then stops it.
   const stopCheck = new AbortController()
   const checking = request.check === false || dependencies.checkWeb === undefined
     ? undefined
@@ -712,6 +746,11 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       builds.push(await dependencies.exportDesktop(request.projectDir, platform, outputDir, signal))
     }
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
+    // A check that could not run stops nothing; one that found the game broken in browsers stops the release here.
+    const checked = checking === undefined ? undefined : await checking
+    if (checked !== undefined && 'webCheck' in checked && checked.webCheck.problems.length > 0) {
+      throw new WebCheckRefusal(checked.webCheck, exported.warnings)
+    }
     const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
     const remember = (linked: GameJson, version: number, digests: PreviewDigests = {}): Promise<void> => {
       return rememberGame(request.projectDir, access.origin, {
@@ -795,7 +834,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       ...credited === undefined ? {} : { credits: creditNames(credited) },
       ...serverBuild === undefined ? {} : { serverBuild },
       warnings,
-      ...checking === undefined ? {} : await checking,
+      ...checked,
     }
   } finally {
     stopCheck.abort()

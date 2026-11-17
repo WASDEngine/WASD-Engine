@@ -321,6 +321,21 @@ export interface GodotWebCheckRequest {
   readonly outputDir: string
   /** The page that starts the game; default `index.html`. */
   readonly entry?: string
+  /**
+   * Absolute path of the JPEG file where the check saves the page as it last saw it, which it replaces; outside
+   * `outputDir`, so the build's files stay as the export wrote them. Default: no screenshot.
+   */
+  readonly screenshot?: string
+}
+
+/** The page of a checked Web build as the check last saw it. */
+export interface GodotWebCheckScreenshot {
+  /** Absolute path of the JPEG file, as the request named it. */
+  readonly path: string
+  /** Width in pixels. */
+  readonly width: number
+  /** Height in pixels. */
+  readonly height: number
 }
 
 /** One error or warning that the checked Web build printed, with how often it printed it. */
@@ -364,8 +379,16 @@ export interface GodotWebCheck {
   readonly moreMessages: number
   /** What the results mean for players and how to fix them, one paragraph each. */
   readonly findings: readonly string[]
+  /**
+   * What makes the build unfit to publish, one short clause each: the game did not start or never drew frames steadily,
+   * the page's process ended or stopped answering for good, or the build printed errors. Empty when none of these
+   * happened; freezes, a low frame rate, and warnings are findings only.
+   */
+  readonly problems: readonly string[]
   /** Why the page's process ended during the check, such as `oom` or `crashed`; absent when it kept running. */
   readonly crashed?: string
+  /** The page as the check last saw it; absent when the request named no file or the check could not capture the page. */
+  readonly screenshot?: GodotWebCheckScreenshot
 }
 
 /** The command-line argument, followed by `=` and a JSON {@link WebCheckRequest}, that starts the Desktop app in Web check mode. */
@@ -396,6 +419,11 @@ export interface WebCheckRequest {
    * the mode leaves console messages out to stay within it. Default: 983,040 (960 KiB).
    */
   readonly resultBytes?: number
+  /**
+   * Absolute path of a JPEG file where the mode saves the page as it last drew it, at the end of the watch or of the
+   * wait for the start, replacing the file. Default: no screenshot.
+   */
+  readonly screenshot?: string
 }
 
 /** One distinct console message of the checked page. */
@@ -439,6 +467,8 @@ export interface WebCheckSample {
    * which then reports no frames.
    */
   readonly unresponsive: boolean
+  /** The size of the screenshot that the mode saved where the request's `screenshot` named; absent when it saved none. */
+  readonly screenshot?: { readonly width: number; readonly height: number }
 }
 
 /** A desktop platform a desktop export builds for: `windows`, 64-bit x86 Windows, or `macos`, Intel and Apple silicon Macs. */

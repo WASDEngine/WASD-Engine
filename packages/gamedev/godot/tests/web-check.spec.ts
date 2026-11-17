@@ -1,5 +1,5 @@
 /** Web checks serve the export, read the browser's result line, and report what players meet, with findings. */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { request } from 'node:http'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -76,6 +76,12 @@ describe('parseWebCheckOutput', () => {
     expect(parseWebCheckOutput(stdout)).toEqual(HEALTHY)
   })
 
+  it('reads the size of the screenshot the browser saved, and no result from an invalid one', () => {
+    const shot = { ...HEALTHY, screenshot: { width: 1280, height: 720 } }
+    expect(parseWebCheckOutput(`${WEB_CHECK_MARKER}${JSON.stringify(shot)}`)).toEqual(shot)
+    expect(parseWebCheckOutput(`${WEB_CHECK_MARKER}${JSON.stringify({ ...HEALTHY, screenshot: { width: 0, height: 720 } })}`)).toBeUndefined()
+  })
+
   it('reads no result from missing, garbled, or invalid lines', () => {
     expect(parseWebCheckOutput('nothing here\n')).toBeUndefined()
     expect(parseWebCheckOutput(`${WEB_CHECK_MARKER}{"started": tru`)).toBeUndefined()
@@ -130,6 +136,7 @@ describe('summarizeWebCheck', () => {
       messages: [],
       moreMessages: 0,
       findings: [],
+      problems: [],
     })
   })
 
@@ -182,7 +189,44 @@ describe('summarizeWebCheck', () => {
         'The page\'s process ended during the check (oom): a game that runs out of memory in a browser, which gives a page a few GB at most, stops this way.',
         'The game did not start within 120 s of opening the page, so the check saw only its loading.',
       ],
+      problems: ['the game did not start', 'the page\'s process ended (oom)'],
     })
+  })
+
+  it('names the problems that stop a release: no steady frames, a page that stopped answering for good, and printed errors', () => {
+    const { readyMs: _ready, ...frozen } = HEALTHY
+    expect(summarizeWebCheck({ ...frozen, frameMs: [], drawCalls: [], unresponsive: true }, 20, 120_000).problems)
+      .toEqual(['the game never drew frames steadily', 'the page stopped answering'])
+    // A page that answered again drew frames afterwards, and warnings are findings only.
+    expect(summarizeWebCheck({ ...HEALTHY, unresponsive: true, console: [{ level: 'error', text: 'WARNING: TAA is only available when using the Forward+ renderer.' }] }, 20, 180_000).problems)
+      .toEqual([])
+    const errors = [
+      { level: 'error' as const, text: 'ERROR: shader type fog not supported in OpenGL renderer' },
+      { level: 'error' as const, text: 'ERROR: shader type fog not supported in OpenGL renderer' },
+      { level: 'error' as const, text: 'SCRIPT ERROR: Cannot call method \'compute_list_begin\' on a null value.' },
+    ]
+    expect(summarizeWebCheck({ ...HEALTHY, console: errors.slice(0, 1) }, 20, 180_000).problems).toEqual(['the build printed 1 error'])
+    expect(summarizeWebCheck({ ...HEALTHY, console: errors }, 20, 180_000).problems).toEqual(['the build printed 2 different errors'])
+    expect(summarizeWebCheck(SHOTGUN, 20, 180_000).problems).toEqual(['the build printed 3 different errors'])
+  })
+
+  it('explains a game that uses the RenderingDevice, which Web builds lack', () => {
+    const finding = 'The game uses the RenderingDevice, which Web builds do not have: the Compatibility renderer has none, so `RenderingServer.get_rendering_device()` and `create_local_rendering_device()` return null, and compute shaders, RenderingDevice textures such as `Texture2DRD`, and `CompositorEffect`s do nothing or fail there. Give that work a path without the RenderingDevice, such as `SoftBody3D` sheets on Jolt for cloth, and look at it with godot_run with web set to true.'
+    for (const text of [
+      'SCRIPT ERROR: Cannot call method \'compute_list_begin\' on a null value.',
+      'USER ERROR: Cloth: no RenderingDevice, so the solver cannot run.',
+      'ERROR: Texture2DRD is not supported by this renderer.',
+    ]) {
+      expect(summarizeWebCheck({ ...HEALTHY, console: [{ level: 'error', text }] }, 20, 180_000).findings, text).toEqual([finding])
+    }
+  })
+
+  it('names the screenshot the browser saved, at the path the check asked for', () => {
+    const shot = { ...HEALTHY, screenshot: { width: 1280, height: 720 } }
+    expect(summarizeWebCheck(shot, 20, 180_000, '/game/.wasdengine/web-check.jpg').screenshot)
+      .toEqual({ path: '/game/.wasdengine/web-check.jpg', width: 1280, height: 720 })
+    expect(summarizeWebCheck(shot, 20, 180_000)).not.toHaveProperty('screenshot')
+    expect(summarizeWebCheck(HEALTHY, 20, 180_000, '/game/.wasdengine/web-check.jpg')).not.toHaveProperty('screenshot')
   })
 
   it('reports a low frame rate, and a single freeze only from two seconds on', () => {
@@ -305,6 +349,35 @@ process.stdout.write(${JSON.stringify(WEB_CHECK_MARKER)} + JSON.stringify({ ...r
       seconds: 7, startTimeoutMs: 9000, timeoutMs: 30_000, graceMs: 1000, outputBytes: 64 * 1024, signal,
     })
     expect(report.messages).toEqual([{ level: 'error', text: `ERROR: result bytes ${String(WEB_CHECK_OUTPUT_BYTES - 64 * 1024)}`, count: 1 }])
+  })
+
+  it('asks the browser for a screenshot where the request names one, after deleting an earlier one, and names it', async () => {
+    const dir = await scratch('web-check-screenshot')
+    folders.push(dir)
+    const host = await subprocessFixture()
+    hosts.push(host)
+    const outputDir = join(dir.root, 'web')
+    await mkdir(outputDir, { recursive: true })
+    await writeFile(join(outputDir, 'index.html'), '<canvas></canvas>')
+    const screenshot = join(dir.root, 'web-check.jpg')
+    await writeFile(screenshot, 'an earlier check')
+    const script = join(dir.root, 'browser.mjs')
+    // The stand-in reports whether the earlier screenshot was still there, then saves its own.
+    await writeFile(script, `
+import { existsSync, writeFileSync } from 'node:fs'
+const argument = process.argv.find(arg => arg.startsWith(${JSON.stringify(`${WEB_CHECK_ARGUMENT}=`)}))
+const request = JSON.parse(argument.slice(${String(WEB_CHECK_ARGUMENT.length + 1)}))
+const console = [{ level: 'error', text: 'ERROR: earlier screenshot present: ' + existsSync(request.screenshot) }]
+writeFileSync(request.screenshot, 'this check')
+process.stdout.write(${JSON.stringify(WEB_CHECK_MARKER)} + JSON.stringify({ ...${JSON.stringify(HEALTHY)}, console, screenshot: { width: 640, height: 360 } }) + '\\n')
+`)
+    const report = await checkWebBuild({
+      subprocess: host.subprocess, command: [process.execPath, script], outputDir, entry: 'index.html',
+      seconds: 7, startTimeoutMs: 9000, timeoutMs: 30_000, graceMs: 1000, outputBytes: 64 * 1024, screenshot, signal,
+    })
+    expect(report.messages).toEqual([{ level: 'error', text: 'ERROR: earlier screenshot present: false', count: 1 }])
+    expect(report.screenshot).toEqual({ path: screenshot, width: 640, height: 360 })
+    expect(await readFile(screenshot, 'utf8')).toBe('this check')
   })
 
   it('fails without a browser, and when the browser prints no result', async () => {

@@ -196,7 +196,7 @@ MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `i
 
 #### Token 影响
 
-Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、画面审查、反馈工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 31,800 个字符（其中约 4,100 个是概述，约 6,000 个是最大的 Blender 指南），92 个工具声明约 133,800 个字符的 JSON，其中约 12,600 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数。Claude Code 把指令的前 4,096 个字符交给它的模型，即概述和第一份指南的开头；agent 的 harness 决定其余部分有多少进入它的请求。
+Web 与 Desktop profile 的全部十四个 provider，即 Godot、Blender、GIMP、SuperCollider、Poly Haven、ElevenLabs、Nano Banana、素材工具、音频工具、美术参考、画面审查、反馈工具、游戏扩展与 WASD Engine 插件都提供工具时，指令约 33,200 个字符（其中约 4,100 个是概述，约 6,000 个是最大的 Blender 指南），92 个工具声明约 133,800 个字符的 JSON，其中约 12,600 个是 40 个 Blender、GIMP 与 SuperCollider 工具的 `session` 与 `project` 参数。Claude Code 把指令的前 4,096 个字符交给它的模型，即概述和第一份指南的开头；agent 的 harness 决定其余部分有多少进入它的请求。
 
 #### KV Cache 影响
 

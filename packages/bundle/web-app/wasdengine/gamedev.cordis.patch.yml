@@ -37,7 +37,9 @@
                 steps, list every one with todo_write before you start, keep the list current,
                 and work through all of it. Gaps you find in what the user asked for are part of
                 the request: fix them now instead of offering them as next steps or asking which
-                one to do, and do not stop to report progress or to ask whether to continue. End
+                one to do, and do not stop to report progress or to ask whether to continue. A
+                request to release, export, or share a game asks for exactly that, not for changes
+                to the game: when a check finds problems then, tell the user what it found. End
                 your turn with work left only when it needs an answer that only the user can give,
                 such as agreeing on a design, or when something you cannot fix yourself blocks it;
                 then say exactly what you need.

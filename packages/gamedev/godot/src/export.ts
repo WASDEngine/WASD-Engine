@@ -51,7 +51,7 @@
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -683,6 +683,86 @@ export function webNotes(projectText: string): string[] {
   return method === 'gl_compatibility' ? [] : [WEB_RENDERER_NOTE]
 }
 
+/** Extensions of the project files that the Web feature scan reads: scripts, shaders, scenes, and resources. */
+const FEATURE_SCAN_EXTENSIONS: ReadonlySet<string> = new Set(['.gd', '.cs', '.gdshader', '.gdshaderinc', '.glsl', '.tscn', '.tres'])
+
+/** Most project files the Web feature scan reads; it reads them in folder order and stops there. */
+export const FEATURE_SCAN_FILES = 5000
+
+/** Largest project file, in bytes, that the Web feature scan reads; it skips larger ones. */
+export const FEATURE_SCAN_BYTES = 2 * 1024 * 1024
+
+/** Most files one Web feature note names; it counts the rest. */
+const FEATURE_NOTE_FILES = 5
+
+/** Features of desktop renderers that Web builds lack: what finds them in a project file, and the note that names the files. */
+const WEB_FEATURES: readonly { readonly match: RegExp; readonly note: (files: string) => string }[] = [
+  {
+    match: new RegExp([
+      String.raw`\bRenderingDevice\b`, String.raw`\b(?:get|create_local)_rendering_device\s*\(`, String.raw`\bTexture(?:2D|3D|Layered|Cubemap)RD\b`,
+      String.raw`\bCompositorEffect\b`, String.raw`^#\[compute\]`,
+    ].join('|'), 'mu'),
+    note: files => `Web builds have no RenderingDevice, which these files use: ${files}. The Compatibility renderer that Web builds draw with has none, so compute shaders, RenderingDevice textures, and compositor effects do nothing or fail there unless the code takes a path without it. Give the Web build such a path, for example SoftBody3D sheets on Jolt for cloth, and look at it with godot_run with web set to true.`,
+  },
+  {
+    match: /^\s*shader_type\s+fog\s*;|\btype="FogVolume"|\bvolumetric_fog_enabled\s*=\s*true\b/mu,
+    note: files => `Web builds draw no FogVolume shaders, FogVolume nodes, or volumetric fog, which these files use: ${files}. The Environment's depth and height fog work there.`,
+  },
+]
+
+/**
+ * Notes that name the project files using features of desktop renderers that Web builds lack: the RenderingDevice,
+ * with its compute shaders, and FogVolumes or volumetric fog. The scan reads scripts, shaders, scenes, and resources of
+ * at most {@link FEATURE_SCAN_BYTES}, at most {@link FEATURE_SCAN_FILES} of them, and skips folders whose names start
+ * with a dot, such as `.godot`, and `node_modules`.
+ * @param projectDir - absolute folder holding `project.godot`.
+ * @param signal - cancellation.
+ * @returns one note per feature that some file uses.
+ */
+export async function webFeatureNotes(projectDir: string, signal: AbortSignal): Promise<string[]> {
+  const found = WEB_FEATURES.map(() => [] as string[])
+  const folders = [projectDir]
+  let read = 0
+  scan: for (let folder = folders.pop(); folder !== undefined; folder = folders.pop()) {
+    signal.throwIfAborted()
+    let entries
+    try {
+      entries = await readdir(folder, { withFileTypes: true })
+    } catch {
+      // A folder that vanished or that the user may not read holds nothing the scan can name.
+      continue
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name))
+    for (const entry of entries) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
+      const path = join(folder, entry.name)
+      if (entry.isDirectory()) {
+        folders.push(path)
+        continue
+      }
+      if (!entry.isFile() || !FEATURE_SCAN_EXTENSIONS.has(extname(entry.name).toLowerCase())) continue
+      if (read >= FEATURE_SCAN_FILES) break scan
+      read += 1
+      let text: string
+      try {
+        if ((await stat(path)).size > FEATURE_SCAN_BYTES) continue
+        text = await readFile(path, 'utf8')
+      } catch {
+        // A file that vanished or that the user may not read names nothing.
+        continue
+      }
+      const name = relative(projectDir, path).split(sep).join('/')
+      WEB_FEATURES.forEach((feature, index) => { if (feature.match.test(text)) (found[index] as string[]).push(name) })
+    }
+  }
+  return WEB_FEATURES.flatMap((feature, index) => {
+    const files = (found[index] as string[]).sort((left, right) => left.localeCompare(right))
+    if (files.length === 0) return []
+    const more = files.length - FEATURE_NOTE_FILES
+    return [feature.note([...files.slice(0, FEATURE_NOTE_FILES), ...more > 0 ? [`and ${String(more)} more`] : []].join(', '))]
+  })
+}
+
 /**
  * The note about a large pack, which players download in full before the game starts.
  * @param files - the exported files.
@@ -935,7 +1015,9 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
 
 /**
  * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too. The splash
- * image that Godot wrote becomes WASD Engine's ({@link wasdSplash}) for a project without one of its own.
+ * image that Godot wrote becomes WASD Engine's ({@link wasdSplash}) for a project without one of its own. The warnings
+ * start with notes on how the Web build differs: the renderer ({@link webNotes}) and the project files that use what
+ * Web builds lack ({@link webFeatureNotes}).
  * @param options - process parameters, project, template, and output folder.
  * @returns the exported files.
  * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
@@ -958,6 +1040,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     },
   })
   const { blenderNote, warnings } = outcome
+  const features = await webFeatureNotes(options.projectDir, options.signal)
   return {
     projectDir: options.projectDir,
     outputDir: options.outputDir,
@@ -965,7 +1048,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     files: outcome.files,
     totalBytes: outcome.files.reduce((sum, file) => sum + file.bytes, 0),
     warnings: [
-      ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...packNotes(outcome.files), ...warnings,
+      ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...features, ...packNotes(outcome.files), ...warnings,
     ].slice(0, EXPORT_WARNINGS),
   }
 }

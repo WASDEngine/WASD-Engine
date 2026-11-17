@@ -6,9 +6,10 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   androidVersionCode, bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop,
-  exportMobile, exportWeb, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes, pendingExportRestores, replayExportRestore,
-  textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE, webNotes, withDesktopPreset,
-  withExportSplash, withMobilePreset, withoutPreset, withTextureImports, withWebPreset, type WebExportOptions,
+  exportMobile, exportWeb, FEATURE_SCAN_BYTES, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes, pendingExportRestores,
+  replayExportRestore, textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE,
+  webFeatureNotes, webNotes, withDesktopPreset, withExportSplash, withMobilePreset, withoutPreset, withTextureImports, withWebPreset,
+  type WebExportOptions,
 } from '../src/export.ts'
 import { IOS_SPLASH_SETTING_WARNING, UNSET_TEAM_ID } from '../src/ios.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
@@ -162,6 +163,67 @@ describe('webNotes', () => {
   })
 })
 
+/** The note on the RenderingDevice, naming files. */
+function deviceNote(files: string): string {
+  return `Web builds have no RenderingDevice, which these files use: ${files}. The Compatibility renderer that Web builds draw with has none, so compute shaders, RenderingDevice textures, and compositor effects do nothing or fail there unless the code takes a path without it. Give the Web build such a path, for example SoftBody3D sheets on Jolt for cloth, and look at it with godot_run with web set to true.`
+}
+
+/** The note on FogVolumes and volumetric fog, naming files. */
+function fogNote(files: string): string {
+  return `Web builds draw no FogVolume shaders, FogVolume nodes, or volumetric fog, which these files use: ${files}. The Environment's depth and height fog work there.`
+}
+
+describe('webFeatureNotes', () => {
+  /** Write a project's files under a scratch folder. */
+  const project = async (files: Readonly<Record<string, string>>): Promise<string> => {
+    const dir = await scratch('web-features')
+    folders.push(dir)
+    for (const [name, text] of Object.entries(files)) {
+      await mkdir(join(dir.root, name, '..'), { recursive: true })
+      await writeFile(join(dir.root, name), text)
+    }
+    return dir.root
+  }
+
+  it('names the scripts, shaders, and scenes that use the RenderingDevice or volumetric fog', async () => {
+    const root = await project({
+      'project.godot': '[application]\nconfig/name="Pier"\n',
+      'scripts/cloth.gd': 'extends MeshInstance3D\nvar rd := RenderingServer.create_local_rendering_device()\n',
+      'scripts/player.gd': 'extends CharacterBody3D\n',
+      'shaders/solver.glsl': '#[compute]\n#version 450\nvoid main() {}\n',
+      'shaders/mist.gdshader': '// Mist that drifts over the pier.\nshader_type fog;\nvoid fog() {}\n',
+      'shaders/water.gdshader': 'shader_type spatial;\n',
+      'scenes/pier.tscn': '[gd_scene format=3]\n[ext_resource type="Texture2DRD" id="1"]\n[node name="Mist" type="FogVolume" parent="."]\n',
+      'scenes/night.tres': '[gd_resource type="Environment" format=3]\n[resource]\nvolumetric_fog_enabled = true\n',
+      // Godot's cache, hidden folders, and dependencies are not the project's own files.
+      '.godot/shader_cache/fog.gdshader': 'shader_type fog;\n',
+      'node_modules/lib/compute.gd': 'var rd: RenderingDevice\n',
+      'textures/notes.txt': 'RenderingDevice',
+    })
+    expect(await webFeatureNotes(root, signal)).toEqual([
+      deviceNote('scenes/pier.tscn, scripts/cloth.gd, shaders/solver.glsl'),
+      fogNote('scenes/night.tres, scenes/pier.tscn, shaders/mist.gdshader'),
+    ])
+  })
+
+  it('names nothing in a project that uses neither, and skips files over the size limit', async () => {
+    const root = await project({
+      'project.godot': '[application]\nconfig/name="Shrine"\n',
+      'scripts/main.gd': 'extends Node3D\n',
+      'scenes/big.tscn': `${'x'.repeat(FEATURE_SCAN_BYTES)}\n[node name="Mist" type="FogVolume" parent="."]\n`,
+    })
+    expect(await webFeatureNotes(root, signal)).toEqual([])
+  })
+
+  it('names five files and counts the rest', async () => {
+    const files = Object.fromEntries(Array.from({ length: 7 }, (_, index) => [`scripts/solver_${String(index)}.gd`, 'var rd: RenderingDevice\n']))
+    const root = await project(files)
+    expect(await webFeatureNotes(root, signal)).toEqual([
+      deviceNote('scripts/solver_0.gd, scripts/solver_1.gd, scripts/solver_2.gd, scripts/solver_3.gd, scripts/solver_4.gd, and 2 more'),
+    ])
+  })
+})
+
 describe('packNotes', () => {
   it('notes a pack larger than 100 MB', () => {
     expect(packNotes([{ path: 'index.pck', bytes: LARGE_PACK_BYTES }, { path: 'index.wasm', bytes: 1 }])).toEqual([])
@@ -188,6 +250,12 @@ posix('exportWeb', () => {
     expect(exported.totalBytes).toBe(Object.values(BUILD).join('').length - BUILD['index.png'].length + SPLASH.dark.length)
     // The fixture project sets no rendering method, so it renders with Forward+ on desktop.
     expect(exported.warnings).toEqual([WEB_RENDERER_NOTE, 'Screen-space AA is only available when using the Forward+ or Mobile renderer.'])
+    // A project file that uses the RenderingDevice gets its note after the renderer's.
+    await mkdir(join(project, 'scripts'), { recursive: true })
+    await writeFile(join(project, 'scripts', 'cloth.gd'), 'var rd := RenderingServer.get_rendering_device()\n')
+    expect((await run()).warnings).toEqual([
+      WEB_RENDERER_NOTE, deviceNote('scripts/cloth.gd'), 'Screen-space AA is only available when using the Forward+ or Mobile renderer.',
+    ])
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
     const log = await fakeLog(project)
     const exportEntry = log.find(entry => entry.preset !== undefined) as { preset: string; presets: string }

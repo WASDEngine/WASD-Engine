@@ -20,14 +20,15 @@ const PROVIDER = 'wasd-export-share-web-test'
 const MODEL = 'scripted'
 const SESSION = SessionId('wasd-release-blank')
 const COPY_SESSION = SessionId('wasd-release-copy')
+const AS_IS = 'Keep the game as it is: change none of its files, and if wasd_release_game stops because its Web check found problems, tell me what the check found instead of fixing them.'
 const RECORD = 'First run it with godot_run, bring it to its gameplay, and record its preview with wasd_record_preview, with input events that show the game in action; check the still it returns, and record again when it does not show the game well.'
-const SHARE_PROMPT = `Release this game on WASD Engine. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"]} and short release notes about what changed since the last release, and give me the share link.`
-const PRIVATE_PROMPT = `Release this game on WASD Engine. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"private","desktop":["windows"]} and these release notes, and give me the share link.\n\nRelease notes: Friends only`
+const SHARE_PROMPT = `Release this game on WASD Engine. ${AS_IS} ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"]} and short release notes about what changed since the last release, and give me the share link.`
+const PRIVATE_PROMPT = `Release this game on WASD Engine. ${AS_IS} ${RECORD} Then call wasd_release_game with the arguments {"visibility":"private","desktop":["windows"]} and these release notes, and give me the share link.\n\nRelease notes: Friends only`
 const EXPORT_PROMPT = [
-  'Export this game with these tool calls, one after another, then tell me where each file is and how to open, install, or upload it:',
+  'Export this game as it is now with these tool calls, one after another, without changing any of its files, then tell me where each file is, how to open, install, or upload it, and what any Web check found:',
   '- `wasd_export_desktop` {"platforms":["windows","macos"]}', '- `wasd_export_web` {"zip":true}', '- `wasd_export_mobile` {"platforms":["android"]}',
 ].join('\n')
-const NEW_GAME_PROMPT = `Release this game on WASD Engine as a new game. ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"],"new_game":true} and short release notes about what is in this version, and give me the share link.`
+const NEW_GAME_PROMPT = `Release this game on WASD Engine as a new game. ${AS_IS} ${RECORD} Then call wasd_release_game with the arguments {"visibility":"public","desktop":["windows","macos"],"new_game":true} and short release notes about what is in this version, and give me the share link.`
 
 /** Answers every request with one text block and keeps the requests. */
 class AnsweringAdapter extends LlmAdapter {

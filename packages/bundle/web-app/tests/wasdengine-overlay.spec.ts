@@ -848,6 +848,28 @@ describe('gamedev preset', () => {
     expect(skill).toContain('Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound')
   })
 
+  it('has the persona and godot-web release and export a game as it is, and report what a check found instead of changing the game', () => {
+    const persona = String(configOf(gameRow('persona')).prefix)
+    expect(persona).toContain('fix them now instead of offering them as next steps or asking which one to do, and do not stop to report progress or to ask whether to continue. '
+      + 'A request to release, export, or share a game asks for exactly that, not for changes to the game: when a check finds problems then, tell the user what it found.')
+    const web = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-web', 'SKILL.md'), 'utf8')
+    expect(web).toContain('When the user asks to release, export, or share the game, do only that: release or export the game as it is and change none of its files in that turn.')
+    expect(web).toContain('`wasd_release_game` checks the build before it uploads anything and publishes nothing when the game does not start, crashes, stops answering, or prints errors in the browser.')
+    // Browsers have no RenderingDevice, so compute work needs a path of its own there.
+    expect(web).toContain('There is no RenderingDevice: `RenderingServer.get_rendering_device()` and `create_local_rendering_device()` return null')
+  })
+
+  it('has godot-web stand in for what browsers lack, with the light shaft shader that their renderer draws', () => {
+    const web = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-web', 'SKILL.md'), 'utf8')
+    const section = web.indexOf('## Stand in for desktop-only effects')
+    expect(section).toBeGreaterThan(web.indexOf('## Write for the Compatibility renderer'))
+    for (const stand of ['- Fog: the Environment\'s depth and height fog work.', '- Light shafts,', '- Glow:', '- Edges: MSAA', '- Ambient occlusion:', '- Cloth: `SoftBody3D` sheets on Jolt']) {
+      expect(web.indexOf(stand, section), stand).toBeGreaterThan(section)
+    }
+    expect(web).toContain('render_mode blend_add, unshaded, cull_disabled, depth_draw_never, shadows_disabled;')
+    expect(web).toContain('tune the browser\'s look from what `godot_run` with `web: true` and the Web check\'s screenshot show, never from the numbers alone.')
+  })
+
   it('has godot-project export for the Web, Windows, macOS, Android, and iOS with the built-in Godot before the editor command line', () => {
     const text = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
     const section = text.indexOf('## Export')

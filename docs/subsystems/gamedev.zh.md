@@ -705,13 +705,15 @@ async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<Go
  * Check a Web export the way players meet it: serve its folder on a loopback port, open its page in the browser that
  * `webCheckCommand` starts, watch the game run without input for `webCheckSeconds` once it draws frames steadily, and
  * report when it started and became playable, its freezes, frame rate, draw calls, the errors and warnings it printed,
- * and findings about them. A check takes one of the `maxHeadlessProcesses` slots of script checks and exports. For
- * other plugins on the Host; the Game tab does not call it.
- * @param request - the export folder and its page.
+ * findings about them, the problems that make the build unfit to publish, and, when the request names a file, a
+ * screenshot of the page as the check last saw it. A check takes one of the `maxHeadlessProcesses` slots of script
+ * checks and exports. For other plugins on the Host; the Game tab does not call it.
+ * @param request - the export folder, its page, and where to save the screenshot.
  * @param signal - cancellation; it stops the browser.
  * @returns what the check saw.
  * @throws {GodotWebCheckError} when `webCheckCommand` is empty, or the browser ends without a result.
  * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the check starts.
+ * @throws {Error} when the request names a screenshot path that is not absolute.
  */
 async checkWeb(request: GodotWebCheckRequest, signal: AbortSignal): Promise<GodotWebCheck>
 
