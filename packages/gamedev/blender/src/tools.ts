@@ -96,10 +96,13 @@ export function renderSamplingSeconds(budgetMs: number): number {
 
 const ExportFileReply = z.object({ path: z.string(), format: z.string(), bytes: z.int() })
 
+/** Directions a preview looks from, in the order a preview's parameter lists them. */
+const PREVIEW_VIEWS = ['iso', 'front', 'back', 'left', 'right', 'top'] as const
+
 const PreviewReply = z.object({
   width: z.int(),
   height: z.int(),
-  view: z.string(),
+  views: z.array(z.string()).min(1),
   shading: z.string(),
   objects: z.int(),
   framing: z.object({ min: Vector3, max: Vector3, size: Vector3 }),
@@ -124,6 +127,42 @@ const CheckpointReply = z.object({ checkpoint: z.int() })
 /** Paths the worker may write for the agent-visible copy of an image. */
 function agentImagePaths(stem: string): readonly string[] {
   return [`${stem}.png`, `${stem}.jpg`]
+}
+
+/** The preview arguments that `execute_python` passes on in `preview`: the directions, the objects, and the shading. */
+function previewChoices() {
+  return {
+    views: z.array(z.enum(PREVIEW_VIEWS)).min(1).max(PREVIEW_VIEWS.length)
+      .refine(views => new Set(views).size === views.length, 'must not repeat a view').optional()
+      .describe('Several directions in one image instead of view, such as ["front", "right", "top", "iso"], tiled left to right and top to bottom.'),
+    objects: objectNames('Objects to frame and show with their children; omit for the whole scene.').optional(),
+    shading: z.enum(['solid', 'material']).optional().describe('solid (default) or material.'),
+  }
+}
+
+/** The arguments of `render_preview`. */
+function previewInput() {
+  return {
+    width: z.int().min(64).max(AGENT_IMAGE_MAX_EDGE).optional().describe('Image width in pixels, of each view in views (default 768).'),
+    height: z.int().min(64).max(AGENT_IMAGE_MAX_EDGE).optional().describe('Image height in pixels, of each view in views (default 768).'),
+    view: z.enum(PREVIEW_VIEWS).optional()
+      .describe('Viewing direction (default iso, from front-right-above). front looks along +Y; top looks down -Z.'),
+    ...previewChoices(),
+  }
+}
+
+type PreviewArgs = z.infer<z.ZodObject<ReturnType<typeof previewInput>>>
+
+/** The text of a preview: what it shows, from which directions, and the bounds it framed. */
+function previewText(reply: z.infer<typeof PreviewReply>): string {
+  const { min, max, size } = reply.framing
+  const [first] = reply.views
+  const shown = reply.views.length === 1
+    ? `Rendered a ${String(reply.width)}x${String(reply.height)} ${reply.shading} preview (${String(first)} view) of ${String(reply.objects)} objects.`
+    : `Rendered a ${reply.shading} preview of ${String(reply.objects)} objects in ${String(reply.views.length)} views of `
+      + `${String(reply.width)}x${String(reply.height)}, left to right and top to bottom: ${reply.views.join(', ')}.`
+  return `${shown} World bounds ${formatVector(min)} to ${formatVector(max)}, size ${formatVector(size)}.`
+    + (reply.note === undefined ? '' : ` ${reply.note}`)
 }
 
 async function readAgentImage(image: z.infer<typeof WorkerImage>, allowed: readonly string[]): Promise<{ data: Uint8Array; mimeType: 'image/png' | 'image/jpeg' }> {
@@ -237,6 +276,44 @@ export function blenderTools(dependencies: AppToolDependencies, scripts: Pick<Bl
   // The same bounds as execute_python's timeout_seconds.
   const defaultTimeoutSeconds = Math.round(requestTimeoutMs / 1000)
   const maxTimeoutSeconds = Math.max(1, Math.floor(dependencies.maxTimeoutMs / 1000))
+
+  /**
+   * Render a preview into a private file and read the image the agent sees, then delete both files.
+   * @returns the preview's text and image.
+   * @throws Error when the call names view and views, and as the worker request fails.
+   */
+  async function renderPreview(args: PreviewArgs, signal: AbortSignal): Promise<{ text: string; image: { data: Uint8Array; mimeType: 'image/png' | 'image/jpeg' } }> {
+    if (args.view !== undefined && args.views !== undefined) throw new Error('Pass view or views, not both.')
+    const id = randomUUID()
+    const path = join(previews, `${id}.png`)
+    const stem = join(previews, `${id}-agent`)
+    const params: JsonObject = {
+      path,
+      width: args.width ?? 768,
+      height: args.height ?? 768,
+      ...args.views === undefined ? { view: args.view ?? 'iso' } : { views: args.views },
+      shading: args.shading ?? 'solid',
+      agent_image: { stem, max_edge: AGENT_IMAGE_MAX_EDGE, max_bytes: AGENT_IMAGE_MAX_BYTES },
+    }
+    if (args.objects !== undefined) params.objects = args.objects
+    try {
+      const reply = parseReply(PreviewReply, 'render_preview', await call('render_preview', params, { signal }))
+      return { text: previewText(reply), image: await readAgentImage(reply.image, [path, ...agentImagePaths(stem)]) }
+    } finally {
+      await removeFiles([path, ...agentImagePaths(stem)])
+    }
+  }
+
+  const executePython = executePythonTool(dependencies, {
+    app: 'Blender',
+    title: 'Run Blender Python',
+    description: 'Run Python in the Blender session. bpy, bmesh, mathutils, math, and json are imported, and names you define '
+      + 'persist between calls until new_scene or open_blend replaces the scene. Assign `result` to return a value as JSON (vectors '
+      + 'become lists, datablocks become {type, name}, integers beyond ±(2^53 − 1) strings of digits, other objects their repr). Printed '
+      + 'output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout '
+      + 'expires, Blender restarts and unsaved changes are lost. Pass preview to see the result in the same call: after code that '
+      + 'raises no exception, it renders the scene as render_preview does with those arguments, such as {"views": ["front", "iso"]}.',
+  })
   return [
     defineAppTool({
       name: 'scene_info',
@@ -260,14 +337,27 @@ export function blenderTools(dependencies: AppToolDependencies, scripts: Pick<Bl
         return withSetupNotes(dependencies, { text: JSON.stringify(await call('object_info', { name: args.name }, { signal })) })
       },
     }),
-    executePythonTool(dependencies, {
-      app: 'Blender',
-      title: 'Run Blender Python',
-      description: 'Run Python in the Blender session. bpy, bmesh, mathutils, math, and json are imported, and names you define '
-        + 'persist between calls until new_scene or open_blend replaces the scene. Assign `result` to return a value as JSON (vectors '
-        + 'become lists, datablocks become {type, name}, integers beyond ±(2^53 − 1) strings of digits, other objects their repr). Printed '
-        + 'output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout '
-        + 'expires, Blender restarts and unsaved changes are lost.',
+    defineAppTool({
+      ...executePython,
+      input: {
+        ...executePython.input,
+        preview: z.object(previewChoices()).optional()
+          .describe('A preview after the code, as render_preview renders it at 768 pixels a view; {} renders the iso solid preview.'),
+      },
+      async run(args, signal) {
+        const { preview, ...code } = args
+        const result = await executePython.run(code, signal)
+        if (preview === undefined || result.isError === true) return result
+        const before = result.text.trimEnd()
+        try {
+          const shown = await renderPreview(preview, signal)
+          return { ...result, text: `${before}\n\n${shown.text}`, images: [...result.images ?? [], shown.image] }
+        } catch (error) {
+          signal.throwIfAborted()
+          // The code ran and changed the scene, so its result stands; the agent can preview again.
+          return { ...result, text: `${before}\n\nThe code ran, but the preview failed: ${error instanceof Error ? error.message : String(error)}` }
+        }
+      },
     }),
     defineAppTool({
       name: 'new_scene',
@@ -380,39 +470,12 @@ export function blenderTools(dependencies: AppToolDependencies, scripts: Pick<Bl
       description: 'Look at the scene: render an image from an orthographic camera framed on every renderable object, or on the '
         + 'listed objects and their children with other geometry hidden. solid (default) is fast flat shading with outlines in '
         + 'material base colors; material renders node materials and textures with EEVEE, lit by the scene lights (or a temporary '
-        + 'sun when there are none). The scene, its camera, and its render settings are left unchanged.',
-      input: {
-        width: z.int().min(64).max(AGENT_IMAGE_MAX_EDGE).optional().describe('Image width in pixels (default 768).'),
-        height: z.int().min(64).max(AGENT_IMAGE_MAX_EDGE).optional().describe('Image height in pixels (default 768).'),
-        view: z.enum(['iso', 'front', 'back', 'left', 'right', 'top']).optional()
-          .describe('Viewing direction (default iso, from front-right-above). front looks along +Y; top looks down -Z.'),
-        objects: objectNames('Objects to frame and show with their children; omit for the whole scene.').optional(),
-        shading: z.enum(['solid', 'material']).optional().describe('solid (default) or material.'),
-      },
+        + 'sun when there are none). views shows several directions in one image. The scene, its camera, and its render settings are '
+        + 'left unchanged.',
+      input: previewInput(),
       async run(args, signal) {
-        const id = randomUUID()
-        const path = join(previews, `${id}.png`)
-        const stem = join(previews, `${id}-agent`)
-        const params: JsonObject = {
-          path,
-          width: args.width ?? 768,
-          height: args.height ?? 768,
-          view: args.view ?? 'iso',
-          shading: args.shading ?? 'solid',
-          agent_image: { stem, max_edge: AGENT_IMAGE_MAX_EDGE, max_bytes: AGENT_IMAGE_MAX_BYTES },
-        }
-        if (args.objects !== undefined) params.objects = args.objects
-        try {
-          const reply = parseReply(PreviewReply, 'render_preview', await call('render_preview', params, { signal }))
-          const image = await readAgentImage(reply.image, [path, ...agentImagePaths(stem)])
-          const { min, max, size } = reply.framing
-          const text = `Rendered a ${String(reply.width)}x${String(reply.height)} ${reply.shading} preview (${reply.view} view) of `
-            + `${String(reply.objects)} objects. World bounds ${formatVector(min)} to ${formatVector(max)}, size ${formatVector(size)}.`
-            + (reply.note === undefined ? '' : ` ${reply.note}`)
-          return withSetupNotes(dependencies, { text, images: [image] })
-        } finally {
-          await removeFiles([path, ...agentImagePaths(stem)])
-        }
+        const shown = await renderPreview(args, signal)
+        return withSetupNotes(dependencies, { text: shown.text, images: [shown.image] })
       },
     }),
     defineAppTool({

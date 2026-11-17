@@ -56,7 +56,7 @@ export function feedbackMcpProvider(host: FeedbackToolHost): GameMcpProvider {
   return {
     id: 'feedback',
     title: 'Feedback',
-    description: 'Send feedback about WASD Engine and its game tools to the team that makes it.',
+    description: 'Send feedback on WASD Engine and its tools to its team.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     status: () => Promise.resolve({ state: 'ready' }),

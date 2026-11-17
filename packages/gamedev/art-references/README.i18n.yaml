@@ -18,11 +18,11 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-art-references/use-this-package/default-composition:
-  en: 51013a705a9aead7
-  zh: eb4c8d603c4f4c2e
+  en: 732e0a31a9eb6111
+  zh: 925e521aa37fdf20
 /deepseek-ai-dsh-art-references/use-this-package/the-tools:
-  en: 8112c951c59fc5cd
-  zh: 97d79ea484f5b090
+  en: 9328b3d3b4e417b9
+  zh: 901272099288d6e1
 /deepseek-ai-dsh-art-references/use-this-package/connected-agents:
   en: 7884063134263fe9
   zh: 28e0ec8b291dda87
@@ -54,8 +54,8 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-art-references/model-experience/tool-declarations/what-the-model-sees:
-  en: c1fbd4d785b7a925
-  zh: 0d37cb5bfbf95628
+  en: abb77824a7011343
+  zh: dd24692cbefd6fe0
 /deepseek-ai-dsh-art-references/model-experience/tool-declarations/token-effect:
   en: 77b420ac837f736e
   zh: b910defc4e9a115c
@@ -66,17 +66,17 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-art-references/model-experience/tool-results/what-the-model-sees:
-  en: 0cf0695e79fa73bb
-  zh: dc32ce1dcdff8e23
+  en: b611897c4dcdd6bf
+  zh: 96991a56a9bffc05
 /deepseek-ai-dsh-art-references/model-experience/tool-results/token-effect:
-  en: 64079091d6dfe612
-  zh: 9e71946263cf18f0
+  en: c30dd0a3e2496359
+  zh: 415c4170ea7dbd6b
 /deepseek-ai-dsh-art-references/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: 9c36aea51ad3bba1
 /deepseek-ai-dsh-art-references/known-limitations-and-deferred-work:
-  en: ad8cf282ae10d9e3
-  zh: dd6fd42076af8291
+  en: 26872ffb45b1f6bb
+  zh: 38fe6b825905511c
 /deepseek-ai-dsh-art-references/known-limitations-and-deferred-work/dev-note:
   en: 65ba39c3c1243655
   zh: 46ea3131415d936a

@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Let the agent design sound effects and music in SuperCollider code and render them offline into audio files in the game project. Nothing plays aloud, so every render and analysis returns levels, loudness, silence, and spectrum figures and a waveform and spectrogram image to judge the sound by. WASD Engine Web and Desktop turn the tools on by default; the Desktop app ships SuperCollider without its graphical interface, and elsewhere the tools use an installed one. Each conversation gets its own interpreter; a crash, a timeout, or a long pause discards its SynthDefs and variables.
+Let the agent design sound effects and music in SuperCollider code and render them offline into audio files in the game project. Nothing plays aloud, so every render and analysis returns levels, loudness, silence, and spectrum figures to judge the sound by, and on request a waveform and spectrogram image. WASD Engine Web and Desktop turn the tools on by default; the Desktop app ships SuperCollider without its graphical interface, and elsewhere the tools use an installed one. Each conversation gets its own interpreter; a crash, a timeout, or a long pause discards its SynthDefs and variables.
 
 ## Table of Contents
 
@@ -104,8 +104,8 @@ The model calls each tool as `mcp__wasd_supercollider__<name>`, and every path a
 
 | Tool | Arguments | Result |
 |---|---|---|
-| `render_audio` | `code`, `path`, `duration`, `channels`, `sample_rate`, `sample_format`, `normalize_db`, `timeout_seconds` | What was rendered and the file's format and size, the analysis report, the image, and the text that the code and scsynth posted |
-| `analyze_audio` | `path`, `start`, `end` | The file's format, channels, sample rate, duration, and size, the analysis report of the window, and the image |
+| `render_audio` | `code`, `path`, `duration`, `channels`, `sample_rate`, `sample_format`, `normalize_db`, `picture`, `timeout_seconds` | What was rendered and the file's format and size, the analysis report, the image with `picture: true`, and the text that the code and scsynth posted |
+| `analyze_audio` | `path`, `start`, `end`, `picture` | The file's format, channels, sample rate, duration, and size, the analysis report of the window, and the image with `picture: true` |
 | `execute_sclang` | `code`, `timeout_seconds` | The error with its details, as an error result, then the value of the last expression as code with its class, and the posted text |
 | `class_info` | `names` or `search` | For each named class: its superclasses, the public methods that it and its metaclass define with argument names and defaults, and its help text; for a search: the classes whose name contains the text, and those whose help summary does |
 
@@ -219,7 +219,7 @@ The model sees 4 tools named `mcp__wasd_supercollider__<name>` with the descript
 
 #### Token effect
 
-The 4 declarations come to about 4,400 characters of JSON, names included, and enter every request while the server's tools are registered.
+The 4 declarations come to about 4,700 characters of JSON, names included, and enter every request while the server's tools are registered.
 
 #### KV Cache effect
 
@@ -236,13 +236,13 @@ After the server connects, the MCP client adds the instructions from [`src/instr
 ```markdown
 For sound effects and music, prefer ElevenLabs' tools when you have them, and use SuperCollider when the user asks for it or ElevenLabs cannot make the sound the game needs.
 
-SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
+SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements that render_audio and analyze_audio return, and by their waveform and spectrogram image when you pass picture. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
 Make, look, adjust:
 - render_audio evaluates code and renders its value for exactly duration seconds: a UGen graph function such as { Pan2.ar(SinOsc.ar(440), 0) * Env.perc(0.01, 0.5).kr(2) }, a SynthDef, a pattern such as Pbind, or a Score. A function's output channels set the file's channels unless channels is given. Patterns play SynthDefs added with .add, or \default. Sound that is still playing at the end is cut off.
-- Read its report: peak and RMS levels, loudness in LUFS, clipping, silence at the start and end, and the dominant frequency. Look at the image: the waveform of each channel above, the spectrogram below. Fix clipping, unintended silence, clicks (thin vertical lines in the spectrogram at onsets or at the end), and harsh highs before calling a sound done.
+- Read its report: peak and RMS levels, loudness in LUFS, clipping, silence at the start and end, and the dominant frequency. When the figures leave a question, such as a click or a harsh high, pass picture for the waveform of each channel above and the spectrogram below, where a click is a thin vertical line at an onset or at the end. Fix clipping, unintended silence, clicks, and harsh highs before calling a sound done.
 - analyze_audio reports on any audio file the same way, optionally on a time window.
 - execute_sclang runs code to define SynthDefs, build patterns and data, and inspect state. Its result is the value of the last expression as code, and posted text (postln) returns as output. The code runs in a Routine, so .wait works.
 - class_info shows classes with their methods, argument names, and defaults, and their help text; check UGen arguments there instead of guessing. Its search finds classes by name.
@@ -256,7 +256,7 @@ Game audio:
 
 #### Token effect
 
-The section adds about 3,000 characters to every request while the server is connected.
+The section adds about 3,100 characters to every request while the server is connected.
 
 #### KV Cache effect
 
@@ -266,7 +266,7 @@ The text is constant, so a reconnect renders an identical section. The section a
 
 #### What the model sees
 
-Each result has one text block, and `render_audio` and `analyze_audio` add one PNG image, 1,024 pixels wide and 418 or 536 pixels high. After each worker start, the next result begins with `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` and a blank line, where the source is `the runtime that WASD Engine ships` or `sclang at <path>`. The rest of the text reports what the call did, with the analysis report and the image description for audio; posted text follows `output:` at the end. Error results carry the failure: a missing runtime returns the message below, which names the computer's platform and architecture, here those of an Intel Mac, an error that the worker class reports returns its class and message with `Error code: WORKER_REMOTE`, an `execute_sclang` error returns its class, message, and details, and a stopped worker returns its error code, recent interpreter output, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
+Each result has one text block, and `render_audio` and `analyze_audio` with `picture: true` add one PNG image, 1,024 pixels wide and 418 or 536 pixels high; without it they draw nothing, and the text leaves out the image description. After each worker start, the next result begins with `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` and a blank line, where the source is `the runtime that WASD Engine ships` or `sclang at <path>`. The rest of the text reports what the call did, with the analysis report and the image description for audio; posted text follows `output:` at the end. Error results carry the failure: a missing runtime returns the message below, which names the computer's platform and architecture, here those of an Intel Mac, an error that the worker class reports returns its class and message with `Error code: WORKER_REMOTE`, an `execute_sclang` error returns its class, message, and details, and a stopped worker returns its error code, recent interpreter output, and the notice that its state was lost. The [MCP client](../../mcp/mcp-client/README.md#model-experience) admits images only on model routes that declare image input and gives other routes diagnostic text instead.
 
 ##### Missing runtime message
 
@@ -297,7 +297,7 @@ These limits describe current gaps in the SuperCollider tools.
 - **No % in Windows paths** — sclang starts scsynth through cmd.exe, which replaces text between % signs even inside quotes, so on Windows the tools refuse to start (`SUPERCOLLIDER_PATH_UNSUPPORTED`) while the runtime's folder or the harness home holds a %; moving that folder, or setting `DSH_HOME` to one without %, lets them start.
 - **Plugins are the core UGens** — the shipped runtime holds the UGens of SuperCollider itself, not sc3-plugins or other extensions, and its class library has no GUI classes.
 - **Loudness weighs every channel equally** — the BS.1770 surround weights do not apply, so files with more than two channels read louder than the standard measures them.
-- **Images need an image-capable route** — on a model route without image input, the model receives diagnostic text instead of the waveform and spectrogram.
+- **Images need an image-capable route** — on a model route without image input, the model receives diagnostic text instead of the waveform and spectrogram it asked for with `picture`.
 
 <a id="dev-note"></a>
 ### Dev Note

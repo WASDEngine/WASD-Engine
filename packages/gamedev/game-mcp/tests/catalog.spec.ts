@@ -115,7 +115,7 @@ describe('GameToolCatalog.instructions', () => {
     + 'instructions short, from search_game_tools with plugin set to its id and no query. '
     + 'call_game_tool calls a tool your tool list lacks. '
     + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '
-    + 'as in blender_scene_info.'
+    + 'as in blender_scene_info. Give each helper agent one task, and each new task to a new helper.'
 
   const SKIPPING = 'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '
     + 'and if you use none, tell the user why. A reason convinces only when the tool cannot do what this game needs or would make it worse; '

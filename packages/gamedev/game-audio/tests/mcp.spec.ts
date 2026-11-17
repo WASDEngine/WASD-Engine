@@ -124,7 +124,7 @@ describe('the audio tools over WASD Engine\'s MCP server', () => {
     const current = await connected()
     const { client, work, requests, saved, reveals } = current
     current.openWindow({ measurements: JUMP, picture: { data: PIXEL_PNG, mediaType: 'image/png', layout: { width: 1024, height: 418, waveformPanels: 'mix', timeStep: 0.05, nyquist: 22_050 } } })
-    const review = await client.callTool({ name: 'call_game_tool', arguments: { name: 'audio_review', arguments: { project: work, path: 'audio/sfx/jump.wav', show: true } } })
+    const review = await client.callTool({ name: 'call_game_tool', arguments: { name: 'audio_review', arguments: { project: work, path: 'audio/sfx/jump.wav', picture: true, show: true } } })
     expect(review.isError, text(review)).toBeFalsy()
     expect((review.content as Array<{ type: string }>).map(block => block.type)).toEqual(['text', 'image'])
     expect(review.content).toContainEqual({ type: 'image', data: PIXEL_PNG, mimeType: 'image/png' })

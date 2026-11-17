@@ -84,6 +84,18 @@ describe('graphics_review', () => {
     ].join('\n'))
   })
 
+  it('tells the reviewer what changed since the last review of the same work, and which notes the agent left', async () => {
+    current = await compose()
+    await png(join(current.work, 'hero.png'), 640, 360)
+    current.models.reply = textReply(NOTES)
+    const previous = 'Warmed the rim light and added hand bones; left the face notes, since the character is a stock MakeHuman model.'
+    expect((await review(current, { image: 'hero.png', subject: 'the hero on the balcony', previous: `  ${previous} ` })).isError).toBe(false)
+    expect(await review(current, { image: 'hero.png', subject: 'the hero on the balcony', previous: ' ' })).toMatchObject({ isError: false })
+    const [first, blank] = current.models.requests.map(request => ((request.messages[0]?.content ?? [])[1] as TextBlock).text)
+    expect(first?.split('\n').at(-1)).toBe(`Since the last review of this work: ${previous}`)
+    expect(blank).not.toContain('Since the last review')
+  })
+
   it('asks for a low reasoning effort with room for the reasoning and the review, and sets no temperature', async () => {
     current = await compose()
     await png(join(current.work, 'a.png'), 1280, 720)

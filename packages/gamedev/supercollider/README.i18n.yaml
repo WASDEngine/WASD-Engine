@@ -9,8 +9,8 @@
   en: f32fd43a52119d78
   zh: 02f1e630390b6752
 /deepseek-ai-dsh-supercollider/summary:
-  en: 0b621e7793a48eed
-  zh: 1b7f605ddf1373a2
+  en: d367926e92d8949e
+  zh: 451454f41dadbe3f
 /deepseek-ai-dsh-supercollider/table-of-contents:
   en: d152484eb41ac6b4
   zh: 725b47765ee8f30b
@@ -33,8 +33,8 @@
   en: 9d4807c45f3e535d
   zh: b0afee07898d2bda
 /deepseek-ai-dsh-supercollider/use-this-package/tools:
-  en: de25e63bfd2d082d
-  zh: caf726f43e3ad77c
+  en: 745abdd61fbed175
+  zh: 7f436e51bbf556fc
 /deepseek-ai-dsh-supercollider/use-this-package/files-under-the-data-directory:
   en: 3ce79a8d9c44b07b
   zh: 5e4587c131085170
@@ -60,8 +60,8 @@
   en: d084f50d5f99fa54
   zh: d4167587889b7905
 /deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations/token-effect:
-  en: 45395a3f77577923
-  zh: 2cb2680911ed4943
+  en: 365456ce9fd555bb
+  zh: 785e34adb7d3c4c1
 /deepseek-ai-dsh-supercollider/model-experience/supercollider-tool-declarations/kv-cache-effect:
   en: d59ee37c5ea6d7f8
   zh: 7b759614ca04d9aa
@@ -75,8 +75,8 @@
   en: 613bbca94bb8e6ea
   zh: 87bfbb3163379d76
 /deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/token-effect:
-  en: d67fa3eb560c22b8
-  zh: e4b95ae30050fa8e
+  en: 4b0e4ff72c39e01b
+  zh: 26e2cb0bb0ab1d10
 /deepseek-ai-dsh-supercollider/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
   en: 457158b3658aae47
   zh: c47906e0ef5d401d
@@ -84,8 +84,8 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees:
-  en: c02f54841361a04e
-  zh: 80375f8320647402
+  en: c7c5f11fc2c08fdf
+  zh: 614a17f07b2d9f69
 /deepseek-ai-dsh-supercollider/model-experience/tool-results-and-images/what-the-model-sees/missing-runtime-message:
   en: 859d90af1f75cfb3
   zh: ec2b54aeeae58a07
@@ -96,8 +96,8 @@
   en: 00af0e13a5a63f94
   zh: 21a0433bbdc9d3c0
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work:
-  en: 838ec41a710e77c7
-  zh: fcf89c47a4eee8f7
+  en: c624691df4882afc
+  zh: 6bbb3ed5065b0935
 /deepseek-ai-dsh-supercollider/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 8ec3e73528ddb1a6

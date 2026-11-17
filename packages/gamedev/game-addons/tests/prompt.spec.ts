@@ -43,10 +43,9 @@ After installing one, load its guide, the skill named by its id, before using it
 ${LIST}`)
   })
 
-  it('tells a connected agent the same, with absolute projects, the guide action, and Blender\'s enable call', async () => {
-    expect(mcpInstructions(await entries())).toBe(`game_addons installs tested third-party add-ons into the user's game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with WASD Engine's Godot 4.7 and Blender 5.2. ${JUDGMENT}
-Install one with action install and project set to the absolute folder that holds project.godot; it unpacks the add-on into addons/, enables it in project.godot, adds its license to THIRD_PARTY_NOTICES.md, and imports the project. Before using an add-on, read its guide with action guide, and for a Blender add-on run import wasd_addons; wasd_addons.enable("<id>") with blender_execute_python. Tell the user what you added and why, with its license and any credit it requires.
-
-${LIST}`)
+  it('tells a connected agent the same, with the whole catalog from action search instead of its lines, absolute projects, the guide action, and Blender\'s enable call', () => {
+    expect(mcpInstructions()).toBe(`game_addons installs tested third-party add-ons into the user's game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with WASD Engine's Godot 4.7 and Blender 5.2. ${JUDGMENT}
+Read the whole catalog with action search before you plan a game, or pass stage for the add-ons that help at one stage: prototype makes the core game playable, content adds levels, characters, and assets, polish adds game feel and finish, and ship tests and releases the game.
+Install one with action install and project set to the absolute folder that holds project.godot; it unpacks the add-on into addons/, enables it in project.godot, adds its license to THIRD_PARTY_NOTICES.md, and imports the project. Before using an add-on, read its guide with action guide, and for a Blender add-on run import wasd_addons; wasd_addons.enable("<id>") with blender_execute_python. Tell the user what you added and why, with its license and any credit it requires.`)
   })
 })

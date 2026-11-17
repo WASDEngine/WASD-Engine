@@ -516,6 +516,26 @@ function describeInput(input: InputOutcome): string {
     : `Sent ${input.events} events ${span}; the game is at frame ${input.frame}.`
 }
 
+/** The game time a `godot_run` call let pass after the start; paused when the game was paused, so none passed. */
+interface StartWait {
+  readonly frames: number
+  readonly seconds: number
+  readonly timedOut: boolean
+  readonly paused: boolean
+}
+
+/**
+ * The sentence of a `godot_run` result about the game time it let pass after the start.
+ * @param waited - the wait, or undefined when the call asked for none.
+ * @returns the sentence, or nothing without a wait.
+ */
+function describeStartWait(waited: StartWait | undefined): string {
+  if (waited === undefined) return ''
+  if (waited.paused) return 'The game is paused, so no game time passed for wait; resume it with godot_control.'
+  if (waited.timedOut) return `The wait ended at its real-time limit after ${waited.seconds.toFixed(2)} s of game time (${waited.frames} frames).`
+  return `Waited ${waited.frames} frames (${waited.seconds.toFixed(2)} s of game time).`
+}
+
 function describeOutcome(outcome: ScreenshotOutcome, action: string): string {
   if (outcome.screenshot !== undefined) return describeScreenshot(outcome.screenshot)
   return outcome.screenshotError === undefined ? '' : `The screenshot after ${action} failed: ${outcome.screenshotError}`
@@ -952,7 +972,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
   return [defineTool({
     name: 'godot_run',
     description: wording.run
-      + 'Reports the window size, the renderer, and the errors and warnings logged while importing and starting. Then look with godot_screenshot and play with godot_input.',
+      + 'Reports the window size, the renderer, and the errors and warnings logged while importing and starting. Pass screenshot to '
+      + 'see the game in the same call, after wait seconds of game time when it needs them to settle; then play with godot_input.',
     parameters: {
       project: { type: 'string', description: 'Folder containing project.godot, relative to the working directory. Default: the nearest project.godot.' },
       scene: { type: 'string', description: 'res:// path of a scene to run instead of the main scene.' },
@@ -972,6 +993,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           + '["--fixed-fps", "30"] makes every frame advance 1/30 s of game time however fast or slow it draws, so godot_record keeps every '
           + 'frame; --max-fps does not slow such a game. --time-scale speeds the game up or slows it down. Default: none.',
       },
+      wait: { type: 'number', description: 'Seconds of game time to let pass once the game runs, before the screenshot, such as for an intro or a camera move. Default: none.' },
+      screenshot: { type: 'boolean', description: 'Capture a screenshot once the game runs, after wait.' },
     },
     output: {
       schema: {
@@ -995,6 +1018,14 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           engineArgs: { type: 'array', items: { type: 'string' } },
           issues: { type: 'array', items: ENTRY_SCHEMA, required: true },
           moreIssues: INTEGER,
+          waited: {
+            type: 'object',
+            additionalProperties: false,
+            properties: { frames: INTEGER, seconds: NUMBER, timedOut: BOOLEAN, paused: BOOLEAN },
+            description: 'The wait after the start; paused when the game was paused, so no game time passed.',
+          },
+          screenshot: SCREENSHOT_SCHEMA,
+          screenshotError: { type: 'string' },
           ...DIGEST_SCHEMA,
         },
       },
@@ -1016,12 +1047,18 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         const issues = value.issues.length === 0
           ? 'No errors or warnings were logged while importing and starting.'
           : `Errors and warnings logged while importing and starting:\n${value.issues.map(formatLogEntry).join('\n')}${value.moreIssues > 0 ? `\n… and ${value.moreIssues} more; read them with godot_logs.` : ''}`
-        return textResult(`The game is ${value.phase}: ${name}; ${facts}.`, issues, formatDigest(value))
+        return [
+          ...textResult(`The game is ${value.phase}: ${name}; ${facts}.`, issues, describeStartWait(value.waited), describeOutcome(value, 'the start'), formatDigest(value)),
+          ...value.screenshot === undefined ? [] : screenshotBlocks(value.screenshot),
+        ]
       },
     },
     async execute(args, exec) {
       const size = parseWindowSize(args.width, args.height)
+      if (args.wait !== undefined && !(args.wait > 0)) throw new Error('wait must be positive.')
       return invoke(host, exec, async (agent, session) => {
+        // A caller that cannot receive the screenshot fails before the game starts.
+        const target = args.screenshot === true ? await surface.screenshots(exec, agent) : undefined
         const run = await host.run(agent, {
           ...args.project === undefined ? {} : { project: args.project },
           ...args.scene === undefined ? {} : { scene: args.scene },
@@ -1038,9 +1075,29 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         const view = run.view()
         const issues = run.logs.filter(entry => isErrorEntry(entry) || entry.level === 'warning').map(toolLogEntry)
         session.digestCursor = Math.max(session.digestCursor, run.logs.lastSeq)
-        if (run.terminal) {
-          const listed = issues.slice(0, STARTUP_ENTRIES).map(formatLogEntry).join('\n')
-          throw new Error(`The game did not keep running (${view.phase}).${view.message === undefined ? '' : `\n${view.message}`}${listed === '' ? '' : `\nErrors and warnings:\n${listed}`}`)
+        // The failure of a run that has ended, read afresh each time, since the game can end during the wait.
+        const ended = (): Error | undefined => {
+          if (!run.terminal) return undefined
+          const now = run.view()
+          const listed = run.logs.filter(entry => isErrorEntry(entry) || entry.level === 'warning').map(toolLogEntry)
+            .slice(0, STARTUP_ENTRIES).map(formatLogEntry).join('\n')
+          return new Error(`The game did not keep running (${now.phase}).${now.message === undefined ? '' : `\n${now.message}`}${listed === '' ? '' : `\nErrors and warnings:\n${listed}`}`)
+        }
+        const failure = ended()
+        if (failure !== undefined) throw failure
+        let waited: StartWait | undefined
+        if (args.wait !== undefined) {
+          if (view.phase === 'paused') {
+            waited = { frames: 0, seconds: 0, timedOut: false, paused: true }
+          } else {
+            try {
+              const reply = await run.wait({ seconds: args.wait }, exec.signal)
+              waited = { frames: reply.frames, seconds: reply.seconds, timedOut: reply.timedOut, paused: false }
+            } catch (error) {
+              exec.signal.throwIfAborted()
+              throw ended() ?? error
+            }
+          }
         }
         // A started run that has not ended connected once, so the game reported its window, renderer, and version.
         return {
@@ -1061,6 +1118,8 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
           ...view.launch.engineArgs === undefined ? {} : { engineArgs: [...view.launch.engineArgs] },
           issues: issues.slice(0, STARTUP_ENTRIES),
           moreIssues: Math.max(0, issues.length - STARTUP_ENTRIES),
+          ...waited === undefined ? {} : { waited },
+          ...target === undefined ? {} : await screenshotAfter(target, session, run, exec.signal),
         }
       })
     },
@@ -1523,14 +1582,24 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         type: 'number',
         description: `code: real seconds to wait for code that awaits, from ${CODE_SECONDS.min} to ${CODE_SECONDS.max}; the code keeps running after them. Default: ${CODE_SECONDS.default}.`,
       },
+      screenshot: { type: 'boolean', description: 'Capture a screenshot after the evaluation, to see what it changed.' },
     },
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
-        properties: { value: { type: 'json', required: true }, valueType: STRING, ...DIGEST_SCHEMA },
+        properties: {
+          value: { type: 'json', required: true },
+          valueType: STRING,
+          screenshot: SCREENSHOT_SCHEMA,
+          screenshotError: { type: 'string' },
+          ...DIGEST_SCHEMA,
+        },
       },
-      render: (_args, value) => textResult(`${value.valueType}: ${JSON.stringify(value.value)}`, formatDigest(value)),
+      render: (_args, value) => [
+        ...textResult(`${value.valueType}: ${JSON.stringify(value.value)}`, describeOutcome(value, 'the evaluation'), formatDigest(value)),
+        ...value.screenshot === undefined ? [] : screenshotBlocks(value.screenshot),
+      ],
     },
     timeoutMs: (CODE_SECONDS.max + 60) * 1000,
     async execute(args, exec) {
@@ -1541,12 +1610,17 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       if (!(seconds >= CODE_SECONDS.min && seconds <= CODE_SECONDS.max)) {
         throw new Error(`timeout_seconds must be from ${CODE_SECONDS.min} to ${CODE_SECONDS.max}.`)
       }
-      return invoke(host, exec, async (_agent, session) => {
+      return invoke(host, exec, async (agent, session) => {
         const run = requireRunning(session)
+        const target = args.screenshot === true ? await surface.screenshots(exec, agent) : undefined
         const reply = args.code === undefined
           ? await run.evaluate(source, args.node, exec.signal)
           : await run.runCode(source, args.node, seconds * 1000, exec.signal)
-        return { value: reply.value, valueType: reply.valueType }
+        return {
+          value: reply.value,
+          valueType: reply.valueType,
+          ...target === undefined ? {} : await screenshotAfter(target, session, run, exec.signal),
+        }
       })
     },
   }), defineTool({
@@ -1621,7 +1695,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
     name: 'godot_audio',
     description: 'Listen to the running game: capture its audio mix, the Master bus as players hear it, for seconds of real time while '
       + 'optional input events play, then report levels, loudness, clipping, silence, spectrum, when sounds start and stop, which '
-      + 'audio players played on which buses, and the bus volumes and peaks, with a waveform and spectrogram picture. '
+      + 'audio players played on which buses, and the bus volumes and peaks; picture adds a waveform and spectrogram picture. '
       + 'A muted run mixes its audio as usual, so it can be captured too.',
     parameters: {
       seconds: {
@@ -1636,6 +1710,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
       coordinate_space: { type: 'string', enum: ['screenshot', 'window'], description: 'Unit of the events\' x, y, dx, dy. Default: screenshot.' },
       path: { type: 'string', description: `Save the capture as a 16-bit .wav file at this path, ${wording.savePath}.` },
       replace: { type: 'boolean', description: 'Overwrite the file at path when it exists. Default: false.' },
+      picture: { type: 'boolean', description: 'Add the waveform and spectrogram picture, for when the figures leave a question, such as where a click lies. Default: false.' },
     },
     output: {
       schema: {
@@ -1679,7 +1754,7 @@ export function godotToolDefinitions(host: GodotToolHost, surface: GodotToolSurf
         // The file is held before the capture, so a refused path wastes no capture.
         const file = await holdSaveFile(host, agent, run, args, '.wav', exec.signal)
         return await savingTo(file, async () => {
-          const pictures = await surface.pictures(exec, agent)
+          const pictures = args.picture === true ? await surface.pictures(exec, agent) : undefined
           const { meta, samples } = await captureWithInput(run, seconds, delivered, exec.signal)
           const audio: AudioSamples = {
             sampleRate: meta.sampleRate, channels: 2, frames: meta.frames,

@@ -25,7 +25,7 @@ Paths are absolute. Resolve relative names against your working directory. Put g
 Inspect, change, look:
 - scene_info gives the overview and object_info the details of one object (transforms, bounds, mesh statistics, modifiers, materials).
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
-- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
+- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures; views shows several directions in one image. Look at a preview after significant changes, or pass execute_python a preview to see a change in the same call, and fix what looks wrong before exporting. Look through these tools, not by rendering to files and reading them.
 - render makes final images from a scene camera.
 - run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 

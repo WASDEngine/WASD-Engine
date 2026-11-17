@@ -190,26 +190,38 @@ export function describeAnalysis(analysis: AudioAnalysis): string[] {
 interface Inspection {
   readonly analysis: AudioAnalysis
   readonly lines: string[]
-  readonly png: Buffer
+  /** The waveform and spectrogram PNG, when the call asked for it. */
+  readonly png?: Buffer
 }
 
 /**
- * Read, measure, and draw the first frames of a float WAV copy, then delete it.
+ * Read and measure the first frames of a float WAV copy, and draw them when asked, then delete it.
  * @param raw - path of the copy.
  * @param gain - factor that every sample is multiplied by.
  * @param frames - sample frames to analyze from the start: a render's copy runs past the frames that the file receives.
- * @returns the analysis, its report lines, and the PNG image.
+ * @param picture - whether to draw the waveform and spectrogram.
+ * @returns the analysis, its report lines, and with `picture` the PNG image.
  */
-async function inspect(raw: string, gain: number, frames: number): Promise<Inspection> {
+async function inspect(raw: string, gain: number, frames: number, picture: boolean): Promise<Inspection> {
   try {
     const audio = firstFrames(readFloatWav(await readFile(raw)), frames)
     applyGain(audio, gain)
     const analysis = analyzeAudio(audio)
+    if (!picture) return { analysis, lines: describeAnalysis(analysis) }
     const { image, layout } = drawAudioImage(audio)
     return { analysis, lines: [...describeAnalysis(analysis), describeAudioImage(layout)], png: encodePng(image) }
   } finally {
     await rm(raw, { force: true })
   }
+}
+
+/** The `picture` argument of the tools that measure audio. */
+const PICTURE = z.boolean().optional()
+  .describe('Add the waveform and spectrogram image, for when the figures leave a question, such as where a click lies. Default: false.')
+
+/** The images of a measuring tool's result: the picture when it was drawn. */
+function pictureImages(png: Buffer | undefined): { data: Buffer; mimeType: 'image/png' }[] {
+  return png === undefined ? [] : [{ data: png, mimeType: 'image/png' }]
 }
 
 /** The first frames of audio, or all of it when it holds no more. */
@@ -227,7 +239,7 @@ function renderAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSha
     name: 'render_audio',
     title: 'Render sound to a file',
     description: 'Evaluate SuperCollider code and render its value offline with scsynth into an audio file of exactly duration seconds, '
-      + 'then report its levels, loudness, silence, and spectrum and return a waveform and spectrogram image. The value can be a UGen graph '
+      + 'then report its levels, loudness, silence, and spectrum; picture adds a waveform and spectrogram image. The value can be a UGen graph '
       + 'function, a SynthDef, a pattern such as Pbind, or a Score. Folders are created as needed and an existing file is replaced.',
     input: {
       code: z.string().min(1).max(CODE_MAX)
@@ -241,6 +253,7 @@ function renderAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSha
       sample_format: z.enum(['int16', 'int24', 'float']).optional()
         .describe('Sample format of .wav, .aiff, and .flac files (default int16; .flac stores no float). .ogg files are always Vorbis.'),
       normalize_db: z.number().min(-60).max(0).optional().describe('Scale the sound so that its peak reaches this level in dBFS, such as -1.'),
+      picture: PICTURE,
       timeout_seconds: timeoutSeconds(dependencies, 'the render'),
     },
     async run(args, signal) {
@@ -252,11 +265,11 @@ function renderAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSha
         header_format: headerFormat, sample_format: sampleFormat, normalize_db: args.normalize_db,
       })
       const reply = parseReply(RenderReply, 'render_audio', await dependencies.call('render_audio', params, callOptions(signal, args.timeout_seconds)))
-      const { analysis, lines, png } = await inspect(reply.raw, reply.gain, reply.frames)
+      const { analysis, lines, png } = await inspect(reply.raw, reply.gain, reply.frames, args.picture === true)
       const header = `Rendered ${seconds(reply.frames / reply.sampleRate)} of ${channelCount(reply.channels)} audio at ${String(reply.sampleRate)} Hz from the ${reply.source} `
         + `to ${reply.path} (${reply.headerFormat}, ${reply.sampleFormat}, ${formatBytes(reply.bytes)}).`
       const gain = args.normalize_db === undefined || analysis.peak === 0 ? [] : [`Normalized with a gain of ${(20 * Math.log10(reply.gain)).toFixed(1)} dB.`]
-      return withSetupNotes(dependencies, { text: withOutput([header, ...gain, ...lines], reply.output), images: [{ data: png, mimeType: 'image/png' }] })
+      return withSetupNotes(dependencies, { text: withOutput([header, ...gain, ...lines], reply.output), images: pictureImages(png) })
     },
   })
 }
@@ -266,23 +279,24 @@ function analyzeAudioTool(dependencies: AppToolDependencies): AppTool<z.ZodRawSh
     name: 'analyze_audio',
     title: 'Analyze an audio file',
     description: 'Report the format, levels, loudness, silence, and spectrum of an audio file that SuperCollider can read (such as .wav, .aiff, '
-      + `.flac, or .ogg) and return a waveform and spectrogram image. A window between start and end, at most ${String(MAX_ANALYSIS_SECONDS)} s long, is analyzed.`,
+      + `.flac, or .ogg); picture adds a waveform and spectrogram image. A window between start and end, at most ${String(MAX_ANALYSIS_SECONDS)} s long, is analyzed.`,
     input: {
       path: absolutePath('Absolute path of the audio file.'),
       start: z.number().min(0).optional().describe('Seconds from the beginning where the window starts (default 0).'),
       end: z.number().gt(0).optional().describe('Seconds from the beginning where the window ends (default: the end of the file).'),
+      picture: PICTURE,
     },
     async run(args, signal) {
       if (args.start !== undefined && args.end !== undefined && args.end <= args.start) throw new Error('end must be later than start.')
       const params = workerParams({ path: args.path, start: args.start, end: args.end, max_seconds: MAX_ANALYSIS_SECONDS })
       const reply = parseReply(DecodeReply, 'decode_audio', await dependencies.call('decode_audio', params, { signal }))
-      const { lines, png } = await inspect(reply.raw, 1, reply.lastFrame - reply.firstFrame)
+      const { lines, png } = await inspect(reply.raw, 1, reply.lastFrame - reply.firstFrame, args.picture === true)
       const window = reply.firstFrame === 0 && reply.lastFrame === reply.frames
         ? 'Analyzed the whole file.'
         : `Analyzed ${seconds(reply.firstFrame / reply.sampleRate)} to ${seconds(reply.lastFrame / reply.sampleRate)}.`
       const header = `${reply.path}: ${reply.headerFormat}, ${reply.sampleFormat}, ${channelCount(reply.channels)}, ${String(reply.sampleRate)} Hz, `
         + `${seconds(reply.frames / reply.sampleRate)}, ${formatBytes(reply.bytes)}. ${window}`
-      return withSetupNotes(dependencies, { text: withOutput([header, ...lines], reply.output), images: [{ data: png, mimeType: 'image/png' }] })
+      return withSetupNotes(dependencies, { text: withOutput([header, ...lines], reply.output), images: pictureImages(png) })
     },
   })
 }

@@ -198,6 +198,22 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     expect(text(waiting)).toContain('the code did not finish within its time limit')
   }, 240_000)
 
+  it('starts the game and shows it after a wait in one call, and shows what an evaluation changed in the same call', async () => {
+    const started = await callTool(c, 'godot_run', { wait: 0.5, screenshot: true })
+    expect(started.isError, text(started)).toBe(false)
+    expect(text(started)).toMatch(/\n\nWaited \d+ frames \(0\.\d\d s of game time\)\.\n\nScreenshot at frame/u)
+    const first = decodePng(lastImage())
+    expect([first.width, first.height]).toEqual([640, 360])
+    // A magenta rectangle over the whole window shows in the screenshot that the evaluation itself takes.
+    const code = 'var layer := CanvasLayer.new()\nvar rect := ColorRect.new()\nrect.color = Color(1, 0, 1)\n'
+      + 'rect.set_anchors_preset(Control.PRESET_FULL_RECT)\nlayer.add_child(rect)\nscene.add_child(layer)\nreturn true'
+    const covered = await callTool(c, 'godot_eval', { code, screenshot: true })
+    expect(covered.isError, text(covered)).toBe(false)
+    expect(text(covered)).toMatch(/^bool: true\n\nScreenshot at frame/u)
+    expect(decodePng(lastImage()).pixel(320, 180)).toEqual([255, 0, 255])
+    expect(first.pixel(320, 180)).not.toEqual([255, 0, 255])
+  }, 240_000)
+
   it('captures a region of the window at its own pixels, grown by a whole factor, and saves it where Godot does not import it', async () => {
     const shot = await callTool(c, 'godot_screenshot', { region: { x: 100, y: 50, width: 200, height: 150 }, coordinate_space: 'window', save: true })
     expect(shot.isError, text(shot)).toBe(false)

@@ -60,10 +60,14 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
     name: TOOL_NAME,
     description: 'Have a specialized graphics expert reviewer model critique an image of the game\'s graphics, the way a game art director '
       + 'and technical artist would: readability, art direction, lighting, materials, shapes, composition, UI, and technical flaws. It gives '
-      + 'notes on how to make the image look better and names the WASD Engine tools and add-ons to consider. Call it exactly three times for '
-      + 'each piece of graphics work, no more and no less: after the work, then after acting on the first review, then after acting on the '
-      + 'second, each time with a new image of the result; act on the third review too, then move on. Returns the notes, the most important '
-      + 'first, each with where it applies and how, and the tools and add-ons to consider, each with what to do with it.',
+      + 'notes on how to make the image look better and names the WASD Engine tools and add-ons to consider. Use it only for graphics you '
+      + 'build, draw, or generate, never for assets you download, such as from Poly Haven or the web, or for work that only adds them to the '
+      + 'game. Call it at least once and at most three times for each piece of graphics work, each time with a new image of the result: after '
+      + 'the work, then after acting on each review, up to three reviews, passing previous with what you changed and which notes you left; '
+      + 'when a review has nothing useful for that work, such as notes that repeat the last review\'s or ask for what you cannot change, you '
+      + 'may stop after the first or second. Act on the third review too, then move on. Returns the notes that would make a visible '
+      + 'difference, the most important first, each with where it applies and how, and the tools and add-ons to consider, each with what to '
+      + 'do with it.',
     parameters: {
       image: { type: 'string', required: true, description: wording.image },
       subject: {
@@ -78,6 +82,11 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
           + 'image itself sets.',
       },
       focus: { type: 'string', description: 'What to look at most, such as the lighting, the character\'s silhouette, or the HUD\'s legibility.' },
+      previous: {
+        type: 'string',
+        description: 'For a second or third review of the same work: what you changed since its last review, and which of its notes you '
+          + 'left and why, such as a stock character\'s face that you cannot remodel.',
+      },
     },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { image: STRING, review: STRING } },
@@ -93,11 +102,13 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
       exec.signal.throwIfAborted()
       const goal = args.goal?.trim()
       const focus = args.focus?.trim()
+      const previous = args.previous?.trim()
       const review = await host.review({
         image,
         subject,
         ...goal === undefined || goal === '' ? {} : { goal },
         ...focus === undefined || focus === '' ? {} : { focus },
+        ...previous === undefined || previous === '' ? {} : { previous },
         ...exec.agent === undefined ? {} : { sessionId: exec.agent.session.id },
       }, exec.signal)
       return { image: path, review }

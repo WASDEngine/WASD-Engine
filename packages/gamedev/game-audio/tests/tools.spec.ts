@@ -47,7 +47,7 @@ describe('audio_search', () => {
       '- audio/sfx/jump.wav: sound effect; WAV, 16-bit PCM, mono, 48 kHz, 0.620 s, 58.2 KB',
       '- audio/voice/hero_hello.wav: dialogue line; WAV, 16-bit PCM, mono, 22.1 kHz, 1.500 s, 64.6 KB',
       'Folders: audio (1 music track); audio/sfx (2 sound effects); audio/voice (1 dialogue line).',
-      'Pass a path to audio_review to measure a sound and see its waveform.',
+      'Pass a path to audio_review to measure a sound.',
     ].join('\n'))
     expect(result.value).toMatchObject({ counts: { effect: 2, dialogue: 1, music: 1 }, total: 4, truncated: false, unreadable: 0 })
   })
@@ -101,7 +101,7 @@ describe('audio_review', () => {
   it('asks the window to measure the sound and reports its figures, warnings, Godot import, and picture', async () => {
     const c = await composed()
     c.openWindow(request => ({ measurements: atLoop(JUMP, request), picture: { data: PIXEL_PNG, mediaType: 'image/png', layout: LAYOUT } }))
-    const result = await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav' })
+    const result = await callTool(c, 'audio_review', { path: 'audio/sfx/coin.wav', picture: true })
     expect(result.isError, JSON.stringify(result.content)).toBeFalsy()
     expect(c.requests).toHaveLength(1)
     // Godot loops the sound from frame 441, at 44.1 kHz, to its end.
@@ -141,7 +141,7 @@ describe('audio_review', () => {
     const { loudness: _loudness, dominantFrequency: _dominant, spectralCentroid: _centroid, seam: _seam, stereo: _stereo, ...plain } =
       silent
     c.openWindow(request => ({ measurements: { ...plain, start: request.start, end: request.end ?? 0.4 } }))
-    const blind = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', start: 0.1, end: 0.3, show: true }, c.blind)
+    const blind = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', start: 0.1, end: 0.3, picture: true, show: true }, c.blind)
     expect(blind.isError).toBeFalsy()
     expect(c.requests[0]).toMatchObject({ start: 0.1, end: 0.3, maxSeconds: 60, picture: false })
     expect(text(blind)).toContain('Measured 0.100 s to 0.300 s of 0.400 s at 44.1 kHz, mono.')
@@ -154,6 +154,11 @@ describe('audio_review', () => {
     const figures = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav', picture: false })
     expect(c.requests[1]?.picture).toBe(false)
     expect(text(figures)).not.toContain('Your model does not accept images')
+    // Without picture, a review measures the sound and draws nothing.
+    const unasked = await callTool(c, 'audio_review', { path: 'audio/sfx/jump.wav' })
+    expect(c.requests[2]?.picture).toBe(false)
+    expect(unasked.content.filter(block => block.type === 'image')).toEqual([])
+    expect(text(unasked)).not.toContain('Your model does not accept images')
   })
 
   it('says when a WAV import follows loop points the file lacks, and leaves the seam\'s level change out for a one-shot sound', async () => {

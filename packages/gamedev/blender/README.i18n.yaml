@@ -33,8 +33,8 @@
   en: cac2147c1deb4142
   zh: 3d74fdadf5ea1eee
 /deepseek-ai-dsh-blender/use-this-package/tools:
-  en: 4adb489eccab13db
-  zh: 0c8898ea09937680
+  en: 34ff48c9f320f9fe
+  zh: 93d9f4ea01d25dc9
 /deepseek-ai-dsh-blender/use-this-package/one-blender-session-per-conversation:
   en: a17fe4008dad9306
   zh: 8bdfebb0a10fd986
@@ -42,8 +42,8 @@
   en: 77022a40a3a1a06e
   zh: a5b71bedd23057a6
 /deepseek-ai-dsh-blender/use-this-package/headless-operation:
-  en: 78859bfcbe569d67
-  zh: 7161dec6b26da341
+  en: 0a2de624a97d880e
+  zh: c5c3cce58d93e14f
 /deepseek-ai-dsh-blender/use-this-package/checkpoints:
   en: cf8c0ae579760c2c
   zh: 1348b6819e4bd676
@@ -51,8 +51,8 @@
   en: ceb37b122c659d0d
   zh: 8cd0f337c3448204
 /deepseek-ai-dsh-blender/use-this-package/files-under-the-data-directory:
-  en: 9ca219ec109b8e60
-  zh: 084b70fc0039031b
+  en: 225fb11c53d772ec
+  zh: 9c5334dec95c1c6f
 /deepseek-ai-dsh-blender/use-this-package/plugin-icon:
   en: 2b694dbcc59f8d0e
   zh: e4db8412ad1dc139
@@ -75,8 +75,8 @@
   en: 0446f091f4aec929
   zh: 8f19af4b21708eab
 /deepseek-ai-dsh-blender/model-experience/blender-tool-declarations/token-effect:
-  en: d54d34467554419d
-  zh: d82868c78b22aeac
+  en: c2a0a273762a0374
+  zh: 54dc4ad3bc8a5627
 /deepseek-ai-dsh-blender/model-experience/blender-tool-declarations/kv-cache-effect:
   en: fa179540b095b444
   zh: c9b700881f8e298c
@@ -90,8 +90,8 @@
   en: dc16c352b87e2012
   zh: 483f7d12c5739291
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/token-effect:
-  en: ae72b0e2b3814a4f
-  zh: cefbc8b3aa80f45a
+  en: 1ef8bc756275f4d7
+  zh: e2f071abebe50415
 /deepseek-ai-dsh-blender/model-experience/server-instructions-in-the-system-prompt/kv-cache-effect:
   en: 457158b3658aae47
   zh: b6a061d2499c0716
@@ -99,8 +99,8 @@
   en: 5120649c8c29354d
   zh: 445a2b087d242747
 /deepseek-ai-dsh-blender/model-experience/tool-results-and-images/what-the-model-sees:
-  en: 6f7c540e6bbeca07
-  zh: 7201d93488062264
+  en: 8fde15cbb3ab1155
+  zh: 1f5011fc50b8fdc3
 /deepseek-ai-dsh-blender/model-experience/tool-results-and-images/token-effect:
   en: e28c9adc7191ad71
   zh: 1c5fd7c4226e4928

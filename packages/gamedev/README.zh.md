@@ -29,11 +29,11 @@ kind: "package-group"
 | [`agent-feedback/`](agent-feedback/README.zh.md) | 智能体反馈：每个会话和 MCP 服务器都提供 `feedback_send` 工具，向 WASD Engine 团队发送关于 WASD Engine 的反馈；用量报告统计智能体调用每个游戏工具和用户添加的每个 MCP 服务器的频率；两者都以已登录账号的身份发送到 WASD Engine 网站 |
 | [`app-mcp/`](app-mcp/README.zh.md) | 在 MCP stdio 服务器之后以无界面方式运行应用程序：把工作脚本复制出包外，监管一个 JSON 行协议的工作进程，并向 MCP 管理器注册该服务器；还提供 Blender、GIMP 与 SuperCollider 服务器共用的 Config 字段、应用程序查找与工具辅助函数 |
 | [`art-references/`](art-references/README.zh.md) | 面向智能体与已连接智能体的参考工具：`reference_search` 在网上为智能体即将制作的美术查找参考图像、动画和视频封面，并在一张联系表上编号；`reference_save` 把选中的参考连同来源保存到游戏项目的 `references/` 文件夹，Godot 不会把它纳入游戏；一个系统提示词段落让智能体在制作美术前收集参考，并在参考不一致时询问用户想要哪个方向 |
-| [`graphics-review/`](graphics-review/README.zh.md) | 面向智能体与已连接智能体的画面审查：`graphics_review` 把游戏画面的图片（例如 `godot_screenshot` 保存的截图）发给审查者，由它像游戏美术总监和技术美术那样点评，给出让画面更好看的改进意见以及可以考虑使用的 WASD Engine 工具和扩展，从不打分；审查者是 WASD Engine 账号的模型路由，由账号付费；一个系统提示词段落要求每项画面工作恰好审查三次 |
+| [`graphics-review/`](graphics-review/README.zh.md) | 面向智能体与已连接智能体的画面审查：`graphics_review` 把游戏画面的图片（例如 `godot_screenshot` 保存的截图）发给审查者，由它像游戏美术总监和技术美术那样点评，给出让画面更好看的改进意见以及可以考虑使用的 WASD Engine 工具和扩展，从不打分；审查者是 WASD Engine 账号的模型路由，由账号付费；一个系统提示词段落要求对 agent 自己制作的每项画面审查一到三次，不审查下载的素材 |
 | [`blender/`](blender/README.zh.md) | 通过 MCP 提供的 Blender 工具，由 `bpy` 模块或以后台模式运行的已安装 Blender 支撑；Desktop 应用为 Apple 芯片 macOS 与 Windows x64 随附 `bpy` |
 | [`elevenlabs/`](elevenlabs/README.zh.md) | ElevenLabs 工具：为角色查找声音，或在取得同意后克隆用户自己的声音，并把 Eleven v4 Turbo 制作的语音、SFX v3 制作的音效和 Music v2.5 制作的音乐保存到游戏项目中；音频由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`game-assets/`](game-assets/README.zh.md) | 面向智能体与已连接智能体的素材工具：`asset_search` 列出游戏项目中的图片与模型，`asset_view` 让 WASD Engine 窗口像「素材」标签页那样绘制其中一个（可从任意方向，含骨架、动画片段与 2D 动画），并给出修改它所需的详细信息 |
-| [`game-audio/`](game-audio/README.zh.md) | 面向智能体与已连接智能体的音频工具：`audio_search` 列出项目的音效、对白和音乐及其类型、格式和时长，`audio_review` 按「音频」标签页播放的方式测量一个声音，给出响度、峰值、静音、循环衔接、立体声、Godot 导入设置以及波形与频谱图；另提供「音频」标签页与 SuperCollider 共用的浏览器安全格式、文件头探测、测量和图像 |
+| [`game-audio/`](game-audio/README.zh.md) | 面向智能体与已连接智能体的音频工具：`audio_search` 列出项目的音效、对白和音乐及其类型、格式和时长，`audio_review` 按「音频」标签页播放的方式测量一个声音，给出响度、峰值、静音、循环衔接、立体声、Godot 导入设置，并可按需给出波形与频谱图；另提供「音频」标签页与 SuperCollider 共用的浏览器安全格式、文件头探测、测量和图像 |
 | [`game-mcp/`](game-mcp/README.zh.md) | 供这台电脑上其他智能体使用的 WASD Engine MCP 服务器：通过带令牌的回环 Streamable HTTP 提供游戏工具及其搜索、已连接智能体的游戏所在的会话，以及设置提示词 |
 | [`gimp/`](gimp/README.zh.md) | 通过 MCP 提供的 GIMP 3 工具，由 `gimp-console` 支撑 |
 | [`godot/`](godot/README.zh.md) | 通过 LibGodot 运行 Godot 游戏：`godot_*` 工具、`godot` Remote、画面路由与 Game 标签页 |
@@ -41,7 +41,7 @@ kind: "package-group"
 | [`game-addons/`](game-addons/README.zh.md) | 游戏扩展：精选并固定到已测试版本的 Godot 与 Blender 扩展目录、列出该目录的系统提示词部分、搜索目录并在智能体判断游戏需要时把扩展安装到游戏项目中或从中移除的 `game_addons` 工具、只有该项目的会话能以技能形式看到的使用指南，以及会话标题栏中的“扩展”对话框 |
 | [`image-generation/`](image-generation/README.zh.md) | 图像生成工具：用 Google 的 Nano Banana 2.1 根据提示词和最多 14 张用于编辑或参照的图像制作游戏美术、界面元素、概念图和贴图，以 PNG、JPEG 或 WebP 保存到游戏项目中；图像由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`polyhaven/`](polyhaven/README.zh.md) | Poly Haven 工具：搜索 Poly Haven 中 CC0 的 HDRI、纹理和 3D 模型资源库，显示素材的文件与预览图，并把一种格式和分辨率下载到游戏项目中，每个文件的摘要都经过校验 |
-| [`supercollider/`](supercollider/README.zh.md) | 通过 MCP 提供的 SuperCollider 工具：用 scsynth 离线渲染由 sclang 代码描述的声音与音乐，并为智能体提供电平、响度以及波形与声谱图图像；Desktop 应用自带不含 GUI 的 SuperCollider |
+| [`supercollider/`](supercollider/README.zh.md) | 通过 MCP 提供的 SuperCollider 工具：用 scsynth 离线渲染由 sclang 代码描述的声音与音乐，并为智能体提供电平、响度，以及按需提供的波形与声谱图图像；Desktop 应用自带不含 GUI 的 SuperCollider |
 | [`todo-continuation/`](todo-continuation/README.zh.md) | 待办续行：当模型以一条回复结束轮次，而它在该轮次写下的待办列表仍有待处理或进行中的项时，一条列出这些项的提醒会让轮次继续；每个不同的列表最多提醒一次，每个轮次的提醒数不超过配置的上限 |
 | [`ui-game-assets/`](ui-game-assets/README.zh.md) | 右侧栏的「素材」标签页：在按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表中列出游戏项目的图片与模型，提供可播放 2D 动画的可缩放图片视图、带动画片段时间轴、骨架以及白模和线框显示的 three.js 模型视图、详细信息面板，并通过导出的模型显示 Blender 文件；它也为智能体的素材工具绘制素材 |
 | [`ui-game-audio/`](ui-game-audio/README.zh.md) | 右侧栏的「音频」标签页：按文件夹分组并显示时长地列出项目的音效、对白和音乐，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，播放时提供可拖动的波形、无缝循环、音量，以及格式、响度和峰值等详细信息；也负责 `audio_review` 背后的解码与测量 |

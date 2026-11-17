@@ -1,5 +1,5 @@
 ---
-description: "Audio for the agent: the audio_search and audio_review tools of every Session and of WASD Engine's MCP server, which list a game project's sound effects, dialogue, and music and measure them as the Audio tab plays them, with a picture of each sound's waveform and spectrogram; and the browser-safe audio module that the Audio tab and the SuperCollider tools share."
+description: "Audio for the agent: the audio_search and audio_review tools of every Session and of WASD Engine's MCP server, which list a game project's sound effects, dialogue, and music and measure them as the Audio tab plays them, with a picture of a sound's waveform and spectrogram on request; and the browser-safe audio module that the Audio tab and the SuperCollider tools share."
 kind: "package-reference"
 ---
 
@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-The audio plugin lets agents, which cannot listen, review a game's sound effects, dialogue, and music. `audio_search` lists the project's sounds with their kind, format, and length. `audio_review` measures one sound as WASD Engine's Audio tab plays it: peak and loudness, clipping, silence at either end, spectrum, loop seam, stereo channels, and Godot import, with a waveform and spectrogram picture, and can open the sound in the user's Audio tab. Agents connected through WASD Engine's MCP server get the same tools. The `./audio` export holds the formats, header probe, measurements, and picture that the Audio tab and game tools share.
+The audio plugin lets agents, which cannot listen, review a game's sound effects, dialogue, and music. `audio_search` lists the project's sounds with their kind, format, and length. `audio_review` measures one sound as WASD Engine's Audio tab plays it: peak and loudness, clipping, silence at either end, spectrum, loop seam, stereo channels, and Godot import, with an optional waveform picture, and can open the sound in the user's Audio tab. Agents connected through WASD Engine's MCP server get the same tools. The `./audio` export holds the formats, header probe, measurements, and picture that the Audio tab and game tools share.
 
 ## Table of Contents
 
@@ -49,7 +49,7 @@ The plugin needs the `tools` and `workingDirectory` services. With the `attachme
 | Tool | What it does |
 |---|---|
 | `audio_search` | Walks the project folder for WAV, MP3, Ogg Vorbis and Opus, FLAC, and AIFF files, skipping hidden folders and `node_modules`, reads each one's headers, and lists the sounds with their kind, format, encoding, channels, sample rate, length, and size, and how many of each kind each folder holds. `query` ranks names that start with it, then names and paths that contain it, then paths that hold its letters in order; `kind` (`effect`, `dialogue`, or `music`) and `folder` narrow the list; `limit` (1 to 200, default 50) and `offset` page it |
-| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid of the sound without its DC offset (none for a sound that holds nothing else), where the loop the game plays meets its own start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture unless `picture` is false or the model takes text only, and with `show` opens the sound in the Audio tab of the Session the user follows: a subagent's or teammate's opens in its lead's. `start` and `end` measure part of a long track, at most `maxReviewSeconds`; a sound longer than the Audio tab decodes (its `maxDecodedSeconds`, 20 minutes by default), or whose decoded samples would take more memory than its `maxDecodedBytes` (512 MiB by default), fails with `AUDIO_TOO_LARGE` before the window decodes it |
+| `audio_review` | Asks a WASD Engine window that may read the Session to decode one sound at its own sample rate and measure it: peak and RMS levels per channel, loudness after ITU-R BS.1770, silence below -60 dBFS at the start and end, the strongest spectral component and the centroid of the sound without its DC offset (none for a sound that holds nothing else), where the loop the game plays meets its own start, and how two channels correlate and balance. It reads how Godot imports the sound from the `.import` file beside it, returns the waveform and spectrogram picture only when `picture` is true and the model takes images, and with `show` opens the sound in the Audio tab of the Session the user follows: a subagent's or teammate's opens in its lead's. `start` and `end` measure part of a long track, at most `maxReviewSeconds`; a sound longer than the Audio tab decodes (its `maxDecodedSeconds`, 20 minutes by default), or whose decoded samples would take more memory than its `maxDecodedBytes` (512 MiB by default), fails with `AUDIO_TOO_LARGE` before the window decodes it |
 
 A sound's kind comes from the first word of its file name, or of its folders from the nearest, that names one: `sfx`, `fx`, `sound`, `foley`, `ui`, or `ambience` for sound effects, `voice`, `vo`, `dialogue`, `speech`, `narrator`, or `bark` for dialogue, and `music`, `bgm`, `ost`, `soundtrack`, `song`, or `jingle` for music. A path without such a word is music from 30 seconds on and a sound effect otherwise.
 
@@ -144,7 +144,7 @@ A search result names the number of sounds with the count of each kind and lists
 
 #### Token effect
 
-A search result is about 120 characters per sound, for 50 sounds by default and at most 200. A review result is about 1,000 characters plus one PNG picture of 1024 pixels by 418 to 536 pixels.
+A search result is about 120 characters per sound, for 50 sounds by default and at most 200. A review result is about 1,000 characters, plus with `picture` one PNG picture of 1024 pixels by 418 to 536 pixels.
 
 #### KV Cache effect
 

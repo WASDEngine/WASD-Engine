@@ -303,8 +303,8 @@ function godotPrompt(release: string | undefined): string {
 ${builtIn}
 
 Test a Godot project with the godot_* tools:
-1. godot_run starts or restarts the game and reports import and startup errors.
-2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
+1. godot_run starts or restarts the game and reports import and startup errors; pass screenshot to see the game in the same call.
+2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting: godot_input, godot_wait, and godot_eval take screenshot to show the result in the same call.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.

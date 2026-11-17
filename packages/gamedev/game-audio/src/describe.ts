@@ -176,7 +176,7 @@ export function describeSearch(value: SearchValue): string {
   }
   if (value.truncated) lines.push('The project has more folders or sounds than one search walks, so some sounds are missing; narrow it with folder.')
   if (value.unreadable > 0) lines.push(`${String(value.unreadable)} folder${value.unreadable === 1 ? '' : 's'} could not be read.`)
-  if (value.total > 0) lines.push('Pass a path to audio_review to measure a sound and see its waveform.')
+  if (value.total > 0) lines.push('Pass a path to audio_review to measure a sound.')
   return lines.join('\n')
 }
 

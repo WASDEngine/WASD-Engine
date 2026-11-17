@@ -84,9 +84,27 @@ export interface CachedImage extends ReferenceImageInfo, ImageOrigin {
 export interface FoundSheet {
   /** Absolute path of the sheet's JPEG file. */
   readonly path: string
+  /** The search's id, eight hexadecimal digits, by which the tools name its images as `<id>#<number>`. */
+  readonly id: string
   readonly data: Buffer
   readonly width: number
   readonly height: number
+}
+
+/** One image of a kept search, as the record beside its contact sheet holds it. */
+export interface SheetImage {
+  /** Number on the contact sheet, from 1. */
+  readonly number: number
+  /** Address of the image file. */
+  readonly image: string
+  /** Address of the page the image came from, or of the image itself. */
+  readonly page: string
+  /** Title of the page or the image; empty without one. */
+  readonly title: string
+  /** Host name of the page. */
+  readonly site: string
+  /** Address of the video the page plays, when the image is its poster. */
+  readonly video?: string
 }
 
 /** The outcome of one reference search. */
@@ -273,15 +291,47 @@ export class ReferenceCache {
   }
 
   /**
-   * Save a contact sheet.
+   * Save a contact sheet, with a record of its images beside it under the same name, so later calls can name an image
+   * by the search's id and its number.
    * @param data - the sheet's JPEG bytes.
-   * @returns the sheet's absolute path.
+   * @param images - the images it shows, numbered as drawn.
+   * @returns the sheet's absolute path and the search's id.
    */
-  async keepSheet(data: Buffer): Promise<string> {
+  async keepSheet(data: Buffer, images: readonly SheetImage[]): Promise<{ path: string; id: string }> {
     await mkdir(this.sheets, { recursive: true })
-    const path = join(this.sheets, `${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}.jpg`)
-    await writeAtomically(path, data)
-    return path
+    const id = randomUUID().slice(0, 8)
+    const stem = join(this.sheets, `${new Date().toISOString().replace(/[:.]/gu, '-')}-${id}`)
+    await writeAtomically(`${stem}.json`, Buffer.from(JSON.stringify({ images: images.map(sheetImage) })))
+    await writeAtomically(`${stem}.jpg`, data)
+    return { path: `${stem}.jpg`, id }
+  }
+
+  /**
+   * An image of a search this cache keeps, by the search's id and the image's number on its contact sheet, while the
+   * search is younger than the cache's age limit.
+   * @param id - the search's id.
+   * @param number - the image's number.
+   * @returns the image, or undefined when no kept search has the id or it shows no image of that number.
+   */
+  async findSheetImage(id: string, number: number): Promise<SheetImage | undefined> {
+    let names: string[]
+    try {
+      names = await readdir(this.sheets)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+      throw error
+    }
+    // Each search has a random id, so two records end alike only by an eight-digit coincidence, which names no image.
+    const [name, ...more] = names.filter(entry => entry.endsWith(`-${id}.json`))
+    if (name === undefined || more.length > 0) return undefined
+    const record = join(this.sheets, name)
+    try {
+      if (Date.now() - (await stat(record)).mtimeMs > this.maxAgeMs) return undefined
+      return parseSheetImages(JSON.parse(await readFile(record, 'utf8'))).find(image => image.number === number)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError) return undefined
+      throw error
+    }
   }
 
   /**
@@ -308,6 +358,32 @@ export class ReferenceCache {
       if (!(await stat(entry.path).then(file => file.isFile(), () => false))) this.known.delete(image)
     }
   }
+}
+
+/** The fields of an image that the record beside a contact sheet keeps. */
+function sheetImage(image: SheetImage): SheetImage {
+  return {
+    number: image.number, image: image.image, page: image.page, title: image.title, site: image.site,
+    ...image.video === undefined ? {} : { video: image.video },
+  }
+}
+
+/**
+ * Validate the record beside a contact sheet read from disk.
+ * @param value - the parsed JSON.
+ * @returns its complete image entries; none when it is no such record.
+ */
+function parseSheetImages(value: unknown): SheetImage[] {
+  const images = typeof value === 'object' && value !== null ? (value as { images?: unknown }).images : undefined
+  if (!Array.isArray(images)) return []
+  return images.flatMap((entry: unknown) => {
+    if (typeof entry !== 'object' || entry === null) return []
+    const image = entry as Partial<Record<keyof SheetImage, unknown>>
+    if (!(['image', 'page', 'title', 'site'] as const).every(key => typeof image[key] === 'string')) return []
+    if (typeof image.number !== 'number' || !Number.isInteger(image.number) || image.number < 1) return []
+    if (image.video !== undefined && typeof image.video !== 'string') return []
+    return [entry as SheetImage]
+  })
 }
 
 /**
@@ -545,8 +621,8 @@ export class ReferenceFinder {
       tag: cached.frames > 1 ? `${cached.format === 'gif' ? 'GIF' : 'ANIM'} ${String(cached.frames)}` : candidates[index]?.video === undefined ? '' : 'VIDEO',
     })), { cell: this.limits.sheetCell, columns: this.limits.sheetColumns })
     signal.throwIfAborted()
-    const path = await this.cache.keepSheet(drawn.data)
-    return { candidates, sheet: { path, ...drawn }, pages: pages.length, unusable, duplicates }
+    const { path, id } = await this.cache.keepSheet(drawn.data, candidates)
+    return { candidates, sheet: { path, id, ...drawn }, pages: pages.length, unusable, duplicates }
   }
 
   /**

@@ -39,12 +39,13 @@ describe('gameAddonMcpProvider', () => {
     expect(await provider.status(new AbortController().signal)).toEqual({ state: 'ready' })
   })
 
-  it('puts the catalog in the server instructions', async () => {
-    const { host: toolHost, catalog } = await host()
+  it('sends connected agents to action search for the catalog, which the server instructions do not repeat', async () => {
+    const { host: toolHost } = await host()
     const provider = gameAddonMcpProvider(toolHost)
-    expect(provider.instructions).toBe(mcpInstructions(catalog.entries))
+    expect(provider.instructions).toBe(mcpInstructions())
     expect(provider.instructions).toContain('wasd_addons.enable')
-    expect(provider.instructions).toContain('- test-camera (Godot; prototype, polish): The camera must follow a moving target with smoothing.')
+    expect(provider.instructions).toContain('Read the whole catalog with action search before you plan a game')
+    expect(provider.instructions).not.toContain('test-camera')
   })
 
   it('says what the add-ons add, asks for the whole catalog before a game is planned, and the install once project.godot exists', async () => {

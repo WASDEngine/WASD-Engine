@@ -82,10 +82,10 @@ describe('render_audio', () => {
     }
   })
 
-  it('sends the resolved format and defaults, reports the render, returns the image, and deletes the analysis copy', async () => {
+  it('sends the resolved format and defaults, reports the render, returns the image it asks for, and deletes the analysis copy', async () => {
     const raw = await rawCopy('render-1.wav')
     const tools = harness({ render_audio: renderReply(raw, { output: 'scsynth: note\n' }) }, ['SuperCollider 3.14.1 started.'])
-    const result = await tools.run('render_audio', { code: '{ SinOsc.ar(440) ! 2 }', path: '/game/sfx/jump.wav', duration: 0.5, timeout_seconds: 30 })
+    const result = await tools.run('render_audio', { code: '{ SinOsc.ar(440) ! 2 }', path: '/game/sfx/jump.wav', duration: 0.5, timeout_seconds: 30, picture: true })
     expect(tools.calls).toEqual([{
       method: 'render_audio',
       params: { code: '{ SinOsc.ar(440) ! 2 }', path: '/game/sfx/jump.wav', duration: 0.5, sample_rate: 44_100, header_format: 'WAV', sample_format: 'int16' },
@@ -122,6 +122,10 @@ describe('render_audio', () => {
     const tools = harness({ render_audio: renderReply(raw, { channels: 1, frames: 100 }) })
     const result = await tools.run('render_audio', { code: '{ DelayN.ar(SinOsc.ar, 0.2, 0.2) }', path: '/game/a.wav', duration: 1 })
     expect(result.text).toContain('Levels: peak -6.0 dBFS')
+    // Without picture, the figures come alone.
+    expect(result.images).toEqual([])
+    expect(result.text).not.toContain('Image (')
+    expect(existsSync(raw)).toBe(false)
   })
 
   it('reports no gain for a silent render and refuses float FLAC before rendering', async () => {
@@ -153,7 +157,7 @@ describe('analyze_audio', () => {
   it('analyzes the whole file or a window and names it', async () => {
     const whole = await rawCopy('decode-1.wav')
     const tools = harness({ decode_audio: decodeReply(whole) })
-    const result = await tools.run('analyze_audio', { path: '/game/music/loop.ogg' })
+    const result = await tools.run('analyze_audio', { path: '/game/music/loop.ogg', picture: true })
     expect(tools.calls[0]).toEqual({ method: 'decode_audio', params: { path: '/game/music/loop.ogg', max_seconds: MAX_ANALYSIS_SECONDS }, options: { signal } })
     expect(result.text.startsWith('/game/music/loop.ogg: OGG, vorbis, stereo, 44100 Hz, 1.000 s, 10.0 KiB. Analyzed the whole file.\nLevels:')).toBe(true)
     expect(result.images).toHaveLength(1)
@@ -163,6 +167,7 @@ describe('analyze_audio', () => {
     const part = await windowed.run('analyze_audio', { path: '/game/music/loop.ogg', start: 0.5, end: 0.75 })
     expect(windowed.calls[0]?.params).toEqual({ path: '/game/music/loop.ogg', start: 0.5, end: 0.75, max_seconds: MAX_ANALYSIS_SECONDS })
     expect(part.text).toContain('Analyzed 0.500 s to 0.750 s.')
+    expect(part.images).toEqual([])
   })
 
   it('refuses a window that ends before it starts', async () => {

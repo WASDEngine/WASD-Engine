@@ -198,7 +198,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
-| `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败 |
+| `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args`、`wait`、`screenshot` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败。`wait` 随后像 `godot_wait` 那样让这么多秒未暂停的游戏时间过去，游戏已暂停时则说明这一点；`screenshot: true` 另附一张截图，因此一次调用就能启动并查看游戏；无法接收图像的调用方会在游戏启动前被拒绝 |
 | `godot_stop` | 无 | 游戏结束后返回 `Stopped the game.`，或返回 `No game was running.` |
 | `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space`、`path`、`replace`、`save` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停；给出 `path`（`.png` 文件）或 `save`（项目 `.wasdengine/screenshots` 文件夹中的新文件）时，还会把图像保存到那里，供接受图像文件的工具使用，例如 `graphics_review`；见[视图、代码与录制](#views-and-recordings) |
 | `godot_input` | `events`（最多 256 个）、`screenshot`、`coordinate_space` | 依次执行事件，其中的等待和按住按实际时间计算，然后报告事件数、帧数、秒数和当前帧；`screenshot: true` 会附加一张截图。序列在其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已执行的事件 |
@@ -206,10 +206,10 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 | `godot_view` | `node` 或 `asset`、`bone`、`yaw`、`pitch`、`distance`、`radius`，或 `camera`；`fov`、`isolate`、`lighting`、`animation`、`time`、`width`、`height`（默认 1280x720，最大 4096）、`path`、`replace`、`save` | 一张在游戏内部用独立相机、按独立尺寸绘制的游戏 3D 世界的 PNG 图像，不改变窗口或游戏相机，并附上相机的位置、方向和视野，以及取景的中心和半径；给出 `path` 或 `save` 时，像截图一样还会保存下来；见[视图、代码与录制](#views-and-recordings) |
 | `godot_record` | `seconds`（0.5 到 120）、`fps`、`max_width`、`path`、`replace`、`events`、`coordinate_space`、`sheet_frames`（默认 12，最多 24） | 在事件播放期间把游戏录制为 MP4 文件，返回文件路径、大小、编解码器、帧数、跳过的帧数、时长、帧率和帧尺寸，模型能看图像时并附上一张取自整段录制的帧的 JPEG 拼图 |
 | `godot_control` | `action`（`pause`、`resume` 或 `step`）、`frames` | 暂停或继续游戏，或运行 `frames` 帧（默认 1，最多 100000）后再次暂停；单步期间游戏被暂停、继续或再次单步时（例如在“游戏”标签页中），以及按每秒 10 帧计的帧数加上 `requestTimeoutMs` 的实际时间过去后，单步提前结束，结果会写明原因；报告暂停状态和帧号 |
-| `godot_eval` | `expression` 或 `code`、`node`、`timeout_seconds`（code，默认 10，1 到 300） | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root`、`tree`、引擎单例和自动加载，以 `node` 处的节点或当前场景为基对象；或把 GDScript `code` 作为函数体运行；返回 JSON 形式的值及其 Godot 类型 |
+| `godot_eval` | `expression` 或 `code`、`node`、`timeout_seconds`（code，默认 10，1 到 300）、`screenshot` | 在运行中的游戏里对 Godot `Expression` 求值，其中定义了 `scene`、`root`、`tree`、引擎单例和自动加载，以 `node` 处的节点或当前场景为基对象；或把 GDScript `code` 作为函数体运行；返回 JSON 形式的值及其 Godot 类型，`screenshot: true` 时另附求值之后的截图 |
 | `godot_scene_tree` | `node`、`depth`（默认 6，最多 64）、`max_nodes`（默认 400，最多 5000） | 缩进的大纲，列出节点名称、类、脚本、位置、大小、隐藏节点、Label 与 Button 文本，以及被禁用的处理 |
 | `godot_performance` | `seconds`（默认 2，0.25 到 20）、`scripts`（默认 true）、`engine_calls`（默认 false） | 在这段真实时间内采样游戏，报告帧率、帧时间百分位数与尖峰、每帧各阶段的平均与最大毫秒数、渲染器测得的 GPU 与渲染 CPU 时间、绘制的对象、图元与绘制调用数、内存与显存、对象数及其变化、物理物体、管线编译、导航、音频延迟、场景树普查、自定义 `Performance` 监视器，以及帧率限制；随后，除非 `scripts` 为 false，再以同样的秒数剖析脚本，报告每个脚本及其最耗时的函数每帧的毫秒数，指定 `engine_calls` 时还报告它们调用的引擎方法 |
-| `godot_audio` | `seconds`（默认 3，0.25 到 30）、`events`（最多 256 个）、`coordinate_space`、`path`、`replace` | 在这些事件从开始处播放的同时，采集这么长的游戏混音，报告电平、响度、削波、静音、频谱、含有声音的片段、播放过的音频播放器以及总线，模型能看图像时附上波形与声谱图；`path` 把采集保存为 16 位 `.wav` 文件，除非 `replace` 为 true，否则不覆盖已有文件 |
+| `godot_audio` | `seconds`（默认 3，0.25 到 30）、`events`（最多 256 个）、`coordinate_space`、`path`、`replace`、`picture` | 在这些事件从开始处播放的同时，采集这么长的游戏混音，报告电平、响度、削波、静音、频谱、含有声音的片段、播放过的音频播放器以及总线，`picture` 为 true 且模型能看图像时附上波形与声谱图；`path` 把采集保存为 16 位 `.wav` 文件，除非 `replace` 为 true，否则不覆盖已有文件 |
 | `godot_logs` | `since`、`levels`、`limit`（默认 200，最多 1000） | 游标 `since` 之后、或本 Session 上次读取之后的日志条目，以及下一个游标 |
 | `godot_check` | `paths`、`project` | 项目自上次导入以来有改动时先导入项目，然后在无界面 Godot 中加载 GDScript 文件而不运行游戏，并按文件列出问题 |
 | `godot_script` | `script`、`args`、`runs`、`fixed_fps`、`exclusive`、`timeout_seconds`、`project` | 项目自上次导入以来有改动时先导入项目，然后在无界面 Godot 中针对项目运行继承 `SceneTree` 或 `MainLoop` 的 GDScript 而不运行游戏：运行一次，或按 `runs` 的每个条目同时各运行一次，需要时以固定帧率运行；并报告其输出的结尾、引擎错误，以及每次运行写入其文件夹的文件 |
@@ -501,7 +501,7 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 
 #### Token 影响
 
-默认配置下，15 个声明合计约 20,900 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_view` 与 `godot_audio` 最大，分别约 3,000 与 2,900 个字符，`godot_input` 其次，约 2,500 个字符。
+默认配置下，15 个声明合计约 21,600 个字符的 JSON（含名称），进入每个提供这些工具的请求；其中 `godot_view` 与 `godot_audio` 最大，分别约 3,000 与 2,900 个字符，`godot_input` 其次，约 2,500 个字符。
 
 #### KV Cache 影响
 
@@ -521,8 +521,8 @@ pnpm run test:e2e packages/gamedev/godot/tests/godot-runner.e2e.ts
 Godot 4.7 is built in: the godot_* tools run it, so making, checking, and running a game need no Godot editor or godot command. Do not look for one or download one. Write code for Godot 4.7. For a new game, first write project.godot, whose config/features starts with "4.7" and whose [physics] section sets 3d/physics_engine="Jolt Physics", a main scene, and its scripts.
 
 Test a Godot project with the godot_* tools:
-1. godot_run starts or restarts the game and reports import and startup errors.
-2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting.
+1. godot_run starts or restarts the game and reports import and startup errors; pass screenshot to see the game in the same call.
+2. godot_screenshot shows the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting: godot_input, godot_wait, and godot_eval take screenshot to show the result in the same call.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game.
 5. Captures and tests need no changes to the game: godot_run takes launch options (args, engine_args), godot_eval runs GDScript code, godot_view draws any camera at any size or a scene alone, and godot_record saves video.
@@ -533,7 +533,7 @@ Released games play in browsers, where Godot draws with its Compatibility render
 
 #### Token 影响
 
-插件加载期间，该部分为每个系统提示词增加 1863 个字符；不写明 Godot 版本时为 1789 个字符。
+插件加载期间，该部分为每个系统提示词增加 2006 个字符；不写明 Godot 版本时为 1932 个字符。
 
 #### KV Cache 影响
 

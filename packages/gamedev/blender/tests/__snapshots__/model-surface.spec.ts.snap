@@ -8,7 +8,7 @@ Paths are absolute. Resolve relative names against your working directory. Put g
 Inspect, change, look:
 - scene_info gives the overview and object_info the details of one object (transforms, bounds, mesh statistics, modifiers, materials).
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
-- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
+- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures; views shows several directions in one image. Look at a preview after significant changes, or pass execute_python a preview to see a change in the same call, and fix what looks wrong before exporting. Look through these tools, not by rendering to files and reading them.
 - render makes final images from a scene camera.
 - run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 
@@ -65,7 +65,7 @@ exports[`pins the tool declarations > tool declarations 1`] = `
     "title": "Object details",
   },
   {
-    "description": "Run Python in the Blender session. bpy, bmesh, mathutils, math, and json are imported, and names you define persist between calls until new_scene or open_blend replaces the scene. Assign \`result\` to return a value as JSON (vectors become lists, datablocks become {type, name}, integers beyond ±(2^53 − 1) strings of digits, other objects their repr). Printed output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout expires, Blender restarts and unsaved changes are lost.",
+    "description": "Run Python in the Blender session. bpy, bmesh, mathutils, math, and json are imported, and names you define persist between calls until new_scene or open_blend replaces the scene. Assign \`result\` to return a value as JSON (vectors become lists, datablocks become {type, name}, integers beyond ±(2^53 − 1) strings of digits, other objects their repr). Printed output is returned, up to 20000 characters. An exception makes the call fail and returns its traceback. When the timeout expires, Blender restarts and unsaved changes are lost. Pass preview to see the result in the same call: after code that raises no exception, it renders the scene as render_preview does with those arguments, such as {"views": ["front", "iso"]}.",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -75,6 +75,49 @@ exports[`pins the tool declarations > tool declarations 1`] = `
           "maxLength": 200000,
           "minLength": 1,
           "type": "string",
+        },
+        "preview": {
+          "additionalProperties": false,
+          "description": "A preview after the code, as render_preview renders it at 768 pixels a view; {} renders the iso solid preview.",
+          "properties": {
+            "objects": {
+              "description": "Objects to frame and show with their children; omit for the whole scene.",
+              "items": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string",
+              },
+              "maxItems": 300,
+              "minItems": 1,
+              "type": "array",
+            },
+            "shading": {
+              "description": "solid (default) or material.",
+              "enum": [
+                "solid",
+                "material",
+              ],
+              "type": "string",
+            },
+            "views": {
+              "description": "Several directions in one image instead of view, such as ["front", "right", "top", "iso"], tiled left to right and top to bottom.",
+              "items": {
+                "enum": [
+                  "iso",
+                  "front",
+                  "back",
+                  "left",
+                  "right",
+                  "top",
+                ],
+                "type": "string",
+              },
+              "maxItems": 6,
+              "minItems": 1,
+              "type": "array",
+            },
+          },
+          "type": "object",
         },
         "timeout_seconds": {
           "description": "Seconds before Blender is stopped and restarted (default 600).",
@@ -259,13 +302,13 @@ exports[`pins the tool declarations > tool declarations 1`] = `
     "title": "Export file",
   },
   {
-    "description": "Look at the scene: render an image from an orthographic camera framed on every renderable object, or on the listed objects and their children with other geometry hidden. solid (default) is fast flat shading with outlines in material base colors; material renders node materials and textures with EEVEE, lit by the scene lights (or a temporary sun when there are none). The scene, its camera, and its render settings are left unchanged.",
+    "description": "Look at the scene: render an image from an orthographic camera framed on every renderable object, or on the listed objects and their children with other geometry hidden. solid (default) is fast flat shading with outlines in material base colors; material renders node materials and textures with EEVEE, lit by the scene lights (or a temporary sun when there are none). views shows several directions in one image. The scene, its camera, and its render settings are left unchanged.",
     "input": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
         "height": {
-          "description": "Image height in pixels (default 768).",
+          "description": "Image height in pixels, of each view in views (default 768).",
           "maximum": 1568,
           "minimum": 64,
           "type": "integer",
@@ -301,8 +344,25 @@ exports[`pins the tool declarations > tool declarations 1`] = `
           ],
           "type": "string",
         },
+        "views": {
+          "description": "Several directions in one image instead of view, such as ["front", "right", "top", "iso"], tiled left to right and top to bottom.",
+          "items": {
+            "enum": [
+              "iso",
+              "front",
+              "back",
+              "left",
+              "right",
+              "top",
+            ],
+            "type": "string",
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "type": "array",
+        },
         "width": {
-          "description": "Image width in pixels (default 768).",
+          "description": "Image width in pixels, of each view in views (default 768).",
           "maximum": 1568,
           "minimum": 64,
           "type": "integer",

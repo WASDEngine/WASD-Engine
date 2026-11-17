@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-audio/README.md
 /:
-  en: 27fdc692c372e1d6
-  zh: 45b8c7ff7b9c76d6
+  en: 86c12ce1f926c6a9
+  zh: 86309f1b11aa162d
 /deepseek-ai-dsh-game-audio:
   en: bfb2c91d83c59d37
   zh: d553c97bac76d092
 /deepseek-ai-dsh-game-audio/summary:
-  en: ab8fc472a31716a0
-  zh: c89c6e446b384b60
+  en: 77004ec6fe0a4007
+  zh: 41e0e8fa35be935f
 /deepseek-ai-dsh-game-audio/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -21,8 +21,8 @@
   en: dcd5d4a379413c3c
   zh: 02fa93053ef34467
 /deepseek-ai-dsh-game-audio/use-this-package/the-tools:
-  en: 463ada84ae63c746
-  zh: 34627b859813706f
+  en: 1e14d62dc0274971
+  zh: 7107b1d74a9b40a8
 /deepseek-ai-dsh-game-audio/use-this-package/the-audio-module:
   en: 15d437f0b1c80614
   zh: 486b672d1b2a71a3
@@ -54,8 +54,8 @@
   en: 766022ee3d60689a
   zh: 88bd2bc070849908
 /deepseek-ai-dsh-game-audio/model-experience/tool-results/token-effect:
-  en: 1f0b2aa708337413
-  zh: 5f81acd58b59a2c2
+  en: 8ccf8a8a334a619d
+  zh: 47f0f663025c25bc
 /deepseek-ai-dsh-game-audio/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: b5fe15ad16d14009

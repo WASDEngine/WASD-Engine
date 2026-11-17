@@ -70,6 +70,37 @@ posix('godot_run and godot_stop', () => {
     expect((await fakeLog(c.project)).some(entry => (entry.argv as string[] | undefined)?.includes('--resolution'))).toBe(true)
   })
 
+  it('starts the game, lets game time pass, and shows a screenshot in the same call', async () => {
+    const c = await setup()
+    const result = await callTool(c, 'godot_run', { wait: 0.05, screenshot: true })
+    expect(value(result)).toMatchObject({
+      phase: 'running', waited: { seconds: 0.05, timedOut: false, paused: false }, screenshot: { width: 320, height: 180 },
+    })
+    expect(text(result)).toMatch(new RegExp('^The game is running: [^\n]+\n\nNo errors or warnings were logged while importing and starting\\.\n\n'
+      + 'Waited \\d+ frames \\(0\\.05 s of game time\\)\\.\n\nScreenshot at frame', 'u'))
+    expect(result.content.at(-1)).toMatchObject({ type: 'image' })
+    const requests = (await fakeRequests(c.project)).map(request => request.type).filter(type => type === 'wait' || type === 'screenshot')
+    expect(requests).toEqual(['wait', 'screenshot'])
+    // Without wait the screenshot follows the start at once; without screenshot the result holds no image.
+    expect(value(await callTool(c, 'godot_run', { screenshot: true }))).not.toHaveProperty('waited')
+    const plain = await callTool(c, 'godot_run')
+    expect(value(plain)).not.toHaveProperty('screenshot')
+    expect(plain.content.some(block => block.type === 'image')).toBe(false)
+  })
+
+  it('says when the wait after the start ended at its real-time limit', async () => {
+    const c = await setup({ game: { game: { replies: { wait: 'timedOut' } } } })
+    const result = await callTool(c, 'godot_run', { wait: 1 })
+    expect(value(result)).toMatchObject({ waited: { timedOut: true, paused: false } })
+    expect(text(result)).toMatch(/\n\nThe wait ended at its real-time limit after \d+\.\d\d s of game time \(\d+ frames\)\.$/u)
+  })
+
+  it('refuses a screenshot the model cannot see before it starts the game', async () => {
+    const c = await setup({ model: 'blind' })
+    expect(text(await callTool(c, 'godot_run', { screenshot: true }))).toContain('does not accept images')
+    expect(text(await callTool(c, 'godot_stop'))).toBe('No game was running.')
+  })
+
   it('lists at most the first startup problems and counts the rest', async () => {
     const logs = Array.from({ length: STARTUP_ENTRIES + 3 }, (_, index) => ({ level: 'warning', message: `w${index}`, time_ms: 1 }))
     const c = await setup({ game: { game: { logs } } })
@@ -85,6 +116,7 @@ posix('godot_run and godot_stop', () => {
     [{ width: 10, height: 20_000 }, 'width and height must be integers from 1 to 16384.'],
     [{ scene: 'res://missing.tscn' }, 'does not exist'],
     [{ project: 'nowhere' }, 'No project.godot'],
+    [{ wait: 0 }, 'wait must be positive.'],
   ])('refuses %j', async (args, message) => {
     const c = await setup()
     const result = await callTool(c, 'godot_run', args)
@@ -365,6 +397,11 @@ posix('observing the game', () => {
     const c = await started({ game: { game: { tree, treeTruncated: true, evalValue: { x: 1 } } } })
     const evaluated = await callTool(c, 'godot_eval', { expression: 'scene.position', node: '/root/Main' })
     expect(text(evaluated)).toBe('String: {"x":1}')
+    const seen = await callTool(c, 'godot_eval', { expression: 'scene.position', screenshot: true })
+    expect(value(seen)).toMatchObject({ value: { x: 1 }, screenshot: { width: 320, height: 180 } })
+    expect(text(seen)).toMatch(/^String: \{"x":1\}\n\nScreenshot at frame/u)
+    expect(seen.content.at(-1)).toMatchObject({ type: 'image' })
+    expect((await fakeRequests(c.project)).map(request => request.type).slice(-2)).toEqual(['eval', 'screenshot'])
     expect(text(await callTool(c, 'godot_eval', { expression: '  ' }))).toContain('expression must not be empty.')
     const described = await callTool(c, 'godot_scene_tree', { depth: 2, max_nodes: 10 })
     expect(text(described)).toBe([
@@ -401,9 +438,9 @@ posix('observing the game', () => {
     expect(text(await callTool(c, 'godot_performance', { seconds: 0.1 }))).toContain('seconds must be from 0.25 to 20.')
   })
 
-  it('captures the audio mix with its measurements and picture, and saves it as a WAV file on request', async () => {
+  it('captures the audio mix with its measurements and the picture it asks for, and saves it as a WAV file on request', async () => {
     const c = await started()
-    const result = await callTool(c, 'godot_audio', { seconds: 0.5 })
+    const result = await callTool(c, 'godot_audio', { seconds: 0.5, picture: true })
     expect(text(result).split('\n').slice(0, 4)).toEqual([
       'Captured 0.50 s of the game\'s audio mix, the Master bus after its effects and volume, at 44100 Hz in stereo.',
       'The game runs muted (Dummy audio driver): it mixes its audio as usual, but no device plays it.',
@@ -422,6 +459,10 @@ posix('observing the game', () => {
 
     const saved = await callTool(c, 'godot_audio', { seconds: 0.25, path: 'captures/mix.wav' })
     expect(text(saved)).toContain(`Saved the capture to ${join(c.dir.root, 'work', 'captures', 'mix.wav')}.`)
+    // Without picture, the capture's figures come alone.
+    expect(saved.content.some(block => block.type === 'image')).toBe(false)
+    expect(text(saved)).not.toContain('Image (1024 x')
+    expect(c.saved).toHaveLength(1)
     const wav = await readFile(join(c.dir.root, 'work', 'captures', 'mix.wav'))
     expect(wav.toString('latin1', 0, 4)).toBe('RIFF')
     expect(wav.length).toBe(44 + 11025 * 4)
@@ -434,7 +475,7 @@ posix('observing the game', () => {
   it('plays input from the capture\'s start, keeps to text for a model without images, and reports what the game played', async () => {
     const players = [{ path: '/root/Main/Gun/Shot', class: 'AudioStreamPlayer3D', stream: 'res://sfx/shot.wav', bus: 'SFX', volumeDb: -2, starts: 2, firstAt: 0.21, lastAt: 0.4, playing: false }]
     const c = await started({ model: 'blind', game: { game: { audio: { amplitude: 0, reply: { players, morePlayers: 1, droppedFrames: 12, driver: 'CoreAudio', masterBypassed: true, detached: true } } } } })
-    const result = await callTool(c, 'godot_audio', { seconds: 0.25, events: [{ kind: 'key', key: 'Space', pressed: true }] })
+    const result = await callTool(c, 'godot_audio', { seconds: 0.25, events: [{ kind: 'key', key: 'Space', pressed: true }], picture: true })
     expect(text(result)).not.toContain('muted')
     expect(text(result)).toContain('The Master bus bypasses its effects')
     expect(text(result)).toContain('The game replaced its audio bus layout during the capture')

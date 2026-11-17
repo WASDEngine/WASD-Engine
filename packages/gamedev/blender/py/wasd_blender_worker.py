@@ -84,6 +84,9 @@ MEMBER_LIMIT = 150
 SETTING_LIMIT = 16
 PREVIEW_MARGIN = 1.12
 PREVIEW_EEVEE_SAMPLES = 16
+# Pixels between the views of a preview sheet, and their color, darker than the preview world.
+PREVIEW_SHEET_GAP = 4
+PREVIEW_SHEET_GAP_COLOR = (0.05, 0.05, 0.05, 1.0)
 DEFAULT_VIEWPORT_COLOR = (0.8, 0.8, 0.8, 1.0)
 
 GEOMETRY_TYPES = frozenset(
@@ -176,6 +179,16 @@ class Args:
         if value not in choices:
             self._fail(key, f'one of {", ".join(choices)}')
         return value
+
+    def choices(self, key, choices):
+        """Return a non-empty list of distinct allowed strings in the given order, or None when the key is absent."""
+        if key not in self.params or self.params[key] is None:
+            return None
+        value = self.params[key]
+        if (not isinstance(value, list) or not value
+                or not all(isinstance(item, str) and item in choices for item in value) or len(set(value)) != len(value)):
+            self._fail(key, f'a non-empty list of distinct values from {", ".join(choices)}')
+        return list(value)
 
     def names(self, key):
         """Return a non-empty list of distinct non-empty strings, or None when the key is absent."""
@@ -851,6 +864,47 @@ def _use_standard_view(overrides, view_settings):
         view_settings.look = saved_look
     overrides.defer(restore)
     view_settings.look = 'None'
+
+
+def _sheet_columns(count):
+    """Columns of a preview sheet of ``count`` views: one row for two, two columns for up to four, three beyond."""
+    return count if count <= 2 else (2 if count <= 4 else 3)
+
+
+def _tile_preview_sheet(tiles, width, height, path):
+    """Write the ``tiles``, PNG files of ``width`` by ``height`` pixels, into one PNG at ``path``: left to right
+    and top to bottom in the given order, ``PREVIEW_SHEET_GAP`` pixels apart. Return the sheet's width and height."""
+    import numpy
+
+    columns = _sheet_columns(len(tiles))
+    rows = -(-len(tiles) // columns)
+    sheet_width = columns * width + (columns - 1) * PREVIEW_SHEET_GAP
+    sheet_height = rows * height + (rows - 1) * PREVIEW_SHEET_GAP
+    pixels = numpy.empty((sheet_height, sheet_width, 4), dtype=numpy.float32)
+    pixels[:] = PREVIEW_SHEET_GAP_COLOR
+    for index, tile in enumerate(tiles):
+        image = bpy.data.images.load(tile, check_existing=False)
+        try:
+            if tuple(image.size) != (width, height):
+                raise RuntimeError(f'render_preview: a view rendered at {image.size[0]}x{image.size[1]} instead of {width}x{height}')
+            data = numpy.empty(width * height * 4, dtype=numpy.float32)
+            image.pixels.foreach_get(data)
+        finally:
+            bpy.data.images.remove(image)
+        row, column = divmod(index, columns)
+        # Image rows run from the bottom up, so the first row of views fills the last rows of pixels.
+        bottom = (rows - 1 - row) * (height + PREVIEW_SHEET_GAP)
+        left = column * (width + PREVIEW_SHEET_GAP)
+        pixels[bottom:bottom + height, left:left + width] = data.reshape(height, width, 4)
+    sheet = bpy.data.images.new('WASD preview sheet', sheet_width, sheet_height, alpha=False)
+    try:
+        sheet.pixels.foreach_set(pixels.ravel())
+        sheet.filepath_raw = path
+        sheet.file_format = 'PNG'
+        sheet.save()
+    finally:
+        bpy.data.images.remove(sheet)
+    return sheet_width, sheet_height
 
 
 def _frame_camera(camera, low, high, view, width, height):
@@ -1881,11 +1935,18 @@ class Worker:
         return {'path': path, 'format': export_format, 'bytes': os.path.getsize(path)}
 
     def render_preview(self, params):
-        args = Args('render_preview', params, ('path', 'width', 'height', 'view', 'objects', 'shading', 'agent_image'))
+        args = Args('render_preview', params, ('path', 'width', 'height', 'view', 'views', 'objects', 'shading', 'agent_image'))
         path = args.path('path', extensions=('.png',))
         width = args.integer('width', 768, 16, 8192)
         height = args.integer('height', 768, 16, 8192)
-        view = args.choice('view', tuple(VIEW_DIRECTIONS), 'iso')
+        views = args.choices('views', tuple(VIEW_DIRECTIONS))
+        if views is None:
+            views = [args.choice('view', tuple(VIEW_DIRECTIONS), 'iso')]
+        elif params.get('view') is not None:
+            raise ParamError('render_preview: give view or views, not both')
+        # Several views render one file each beside the sheet, which tiles them into path.
+        stem = os.path.splitext(path)[0]
+        tiles = [path] if len(views) == 1 else [f'{stem}-view-{view}.png' for view in views]
         shading = args.choice('shading', ('solid', 'material'), 'solid')
         targets = _preview_targets('render_preview', args.names('objects'))
         agent_image = args.image_target('agent_image')
@@ -1904,71 +1965,84 @@ class Worker:
         created = []
         images_before = {image.as_pointer() for image in bpy.data.images}
         started = time.monotonic()
+        # The view files go once the sheet is written, and when the preview fails.
         try:
-            camera_data = bpy.data.cameras.new('WASD preview camera')
-            created.append((bpy.data.cameras, camera_data))
-            camera = bpy.data.objects.new('WASD preview camera', camera_data)
-            created.append((bpy.data.objects, camera))
-            scene.collection.objects.link(camera)
-            framing = _frame_camera(camera, low, high, view, width, height)
-            overrides.set(scene, 'camera', camera)
-            if scene.world is None:
-                world = bpy.data.worlds.new('WASD preview world')
-                created.append((bpy.data.worlds, world))
-                _neutral_world(world)
-                overrides.set(scene, 'world', world)
-            if shading == 'material' and not any(obj.type == 'LIGHT' and not obj.hide_render for obj in scene.objects):
-                light_data = bpy.data.lights.new('WASD preview light', 'SUN')
-                created.append((bpy.data.lights, light_data))
-                light_data.energy = 3.0
-                light = bpy.data.objects.new('WASD preview light', light_data)
-                created.append((bpy.data.objects, light))
-                scene.collection.objects.link(light)
-                light.rotation_euler = Euler((math.radians(50.0), 0.0, math.radians(30.0)))
-            if targets is not None:
-                wanted = {obj.as_pointer() for obj in targets}
-                for obj in scene.objects:
-                    if obj.as_pointer() in wanted:
-                        if obj.hide_render:
-                            overrides.set(obj, 'hide_render', False)
-                    elif obj.type in GEOMETRY_TYPES and not obj.hide_render:
-                        overrides.set(obj, 'hide_render', True)
-            if shading == 'solid':
-                overrides.set(render, 'engine', 'BLENDER_WORKBENCH')
-                display = scene.display.shading
-                for attribute, value in (('light', 'STUDIO'), ('color_type', 'TEXTURE'), ('show_cavity', True),
-                                         ('cavity_type', 'BOTH'), ('show_object_outline', True), ('show_shadows', False),
-                                         ('show_xray', False), ('show_backface_culling', False)):
-                    overrides.set(display, attribute, value, optional=True)
-                _use_standard_view(overrides, scene.view_settings)
-                _sync_viewport_colors(overrides, shown)
-            else:
-                overrides.set(render, 'engine', _engine_id(scene, 'EEVEE'))
-                overrides.set(scene.eevee, 'taa_render_samples', PREVIEW_EEVEE_SAMPLES, optional=True)
-            for attribute, value in (('resolution_x', width), ('resolution_y', height), ('resolution_percentage', 100),
-                                     ('pixel_aspect_x', 1.0), ('pixel_aspect_y', 1.0), ('use_border', False),
-                                     ('film_transparent', False), ('use_compositing', False), ('use_sequencer', False),
-                                     ('use_stamp', False), ('use_motion_blur', False), ('use_freestyle', False),
-                                     ('use_multiview', False)):
-                overrides.set(render, attribute, value, optional=True)
-            _use_png_output(overrides, render, rgba=False)
-            overrides.set(render, 'filepath', path)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            bpy.ops.render.render(write_still=True)
+            try:
+                camera_data = bpy.data.cameras.new('WASD preview camera')
+                created.append((bpy.data.cameras, camera_data))
+                camera = bpy.data.objects.new('WASD preview camera', camera_data)
+                created.append((bpy.data.objects, camera))
+                scene.collection.objects.link(camera)
+                framing = _frame_camera(camera, low, high, views[0], width, height)
+                overrides.set(scene, 'camera', camera)
+                if scene.world is None:
+                    world = bpy.data.worlds.new('WASD preview world')
+                    created.append((bpy.data.worlds, world))
+                    _neutral_world(world)
+                    overrides.set(scene, 'world', world)
+                if shading == 'material' and not any(obj.type == 'LIGHT' and not obj.hide_render for obj in scene.objects):
+                    light_data = bpy.data.lights.new('WASD preview light', 'SUN')
+                    created.append((bpy.data.lights, light_data))
+                    light_data.energy = 3.0
+                    light = bpy.data.objects.new('WASD preview light', light_data)
+                    created.append((bpy.data.objects, light))
+                    scene.collection.objects.link(light)
+                    light.rotation_euler = Euler((math.radians(50.0), 0.0, math.radians(30.0)))
+                if targets is not None:
+                    wanted = {obj.as_pointer() for obj in targets}
+                    for obj in scene.objects:
+                        if obj.as_pointer() in wanted:
+                            if obj.hide_render:
+                                overrides.set(obj, 'hide_render', False)
+                        elif obj.type in GEOMETRY_TYPES and not obj.hide_render:
+                            overrides.set(obj, 'hide_render', True)
+                if shading == 'solid':
+                    overrides.set(render, 'engine', 'BLENDER_WORKBENCH')
+                    display = scene.display.shading
+                    for attribute, value in (('light', 'STUDIO'), ('color_type', 'TEXTURE'), ('show_cavity', True),
+                                             ('cavity_type', 'BOTH'), ('show_object_outline', True), ('show_shadows', False),
+                                             ('show_xray', False), ('show_backface_culling', False)):
+                        overrides.set(display, attribute, value, optional=True)
+                    _use_standard_view(overrides, scene.view_settings)
+                    _sync_viewport_colors(overrides, shown)
+                else:
+                    overrides.set(render, 'engine', _engine_id(scene, 'EEVEE'))
+                    overrides.set(scene.eevee, 'taa_render_samples', PREVIEW_EEVEE_SAMPLES, optional=True)
+                for attribute, value in (('resolution_x', width), ('resolution_y', height), ('resolution_percentage', 100),
+                                         ('pixel_aspect_x', 1.0), ('pixel_aspect_y', 1.0), ('use_border', False),
+                                         ('film_transparent', False), ('use_compositing', False), ('use_sequencer', False),
+                                         ('use_stamp', False), ('use_motion_blur', False), ('use_freestyle', False),
+                                         ('use_multiview', False)):
+                    overrides.set(render, attribute, value, optional=True)
+                _use_png_output(overrides, render, rgba=False)
+                overrides.set(render, 'filepath', tiles[0])
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                for index, (view, tile) in enumerate(zip(views, tiles)):
+                    if index > 0:
+                        _frame_camera(camera, low, high, view, width, height)
+                        render.filepath = tile
+                    bpy.ops.render.render(write_still=True)
+            finally:
+                failures += overrides.restore()
+                for collection, block in reversed(created):
+                    collection.remove(block)
+                _remove_new_images(images_before, ('RENDER_RESULT', 'COMPOSITING'))
+            if failures:
+                raise RuntimeError(f'render_preview: the preview rendered, but these settings could not be restored: {"; ".join(failures)}')
+            for tile in tiles:
+                if not os.path.isfile(tile):
+                    raise RuntimeError(f'render_preview: Blender did not write {tile}')
+            size = (width, height) if len(tiles) == 1 else _tile_preview_sheet(tiles, width, height, path)
         finally:
-            failures += overrides.restore()
-            for collection, block in reversed(created):
-                collection.remove(block)
-            _remove_new_images(images_before, ('RENDER_RESULT', 'COMPOSITING'))
-        if failures:
-            raise RuntimeError(f'render_preview: the preview rendered, but these settings could not be restored: {"; ".join(failures)}')
-        if not os.path.isfile(path):
-            raise RuntimeError(f'render_preview: Blender did not write {path}')
+            if len(tiles) > 1:
+                for tile in tiles:
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(tile)
         reply = {
-            'path': path, 'width': width, 'height': height, 'view': view, 'shading': shading,
+            'path': path, 'width': width, 'height': height, 'views': views, 'shading': shading,
             'objects': count, 'framing': dict(framing, min=_vector(low), max=_vector(high)),
             'seconds': _number(time.monotonic() - started, 3),
-            'image': _agent_image(path, width, height, agent_image),
+            'image': _agent_image(path, size[0], size[1], agent_image),
         }
         notes = []
         if unseen:

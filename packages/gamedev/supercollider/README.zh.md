@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-让 agent（智能体）用 SuperCollider 代码设计音效和音乐，并把它们离线渲染为游戏项目中的音频文件。工具不会发出任何声音，因此每次渲染和分析都会返回电平、响度、静音和频谱数据，以及一张波形与声谱图图像，供判断声音之用。WASD Engine 的 Web 与 Desktop 默认启用这些工具；Desktop 应用自带不含图形界面的 SuperCollider，在其他环境中工具使用已安装的版本。每个对话都有自己的解释器；崩溃、超时或长时间没有调用会丢失其 SynthDef 和变量。
+让 agent（智能体）用 SuperCollider 代码设计音效和音乐，并把它们离线渲染为游戏项目中的音频文件。工具不会发出任何声音，因此每次渲染和分析都会返回电平、响度、静音和频谱数据，供判断声音之用，并可按需附带一张波形与声谱图图像。WASD Engine 的 Web 与 Desktop 默认启用这些工具；Desktop 应用自带不含图形界面的 SuperCollider，在其他环境中工具使用已安装的版本。每个对话都有自己的解释器；崩溃、超时或长时间没有调用会丢失其 SynthDef 和变量。
 
 ## 目录
 
@@ -104,8 +104,8 @@ sclang 以 IDE 模式启动，从标准输入读取命令，并使用服务器�
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
-| `render_audio` | `code`、`path`、`duration`、`channels`、`sample_rate`、`sample_format`、`normalize_db`、`timeout_seconds` | 渲染了什么、文件的格式与大小、分析报告、图像，以及代码与 scsynth 输出的文本 |
-| `analyze_audio` | `path`、`start`、`end` | 文件的格式、声道、采样率、时长与大小，窗口的分析报告，以及图像 |
+| `render_audio` | `code`、`path`、`duration`、`channels`、`sample_rate`、`sample_format`、`normalize_db`、`picture`、`timeout_seconds` | 渲染了什么、文件的格式与大小、分析报告、`picture: true` 时的图像，以及代码与 scsynth 输出的文本 |
+| `analyze_audio` | `path`、`start`、`end`、`picture` | 文件的格式、声道、采样率、时长与大小，窗口的分析报告，以及 `picture: true` 时的图像 |
 | `execute_sclang` | `code`、`timeout_seconds` | 以错误结果返回错误及其详情，然后以代码形式返回最后一个表达式的值及其类，以及输出的文本 |
 | `class_info` | `names` 或 `search` | 对每个指定的类：其父类、该类及其元类定义的公开方法（含参数名与默认值），以及其帮助文本；对搜索：名称包含该文本的类，以及帮助摘要包含该文本的类 |
 
@@ -219,7 +219,7 @@ pnpm run test:e2e packages/gamedev/supercollider/tests/supercollider-worker.e2e.
 
 #### Token 影响
 
-4 个声明合计约 4,400 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
+4 个声明合计约 4,700 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
 
 #### KV Cache 影响
 
@@ -236,13 +236,13 @@ pnpm run test:e2e packages/gamedev/supercollider/tests/supercollider-worker.e2e.
 ```markdown
 For sound effects and music, prefer ElevenLabs' tools when you have them, and use SuperCollider when the user asks for it or ElevenLabs cannot make the sound the game needs.
 
-SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements and the waveform and spectrogram image that render_audio and analyze_audio return. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
+SuperCollider runs headless behind these tools: sclang, its language, keeps state between calls, and scsynth renders sound offline into files. There is no audio device, so nothing plays aloud and real-time servers cannot boot: judge a sound by the measurements that render_audio and analyze_audio return, and by their waveform and spectrogram image when you pass picture. SuperCollider keeps one interpreter for each conversation: environment variables such as ~kick and SynthDefs added with .add persist between calls until SuperCollider restarts after a crash or a timeout, or stops after a long pause in the calls. The first result after a start names the version.
 
 Paths are absolute. Resolve relative names against your working directory. Write game audio inside the game project; for Godot, use a folder under the directory that contains project.godot so the files are reachable as res:// paths.
 
 Make, look, adjust:
 - render_audio evaluates code and renders its value for exactly duration seconds: a UGen graph function such as { Pan2.ar(SinOsc.ar(440), 0) * Env.perc(0.01, 0.5).kr(2) }, a SynthDef, a pattern such as Pbind, or a Score. A function's output channels set the file's channels unless channels is given. Patterns play SynthDefs added with .add, or \default. Sound that is still playing at the end is cut off.
-- Read its report: peak and RMS levels, loudness in LUFS, clipping, silence at the start and end, and the dominant frequency. Look at the image: the waveform of each channel above, the spectrogram below. Fix clipping, unintended silence, clicks (thin vertical lines in the spectrogram at onsets or at the end), and harsh highs before calling a sound done.
+- Read its report: peak and RMS levels, loudness in LUFS, clipping, silence at the start and end, and the dominant frequency. When the figures leave a question, such as a click or a harsh high, pass picture for the waveform of each channel above and the spectrogram below, where a click is a thin vertical line at an onset or at the end. Fix clipping, unintended silence, clicks, and harsh highs before calling a sound done.
 - analyze_audio reports on any audio file the same way, optionally on a time window.
 - execute_sclang runs code to define SynthDefs, build patterns and data, and inspect state. Its result is the value of the last expression as code, and posted text (postln) returns as output. The code runs in a Routine, so .wait works.
 - class_info shows classes with their methods, argument names, and defaults, and their help text; check UGen arguments there instead of guessing. Its search finds classes by name.
@@ -256,7 +256,7 @@ Game audio:
 
 #### Token 影响
 
-该部分在服务器保持连接期间为每个请求增加约 3,000 个字符。
+该部分在服务器保持连接期间为每个请求增加约 3,100 个字符。
 
 #### KV Cache 影响
 
@@ -266,7 +266,7 @@ Game audio:
 
 #### 模型可见内容
 
-每个结果有一个文本块，`render_audio` 与 `analyze_audio` 另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships` 或 `sclang at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少运行时时返回下面的消息（消息写明所在计算机的平台与架构，这里是 Intel Mac 的），工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
+每个结果有一个文本块，`render_audio` 与 `analyze_audio` 在 `picture: true` 时另外附带一张 PNG 图像，宽 1,024 像素、高 418 或 536 像素；不带它时不绘制图像，文本也不含图像说明。每次启动工作进程后，下一个结果以 `SuperCollider <version> started (<source>) with no SynthDefs or variables defined.` 和一个空行开头，其中 source 为 `the runtime that WASD Engine ships` 或 `sclang at <path>`。其余文本报告调用做了什么，音频结果还包括分析报告与图像说明；输出的文本位于末尾的 `output:` 之后。错误结果携带失败原因：缺少运行时时返回下面的消息（消息写明所在计算机的平台与架构，这里是 Intel Mac 的），工作类报告的错误返回其类与消息并附 `Error code: WORKER_REMOTE`，`execute_sclang` 的错误返回其类、消息与详情，工作进程停止时返回其错误码、最近的解释器输出，以及其状态已丢失的说明。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上接收图像，其他路由则收到诊断文本。
 
 ##### 缺少运行时消息
 
@@ -297,7 +297,7 @@ WASD Engine's headless SuperCollider is not installed for darwin-x64. The WASD E
 - **Windows 路径中不能有 %** — sclang 通过 cmd.exe 启动 scsynth，而 cmd.exe 即使在引号内也会替换两个 % 之间的文本，因此当运行时所在文件夹或 harness 主目录的路径含有 % 时，工具在 Windows 上拒绝启动（`SUPERCOLLIDER_PATH_UNSUPPORTED`）；移动该文件夹，或把 `DSH_HOME` 设为不含 % 的文件夹，即可启动。
 - **插件仅为核心 UGen** — 自带运行时只包含 SuperCollider 自身的 UGen，不含 sc3-plugins 或其他扩展，其类库也不含 GUI 类。
 - **响度对每个声道同等加权** — 不应用 BS.1770 的环绕声道权重，因此超过两个声道的文件读数会比标准测量值更响。
-- **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到诊断文本，而不是波形与声谱图。
+- **图像需要支持图像的路由** — 在不支持图像输入的模型路由上，模型收到诊断文本，而不是它用 `picture` 请求的波形与声谱图。
 
 <a id="dev-note"></a>
 ### 开发备注

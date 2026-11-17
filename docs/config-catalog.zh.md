@@ -2232,7 +2232,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-graphics-review`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/graphics-review/src/index.ts:33`](../packages/gamedev/graphics-review/src/index.ts)
+- `source`: [`packages/gamedev/graphics-review/src/index.ts:34`](../packages/gamedev/graphics-review/src/index.ts)
 
 ```ts config-catalog
 /** Configuration of the `graphics-review` row; every field has a default. */

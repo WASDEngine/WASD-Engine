@@ -211,6 +211,45 @@ function suite(name: string, { argv, serverWiring, leadsGroup, backend, runtime 
           .resolves.toMatchObject({ shading: 'material', objects: 1 })
         await expect(python(before)).resolves.toEqual(settings)
 
+        // A sheet of views holds each view as rendered alone, left to right, with nothing left behind but the sheet.
+        const alone = Object.fromEntries(await Promise.all(['front', 'right'].map(async (view) => {
+          const file = join(dataRoot, 'sheet', `${view}.png`)
+          await call('render_preview', { path: file, width: 96, height: 64, view, shading: 'solid' })
+          return [view, file] as const
+        })))
+        const sheet = join(dataRoot, 'sheet', 'both.png')
+        await expect(call('render_preview', { path: sheet, width: 96, height: 64, views: ['front', 'right'], shading: 'solid' }))
+          .resolves.toMatchObject({ views: ['front', 'right'], width: 96, height: 64, image: { path: sheet, width: 196, height: 64 } })
+        expect(pngSize(await readFile(sheet))).toEqual({ width: 196, height: 64 })
+        expect((await readdir(join(dataRoot, 'sheet'))).toSorted()).toEqual(['both.png', 'front.png', 'right.png'])
+        // One function holds the check, so the names the scene replacement below reports stay as they were.
+        const tiles = z.object({ front: z.number(), right: z.number(), gap: z.number() }).parse(await python(`
+def compare_sheet():
+    def pixels(path):
+        img = bpy.data.images.load(path, check_existing=False)
+        try:
+            return img.size[0], list(img.pixels)
+        finally:
+            bpy.data.images.remove(img)
+    width, sheet = pixels(${JSON.stringify(sheet)})
+    def tile(left):
+        return [sheet[((y * width) + left + x) * 4 + c] for y in range(64) for x in range(96) for c in range(3)]
+    def rgb(path):
+        values = pixels(path)[1]
+        return [values[i * 4 + c] for i in range(96 * 64) for c in range(3)]
+    def difference(a, b):
+        return max(abs(x - y) for x, y in zip(a, b))
+    return {'front': difference(tile(0), rgb(${JSON.stringify(alone.front)})), 'right': difference(tile(100), rgb(${JSON.stringify(alone.right)})),
+            'gap': max(sheet[((32 * width) + 97) * 4 + c] for c in range(3))}
+result = compare_sheet()
+del compare_sheet
+`))
+        expect(tiles.front).toBeLessThan(0.01)
+        expect(tiles.right).toBeLessThan(0.01)
+        expect(tiles.gap).toBeLessThan(0.1)
+        await expect(call('render_preview', { path: join(dataRoot, 'sheet', 'x.png'), view: 'top', views: ['front'] }))
+          .rejects.toMatchObject({ message: expect.stringContaining('give view or views, not both') as string })
+
         const glb = join(dataRoot, 'game', 'assets', 'cube.glb')
         await expect(call('export_gltf', { path: glb, format: 'GLB', apply_modifiers: true, animations: true, selection: ['Cube'] }))
           .resolves.toMatchObject({ path: glb, format: 'GLB', objects: 1 })
@@ -268,6 +307,16 @@ function suite(name: string, { argv, serverWiring, leadsGroup, backend, runtime 
         const preview = await run('render_preview', { width: 200, height: 100, view: 'front' })
         expect(preview.text).toMatch(/^Rendered a 200x100 solid preview \(front view\) of 1 objects\./)
         expect(pngSize(preview.images![0]!.data!)).toEqual({ width: 200, height: 100 })
+        // A change and the look at it in one call: four views of 768 pixels fit one image the agent sees whole.
+        const previews = async (): Promise<string[]> => (await readdir(join(dataRoot, 'previews'))).toSorted()
+        const kept = await previews()
+        const changed = await run('execute_python', {
+          code: 'bpy.data.objects["Cube"].scale = (1, 1, 2)\nprint("taller")', preview: { views: ['front', 'right', 'top', 'iso'] },
+        })
+        expect(changed.text).toMatch(new RegExp('^output:\ntaller\n\nRendered a solid preview of 1 objects in 4 views of 768x768, '
+          + 'left to right and top to bottom: front, right, top, iso\\.', 'u'))
+        expect(pngSize(changed.images![0]!.data!)).toEqual({ width: 1540, height: 1540 })
+        expect(await previews()).toEqual(kept)
         const glb = join(dataRoot, 'tool-export', 'scene.glb')
         await expect(run('export_gltf', { path: glb })).resolves.toMatchObject({ text: expect.stringContaining(`to ${glb} (GLB, `) as string })
       } finally {

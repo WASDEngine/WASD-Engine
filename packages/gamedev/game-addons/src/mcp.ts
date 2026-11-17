@@ -61,7 +61,7 @@ export function gameAddonMcpProvider(host: GameAddonToolHost): GameMcpProvider {
     id: MCP_PROVIDER_ID,
     title: 'Game add-ons',
     description: MCP_DESCRIPTION,
-    instructions: mcpInstructions(host.manager.catalog.entries),
+    instructions: mcpInstructions(),
     tools: () => [tool],
     status: () => Promise.resolve({ state: 'ready' }),
   }

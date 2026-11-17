@@ -84,7 +84,7 @@ The project's record may come from someone else, so a removal takes out only the
 
 The agent decides when an add-on is worth installing. The plugin adds the `game-addons` section to the system prompt, in the slot of the Godot games section. It tells the agent to install an add-on, without asking the user first, when the work at hand needs what the add-on does and plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps; to skip it when the engine's own nodes and tools or a short script do the job, and never to install one in case it is needed later; and, after an installation, to load the guide before using the add-on and to tell the user what it added and why, with the license and any credit the license requires. One line per catalog add-on follows: its id, application, the stages at which it helps, and when to use it.
 
-`install` and `remove` ask nobody under every approval policy, like the other game tools, and the Session's permission mode does not confine them. A user's click in the Add-ons dialog changes the project the same way. Connected agents read the same judgment and list in the MCP server's instructions, whose overview, and the tool's description, ask them to read the whole catalog with `action: search` before they plan a game, and their own harness decides whether to ask its user.
+`install` and `remove` ask nobody under every approval policy, like the other game tools, and the Session's permission mode does not confine them. A user's click in the Add-ons dialog changes the project the same way. Connected agents read the same judgment in the MCP server's instructions, which list no add-on: their overview, the guide, and the tool's description ask them to read the whole catalog with `action: search` before they plan a game, and their own harness decides whether to ask its user.
 
 ### Guides as skills
 
@@ -150,7 +150,7 @@ Search scores each query word by the best field one of whose words it starts: 3 
 
 #### What the model sees
 
-The Session's agent sees the `game-addons` section just before the Godot games section: the section text below, then one line per catalog add-on, Godot add-ons first, in the form of the catalog line below. A connected agent reads the same judgment and lines in the MCP server's instructions under `## Game add-ons`, with the absolute `project`, the `guide` action, and Blender's `wasd_addons.enable` call in place of the guide skill. Before that guide, which Claude Code's model reads only through `search_game_tools`, the overview of the instructions lists the provider's description: curated add-ons that do common game jobs better than new code, with examples, and the request to read the whole catalog with `game_addons` `action: search` before planning a game and to install what fits once `project.godot` exists, which an installation needs and a new game project's folder does not have yet.
+The Session's agent sees the `game-addons` section just before the Godot games section: the section text below, then one line per catalog add-on, Godot add-ons first, in the form of the catalog line below. A connected agent reads the same judgment in the MCP server's instructions under `## Game add-ons`, without the lines: the guide sends it to `action: search` for the whole catalog, or for the add-ons of one `stage`, whose names it explains, and names the absolute `project`, the `guide` action, and Blender's `wasd_addons.enable` call in place of the guide skill. Connected agents so read the catalog once, from that search, which also gives each add-on's size, license, and when to skip it. Before that guide, which Claude Code's model reads only through `search_game_tools`, the overview of the instructions lists the provider's description: curated add-ons that do common game jobs better than new code, with examples, and the request to read the whole catalog with `game_addons` `action: search` before planning a game and to install what fits once `project.godot` exists, which an installation needs and a new game project's folder does not have yet.
 
 ##### Section text
 
@@ -185,7 +185,7 @@ The Session's agent sees `game_addons` with `action` (`search`, `guide`, `instal
 
 #### Token effect
 
-The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 6,800 characters to the MCP server's instructions, most of them the catalog lines.
+The declaration comes to about 2,300 characters of JSON. The provider's instructions add about 1,500 characters to the MCP server's instructions; they list no add-on, since connected agents read the whole catalog with `action: search`.
 
 #### KV Cache effect
 

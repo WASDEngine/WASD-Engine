@@ -16,7 +16,7 @@ import type { AudioPicture } from './types.ts'
 export const MCP_INSTRUCTIONS = 'The audio tools list a game project\'s sound effects, dialogue, and music and measure them as WASD Engine\'s Audio panel plays them, since you cannot listen. '
   + 'Pass the game project\'s folder as project, an absolute path, and sound paths relative to it. '
   + 'audio_search lists the sounds with their kind, format, and length and how many each folder holds; audio_review measures one sound: '
-  + 'its peak and loudness, clipping, silence at either end, spectrum, whether it loops without a click, its stereo channels, and how Godot imports it, with a picture of its waveform and spectrogram. '
+  + 'its peak and loudness, clipping, silence at either end, spectrum, whether it loops without a click, its stereo channels, and how Godot imports it, and with picture a picture of its waveform and spectrogram, for when the figures leave a question. '
   + 'The open WASD Engine window decodes the sound. Set show to open the sound in the user\'s Audio panel when you want them to listen to it.'
 
 /** What the provider's status says while no WASD Engine window is connected. */
@@ -104,7 +104,7 @@ export function audioMcpProvider(host: AudioToolHost): GameMcpProvider {
   return {
     id: 'audio',
     title: 'Audio',
-    description: 'List a game project\'s sound effects, dialogue, and music, and measure each one with a picture of its waveform and spectrogram.',
+    description: 'List a game project\'s sound effects, dialogue, and music, and measure each one.',
     instructions: MCP_INSTRUCTIONS,
     tools: () => tools,
     // The tools run either way; audio_review alone needs a window to decode the sound.

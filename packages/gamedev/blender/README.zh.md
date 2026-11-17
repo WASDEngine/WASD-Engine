@@ -106,27 +106,27 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview` 与 `render` 另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。该服务器指令的概述用 [`src/instructions.ts`](src/instructions.ts) 中的 `BLENDER_GAME_MCP_DESCRIPTION` 向它们介绍本插件：Blender 能做出代码构建的基本体无法企及的真实形状、倒角和烘焙纹理，因此玩家看到的每个模型（agent 下载的除外），以及游戏在运行时构建的网格的各个部件，都应来自 Blender；而 Godot 中的 `.glb` 仍会使用游戏的着色器、动画和逐实例变化。
+模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview`、`render` 以及带 `preview` 的 `execute_python` 调用另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。该服务器指令的概述用 [`src/instructions.ts`](src/instructions.ts) 中的 `BLENDER_GAME_MCP_DESCRIPTION` 向它们介绍本插件：Blender 能做出代码构建的基本体无法企及的真实形状、倒角和烘焙纹理，因此玩家看到的每个模型（agent 下载的除外），以及游戏在运行时构建的网格的各个部件，都应来自 Blender；而 Godot 中的 `.glb` 仍会使用游戏的着色器、动画和逐实例变化。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
 | `scene_info` | 无 | JSON：文件及其未保存更改标志，自场景被打开、创建或保存以来有工具更改过场景时该标志为 true，每次 `execute_python` 调用都算作一次更改；场景、帧范围、渲染设置与相机、单位、集合树、最多 300 个对象（含变换、尺寸、材质、修改器、可见性和求值后的三角面数），以及数据块计数 |
 | `object_info` | `name` | JSON：局部与世界变换、世界包围盒、可见性、网格统计、相机、灯光、骨架或空物体设置、修改器、带节点与纹理的材质、约束、自定义属性和动画；名称不存在时调用失败，并给出最多五个相近名称 |
-| `execute_python` | `code`、`timeout_seconds` | 代码抛出异常时先给出 traceback（作为错误结果），然后是 `result` 的 JSON 值和打印输出 |
+| `execute_python` | `code`、`timeout_seconds`、`preview` | 代码抛出异常时先给出 traceback（作为错误结果），然后是 `result` 的 JSON 值和打印输出；带 `preview` 且代码未抛出异常时，再附上 `render_preview` 按其 `views`、`objects` 与 `shading` 渲染的预览 |
 | `new_scene` | `empty` | 新场景中的对象，以及它清除的、`execute_python` 此前定义的名称；`empty` 默认为 `true`，为 `false` 时以 Blender 默认的立方体、相机和灯光开始 |
 | `open_blend` | `path` | 文件、其中的场景、对象数量和名称，以及它清除的、`execute_python` 此前定义的名称；文件中存储的脚本不会运行，加载失败的文件会保留当前打开的场景和这些名称 |
 | `save_blend` | `path` | 保存的路径和大小；省略 `path` 时保存当前文件，场景从未保存过则调用失败 |
 | `import_file` | `path` | 新对象的名称；扩展名决定使用 glTF、FBX、OBJ、STL、PLY、USD、Alembic、SVG 还是 `.blend` 导入器 |
 | `export_gltf` | `path`、`selection`、`apply_modifiers`、`animations`、`format` | 导出的对象数量（不含 glTF 导出所忽略的相机和灯光）、路径、格式和大小；`.gltf` 还会给出旁边的 `.bin` 文件；以及因应用修改器而失去形态键的网格 |
 | `export_file` | `path`、`format`、`selection` | FBX、OBJ、STL 或 USD 文件的格式、路径和大小 |
-| `render_preview` | `width`、`height`、`view`、`objects`、`shading` | 一张预览图像，以及它的尺寸、视角、对象数量和世界范围，另有一条说明列出预览无法显示的已列出对象 |
+| `render_preview` | `width`、`height`、`view`、`views`、`objects`、`shading` | 一张预览图像，以及它的尺寸、视角、对象数量和世界范围，另有一条说明列出预览无法显示的已列出对象；`views` 把多个方向拼在这一张图像上 |
 | `render` | `path`、`width`、`height`、`engine`、`samples`、`camera`、`timeout_seconds` | 一张渲染图像，以及它的尺寸、引擎、相机、渲染耗时和保存的 PNG 路径 |
 | `python_api` | `identifier` | 从正在运行的 Blender 读取的某个 Blender Python API 名称的文档，最多 12,000 个字符 |
 | `run_script` | `script`、`args`、`runs`、`blend`、`timeout_seconds` | 每次运行的结束方式，以及它的退出码、最后一行输出、文件和文件夹；单次运行时还有其输出的结尾（[脚本运行](#script-runs)） |
 | `checkpoint` | 无 | 新检查点的编号 |
 | `undo` | 无 | 场景恢复到的检查点；已在保留的最早检查点时，错误会写明该检查点 |
 
-`execute_python` 在同一个命名空间中运行代码；该命名空间在调用之间保留已定义的名称，直到 `new_scene` 或 `open_blend` 清除它们，并已导入 `bpy`、`bmesh`、`mathutils`、`math` 与 `json`。工具把打印输出截断为 20,000 个字符（保留开头和结尾），代码运行期间工作进程只保存输出的开头和结尾，少于 60,000 个字符，无论代码打印多少。JSON 超过 50,000 个字符的 `result` 会变成截断预览，其中超出 ±(2^53 − 1) 的整数以其十进制数字字符串返回，超出 Python 转换上限时返回 `<integer of about N digits>`，异常消息截断为 20,000 个字符。`timeout_seconds` 默认为 `requestTimeoutMs`，最大为 `toolCallTimeoutMs` 减去 30 s，两者均以秒计。
+`execute_python` 在同一个命名空间中运行代码；该命名空间在调用之间保留已定义的名称，直到 `new_scene` 或 `open_blend` 清除它们，并已导入 `bpy`、`bmesh`、`mathutils`、`math` 与 `json`。工具把打印输出截断为 20,000 个字符（保留开头和结尾），代码运行期间工作进程只保存输出的开头和结尾，少于 60,000 个字符，无论代码打印多少。JSON 超过 50,000 个字符的 `result` 会变成截断预览，其中超出 ±(2^53 − 1) 的整数以其十进制数字字符串返回，超出 Python 转换上限时返回 `<integer of about N digits>`，异常消息截断为 20,000 个字符。`timeout_seconds` 默认为 `requestTimeoutMs`，最大为 `toolCallTimeoutMs` 减去 30 s，两者均以秒计。带 `preview` 时，代码运行且未抛出异常后，工具按给出的 `views`、`objects` 与 `shading`，以每个视角 768 像素渲染 `render_preview` 那样的预览，并把它的文本和图像加入结果；预览失败时代码的结果照常保留，并说明原因，因此 agent 无需第二次调用就能看到改动。
 
 `export_gltf` 写出当前场景的 +Y 朝上的 glTF 2.0，从不使用 Godot 无法导入的 Draco 压缩。未提供 `apply_modifiers` 时，只有导出对象带有骨架（Armature）以外的修改器才会应用修改器：蒙皮已经包含骨架修改器的形变，而应用网格的修改器会丢弃它的形态键，结果会列出这些网格。`selection` 包含每个指定对象的子对象，隐藏的和不可选的子对象也包括在内，例如在视口中隐藏的 `-col` 碰撞子对象：导出时会显示并选中它们，之后恢复它们的可见性和原来的选择。某个指定对象因所在集合禁用了选择或视口显示而无法选中时，调用失败并说明这一原因。`export_gltf` 与 `export_file` 会先删除 `path` 处已有的文件，Blender 没有写出文件时调用失败（例如只导出相机的 OBJ），因此调用成功后 `path` 处的文件总是这次导出的结果。
 
@@ -151,7 +151,7 @@ Blender 在没有窗口的情况下运行，因此这些工具不提供视口、
 
 服务器指令还要求 agent 为它制作的每个模型绘制图像纹理（除非用户要求纯色），因为 glTF 导出保留图像纹理，却会丢弃程序化着色器节点。agent 用 `bpy.ops.uv.smart_project` 展开 UV，有符合游戏美术风格的 Poly Haven 纹理时就使用它；否则用程序化节点构建外观，用 CPU 上的 Cycles 把颜色烘焙到图像中（材质在粗糙度和起伏上有变化时，也烘焙粗糙度和法线），用 numpy 在像素上绘制更多细节，并在导出前把这些图像连接到 Principled BSDF。物体处于活动并被选中的状态时，这些操作符和烘焙可以在后台 Blender 中运行。
 
-agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染，相机对准所有可渲染对象，或对准列出的对象及其子对象并隐藏其他几何体，视角为 `iso`、`front`、`back`、`left`、`right` 或 `top`。取景依据渲染所显示的内容：包括仅在视口中隐藏的对象和集合，不包括从视图层中排除或在渲染中隐藏的集合；对于此类集合中的已列出对象，结果会写明预览无法显示它们。默认的 `solid` 是快速的 Workbench 着色，带轮廓并使用材质基础色；`material` 用 EEVEE 以 16 个采样渲染节点材质和纹理，光照来自场景灯光，场景没有灯光时使用一个临时太阳光。
+agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染，相机对准所有可渲染对象，或对准列出的对象及其子对象并隐藏其他几何体，视角为 `iso`、`front`、`back`、`left`、`right` 或 `top`。取景依据渲染所显示的内容：包括仅在视口中隐藏的对象和集合，不包括从视图层中排除或在渲染中隐藏的集合；对于此类集合中的已列出对象，结果会写明预览无法显示它们。默认的 `solid` 是快速的 Workbench 着色，带轮廓并使用材质基础色；`material` 用 EEVEE 以 16 个采样渲染节点材质和纹理，光照来自场景灯光，场景没有灯光时使用一个临时太阳光。用 `views` 代替 `view` 时，它以 `width` × `height` 渲染每个方向，并按给出的顺序从左到右、从上到下拼在一张图像上：两个视角排成一行，最多四个时排成两列，五个或六个时排成三列，相邻视角之间隔四个深色像素，因此四个 768 像素的视角能完整放进 agent 看到的 1,568 像素图像。图像写好或预览失败后，工作进程删除每个视角的文件。
 
 渲染后，`render_preview` 会恢复场景的相机、世界环境、渲染设置、色彩管理的视图变换与外观（look）以及可见性；无法恢复某个值时，调用失败。`render` 生成最终图像，需要相机。
 
@@ -181,7 +181,7 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | `uv-python/` | uv 为 `bpy` 后端安装的 Python | 保留 |
 | `venv-py<pythonVersion>-bpy<bpyVersion>/` | `bpy` 环境，先在同级的 `.partial-<uuid>` 目录中构建，再重命名到位；该位置上 Python 不可执行的目录会先被移到同级的 `.stale-<uuid>` 目录 | 保留；插件只删除被移开的目录 |
 | `workers/<pid>/<n>/` | 工作进程的工作目录 | 工作进程停止后删除；服务器启动时删除已退出的服务器进程的文件夹 |
-| `previews/` | `render_preview` 图像和 `render` 图像的缩小副本 | 调用返回时删除 |
+| `previews/` | `render_preview` 图像（包括 `execute_python` 的 `preview`）、拼合预览中每个视角的文件，以及 `render` 图像的缩小副本 | 调用返回时删除 |
 | `renders/<time>-<id>.png` | 未提供 `path` 的 `render` 调用的输出 | 保留 |
 | `script-runs/<time>-<id>/` | `run_script` 的结果：`summary.json`，以及每次运行一个包含 `output.log` 与 `files/` 的文件夹 | 保留最新的 `keptScriptResults` 个调用文件夹；新调用删除没有正在运行的调用使用的更早文件夹 |
 
@@ -256,7 +256,7 @@ pnpm run test:e2e packages/gamedev/blender/tests/blender-worker.e2e.ts
 
 #### Token 影响
 
-15 个声明合计约 12,200 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
+15 个声明合计约 13,600 个字符的 JSON（含名称），在服务器的工具保持注册期间进入每个请求。
 
 #### KV Cache 影响
 
@@ -278,7 +278,7 @@ Paths are absolute. Resolve relative names against your working directory. Put g
 Inspect, change, look:
 - scene_info gives the overview and object_info the details of one object (transforms, bounds, mesh statistics, modifiers, materials).
 - execute_python changes the scene. Prefer bpy.data and direct property edits over bpy.ops operators: operators depend on the active object, selection, and mode, and some need a window that background Blender does not have. Create meshes with bmesh or Mesh.from_pydata, link new objects into a collection, and assign result to return data.
-- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures. Look at a preview after significant changes and fix what looks wrong before exporting.
+- render_preview shows the result without touching the scene's camera or settings: solid for shape and base colors, material for node materials and textures; views shows several directions in one image. Look at a preview after significant changes, or pass execute_python a preview to see a change in the same call, and fix what looks wrong before exporting. Look through these tools, not by rendering to files and reading them.
 - render makes final images from a scene camera.
 - run_script runs a .py file in new Blender processes of its own, once or many times at once with other arguments, without touching this session's scene: use it for batch work, such as processing many models or animations, and for long jobs.
 
@@ -302,7 +302,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### Token 影响
 
-服务器保持连接期间，该部分为每个请求增加约 5,300 个字符。
+服务器保持连接期间，该部分为每个请求增加约 5,500 个字符。
 
 #### KV Cache 影响
 
@@ -312,7 +312,7 @@ Use checkpoint before risky edits and undo to return to it. new_scene and open_b
 
 #### 模型可见内容
 
-每个结果包含一个文本块，`render_preview` 与 `render` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `the bpy module that WASD Engine ships`、`bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装或解包提示；bpy 模块无法安装、解包或启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。`run_script` 的结果只有文本：先是其准备 Blender 时的提示（例如首次使用时的安装），然后是该调用的各次运行；它既不启动工作进程，也不报告工作进程的启动。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，或如何修复随附的运行时，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
+每个结果包含一个文本块，`render_preview`、`render` 以及带 `preview` 的 `execute_python` 另附一张图像：渲染出的 PNG 最长边不超过 1,568 像素且文件不超过 3 MiB 时直接使用该文件，否则使用缩小到该边长的副本，格式为 PNG，PNG 仍超过 3 MiB 时改为 JPEG；`render` 的文本会写明副本尺寸。每次工作进程启动后，下一个结果以 `Blender <version> started (<runtime>, Python <python>) with its default scene.` 开头，其中 `<runtime>` 为 `the bpy module that WASD Engine ships`、`bpy module` 或 `Blender app`；首次使用时，它前面还有 bpy 安装或解包提示；bpy 模块无法安装、解包或启动而由已安装的 Blender 代替时，前面同样有相应提示。`new_scene` 与 `open_blend` 清除了 `execute_python` 的名称时，其文本末尾会列出这些名称。`run_script` 的结果只有文本：先是其准备 Blender 时的提示（例如首次使用时的安装），然后是该调用的各次运行；它既不启动工作进程，也不报告工作进程的启动。错误结果携带失败信息：安装失败会说明如何安装 uv 或 Blender，或如何修复随附的运行时，工作进程失败会给出错误码，并在有内容时附上 traceback 和最近的工作进程输出。[MCP 客户端](../../mcp/mcp-client/README.zh.md#model-experience)只在声明支持图像输入的模型路由上准入图像，其他路由收到诊断文本。
 
 #### Token 影响
 

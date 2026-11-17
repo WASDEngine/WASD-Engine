@@ -393,13 +393,13 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
     },
   }), defineTool({
     name: 'audio_review',
-    description: 'Measure one sound of the game project as the user hears it in WASD Engine\'s Audio panel, since you cannot listen to it: its length and format, peak and RMS levels, loudness in LUFS, clipping, DC offset, silence at the start and end, strongest frequency and spectral centroid, whether it clicks where it repeats, at the loop points Godot plays or else where its end meets its start, how its stereo channels relate, and how Godot imports it, with a picture of its waveform and spectrogram. '
+    description: 'Measure one sound of the game project as the user hears it in WASD Engine\'s Audio panel, since you cannot listen to it: its length and format, peak and RMS levels, loudness in LUFS, clipping, DC offset, silence at the start and end, strongest frequency and spectral centroid, whether it clicks where it repeats, at the loop points Godot plays or else where its end meets its start, how its stereo channels relate, and how Godot imports it; picture adds a picture of its waveform and spectrogram. '
       + `Pass start and end to measure part of a long track; one call measures at most ${String(host.maxReviewSeconds)} seconds, and the loop is measured wherever it lies. Set show to open the sound in the user's Audio panel so they can listen to it.`,
     parameters: {
       path: { type: 'string', required: true, description: 'The sound, relative to the project folder or absolute inside it, such as "audio/sfx/jump.wav".' },
       start: { type: 'number', description: 'Seconds into the sound where the measurement starts. Default: 0.' },
       end: { type: 'number', description: `Seconds into the sound where it ends. Default: the end of the sound, at most ${String(host.maxReviewSeconds)} seconds after start.` },
-      picture: { type: 'boolean', description: 'Draw the waveform and spectrogram picture. Default: true; false returns the figures alone, to compare many sounds quickly.' },
+      picture: { type: 'boolean', description: 'Draw the waveform and spectrogram picture, for when the figures leave a question, such as where a click lies. Default: false.' },
       show: { type: 'boolean', description: 'Also open the sound in the user\'s Audio panel, ready for them to play. Default: false.' },
     },
     output: {
@@ -424,7 +424,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
       const [probe, godot, images] = await Promise.all([
         host.probe(target.absolute, { bytes: info.size, modified: info.mtimeMs }),
         readGodotImport(target.absolute),
-        args.picture === false ? Promise.resolve(false) : surface.seesImages(exec),
+        args.picture === true ? surface.seesImages(exec) : Promise.resolve(false),
       ])
       const sent = windowPath(agent.session.header.cwd, target.absolute)
       const loop = playedLoop(godot, probe)
@@ -460,7 +460,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
         measurements: asJson(answer.measurements),
         ...answer.picture === undefined ? {} : { picture: asJson(answer.picture.layout) },
         images: kept,
-        ...args.picture !== false && !images ? { pictureOmitted: true } : {},
+        ...args.picture === true && !images ? { pictureOmitted: true } : {},
         shown,
       }
     },

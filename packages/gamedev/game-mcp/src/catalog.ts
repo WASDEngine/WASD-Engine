@@ -60,13 +60,16 @@ const PURPOSE = 'WASD Engine is the game development app open on this computer, 
   + 'and a game you run and look at. Use them by default, and when you skip a tool or add-on that fits the work, tell the user why; '
   + 'the reason must convince.'
 
-/** The overview's paragraph on a new game's project, the plugins' guides, and the server's own tools. */
+/**
+ * The overview's paragraph on a new game's project, the plugins' guides, the server's own tools, and helper agents: a
+ * helper's whole conversation is read again at each of its steps, so a new task goes to a new helper with a short one.
+ */
 const WORKING = `For a new game, create its project with ${CREATE_PROJECT_TOOL} and make the game in the folder it returns. `
   + 'Before you first use a plugin\'s tools, read its guide on getting good results from them: below, or, if your client cut these '
   + `instructions short, from ${SEARCH_TOOL} with plugin set to its id and no query. `
   + `${CALL_TOOL} calls a tool your tool list lacks. `
   + 'Every tool runs on this computer with the user\'s permissions. Some guides name their own plugin\'s tools without its prefix: add it, '
-  + 'as in blender_scene_info.'
+  + 'as in blender_scene_info. Give each helper agent one task, and each new task to a new helper.'
 
 /** The overview's paragraph on what the agent tells the user about the tools and add-ons it uses and skips. */
 const SKIPPING = 'In your plan and your final summary, name the tools and add-ons you use. For each one that fits the work but that you skip, '

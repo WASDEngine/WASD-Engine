@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/graphics-review/README.md
 /:
-  en: cf8ae88e5862ca96
-  zh: 1b771a806bd42cdd
+  en: 3b8432ffab82acfb
+  zh: bc2c7a50feff5fa3
 /deepseek-ai-dsh-graphics-review:
   en: 317ba9bf282168dd
   zh: e9e6e97b6c31631f
 /deepseek-ai-dsh-graphics-review/summary:
-  en: c4cada0d255d8be7
-  zh: efc182c898e50994
+  en: b64a243f4bac6c11
+  zh: 82f02926a58fa4a1
 /deepseek-ai-dsh-graphics-review/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -21,14 +21,14 @@
   en: f7c07c00aa43d208
   zh: 727e94844de743bc
 /deepseek-ai-dsh-graphics-review/use-this-package/the-tool:
-  en: aaeeea7ea6a1887a
-  zh: 0504184325aa3b82
+  en: e60ef7da798ffdbf
+  zh: ecf4889d2059efea
 /deepseek-ai-dsh-graphics-review/use-this-package/connected-agents:
-  en: 79979616df03ed86
-  zh: bfd829793ff85452
+  en: a0d7c3a48e9c588f
+  zh: c9fa83b3b4ba878c
 /deepseek-ai-dsh-graphics-review/understand-the-implementation:
-  en: a8d241361bf87d1a
-  zh: 199dc84c14691065
+  en: cd4b68961cf1f938
+  zh: ee866036e34e124f
 /deepseek-ai-dsh-graphics-review/further-exploration:
   en: 20cfcecb6e9000f0
   zh: 397631b3c1584f26
@@ -39,14 +39,14 @@
   en: cf78b9dd5596495f
   zh: bd44560f8c2435e8
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/what-the-model-sees:
-  en: 197da6f8fa3912b9
-  zh: 1fd09483be1ae8bd
+  en: 37e4e2df6a84fbb6
+  zh: dce0e097d670da76
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/what-the-model-sees/the-graphics-review-section:
   en: 05639460fad865a0
   zh: 69f577b182a7c495
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/token-effect:
-  en: ca27dd6bbcad068b
-  zh: aaa8acdaa759b16d
+  en: 78b2bee5d2cd2121
+  zh: 7114965b26531861
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/kv-cache-effect:
   en: 50c2c8ec683cbbf5
   zh: a53d78c595ea32ab
@@ -54,11 +54,11 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-graphics-review/model-experience/tool-declarations/what-the-model-sees:
-  en: c8bedbf602f10244
-  zh: e3f55649422759a8
+  en: 0ee0bdf0209f2444
+  zh: 23f8901b81bb0920
 /deepseek-ai-dsh-graphics-review/model-experience/tool-declarations/token-effect:
-  en: 7ced5388331f9829
-  zh: 43d53048af38824b
+  en: cebde87c7e3efbd5
+  zh: 253fe5e995f92981
 /deepseek-ai-dsh-graphics-review/model-experience/tool-declarations/kv-cache-effect:
   en: ffbfd9eb395f50fe
   zh: 96d5ded45e8c4c9a
@@ -66,17 +66,17 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-graphics-review/model-experience/tool-results/what-the-model-sees:
-  en: 45252ba685ac7044
-  zh: 83bf6279537f32c1
+  en: d5a55e4b90328a25
+  zh: ec86299e3ff1ef1f
 /deepseek-ai-dsh-graphics-review/model-experience/tool-results/token-effect:
-  en: b2a57f984c47a50a
-  zh: fe80f61d4e011f1f
+  en: 824df5ff5a2753ba
+  zh: 27be77f5c82ae2e5
 /deepseek-ai-dsh-graphics-review/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: 9c36aea51ad3bba1
 /deepseek-ai-dsh-graphics-review/known-limitations-and-deferred-work:
-  en: beb5e01b8c4dc2e9
-  zh: 1eeef268dcfd2777
+  en: 2a248b366cb2b64f
+  zh: 192d362b5ec817f4
 /deepseek-ai-dsh-graphics-review/known-limitations-and-deferred-work/dev-note:
   en: 4436288cfda8f7b1
   zh: 084a77d187ab3f53

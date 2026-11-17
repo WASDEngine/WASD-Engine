@@ -283,7 +283,7 @@ describe('render_preview', () => {
       render_preview: async (params) => {
         written = text(params.path)
         await writeImage(written)
-        return { path: written, width: 640, height: 480, view: 'front', shading: 'material', objects: 2, framing, seconds: 0.2, image: image(written, 'image/png', 640, 480) }
+        return { path: written, width: 640, height: 480, views: ['front'], shading: 'material', objects: 2, framing, seconds: 0.2, image: image(written, 'image/png', 640, 480) }
       },
     }, ['first note'])
     const result = await run('render_preview', { width: 640, height: 480, view: 'front', shading: 'material', objects: ['Crate'] })
@@ -308,7 +308,7 @@ describe('render_preview', () => {
         paths.push(text(params.path), `${stem}.jpg`)
         await writeImage(text(params.path))
         await writeImage(`${stem}.jpg`)
-        return { path: params.path ?? '', width: 768, height: 768, view: 'iso', shading: 'solid', objects: 0, framing, seconds: 0.1, image: image(`${stem}.jpg`, 'image/jpeg', 512, 512), note: 'Nothing renderable was found.' }
+        return { path: params.path ?? '', width: 768, height: 768, views: ['iso'], shading: 'solid', objects: 0, framing, seconds: 0.1, image: image(`${stem}.jpg`, 'image/jpeg', 512, 512), note: 'Nothing renderable was found.' }
       },
     })
     const result = await run('render_preview')
@@ -327,12 +327,74 @@ describe('render_preview', () => {
       render_preview: async (params) => {
         written = text(params.path)
         await writeImage(written)
-        return { path: written, width: 64, height: 64, view: 'top', shading: 'solid', objects: 1, framing, seconds: 0, image: image(stray) }
+        return { path: written, width: 64, height: 64, views: ['top'], shading: 'solid', objects: 1, framing, seconds: 0, image: image(stray) }
       },
     })
     await expect(run('render_preview', { width: 64, height: 64 })).rejects.toThrow(`returned an image outside the requested files: ${stray}`)
     expect(existsSync(written)).toBe(false)
     expect(existsSync(stray)).toBe(true)
+  })
+
+  it('asks for several views on one image and names them in the order they are tiled', async () => {
+    const { calls, run } = harness({
+      render_preview: async (params) => {
+        await writeImage(text(params.path))
+        return { path: params.path ?? '', width: 512, height: 512, views: params.views ?? [], shading: 'solid', objects: 3, framing, seconds: 0.4, image: image(text(params.path), 'image/png', 1028, 1028) }
+      },
+    })
+    const result = await run('render_preview', { width: 512, height: 512, views: ['front', 'right', 'top', 'iso'] })
+    expect(result.text).toBe('Rendered a solid preview of 3 objects in 4 views of 512x512, left to right and top to bottom: front, right, top, iso. '
+      + 'World bounds (-1, -1, 0) to (1, 1, n/a), size (2, 2, 1).')
+    expect(result.images).toHaveLength(1)
+    expect(calls[0]!.params).toMatchObject({ views: ['front', 'right', 'top', 'iso'] })
+    expect(calls[0]!.params).not.toHaveProperty('view')
+  })
+
+  it('refuses view and views together and a repeated view, before asking the worker', async () => {
+    const { calls, run, schema } = harness({})
+    await expect(run('render_preview', { view: 'top', views: ['front'] })).rejects.toThrow('Pass view or views, not both.')
+    expect(schema('render_preview').safeParse({ views: ['front', 'front'] }).success).toBe(false)
+    expect(schema('render_preview').safeParse({ views: [] }).success).toBe(false)
+    expect(calls).toEqual([])
+  })
+})
+
+describe('execute_python preview', () => {
+  const framing = { center: [0, 0, 0.5], size: [2, 2, 1], ortho_scale: 3.1, min: [-1, -1, 0], max: [1, 1, 1] }
+  const previewReply = async (params: JsonObject): Promise<JsonValue> => {
+    await writeImage(text(params.path))
+    return { path: params.path ?? '', width: 768, height: 768, views: params.views ?? [params.view ?? 'iso'], shading: params.shading ?? 'solid', objects: 1, framing, seconds: 0.1, image: image(text(params.path)) }
+  }
+
+  it('runs the code, then renders the preview it asks for, in one result', async () => {
+    const { calls, run } = harness({ execute_python: { result: null, output: 'built\n', seconds: 0.2 }, render_preview: previewReply })
+    const result = await run('execute_python', { code: 'build()', preview: { views: ['front', 'iso'], shading: 'material' } })
+    expect(result.text).toBe('output:\nbuilt\n\nRendered a material preview of 1 objects in 2 views of 768x768, left to right and top to bottom: front, iso. '
+      + 'World bounds (-1, -1, 0) to (1, 1, 1), size (2, 2, 1).')
+    expect(result.isError).toBe(false)
+    expect(result.images).toEqual([{ data: expect.any(Uint8Array) as Uint8Array, mimeType: 'image/png' }])
+    expect(calls.map(call => call.method)).toEqual(['execute_python', 'render_preview'])
+    expect(calls[0]!.params).toEqual({ code: 'build()' })
+    expect(calls[1]!.params).toMatchObject({ views: ['front', 'iso'], shading: 'material', width: 768, height: 768 })
+  })
+
+  it('renders the default preview for an empty preview, and none after an exception or without preview', async () => {
+    const { calls, run } = harness({ execute_python: { result: 1, output: '', seconds: 0 }, render_preview: previewReply })
+    await expect(run('execute_python', { code: 'result = 1', preview: {} })).resolves.toMatchObject({ text: expect.stringContaining('(iso view)') as string })
+    expect(calls[1]!.params).toMatchObject({ view: 'iso', shading: 'solid' })
+    await expect(run('execute_python', { code: 'result = 1' })).resolves.toEqual({ text: 'result: 1', isError: false })
+    const traceback = 'Traceback (most recent call last):\nValueError: boom\n'
+    const failing = harness({ execute_python: { result: null, output: '', seconds: 0, error: { type: 'ValueError', message: 'boom', traceback } }, render_preview: previewReply })
+    await expect(failing.run('execute_python', { code: 'raise ValueError("boom")', preview: {} })).resolves.toEqual({ text: traceback.trim(), isError: true })
+    expect(failing.calls.map(call => call.method)).toEqual(['execute_python'])
+  })
+
+  it('keeps the code\'s result when the preview fails, and says why', async () => {
+    const { run } = harness({ execute_python: { result: null, output: 'built\n', seconds: 0 }, render_preview: () => { throw new Error('no object named \'Crate\'') } })
+    await expect(run('execute_python', { code: 'build()', preview: { objects: ['Crate'] } })).resolves.toEqual({
+      text: 'output:\nbuilt\n\nThe code ran, but the preview failed: no object named \'Crate\'',
+      isError: false,
+    })
   })
 })
 

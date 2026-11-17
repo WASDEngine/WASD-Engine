@@ -47,6 +47,8 @@ export interface ReviewRequest {
   readonly goal?: string
   /** What to look at most. */
   readonly focus?: string
+  /** For a later review of the same work: what changed since the last one, and which of its notes were left and why. */
+  readonly previous?: string
   /** The add-ons the reviewer may suggest. */
   readonly addons: readonly ReviewAddon[]
   /** The calling Session, for the route's request identity; absent for a connected agent's call without one. */
@@ -160,13 +162,14 @@ function thrownMessage(error: unknown): string {
  * @param request - the review.
  * @returns the description.
  */
-export function describeRequest(request: Pick<ReviewRequest, 'image' | 'subject' | 'goal' | 'focus'>): string {
+export function describeRequest(request: Pick<ReviewRequest, 'image' | 'subject' | 'goal' | 'focus' | 'previous'>): string {
   const { image } = request
   return [
     `Image: ${image.name}, ${String(image.width)}x${String(image.height)} px${image.sentWidth === image.width ? '' : `, shown at ${String(image.sentWidth)}x${String(image.sentHeight)} px`}.`,
     `What it shows: ${request.subject}`,
     `The look the game is going for: ${request.goal ?? 'not given; judge it against the style the image itself sets.'}`,
     ...request.focus === undefined ? [] : [`Look most at: ${request.focus}`],
+    ...request.previous === undefined ? [] : [`Since the last review of this work: ${request.previous}`],
   ].join('\n')
 }
 
