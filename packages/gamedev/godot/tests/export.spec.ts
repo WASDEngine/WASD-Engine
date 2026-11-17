@@ -303,8 +303,15 @@ describe('bundleIdentifier and desktopFileName', () => {
     expect(bundleIdentifier('Tiny Farm')).toBe('com.wasdengine.game.tiny-farm')
     expect(bundleIdentifier('Café Über Ünïcode!')).toBe('com.wasdengine.game.cafe-uber-unicode')
     expect(bundleIdentifier('3D Racer')).toBe('com.wasdengine.game.game-3d-racer')
-    expect(bundleIdentifier('游戏')).toBe('com.wasdengine.game.game')
+    expect(bundleIdentifier('🚀 !!')).toBe('com.wasdengine.game.game')
     expect(bundleIdentifier('x'.repeat(100))).toBe(`com.wasdengine.game.${'x'.repeat(60)}`)
+  })
+
+  it('gives games whose names differ only in letters without an ASCII form different bundle identifiers', () => {
+    expect(bundleIdentifier('游戏')).toBe('com.wasdengine.game.game-847c5f68')
+    expect(bundleIdentifier('Space 射击')).toBe('com.wasdengine.game.space-5ef2fcce')
+    expect(bundleIdentifier('Space 冒险')).toBe('com.wasdengine.game.space-2b34eb87')
+    expect(bundleIdentifier(`${'x'.repeat(100)} 游戏`)).toMatch(new RegExp(`^com\\.wasdengine\\.game\\.${'x'.repeat(60)}-[0-9a-f]{8}$`, 'u'))
   })
 
   it('names the build after the game without the characters file systems refuse', () => {

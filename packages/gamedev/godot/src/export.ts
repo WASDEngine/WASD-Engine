@@ -59,6 +59,7 @@ import { z } from 'zod'
 import { androidPackageName } from './android.ts'
 import { turnOffBlenderImport } from './blender-import.ts'
 import { runGodotCommand } from './command.ts'
+import { gameIdentifierPart } from './identifiers.ts'
 import { IOS_SPLASH_SETTING_WARNING, iosBinaryName, removeTeam, UNSET_TEAM_ID } from './ios.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
 import { FAILURE_OUTPUT_LINES } from './run.ts'
@@ -460,15 +461,14 @@ export function withWebPreset(original: string | undefined, template: string): s
 }
 
 /**
- * The macOS bundle identifier of a game: `com.wasdengine.game.` and the game's name in lowercase ASCII letters,
- * digits, and hyphens, as macOS takes them.
+ * The macOS and iOS bundle identifier of a game: `com.wasdengine.game.` and the game's name in lowercase ASCII
+ * letters, digits, and hyphens, as Apple's platforms take them, with a digest of the name for letters that have no
+ * ASCII form ({@link gameIdentifierPart}).
  * @param name - the game's name.
- * @returns the identifier; `com.wasdengine.game.game` for a name without such characters.
+ * @returns the identifier; `com.wasdengine.game.game` for a name without letters or digits.
  */
 export function bundleIdentifier(name: string): string {
-  const ascii = name.normalize('NFKD').replace(/[\u0300-\u036f]/gu, '').toLowerCase()
-  const words = ascii.replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '').slice(0, 60).replace(/-+$/u, '')
-  return `com.wasdengine.game.${words === '' ? 'game' : /^[a-z]/u.test(words) ? words : `game-${words}`}`
+  return `com.wasdengine.game.${gameIdentifierPart(name, '-')}`
 }
 
 /**

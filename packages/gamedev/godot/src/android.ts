@@ -20,6 +20,7 @@ import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
 import { runGodotCommand } from './command.ts'
+import { gameIdentifierPart } from './identifiers.ts'
 import { describeExit, lastLines } from './output.ts'
 import { ownUserDataEnvironment } from './script.ts'
 
@@ -363,12 +364,11 @@ export function androidExportEnvironment(
 
 /**
  * The Android package name of a game: `com.wasdengine.game.` and the game's name in lowercase ASCII letters, digits,
- * and underscores, as Android takes a package segment.
+ * and underscores, as Android takes a package segment, with a digest of the name for letters that have no ASCII form
+ * ({@link gameIdentifierPart}).
  * @param name - the game's name.
- * @returns the package name; `com.wasdengine.game.game` for a name without such characters.
+ * @returns the package name; `com.wasdengine.game.game` for a name without letters or digits.
  */
 export function androidPackageName(name: string): string {
-  const ascii = name.normalize('NFKD').replace(/[\u0300-\u036f]/gu, '').toLowerCase()
-  const words = ascii.replace(/[^a-z0-9]+/gu, '_').replace(/^_+|_+$/gu, '').slice(0, 60).replace(/_+$/u, '')
-  return `com.wasdengine.game.${words === '' ? 'game' : /^[a-z]/u.test(words) ? words : `game_${words}`}`
+  return `com.wasdengine.game.${gameIdentifierPart(name, '_')}`
 }

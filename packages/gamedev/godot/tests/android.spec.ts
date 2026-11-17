@@ -42,7 +42,15 @@ describe('androidPackageName', () => {
     expect(androidPackageName('Tiny Farm')).toBe('com.wasdengine.game.tiny_farm')
     expect(androidPackageName('  Café -- Crème!  ')).toBe('com.wasdengine.game.cafe_creme')
     expect(androidPackageName('3D Racer')).toBe('com.wasdengine.game.game_3d_racer')
-    expect(androidPackageName('游戏')).toBe('com.wasdengine.game.game')
+    expect(androidPackageName('🚀 !!')).toBe('com.wasdengine.game.game')
+  })
+
+  it('gives games whose names differ only in letters without an ASCII form different package names', () => {
+    expect(androidPackageName('游戏')).toBe('com.wasdengine.game.game_847c5f68')
+    expect(androidPackageName(' 游戏 ')).toBe('com.wasdengine.game.game_847c5f68')
+    expect(androidPackageName('Space 射击')).toBe('com.wasdengine.game.space_5ef2fcce')
+    expect(androidPackageName('Space 冒险')).toBe('com.wasdengine.game.space_2b34eb87')
+    expect(androidPackageName('Привет мир')).toBe('com.wasdengine.game.game_830d1964')
   })
 })
 
