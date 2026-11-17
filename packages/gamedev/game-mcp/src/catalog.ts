@@ -273,6 +273,10 @@ export class GameToolCatalog {
               type: 'string',
               description: 'Absolute path of the folder to create the project\'s folder in, which WASD Engine creates when missing, outside temporary folders such as /tmp. Default: the WASD Engine folder in the user\'s Documents folder, where WASD Engine keeps game projects.',
             },
+            model: {
+              type: 'string',
+              description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your work on the project.',
+            },
           },
         },
       },
@@ -380,6 +384,7 @@ export class GameToolCatalog {
       args: prepared?.args ?? args,
       client: call.client,
       ...prepared?.agent === undefined ? {} : { agent: prepared.agent },
+      ...prepared?.model === undefined ? {} : { model: prepared.model },
       isError: result.isError === true,
     })
     return result

@@ -869,6 +869,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   GodotRecordRequest: 'gamedev.md',
   GodotRecording: 'gamedev.md',
   GameMcpToolResult: 'gamedev.md',
+  GameMcpProjectCreated: 'gamedev.md',
   GameMcpToolOwner: 'gamedev.md',
   GodotServerExport: 'gamedev.md',
   GodotServerExportRequest: 'gamedev.md',

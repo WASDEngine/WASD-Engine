@@ -5602,6 +5602,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'reveal', description: 'the Session and the sound.' }],
   },
   {
+    name: 'game-mcp/project-created',
+    mode: 'emit',
+    signature: '\'game-mcp/project-created\'(created: GameMcpProjectCreated): void',
+    summary: 'A connected agent\'s `create_game_project` created a game project, before the agent receives the result; a call that created none does not emit it.',
+    description: 'A connected agent\'s `create_game_project` created a game project, before the agent receives the result; a call that created none does not emit it.',
+    parameters: [{ name: 'created', description: 'the calling agent, the new folder, and the model the agent named.' }],
+  },
+  {
     name: 'game-mcp/reveal',
     mode: 'emit',
     signature: '\'game-mcp/reveal\'(sessionId: SessionId): void',
@@ -5615,7 +5623,7 @@ export const EVENT_API: readonly EventApiEntry[] = [
     signature: '\'game-mcp/tool-result\'(result: GameMcpToolResult): void',
     summary: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.',
     description: 'A connected agent\'s call of a provider tool finished, after its result was made; `search_game_tools`, `create_game_project`, a refused call, and a call of an unknown tool do not emit it.',
-    parameters: [{ name: 'result', description: 'the provider, tool, arguments, calling agent, Session, and whether the call failed.' }],
+    parameters: [{ name: 'result', description: 'the provider, tool, arguments, calling agent, Session, named model, and whether the call failed.' }],
   },
   {
     name: 'goal/activation-changed',
@@ -7555,7 +7563,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpPreparedCall',
-    declaration: 'export interface GameMcpPreparedCall {\n    readonly args: JsonObject;\n    readonly agent?: Agent;\n}',
+    declaration: 'export interface GameMcpPreparedCall {\n    readonly args: JsonObject;\n    readonly agent?: Agent;\n    readonly model?: string;\n}',
+  },
+  {
+    name: 'GameMcpProjectCreated',
+    declaration: 'export interface GameMcpProjectCreated {\n    readonly client: GameMcpClient;\n    readonly path: string;\n    readonly model?: string;\n}',
   },
   {
     name: 'GameMcpProvider',
@@ -7579,7 +7591,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpToolResult',
-    declaration: 'export interface GameMcpToolResult {\n    readonly provider: string;\n    readonly tool: string;\n    readonly args: JsonObject;\n    readonly client: GameMcpClient;\n    readonly agent?: Agent;\n    readonly isError: boolean;\n}',
+    declaration: 'export interface GameMcpToolResult {\n    readonly provider: string;\n    readonly tool: string;\n    readonly args: JsonObject;\n    readonly client: GameMcpClient;\n    readonly agent?: Agent;\n    readonly model?: string;\n    readonly isError: boolean;\n}',
   },
   {
     name: 'GameMcpView',

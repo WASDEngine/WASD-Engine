@@ -3,7 +3,8 @@
  * through the Workspace controller's `gameProjectController`, in the location the call names or in WASD Engine's
  * folder for game projects. The call opens no Session, so the project shows in the window with none; its Sessions start
  * when the user opens it or when a game tool call names it. A location in a temporary folder is refused, so an agent's
- * throwaway work stays out of the user's game projects.
+ * throwaway work stays out of the user's game projects. Each created project is reported through the
+ * `game-mcp/project-created` event with the AI model the agent named in `model`, which the released game's page credits.
  * @module @deepseek-ai/dsh-game-mcp/src/projects
  */
 import { isAbsolute } from 'node:path'
@@ -11,11 +12,29 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { GameProjectNameProblem } from '@deepseek-ai/dsh-api-workspace-controller'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
 import { SEARCH_TOOL, type McpCallResult } from './catalog.ts'
-import type { JsonObject } from './provider.ts'
+import type { GameMcpCall, GameMcpProjectCreated, JsonObject } from './provider.ts'
 import { inTemporaryFolder } from './temporary-folders.ts'
 
 function errorResult(text: string): McpCallResult {
   return { isError: true, content: [{ type: 'text', text }] }
+}
+
+/** What the agent reads, after a creation that named no model, about naming the model it is. */
+const MODEL_HINT = ' The game\'s page credits the AI model that makes the game: pass model, the name of the AI model you are, to godot_run when you '
+  + 'first run the game.'
+
+/**
+ * Report a created game project to the `game-mcp/project-created` listeners.
+ * @param ctx - Host context.
+ * @param created - the calling agent, the new folder, and the model the agent named.
+ */
+function reportCreated(ctx: Context, created: GameMcpProjectCreated): void {
+  try {
+    ctx.emit('game-mcp/project-created', created)
+  } catch (error) {
+    // A listener's failure must not turn the agent's created project into a failed call.
+    ctx.logger.warn(`game-mcp: a game-mcp/project-created listener failed: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 /** What the agent reads about a name that the Host refused, by the Host's reason, for the name as the call quoted it. */
@@ -65,24 +84,31 @@ function temporaryLocationText(location: string): string {
 
 /**
  * Create a game project for a connected agent: a new folder with a Git repository when Git is available, registered
- * as a game project, with no Session.
+ * as a game project, with no Session, and reported through the `game-mcp/project-created` event.
  * @param ctx - Host context with the optional game project controller.
- * @param args - the agent's arguments: `name`, the folder name and title, and optional `location`, the absolute path
- *   of the folder to create it in, without the spaces around it, as the dialog takes it; a missing, null, or blank
- *   `location` stands for the dialog's suggested folder, `<Documents>/WASD Engine`.
- * @param signal - the call's cancellation; it stops the Documents lookup or a running Git command, and a folder
- *   created before it is still registered.
+ * @param args - the agent's arguments: `name`, the folder name and title; optional `location`, the absolute path
+ *   of the folder to create it in, without the spaces around it, as the dialog takes it, where a missing, null, or blank
+ *   `location` stands for the dialog's suggested folder, `<Documents>/WASD Engine`; and optional `model`, the name of
+ *   the AI model the agent is, without the spaces around it, where a missing, null, or blank `model` names none.
+ * @param call - the calling agent and the call's cancellation, which stops the Documents lookup or a running Git
+ *   command; a folder created before it is still registered.
  * @param temporaryFolders - absolute folders in which a `location` is refused.
- * @returns the result that names the new folder, or an error result that says why nothing was created.
+ * @returns the result that names the new folder, and after a call that named no model says where to name it, or an
+ *   error result that says why nothing was created.
  */
 export async function createGameProject(
-  ctx: Context, args: JsonObject, signal: AbortSignal, temporaryFolders: readonly string[],
+  ctx: Context, args: JsonObject, call: Pick<GameMcpCall, 'client' | 'signal'>, temporaryFolders: readonly string[],
 ): Promise<McpCallResult> {
-  const { name, location } = args
+  const { name, location, model } = args
+  const { signal } = call
   if (typeof name !== 'string') return errorResult('Pass name, the name of the game project.')
   if (location !== undefined && location !== null && typeof location !== 'string') {
     return errorResult('location must be a string: the absolute path of the folder to create the project in.')
   }
+  if (model !== undefined && model !== null && typeof model !== 'string') {
+    return errorResult('model must be a string: the name of the AI model you are.')
+  }
+  const named = typeof model === 'string' && model.trim() !== '' ? model.trim() : undefined
   const requested = typeof location === 'string' ? location.trim() : ''
   const projects = ctx.get('gameProjectController')
   if (projects === undefined) return errorResult('This WASD Engine keeps no game projects, so it cannot create one.')
@@ -94,15 +120,17 @@ export async function createGameProject(
       return errorResult('WASD Engine cannot find the user\'s Documents folder, where it keeps game projects; pass location, the absolute path of the folder to create the project in.')
     }
     const { workspace, git } = await projects.create({ name, directory }, signal)
+    reportCreated(ctx, { client: call.client, path: workspace.path, ...named === undefined ? {} : { model: named } })
     return {
       content: [{
         type: 'text',
         text: `Created the game project ${JSON.stringify(workspace.title)} in ${workspace.path}, which WASD Engine lists among the user's game projects. `
-          + (git ? 'The folder holds a Git repository with one empty commit and nothing else. ' : 'The folder is empty, without a Git repository. ')
+          // WASD Engine may keep the game's credits in the folder at once, so the folder is not said to be empty.
+          + (git ? 'The folder holds a Git repository with one empty commit and no game files yet. ' : 'The folder holds no game files yet, and no Git repository. ')
           + `Before you write code, plan the game around the plugins that ${SEARCH_TOOL} lists, and read the guide of each one you will use. `
           + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
           + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
-          + 'only together with session.',
+          + `only together with session.${named === undefined ? MODEL_HINT : ''}`,
       }],
     }
   } catch (error) {
