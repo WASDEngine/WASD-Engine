@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-art-references",
   "description": "Art references for the agent: reference images, animations, and video posters found on the web for art it is about to make, numbered on one contact sheet, and the chosen ones saved with their sources into the game project's references folder",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },

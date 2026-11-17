@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-agent-feedback",
   "description": "What agents tell the WASD Engine team: the feedback_send tool of every Session and of WASD Engine's MCP server, and reports of how often agents call WASD Engine's tools, sent for the signed-in account",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publishConfig": {
     "access": "public"
   },
