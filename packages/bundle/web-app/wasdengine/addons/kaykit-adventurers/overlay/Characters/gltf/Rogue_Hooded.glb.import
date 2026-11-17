@@ -1,0 +1,81 @@
+; SPDX-License-Identifier: CC0-1.0
+; Imports the character with its clips, and makes the clips that repeat, such as Idle, Walking_A, and Running_A, loop.
+
+[remap]
+
+importer="scene"
+importer_version=1
+type="PackedScene"
+
+[params]
+
+_subresources={
+"animations": {
+"1H_Ranged_Aiming": {
+"settings/loop_mode": 1
+},
+"1H_Ranged_Shooting": {
+"settings/loop_mode": 1
+},
+"2H_Melee_Attack_Spinning": {
+"settings/loop_mode": 1
+},
+"2H_Melee_Idle": {
+"settings/loop_mode": 1
+},
+"2H_Ranged_Aiming": {
+"settings/loop_mode": 1
+},
+"2H_Ranged_Shooting": {
+"settings/loop_mode": 1
+},
+"Blocking": {
+"settings/loop_mode": 1
+},
+"Idle": {
+"settings/loop_mode": 1
+},
+"Jump_Idle": {
+"settings/loop_mode": 1
+},
+"Lie_Idle": {
+"settings/loop_mode": 1
+},
+"Running_A": {
+"settings/loop_mode": 1
+},
+"Running_B": {
+"settings/loop_mode": 1
+},
+"Running_Strafe_Left": {
+"settings/loop_mode": 1
+},
+"Running_Strafe_Right": {
+"settings/loop_mode": 1
+},
+"Sit_Chair_Idle": {
+"settings/loop_mode": 1
+},
+"Sit_Floor_Idle": {
+"settings/loop_mode": 1
+},
+"Spellcasting": {
+"settings/loop_mode": 1
+},
+"Unarmed_Idle": {
+"settings/loop_mode": 1
+},
+"Walking_A": {
+"settings/loop_mode": 1
+},
+"Walking_B": {
+"settings/loop_mode": 1
+},
+"Walking_Backwards": {
+"settings/loop_mode": 1
+},
+"Walking_C": {
+"settings/loop_mode": 1
+}
+}
+}

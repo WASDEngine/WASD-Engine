@@ -1,0 +1,47 @@
+{
+  "id": "universal-base-characters",
+  "title": "Universal Base Characters",
+  "host": "godot",
+  "version": "1.0",
+  "summary": "Two rigged, textured human bodies by Quaternius, a man and a woman in underwear, with 8 hair, beard, and eyebrow models; imported ready for universal-animation-library's clips.",
+  "useWhen": "A 3D game needs stylized humans with realistic proportions that play the Universal Animation Library's clips at once, varied by hair and skin tint, in underwear or in outfits made in Blender.",
+  "avoidWhen": "Chibi or fantasy heroes with weapons (use kaykit-adventurers), a body shape or age these two do not cover (use MPFB), or clothed characters with no time to model their outfits.",
+  "tags": [
+    "character",
+    "humanoid",
+    "rigged",
+    "hair",
+    "base-mesh",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "Bodies and hair by Quaternius (quaternius.com); the import settings, bone maps, and retarget.gd that WASD Engine adds are also CC0-1.0",
+  "homepage": "https://quaternius.com/packs/universalbasecharacters.html",
+  "archive": {
+    "url": "https://github.com/WASDEngine/WASD-Engine/releases/download/universal-base-characters-godot-1.0/universal-base-characters-godot-1.0.zip",
+    "sha256": "36a904d597f178846c9eb347b05809e70ff715f630346a9c05b0850d66dd6486",
+    "bytes": 37664536,
+    "root": "universal-base-characters",
+    "license": "universal-base-characters/License_Standard.txt"
+  },
+  "godot": {
+    "addonDir": "universal_base_characters",
+    "overlay": [
+      "universal-base-characters/overlay",
+      "humanoid-retarget"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://quaternius.itch.io/universal-base-characters",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-17"
+  }
+}

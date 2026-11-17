@@ -1,0 +1,7 @@
+{
+  "run": "script",
+  "path": "res://wasd_smoke/smoke.gd",
+  "args": ["kaykit-adventurers"],
+  "expect": ["SMOKE_PASS kaykit-adventurers"],
+  "timeoutSeconds": 180
+}

@@ -1,0 +1,23 @@
+; SPDX-License-Identifier: CC0-1.0
+; Imports the body retargeted to Godot's SkeletonProfileHumanoid, as retarget.gd would: its bones take the
+; profile's names on the unique skeleton %GeneralSkeleton, so the Universal Animation Library's clips play on it.
+
+[remap]
+
+importer="scene"
+importer_version=1
+type="PackedScene"
+
+[params]
+
+_subresources={
+"nodes": {
+"PATH:Armature/Skeleton3D": {
+"retarget/bone_map": Resource("res://addons/universal_base_characters/bone_maps/quaternius_ual2.tres"),
+"retarget/bone_renamer/rename_bones": true,
+"retarget/bone_renamer/unique_node/make_unique": true,
+"retarget/bone_renamer/unique_node/skeleton_name": "GeneralSkeleton",
+"retarget/rest_fixer/fix_silhouette/enable": true
+}
+}
+}

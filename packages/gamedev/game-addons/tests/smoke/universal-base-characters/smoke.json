@@ -1,0 +1,7 @@
+{
+  "run": "script",
+  "path": "res://wasd_smoke/smoke.gd",
+  "args": ["universal-base-characters"],
+  "expect": ["SMOKE_PASS universal-base-characters"],
+  "timeoutSeconds": 180
+}

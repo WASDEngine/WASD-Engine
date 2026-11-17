@@ -1,6 +1,6 @@
 # Add-on icons
 
-The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is the add-on's own image, or, for Rigify and A.N.T. Landscape, an icon from Blender's source; it was downloaded from the source below and is shared under the license and with the copyright line given there. The two Universal Animation Library icons are 64-pixel crops of their packs' preview images. Add-ons without an icon of their own that may be used here show a letter tile instead.
+The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is the add-on's own image, or, for Rigify and A.N.T. Landscape, an icon from Blender's source; it was downloaded from the source below and is shared under the license and with the copyright line given there. The icons of KayKit Adventurers, Universal Base Characters, and the two Universal Animation Libraries are 64-pixel crops of their packs' preview images. Add-ons without an icon of their own that may be used here show a letter tile instead.
 
 | Add-on | File | License | Copyright | Source |
 |---|---|---|---|---|
@@ -13,6 +13,7 @@ The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is t
 | Godot State Charts | `godot-state-charts/icon.png` | MIT | Copyright (c) 2023 Jan Thomä | <https://raw.githubusercontent.com/derkork/godot-statecharts/v0.22.5/docs/assets/img/manual/icon.png> |
 | GUT | `gut/icon.png` | MIT | Copyright (c) 2018 Tom "Butch" Wesley | <https://raw.githubusercontent.com/bitwes/Gut/v9.7.1/addons/gut/icon.png> |
 | Importality | `importality/icon.png` | MIT | Copyright (c) 2023 nklbdev | <https://raw.githubusercontent.com/nklbdev/godot-4-importality/0.4.0/icon.png> |
+| KayKit Adventurers | `kaykit-adventurers/icon.png` | CC0-1.0 | — | <https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/672074b73ba276876a19e8816ecdc5241817ab47/icon.png> |
 | LDtk Importer | `ldtk-importer/icon.png` | MIT | Copyright (c) 2023 Andrew Gleeson | <https://raw.githubusercontent.com/heygleeson/godot-ldtk-importer/2.0.1/img/icon.png> |
 | MPFB (MakeHuman) | `mpfb/icon.svg` | AGPL-3.0-or-later | Copyright (C) 2001-2020 MakeHuman Team (www.makehumancommunity.org) | <https://raw.githubusercontent.com/makehumancommunity/makehuman/v1.3.0/makehuman/icons/makehuman.svg> |
 | Phantom Camera | `phantom-camera/icon.png` | MIT | Copyright (c) 2022 Marcus Skov | <https://raw.githubusercontent.com/ramokz/phantom-camera/v0.11.0.4/.github/assets/icons/AssetLib-Icon.png> |
@@ -24,6 +25,7 @@ The Add-ons dialog shows these icons beside the catalog's add-ons. Each one is t
 | SmartShape2D | `smartshape2d/icon.png` | MIT | Copyright (c) 2018 Robert Morse | <https://raw.githubusercontent.com/SirRamEsq/SmartShape2D/3.3.2/addons/rmsmartshape/assets/icon.png> |
 | Universal Animation Library | `universal-animation-library/icon.png` | CC0-1.0 | — | <https://opengameart.org/sites/default/files/preview_1323.png> |
 | Universal Animation Library 2 | `universal-animation-library-2/icon.png` | CC0-1.0 | — | <https://opengameart.org/sites/default/files/ual2.png> |
+| Universal Base Characters | `universal-base-characters/icon.png` | CC0-1.0 | — | <https://quaternius.itch.io/universal-base-characters> |
 
 ## MIT License
 

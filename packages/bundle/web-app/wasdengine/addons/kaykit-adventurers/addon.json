@@ -1,0 +1,46 @@
+{
+  "id": "kaykit-adventurers",
+  "title": "KayKit Adventurers",
+  "host": "godot",
+  "version": "1.0",
+  "summary": "Five rigged, textured, low-poly fantasy characters by Kay Lousberg (Knight, Barbarian, Mage, Rogue, hooded Rogue) with 76 shared clips, and 27 weapons and props.",
+  "useWhen": "A stylized fantasy game needs ready, animated heroes, enemies, or NPCs with weapons, such as a dungeon crawler or a tactics game, and modelling, rigging, and animating them would take too long.",
+  "avoidWhen": "Realistic, modern, or non-human characters, or an art style that the chunky, big-headed look does not match: use universal-base-characters or MPFB, or model them in Blender.",
+  "tags": [
+    "character",
+    "animation",
+    "rigged",
+    "fantasy",
+    "low-poly",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "Characters, clips, and props by Kay Lousberg (www.kaylousberg.com); the import settings that WASD Engine adds are also CC0-1.0",
+  "homepage": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0",
+  "archive": {
+    "url": "https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/archive/672074b73ba276876a19e8816ecdc5241817ab47.zip",
+    "sha256": "00777a7b9811a7c7f8dd3fda4e56604f6a93b33673d64557153f354d677b47af",
+    "bytes": 6147593,
+    "root": "KayKit-Character-Pack-Adventures-1.0-672074b73ba276876a19e8816ecdc5241817ab47/addons/kaykit_character_pack_adventures",
+    "license": "KayKit-Character-Pack-Adventures-1.0-672074b73ba276876a19e8816ecdc5241817ab47/addons/kaykit_character_pack_adventures/LICENSE.txt"
+  },
+  "godot": {
+    "addonDir": "kaykit_character_pack_adventures",
+    "overlay": [
+      "kaykit-adventurers/overlay"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/672074b73ba276876a19e8816ecdc5241817ab47/icon.png",
+    "license": "CC0-1.0"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-17"
+  }
+}
