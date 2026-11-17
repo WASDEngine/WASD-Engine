@@ -1,0 +1,64 @@
+diff --git a/platform/web/js/libs/library_godot_audio.js b/platform/web/js/libs/library_godot_audio.js
+index d1c996e..6e406b2 100644
+--- a/platform/web/js/libs/library_godot_audio.js
++++ b/platform/web/js/libs/library_godot_audio.js
+@@ -863,30 +863,40 @@ class Bus {
+ 	}
+ 
+ 	/**
+-	 * Move a bus from an index to another.
++	 * Move a bus from an index to another, as `AudioServer::move_bus()` moves it: in front of the bus that was at
++	 * `toIndex`, or last for `-1` and for the index after the last bus. The master bus stays at index 0.
+ 	 * @param {number} fromIndex From index
+-	 * @param {number} toIndex To index
++	 * @param {number} toIndex To index, or -1 for the end
+ 	 * @returns {void}
+ 	 */
+ 	static move(fromIndex, toIndex) {
+ 		const movedBus = GodotAudio.Bus.getBusOrNull(fromIndex);
+-		if (movedBus == null) {
++		if (movedBus == null || fromIndex === 0 || toIndex === 0 || toIndex < -1) {
+ 			return;
+ 		}
+ 		const buses = GodotAudio.buses.filter((_, i) => i !== fromIndex);
+-		// Inserts at index.
+-		buses.splice(toIndex - 1, 0, movedBus);
++		if (toIndex === -1) {
++			buses.push(movedBus);
++		} else if (toIndex < fromIndex) {
++			buses.splice(toIndex, 0, movedBus);
++		} else {
++			buses.splice(toIndex - 1, 0, movedBus);
++		}
+ 		GodotAudio.buses = buses;
+ 	}
+ 
+ 	/**
+-	 * Adds a new bus at the specified index.
+-	 * @param {number} index Index to add a new bus.
++	 * Adds a new bus at the specified index, as `AudioServer::add_bus()` adds it: last for `-1`, and none for an index
++	 * below -1, where `AudioServer` adds none either.
++	 * @param {number} index Index to add a new bus, or -1 for the end.
+ 	 * @returns {void}
+ 	 */
+ 	static addAt(index) {
++		if (index < -1) {
++			return;
++		}
+ 		const newBus = GodotAudio.Bus.create();
+-		if (index !== newBus.getId()) {
++		if (index !== -1 && index !== newBus.getId()) {
+ 			GodotAudio.Bus.move(newBus.getId(), index);
+ 		}
+ 	}
+@@ -1481,8 +1491,8 @@ const _GodotAudio = {
+ 		 */
+ 		set_sample_bus_send: function (busIndex, sendIndex) {
+ 			const bus = GodotAudio.Bus.getBusOrNull(busIndex);
+-			if (bus == null) {
+-				// Cannot send from an invalid bus.
++			if (bus == null || busIndex === 0) {
++				// Cannot send from an invalid bus, and the master bus always plays to the output, as `AudioServer` mixes it.
+ 				return;
+ 			}
+ 			let targetBus = GodotAudio.Bus.getBusOrNull(sendIndex);

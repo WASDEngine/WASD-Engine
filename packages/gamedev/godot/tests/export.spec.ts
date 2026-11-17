@@ -1,11 +1,14 @@
 /** Exports write a temporary preset, restore the project's presets, and report the build or why there is none. */
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { readFileSync } from 'node:fs'
+import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, exportDesktop, exportWeb, GodotExportError, HIDE_SPLASH_HEAD,
-  LARGE_PACK_BYTES, packNotes, pendingExportRestores, replayExportRestore, textureImports, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, webNotes,
-  withDesktopPreset, withoutPreset, withTextureImports, withWebPreset, type WebExportOptions,
+  bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop, exportWeb,
+  GodotExportError, LARGE_PACK_BYTES, packNotes, pendingExportRestores, replayExportRestore, textureImports, WASD_SPLASH_IMAGES,
+  wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE, webNotes, withDesktopPreset, withExportSplash, withoutPreset,
+  withTextureImports, withWebPreset, type WebExportOptions,
 } from '../src/export.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
 import { compose } from './composition.ts'
@@ -24,6 +27,25 @@ afterEach(async () => {
 })
 
 const BUILD = { 'index.html': '<html>', 'index.js': 'js', 'index.wasm': 'wasm', 'index.pck': 'pck', 'index.png': 'png' }
+/** WASD Engine's boot splash images as the plugin ships them. */
+const SPLASH = { dark: readFileSync(fileURLToPath(WASD_SPLASH_IMAGES.dark)), light: readFileSync(fileURLToPath(WASD_SPLASH_IMAGES.light)) }
+/** The real path of {@link EXPORT_SPLASH_PATH} in a project. */
+const splashFile = (project: string): string => join(project, '.godot', 'wasd_engine_splash.png')
+const exists = (path: string): Promise<boolean> => access(path).then(() => true, () => false)
+
+/** What the fake recorded as an export started: the preset, the presets and `project.godot` it saw, and the boot splash's size. */
+type ExportEntry = {
+  readonly preset: string
+  readonly presets: string
+  readonly project: string
+  readonly splashBytes: number | null
+}
+
+/** Set lines of a project's `[application]` section, as a project's own settings. */
+async function setApplication(project: string, lines: string): Promise<void> {
+  const text = await readFile(join(project, 'project.godot'), 'utf8')
+  await writeFile(join(project, 'project.godot'), text.replace('[application]\n', `[application]\n\n${lines}\n`))
+}
 
 async function prepare(config: FakeGodotConfig, before?: (project: string) => Promise<void>, overrides: Partial<WebExportOptions> = {}) {
   const dir = await scratch('export')
@@ -45,7 +67,7 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
 describe('withWebPreset', () => {
   it('adds the preset after the project\'s own presets and quotes the template path', () => {
     const original = '[preset.0]\n\nname="Windows"\nplatform="Windows Desktop"\n\n[preset.0.options]\n\nbinary_format/embed_pck=false\n'
-    const text = withWebPreset(original, 'C:\\templates\\web "a".zip', true)
+    const text = withWebPreset(original, 'C:\\templates\\web "a".zip')
     expect(text).toContain('[preset.0]\n\nname="Windows"')
     expect(text).toContain('[preset.0.options]\n\nbinary_format/embed_pck=false')
     expect(text).toContain(`[preset.1]\n\nname="${WEB_EXPORT_PRESET}"\nplatform="Web"`)
@@ -59,7 +81,7 @@ describe('withWebPreset', () => {
       '[preset.0]', '', `name="${WEB_EXPORT_PRESET}"`, '', '[preset.0.options]', '', 'custom_template/release="/old.zip"', '',
       '[preset.1]', '', 'name="Linux"', '', '[preset.1.options]', '', 'a=1', '',
     ].join('\r\n')
-    const text = withWebPreset(original, '/new.zip', true)
+    const text = withWebPreset(original, '/new.zip')
     expect(text).not.toContain('/old.zip')
     expect(text).toContain('[preset.0]\n\nname="Linux"')
     expect(text).toContain('[preset.0.options]\n\na=1')
@@ -67,13 +89,9 @@ describe('withWebPreset', () => {
     expect(text.match(/\[preset\.\d+\]/gu)).toEqual(['[preset.0]', '[preset.1]'])
   })
 
-  it('writes the preset alone for a project without presets', () => {
-    expect(withWebPreset(undefined, '/t.zip', true)).toMatch(/^\[preset\.0\]\n\nname="WASD Engine Web"/u)
-  })
-
-  it('hides the loading screen\'s splash image through the page head only when asked', () => {
-    expect(withWebPreset(undefined, '/t.zip', true)).toContain(`html/head_include="${HIDE_SPLASH_HEAD}"`)
-    expect(withWebPreset(undefined, '/t.zip', false)).toContain('html/head_include=""')
+  it('writes the preset alone for a project without presets, with nothing added to the page head', () => {
+    expect(withWebPreset(undefined, '/t.zip')).toMatch(/^\[preset\.0\]\n\nname="WASD Engine Web"/u)
+    expect(withWebPreset(undefined, '/t.zip')).toContain('html/head_include=""')
   })
 })
 
@@ -87,6 +105,49 @@ describe('customBootSplash', () => {
     expect(customBootSplash('[application]\nboot_splash/image=""\nboot_splash/bg_color=Color(0, 0, 0, 1)\n')).toBe(false)
     expect(customBootSplash('[display]\nboot_splash/image="res://splash.png"\n')).toBe(false)
     expect(customBootSplash('[application]\nconfig/name="x"\n')).toBe(false)
+  })
+})
+
+describe('wasdSplash', () => {
+  it('shows the light wordmark on Godot\'s default splash color and on other dark ones', () => {
+    expect(wasdSplash('[application]\n\nconfig/name="x"\n')).toBe('dark')
+    expect(wasdSplash('[application]\nboot_splash/bg_color=Color(0.2, 0.25, 0.3, 1)\n')).toBe('dark')
+    expect(wasdSplash('[application]\nboot_splash/bg_color=Color(0, 0, 0, 1)\n')).toBe('dark')
+    // Neither an unreadable color nor another section's setting replaces Godot's default.
+    expect(wasdSplash('[application]\nboot_splash/bg_color=Color(a, b, c, 1)\n')).toBe('dark')
+    expect(wasdSplash('[display]\nboot_splash/bg_color=Color(1, 1, 1, 1)\n')).toBe('dark')
+  })
+
+  it('shows the dark wordmark on a light splash color, overbright ones included', () => {
+    expect(wasdSplash('[application]\r\nboot_splash/bg_color=Color(0.95, 0.93, 0.88, 1)\r\n')).toBe('light')
+    expect(wasdSplash('[application]\nboot_splash/bg_color=Color(0.6, 0.6, 0.6, 1)\n')).toBe('light')
+    expect(wasdSplash('[application]\nboot_splash/bg_color=Color(2, 3, 2.5, 1)\n')).toBe('light')
+  })
+
+  it('shows none for a project with a boot splash image of its own or with the image turned off', () => {
+    expect(wasdSplash('[application]\nboot_splash/image="res://studio.png"\n')).toBeUndefined()
+    expect(wasdSplash('[application]\nboot_splash/show_image=false\n')).toBeUndefined()
+    expect(wasdSplash('[application]\nboot_splash/image=""\nboot_splash/show_image=true\n')).toBe('dark')
+  })
+})
+
+describe('withExportSplash', () => {
+  const project = 'config_version=5\n\n[application]\n\nconfig/name="x"\nboot_splash/image=""\n\n[rendering]\n\nrenderer/rendering_method="forward_plus"\n'
+
+  it('names the export\'s image after the section\'s own lines, so Godot reads it last, and removes it again', () => {
+    const named = withExportSplash(project, true)
+    expect(named).toBe(project.replace('boot_splash/image=""\n', `boot_splash/image=""\nboot_splash/image="${EXPORT_SPLASH_PATH}"\n`))
+    expect(withExportSplash(named, true)).toBe(named)
+    expect(withExportSplash(named, false)).toBe(project)
+    expect(withExportSplash(project, false)).toBe(project)
+  })
+
+  it('adds an application section to a project without one, keeping its line endings', () => {
+    const text = withExportSplash('config_version=5\r\n\r\n[rendering]\r\n\r\nx=1\r\n', true)
+    expect(text).toBe(`config_version=5\r\n\r\n[rendering]\r\n\r\nx=1\r\n\r\n[application]\r\n\r\nboot_splash/image="${EXPORT_SPLASH_PATH}"\r\n`)
+    // The export's own image is no image of the project's: a line an interrupted export left still gets the splash.
+    expect(customBootSplash(text)).toBe(false)
+    expect(wasdSplash(text)).toBe('dark')
   })
 })
 
@@ -121,7 +182,9 @@ posix('exportWeb', () => {
     expect(exported.entry).toBe('index.html')
     expect(exported.outputDir).toBe(outputDir)
     expect(exported.files.map(file => file.path)).toEqual(['index.html', 'index.js', 'index.pck', 'index.png', 'index.wasm'])
-    expect(exported.totalBytes).toBe(Object.values(BUILD).join('').length)
+    // The splash image Godot wrote became WASD Engine's.
+    expect(exported.files.find(file => file.path === WEB_SPLASH_FILE)?.bytes).toBe(SPLASH.dark.length)
+    expect(exported.totalBytes).toBe(Object.values(BUILD).join('').length - BUILD['index.png'].length + SPLASH.dark.length)
     // The fixture project sets no rendering method, so it renders with Forward+ on desktop.
     expect(exported.warnings).toEqual([WEB_RENDERER_NOTE, 'Screen-space AA is only available when using the Forward+ or Mobile renderer.'])
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
@@ -135,18 +198,30 @@ posix('exportWeb', () => {
     expect(argv[5]).toBe(join(outputDir, 'index.html'))
   })
 
-  it('hides Godot\'s splash image on the loading screen unless the project names its own', async () => {
+  it('replaces Godot\'s splash image with WASD Engine\'s for the project\'s splash color unless the project names its own', async () => {
     const plain = await prepare({ export: { files: BUILD } })
     await plain.run()
-    const plainPresets = (await fakeLog(plain.project)).find(entry => entry.preset !== undefined) as { presets: string }
-    expect(plainPresets.presets).toContain(`html/head_include="${HIDE_SPLASH_HEAD}"`)
-    const branded = await prepare({ export: { files: BUILD } }, async (dir) => {
-      const text = await readFile(join(dir, 'project.godot'), 'utf8')
-      await writeFile(join(dir, 'project.godot'), text.replace('[application]\n', '[application]\n\nboot_splash/image="res://studio.png"\n'))
-    })
+    expect(await readFile(join(plain.outputDir, WEB_SPLASH_FILE))).toEqual(SPLASH.dark)
+    const light = await prepare({ export: { files: BUILD } }, dir => setApplication(dir, 'boot_splash/bg_color=Color(0.95, 0.93, 0.88, 1)'))
+    await light.run()
+    expect(await readFile(join(light.outputDir, WEB_SPLASH_FILE))).toEqual(SPLASH.light)
+    const branded = await prepare({ export: { files: BUILD } }, dir => setApplication(dir, 'boot_splash/image="res://studio.png"'))
     await branded.run()
-    const brandedPresets = (await fakeLog(branded.project)).find(entry => entry.preset !== undefined) as { presets: string }
-    expect(brandedPresets.presets).toContain('html/head_include=""')
+    expect(await readFile(join(branded.outputDir, WEB_SPLASH_FILE), 'utf8')).toBe('png')
+    const hidden = await prepare({ export: { files: BUILD } }, dir => setApplication(dir, 'boot_splash/show_image=false'))
+    await hidden.run()
+    expect(await readFile(join(hidden.outputDir, WEB_SPLASH_FILE), 'utf8')).toBe('png')
+    // The page carries nothing of its own about the splash, and the Web export leaves the project's files alone.
+    const presets = (await fakeLog(plain.project)).find(entry => entry.preset !== undefined) as ExportEntry
+    expect(presets.presets).toContain('html/head_include=""')
+    expect(presets.splashBytes).toBeNull()
+    expect(await exists(splashFile(plain.project))).toBe(false)
+  })
+
+  it('writes no splash image when Godot wrote none', async () => {
+    const { outputDir, run } = await prepare({ export: { files: { 'index.html': '<html>' } } })
+    await expect(run()).rejects.toBeInstanceOf(GodotExportError)
+    expect(await readdir(outputDir)).toEqual(['index.html'])
   })
 
   it('turns off the Blender importer of a project that holds a .blend file and says so first', async () => {
@@ -183,12 +258,12 @@ posix('exportWeb', () => {
 
 describe('withoutPreset', () => {
   it('removes one preset by name and renumbers the rest, and leaves a text without it alone', () => {
-    const text = withDesktopPreset(withWebPreset('[preset.0]\n\nname="Linux"\nplatform="Linux"\n', '/t.zip', false), 'windows', '/w.exe', 'Game')
+    const text = withDesktopPreset(withWebPreset('[preset.0]\n\nname="Linux"\nplatform="Linux"\n', '/t.zip'), 'windows', '/w.exe', 'Game')
     const kept = withoutPreset(text, WEB_EXPORT_PRESET)
     expect(kept).toMatch(/^\[preset\.0\]\n\nname="Linux"[\s\S]*\[preset\.1\]\n\nname="WASD Engine Windows"/u)
     expect(kept).not.toContain(WEB_EXPORT_PRESET)
     expect(withoutPreset(kept, WEB_EXPORT_PRESET)).toBe(kept)
-    expect(withoutPreset(withWebPreset(undefined, '/t.zip', false), WEB_EXPORT_PRESET)).toBe('')
+    expect(withoutPreset(withWebPreset(undefined, '/t.zip'), WEB_EXPORT_PRESET)).toBe('')
   })
 })
 
@@ -280,27 +355,35 @@ posix('exportDesktop', () => {
     return { project, outputDir, restoreDir, run }
   }
 
-  /** Run an export, and keep the project's files and the restore record as they were while it ran, as an app that quit then leaves them. */
+  /**
+   * Run an export, and keep the project's files, the boot splash image, and the restore record as they were while it
+   * ran, as an app that quit then leaves them.
+   */
   async function interrupt(
     project: string, restoreDir: string, run: () => Promise<unknown>,
-  ): Promise<{ readonly presets: string; readonly project: string }> {
+  ): Promise<{ readonly presets: string; readonly project: string; readonly splash: Buffer | undefined }> {
     const exporting = run()
     let name: string
     let record: string
-    let during: { readonly presets: string; readonly project: string }
+    let during: { readonly presets: string; readonly project: string; readonly splash: Buffer | undefined }
     try {
-      // The record appears by a rename of a temporary file beside it.
-      const records = async (): Promise<string[]> => (await readdir(restoreDir).catch(() => [])).filter(entry => entry.endsWith('.json'))
-      await until(async () => (await records()).length === 1)
-      name = (await records())[0] as string
+      // Godot starts once the export changed the project's files, and the record came before those changes.
+      await until(async () => (await fakeLog(project).catch(() => [])).some(entry => entry.preset !== undefined))
+      name = (await readdir(restoreDir)).filter(entry => entry.endsWith('.json'))[0] as string
       record = await readFile(join(restoreDir, name), 'utf8')
-      during = { presets: await readFile(join(project, 'export_presets.cfg'), 'utf8'), project: await readFile(join(project, 'project.godot'), 'utf8') }
+      during = {
+        presets: await readFile(join(project, 'export_presets.cfg'), 'utf8'),
+        project: await readFile(join(project, 'project.godot'), 'utf8'),
+        splash: await readFile(splashFile(project)).catch(() => undefined),
+      }
     } finally {
       await exporting
     }
     expect(await readdir(restoreDir)).toEqual([])
+    expect(await exists(splashFile(project))).toBe(false)
     await writeFile(join(project, 'export_presets.cfg'), during.presets)
     await writeFile(join(project, 'project.godot'), during.project)
+    if (during.splash !== undefined) await writeFile(splashFile(project), during.splash)
     await writeFile(join(restoreDir, name), record)
     return during
   }
@@ -314,10 +397,13 @@ posix('exportDesktop', () => {
     const during = await interrupt(project, restoreDir, run)
     expect(during.presets).toContain(DESKTOP_EXPORT_PRESETS.macos)
     expect(textureImports(during.project)).toEqual({ s3tc_bptc: 'true', etc2_astc: 'true' })
+    expect(during.project).toContain(`boot_splash/image="${EXPORT_SPLASH_PATH}"`)
+    expect(during.splash).toEqual(SPLASH.dark)
     expect(await pendingExportRestores(restoreDir)).toEqual([project])
     expect(await replayExportRestore(restoreDir, project)).toBe(true)
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    expect(await exists(splashFile(project))).toBe(false)
     expect(await readdir(restoreDir)).toEqual([])
     expect(await replayExportRestore(restoreDir, project)).toBe(false)
   })
@@ -353,10 +439,13 @@ posix('exportDesktop', () => {
     // The second export saw the project as the user left it, without the first export's changes.
     expect(exportEntry.presets.match(/name="WASD Engine Windows"/gu)).toHaveLength(1)
     expect(exportEntry.presets).toContain('[preset.0]\n\nname="Web"')
+    expect(exportEntry.project.match(/boot_splash\/image=/gu)).toHaveLength(1)
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe('[preset.0]\n\nname="Web"\nplatform="Web"\n')
     const after = await readFile(join(project, 'project.godot'), 'utf8')
     expect(after).toContain('window/size/viewport_width=640')
+    expect(after).not.toContain(EXPORT_SPLASH_PATH)
     expect(textureImports(after)).toEqual(textureImports(settings))
+    expect(await exists(splashFile(project))).toBe(false)
     expect(await readdir(restoreDir)).toEqual([])
   })
 
@@ -371,11 +460,16 @@ posix('exportDesktop', () => {
       projectDir: project, platform: 'macos', outputDir, entry: 'Fake game.zip', bytes: 4, warnings: ['Code signing: Using ad-hoc signature.'],
     })
     const log = await fakeLog(project)
-    const exportEntry = log.find(entry => entry.preset !== undefined) as { preset: string; presets: string; project: string }
+    const exportEntry = log.find(entry => entry.preset !== undefined) as ExportEntry
     expect(exportEntry.preset).toBe(DESKTOP_EXPORT_PRESETS.macos)
     expect(exportEntry.presets).toContain('name="Linux"')
     expect(exportEntry.presets).toContain('application/bundle_identifier="com.wasdengine.game.fake-game"')
     expect(textureImports(exportEntry.project)).toEqual({ s3tc_bptc: 'true', etc2_astc: 'true' })
+    // Godot packed WASD Engine's boot splash, which the export then took out of the project again.
+    expect(wasdSplash(settings)).toBe('dark')
+    expect(exportEntry.project).toContain(`boot_splash/image="${EXPORT_SPLASH_PATH}"`)
+    expect(exportEntry.splashBytes).toBe(SPLASH.dark.length)
+    expect(await exists(splashFile(project))).toBe(false)
     const argv = (log[0] as { argv: string[] }).argv
     expect(argv.slice(0, 5)).toEqual(['--headless', '--path', project, '--export-release', DESKTOP_EXPORT_PRESETS.macos])
     expect(argv[5]).toBe(join(outputDir, 'Fake game.zip'))
@@ -391,19 +485,38 @@ posix('exportDesktop', () => {
     await run()
     const after = await readFile(join(project, 'project.godot'), 'utf8')
     expect(after).toContain('window/size/viewport_width=640')
+    expect(after).not.toContain(EXPORT_SPLASH_PATH)
     expect(textureImports(after)).toEqual({ s3tc_bptc: 'false' })
     const exportEntry = (await fakeLog(project)).find(entry => entry.preset !== undefined) as { project: string }
     expect(textureImports(exportEntry.project)).toEqual({ s3tc_bptc: 'true' })
+    expect(exportEntry.project).toContain(`boot_splash/image="${EXPORT_SPLASH_PATH}"`)
   })
 
-  it('leaves project.godot untouched when it already imports what the platform needs', async () => {
+  it('leaves project.godot untouched when it already imports what the platform needs and names its own boot splash', async () => {
     const { project, run } = await prepareDesktop('windows', { export: { files: { 'Fake game.zip': 'zip' } } }, async (dir) => {
+      await setApplication(dir, 'boot_splash/image="res://studio.png"')
       const text = await readFile(join(dir, 'project.godot'), 'utf8')
       await writeFile(join(dir, 'project.godot'), `${text}\n[rendering]\n\ntextures/vram_compression/import_s3tc_bptc=true\n`)
+      await writeFile(join(dir, 'studio.png'), 'studio')
     })
     const settings = await readFile(join(project, 'project.godot'), 'utf8')
     await run()
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    const exportEntry = (await fakeLog(project)).find(entry => entry.preset !== undefined) as ExportEntry
+    expect(exportEntry.project).toBe(settings)
+    expect(exportEntry.splashBytes).toBe('studio'.length)
+  })
+
+  it('names WASD Engine\'s boot splash for a light splash color and none for a project that turns the image off', async () => {
+    const light = await prepareDesktop('windows', { export: { files: { 'Fake game.zip': 'zip' } } }, dir => setApplication(dir, 'boot_splash/bg_color=Color(1, 1, 1, 1)'))
+    await light.run()
+    const lightEntry = (await fakeLog(light.project)).find(entry => entry.preset !== undefined) as { splashBytes: number | null }
+    expect(lightEntry.splashBytes).toBe(SPLASH.light.length)
+    const hidden = await prepareDesktop('windows', { export: { files: { 'Fake game.zip': 'zip' } } }, dir => setApplication(dir, 'boot_splash/show_image=false'))
+    await hidden.run()
+    const hiddenEntry = (await fakeLog(hidden.project)).find(entry => entry.preset !== undefined) as ExportEntry
+    expect(hiddenEntry.project).not.toContain('boot_splash/image')
+    expect(hiddenEntry.splashBytes).toBeNull()
   })
 
   it('reports Godot\'s errors when the export writes no ZIP file, and empties the folder of an earlier build', async () => {

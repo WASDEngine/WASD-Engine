@@ -47,7 +47,7 @@ describe('withServerPreset', () => {
   })
 
   it('replaces an earlier server preset and keeps the project\'s presets in order', () => {
-    const original = withWebPreset(withServerPreset('[preset.0]\n\nname="Windows"\n', '/old.x86_64'), '/web.zip', true)
+    const original = withWebPreset(withServerPreset('[preset.0]\n\nname="Windows"\n', '/old.x86_64'), '/web.zip')
     const text = withServerPreset(original, '/new.x86_64')
     expect(text).not.toContain('/old.x86_64')
     expect(text.match(/^name=".*"$/gmu)).toEqual(['name="Windows"', `name="${WEB_EXPORT_PRESET}"`, `name="${SERVER_EXPORT_PRESET}"`])
@@ -55,7 +55,7 @@ describe('withServerPreset', () => {
   })
 
   it('has the Web and desktop exports carry the multiplayer configuration too, which Godot leaves out as no resource', () => {
-    expect(withWebPreset(undefined, '/t.zip', true)).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
+    expect(withWebPreset(undefined, '/t.zip')).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
     for (const platform of ['windows', 'macos'] as const) {
       expect(withDesktopPreset(undefined, platform, '/t.zip', 'Tiny Farm')).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
     }

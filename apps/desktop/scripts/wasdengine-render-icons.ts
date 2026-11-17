@@ -1,7 +1,8 @@
 /**
  * Render the WASDEngine Desktop icons from their vector sources beside them in `wasdengine/`,
- * the blank-home animation atlas from the keycaps of the Windows icon source, and the Windows
- * installer art from the Windows icon source and the first-run logo.
+ * the blank-home animation atlas from the keycaps of the Windows icon source, the Windows
+ * installer art from the Windows icon source and the first-run logo, and the boot splash images
+ * of exported games from the first-run logo.
  *
  * The 1024 px application icons are rasterized from `icon-macos.svg` and `icon-windows.svg`,
  * and the multi-size Windows tray icon from the `tray-glyph` group of `icon-windows.svg`
@@ -9,6 +10,8 @@
  * `ui-brand-official` frame layer plays on a blank-home click: A, S, and D rise from below and W
  * drops in from above, W, A, S, D, and W press in turn, and the keycaps leave the way they came.
  * The installer art replaces upstream's DeepSeek whale and wordmark in `installer/assets/`.
+ * The export splash images go to the Godot plugin's `runtime/` folder, from which its exports
+ * take the splash of a game without one of its own.
  * The Web install icons render from `icon-windows.svg` through
  * `apps/web/scripts/wasdengine-app-icons.ts`. The PNG, ICO, and WebP files are committed outputs;
  * rerun `pnpm exec tsx scripts/wasdengine-render-icons.ts` in `apps/desktop` after changing a source.
@@ -66,6 +69,30 @@ export const WASDENGINE_INSTALLER_LAYOUT = {
   banner: { width: 600, height: 196, icon: { left: 236, top: 12, size: 128 }, wordmark: { top: 165, height: 19 } },
   sidebar: { width: 164, height: 314, background: '#F3F4F6', icon: { left: 18, top: 85, size: 128 } },
 } as const
+
+/**
+ * Directory of the export splash images: the runtime files of the Godot plugin, whose exports show one of them as the
+ * boot splash of a game without a boot splash image of its own (`packages/gamedev/godot/src/export.ts`).
+ */
+export const WASDENGINE_EXPORT_SPLASH_DIRECTORY = fileURLToPath(new URL('../../../packages/gamedev/godot/runtime/', import.meta.url))
+
+/**
+ * The export splash images, by the theme whose wordmark color they draw: the dark theme's light wordmark for a dark
+ * splash color, such as Godot's default, and the light theme's dark wordmark for a light one.
+ */
+export const WASDENGINE_EXPORT_SPLASH = {
+  'wasd_engine_splash_dark_bg.png': 'dark',
+  'wasd_engine_splash_light_bg.png': 'light',
+} as const
+
+/** File name of one export splash image. */
+export type WasdengineExportSplashFile = keyof typeof WASDENGINE_EXPORT_SPLASH
+
+/**
+ * Export splash layout in pixels: twice the 800 x 600 of Godot's own splash image, which Godot scales to the window
+ * keeping its proportions, with the logo across half its width.
+ */
+export const WASDENGINE_EXPORT_SPLASH_LAYOUT = { width: 1600, height: 1200, logoWidth: 800 } as const
 
 /**
  * Atlas cells per icon-source unit, the source point drawn at the frame anchor (the outlined keycap cluster centre), and
@@ -235,7 +262,7 @@ function logoWordmark(logo: string): LogoWordmark {
   const path = /<path d="([^"]+)" fill="var\(--wasdengine-wordmark\)"/u.exec(logo)?.[1]
   const colors = [...logo.matchAll(/--wasdengine-wordmark: (#[\dA-F]{6});/giu)].map(([, color]) => color!)
   if (path === undefined || colors.length !== 2) {
-    throw new Error('installer art: the logo needs one path filled with --wasdengine-wordmark and that variable\'s light and dark colors')
+    throw new Error('WASD Engine logo: the logo needs one path filled with --wasdengine-wordmark and that variable\'s light and dark colors')
   }
   // A quadratic segment lies within the hull of its points, and the glyph outlines put a point at each extreme.
   const xs: number[] = []
@@ -245,7 +272,7 @@ function logoWordmark(logo: string): LogoWordmark {
     if (command === 'H') xs.push(...values)
     else if (command === 'V') ys.push(...values)
     else if (command === 'M' || command === 'L' || command === 'Q') values.forEach((value, index) => (index % 2 === 0 ? xs : ys).push(value))
-    else if (command !== 'Z') throw new Error(`installer art: the wordmark path uses ${command!}; only the absolute M, L, H, V, Q, and Z commands are read`)
+    else if (command !== 'Z') throw new Error(`WASD Engine logo: the wordmark path uses ${command!}; only the absolute M, L, H, V, Q, and Z commands are read`)
   }
   const x = Math.min(...xs)
   const y = Math.min(...ys)
@@ -290,6 +317,29 @@ export async function renderWasdengineInstallerArt(file: WasdengineInstallerArtF
     .png({ compressionLevel: 9 }).toBuffer()
 }
 
+/**
+ * Render one export splash image of {@link WASDENGINE_EXPORT_SPLASH} with {@link WASDENGINE_EXPORT_SPLASH_LAYOUT}: the
+ * whole logo, its wordmark in the theme's color, scaled to the logo width and centered on a transparent canvas.
+ * @param file - Export splash file name.
+ * @param logo - {@link WASDENGINE_LOGO_FILE}, whose root `viewBox` starts at 0 0.
+ * @returns RGBA PNG bytes.
+ * @throws when the logo lacks the wordmark path, its two colors, or its `viewBox`.
+ */
+export async function renderWasdengineExportSplash(file: WasdengineExportSplashFile, logo: Buffer): Promise<Buffer> {
+  const source = logo.toString('utf8')
+  const { colors } = logoWordmark(source)
+  const view = /<svg[^>]*\sviewBox="0 0 ([\d.]+) ([\d.]+)"/u.exec(source)
+  if (view === null) throw new Error('WASD Engine logo: the logo needs a viewBox that starts at 0 0')
+  const [viewWidth, viewHeight] = [Number(view[1]), Number(view[2])]
+  const { width, height, logoWidth } = WASDENGINE_EXPORT_SPLASH_LAYOUT
+  const logoHeight = Math.round(logoWidth * viewHeight / viewWidth)
+  const drawn = Buffer.from(source.replaceAll('var(--wasdengine-wordmark)', colors[WASDENGINE_EXPORT_SPLASH[file]]))
+  const mark = await sharp(drawn, { density: 72 * logoWidth / viewWidth }).resize(logoWidth, logoHeight).png().toBuffer()
+  return sharp({ create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: mark, left: Math.round((width - logoWidth) / 2), top: Math.round((height - logoHeight) / 2) }])
+    .png({ compressionLevel: 9 }).toBuffer()
+}
+
 async function main(): Promise<void> {
   const { macOS, windows, tray } = WASDENGINE_DESKTOP_BRAND.icons
   const source = (icon: string): Promise<Buffer> => readFile(wasdengineBrandFile(icon.replace(/\.png$/u, '.svg')))
@@ -303,7 +353,11 @@ async function main(): Promise<void> {
   for (const file of art) {
     await writeFile(resolve(WASDENGINE_INSTALLER_ART_DIRECTORY, file), await renderWasdengineInstallerArt(file, icon, logo))
   }
-  console.info(`wasdengine icons: wrote ${[macOS, windows, tray].join(', ')}, ${WASDENGINE_HOME_ATLAS_FILE}, and ${art.join(', ')} in ${WASDENGINE_INSTALLER_ART_DIRECTORY}`)
+  const splashes = Object.keys(WASDENGINE_EXPORT_SPLASH) as WasdengineExportSplashFile[]
+  for (const file of splashes) {
+    await writeFile(resolve(WASDENGINE_EXPORT_SPLASH_DIRECTORY, file), await renderWasdengineExportSplash(file, logo))
+  }
+  console.info(`wasdengine icons: wrote ${[macOS, windows, tray].join(', ')}, ${WASDENGINE_HOME_ATLAS_FILE}, ${art.join(', ')} in ${WASDENGINE_INSTALLER_ART_DIRECTORY}, and ${splashes.join(', ')} in ${WASDENGINE_EXPORT_SPLASH_DIRECTORY}`)
 }
 
 if (process.argv[1] !== undefined && import.meta.filename === resolve(process.argv[1])) await main()

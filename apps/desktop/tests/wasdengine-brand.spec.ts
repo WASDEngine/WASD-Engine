@@ -17,9 +17,10 @@ import { unpackIco, TRAY_ICON_SIZES } from '../scripts/render-tray-icon.ts'
 import { readInstallerLocales } from '../scripts/installer-locales.mjs'
 import { applyWasdengineBrand, brandInstallerLocales, wasdengineBrandFile } from '../scripts/wasdengine-builder-config.mjs'
 import {
-  WASDENGINE_HOME_ATLAS, WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, WASDENGINE_INSTALLER_ART,
-  WASDENGINE_INSTALLER_ART_DIRECTORY, WASDENGINE_INSTALLER_LAYOUT, WASDENGINE_LOGO_FILE, renderWasdengineHomeAtlas,
-  renderWasdengineInstallerArt, type WasdengineInstallerArtFile,
+  WASDENGINE_EXPORT_SPLASH, WASDENGINE_EXPORT_SPLASH_DIRECTORY, WASDENGINE_EXPORT_SPLASH_LAYOUT, WASDENGINE_HOME_ATLAS,
+  WASDENGINE_HOME_ATLAS_FILE, WASDENGINE_ICON_EDGE, WASDENGINE_INSTALLER_ART, WASDENGINE_INSTALLER_ART_DIRECTORY,
+  WASDENGINE_INSTALLER_LAYOUT, WASDENGINE_LOGO_FILE, renderWasdengineExportSplash, renderWasdengineHomeAtlas,
+  renderWasdengineInstallerArt, type WasdengineExportSplashFile, type WasdengineInstallerArtFile,
 } from '../scripts/wasdengine-render-icons.ts'
 import { de, en, es, fr, ja, pt, resolveDesktopLocale, ru, zh } from '../src/locale.ts'
 import { WASDENGINE_DESKTOP_BRAND as BRAND, WASDENGINE_DESKTOP_COPY, brandDesktopDictionaries } from '../src/wasdengine-brand.ts'
@@ -218,6 +219,30 @@ describe('WASDEngine Desktop packaging identity', () => {
       // One level of mean drift allows rasterizer differences between platforms.
       expect(drift / fresh.length, file).toBeLessThan(1)
     }
+  })
+
+  it('ships current export splash images of the WASD Engine logo for dark and light splash colors', async () => {
+    const logo = readFileSync(WASDENGINE_LOGO_FILE)
+    const { width, height } = WASDENGINE_EXPORT_SPLASH_LAYOUT
+    const brightness: Record<string, number> = {}
+    for (const file of Object.keys(WASDENGINE_EXPORT_SPLASH) as WasdengineExportSplashFile[]) {
+      const committed = join(WASDENGINE_EXPORT_SPLASH_DIRECTORY, file)
+      const { channels } = await sharp(committed).metadata()
+      expect([...pngSize(readFileSync(committed)), channels], file).toEqual([width, height, 4])
+      const fresh = await sharp(await renderWasdengineExportSplash(file, logo)).raw().toBuffer()
+      const shipped = await sharp(committed).raw().toBuffer()
+      let drift = 0
+      let lit = 0
+      for (let index = 0; index < fresh.length; index += 1) drift += Math.abs(fresh[index]! - shipped[index]!)
+      for (let index = 0; index < shipped.length; index += 4) {
+        lit += (shipped[index]! + shipped[index + 1]! + shipped[index + 2]!) * shipped[index + 3]!
+      }
+      // One level of mean drift allows rasterizer differences between platforms.
+      expect(drift / fresh.length, file).toBeLessThan(1)
+      brightness[WASDENGINE_EXPORT_SPLASH[file]] = lit
+    }
+    // The splash for a dark color draws the light wordmark of the dark theme.
+    expect(brightness.dark).toBeGreaterThan(brightness.light! * 2)
   })
 
   it('refuses a logo whose wordmark the installer art cannot read', async () => {

@@ -264,10 +264,11 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   // Startup and runtime share the advertised URL parser.
   // WASDEngine fork: the bundled agent skills and the game add-on catalog (wasdengine/FORK.md).
   '@deepseek-ai/dsh-web-app': ['lib/public-url-*.js', 'wasdengine/skills', 'wasdengine/addons'],
-  // WASDEngine fork: headless worker scripts and the Godot harness run outside Node (wasdengine/FORK.md).
+  // WASDEngine fork: headless worker scripts and the Godot harness run outside Node, and Godot exports take the boot
+  // splash images from the Godot plugin's runtime folder (wasdengine/FORK.md).
   '@deepseek-ai/dsh-blender': ['py/**/*.py'],
   '@deepseek-ai/dsh-gimp': ['py/**/*.py'],
-  '@deepseek-ai/dsh-godot': ['runtime/*.gd'],
+  '@deepseek-ai/dsh-godot': ['runtime/*.gd', 'runtime/*.png'],
   '@deepseek-ai/dsh-supercollider': ['sc/*.sc'],
   // WASDEngine fork: the WASD Multiplayer add-on that wasd_multiplayer_setup copies into game projects (wasdengine/FORK.md).
   '@deepseek-ai/dsh-wasd-plugins': ['addon/wasd_multiplayer'],

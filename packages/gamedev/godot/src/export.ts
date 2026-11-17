@@ -2,11 +2,15 @@
  * Exports: one headless LibGodot editor process exports a project with a preset of WASD Engine's into a folder.
  *
  * The Web export (`WASD Engine Web`) fills the folder with `index.html`, the engine (`index.js`, `index.wasm`), the
- * game's pack (`index.pck`), the audio worklets, and the icons. The preset uses the single-threaded Web template and no
- * GDExtensions, so the build needs no cross-origin isolation and plays in any page that frames it. Godot's Web runtime
- * draws no boot splash; only the page's loading screen shows the splash image, Godot's logo unless the project names
- * its own, so for a project without one the preset's head include hides that image and the loading screen shows the
- * progress bar alone on the project's splash color.
+ * game's pack (`index.pck`), the audio worklets, the splash image (`index.png`), and the icons. The preset uses the
+ * single-threaded Web template and no GDExtensions, so the build needs no cross-origin isolation and plays in any page
+ * that frames it.
+ *
+ * Godot shows Godot's logo as the boot splash of a project that names no image of its own; the Web and desktop exports
+ * show WASD Engine's logo there instead, unless the project turns the image off ({@link wasdSplash}). Godot's Web
+ * runtime draws no boot splash: the page's loading screen shows the splash image, which the Web export replaces after
+ * Godot wrote it. A desktop build draws its boot splash as it starts, from the image the project's `boot_splash/image`
+ * names, so a desktop export names WASD Engine's logo there for its run and puts the image at {@link EXPORT_SPLASH_PATH}.
  *
  * A desktop export (`WASD Engine Windows`, `WASD Engine macOS`) writes one ZIP file named after the game: for Windows,
  * the 64-bit x86 executable with the pack embedded, so the game is one `.exe` file; for macOS, a universal `.app`
@@ -30,15 +34,16 @@
  * project's own presets never change.
  *
  * Before an export changes `export_presets.cfg` or `project.godot`, it writes a restore record into the plugin's
- * `export-restore` folder: the files' earlier content and what the export wrote. An export that ends restores the files
- * and deletes its record; when the app quits during an export, the next start of the plugin, and the next export of
- * the project, replay the record ({@link replayExportRestore}).
+ * `export-restore` folder: the files' earlier content and what the export wrote. An export that ends restores the files,
+ * deletes the boot splash image it put in the project, and deletes its record; when the app quits during an export, the
+ * next start of the plugin, and the next export of the project, replay the record ({@link replayExportRestore}).
  * @module @deepseek-ai/dsh-godot/src/export
  */
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
@@ -68,11 +73,40 @@ export const MULTIPLAYER_CONFIG_FILE = 'wasd_multiplayer.cfg'
 /** Most Godot warnings a result lists. */
 export const EXPORT_WARNINGS = 10
 
+/** The splash image of a Web build, which its page's loading screen shows. */
+export const WEB_SPLASH_FILE = 'index.png'
+
 /**
- * Markup the Web build's page includes in its head to hide the loading screen's splash image, `#status-splash` in
- * Godot's page template, which shows Godot's logo for a project without a boot splash image of its own.
+ * WASD Engine's boot splash images, in the plugin's `runtime/` folder, by the splash color they suit: the logo with a
+ * light wordmark for a dark color, such as Godot's default, and with a dark wordmark for a light one. Each is 1600 x
+ * 1200, twice Godot's own splash image, with the logo centered on a transparent canvas;
+ * `apps/desktop/scripts/wasdengine-render-icons.ts` renders them.
  */
-export const HIDE_SPLASH_HEAD = '<style>#status-splash{display:none!important}</style>'
+export const WASD_SPLASH_IMAGES: Readonly<Record<SplashTone, URL>> = {
+  dark: new URL('../runtime/wasd_engine_splash_dark_bg.png', import.meta.url),
+  light: new URL('../runtime/wasd_engine_splash_light_bg.png', import.meta.url),
+}
+
+/** Whether a splash color is dark or light, which picks the image of {@link WASD_SPLASH_IMAGES}. */
+export type SplashTone = 'dark' | 'light'
+
+/**
+ * Where a desktop export puts WASD Engine's boot splash in the project for its run: Godot's own `.godot` folder, whose
+ * files the editor neither imports nor lists. The export packs the image that `boot_splash/image` names.
+ */
+export const EXPORT_SPLASH_PATH = 'res://.godot/wasd_engine_splash.png'
+
+/** The `[application]` line that names {@link EXPORT_SPLASH_PATH} as the boot splash image. */
+const EXPORT_SPLASH_LINE = `boot_splash/image="${EXPORT_SPLASH_PATH}"`
+
+/**
+ * Relative luminance below which a splash color is dark: the light wordmark (#F4F5F7) contrasts more with a darker
+ * color than the dark wordmark (#17181D) does, by the WCAG contrast ratio.
+ */
+const DARK_SPLASH_LUMINANCE = 0.189
+
+/** Godot's splash color for a project that sets none, `Color(0.14, 0.14, 0.14, 1)`. */
+const DEFAULT_SPLASH_COLOR = [0.14, 0.14, 0.14] as const
 
 /** Names of the export presets a desktop export writes for the duration of one export, by platform. */
 export const DESKTOP_EXPORT_PRESETS: Readonly<Record<GodotDesktopPlatform, string>> = {
@@ -188,11 +222,12 @@ interface PresetSections {
 }
 
 /**
- * Whether a project names a boot splash image of its own, which its Web build's loading screen then shows.
+ * The settings of a project's `[application]` section.
  * @param projectText - `project.godot` text.
- * @returns true when its `[application]` section sets `boot_splash/image`, or a feature override of it, to a path.
+ * @returns each setting's value as the file writes it, by its key; the last of repeated keys, as Godot reads them.
  */
-export function customBootSplash(projectText: string): boolean {
+function applicationSettings(projectText: string): Map<string, string> {
+  const settings = new Map<string, string>()
   let section = ''
   for (const line of projectText.split(/\r?\n/u)) {
     const header = /^\[([^\]]+)\]\s*$/u.exec(line)
@@ -200,9 +235,77 @@ export function customBootSplash(projectText: string): boolean {
       section = header[1] as string
       continue
     }
-    if (section === 'application' && /^boot_splash\/image(?:\.[\w.]+)?="[^"\s]/u.test(line)) return true
+    const setting = section === 'application' ? /^([^\s=]+)=(.*)$/u.exec(line) : null
+    if (setting !== null) settings.set(setting[1] as string, (setting[2] as string).trim())
   }
-  return false
+  return settings
+}
+
+/**
+ * Whether a project names a boot splash image of its own, which its builds then show.
+ * @param projectText - `project.godot` text.
+ * @returns true when its `[application]` section sets `boot_splash/image`, or a feature override of it, to a path
+ *   other than {@link EXPORT_SPLASH_PATH}, which only a desktop export names.
+ */
+export function customBootSplash(projectText: string): boolean {
+  return [...applicationSettings(projectText)].some(([key, value]) =>
+    /^boot_splash\/image(?:\.[\w.]+)?$/u.test(key) && /^"[^"\s]/u.test(value) && value !== `"${EXPORT_SPLASH_PATH}"`)
+}
+
+/**
+ * The WASD Engine boot splash that a project's exports show in place of Godot's logo: none for a project that names a
+ * boot splash image of its own or turns the image off (`boot_splash/show_image=false`), else the image of
+ * {@link WASD_SPLASH_IMAGES} whose wordmark contrasts more with the project's splash color (`boot_splash/bg_color`,
+ * Godot's dark gray when unset or unreadable).
+ * @param projectText - `project.godot` text.
+ * @returns the tone of the image to show, or undefined for none.
+ */
+export function wasdSplash(projectText: string): SplashTone | undefined {
+  if (customBootSplash(projectText)) return undefined
+  const settings = applicationSettings(projectText)
+  if (settings.get('boot_splash/show_image') === 'false') return undefined
+  const read = /^Color\(([^,]+),([^,]+),([^,)]+)/u.exec(settings.get('boot_splash/bg_color') ?? '')?.slice(1).map(Number)
+  const color = read !== undefined && read.every(Number.isFinite) ? read : DEFAULT_SPLASH_COLOR
+  // Godot's colors hold sRGB channels from 0 to 1, or beyond them for overbright colors.
+  const linear = (channel: number): number => {
+    const value = Math.min(1, Math.max(0, channel))
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  const [red, green, blue] = color.map(linear) as [number, number, number]
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue < DARK_SPLASH_LUMINANCE ? 'dark' : 'light'
+}
+
+/**
+ * Name {@link EXPORT_SPLASH_PATH} as a project's boot splash image, after any image setting the project has, so that
+ * Godot reads it last, or remove that line again; no other line changes.
+ * @param projectText - `project.godot` text.
+ * @param named - whether the text names the image.
+ * @returns the new text; an `[application]` section is added at the end when the project has none.
+ */
+export function withExportSplash(projectText: string, named: boolean): string {
+  const newline = projectText.includes('\r\n') ? '\r\n' : '\n'
+  const kept: string[] = []
+  let section = ''
+  let applicationEnd = -1
+  for (const line of projectText.split(/\r?\n/u)) {
+    const header = /^\[([^\]]+)\]\s*$/u.exec(line)
+    if (header !== null) section = header[1] as string
+    if (section === 'application' && line.trim() === EXPORT_SPLASH_LINE) continue
+    kept.push(line)
+    if (section === 'application' && line.trim() !== '') applicationEnd = kept.length
+  }
+  if (!named) return kept.join(newline)
+  if (applicationEnd >= 0) {
+    kept.splice(applicationEnd, 0, EXPORT_SPLASH_LINE)
+    return kept.join(newline)
+  }
+  while (kept.length > 0 && kept[kept.length - 1] === '') kept.pop()
+  return [...kept, '', '[application]', '', EXPORT_SPLASH_LINE, ''].join(newline)
+}
+
+/** The real path of {@link EXPORT_SPLASH_PATH} in a project. */
+function exportSplashFile(projectDir: string): string {
+  return join(projectDir, ...EXPORT_SPLASH_PATH.slice('res://'.length).split('/'))
 }
 
 /**
@@ -289,10 +392,9 @@ export function withoutPreset(text: string, name: string): string {
  * `WASD Engine Web` preset.
  * @param original - the file's text, or undefined when the project has none.
  * @param template - absolute path of the Web release template.
- * @param hideSplash - include {@link HIDE_SPLASH_HEAD} in the page, for a project without a boot splash image of its own.
  * @returns the file text for the export.
  */
-export function withWebPreset(original: string | undefined, template: string, hideSplash: boolean): string {
+export function withWebPreset(original: string | undefined, template: string): string {
   return withPreset(original, WEB_EXPORT_PRESET, 'Web', PRESET_FIELDS, [
     'custom_template/debug=""',
     `custom_template/release=${quote(template)}`,
@@ -302,7 +404,7 @@ export function withWebPreset(original: string | undefined, template: string, hi
     'vram_texture_compression/for_mobile=false',
     'html/export_icon=true',
     'html/custom_html_shell=""',
-    `html/head_include=${quote(hideSplash ? HIDE_SPLASH_HEAD : '')}`,
+    'html/head_include=""',
     'html/canvas_resize_policy=2',
     'html/focus_canvas_on_start=true',
     'html/experimental_virtual_keyboard=false',
@@ -498,7 +600,11 @@ const ExportRestoreRecord = z.strictObject({
     /** The text the export wrote. */
     written: z.string(),
   }),
-  /** For a desktop export: `project.godot` before and during the export, and the import settings it changed. */
+  /**
+   * For a desktop export that changed `project.godot`: its text before and during the export, and the import settings
+   * the export changed. The boot splash line the export may have added names {@link EXPORT_SPLASH_PATH}, by which it is
+   * found again.
+   */
   project: z.strictObject({
     original: z.string(),
     written: z.string(),
@@ -536,7 +642,8 @@ async function readRestoreRecord(path: string): Promise<ExportRestoreRecord | un
 /**
  * Return the files of an export that ended without restoring them: `export_presets.cfg` gets its earlier bytes back
  * while it holds what the export wrote, and otherwise loses only the export's preset, so changes made since stay; a
- * desktop export's import settings in `project.godot` return to their earlier values.
+ * desktop export's import settings in `project.godot` return to their earlier values, and its boot splash line and
+ * image go.
  */
 async function replayRecord(record: ExportRestoreRecord): Promise<void> {
   const presetsPath = join(record.projectDir, PRESETS_FILE)
@@ -553,11 +660,14 @@ async function replayRecord(record: ExportRestoreRecord): Promise<void> {
     }
   }
   if (record.project === undefined) return
+  await rm(exportSplashFile(record.projectDir), { force: true })
   const projectPath = join(record.projectDir, PROJECT_FILE)
   const current = (await readOptional(projectPath))?.toString('utf8')
   if (current === undefined) return
   const before = Object.fromEntries(Object.entries(record.project.before).map(([format, value]) => [format, value ?? undefined]))
-  const restored = current === record.project.written ? record.project.original : withTextureImports(current, before)
+  const restored = current === record.project.written
+    ? record.project.original
+    : withExportSplash(withTextureImports(current, before), false)
   if (restored !== current) await writeFile(projectPath, restored)
 }
 
@@ -610,6 +720,8 @@ interface ExportPlan {
   readonly required: readonly string[]
   /** What messages call the export, such as `Web`. */
   readonly label: string
+  /** Changes the output folder after Godot's run, before the folder is listed, while the export still holds it. */
+  readonly finish?: () => Promise<void>
 }
 
 /** The files an export wrote, the note about the Blender importer, and Godot's export warnings. */
@@ -664,6 +776,7 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
       await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })
     }
     options.signal.throwIfAborted()
+    await plan.finish?.()
     const files: { path: string; bytes: number }[] = []
     for (const entry of await readdir(options.outputDir, { withFileTypes: true })) {
       if (entry.isFile()) files.push({ path: entry.name, bytes: (await stat(join(options.outputDir, entry.name))).size })
@@ -682,19 +795,28 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
 }
 
 /**
- * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too.
+ * Export a project for the Web. Exports writing to one output folder run one at a time, across Hosts too. The splash
+ * image that Godot wrote becomes WASD Engine's ({@link wasdSplash}) for a project without one of its own.
  * @param options - process parameters, project, template, and output folder.
  * @returns the exported files.
  * @throws {GodotExportError} when the process ends without writing the page, engine, and pack.
  */
 export async function exportWeb(options: WebExportOptions): Promise<GodotWebExport> {
   const project = await readFile(join(options.projectDir, PROJECT_FILE), 'utf8')
+  const splash = wasdSplash(project)
   const outcome = await runExport(options, {
     preset: WEB_EXPORT_PRESET,
-    presets: original => withWebPreset(original, options.template, !customBootSplash(project)),
+    presets: original => withWebPreset(original, options.template),
     target: WEB_EXPORT_ENTRY,
     required: REQUIRED_FILES,
     label: 'Web',
+    ...splash === undefined ? {} : {
+      finish: async () => {
+        const target = join(options.outputDir, WEB_SPLASH_FILE)
+        // An export that failed before Godot wrote its splash image gets none.
+        if (await readOptional(target) !== undefined) await writeFile(target, await readFile(fileURLToPath(WASD_SPLASH_IMAGES[splash])))
+      },
+    },
   })
   const { blenderNote, warnings } = outcome
   return {
@@ -752,9 +874,11 @@ export function desktopFileName(name: string | undefined): string {
 
 /**
  * Export a project for one desktop platform into one ZIP file named after the game. Exports writing to one output
- * folder run one at a time, across Hosts too. The export turns on the import of the platform's VRAM compression
- * formats in `project.godot` while it runs and then restores those settings, also when `project.godot` changed
- * meanwhile, in which case only those settings return to their earlier values.
+ * folder run one at a time, across Hosts too. While it runs, the export turns on the import of the platform's VRAM
+ * compression formats in `project.godot` and, for a project without a boot splash image of its own, names WASD
+ * Engine's ({@link wasdSplash}) at {@link EXPORT_SPLASH_PATH} as the boot splash. Afterwards it deletes that image and
+ * restores `project.godot`, also when the file changed meanwhile, in which case only those settings return to their
+ * earlier values.
  * @param options - process parameters, project, platform, template, and output folder.
  * @returns the exported ZIP file.
  * @throws {GodotExportError} when the process ends without writing the ZIP file.
@@ -776,7 +900,8 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
     const before = textureImports(projectText)
     const formats = DESKTOP_TEXTURE_FORMATS[options.platform]
     const missing = formats.filter(format => before[format] !== 'true')
-    const exportText = withTextureImports(projectText, Object.fromEntries(missing.map(format => [format, 'true'])))
+    const splash = wasdSplash(projectText)
+    const exportText = withExportSplash(withTextureImports(projectText, Object.fromEntries(missing.map(format => [format, 'true']))), splash !== undefined)
     let stdout: string
     let stderr: string
     let ended: string
@@ -793,6 +918,11 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
     })
     await writeFile(presetsPath, writtenPresets)
     try {
+      if (splash !== undefined) {
+        const image = exportSplashFile(options.projectDir)
+        await mkdir(dirname(image), { recursive: true })
+        await writeFile(image, await readFile(fileURLToPath(WASD_SPLASH_IMAGES[splash])))
+      }
       if (exportText !== projectText) await writeFile(projectPath, exportText)
       const outcome = await runGodotCommand({
         ...options,
@@ -809,11 +939,12 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
       else await writeFile(presetsPath, originalPresets)
       if (exportText !== projectText) {
         const current = await readFile(projectPath, 'utf8')
-        // Only the import settings return, so a change to project.godot made meanwhile stays.
+        // Only the export's own settings return, so a change to project.godot made meanwhile stays.
         const earlier = Object.fromEntries(missing.map(format => [format, before[format]]))
-        const restored = current === exportText ? projectText : withTextureImports(current, earlier)
+        const restored = current === exportText ? projectText : withExportSplash(withTextureImports(current, earlier), false)
         if (restored !== current) await writeFile(projectPath, restored)
       }
+      if (splash !== undefined) await rm(exportSplashFile(options.projectDir), { force: true })
       await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })
     }
     options.signal.throwIfAborted()
