@@ -20,6 +20,7 @@ import { join, posix } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { ReadableStream } from 'node:stream/web'
+import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 
 const SHA256 = /^[0-9a-f]{64}$/u
@@ -203,11 +204,33 @@ async function fetchManifest(url: string, label: string, remedy: string): Promis
   return response.json()
 }
 
-/** A download failure that another attempt would repeat: an HTTP error status, or bytes that differ from the pin. */
+/**
+ * A download failure that another attempt would repeat: an HTTP error status other than a transient one
+ * ({@link transientStatus}), or bytes that differ from the pin.
+ */
 class FinalDownloadError extends Error {}
 
-/** Attempts of a download whose transfer breaks off, as HTTP/2 streams of large files sometimes do. */
+/**
+ * Attempts of a download whose transfer fails, breaks off, as HTTP/2 streams of large files sometimes do, stalls, or
+ * meets a transient HTTP status.
+ */
 const DOWNLOAD_ATTEMPTS = 3
+
+/** Longest wait, in milliseconds, for a download's response or its next bytes before the attempt gives up. */
+const DOWNLOAD_STALL_MS = 60_000
+
+/** Wait, in milliseconds, before a download's second attempt; the third waits twice as long. */
+const DOWNLOAD_RETRY_DELAY_MS = 5_000
+
+/**
+ * Whether an HTTP status says the server may answer another attempt: a request timeout, too early, too many requests,
+ * or a server error.
+ * @param status - The response's status.
+ * @returns Whether to try again.
+ */
+function transientStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 429 || status >= 500
+}
 
 /**
  * Copy `source` to a new file while checking it against a pinned size and SHA-256.
@@ -244,23 +267,30 @@ export async function copyVerified(
   }
 }
 
-/** Options of a download: request headers and what pins the size and SHA-256, for errors. */
+/** Options of a download. */
 interface DownloadOptions {
+  /** Request headers, such as a User-Agent that a host requires. */
   readonly headers?: Record<string, string>
+  /** What pins the size and SHA-256, for errors. */
   readonly pinnedBy?: string
+  /** Longest wait, in milliseconds, for the response or its next bytes; {@link DOWNLOAD_STALL_MS} by default. */
+  readonly stallMs?: number
+  /** Wait, in milliseconds, before the second attempt, which the third doubles; {@link DOWNLOAD_RETRY_DELAY_MS} by default. */
+  readonly retryDelayMs?: number
 }
 
 /**
- * Download a URL into a new file while checking it against a pinned size and SHA-256. A transfer that fails or breaks
- * off starts over, up to three attempts in all; an HTTP error status or bytes that differ from the pin end it at once.
+ * Download a URL into a new file while checking it against a pinned size and SHA-256. A transfer that fails, breaks
+ * off, waits longer than `stallMs` for its response or its next bytes, or meets a transient HTTP status
+ * ({@link transientStatus}) starts over after a pause, up to three attempts in all; another HTTP error status or bytes
+ * that differ from the pin end it at once.
  * @param url - What to download; redirects are followed.
  * @param destination - Path of the new file, which must not exist.
  * @param artifact - The size and SHA-256 the download must have.
  * @param label - What the file is, for errors, such as `LibGodot`.
- * @param options - Request headers, such as a User-Agent that a host requires, and what pins the size and SHA-256,
- * for errors.
- * @throws When the last attempt fails, the server answers with an error status, or the bytes differ from the pin; the
- * caller removes the partial file.
+ * @param options - Request headers, what pins the size and SHA-256, and the stall and retry waits.
+ * @throws When the last attempt fails, the server answers with an error status that is not transient, or the bytes
+ * differ from the pin; the caller removes the partial file.
  */
 export async function downloadVerified(
   url: string, destination: string, artifact: RuntimeArchive, label: string, options: DownloadOptions = {},
@@ -272,27 +302,77 @@ export async function downloadVerified(
     } catch (error) {
       if (error instanceof FinalDownloadError || attempt >= DOWNLOAD_ATTEMPTS) throw error
       await rm(destination, { force: true })
-      console.warn(`desktop runtime: downloading the ${label} archive ${url} broke off (${(error as Error).message}); `
+      console.warn(`desktop runtime: downloading the ${label} archive ${url} failed (${(error as Error).message}); `
         + `starting over, attempt ${String(attempt + 1)} of ${String(DOWNLOAD_ATTEMPTS)}`)
+      await delay((options.retryDelayMs ?? DOWNLOAD_RETRY_DELAY_MS) * attempt)
     }
   }
 }
 
-/** One attempt of {@link downloadVerified}. */
+/** One attempt of {@link downloadVerified}, which gives up once the response or its next bytes take longer than `stallMs`. */
 async function downloadOnce(
   url: string, destination: string, artifact: RuntimeArchive, label: string, options: DownloadOptions,
 ): Promise<void> {
-  let response: Response
+  const stallMs = options.stallMs ?? DOWNLOAD_STALL_MS
+  const controller = new AbortController()
+  const stall = (): void => { controller.abort() }
+  let timer = setTimeout(stall, stallMs)
+  const arrived = (): void => {
+    clearTimeout(timer)
+    timer = setTimeout(stall, stallMs)
+  }
   try {
-    response = await fetch(url, { headers: options.headers ?? {} })
+    let response: Response
+    try {
+      response = await fetch(url, { headers: options.headers ?? {}, signal: controller.signal })
+    } catch (error) {
+      throw new Error(`desktop runtime: cannot download the ${label} archive ${url}: ${(error as Error).message}`, { cause: error })
+    }
+    if (!response.ok || response.body === null) {
+      await response.body?.cancel()
+      const message = `desktop runtime: downloading the ${label} archive ${url} answered HTTP ${String(response.status)}`
+      throw transientStatus(response.status) ? new Error(message) : new FinalDownloadError(message)
+    }
+    arrived()
+    const body = watchedChunks(response.body as ReadableStream<Uint8Array>, arrived, controller.signal)
+    await copyVerified(Readable.from(body), destination, artifact, url, label, options.pinnedBy)
   } catch (error) {
-    throw new Error(`desktop runtime: cannot download the ${label} archive ${url}: ${(error as Error).message}`, { cause: error })
+    if (!controller.signal.aborted || error instanceof FinalDownloadError) throw error
+    throw new Error(`desktop runtime: downloading the ${label} archive ${url} stalled: nothing arrived for ${String(stallMs)} ms`, { cause: error })
+  } finally {
+    clearTimeout(timer)
   }
-  if (!response.ok || response.body === null) {
-    await response.body?.cancel()
-    throw new FinalDownloadError(`desktop runtime: downloading the ${label} archive ${url} answered HTTP ${String(response.status)}`)
+}
+
+/**
+ * Pass a download's chunks on, reporting each one's arrival, until `signal` aborts, which cancels the body and fails
+ * the read that waits.
+ * @param body - The response body.
+ * @param arrived - Called as each chunk arrives.
+ * @param signal - The attempt's stall signal.
+ * @yields The chunks, in order.
+ * @throws The signal's reason once it aborts.
+ */
+async function* watchedChunks(body: ReadableStream<Uint8Array>, arrived: () => void, signal: AbortSignal): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader()
+  const cancel = (): void => {
+    reader.cancel().catch(() => {
+      // A body that already failed: the waiting read fails with it, and the attempt reports the stall either way.
+    })
   }
-  await copyVerified(Readable.fromWeb(response.body as ReadableStream<Uint8Array>), destination, artifact, url, label, options.pinnedBy)
+  signal.addEventListener('abort', cancel, { once: true })
+  try {
+    for (;;) {
+      const next = await reader.read()
+      // A cancelled body ends its waiting read as if the body were complete.
+      signal.throwIfAborted()
+      if (next.done) return
+      arrived()
+      yield next.value
+    }
+  } finally {
+    signal.removeEventListener('abort', cancel)
+  }
 }
 
 /**

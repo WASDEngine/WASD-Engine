@@ -202,21 +202,77 @@ describe('verified downloads', () => {
     return { calls: () => calls }
   }
 
+  /** A fetch that answers each call with the next of `answers`, a status or a Response; the last one repeats. */
+  function answers(...replies: readonly (number | (() => Response | Promise<Response>))[]): { readonly calls: () => number } {
+    let calls = 0
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+      const reply = replies[Math.min(calls, replies.length - 1)]!
+      calls += 1
+      return Promise.resolve(typeof reply === 'number' ? new Response('busy', { status: reply }) : reply())
+    })
+    return { calls: () => calls }
+  }
+
+  const pin = { url, bytes: data.length, sha256: sha256(data) }
+  const quick = { retryDelayMs: 0 }
+
   it('starts a transfer that breaks off over, up to three attempts in all', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     const twice = transfers(2)
-    await downloadVerified(url, join(root, 'third.zip'), { url, bytes: data.length, sha256: sha256(data) }, 'test')
+    await downloadVerified(url, join(root, 'third.zip'), pin, 'test', quick)
     expect(await readFile(join(root, 'third.zip'))).toEqual(data)
     expect(twice.calls()).toBe(3)
     vi.mocked(globalThis.fetch).mockRestore()
     const always = transfers(3)
-    await expect(downloadVerified(url, join(root, 'never.zip'), { url, bytes: data.length, sha256: sha256(data) }, 'test')).rejects.toThrow(/terminated/u)
+    await expect(downloadVerified(url, join(root, 'never.zip'), pin, 'test', quick)).rejects.toThrow(/terminated/u)
     expect(always.calls()).toBe(3)
+  })
+
+  it('tries again after a transient HTTP status, and stops at once at another', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const busy = answers(503, 429, () => new Response(new Uint8Array(data)))
+    await downloadVerified(url, join(root, 'busy.zip'), pin, 'test', quick)
+    expect(await readFile(join(root, 'busy.zip'))).toEqual(data)
+    expect(busy.calls()).toBe(3)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/answered HTTP 503\); starting over, attempt 2 of 3/u)
+    vi.mocked(globalThis.fetch).mockRestore()
+    const down = answers(502)
+    await expect(downloadVerified(url, join(root, 'down.zip'), pin, 'test', quick)).rejects.toThrow(/answered HTTP 502/u)
+    expect(down.calls()).toBe(3)
+    vi.mocked(globalThis.fetch).mockRestore()
+    const missing = answers(404)
+    await expect(downloadVerified(url, join(root, 'missing.zip'), pin, 'test', quick)).rejects.toThrow(/answered HTTP 404/u)
+    expect(missing.calls()).toBe(1)
+  })
+
+  it('gives up on a response or transfer that stalls, and starts it over', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const silent = vi.spyOn(globalThis, 'fetch')
+    /** A response that sends a few bytes and then nothing more. */
+    const stalled = () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(data.subarray(0, 4))) },
+    }))
+    let calls = 0
+    silent.mockImplementation((_input, init) => {
+      calls += 1
+      // The first call never answers until the attempt gives up, and the second stalls after its first bytes.
+      if (calls === 1) return new Promise((_resolve, reject) => { init!.signal!.addEventListener('abort', () => { reject(new Error('aborted')) }) })
+      return Promise.resolve(calls === 2 ? stalled() : new Response(new Uint8Array(data)))
+    })
+    await downloadVerified(url, join(root, 'stalled.zip'), pin, 'test', { ...quick, stallMs: 50 })
+    expect(await readFile(join(root, 'stalled.zip'))).toEqual(data)
+    expect(calls).toBe(3)
+    // A server that never answers fails the download after three attempts.
+    silent.mockReset()
+    silent.mockImplementation((_input, init) => new Promise((_resolve, reject) => { init!.signal!.addEventListener('abort', () => { reject(new Error('aborted')) }) }))
+    await expect(downloadVerified(url, join(root, 'quiet.zip'), pin, 'test', { ...quick, stallMs: 50 }))
+      .rejects.toThrow('desktop runtime: downloading the test archive https://archives.example.test/large.zip stalled: nothing arrived for 50 ms')
+    expect(silent).toHaveBeenCalledTimes(3)
   })
 
   it('stops at once at bytes that differ from the pin', async () => {
     const whole = transfers(0)
-    await expect(downloadVerified(url, join(root, 'other.zip'), { url, bytes: data.length, sha256: '0'.repeat(64) }, 'test', { pinnedBy: 'its pin' }))
+    await expect(downloadVerified(url, join(root, 'other.zip'), { ...pin, sha256: '0'.repeat(64) }, 'test', { pinnedBy: 'its pin' }))
       .rejects.toThrow(/does not match the SHA-256 its pin lists/u)
     expect(whole.calls()).toBe(1)
   })
