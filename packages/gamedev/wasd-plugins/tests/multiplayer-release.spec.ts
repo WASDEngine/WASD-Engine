@@ -49,7 +49,10 @@ async function dependencies(fetchSite: typeof fetch, options: { readonly server?
       configs.web = await readFile(join(projectDir, 'wasd_multiplayer.cfg'), 'utf8').catch(() => undefined)
       await mkdir(outputDir, { recursive: true })
       for (const name of ['index.html', 'index.js', 'index.wasm', 'index.pck']) await writeFile(join(outputDir, name), name)
-      return { projectDir, outputDir, entry: 'index.html', totalBytes: 12, warnings: [], files: ['index.html', 'index.js', 'index.pck', 'index.wasm'].map(path => ({ path, bytes: 3 })) }
+      return {
+        projectDir, outputDir, entry: 'index.html', totalBytes: 12, fileName: 'Arena', warnings: [],
+        files: ['index.html', 'index.js', 'index.pck', 'index.wasm'].map(path => ({ path, bytes: 3 })),
+      }
     },
     ...options.server === 'none' ? {} : {
       async exportServer(projectDir: string, outputDir: string): Promise<GodotServerExport> {

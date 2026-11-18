@@ -208,7 +208,7 @@ function dependencies(
       await mkdir(outputDir, { recursive: true })
       for (const name of ['index.html', 'index.js', 'index.wasm', 'index.pck']) await writeFile(join(outputDir, name), name)
       return {
-        projectDir, outputDir, entry: 'index.html', totalBytes: 12, warnings: ['Renders with the Compatibility renderer.'],
+        projectDir, outputDir, entry: 'index.html', totalBytes: 12, fileName: 'Game', warnings: ['Renders with the Compatibility renderer.'],
         files: ['index.html', 'index.js', 'index.pck', 'index.wasm'].map(path => ({ path, bytes: 3 })),
       }
     },

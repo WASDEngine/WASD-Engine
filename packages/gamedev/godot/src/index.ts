@@ -34,7 +34,7 @@ import {
 import { followSession } from './follow.ts'
 import { serveFrames } from './frames.ts'
 import { ProjectImports, type GodotImportOutcome } from './imports.ts'
-import { detectAppleTeam } from './ios.ts'
+import { APPLE_TEAM_ID, detectAppleTeam } from './ios.ts'
 import { runInstanceGroup } from './instances.ts'
 import { GodotInputError, hasPointerEvents, parseInputEvents, parseWindowSize, screenshotToWindow } from './input.ts'
 import { defaultWindowSize, fixedFps, MAX_FIXED_FPS, parseEngineArgs, parseGameArgs } from './launch.ts'
@@ -66,8 +66,7 @@ import { bundledTemplatesDir, ExportTemplateManager } from './export-template.ts
 
 export type * from './types.ts'
 export { GodotAndroidToolchainError } from './android.ts'
-export { APPLE_TEAM_ID } from './ios.ts'
-export { desktopFileName, GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
+export { GodotExportError, WEB_EXPORT_ENTRY, WEB_EXPORT_PRESET } from './export.ts'
 export { GodotProjectError, resolveGodotProject } from './project.ts'
 export type { GodotProject } from './project.ts'
 export { GodotTemplateError } from './export-template.ts'
@@ -870,6 +869,7 @@ export default class GodotController extends TypertRemoteService {
    * @param request - absolute project folder, platform, output folder, and for iOS the Team ID.
    * @param signal - cancellation; it stops the export process.
    * @returns the build.
+   * @throws {Error} when the request's Team ID is not 10 capital letters and digits, before the export starts.
    * @throws {GodotProjectError} without `project.godot` in the project folder.
    * @throws {GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.
    * @throws {GodotTemplateError} when the platform's template cannot be downloaded.
@@ -877,6 +877,9 @@ export default class GodotController extends TypertRemoteService {
    * @throws {LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.
    */
   async exportMobile(request: GodotMobileExportRequest, signal: AbortSignal): Promise<GodotMobileExport> {
+    if (request.appleTeamId !== undefined && !APPLE_TEAM_ID.test(request.appleTeamId)) {
+      throw new Error(`An Apple Developer Team ID is 10 capital letters and digits, such as ABCDE12345, not ${JSON.stringify(request.appleTeamId)}.`)
+    }
     const project = await resolveGodotProject(request.projectDir, '.', signal)
     // A computer that cannot build for Android learns it before the template downloads.
     const toolchain = request.platform === 'android'

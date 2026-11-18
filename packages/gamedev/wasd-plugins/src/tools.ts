@@ -14,13 +14,14 @@ import { readFile } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AttachmentId } from '@deepseek-ai/dsh-attachment'
-import { APPLE_TEAM_ID, type GodotWebCheck, type GodotWebExport } from '@deepseek-ai/dsh-godot'
+import type { GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import type { GameMcpClient, GameMcpContent, GameMcpProvider, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
+import { createUserMessage, type ContextFormed } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME } from './credits.ts'
 import { MOBILE_PLATFORM_NAMES, MOBILE_PLATFORMS } from './exports.ts'
-import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, type ReleaseRequest } from './release.ts'
+import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, WebCheckRefusal, type ReleaseRequest } from './release.ts'
 import type {
   WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdMobileExport, WasdMobilePlatform, WasdRelease, WasdWebZip,
 } from './types.ts'
@@ -164,6 +165,7 @@ export interface WasdToolHost {
    * @param audience - who releases: a Session's own agent, whose model the release credits, or a connected agent, whom
    *   its call credited already ({@link ConnectedCredits.claim}), in a Session that runs the window's model.
    * @returns the release.
+   * @throws {WebCheckRefusal} when the Web check found problems that stop the release, before anything reaches the site.
    */
   release(request: ReleaseRequest, exec: ToolRunContext, audience: WasdToolAudience): Promise<WasdRelease>
 }
@@ -295,20 +297,58 @@ type WebCheckViewValue = InferValue<typeof WEB_CHECK_VIEW_SCHEMA>
 
 /**
  * Store a Web check's screenshot for the calling Session's model, for a Session's own agent; connected agents receive
- * the screenshot's file in the call's content instead ({@link checkContent}).
+ * the screenshot's file in the call's content instead ({@link checkContent}). It runs after the export or release
+ * finished, so a screenshot that cannot be stored leaves the result without the image instead of failing the call.
  * @param host - plugin operations.
  * @param webCheck - the call's check, when it ran.
  * @param exec - the call's execution.
  * @param audience - who called the tool.
- * @returns the result's view field, none when there is no screenshot or no model to see it.
+ * @returns the result's view field, none when there is no screenshot, no model to see it, or storing it failed.
  */
 async function webCheckViewField(
   host: WasdToolHost, webCheck: WebCheckValue | undefined, exec: ToolRunContext, audience: WasdToolAudience,
 ): Promise<{ webCheckView?: WebCheckViewValue }> {
   const path = webCheck?.screenshot?.path
   if (audience !== 'session' || path === undefined) return {}
-  const view = await host.webCheckView(path, exec)
+  let view: StoredScreenshot | undefined
+  try {
+    view = await host.webCheckView(path, exec)
+  } catch {
+    // Any storage failure: a release that went out must not read as failed, which would have the agent publish it again;
+    // the check's text still names the screenshot's file.
+    return {}
+  }
   return view === undefined ? {} : { webCheckView: { ...view, image: { ...view.image } } }
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    /** Context that WASD Engine Plugins' tools attach to a call: the screenshot of a Web check that stopped a release. */
+    'wasd-plugins': { kind: 'wasd-plugins' } & ContextFormed
+  }
+}
+
+/**
+ * Show the calling Session's model the screenshot of the Web check that stopped a release: the call fails with the
+ * check's report, which names the screenshot's file, and the image follows the failure as context. Connected agents
+ * receive the file in the failure's content instead ({@link refusalContent}).
+ * @param host - plugin operations.
+ * @param refusal - the release's refusal.
+ * @param exec - the call's execution, which carries the context after its result.
+ * @param audience - who called the tool.
+ */
+async function deferRefusalScreenshot(
+  host: WasdToolHost, refusal: WebCheckRefusal, exec: ToolRunContext, audience: WasdToolAudience,
+): Promise<void> {
+  const { webCheckView } = await webCheckViewField(host, copyWebCheck(refusal.check), exec, audience)
+  if (webCheckView === undefined) return
+  exec.deferContext(createUserMessage({
+    content: [
+      { type: 'text', text: `Screenshot of the page as the Web check that stopped the release last saw it (${String(webCheckView.width)}x${String(webCheckView.height)}):` },
+      ...webCheckImage({ webCheckView }),
+    ],
+    source: { kind: 'wasd-plugins', form: 'notice', summary: 'Screenshot of the Web check that stopped the release' },
+  }))
 }
 
 /**
@@ -513,7 +553,8 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
         : await webCheckFields(host, exported.outputDir, exec.signal)
       const view = await webCheckViewField(host, checked.webCheck, exec, audience)
       return {
-        ...exported, files: exported.files.map(file => ({ ...file })), warnings: [...exported.warnings],
+        projectDir: exported.projectDir, outputDir: exported.outputDir, entry: exported.entry,
+        files: exported.files.map(file => ({ ...file })), totalBytes: exported.totalBytes, warnings: [...exported.warnings],
         ...exported.zip === undefined ? {} : { zip: { ...exported.zip } }, ...checked, ...view,
       }
     },
@@ -595,9 +636,6 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
     async execute(args, exec) {
       const platforms = mobilePlatformsOf(args.platforms)
       if (platforms.length === 0) throw new Error('platforms must name at least one of "android" and "ios".')
-      if (args.apple_team_id !== undefined && !APPLE_TEAM_ID.test(args.apple_team_id)) {
-        throw new Error(`apple_team_id is 10 capital letters and digits, such as ABCDE12345, not ${JSON.stringify(args.apple_team_id)}.`)
-      }
       const exported = await host.exportMobile(await host.project(args.project, exec), platforms, args.apple_team_id, exec.signal)
       return {
         projectDir: exported.projectDir,
@@ -718,7 +756,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
       const projectDir = await host.project(args.project, exec)
       const previewImage = args.preview_image === undefined ? undefined : await host.file(args.preview_image, exec)
       const previewGif = args.preview_gif === undefined ? undefined : await host.file(args.preview_gif, exec)
-      const { credits, warnings, ...released } = await host.release({
+      const request: ReleaseRequest = {
         projectDir,
         ...args.notes === undefined ? {} : { notes: args.notes },
         ...args.title === undefined ? {} : { title: args.title },
@@ -728,7 +766,15 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         ...args.visibility === undefined ? {} : { visibility: args.visibility },
         ...args.desktop === undefined ? {} : { desktop: platformsOf(args.desktop) },
         ...args.check === undefined ? {} : { check: args.check },
-      }, exec, audience)
+      }
+      let outcome: WasdRelease
+      try {
+        outcome = await host.release(request, exec, audience)
+      } catch (error) {
+        if (error instanceof WebCheckRefusal) await deferRefusalScreenshot(host, error, exec, audience)
+        throw error
+      }
+      const { credits, warnings, ...released } = outcome
       const { webCheck, webCheckError, ...rest } = released
       const copied = webCheck === undefined ? undefined : copyWebCheck(webCheck)
       return {
@@ -805,15 +851,34 @@ async function checkContent(
 ): Promise<GameMcpContent[]> {
   const text = definition.output.render(args, value as never).flatMap(block => block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [])
   const path = value.webCheck?.screenshot?.path
-  if (path === undefined) return text
+  return path === undefined ? text : [...text, ...await screenshotContent(path)]
+}
+
+/**
+ * What a connected agent receives after the message of a release that its Web check stopped, which names the
+ * screenshot's file: the screenshot, from that file.
+ * @param error - the release's failure.
+ * @returns the screenshot, none for another failure or a check without one.
+ */
+async function refusalContent(error: unknown): Promise<GameMcpContent[]> {
+  const path = error instanceof WebCheckRefusal ? error.check.screenshot?.path : undefined
+  return path === undefined ? [] : await screenshotContent(path)
+}
+
+/**
+ * A Web check's screenshot as MCP content, from its file.
+ * @param path - absolute path of the screenshot's JPEG file.
+ * @returns the image, none when the file is gone.
+ */
+async function screenshotContent(path: string): Promise<GameMcpContent[]> {
   let data: string
   try {
     data = (await readFile(path)).toString('base64')
   } catch {
     // A screenshot removed since the check leaves the text, which names its file.
-    return text
+    return []
   }
-  return [...text, { type: 'image', data, mimeType: 'image/jpeg' }]
+  return [{ type: 'image', data, mimeType: 'image/jpeg' }]
 }
 
 /**
@@ -858,6 +923,7 @@ function mcpTool(definition: ToolDefinition, credits: ConnectedCredits): GameMcp
       : CHECKED_TOOLS.has(definition.name)
         ? { content: (value, args) => checkContent(definition, value as { readonly webCheck?: WebCheckValue }, args) }
         : {},
+    ...definition.name === 'wasd_release_game' ? { failureContent: (error: unknown) => refusalContent(error) } : {},
   }
 }
 

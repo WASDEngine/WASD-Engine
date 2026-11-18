@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+import { WebCheckRefusal } from '../src/release.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type ConnectedCredits, type RecordedPreview, type WasdToolAudience, type WasdToolHost } from '../src/tools.ts'
 import type { WasdDesktopPlatform, WasdDownloadStatus, WasdMobilePlatform } from '../src/types.ts'
 import type { GodotWebCheck } from '@deepseek-ai/dsh-godot'
@@ -57,7 +59,8 @@ function host(
     exportWeb: (projectDir, zip) => {
       calls.push(zip ? ['export', projectDir, 'zip'] : ['export', projectDir])
       return Promise.resolve({
-        projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024, warnings: [],
+        projectDir, outputDir: `${projectDir}/.wasdengine/web`, entry: 'index.html', files: [{ path: 'index.html', bytes: 2 * 1024 * 1024 }], totalBytes: 2 * 1024 * 1024,
+        fileName: 'Neon Drift', warnings: [],
         ...zip ? { zip: { file: `${projectDir}/.wasdengine/web-zip/Neon Drift.zip`, bytes: 1536 * 1024 } } : {},
       })
     },
@@ -169,6 +172,13 @@ describe('wasdToolDefinitions', () => {
     expect(text).not.toContain('Problems that stop a release')
     expect(checked.calls).toEqual([['view', '/work/game/.wasdengine/web-check.jpg']])
     expect(blocks.at(-1)).toEqual({ type: 'image', attachment: SHOT })
+    // A screenshot that cannot be stored after the release went out leaves the image out, and the release stands.
+    const unstored = { ...checked, webCheckView: () => Promise.reject(new Error('The attachment store is full.')) }
+    const stored = wasdToolDefinitions(unstored, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    const released = await stored.execute({}, exec) as JsonValue
+    expect(released).toMatchObject({ version: 3, webCheck: { screenshot: { path: '/work/game/.wasdengine/web-check.jpg' } } })
+    expect(released).not.toHaveProperty('webCheckView')
+    expect(stored.output.render({}, released).map(block => block.type)).toEqual(['text'])
     const failing = { ...host(), release: () => Promise.resolve({ ...RELEASED, webCheckError: 'The Web check runs in the WASD Engine Desktop app.' }) }
     const failed = wasdToolDefinitions(failing, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
     expect(textOf(failed.output.render({}, await failed.execute({}, exec) as JsonValue)))
@@ -278,7 +288,6 @@ describe('wasdToolDefinitions', () => {
     const team = textOf(exporter.output.render({}, await exporter.execute({ platforms: ['ios'], apple_team_id: 'ABCDE12345' }, exec) as JsonValue))
     expect(team).toContain('it signs with the Apple developer team ABCDE12345, which Signing & Capabilities can change.')
     await expect(exporter.execute({ platforms: [] }, exec)).rejects.toThrow('platforms must name at least one of "android" and "ios".')
-    await expect(exporter.execute({ apple_team_id: 'abcde12345' }, exec)).rejects.toThrow('apple_team_id is 10 capital letters and digits, such as ABCDE12345, not "abcde12345".')
     await expect(exporter.execute({ platforms: ['windows'] }, exec)).rejects.toThrow(/invalid arguments: "platforms\[0\]"/u)
   })
 
@@ -454,5 +463,71 @@ describe('wasdMcpProvider', () => {
     const gone = JSON.parse(JSON.stringify({ ...RELEASED, webCheck: { ...RELEASED_CHECK, screenshot: { path: join(dir, 'gone.jpg'), width: 64, height: 36 } } })) as JsonValue
     const released = await release.content!(gone, {}, exec)
     expect(released.map(block => block.type)).toEqual(['text'])
+  })
+
+  it('sends the screenshot of a check that stopped a release after the failure, to connected agents from its file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'dsh-wasd-tools-'))
+    folders.push(dir)
+    await writeFile(join(dir, 'web-check.jpg'), 'SHOT')
+    const release = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits()).tools().find(tool => tool.name === 'wasd_release_game')!
+    const refusal = new WebCheckRefusal({ ...WEB_CHECK, screenshot: { path: join(dir, 'web-check.jpg'), width: 64, height: 36 } }, [])
+    expect(await release.failureContent!(refusal, {})).toEqual([{ type: 'image', data: Buffer.from('SHOT').toString('base64'), mimeType: 'image/jpeg' }])
+    // Other failures, a check without a screenshot, and a screenshot removed since leave the failure's text alone.
+    expect(await release.failureContent!(new Error('The upload failed.'), {})).toEqual([])
+    const { screenshot: _shot, ...unshot } = WEB_CHECK
+    expect(await release.failureContent!(new WebCheckRefusal(unshot, []), {})).toEqual([])
+    expect(await release.failureContent!(new WebCheckRefusal({ ...WEB_CHECK, screenshot: { path: join(dir, 'gone.jpg'), width: 64, height: 36 } }, []), {})).toEqual([])
+    const exporter = wasdMcpProvider(wasdToolDefinitions(host(), LENGTHS, 'connected'), credits()).tools().find(tool => tool.name === 'wasd_export_web')!
+    expect(exporter.failureContent).toBeUndefined()
+  })
+})
+
+describe('a release that its Web check stopped', () => {
+  const { screenshot: _shot, ...UNSHOT } = WEB_CHECK
+  const refused = (screenshot: GodotWebCheck['screenshot']) => ({
+    ...host(), release: () => Promise.reject(new WebCheckRefusal(screenshot === undefined ? UNSHOT : { ...UNSHOT, screenshot }, ['Note one.'])),
+  })
+  const deferring = () => {
+    const deferred: UserMessage[] = []
+    const deferContext = (context: UserMessage) => { deferred.push(context) }
+    return { deferred, exec: { signal: new AbortController().signal, deferContext } as ToolRunContext }
+  }
+
+  it('fails with the check\'s report, and shows the Session\'s model the screenshot after the failure', async () => {
+    const stub = refused(WEB_CHECK.screenshot)
+    const { deferred, exec: run } = deferring()
+    const release = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    await expect(release.execute({}, run)).rejects.toThrow(/^Nothing was released: the Web check found problems that stop a release/u)
+    expect(stub.calls).toEqual([['view', '/work/game/.wasdengine/web-check.jpg']])
+    expect(deferred).toEqual([expect.objectContaining({
+      role: 'user',
+      source: { kind: 'wasd-plugins', form: 'notice', summary: 'Screenshot of the Web check that stopped the release' },
+      content: [
+        { type: 'text', text: 'Screenshot of the page as the Web check that stopped the release last saw it (1280x720):' },
+        { type: 'image', attachment: SHOT },
+      ],
+    })])
+  })
+
+  it('fails without the image for connected agents, a check without a screenshot, and a screenshot it cannot store', async () => {
+    for (const [stub, audience] of [
+      [refused(WEB_CHECK.screenshot), 'connected'],
+      [refused(undefined), 'session'],
+      [{ ...refused(WEB_CHECK.screenshot), webCheckView: () => Promise.reject(new Error('The attachment store is full.')) }, 'session'],
+      [{ ...refused(WEB_CHECK.screenshot), webCheckView: () => Promise.resolve(undefined) }, 'session'],
+    ] as const) {
+      const { deferred, exec: run } = deferring()
+      const release = wasdToolDefinitions(stub, LENGTHS, audience).find(definition => definition.name === 'wasd_release_game')!
+      await expect(release.execute({}, run)).rejects.toBeInstanceOf(WebCheckRefusal)
+      expect(deferred).toEqual([])
+    }
+  })
+
+  it('passes other failures on without context', async () => {
+    const { deferred, exec: run } = deferring()
+    const failing = { ...host(), release: () => Promise.reject(new Error('The upload failed.')) }
+    const release = wasdToolDefinitions(failing, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
+    await expect(release.execute({}, run)).rejects.toThrow('The upload failed.')
+    expect(deferred).toEqual([])
   })
 })

@@ -248,6 +248,8 @@ posix('exportWeb', () => {
     // The splash image Godot wrote became WASD Engine's.
     expect(exported.files.find(file => file.path === WEB_SPLASH_FILE)?.bytes).toBe(SPLASH.dark.length)
     expect(exported.totalBytes).toBe(Object.values(BUILD).join('').length - BUILD['index.png'].length + SPLASH.dark.length)
+    // Files named after the build take the game's name, as its desktop builds do.
+    expect(exported.fileName).toBe('Fake game')
     // The fixture project sets no rendering method, so it renders with Forward+ on desktop.
     expect(exported.warnings).toEqual([WEB_RENDERER_NOTE, 'Screen-space AA is only available when using the Forward+ or Mobile renderer.'])
     // A project file that uses the RenderingDevice gets its note after the renderer's.

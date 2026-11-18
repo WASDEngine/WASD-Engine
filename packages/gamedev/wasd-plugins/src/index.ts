@@ -430,7 +430,8 @@ export default class WasdPlugins extends TypertRemoteService {
               failures.push({ platform, error: (error as Error).message })
             }
           }
-          if (builds.length === 0) throw new Error(failures.map(failure => failure.error).join('\n'))
+          // A request both platforms refuse, such as one with a malformed Team ID, says why once.
+          if (builds.length === 0) throw new Error([...new Set(failures.map(failure => failure.error))].join('\n'))
           return { projectDir, builds, failures, warnings: [...new Set(warnings)] }
         }),
         recordPreview: (request, exec) => this.projects.run(request.projectDir, exec.signal, async () => {

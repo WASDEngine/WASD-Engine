@@ -74,7 +74,7 @@ export interface GameMcpPreparedCall {
   readonly model?: string
 }
 
-/** The content of a successful call, at once or later. */
+/** The content of a call, at once or later. */
 export type GameMcpContentResult = Promise<readonly GameMcpContent[]> | readonly GameMcpContent[]
 
 /**
@@ -118,6 +118,14 @@ export interface GameMcpTool {
    * @returns the result content, text first.
    */
   readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult
+  /**
+   * Content to send after the message of a call whose definition failed, such as the screenshot of a check that
+   * stopped the call. Absent, or when it fails, the failure is its message alone.
+   * @param error - what the definition threw.
+   * @param args - the arguments the definition received.
+   * @returns the content, none for a failure that has nothing to add.
+   */
+  readonly failureContent?: (error: unknown, args: JsonObject) => GameMcpContentResult
   /**
    * The page where the user confirms what a successful call asked for. A client that declared URL-mode elicitation
    * gets the page as an elicitation and the call's content once the user answered; other clients get the content,

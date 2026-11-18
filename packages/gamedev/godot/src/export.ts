@@ -1047,6 +1047,7 @@ export async function exportWeb(options: WebExportOptions): Promise<GodotWebExpo
     entry: WEB_EXPORT_ENTRY,
     files: outcome.files,
     totalBytes: outcome.files.reduce((sum, file) => sum + file.bytes, 0),
+    fileName: desktopFileName(parseProjectSettings(project).name),
     warnings: [
       ...blenderNote === undefined ? [] : [blenderNote], ...webNotes(project), ...features, ...packNotes(outcome.files), ...warnings,
     ].slice(0, EXPORT_WARNINGS),
@@ -1084,8 +1085,8 @@ export async function exportServer(options: ExportOptions): Promise<GodotServerE
 }
 
 /**
- * The file name of a desktop or Android build: the game's name without the characters file systems refuse, as Godot's
- * own safe file names leave out.
+ * The file name of a desktop or Android build, and of files named after a Web build: the game's name without the
+ * characters file systems refuse, as Godot's own safe file names leave out.
  * @param name - the game's name, or undefined without one.
  * @returns the name, at most 64 characters, or `Game` when nothing is left.
  */

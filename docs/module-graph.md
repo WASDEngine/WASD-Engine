@@ -1353,6 +1353,7 @@ flowchart TD
   pkg_game_addons --> pkg_godot
   pkg_game_addons --> pkg_tools
   pkg_wasd_plugins --> pkg_godot
+  pkg_wasd_plugins --> pkg_llm
   pkg_wasd_plugins --> pkg_tools
   pkg_mcp_manager --> pkg_mcp_client
   pkg_mcp_manager --> pkg_tools
@@ -1955,7 +1956,7 @@ flowchart TD
 | [`tool-session-query`](../packages/experimental/tool-session-query) | `experimental` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`session-query`](../packages/session-query/session-query), [`system-prompt`](../packages/core/system-prompt), [`timeout`](../packages/util/timeout), [`tools`](../packages/core/tools) |
 | [`webhook-github`](../packages/experimental/webhook-github) | `experimental` | [`credentials`](../packages/credentials/credentials), [`host-webserver`](../packages/host/webserver), [`session`](../packages/core/session), [`webhook`](../packages/experimental/webhook) |
 | [`game-addons`](../packages/gamedev/game-addons) | `gamedev` | [`godot`](../packages/gamedev/godot), [`tools`](../packages/core/tools) |
-| [`wasd-plugins`](../packages/gamedev/wasd-plugins) | `gamedev` | [`godot`](../packages/gamedev/godot), [`tools`](../packages/core/tools) |
+| [`wasd-plugins`](../packages/gamedev/wasd-plugins) | `gamedev` | [`godot`](../packages/gamedev/godot), [`llm`](../packages/llm/llm), [`tools`](../packages/core/tools) |
 | [`mcp-manager`](../packages/mcp/mcp-manager) | `mcp` | [`mcp-client`](../packages/mcp/mcp-client), [`tools`](../packages/core/tools), [`typert-protocol`](../packages/typert/protocol), [`util-values`](../packages/util/values) |
 | [`goal-round-driver`](../packages/goal/goal-round-driver) | `goal` | [`agent`](../packages/core/agent), [`goal`](../packages/goal/goal), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent) |
 | [`subagent-acp`](../packages/subagent/subagent-acp) | `subagent` | [`agent`](../packages/core/agent), [`llm`](../packages/llm/llm), [`session`](../packages/core/session), [`subagent`](../packages/subagent/subagent), [`subprocess`](../packages/subprocess/subprocess), [`timeout`](../packages/util/timeout) |

@@ -235,6 +235,27 @@ describe('GameToolCatalog.run', () => {
       .toEqual({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }] })
   })
 
+  it('sends what a tool adds about its failure after the message, and the message alone when that fails', async () => {
+    const catalog = new GameToolCatalog(() => [], () => {})
+    const alpha = provider('alpha', [])
+    const image = { type: 'image' as const, data: 'AAAA', mimeType: 'image/jpeg' }
+    const added = vi.fn((_error: unknown, _args: Record<string, unknown>) => [image, { type: 'text' as const, text: 'x'.repeat(100_005) }])
+    const failed = await catalog.run({ provider: alpha, tool: { name: 'alpha_fail', definition: failing, failureContent: added } }, {}, call())
+    expect(failed).toMatchObject({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }, image, { type: 'text' }] })
+    // Added text is bounded as a result's text is.
+    expect(failed.content[2]?.type === 'text' ? failed.content[2].text : '').toContain('[output truncated: 5 more characters]')
+    expect(added).toHaveBeenCalledWith(expect.objectContaining({ message: 'the tool failed on purpose' }), {})
+    const unavailable = () => Promise.reject(new Error('no screenshot'))
+    expect(await catalog.run({ provider: alpha, tool: { name: 'alpha_fail', definition: failing, failureContent: unavailable } }, {}, call()))
+      .toEqual({ isError: true, content: [{ type: 'text', text: 'the tool failed on purpose' }] })
+    // A failed preparation and a successful call send their own content only.
+    const echo = { name: 'alpha_echo', definition: echoDefinition(), failureContent: added }
+    expect(await catalog.run({ provider: alpha, tool: { ...echo, prepare: () => Promise.reject(new Error('no project')) } }, { text: 'x' }, call()))
+      .toEqual({ isError: true, content: [{ type: 'text', text: 'no project' }] })
+    expect(await catalog.run({ provider: alpha, tool: echo }, { text: 'hi' }, call())).toEqual({ content: [{ type: 'text', text: 'echo: hi' }] })
+    expect(added).toHaveBeenCalledTimes(1)
+  })
+
   it('reports each finished call with its provider, prepared arguments, Session, named model, and whether it failed', async () => {
     const agent = { id: brandString<SessionId>('session-1') } as Agent
     const finished: GameMcpToolResult[] = []

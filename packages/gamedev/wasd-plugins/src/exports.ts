@@ -4,10 +4,10 @@
  * (`.wasdengine/mobile/<platform>/`), an Android APK and an iOS Xcode project.
  * @module @deepseek-ai/dsh-wasd-plugins/src/exports
  */
-import { mkdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { desktopFileName, type GodotMobilePlatform, type GodotWebExport } from '@deepseek-ai/dsh-godot'
-import { projectName, STATE_DIR } from './release.ts'
+import type { GodotMobilePlatform, GodotWebExport } from '@deepseek-ai/dsh-godot'
+import { STATE_DIR } from './release.ts'
 import type { WasdWebZip } from './types.ts'
 import { writeZip } from './zip.ts'
 
@@ -32,10 +32,9 @@ export const MOBILE_PLATFORM_NAMES: Readonly<Record<GodotMobilePlatform, string>
  */
 export async function zipWebBuild(exported: GodotWebExport, signal: AbortSignal): Promise<WasdWebZip> {
   const folder = join(exported.projectDir, STATE_DIR, WEB_ZIP_DIR)
-  const name = projectName(await readFile(join(exported.projectDir, 'project.godot'), 'utf8'))
   await rm(folder, { recursive: true, force: true })
   await mkdir(folder, { recursive: true })
-  const file = join(folder, `${desktopFileName(name)}.zip`)
+  const file = join(folder, `${exported.fileName}.zip`)
   try {
     return { file, bytes: await writeZip(exported.outputDir, exported.files.map(entry => entry.path), file, signal) }
   } catch (error) {

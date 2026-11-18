@@ -415,12 +415,9 @@ export class GameToolCatalog {
         ? textContent(tool.definition.output.render(prepared.args, value))
         : [...await tool.content(value, prepared.args, exec)]
       const confirmation = tool.confirmation?.(value)
-      result = {
-        content: content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block),
-        ...confirmation === undefined ? {} : { confirmation },
-      }
+      result = { content: boundContent(content), ...confirmation === undefined ? {} : { confirmation } }
     } catch (error) {
-      result = failureResult(error)
+      result = await executionFailure(tool, error, prepared.args)
     }
     if (limit !== undefined && timeoutOf(limit.signal, TIMEOUT_CODE) !== undefined) {
       return { result: { isError: true, content: [{ type: 'text', text: `tool call timed out after ${String(timeoutMs)}ms` }] }, prepared }
@@ -439,6 +436,35 @@ const TIMEOUT_CODE = 'TOOL_TIMEOUT'
  */
 function failureResult(error: unknown): McpCallResult {
   return { isError: true, content: [{ type: 'text', text: boundText(failureText(error)) }] }
+}
+
+/**
+ * The MCP result of a call whose definition failed: the error's message, then what the tool adds about the failure.
+ * @param tool - the tool whose definition failed.
+ * @param error - the failure.
+ * @param args - the arguments the definition received.
+ * @returns an error result whose text says why.
+ */
+async function executionFailure(tool: GameMcpTool, error: unknown, args: JsonObject): Promise<McpCallResult> {
+  const failure = failureResult(error)
+  if (tool.failureContent === undefined) return failure
+  let added: readonly GameMcpContent[]
+  try {
+    added = await tool.failureContent(error, args)
+  } catch {
+    // Any failure to make the content: the error's message still says why the call failed.
+    return failure
+  }
+  return { isError: true, content: [...failure.content, ...boundContent(added)] }
+}
+
+/**
+ * Bound the text blocks of MCP content to {@link MAX_TEXT_CHARS} characters each.
+ * @param content - the content.
+ * @returns the content with each text block bounded.
+ */
+function boundContent(content: readonly GameMcpContent[]): GameMcpContent[] {
+  return content.map(block => block.type === 'text' ? { type: 'text', text: boundText(block.text) } : block)
 }
 
 /** The execution a tool definition runs one connected agent's call with; its context deferral has no agent loop to reach. */

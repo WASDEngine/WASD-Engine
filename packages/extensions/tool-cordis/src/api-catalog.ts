@@ -1972,7 +1972,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Export a project for one mobile platform with the built-in runtime: for Android, one APK file named after the game for 64-bit ARM phones and tablets, signed with this computer\'s Android key, which the first Android export generates; for iOS, an Xcode project that builds the app on a Mac, signed for the request\'s Team ID, else the one team of the Mac\'s Apple Development certificates, else none, so that Xcode asks. An Android export first finds a JDK and the Android SDK (`androidJavaPath`, `androidSdkPath`). The first export for a platform downloads its template, about 99 MB for Android and 189 MB for iOS. While the export runs, the project imports the ETC2/ASTC textures mobile builds need. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder, platform, output folder, and for iOS the Team ID.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
         returns: 'the build.',
-        throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
+        throws: ['{Error} when the request\'s Team ID is not 10 capital letters and digits, before the export starts.', '{GodotProjectError} without `project.godot` in the project folder.', '{GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.', '{GodotTemplateError} when the platform\'s template cannot be downloaded.', '{GodotExportError} when the export writes no build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
       },
       {
         signature: 'async exportServer(request: GodotServerExportRequest, signal: AbortSignal): Promise<GodotServerExport>',
@@ -7590,7 +7590,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameMcpTool',
-    declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n    readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined;\n}',
+    declaration: 'export interface GameMcpTool {\n    readonly name: string;\n    readonly definition: ToolDefinition;\n    readonly description?: string;\n    readonly inputSchema?: JsonObject;\n    readonly readOnly?: boolean;\n    readonly prepare?: (args: JsonObject, call: GameMcpCall) => Promise<GameMcpPreparedCall>;\n    readonly content?: (value: JsonValue, args: JsonObject, exec: ToolRunContext) => GameMcpContentResult;\n    readonly failureContent?: (error: unknown, args: JsonObject) => GameMcpContentResult;\n    readonly confirmation?: (value: JsonValue) => GameMcpConfirmation | undefined;\n}',
   },
   {
     name: 'GameMcpToolOwner',
@@ -7854,7 +7854,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GodotWebExport',
-    declaration: 'export interface GodotWebExport {\n    readonly projectDir: string;\n    readonly outputDir: string;\n    readonly entry: string;\n    readonly files: readonly GodotWebExportFile[];\n    readonly totalBytes: number;\n    readonly warnings: readonly string[];\n}',
+    declaration: 'export interface GodotWebExport {\n    readonly projectDir: string;\n    readonly outputDir: string;\n    readonly entry: string;\n    readonly files: readonly GodotWebExportFile[];\n    readonly totalBytes: number;\n    readonly fileName: string;\n    readonly warnings: readonly string[];\n}',
   },
   {
     name: 'GodotWebExportFile',

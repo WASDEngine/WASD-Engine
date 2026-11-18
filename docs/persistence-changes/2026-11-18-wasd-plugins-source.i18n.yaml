@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for 2026-11-18-wasd-plugins-source.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/persistence-changes/2026-11-18-wasd-plugins-source.md
+/:
+  en: 3d5a424ae7d7e46b
+  zh: c22a8e4a62d8cc1a
+/2026-11-18-wasd-plugins-source:
+  en: c64167a882656b61
+  zh: 18cd909c478964ba
+/2026-11-18-wasd-plugins-source/summary:
+  en: 75467f0f7402d292
+  zh: a6659357899990f2
+/2026-11-18-wasd-plugins-source/table-of-contents:
+  en: 6cf314a069ceb451
+  zh: 9adff678e9ecab3b
+/2026-11-18-wasd-plugins-source/declaration:
+  en: 6907136f28e48c90
+  zh: 02f8298485f3d8e7
+/2026-11-18-wasd-plugins-source/compatibility:
+  en: 72d53e3434e04e5f
+  zh: 8ffbf96832c8491f
+/2026-11-18-wasd-plugins-source/verification:
+  en: 100ae4db3114d82b
+  zh: 0687bc3a61ebb51d
+/2026-11-18-wasd-plugins-source/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

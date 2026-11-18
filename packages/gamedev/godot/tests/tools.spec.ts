@@ -891,6 +891,18 @@ posix('godot_check', () => {
     expect(existsSync(join(c.dir.root, 'data', 'templates'))).toBe(false)
   }, PROCESSES_TIMEOUT)
 
+  it('refuses a malformed Apple Team ID before an export for either platform starts', async () => {
+    // Without the check first, the Android export would stop at the missing JDK, and the iOS one would download its template.
+    const c = await setup({ config: { androidJavaPath: join('/', 'missing', 'jdk'), androidSdkPath: join('/', 'missing', 'sdk') } })
+    for (const platform of ['android', 'ios'] as const) {
+      const request = { projectDir: c.project, platform, outputDir: join(c.dir.root, platform), appleTeamId: 'abcde12345' }
+      await expect(c.godot.exportMobile(request, new AbortController().signal)).rejects.toThrow(
+        'An Apple Developer Team ID is 10 capital letters and digits, such as ABCDE12345, not "abcde12345".',
+      )
+    }
+    expect(existsSync(join(c.dir.root, 'data', 'templates'))).toBe(false)
+  }, PROCESSES_TIMEOUT)
+
   it('imports a project for a check before or after a Web export of it, never during one', async () => {
     const files = Object.fromEntries(['index.html', 'index.js', 'index.wasm', 'index.pck'].map(name => [name, name]))
     // The fake export does not read the template, so any existing file stands in for it.

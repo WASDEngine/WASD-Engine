@@ -311,6 +311,11 @@ export interface GodotWebExport {
   readonly files: readonly GodotWebExportFile[]
   /** Sum of the files' sizes in bytes. */
   readonly totalBytes: number
+  /**
+   * The game's name as the files of its desktop and Android builds take it, such as `Tiny Farm`, for files such as an
+   * archive of the Web build.
+   */
+  readonly fileName: string
   /** How the Web build differs from desktop runs, then Godot's export warnings; at most 10. */
   readonly warnings: readonly string[]
 }
@@ -520,7 +525,8 @@ export interface GodotMobileExportRequest {
   /**
    * The Apple Developer Team ID, 10 capital letters and digits, that an iOS build's Xcode project signs with. Without
    * one, the project takes the team of the Mac's Apple Development certificates when they name exactly one, and
-   * otherwise leaves the team for Xcode to ask for. Android builds ignore it.
+   * otherwise leaves the team for Xcode to ask for. Android builds do not use it, but a request with a Team ID of
+   * another form fails before the export starts, on either platform.
    */
   readonly appleTeamId?: string
 }

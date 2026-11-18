@@ -746,6 +746,7 @@ async exportDesktop(request: GodotDesktopExportRequest, signal: AbortSignal): Pr
  * @param request - absolute project folder, platform, output folder, and for iOS the Team ID.
  * @param signal - cancellation; it stops the export process.
  * @returns the build.
+ * @throws {Error} when the request's Team ID is not 10 capital letters and digits, before the export starts.
  * @throws {GodotProjectError} without `project.godot` in the project folder.
  * @throws {GodotAndroidToolchainError} when an Android export finds no JDK or Android SDK, or cannot make or read its key.
  * @throws {GodotTemplateError} when the platform's template cannot be downloaded.

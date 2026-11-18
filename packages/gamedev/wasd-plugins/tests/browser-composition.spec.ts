@@ -151,7 +151,7 @@ describe('WASD Engine Plugins composition', () => {
       async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), 'game')
-        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, fileName: 'Space Game', warnings: [] }
       },
       async exportDesktop(request: { readonly projectDir: string; readonly platform: string; readonly outputDir: string }) {
         const { projectDir, platform, outputDir } = request
@@ -225,19 +225,83 @@ describe('WASD Engine Plugins composition', () => {
     expect(site.games.size).toBe(2)
   })
 
+  it('stops a release whose Web check found problems, and shows the Session\'s model the check\'s screenshot after the failure', async () => {
+    const { ctx, root, toolNames, call } = await compose({})
+    const site = gamesSite('token-1')
+    vi.stubGlobal('fetch', site.fetch)
+    cleanups.push(async () => { vi.unstubAllGlobals() })
+    ctx.provide('deepseekAccount', {
+      getState: () => Promise.resolve({ links: { usageUrl: `${SITE}/account/usage` } }),
+      getPlatformSession: () => Promise.resolve({ origin: SITE, token: 'token-1', userId: 'user-1' }),
+    } as never)
+    // The Session's model takes images, and the attachment store keeps the screenshot it receives.
+    const saved: string[] = []
+    ctx.provide('attachments', {
+      saveImages: (images: readonly { readonly data: Buffer; readonly mediaType: string; readonly name: string }[]) => {
+        saved.push(...images.map(image => image.data.toString()))
+        return Promise.resolve(images.map(image => ({ attachmentId: 'shot-1', mediaType: image.mediaType, bytes: image.data.length, width: 64, height: 36, name: image.name })))
+      },
+      readImageRequest: () => Promise.resolve({ width: 64, height: 36 }),
+    } as never)
+    ctx.provide('llm', { resolveModelInfo: () => Promise.resolve({ inputModalities: ['text', 'image'] }), imageRequestTarget: () => ({}) } as never)
+    ctx.provide('godot', {
+      async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
+        await mkdir(outputDir, { recursive: true })
+        await writeFile(join(outputDir, 'index.html'), 'game')
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, fileName: 'Broken Game', warnings: [] }
+      },
+      async checkWeb({ screenshot }: { readonly outputDir: string; readonly screenshot: string }) {
+        await writeFile(screenshot, 'JPEG')
+        return {
+          seconds: 20, started: false, longestFreezeSeconds: 0, freezes: 0, programs: 0, messages: [], moreMessages: 0,
+          findings: ['The game did not start within 180 s of opening the page, so the check saw only its loading.'], problems: ['the game did not start'],
+          screenshot: { path: screenshot, width: 64, height: 36 },
+        }
+      },
+    } as never)
+    await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
+    await mkdir(join(root, 'broken'))
+    await writeFile(join(root, 'broken', 'project.godot'), '[application]\nconfig/name="Broken Game"\n')
+
+    const stopped = await call('wasd_release_game', { project: 'broken' })
+    expect(stopped.isError).toBe(true)
+    const text = stopped.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('')
+    expect(text).toContain('Problems that stop a release: the game did not start.')
+    expect(text).toContain(`Screenshot of the page as the check last saw it (64x36): ${join(root, 'broken', '.wasdengine', 'web-check.jpg')}`)
+    expect(saved).toEqual(['JPEG'])
+    expect(stopped.additionalContexts).toEqual([expect.objectContaining({
+      role: 'user',
+      source: { kind: 'wasd-plugins', form: 'notice', summary: 'Screenshot of the Web check that stopped the release' },
+      content: [
+        { type: 'text', text: 'Screenshot of the page as the Web check that stopped the release last saw it (64x36):' },
+        { type: 'image', attachment: expect.objectContaining({ attachmentId: 'shot-1', mediaType: 'image/jpeg' }) },
+      ],
+    })])
+    expect(site.games.size).toBe(0)
+  })
+
   it('packs the Web build into a ZIP file for game sites, and builds each mobile platform it can into the project\'s mobile folder', async () => {
     const { ctx, root, toolNames, call } = await compose({})
     const missing = 'An Android export needs a Java runtime and the Android SDK on this computer.'
+    const malformed = 'An Apple Developer Team ID is 10 capital letters and digits, such as ABCDE12345, not "abcde12345".'
     const mobile: string[] = []
+    interface MobileRequest {
+      readonly projectDir: string
+      readonly platform: string
+      readonly outputDir: string
+      readonly appleTeamId?: string
+    }
     ctx.provide('godot', {
       async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), '<html>game</html>')
         await writeFile(join(outputDir, 'index.pck'), 'pack')
         const files = [{ path: 'index.html', bytes: 17 }, { path: 'index.pck', bytes: 4 }]
-        return { projectDir, outputDir, entry: 'index.html', files, totalBytes: 21, warnings: [] }
+        return { projectDir, outputDir, entry: 'index.html', files, totalBytes: 21, fileName: 'Space Game', warnings: [] }
       },
-      async exportMobile(request: { readonly projectDir: string; readonly platform: string; readonly outputDir: string }) {
+      async exportMobile(request: MobileRequest) {
+        // The Godot plugin refuses a malformed Team ID on either platform.
+        if (request.appleTeamId === 'abcde12345') throw new Error(malformed)
         mobile.push(request.outputDir)
         if (request.platform === 'android') throw new Error(missing)
         await mkdir(join(request.outputDir, 'SpaceGame.xcodeproj'), { recursive: true })
@@ -271,6 +335,10 @@ describe('WASD Engine Plugins composition', () => {
     const refused = await call('wasd_export_mobile', { project: 'space', platforms: ['android'] })
     expect(refused.isError).toBe(true)
     expect(text(refused)).toContain(missing)
+    // Both platforms refuse the same Team ID, and the call says why once.
+    const team = await call('wasd_export_mobile', { project: 'space', apple_team_id: 'abcde12345' })
+    expect(team.isError).toBe(true)
+    expect(text(team).split(malformed)).toHaveLength(2)
   })
 
   it('runs one project\'s exports and releases one at a time, from a Session and a connected agent, by the folder\'s real path', async () => {
@@ -294,7 +362,7 @@ describe('WASD Engine Plugins composition', () => {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), 'game')
         exporting--
-        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, fileName: 'Space Game', warnings: [] }
       },
     } as never)
     await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
@@ -341,7 +409,7 @@ describe('WASD Engine Plugins composition', () => {
       async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), 'game')
-        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, fileName: 'Space Game', warnings: [] }
       },
       checkWeb: () => Promise.reject(new Error('The Web check runs in the WASD Engine Desktop app.')),
     } as never)
@@ -405,7 +473,7 @@ describe('WASD Engine Plugins composition', () => {
       async exportWeb({ projectDir, outputDir }: { readonly projectDir: string; readonly outputDir: string }) {
         await mkdir(outputDir, { recursive: true })
         await writeFile(join(outputDir, 'index.html'), 'game')
-        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, warnings: [] }
+        return { projectDir, outputDir, entry: 'index.html', files: [{ path: 'index.html', bytes: 4 }], totalBytes: 4, fileName: 'Space Game', warnings: [] }
       },
     } as never)
     await expect.poll(toolNames).toEqual([...RELEASE_TOOLS, ...MULTIPLAYER_TOOLS].sort())
