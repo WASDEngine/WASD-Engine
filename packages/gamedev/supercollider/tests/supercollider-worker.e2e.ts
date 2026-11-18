@@ -107,8 +107,11 @@ describe.each(runtimes)('SuperCollider tools with the $name', ({ bundledRoot, sc
     const jump = await run('render_audio', { code: '{ SinOsc.ar(XLine.kr(1200, 300, 0.2)) * Env.perc(0.005, 0.4).kr(2) }', path: wav, duration: 0.5, normalize_db: -1 })
     expect(jump.text).toContain(`Rendered 0.500 s of mono audio at 44100 Hz from the function to ${wav} (WAV, int16,`)
     expect(jump.text).toContain('Levels: peak -1.0 dBFS')
-    expect(jump.images).toHaveLength(1)
+    // The waveform picture comes only when the call asks for it.
+    expect(jump.images).toHaveLength(0)
     expect(wavFrames(await readFile(wav))).toBe(22_050)
+    const pictured = await run('analyze_audio', { path: wav, picture: true })
+    expect(pictured.images).toHaveLength(1)
 
     const ogg = join(dataRoot, 'game', 'music', 'loop.ogg')
     const loop = await run('render_audio', { code: 'Pbind(\\instrument, \\blip, \\degree, Pseq([0, 2, 4, 7], inf), \\dur, 0.25)', path: ogg, duration: 2 })
