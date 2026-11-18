@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-godot-protocol",
   "description": "The godot/record request a Godot plugin's Host makes of a WASD Engine window, and its answer",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publishConfig": {
     "access": "public"
   },
