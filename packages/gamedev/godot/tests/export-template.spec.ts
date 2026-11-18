@@ -1,11 +1,11 @@
 /** A template download reads only the template's entry of the export templates archive and checks it. */
 import { createHash, randomBytes } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { deflateRawSync, crc32 } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
-import { ExportTemplateManager, GodotTemplateError, type ExportTemplateSettings, type TemplateFetch } from '../src/export-template.ts'
+import { bundledTemplatesDir, ExportTemplateManager, GodotTemplateError, type ExportTemplateSettings, type TemplateFetch } from '../src/export-template.ts'
 
 const ENTRY = 'templates/web_nothreads_release.zip'
 const TEMPLATE = Buffer.from('PK fake web template '.repeat(400))
@@ -84,7 +84,7 @@ afterEach(async () => {
 async function settings(overrides: Partial<ExportTemplateSettings> = {}): Promise<ExportTemplateSettings> {
   const dataRoot = await mkdtemp(join(tmpdir(), 'dsh-godot-template-'))
   folders.push(dataRoot)
-  return { dataRoot, platform: 'Web', field: 'webTemplate', archiveUrl: URL_, entry: ENTRY, sha256: SHA256, path: '', extension: '.zip', ...overrides }
+  return { dataRoot, platform: 'Web', field: 'webTemplate', archiveUrl: URL_, entry: ENTRY, sha256: SHA256, path: '', bundledDir: '', extension: '.zip', ...overrides }
 }
 
 const signal = new AbortController().signal
@@ -129,6 +129,32 @@ describe('ExportTemplateManager', () => {
     expect(await new ExportTemplateManager({ ...base, path }, server.fetch).resolve(signal)).toBe(path)
     expect(server.requests).toBe(0)
     await expect(new ExportTemplateManager({ ...base, path: join(base.dataRoot, 'missing.zip') }, server.fetch).resolve(signal)).rejects.toThrow(/is not a file/u)
+  })
+
+  it('uses the template that the Desktop app ships under its SHA-256 without downloading, and downloads when the app ships another', async () => {
+    const base = await settings()
+    const bundledDir = join(base.dataRoot, 'shipped')
+    await mkdir(bundledDir)
+    const shipped = join(bundledDir, `${SHA256}.zip`)
+    await writeFile(shipped, TEMPLATE)
+    const server = rangeServer(archive({ [ENTRY]: TEMPLATE }))
+    expect(await new ExportTemplateManager({ ...base, bundledDir }, server.fetch).resolve(signal)).toBe(shipped)
+    expect(server.requests).toBe(0)
+    const configured = join(base.dataRoot, 'mine.zip')
+    await writeFile(configured, 'zip')
+    expect(await new ExportTemplateManager({ ...base, bundledDir, path: configured }, server.fetch).resolve(signal)).toBe(configured)
+    await rm(shipped)
+    await writeFile(join(bundledDir, `${'1'.repeat(64)}.zip`), TEMPLATE)
+    const manager = new ExportTemplateManager({ ...base, bundledDir }, server.fetch)
+    expect(await manager.resolve(signal)).toBe(manager.installedPath())
+    expect(server.requests).toBeGreaterThan(0)
+  })
+
+  it('finds the shipped templates of a packaged app outside app.asar', () => {
+    const resources = join('/', 'Applications', 'WASD Engine.app', 'Contents', 'Resources')
+    expect(bundledTemplatesDir(join(resources, 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-godot')))
+      .toBe(join(resources, 'app.asar.unpacked', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-godot', 'templates'))
+    expect(bundledTemplatesDir(join('/', 'repo', 'packages', 'gamedev', 'godot'))).toBe(join('/', 'repo', 'packages', 'gamedev', 'godot', 'templates'))
   })
 
   it('names a desktop template after its own SHA-256 and extension, and its own fields in messages', async () => {

@@ -24,10 +24,12 @@ import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-patches.ts'
 import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
+import { stageAddonArchives } from './wasdengine-addon-archives.ts'
 import { stageBlenderRuntime } from './wasdengine-blender.ts'
 import { stageGimpRuntime } from './wasdengine-gimp.ts'
 import { stageLibGodotRuntime } from './wasdengine-libgodot.ts'
 import { stageSuperColliderRuntime } from './wasdengine-supercollider.ts'
+import { stageWebTemplate } from './wasdengine-web-template.ts'
 import { checkWasdengineRuntimes, signWasdengineRuntimes } from './wasdengine-runtime-signing.ts'
 import {
   resolveDesktopAppId,
@@ -172,6 +174,8 @@ async function main(): Promise<void> {
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:supercollider', () => stageSuperColliderRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:gimp', () => stageGimpRuntime(DSH_OUTPUT_ROOT, target))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:blender', () => stageBlenderRuntime(DSH_OUTPUT_ROOT, target))
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:web-template', () => stageWebTemplate(DSH_OUTPUT_ROOT))
+    await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:addon-archives', () => stageAddonArchives(DSH_OUTPUT_ROOT))
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:wasdengine-pins', () => checkWasdengineRuntimes(DSH_OUTPUT_ROOT, target, process.env))
     if (process.platform === 'darwin' && process.env.DSH_DESKTOP_UNSIGNED !== '1') {
       const cacheDirectory = resolveMacOSSignatureCacheDirectory(process.env, BUILD_PATHS.root)

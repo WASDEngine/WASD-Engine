@@ -602,6 +602,29 @@ describe('GameAddonManager for Blender', () => {
     expect((await manager.presence(project)).get('test-trees')).toEqual({ state: 'absent' })
   })
 
+  it('installs a Blender add-on and its asset pack from the archives the Desktop app ships, downloading nothing and keeping them', async () => {
+    const { project, store } = await setup(undefined, entriesWithTreeAssets(), { 'test-trees/setup.py': 'def setup(module, assets):\n    pass\n' })
+    const catalog = await loadCatalog(join(dir!.root, 'catalog'))
+    const entry = catalog.get('test-trees')!
+    const shipped = join(dir!.root, 'shipped')
+    await mkdir(shipped)
+    await writeFile(join(shipped, `${entry.archive!.sha256}.zip`), TREES_ARCHIVE)
+    await writeFile(join(shipped, `${entry.assets!.sha256}.zip`), TREE_ASSETS_ARCHIVE)
+    const manager = new GameAddonManager({
+      catalog,
+      downloads: { cacheDir: join(dir!.root, 'archives'), bundledDir: shipped, fetch: () => Promise.reject(new Error('offline')) },
+      blenderStore: store,
+      assetsDir: join(dir!.root, 'assets'),
+      importProject: () => Promise.resolve({ issues: [] }),
+      now: () => new Date(),
+      changed: () => {},
+    })
+    await manager.install(project, 'test-trees', {}, signal)
+    expect(await tree(store)).toContain('test_trees/__init__.py')
+    expect(await tree(join(dir!.root, 'assets'))).toContain('test-trees/bark/oak.txt')
+    expect((await readdir(shipped)).sort()).toEqual([`${entry.archive!.sha256}.zip`, `${entry.assets!.sha256}.zip`].sort())
+  })
+
   it('unpacks an asset pack beside the store, indexes its folder and setup script, and drops both archives from the cache', async () => {
     const { manager, project, store, downloads } = await setup(undefined, entriesWithTreeAssets(), { 'test-trees/setup.py': 'def setup(module, assets):\n    pass\n' })
     await manager.install(project, 'test-trees', {}, signal)

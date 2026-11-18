@@ -318,7 +318,7 @@ The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gam
 |---|---|
 | Discovery | The `game-addons` section lists every catalog add-on with the stages at which it helps and when to use it; `game_addons` `search` ranks the catalog for the game's need and shows sizes, conflicts, and when to skip each one; `guide` returns a guide before installation |
 | Decision | The agent installs or removes an add-on when it decides that the game needs it, without asking the user under any approval policy; the section tells it when an add-on is worth installing and to tell the user what it added, with the license |
-| Godot installation | The archive downloads once into `<dataRoot>/archives/<sha256>.zip` and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`, together with the files of the entry's overlay folders in the catalog, such as the import settings and `retarget.gd` of the Universal Animation Library packs; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
+| Godot installation | The archive comes from the Desktop app's `archives/` folder for a bundled entry and otherwise downloads once into `<dataRoot>/archives/<sha256>.zip`, and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`, together with the files of the entry's overlay folders in the catalog, such as the import settings and `retarget.gd` of the Universal Animation Library packs; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
 | Blender installation | The extension unpacks once into `<blenderStore>/<module>/` and its asset pack, if any, into `<dataRoot>/blender-assets/<id>/`, the store's `catalog.json` lists every catalog Blender add-on with the store copy of its setup script (`<blenderStore>/.wasd-setup/<id>/`, written at every start) and its asset folder, and the project's record lists it; a worker's `wasd_addons.enable("<id>")` enables it and runs its setup script, and does both again after factory settings load |
 | Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
 | Removal | The recorded paths, the add-on's `project.godot` entries, and its notice go; settings that another installed add-on also sets stay; the result names the files that still use the add-on |
@@ -688,9 +688,9 @@ Host owner of Godot runs: tools for the agent, a Remote for the Game tab, and th
 
 /**
  * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
- * static web server can serve and any page can frame. The first export downloads the Web template. The export,
- * which imports the project, waits until the project's import steps and checks in this Host have ended. For other
- * plugins on the Host; the Game tab does not call it.
+ * static web server can serve and any page can frame. The Desktop app ships the Web template; elsewhere the first
+ * export downloads it. The export, which imports the project, waits until the project's import steps and checks in
+ * this Host have ended. For other plugins on the Host; the Game tab does not call it.
  * @param request - absolute project folder and output folder.
  * @param signal - cancellation; it stops the export process.
  * @returns the exported files.

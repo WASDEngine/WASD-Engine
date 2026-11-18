@@ -1,9 +1,11 @@
 /**
  * Add-on archives: each pinned zip is downloaded once into `<dataRoot>/archives/<sha256>.zip`, streaming into a
  * temporary file while its size and SHA-256 are checked against the catalog, and only a matching file takes its
- * cache name. Unpacking reads the archive's central directory and streams one folder's files into a new folder, so
- * memory stays bounded however large the archive is; entry names with absolute paths, `..` segments, or backslashes
- * stop it, and macOS metadata entries are skipped.
+ * cache name. The Desktop app ships the archives of the catalog's bundled entries under the same names in this
+ * package's `archives/` folder, outside `app.asar`, where one with the pinned size is read in place, never downloaded
+ * and never removed. Unpacking reads the archive's central directory and streams one folder's files into a new
+ * folder, so memory stays bounded however large the archive is; entry names with absolute paths, `..` segments, or
+ * backslashes stop it, and macOS metadata entries are skipped.
  * @module @deepseek-ai/dsh-game-addons/src/archive
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -29,6 +31,8 @@ export class GameAddonArchiveError extends Error {
 export interface ArchiveDownloads {
   /** Absolute folder of the archive cache. */
   readonly cacheDir: string
+  /** Absolute folder of the archives the Desktop app ships, which is read only; absent where none ship. */
+  readonly bundledDir?: string
   /**
    * Start one download.
    * @param url - archive URL.
@@ -38,22 +42,50 @@ export interface ArchiveDownloads {
   readonly fetch: (url: string, signal: AbortSignal) => Promise<Response>
 }
 
+/** A checked archive on disk. */
+export interface LocalArchive {
+  /** Absolute path of the archive. */
+  readonly path: string
+  /** Whether the Desktop app ships it: the file is read only and stays where it is. */
+  readonly bundled: boolean
+}
+
 /**
- * The cached archive of a pin, downloading it when it is not cached yet.
+ * The folder where the Desktop app ships archives: `archives/` of this package, outside `app.asar`.
+ * @param packageRoot - absolute folder of this package, inside `app.asar` in a packaged app.
+ * @returns the folder in `app.asar.unpacked` for a packaged app, and in the package itself otherwise.
+ */
+export function bundledArchivesDir(packageRoot: string): string {
+  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'archives')
+}
+
+/** Whether a file exists with the given size; false for a missing one. */
+async function hasFile(path: string, bytes: number): Promise<boolean> {
+  try {
+    const existing = await stat(path)
+    return existing.isFile() && existing.size === bytes
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw error
+  }
+}
+
+/**
+ * The archive of a pin: the one the Desktop app ships, the cached one, or a new download into the cache.
  * @param archive - the catalog's pin.
- * @param downloads - cache folder and fetch.
+ * @param downloads - cache folder, shipped folder, and fetch.
  * @param signal - cancellation.
- * @returns the absolute path of the checked archive.
+ * @returns the checked archive and whether the app ships it.
  * @throws {GameAddonArchiveError} when the request fails or the archive's size or SHA-256 differs from the pin.
  */
-export async function cachedArchive(archive: GameAddonArchive, downloads: ArchiveDownloads, signal: AbortSignal): Promise<string> {
-  const target = join(downloads.cacheDir, `${archive.sha256}.zip`)
-  try {
-    const existing = await stat(target)
-    if (existing.isFile() && existing.size === archive.bytes) return target
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+export async function cachedArchive(archive: GameAddonArchive, downloads: ArchiveDownloads, signal: AbortSignal): Promise<LocalArchive> {
+  if (downloads.bundledDir !== undefined) {
+    const shipped = join(downloads.bundledDir, `${archive.sha256}.zip`)
+    if (await hasFile(shipped, archive.bytes)) return { path: shipped, bundled: true }
   }
+  const target = join(downloads.cacheDir, `${archive.sha256}.zip`)
+  if (await hasFile(target, archive.bytes)) return { path: target, bundled: false }
   await mkdir(downloads.cacheDir, { recursive: true })
   const temporary = `${target}.${randomUUID()}.part`
   try {
@@ -88,7 +120,7 @@ export async function cachedArchive(archive: GameAddonArchive, downloads: Archiv
       throw new GameAddonArchiveError(`${archive.url} does not match the SHA-256 the catalog pins (got ${digest}); it was not installed.`)
     }
     await rename(temporary, target)
-    return target
+    return { path: target, bundled: false }
   } finally {
     await rm(temporary, { force: true })
   }

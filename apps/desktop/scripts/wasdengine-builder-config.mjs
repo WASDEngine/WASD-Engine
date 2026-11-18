@@ -1,4 +1,4 @@
-/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, GIMP, and Blender runtimes, the game layer module, and the Web check bundle to the ordinary Desktop release configuration. */
+/** Apply the WASDEngine product identity, the unpacked LibGodot, SuperCollider, GIMP, and Blender runtimes, the unpacked Web export template and add-on archives, the game layer module, and the Web check bundle to the ordinary Desktop release configuration. */
 
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -83,6 +83,26 @@ export const BLENDER_ASAR_UNPACK = '**/node_modules/@deepseek-ai/dsh-blender/run
  */
 export function applyWasdengineBlender(config) {
   return { ...config, asarUnpack: [...config.asarUnpack, BLENDER_ASAR_UNPACK] }
+}
+
+/**
+ * `asarUnpack` patterns of the files that `wasdengine-web-template.ts` and `wasdengine-addon-archives.ts` ship: the
+ * Godot plugin package's Web export template and the add-on plugin package's archives of the catalog's bundled entries.
+ */
+export const BUNDLED_FILES_ASAR_UNPACK = [
+  '**/node_modules/@deepseek-ai/dsh-godot/templates/**/*',
+  '**/node_modules/@deepseek-ai/dsh-game-addons/archives/**/*',
+]
+
+/**
+ * Keep the shipped Web export template and add-on archives on disk, outside `app.asar`: Godot reads the template by
+ * path when it exports a game, and the add-on manager reads an archive's directory and files at their offsets.
+ * @template {{ readonly asarUnpack: readonly string[] }} T
+ * @param {T} config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns {T} A new configuration whose `asarUnpack` also lists both folders.
+ */
+export function applyWasdengineBundledFiles(config) {
+  return { ...config, asarUnpack: [...config.asarUnpack, ...BUNDLED_FILES_ASAR_UNPACK] }
 }
 
 /**

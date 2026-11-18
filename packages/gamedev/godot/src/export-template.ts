@@ -6,7 +6,9 @@
  * Web template in an archive of the same layout, so a manager reads an archive's ZIP directory with HTTP range requests
  * and downloads only its template entry (about 10 MB for the Web, 38 MB for Windows, 123 MB for macOS, 28 MB for a
  * Linux server), then checks its size, CRC-32, and the SHA-256 the configuration pins before it publishes
- * `<dataRoot>/templates/<sha256><extension>` under a file lock. A configured path replaces the download.
+ * `<dataRoot>/templates/<sha256><extension>` under a file lock. A configured path replaces the download, and so
+ * does a template that the Desktop app ships under the same name in this package's `templates/` folder, outside
+ * `app.asar`.
  * @module @deepseek-ai/dsh-godot/src/export-template
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -38,6 +40,11 @@ export interface ExportTemplateSettings {
   readonly sha256: string
   /** Absolute template file to use instead of downloading one; empty when unset. */
   readonly path: string
+  /**
+   * Absolute folder of the templates the Desktop app ships, named `<sha256><extension>` like downloaded ones and read
+   * in place; empty where none ship.
+   */
+  readonly bundledDir: string
   /** File name extension of the downloaded template, such as `.zip`, `.exe`, or `.x86_64`. */
   readonly extension: string
 }
@@ -84,6 +91,15 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * The folder where the Desktop app ships export templates: `templates/` of this package, outside `app.asar`.
+ * @param packageRoot - absolute folder of this package, inside `app.asar` in a packaged app.
+ * @returns the folder in `app.asar.unpacked` for a packaged app, and in the package itself otherwise.
+ */
+export function bundledTemplatesDir(packageRoot: string): string {
+  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'templates')
+}
+
 /** Resolves, and on first use downloads, one export template. */
 export class ExportTemplateManager {
   private pending: Promise<string> | undefined
@@ -103,8 +119,8 @@ export class ExportTemplateManager {
   }
 
   /**
-   * The template file, downloading it once when neither a configured nor a downloaded one exists. Concurrent calls
-   * share one download.
+   * The template file, downloading it once when neither a configured, a shipped, nor a downloaded one exists.
+   * Concurrent calls share one download.
    * @param signal - stops this caller's wait; a download another caller shares continues.
    * @returns the absolute template path.
    * @throws {GodotTemplateError} when the configured file is missing, or the download fails or does not match.
@@ -115,6 +131,10 @@ export class ExportTemplateManager {
         throw new GodotTemplateError(`The configured ${this.settings.platform} export template ${this.settings.path} is not a file.`)
       }
       return this.settings.path
+    }
+    if (this.settings.bundledDir !== '') {
+      const shipped = join(this.settings.bundledDir, `${this.settings.sha256}${this.settings.extension}`)
+      if (await isFile(shipped)) return shipped
     }
     const installed = this.installedPath()
     if (await isFile(installed)) return installed

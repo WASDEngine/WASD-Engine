@@ -39,6 +39,7 @@
     "source": "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0/672074b73ba276876a19e8816ecdc5241817ab47/icon.png",
     "license": "CC0-1.0"
   },
+  "bundled": true,
   "verified": {
     "godot": "4.7.2",
     "date": "2026-11-17"

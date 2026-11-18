@@ -43,6 +43,7 @@
     "license": "AGPL-3.0-or-later",
     "copyright": "Copyright (C) 2001-2020 MakeHuman Team (www.makehumancommunity.org)"
   },
+  "bundled": true,
   "verified": {
     "bpy": "5.2.3",
     "date": "2026-11-10"

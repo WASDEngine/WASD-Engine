@@ -2,7 +2,8 @@
  * The add-on catalog that WASD Engine ships, beside the gamedev preset in the Web app bundle: every entry loads, was
  * verified with the shipped runtimes, has a smoke test for the end-to-end suite, an icon for the Add-ons dialog, and a
  * guide whose skill tool result fits under the gamedev preset's tool-result pruner threshold, so a long Session never
- * trims a guide. The system prompt section that lists the entries stays within its budget.
+ * trims a guide. The system prompt section that lists the entries stays within its budget, and the asset packs and MPFB
+ * are the bundled entries, whose archives the Desktop app ships.
  */
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -72,6 +73,12 @@ describe('the shipped add-on catalog', () => {
       // The pruner trims only a result longer than the threshold, counted in code points.
       expect(Array.from(result).length, `${entry.id} skill tool result`).toBeLessThanOrEqual(PRUNER_THRESHOLD)
     }
+  })
+
+  it('bundles the asset packs and MPFB, whose archives the Desktop app ships, and no other entry', async () => {
+    const catalog = await loadCatalog(CATALOG_DIR)
+    expect(catalog.entries.filter(entry => entry.bundled === true).map(entry => entry.id).sort())
+      .toEqual(['kaykit-adventurers', 'mpfb', 'universal-animation-library', 'universal-animation-library-2', 'universal-base-characters'])
   })
 
   it('lists every entry in the system prompt section within its budget', async () => {

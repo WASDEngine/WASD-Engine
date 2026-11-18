@@ -203,15 +203,32 @@ async function fetchManifest(url: string, label: string, remedy: string): Promis
   return response.json()
 }
 
-/** Copy `source` to `destination` while checking it against the manifest's size and SHA-256. */
-async function copyVerified(source: Readable, destination: string, artifact: RuntimeArchive, name: string, label: string): Promise<void> {
+/** A download failure that another attempt would repeat: an HTTP error status, or bytes that differ from the pin. */
+class FinalDownloadError extends Error {}
+
+/** Attempts of a download whose transfer breaks off, as HTTP/2 streams of large files sometimes do. */
+const DOWNLOAD_ATTEMPTS = 3
+
+/**
+ * Copy `source` to a new file while checking it against a pinned size and SHA-256.
+ * @param source - The file's bytes.
+ * @param destination - Path of the new file, which must not exist.
+ * @param artifact - The size and SHA-256 the bytes must have.
+ * @param name - What the bytes came from, for errors.
+ * @param label - What the file is, for errors, such as `LibGodot`.
+ * @param pinnedBy - What pins the size and SHA-256, for errors.
+ * @throws When the bytes differ from the pin; the caller removes the partial file.
+ */
+export async function copyVerified(
+  source: Readable, destination: string, artifact: RuntimeArchive, name: string, label: string, pinnedBy = 'its manifest',
+): Promise<void> {
   const digest = createHash('sha256')
   let bytes = 0
   const counting = new Transform({
     transform(chunk: Buffer, _encoding, callback) {
       bytes += chunk.length
       if (bytes > artifact.bytes) {
-        callback(new Error(`desktop runtime: the ${label} archive ${name} is larger than the ${String(artifact.bytes)} bytes its manifest lists`))
+        callback(new FinalDownloadError(`desktop runtime: the ${label} archive ${name} is larger than the ${String(artifact.bytes)} bytes ${pinnedBy} lists`))
         return
       }
       digest.update(chunk)
@@ -220,25 +237,62 @@ async function copyVerified(source: Readable, destination: string, artifact: Run
   })
   await pipeline(source, counting, createWriteStream(destination, { flags: 'wx', mode: 0o600 }))
   if (bytes !== artifact.bytes) {
-    throw new Error(`desktop runtime: the ${label} archive ${name} has ${String(bytes)} bytes; its manifest lists ${String(artifact.bytes)}`)
+    throw new FinalDownloadError(`desktop runtime: the ${label} archive ${name} has ${String(bytes)} bytes; ${pinnedBy} lists ${String(artifact.bytes)}`)
   }
   if (digest.digest('hex') !== artifact.sha256) {
-    throw new Error(`desktop runtime: the ${label} archive ${name} does not match the SHA-256 its manifest lists`)
+    throw new FinalDownloadError(`desktop runtime: the ${label} archive ${name} does not match the SHA-256 ${pinnedBy} lists`)
   }
 }
 
-async function download(url: string, destination: string, artifact: RuntimeArchive, label: string): Promise<void> {
+/** Options of a download: request headers and what pins the size and SHA-256, for errors. */
+interface DownloadOptions {
+  readonly headers?: Record<string, string>
+  readonly pinnedBy?: string
+}
+
+/**
+ * Download a URL into a new file while checking it against a pinned size and SHA-256. A transfer that fails or breaks
+ * off starts over, up to three attempts in all; an HTTP error status or bytes that differ from the pin end it at once.
+ * @param url - What to download; redirects are followed.
+ * @param destination - Path of the new file, which must not exist.
+ * @param artifact - The size and SHA-256 the download must have.
+ * @param label - What the file is, for errors, such as `LibGodot`.
+ * @param options - Request headers, such as a User-Agent that a host requires, and what pins the size and SHA-256,
+ * for errors.
+ * @throws When the last attempt fails, the server answers with an error status, or the bytes differ from the pin; the
+ * caller removes the partial file.
+ */
+export async function downloadVerified(
+  url: string, destination: string, artifact: RuntimeArchive, label: string, options: DownloadOptions = {},
+): Promise<void> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await downloadOnce(url, destination, artifact, label, options)
+      return
+    } catch (error) {
+      if (error instanceof FinalDownloadError || attempt >= DOWNLOAD_ATTEMPTS) throw error
+      await rm(destination, { force: true })
+      console.warn(`desktop runtime: downloading the ${label} archive ${url} broke off (${(error as Error).message}); `
+        + `starting over, attempt ${String(attempt + 1)} of ${String(DOWNLOAD_ATTEMPTS)}`)
+    }
+  }
+}
+
+/** One attempt of {@link downloadVerified}. */
+async function downloadOnce(
+  url: string, destination: string, artifact: RuntimeArchive, label: string, options: DownloadOptions,
+): Promise<void> {
   let response: Response
   try {
-    response = await fetch(url)
+    response = await fetch(url, { headers: options.headers ?? {} })
   } catch (error) {
     throw new Error(`desktop runtime: cannot download the ${label} archive ${url}: ${(error as Error).message}`, { cause: error })
   }
   if (!response.ok || response.body === null) {
     await response.body?.cancel()
-    throw new Error(`desktop runtime: downloading the ${label} archive ${url} answered HTTP ${String(response.status)}`)
+    throw new FinalDownloadError(`desktop runtime: downloading the ${label} archive ${url} answered HTTP ${String(response.status)}`)
   }
-  await copyVerified(Readable.fromWeb(response.body as ReadableStream<Uint8Array>), destination, artifact, url, label)
+  await copyVerified(Readable.fromWeb(response.body as ReadableStream<Uint8Array>), destination, artifact, url, label, options.pinnedBy)
 }
 
 /**
@@ -284,7 +338,7 @@ export async function stageRuntimeArchive<A extends RuntimeArchive, M extends Ru
   await mkdir(work, { recursive: true })
   try {
     const archive = join(work, 'runtime.tar.gz')
-    if (local === '') await download(new URL(artifact.url, source).href, archive, artifact, kind.label)
+    if (local === '') await downloadVerified(new URL(artifact.url, source).href, archive, artifact, kind.label)
     else {
       // A local folder holds each archive under the name its release URL ends with.
       const file = join(local, posix.basename(new URL(artifact.url, 'file:///').pathname))

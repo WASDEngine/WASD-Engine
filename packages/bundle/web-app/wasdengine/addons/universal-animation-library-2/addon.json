@@ -41,6 +41,7 @@
     "source": "https://opengameart.org/sites/default/files/ual2.png",
     "license": "CC0-1.0"
   },
+  "bundled": true,
   "verified": {
     "godot": "4.7.2",
     "date": "2026-11-11"

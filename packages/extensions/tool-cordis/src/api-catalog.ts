@@ -1948,7 +1948,7 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       },
       {
         signature: 'async exportWeb(request: GodotWebExportRequest, signal: AbortSignal): Promise<GodotWebExport>',
-        description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The first export downloads the Web template. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
+        description: 'Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any static web server can serve and any page can frame. The Desktop app ships the Web template; elsewhere the first export downloads it. The export, which imports the project, waits until the project\'s import steps and checks in this Host have ended. For other plugins on the Host; the Game tab does not call it.',
         parameters: [{ name: 'request', description: 'absolute project folder and output folder.' }, { name: 'signal', description: 'cancellation; it stops the export process.' }],
         returns: 'the exported files.',
         throws: ['{GodotProjectError} without `project.godot` in the project folder.', '{GodotTemplateError} when the Web template cannot be downloaded.', '{GodotExportError} when the export writes no playable build.', '{LowMemoryError} when the computer has less than `minAvailableMemoryBytes` available as the export starts.'],
@@ -7494,7 +7494,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddon',
-    declaration: 'export interface GameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly copyright: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly archive?: GameAddonArchive;\n    readonly assets?: GameAddonAssets;\n    readonly icon?: GameAddonIcon;\n    readonly godot?: GodotAddonSpec;\n    readonly blender?: BlenderAddonSpec;\n    readonly conflicts?: readonly string[];\n    readonly verified: GameAddonVerification;\n}',
+    declaration: 'export interface GameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly copyright: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly archive?: GameAddonArchive;\n    readonly assets?: GameAddonAssets;\n    readonly bundled?: true;\n    readonly icon?: GameAddonIcon;\n    readonly godot?: GodotAddonSpec;\n    readonly blender?: BlenderAddonSpec;\n    readonly conflicts?: readonly string[];\n    readonly verified: GameAddonVerification;\n}',
   },
   {
     name: 'GameAddonArchive',

@@ -86,6 +86,7 @@ const Entry = z.strictObject({
     copyright: z.string().min(1).exactOptional(),
   }).exactOptional(),
   conflicts: z.array(z.string().regex(ADDON_ID_PATTERN)).min(1).exactOptional(),
+  bundled: z.literal(true).exactOptional(),
   verified: z.strictObject({
     godot: z.string().min(1).exactOptional(),
     bpy: z.string().min(1).exactOptional(),
@@ -142,6 +143,9 @@ export function parseGuide(raw: string, source: string): ParsedGuide {
 function checkEntry(entry: GameAddon, folder: string): void {
   const where = `${folder}/${ENTRY_FILE}`
   if (entry.id !== folder) throw new GameAddonCatalogError(`${where}: id ${entry.id} must equal its folder name.`)
+  if (entry.bundled === true && entry.archive === undefined && entry.assets === undefined) {
+    throw new GameAddonCatalogError(`${where}: bundled needs an archive or an asset pack for the Desktop app to ship.`)
+  }
   if (entry.host === 'godot') {
     if (entry.godot === undefined || entry.blender !== undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs godot and no blender field.`)
     if (entry.archive === undefined && entry.godot.overlay === undefined) throw new GameAddonCatalogError(`${where}: a Godot add-on needs an archive or overlay folders.`)

@@ -73,6 +73,20 @@ export const BLENDER_ASAR_UNPACK: string
  */
 export function applyWasdengineBlender<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
 
+/**
+ * `asarUnpack` patterns of the files that `wasdengine-web-template.ts` and `wasdengine-addon-archives.ts` ship: the
+ * Godot plugin package's Web export template and the add-on plugin package's archives of the catalog's bundled entries.
+ */
+export const BUNDLED_FILES_ASAR_UNPACK: readonly string[]
+
+/**
+ * Keep the shipped Web export template and add-on archives on disk, outside `app.asar`: Godot reads the template by
+ * path when it exports a game, and the add-on manager reads an archive's directory and files at their offsets.
+ * @param config - Configuration from `createElectronBuilderConfig` or another `applyWasdengine*` function.
+ * @returns A new configuration whose `asarUnpack` also lists both folders.
+ */
+export function applyWasdengineBundledFiles<T extends { readonly asarUnpack: readonly string[] }>(config: T): T
+
 /** The game layer module that `wasdengine-game-layer.ts` builds beside the main bundle, as electron-builder names it. */
 export const GAME_LAYER_FILE: string
 

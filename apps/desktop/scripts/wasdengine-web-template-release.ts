@@ -1,14 +1,15 @@
 /**
- * Check that the Web export template that the Godot plugin pins can be downloaded, so that no Desktop release ships a
- * plugin whose Web exports fail at the template download (fork-owned; `wasdengine/FORK.md`, Releases).
+ * Check that the Web export template that the Godot plugin pins can be downloaded, so that no release pins a
+ * template that Desktop packaging cannot ship and that Web exports without a shipped template cannot download
+ * (fork-owned; `wasdengine/FORK.md`, Releases).
  *
  * The `webTemplateArchiveUrl`, `webTemplateEntry`, and `webTemplateSha256` defaults of
  * `packages/gamedev/godot/src/index.ts` name a file of the GitHub release `web-template-<version>`, which
  * `.github/workflows/wasd-web-template.yml` publishes with a `manifest.json` once it has checked the archive against
- * the manifest and the template against the pin. Desktop builds do not bundle the template, so packaging never notices
- * a missing release. `wasdengine-github-release.ts publish` and `.github/workflows/wasd-desktop-windows.yml` run this
- * check; the workflow imports this module with plain Node before it installs dependencies, so the module imports only
- * Node's built-in modules.
+ * the manifest and the template against the pin. Desktop packaging ships the template (`wasdengine-web-template.ts`)
+ * and stops at a missing release; this check finds one before packaging starts. `wasdengine-github-release.ts publish`
+ * and `.github/workflows/wasd-desktop-windows.yml` run it; the workflow imports this module with plain Node before it
+ * installs dependencies, so the module imports only Node's built-in modules.
  */
 
 import { execFile } from 'node:child_process'

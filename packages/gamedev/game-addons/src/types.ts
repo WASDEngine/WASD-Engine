@@ -152,6 +152,11 @@ export interface GameAddon {
   readonly archive?: GameAddonArchive
   /** Data pack installed with a Blender add-on. */
   readonly assets?: GameAddonAssets
+  /**
+   * Whether the Desktop app ships the entry's archive and asset pack, so that installing the entry there reads them
+   * from the app instead of downloading them.
+   */
+  readonly bundled?: true
   /** Icon the Add-ons dialog shows. */
   readonly icon?: GameAddonIcon
   /** Placement in a Godot project, for `host: 'godot'`. */

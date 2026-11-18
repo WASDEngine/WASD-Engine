@@ -101,7 +101,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `webTemplateArchiveUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/web-template-4.7.2-wasd.2/web-template-4.7.2-wasd.2.tpz` | 包含运行时 Godot 版本 Web 模板的导出模板归档；[Web 导出](#web-export)只从中下载该模板；须为 http 或 https URL。默认值是 WASD Engine 构建的模板 |
 | `webTemplateEntry` | `templates/web_nothreads_release.zip` | 单线程 Web 发布模板在该归档中的路径 |
 | `webTemplateSha256` | `65287ea6…c72c2a` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
-| `webTemplatePath` | `''` | 用来代替下载的绝对路径 Web 发布模板 ZIP |
+| `webTemplatePath` | `''` | 用来代替随附模板或下载的绝对路径 Web 发布模板 ZIP |
 | `windowsTemplateArchiveUrl` | `https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_export_templates.tpz` | 运行时 Godot 版本的 Godot 导出模板归档；Windows 的[桌面版导出](#desktop-export)只从中下载其模板；须为 http 或 https URL |
 | `windowsTemplateEntry` | `templates/windows_release_x86_64.exe` | 64 位 x86 Windows 发布模板在该归档中的路径 |
 | `windowsTemplateSha256` | `d34d36f3…4b0562` | 下载的模板必须具有的小写十六进制 SHA-256；与归档一起修改 |
@@ -338,7 +338,7 @@ harness 只在至少有一个帧响应打开时推流，帧率为 `streamFps`，
 
 Godot 的网页运行时不绘制启动画面；只有页面的加载界面会在项目的 `application/boot_splash/bg_color` 背景上、进度条上方显示启动图片 `index.png`，除非项目的 `application/boot_splash/image` 指定了图片，否则 Godot 在那里写入自己的标志。对于没有自己图片的项目，导出会把 Godot 的标志换成 WASD Engine 的标志：一张 1600 x 1200 的图片，标志居中于透明画布上，页面像缩放 Godot 的图片一样缩放它；启动画面颜色的相对亮度低于 0.189 时（例如 Godot 默认的深灰色）使用浅色文字标，更亮的颜色使用深色文字标。有自己图片、或关闭了 `application/boot_splash/show_image` 的项目保留 Godot 的图片。`apps/desktop/scripts/wasdengine-render-icons.ts` 从 WASD Engine 标志把这两张图片渲染到 `runtime/` 中。
 
-Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了 Forward+ 游戏在 Web 上遇到的 Compatibility 渲染器限制：超过约 60 个物体时的实例 uniform、未过滤的 `SOFT_VERY_LOW` 阴影、`emit_particle()`，以及主线程等待着色器编译和帧缓冲检查（[构建说明](../../../wasdengine/web-template/BUILD.md)）。它的导出模板归档只包含该模板。第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布（约 40 MB，因为模板以不压缩方式存储，其摘要只取决于其中的文件）；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
+Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了 Forward+ 游戏在 Web 上遇到的 Compatibility 渲染器限制：超过约 60 个物体时的实例 uniform、未过滤的 `SOFT_VERY_LOW` 阴影、`emit_particle()`，以及主线程等待着色器编译和帧缓冲检查（[构建说明](../../../wasdengine/web-template/BUILD.md)）。它的导出模板归档只包含该模板。桌面应用随附该模板：打包时会把 `webTemplateSha256` 固定的文件以 `<sha256>.zip` 放进本包位于 `app.asar` 之外的 `templates/` 文件夹，每次导出都直接使用它，不再下载。没有随附模板时（例如 Web 配置或源码检出），第一次导出会用 HTTP 范围请求读取归档的 ZIP 目录，只下载 `webTemplateEntry`（约 10 MB），检查其大小、CRC-32 和 `webTemplateSha256`，并以 `templates/<sha256>.zip` 发布（约 40 MB，因为模板以不压缩方式存储，其摘要只取决于其中的文件）；同时进行的导出共享同一次下载。不响应范围请求的服务器会使导出失败，并提示设置 `webTemplatePath`。
 
 <a id="web-check"></a>
 ### Web 检查

@@ -71,6 +71,10 @@ describe('loadCatalog', () => {
     ['an overlay folder that the catalog lacks', (entries: Record<string, Record<string, unknown>>) => {
       ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).overlay = ['test-camera/overlay']
     }, /Cannot read the overlay folder of test-camera at .*test-camera\/overlay/u],
+    ['a bundled entry without an archive or asset pack', (entries: Record<string, Record<string, unknown>>) => {
+      (entries['test-rig'] as Record<string, unknown>).bundled = true
+    }, /bundled needs an archive or an asset pack/u],
+    ['bundled set to false', (entries: Record<string, Record<string, unknown>>) => { (entries['test-camera'] as Record<string, unknown>).bundled = false }, /not a valid add-on entry/u],
     ['an overlay path with ..', (entries: Record<string, Record<string, unknown>>) => {
       ((entries['test-camera'] as Record<string, unknown>).godot as Record<string, unknown>).overlay = ['../outside']
     }, /not a valid add-on entry/u],

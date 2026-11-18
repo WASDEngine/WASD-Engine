@@ -10,6 +10,7 @@
  * @module @deepseek-ai/dsh-game-addons
  */
 import { isAbsolute, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { resolveGodotProject } from '@deepseek-ai/dsh-godot'
@@ -20,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type { ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-working-directory'
+import { bundledArchivesDir } from './archive.ts'
 import { loadCatalog } from './catalog.ts'
 import { addonView, GameAddonManager, type ImportReport } from './manager.ts'
 import { gameAddonMcpProvider } from './mcp.ts'
@@ -92,6 +94,8 @@ export default class GameAddons extends TypertRemoteService {
       catalog,
       downloads: {
         cacheDir: join(this.config.dataRoot, 'archives'),
+        // The Desktop app's packaging puts the archives of the catalog's bundled entries in this package's archives folder.
+        bundledDir: bundledArchivesDir(resolve(fileURLToPath(new URL('..', import.meta.url)))),
         fetch: (url, signal) => fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(this.config.downloadTimeoutMs)]), headers: { 'User-Agent': 'WASD Engine' } }),
       },
       blenderStore: this.config.blenderStore,

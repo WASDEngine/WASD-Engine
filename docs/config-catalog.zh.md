@@ -1873,7 +1873,7 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-game-addons`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `skills` · `typert`
-- `source`: [`packages/gamedev/game-addons/src/index.ts:41`](../packages/gamedev/game-addons/src/index.ts)
+- `source`: [`packages/gamedev/game-addons/src/index.ts:43`](../packages/gamedev/game-addons/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2142,7 +2142,7 @@ export interface Config {
   webTemplateEntry: string
   /** Lowercase hex SHA-256 of that template; change it together with the archive. */
   webTemplateSha256: string
-  /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
+  /** Absolute Web release template ZIP to use instead of the shipped template or the download; empty uses those. */
   webTemplatePath: string
   /** Godot export templates archive of the runtime's Godot version, from which a Windows export downloads only its template. */
   windowsTemplateArchiveUrl: string

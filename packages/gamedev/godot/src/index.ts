@@ -62,7 +62,7 @@ import type {
   GodotRunStarter, GodotRunView, GodotRuntimeView, GodotServerExport, GodotServerExportRequest, GodotViewItem, GodotWebCheck,
   GodotWebCheckRequest, GodotWebExport, GodotWebExportRequest,
 } from './types.ts'
-import { ExportTemplateManager } from './export-template.ts'
+import { bundledTemplatesDir, ExportTemplateManager } from './export-template.ts'
 
 export type * from './types.ts'
 export { GodotAndroidToolchainError } from './android.ts'
@@ -182,7 +182,7 @@ export interface Config {
   webTemplateEntry: string
   /** Lowercase hex SHA-256 of that template; change it together with the archive. */
   webTemplateSha256: string
-  /** Absolute Web release template ZIP to use instead of the download; empty downloads it. */
+  /** Absolute Web release template ZIP to use instead of the shipped template or the download; empty uses those. */
   webTemplatePath: string
   /** Godot export templates archive of the runtime's Godot version, from which a Windows export downloads only its template. */
   windowsTemplateArchiveUrl: string
@@ -380,7 +380,7 @@ const MOBILE_TEMPLATES: Readonly<Record<GodotMobilePlatform, PlatformTemplate>> 
  * @returns the manager.
  */
 function templateManager(
-  config: Config, field: typeof TEMPLATE_FIELDS[number], platform: string, extension: string,
+  config: Config, field: typeof TEMPLATE_FIELDS[number], platform: string, extension: string, bundledDir: string,
 ): ExportTemplateManager {
   return new ExportTemplateManager({
     dataRoot: config.dataRoot,
@@ -390,6 +390,7 @@ function templateManager(
     entry: config[`${field}Entry`],
     sha256: config[`${field}Sha256`],
     path: config[`${field}Path`],
+    bundledDir,
     extension,
   }, (url, init) => fetch(url, { headers: init.headers, signal: init.signal }))
 }
@@ -526,16 +527,20 @@ export default class GodotController extends TypertRemoteService {
       windowTimeoutMs: config.requestTimeoutMs,
     })
     const host = createRuntimeHost(ctx.subprocess, { outputBytes: config.processOutputBytes, graceMs: config.stopGraceMs })
-    // The desktop app's packaging puts the runtime it ships in this package's `libgodot` folder.
-    const bundledRoot = bundledRuntimeRoot(resolve(fileURLToPath(new URL('..', import.meta.url))))
+    // The desktop app's packaging puts the runtime it ships in this package's `libgodot` folder, and the Web export
+    // template it ships in its `templates` folder.
+    const packageRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
+    const bundledRoot = bundledRuntimeRoot(packageRoot)
     this.runtime = new GodotRuntimeManager({ ...config, bundledRoot }, host, () => {
       for (const watcher of [...this.runtimeWatchers]) watcher()
     })
-    this.templates = templateManager(config, 'webTemplate', 'Web', '.zip')
-    const platformTemplate = ({ field, platform, extension }: PlatformTemplate) => templateManager(config, field, platform, extension)
+    const bundledTemplates = bundledTemplatesDir(packageRoot)
+    this.templates = templateManager(config, 'webTemplate', 'Web', '.zip', bundledTemplates)
+    const platformTemplate = ({ field, platform, extension }: PlatformTemplate) =>
+      templateManager(config, field, platform, extension, bundledTemplates)
     this.desktopTemplates = { windows: platformTemplate(DESKTOP_TEMPLATES.windows), macos: platformTemplate(DESKTOP_TEMPLATES.macos) }
     this.mobileTemplates = { android: platformTemplate(MOBILE_TEMPLATES.android), ios: platformTemplate(MOBILE_TEMPLATES.ios) }
-    this.serverTemplates = templateManager(config, 'serverTemplate', 'Linux server', '.x86_64')
+    this.serverTemplates = templateManager(config, 'serverTemplate', 'Linux server', '.x86_64', bundledTemplates)
     ctx.effect(() => async () => {
       this.runtime.dispose()
       this.headless.close(new Error('The Godot plugin stopped before the check or export could start.'))
@@ -745,9 +750,9 @@ export default class GodotController extends TypertRemoteService {
 
   /**
    * Export a project for the Web with the built-in runtime: a single-threaded build without GDExtensions that any
-   * static web server can serve and any page can frame. The first export downloads the Web template. The export,
-   * which imports the project, waits until the project's import steps and checks in this Host have ended. For other
-   * plugins on the Host; the Game tab does not call it.
+   * static web server can serve and any page can frame. The Desktop app ships the Web template; elsewhere the first
+   * export downloads it. The export, which imports the project, waits until the project's import steps and checks in
+   * this Host have ended. For other plugins on the Host; the Game tab does not call it.
    * @param request - absolute project folder and output folder.
    * @param signal - cancellation; it stops the export process.
    * @returns the exported files.

@@ -25,7 +25,7 @@ import { constants } from 'node:fs'
 import { copyFile, lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
-import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads } from './archive.ts'
+import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads, type LocalArchive } from './archive.ts'
 import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catalog.ts'
 import { standardLicenseText } from './licenses.ts'
 import { NOTICES_FILE, noticeSection, readNotice, removeNotice, writeNotice } from './notices.ts'
@@ -713,7 +713,7 @@ export class GameAddonManager {
   private async stage(projectDir: string, addon: GameAddon, signal: AbortSignal): Promise<StagedAddon> {
     const godot = addon.godot as NonNullable<GameAddon['godot']>
     const archive = addon.archive
-    const archivePath = archive === undefined ? undefined : await cachedArchive(archive, this.options.downloads, signal)
+    const archivePath = archive === undefined ? undefined : (await cachedArchive(archive, this.options.downloads, signal)).path
     const staging = await stagingFolder(projectDir)
     const folder = join(staging.dir, godot.addonDir)
     try {
@@ -1026,15 +1026,16 @@ export class GameAddonManager {
     archive: { readonly url: string; readonly sha256: string; readonly bytes: number; readonly root: string },
     signal: AbortSignal,
   ): StoreSource {
-    let archivePath: string | undefined
+    let local: LocalArchive | undefined
     return {
       sha256: archive.sha256,
       write: async (staging) => {
-        archivePath = await cachedArchive(archive, this.options.downloads, signal)
-        return await unpackFolder(archivePath, archive.root, staging, signal)
+        local = await cachedArchive(archive, this.options.downloads, signal)
+        return await unpackFolder(local.path, archive.root, staging, signal)
       },
       placed: async () => {
-        if (archivePath !== undefined) await rm(archivePath, { force: true })
+        // A downloaded archive leaves the cache once the store holds it; one the app ships stays in the app.
+        if (local !== undefined && !local.bundled) await rm(local.path, { force: true })
       },
     }
   }

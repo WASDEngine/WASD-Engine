@@ -1,8 +1,8 @@
-/** Pinned archive downloads, the archive cache, and unpacking one folder of an archive. */
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+/** Pinned archive downloads, the archive cache, the archives the Desktop app ships, and unpacking one folder of an archive. */
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { cachedArchive, GameAddonArchiveError, readArchiveFile, unpackFolder } from '../src/archive.ts'
+import { bundledArchivesDir, cachedArchive, GameAddonArchiveError, readArchiveFile, unpackFolder } from '../src/archive.ts'
 import { CAMERA_ARCHIVE, fakeDownloads, pin, scratch, URLS, zip, type Scratch } from './fixtures.ts'
 
 let dir: Scratch | undefined
@@ -20,12 +20,36 @@ describe('cachedArchive', () => {
     const downloads = fakeDownloads()
     const cacheDir = join(dir.root, 'archives')
     const archive = pin(URLS.camera, CAMERA_ARCHIVE, '')
-    const path = await cachedArchive(archive, { cacheDir, fetch: downloads.fetch }, signal)
-    expect(path).toBe(join(cacheDir, `${archive.sha256}.zip`))
-    expect(new Uint8Array(await readFile(path))).toEqual(CAMERA_ARCHIVE)
-    expect(await cachedArchive(archive, { cacheDir, fetch: downloads.fetch }, signal)).toBe(path)
+    const local = await cachedArchive(archive, { cacheDir, fetch: downloads.fetch }, signal)
+    expect(local).toEqual({ path: join(cacheDir, `${archive.sha256}.zip`), bundled: false })
+    expect(new Uint8Array(await readFile(local.path))).toEqual(CAMERA_ARCHIVE)
+    expect(await cachedArchive(archive, { cacheDir, fetch: downloads.fetch }, signal)).toEqual(local)
     expect(downloads.requests).toEqual([URLS.camera])
     expect(await readdir(cacheDir)).toEqual([`${archive.sha256}.zip`])
+  })
+
+  it('reads an archive that the Desktop app ships in place, and downloads one whose shipped file has another size', async () => {
+    dir = await scratch('archive')
+    const downloads = fakeDownloads()
+    const cacheDir = join(dir.root, 'archives')
+    const bundledDir = join(dir.root, 'shipped')
+    await mkdir(bundledDir)
+    const archive = pin(URLS.camera, CAMERA_ARCHIVE, '')
+    const shipped = join(bundledDir, `${archive.sha256}.zip`)
+    await writeFile(shipped, CAMERA_ARCHIVE)
+    expect(await cachedArchive(archive, { cacheDir, bundledDir, fetch: downloads.fetch }, signal)).toEqual({ path: shipped, bundled: true })
+    expect(downloads.requests).toEqual([])
+    await writeFile(shipped, 'not the pinned archive')
+    expect(await cachedArchive(archive, { cacheDir, bundledDir, fetch: downloads.fetch }, signal))
+      .toEqual({ path: join(cacheDir, `${archive.sha256}.zip`), bundled: false })
+    expect(downloads.requests).toEqual([URLS.camera])
+  })
+
+  it('finds the shipped archives of a packaged app outside app.asar', () => {
+    const resources = join('/', 'Applications', 'WASD Engine.app', 'Contents', 'Resources')
+    expect(bundledArchivesDir(join(resources, 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-game-addons')))
+      .toBe(join(resources, 'app.asar.unpacked', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-game-addons', 'archives'))
+    expect(bundledArchivesDir(join('/', 'repo', 'packages', 'gamedev', 'game-addons'))).toBe(join('/', 'repo', 'packages', 'gamedev', 'game-addons', 'archives'))
   })
 
   it('refuses an archive whose digest, size, or response differs from the pin and keeps nothing', async () => {
