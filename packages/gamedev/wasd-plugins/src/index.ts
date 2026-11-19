@@ -508,6 +508,7 @@ export default class WasdPlugins extends TypertRemoteService {
         fetch: (input, init) => fetch(input, init),
         runInstances: (request, signal) => scope.godot.runInstances(request, signal),
         addonSource: ADDON_SOURCE,
+        exclusive: (projectDir, signal, change) => this.projects.run(projectDir, signal, change),
       }
       const surface = sessionSurface(ctx, this.linkQueue)
       for (const definition of multiplayerToolDefinitions(multiplayerHost, surface)) scope.tools.register(definition)

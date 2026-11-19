@@ -166,6 +166,28 @@ describe('elevenlabs_sound_effect and elevenlabs_music', () => {
     expect(text(short)).toContain('duration_seconds must be from 0.5 to 30.')
   })
 
+  it('refuses a network path before any request, so no other computer is reached with the user\'s credentials', async () => {
+    const current = await composed()
+    for (const path of ['\\\\server\\share\\rain.wav', '//server/share/rain.wav']) {
+      const result = await callTool(current, 'elevenlabs_sound_effect', { prompt: 'rain', path })
+      expect(result.isError).toBe(true)
+      expect(text(result)).toContain(`${path} is a network path; pass a path on this computer.`)
+    }
+    expect(current.api.requests).toEqual([])
+  })
+
+  it('refuses a second call for a file that a call is making, before it pays for audio', async () => {
+    const current = await composed()
+    const [first, second] = await Promise.all([
+      callTool(current, 'elevenlabs_sound_effect', { prompt: 'rain', path: 'audio/rain.wav' }),
+      callTool(current, 'elevenlabs_sound_effect', { prompt: 'rain', path: 'Audio/RAIN.wav' }),
+    ])
+    expect(first.isError).toBe(false)
+    expect(second.isError).toBe(true)
+    expect(text(second)).toContain('Another call is making Audio/RAIN.wav now; wait for it, or choose another path.')
+    expect(current.api.requests.filter(request => request.path.endsWith('/sound-effects'))).toHaveLength(1)
+  })
+
   it('saves music as MP3 only', async () => {
     const current = await composed()
     const result = await callTool(current, 'elevenlabs_music', { prompt: 'calm lofi with soft piano', path: 'audio/music/menu.mp3', duration_seconds: 30, instrumental: true })
@@ -251,6 +273,18 @@ describe('elevenlabs_clone_voice and elevenlabs_delete_voice', () => {
     const result = await callTool(current, 'elevenlabs_clone_voice', args)
     expect(result.isError).toBe(true)
     expect(text(result)).toContain(message)
+    expect(current.approval.asked).toEqual([])
+    expect(current.api.requests).toEqual([])
+  })
+
+  it('refuses recordings larger together than a clone takes before asking the user', async () => {
+    const current = await composed()
+    await mkdir(join(current.work, 'recordings'), { recursive: true })
+    // Three recordings of 9.9 MiB each fit one by one, but not together within the 29 MiB a clone takes.
+    for (const name of ['a.wav', 'b.wav', 'c.wav']) await writeFile(join(current.work, 'recordings', name), Buffer.alloc(Math.floor(9.9 * 1024 * 1024)))
+    const result = await callTool(current, 'elevenlabs_clone_voice', { name: 'Rhea', samples: ['recordings/a.wav', 'recordings/b.wav', 'recordings/c.wav'] })
+    expect(result.isError).toBe(true)
+    expect(text(result)).toContain('The recordings take 29.7 MB together, more than the 29 MB a clone takes')
     expect(current.approval.asked).toEqual([])
     expect(current.api.requests).toEqual([])
   })

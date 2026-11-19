@@ -710,7 +710,7 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
         checkTextures()
         const text = new TextDecoder().decode(source.data)
         const loader = new OBJLoader(manager)
-        const library = /^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/mu.exec(text)?.[1]
+        const library = mtllibOf(text)
         const materials = library === undefined ? undefined : await objMaterials(library, manager, source.related, signal)
         if (library !== undefined && materials === undefined) listMissing(fileName(library))
         if (materials !== undefined) loader.setMaterials(materials)
@@ -780,6 +780,27 @@ export async function loadModel(source: ModelSource, signal: AbortSignal): Promi
     disposeObject(root)
   }
   return { root, animations, stats: statsOf(root), missing, settled: settled.promise, textureName, dispose }
+}
+
+/**
+ * The name of an OBJ file's first `mtllib` statement: the rest of its line without the spaces and tabs around it, as
+ * `/^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/mu` captures it, read a line at a time so that a crafted line costs linear time.
+ * @param text - the OBJ file.
+ * @returns the name, or undefined when no line names a library.
+ */
+export function mtllibOf(text: string): string | undefined {
+  for (const line of text.split(/[\n\r\u2028\u2029]/u)) {
+    let at = 0
+    while (line[at] === ' ' || line[at] === '\t') at++
+    if (!line.startsWith('mtllib', at)) continue
+    at += 'mtllib'.length
+    if (line[at] !== ' ' && line[at] !== '\t') continue
+    let end = line.length
+    while (end > at && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--
+    while (at < end && (line[at] === ' ' || line[at] === '\t')) at++
+    if (at < end) return line.slice(at, end)
+  }
+  return undefined
 }
 
 /**
@@ -1260,14 +1281,6 @@ export class ModelStage {
     if (this.model !== undefined) applyWireframe(this.model.root, shading === 'wireframe')
     this.scene.overrideMaterial = shading === 'solid' ? this.clay : null
     this.requestRender()
-  }
-
-  /**
-   * Draw the model's meshes as wireframes or as surfaces.
-   * @param on - whether meshes draw as wireframes.
-   */
-  setWireframe(on: boolean): void {
-    this.setShading(on ? 'wireframe' : 'material')
   }
 
   /**

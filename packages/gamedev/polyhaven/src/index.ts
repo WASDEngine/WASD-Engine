@@ -97,6 +97,8 @@ export function apply(ctx: Context, config: Config): void {
     requestTimeoutMs: config.requestTimeoutMs,
     downloadTimeoutMs: config.downloadTimeoutMs,
     async directory(requested, id, exec) {
+      // A Windows network path (`\\host\share`, `//host/share`) would connect to another computer with the user's credentials.
+      if (requested !== undefined && /^[\\/]{2}/u.test(requested)) throw new Error(`${requested} is a network path; pass a folder on this computer.`)
       if (requested !== undefined && isAbsolute(requested)) return requested
       if (exec.agent === undefined) throw new Error('Pass directory as an absolute path.')
       return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested ?? join('assets', 'polyhaven', id))

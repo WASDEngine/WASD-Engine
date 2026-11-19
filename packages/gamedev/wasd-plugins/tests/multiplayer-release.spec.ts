@@ -85,29 +85,39 @@ describe('releases of multiplayer games', () => {
     for (const text of [configs.web, configs.server]) expect(text).toContain(`max_players=20\napi_origin="${ORIGIN}"\napp_origin="${ORIGIN}"\ngame_id="${GAME.id}"\n`)
   })
 
-  it('point a first release\'s configuration at the new game only after the upload, before the server build', async () => {
+  it('make a dedicated game\'s first release create the game before the builds export, so both name it', async () => {
     const dir = await multiplayerProject({ linked: false, config: '[wasd]\nmode="dedicated"\n' })
     const site = releaseSite()
     const { deps, configs } = await dependencies(site.fetch)
     await releaseGame({ projectDir: dir }, deps, signal)
-    expect(configs.web).toBe('[wasd]\nmode="dedicated"\n')
-    expect(configs.server).toContain(`game_id="${GAME.id}"`)
+    for (const text of [configs.web, configs.server]) expect(text).toContain(`game_id="${GAME.id}"`)
     expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toContain(`game_id="${GAME.id}"`)
   })
 
-  it('keep the Web version released when the server build fails, and store none for a player-hosted game', async () => {
+  it('point a player-hosted game\'s first release at the release\'s site before the export, and at the new game after the upload', async () => {
+    const dir = await multiplayerProject({ linked: false, config: '[wasd]\nmode="player_hosted"\napi_origin="https://setup.example"\n' })
+    const site = releaseSite()
+    const { deps, configs } = await dependencies(site.fetch)
+    await releaseGame({ projectDir: dir }, deps, signal)
+    expect(configs.web).toContain(`api_origin="${ORIGIN}"\napp_origin="${ORIGIN}"\ngame_id=""\n`)
+    expect(configs.web).not.toContain('setup.example')
+    expect(await readFile(join(dir, 'wasd_multiplayer.cfg'), 'utf8')).toContain(`game_id="${GAME.id}"`)
+  })
+
+  it('release nothing when a dedicated game\'s server build fails, and store none for a player-hosted game', async () => {
     const dedicated = await multiplayerProject({ config: '[wasd]\nmode="dedicated"\n' })
     const site = releaseSite()
-    const failed = await releaseGame({ projectDir: dedicated }, (await dependencies(site.fetch, { server: 'fail' })).deps, signal)
-    expect(failed.version).toBe(3)
-    expect(failed.serverBuild).toBeUndefined()
-    expect(failed.warnings.at(-1)).toBe('The version is released, but its dedicated server build was not stored, so the game\'s servers keep their earlier build: The Godot dedicated server export ended (exit code 1) without writing server.x86_64.')
+    await expect(releaseGame({ projectDir: dedicated }, (await dependencies(site.fetch, { server: 'fail' })).deps, signal)).rejects.toThrow(
+      'Nothing was released: the game\'s dedicated server build failed, and no player could join a version without one: The Godot dedicated server export ended (exit code 1) without writing server.x86_64.')
+    await expect(releaseGame({ projectDir: dedicated }, (await dependencies(site.fetch, { server: 'none' })).deps, signal)).rejects.toThrow(
+      'Nothing was released: the game\'s dedicated server build failed, and no player could join a version without one: this WASD Engine cannot export dedicated server builds.')
+    expect(site.modes).toEqual([])
     const hosted = await multiplayerProject({ config: '[wasd]\nmode="player_hosted"\n' })
     const { deps, configs } = await dependencies(site.fetch)
     expect((await releaseGame({ projectDir: hosted }, deps, signal)).serverBuild).toBeUndefined()
     expect(configs.server).toBeUndefined()
     expect(site.builds).toEqual([])
     // Each upload names its mode, so the site plays an online version only while it is the latest.
-    expect(site.modes).toEqual(['dedicated', 'player_hosted'])
+    expect(site.modes).toEqual(['player_hosted'])
   })
 })

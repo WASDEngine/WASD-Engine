@@ -7,7 +7,10 @@
  * plugin script.
  * @module @deepseek-ai/dsh-godot/src/check
  */
-import { stat } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { z } from 'zod'
 import { runGodotCommand } from './command.ts'
@@ -20,6 +23,12 @@ import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 
 /** Most scripts one check loads. */
 export const CHECK_SCRIPT_LIMIT = 400
+
+/**
+ * Most characters of the scripts' paths on the check's command line. Windows limits a command line to 32,767
+ * characters, so a longer list goes to the check in a file, which `wasd_check.gd` reads after `--paths-file`.
+ */
+export const CHECK_ARGV_PATH_CHARS = 8000
 
 const MARKER = 'WASD_CHECK '
 
@@ -265,11 +274,22 @@ function attribute(paths: readonly string[], own: ReadonlyMap<string, CheckLine[
  * @throws {GodotCheckError} when the process ends or times out before reporting a script.
  */
 export async function checkScripts(options: CheckOptions): Promise<CheckedScript[]> {
-  const { exit, timedOut, stdout, stderr } = await runGodotCommand({
-    ...options,
-    argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--script', options.checkScript, '--', ...options.paths]),
-    cwd: options.projectDir,
-  })
+  const listed = options.paths.reduce((sum, path) => sum + path.length + 1, 0) > CHECK_ARGV_PATH_CHARS
+    ? join(tmpdir(), `wasd-check-${randomUUID()}.txt`)
+    : undefined
+  let outcome
+  try {
+    if (listed !== undefined) await writeFile(listed, options.paths.join('\n'), { flag: 'wx', mode: 0o600 })
+    const paths = listed === undefined ? options.paths : ['--paths-file', listed]
+    outcome = await runGodotCommand({
+      ...options,
+      argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir, '--script', options.checkScript, '--', ...paths]),
+      cwd: options.projectDir,
+    })
+  } finally {
+    if (listed !== undefined) await rm(listed, { force: true })
+  }
+  const { exit, timedOut, stdout, stderr } = outcome
   options.signal.throwIfAborted()
   const own = new Map<string, CheckLine['errors']>()
   const pluginLoads: CheckLine[] = []

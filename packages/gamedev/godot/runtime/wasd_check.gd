@@ -19,7 +19,8 @@ extends SceneTree
 )
 ## WASD Engine static script check.
 ##
-## The Host runs `--headless --path <project> --script <this file> -- <res paths...>`. For each path the check
+## The Host runs `--headless --path <project> --script <this file> -- <res paths...>`, or, for a list too long for a
+## command line, `-- --paths-file <file>` with one path per line of the file. For each path the check
 ## loads the script, bypassing the resource cache, and prints one line: `WASD_CHECK ` followed by a JSON object
 ## {"path": <res path>, "loaded": <bool>, "errors": [{"level", "message", "file", "line", "function"}]}. The
 ## errors are the engine errors and warnings logged while that script loaded, so an error in a script it
@@ -107,7 +108,11 @@ func _initialize() -> void:
 	_restore_autoloads()
 	var logger := CheckLogger.new()
 	OS.add_logger(logger)
-	for path in OS.get_cmdline_user_args():
+	var paths := OS.get_cmdline_user_args()
+	# A list too long for a command line comes in a file, one path per line.
+	if paths.size() == 2 and paths[0] == "--paths-file":
+		paths = FileAccess.get_file_as_string(paths[1]).split("\n", false)
+	for path in paths:
 		logger.take()
 		var plugin := _plugin_to_load(path)
 		if not plugin.is_empty():

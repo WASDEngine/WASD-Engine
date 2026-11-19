@@ -102,6 +102,8 @@ export function apply(ctx: Context, config: Config): void {
   ctx.tools.register(graphicsReviewToolDefinition({
     ...base,
     async image(requested, exec) {
+      // A Windows network path (`\\host\share`, `//host/share`) would connect to another computer with the user's credentials.
+      if (/^[\\/]{2}/u.test(requested)) throw new Error(`${requested} is a network path; pass an image on this computer.`)
       if (isAbsolute(requested)) return requested
       if (exec.agent === undefined) throw new Error('Pass image as an absolute path.')
       return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested)

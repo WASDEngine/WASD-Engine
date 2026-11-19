@@ -57,6 +57,9 @@ option_value() {
 
 out_dir=
 godot_ref=4.7.2-stable
+# The commit the default tag names; a clone of the default tag that checks out another commit, such as after the tag
+# moved, stops the build.
+godot_commit=ed1daf0bf001b61586d9930840f2f1394092c079
 godot_ref_given=false
 source_dir=
 version=4.7.2-wasd.4
@@ -274,6 +277,9 @@ else
     cleanup_paths+=("$partial")
     log "cloning Godot $godot_ref into $src"
     git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$godot_ref" -- "$godot_repository_url" "$partial"
+    if [ "$godot_ref_given" = false ] && [ "$(git -C "$partial" rev-parse HEAD)" != "$godot_commit" ]; then
+      die "the Godot tag $godot_ref names $(git -C "$partial" rev-parse HEAD), not the pinned commit $godot_commit"
+    fi
     mv -- "$partial" "$src"
   fi
 fi

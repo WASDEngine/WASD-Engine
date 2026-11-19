@@ -104,7 +104,7 @@
     "@deepseek-ai/dsh-client-ui-slots": "workspace:*",
     "@deepseek-ai/dsh-client-ui-tool": "workspace:*",
     "@deepseek-ai/dsh-game-mcp": "workspace:*",
-    "@modelcontextprotocol/client": "2.2.0",
+    "@modelcontextprotocol/client": "2.3.1",
     "@deepseek-ai/dsh-game-audio": "workspace:*",
     "@deepseek-ai/dsh-scope": "workspace:*",
     "@deepseek-ai/dsh-godot-protocol": "workspace:*"

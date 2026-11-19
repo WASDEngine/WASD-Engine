@@ -35,10 +35,24 @@ export interface RuntimeSettings {
   readonly runtimeVersion: string
   /** Release manifest URL for {@link GodotRuntimeManager.install}. */
   readonly runtimeManifestUrl: string
+  /** SHA-256 that the release manifest's bytes must have; empty accepts any manifest. */
+  readonly runtimeManifestSha256: string
   /** Configured LibGodot library; empty when unset. */
   readonly libgodotPath: string
   /** Configured runner executable; empty when unset. */
   readonly runnerPath: string
+}
+
+/**
+ * Whether the plugin downloads from a URL: HTTPS, or plain HTTP from this computer, where a test or a developer serves files.
+ * @param url - the configured URL.
+ * @returns true for an https URL or an http URL of a loopback host.
+ */
+export function isDownloadUrl(url: string): boolean {
+  if (!URL.canParse(url)) return false
+  const parsed = new URL(url)
+  if (parsed.protocol === 'https:') return true
+  return parsed.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
 }
 
 /** A Godot runtime a run can launch: the patched LibGodot runner and its library. */
@@ -376,7 +390,9 @@ export class GodotRuntimeManager {
     const archive = join(root, `.download-${id}.tar.gz`)
     const staging = join(root, `.staging-${id}`)
     try {
-      await this.download(new URL(artifact.url, this.settings.runtimeManifestUrl).href, archive, artifact, signal)
+      const url = new URL(artifact.url, this.settings.runtimeManifestUrl).href
+      if (!isDownloadUrl(url)) throw new GodotRuntimeError('RUNTIME_MANIFEST', `The Godot runtime manifest names the archive ${url}, which is not an https URL.`)
+      await this.download(url, archive, artifact, signal)
       this.report({ phase: 'extracting', completedBytes: artifact.bytes, totalBytes: artifact.bytes })
       await mkdir(staging)
       await this.host.extract(archive, staging, signal)
@@ -411,9 +427,17 @@ export class GodotRuntimeManager {
       await response.body?.cancel()
       throw new GodotRuntimeError('RUNTIME_MANIFEST', `Fetching the Godot runtime manifest ${url} failed with HTTP ${response.status}.`)
     }
+    const bytes = Buffer.from(await response.arrayBuffer())
+    const pinned = this.settings.runtimeManifestSha256
+    if (pinned !== '') {
+      const actual = createHash('sha256').update(bytes).digest('hex')
+      if (actual !== pinned) {
+        throw new GodotRuntimeError('RUNTIME_MANIFEST', `The Godot runtime manifest ${url} has SHA-256 ${actual}, not the pinned ${pinned}.`)
+      }
+    }
     let value: unknown
     try {
-      value = await response.json()
+      value = JSON.parse(bytes.toString('utf8'))
     } catch (error) {
       throw new GodotRuntimeError('RUNTIME_MANIFEST', `The Godot runtime manifest ${url} is not JSON.`, { cause: error })
     }

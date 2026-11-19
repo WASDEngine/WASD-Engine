@@ -653,29 +653,34 @@ async function pointConfig(projectDir: string, config: MultiplayerConfig, gameId
   return updated
 }
 
+/** A dedicated server build zipped for upload, and the game its configuration named when it was exported. */
+interface ServerArchive {
+  readonly path: string
+  readonly bytes: number
+  readonly gameId: string
+}
+
 /**
- * Export, zip, and store the dedicated server build of a released version.
+ * Export and zip the dedicated server build of the project as its configuration stands.
  * @param request - the release's project.
- * @param dependencies - the server export, HTTP, and temporary files.
- * @param access - the signed-in site.
- * @param gameId - the released game.
- * @param version - the released version.
+ * @param dependencies - the server export and temporary files.
+ * @param gameId - the game the configuration names.
  * @param signal - cancellation.
- * @returns the stored build.
+ * @returns the zipped build, which the caller removes.
+ * @throws {ReleaseError} when this WASD Engine cannot export server builds.
  */
-async function storeServerBuild(
-  request: ReleaseRequest, dependencies: ReleaseDependencies, access: SiteAccess, gameId: string, version: number, signal: AbortSignal,
-): Promise<WasdServerBuild> {
+async function exportServerArchive(
+  request: ReleaseRequest, dependencies: ReleaseDependencies, gameId: string, signal: AbortSignal,
+): Promise<ServerArchive> {
   const exportServer = dependencies.exportServer
   if (exportServer === undefined) throw new ReleaseError('this WASD Engine cannot export dedicated server builds.')
   const exported = await exportServer(request.projectDir, join(request.projectDir, STATE_DIR, SERVER_BUILD_DIR), signal)
-  const archive = join(dependencies.tempDir, `wasd-server-${randomUUID()}.zip`)
+  const path = join(dependencies.tempDir, `wasd-server-${randomUUID()}.zip`)
   try {
-    const bytes = await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
-    const build = await new MultiplayerApi(access, dependencies.fetch, signal).uploadBuild(gameId, version, archive)
-    return { version: build.version, bytes }
-  } finally {
-    await rm(archive, { force: true })
+    return { path, bytes: await writeZip(exported.outputDir, exported.files.map(file => file.path), path, signal), gameId }
+  } catch (error) {
+    await rm(path, { force: true })
+    throw error
   }
 }
 
@@ -684,7 +689,8 @@ async function storeServerBuild(
  * unless the request turns the check off, and release the build as the next version of the signed-in account's game,
  * or as the first version of a new game, with the desktop builds as its downloads and what the game was made with.
  * The check runs while the desktop builds export and ends before anything reaches the site; a check that could not run
- * stops nothing.
+ * stops nothing. A dedicated game's server build exports with the desktop builds, and its first release creates the
+ * game before the exports, so that both builds name it.
  * @param request - project, notes, title, preview files, whether to start a new game, visibility, desktop platforms,
  *   and whether to check the Web build.
  * @param dependencies - sign-in, exports, the Web check, HTTP, release folders, temporary files, the preview recording,
@@ -693,7 +699,8 @@ async function storeServerBuild(
  * @returns the release, its share links, its downloads, its credits, and its Web check.
  * @throws {ReleaseError} while signed out, for unusable arguments, for a folder that shares its game with another one
  * and has not said which game it releases ({@link copyQuestion}, before the export), for a private release to a site
- * without private games (before the upload), and when the site refuses or fails.
+ * without private games (before the upload), for a dedicated game whose server build cannot be exported (before the
+ * upload), and when the site refuses or fails.
  * @throws {WebCheckRefusal} when the Web check found problems that stop a release, before anything reaches the site.
  */
 export async function releaseGame(request: ReleaseRequest, dependencies: ReleaseDependencies, signal: AbortSignal): Promise<WasdRelease> {
@@ -726,8 +733,37 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     await dependencies.folders.add(access.origin, id, here)
   }
   let multiplayer = await readMultiplayerConfig(request.projectDir)
-  // The builds carry their game's id where no URL names it; a first release learns the id only from the site.
-  if (multiplayer !== undefined && game !== undefined) {
+  // The builds carry their game's id where no URL names it; a first release learns the id only from the site, but its
+  // builds already talk to the site they are released to, whatever site the setup named.
+  if (multiplayer !== undefined) {
+    multiplayer = await pointConfig(request.projectDir, multiplayer, game?.id ?? multiplayer.gameId, access.origin)
+  }
+  const remember = (linked: GameJson, version: number, digests: PreviewDigests = {}): Promise<void> => {
+    return rememberGame(request.projectDir, access.origin, {
+      ...access.account === undefined ? {} : { account: access.account },
+      id: linked.id, slug: linked.slug, title: linked.title, url: linked.url, version,
+      ...digests.image === undefined ? {} : { image: digests.image },
+      ...digests.gif === undefined ? {} : { gif: digests.gif },
+      ...digests.webp === undefined ? {} : { webp: digests.webp },
+      ...linked.visibility === undefined ? {} : { visibility: linked.visibility },
+    })
+  }
+  // A game made in place of the one the project released to, which was removed, or as a new game of the project,
+  // keeps that game's visibility unless the request names one, so a private game never comes back public.
+  const inherited = game?.visibility ?? accountGame(siteLinks, access.account)?.visibility ?? 'public'
+  const create = async (): Promise<GameJson> => {
+    const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
+    const created = await api.create(name.slice(0, MAX_TITLE), request.visibility ?? inherited)
+    // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
+    // next release adds its version to this game instead of creating another.
+    await remember(created, created.latest_version)
+    await dependencies.folders.add(access.origin, created.id, here)
+    requireVisibility(created, request.visibility)
+    return created
+  }
+  // A dedicated game's server build names its game, so its first release makes the game before the builds export.
+  if (multiplayer?.mode === 'dedicated' && game === undefined) {
+    game = await create()
     multiplayer = await pointConfig(request.projectDir, multiplayer, game.id, access.origin)
   }
   const exported = await dependencies.exportWeb(request.projectDir, join(request.projectDir, STATE_DIR, WEB_BUILD_DIR), signal)
@@ -738,6 +774,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     ? undefined
     : webCheckOutcome(dependencies.checkWeb(exported.outputDir, AbortSignal.any([signal, stopCheck.signal])))
   const archive = join(dependencies.tempDir, `wasd-release-${randomUUID()}.zip`)
+  let serverArchive: ServerArchive | undefined
   try {
     // Desktop builds come before anything reaches the site, so a build that fails publishes nothing.
     const builds: GodotDesktopExport[] = []
@@ -745,31 +782,21 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
       const outputDir = join(request.projectDir, STATE_DIR, DESKTOP_BUILD_DIR, platform)
       builds.push(await dependencies.exportDesktop(request.projectDir, platform, outputDir, signal))
     }
+    // So does a dedicated game's server build: online play needs the latest version, which no player could join
+    // without its server build.
+    if (multiplayer?.mode === 'dedicated' && game !== undefined) {
+      try {
+        serverArchive = await exportServerArchive(request, dependencies, game.id, signal)
+      } catch (error) {
+        if (signal.aborted) throw error
+        throw new ReleaseError(`Nothing was released: the game's dedicated server build failed, and no player could join a version without one: ${(error as Error).message}`, { cause: error })
+      }
+    }
     await writeZip(exported.outputDir, exported.files.map(file => file.path), archive, signal)
     // A check that could not run stops nothing; one that found the game broken in browsers stops the release here.
     const checked = checking === undefined ? undefined : await checking
     if (checked !== undefined && 'webCheck' in checked && checked.webCheck.problems.length > 0) {
       throw new WebCheckRefusal(checked.webCheck, exported.warnings)
-    }
-    const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
-    const remember = (linked: GameJson, version: number, digests: PreviewDigests = {}): Promise<void> => {
-      return rememberGame(request.projectDir, access.origin, {
-        ...access.account === undefined ? {} : { account: access.account },
-        id: linked.id, slug: linked.slug, title: linked.title, url: linked.url, version,
-        ...digests.image === undefined ? {} : { image: digests.image },
-        ...digests.gif === undefined ? {} : { gif: digests.gif },
-        ...digests.webp === undefined ? {} : { webp: digests.webp },
-        ...linked.visibility === undefined ? {} : { visibility: linked.visibility },
-      })
-    }
-    const create = async (): Promise<GameJson> => {
-      const created = await api.create(name.slice(0, MAX_TITLE), request.visibility ?? 'public')
-      // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
-      // next release adds its version to this game instead of creating another.
-      await remember(created, created.latest_version)
-      await dependencies.folders.add(access.origin, created.id, here)
-      requireVisibility(created, request.visibility)
-      return created
     }
     if (game !== undefined && title !== undefined && game.title !== title) game = await api.rename(game.id, title)
     game ??= await create()
@@ -808,7 +835,14 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     let serverBuild: WasdServerBuild | undefined
     if (multiplayer?.mode === 'dedicated') {
       try {
-        serverBuild = await storeServerBuild(request, dependencies, access, released.game.id, released.release.version, signal)
+        // A game made in place of one removed during the release has another id than the build names.
+        if (serverArchive?.gameId !== released.game.id) {
+          if (serverArchive !== undefined) await rm(serverArchive.path, { force: true })
+          serverArchive = await exportServerArchive(request, dependencies, released.game.id, signal)
+        }
+        const builds = new MultiplayerApi(access, dependencies.fetch, signal)
+        const build = await builds.uploadBuild(released.game.id, released.release.version, serverArchive.path)
+        serverBuild = { version: build.version, bytes: serverArchive.bytes }
       } catch (error) {
         if (signal.aborted) throw error
         warnings.push(`The version is released, but its dedicated server build was not stored, so the game's servers keep their earlier build: ${(error as Error).message}`)
@@ -839,6 +873,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   } finally {
     stopCheck.abort()
     await rm(archive, { force: true })
+    if (serverArchive !== undefined) await rm(serverArchive.path, { force: true })
   }
 }
 

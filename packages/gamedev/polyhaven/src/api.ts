@@ -86,6 +86,26 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+/** The domains whose hosts serve Poly Haven's files, besides the configured API's own host. */
+const POLY_HAVEN_DOMAINS = ['polyhaven.com', 'polyhaven.org'] as const
+
+/** Most redirects one request follows, each to a host that {@link servesPolyHaven} accepts. */
+const MAX_REDIRECTS = 5
+
+/**
+ * Whether a URL is one the client fetches: the configured API's host, over its own protocol, or a host of Poly Haven's
+ * domains over HTTPS. An asset's file tree names its files' URLs, and a redirect names another, so neither may send a
+ * request elsewhere.
+ * @param url - the URL to fetch.
+ * @param api - the configured API's URL.
+ * @returns whether the client fetches it.
+ */
+function servesPolyHaven(url: URL, api: URL): boolean {
+  if (url.host === api.host && url.protocol === api.protocol) return true
+  const host = url.hostname.toLowerCase()
+  return url.protocol === 'https:' && POLY_HAVEN_DOMAINS.some(domain => host === domain || host.endsWith(`.${domain}`))
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -303,13 +323,22 @@ export class PolyHavenApi {
   }
 
   private async request(url: URL, accept: string, what: string, signal: AbortSignal): Promise<Response> {
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new PolyHavenRequestError(0, `Poly Haven named ${what} at a URL that is not HTTP: ${url.href}`)
     let response: Response
-    try {
-      response = await this.options.fetch(url, { headers: { 'user-agent': this.options.userAgent, accept }, signal })
-    } catch (error) {
-      signal.throwIfAborted()
-      throw new PolyHavenRequestError(0, `Could not reach Poly Haven at ${url.host} for ${what}: ${message(error)}`, { cause: error })
+    for (let target = url, redirects = 0; ; redirects += 1) {
+      if (!servesPolyHaven(target, this.base)) {
+        throw new PolyHavenRequestError(0, `Poly Haven named ${what} at ${target.href}, which is not a Poly Haven address, so nothing was downloaded from it.`)
+      }
+      try {
+        response = await this.options.fetch(target, { headers: { 'user-agent': this.options.userAgent, accept }, signal, redirect: 'manual' })
+      } catch (error) {
+        signal.throwIfAborted()
+        throw new PolyHavenRequestError(0, `Could not reach Poly Haven at ${target.host} for ${what}: ${message(error)}`, { cause: error })
+      }
+      const location = response.status >= 300 && response.status < 400 ? response.headers.get('location') : null
+      if (location === null) break
+      await response.body?.cancel()
+      if (redirects >= MAX_REDIRECTS) throw new PolyHavenRequestError(response.status, `Poly Haven redirected ${what} more than ${String(MAX_REDIRECTS)} times.`)
+      target = new URL(location, target)
     }
     if (response.ok) return response
     await response.body?.cancel()

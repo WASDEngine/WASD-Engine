@@ -201,7 +201,9 @@ fi
 # so a runtime or work folder whose path holds other characters, such as a user folder named in Chinese, loads no UGens
 # or reads no score. runtime.py changes those lines (SOURCE_PATCHES) to convert through UTF-16, and stops the build
 # when they are not SuperCollider 3.14.1's.
-for patched in $(runtime_py patch-source --source "$(native "$src")"); do
+# The list is read first, so a patch-source that fails stops the build instead of leaving an empty loop.
+patched_files=$(runtime_py patch-source --source "$(native "$src")") || die "runtime.py could not patch $src for Windows paths"
+for patched in $patched_files; do
   log "changed $patched to convert paths from UTF-8 on Windows"
 done
 supercollider=$(runtime_py supercollider-version --source "$(native "$src")")

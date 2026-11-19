@@ -438,6 +438,18 @@ describe('releaseGame', () => {
     expect((await link(dir)).accounts?.[ORIGIN]?.map(entry => entry.id)).toEqual(['game-2'])
   })
 
+  it('keeps a private game private when the site no longer has it and the release makes a new one', async () => {
+    const dir = await project()
+    const server = site()
+    const deps = dependencies(server.fetch)
+    await releaseGame({ projectDir: dir, visibility: 'private' }, deps, signal)
+    server.games.clear()
+    expect(await releaseGame({ projectDir: dir }, deps, signal)).toMatchObject({ version: 1, visibility: 'private' })
+    expect(server.games.get('game-2')?.visibility).toBe('private')
+    expect(await releaseGame({ projectDir: dir, newGame: true }, deps, signal)).toMatchObject({ version: 1, visibility: 'private' })
+    expect(await releaseGame({ projectDir: dir, newGame: true, visibility: 'public' }, deps, signal)).toMatchObject({ visibility: 'public' })
+  })
+
   it('keeps one game per account on a site: each account adds to its own game and never reads the other\'s', async () => {
     const dir = await project()
     const server = site('token-a', 'token-b')

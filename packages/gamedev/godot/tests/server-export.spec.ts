@@ -3,7 +3,8 @@ import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  exportServer, GodotExportError, MULTIPLAYER_CONFIG_FILE, SERVER_EXPORT_BINARY, SERVER_EXPORT_PRESET, WEB_EXPORT_PRESET, withDesktopPreset,
+  EXPORT_INCLUDE_FILTER, exportServer, GodotExportError, MULTIPLAYER_CONFIG_FILE, SERVER_EXPORT_BINARY, SERVER_EXPORT_PRESET,
+  WEB_EXPORT_PRESET, withDesktopPreset,
   withServerPreset, withWebPreset, type ExportOptions,
 } from '../src/export.ts'
 import { fakeLog, scratch, subprocessFixture, writeProject, type FakeGodotConfig, type Scratch, type SubprocessFixture } from './helpers.ts'
@@ -39,7 +40,7 @@ describe('withServerPreset', () => {
     const text = withServerPreset(undefined, '/t/linux "x".x86_64')
     expect(text).toMatch(/^\[preset\.0\]\n\nname="WASD Engine Server"\nplatform="Linux"\nrunnable=false\ndedicated_server=true\n/u)
     expect(text).toContain('export_filter="customized"\ncustomized_files={\n"res://": "strip"\n}\n')
-    expect(text).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
+    expect(text).toContain(`include_filter="${EXPORT_INCLUDE_FILTER}"`)
     expect(text).toContain('custom_template/debug="/t/linux \\"x\\".x86_64"')
     expect(text).toContain('custom_template/release="/t/linux \\"x\\".x86_64"')
     expect(text).toContain('binary_format/embed_pck=true')
@@ -54,10 +55,11 @@ describe('withServerPreset', () => {
     expect(text.match(/\[preset\.\d+\]/gu)).toEqual(['[preset.0]', '[preset.1]', '[preset.2]'])
   })
 
-  it('has the Web and desktop exports carry the multiplayer configuration too, which Godot leaves out as no resource', () => {
-    expect(withWebPreset(undefined, '/t.zip')).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
+  it('has the Web and desktop exports carry the multiplayer configuration and the add-ons\' notices too, which Godot leaves out as no resources', () => {
+    expect(EXPORT_INCLUDE_FILTER).toBe(`${MULTIPLAYER_CONFIG_FILE}, THIRD_PARTY_NOTICES.md, addons/*/LICENSE*`)
+    expect(withWebPreset(undefined, '/t.zip')).toContain(`include_filter="${EXPORT_INCLUDE_FILTER}"`)
     for (const platform of ['windows', 'macos'] as const) {
-      expect(withDesktopPreset(undefined, platform, '/t.zip', 'Tiny Farm')).toContain(`include_filter="${MULTIPLAYER_CONFIG_FILE}"`)
+      expect(withDesktopPreset(undefined, platform, '/t.zip', 'Tiny Farm')).toContain(`include_filter="${EXPORT_INCLUDE_FILTER}"`)
     }
   })
 })

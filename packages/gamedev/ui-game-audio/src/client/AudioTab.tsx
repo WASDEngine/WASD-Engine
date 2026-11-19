@@ -143,7 +143,13 @@ export function AudioTab(props: AudioTabProps): ReactNode {
     rescan()
   }, [navigation, tabId, takeNavigation, select, setQuery, setFilter, rescan])
   const scan = scanState.scan
-  const items = useMemo(() => scan === undefined ? [] : soundItems(scan, probes), [scan, probes])
+  // The items of the last update, so a probe batch replaces only the items of the sounds it read.
+  const lastItems = useRef<ReadonlyMap<string, SoundItem>>(new Map())
+  const items = useMemo(() => {
+    const next = scan === undefined ? [] : soundItems(scan, probes, lastItems.current)
+    lastItems.current = new Map(next.map(item => [item.entry.path, item]))
+    return next
+  }, [scan, probes])
   const shown = useMemo(() => shownSounds(items, view), [items, view])
   const rows = useMemo(() => listRows(shown, view), [shown, view])
   const selected = useMemo(() => selectedSound(view.selected, items), [view.selected, items])

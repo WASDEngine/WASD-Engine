@@ -10,7 +10,7 @@
  * window, and those of connected agents, which name projects by absolute path and confirm through their own user.
  * @module @deepseek-ai/dsh-wasd-plugins/src/multiplayer-tools
  */
-import { readFile, stat, writeFile } from 'node:fs/promises'
+import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import type { GodotInstancesReport, GodotInstancesRequest } from '@deepseek-ai/dsh-godot'
@@ -30,6 +30,7 @@ import {
   type SizeEstimate,
 } from './multiplayer-test.ts'
 import { linkedGame, type SiteAccess } from './release.ts'
+import { writeWhole } from './state.ts'
 
 /** The tools' names, in the order the agent sees them. */
 export const MULTIPLAYER_TOOLS = [
@@ -74,6 +75,16 @@ export interface MultiplayerToolHost {
   runInstances(request: GodotInstancesRequest, signal: AbortSignal): Promise<GodotInstancesReport>
   /** Absolute folder of the WASD Multiplayer add-on this package ships. */
   readonly addonSource: string
+  /**
+   * Run a change of a project's files after the project's exports and releases that started before it, and before
+   * those that start later, so a setup never rewrites `wasd_multiplayer.cfg` while a release writes it. Without it the
+   * change runs at once.
+   * @param projectDir - absolute project folder.
+   * @param signal - cancellation of the wait.
+   * @param change - the change.
+   * @returns the change's result.
+   */
+  readonly exclusive?: <T>(projectDir: string, signal: AbortSignal, change: () => Promise<T>) => Promise<T>
 }
 
 /** How one surface asks the user and shows a confirmation page. */
@@ -462,62 +473,65 @@ export function multiplayerToolDefinitions(host: MultiplayerToolHost, surface: M
       const maxPlayers = args.max_players ?? (mode === 'player_hosted' ? 8 : 32)
       if (!Number.isInteger(maxPlayers) || maxPlayers < 2 || maxPlayers > limit) throw new MultiplayerError(`max_players must be a whole number from 2 to ${String(limit)} for ${mode}.`)
       if (!await isFile(join(host.addonSource, 'wasd_multiplayer.gd'))) throw new MultiplayerError('This WASD Engine has no WASD Multiplayer add-on to install; update WASD Engine.')
-      const files = await replaceFolder(host.addonSource, join(projectDir, ADDON_DIR))
-      const projectFile = join(projectDir, 'project.godot')
-      const before = await readFile(projectFile, 'utf8')
-      const after = withMultiplayerAddon(before)
-      if (after !== before) await writeFile(projectFile, after)
-      let origin: string | undefined
-      try {
-        origin = await host.siteOrigin()
-      } catch {
-        // Without an account plugin, the add-on keeps its default origins.
-        origin = undefined
-      }
-      const existing = await readMultiplayerConfig(projectDir)
-      const access = origin === undefined ? undefined : await host.access()
-      const account = access !== undefined && access.origin === origin ? access.account : undefined
-      const game = origin === undefined ? undefined : await linkedGame(projectDir, origin, account)
-      await writeMultiplayerConfig(projectDir, {
-        mode,
-        maxPlayers,
-        apiOrigin: origin ?? existing?.apiOrigin ?? '',
-        appOrigin: origin ?? existing?.appOrigin ?? '',
-        gameId: game?.id ?? existing?.gameId ?? '',
-        version: existing?.version ?? 0,
+      const exclusive = host.exclusive ?? (<T>(_project: string, _signal: AbortSignal, change: () => Promise<T>) => change())
+      return await exclusive(projectDir, exec.signal, async () => {
+        const files = await replaceFolder(host.addonSource, join(projectDir, ADDON_DIR))
+        const projectFile = join(projectDir, 'project.godot')
+        const before = await readFile(projectFile, 'utf8')
+        const after = withMultiplayerAddon(before)
+        if (after !== before) await writeWhole(projectFile, after)
+        let origin: string | undefined
+        try {
+          origin = await host.siteOrigin()
+        } catch {
+          // Without an account plugin, the add-on keeps its default origins.
+          origin = undefined
+        }
+        const existing = await readMultiplayerConfig(projectDir)
+        const access = origin === undefined ? undefined : await host.access()
+        const account = access !== undefined && access.origin === origin ? access.account : undefined
+        const game = origin === undefined ? undefined : await linkedGame(projectDir, origin, account)
+        await writeMultiplayerConfig(projectDir, {
+          mode,
+          maxPlayers,
+          apiOrigin: origin ?? existing?.apiOrigin ?? '',
+          appOrigin: origin ?? existing?.appOrigin ?? '',
+          gameId: game?.id ?? existing?.gameId ?? '',
+          version: existing?.version ?? 0,
+        })
+        let version: string | undefined
+        try {
+          version = pluginVersion(await readFile(join(host.addonSource, 'plugin.cfg'), 'utf8'))
+        } catch {
+          // A plugin.cfg without a version only leaves the version out.
+          version = undefined
+        }
+        const nextSteps = mode === 'player_hosted'
+          ? [
+            'Host with `await WasdMultiplayer.host_lobby({"max_players": N, "public": true})`, show the lobby code it returns, and join with `await WasdMultiplayer.join_lobby(code)`; WasdMultiplayer.list_lobbies() lists public lobbies.',
+            'Spawn players on WasdMultiplayer.player_joined(peer_id, player) and remove them on player_left; the host is peer 1 and decides what happens.',
+            'Use Godot\'s own multiplayer API for game state: @rpc functions, MultiplayerSpawner, and MultiplayerSynchronizer.',
+            `See ${ADDON_DIR}/examples for a lobby screen, then call wasd_multiplayer_test.`,
+          ]
+          : [
+            'In the main scene: `if WasdMultiplayer.is_server(): WasdMultiplayer.serve()`, else `await WasdMultiplayer.join_server()`; the server build runs headless.',
+            'Spawn players on WasdMultiplayer.player_joined(peer_id, player), where player.id stays the same for one account across sessions, and keep the world under user:// so it persists.',
+            'Save on WasdMultiplayer.server_stopping(), calling WasdMultiplayer.delay_stop() before a save that awaits and stop_ready() after it, and warn players on server_warning(seconds, reason, message).',
+            'Call wasd_multiplayer_test, then wasd_release_game, which uploads the server build; a server needs the user to pick a size from wasd_server_plans.',
+          ]
+        return {
+          project_dir: projectDir,
+          mode,
+          max_players: maxPlayers,
+          ...version === undefined ? {} : { addon_version: version },
+          addon_files: files.length,
+          project_changed: after !== before,
+          next_steps: nextSteps,
+          for_user: mode === 'player_hosted'
+            ? `The game is set up for player-hosted multiplayer, up to ${String(maxPlayers)} players. It costs nothing: one player hosts from their browser and friends join with a code, signed in with a WASD Engine account.`
+            : `The game is set up for a dedicated server, up to ${String(maxPlayers)} players. The server needs a monthly size, which you choose before anything is bought; players sign in with a WASD Engine account.`,
+        }
       })
-      let version: string | undefined
-      try {
-        version = pluginVersion(await readFile(join(host.addonSource, 'plugin.cfg'), 'utf8'))
-      } catch {
-        // A plugin.cfg without a version only leaves the version out.
-        version = undefined
-      }
-      const nextSteps = mode === 'player_hosted'
-        ? [
-          'Host with `await WasdMultiplayer.host_lobby({"max_players": N, "public": true})`, show the lobby code it returns, and join with `await WasdMultiplayer.join_lobby(code)`; WasdMultiplayer.list_lobbies() lists public lobbies.',
-          'Spawn players on WasdMultiplayer.player_joined(peer_id, player) and remove them on player_left; the host is peer 1 and decides what happens.',
-          'Use Godot\'s own multiplayer API for game state: @rpc functions, MultiplayerSpawner, and MultiplayerSynchronizer.',
-          `See ${ADDON_DIR}/examples for a lobby screen, then call wasd_multiplayer_test.`,
-        ]
-        : [
-          'In the main scene: `if WasdMultiplayer.is_server(): WasdMultiplayer.serve()`, else `await WasdMultiplayer.join_server()`; the server build runs headless.',
-          'Spawn players on WasdMultiplayer.player_joined(peer_id, player), where player.id stays the same for one account across sessions, and keep the world under user:// so it persists.',
-          'Save on WasdMultiplayer.server_stopping() and warn players on server_warning(seconds, reason, message).',
-          'Call wasd_multiplayer_test, then wasd_release_game, which uploads the server build; a server needs the user to pick a size from wasd_server_plans.',
-        ]
-      return {
-        project_dir: projectDir,
-        mode,
-        max_players: maxPlayers,
-        ...version === undefined ? {} : { addon_version: version },
-        addon_files: files.length,
-        project_changed: after !== before,
-        next_steps: nextSteps,
-        for_user: mode === 'player_hosted'
-          ? `The game is set up for player-hosted multiplayer, up to ${String(maxPlayers)} players. It costs nothing: one player hosts from their browser and friends join with a code, signed in with a WASD Engine account.`
-          : `The game is set up for a dedicated server, up to ${String(maxPlayers)} players. The server needs a monthly size, which you choose before anything is bought; players sign in with a WASD Engine account.`,
-      }
     },
   })
 

@@ -44,7 +44,8 @@ import { GodotProjectError, resolveGodotProject, resolveScene } from './project.
 import { GodotRequestError, GodotRun, GodotRunStateError, MAX_INPUT_EVENTS } from './run.ts'
 import { GodotSessionError, GodotSessions, LowMemoryError, TooManyRunsError } from './runs.ts'
 import {
-  bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, RUNTIME_MISSING_MESSAGE, type ResolvedGodotRuntime,
+  bundledRuntimeRoot, createRuntimeHost, GodotRuntimeError, GodotRuntimeManager, isDownloadUrl, RUNTIME_MISSING_MESSAGE,
+  type ResolvedGodotRuntime,
 } from './runtime.ts'
 import { captureRecording, checkRecordRequest, type GodotRecording, type GodotRecordRequest } from './record.ts'
 import { ProcessSlots } from './slots.ts'
@@ -84,6 +85,8 @@ export interface Config {
   runtimeVersion: string
   /** Release manifest of the managed runtime. */
   runtimeManifestUrl: string
+  /** SHA-256 the release manifest must have, which pins every archive it lists; empty for a manifest served without a pin. */
+  runtimeManifestSha256: string
   /** Absolute LibGodot library; set together with `runnerPath`. Empty uses the managed runtime. */
   libgodotPath: string
   /** Absolute `godot_runner`; set together with `libgodotPath`. */
@@ -326,13 +329,13 @@ function validateConfig(config: Config): void {
   for (const [field, value] of [['libgodotPath', config.libgodotPath], ['runnerPath', config.runnerPath]] as const) {
     if (value !== '' && !isAbsolute(value)) throw new Error(`Godot plugin: ${field} must be an absolute path, got ${JSON.stringify(value)}.`)
   }
-  if (!URL.canParse(config.runtimeManifestUrl) || !/^https?:$/u.test(new URL(config.runtimeManifestUrl).protocol)) {
-    throw new Error(`Godot plugin: runtimeManifestUrl must be an http or https URL, got ${JSON.stringify(config.runtimeManifestUrl)}.`)
+  if (!isDownloadUrl(config.runtimeManifestUrl)) {
+    throw new Error(`Godot plugin: runtimeManifestUrl must be an https URL, or an http URL of this computer, got ${JSON.stringify(config.runtimeManifestUrl)}.`)
   }
   for (const field of TEMPLATE_FIELDS) {
     const archive = config[`${field}ArchiveUrl`]
-    if (!URL.canParse(archive) || !/^https?:$/u.test(new URL(archive).protocol)) {
-      throw new Error(`Godot plugin: ${field}ArchiveUrl must be an http or https URL, got ${JSON.stringify(archive)}.`)
+    if (!isDownloadUrl(archive)) {
+      throw new Error(`Godot plugin: ${field}ArchiveUrl must be an https URL, or an http URL of this computer, got ${JSON.stringify(archive)}.`)
     }
     const path = config[`${field}Path`]
     if (path !== '' && !isAbsolute(path)) throw new Error(`Godot plugin: ${field}Path must be an absolute path, got ${JSON.stringify(path)}.`)
@@ -423,6 +426,7 @@ export default class GodotController extends TypertRemoteService {
     dataRoot: z.string().required(),
     runtimeVersion: z.string().pattern(/^[0-9A-Za-z][0-9A-Za-z.+-]*$/u).default('4.7.2-wasd.4'),
     runtimeManifestUrl: z.string().default('https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json'),
+    runtimeManifestSha256: z.string().pattern(/^(?:[0-9a-f]{64})?$/u).default('c75b17d2258380ae304f9ca9dd6d35b99d6b5b60f37a8d2b5b921ab5df5d4f0a'),
     libgodotPath: z.string().default(''),
     runnerPath: z.string().default(''),
     streamFps: z.number().min(1).max(60).default(30),
@@ -1045,8 +1049,9 @@ export default class GodotController extends TypertRemoteService {
     let started = false
     try {
       if (start) {
-        started = true
         run = await this.startRun(agent, { project: project.dir, muted: this.config.agentRunsMuted }, 'agent', signal)
+        // Only a run this recording started is its to stop: a start that failed leaves the Session's game alone.
+        started = true
         await untilAborted(run.started(), signal)
         if (request.startSeconds > 0) await delay(request.startSeconds * 1000, signal)
       }

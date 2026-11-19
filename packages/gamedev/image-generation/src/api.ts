@@ -74,13 +74,11 @@ async function readBounded(response: Response, limit: number, signal: AbortSigna
   }
   const chunks: Buffer[] = []
   let size = 0
+  // Leaving the loop by a throw cancels the body through the iterator; the stream is locked to it meanwhile.
   for await (const chunk of response.body ?? []) {
     signal.throwIfAborted()
     size += chunk.byteLength
-    if (size > limit) {
-      await response.body?.cancel()
-      throw new ImageRequestError(`WASD Engine answered with more than the ${limit} bytes this tool reads.`, response.status)
-    }
+    if (size > limit) throw new ImageRequestError(`WASD Engine answered with more than the ${limit} bytes this tool reads.`, response.status)
     chunks.push(Buffer.from(chunk))
   }
   return Buffer.concat(chunks, size)

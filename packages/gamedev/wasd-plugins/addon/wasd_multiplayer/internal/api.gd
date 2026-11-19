@@ -23,6 +23,8 @@ func request(method: int, path: String, body: Variant = null, token := "", timeo
 	var http := HTTPRequest.new()
 	http.timeout = timeout
 	http.accept_gzip = true
+	# A redirect would carry the Authorization header to wherever it points; the WASD API never redirects.
+	http.max_redirects = 0
 	_host.add_child(http)
 	var headers := PackedStringArray(["Accept: application/json"])
 	if token != "":

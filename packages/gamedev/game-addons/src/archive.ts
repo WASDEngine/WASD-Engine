@@ -9,7 +9,7 @@
  * @module @deepseek-ai/dsh-game-addons/src/archive
  */
 import { createHash, randomUUID } from 'node:crypto'
-import { createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, open, rename, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Readable } from 'node:stream'
@@ -60,15 +60,23 @@ export function bundledArchivesDir(packageRoot: string): string {
 }
 
 /** Whether a file exists with the given size; false for a missing one. */
-async function hasFile(path: string, bytes: number): Promise<boolean> {
+/**
+ * Whether a file is the pinned archive: its size and, read whole, its SHA-256. A cached or shipped archive is checked
+ * each time it is used, so one that changed since it was checked, such as a cache that another program wrote, is never
+ * unpacked.
+ */
+async function hasPinned(path: string, archive: GameAddonArchive): Promise<boolean> {
   try {
     const existing = await stat(path)
-    return existing.isFile() && existing.size === bytes
+    if (!existing.isFile() || existing.size !== archive.bytes) return false
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
     if (code === 'ENOENT' || code === 'ENOTDIR') return false
     throw error
   }
+  const hash = createHash('sha256')
+  for await (const chunk of createReadStream(path)) hash.update(chunk as Buffer)
+  return hash.digest('hex') === archive.sha256
 }
 
 /**
@@ -82,10 +90,10 @@ async function hasFile(path: string, bytes: number): Promise<boolean> {
 export async function cachedArchive(archive: GameAddonArchive, downloads: ArchiveDownloads, signal: AbortSignal): Promise<LocalArchive> {
   if (downloads.bundledDir !== undefined) {
     const shipped = join(downloads.bundledDir, `${archive.sha256}.zip`)
-    if (await hasFile(shipped, archive.bytes)) return { path: shipped, bundled: true }
+    if (await hasPinned(shipped, archive)) return { path: shipped, bundled: true }
   }
   const target = join(downloads.cacheDir, `${archive.sha256}.zip`)
-  if (await hasFile(target, archive.bytes)) return { path: target, bundled: false }
+  if (await hasPinned(target, archive)) return { path: target, bundled: false }
   await mkdir(downloads.cacheDir, { recursive: true })
   const temporary = `${target}.${randomUUID()}.part`
   try {

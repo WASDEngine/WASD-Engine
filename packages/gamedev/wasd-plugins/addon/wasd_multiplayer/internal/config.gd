@@ -120,7 +120,8 @@ func _normalize() -> void:
 	if mode != "player_hosted" and mode != "dedicated":
 		push_warning("WASD Multiplayer: mode \"%s\" is not player_hosted or dedicated; using player_hosted." % mode)
 		mode = "player_hosted"
-	max_players = clampi(max_players, 2, 16)
+	# A player's browser hosts at most 16; a dedicated server takes as many as WASD Engine's setup offers.
+	max_players = clampi(max_players, 2, 16 if mode == "player_hosted" else 500)
 	api_origin = api_origin.strip_edges().trim_suffix("/")
 	app_origin = app_origin.strip_edges().trim_suffix("/")
 	if api_origin == "":

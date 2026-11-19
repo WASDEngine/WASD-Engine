@@ -2,11 +2,13 @@
  * Worker environment resolution: the shipped runtime, packed or not, and the gimp-console search, worker command line and
  * environment, and worker start.
  */
+import { join } from 'node:path'
 import { WorkerError } from '@deepseek-ai/dsh-app-mcp'
 import type { CommandArgv, CommandOptions, CommandResult } from '@deepseek-ai/dsh-app-mcp'
 import { describe, expect, it, vi } from 'vitest'
 import {
-  findGimp, GimpSetupError, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, nodeGimpSetupHost, parseServerOptions, workerEnvironment,
+  findGimp, GimpSetupError, GimpWorkers, gimpProfileDirectory, gimpWorkerArgv, NO_RAW_EDITOR, nodeGimpSetupHost, parseServerOptions,
+  RAW_EDITOR_VARIABLES, workerEnvironment,
   type GimpSetupHost,
 } from '../src/environment.ts'
 import type { GimpServerOptions } from '../src/types.ts'
@@ -17,6 +19,9 @@ const OPTIONS: GimpServerOptions = {
   workerIdleTimeoutMs: 600_000,
 }
 const MACOS = '/Applications/GIMP.app/Contents/MacOS'
+/** The RAW editor variables of a worker whose profile is `/data/gimp/profile`: a file nothing creates. */
+const NO_RAW_EDITORS = Object.fromEntries(RAW_EDITOR_VARIABLES.map(name => [name, join('/data/gimp/profile', NO_RAW_EDITOR)]))
+
 const CONSOLE = `${MACOS}/gimp-console-3.2`
 const SCRIPT = '/data/gimp/payload/abc/wasd_gimp_worker.py'
 
@@ -338,10 +343,11 @@ describe('worker command line and environment', () => {
 
   it('drops variables that redirect Python or Electron and names the profile', () => {
     const env = { PATH: '/bin', HOME: '/home', PYTHONPATH: 'x', PYTHONHOME: 'y', PYTHONSTARTUP: 'z', VIRTUAL_ENV: 'v', ELECTRON_RUN_AS_NODE: '1', GIMP3_DIRECTORY: '/mine' }
-    expect(workerEnvironment(env, '/data/gimp/profile')).toEqual({ PATH: '/bin', HOME: '/home', GIMP3_DIRECTORY: '/data/gimp/profile' })
+    // GIMP's RAW loaders find no darktable, RawTherapee, or ART, so none opens a window.
+    expect(workerEnvironment(env, '/data/gimp/profile')).toEqual({ PATH: '/bin', HOME: '/home', GIMP3_DIRECTORY: '/data/gimp/profile', ...NO_RAW_EDITORS })
     expect(env.GIMP3_DIRECTORY).toBe('/mine')
     expect(workerEnvironment({ PATH: '/bin', GIMP3_DATADIR: '/mine' }, '/data/gimp/profile', SHIPPED_ENVIRONMENT))
-      .toEqual({ PATH: '/bin', ...SHIPPED_ENVIRONMENT, GIMP3_DIRECTORY: '/data/gimp/profile' })
+      .toEqual({ PATH: '/bin', ...SHIPPED_ENVIRONMENT, GIMP3_DIRECTORY: '/data/gimp/profile', ...NO_RAW_EDITORS })
   })
 })
 
@@ -354,7 +360,7 @@ describe('GimpWorkers', () => {
     const worker = await workers.start(signal, SCOPE)
     expect(worker.ready.version).toBe('3.2.8')
     expect(start).toHaveBeenCalledWith({
-      argv: gimpWorkerArgv(CONSOLE, SCRIPT), cwd: '/data/gimp/workers/1', env: { PATH: '/bin', GIMP3_DIRECTORY: '/data/gimp/profile' },
+      argv: gimpWorkerArgv(CONSOLE, SCRIPT), cwd: '/data/gimp/workers/1', env: { PATH: '/bin', GIMP3_DIRECTORY: '/data/gimp/profile', ...NO_RAW_EDITORS },
       readyTimeoutMs: 120_000, logTailBytes: 65_536,
     }, signal)
     expect(host.made).toEqual(['/data/gimp/profile'])
@@ -369,7 +375,7 @@ describe('GimpWorkers', () => {
     await workers.start(signal, SCOPE)
     expect(start).toHaveBeenCalledWith({
       argv: gimpWorkerArgv(SHIPPED_CONSOLE, SCRIPT), cwd: '/data/gimp/workers/1',
-      env: { PATH: '/bin', ...SHIPPED_ENVIRONMENT, GIMP3_DIRECTORY: '/data/gimp/profile' }, readyTimeoutMs: 120_000, logTailBytes: 65_536,
+      env: { PATH: '/bin', ...SHIPPED_ENVIRONMENT, GIMP3_DIRECTORY: '/data/gimp/profile', ...NO_RAW_EDITORS }, readyTimeoutMs: 120_000, logTailBytes: 65_536,
     }, signal)
     expect(workers.takeNotes()).toEqual(['GIMP 3.2.8 started (the runtime that WASD Engine ships, Python 3.14.10) with no images open.'])
   })

@@ -8,8 +8,12 @@
 /** Bytes of one record header: u32 LE image length, u16 LE width, u16 LE height, u32 LE sequence number. */
 export const FRAME_HEADER_BYTES = 12
 
-/** Largest image one record may announce; a larger length means the stream is corrupt. */
-export const MAX_FRAME_BYTES = 32 * 1024 * 1024
+/**
+ * Largest image one record may announce; a larger length means the stream is corrupt. It equals the Host's largest
+ * harness message (`MAX_MESSAGE_BYTES` in `src/protocol.ts`), so every frame the Host takes from the game reaches the
+ * window rather than ending its stream.
+ */
+export const MAX_FRAME_BYTES = 64 * 1024 * 1024
 
 /** Delay before the first reconnect after a frame response fails or ends. */
 export const RECONNECT_INITIAL_MS = 250

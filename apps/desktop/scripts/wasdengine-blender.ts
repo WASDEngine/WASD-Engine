@@ -26,6 +26,7 @@ import {
 /** The Blender runtime that the Desktop app ships, pinned at the version that `wasdengine/blender/build.sh` builds by default. */
 export const BLENDER_RUNTIME: PinnedRuntime = {
   label: 'Blender', environmentPrefix: 'WASD_BLENDER', packageName: '@deepseek-ai/dsh-blender', folder: 'runtime', version: '5.2.3-wasd.1',
+  manifestSha256: '232d4b482209901df85dd062a3c080cf9c03474231fcbbb4fb103f401ab7bc1c',
 }
 
 /** Manifest of the Blender runtime release that `wasdengine/blender/build.sh` builds by default. */

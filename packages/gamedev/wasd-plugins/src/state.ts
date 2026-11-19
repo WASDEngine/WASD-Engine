@@ -5,11 +5,37 @@
  * @module @deepseek-ai/dsh-wasd-plugins/src/state
  */
 import { randomUUID } from 'node:crypto'
-import { realpath, rename, rm, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 
 /** Folder, inside a project, of the state WASD Engine keeps for it; hidden, so Godot ignores it. */
 export const STATE_DIR = '.wasdengine'
+
+/**
+ * The `.gitignore` of a project's state folder: the builds, the recorded preview, and the Web check's picture, which
+ * take up to hundreds of megabytes and which WASD Engine makes again when it needs them. The state folder's other
+ * files, such as the record of the installed add-ons and the link to the released game, stay in git.
+ */
+export const STATE_GITIGNORE = [
+  '# WASD Engine\'s builds of this game and their previews, which it makes again when it needs them.',
+  '/web/', '/web-zip/', '/desktop/', '/mobile/', '/server/', '/preview/', '/web-check.jpg', '',
+].join('\n')
+
+/**
+ * Give a project's state folder its `.gitignore` ({@link STATE_GITIGNORE}) when the folder exists and has none; a
+ * `.gitignore` the folder holds already, such as one the user wrote, stays as it is.
+ * @param projectDir - absolute project folder.
+ */
+export async function ignoreBuilds(projectDir: string): Promise<void> {
+  const folder = join(projectDir, STATE_DIR)
+  const found = await stat(folder).catch(() => undefined)
+  if (found?.isDirectory() !== true) return
+  try {
+    await writeFile(join(folder, '.gitignore'), STATE_GITIGNORE, { flag: 'wx' })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+  }
+}
 
 /**
  * Replace a file whole: write a temporary file beside it, then rename it over the file, so a reader, or a write that
@@ -75,7 +101,8 @@ export class RealFolders {
  * The operations of each game project, one at a time and in the order they asked: the exports, preview recordings,
  * and releases that rewrite a project's state folder and its link to its game, whether a Session's agent or an agent
  * connected through WASD Engine's MCP server started them. A project is known by its real path, so two paths of one
- * folder, such as one through a symbolic link, share its queue.
+ * folder, such as one through a symbolic link, share its queue. After each operation the state folder gets its
+ * `.gitignore` ({@link ignoreBuilds}).
  */
 export class ProjectQueue {
   /** Per project, the promise that settles once its latest operation, and every earlier one, ended. */
@@ -100,7 +127,13 @@ export class ProjectQueue {
     this.tails.set(key, tail)
     try {
       await after(earlier, signal)
-      return await operation()
+      try {
+        return await operation()
+      } finally {
+        // A build the operation left in the state folder stays out of git; a folder that cannot take the file keeps
+        // the operation's own outcome.
+        await ignoreBuilds(projectDir).catch((_unwritable: unknown) => undefined)
+      }
     } finally {
       end()
       void tail.then(() => { if (this.tails.get(key) === tail) this.tails.delete(key) })

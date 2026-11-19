@@ -57,8 +57,9 @@ describe('GameAddonManager for Blender', () => {
     expect(JSON.parse(await readFile(join(installed, STORE_MARKER), 'utf8'))).toMatchObject({ version: '1.0.0' })
     expect((await readdir(store)).filter(name => name.startsWith('.'))).toEqual([])
 
-    // Once the rename works, the new version replaces it.
+    // Once the rename works, the new version replaces it, also over a marker that a crash cut short.
     flags.failStagingRename = false
+    await writeFile(join(installed, STORE_MARKER), '{"id": "test-tr')
     await manager.install(project, 'test-trees', {}, new AbortController().signal)
     expect(JSON.parse(await readFile(join(installed, STORE_MARKER), 'utf8'))).toMatchObject({ version: '2.0.0' })
     expect((await readdir(store)).filter(name => name.startsWith('.'))).toEqual([])

@@ -24,6 +24,16 @@ export async function loadToken(file: string): Promise<string> {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
   if (stored !== undefined && TOKEN_PATTERN.test(stored)) return stored
+  return await renewToken(file)
+}
+
+/**
+ * Replace the token with a new one and save it, so the old token admits nothing from then on.
+ * @param file - absolute path of the token file.
+ * @returns the new token.
+ * @throws when the file cannot be written.
+ */
+export async function renewToken(file: string): Promise<string> {
   const token = randomBytes(32).toString('base64url')
   await writeFileAtomic(file, `${token}\n`, { mode: 0o600, dirMode: 0o700 })
   return token

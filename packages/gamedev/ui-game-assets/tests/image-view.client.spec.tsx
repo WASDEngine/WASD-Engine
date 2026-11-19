@@ -136,6 +136,12 @@ describe('ImageView animations', () => {
     expect(frames.slice(0, 4)).toEqual(BOOM)
   })
 
+  it('says when the animations it found lack the one an agent asked for, which a newer scan may find', async () => {
+    const missing = vi.fn()
+    render(<ImageView {...props('fx/boom_2.png', pngFile('fx/boom_2.png'), { ...boomSources(), requested: { animation: 'walk', request: 7 }, onMissingAnimation: missing })} />)
+    await waitFor(() => { expect(missing).toHaveBeenCalledWith(7) }, { timeout: 5000 })
+  })
+
   it('waits while the view is off screen, and plays again when it shows', async () => {
     const hidden = props('fx/boom_2.png', pngFile('fx/boom_2.png'), { ...boomSources(), requested: { animation: 'boom', request: 1 }, visible: false })
     const view = render(<ImageView {...hidden} />)

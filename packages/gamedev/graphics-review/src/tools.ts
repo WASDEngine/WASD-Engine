@@ -49,6 +49,12 @@ export const SESSION_WORDING: GraphicsReviewWording = {
 
 const STRING = { type: 'string', required: true } as const
 
+/** Most reviews one piece of graphics work gets, counted by the Session and the subject a call names. */
+export const MAX_REVIEWS = 3
+
+/** Pieces of work whose review counts the tool keeps, the oldest dropped first. */
+const REMEMBERED_WORKS = 1000
+
 /**
  * Build the `graphics_review` tool definition for one surface.
  * @param host - the image resolution, the limits, and the review of this surface.
@@ -56,6 +62,8 @@ const STRING = { type: 'string', required: true } as const
  * @returns the definition, not registered.
  */
 export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: GraphicsReviewWording): ToolDefinition {
+  // Reviews given so far, by Session and subject: a piece of work gets at most MAX_REVIEWS, as the description says.
+  const given = new Map<string, number>()
   return defineTool({
     name: TOOL_NAME,
     description: 'Have a specialized graphics expert reviewer model critique an image of the game\'s graphics, the way a game art director '
@@ -97,6 +105,10 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
     async execute(args, exec) {
       const subject = args.subject.trim()
       if (subject === '') throw new Error('Pass subject: what the image shows and what it is for.')
+      const work = `${exec.agent?.session.id ?? ''}\n${subject.toLowerCase().replaceAll(/\s+/gu, ' ')}`
+      if ((given.get(work) ?? 0) >= MAX_REVIEWS) {
+        throw new Error(`This work has had ${String(MAX_REVIEWS)} graphics reviews, the most one piece of work gets. Act on the last review, then move on.`)
+      }
       const path = await host.image(args.image, exec)
       const image = await readReviewImage(path, host.limits, exec.signal)
       exec.signal.throwIfAborted()
@@ -111,6 +123,12 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
         ...previous === undefined || previous === '' ? {} : { previous },
         ...exec.agent === undefined ? {} : { sessionId: exec.agent.session.id },
       }, exec.signal)
+      // The pieces of work reviewed longest ago leave first, so a long Session's counts stay bounded.
+      const count = (given.get(work) ?? 0) + 1
+      given.delete(work)
+      given.set(work, count)
+      const oldest = given.keys().next()
+      if (given.size > REMEMBERED_WORKS && oldest.done !== true) given.delete(oldest.value)
       return { image: path, review }
     },
   })

@@ -8,6 +8,7 @@
  */
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { writeWhole } from './state.ts'
 
 /** The add-on's folder inside a project. */
 export const ADDON_DIR = 'addons/wasd_multiplayer'
@@ -145,7 +146,8 @@ export async function readMultiplayerConfig(projectDir: string): Promise<Multipl
  * @param config - the configuration.
  */
 export async function writeMultiplayerConfig(projectDir: string, config: MultiplayerConfig): Promise<void> {
-  await writeFile(join(projectDir, CONFIG_FILE), renderMultiplayerConfig(config))
+  // Replaced whole, so an export that reads it meanwhile never packs part of it.
+  await writeWhole(join(projectDir, CONFIG_FILE), renderMultiplayerConfig(config))
 }
 
 /** A `[section]`'s line range in a ConfigFile. */

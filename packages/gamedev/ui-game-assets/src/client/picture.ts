@@ -52,10 +52,23 @@ export class UnsizedImageError extends Error {
 }
 
 /**
- * The size an image's header states, checked against the most pixels the viewer decodes.
+ * The most pixels the viewer decodes of an image of one format: `maxPixels` for the browser's formats, and for TGA,
+ * HDR, and EXR, whose decoders keep more bytes per pixel ({@link DECODED_BYTES_PER_PIXEL}), as many as take the same
+ * memory decoded, so a floating-point image never takes several times what the largest browser image takes.
+ * @param format - the image's format.
+ * @param maxPixels - the most pixels of a browser image the viewer decodes.
+ * @returns the limit in pixels.
+ */
+export function decodedPixelLimit(format: AssetFormat, maxPixels: number): number {
+  if (format.kind !== 'image') return maxPixels
+  return Math.floor(maxPixels * DECODED_BYTES_PER_PIXEL.browser / DECODED_BYTES_PER_PIXEL[format.decoder])
+}
+
+/**
+ * The size an image's header states, checked against the most pixels the viewer decodes of its format.
  * @param data - the file.
  * @param format - its format.
- * @param maxPixels - the most pixels the viewer decodes.
+ * @param maxPixels - the most pixels of a browser image the viewer decodes ({@link decodedPixelLimit}).
  * @returns the stated size, or undefined for an SVG, which states none.
  * @throws {ImageTooLargeError} when the header states more pixels; {UnsizedImageError} when it states no size this
  * viewer reads, so that the decoder would decide the size alone.
@@ -66,7 +79,8 @@ export function checkedImageSize(data: Uint8Array, format: AssetFormat, maxPixel
     if (statesPixels(format)) throw new UnsizedImageError()
     return undefined
   }
-  if (size.width * size.height > maxPixels) throw new ImageTooLargeError(size, maxPixels)
+  const limit = decodedPixelLimit(format, maxPixels)
+  if (size.width * size.height > limit) throw new ImageTooLargeError(size, limit)
   return size
 }
 

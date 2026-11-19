@@ -1,6 +1,8 @@
 /**
  * Images the browser cannot decode, decoded with three.js loaders in a chunk the 2D view loads on first use: TGA as
- * stored, and Radiance HDR and OpenEXR tone mapped (ACES filmic, at exposure 1) and encoded as sRGB for the screen.
+ * stored, and Radiance HDR and OpenEXR tone mapped (ACES filmic, at exposure 1) and encoded as sRGB for the screen, a
+ * batch of rows at a time between yields to the page. The size check before decoding limits these formats to as many
+ * pixels as take the memory of the largest browser image (`picture.ts`).
  */
 import { FloatType, RedFormat } from 'three'
 import { EXRLoader } from 'three/examples/jsm/loaders/EXRLoader.js'
@@ -31,8 +33,11 @@ function srgb8(value: number): number {
   return Math.round(encoded * 255)
 }
 
+/** Pixels tone mapped between two yields to the page, so a large image leaves the window responsive meanwhile. */
+const TONE_MAP_BATCH_PIXELS = 1 << 20
+
 /**
- * Tone map floating-point pixels into 8-bit RGBA rows, top row first.
+ * Tone map floating-point pixels into 8-bit RGBA rows, top row first, yielding to the page between batches of rows.
  * @param data - linear pixels, `channels` per pixel.
  * @param width - pixels per row.
  * @param height - rows.
@@ -40,15 +45,17 @@ function srgb8(value: number): number {
  * @param bottomUp - whether the first row of `data` is the image's bottom row.
  * @returns the RGBA bytes.
  */
-function toneMapped(
+async function toneMapped(
   data: Float32Array,
   width: number,
   height: number,
   channels: number,
   bottomUp: boolean,
-): Uint8ClampedArray<ArrayBuffer> {
+): Promise<Uint8ClampedArray<ArrayBuffer>> {
   const out = new Uint8ClampedArray(width * height * 4)
+  const rowsPerBatch = Math.max(1, Math.floor(TONE_MAP_BATCH_PIXELS / Math.max(1, width)))
   for (let row = 0; row < height; row += 1) {
+    if (row > 0 && row % rowsPerBatch === 0) await new Promise((resolve) => { setTimeout(resolve, 0) })
     const source = bottomUp ? height - 1 - row : row
     for (let column = 0; column < width; column += 1) {
       const from = (source * width + column) * channels
@@ -90,14 +97,14 @@ export async function decodeImage(format: DecodedImageFormat, bytes: Uint8Array<
     case 'hdr': {
       const decoded = new HDRLoader().setDataType(FloatType).parse(buffer)
       if (!(decoded.data instanceof Float32Array) || decoded.width === undefined || decoded.height === undefined) throw new Error('not a Radiance HDR image')
-      pixels = new ImageData(toneMapped(decoded.data, decoded.width, decoded.height, 4, false), decoded.width, decoded.height)
+      pixels = new ImageData(await toneMapped(decoded.data, decoded.width, decoded.height, 4, false), decoded.width, decoded.height)
       break
     }
     case 'exr': {
       const decoded = new EXRLoader().setDataType(FloatType).parse(buffer)
       if (!(decoded.data instanceof Float32Array) || decoded.width === undefined || decoded.height === undefined) throw new Error('not an OpenEXR image')
       const channels = decoded.format === RedFormat ? 1 : 4
-      pixels = new ImageData(toneMapped(decoded.data, decoded.width, decoded.height, channels, true), decoded.width, decoded.height)
+      pixels = new ImageData(await toneMapped(decoded.data, decoded.width, decoded.height, channels, true), decoded.width, decoded.height)
       break
     }
     default:

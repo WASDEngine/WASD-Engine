@@ -3,6 +3,8 @@
  * the first-use unpack of a runtime that it ships as its archive.
  */
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdir, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -371,7 +373,9 @@ describe('nodeRuntimeUnpackHost', () => {
     const packedFolder = join(root, 'pkg', 'runtime', `${process.platform}-${process.arch}`)
     await mkdir(packedFolder, { recursive: true })
     execFileSync('tar', ['-czf', join(packedFolder, 'runtime.tar.gz'), '-C', content, 'bin', 'runtime.json'])
-    await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: 'c'.repeat(64), runtime }))
+    // The record pins the archive's real digest, which the unpack checks.
+    const digest = createHash('sha256').update(readFileSync(join(packedFolder, 'runtime.tar.gz'))).digest('hex')
+    await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: digest, runtime }))
     const host = nodeRuntimeUnpackHost(4096)
     const dataRoot = join(root, 'data ü')
     // The runtime that an earlier WASD Engine version unpacked, a folder of the data root beside the runtimes, and a

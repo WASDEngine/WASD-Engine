@@ -31,6 +31,8 @@ emsdk_repository_url=https://github.com/emscripten-core/emsdk.git
 # The Emscripten release of Godot 4.7.2's own Web templates, whose page logs "Emscripten 4.0.20";
 # emsdk tags each Emscripten release with its version.
 emscripten_version=4.0.20
+# The commit of emsdk's tag $emscripten_version, which the clone must check out.
+emsdk_commit=e4fe26ef59168ff44f4c23c466e497bf60b3411e
 # The SCons release that uvx runs, under this uv-managed CPython release, so that the data
 # that Godot's build scripts compress with zlib come out alike everywhere. The uv release
 # picks the build of that CPython it downloads; uv 0.13.8 and CPython 3.13.18 built the
@@ -70,6 +72,9 @@ option_value() {
 
 out_dir=
 godot_ref=4.7.2-stable
+# The commit the default tag names; a clone of the default tag that checks out another commit, such as after the tag
+# moved, stops the build.
+godot_commit=ed1daf0bf001b61586d9930840f2f1394092c079
 godot_ref_given=false
 source_dir=
 emsdk_dir=
@@ -168,6 +173,8 @@ install_emsdk() {
     cleanup_paths+=("$partial")
     log "cloning emsdk $emscripten_version into $dir"
     git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$emscripten_version" -- "$emsdk_repository_url" "$partial"
+    [ "$(git -C "$partial" rev-parse HEAD)" = "$emsdk_commit" ] \
+      || die "the emsdk tag $emscripten_version names $(git -C "$partial" rev-parse HEAD), not the pinned commit $emsdk_commit"
     mv -- "$partial" "$dir"
   fi
   (cd -- "$dir" && ./emsdk install "$emscripten_version" >&2 && ./emsdk activate "$emscripten_version" >&2)
@@ -186,6 +193,9 @@ else
     cleanup_paths+=("$partial")
     log "cloning Godot $godot_ref into $src"
     git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$godot_ref" -- "$godot_repository_url" "$partial"
+    if [ "$godot_ref_given" = false ] && [ "$(git -C "$partial" rev-parse HEAD)" != "$godot_commit" ]; then
+      die "the Godot tag $godot_ref names $(git -C "$partial" rev-parse HEAD), not the pinned commit $godot_commit"
+    fi
     mv -- "$partial" "$src"
   fi
 fi

@@ -61,13 +61,14 @@ A disabled row withdraws the tools, the prompt section, the Remote, the frame ro
 
 ### Configuration
 
-[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `androidJavaPath`, `androidSdkPath`, or one of the `*TemplatePath` fields holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl` or one of the `*TemplateArchiveUrl` fields is not an http or https URL.
+[`src/index.ts`](src/index.ts) declares and validates these fields. Loading fails when `dataRoot`, `libgodotPath`, `runnerPath`, `androidJavaPath`, `androidSdkPath`, or one of the `*TemplatePath` fields holds a relative path, when only one of `libgodotPath` and `runnerPath` is set, or when `runtimeManifestUrl` or one of the `*TemplateArchiveUrl` fields is neither an https URL nor an http URL of this computer (`127.0.0.1`, `localhost`, or `[::1]`).
 
 | Field | Default | Meaning |
 |---|---|---|
 | `dataRoot` | required | Absolute directory for the managed runtime and the copies of the harness scripts |
 | `runtimeVersion` | `4.7.2-wasd.4` | Version of the managed runtime: its folder name under `runtime/` and the version its manifest must describe; the system prompt names the Godot release it starts with, such as `4.7` |
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json` | Release manifest that the install downloads |
+| `runtimeManifestSha256` | `c75b17d2258380ae304f9ca9dd6d35b99d6b5b60f37a8d2b5b921ab5df5d4f0a` | SHA-256 that the release manifest must have, which pins every archive it lists; empty accepts any manifest, for one served without a pin |
 | `libgodotPath` | `''` | Absolute LibGodot library; set together with `runnerPath` |
 | `runnerPath` | `''` | Absolute `godot_runner` executable; set together with `libgodotPath` |
 | `streamFps` | `30` | Frames per second streamed to the Game tab, 1 to 60 |
@@ -151,13 +152,13 @@ On macOS every run passes `--embedded`, and the [patched LibGodot](../../../wasd
 
 The managed runtime is Godot 4.7.2 built as LibGodot with the WASD Engine patches; the [LibGodot build guide](../../../wasdengine/libgodot/BUILD.md) describes the runner, the archive, `runtime.json`, and the manifest. **Install Godot** in the Game tab, shown while the runtime is missing or failed, calls the `installRuntime` Remote method, which:
 
-1. downloads `runtimeManifestUrl` and requires its `version` to equal `runtimeVersion`;
+1. downloads `runtimeManifestUrl`, requires its bytes to have the SHA-256 `runtimeManifestSha256` names, unless that is empty, and its `version` to equal `runtimeVersion`;
 2. picks the artifact for the Host's `<platform>-<arch>` key, such as `darwin-arm64`;
-3. downloads the archive from the artifact's `url`, resolved against the manifest URL, and checks its size and SHA-256 while it arrives;
+3. downloads the archive from the artifact's `url`, resolved against the manifest URL, which must be an https URL or an http URL of this computer, and checks its size and SHA-256 while it arrives;
 4. extracts the archive with `tar` into a staging folder, running `tar` in that folder with `../<archive name>` as its only path, because Windows' `tar.exe` reads its arguments in the ANSI code page, which cannot hold every character of a user's profile folder; checks that the runner and the library are there; and writes `runtime.json`;
 5. renames the staging folder to `<dataRoot>/runtime/<runtimeVersion>/` under a file lock; when another Host process installed the runtime meanwhile, it keeps that one.
 
-While the install runs, every Game tab shows Downloading Godot with a percentage, then Verifying Godot and Unpacking Godot. A second request joins the running install; closing the tab stops only its wait, and unloading the plugin cancels the install. The download and staging files are removed after success and failure alike, and a failure shows its cause: an unreachable manifest or its HTTP status, an invalid manifest or one for another version, no build for the platform, a download error, a size or SHA-256 mismatch, or an archive without the runtime files. `wasdengine/libgodot/build.sh --install <dataRoot>` installs a local build in the same place.
+While the install runs, every Game tab shows Downloading Godot with a percentage, then Verifying Godot and Unpacking Godot. A second request joins the running install; closing the tab stops only its wait, and unloading the plugin cancels the install. The download and staging files are removed after success and failure alike, and a failure shows its cause: an unreachable manifest or its HTTP status, a manifest without the pinned SHA-256, an invalid manifest or one for another version, no build for the platform, a download error, a size or SHA-256 mismatch, or an archive without the runtime files. `wasdengine/libgodot/build.sh --install <dataRoot>` installs a local build in the same place.
 
 <a id="game-runs"></a>
 ### Game runs

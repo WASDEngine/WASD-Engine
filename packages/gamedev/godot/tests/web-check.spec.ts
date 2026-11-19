@@ -245,9 +245,9 @@ describe('summarizeWebCheck', () => {
 })
 
 /** GET or HEAD one path of an origin. */
-function fetchRaw(origin: string, path: string, method = 'GET'): Promise<{ status: number; type: string | undefined; body: string }> {
+function fetchRaw(origin: string, path: string, method = 'GET', host?: string): Promise<{ status: number; type: string | undefined; body: string }> {
   return new Promise((done, fail) => {
-    const req = request(`${origin}${path}`, { method }, (response) => {
+    const req = request(`${origin}${path}`, { method, ...host === undefined ? {} : { headers: { host } } }, (response) => {
       let body = ''
       response.setEncoding('utf8')
       response.on('data', (chunk: string) => { body += chunk })
@@ -281,6 +281,8 @@ describe('serveFolder', () => {
       expect((await fetchRaw(served.origin, '/../secret.txt')).status).toBe(404)
       expect((await fetchRaw(served.origin, '/%2e%2e/secret.txt')).status).toBe(404)
       expect((await fetchRaw(served.origin, '/%E0%A4%A')).status).toBe(400)
+      // A page that rebinds a name of its own to this computer names that name as its Host.
+      expect((await fetchRaw(served.origin, '/index.html', 'GET', 'attacker.example')).status).toBe(403)
     } finally {
       await served.close()
     }

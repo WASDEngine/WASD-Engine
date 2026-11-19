@@ -35,12 +35,14 @@
  * The dedicated server export (`WASD Engine Server`) writes one Linux x86_64 executable, `server.x86_64`, with the pack
  * embedded and the visuals of every resource stripped, which runs as the game's server with `--headless`.
  *
- * Every preset includes `wasd_multiplayer.cfg`, the WASD Multiplayer add-on's configuration at the project root, which
- * is no resource, so Godot would leave it out of the pack.
+ * Every preset includes `wasd_multiplayer.cfg`, the WASD Multiplayer add-on's configuration at the project root, and the
+ * project's `THIRD_PARTY_NOTICES.md` and add-on `LICENSE` files, which the add-ons' licenses require in every copy of
+ * the game; none is a resource, so Godot would leave them out of the pack.
  *
  * Godot reads export presets only from the project's `export_presets.cfg`, so a preset is written there for the export
- * alone: the file's original bytes are restored afterwards, or the file is removed when the project had none, and the
- * project's own presets never change.
+ * alone: afterwards the file gets its original bytes back, or is removed when the project had none, while it holds what
+ * the export wrote; when it changed during the export, only the export's preset leaves it, so the change stays. The
+ * export replaces `export_presets.cfg` and `project.godot` in one step each time it writes them.
  *
  * Before an export changes `export_presets.cfg` or `project.godot`, it writes a restore record into the plugin's
  * `export-restore` folder: the files' earlier content and what the export wrote. An export that ends restores the files,
@@ -51,7 +53,8 @@
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, extname, join, relative, resolve, sep } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -83,6 +86,12 @@ export const WEB_EXPORT_ENTRY = 'index.html'
 
 /** The WASD Multiplayer add-on's configuration file, at the project root, which every export includes. */
 export const MULTIPLAYER_CONFIG_FILE = 'wasd_multiplayer.cfg'
+
+/**
+ * The files besides resources that every export packs: the multiplayer configuration, and the notices of the project's
+ * third-party add-ons with their license files, which their licenses require in every copy of the game.
+ */
+export const EXPORT_INCLUDE_FILTER = [MULTIPLAYER_CONFIG_FILE, 'THIRD_PARTY_NOTICES.md', 'addons/*/LICENSE*'].join(', ')
 
 /** Most Godot warnings a result lists. */
 export const EXPORT_WARNINGS = 10
@@ -152,9 +161,9 @@ export type TextureFormat = 's3tc_bptc' | 'etc2_astc'
 const PRESETS_FILE = 'export_presets.cfg'
 const PROJECT_FILE = 'project.godot'
 const REQUIRED_FILES = [WEB_EXPORT_ENTRY, 'index.js', 'index.wasm', 'index.pck'] as const
-/** The fields every preset of WASD Engine's sets after its export filter; the include filter adds the multiplayer configuration. */
+/** The fields every preset of WASD Engine's sets after its export filter; the include filter adds the files no resource names. */
 const FILTER_FIELDS = [
-  `include_filter="${MULTIPLAYER_CONFIG_FILE}"`,
+  `include_filter="${EXPORT_INCLUDE_FILTER}"`,
   'exclude_filter=""',
   'export_path=""',
   'encryption_include_filters=""',
@@ -785,6 +794,23 @@ async function readOptional(path: string): Promise<Buffer | undefined> {
 
 const TextureValue = z.string().nullable()
 
+/**
+ * Refuse an output folder that an export, which empties it first, must not empty: one that is not absolute, a
+ * filesystem root, the home folder, or a folder that holds the project.
+ * @param projectDir - absolute project folder.
+ * @param outputDir - the folder the export empties and fills.
+ * @throws {GodotExportError} for such a folder.
+ */
+function requireOwnOutputDir(projectDir: string, outputDir: string): void {
+  if (!isAbsolute(outputDir)) throw new GodotExportError(`The export's output folder must be an absolute path, not ${JSON.stringify(outputDir)}.`)
+  const output = resolve(outputDir)
+  const toProject = relative(output, resolve(projectDir))
+  const holdsProject = toProject === '' || (toProject !== '..' && !toProject.startsWith(`..${sep}`) && !isAbsolute(toProject))
+  if (output === parse(output).root || output === resolve(homedir()) || holdsProject) {
+    throw new GodotExportError(`The export empties its output folder first, so it cannot write to ${output}, which holds the project or other files; pass a folder of its own.`)
+  }
+}
+
 /** A restore record as the file holds it. */
 const ExportRestoreRecord = z.strictObject({
   format: z.literal(1),
@@ -836,26 +862,40 @@ async function readRestoreRecord(path: string): Promise<ExportRestoreRecord | un
   return parsed.success ? parsed.data : undefined
 }
 
+/** Replace a project file in one step, so Godot or an editor never reads part of it. */
+async function writeProjectFile(path: string, content: string | Uint8Array): Promise<void> {
+  await writeFileAtomic(path, content, { mode: 0o644 })
+}
+
 /**
- * Return the files of an export that ended without restoring them: `export_presets.cfg` gets its earlier bytes back
- * while it holds what the export wrote, and otherwise loses only the export's preset, so changes made since stay; a
- * desktop export's import settings in `project.godot` return to their earlier values, and its boot splash line and
- * image go.
+ * Return `export_presets.cfg` after an export: its earlier bytes while it holds what the export wrote, and otherwise
+ * the file without the export's preset, so changes made during the export stay.
+ * @param presetsPath - the project's `export_presets.cfg`.
+ * @param original - its bytes before the export, or undefined when the project had none.
+ * @param written - the text the export wrote.
+ * @param preset - the name of the export's preset.
+ */
+async function restorePresets(presetsPath: string, original: Uint8Array | undefined, written: string, preset: string): Promise<void> {
+  const presets = (await readOptional(presetsPath))?.toString('utf8')
+  if (presets === undefined) return
+  if (presets === written) {
+    if (original === undefined) await rm(presetsPath, { force: true })
+    else await writeProjectFile(presetsPath, original)
+    return
+  }
+  const kept = withoutPreset(presets, preset)
+  if (kept === '' && original === undefined) await rm(presetsPath, { force: true })
+  else if (kept !== presets) await writeProjectFile(presetsPath, kept)
+}
+
+/**
+ * Return the files of an export that ended without restoring them: `export_presets.cfg` as {@link restorePresets}
+ * returns it; a desktop export's import settings in `project.godot` return to their earlier values, and its boot
+ * splash line and image go.
  */
 async function replayRecord(record: ExportRestoreRecord): Promise<void> {
-  const presetsPath = join(record.projectDir, PRESETS_FILE)
-  const presets = (await readOptional(presetsPath))?.toString('utf8')
-  if (presets !== undefined) {
-    const { original, written } = record.presets
-    if (presets === written) {
-      if (original === null) await rm(presetsPath, { force: true })
-      else await writeFile(presetsPath, Buffer.from(original, 'base64'))
-    } else {
-      const kept = withoutPreset(presets, record.preset)
-      if (kept === '' && original === null) await rm(presetsPath, { force: true })
-      else if (kept !== presets) await writeFile(presetsPath, kept)
-    }
-  }
+  const { original, written } = record.presets
+  await restorePresets(join(record.projectDir, PRESETS_FILE), original === null ? undefined : Buffer.from(original, 'base64'), written, record.preset)
   if (record.project === undefined) return
   await rm(exportSplashFile(record.projectDir), { force: true })
   const projectPath = join(record.projectDir, PROJECT_FILE)
@@ -865,7 +905,7 @@ async function replayRecord(record: ExportRestoreRecord): Promise<void> {
   const restored = current === record.project.written
     ? record.project.original
     : withExportSplash(withTextureImports(current, before), false)
-  if (restored !== current) await writeFile(projectPath, restored)
+  if (restored !== current) await writeProjectFile(projectPath, restored)
 }
 
 /**
@@ -959,6 +999,7 @@ interface ExportOutcome {
  * @throws {GodotExportError} when the process ends without writing the required files.
  */
 async function runExport(options: ExportOptions, plan: ExportPlan): Promise<ExportOutcome> {
+  requireOwnOutputDir(options.projectDir, options.outputDir)
   // An export that the app quit during left the project's files changed.
   await replayExportRestore(options.restoreDir, options.projectDir)
   // The export scans and imports the project like the import step.
@@ -974,7 +1015,7 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
       format: 1, projectDir: options.projectDir, preset: plan.preset,
       presets: { original: original?.toString('base64') ?? null, written },
     })
-    await writeFile(presetsPath, written)
+    await writeProjectFile(presetsPath, written)
     let stdout: string
     let stderr: string
     let ended: string
@@ -990,8 +1031,7 @@ async function runExport(options: ExportOptions, plan: ExportPlan): Promise<Expo
       stderr = outcome.stderr
       ended = outcome.timedOut ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(outcome.exit)})`
     } finally {
-      if (original === undefined) await rm(presetsPath, { force: true })
-      else await writeFile(presetsPath, original)
+      await restorePresets(presetsPath, original, written, plan.preset)
       await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })
     }
     options.signal.throwIfAborted()
@@ -1165,6 +1205,7 @@ async function folderBytes(folder: string): Promise<number> {
  * @throws {GodotExportError} when the process ends without writing the build.
  */
 async function runPackagedExport(options: ExportOptions, plan: PackagedExportPlan): Promise<PackagedExportOutcome> {
+  requireOwnOutputDir(options.projectDir, options.outputDir)
   // An export that the app quit during left the project's files changed.
   await replayExportRestore(options.restoreDir, options.projectDir)
   const blenderNote = await turnOffBlenderImport(options.projectDir, options.signal)
@@ -1195,14 +1236,14 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
         },
       },
     })
-    await writeFile(presetsPath, writtenPresets)
+    await writeProjectFile(presetsPath, writtenPresets)
     try {
       if (splash !== undefined) {
         const image = exportSplashFile(options.projectDir)
         await mkdir(dirname(image), { recursive: true })
         await writeFile(image, await readFile(fileURLToPath(WASD_SPLASH_IMAGES[splash])))
       }
-      if (exportText !== projectText) await writeFile(projectPath, exportText)
+      if (exportText !== projectText) await writeProjectFile(projectPath, exportText)
       const outcome = await runGodotCommand({
         ...options,
         argv: launcherArgv(options.runtime, options.hostPid, [
@@ -1215,14 +1256,13 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
       stderr = outcome.stderr
       ended = outcome.timedOut ? `did not finish within ${formatSeconds(options.timeoutMs)}` : `ended (${describeExit(outcome.exit)})`
     } finally {
-      if (originalPresets === undefined) await rm(presetsPath, { force: true })
-      else await writeFile(presetsPath, originalPresets)
+      await restorePresets(presetsPath, originalPresets, writtenPresets, plan.preset)
       if (exportText !== projectText) {
         const current = await readFile(projectPath, 'utf8')
         // Only the export's own settings return, so a change to project.godot made meanwhile stays.
         const earlier = Object.fromEntries(missing.map(format => [format, before[format]]))
         const restored = current === exportText ? projectText : withExportSplash(withTextureImports(current, earlier), false)
-        if (restored !== current) await writeFile(projectPath, restored)
+        if (restored !== current) await writeProjectFile(projectPath, restored)
       }
       if (splash !== undefined) await rm(exportSplashFile(options.projectDir), { force: true })
       await rm(restoreRecordPath(options.restoreDir, options.projectDir), { force: true })

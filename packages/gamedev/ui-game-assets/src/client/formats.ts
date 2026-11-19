@@ -55,12 +55,3 @@ export function formatOf(name: string): AssetFormat | undefined {
   const extension = extensionOf(name)
   return Object.hasOwn(ASSET_FORMATS, extension) ? ASSET_FORMATS[extension] : undefined
 }
-
-/**
- * Whether a format is a Blender file, which the viewer shows through a model exported from it.
- * @param format - a listed format.
- * @returns true for `.blend`.
- */
-export function isBlendFormat(format: AssetFormat): boolean {
-  return format.kind === 'model' && format.decoder === 'blend'
-}

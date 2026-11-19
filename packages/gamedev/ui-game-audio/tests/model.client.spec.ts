@@ -74,7 +74,10 @@ describe('the list rows', () => {
     expect(before.map(item => item.kind)).toEqual(['effect', 'effect', 'effect', 'effect', 'dialogue'])
     const probes = new Map([['title.ogg', { bytes: 10, probe: { format: 'Ogg Vorbis', seconds: 95 } }], ['audio/theme.mp3', { bytes: 99, probe: { format: 'MP3', seconds: 120 } }]])
     // A probe of another size is stale and left out.
-    expect(soundItems(scan, probes).map(item => [item.kind, item.probe?.seconds])).toEqual([['music', 95], ['effect', undefined], ['effect', undefined], ['effect', undefined], ['dialogue', undefined]])
+    const after = soundItems(scan, probes, new Map(before.map(item => [item.entry.path, item])))
+    expect(after.map(item => [item.kind, item.probe?.seconds])).toEqual([['music', 95], ['effect', undefined], ['effect', undefined], ['effect', undefined], ['dialogue', undefined]])
+    // Only the sound whose headers were read gets a new item; the others keep theirs, so their rows skip rendering.
+    expect(after.map((item, index) => item === before[index])).toEqual([false, true, true, true, true])
   })
 
   it('groups the shown sounds under their folders, folds a folder shut, and ranks a search', () => {

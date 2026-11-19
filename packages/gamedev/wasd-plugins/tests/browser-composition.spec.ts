@@ -274,7 +274,7 @@ describe('WASD Engine Plugins composition', () => {
       source: { kind: 'wasd-plugins', form: 'notice', summary: 'Screenshot of the Web check that stopped the release' },
       content: [
         { type: 'text', text: 'Screenshot of the page as the Web check that stopped the release last saw it (64x36):' },
-        { type: 'image', attachment: expect.objectContaining({ attachmentId: 'shot-1', mediaType: 'image/jpeg' }) },
+        { type: 'image', attachment: expect.objectContaining({ attachmentId: 'shot-1', mediaType: 'image/jpeg' }) as object },
       ],
     })])
     expect(site.games.size).toBe(0)

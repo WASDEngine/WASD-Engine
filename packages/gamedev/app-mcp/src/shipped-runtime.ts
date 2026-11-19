@@ -8,7 +8,8 @@
  * @module
  */
 
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
+import { createReadStream } from 'node:fs'
 import { readFile, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
@@ -192,6 +193,12 @@ export interface RuntimeUnpackHost extends ShippedRuntimeHost {
    * @returns exit status and the bounded output tail.
    */
   run(argv: CommandArgv, options: CommandOptions): Promise<CommandResult>
+  /**
+   * The SHA-256 of a file, which the archive's record pins; a host without it unpacks the archive unchecked.
+   * @param target - absolute path.
+   * @returns the lowercase hexadecimal digest.
+   */
+  fileSha256?(target: string): Promise<string>
 }
 
 /**
@@ -206,6 +213,11 @@ export function nodeRuntimeUnpackHost(outputLimit: number): RuntimeUnpackHost {
     async rename(from, to) { await rename(from, to) },
     async remove(target) { await rm(target, { recursive: true, force: true }) },
     run: async (argv, options) => await runCommand(argv, options, outputLimit),
+    async fileSha256(target) {
+      const hash = createHash('sha256')
+      for await (const chunk of createReadStream(target)) hash.update(chunk as Buffer)
+      return hash.digest('hex')
+    },
   }
 }
 
@@ -396,6 +408,10 @@ export async function unpackPackedRuntime<R extends { readonly version: string }
   }
   if (!(await host.listDirectory(packed.directory)).includes(paths.basename(packed.archive))) {
     throw failures.invalid(packed.directory, `its archive.json names ${packed.archive}, which is missing`)
+  }
+  // The archive unpacks only as the record pins it, so a damaged or swapped file never becomes the runtime.
+  if (host.fileSha256 !== undefined && await host.fileSha256(packed.archive) !== packed.sha256) {
+    throw failures.invalid(packed.directory, `${packed.archive} does not have the SHA-256 that its archive.json names; reinstall WASD Engine`)
   }
   const tar = await findTar(host)
   if (tar === undefined) {

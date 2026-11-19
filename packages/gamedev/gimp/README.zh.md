@@ -207,7 +207,7 @@ GIMP3_DIRECTORY=<dataRoot>/profile <gimp-console> -n -s -c --batch-interpreter=p
 
 `-n` 启动新的 GIMP 实例，`-s` 跳过启动画面，`-c` 把消息输出到控制台。批处理命令在 GIMP 的 Python 插件进程中运行工作脚本，该进程继承服务器的管道：请求从标准输入到达，回复写到文件描述符 3，GIMP 自身的输出仍在标准输出和标准错误上。每个工具校验参数，向同名的工作进程方法发送一个请求，校验回复，并把它转换为简洁的文本和图像；不符合预期的回复会使调用以 `WorkerReplyError` 失败。监管器逐个执行调用，并在工作进程停止后启动新的工作进程。
 
-服务器从 GIMP 的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 GIMP 自带的 Python。工作进程中的每个 GIMP 调用都使用非交互运行模式。GIMP 3.2 在其 Python 插件进程终止后仍继续运行，并保持回复管道打开，因此在 `os.name` 为 `posix` 的系统上，工作进程会启动一个 `/bin/sh` 看门狗：工作进程未告别就结束时，看门狗杀死 GIMP，GIMP 是进程组组长时则杀死整个进程组。工作进程在回复 `shutdown` 后或标准输入关闭时返回，随后 GIMP 通过 `--quit` 退出。
+服务器从 GIMP 的环境中移除 `PYTHONPATH`、`PYTHONHOME`、`PYTHONSTARTUP`、`VIRTUAL_ENV` 与 `ELECTRON_RUN_AS_NODE`，使用户的 Python 配置不影响 GIMP 自带的 Python。服务器还把 `DARKTABLE_EXECUTABLE`、`RAWTHERAPEE_EXECUTABLE` 和 `ART_EXECUTABLE` 设为 `<dataRoot>/profile/wasd-engine-no-raw-editor`，一个不会被创建的文件，使 GIMP 的 RAW 加载器找不到 darktable、RawTherapee 或 ART（加载 RAW 时会打开它们的窗口并等待），从而不注册任何加载器；GIMP 的占位加载器随后会拒绝 RAW 文件。工作进程中的每个 GIMP 调用都使用非交互运行模式。GIMP 3.2 在其 Python 插件进程终止后仍继续运行，并保持回复管道打开，因此在 `os.name` 为 `posix` 的系统上，工作进程会启动一个 `/bin/sh` 看门狗：工作进程未告别就结束时，看门狗杀死 GIMP，GIMP 是进程组组长时则杀死整个进程组。工作进程在回复 `shutdown` 后或标准输入关闭时返回，随后 GIMP 通过 `--quit` 退出。
 
 | 文件 | 职责 |
 |---|---|

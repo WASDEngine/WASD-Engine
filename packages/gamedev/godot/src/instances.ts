@@ -54,35 +54,50 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 /**
- * Run every instance of a group at once, each after its own delay, until each ends or the group's deadline passes.
+ * Run every instance of a group at once, each after its own delay, until each ends or the group's deadline passes. An
+ * instance that cannot start stops the others, and the group ends once every instance has ended, so no process
+ * outlives the call.
  * @param options - runtime, project, instances, deadline, and process limits.
  * @returns one report per instance, in request order.
  * @throws the abort reason when `signal` aborts; the subprocess service's error when an instance cannot start.
  */
 export async function runInstanceGroup(options: InstanceGroupOptions): Promise<GodotInstanceReport[]> {
   const started = Date.now()
-  const reports = await Promise.all(options.instances.map(async (instance): Promise<GodotInstanceReport> => {
-    await delay(instance.delayMs, options.signal)
-    options.signal.throwIfAborted()
-    const remaining = Math.max(1, options.timeoutMs - (Date.now() - started))
-    const outcome = await runGodotCommand({
-      subprocess: options.subprocess,
-      argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir]),
-      cwd: options.projectDir,
-      timeoutMs: remaining,
-      graceMs: options.graceMs,
-      outputBytes: options.outputBytes,
-      signal: options.signal,
-      env: instance.env,
-    })
-    return {
-      name: instance.name,
-      exitCode: outcome.timedOut ? null : outcome.exit.exitCode,
-      timedOut: outcome.timedOut,
-      stdout: tail(outcome.stdout),
-      stderr: tail(outcome.stderr),
+  const group = new AbortController()
+  const signal = AbortSignal.any([options.signal, group.signal])
+  let failure: { readonly error: unknown } | undefined
+  const results = await Promise.allSettled(options.instances.map(async (instance): Promise<GodotInstanceReport> => {
+    try {
+      await delay(instance.delayMs, signal)
+      signal.throwIfAborted()
+      const remaining = Math.max(1, options.timeoutMs - (Date.now() - started))
+      const outcome = await runGodotCommand({
+        subprocess: options.subprocess,
+        argv: launcherArgv(options.runtime, options.hostPid, ['--headless', '--path', options.projectDir]),
+        cwd: options.projectDir,
+        timeoutMs: remaining,
+        graceMs: options.graceMs,
+        outputBytes: options.outputBytes,
+        signal,
+        env: instance.env,
+      })
+      return {
+        name: instance.name,
+        exitCode: outcome.timedOut ? null : outcome.exit.exitCode,
+        timedOut: outcome.timedOut,
+        stdout: tail(outcome.stdout),
+        stderr: tail(outcome.stderr),
+      }
+    } catch (error) {
+      failure ??= { error }
+      group.abort(error)
+      throw error
     }
   }))
   options.signal.throwIfAborted()
-  return reports
+  if (failure !== undefined) throw failure.error
+  return results.map((result) => {
+    if (result.status === 'rejected') throw result.reason
+    return result.value
+  })
 }

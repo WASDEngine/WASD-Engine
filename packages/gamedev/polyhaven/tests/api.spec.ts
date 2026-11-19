@@ -82,10 +82,21 @@ describe('PolyHavenApi', () => {
     await expect(api().image(`${fake.url}/thumbs/mossy_rock.png`, signal)).rejects.toThrow('Poly Haven sent the preview image as text/html.')
   })
 
-  it('reports an unreachable Poly Haven and refuses URLs that are not HTTP', async () => {
+  it('reports an unreachable Poly Haven and refuses URLs and redirects that do not lead to Poly Haven', async () => {
     const offline = api({ fetch: () => Promise.reject(new TypeError('fetch failed')) })
     await expect(offline.assets(signal)).rejects.toThrow(`Could not reach Poly Haven at ${new URL(fake.url).host} for the asset list: fetch failed`)
-    await expect(api().download('file:///etc/passwd', signal)).rejects.toThrow('Poly Haven named the file file:///etc/passwd at a URL that is not HTTP: file:///etc/passwd')
+    for (const url of ['file:///etc/passwd', 'https://attacker.example/mossy_rock.zip', 'http://dl.polyhaven.org/file.zip']) {
+      await expect(api().download(url, signal)).rejects.toThrow(`Poly Haven named the file ${url} at ${url}, which is not a Poly Haven address, so nothing was downloaded from it.`)
+    }
+    const fetched: string[] = []
+    const redirecting = api({
+      fetch: async (input) => {
+        fetched.push(input instanceof Request ? input.url : input.toString())
+        return new Response(null, { status: 302, headers: { location: 'https://attacker.example/stolen' } })
+      },
+    })
+    await expect(redirecting.download(`${fake.url}/dl/mossy_rock.zip`, signal)).rejects.toThrow('https://attacker.example/stolen, which is not a Poly Haven address')
+    expect(fetched).toEqual([`${fake.url}/dl/mossy_rock.zip`])
   })
 
   it('stops a request when cancelled', async () => {

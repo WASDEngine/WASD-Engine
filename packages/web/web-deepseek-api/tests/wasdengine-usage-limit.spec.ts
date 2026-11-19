@@ -79,11 +79,12 @@ describe('a web request refused for used-up AI usage', () => {
     expect(error.message).toBe(`The account used for this web request has no usage left (HTTP 402). ${PASS_ON}`)
   })
 
-  it('keeps endpoint guidance for an API key\'s 402, which the user settles with that key\'s provider', async () => {
+  it('says an API key\'s 402 is the key\'s balance, which the user settles with that key\'s provider, not the endpoint', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: { message: 'Insufficient Balance' } }, { status: 402 })))
     const error = await rejectedWebError(search([{ kind: 'api-key', baseURL: 'https://api.deepseek.test/v1/tools', key: 'ds-key' }]))
     expect(error.message).toContain('DeepSeek API error (HTTP 402): Insufficient Balance')
-    expect(error.message).toContain('If that endpoint is not intended')
+    expect(error.message).toContain('The account of the API key this web request used has no balance left.')
+    expect(error.message).not.toContain('If that endpoint is not intended')
   })
 })
 

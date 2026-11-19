@@ -129,6 +129,11 @@ describe('the project file route', () => {
     })
     // The request's cap never raises the route's own.
     expect(await refusal(await get({ root: project, path: 'art/hero.png', max: '100' }, { maxBytes: 8 }))).toMatchObject({ status: 413, body: { limit: 8 } })
+    // Nor does a head it asks for, which the route reads whole.
+    expect(await refusal(await get({ root: project, path: 'art/hero.png', length: '100' }, { maxBytes: 8 }))).toEqual({
+      status: 413, body: { code: 'too-large', message: 'The first 10 bytes of art/hero.png are more than the 8 bytes this route reads.', limit: 8 },
+    })
+    expect((await get({ root: project, path: 'art/hero.png', length: '4' }, { maxBytes: 8 })).status).toBe(200)
     for (const params of [{ root: 'project', path: 'a.png' }, { root: project, path: '' }, { path: 'a.png' }, { root: project, path: 'a.png', max: '-1' }, { root: project, path: 'a.png', length: 'all' }]) {
       expect((await get(params)).status, JSON.stringify(params)).toBe(400)
     }

@@ -28,14 +28,6 @@ export class LogSequence {
     this.last += 1
     return this.last
   }
-
-  /**
-   * Read the most recently issued number.
-   * @returns the number, or 0 before the first.
-   */
-  current(): number {
-    return this.last
-  }
 }
 
 /** One page of entries read after a cursor. */

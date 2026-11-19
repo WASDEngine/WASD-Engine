@@ -79,9 +79,17 @@ EXTENSIONS = "lib/gimp/3.0/extensions"
 # installs. On Windows its Vala plug-in reads its own path from the ANSI command line, so in a folder outside ASCII it
 # reports that its translation catalog is missing.
 DEMO_EXTENSION = f"{EXTENSIONS}/org.gimp.extension.goat-exercises"
+# GIMP's RAW loaders, which hand a RAW file to darktable, RawTherapee, or ART and wait while that program's window is
+# open; a headless runtime keeps none of them, and file-raw-placeholder then refuses RAW files instead.
+RAW_EDITOR_PLUG_INS = tuple(
+    f"lib/gimp/3.0/plug-ins/{name}" for name in ("file-darktable", "file-rawtherapee", "file-another-rawtherapee")
+)
 # Paths relative to the bundle's Contents that the runtime leaves out: bundle metadata and signatures, headers,
-# translations, the GUI icons and themes' icon files, and the demo extension.
-UNUSED_PATHS = ("Info.plist", "CodeResources", "_CodeSignature", "include", "Resources/icons", "Resources/locale", DEMO_EXTENSION)
+# translations, the GUI icons and themes' icon files, the demo extension, and the RAW loaders.
+UNUSED_PATHS = (
+    "Info.plist", "CodeResources", "_CodeSignature", "include", "Resources/icons", "Resources/locale", DEMO_EXTENSION,
+    *RAW_EDITOR_PLUG_INS,
+)
 UNUSED_RESOURCE_FILES = ("*.icns", "Assets.car")
 # Python standard library folders that GIMP's Python never imports: the test suite, the IDE, Tk, turtle demos, and pip's installer.
 UNUSED_STDLIB = ("test", "idlelib", "tkinter", "turtledemo", "ensurepip")
@@ -104,8 +112,11 @@ SETUP_SWITCHES = ("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-", "/NO
 SETUP_TIMEOUT_SECONDS = 1800
 # Paths of a Windows install, relative to its folder, that the runtime leaves out: the uninstaller, headers and import
 # libraries, the 32-bit TWAIN helper, the hicolor icon theme of the desktop, the scanner plug-in, which only opens
-# the scanner's own dialog, and the demo extension.
-WINDOWS_UNUSED_PATHS = ("uninst", "include", "lib/pkgconfig", "32", "share/icons", "lib/gimp/3.0/plug-ins/twain", DEMO_EXTENSION)
+# the scanner's own dialog, the demo extension, and the RAW loaders.
+WINDOWS_UNUSED_PATHS = (
+    "uninst", "include", "lib/pkgconfig", "32", "share/icons", "lib/gimp/3.0/plug-ins/twain", DEMO_EXTENSION,
+    *RAW_EDITOR_PLUG_INS,
+)
 # Files of a Windows install that the runtime leaves out wherever they are: debug symbols and static libraries.
 WINDOWS_UNUSED_FILES = ("*.pdb", "*.a")
 # The folder of GIMP's interpreter files, whose programs the installer names by its own absolute folder.

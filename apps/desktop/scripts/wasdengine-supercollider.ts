@@ -29,6 +29,7 @@ import {
 export const SUPERCOLLIDER_RUNTIME: PinnedRuntime = {
   label: 'SuperCollider', environmentPrefix: 'WASD_SUPERCOLLIDER', packageName: '@deepseek-ai/dsh-supercollider', folder: 'runtime',
   version: '3.14.1-wasd.1',
+  manifestSha256: 'ec6f6f54df978c3c86493422211c33648376e122ec94ed8c0bad97e89be0efdb',
 }
 
 /** Manifest of the SuperCollider runtime release that `wasdengine/supercollider/build.sh` builds by default. */

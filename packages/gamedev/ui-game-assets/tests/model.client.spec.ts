@@ -14,7 +14,8 @@ import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
 import { checkModelImage, ImageTooLargeError, UnsizedImageError } from '../src/client/picture.ts'
 import {
-  colladaImageNames, describeModel, disposeObject, gltfDeclaredBytes, gltfJson, loadModel, ModelTooLargeError, ModelUnsizedError, statsOf,
+  colladaImageNames, describeModel, disposeObject, gltfDeclaredBytes, gltfJson, loadModel, ModelTooLargeError, ModelUnsizedError, mtllibOf,
+  statsOf,
   type ModelSource,
 } from '../src/client/viewer/model.ts'
 import { FbxInflateError } from '../src/client/viewer/fbx.ts'
@@ -477,6 +478,14 @@ describe('loadModel: the memory of every format and its textures', () => {
     expect(route.requests).toContain('GET b.png')
   })
 
+  it('reads an OBJ file\'s material library name a line at a time, so a crafted line costs linear time', () => {
+    expect(mtllibOf('v 0 0 0\r\n  mtllib\t mat/hero.mtl \t\nmtllib other.mtl\n')).toBe('mat/hero.mtl')
+    expect(mtllibOf('mtllib\nmtllibx a.mtl\n')).toBeUndefined()
+    const started = performance.now()
+    expect(mtllibOf(`mtllib x${' '.repeat(1_000_000)}y\n`)).toBe(`x${' '.repeat(1_000_000)}y`)
+    expect(performance.now() - started).toBeLessThan(2000)
+  })
+
   it('checks an FBX file\'s embedded images and its images in files of their own, listing an embedded one it refuses', async () => {
     const loaded = decodes()
     const route = serve({ 'skin.png': pngHeader(16, 16) })
@@ -497,6 +506,8 @@ describe('loadModel: the memory of every format and its textures', () => {
     expect(model.missing).toEqual(['(embedded)'])
     expect(route.requests.toSorted()).toEqual(['GET blob', 'GET skin.png'])
     expect(loaded).toHaveLength(1)
+    // The loader's URL of the embedded image goes once every texture settled, with the viewer's own.
+    expect(route.blobs.size).toBe(0)
   })
 
   it('checks a Collada file\'s images before its loader runs, and hands the loader the checked bytes', async () => {

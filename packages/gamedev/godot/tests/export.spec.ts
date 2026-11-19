@@ -1,7 +1,8 @@
 /** Exports write a temporary preset, restore the project's presets, and report the build or why there is none. */
 import { readFileSync } from 'node:fs'
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { homedir } from 'node:os'
+import { join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -58,10 +59,10 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
   await before?.(project)
   const outputDir = join(project, '.wasdengine', 'web')
   const restoreDir = join(dir.root, 'data', 'export-restore')
-  const exportBuild = () => exportWeb({
+  const exportBuild = (call: Partial<WebExportOptions> = {}) => exportWeb({
     subprocess: host.subprocess, runtime: { kind: 'libgodot', runner: dir.fakeGodot, library: dir.fakeLibrary }, projectDir: project, outputDir,
     template: '/templates/web "release".zip', hostPid: process.pid, timeoutMs: 5000, graceMs: 500, outputBytes: 64 * 1024, signal, restoreDir,
-    ...overrides,
+    ...overrides, ...call,
   })
   return { project, outputDir, restoreDir, run: exportBuild }
 }
@@ -235,6 +236,15 @@ describe('packNotes', () => {
 })
 
 posix('exportWeb', () => {
+  it('refuses an output folder that holds the project, the home folder, a root, or a relative path, and empties nothing', async () => {
+    const { project, run } = await prepare({ export: { files: BUILD } })
+    for (const outputDir of [project, join(project, '..'), homedir(), parse(project).root, 'build/web']) {
+      await expect(run({ outputDir })).rejects.toBeInstanceOf(GodotExportError)
+    }
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toContain('config/name="Fake game"')
+    expect(await fakeLog(project)).toEqual([])
+  })
+
   it('exports with the temporary preset, restores the project\'s presets, and lists the build', async () => {
     const original = '[preset.0]\n\nname="Windows"\nplatform="Windows Desktop"\n'
     const { project, outputDir, run } = await prepare({ export: { files: BUILD, stderr: 'WARNING: Screen-space AA is only available when using the Forward+ or Mobile renderer.\n' } }, async (dir) => {
@@ -553,6 +563,19 @@ posix('exportDesktop', () => {
     expect(argv[5]).toBe(join(outputDir, 'Fake game.zip'))
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+  })
+
+  it('keeps a preset added to export_presets.cfg during the export and takes out only its own', async () => {
+    const original = '[preset.0]\n\nname="Windows"\nplatform="Windows Desktop"\n'
+    const added = '\n[preset.9]\n\nname="Mine"\nplatform="Linux"\n'
+    const { project, run } = await prepareDesktop('windows', { export: { files: { 'Fake game.zip': 'zip' }, appendPresets: added } }, async (dir) => {
+      await writeFile(join(dir, 'export_presets.cfg'), original)
+    })
+    await run()
+    const after = await readFile(join(project, 'export_presets.cfg'), 'utf8')
+    expect(after).toContain('name="Windows"')
+    expect(after).toContain('name="Mine"')
+    expect(after).not.toContain('WASD Engine')
   })
 
   it('keeps a change to project.godot made during the export and still restores the import settings', async () => {

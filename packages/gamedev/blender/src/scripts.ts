@@ -14,7 +14,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, join, relative, sep, win32 } from 'node:path'
 import { lowMemoryMessage, memoryShortage, processLimit, type MachineResources } from '@deepseek-ai/dsh-app-mcp'
 import { abortError } from './abort.ts'
 import { BLEND_FILE_VARIABLE, SCRIPT_VARIABLE, USER_RESOURCES_FOLDER, type WorkerLaunch } from './environment.ts'
@@ -206,7 +206,9 @@ function stopGroup(child: ChildProcess): void {
   if (pid === undefined) return
   /* v8 ignore start -- Windows has no process groups, and the coverage lanes run on POSIX */
   if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+    // By its full path: a bare name would run any taskkill.exe that the working folder or PATH holds first.
+    const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+    spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
     child.kill('SIGKILL')
     return
   }

@@ -47,6 +47,11 @@ export interface ImageViewProps {
   readonly read?: ((path: string, signal: AbortSignal) => Promise<RemoteResult<AssetFile>>) | undefined
   /** What an agent asked to show: a sprite grid and a 2D animation to play once found; `request` changes for each ask. */
   readonly requested?: ViewRequest | undefined
+  /**
+   * Told, once the image's animations are found, when they lack the one an agent asked for.
+   * @param request - the ask's `request`.
+   */
+  readonly onMissingAnimation?: ((request: number) => void) | undefined
   /** The most pixels the viewer decodes for one image; a larger image shows a notice. */
   readonly maxDecodedPixels: number
   /** Whether the view is on screen; a hidden view's animation waits where it stands. */
@@ -99,7 +104,9 @@ function clampCount(value: number): number {
  * @param props - the asset, its bytes, the reads for its animations, the animation an agent asked for, and copy.
  * @returns the zoomable picture over its timeline, sprite grid, info and zoom bar, and details.
  */
-export function ImageView({ asset, file, animations: sources, read, requested, maxDecodedPixels, visible, t }: ImageViewProps): ReactNode {
+export function ImageView({
+  asset, file, animations: sources, read, requested, onMissingAnimation, maxDecodedPixels, visible, t,
+}: ImageViewProps): ReactNode {
   const format = asset.format
   const [picture, setPicture] = useState<Shown>()
   const [natural, setNatural] = useState<Size>()
@@ -183,13 +190,16 @@ export function ImageView({ asset, file, animations: sources, read, requested, m
     }
     const wanted = requested.animation?.toLowerCase()
     const match = wanted === undefined ? undefined : animations.find(candidate => candidate.name.toLowerCase() === wanted)
-    if (wanted !== undefined && match === undefined) return
+    if (wanted !== undefined && match === undefined) {
+      onMissingAnimation?.(requested.request)
+      return
+    }
     handled.current = requested.request
     if (match === undefined) return
     setActive(match.name)
     setFrame(0)
     setPlaying(true)
-  }, [requested, sprite, animations, grid])
+  }, [requested, sprite, animations, grid, onMissingAnimation])
 
   // Playback: each frame shows for its duration at the chosen speed once its picture is decoded, while the view is on
   // screen; a looping animation starts over.

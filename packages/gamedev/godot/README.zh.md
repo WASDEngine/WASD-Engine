@@ -61,13 +61,14 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 ### 配置
 
-[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath`、`androidJavaPath`、`androidSdkPath` 或某个 `*TemplatePath` 字段为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 或某个 `*TemplateArchiveUrl` 字段不是 http 或 https URL 时，加载失败。
+[`src/index.ts`](src/index.ts) 声明并校验以下字段。`dataRoot`、`libgodotPath`、`runnerPath`、`androidJavaPath`、`androidSdkPath` 或某个 `*TemplatePath` 字段为相对路径，`libgodotPath` 与 `runnerPath` 只设置了其中一个，或 `runtimeManifestUrl` 或某个 `*TemplateArchiveUrl` 字段既不是 https URL，也不是指向本机（`127.0.0.1`、`localhost` 或 `[::1]`）的 http URL 时，加载失败。
 
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 存放托管运行时和 harness 脚本副本的绝对目录 |
 | `runtimeVersion` | `4.7.2-wasd.4` | 托管运行时的版本：即它在 `runtime/` 下的文件夹名，也是其 manifest（元数据清单）必须描述的版本；系统提示词会写明它开头的 Godot 版本，例如 `4.7` |
 | `runtimeManifestUrl` | `https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json` | 安装时下载的发布 manifest |
+| `runtimeManifestSha256` | `c75b17d2258380ae304f9ca9dd6d35b99d6b5b60f37a8d2b5b921ab5df5d4f0a` | 发布 manifest 必须具有的 SHA-256，它锁定了 manifest 列出的每个归档；为空时接受任何 manifest，供未锁定的 manifest 使用 |
 | `libgodotPath` | `''` | LibGodot 库的绝对路径；须与 `runnerPath` 一起设置 |
 | `runnerPath` | `''` | `godot_runner` 可执行文件的绝对路径；须与 `libgodotPath` 一起设置 |
 | `streamFps` | `30` | 向“游戏”标签页推流的每秒帧数，1 到 60 |
@@ -151,13 +152,13 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 
 托管运行时是以 LibGodot 形式构建、带有 WASD Engine 补丁的 Godot 4.7.2；[LibGodot 构建指南](../../../wasdengine/libgodot/BUILD.md)说明了 runner、归档、`runtime.json` 和 manifest。“游戏”标签页中的 **安装 Godot** 在运行时缺失或失败时显示，它调用 `installRuntime` Remote 方法，该方法：
 
-1. 下载 `runtimeManifestUrl`，并要求其 `version` 等于 `runtimeVersion`；
+1. 下载 `runtimeManifestUrl`，要求其字节的 SHA-256 等于 `runtimeManifestSha256`（为空时不检查），并要求其 `version` 等于 `runtimeVersion`；
 2. 为宿主的 `<platform>-<arch>` 键（例如 `darwin-arm64`）选择产物；
-3. 从产物的 `url`（相对于 manifest URL 解析）下载归档，并在接收过程中校验其大小和 SHA-256；
+3. 从产物的 `url`（相对于 manifest URL 解析，必须是 https URL 或指向本机的 http URL）下载归档，并在接收过程中校验其大小和 SHA-256；
 4. 用 `tar` 把归档解压到暂存文件夹：`tar` 在该文件夹中运行，唯一的路径参数是 `../<归档名>`，因为 Windows 的 `tar.exe` 以 ANSI 代码页读取参数，而 ANSI 代码页无法容纳用户配置文件夹路径中的所有字符；确认 runner 与库都在其中；并写入 `runtime.json`；
 5. 在文件锁保护下把暂存文件夹重命名为 `<dataRoot>/runtime/<runtimeVersion>/`；如果另一个宿主进程在此期间已安装该运行时，则保留那一份。
 
-安装期间，每个“游戏”标签页都会显示带百分比的“正在下载 Godot”，随后显示“正在校验 Godot”和“正在解压 Godot”。第二个请求会加入正在进行的安装；关闭标签页只会停止它的等待，卸载插件则会取消安装。无论成功还是失败，下载文件和暂存文件都会被删除；失败时会显示原因：manifest 无法访问或其 HTTP 状态、manifest 无效或属于其他版本、没有对应平台的构建、下载出错、大小或 SHA-256 不匹配，或归档中缺少运行时文件。`wasdengine/libgodot/build.sh --install <dataRoot>` 会把本地构建安装到同一位置。
+安装期间，每个“游戏”标签页都会显示带百分比的“正在下载 Godot”，随后显示“正在校验 Godot”和“正在解压 Godot”。第二个请求会加入正在进行的安装；关闭标签页只会停止它的等待，卸载插件则会取消安装。无论成功还是失败，下载文件和暂存文件都会被删除；失败时会显示原因：manifest 无法访问或其 HTTP 状态、manifest 的 SHA-256 与锁定值不符、manifest 无效或属于其他版本、没有对应平台的构建、下载出错、大小或 SHA-256 不匹配，或归档中缺少运行时文件。`wasdengine/libgodot/build.sh --install <dataRoot>` 会把本地构建安装到同一位置。
 
 <a id="game-runs"></a>
 ### 游戏运行

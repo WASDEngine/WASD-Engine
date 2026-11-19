@@ -10,7 +10,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname } from 'node:path'
+import { basename, dirname, extname, resolve } from 'node:path'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { AudioRequestError, type AudioApi, type CloneSample, type VoiceQuery } from './api.ts'
@@ -40,6 +40,13 @@ export const MAX_CLONE_SAMPLES = 5
 
 /** Largest recording a clone takes, in bytes. */
 export const MAX_CLONE_SAMPLE_BYTES = 10 * 1024 * 1024
+
+/**
+ * Largest size of all of a clone's recordings together, in bytes: the WASD Engine API reads at most 30 MiB of a clone
+ * request, which also holds the form's other fields and its boundaries, so the tool refuses more before it asks the
+ * user to confirm consent.
+ */
+export const MAX_CLONE_TOTAL_BYTES = 29 * 1024 * 1024
 
 /** Longest name of a clone. */
 export const MAX_CLONE_NAME = 60
@@ -94,6 +101,12 @@ export interface ElevenLabsToolHost {
    * @returns the absolute path.
    */
   file(requested: string, exec: ToolRunContext): Promise<string>
+  /**
+   * The files that calls are making now, by their absolute paths in lowercase, shared by every surface's tools, so a
+   * second call for a file that one is making is refused before it pays for audio that would overwrite the first's.
+   * Without it, each set of definitions keeps its own.
+   */
+  readonly making?: Set<string>
 }
 
 const STRING = { type: 'string', required: true } as const
@@ -262,6 +275,7 @@ async function writeAudio(path: string, data: Buffer): Promise<void> {
  */
 async function generateFile(
   host: ElevenLabsToolHost,
+  making: Set<string>,
   kind: ElevenLabsAudioKind,
   file: string,
   format: ElevenLabsAudioFormat,
@@ -270,10 +284,18 @@ async function generateFile(
   exec: ToolRunContext,
 ): Promise<FileValue> {
   const path = await host.file(file, exec)
-  const replaced = await existing(path, file, replace)
-  const audio = await host.api.generate(kind, { ...body, format }, exec.signal)
-  await writeAudio(path, audio.data)
-  return { path, file, format, durationMs: audio.durationMs, bytes: audio.data.byteLength, replaced }
+  // Lowercase, as macOS and Windows compare file names, so two spellings of one file count as one.
+  const key = resolve(path).toLowerCase()
+  if (making.has(key)) throw new Error(`Another call is making ${file} now; wait for it, or choose another path.`)
+  making.add(key)
+  try {
+    const replaced = await existing(path, file, replace)
+    const audio = await host.api.generate(kind, { ...body, format }, exec.signal)
+    await writeAudio(path, audio.data)
+    return { path, file, format, durationMs: audio.durationMs, bytes: audio.data.byteLength, replaced }
+  } finally {
+    making.delete(key)
+  }
 }
 
 function saved(value: FileValue): string {
@@ -328,6 +350,10 @@ async function readSamples(host: ElevenLabsToolHost, requested: readonly string[
     if (size > MAX_CLONE_SAMPLE_BYTES) throw new Error(`${file} is larger than ${MAX_CLONE_SAMPLE_BYTES / (1024 * 1024)} MB; trim it or save it as MP3.`)
     samples.push({ name: basename(file), type, data: await readFile(path) })
   }
+  const total = samples.reduce((sum, sample) => sum + sample.data.byteLength, 0)
+  if (total > MAX_CLONE_TOTAL_BYTES) {
+    throw new Error(`The recordings take ${(total / (1024 * 1024)).toFixed(1)} MB together, more than the ${MAX_CLONE_TOTAL_BYTES / (1024 * 1024)} MB a clone takes; use fewer or shorter recordings, or save them as MP3.`)
+  }
   return samples
 }
 
@@ -352,6 +378,7 @@ function assertNever(value: never): never {
  * @returns the definitions, not registered.
  */
 export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: ElevenLabsToolSurface): ToolDefinition[] {
+  const making = host.making ?? new Set<string>()
   const pathDescription = surface.pathDescription
   const replaceParameter = { type: 'boolean', description: 'Overwrite the file when it exists. Default: false.' } as const
   return [defineTool({
@@ -444,7 +471,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
         ...optional('previous_text', args.previous_text?.slice(0, 1000)),
         ...optional('next_text', args.next_text?.slice(0, 1000)),
       }
-      const value = await generateFile(host, 'speech', args.path, formatOf(args.path, ['mp3', 'wav']), args.replace === true, body, exec)
+      const value = await generateFile(host, making, 'speech', args.path, formatOf(args.path, ['mp3', 'wav']), args.replace === true, body, exec)
       return { ...value, voiceId, characters: text.length }
     },
   }), defineTool({
@@ -475,7 +502,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
         ...optional('duration_seconds', inRange(args.duration_seconds, 'duration_seconds', 0.5, 30)),
         ...optional('prompt_influence', inRange(args.prompt_influence, 'prompt_influence', 0, 1)),
       }
-      const value = await generateFile(host, 'sound-effects', args.path, formatOf(args.path, ['wav', 'mp3']), args.replace === true, body, exec)
+      const value = await generateFile(host, making, 'sound-effects', args.path, formatOf(args.path, ['wav', 'mp3']), args.replace === true, body, exec)
       return { ...value, loop }
     },
   }), defineTool({
@@ -497,7 +524,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
       const prompt = checkedText(args.prompt, 'prompt', MAX_PROMPT_CHARACTERS)
       const instrumental = args.instrumental === true
       const body = { prompt, instrumental, ...optional('duration_seconds', inRange(args.duration_seconds, 'duration_seconds', 3, 300)) }
-      const value = await generateFile(host, 'music', args.path, formatOf(args.path, ['mp3']), args.replace === true, body, exec)
+      const value = await generateFile(host, making, 'music', args.path, formatOf(args.path, ['mp3']), args.replace === true, body, exec)
       return { ...value, instrumental }
     },
   }), defineTool({
@@ -505,7 +532,7 @@ export function elevenLabsToolDefinitions(host: ElevenLabsToolHost, surface: Ele
     description: `Clone a voice from 1 to ${MAX_CLONE_SAMPLES} .wav or .mp3 recordings of one speaker, 10 seconds to 5 minutes in all and best 1 to 2 minutes of clear speech without music or noise, as a new voice that only this WASD Engine account can use. Clone only the user's own voice or a voice whose speaker gave the user express permission: ${surface.consentInstruction}. Needs a WASD Engine Pro or Max plan, which keeps up to 3 cloned voices. Pass the new voice_id to elevenlabs_speech.`,
     parameters: {
       name: { type: 'string', required: true, description: `Name of the voice, at most ${MAX_CLONE_NAME} characters, such as "Captain Rhea".` },
-      samples: { type: 'array', required: true, items: { type: 'string' }, description: `${surface.samplesDescription} Each .wav or .mp3, at most ${MAX_CLONE_SAMPLE_BYTES / (1024 * 1024)} MB.` },
+      samples: { type: 'array', required: true, items: { type: 'string' }, description: `${surface.samplesDescription} Each .wav or .mp3, at most ${MAX_CLONE_SAMPLE_BYTES / (1024 * 1024)} MB, and ${MAX_CLONE_TOTAL_BYTES / (1024 * 1024)} MB in all.` },
       description: { type: 'string', description: 'What the voice sounds like, at most 500 characters.' },
       remove_background_noise: { type: 'boolean', description: 'Clean background noise from the recordings first; it can hurt clean recordings. Default: false.' },
     },

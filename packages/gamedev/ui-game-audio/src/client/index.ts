@@ -214,7 +214,13 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     const read = readOf(sessionId)
     return queue(() => answerMeasure(fields, read, signal, { maxSeconds: config.maxDecodedSeconds, maxBytes: config.maxDecodedBytes }))
   }), 'ui-game-audio: measure sounds for agents')
-  ctx.effect(() => ctx.remote.$on('game-audio/reveal', (reveal) => { revealSound(ctx, reveal) }), 'ui-game-audio: reveal sounds')
+  // Only the latest reveal goes on: one that waits for its Session to come on screen stops when another arrives.
+  let revealing: (() => void) | undefined
+  ctx.effect(() => () => { revealing?.() }, 'ui-game-audio: stop the waiting reveal')
+  ctx.effect(() => ctx.remote.$on('game-audio/reveal', (reveal) => {
+    revealing?.()
+    revealing = revealSound(ctx, reveal)
+  }), 'ui-game-audio: reveal sounds')
 }
 
 /** How often a reveal tries again while the Session's sidebar surface is not mounted yet, in milliseconds. */
@@ -226,27 +232,30 @@ const REVEAL_RETRY_MS = 50
  * surface tries again until {@link REVEAL_WAIT_MS} has passed.
  * @param ctx - the browser plugin context.
  * @param reveal - the Session and the sound.
+ * @returns a function that stops the reveal if it has not opened the tab yet.
  */
-function revealSound(ctx: Context, reveal: AudioReveal): void {
+function revealSound(ctx: Context, reveal: AudioReveal): () => void {
   const sidebar = ctx.get('sidebarRight')
-  if (sidebar === undefined) return
+  if (sidebar === undefined) return () => {}
   const deadline = Date.now() + REVEAL_WAIT_MS
+  let retry: ReturnType<typeof setTimeout> | undefined
   const open = (): void => {
+    retry = undefined
     if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
     try {
       sidebar.openTab(TAB_KIND, { params: { path: reveal.path } })
     } catch (error) {
       // Error: the Session's surface mounts in the render after it came on screen; another try follows shortly.
-      if (Date.now() < deadline) setTimeout(open, REVEAL_RETRY_MS)
+      if (Date.now() < deadline) retry = setTimeout(open, REVEAL_RETRY_MS)
       else ctx.logger.warn('ui-game-audio: the Audio tab could not be opened for an agent', error)
     }
   }
   if (sidebar.mounted.getSnapshot() === reveal.sessionId) {
     open()
-    return
+    return () => { clearTimeout(retry) }
   }
   const workspace = ctx.get('uiWorkspace')
-  if (workspace === undefined) return
+  if (workspace === undefined) return () => {}
   const stop = sidebar.mounted.subscribe(() => {
     if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
     stop()
@@ -255,4 +264,9 @@ function revealSound(ctx: Context, reveal: AudioReveal): void {
   })
   const timer = setTimeout(stop, REVEAL_WAIT_MS)
   workspace.openSession(reveal.sessionId)
+  return () => {
+    stop()
+    clearTimeout(timer)
+    clearTimeout(retry)
+  }
 }

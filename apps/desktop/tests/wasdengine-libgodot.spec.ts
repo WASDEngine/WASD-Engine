@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { localMacOSPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { applyWasdengineLibGodot, LIBGODOT_ASAR_UNPACK } from '../scripts/wasdengine-builder-config.mjs'
-import { LIBGODOT_MANIFEST_URL, stageLibGodotRuntime } from '../scripts/wasdengine-libgodot.ts'
+import { LIBGODOT_MANIFEST_URL, LIBGODOT_RUNTIME, stageLibGodotRuntime } from '../scripts/wasdengine-libgodot.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
 const TARGET = { platform: 'linux', arch: 'x64' }
@@ -106,6 +106,18 @@ posix('LibGodot staging', () => {
       .toEqual({ version: '9.9-test', directory: join(shipped(dsh), 'linux-x64') })
     await expect(stageLibGodotRuntime(dsh, TARGET, { WASD_LIBGODOT_MANIFEST_URL: `${base}/missing.json` }))
       .rejects.toThrow(/answered HTTP 404\. .*WASD_LIBGODOT_DIR.*WASD_LIBGODOT_BUNDLE=0/u)
+    // A manifest URL that replaces the default is checked against the SHA-256 given with it.
+    const pinned = createHash('sha256').update(await readFile(join(out, 'manifest.json'))).digest('hex')
+    expect(await stageLibGodotRuntime(dsh, TARGET, { WASD_LIBGODOT_MANIFEST_URL: `${base}/manifest.json`, WASD_LIBGODOT_MANIFEST_SHA256: pinned }))
+      .toEqual({ version: '9.9-test', directory: join(shipped(dsh), 'linux-x64') })
+    await expect(stageLibGodotRuntime(dsh, TARGET, { WASD_LIBGODOT_MANIFEST_URL: `${base}/manifest.json`, WASD_LIBGODOT_MANIFEST_SHA256: '0'.repeat(64) }))
+      .rejects.toThrow(`has SHA-256 ${pinned}, not the pinned ${'0'.repeat(64)}`)
+  })
+
+  it('downloads manifests over HTTPS only, or plain HTTP from this computer', async () => {
+    const dsh = await dshTree()
+    await expect(stageLibGodotRuntime(dsh, TARGET, { WASD_LIBGODOT_MANIFEST_URL: 'http://example.com/manifest.json' }))
+      .rejects.toThrow('desktop runtime: the LibGodot manifest http://example.com/manifest.json must be an HTTPS URL')
   })
 
   it('ships nothing for a platform the manifest has no build for, or with WASD_LIBGODOT_BUNDLE=0', async () => {
@@ -165,5 +177,7 @@ describe('LibGodot packaging hooks', () => {
   it('reads the manifest the Godot plugin downloads from', async () => {
     const plugin = await readFile(new URL('../../../packages/gamedev/godot/src/index.ts', import.meta.url), 'utf8')
     expect(/runtimeManifestUrl: z\.string\(\)\.default\('([^']+)'\)/u.exec(plugin)?.[1]).toBe(LIBGODOT_MANIFEST_URL)
+    const pin = /runtimeManifestSha256: z\.string\(\)\.pattern\(.*?\)\.default\('([^']+)'\)/u.exec(plugin)?.[1]
+    expect(pin).toBe(LIBGODOT_RUNTIME.manifestSha256)
   })
 })

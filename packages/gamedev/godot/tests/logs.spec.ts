@@ -45,9 +45,7 @@ describe('LogRing', () => {
 
   it('issues increasing sequence numbers', () => {
     const sequence = new LogSequence()
-    expect(sequence.current()).toBe(0)
     expect([sequence.next(), sequence.next()]).toEqual([1, 2])
-    expect(sequence.current()).toBe(2)
     expect(isErrorEntry(entry(1, 'shader_error'))).toBe(true)
     expect(isErrorEntry(entry(1, 'warning'))).toBe(false)
   })

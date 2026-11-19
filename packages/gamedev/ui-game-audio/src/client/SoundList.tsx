@@ -4,7 +4,7 @@
  * the sounds and keep playing when a sound plays, so a listener can run through a folder of effects by ear.
  */
 import clsx from 'clsx'
-import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import { IconChevronRightOutlineRegular, IconFolderCloseRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import { clockText } from './format.ts'
@@ -44,6 +44,14 @@ function durationText(item: SoundItem, t: SoundListProps['t']): string {
 export function SoundList({ rows, selected, playing, onActivate, onStep, onToggleFolder, t }: SoundListProps): ReactNode {
   const buttons = useRef(new Map<string, HTMLButtonElement>())
   const focusedWithin = useRef(false)
+  // Stable handlers, so a row renders again only when its own props change.
+  const activating = useRef(onActivate)
+  activating.current = onActivate
+  const activate = useCallback((item: SoundItem) => { activating.current(item) }, [])
+  const register = useCallback((path: string, element: HTMLButtonElement | null) => {
+    if (element === null) buttons.current.delete(path)
+    else buttons.current.set(path, element)
+  }, [])
   // The selected row takes the focus when the arrow keys or an agent moved the selection while the list had it.
   useEffect(() => {
     if (selected === undefined) return
@@ -90,30 +98,55 @@ export function SoundList({ rows, selected, playing, onActivate, onStep, onToggl
             </button>
           )
         }
-        const { entry } = row.item
-        const isSelected = entry.path === selected
-        const isPlaying = entry.path === playing
+        const { path } = row.item.entry
         return (
-          <button
-            key={entry.path}
-            ref={(element) => {
-              if (element === null) buttons.current.delete(entry.path)
-              else buttons.current.set(entry.path, element)
-            }}
-            type="button"
-            className={clsx(css.sound, row.withFolder && css.soundFlat)}
-            aria-current={isSelected ? 'true' : undefined}
-            tabIndex={entry.path === tabbable ? 0 : -1}
-            title={entry.path}
-            onClick={() => { onActivate(row.item) }}
-          >
-            <span className={clsx(css.state, isPlaying && css.statePlaying)} aria-hidden="true"><AudioGlyph size={14} /></span>
-            <span className={css.soundName}>{entry.name}</span>
-            {row.withFolder && entry.folder !== '' && <span className={css.soundFolder}>{entry.folder}</span>}
-            <span className={css.duration}>{durationText(row.item, t)}</span>
-          </button>
+          <SoundRow
+            key={path}
+            item={row.item}
+            withFolder={row.withFolder}
+            selected={path === selected}
+            playing={path === playing}
+            tabbable={path === tabbable}
+            onActivate={activate}
+            register={register}
+            t={t}
+          />
         )
       })}
     </div>
   )
 }
+
+/** Props of one sound's row. */
+interface SoundRowProps extends PropsLocale<typeof NS> {
+  readonly item: SoundItem
+  readonly withFolder: boolean
+  readonly selected: boolean
+  readonly playing: boolean
+  readonly tabbable: boolean
+  readonly onActivate: (item: SoundItem) => void
+  readonly register: (path: string, element: HTMLButtonElement | null) => void
+}
+
+/** One sound's row, which renders again only when its own props change. */
+const SoundRow = memo(function SoundRow({
+  item, withFolder, selected, playing, tabbable, onActivate, register, t,
+}: SoundRowProps): ReactNode {
+  const { entry } = item
+  return (
+    <button
+      ref={(element) => { register(entry.path, element) }}
+      type="button"
+      className={clsx(css.sound, withFolder && css.soundFlat)}
+      aria-current={selected ? 'true' : undefined}
+      tabIndex={tabbable ? 0 : -1}
+      title={entry.path}
+      onClick={() => { onActivate(item) }}
+    >
+      <span className={clsx(css.state, playing && css.statePlaying)} aria-hidden="true"><AudioGlyph size={14} /></span>
+      <span className={css.soundName}>{entry.name}</span>
+      {withFolder && entry.folder !== '' && <span className={css.soundFolder}>{entry.folder}</span>}
+      <span className={css.duration}>{durationText(item, t)}</span>
+    </button>
+  )
+})

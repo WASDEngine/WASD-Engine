@@ -4,7 +4,7 @@
  * folder in a temporary folder that no registration contains gets no registration: its Session works in the folder.
  */
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
@@ -109,6 +109,13 @@ describe('ExternalSessions.agent', () => {
     // A new instance, as after a Host restart, reads the remembered Session.
     expect((await sessions().agent(CLAUDE, join(root, 'game'), signal)).id).toBe('session-1')
     expect(fakes.controller.create).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to keep a disk or the home folder as a game project', async () => {
+    for (const folder of ['/', homedir()]) {
+      await expect(sessions().agent(CLAUDE, folder, signal)).rejects.toThrow('which WASD Engine does not keep as a game project')
+    }
+    expect(fakes.registry.create).not.toHaveBeenCalled()
   })
 
   it('uses the nearest registered game project that contains the folder, and gives each agent its own Session', async () => {

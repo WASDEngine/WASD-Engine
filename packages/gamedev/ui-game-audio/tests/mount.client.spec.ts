@@ -87,7 +87,10 @@ async function fixture(config?: Parameters<typeof apply>[1]) {
   }
   ctx.provide('remote', remote)
   ctx.provide('remote.workspaceFiles', workspaceFiles)
-  const sidebar = { mounted: { getSnapshot: () => S1, subscribe: () => () => {} }, openTab: vi.fn() }
+  const sidebar = {
+    mounted: { getSnapshot: (): SessionId | undefined => S1, subscribe: (_listener: () => void): (() => void) => () => {} },
+    openTab: vi.fn(),
+  }
   ctx.provide('sidebarRight', sidebar as never)
   await ctx.plugin(SlotRegistry)
   ctx.slots.register({
@@ -191,6 +194,42 @@ describe('Audio tab registration', () => {
     Reflect.apply(reveal, undefined, [{ sessionId: S1, path: 'audio/jump.wav' }])
     expect(f.sidebar.openTab).toHaveBeenCalledWith('audio', { params: { path: 'audio/jump.wav' } })
     await f.fiber.dispose()
+  })
+
+  it('follows only the latest reveal while an earlier one waits for its Session to come on screen', async () => {
+    const f = await fixture()
+    const reveal = f.listeners.get('game-audio/reveal')
+    assert(reveal !== undefined)
+    let mounted: SessionId | undefined
+    const subscribers = new Set<() => void>()
+    const show = (sessionId: SessionId) => {
+      mounted = sessionId
+      for (const notify of [...subscribers]) notify()
+    }
+    f.sidebar.mounted.getSnapshot = () => mounted
+    f.sidebar.mounted.subscribe = (listener: () => void) => {
+      subscribers.add(listener)
+      return () => { subscribers.delete(listener) }
+    }
+    const openTab = f.sidebar.openTab
+    const openSession = vi.fn()
+    f.ctx.provide('uiWorkspace', { openSession } as never)
+    const first = SessionId('first')
+    const second = SessionId('second')
+    Reflect.apply(reveal, undefined, [{ sessionId: first, path: 'a.wav' }])
+    Reflect.apply(reveal, undefined, [{ sessionId: second, path: 'b.wav' }])
+    expect(openSession.mock.calls).toEqual([[first], [second]])
+    // The first Session comes on screen late; its reveal was superseded and opens nothing.
+    show(first)
+    expect(openTab).not.toHaveBeenCalled()
+    show(second)
+    expect(openTab).toHaveBeenCalledWith('audio', { params: { path: 'b.wav' } })
+    expect(subscribers.size).toBe(0)
+    // A reveal still waiting when the plugin unloads stops waiting.
+    Reflect.apply(reveal, undefined, [{ sessionId: first, path: 'c.wav' }])
+    expect(subscribers.size).toBe(1)
+    await f.fiber.dispose()
+    expect(subscribers.size).toBe(0)
   })
 
   it('withdraws the type, both seats, the copy, the event answers, and every Session\'s state on unload', async () => {

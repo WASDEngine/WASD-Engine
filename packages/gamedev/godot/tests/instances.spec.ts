@@ -60,6 +60,19 @@ posix('runInstances', () => {
     expect(report.instances.map(entry => [entry.name, entry.exitCode, entry.timedOut])).toEqual([['quick', 0, false], ['slow', null, true]])
   })
 
+  it('stops the other instances when one cannot start, and ends only once they have', async () => {
+    const c = await setup({ game: { instance: { slow: { delayMs: 15_000 } } } })
+    const startedAt = Date.now()
+    // An environment value with a NUL character cannot reach a process, so that instance fails to start.
+    const group = c.godot.runInstances({ projectDir: c.project, timeoutMs: 20_000, instances: [instance('slow', 0), instance('broken', 500, { BROKEN: 'a\u0000b' })] }, signal)
+    await expect(group).rejects.toThrow()
+    expect(Date.now() - startedAt).toBeLessThan(10_000)
+    const slow = (await fakeLog(c.project)).filter(entry => entry.instance === 'slow')
+    expect(slow).toHaveLength(1)
+    // The call ended only after the slow instance had: its process is gone.
+    expect(() => process.kill(slow[0]?.pid as number, 0)).toThrow(expect.objectContaining({ code: 'ESRCH' }) as Error)
+  })
+
   it('refuses a group larger than the computer runs at once, and an empty one, before starting any instance', async () => {
     const c = await setup({ game: { instance: {} }, config: { maxInstances: 2 } })
     const tooMany = c.godot.runInstances({ projectDir: c.project, timeoutMs: 1000, instances: [instance('a', 0), instance('b', 0), instance('c', 0)] }, signal)

@@ -17,6 +17,7 @@ import { rm, stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { pipeline } from 'node:stream'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { z } from 'zod'
 import { runGodotCommand } from './command.ts'
@@ -251,7 +252,7 @@ export function summarizeWebCheck(
   // Frames over the time they took: a median interval would read alternating 17 and 33 ms frames as 60 per second.
   const fps = frames ? Math.round(1000 * sample.frameMs.length / Math.max(sample.frameMs.reduce((sum, ms) => sum + ms, 0), 1)) : undefined
   const drawCalls = sample.drawCalls.length > 0
-    ? { median: median(sample.drawCalls), max: Math.max(...sample.drawCalls) }
+    ? { median: median(sample.drawCalls), max: sample.drawCalls.reduce((most, calls) => Math.max(most, calls), 0) }
     : undefined
   const findings: string[] = []
   if (sample.crashed !== undefined) {
@@ -285,7 +286,7 @@ export function summarizeWebCheck(
     ...sample.started && sample.readyMs !== undefined ? { readySeconds: seconds(sample.readyMs) } : {},
     longestFreezeSeconds: seconds(longest),
     freezes,
-    ...fps === undefined ? {} : { fps, slowestFrameMs: Math.round(Math.max(...sample.frameMs)) },
+    ...fps === undefined ? {} : { fps, slowestFrameMs: Math.round(sample.frameMs.reduce((most, ms) => Math.max(most, ms), 0)) },
     ...drawCalls === undefined ? {} : { drawCalls },
     programs: sample.programs,
     messages: messages.slice(0, WEB_CHECK_MESSAGES),
@@ -320,13 +321,20 @@ interface ServedFolder {
 }
 
 /**
- * Serve a folder's files over HTTP on a loopback port: GET and HEAD of the files inside it, nothing else.
+ * Serve a folder's files over HTTP on a loopback port: GET and HEAD of the files inside it, nothing else, and only to
+ * requests that name the server's own address as their `Host`, so a page that rebinds a name of its own to this
+ * computer reads nothing. A transfer that the browser abandons closes its file.
  * @param dir - absolute folder.
  * @returns the origin and its closer.
  */
 export async function serveFolder(dir: string): Promise<ServedFolder> {
   const root = resolve(dir)
+  let host = ''
   const respond = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    if (request.headers.host !== host) {
+      response.writeHead(403).end()
+      return
+    }
     if (request.method !== 'GET' && request.method !== 'HEAD') {
       response.writeHead(405, { allow: 'GET, HEAD' }).end()
       return
@@ -359,9 +367,10 @@ export async function serveFolder(dir: string): Promise<ServedFolder> {
       response.end()
       return
     }
-    const stream = createReadStream(file)
-    stream.on('error', () => { response.destroy() })
-    stream.pipe(response)
+    // A pipeline destroys the file's stream when the browser leaves mid-transfer, which pipe() would leave open.
+    pipeline(createReadStream(file), response, () => {
+      // An abandoned transfer or a read error ends the response; the browser sees the cut-off body.
+    })
   }
   const server = createServer((request, response) => {
     respond(request, response).catch(() => { response.destroy() })
@@ -374,8 +383,9 @@ export async function serveFolder(dir: string): Promise<ServedFolder> {
     })
   })
   const { port } = server.address() as AddressInfo
+  host = `127.0.0.1:${String(port)}`
   return {
-    origin: `http://127.0.0.1:${String(port)}`,
+    origin: `http://${host}`,
     close: () => new Promise<void>((done) => {
       server.close(() => { done() })
       server.closeAllConnections()

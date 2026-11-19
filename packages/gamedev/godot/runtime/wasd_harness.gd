@@ -360,8 +360,12 @@ class HarnessLogger extends Logger:
 				_mutex.unlock()
 				return
 		if _pending.size() >= MAX_PENDING_LOGS:
-			_pending.pop_front()
-			dropped += 1
+			# A quarter goes at once, so a storm of messages costs a copy per thousand of them, not a shift per message.
+			var drop := MAX_PENDING_LOGS / 4
+			var kept: Array[Dictionary] = []
+			kept.assign(_pending.slice(drop))
+			_pending = kept
+			dropped += drop
 		_pending.append(entry)
 		_mutex.unlock()
 

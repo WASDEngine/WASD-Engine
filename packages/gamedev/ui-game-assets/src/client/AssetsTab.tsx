@@ -1,5 +1,5 @@
 /** Body and chip title of the Assets tab: the asset picker and refresh control above the selected asset's viewer. */
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Button, IconRefreshOutlineRegular, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
@@ -112,6 +112,20 @@ export function AssetsTab({
   const view = useView(state => state)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [reloads, setReloads] = useState(0)
+  // An agent's ask for an animation the image's animations lack, which a Godot file newer than the scan may define,
+  // scans once more and then shows the asset again with that scan's files; a second miss of the same ask stays.
+  const rescanned = useRef<{ readonly request: number; readonly before: number | undefined; done: boolean }>()
+  const onMissingAnimation = useCallback((request: number) => {
+    if (rescanned.current?.request === request) return
+    rescanned.current = { request, before: scanState.settledAt, done: false }
+    rescan()
+  }, [rescan, scanState.settledAt])
+  useEffect(() => {
+    const pending = rescanned.current
+    if (pending === undefined || pending.done || scanState.status === 'scanning' || scanState.settledAt === pending.before) return
+    pending.done = true
+    setReloads(count => count + 1)
+  }, [scanState])
   useEffect(() => { refresh() }, [refresh])
   const { id: tabId, navigation, visible } = useTabInfo().tab
   // Each navigation that names an asset selects it once, also when the body mounts after it.
@@ -176,6 +190,7 @@ export function AssetsTab({
         limits={limits}
         visible={visible}
         requested={requested}
+        onMissingAnimation={onMissingAnimation}
         onSelect={(path) => { select(path) }}
         t={t}
       />

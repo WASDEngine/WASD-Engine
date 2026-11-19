@@ -264,6 +264,10 @@ export async function dispatchDeepSeekWeb<T>(
       }
       throw accountRefusedError(status, providerMessage)
     }
+    // WASD Engine: an API key's 402 means its provider account has no balance left; the endpoint is not at fault.
+    if (status === 402) {
+      throw new WebError(`${message}\n\nThe account of the API key this web request used has no balance left. Pass this on to the user, who tops it up with that key's provider; the endpoint is not at fault.`, 'WEB_PROVIDER_ERROR')
+    }
     throw searchEndpointError(guidance, endpoint, message)
   }
   /* jscpd:ignore-end */

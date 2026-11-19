@@ -40,6 +40,11 @@ describe('HarnessDecoder', () => {
     expect(JSON.parse(encoded.subarray(5).toString('utf8'))).toEqual({ type: 'pause', id: 3 })
   })
 
+  it('takes messages up to the size of the largest frame the window reads', () => {
+    // The window's MAX_FRAME_BYTES (src/client/frames.ts), which frames.client.spec.ts pins too, so every frame fits.
+    expect(MAX_MESSAGE_BYTES).toBe(64 * 1024 * 1024)
+  })
+
   it('decodes several messages in one chunk and keeps a trailing partial message', () => {
     const decoder = new HarnessDecoder(MAX_MESSAGE_BYTES)
     const bytes = Buffer.concat([message(1, Buffer.from(JSON.stringify(hello))), frame(9), frame(10)])

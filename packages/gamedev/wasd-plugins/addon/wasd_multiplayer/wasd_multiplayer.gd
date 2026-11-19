@@ -50,6 +50,15 @@ const CountingPeer := preload("internal/counting_peer.gd")
 const ServerFiles := preload("internal/server_files.gd")
 
 const _AUTH_SECONDS := 10.0
+# How long a stopping server waits for the saves that handlers announced with delay_stop(), within the 20 seconds that
+# WASD gives a server between asking it to stop and stopping it.
+const _STOP_WAIT_SECONDS := 15.0
+# What a dedicated server sends a player it turns away, before it closes the connection, followed by the reason.
+const _REFUSED := "wasd_refused:"
+const _REFUSALS := {
+	"server_full": "The server is full. Try again when a player leaves.",
+	"ticket_used": "This join ticket was used already. Join again.",
+}
 const _JOIN_SECONDS := 25.0
 # How long joining a sleeping dedicated server waits: its host holds the connection while it wakes the server.
 const _WAKE_SECONDS := 75.0
@@ -116,12 +125,15 @@ var _signal_retries := 0
 var _server := {}
 var _server_id := ""
 var _ticket_key := PackedByteArray()
+# The join tickets this server admitted, each until it expires, so none admits a second connection.
+var _used_tickets := {}
 var _files: ServerFiles
 var _status_at := 0.0
 var _control_at := 0.0
 var _active_fps := 0
 var _original_fps := -1
 var _stopping := false
+var _stop_holds := 0
 var _started_at := 0.0
 var _window := {"sum": 0.0, "max": 0.0, "count": 0}
 var _total := {"sum": 0.0, "max": 0.0, "count": 0}
@@ -549,6 +561,12 @@ func _token_valid(margin_seconds: float) -> bool:
 
 func _read_desktop_token() -> void:
 	var token := OS.get_environment("WASD_PLAY_TOKEN").strip_edges()
+	# On macOS WASD Engine hands the token over in a file only this user can read, which no other program's process
+	# list shows, and the game deletes it once read.
+	var token_file := OS.get_environment("WASD_PLAY_TOKEN_FILE")
+	if token == "" and token_file.is_absolute_path() and FileAccess.file_exists(token_file):
+		token = FileAccess.get_file_as_string(token_file).strip_edges()
+		DirAccess.remove_absolute(token_file)
 	# The token WASD Engine started the game with; a renewed one that outlives it stays.
 	if token != "" and float(Tokens.payload(token).get("exp", 0)) > _token_exp:
 		_accept_token(token, {})
@@ -1032,6 +1050,9 @@ func _install_peer(inner: MultiplayerPeer, authenticate: bool) -> void:
 	if scene != null:
 		scene.auth_callback = _on_auth if authenticate else Callable()
 		scene.auth_timeout = _AUTH_SECONDS
+		# Peer 1 never forwards one client's packets to another, so every RPC a client sends reaches only peer 1,
+		# which validates it; the player list reaches clients through peer 1's own RPCs, not Godot's peer relay.
+		scene.server_relay = false
 	var peer: MultiplayerPeer = inner
 	_counter = null
 	if config.count_traffic:
@@ -1071,16 +1092,58 @@ func _await_connection(seconds: float) -> Dictionary:
 
 
 func _on_auth(id: int, data: PackedByteArray) -> void:
+	var text := data.get_string_from_utf8()
+	if _role == _Role.CLIENT and text.begins_with(_REFUSED):
+		# The server says why it is about to close this connection.
+		if _connect_result.is_empty():
+			var reason := text.substr(_REFUSED.length())
+			_connect_result = _failure(reason, str(_REFUSALS.get(reason, "The server did not accept this player.")))
+		return
 	if _role != _Role.SERVER and _role != _Role.HOST:
 		return
 	var scene := _scene_multiplayer()
-	var identity := _identify(data.get_string_from_utf8())
+	var identity := _identify(text)
 	if identity.is_empty():
 		_test_event("rejected", {"peer_id": id})
 		scene.disconnect_peer(id)
 		return
+	if _role == _Role.SERVER:
+		var refusal := _admission(id, text, identity)
+		if refusal != "":
+			_test_event("rejected", {"peer_id": id, "reason": refusal})
+			scene.send_auth(id, (_REFUSED + refusal).to_utf8_buffer())
+			scene.disconnect_peer(id)
+			return
 	_identities[id] = identity
 	scene.complete_auth(id)
+
+
+## Why a dedicated server turns a verified player away, or "" to admit them: a join ticket admits one connection, and
+## the server holds config.max_players. A player who connects again replaces their earlier connection, which a dropped
+## network can leave open for a while.
+func _admission(id: int, ticket: String, identity: Dictionary) -> String:
+	var now := Time.get_unix_time_from_system()
+	for used in _used_tickets.keys():
+		if float(_used_tickets[used]) <= now:
+			_used_tickets.erase(used)
+	if ticket.begins_with("wjt1."):
+		if _used_tickets.has(ticket):
+			return "ticket_used"
+		_used_tickets[ticket] = float(Tokens.payload(ticket).get("exp", now))
+	var player_id := str(identity.get("id", ""))
+	var earlier := []
+	for peer in _players:
+		if str((_players[peer] as Dictionary).get("id", "")) == player_id:
+			earlier.append(peer)
+	for peer in _identities:
+		if peer != id and str((_identities[peer] as Dictionary).get("id", "")) == player_id:
+			earlier.append(peer)
+	if earlier.is_empty() and _players.size() + _identities.size() >= config.max_players:
+		return "server_full"
+	for peer in earlier:
+		_identities.erase(peer)
+		_scene_multiplayer().disconnect_peer(peer)
+	return ""
 
 
 func _on_peer_authenticating(id: int) -> void:
@@ -1221,6 +1284,7 @@ func _teardown() -> void:
 	_pending.clear()
 	_identities.clear()
 	_players.clear()
+	_used_tickets.clear()
 	var peer := multiplayer.multiplayer_peer
 	if peer != null and not peer is OfflineMultiplayerPeer:
 		peer.close()
@@ -1298,6 +1362,18 @@ func _read_control() -> void:
 		_stop_server()
 
 
+## In a server_stopping() handler, before a save that awaits, such as one that writes in a thread: keeps the server
+## running until stop_ready() is called once for each delay_stop(), for up to 15 seconds.
+func delay_stop() -> void:
+	if _stopping:
+		_stop_holds += 1
+
+
+## Ends one delay_stop(), once the save it announced has finished.
+func stop_ready() -> void:
+	_stop_holds = maxi(_stop_holds - 1, 0)
+
+
 func _stop_server() -> void:
 	if _stopping:
 		return
@@ -1306,6 +1382,10 @@ func _stop_server() -> void:
 	_write_status(false)
 	_test_event("stopping", {})
 	await get_tree().process_frame
+	# Saves that a handler announced with delay_stop() finish first, within the time WASD gives a stopping server.
+	var deadline := Time.get_ticks_msec() + int(_STOP_WAIT_SECONDS * 1000.0)
+	while _stop_holds > 0 and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
 	await get_tree().process_frame
 	_print_test_stats()
 	get_tree().quit()

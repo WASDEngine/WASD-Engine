@@ -180,6 +180,7 @@ describe('the runtimes of a signed build', () => {
       [GIMP_RUNTIME, GIMP_MANIFEST_URL, 'gimp'], [BLENDER_RUNTIME, BLENDER_MANIFEST_URL, 'blender'],
     ] as const) {
       expect(url).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/${tag}-${runtime.version}/manifest.json`)
+      expect(runtime.manifestSha256).toMatch(/^[0-9a-f]{64}$/u)
     }
   })
 

@@ -37,7 +37,7 @@ afterEach(async () => {
 function settings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
     dataRoot: join(root, 'data'), bundledRoot: join(root, 'bundled'), runtimeVersion: '1.0-test', runtimeManifestUrl: 'http://127.0.0.1:1/manifest.json',
-    libgodotPath: '', runnerPath: '', ...overrides,
+    runtimeManifestSha256: '', libgodotPath: '', runnerPath: '', ...overrides,
   }
 }
 
@@ -289,6 +289,19 @@ posix('managed install', () => {
       fetch: async url => url.endsWith('manifest.json') ? Response.json(manifest) : new Response(null, { status: 200 }),
     }), () => {})
     expect(await noBody.install(signal)).toMatchObject({ state: 'failed', message: expect.stringContaining('failed with HTTP 200') as string })
+  })
+
+  it('installs only from a manifest with the pinned SHA-256', async () => {
+    const { manifestUrl } = await release()
+    const pin = createHash('sha256').update(Buffer.from(await (await fetch(manifestUrl)).arrayBuffer())).digest('hex')
+    host = await subprocessFixture()
+    const real = { ...createRuntimeHost(host.subprocess, { outputBytes: 4096, graceMs: 1000 }), platform: 'linux', arch: 'x64' } as const
+    const other = '0'.repeat(64)
+    const refused = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl, runtimeManifestSha256: other }), real, () => {})
+    expect(await refused.install(signal)).toMatchObject({ state: 'failed', message: expect.stringContaining(`has SHA-256 ${pin}, not the pinned ${other}`) as string })
+    expect(await readdir(join(root, 'data', 'runtime'))).toEqual([])
+    const pinned = new GodotRuntimeManager(settings({ runtimeManifestUrl: manifestUrl, runtimeManifestSha256: pin }), real, () => {})
+    expect(await pinned.install(signal)).toMatchObject({ state: 'ready' })
   })
 
   it('reports unreachable manifests and cancellation by disposal', async () => {

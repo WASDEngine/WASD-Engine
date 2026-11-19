@@ -208,21 +208,92 @@ async function searchLines(path: string, visit: (text: string) => boolean): Prom
   try {
     const decoder = new TextDecoder()
     const buffer = Buffer.alloc(SEARCH_CHUNK)
-    let carried = ''
+    // The pieces of an unfinished line, joined once it ends, so a long line is copied once rather than per chunk.
+    let carried: string[] = []
     for (;;) {
       const { bytesRead } = await handle.read(buffer, 0, SEARCH_CHUNK, null)
-      const text = carried + decoder.decode(buffer.subarray(0, bytesRead), { stream: bytesRead > 0 })
+      const chunk = decoder.decode(buffer.subarray(0, bytesRead), { stream: bytesRead > 0 })
       if (bytesRead === 0) {
-        visit(text)
+        visit([...carried, chunk].join(''))
         return
       }
-      const end = text.lastIndexOf('\n') + 1
-      if (visit(text.slice(0, end))) return
-      carried = text.slice(end)
+      const end = chunk.lastIndexOf('\n') + 1
+      if (end === 0) {
+        carried.push(chunk)
+        continue
+      }
+      if (visit([...carried, chunk.slice(0, end)].join(''))) return
+      carried = [chunk.slice(end)]
     }
   } finally {
     await handle.close()
   }
+}
+
+/** The characters JavaScript's `\s` matches. */
+const WHITESPACE = /^\s$/u
+
+/** The line terminators that end a line for a regular expression's `^` and `$` in multiline mode. */
+function isLineBreak(character: string | undefined): boolean {
+  return character === '\n' || character === '\r' || character === '\u2028' || character === '\u2029'
+}
+
+/**
+ * Whether only whitespace stands between the start of the line that holds `at` and `at`, as `^\s*` before it in
+ * multiline mode requires. Each run of whitespace is scanned only from the text that follows it, so scanning every
+ * candidate of a text takes linear time.
+ * @param text - the text.
+ * @param at - where the candidate starts.
+ * @returns whether the candidate is the first thing on its line.
+ */
+function firstOnLine(text: string, at: number): boolean {
+  for (let index = at - 1; index >= 0; index--) {
+    const character = text[index]
+    if (isLineBreak(character)) return true
+    if (!WHITESPACE.test(character ?? '')) return false
+  }
+  return true
+}
+
+/** Where the whitespace that starts at `at` ends. */
+function skipWhitespace(text: string, at: number): number {
+  let index = at
+  while (index < text.length && WHITESPACE.test(text[index] ?? '')) index++
+  return index
+}
+
+/**
+ * The first index at or after `from` of `tag` followed by a character that ends a word, as `<tag\b` matches it.
+ * @param text - the text.
+ * @param tag - the tag's opening, such as `<image`.
+ * @param from - where the search starts.
+ * @returns the index, or -1 when there is none.
+ */
+function tagStart(text: string, tag: string, from: number): number {
+  for (let at = text.indexOf(tag, from); at >= 0; at = text.indexOf(tag, at + 1)) {
+    if (!/^[A-Za-z0-9_]$/u.test(text[at + tag.length] ?? '')) return at
+  }
+  return -1
+}
+
+/**
+ * The content of the first `<name ...>...</name>` element at or after `from`, as `/<name\b[^>]*>([\s\S]*?)<\/name>/u`
+ * finds it, in linear time.
+ * @param text - the text.
+ * @param name - the element name.
+ * @param from - where the search starts.
+ * @returns the content and the index after the closing tag, or undefined when no element is complete.
+ */
+function elementContent(text: string, name: string, from: number): { content: string; next: number } | undefined {
+  const start = tagStart(text, `<${name}`, from)
+  if (start < 0) return undefined
+  // A later start has no `>` or closing tag after it either when this one has none.
+  const open = text.indexOf('>', start + name.length + 1)
+  if (open < 0) return undefined
+  const closing = `</${name}>`
+  const close = text.indexOf(closing, open + 1)
+  if (close < 0) return undefined
+  return { content: text.slice(open + 1, close), next: close + closing.length }
 }
 
 /** The texture directives of an MTL file that three.js's MTLLoader loads, as it lowercases them. */
@@ -263,11 +334,32 @@ export function mtlTextures(text: string): string[] {
   return names
 }
 
+/**
+ * The name of the first `mtllib` statement in a run of an OBJ file's lines: the rest of its line without the spaces and
+ * tabs around it. Each line is scanned once, so a long line costs linear time.
+ * @param text - whole lines of the file.
+ * @returns the name, or undefined when no line names a library.
+ */
+function mtllibOf(text: string): string | undefined {
+  for (const line of text.split(/[\n\r\u2028\u2029]/u)) {
+    let at = 0
+    while (line[at] === ' ' || line[at] === '\t') at++
+    if (!line.startsWith('mtllib', at)) continue
+    at += 'mtllib'.length
+    if (line[at] !== ' ' && line[at] !== '\t') continue
+    let end = line.length
+    while (end > at && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--
+    while (at < end && (line[at] === ' ' || line[at] === '\t')) at++
+    if (at < end) return line.slice(at, end)
+  }
+  return undefined
+}
+
 /** An OBJ file's first material library and its textures, as the window loads them. */
 async function objFindings(file: ModelCostFile): Promise<ModelFindings> {
   let library: string | undefined
   await searchLines(file.path, (text) => {
-    library = /^[ \t]*mtllib[ \t]+(.+?)[ \t]*$/mu.exec(text)?.[1]
+    library = mtllibOf(text)
     return library !== undefined
   })
   if (library === undefined) return NOTHING
@@ -288,9 +380,22 @@ async function objFindings(file: ModelCostFile): Promise<ModelFindings> {
 /** The characters XML's predefined entities stand for. */
 const XML_ENTITIES: ReadonlyMap<string, string> = new Map([['amp', '&'], ['lt', '<'], ['gt', '>'], ['quot', '"'], ['apos', '\'']])
 
+/** Text without its tags, as `text.replaceAll(/<[^>]*>/gu, '')` gives it, in linear time. */
+function withoutTags(text: string): string {
+  let kept = ''
+  let at = 0
+  for (;;) {
+    const open = text.indexOf('<', at)
+    const close = open < 0 ? -1 : text.indexOf('>', open + 1)
+    if (close < 0) return kept + text.slice(at)
+    kept += text.slice(at, open)
+    at = close + 1
+  }
+}
+
 /** The text of an XML element's content, as a DOM gives it: its tags removed and its character references decoded. */
 function xmlText(content: string): string {
-  return content.replaceAll(/<[^>]*>/gu, '').replaceAll(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (whole, reference: string) => {
+  return withoutTags(content).replaceAll(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (whole, reference: string) => {
     const code = reference.startsWith('#x') || reference.startsWith('#X') ? Number.parseInt(reference.slice(2), 16) : reference.startsWith('#') ? Number(reference.slice(1)) : undefined
     if (code === undefined) return XML_ENTITIES.get(reference) ?? whole
     return code <= 0x10ffff ? String.fromCodePoint(code) : whole
@@ -327,9 +432,9 @@ async function daeFindings(file: ModelCostFile): Promise<ModelFindings> {
   })
   const named: Named[] = []
   for (const library of libraries) {
-    for (const image of library.matchAll(/<image\b[^>]*>([\s\S]*?)<\/image>/gu)) {
-      const init = /<init_from\b[^>]*>([\s\S]*?)<\/init_from>/u.exec(image[1] ?? '')
-      const path = init === null ? undefined : namedPath(file.root, file.path, xmlText(init[1] ?? ''))
+    for (let image = elementContent(library, 'image', 0); image !== undefined; image = elementContent(library, 'image', image.next)) {
+      const init = elementContent(image.content, 'init_from', 0)
+      const path = init === undefined ? undefined : namedPath(file.root, file.path, xmlText(init.content))
       if (path !== undefined) named.push({ path, texture: true })
     }
   }
@@ -466,25 +571,70 @@ function fbxBinary(data: Buffer): { memory: number; videos: { name: string; cont
  * holds embedded content.
  */
 function fbxText(text: string): { name: string; embedded: boolean }[] {
-  const videos: { name: string; embedded: boolean }[] = []
-  for (const match of text.matchAll(/^\s*Video:[^{\n]*\{/gmu)) {
-    let depth = 1
-    let at = match.index + match[0].length
-    let quoted = false
-    for (; at < text.length && depth > 0; at++) {
-      const character = text[at]
-      if (character === '"') quoted = !quoted
-      else if (!quoted && character === '{') depth++
-      else if (!quoted && character === '}') depth--
+  const openings: number[] = []
+  for (let at = text.indexOf('Video:'); at >= 0; at = text.indexOf('Video:', at + 1)) {
+    if (!firstOnLine(text, at)) continue
+    // The node's `{` ends its header line.
+    let brace = at + 'Video:'.length
+    while (brace < text.length && text[brace] !== '{' && text[brace] !== '\n') brace++
+    if (text[brace] !== '{') continue
+    openings.push(brace)
+    at = brace
+  }
+  // Each node's body runs to its matching `}`, found for every node in one pass; braces in quotes do not count.
+  const wanted = new Set(openings)
+  const ends = new Map<number, number>()
+  const open: number[] = []
+  let quoted = false
+  for (let at = 0; at < text.length && ends.size < wanted.size; at++) {
+    const character = text[at]
+    if (character === '"') quoted = !quoted
+    else if (!quoted && character === '{') open.push(at)
+    else if (!quoted && character === '}') {
+      const start = open.pop()
+      if (start !== undefined && wanted.has(start)) ends.set(start, at)
     }
-    const body = text.slice(match.index + match[0].length, at)
-    const value = (key: string): string | undefined => new RegExp(`^\\s*${key}:\\s*"([^"]*)"`, 'mu').exec(body)?.[1]
+  }
+  const videos: { name: string; embedded: boolean }[] = []
+  for (const [index, brace] of openings.entries()) {
+    // A body ends at the next node's header too, so bodies never overlap and reading them all takes linear time; a
+    // file's Video nodes never nest, and one that never closes ends there or at the end of the file.
+    const body = text.slice(brace + 1, Math.min(ends.get(brace) ?? text.length, openings[index + 1] ?? text.length))
     // The loader takes the relative name unless it is empty.
-    const relativeName = value('RelativeFilename')
-    const name = relativeName !== undefined && relativeName !== '' ? relativeName : value('Filename')
-    if (name !== undefined && name !== '') videos.push({ name, embedded: /^\s*Content:\s*,?\s*"[^"]/mu.test(body) })
+    const relativeName = quotedValue(body, 'RelativeFilename')
+    const name = relativeName !== undefined && relativeName !== '' ? relativeName : quotedValue(body, 'Filename')
+    if (name !== undefined && name !== '') videos.push({ name, embedded: hasContent(body) })
   }
   return videos
+}
+
+/**
+ * The quoted value of the first `key: "value"` line of a text FBX node's body, as `^\s*key:\s*"([^"]*)"` finds it in
+ * multiline mode, in linear time.
+ */
+function quotedValue(body: string, key: string): string | undefined {
+  const label = `${key}:`
+  for (let at = body.indexOf(label); at >= 0; at = body.indexOf(label, at + 1)) {
+    if (!firstOnLine(body, at)) continue
+    const quote = skipWhitespace(body, at + label.length)
+    if (body[quote] !== '"') continue
+    // Without a closing quote here, no later value has one either.
+    const close = body.indexOf('"', quote + 1)
+    return close < 0 ? undefined : body.slice(quote + 1, close)
+  }
+  return undefined
+}
+
+/** Whether a text FBX node's body has embedded content: a `Content:` line whose value starts a non-empty string. */
+function hasContent(body: string): boolean {
+  const label = 'Content:'
+  for (let at = body.indexOf(label); at >= 0; at = body.indexOf(label, at + 1)) {
+    if (!firstOnLine(body, at)) continue
+    let quote = skipWhitespace(body, at + label.length)
+    if (body[quote] === ',') quote = skipWhitespace(body, quote + 1)
+    if (body[quote] === '"' && quote + 1 < body.length && body[quote + 1] !== '"') return true
+  }
+  return false
 }
 
 /** An FBX file's textures in files of their own, its embedded images, and the memory its parse takes. */

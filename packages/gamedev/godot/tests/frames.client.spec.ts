@@ -109,6 +109,8 @@ describe('FrameRecordParser', () => {
     const atLimit = encode(1, 2, 2, []).slice(0, FRAME_HEADER_BYTES)
     new DataView(atLimit.buffer).setUint32(0, MAX_FRAME_BYTES, true)
     expect(new FrameRecordParser().push(atLimit)).toEqual([])
+    // Every frame the Host takes from the game fits a record: the Host's MAX_MESSAGE_BYTES, which protocol.spec.ts pins too.
+    expect(MAX_FRAME_BYTES).toBe(64 * 1024 * 1024)
   })
 })
 

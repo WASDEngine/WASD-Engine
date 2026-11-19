@@ -107,10 +107,13 @@ export function apply(ctx: Context, config: Config): void {
   })
   const host: ElevenLabsToolHost = {
     api,
+    making: new Set<string>(),
     searchTimeoutMs: config.searchTimeoutMs,
     generationTimeoutMs: config.generationTimeoutMs,
     musicTimeoutMs: config.musicTimeoutMs,
     async file(requested, exec) {
+      // A Windows network path (`\\host\share`, `//host/share`) would connect to another computer with the user's credentials.
+      if (/^[\\/]{2}/u.test(requested)) throw new Error(`${requested} is a network path; pass a path on this computer.`)
       if (isAbsolute(requested)) return requested
       if (exec.agent === undefined) throw new Error('Pass path as an absolute path.')
       return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested)

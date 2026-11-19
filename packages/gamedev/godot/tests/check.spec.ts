@@ -2,11 +2,12 @@
  * The static check imports a project whose import data may be outdated, reports actionable problems per script, and
  * fails clearly when the check process ends early.
  */
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  CHECK_SCRIPT_LIMIT, checkProject, checkScripts, GodotCheckError, selectScripts,
+  CHECK_ARGV_PATH_CHARS, CHECK_SCRIPT_LIMIT, checkProject, checkScripts, GodotCheckError, selectScripts,
   type CheckOptions, type ProjectCheck, type ProjectCheckOptions,
 } from '../src/check.ts'
 import { ProjectImports } from '../src/imports.ts'
@@ -131,6 +132,15 @@ posix('checkProject', () => {
 })
 
 posix('checkScripts', () => {
+  it('passes a list too long for a Windows command line in a file, and removes the file', async () => {
+    const paths = Array.from({ length: CHECK_SCRIPT_LIMIT }, (_, index) => `res://scripts/a/very/deep/folder/of/the/game/script_${String(index).padStart(3, '0')}.gd`)
+    expect(paths.join(' ').length).toBeGreaterThan(CHECK_ARGV_PATH_CHARS)
+    const checked = await check({ check: {} }, paths)
+    expect(checked.map(script => script.path)).toEqual(paths)
+    const leftover = (await readdir(tmpdir())).filter(name => name.startsWith('wasd-check-'))
+    expect(leftover).toEqual([])
+  })
+
   it('keeps located problems once each and attributes an unlocated failure to its script', async () => {
     const result = await check({
       check: {

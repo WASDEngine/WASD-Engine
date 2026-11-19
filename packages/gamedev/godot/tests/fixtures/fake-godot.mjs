@@ -6,7 +6,8 @@
 // class cache `.godot/global_script_class_cache.cfg` unless `classCache` is false and records `imported` at its end,
 // `--export-release` writes the configured export files next to the requested page, in subfolders as their names say,
 // records the export presets, the `project.godot` it saw, the size of the boot splash image it names, and the Android
-// export's environment variables, appends the configured `appendProject` text to `project.godot` when there is one, and
+// export's environment variables, appends the configured `appendProject` text to `project.godot` and `appendPresets` text
+// to `export_presets.cfg` when there are, and
 // records `exported` at its end, `--headless ... --script` runs the `script` section, which writes its `files` into the
 // folder that WASD_OUTPUT_DIR names and records `scripted` with that folder, HOME, and its start and end times at its
 // end, when the config has one, a bare `--headless --path` run plays the `instance` section entry named by the
@@ -66,7 +67,10 @@ async function runScript(section) {
 }
 
 async function runCheck(section) {
-  const paths = args.slice(args.lastIndexOf('--') + 1)
+  const given = args.slice(args.lastIndexOf('--') + 1)
+  // As wasd_check.gd reads them: the paths themselves, or a file that lists them one per line.
+  const paths = given.length === 2 && given[0] === '--paths-file' ? readFileSync(given[1], 'utf8').split('\n').filter(line => line !== '') : given
+  if (given[0] === '--paths-file') record({ pathsFile: true })
   if (section.delayMs !== undefined) await sleep(section.delayMs)
   for (const path of paths) {
     // An add-on plugin that the check loads before this script, as `wasd_check.gd` reports it on its own line.
@@ -402,7 +406,7 @@ async function runGame(section) {
 
 async function runInstance(section) {
   const name = process.env.WASD_TEST_NAME ?? ''
-  record({ instance: name, role: process.env.WASD_MULTIPLAYER_TEST ?? null, port: process.env.WASD_TEST_PORT ?? null, ticket: process.env.WASD_TEST_TICKET ?? null, at: Date.now() })
+  record({ instance: name, role: process.env.WASD_MULTIPLAYER_TEST ?? null, port: process.env.WASD_TEST_PORT ?? null, ticket: process.env.WASD_TEST_TICKET ?? null, at: Date.now(), pid: process.pid })
   const behavior = section[name] ?? section['*'] ?? {}
   if (behavior.delayMs !== undefined) await sleep(behavior.delayMs)
   await emitOutput(behavior)
@@ -430,6 +434,7 @@ async function runExport(section) {
     env: Object.fromEntries(EXPORT_ENV.filter(name => process.env[name] !== undefined).map(name => [name, process.env[name]])),
   })
   if (section.appendProject !== undefined) appendFileSync(join(project, 'project.godot'), section.appendProject)
+  if (section.appendPresets !== undefined) appendFileSync(presets, section.appendPresets)
   await emitOutput(section)
   if (section.delayMs !== undefined) await sleep(section.delayMs)
   for (const [name, text] of Object.entries(section.files ?? {})) {

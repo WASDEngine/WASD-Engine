@@ -59,14 +59,21 @@ const FENCE = /^\s*(`{3,}|~{3,})/u
  */
 const USER_DOCS = ['.github/README.md', 'docs/user/guide/']
 
+/** A link reference definition, `[label]: target "title"`, which renders as nothing. */
+const REFERENCE_DEFINITION = /^ {0,3}\[[^\]]+\]:\s*\S/u
+
 /**
  * Strip from one prose line what a reader does not see as text.
  * @param {string} line - A line outside fenced code blocks.
- * @returns {string} The line without inline code, link and image targets, and HTML tags.
+ * @returns {string} The line without inline code, link and image targets, and HTML tags; an autolink, such as
+ *   `<https://example.com>`, keeps its address, which the page shows, and a reference definition is empty.
  */
-function visibleText(line) {
+export function visibleText(line) {
+  if (REFERENCE_DEFINITION.test(line)) return ''
   return line.split(/(`+[^`]*`+)/u).filter((_, index) => index % 2 === 0).join('')
     .replace(/\]\([^)]*\)/gu, ']')
+    .replace(/<([a-z][a-z0-9+.-]{1,31}:[^\s<>]*)>/giu, '$1')
+    .replace(/<([^\s<>@]+@[^\s<>@]+)>/gu, '$1')
     .replace(/<[^>]*>/gu, '')
 }
 

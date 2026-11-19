@@ -39,7 +39,7 @@ WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasdengi
 | 字段 | 默认值 | 含义 |
 |---|---|---|
 | `dataRoot` | 必填 | 访问令牌（`token`）与已连接 agent 的 Session 绑定（`sessions.json`）所在的绝对路径文件夹；相对路径会使插件加载失败 |
-| `port` | `9273` | 端点的回环端口，0 到 65,535 的整数；0 表示选择空闲端口。端口被其他程序占用时，服务器在 Host 重启前改用一个空闲端口，并在其视图中说明 |
+| `port` | `9273` | 端点的回环端口，0 到 65,535 的整数；0 表示选择空闲端口。端口被其他程序占用时，服务器不会启动，其视图会说明这一点，令牌也会更换（[理解实现](#understand-the-implementation)） |
 | `progressIntervalMs` | `30000` | 运行中的工具调用向请求了进度的 agent 发送进度通知的间隔（毫秒），至少为 1 的整数 |
 | `readyTimeoutMs` | `8000` | 最初的请求等待组合加载完其插件的最长时间（毫秒，见[服务器指令](#server-instructions)），至少为 1 的整数；默认值低于 Codex 给服务器启动留出的 10 秒 |
 | `temporaryFolders` | Host 的临时文件夹，以及 Windows 以外系统上的 `/tmp` 与 `/var/tmp` | agent 存放一次性工作的绝对路径文件夹，其中的文件夹不会经由服务器成为游戏项目（[临时文件夹](#temporary-folders)）；相对路径会使插件加载失败，`[]` 关闭这条规则 |
@@ -65,7 +65,7 @@ tool_timeout_sec = 1800
 
 除非服务器条目设置了 `tool_timeout_sec`，Codex 会在 60 秒后停止一次工具调用；而上传大型构建的发布或较长的渲染需要数分钟，因此 Codex 条目允许 30 分钟。
 
-令牌是 32 个随机字节的 base64url 形式，首次启动时以 0600 权限写入 `<dataRoot>/token`，因此设置过一次的 agent 在重启后仍可使用。删除该文件后，下次启动会生成新令牌，此后每个 agent 都需要新的提示词。
+令牌是 32 个随机字节的 base64url 形式，首次启动时以 0600 权限写入 `<dataRoot>/token`，因此设置过一次的 agent 在重启后仍可使用。删除该文件后，下次启动会生成新令牌，此后每个 agent 都需要新的提示词。启动时发现端口被其他程序占用，也会生成新令牌，因为之前设置的 agent 会把令牌发给监听该端口的任何程序。
 
 ### 已连接 agent 获得的内容
 
@@ -136,7 +136,7 @@ MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `i
 <details>
 <summary>实现细节——点击展开</summary>
 
-监听器只绑定 `127.0.0.1`。每个请求都必须指向端点路径，通过 MCP SDK 的 localhost Host 与 Origin 检查（以阻止 DNS 重绑定和来自浏览器页面的跨站请求），并携带令牌，令牌以常数时间比较校验；其他请求得到 404、403 或 401。POST 请求体在 4 MiB 以内读取。被放行的请求会立即计入见过的 agent，然后如[服务器指令](#server-instructions)所述等待组合，等待通过用 `ctx.get('loader')` 读到的 Loader 服务的 `await()` 进行。MCP SDK 的 `createMcpHandler` 为每个请求创建一个低层 MCP 服务器，以无状态方式提供 2026-07-28 协议修订版以及 2025 年的各修订版；其工具列表与指令取自当时的目录；工具列表的变化会送达通过 `subscriptions/listen` 订阅的 agent。
+监听器只绑定 `127.0.0.1`。每个请求都必须指向端点路径，通过 MCP SDK 的 localhost Host 与 Origin 检查（以阻止 DNS 重绑定和来自浏览器页面的跨站请求），并携带令牌，令牌以常数时间比较校验；其他请求仅凭请求头就得到 404、403 或 401，请求体的任何部分都不会被读取。被放行请求的 POST 请求体在 4 MiB 以内读取。配置的端口被其他程序占用时，服务器不会改为监听另一个端口，因为设置提示词中的端口只到下次启动前有效；它会生成新令牌，使从 agent 那里拿到旧令牌的程序在服务器再次运行后无法使用，并在视图中请用户退出该程序、重启 WASD Engine，再重新设置 agent。被放行的请求会立即计入见过的 agent，然后如[服务器指令](#server-instructions)所述等待组合，等待通过用 `ctx.get('loader')` 读到的 Loader 服务的 `await()` 进行。MCP SDK 的 `createMcpHandler` 为每个请求创建一个低层 MCP 服务器，以无状态方式提供 2026-07-28 协议修订版以及 2025 年的各修订版；其工具列表与指令取自当时的目录；工具列表的变化会送达通过 `subscriptions/listen` 订阅的 agent。
 
 无状态服务不保留连接，因此服务器自行识别每个请求的 agent：依据 2026-07-28 请求信封中的客户端信息、同一 User-Agent 较早发出的 `initialize` 请求中的客户端信息、User-Agent 的产品名，否则视为通用 agent。agent 的名称不会成为 Session 列表中的标题；设置面板显示 Host 启动以来见过的 agent。
 

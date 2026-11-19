@@ -10,7 +10,7 @@
  */
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { basename } from 'node:path'
+import { basename, win32 } from 'node:path'
 import { Readable, type Writable } from 'node:stream'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import { z } from 'zod'
@@ -672,7 +672,9 @@ export class JsonLineWorker {
     if (pid === undefined) return
     /* v8 ignore start -- Windows has no process groups, and the coverage lanes run on POSIX */
     if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+      // By its full path: a bare name would run any taskkill.exe that the working folder or PATH holds first.
+      const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+      spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
       this.child.kill(signal)
       return
     }

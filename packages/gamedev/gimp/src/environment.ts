@@ -294,9 +294,19 @@ export function gimpWorkerArgv(gimpConsole: string, workerScript: string): Comma
 const REDIRECTING_VARIABLES = new Set(['PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP', 'VIRTUAL_ENV', 'ELECTRON_RUN_AS_NODE'])
 
 /**
+ * The variables through which GIMP's RAW loaders find darktable, RawTherapee, and ART, whose windows a load would open
+ * and wait on; the worker points them at a file that does not exist, so those loaders register nothing.
+ */
+export const RAW_EDITOR_VARIABLES = ['DARKTABLE_EXECUTABLE', 'RAWTHERAPEE_EXECUTABLE', 'ART_EXECUTABLE'] as const
+
+/** The file that the RAW editor variables name, in the profile, which nothing creates. */
+export const NO_RAW_EDITOR = 'wasd-engine-no-raw-editor'
+
+/**
  * The worker environment: the server's own environment without variables that would redirect
- * GIMP's bundled Python or the Electron runtime flag, with the installation's variables and
- * `GIMP3_DIRECTORY` naming the profile.
+ * GIMP's bundled Python or the Electron runtime flag, with the installation's variables,
+ * `GIMP3_DIRECTORY` naming the profile, and the RAW editor variables naming no program, so GIMP
+ * never opens a RAW editor's window.
  * @param env - the MCP server process environment.
  * @param profile - the GIMP profile directory.
  * @param installation - variables of the GIMP that runs, such as the shipped runtime's folders.
@@ -305,9 +315,11 @@ const REDIRECTING_VARIABLES = new Set(['PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTU
 export function workerEnvironment(
   env: NodeJS.ProcessEnv, profile: string, installation: Readonly<Record<string, string>> = {},
 ): NodeJS.ProcessEnv {
+  const noEditor = path.join(profile, NO_RAW_EDITOR)
   return {
     ...Object.fromEntries(Object.entries(env).filter(([name]) => !REDIRECTING_VARIABLES.has(name))),
     ...installation,
+    ...Object.fromEntries(RAW_EDITOR_VARIABLES.map(name => [name, noEditor])),
     GIMP3_DIRECTORY: profile,
   }
 }

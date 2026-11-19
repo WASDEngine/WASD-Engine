@@ -4,9 +4,10 @@
  * writes and removes only its own marked sections; text outside them is the developer's.
  * @module @deepseek-ai/dsh-game-addons/src/notices
  */
-import { readFile, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import { readProjectText } from './paths.ts'
 import type { GameAddon } from './types.ts'
 
 /** File name of the notices in the project folder. */
@@ -69,13 +70,9 @@ function withoutSection(text: string, id: string): string {
   return after === '' ? before : `${before}\n${after}`
 }
 
-async function readNotices(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    throw error
-  }
+/** The notices as the file holds them now; a link in its place is refused (`readProjectText`). */
+async function readNotices(projectDir: string): Promise<string | undefined> {
+  return await readProjectText(projectDir, NOTICES_FILE)
 }
 
 /**
@@ -85,7 +82,7 @@ async function readNotices(path: string): Promise<string | undefined> {
  * @returns the section from its begin marker to its end marker, or undefined when the file has none.
  */
 export async function readNotice(projectDir: string, id: string): Promise<string | undefined> {
-  const current = await readNotices(join(projectDir, NOTICES_FILE))
+  const current = await readNotices(projectDir)
   if (current === undefined) return undefined
   const range = sectionRange(current, id)
   return range === undefined ? undefined : current.slice(range.from, range.to)
@@ -99,7 +96,7 @@ export async function readNotice(projectDir: string, id: string): Promise<string
  */
 export async function writeNotice(projectDir: string, section: string, id: string): Promise<void> {
   const path = join(projectDir, NOTICES_FILE)
-  const current = await readNotices(path) ?? HEADER
+  const current = await readNotices(projectDir) ?? HEADER
   const rest = withoutSection(current, id).replace(/\n*$/u, '\n')
   await writeFileAtomic(path, `${rest}\n${section}\n`, { mode: 0o644 })
 }
@@ -112,7 +109,7 @@ export async function writeNotice(projectDir: string, section: string, id: strin
  */
 export async function removeNotice(projectDir: string, id: string): Promise<string | undefined> {
   const path = join(projectDir, NOTICES_FILE)
-  const current = await readNotices(path)
+  const current = await readNotices(projectDir)
   if (current === undefined) return undefined
   const range = sectionRange(current, id)
   if (range === undefined) return undefined

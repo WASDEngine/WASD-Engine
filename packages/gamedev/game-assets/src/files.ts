@@ -117,7 +117,13 @@ export async function serveAssetFile(request: Request, host: AssetFileRouteHost)
     if (info.type !== 'file') return refuse(403, 'not-a-file', `${path} is not a file.`)
     const size = info.size ?? 0
     const sent = length === undefined ? size : Math.min(size, length)
-    if (length === undefined && size > limit) return refuse(413, 'too-large', `${path} is larger than ${String(limit)} bytes.`, limit)
+    // A head the request asks for is read whole, so it keeps within the cap as a whole file does.
+    if (sent > limit) {
+      const refused = length === undefined
+        ? `${path} is larger than ${String(limit)} bytes.`
+        : `The first ${String(sent)} bytes of ${path} are more than the ${String(limit)} bytes this route reads.`
+      return refuse(413, 'too-large', refused, limit)
+    }
     const headers = {
       ...HEADERS, 'Content-Type': 'application/octet-stream', 'Content-Length': String(sent), [VERSION_HEADER]: String(info.version), [SIZE_HEADER]: String(size),
     }

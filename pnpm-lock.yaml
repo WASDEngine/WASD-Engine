@@ -1044,8 +1044,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/deliverables/workspace-changes
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
       '@types/node':
         specifier: ^22.20.1
         version: 22.20.1
@@ -12660,8 +12660,8 @@ importers:
         specifier: workspace:*
         version: link:../../util/values
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/app-mcp:
     dependencies:
@@ -12675,8 +12675,8 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@modelcontextprotocol/server':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
       zod:
         specifier: 4.6.6
         version: 4.6.6
@@ -12706,8 +12706,8 @@ importers:
         specifier: workspace:*
         version: link:../../core/tools
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/art-references:
     dependencies:
@@ -12779,8 +12779,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/blender:
     dependencies:
@@ -12807,8 +12807,8 @@ importers:
         specifier: workspace:*
         version: link:../../mcp/mcp-manager
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/elevenlabs:
     dependencies:
@@ -12871,8 +12871,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/game-addons:
     dependencies:
@@ -13089,8 +13089,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/game-audio:
     dependencies:
@@ -13159,8 +13159,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/game-mcp:
     dependencies:
@@ -13180,8 +13180,8 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@modelcontextprotocol/server':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
       zod:
         specifier: 4.6.6
         version: 4.6.6
@@ -13223,8 +13223,8 @@ importers:
         specifier: workspace:*
         version: link:../../workspace/workspace
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/gimp:
     dependencies:
@@ -13251,8 +13251,8 @@ importers:
         specifier: workspace:*
         version: link:../../mcp/mcp-manager
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/godot:
     dependencies:
@@ -13375,8 +13375,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
       '@testing-library/react':
         specifier: ^16.3.3
         version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -13542,8 +13542,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/polyhaven:
     dependencies:
@@ -13606,8 +13606,8 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/supercollider:
     dependencies:
@@ -13637,8 +13637,8 @@ importers:
         specifier: workspace:*
         version: link:../../mcp/mcp-manager
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/gamedev/todo-continuation:
     dependencies:
@@ -15407,8 +15407,8 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -15454,10 +15454,10 @@ importers:
         version: link:../../core/tools
       '@modelcontextprotocol/node':
         specifier: 2.0.0
-        version: 2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.7)
+        version: 2.0.0(@modelcontextprotocol/server@2.3.1)(hono@4.13.7)
       '@modelcontextprotocol/server':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
       '@modelcontextprotocol/server-everything':
         specifier: ^2026.8.31
         version: 2026.8.31(supports-color@9.4.0)
@@ -15520,8 +15520,8 @@ importers:
         specifier: workspace:*
         version: link:../../util/values
       '@modelcontextprotocol/client':
-        specifier: 2.2.0
-        version: 2.2.0
+        specifier: 2.3.1
+        version: 2.3.1
 
   packages/mcp/mcp-resources:
     dependencies:
@@ -22319,12 +22319,12 @@ packages:
   '@mixmark-io/domino@2.2.0':
     resolution: {integrity: sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw==}
 
-  '@modelcontextprotocol/client@2.2.0':
-    resolution: {integrity: sha512-LxCou/CSYQ6dwEnjhLZY0KnEuc8V4UJ3IEQCl/uR2yHobSQIEdJKUlKLRYRF5i5FqRGHy1eK7une3aAWDHLtig==}
+  '@modelcontextprotocol/client@2.3.1':
+    resolution: {integrity: sha512-mIGZXpHsjnZ6lD+gD/WCMpR5k8yVQQ8nNFH1N0Srf7AvnwTUMYD6pvTY8ng2+He5FfV7YMZLmrjL7cLa/cc3dQ==}
     engines: {node: '>=20'}
 
-  '@modelcontextprotocol/core@2.2.0':
-    resolution: {integrity: sha512-iLhmprRmWI8EcosOA3wVvww22z02NkgqhV4fBH6f/odQBsi7xnJc0HGmi21yWO+/iKw2yzqVE127Zhna5/+JXw==}
+  '@modelcontextprotocol/core@2.3.1':
+    resolution: {integrity: sha512-laVmIhPGpWi7rG9q+0UigblRN0Hws/Yjlb6qLFtVqryXVLkc4h+yN8z731POD2LnAGQlFe7/tXhUm7Bi0YB91g==}
     engines: {node: '>=20'}
 
   '@modelcontextprotocol/node@2.0.0':
@@ -22355,8 +22355,8 @@ packages:
     resolution: {integrity: sha512-kKaFkyAh6oipvc9+EAbJ552JafnMnOq5nzmzWkp1jJdBhTAAGpmIpWihUG1+rfNhmEFM98gUZDdCHCDD4v6a7Q==}
     hasBin: true
 
-  '@modelcontextprotocol/server@2.2.0':
-    resolution: {integrity: sha512-qFnltjus6Gk8Lx6J1w2RXmr3YPN22MNT6qD6zjAkaiWIlFIFxWClz0rXHNuJF/KSUyn5YGhkSvXkWDbQHVLFEQ==}
+  '@modelcontextprotocol/server@2.3.1':
+    resolution: {integrity: sha512-e59MfWuSssj6DoQ96JCTqdW1AXT5/XtnTl0WWd6MU1Ka434fFUGGosCLJbGNySDhHGvxQWoRWK137FXYFkYNWw==}
     engines: {node: '>=20'}
 
   '@napi-rs/canvas-android-arm64@1.0.8':
@@ -30034,9 +30034,9 @@ snapshots:
 
   '@mixmark-io/domino@2.2.0': {}
 
-  '@modelcontextprotocol/client@2.2.0':
+  '@modelcontextprotocol/client@2.3.1':
     dependencies:
-      '@modelcontextprotocol/core': 2.2.0
+      '@modelcontextprotocol/core': 2.3.1
       cross-spawn: 7.0.6
       eventsource: 3.0.7
       eventsource-parser: 3.1.0
@@ -30044,14 +30044,14 @@ snapshots:
       pkce-challenge: 5.0.1
       zod: 4.6.6
 
-  '@modelcontextprotocol/core@2.2.0':
+  '@modelcontextprotocol/core@2.3.1':
     dependencies:
       zod: 4.6.6
 
-  '@modelcontextprotocol/node@2.0.0(@modelcontextprotocol/server@2.2.0)(hono@4.13.7)':
+  '@modelcontextprotocol/node@2.0.0(@modelcontextprotocol/server@2.3.1)(hono@4.13.7)':
     dependencies:
       '@hono/node-server': 1.19.17(hono@4.13.7)
-      '@modelcontextprotocol/server': 2.2.0
+      '@modelcontextprotocol/server': 2.3.1
     optionalDependencies:
       hono: 4.13.7
 
@@ -30099,9 +30099,9 @@ snapshots:
       - supports-color
       - zod
 
-  '@modelcontextprotocol/server@2.2.0':
+  '@modelcontextprotocol/server@2.3.1':
     dependencies:
-      '@modelcontextprotocol/core': 2.2.0
+      '@modelcontextprotocol/core': 2.3.1
       zod: 4.6.6
 
   '@napi-rs/canvas-android-arm64@1.0.8':

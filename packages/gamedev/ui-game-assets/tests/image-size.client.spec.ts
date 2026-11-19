@@ -3,8 +3,9 @@
  * has pixels, including a small file that states a huge size, and headers that are cut short or damaged.
  */
 import { describe, expect, it } from 'vitest'
-import { formatOf } from '../src/client/formats.ts'
+import { formatOf, type AssetFormat } from '../src/client/formats.ts'
 import { imageSize } from '../src/client/image-size.ts'
+import { decodedPixelLimit } from '../src/client/picture.ts'
 
 /** Bytes from numbers and text. */
 function bytes(...parts: readonly (ArrayLike<number> | string)[]): Uint8Array {
@@ -130,5 +131,14 @@ describe('imageSize', () => {
     // An `ispe` box outside the item properties states no image's size.
     const stray = bytes(box('ftyp', 'avif', u32be(0), 'avifmif1'), box('meta', u32be(0), box('ispe', u32be(0), u32be(4096), u32be(4096)), box('iprp', box('ipco', box('ispe', u32be(0), u32be(32), u32be(16))))))
     expect(size('stray.avif', stray)).toEqual({ width: 32, height: 16 })
+  })
+})
+
+describe('decodedPixelLimit', () => {
+  it('gives TGA, HDR, and EXR images as many pixels as take a browser image\'s memory decoded', () => {
+    const limit = 8192 * 8192
+    expect(decodedPixelLimit(formatOf('a.png') as AssetFormat, limit)).toBe(limit)
+    expect(decodedPixelLimit(formatOf('a.tga') as AssetFormat, limit)).toBe(Math.floor(limit / 3))
+    for (const name of ['sky.hdr', 'sky.exr']) expect(decodedPixelLimit(formatOf(name) as AssetFormat, limit)).toBe(Math.floor(limit / 6))
   })
 })

@@ -290,7 +290,7 @@ describe('GameAddonManager beside other writers', () => {
     await writeFile(join(state.project, 'project.godot'), start)
     // A folder where the notices file belongs makes the notice step fail after project.godot enabled the add-on.
     await mkdir(join(state.project, NOTICES_FILE))
-    await expect(state.manager.install(state.project, 'test-camera', {}, signal)).rejects.toThrow(/EISDIR/u)
+    await expect(state.manager.install(state.project, 'test-camera', {}, signal)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md in .* is not a regular file/u)
     expect(await readFile(join(state.project, 'project.godot'), 'utf8')).toBe(`${start}${DISPLAY}`)
     await expect(lstat(join(state.project, 'addons'))).rejects.toThrow(/ENOENT/u)
     expect(await readRecord(state.project)).toEqual([])
@@ -545,6 +545,30 @@ describe('GameAddonManager changes stay inside the project', () => {
     await expect(manager.install(project, 'test-rig', {}, signal)).rejects.toThrow(GameAddonPathError)
     expect(await tree(state)).toEqual(['keep.txt'])
     expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+  })
+
+  linking('refuses a notices file that links outside the project, so its target never lands in the project', async () => {
+    const { manager, project } = await setup()
+    const secrets = await outsideFolder(dir!.root, 'ssh')
+    await writeFile(join(secrets, 'id_ed25519'), 'PRIVATE KEY\n')
+    await symlink(join(secrets, 'id_ed25519'), join(project, NOTICES_FILE))
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(/THIRD_PARTY_NOTICES\.md in .* is a symbolic link/u)
+    expect((await lstat(join(project, NOTICES_FILE))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(secrets, 'id_ed25519'), 'utf8')).toBe('PRIVATE KEY\n')
+    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    expect(await readRecord(project)).toEqual([])
+  })
+
+  linking('refuses a project.godot that links outside the project and changes nothing', async () => {
+    const { manager, project } = await setup()
+    const elsewhere = await outsideFolder(dir!.root, 'other-game')
+    await writeFile(join(elsewhere, 'project.godot'), PROJECT_GODOT)
+    await rm(join(project, 'project.godot'))
+    await symlink(join(elsewhere, 'project.godot'), join(project, 'project.godot'))
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(GameAddonPathError)
+    expect((await lstat(join(project, 'project.godot'))).isSymbolicLink()).toBe(true)
+    expect(await readFile(join(elsewhere, 'project.godot'), 'utf8')).toBe(PROJECT_GODOT)
+    expect(await readRecord(project)).toEqual([])
   })
 
   linking('moves a linked add-on folder as the link, leaving what it points to', async () => {

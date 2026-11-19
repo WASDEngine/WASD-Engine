@@ -37,7 +37,7 @@ import type { GameMcpCall, GameMcpClient, GameMcpProvider, GameMcpToolOwner } fr
 import { authInfoFor, createGameMcpHandler } from './server.ts'
 import { ExternalSessions } from './sessions.ts'
 import { systemTemporaryFolders } from './temporary-folders.ts'
-import { authorizes, loadToken } from './token.ts'
+import { authorizes, loadToken, renewToken } from './token.ts'
 import type { GameMcpServerState, GameMcpView } from './types.ts'
 
 export type * from './types.ts'
@@ -289,16 +289,23 @@ export default class GameMcpServer extends TypertRemoteService {
     const logger = this.ctx.logger
     let listener: HttpListener
     try {
-      this.token = await loadToken(join(this.config.dataRoot, 'token'))
+      const tokenFile = join(this.config.dataRoot, 'token')
+      this.token = await loadToken(tokenFile)
+      const admit = (request: Request): Response | undefined => this.admit(request)
       const handle = (request: Request, body: Uint8Array<ArrayBuffer> | undefined): Promise<Response> => this.handle(request, body)
       const report = (error: unknown): void => { logger.warn(`game-mcp: request failed: ${String(error)}`) }
       try {
-        listener = await listenLoopback(this.config.port, handle, report)
+        listener = await listenLoopback(this.config.port, admit, handle, report)
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EADDRINUSE' || this.config.port === 0) throw error
-        listener = await listenLoopback(0, handle, report)
-        this.message = `Port ${this.config.port} is in use by another program, so the server listens on port ${listener.port} until WASD Engine restarts.`
+        // Agents set up earlier send the token to whatever program holds the port, so the token changes and the
+        // server stays off: a prompt naming another port would hold only until the next start.
+        this.token = await renewToken(tokenFile)
+        this.state = 'failed'
+        this.message = `Port ${this.config.port} is in use by another program. Quit that program and restart WASD Engine. The server's token changed, so set up your agents again with the new prompt.`
         logger.warn(`game-mcp: ${this.message}`)
+        this.changed()
+        return undefined
       }
     } catch (error) {
       this.state = 'failed'
@@ -314,7 +321,8 @@ export default class GameMcpServer extends TypertRemoteService {
     return listener
   }
 
-  private async handle(request: Request, body: Uint8Array | undefined): Promise<Response> {
+  /** The answer to a request that the server refuses from its path and headers, before its body is read. */
+  private admit(request: Request): Response | undefined {
     if (new URL(request.url).pathname !== MCP_PATH) return plainResponse(404, 'Not found')
     // DNS rebinding and cross-site requests from browser pages fail here, before the token is checked.
     const rejected = hostHeaderValidationResponse(request, localhostAllowedHostnames())
@@ -324,6 +332,12 @@ export default class GameMcpServer extends TypertRemoteService {
     if (token === undefined || !authorizes(request.headers.get('authorization'), token)) {
       return plainResponse(401, 'WASD Engine\'s MCP server needs the token from its setup prompt.', { 'www-authenticate': 'Bearer realm="WASD Engine"' })
     }
+    return undefined
+  }
+
+  /** Answer a request that {@link admit} let through. */
+  private async handle(request: Request, body: Uint8Array | undefined): Promise<Response> {
+    const token = this.token as string
     const parsed = parseBody(body)
     const before = this.clients.list().map(client => client.id).join('\n')
     const client = this.clients.identify(parsed, request.headers.get('user-agent') ?? '', Date.now())

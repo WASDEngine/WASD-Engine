@@ -5,7 +5,10 @@
  * than the app's.
  *
  * On macOS a game starts through LaunchServices, as Finder starts an application: `open -n -a <bundle>`, with the
- * game's `WASD_*` entries as `--env`. The game is then a process of launchd and its own responsible process, so macOS
+ * game's `WASD_*` entries as `--env`, except its player token, which a file that only the user can read holds instead,
+ * `WASD_PLAY_TOKEN_FILE`, because another account's program can read `open`'s command line; the WASD Multiplayer add-on
+ * deletes the file once it read it, and the library deletes it after {@link PLAY_TOKEN_FILE_MS} when no game did.
+ * The game is then a process of launchd and its own responsible process, so macOS
  * asks the player about the game's own access to the microphone, the camera, and the Desktop, Documents, and Downloads
  * folders instead of letting it use what the player allowed WASD Engine. `open` hands the application it opens its own
  * environment, so it runs with an empty one: the game gets the user session's environment from launchd plus its
@@ -15,8 +18,13 @@
  * @module @deepseek-ai/dsh-wasd-plugins/src/library-process
  */
 import { execFile, spawn } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { GameCommand } from './library.ts'
+
+/** How long the file that hands a macOS game its player token stays when the game never reads it, in milliseconds. */
+export const PLAY_TOKEN_FILE_MS = 5 * 60_000
 
 /** Most bytes of a system tool's error output a failure message keeps. */
 const MAX_ERROR_OUTPUT = 2000
@@ -124,7 +132,27 @@ export function startDetached(command: GameCommand): Promise<void> {
 }
 
 /** Start a macOS game with `open`, which reports a bundle it cannot open on its error output. */
-function openApplication(command: GameCommand): Promise<void> {
+async function openApplication(command: GameCommand): Promise<void> {
+  const token = command.env.WASD_PLAY_TOKEN
+  if (token === undefined) {
+    await openWith(command)
+    return
+  }
+  const folder = await mkdtemp(join(tmpdir(), 'wasd-play-'))
+  const file = join(folder, 'token')
+  try {
+    await writeFile(file, token, { mode: 0o600, flag: 'wx' })
+    const { WASD_PLAY_TOKEN: _onFile, ...env } = command.env
+    await openWith({ ...command, env: { ...env, WASD_PLAY_TOKEN_FILE: file } })
+  } catch (error) {
+    await rm(folder, { recursive: true, force: true })
+    throw error
+  }
+  setTimeout(() => { void rm(folder, { recursive: true, force: true }) }, PLAY_TOKEN_FILE_MS).unref()
+}
+
+/** Run `open` for a macOS game whose entries the caller chose. */
+function openWith(command: GameCommand): Promise<void> {
   return new Promise((resolve, reject) => {
     const [program, args] = macosOpen(command)
     // `open` hands the game its own environment, so it gets none, and the game gets the user session's from launchd.

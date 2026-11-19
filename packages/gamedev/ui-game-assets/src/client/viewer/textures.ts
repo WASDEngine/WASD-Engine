@@ -128,6 +128,8 @@ async function decodeInto(texture: Texture, data: Uint8Array<ArrayBuffer>): Prom
 export class CheckedTextures {
   /** `blob:` URLs of the checked bytes of a Collada file's images, by the name the file stores. */
   private readonly prefetched = new Map<string, string>()
+  /** `blob:` URLs of embedded images that a loader made, such as an FBX file's, which nothing else revokes. */
+  private readonly embedded = new Set<string>()
 
   /**
    * @param budget - the model's texture budget.
@@ -179,16 +181,22 @@ export class CheckedTextures {
    * @throws {Error} when it cannot be fetched, the check refuses it, or it does not decode.
    */
   async load(texture: Texture, url: string, name: string): Promise<void> {
+    // Revoked with the model's other URLs once every texture settled: textures of one image share its URL.
+    if (/^blob:/iu.test(url)) this.embedded.add(url)
     const data = await fetchBytes(url, this.budget, this.signal)
     this.budget.take(data, name)
     this.signal.throwIfAborted()
     await decodeInto(texture, data)
   }
 
-  /** Release the `blob:` URLs of the prefetched images; a model's images decoded from them keep their pixels. */
+  /**
+   * Release the `blob:` URLs of the prefetched images and of the embedded images that textures loaded; a model's images
+   * decoded from them keep their pixels.
+   */
   dispose(): void {
-    for (const url of this.prefetched.values()) URL.revokeObjectURL(url)
+    for (const url of [...this.prefetched.values(), ...this.embedded]) URL.revokeObjectURL(url)
     this.prefetched.clear()
+    this.embedded.clear()
   }
 }
 

@@ -3,7 +3,7 @@
  * game; the plugin's contributions end with its fiber.
  */
 import { Buffer } from 'node:buffer'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { totalmem } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import GodotController from '../src/index.ts'
 import type { GodotFollowItem, GodotRunView } from '../src/types.ts'
 import { callTool, compose, text, type Composition, type CompositionOptions, type ResolveAgent } from './composition.ts'
-import { fakeLog, fakeRequests, until } from './helpers.ts'
+import { fakeLog, fakeRequests, until, writeProject } from './helpers.ts'
 
 const posix = process.platform === 'win32' ? describe.skip : describe
 const signal = new AbortController().signal
@@ -58,12 +58,13 @@ describe('configuration', () => {
     [{ dataRoot: 'relative' }, 'dataRoot must be an absolute path'],
     [{ dataRoot: '/data', libgodotPath: '/lib.so' }, 'set libgodotPath and runnerPath together'],
     [{ dataRoot: '/data', runnerPath: 'godot_runner', libgodotPath: '/lib.so' }, 'runnerPath must be an absolute path'],
-    [{ dataRoot: '/data', runtimeManifestUrl: 'not a url' }, 'runtimeManifestUrl must be an http or https URL'],
-    [{ dataRoot: '/data', runtimeManifestUrl: 'file:///manifest.json' }, 'runtimeManifestUrl must be an http or https URL'],
-    [{ dataRoot: '/data', webTemplateArchiveUrl: 'file:///t.tpz' }, 'webTemplateArchiveUrl must be an http or https URL'],
-    [{ dataRoot: '/data', windowsTemplateArchiveUrl: 'nope' }, 'windowsTemplateArchiveUrl must be an http or https URL'],
+    [{ dataRoot: '/data', runtimeManifestUrl: 'not a url' }, 'runtimeManifestUrl must be an https URL, or an http URL of this computer'],
+    [{ dataRoot: '/data', runtimeManifestUrl: 'file:///manifest.json' }, 'runtimeManifestUrl must be an https URL, or an http URL of this computer'],
+    [{ dataRoot: '/data', runtimeManifestUrl: 'http://example.com/manifest.json' }, 'runtimeManifestUrl must be an https URL, or an http URL of this computer'],
+    [{ dataRoot: '/data', webTemplateArchiveUrl: 'file:///t.tpz' }, 'webTemplateArchiveUrl must be an https URL, or an http URL of this computer'],
+    [{ dataRoot: '/data', windowsTemplateArchiveUrl: 'nope' }, 'windowsTemplateArchiveUrl must be an https URL, or an http URL of this computer'],
     [{ dataRoot: '/data', macosTemplatePath: 'macos.zip' }, 'macosTemplatePath must be an absolute path'],
-    [{ dataRoot: '/data', iosTemplateArchiveUrl: 'ftp://t.tpz' }, 'iosTemplateArchiveUrl must be an http or https URL'],
+    [{ dataRoot: '/data', iosTemplateArchiveUrl: 'ftp://t.tpz' }, 'iosTemplateArchiveUrl must be an https URL, or an http URL of this computer'],
     [{ dataRoot: '/data', androidTemplatePath: 'android.apk' }, 'androidTemplatePath must be an absolute path'],
     [{ dataRoot: '/data', androidJavaPath: 'jdk' }, 'androidJavaPath must be an absolute path'],
     [{ dataRoot: '/data', androidSdkPath: 'sdk' }, 'androidSdkPath must be an absolute path'],
@@ -75,6 +76,7 @@ describe('configuration', () => {
     expect(GodotController.Config({ dataRoot: '/data' })).toEqual({
       dataRoot: '/data', runtimeVersion: '4.7.2-wasd.4',
       runtimeManifestUrl: 'https://github.com/WASDEngine/WASD-Engine/releases/download/libgodot-4.7.2-wasd.4/manifest.json',
+      runtimeManifestSha256: 'c75b17d2258380ae304f9ca9dd6d35b99d6b5b60f37a8d2b5b921ab5df5d4f0a',
       libgodotPath: '', runnerPath: '', streamFps: 30, streamQuality: 0.9, streamLossless: true, streamMaxWidth: 1280,
       importBeforeRun: true, importTimeoutMs: 180_000, startTimeoutMs: 60_000, requestTimeoutMs: 15_000, stopGraceMs: 3000,
       processOutputBytes: 1024 * 1024, maxLogEntries: 5000, maxRuns: 4, runMemoryBytes: 8 * 1024 ** 3, runCores: 4,
@@ -378,6 +380,17 @@ posix('recordings for other plugins', () => {
     const recording = await c.godot.record(c.owner.agent, { ...request, stopStarted: true }, signal)
     expect(recording.started).toBe(true)
     await expectRemote(c.godot.control(OWNER, { action: 'pause' }, signal), 'godot/not-running')
+  })
+
+  it('leaves the Session\'s game running when the game it would record fails to start', async () => {
+    const c = await setup()
+    await callTool(c, 'godot_run')
+    await writeProject(join(c.dir.root, 'work', 'other'))
+    // Without its library, the configured runtime is unusable, so the second game's start fails before it replaces the first.
+    await rm(c.dir.fakeLibrary)
+    await expect(c.godot.record(c.owner.agent, { ...request, project: join(c.dir.root, 'work', 'other'), stopStarted: true }, signal))
+      .rejects.toThrow(/libgodotPath .* is not a file/u)
+    await c.godot.control(OWNER, { action: 'pause' }, signal)
   })
 
   it('refuses invalid numbers, invalid events, and screenshot coordinates without a screenshot', async () => {

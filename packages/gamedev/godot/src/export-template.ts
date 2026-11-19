@@ -66,6 +66,9 @@ export class GodotTemplateError extends Error {
 }
 
 /** The tail read first: the end-of-directory record plus the largest archive comment. */
+/** Longest wait for the export templates download's next bytes, or for an answer, before the download fails as stalled. */
+export const TEMPLATE_STALL_MS = 120_000
+
 const TAIL_BYTES = 65_536 + 22
 const END_OF_DIRECTORY = 0x06054b50
 const ZIP64_LOCATOR = 0x07064b50
@@ -146,17 +149,28 @@ export class ExportTemplateManager {
     const destination = this.installedPath()
     const folder = join(this.settings.dataRoot, 'templates')
     await mkdir(folder, { recursive: true })
-    // The download outlives any one caller; a dead connection fails it instead of hanging it.
-    const signal = AbortSignal.timeout(15 * 60_000)
+    // The download outlives any one caller; one whose bytes stop arriving fails instead of hanging, while a slow link
+    // that keeps sending finishes however long it takes.
+    const stall = new AbortController()
+    const stalled = (): void => {
+      stall.abort(new GodotTemplateError(`Downloading the Godot export templates stalled: nothing arrived for ${String(TEMPLATE_STALL_MS / 1000)} s.`))
+    }
+    let timer = setTimeout(stalled, TEMPLATE_STALL_MS)
+    const arrived = (): void => {
+      clearTimeout(timer)
+      timer = setTimeout(stalled, TEMPLATE_STALL_MS)
+    }
     const staging = join(folder, `.download-${randomUUID()}${this.settings.extension}`)
     try {
-      await this.download(staging, signal)
+      await this.download(staging, stall.signal, arrived)
+      clearTimeout(timer)
       await withFileLock(destination, async () => {
         if (await isFile(destination)) return
         await rename(staging, destination)
-      }, { signal })
+      })
       return destination
     } finally {
+      clearTimeout(timer)
       await rm(staging, { force: true })
     }
   }
@@ -240,13 +254,15 @@ export class ExportTemplateManager {
     throw new GodotTemplateError(`The Godot export templates archive has no ${this.settings.entry}.`)
   }
 
-  private async download(destination: string, signal: AbortSignal): Promise<void> {
+  private async download(destination: string, signal: AbortSignal, arrived: () => void): Promise<void> {
     const entry = await this.findEntry(signal)
+    arrived()
     if (entry.method !== 0 && entry.method !== 8) throw new GodotTemplateError(`${this.settings.entry} uses a ZIP compression method other than store or deflate.`)
     const header = await this.bytes(entry.localHeaderOffset, entry.localHeaderOffset + 29, signal)
     if (header.readUInt32LE(0) !== LOCAL_HEADER) throw new GodotTemplateError('The Godot export templates archive has a damaged entry header.')
     const dataStart = entry.localHeaderOffset + 30 + header.readUInt16LE(26) + header.readUInt16LE(28)
     const { response } = await this.range(dataStart, dataStart + entry.compressedSize - 1, signal)
+    arrived()
     if (response.body === null) throw new GodotTemplateError('The Godot export templates archive sent no data.')
     const digest = createHash('sha256')
     let checksum = 0
@@ -254,6 +270,7 @@ export class ExportTemplateManager {
     const platform = this.settings.platform
     const check = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
+        arrived()
         size += chunk.length
         if (size > entry.size) {
           callback(new GodotTemplateError(`${entry.size} bytes were expected of the ${platform} export template, and more arrived.`))

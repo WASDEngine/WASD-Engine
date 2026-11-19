@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink } from 'node:fs/promises
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ProjectQueue, writeWhole } from '../src/state.ts'
+import { ProjectQueue, STATE_DIR, STATE_GITIGNORE, writeWhole } from '../src/state.ts'
 
 /** A wait that the next lookup of a real path takes before it answers, such as a slow disk's. */
 const lookups = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined }))
@@ -119,5 +119,23 @@ describe('writeWhole', () => {
     expect(await readFile(join(root, 'game.json'), 'utf8')).toBe('{"format":1,"games":{}}\n')
     await expect(writeWhole(join(root, 'missing', 'game.json'), '{}')).rejects.toThrow(/ENOENT/u)
     expect(await readdir(root)).toEqual(['game.json'])
+  })
+})
+
+describe('the state folder\'s .gitignore', () => {
+  it('keeps the builds out of git once an operation leaves the state folder, and keeps a .gitignore the user wrote', async () => {
+    const root = await scratch()
+    const project = join(root, 'game')
+    await mkdir(project)
+    const queue = new ProjectQueue()
+    // An operation that makes no state folder leaves none.
+    await queue.run(project, signal, async () => {})
+    expect(await readdir(project)).toEqual([])
+    await queue.run(project, signal, async () => { await mkdir(join(project, STATE_DIR, 'web'), { recursive: true }) })
+    expect(await readFile(join(project, STATE_DIR, '.gitignore'), 'utf8')).toBe(STATE_GITIGNORE)
+    expect(STATE_GITIGNORE.split('\n')).toEqual(expect.arrayContaining(['/web/', '/desktop/', '/server/', '/mobile/', '/web-zip/', '/preview/']))
+    await writeWhole(join(project, STATE_DIR, '.gitignore'), 'mine\n')
+    await queue.run(project, signal, async () => {})
+    expect(await readFile(join(project, STATE_DIR, '.gitignore'), 'utf8')).toBe('mine\n')
   })
 })

@@ -243,6 +243,22 @@ describe('model costs', () => {
     expect(await costOf('models/huge.vox', 'vox')).toEqual({ named: 0, namedBytes: 0, memory: 0 })
   })
 
+  it('read crafted OBJ, Collada, and text FBX files in time that grows linearly with their size', async () => {
+    const timed = async (path: string, decoder: ModelDecoder): Promise<ModelCost> => {
+      const started = performance.now()
+      const cost = await costOf(path, decoder)
+      // Backtracking scans of these files took minutes; linear ones take milliseconds.
+      expect(performance.now() - started).toBeLessThan(3000)
+      return cost
+    }
+    await writeFile(join(root, 'models', 'spaces.obj'), `mtllib x${' '.repeat(1_000_000)}y\n${'\n'.repeat(500_000)}`)
+    expect(await timed('models/spaces.obj', 'obj')).toEqual({ named: 1, namedBytes: 0, memory: 0 })
+    await writeFile(join(root, 'models', 'tags.dae'), `<library_images>${'<image'.repeat(200_000)}${'<image><init_from><<<<'.repeat(50_000)}</library_images>`)
+    expect(await timed('models/tags.dae', 'dae')).toEqual({ named: 0, namedBytes: 0, memory: 0 })
+    await writeFile(join(root, 'models', 'nodes.fbx'), `${'\n'.repeat(500_000)}${'Video: {\n RelativeFilename: \n'.repeat(100_000)}`)
+    expect(await timed('models/nodes.fbx', 'fbx')).toMatchObject({ named: 0, namedBytes: 0 })
+  })
+
   it('count nothing named outside the folder the window reads, by real path, nor a file larger than it reads', async () => {
     const outside = await mkdtemp(join(tmpdir(), 'dsh-game-assets-cost-outside-'))
     try {

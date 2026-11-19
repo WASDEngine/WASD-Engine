@@ -39,7 +39,7 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
 | Field | Default | Meaning |
 |---|---|---|
 | `dataRoot` | Required | Absolute folder of the access token (`token`) and of the connected agents' Session bindings (`sessions.json`); a relative path fails the plugin load |
-| `port` | `9273` | Loopback port of the endpoint, a whole number from 0 to 65,535; 0 picks a free port. While another program holds it, the server listens on a free port until the Host restarts and says so in its view |
+| `port` | `9273` | Loopback port of the endpoint, a whole number from 0 to 65,535; 0 picks a free port. While another program holds it, the server does not start, its view says so, and the token changes ([Understand the implementation](#understand-the-implementation)) |
 | `progressIntervalMs` | `30000` | Interval in milliseconds of the progress notifications that a running tool call sends to an agent that asked for progress, a whole number of at least 1 |
 | `readyTimeoutMs` | `8000` | Longest time in milliseconds that the first requests wait for the composition to finish loading its plugins ([server instructions](#server-instructions)), a whole number of at least 1; the default stays under the 10 seconds that Codex gives a server to start |
 | `temporaryFolders` | The Host's temporary folder and, outside Windows, `/tmp` and `/var/tmp` | Absolute folders where agents keep throwaway work, whose folders never become game projects through the server ([temporary folders](#temporary-folders)); a relative path fails the plugin load, and `[]` turns the rule off |
@@ -65,7 +65,7 @@ tool_timeout_sec = 1800
 
 Codex stops a tool call after 60 seconds unless the server's entry sets `tool_timeout_sec`, and a release that uploads a large build, or a long render, takes minutes, so the Codex entry allows 30 minutes.
 
-The token is 32 random bytes in base64url, created on first start in `<dataRoot>/token` with mode 0600, so agents set up once keep working across restarts. Deleting the file makes the next start create another token, after which every agent needs the new prompt.
+The token is 32 random bytes in base64url, created on first start in `<dataRoot>/token` with mode 0600, so agents set up once keep working across restarts. Deleting the file makes the next start create another token, after which every agent needs the new prompt. A start that finds the port held by another program also creates another token, because agents set up earlier send theirs to whatever listens on the port.
 
 ### What connected agents get
 
@@ -136,7 +136,7 @@ MCP has no message that changes the instructions an agent received when it conne
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The listener binds `127.0.0.1` only. Each request must name the endpoint path, pass the MCP SDK's localhost Host and Origin checks, which stop DNS rebinding and cross-site requests from browser pages, and carry the token, which a constant-time comparison checks; other requests get 404, 403, or 401. POST bodies are read within 4 MiB. An admitted request is counted among the agents seen at once and then waits for the composition, as [server instructions](#server-instructions) describes, through the Loader service's `await()`, read with `ctx.get('loader')`. The MCP SDK's `createMcpHandler` serves the 2026-07-28 protocol revision and, statelessly, the 2025 revisions, from one low-level MCP server per request, whose tool list and instructions come from the catalog at that moment; tool list changes reach agents that subscribed through `subscriptions/listen`.
+The listener binds `127.0.0.1` only. Each request must name the endpoint path, pass the MCP SDK's localhost Host and Origin checks, which stop DNS rebinding and cross-site requests from browser pages, and carry the token, which a constant-time comparison checks; other requests get 404, 403, or 401 from their headers alone, before any of their body is read. An admitted request's POST body is read within 4 MiB. When another program holds the configured port, the server does not listen on another one, which a setup prompt would name only until the next start; it creates a new token, so a program that received the old one from an agent cannot use it once the server runs again, and its view asks the user to quit that program, restart WASD Engine, and set agents up again. An admitted request is counted among the agents seen at once and then waits for the composition, as [server instructions](#server-instructions) describes, through the Loader service's `await()`, read with `ctx.get('loader')`. The MCP SDK's `createMcpHandler` serves the 2026-07-28 protocol revision and, statelessly, the 2025 revisions, from one low-level MCP server per request, whose tool list and instructions come from the catalog at that moment; tool list changes reach agents that subscribed through `subscriptions/listen`.
 
 Stateless serving keeps no connection, so the server names each request's agent itself: from the client information of a 2026-07-28 request envelope, from the client information of an earlier `initialize` request with the same User-Agent, from the User-Agent's product, or as a generic agent. The agent's name titles nothing in the Session list; the setup panel shows the agents seen since the Host started.
 

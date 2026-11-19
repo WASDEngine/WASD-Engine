@@ -22,15 +22,21 @@ export type ListRow =
   | { readonly type: 'sound'; readonly item: SoundItem; readonly withFolder: boolean }
 
 /**
- * The sounds of a walk with their kinds.
+ * The sounds of a walk with their kinds. A sound whose entry and header facts are those of its item in `previous`
+ * keeps that item, so the rows of the sounds a probe batch did not read keep their props and skip rendering.
  * @param scan - the walk.
  * @param probes - what the sounds' headers said.
+ * @param previous - the items of the list's last update, by workspace path.
  * @returns the sounds in the walk's order.
  */
-export function soundItems(scan: SoundScan, probes: ReadonlyMap<string, ProbeEntry>): SoundItem[] {
+export function soundItems(
+  scan: SoundScan, probes: ReadonlyMap<string, ProbeEntry>, previous: ReadonlyMap<string, SoundItem> = new Map(),
+): SoundItem[] {
   return scan.sounds.map((entry) => {
     const known = probes.get(entry.path)
     const probe = known !== undefined && known.bytes === entry.bytes ? known.probe : undefined
+    const kept = previous.get(entry.path)
+    if (kept !== undefined && kept.entry === entry && kept.probe === probe) return kept
     return { entry, kind: audioCategoryOf(entry.path, probe?.seconds).category, ...probe === undefined ? {} : { probe } }
   })
 }

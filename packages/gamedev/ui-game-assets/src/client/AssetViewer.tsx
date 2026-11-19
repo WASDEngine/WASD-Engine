@@ -31,6 +31,11 @@ export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'rela
   readonly onSelect: (path: string) => void
   /** What an agent asked to show with the asset, once per `request`. */
   readonly requested?: ViewRequest | undefined
+  /**
+   * Told when an image's animations lack the one an agent asked for, which a Godot file newer than the scan may define.
+   * @param request - the ask's `request`.
+   */
+  readonly onMissingAnimation?: ((request: number) => void) | undefined
   /** Whether the tab is on screen; a hidden view pauses its animation. */
   readonly visible: boolean
   readonly t: Translate
@@ -115,7 +120,7 @@ export function AssetViewer(props: AssetViewerProps): ReactNode {
 
 /** Read an asset, again for each new version, and show it. */
 function LoadedAsset({
-  asset, useResource, read, relatedUrl, fileAddress, animations, limits, visible, requested, t,
+  asset, useResource, read, relatedUrl, fileAddress, animations, limits, visible, requested, onMissingAnimation, t,
 }: AssetViewerProps): ReactNode {
   const resource = useResource<'file'>(fileAddress(asset.path))
   const version = resource.status === 'live' ? resource.value?.version : undefined
@@ -164,7 +169,7 @@ function LoadedAsset({
     ? (
       <ImageView
         asset={asset} file={load.file} animations={animations} read={read} requested={requested}
-        maxDecodedPixels={limits.maxDecodedPixels} visible={visible} t={t}
+        onMissingAnimation={onMissingAnimation} maxDecodedPixels={limits.maxDecodedPixels} visible={visible} t={t}
       />
     )
     : (

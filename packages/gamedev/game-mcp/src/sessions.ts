@@ -11,7 +11,8 @@
  * @module @deepseek-ai/dsh-game-mcp/src/sessions
  */
 import { readFile, realpath, stat } from 'node:fs/promises'
-import { isAbsolute } from 'node:path'
+import { homedir } from 'node:os'
+import { isAbsolute, parse } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-api-session-controller'
@@ -95,6 +96,18 @@ function containing(workspaces: readonly Workspace[], path: string): Workspace |
   return best
 }
 
+/**
+ * Whether a folder is the root of a disk or holds the user's home folder, which a call names by mistake, such as `/` or
+ * `~`, and which would make every file of the user's part of one game project.
+ * @param canonical - real path of the folder.
+ * @returns true for such a folder.
+ */
+async function holdsHome(canonical: string): Promise<boolean> {
+  if (canonical === parse(canonical).root) return true
+  const home = await realpath(homedir()).catch(() => homedir())
+  return within(canonical, home)
+}
+
 /** The connected agents' Sessions, persisted in one JSON file. */
 export class ExternalSessions {
   private bindings: Promise<Map<string, Binding>> | undefined
@@ -137,7 +150,11 @@ export class ExternalSessions {
       throw new GameMcpSessionError('This WASD Engine Host keeps no game projects, so connected agents cannot run games through it.')
     }
     signal.throwIfAborted()
-    const workspace = containing(registry.list(), canonical)
+    const found = containing(registry.list(), canonical)
+    if (found === undefined && await holdsHome(canonical)) {
+      throw new GameMcpSessionError(`${directory} is a disk or holds the home folder, which WASD Engine does not keep as a game project; pass the folder of one game.`)
+    }
+    const workspace = found
       ?? (await inTemporaryFolder(this.temporaryFolders, canonical) ? undefined : await registry.create(canonical))
     const place: Place = workspace === undefined ? { directory: canonical } : { workspaceId: workspace.id }
     const key = bindingKey(place, client.id, named?.key)

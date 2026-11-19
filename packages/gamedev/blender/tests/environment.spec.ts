@@ -1,4 +1,6 @@
 /** Worker environment resolution: executable search, bpy preparation, backend choice, and worker start. */
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -747,7 +749,9 @@ describe('nodeBlenderSetupHost', () => {
     await mkdir(packedFolder, { recursive: true })
     const { execFileSync } = await import('node:child_process')
     execFileSync('tar', ['-czf', join(packedFolder, 'runtime.tar.gz'), '-C', content, 'python', 'runtime.json'])
-    await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: 'c'.repeat(64), runtime }))
+    // The record pins the archive's real digest, which the unpack checks.
+    const digest = createHash('sha256').update(readFileSync(join(packedFolder, 'runtime.tar.gz'))).digest('hex')
+    await writeFile(join(packedFolder, 'archive.json'), JSON.stringify({ format: 1, archive: 'runtime.tar.gz', bytes: 1, sha256: digest, runtime }))
     const host = nodeBlenderSetupHost(4096)
     const dataRoot = join(root, 'data ü')
     const packed = (await findPackedBpy(join(root, 'pkg', 'runtime'), host))!

@@ -2032,7 +2032,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:80`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:81`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2043,6 +2043,8 @@ export interface Config {
   runtimeVersion: string
   /** Release manifest of the managed runtime. */
   runtimeManifestUrl: string
+  /** SHA-256 the release manifest must have, which pins every archive it lists; empty for a manifest served without a pin. */
+  runtimeManifestSha256: string
   /** Absolute LibGodot library; set together with `runnerPath`. Empty uses the managed runtime. */
   libgodotPath: string
   /** Absolute `godot_runner`; set together with `libgodotPath`. */
@@ -4059,7 +4061,7 @@ export interface Config extends SessionTitleLlmConfig {
 ```ts config-catalog
 /** Plugin config (all optional — the built-in facts resolve without defaults). */
 export interface Config {
-  /** WASD Engine Harness home directory exposed as `DSH_HOME`; defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** WASD Engine Harness home directory exposed as `DSH_HOME`; defaults to `$DSH_HOME` or `~/.wasdengine`. */
   dshHome?: string
 }
 ```

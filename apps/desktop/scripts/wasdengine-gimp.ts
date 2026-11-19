@@ -26,6 +26,7 @@ import {
 /** The GIMP runtime that the Desktop app ships, pinned at the version that `wasdengine/gimp/build.sh` builds by default. */
 export const GIMP_RUNTIME: PinnedRuntime = {
   label: 'GIMP', environmentPrefix: 'WASD_GIMP', packageName: '@deepseek-ai/dsh-gimp', folder: 'runtime', version: '3.2.8-wasd.2',
+  manifestSha256: 'ed87c6b572b35b9814c594d10f9cef606895db81b35b83897f0bd50d36be3455',
 }
 
 /** Manifest of the GIMP runtime release that `wasdengine/gimp/build.sh` builds by default. */

@@ -50,12 +50,13 @@ Coroutines resolve to `{"ok": true, ...}` or to `{"ok": false, "error": <code>, 
 | `kick(peer_id)` | Removes a player from the hosted lobby, which their account can't join again, or from the server. |
 | `join_server(server_id)` | Joins the named server, or this release's running server with the fewest players, or else a sleeping one, which the connection wakes: `server_waking()` fires, and the join takes a few seconds longer. |
 | `list_servers()` | Lists this game's dedicated servers, as `servers`; a `sleeping` server wakes when a player joins it. |
-| `serve()` | In a dedicated server, listens on `WASD_PORT` and admits only players with a valid join ticket. |
+| `serve()` | In a dedicated server, listens on `WASD_PORT` and admits only players with a valid join ticket, each ticket once, up to `max_players` at a time; a player who connects again replaces their earlier connection. A refused player's join resolves with `server_full` or `ticket_used`. |
 | `leave()` | Leaves the lobby or the server; a host's lobby closes for everyone. |
+| `delay_stop()`, `stop_ready()` | In a dedicated server's `server_stopping()` handler, keep the server running while a save that awaits finishes, for up to 15 seconds. |
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | Read the current state. |
 | `stats()` | Traffic in bytes and packets, connected peers, and time per frame. |
 
-Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. `server_waking()` tells a joining player's game that the server is starting, so it can say so. `lobby_closed` names why the lobby ended: `host_left`, `closed`, `replaced`, `kicked` (the host removed this player), `dropped` (the host could not connect to this player in time; joining again is allowed), `left`, or `signal_lost`.
+Signals: `signed_in(player)`, `sign_in_failed(reason)`, `lobby_joined(lobby)`, `lobby_updated(lobby)`, `lobby_closed(reason)`, `player_joined(peer_id, player)`, `player_left(peer_id)`, `connected()`, `connection_failed(reason)`, `server_warning(seconds, reason, message)`, `server_waking()`, and `server_stopping()`. A dedicated server receives `server_stopping()` before WASD stops it, also when it goes to sleep without players; save the world in that handler. A save that awaits, such as one that writes in a thread, calls `delay_stop()` first and `stop_ready()` once it has finished, and the server quits once every such save has, or after 15 seconds. `server_waking()` tells a joining player's game that the server is starting, so it can say so. `lobby_closed` names why the lobby ended: `host_left`, `closed`, `replaced`, `kicked` (the host removed this player), `dropped` (the host could not connect to this player in time; joining again is allowed), `left`, or `signal_lost`.
 
 A host that does not hear from a joining player within 30 seconds drops that player, who may join again; `kick()` instead keeps the player's account out of the lobby for good. When a player's network blocks a direct connection and the relay is off for the game, a join that times out says so in its `message`. Once connected, a player stays in the game while its connection to the WASD lobby service drops and comes back: the add-on reconnects on its own, first after 2 seconds and then less often, and the host keeps the player meanwhile. A host whose connection fails four tries in a row, about 20 seconds, ends the lobby with `signal_lost`, since WASD closes a lobby 30 seconds after its host goes.
 
@@ -66,14 +67,14 @@ A host that does not hear from a joining player within 30 seconds drops that pla
 | Key | Default | Meaning |
 |---|---|---|
 | `mode` | `"player_hosted"` | `"player_hosted"` or `"dedicated"`. |
-| `max_players` | `8` | The lobby size `host_lobby()` offers by default. |
+| `max_players` | `8` | The lobby size `host_lobby()` offers by default, 2 to 16; in `dedicated` mode, how many players the server admits at once, 2 to 500. |
 | `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | The WASD play API and the website that signs players in. A Web build takes sign-in messages only from a framing page or a sign-in window of `app_origin`. |
 | `game_id` | `""` | The released game's id, which Release writes. |
 | `version` | `0` | The release; a Web build on WASD reads it from its own address instead. |
 | `count_traffic` | `true` | Count multiplayer traffic for `stats()`. |
 | `server_fps`, `server_idle_fps` | `0`, `10` | A dedicated server's frame rate while players are connected (`0` uses the physics rate) and while nobody is. |
 
-WASD tooling and WASD servers set environment variables, which override the file: `WASD_PLAY_TOKEN`, `WASD_API_ORIGIN`, `WASD_GAME_ID`, and `WASD_GAME_VERSION` on the desktop, and `WASD_SERVER`, `WASD_SERVER_ID`, `WASD_PORT`, `WASD_TICKET_KEY`, `WASD_STATUS_FILE`, and `WASD_CONTROL_FILE` on a server. Without a WASD game page to ask, the add-on renews its player token through the WASD play API half an hour before it expires, for up to a week after the first sign-in. A server listens on every interface, or on `WASD_BIND_ADDRESS` when set; test runs listen on `127.0.0.1` only.
+WASD tooling and WASD servers set environment variables, which override the file: `WASD_PLAY_TOKEN`, or on macOS `WASD_PLAY_TOKEN_FILE`, a file that holds the token, which the add-on deletes once it read it, `WASD_API_ORIGIN`, `WASD_GAME_ID`, and `WASD_GAME_VERSION` on the desktop, and `WASD_SERVER`, `WASD_SERVER_ID`, `WASD_PORT`, `WASD_TICKET_KEY`, `WASD_STATUS_FILE`, and `WASD_CONTROL_FILE` on a server. Without a WASD game page to ask, the add-on renews its player token through the WASD play API half an hour before it expires, for up to a week after the first sign-in. A server listens on every interface, or on `WASD_BIND_ADDRESS` when set; test runs listen on `127.0.0.1` only.
 
 ## Test runs
 

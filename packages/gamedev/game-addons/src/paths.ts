@@ -6,7 +6,8 @@
  * moves or deletes is never followed, so a linked add-on folder loses only its link.
  * @module @deepseek-ai/dsh-game-addons/src/paths
  */
-import { lstat, mkdir, realpath } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, realpath } from 'node:fs/promises'
 import path from 'node:path'
 
 /** A change that the manager refuses because a path of the project leads outside it. */
@@ -102,4 +103,37 @@ export async function projectEntry(projectDir: string, relativePath: string): Pr
     throw error
   }
   return entry
+}
+
+/**
+ * The text of a file directly in the project folder, such as `project.godot`, read only when it is a regular file. A
+ * symbolic link would hand the manager the text of a file elsewhere, which writing the project file back would copy
+ * into the project, so a link is refused, and the file is opened without following one where the platform can.
+ * @param projectDir - absolute project folder.
+ * @param name - the file's name in the project folder.
+ * @returns the file's text, or undefined when it does not exist.
+ * @throws {GameAddonPathError} when the file is a symbolic link or not a regular file.
+ */
+export async function readProjectText(projectDir: string, name: string): Promise<string | undefined> {
+  const entry = await projectEntry(projectDir, name)
+  if (entry === undefined) return undefined
+  const refused = (what: string): GameAddonPathError =>
+    new GameAddonPathError(`${name} in ${projectDir} is ${what}; the add-on manager reads and changes it only as a regular file. Replace it with a regular file.`)
+  if ((await lstat(entry)).isSymbolicLink()) throw refused('a symbolic link')
+  let file
+  try {
+    // O_NOFOLLOW is absent on Windows, where the lstat above stands alone.
+    file = await open(entry, constants.O_RDONLY | ('O_NOFOLLOW' in constants ? constants.O_NOFOLLOW : 0))
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'ELOOP' || code === 'EMLINK') throw refused('a symbolic link')
+    if (isMissing(error)) return undefined
+    throw error
+  }
+  try {
+    if (!(await file.stat()).isFile()) throw refused('not a regular file')
+    return await file.readFile('utf8')
+  } finally {
+    await file.close()
+  }
 }

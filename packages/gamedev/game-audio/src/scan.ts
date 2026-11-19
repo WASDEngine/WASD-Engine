@@ -1,12 +1,13 @@
 /**
  * The Host's walk of a game project for sounds: a breadth-first listing of the project folder that collects every
  * file of a listed audio format, skipping hidden folders (a name starting with `.`, such as `.godot` and `.git`) and
- * `node_modules`, following links to folders once, and stopping at the configured folder and sound caps.
+ * `node_modules`, following links to folders once and only links whose real path stays inside the project folder, and
+ * stopping at the configured folder and sound caps.
  * @module @deepseek-ai/dsh-game-audio/src/scan
  */
 import type { Dirent } from 'node:fs'
 import { readdir, realpath, stat } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, sep } from 'node:path'
 import { audioFormatOf, type AudioFormat } from './audio/formats.ts'
 
 /** One sound the walk found. */
@@ -53,6 +54,12 @@ export function entersFolder(name: string): boolean {
   return !name.startsWith('.') && name !== 'node_modules'
 }
 
+/** Whether a real path lies inside the project's real folder. */
+function inside(root: string, real: string): boolean {
+  const rest = relative(root, real)
+  return rest === '' || (rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest))
+}
+
 /** What a directory entry is, following a link once. */
 async function entryKind(directory: string, entry: Dirent): Promise<{ readonly kind: 'file' | 'folder' | 'other'; readonly bytes?: number; readonly modified?: number }> {
   if (entry.isDirectory()) return { kind: 'folder' }
@@ -78,7 +85,8 @@ async function entryKind(directory: string, entry: Dirent): Promise<{ readonly k
  */
 export async function scanSounds(project: string, limits: SoundScanLimits, signal: AbortSignal): Promise<SoundScan> {
   const sounds: SoundFile[] = []
-  const visited = new Set<string>([await realpath(project)])
+  const root = await realpath(project)
+  const visited = new Set<string>([root])
   const queue: string[] = ['']
   let truncated = false
   let unreadable = 0
@@ -107,12 +115,16 @@ export async function scanSounds(project: string, limits: SoundScanLimits, signa
       const found = await entryKind(directory, entry)
       if (found.kind === 'folder') {
         if (!entersFolder(entry.name)) continue
-        // A link back to a listed folder is not listed again.
+        // A link back to a listed folder is not listed again, and one out of the project is not followed.
         const real = await realpath(join(directory, entry.name)).catch(() => undefined)
-        if (real === undefined || visited.has(real)) continue
+        if (real === undefined || visited.has(real) || !inside(root, real)) continue
         visited.add(real)
         queue.push(path)
       } else if (found.kind === 'file' && format !== undefined) {
+        if (entry.isSymbolicLink()) {
+          const real = await realpath(join(directory, entry.name)).catch(() => undefined)
+          if (real === undefined || !inside(root, real)) continue
+        }
         if (sounds.length >= limits.maxSounds) {
           truncated = true
           continue

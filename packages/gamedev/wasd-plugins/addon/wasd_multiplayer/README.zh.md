@@ -50,12 +50,13 @@ func _ready() -> void:
 | `kick(peer_id)` | 把玩家移出所主持的大厅（其账号此后无法再加入该大厅）或服务器。 |
 | `join_server(server_id)` | 加入指定服务器；未指定时加入本版本中玩家最少、正在运行的服务器，没有时加入一台休眠中的服务器，连接会唤醒它：此时触发 `server_waking()`，加入会多花几秒。 |
 | `list_servers()` | 以 `servers` 列出这款游戏的专用服务器；处于 `sleeping` 状态的服务器会在玩家加入时唤醒。 |
-| `serve()` | 在专用服务器中监听 `WASD_PORT`，只接纳持有有效加入票据的玩家。 |
+| `serve()` | 在专用服务器中监听 `WASD_PORT`，只接纳持有有效加入票据的玩家，每张票据只能用一次，同时最多接纳 `max_players` 名玩家；再次连接的玩家会取代其之前的连接。被拒绝的玩家，其加入以 `server_full` 或 `ticket_used` 结束。 |
 | `leave()` | 离开大厅或服务器；主机离开时大厅对所有人关闭。 |
+| `delay_stop()`, `stop_ready()` | 在专用服务器的 `server_stopping()` 处理函数中，让服务器继续运行，直到需要等待的保存完成，最长 15 秒。 |
 | `is_server()`, `is_signed_in()`, `player()`, `role()`, `lobby()`, `players()`, `player_info(peer_id)` | 读取当前状态。 |
 | `stats()` | 以字节和包计的流量、已连接的 peer 数，以及每帧耗时。 |
 
-信号：`signed_in(player)`、`sign_in_failed(reason)`、`lobby_joined(lobby)`、`lobby_updated(lobby)`、`lobby_closed(reason)`、`player_joined(peer_id, player)`、`player_left(peer_id)`、`connected()`、`connection_failed(reason)`、`server_warning(seconds, reason, message)`、`server_waking()` 和 `server_stopping()`。专用服务器会在 WASD 停止它之前收到 `server_stopping()`，没有玩家而进入休眠时也会收到；请在该处理函数中保存世界。`server_waking()` 告诉正在加入的玩家的游戏服务器正在启动，以便游戏向玩家说明。`lobby_closed` 说明大厅结束的原因：`host_left`、`closed`、`replaced`、`kicked`（主机移出了这名玩家）、`dropped`（主机未能及时连上这名玩家；可以再次加入）、`left` 或 `signal_lost`。
+信号：`signed_in(player)`、`sign_in_failed(reason)`、`lobby_joined(lobby)`、`lobby_updated(lobby)`、`lobby_closed(reason)`、`player_joined(peer_id, player)`、`player_left(peer_id)`、`connected()`、`connection_failed(reason)`、`server_warning(seconds, reason, message)`、`server_waking()` 和 `server_stopping()`。专用服务器会在 WASD 停止它之前收到 `server_stopping()`，没有玩家而进入休眠时也会收到；请在该处理函数中保存世界。需要等待的保存（例如在线程中写入的保存）先调用 `delay_stop()`，完成后调用 `stop_ready()`；所有这样的保存都完成后，或 15 秒后，服务器退出。`server_waking()` 告诉正在加入的玩家的游戏服务器正在启动，以便游戏向玩家说明。`lobby_closed` 说明大厅结束的原因：`host_left`、`closed`、`replaced`、`kicked`（主机移出了这名玩家）、`dropped`（主机未能及时连上这名玩家；可以再次加入）、`left` 或 `signal_lost`。
 
 主机在 30 秒内没有连上正在加入的玩家时，会放弃该玩家，该玩家可以再次加入；`kick()` 则让该玩家的账号永久无法加入这个大厅。当玩家的网络无法直连而该游戏的中继已停用时，超时的加入会在 `message` 中说明这一点。连接成功后，玩家与 WASD 大厅服务的连接断开再恢复期间仍留在游戏中：附加组件会自行重连，先在 2 秒后，之后间隔逐渐变长，主机在此期间保留该玩家。主机的连接连续四次重试失败（约 20 秒）时，会以 `signal_lost` 结束大厅，因为主机离开 30 秒后 WASD 会关闭大厅。
 
@@ -66,14 +67,14 @@ func _ready() -> void:
 | 键 | 默认值 | 含义 |
 |---|---|---|
 | `mode` | `"player_hosted"` | `"player_hosted"` 或 `"dedicated"`。 |
-| `max_players` | `8` | `host_lobby()` 默认提供的大厅人数。 |
+| `max_players` | `8` | `host_lobby()` 默认提供的大厅人数，2 到 16；在 `dedicated` 模式下，是服务器同时接纳的玩家数，2 到 500。 |
 | `api_origin`, `app_origin` | `"https://app.wasdengine.com"` | WASD 联机 API，以及让玩家登录的网站。Web 版本只接受来自源为 `app_origin` 的框架页面或登录窗口的登录消息。 |
 | `game_id` | `""` | 已发布游戏的 id，由发布流程写入。 |
 | `version` | `0` | 发布版本；WASD 上的 Web 版本改从自身地址读取。 |
 | `count_traffic` | `true` | 为 `stats()` 统计多人流量。 |
 | `server_fps`, `server_idle_fps` | `0`, `10` | 专用服务器在有玩家连接时的帧率（`0` 表示使用物理帧率）和无人连接时的帧率。 |
 
-WASD 工具和 WASD 服务器会设置环境变量，它们优先于该文件：桌面端为 `WASD_PLAY_TOKEN`、`WASD_API_ORIGIN`、`WASD_GAME_ID` 和 `WASD_GAME_VERSION`，服务器上为 `WASD_SERVER`、`WASD_SERVER_ID`、`WASD_PORT`、`WASD_TICKET_KEY`、`WASD_STATUS_FILE` 和 `WASD_CONTROL_FILE`。没有 WASD 游戏页面可以询问时，插件会在玩家令牌过期前半小时通过 WASD 联机 API 续期，自首次登录起最长一周。服务器监听所有网络接口，设置了 `WASD_BIND_ADDRESS` 时则只监听该地址；测试运行只监听 `127.0.0.1`。
+WASD 工具和 WASD 服务器会设置环境变量，它们优先于该文件：桌面端为 `WASD_PLAY_TOKEN`（在 macOS 上为 `WASD_PLAY_TOKEN_FILE`，即存放令牌的文件，插件读取后会将其删除）、`WASD_API_ORIGIN`、`WASD_GAME_ID` 和 `WASD_GAME_VERSION`，服务器上为 `WASD_SERVER`、`WASD_SERVER_ID`、`WASD_PORT`、`WASD_TICKET_KEY`、`WASD_STATUS_FILE` 和 `WASD_CONTROL_FILE`。没有 WASD 游戏页面可以询问时，插件会在玩家令牌过期前半小时通过 WASD 联机 API 续期，自首次登录起最长一周。服务器监听所有网络接口，设置了 `WASD_BIND_ADDRESS` 时则只监听该地址；测试运行只监听 `127.0.0.1`。
 
 ## 测试运行
 

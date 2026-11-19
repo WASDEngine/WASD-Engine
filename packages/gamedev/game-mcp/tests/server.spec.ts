@@ -113,6 +113,21 @@ function raw(url: string, headers: Record<string, string>): Promise<number> {
   })
 }
 
+/** The status of a POST that declares a body of `length` bytes and sends none of it, so only its headers can answer it. */
+function headersOnly(url: string, headers: Record<string, string>, length: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    let answered = false
+    const sent = httpRequest(url, { method: 'POST', headers: { 'content-type': 'application/json', 'content-length': String(length), ...headers } }, (response) => {
+      answered = true
+      response.resume()
+      resolve(response.statusCode ?? 0)
+      sent.destroy()
+    })
+    sent.on('error', (error) => { if (!answered) reject(error) })
+    sent.flushHeaders()
+  })
+}
+
 describe('GameMcpServer', () => {
   it('serves the providers\' tools to an MCP client that has the token', async () => {
     const { server, view } = await start()
@@ -419,6 +434,9 @@ describe('GameMcpServer', () => {
     expect(await raw(url, { authorization: `Bearer ${token}`, host: 'attacker.example:80' })).toBe(403)
     expect(await raw(url, { authorization: `Bearer ${token}`, origin: 'https://attacker.example' })).toBe(403)
     expect(await raw(url.replace('/mcp', '/other'), { authorization: `Bearer ${token}` })).toBe(404)
+    // A refused request is answered from its headers, before any of its body arrives.
+    expect(await headersOnly(url, {}, 5 * 1024 * 1024)).toBe(401)
+    expect(await headersOnly(url, { authorization: `Bearer ${token}`, origin: 'https://attacker.example' }, 1024)).toBe(403)
   }, TIMEOUT)
 
   it('reports the agents it saw and asks the window to show the Sessions their calls name', async () => {
@@ -447,16 +465,23 @@ describe('GameMcpServer', () => {
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: {} }))).toBe('WASD Engine offers no game tools right now.')
   }, TIMEOUT)
 
-  it('listens on a free port for the run when another program holds the configured one', async () => {
+  it('stays off and changes its token when another program holds the configured port', async () => {
     const holder: Server = createServer()
     holder.listen(0, '127.0.0.1')
     await once(holder, 'listening')
     ctx.effect(() => () => { holder.close() })
     const taken = (holder.address() as AddressInfo).port
+    const earlier = 'a'.repeat(43)
+    await mkdir(join(root, 'data'), { recursive: true })
+    await writeFile(join(root, 'data', 'token'), `${earlier}\n`)
     const { view } = await start({ port: taken })
-    expect(view.state).toBe('listening')
-    expect(view.url).not.toContain(`:${taken}/`)
-    expect(view.message).toBe(`Port ${taken} is in use by another program, so the server listens on port ${new URL(view.url as string).port} until WASD Engine restarts.`)
+    expect(view).toMatchObject({ state: 'failed', clients: [] })
+    expect(view.message).toBe(`Port ${taken} is in use by another program. Quit that program and restart WASD Engine. The server's token changed, so set up your agents again with the new prompt.`)
+    expect(view.url).toBeUndefined()
+    expect(view.prompt).toBeUndefined()
+    const renewed = (await readFile(join(root, 'data', 'token'), 'utf8')).trim()
+    expect(renewed).toMatch(/^[A-Za-z0-9_-]{43}$/u)
+    expect(renewed).not.toBe(earlier)
   }, TIMEOUT)
 
   it('reports a server that cannot start', async () => {

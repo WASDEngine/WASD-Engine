@@ -4,13 +4,16 @@
  * {@link ShippedRuntimeKind}; `stageRuntimeArchive` reads the kind's release manifest, from a URL or from a local
  * `build.sh --out` folder, checks the archive of the packaged platform against the manifest's size and SHA-256,
  * unpacks it with `tar`, lets the kind check the unpacked files, and moves them into
- * `<package>/<folder>/<platform>-<arch>/` of the prepared dsh tree. For a platform where the kind ships the archive
+ * `<package>/<folder>/<platform>-<arch>/` of the prepared dsh tree. The default manifest must have the SHA-256 that the
+ * kind pins, so a release whose manifest and archives changed after the pin ships nothing; manifests and archives
+ * download over HTTPS only, or plain HTTP from this computer. For a platform where the kind ships the archive
  * itself, that folder holds the checked archive and an `archive.json` instead, and the plugin unpacks the archive on
  * first use. `shippedRuntimeVersion` reads which version of a runtime a prepared tree holds, which
  * `checkWasdengineRuntimes` in `wasdengine-runtime-signing.ts` compares with the version the kind pins.
  *
  * Environment, for a kind whose prefix is `WASD_X`: `WASD_X_DIR` names a local folder holding `manifest.json` and its
- * archives; `WASD_X_MANIFEST_URL` replaces the default manifest; `WASD_X_BUNDLE=0` packages without the runtime.
+ * archives; `WASD_X_MANIFEST_URL` replaces the default manifest, which then must have the SHA-256 that
+ * `WASD_X_MANIFEST_SHA256` names when it is set; `WASD_X_BUNDLE=0` packages without the runtime.
  */
 import { execFile } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
@@ -64,6 +67,8 @@ export interface PinnedRuntime {
   readonly folder: string
   /** Runtime version that the default manifest URL names and that every signed build ships, such as `4.7.2-wasd.3`. */
   readonly version: string
+  /** SHA-256 of the default manifest's bytes, which pins the manifest and through it every archive it lists. */
+  readonly manifestSha256: string
 }
 
 /** What differs between the runtimes that the Desktop app ships. */
@@ -190,7 +195,8 @@ async function isFile(path: string): Promise<boolean> {
   }
 }
 
-async function fetchManifest(url: string, label: string, remedy: string): Promise<unknown> {
+async function fetchManifest(url: string, label: string, remedy: string, sha256: string | undefined): Promise<unknown> {
+  requireSecureUrl(url, `the ${label} manifest`)
   let response: Response
   try {
     response = await fetch(url)
@@ -201,7 +207,28 @@ async function fetchManifest(url: string, label: string, remedy: string): Promis
     await response.body?.cancel()
     throw new Error(`desktop runtime: the ${label} manifest ${url} answered HTTP ${String(response.status)}. ${remedy}`)
   }
-  return response.json()
+  const bytes = Buffer.from(await response.arrayBuffer())
+  if (sha256 !== undefined) {
+    const actual = createHash('sha256').update(bytes).digest('hex')
+    if (actual !== sha256) {
+      throw new Error(`desktop runtime: the ${label} manifest ${url} has SHA-256 ${actual}, not the pinned ${sha256}, so it is not the release this build pins.`)
+    }
+  }
+  return JSON.parse(bytes.toString('utf8'))
+}
+
+/**
+ * Refuse a download URL that is neither HTTPS nor plain HTTP to this computer, where a test serves its files.
+ * @param url - the absolute URL.
+ * @param what - what it downloads, for the message.
+ * @throws When the URL uses another scheme or plain HTTP to another host.
+ */
+export function requireSecureUrl(url: string, what: string): void {
+  const parsed = new URL(url)
+  const loopback = parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '[::1]'
+  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && loopback)) {
+    throw new Error(`desktop runtime: ${what} ${url} must be an HTTPS URL`)
+  }
 }
 
 /**
@@ -392,10 +419,16 @@ export async function stageRuntimeArchive<A extends RuntimeArchive, M extends Ru
     return undefined
   }
   const local = env[`${kind.environmentPrefix}_DIR`] ?? ''
-  const source = local !== '' ? join(local, 'manifest.json') : env[`${kind.environmentPrefix}_MANIFEST_URL`] ?? kind.manifestUrl
+  const override = env[`${kind.environmentPrefix}_MANIFEST_URL`] ?? ''
+  const source = local !== '' ? join(local, 'manifest.json') : override !== '' ? override : kind.manifestUrl
   let raw: unknown
-  if (local === '') raw = await fetchManifest(source, kind.label, kind.remedy)
-  else {
+  if (local === '') {
+    const pin = override === '' ? kind.manifestSha256 : env[`${kind.environmentPrefix}_MANIFEST_SHA256`]
+    if (pin !== undefined && pin !== '' && !SHA256.test(pin)) {
+      throw new Error(`desktop runtime: ${kind.environmentPrefix}_MANIFEST_SHA256 must be a lowercase SHA-256, got ${JSON.stringify(pin)}`)
+    }
+    raw = await fetchManifest(source, kind.label, kind.remedy, pin === '' ? undefined : pin)
+  } else {
     try {
       raw = JSON.parse(await readFile(source, 'utf8'))
     } catch (error) {
@@ -418,8 +451,11 @@ export async function stageRuntimeArchive<A extends RuntimeArchive, M extends Ru
   await mkdir(work, { recursive: true })
   try {
     const archive = join(work, 'runtime.tar.gz')
-    if (local === '') await downloadVerified(new URL(artifact.url, source).href, archive, artifact, kind.label)
-    else {
+    if (local === '') {
+      const url = new URL(artifact.url, source).href
+      requireSecureUrl(url, `the ${kind.label} archive`)
+      await downloadVerified(url, archive, artifact, kind.label)
+    } else {
       // A local folder holds each archive under the name its release URL ends with.
       const file = join(local, posix.basename(new URL(artifact.url, 'file:///').pathname))
       await copyVerified(createReadStream(file), archive, artifact, file, kind.label)

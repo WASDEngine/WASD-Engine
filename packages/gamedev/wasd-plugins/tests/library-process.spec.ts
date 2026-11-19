@@ -4,6 +4,8 @@
  * need on Windows, plus the game's own `WASD_*` entries.
  */
 import { EventEmitter } from 'node:events'
+import { readFile, rm, stat } from 'node:fs/promises'
+import { dirname } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GameCommand } from '../src/library.ts'
 
@@ -41,9 +43,16 @@ describe('starting a game', () => {
     // `open` hands the game its own environment, so it runs with none: nothing of the app's reaches the game.
     expect(processes.execFile).toHaveBeenCalledOnce()
     const [program, args, options] = processes.execFile.mock.calls[0] as Parameters<typeof processes.execFile>
-    expect([program, args]).toEqual(macosOpen(MAC))
+    expect(program).toBe('/usr/bin/open')
     expect(options.env).toEqual({})
     expect(processes.spawn).not.toHaveBeenCalled()
+    // The player token reaches the game in a file only this user reads, never on `open`'s command line.
+    expect(args.join(' ')).not.toContain('wpt1.token')
+    const file = args.find(arg => arg.startsWith('WASD_PLAY_TOKEN_FILE='))?.slice('WASD_PLAY_TOKEN_FILE='.length) ?? ''
+    expect(await readFile(file, 'utf8')).toBe('wpt1.token')
+    expect((await stat(file)).mode & 0o777).toBe(0o600)
+    expect(args).toEqual(expect.arrayContaining(['--env', 'WASD_API_ORIGIN=https://site.test', '--env', 'WASD_GAME_ID=game']))
+    await rm(dirname(file), { recursive: true, force: true })
   })
 
   it('reports a bundle LaunchServices cannot open', async () => {

@@ -29,7 +29,7 @@ import { cachedArchive, readArchiveFile, unpackFolder, type ArchiveDownloads, ty
 import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catalog.ts'
 import { standardLicenseText } from './licenses.ts'
 import { NOTICES_FILE, noticeSection, readNotice, removeNotice, writeNotice } from './notices.ts'
-import { projectEntry, projectFolder } from './paths.ts'
+import { projectEntry, projectFolder, readProjectText } from './paths.ts'
 import { dictionaryEntries, dictionaryLiteral, ProjectFile, revertEdit, type DictionaryEntry } from './project-file.ts'
 import { lockRecord, readRecord, RECORD_FILE, SETTINGS_FILE, STATE_DIR, type HeldRecord, type SettingBefore } from './record.ts'
 import type {
@@ -254,6 +254,25 @@ async function catalogFilesSource(folder: string, files: readonly string[]): Pro
   }
 }
 
+/**
+ * The SHA-256 that a shared folder's marker names; undefined for a missing or damaged marker, such as one a crash cut
+ * short, whose folder is then filled again rather than blocking every installation.
+ * @param text - the marker's text, or undefined when there is none.
+ * @returns the digest, or undefined.
+ */
+function markedSha256(text: string | undefined): string | undefined {
+  if (text === undefined) return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (_damaged) {
+    // SyntaxError: a damaged marker names no content.
+    return undefined
+  }
+  const sha256 = typeof parsed === 'object' && parsed !== null && 'sha256' in parsed ? parsed.sha256 : undefined
+  return typeof sha256 === 'string' ? sha256 : undefined
+}
+
 async function readText(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, 'utf8')
@@ -345,7 +364,7 @@ function settingsBefore(
  */
 async function editProject(projectDir: string, edit: (project: ProjectFile) => void): Promise<ProjectEdit | undefined> {
   const path = join(projectDir, 'project.godot')
-  const before = await readText(path)
+  const before = await readProjectText(projectDir, 'project.godot')
   if (before === undefined) return undefined
   const project = new ProjectFile(before)
   edit(project)
@@ -362,7 +381,7 @@ async function editProject(projectDir: string, edit: (project: ProjectFile) => v
 async function revertProject(projectDir: string, edit: ProjectEdit): Promise<void> {
   if (edit.after === edit.before) return
   const path = join(projectDir, 'project.godot')
-  const current = await readText(path)
+  const current = await readProjectText(projectDir, 'project.godot')
   if (current === undefined) return
   const next = revertEdit(current, edit.before, edit.after)
   if (next !== current) await writeFileAtomic(path, next, { mode: 0o644 })
@@ -686,7 +705,7 @@ export class GameAddonManager {
     const folderPath = addonFolder(addon)
     const presence = await this.presenceOf(projectDir, entries)
     this.checkConflicts(addon, presence)
-    const projectText = await readText(join(projectDir, 'project.godot'))
+    const projectText = await readProjectText(projectDir, 'project.godot')
     if (projectText === undefined) throw new GameAddonError(`No project.godot in ${projectDir}.`)
     const own = presence.get(addon.id) ?? { state: 'absent' }
     if (own.state === 'found' && options.replace !== true) {
@@ -1055,8 +1074,7 @@ export class GameAddonManager {
     const parent = dirname(target)
     await mkdir(parent, { recursive: true })
     await withFileLock(target, async () => {
-      const marker = await readText(join(target, STORE_MARKER))
-      if (marker !== undefined && (JSON.parse(marker) as { sha256?: unknown }).sha256 === source.sha256) return
+      if (markedSha256(await readText(join(target, STORE_MARKER))) === source.sha256) return
       const staging = join(parent, `.staging-${randomUUID()}`)
       const trash = join(parent, `.trash-${randomUUID()}`)
       let movedOld = false
