@@ -1,7 +1,7 @@
 /**
  * What the agents read about the graphics review and what the reviewer reads: the Session's system prompt section, the
  * MCP provider's description and guide, and the reviewer's instructions with WASD Engine's tools and the add-on
- * catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model, ask for one to three
+ * catalog. The agents' texts call the reviewer a specialized graphics expert reviewer model, ask for two to four
  * reviews of each piece of graphics the agent makes itself and none of the assets it downloads, and never mention a
  * cost; the reviewer replies with notes and the tools and add-ons to consider, never with a rating.
  * @module @deepseek-ai/dsh-graphics-review/src/prompt
@@ -30,16 +30,16 @@ const WHAT = 'graphics_review sends an image to a specialized graphics expert re
 /** When to use it and how often; both surfaces state it the same way. */
 const WHEN = 'Use it only for graphics you make yourself, such as a model, texture, sprite, animation, UI, lighting, effect, or level that '
   + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven or the web, or for work that only adds them '
-  + 'to the game. Review each piece of graphics work at least once and at most three times: capture the result, pass it to graphics_review, '
-  + 'act on the review, and repeat with a new capture until that work has had three reviews, passing previous with what you changed and '
-  + 'which notes you left and why. When a review has nothing useful for that work, such as notes that repeat the last review\'s or ask for '
-  + 'what you cannot change, you may stop there, after the first or second. Act on the third review and move on without a fourth.'
+  + 'to the game. Review each piece of graphics work at least twice and at most four times: capture the result, pass it to graphics_review, '
+  + 'act on the review, and repeat with a new capture until that work has had four reviews, passing previous with what you changed and '
+  + 'which notes you left and why. When the second or third review has nothing useful for that work, such as notes that repeat the last '
+  + 'review\'s or ask for what you cannot change, you may stop there. Act on the fourth review and move on without a fifth.'
 
 /** What to do with the review. */
 const AFTER = 'Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user\'s request or '
   + 'the style of its references. To act on a review, make the changes its notes ask for with the tools and add-ons it names. A call that '
-  + 'fails does not count as a review. This is very important: never finish graphics you made without a review, never review a piece of it '
-  + 'more than three times, and never review downloaded assets.'
+  + 'fails does not count as a review. This is very important: never finish graphics you made with fewer than two reviews, never review a '
+  + 'piece of it more than four times, and never review downloaded assets.'
 
 /**
  * How a Godot capture is saved for the review: `save` puts it where Godot neither imports nor exports it, the project's
@@ -63,7 +63,7 @@ export function sessionPrompt(godot: boolean): string {
 
 /** What the plugin adds, as the overview of WASD Engine's MCP server instructions lists it. */
 export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model for graphics you make, not downloads such as Poly Haven\'s. '
-  + 'Review each piece one to three times, each time with a new image of the result: act on its notes, and stop early when a review has '
+  + 'Review each piece two to four times, each time with a new image of the result: act on its notes, and stop early when a review has '
   + 'nothing useful.'
 
 /** The plugin's guide for connected agents, which name every file by absolute path. */

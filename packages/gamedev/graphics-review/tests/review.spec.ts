@@ -96,17 +96,17 @@ describe('graphics_review', () => {
     expect(blank).not.toContain('Since the last review')
   })
 
-  it('gives one piece of work three reviews, and refuses a fourth before any request', async () => {
+  it('gives one piece of work four reviews, and refuses a fifth before any request', async () => {
     current = await compose()
     await png(join(current.work, 'shots', 'forest.png'), 800, 450)
     current.models.reply = textReply(NOTES)
-    for (const subject of ['The forest level', 'the  forest level', 'THE FOREST LEVEL']) {
+    for (const subject of ['The forest level', 'the  forest level', 'THE FOREST LEVEL', ' the forest\tlevel ']) {
       expect((await review(current, { image: 'shots/forest.png', subject })).isError).toBe(false)
     }
-    const fourth = await review(current, { image: 'shots/forest.png', subject: 'the forest level' })
-    expect(fourth.isError).toBe(true)
-    expect(text(fourth)).toContain('This work has had 3 graphics reviews, the most one piece of work gets. Act on the last review, then move on.')
-    expect(current.models.requests).toHaveLength(3)
+    const fifth = await review(current, { image: 'shots/forest.png', subject: 'the forest level' })
+    expect(fifth.isError).toBe(true)
+    expect(text(fifth)).toContain('This work has had 4 graphics reviews, the most one piece of work gets. Act on the last review, then move on.')
+    expect(current.models.requests).toHaveLength(4)
     // Another piece of work has reviews of its own.
     expect((await review(current, { image: 'shots/forest.png', subject: 'the knight\'s sprite sheet' })).isError).toBe(false)
   })

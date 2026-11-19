@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/graphics-review/README.md
 /:
-  en: 3b8432ffab82acfb
-  zh: bc2c7a50feff5fa3
+  en: e54af24f445cf811
+  zh: 405e9cfd3926617d
 /deepseek-ai-dsh-graphics-review:
   en: 317ba9bf282168dd
   zh: e9e6e97b6c31631f
 /deepseek-ai-dsh-graphics-review/summary:
-  en: b64a243f4bac6c11
-  zh: 82f02926a58fa4a1
+  en: 3619c987377d03df
+  zh: 37268948547d4b8a
 /deepseek-ai-dsh-graphics-review/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -21,11 +21,11 @@
   en: c9dd1d720245311c
   zh: 92e42a1ac98d8771
 /deepseek-ai-dsh-graphics-review/use-this-package/the-tool:
-  en: e60ef7da798ffdbf
-  zh: ecf4889d2059efea
+  en: 7db2e29328f81d85
+  zh: 12194c02fd7ff766
 /deepseek-ai-dsh-graphics-review/use-this-package/connected-agents:
-  en: a0d7c3a48e9c588f
-  zh: c9fa83b3b4ba878c
+  en: c9fd45109a15d7f7
+  zh: bedad94dae170c9f
 /deepseek-ai-dsh-graphics-review/understand-the-implementation:
   en: cd4b68961cf1f938
   zh: ee866036e34e124f
@@ -39,8 +39,8 @@
   en: cf78b9dd5596495f
   zh: bd44560f8c2435e8
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/what-the-model-sees:
-  en: 37e4e2df6a84fbb6
-  zh: dce0e097d670da76
+  en: f9051c4325a8e35e
+  zh: 928410afd354e2b8
 /deepseek-ai-dsh-graphics-review/model-experience/system-prompt/what-the-model-sees/the-graphics-review-section:
   en: 05639460fad865a0
   zh: 69f577b182a7c495
@@ -54,8 +54,8 @@
   en: 4569c30d38d0009c
   zh: 3db1377eb0f3c532
 /deepseek-ai-dsh-graphics-review/model-experience/tool-declarations/what-the-model-sees:
-  en: 0ee0bdf0209f2444
-  zh: 23f8901b81bb0920
+  en: eb28cdae0c2e6afd
+  zh: f655fb7341346abf
 /deepseek-ai-dsh-graphics-review/model-experience/tool-declarations/token-effect:
   en: cebde87c7e3efbd5
   zh: 253fe5e995f92981
@@ -75,8 +75,8 @@
   en: 49b9a70497a9d6bc
   zh: 9c36aea51ad3bba1
 /deepseek-ai-dsh-graphics-review/known-limitations-and-deferred-work:
-  en: acb2fc90ecf67cdc
-  zh: bfaf60dfdebd1b8b
+  en: 74f8e338ab19ab73
+  zh: 07f315017e1640f0
 /deepseek-ai-dsh-graphics-review/known-limitations-and-deferred-work/dev-note:
   en: 4436288cfda8f7b1
   zh: 084a77d187ab3f53

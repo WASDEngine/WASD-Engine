@@ -50,7 +50,7 @@ export const SESSION_WORDING: GraphicsReviewWording = {
 const STRING = { type: 'string', required: true } as const
 
 /** Most reviews one piece of graphics work gets, counted by the Session and the subject a call names. */
-export const MAX_REVIEWS = 3
+export const MAX_REVIEWS = 4
 
 /** Pieces of work whose review counts the tool keeps, the oldest dropped first. */
 const REMEMBERED_WORKS = 1000
@@ -70,10 +70,10 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
       + 'and technical artist would: readability, art direction, lighting, materials, shapes, composition, UI, and technical flaws. It gives '
       + 'notes on how to make the image look better and names the WASD Engine tools and add-ons to consider. Use it only for graphics you '
       + 'build, draw, or generate, never for assets you download, such as from Poly Haven or the web, or for work that only adds them to the '
-      + 'game. Call it at least once and at most three times for each piece of graphics work, each time with a new image of the result: after '
-      + 'the work, then after acting on each review, up to three reviews, passing previous with what you changed and which notes you left; '
-      + 'when a review has nothing useful for that work, such as notes that repeat the last review\'s or ask for what you cannot change, you '
-      + 'may stop after the first or second. Act on the third review too, then move on. Returns the notes that would make a visible '
+      + 'game. Call it at least twice and at most four times for each piece of graphics work, each time with a new image of the result: after '
+      + 'the work, then after acting on each review, up to four reviews, passing previous with what you changed and which notes you left; '
+      + 'when the second or third review has nothing useful for that work, such as notes that repeat the last review\'s or ask for what you '
+      + 'cannot change, you may stop there. Act on the fourth review too, then move on. Returns the notes that would make a visible '
       + 'difference, the most important first, each with where it applies and how, and the tools and add-ons to consider, each with what to '
       + 'do with it.',
     parameters: {
@@ -92,8 +92,8 @@ export function graphicsReviewToolDefinition(host: GraphicsReviewHost, wording: 
       focus: { type: 'string', description: 'What to look at most, such as the lighting, the character\'s silhouette, or the HUD\'s legibility.' },
       previous: {
         type: 'string',
-        description: 'For a second or third review of the same work: what you changed since its last review, and which of its notes you '
-          + 'left and why, such as a stock character\'s face that you cannot remodel.',
+        description: 'For a second, third, or fourth review of the same work: what you changed since its last review, and which of its '
+          + 'notes you left and why, such as a stock character\'s face that you cannot remodel.',
       },
     },
     output: {

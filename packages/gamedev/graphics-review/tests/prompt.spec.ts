@@ -1,5 +1,5 @@
 /**
- * What the agents read about the graphics review: a specialized graphics expert reviewer model to use one to three
+ * What the agents read about the graphics review: a specialized graphics expert reviewer model to use two to four
  * times for each piece of graphics the agent makes itself, never for downloaded assets, on Godot captures saved where
  * no export carries them, with no word of its cost or of the model behind it in the section, the MCP guide, or the
  * tool's declaration; what the reviewer reads, which asks for notes and the tools and add-ons to consider and no
@@ -24,14 +24,14 @@ const WHAT = 'graphics_review sends an image to a specialized graphics expert re
   + 'technical artist would and gives notes on how to make it look better, naming the WASD Engine tools and add-ons to consider.'
 const WHEN = 'Use it only for graphics you make yourself, such as a model, texture, sprite, animation, UI, lighting, effect, or level that '
   + 'you build, draw, or generate, and never for assets you download, such as from Poly Haven or the web, or for work that only adds them '
-  + 'to the game. Review each piece of graphics work at least once and at most three times: capture the result, pass it to graphics_review, '
-  + 'act on the review, and repeat with a new capture until that work has had three reviews, passing previous with what you changed and '
-  + 'which notes you left and why. When a review has nothing useful for that work, such as notes that repeat the last review\'s or ask for '
-  + 'what you cannot change, you may stop there, after the first or second. Act on the third review and move on without a fourth.'
+  + 'to the game. Review each piece of graphics work at least twice and at most four times: capture the result, pass it to graphics_review, '
+  + 'act on the review, and repeat with a new capture until that work has had four reviews, passing previous with what you changed and '
+  + 'which notes you left and why. When the second or third review has nothing useful for that work, such as notes that repeat the last '
+  + 'review\'s or ask for what you cannot change, you may stop there. Act on the fourth review and move on without a fifth.'
 const AFTER = 'Pass subject, what the image shows and what it is for, and goal, the look the game is going for, such as the user\'s request or '
   + 'the style of its references. To act on a review, make the changes its notes ask for with the tools and add-ons it names. A call that '
-  + 'fails does not count as a review. This is very important: never finish graphics you made without a review, never review a piece of it '
-  + 'more than three times, and never review downloaded assets.'
+  + 'fails does not count as a review. This is very important: never finish graphics you made with fewer than two reviews, never review a '
+  + 'piece of it more than four times, and never review downloaded assets.'
 
 const SAVE = 'with save set to true, which keeps the capture out of the game and its exports, and pass the file its result names'
 
@@ -42,7 +42,7 @@ const HOST = {
 }
 
 describe('the graphics review in the agents\' instructions', () => {
-  it('asks the Session\'s agent to review each piece of its own graphics one to three times and downloads never, saving Godot captures where no export carries them when it has Godot', () => {
+  it('asks the Session\'s agent to review each piece of its own graphics two to four times and downloads never, saving Godot captures where no export carries them when it has Godot', () => {
     expect(sessionPrompt(true)).toBe(`# Graphics review\n\n${WHAT} ${WHEN} Capture a game screenshot with godot_screenshot, or a closer look `
       + `with godot_view, ${SAVE}; give path instead only to save the image somewhere else. Or pass a render, an image you generated, a texture, `
       + `or a sprite sheet. ${AFTER}`)
@@ -51,7 +51,7 @@ describe('the graphics review in the agents\' instructions', () => {
 
   it('tells connected agents the same in the overview and the guide, with absolute paths', () => {
     expect(MCP_DESCRIPTION).toBe('A specialized graphics expert reviewer model for graphics you make, not downloads such as Poly Haven\'s. '
-      + 'Review each piece one to three times, each time with a new image of the result: act on its notes, and stop early when a review has '
+      + 'Review each piece two to four times, each time with a new image of the result: act on its notes, and stop early when a review has '
       + 'nothing useful.')
     expect(MCP_INSTRUCTIONS).toBe(`${WHAT} ${WHEN} Pass image, an absolute path of a PNG, JPEG, or WebP file: capture a game screenshot with `
       + `godot_screenshot, or a closer look with godot_view, ${SAVE} (give path instead only to save the image somewhere else); or pass a Blender `
@@ -65,14 +65,16 @@ describe('the graphics review in the agents\' instructions', () => {
       + 'godot_view saved with save set to true, a Blender render, an image from image_generate, a texture, or a sprite sheet.')
   })
 
-  it('asks in the tool\'s description, on both surfaces, for one to three reviews of each piece of the agent\'s own graphics and none of downloads', () => {
+  it('asks in the tool\'s description, on both surfaces, for two to four reviews of each piece of the agent\'s own graphics and none of downloads', () => {
     for (const wording of [SESSION_WORDING, MCP_WORDING]) {
-      expect(graphicsReviewToolDefinition(HOST, wording).description).toContain('Use it only for graphics you build, draw, or generate, never '
-        + 'for assets you download, such as from Poly Haven or the web, or for work that only adds them to the game. Call it at least once and '
-        + 'at most three times for each piece of graphics work, each time with a new image of the result: after the work, then after acting on '
-        + 'each review, up to three reviews, passing previous with what you changed and which notes you left; when a review has nothing useful '
-        + 'for that work, such as notes that repeat the last review\'s or ask for what you cannot change, you may stop after the first or '
-        + 'second. Act on the third review too, then move on.')
+      const tool = graphicsReviewToolDefinition(HOST, wording)
+      expect(tool.description).toContain('Use it only for graphics you build, draw, or generate, never '
+        + 'for assets you download, such as from Poly Haven or the web, or for work that only adds them to the game. Call it at least twice and '
+        + 'at most four times for each piece of graphics work, each time with a new image of the result: after the work, then after acting on '
+        + 'each review, up to four reviews, passing previous with what you changed and which notes you left; when the second or third review '
+        + 'has nothing useful for that work, such as notes that repeat the last review\'s or ask for what you cannot change, you may stop '
+        + 'there. Act on the fourth review too, then move on.')
+      expect(JSON.stringify(tool.parameters)).toContain('For a second, third, or fourth review of the same work:')
     }
   })
 

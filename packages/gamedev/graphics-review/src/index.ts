@@ -4,7 +4,7 @@
  * tools and add-ons that would make it look better. The reviewer is the model route of the WASD Engine account,
  * `provider`, with the reviewer's instructions, so the account pays for each review as for any model call; the
  * model-facing texts call it a specialized graphics expert reviewer model and mention no cost. The Session's agent
- * gets the tool and a `graphics-review` system prompt section that asks for one to three reviews of each piece of
+ * gets the tool and a `graphics-review` system prompt section that asks for two to four reviews of each piece of
  * graphics it makes itself and none of the assets it downloads; agents connected through WASD Engine's MCP server get
  * the same tool under the provider `graphics`. With the `gameAddons`
  * service, the reviewer may name every catalog add-on that the user has not turned off; with the `deepseekAccount`

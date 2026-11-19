@@ -1,7 +1,7 @@
 /**
  * The graphics review for agents connected through WASD Engine's MCP server: the Session's own tool definition, which
  * needs no Session, with the image named by absolute path, under the provider `graphics`, whose description in the
- * overview of the server instructions asks for one to three reviews of each piece of graphics the agent makes and
+ * overview of the server instructions asks for two to four reviews of each piece of graphics the agent makes and
  * none of downloads.
  * @module @deepseek-ai/dsh-graphics-review/src/mcp
  */
