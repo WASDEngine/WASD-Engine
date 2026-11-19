@@ -63,6 +63,20 @@ export function AssetIcon({ asset }: { readonly asset: AssetEntry }): ReactNode 
 }
 
 /**
+ * The notice of a failed scan, with a retry: above the rows while there is no earlier scan to show, below them otherwise.
+ * @param props - the retry and copy.
+ * @returns the notice.
+ */
+function ScanFailure({ onRetry, t }: { readonly onRetry: () => void; readonly t: Translate }): ReactNode {
+  return (
+    <div className={css.failure} role="alert">
+      <span>{t('picker.failed')}</span>
+      <button type="button" className={css.retry} onClick={onRetry}>{t('action.retry')}</button>
+    </div>
+  )
+}
+
+/**
  * Draw the picker.
  * @param props - scan, choices, and callbacks.
  * @returns the trigger and, while open, the dropdown in a portal.
@@ -287,12 +301,7 @@ export function AssetPicker({
             {scan === undefined && scanState.status !== 'failed' && (
               <div className={css.status} role="status"><StateDot state="ongoing" />{t('picker.scanning')}</div>
             )}
-            {scan === undefined && scanState.status === 'failed' && (
-              <div className={css.failure} role="alert">
-                <span>{t('picker.failed')}</span>
-                <button type="button" className={css.retry} onClick={onRetry}>{t('action.retry')}</button>
-              </div>
-            )}
+            {scan === undefined && scanState.status === 'failed' && <ScanFailure onRetry={onRetry} t={t} />}
             <div
               ref={listRef}
               id={`${id}-rows`}
@@ -355,12 +364,7 @@ export function AssetPicker({
             {scan !== undefined && rows.length === 0 && <div className={css.status} role="status">{empty}</div>}
             {scan?.truncated === true && <div className={css.note}>{t('picker.truncated')}</div>}
             {scan !== undefined && scan.unreadable > 0 && <div className={css.note}>{t('picker.unreadable')}</div>}
-            {scan !== undefined && scanState.status === 'failed' && (
-              <div className={css.failure} role="alert">
-                <span>{t('picker.failed')}</span>
-                <button type="button" className={css.retry} onClick={onRetry}>{t('action.retry')}</button>
-              </div>
-            )}
+            {scan !== undefined && scanState.status === 'failed' && <ScanFailure onRetry={onRetry} t={t} />}
           </div>
         </MenuSurface>,
         document.body,

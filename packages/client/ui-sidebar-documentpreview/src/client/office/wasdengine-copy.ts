@@ -2,6 +2,7 @@
  * WASD Engine copy for the Office preview (fork-owned; `wasdengine/FORK.md` lists the fork changes): the message
  * shown while the document preview service is off names WASD Engine where upstream names DeepSeek Harness.
  */
+import { brandDictionaries } from '@deepseek-ai/dsh-client-locale/brand'
 
 /** The upstream product name in Office preview copy. */
 const UPSTREAM_PRODUCT_NAME = /DeepSeek Harness/gu
@@ -16,10 +17,6 @@ const UPSTREAM_PRODUCT_NAME = /DeepSeek Harness/gu
  * @returns copies that name WASD Engine instead of DeepSeek Harness.
  */
 export function brandOfficeDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    branded[language] = Object.fromEntries(Object.entries(messages).map(([key, message]) => [key, message.replaceAll(UPSTREAM_PRODUCT_NAME, 'WASD Engine')]))
-  }
-  return branded as T
+  return brandDictionaries('office', dictionaries, { rename: [UPSTREAM_PRODUCT_NAME, 'WASD Engine'] })
 }
 /* jscpd:ignore-end */

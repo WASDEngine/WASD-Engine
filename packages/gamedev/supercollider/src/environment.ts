@@ -7,9 +7,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { z } from 'zod'
-import {
-  AppServerOptionFields, encodeServerOptions, nodeSetupHost, parseAppServerOptions,
-} from '@deepseek-ai/dsh-app-mcp'
+import { AppServerOptionFields, encodeServerOptions, nodeSetupHost, parseAppServerOptions, shippedRuntimeRoot } from '@deepseek-ai/dsh-app-mcp'
 import type { AppWorkerDependencies, AppWorkerScope, CommandArgv, JsonObject, SetupHost, WorkerReady } from '@deepseek-ai/dsh-app-mcp'
 import type { SclangBridgePlan, SuperColliderRuntime, SuperColliderServerOptions } from './types.ts'
 
@@ -108,7 +106,7 @@ function executableName(name: string, platform: NodeJS.Platform): string {
  * @returns the package's `runtime` folder, which holds one `<platform>-<arch>` folder per shipped runtime.
  */
 export function bundledRuntimeRoot(packageRoot: string): string {
-  return path.join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'runtime')
+  return shippedRuntimeRoot(packageRoot)
 }
 
 /** A path inside the runtime folder: relative, with `/` separators, and without `.` or `..` parts. */

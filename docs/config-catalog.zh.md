@@ -1119,7 +1119,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-elevenlabs`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/elevenlabs/src/index.ts:38`](../packages/gamedev/elevenlabs/src/index.ts)
+- `source`: [`packages/gamedev/elevenlabs/src/index.ts:37`](../packages/gamedev/elevenlabs/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the ElevenLabs tools. */
@@ -1953,7 +1953,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:47`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:48`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2034,7 +2034,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-godot`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `subprocess` · `agents` · `typert`
-- `source`: [`packages/gamedev/godot/src/index.ts:81`](../packages/gamedev/godot/src/index.ts)
+- `source`: [`packages/gamedev/godot/src/index.ts:84`](../packages/gamedev/godot/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -2542,7 +2542,7 @@ export interface TlsConfig {
 ## `@deepseek-ai/dsh-image-generation`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/image-generation/src/index.ts:32`](../packages/gamedev/image-generation/src/index.ts)
+- `source`: [`packages/gamedev/image-generation/src/index.ts:31`](../packages/gamedev/image-generation/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the image tool. */

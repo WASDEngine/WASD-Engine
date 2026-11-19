@@ -48,13 +48,23 @@ export function nodeShippedRuntimeHost(): ShippedRuntimeHost {
 }
 
 /**
- * Locate the runtimes a packaged application ships inside a plugin package. A package inside an Electron `app.asar`
- * archive reads them from the sibling `app.asar.unpacked`, where the application keeps native files on disk.
+ * A folder of a plugin package that the Desktop app keeps on disk. A package inside an Electron `app.asar` archive
+ * reads it from the sibling `app.asar.unpacked`, where the application keeps native files and archives.
+ * @param packageRoot - folder holding the package manifest.
+ * @param folder - the folder's name inside the package, such as `runtime`.
+ * @returns the folder in `app.asar.unpacked` for a packaged app, and in the package itself otherwise.
+ */
+export function unpackedFolder(packageRoot: string, folder: string): string {
+  return path.join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), folder)
+}
+
+/**
+ * Locate the runtimes a packaged application ships inside a plugin package ({@link unpackedFolder}).
  * @param packageRoot - folder holding the package manifest.
  * @returns the package's `runtime` folder, which holds one `<platform>-<arch>` folder per shipped runtime.
  */
 export function shippedRuntimeRoot(packageRoot: string): string {
-  return path.join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'runtime')
+  return unpackedFolder(packageRoot, 'runtime')
 }
 
 /** A path inside a runtime folder: relative, with `/` separators, and without `.` or `..` parts. */

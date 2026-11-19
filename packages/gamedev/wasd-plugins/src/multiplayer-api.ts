@@ -10,7 +10,7 @@
  */
 import { openAsBlob } from 'node:fs'
 import { z } from 'zod'
-import type { SiteAccess } from './release.ts'
+import { SiteClient, type SiteAccess } from './site-client.ts'
 
 /** A multiplayer call that could not finish; the message says what the user or the agent can do. */
 export class MultiplayerError extends Error {
@@ -157,8 +157,6 @@ const ServerBuild = z.object({ version: z.number().int(), bytes: z.number(), sha
 /** A stored server build. */
 export type ServerBuild = z.infer<typeof ServerBuild>
 
-const ErrorJson = z.object({ error: z.object({ message: z.string(), type: z.string().optional(), code: z.string().optional() }) })
-
 /** Server actions the site performs. */
 export type ServerAction = 'start' | 'stop' | 'restart' | 'backup' | 'restore'
 
@@ -169,51 +167,17 @@ export class MultiplayerApi {
    * @param fetchUrl - HTTP client.
    * @param signal - cancellation of every call.
    */
-  constructor(private readonly access: SiteAccess, private readonly fetchUrl: typeof fetch, private readonly signal: AbortSignal) {}
+  private readonly site: SiteClient
 
-  private async call(method: string, path: string, body?: { readonly data: BodyInit; readonly type: string }): Promise<Response> {
-    const url = new URL(path, this.access.origin)
-    try {
-      return await this.fetchUrl(url, {
-        method,
-        redirect: 'error',
-        signal: this.signal,
-        headers: {
-          ...this.access.token === '' ? {} : { 'x-dsh-auth-token': this.access.token },
-          ...body === undefined ? {} : { 'content-type': body.type },
-        },
-        ...body === undefined ? {} : { body: body.data },
-      })
-    } catch (error) {
-      if (this.signal.aborted) throw error
-      throw new MultiplayerError(`Cannot reach WASD Engine at ${this.access.origin}: ${(error as Error).message}`, undefined, { cause: error })
-    }
-  }
-
-  private async failure(response: Response, doing: string): Promise<MultiplayerError> {
-    let message: string | undefined
-    let code: string | undefined
-    try {
-      const parsed = ErrorJson.safeParse(await response.json())
-      if (parsed.success) {
-        message = parsed.data.error.message
-        code = parsed.data.error.code ?? parsed.data.error.type
-      }
-    } catch {
-      // Not a JSON error body: the status alone explains it.
-    }
-    if (response.status === 401) return new MultiplayerError('The WASD Engine sign-in has expired. Ask the user to sign in to WASD Engine again, then try again.', code)
-    if (code === 'servers_unavailable') return new MultiplayerError('WASD Engine does not offer dedicated servers yet. Player-hosted multiplayer works without them.', code)
-    if (code === 'multiplayer_unavailable') return new MultiplayerError('WASD Engine does not run player-hosted lobbies right now, so there are no lobby statistics. Try again later.', code)
-    if (response.status >= 500 || message === undefined) return new MultiplayerError(`WASD Engine could not ${doing} (HTTP ${response.status}). Try again later.`, code)
-    return new MultiplayerError(`WASD Engine could not ${doing}: ${message}`, code)
-  }
-
-  private async json<T>(response: Response, schema: z.ZodType<T>, doing: string): Promise<T> {
-    if (!response.ok) throw await this.failure(response, doing)
-    const parsed = schema.safeParse(await response.json())
-    if (!parsed.success) throw new MultiplayerError(`WASD Engine answered in an unexpected way while trying to ${doing}.`)
-    return parsed.data
+  constructor(access: SiteAccess, fetchUrl: typeof fetch, signal: AbortSignal) {
+    this.site = new SiteClient(access, fetchUrl, signal, {
+      error: (message, code, options) => new MultiplayerError(message, code, options),
+      again: 'try again',
+      codes: {
+        servers_unavailable: 'WASD Engine does not offer dedicated servers yet. Player-hosted multiplayer works without them.',
+        multiplayer_unavailable: 'WASD Engine does not run player-hosted lobbies right now, so there are no lobby statistics. Try again later.',
+      },
+    })
   }
 
   /**
@@ -223,7 +187,7 @@ export class MultiplayerApi {
    */
   async playToken(gameId: string): Promise<string> {
     const body = { data: JSON.stringify({ game_id: gameId }), type: 'application/json' }
-    return (await this.json(await this.call('POST', '/api/v1/play/token', body), PlayTokenJson, 'sign you in to play online')).token
+    return (await this.site.json(await this.site.call('POST', '/api/v1/play/token', body), PlayTokenJson, 'sign you in to play online')).token
   }
 
   /**
@@ -231,7 +195,7 @@ export class MultiplayerApi {
    * @returns the server sizes and their prices, with the account's free servers when the sign-in came along.
    */
   async plans(): Promise<ServerPlans> {
-    return await this.json(await this.call('GET', '/api/v1/servers/plans'), ServerPlans, 'read the server sizes')
+    return await this.site.json(await this.site.call('GET', '/api/v1/servers/plans'), ServerPlans, 'read the server sizes')
   }
 
   /**
@@ -243,7 +207,7 @@ export class MultiplayerApi {
    */
   async create(gameId: string, size: string, name: string | undefined): Promise<PendingServer> {
     const body = JSON.stringify({ game_id: gameId, size, ...name === undefined ? {} : { name } })
-    return await this.json(await this.call('POST', '/api/v1/servers', { data: body, type: 'application/json' }), PendingServer, 'create the server')
+    return await this.site.json(await this.site.call('POST', '/api/v1/servers', { data: body, type: 'application/json' }), PendingServer, 'create the server')
   }
 
   /**
@@ -252,8 +216,8 @@ export class MultiplayerApi {
    * @returns the account's servers of the game.
    */
   async servers(gameId: string): Promise<ServerRecord[]> {
-    const response = await this.call('GET', `/api/v1/servers?${new URLSearchParams({ game_id: gameId }).toString()}`)
-    return (await this.json(response, z.object({ servers: z.array(ServerRecord) }), 'list the servers')).servers
+    const response = await this.site.call('GET', `/api/v1/servers?${new URLSearchParams({ game_id: gameId }).toString()}`)
+    return (await this.site.json(response, z.object({ servers: z.array(ServerRecord) }), 'list the servers')).servers
   }
 
   /**
@@ -262,7 +226,7 @@ export class MultiplayerApi {
    * @returns the server.
    */
   async server(id: string): Promise<ServerRecord> {
-    return (await this.json(await this.call('GET', `/api/v1/servers/${encodeURIComponent(id)}`), z.object({ server: ServerRecord }), 'read the server')).server
+    return (await this.site.json(await this.site.call('GET', `/api/v1/servers/${encodeURIComponent(id)}`), z.object({ server: ServerRecord }), 'read the server')).server
   }
 
   /**
@@ -272,8 +236,8 @@ export class MultiplayerApi {
    * @returns the pending change and its confirmation page.
    */
   async resize(id: string, size: string): Promise<PendingServer> {
-    const response = await this.call('PATCH', `/api/v1/servers/${encodeURIComponent(id)}`, { data: JSON.stringify({ size }), type: 'application/json' })
-    return await this.json(response, PendingServer, 'change the server\'s size')
+    const response = await this.site.call('PATCH', `/api/v1/servers/${encodeURIComponent(id)}`, { data: JSON.stringify({ size }), type: 'application/json' })
+    return await this.site.json(response, PendingServer, 'change the server\'s size')
   }
 
   /**
@@ -282,7 +246,7 @@ export class MultiplayerApi {
    * @returns the pending deletion and its confirmation page.
    */
   async remove(id: string): Promise<PendingServer> {
-    return await this.json(await this.call('DELETE', `/api/v1/servers/${encodeURIComponent(id)}`), PendingServer, 'delete the server')
+    return await this.site.json(await this.site.call('DELETE', `/api/v1/servers/${encodeURIComponent(id)}`), PendingServer, 'delete the server')
   }
 
   /**
@@ -294,8 +258,8 @@ export class MultiplayerApi {
    */
   async act(id: string, action: ServerAction, backupId: string | undefined): Promise<ServerRecord> {
     const body = JSON.stringify({ action, ...backupId === undefined ? {} : { backup_id: backupId }, ...action === 'restore' ? { confirm: true } : {} })
-    const response = await this.call('POST', `/api/v1/servers/${encodeURIComponent(id)}/actions`, { data: body, type: 'application/json' })
-    return (await this.json(response, z.object({ server: ServerRecord }), `${action} the server`)).server
+    const response = await this.site.call('POST', `/api/v1/servers/${encodeURIComponent(id)}/actions`, { data: body, type: 'application/json' })
+    return (await this.site.json(response, z.object({ server: ServerRecord }), `${action} the server`)).server
   }
 
   /**
@@ -306,8 +270,8 @@ export class MultiplayerApi {
    */
   async deploy(id: string, version: number | undefined): Promise<ServerRecord> {
     const body = JSON.stringify(version === undefined ? {} : { version })
-    const response = await this.call('POST', `/api/v1/servers/${encodeURIComponent(id)}/deploy`, { data: body, type: 'application/json' })
-    return (await this.json(response, z.object({ server: ServerRecord }), 'deploy the server build')).server
+    const response = await this.site.call('POST', `/api/v1/servers/${encodeURIComponent(id)}/deploy`, { data: body, type: 'application/json' })
+    return (await this.site.json(response, z.object({ server: ServerRecord }), 'deploy the server build')).server
   }
 
   /**
@@ -317,8 +281,8 @@ export class MultiplayerApi {
    * @returns the server's latest log lines.
    */
   async logs(id: string, limit: number): Promise<ServerLogLine[]> {
-    const response = await this.call('GET', `/api/v1/servers/${encodeURIComponent(id)}/logs?limit=${String(limit)}`)
-    return (await this.json(response, z.object({ lines: z.array(LogLine) }), 'read the server log')).lines
+    const response = await this.site.call('GET', `/api/v1/servers/${encodeURIComponent(id)}/logs?limit=${String(limit)}`)
+    return (await this.site.json(response, z.object({ lines: z.array(LogLine) }), 'read the server log')).lines
   }
 
   /**
@@ -327,8 +291,8 @@ export class MultiplayerApi {
    * @returns the server's backups, newest first.
    */
   async backups(id: string): Promise<ServerBackup[]> {
-    const response = await this.call('GET', `/api/v1/servers/${encodeURIComponent(id)}/backups`)
-    return (await this.json(response, z.object({ backups: z.array(Backup) }), 'list the server\'s backups')).backups
+    const response = await this.site.call('GET', `/api/v1/servers/${encodeURIComponent(id)}/backups`)
+    return (await this.site.json(response, z.object({ backups: z.array(Backup) }), 'list the server\'s backups')).backups
   }
 
   /**
@@ -339,10 +303,10 @@ export class MultiplayerApi {
    * @returns the stored build.
    */
   async uploadBuild(gameId: string, version: number, archive: string): Promise<ServerBuild> {
-    const response = await this.call('POST', `/api/v1/games/${encodeURIComponent(gameId)}/server-builds?version=${String(version)}`, {
+    const response = await this.site.call('POST', `/api/v1/games/${encodeURIComponent(gameId)}/server-builds?version=${String(version)}`, {
       data: await openAsBlob(archive), type: 'application/zip',
     })
-    return (await this.json(response, z.object({ build: ServerBuild }), 'store the server build')).build
+    return (await this.site.json(response, z.object({ build: ServerBuild }), 'store the server build')).build
   }
 
   /**
@@ -351,8 +315,8 @@ export class MultiplayerApi {
    * @returns the game's player-hosted lobbies and relay use this month.
    */
   async lobbyStats(gameId: string): Promise<LobbyStats> {
-    const response = await this.call('GET', `/api/v1/play/stats?${new URLSearchParams({ game_id: gameId }).toString()}`)
-    return await this.json(response, LobbyStats, 'read the lobby statistics')
+    const response = await this.site.call('GET', `/api/v1/play/stats?${new URLSearchParams({ game_id: gameId }).toString()}`)
+    return await this.site.json(response, LobbyStats, 'read the lobby statistics')
   }
 }
 

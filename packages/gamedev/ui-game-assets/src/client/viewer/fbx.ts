@@ -7,6 +7,7 @@
  * length it states without inflating it, so the inflating stays within the limit too. A text file's parse is counted at
  * {@link FBX_TEXT_BYTES_PER_BYTE} of its size.
  */
+import { ByteCursor } from '@deepseek-ai/dsh-game-assets/model-files'
 import { Unzlib } from 'three/examples/jsm/libs/fflate.module.js'
 
 /** Bytes the loader's objects take for each node of the file: the node and its property list. */
@@ -52,40 +53,10 @@ function checkInflate(compressed: Uint8Array, declared: number): void {
   }
 }
 
-/** A reader over the file that throws where the loader's DataView throws, past the end. */
-class Reader {
-  private readonly view: DataView
-  at = 0
-
-  constructor(readonly data: Uint8Array) {
-    this.view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  }
-
-  u8(): number {
-    return this.view.getUint8(this.at++)
-  }
-
-  u32(): number {
-    const value = this.view.getUint32(this.at, true)
-    this.at += 4
-    return value
-  }
-
-  u64(): number {
-    const low = this.u32()
-    return this.u32() * 0x1_0000_0000 + low
-  }
-
-  skip(bytes: number): void {
-    if (this.at + bytes > this.data.byteLength) throw new RangeError('the FBX file ends inside a property')
-    this.at += bytes
-  }
-}
-
 /**
  * Where the loader stops reading top-level nodes: at the footer, 160 bytes and up to 16 of padding before the end.
  */
-function endOfContent(reader: Reader): boolean {
+function endOfContent(reader: ByteCursor): boolean {
   const size = reader.data.byteLength
   return size % 16 === 0 ? ((reader.at + 160 + 16) & ~0xf) >= size : reader.at + 160 + 16 >= size
 }
@@ -97,7 +68,7 @@ function endOfContent(reader: Reader): boolean {
  * @throws {FbxInflateError} for compressed data that inflates past the array's length; {RangeError} past the end of
  * the file and {Error} for an unknown property type, where the loader fails too.
  */
-function property(reader: Reader, room: number): number {
+function property(reader: ByteCursor, room: number): number {
   const type = String.fromCharCode(reader.u8())
   switch (type) {
     case 'C':
@@ -160,7 +131,7 @@ export function fbxBytes(data: Uint8Array, limit: number): number {
   if (data.byteLength < BINARY_MAGIC.length || String.fromCharCode(...data.subarray(0, BINARY_MAGIC.length)) !== BINARY_MAGIC) {
     return data.byteLength * FBX_TEXT_BYTES_PER_BYTE
   }
-  const reader = new Reader(data)
+  const reader = new ByteCursor(data)
   reader.skip(23)
   const version = reader.u32()
   // The loader refuses older versions before it reads a node.

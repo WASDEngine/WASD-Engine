@@ -12,7 +12,8 @@ import { basename, dirname, isAbsolute } from 'node:path'
 import type { GameMcpContent, GameMcpProvider, GameMcpProviderStatus, GameMcpTool, JsonObject } from '@deepseek-ai/dsh-game-mcp'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { resolveGodotProject } from './project.ts'
-import { godotToolDefinitions, regionFields, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
+import { godotToolDefinitions, type GodotToolHost, type GodotToolSurface, type GodotToolWording } from './tools.ts'
+import { regionFields } from './screenshot-capture.ts'
 import type { GodotRuntimeView } from './types.ts'
 
 /** Longest image edge an agent receives unresized. */

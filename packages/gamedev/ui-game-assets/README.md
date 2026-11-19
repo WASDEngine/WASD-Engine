@@ -112,14 +112,15 @@ The model loaders run behind checks of their own ([`src/client/viewer/`](src/cli
 
 The 2D view and the agent's pictures read an image's header before decoding it ([`src/client/image-size.ts`](src/client/image-size.ts)): PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, TGA, HDR, and EXR state their size there, which the reader reads as the file's decoder will: the browser's formats by their content, whatever the file's name, a JPEG past the stray bytes libjpeg skips, a GIF's screen grown to its first frame as browsers grow it, an HDR file's header lines as three.js reads them, and an EXR file's last data window. An image whose header states no size the reader reads is not decoded and shows as unreadable; an SVG has none, and its picture is drawn at the size it is shown. The browser's formats decode into an image element, which the 2D view's own element shares through one object URL. An image's animations are found once it decodes: its own frames through `ImageDecoder`, which decodes each frame once for its duration and again when the frame is drawn, the Godot files of the latest scan that name its file, read six at a time, at most 400 of at most 1 MiB each, a sprite sheet JSON of the same name in its folder's listing, and numbered images in that listing. The Godot reader parses section headers, properties, and the variant syntax of their values, then resolves SpriteFrames, AtlasTexture, Sprite2D, Animation, and AnimationLibrary resources by id.
 
-three.js and its loaders are in one lazily loaded chunk, `client.viewer.js`, which both views and the agent's pictures import on first use; the client module loader cannot load a chunk that another lazy chunk requires, so a second entry would break the shared code out of reach, nothing in the chunk imports the browser half's other modules, and the browser half's other modules import no value that the chunk imports too, such as `assertNever` of `@deepseek-ai/dsh-util-values`, which the bundler would move into a third chunk that the viewer chunk requires; [`tests/bundle-split.client.spec.ts`](tests/bundle-split.client.spec.ts) checks the built bundles for it. The 3D stage draws on demand: a camera move, a texture that arrives late, a resize, or a playing animation requests the next frame, and the stage requests none while the tab's information reports it not `visible`. The format table is a copy of `@deepseek-ai/dsh-game-assets/formats`, because a plugin's browser bundle imports no other plugin's values; [`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) keeps the two equal.
+three.js and its loaders are in one lazily loaded chunk, `client.viewer.js`, which both views and the agent's pictures import on first use; the client module loader cannot load a chunk that another lazy chunk requires, so a second entry would break the shared code out of reach, nothing in the chunk imports the browser half's other modules, and the browser half's other modules import no value that the chunk imports too, such as `assertNever` of `@deepseek-ai/dsh-util-values`, which the bundler would move into a third chunk that the viewer chunk requires; [`tests/bundle-split.client.spec.ts`](tests/bundle-split.client.spec.ts) checks the built bundles for it. The 3D stage draws on demand: a camera move, a texture that arrives late, a resize, or a playing animation requests the next frame, and the stage requests none while the tab's information reports it not `visible`. The format table and the lookup of a Blender file's model are those of `@deepseek-ai/dsh-game-assets/formats`, which the agent's asset tools read too and the browser half inlines, the one entry of that package that the client bundle purity gate admits.
 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Empty Host `apply` of the Loader row |
 | [`src/client/index.ts`](src/client/index.ts) | `Config`, the tab type, its seats, its copy, each Session's state and face, and the answers to render and reveal requests |
-| [`src/client/formats.ts`](src/client/formats.ts) | Listed extensions, their kind, and their decoder |
-| [`src/client/scan.ts`](src/client/scan.ts) | The project walk and the name order |
+| [`src/client/formats.ts`](src/client/formats.ts) | The asset tools' listed extensions, their kind and decoder, and the Blender export lookup |
+| [`src/client/project-tab.ts`](src/client/project-tab.ts) | What the Audio tab shares, exported as `./client/project-tab`: the project walk, one Session's walk state, the Sessions' states, the reveal, and the file re-reads |
+| [`src/client/scan.ts`](src/client/scan.ts) | The asset scan over the project walk |
 | [`src/client/tree.ts`](src/client/tree.ts) | The folder tree, its rows, the folders to open, and search |
 | [`src/client/source.ts`](src/client/source.ts) | One Session's scan and choices |
 | [`src/client/walks.ts`](src/client/walks.ts) | The project walks that the pictures drawn for a Session share |
@@ -127,7 +128,8 @@ three.js and its loaders are in one lazily loaded chunk, `client.viewer.js`, whi
 | [`src/client/AssetsTab.tsx`](src/client/AssetsTab.tsx), [`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | The body, its states, its navigation, and the dropdown |
 | [`src/client/AssetViewer.tsx`](src/client/AssetViewer.tsx) | Reads, reloads, Blender exports, and read failures |
 | [`src/client/ImageView.tsx`](src/client/ImageView.tsx), [`src/client/ModelView.tsx`](src/client/ModelView.tsx) | The 2D and 3D views with their animation controls |
-| [`src/client/DetailsPanel.tsx`](src/client/DetailsPanel.tsx) | The details of an image or a model |
+| [`src/client/zoom-pan.ts`](src/client/zoom-pan.ts) | The 2D view's zoom and pan |
+| [`src/client/DetailsPanel.tsx`](src/client/DetailsPanel.tsx) | The details of an image or a model, and the views' switch that shows them |
 | [`src/client/godot.ts`](src/client/godot.ts) | The Godot text resource reader and its 2D animations |
 | [`src/client/sprites.ts`](src/client/sprites.ts), [`src/client/animations2d.ts`](src/client/animations2d.ts), [`src/client/frames.ts`](src/client/frames.ts) | 2D animations: grids, sequences, sheets, Godot, and own frames, and finding an image's |
 | [`src/client/sprite-player.ts`](src/client/sprite-player.ts) | One shown image's decoded pictures and animations |
@@ -135,7 +137,7 @@ three.js and its loaders are in one lazily loaded chunk, `client.viewer.js`, whi
 | [`src/client/agent.ts`](src/client/agent.ts), [`src/client/render2d.ts`](src/client/render2d.ts) | Answering a render request: decoding, measuring, drawing, and encoding |
 | [`src/client/answer.ts`](src/client/answer.ts) | Fitting an answer's details to the request's limits |
 | [`src/client/queue.ts`](src/client/queue.ts) | The order and number of the pictures drawn for agents at once |
-| [`src/client/viewer/`](src/client/viewer/) | The lazily loaded three.js chunk: image decoders, model loaders and the memory checks before them (`vox.ts`, `fbx.ts`, `textures.ts`), measurement, the stage, the skeleton overlay, and the agent's model tiles |
+| [`src/client/viewer/`](src/client/viewer/) | The lazily loaded three.js chunk: image decoders, model loaders and the memory checks before them (`model-sizes.ts`, `vox.ts`, `fbx.ts`, `textures.ts`), measurement, the stage (`stage.ts`), the skeleton overlay, and the agent's model tiles |
 | [`src/client/icon.tsx`](src/client/icon.tsx) | The tab's glyph and the 3D model file glyph |
 | [`src/client/locales.ts`](src/client/locales.ts) | `gameAssets` dictionaries in eight languages |
 

@@ -3,6 +3,7 @@
  * changes): local builds carry the product name in the sidebar and the window title instead
  * of "DSH Local Build"; their version tag still marks them as local.
  */
+import { brandDictionaries } from './wasdengine-brand.ts'
 import { WASDENGINE_LOCAL_BUILD_TITLE } from './wasdengine/locales.ts'
 
 /**
@@ -13,10 +14,5 @@ import { WASDENGINE_LOCAL_BUILD_TITLE } from './wasdengine/locales.ts'
  * @throws when a dictionary has no `brand.localBuild` message.
  */
 export function brandCommonDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    if (!('brand.localBuild' in messages)) throw new Error(`WASD Engine common copy: ${language} has no message brand.localBuild`)
-    branded[language] = { ...messages, 'brand.localBuild': WASDENGINE_LOCAL_BUILD_TITLE }
-  }
-  return branded as T
+  return brandDictionaries('common', dictionaries, { copy: () => ({ 'brand.localBuild': WASDENGINE_LOCAL_BUILD_TITLE }) })
 }

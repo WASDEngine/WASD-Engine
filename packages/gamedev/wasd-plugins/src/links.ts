@@ -6,6 +6,7 @@
  * @module @deepseek-ai/dsh-wasd-plugins/src/links
  */
 import { randomUUID } from 'node:crypto'
+import { stateChanges } from '@deepseek-ai/dsh-game-mcp/kit'
 import type { WasdLinkRequests } from './types.ts'
 
 /** One link waiting for a window. */
@@ -70,29 +71,8 @@ export class LinkRequests {
    * @returns the list, then again after each change, until `signal` aborts or the plugin is disposed.
    */
   async * follow(signal: AbortSignal): AsyncIterable<WasdLinkRequests> {
-    const stop = AbortSignal.any([signal, this.lifetime])
-    let changed = true
-    let wake: (() => void) | undefined
-    const follower = (): void => {
-      changed = true
-      wake?.()
-    }
-    const onStop = (): void => { wake?.() }
-    this.followers.add(follower)
-    stop.addEventListener('abort', onStop, { once: true })
-    try {
-      while (!stop.aborted) {
-        if (changed) {
-          changed = false
-          yield { links: this.pending.map(link => ({ id: link.id, url: link.url })) }
-          continue
-        }
-        await new Promise<void>((resolve) => { wake = resolve })
-        wake = undefined
-      }
-    } finally {
-      this.followers.delete(follower)
-      stop.removeEventListener('abort', onStop)
+    for await (const _change of stateChanges(this.followers, AbortSignal.any([signal, this.lifetime]))) {
+      yield { links: this.pending.map(link => ({ id: link.id, url: link.url })) }
     }
   }
 

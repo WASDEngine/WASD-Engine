@@ -30,6 +30,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { GameToolCatalog, OVERVIEW_LIMIT, PROVIDER_ID_PATTERN } from './catalog.ts'
 import { ClientDirectory } from './clients.ts'
 import { FREE_PLAN_FILE, FreePlan, ProviderNotes } from './free-plan.ts'
+import { stateChanges } from './plugin-kit.ts'
 import { listenLoopback, LOOPBACK_HOST, type HttpListener } from './http.ts'
 import { createGameProject } from './projects.ts'
 import { setupPrompt } from './prompt.ts'
@@ -237,30 +238,7 @@ export default class GameMcpServer extends TypertRemoteService {
    */
   @Remote({ mode: 'stream' })
   async* watch(signal: AbortSignal): AsyncIterable<GameMcpView> {
-    const ended = AbortSignal.any([signal, this.lifetime.signal])
-    let dirty = true
-    let wake = Promise.withResolvers<void>()
-    const notify = (): void => {
-      dirty = true
-      wake.resolve()
-    }
-    this.watchers.add(notify)
-    ended.addEventListener('abort', notify, { once: true })
-    try {
-      for (;;) {
-        if (ended.aborted) return
-        if (!dirty) {
-          wake = Promise.withResolvers<void>()
-          await wake.promise
-          continue
-        }
-        dirty = false
-        yield this.view()
-      }
-    } finally {
-      this.watchers.delete(notify)
-      ended.removeEventListener('abort', notify)
-    }
+    for await (const _change of stateChanges(this.watchers, AbortSignal.any([signal, this.lifetime.signal]))) yield this.view()
   }
 
   private view(): GameMcpView {

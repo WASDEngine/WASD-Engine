@@ -19,6 +19,7 @@
  */
 
 import { mpegFrame, sameStream, type MpegFrame } from './probe.ts'
+import { ascii, byte, u16le, u32le } from './bytes.ts'
 
 /** What a decoder can make of one file. */
 export interface DecodePlan {
@@ -49,24 +50,6 @@ export class DecodePlanError extends Error {
     super(message)
     this.name = 'DecodePlanError'
   }
-}
-
-function byte(bytes: Uint8Array, index: number): number {
-  return bytes[index] ?? 0
-}
-
-function ascii(bytes: Uint8Array, offset: number, length: number): string {
-  let text = ''
-  for (let index = offset; index < offset + length; index++) text += String.fromCharCode(byte(bytes, index))
-  return text
-}
-
-function u16le(bytes: Uint8Array, offset: number): number {
-  return byte(bytes, offset) | (byte(bytes, offset + 1) << 8)
-}
-
-function u32le(bytes: Uint8Array, offset: number): number {
-  return u16le(bytes, offset) + u16le(bytes, offset + 2) * 0x10000
 }
 
 function u24be(bytes: Uint8Array, offset: number): number {

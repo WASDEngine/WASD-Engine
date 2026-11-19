@@ -14,9 +14,11 @@
 # "gimp=123 supercollider=456", whose artifacts it packages in place of a runtime's release, which a run on another
 # branch than main never publishes; a runtime with neither a run nor a release is left out, with a warning.
 #
-# The job runs the build and the upload in one place, so the token that may write releases reaches only the upload
-# step; the installer it builds is what users run, so a build that could tamper with that step could equally tamper
-# with the installer.
+# The packaging job holds no token that may write: it stages the release files (wasdengine-github-release.ts stage) and
+# keeps them as an artifact, and the publish job, which installs no package and runs only Node, git, and gh, uploads
+# them to the draft release (wasdengine-github-release-upload.ts), so pnpm install, electron-builder, and the tests
+# never hold a token that could change a release. The repository's releases are immutable once published, so every
+# file goes up while the release is a draft; wasdengine-github-release.ts publish then publishes it.
 #
 # Actions are pinned to full commit SHAs (the release is noted beside each).
 name: Desktop Windows release
@@ -47,13 +49,13 @@ env:
 
 jobs:
   package:
-    name: Package and upload win-x64
+    name: Package win-x64
     runs-on: windows-2025
     timeout-minutes: 180
     permissions:
       # actions: read lets a test download the artifacts of the runtime runs that runtime_runs names.
       actions: read
-      contents: write
+      contents: read
     defaults:
       run:
         shell: pwsh
@@ -286,8 +288,61 @@ jobs:
           compression-level: 0
           retention-days: 7
 
-      - name: Upload the installer to the release
+      - name: Stage the release files
         if: env.RELEASE_TAG != ''
+        run: |
+          pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-github-release.ts stage win-x64 --unsigned
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "STAGED_DIR=apps/desktop/.desktop-build/github-release/$env:RELEASE_TAG/win-x64" >> $env:GITHUB_ENV
+
+      - name: Keep the release files for the publish job
+        if: env.RELEASE_TAG != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-release-files-${{ github.run_id }}
+          path: ${{ env.STAGED_DIR }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
+          overwrite: true
+
+  publish:
+    name: Upload win-x64 to the release
+    needs: package
+    if: github.event_name == 'push' || inputs.tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+    steps:
+      - name: Check out the upload script of the release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          sparse-checkout: |
+            apps/desktop/scripts/wasdengine-github-release-upload.ts
+            apps/desktop/src/wasdengine-brand.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Download the staged release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-release-files-${{ github.run_id }}
+          path: ${{ runner.temp }}/staged
+
+      # Node runs the TypeScript as it is, so nothing is installed: the upload imports only Node's modules and the brand.
+      - name: Upload the installer to the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-github-release.ts upload win-x64 --unsigned
+        run: node apps/desktop/scripts/wasdengine-github-release-upload.ts "$RUNNER_TEMP/staged"

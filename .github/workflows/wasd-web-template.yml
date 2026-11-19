@@ -48,7 +48,9 @@ jobs:
       - name: Lint build.sh
         run: |
           bash -n wasdengine/web-template/build.sh
-          shellcheck wasdengine/web-template/build.sh
+          bash -n wasdengine/lib.sh
+          (cd wasdengine/web-template && shellcheck -x build.sh)
+          (cd wasdengine && shellcheck lib.sh)
 
       - name: Test template.py
         run: python3 -B -I -m unittest discover --start-directory wasdengine/web-template --pattern 'test_*.py' --verbose

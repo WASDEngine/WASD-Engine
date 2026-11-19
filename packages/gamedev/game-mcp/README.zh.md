@@ -110,6 +110,10 @@ agent 会在一次性文件夹中测试和试验，例如 Claude Code 位于 `/t
 
 `ctx.gameMcp.provide(provider)` 在调用方插件的生命周期内提供该插件的工具，并返回一个幂等的 disposer。provider 包含一个小写的 `id`（作为其工具名称的前缀）、`title`、用一两句话说明其工具做什么、为用户游戏带来什么的 `description`（指令概述会列出它）、可选的 `instructions`（即它的指南）、`tools()`，以及 `status(signal)`，后者以带说明的 `ready`、`starting` 或 `unavailable` 报告就绪状态。每个工具指定一个执行调用的 harness `ToolDefinition`，并可覆盖其描述与输入 schema、标记自身为只读、通过 `prepare` 准备一次调用（映射其参数，通过 `call.session(directory, name)` 选择调用所用的 Agent，并在工具的参数接受模型名称时，转交 agent 自称的 AI 模型名称），以及把结果值转换为 MCP `content`；没有 `content` 时，服务器发送 `output.render` 的文本块。准备好的调用可以 `reveal` 一个 Session；工具还可以通过 `confirmation(value)` 指明一个页面，用户在该页面上确认成功的调用所申请的内容。工具会消耗账号 AI 用量的 provider 设置 `spendsUsage`，这样在 Free 账号继续使用 Free 期间，服务器会把它略去（[用完 AI 用量的 Free 账号](#free-accounts-whose-usage-is-used-up)）。只有当工具名称以 provider id 加下划线开头，且之前的工具和服务器自身的工具都没有使用该名称时，服务器才会列出它；准备、参数校验或执行的失败都会变成带有错误消息的错误结果。工具的 `failureContent(error, args)` 会在执行失败的消息之后追加内容，例如阻止一次发布的 Web 检查的截图；它本身失败时，结果只保留消息。声明了 `timeoutMs` 的工具保留该时限：其执行把到期视为取消，与在 Session 中相同，结果会说明调用已超时。服务器在调用到达时立即执行，可同时执行多个调用，包括同一 agent 及其子 agent 的调用。provider 工具的结果生成后，服务器发出 `game-mcp/tool-result`，带有 provider id、工具名称、准备后的参数、发起调用的 agent、调用所在的 Session（如有）、调用指明的模型（如有），以及 agent 是否收到错误结果；监听器的失败会被记录到日志，不影响结果。[WASD Engine 插件](../wasd-plugins/README.zh.md) 根据这个事件，把连接的 agent 在游戏上用过的工具，以及这些 agent 本身（按它们指明的模型）记入该游戏的制作信息。`ctx.gameMcp.toolOwner(name)` 按连接 agent 所用的工具名，或按运行该工具的 harness 定义的名称，查找当前提供该工具的 provider，并返回 provider 的 id 和标题，以及连接 agent 所用的工具名；[agent 反馈](../agent-feedback/README.zh.md) 借此把 Session 自身对 provider 工具的调用计入该 provider。
 
+### 游戏工具插件的辅助函数
+
+`@deepseek-ai/dsh-game-mcp/kit` 收录提供游戏工具的插件共用的部分：`accountAccess` 与 `gatewayOrigin` 用于以已登录账号调用网关，`sessionFiles` 给出调用的文件所在的文件夹，`pathWithin`、`windowPath`、`pathFolder` 与 `pathName` 给出路径所在的位置，`statOf`、`namedFileSize`、`replaceableFile` 与 `writeWhole` 用于调用读写的文件，`textBlocks`、`kilobytes`、`folderRows`、`ATTACHED_IMAGE_SCHEMA` 与 `modelSeesImages` 用于工具结果，`checkedInteger` 用于参数，`stateChanges` 用于每次变化时唤醒的流，`projectMcpTool`、`callFolder` 与 `PROJECT_PARAMETER` 用于已连接 agent 以游戏项目文件夹调用的工具。该 kit 只导入 Node 内置模块与类型，因此把本包列为开发依赖的插件打包 kit 时不会带上本插件的服务器与 MCP SDK；[`tests/kit.spec.ts`](tests/kit.spec.ts) 检查其导入。本包的主入口不导出 kit。
+
 ### 长时间调用
 
 一次工具调用可能持续数分钟，例如上传大型构建的发布。对每个请求的响应都是一个事件流，请求一到达即开始，并每 15 秒发送一条保活注释，因此等待固定时长让响应开始的 agent 会继续等待：Claude Code 对响应在 60 秒后仍未开始的 HTTP MCP 请求会放弃，并报告 `The operation timed out.`。调用运行期间，请求了进度的 agent（Claude Code 即是如此）每隔 `progressIntervalMs` 收到一条进度通知，其消息给出已用时间，因此对长时间没有任何报告的调用会放弃的 agent（Claude Code 在 5 分钟后放弃）也会继续等待。Codex 把每次调用限制在其 `tool_timeout_sec` 以内，设置提示词中的 Codex 条目会设置该值。
@@ -149,6 +153,7 @@ MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `i
 | [`src/projects.ts`](src/projects.ts) | `create_game_project`：其参数、默认位置，以及通过 `gameProjectController` 的创建 |
 | [`src/clients.ts`](src/clients.ts) | agent 身份与已见过的 agent |
 | [`src/sessions.ts`](src/sessions.ts) | 已连接 agent 的 Session 与 `sessions.json` |
+| [`src/kit.ts`](src/kit.ts)、[`src/plugin-kit.ts`](src/plugin-kit.ts)、[`src/project-tools.ts`](src/project-tools.ts) | 供游戏工具插件使用的 `/kit` 入口：网关访问、调用的文件、结果的组成部分，以及以游戏项目文件夹为参数的工具 |
 | [`src/temporary-folders.ts`](src/temporary-folders.ts) | 默认的临时文件夹，以及某个路径是否位于其中 |
 | [`src/token.ts`](src/token.ts)、[`src/prompt.ts`](src/prompt.ts) | 令牌文件与校验，以及设置提示词 |
 | [`src/provider.ts`](src/provider.ts)、[`src/types.ts`](src/types.ts) | provider 契约与 `game-mcp/tool-result`、`game-mcp/project-created` 事件、浏览器安全的视图类型与 `game-mcp/reveal` 事件 |

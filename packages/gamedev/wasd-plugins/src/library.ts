@@ -33,9 +33,10 @@ import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/p
 import { basename, dirname, join } from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { stateChanges } from '@deepseek-ai/dsh-game-mcp/kit'
 import { z } from 'zod'
 import { MultiplayerApi } from './multiplayer-api.ts'
-import type { SiteAccess } from './release.ts'
+import { SiteClient, type SiteAccess, type SiteFailures } from './site-client.ts'
 import type {
   WasdDesktopPlatform, WasdLibraryAvailability, WasdLibraryGame, WasdLibraryOutcome, WasdLibraryRefusal, WasdLibraryTask,
   WasdLibraryView,
@@ -160,6 +161,9 @@ type SiteAnswer =
 export class LibraryError extends Error {
   override name = 'LibraryError'
 }
+
+/** How the library's requests to a game's site fail: as {@link LibraryError}s. */
+const LIBRARY_FAILURES: SiteFailures = { error: (message, _code, options) => new LibraryError(message, options), again: 'try again' }
 
 /** The library's refusal to start a game, which the Play page words from `refusal`. */
 class LibraryRefusal extends LibraryError {
@@ -326,31 +330,8 @@ export class GameLibrary {
    * @returns the view, then again after each change, until `signal` aborts or the plugin is disposed.
    */
   async * follow(signal: AbortSignal): AsyncIterable<WasdLibraryView> {
-    const stop = AbortSignal.any([signal, this.lifetime])
-    let changed = true
-    let wake: (() => void) | undefined
-    const follower = (): void => {
-      changed = true
-      wake?.()
-    }
-    const onStop = (): void => { wake?.() }
-    this.followers.add(follower)
-    stop.addEventListener('abort', onStop, { once: true })
     this.checkAll()
-    try {
-      while (!stop.aborted) {
-        if (changed) {
-          changed = false
-          yield await this.view()
-          continue
-        }
-        await new Promise<void>((resolve) => { wake = resolve })
-        wake = undefined
-      }
-    } finally {
-      this.followers.delete(follower)
-      stop.removeEventListener('abort', onStop)
-    }
+    for await (const _change of stateChanges(this.followers, AbortSignal.any([signal, this.lifetime]))) yield await this.view()
   }
 
   /**
@@ -559,12 +540,8 @@ export class GameLibrary {
     void (async () => {
       const access = await this.dependencies.access()
       const token = access?.origin === game.origin ? access.token : ''
-      const response = await this.dependencies.fetch(new URL(`/api/v1/library/games/${game.slug}/plays`, game.origin), {
-        method: 'POST',
-        redirect: 'error',
-        signal: this.lifetime,
-        headers: token === '' ? {} : { 'x-dsh-auth-token': token },
-      })
+      const site = new SiteClient({ origin: game.origin, token }, this.dependencies.fetch, this.lifetime, LIBRARY_FAILURES)
+      const response = await site.call('POST', `/api/v1/library/games/${game.slug}/plays`)
       await response.body?.cancel()
     })().catch(() => {
       // A failed request, such as one to an unreachable site or one the plugin's disposal aborts, costs one play in
@@ -771,14 +748,13 @@ export class GameLibrary {
 
   /** The site's library answer for a game. */
   private async lookup(origin: string, slug: string, version: number | undefined, signal: AbortSignal): Promise<SiteAnswer> {
-    const url = new URL(`/api/v1/library/games/${slug}`, origin)
-    if (version !== undefined) url.searchParams.set('v', String(version))
+    const query = version === undefined ? '' : `?v=${String(version)}`
     let response: Response
     try {
-      response = await this.dependencies.fetch(url, { redirect: 'error', signal })
+      response = await new SiteClient({ origin, token: '' }, this.dependencies.fetch, signal, LIBRARY_FAILURES).call('GET', `/api/v1/library/games/${slug}${query}`)
     } catch (error) {
       signal.throwIfAborted()
-      return { kind: 'unreachable', message: `Cannot reach WASD Engine at ${origin}: ${(error as Error).message}` }
+      return { kind: 'unreachable', message: (error as Error).message }
     }
     // 404: its creator removed the game, or it never existed; 410: WASD Engine took it down.
     if (response.status === 404 || response.status === 410) {

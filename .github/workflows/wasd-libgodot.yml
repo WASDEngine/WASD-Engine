@@ -48,7 +48,9 @@ jobs:
       - name: Lint build.sh
         run: |
           bash -n wasdengine/libgodot/build.sh
-          shellcheck wasdengine/libgodot/build.sh
+          bash -n wasdengine/lib.sh
+          (cd wasdengine/libgodot && shellcheck -x build.sh)
+          (cd wasdengine && shellcheck lib.sh)
 
       - name: Test runtime.py and godot_runner
         run: python3 -B -I -m unittest discover --start-directory wasdengine/libgodot --pattern 'test_*.py' --verbose

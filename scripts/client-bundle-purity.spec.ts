@@ -311,6 +311,29 @@ describe('client bundle purity gate', () => {
     expect(() => resolveId('@deepseek-ai/dsh-game-audio/audio/internal')).toThrow(/purity/)
   })
 
+  // WASDEngine fork: the Assets tab inlines the asset tools' format table and model file readers (wasdengine/FORK.md).
+  it('admits only the format table and model file readers of the asset tools, not their Host plugin', () => {
+    expect(resolveId('@deepseek-ai/dsh-game-assets/formats')).toBeNull()
+    expect(resolveId('@deepseek-ai/dsh-game-assets/model-files')).toBeNull()
+    expect(() => resolveId('@deepseek-ai/dsh-game-assets')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-game-assets/formats/internal')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-game-assets/model-cost')).toThrow(/purity/)
+  })
+
+  // WASDEngine fork: the Audio tab inlines the project tab machinery of the Assets tab's package (wasdengine/FORK.md).
+  it('admits only the project tab machinery of the Assets tab, not its client plugin', () => {
+    expect(resolveId('@deepseek-ai/dsh-client-ui-game-assets/client/project-tab')).toBeNull()
+    expect(() => resolveId('@deepseek-ai/dsh-client-ui-game-assets/client')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-client-ui-game-assets/client/project-tab/internal')).toThrow(/purity/)
+  })
+
+  // WASDEngine fork: each client namespace that the fork words differently inlines one brand helper (wasdengine/FORK.md).
+  it('admits only the brand helper of the client locale, not its client plugin', () => {
+    expect(resolveId('@deepseek-ai/dsh-client-locale/brand')).toBeNull()
+    expect(() => resolveId('@deepseek-ai/dsh-client-locale/client')).toThrow(/purity/)
+    expect(() => resolveId('@deepseek-ai/dsh-client-locale/brand/internal')).toThrow(/purity/)
+  })
+
   it.each(['file-drag'])('inlines the stateless %s entry without admitting its subpaths or UI plugin', (name) => {
     expect(resolveId(`@deepseek-ai/dsh-util-${name}`)).toBeNull()
     expect(() => resolveId(`@deepseek-ai/dsh-util-${name}/internal`)).toThrow(/purity/)

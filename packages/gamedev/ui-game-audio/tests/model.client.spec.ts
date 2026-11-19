@@ -10,7 +10,8 @@ import { clockText, decibelText, kilohertzText, lengthValue } from '../src/clien
 import { waveformPath, waveformPeaks } from '../src/client/peaks.ts'
 import { listRows, shownSounds, soundItems, stepSound } from '../src/client/rows.ts'
 import { scanSounds, type SoundEntry, type SoundScan } from '../src/client/scan.ts'
-import { AudioSource, FRESH_SCAN_MS } from '../src/client/source.ts'
+import { AudioSource } from '../src/client/source.ts'
+import { FRESH_SCAN_MS } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
 import { FakeAudioBuffer } from './webaudio.client.ts'
 
 /** The project: folders by workspace path; a trailing `/` marks a folder. */
@@ -39,7 +40,7 @@ function entry(path: string, bytes?: number): SoundEntry {
 }
 
 describe('scanSounds', () => {
-  it('walks folder level by folder level for sounds, skipping hidden folders and node_modules', async () => {
+  it('walks the project breadth-first for sounds, skipping hidden folders and node_modules', async () => {
     const list = vi.fn(async (path: string) => listing(path))
     const result = await scanSounds(list, { maxFolders: 100, maxSounds: 100 }, new AbortController().signal)
     expect(result.ok && result.value.sounds.map(sound => sound.path)).toEqual(['title.ogg', 'audio/theme.mp3', 'audio/sfx/coin.wav', 'audio/sfx/jump.wav', 'audio/voice/hello.wav'])

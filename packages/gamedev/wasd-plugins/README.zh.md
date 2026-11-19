@@ -211,12 +211,16 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 | [`src/browser.ts`](src/browser.ts) | 浏览器命令队列、`browser_*` 工具定义、截图存储和 `browser` 提示词段落 |
 | [`src/client/browser.ts`](src/client/browser.ts) | 浏览器的窗口部分：窗口接手哪些命令、智能体的标签页，以及对其页面的操作 |
 | [`src/client/page.ts`](src/client/page.ts) | 窗口在页面中运行的脚本：页面文本及其编号控件，查找、点击和填写控件 |
-| [`src/release.ts`](src/release.ts) | 网站 API 客户端、游戏关联文件，以及包含可见性、桌面版下载、预览上传和服务器构建上传的发布流程 |
+| [`src/release.ts`](src/release.ts) | 包含可见性、桌面版下载、预览上传和服务器构建上传的发布流程，以及网站的游戏 API |
+| [`src/game-link.ts`](src/game-link.ts) | 游戏关联文件：每个账号在每个网站上的游戏，以及项目对它的视图 |
+| [`src/site-client.ts`](src/site-client.ts) | 所有客户端调用网站 API 的共同方式：请求、错误正文和 JSON 回应 |
 | [`src/preview.ts`](src/preview.ts) | 预览编码、预览文件夹和文件摘要 |
 | [`src/credits.ts`](src/credits.ts) | 制作信息：哪些工具名称对应哪个工具、项目的制作信息文件及其中连接的智能体所指明的模型，以及插件记录中的插件 |
 | [`src/state.ts`](src/state.ts) | 项目的 `.wasdengine` 状态文件夹、其文件的整体写入、用来识别每个项目的真实路径，以及让每个项目的导出、录制和发布逐个运行的队列 |
 | [`src/folders.ts`](src/folders.ts) | 发布文件夹记录：这台电脑上哪些文件夹发布过每个游戏 |
-| [`src/multiplayer-tools.ts`](src/multiplayer-tools.ts) | 多人联机工具定义、其 MCP 包装、`multiplayer` 提示词段落和提供者说明 |
+| [`src/multiplayer-tools.ts`](src/multiplayer-tools.ts) | 多人联机工具的宿主与调用面、各工具组的目录、其 MCP 包装、`multiplayer` 提示词段落和提供者说明 |
+| [`src/multiplayer-game-tools.ts`](src/multiplayer-game-tools.ts)、[`src/server-tools.ts`](src/server-tools.ts) | 游戏自身多人联机与专用服务器的工具定义 |
+| [`src/multiplayer-parts.ts`](src/multiplayer-parts.ts) | 各工具组共用的部分：玩家上限、schema、登录与已发布的游戏，以及服务器、规格与套餐的文本 |
 | [`src/multiplayer-api.ts`](src/multiplayer-api.ts) | 网站的规格、服务器、服务器构建和大厅统计的客户端 |
 | [`src/multiplayer-project.ts`](src/multiplayer-project.ts) | 插件复制、`project.godot` 的修改和 `res://wasd_multiplayer.cfg` |
 | [`src/multiplayer-test.ts`](src/multiplayer-test.ts) | 本地测试的实例、加入票据、统计数据和规格匹配 |

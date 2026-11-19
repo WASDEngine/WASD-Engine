@@ -59,10 +59,9 @@ import { fileURLToPath } from 'node:url'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { withFileLock, writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import { z } from 'zod'
-import { androidPackageName } from './android.ts'
 import { turnOffBlenderImport } from './blender-import.ts'
 import { runGodotCommand } from './command.ts'
-import { gameIdentifierPart } from './identifiers.ts'
+import { nameIdentifier, newAppIdentifier, storedAppIdentifier, withAppIdentifier, type AppIdentifierPlatform } from './identifiers.ts'
 import { IOS_SPLASH_SETTING_WARNING, iosBinaryName, removeTeam, UNSET_TEAM_ID } from './ios.ts'
 import { consoleLines, describeExit, formatSeconds, lastLines } from './output.ts'
 import { FAILURE_OUTPUT_LINES } from './run.ts'
@@ -470,26 +469,19 @@ export function withWebPreset(original: string | undefined, template: string): s
 }
 
 /**
- * The macOS and iOS bundle identifier of a game: `com.wasdengine.game.` and the game's name in lowercase ASCII
- * letters, digits, and hyphens, as Apple's platforms take them, with a digest of the name for letters that have no
- * ASCII form ({@link gameIdentifierPart}).
- * @param name - the game's name.
- * @returns the identifier; `com.wasdengine.game.game` for a name without letters or digits.
- */
-export function bundleIdentifier(name: string): string {
-  return `com.wasdengine.game.${gameIdentifierPart(name, '-')}`
-}
-
-/**
  * Add a desktop export preset to an `export_presets.cfg` text, after the project's presets, replacing an earlier
  * preset of the same name.
  * @param original - the file's text, or undefined when the project has none.
  * @param platform - the platform to build for.
  * @param template - absolute path of its release template.
- * @param name - the game's name, from which a macOS build takes its bundle identifier.
+ * @param name - the game's name, which gives a macOS build its bundle identifier ({@link nameIdentifier}) when
+ *   `identifier` is not given.
+ * @param identifier - the macOS build's bundle identifier, which the project keeps.
  * @returns the file text for the export.
  */
-export function withDesktopPreset(original: string | undefined, platform: GodotDesktopPlatform, template: string, name: string): string {
+export function withDesktopPreset(
+  original: string | undefined, platform: GodotDesktopPlatform, template: string, name: string, identifier?: string,
+): string {
   // The debug template is the release one too: Godot reports a missing debug template while it checks a preset.
   const templates = [`custom_template/debug=${quote(template)}`, `custom_template/release=${quote(template)}`]
   switch (platform) {
@@ -510,7 +502,7 @@ export function withDesktopPreset(original: string | undefined, platform: GodotD
         'binary_format/architecture="universal"',
         ...templates,
         'debug/export_console_wrapper=0',
-        `application/bundle_identifier=${quote(bundleIdentifier(name))}`,
+        `application/bundle_identifier=${quote(identifier ?? nameIdentifier('macos', name))}`,
         'application/app_category="Games"',
         'codesign/codesign=1',
         'notarization/notarization=0',
@@ -523,13 +515,13 @@ export function withDesktopPreset(original: string | undefined, platform: GodotD
 /** What a mobile export preset names besides its template. */
 export type MobilePresetSettings = {
   readonly platform: 'android'
-  /** The app's package name, {@link androidPackageName}. */
+  /** The app's package name, the one that the project keeps for Android ({@link projectAppIdentifier}). */
   readonly packageName: string
   /** The build's version code, which must grow from build to build for an installed app to update. */
   readonly versionCode: number
 } | {
   readonly platform: 'ios'
-  /** The app's bundle identifier, {@link bundleIdentifier}. */
+  /** The app's bundle identifier, the one that the project keeps for iOS ({@link projectAppIdentifier}). */
   readonly bundleIdentifier: string
   /** The Team ID the Xcode project signs with. */
   readonly teamId: string
@@ -1158,8 +1150,13 @@ interface PackagedExportPlan {
   readonly label: string
   /** The VRAM compression formats the build needs imported. */
   readonly formats: readonly TextureFormat[]
-  /** The `export_presets.cfg` text of the export, from the project's own text and the game's name. */
-  readonly presets: (original: string | undefined, name: string | undefined) => string
+  /** The `export_presets.cfg` text of the export, from the project's own text, the game's name, and its identifier. */
+  readonly presets: (original: string | undefined, name: string | undefined, identifier: string | undefined) => string
+  /**
+   * The platform whose app identifier the build carries, which the project keeps ({@link projectAppIdentifier}), and
+   * whether the output folder holds the build of an earlier export, before this one clears it.
+   */
+  readonly identifier?: { readonly platform: AppIdentifierPlatform; readonly earlierBuild: (outputDir: string) => Promise<boolean> }
   /** Where the export writes, by the game's name. */
   readonly target: (name: string | undefined) => PackagedTarget
   /** Environment entries of Godot's process. */
@@ -1172,6 +1169,8 @@ interface PackagedExportPlan {
 interface PackagedExportOutcome {
   /** The game's name, `application/config/name`, as the export read it. */
   readonly name: string | undefined
+  /** The app identifier the build carries, when the plan names its platform. */
+  readonly identifier: string | undefined
   /** The build's file or folder name inside the output folder. */
   readonly entry: string
   /** The entry's size in bytes when it is a file, else the size of every file in the output folder. */
@@ -1194,15 +1193,61 @@ async function folderBytes(folder: string): Promise<number> {
 }
 
 /**
+ * The app identifier that a project's builds for a platform carry: the one that `project.godot` keeps for it, or, for
+ * the platform's first export, a new one that `project.godot` then keeps, before the export records the file it
+ * restores, so that the identifier stays with the project and later builds update the installed app. The new one is
+ * the identifier the game's name gives while the output folder holds the build of an earlier export, which an earlier
+ * version of WASD Engine named so, and otherwise the name's identifier with six random letters ({@link newAppIdentifier}).
+ * @param projectPath - the project's `project.godot`.
+ * @param name - the game's name.
+ * @param platform - the platform.
+ * @param earlierBuild - whether the output folder holds an earlier export's build.
+ * @returns the identifier.
+ * @throws {GodotExportError} when `project.godot` keeps a value that the platform does not accept.
+ */
+async function projectAppIdentifier(
+  projectPath: string, name: string | undefined, platform: AppIdentifierPlatform, earlierBuild: () => Promise<boolean>,
+): Promise<string> {
+  const text = await readFile(projectPath, 'utf8')
+  let stored: string | undefined
+  try {
+    stored = storedAppIdentifier(text, platform)
+  } catch (error) {
+    throw new GodotExportError(`${(error as Error).message}. Set it to one, or remove the line to let the next export choose one.`)
+  }
+  if (stored !== undefined) return stored
+  const chosen = await earlierBuild() ? nameIdentifier(platform, name ?? '') : newAppIdentifier(platform, name ?? '')
+  await writeProjectFile(projectPath, withAppIdentifier(text, platform, chosen))
+  return chosen
+}
+
+/**
+ * Whether a folder holds an entry whose name ends with `suffix`, such as an earlier export's build.
+ * @param directory - the folder.
+ * @param suffix - the ending, such as `.apk`.
+ * @returns false also when the folder does not exist.
+ */
+async function holdsEntry(directory: string, suffix: string): Promise<boolean> {
+  try {
+    return (await readdir(directory)).some(entry => entry.endsWith(suffix))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ENOTDIR') return false
+    throw error
+  }
+}
+
+/**
  * Run one desktop or mobile export with a preset of WASD Engine's. Exports writing to one output folder run one at a
  * time, across Hosts too. While it runs, the export turns on the import of the platform's VRAM compression formats in
  * `project.godot` and, for a project without a boot splash image of its own, names WASD Engine's ({@link wasdSplash})
  * at {@link EXPORT_SPLASH_PATH} as the boot splash. Afterwards it deletes that image and restores `project.godot`, also
- * when the file changed meanwhile, in which case only those settings return to their earlier values.
+ * when the file changed meanwhile, in which case only those settings return to their earlier values. The app identifier
+ * that the plan's platform gets ({@link projectAppIdentifier}) stays in `project.godot`.
  * @param options - process parameters, project, template, and output folder.
  * @param plan - the preset, the formats, and where the build goes.
  * @returns the build.
- * @throws {GodotExportError} when the process ends without writing the build.
+ * @throws {GodotExportError} when the process ends without writing the build, or when `project.godot` keeps an app
+ * identifier that the platform does not accept.
  */
 async function runPackagedExport(options: ExportOptions, plan: PackagedExportPlan): Promise<PackagedExportOutcome> {
   requireOwnOutputDir(options.projectDir, options.outputDir)
@@ -1214,6 +1259,10 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
   const target = plan.target(name)
   await mkdir(options.outputDir, { recursive: true })
   return await withFileLock(options.outputDir, async () => {
+    const planned = plan.identifier
+    const identifier = planned === undefined
+      ? undefined
+      : await projectAppIdentifier(projectPath, name, planned.platform, () => planned.earlierBuild(options.outputDir))
     await rm(options.outputDir, { recursive: true, force: true })
     await mkdir(options.outputDir, { recursive: true })
     const presetsPath = join(options.projectDir, PRESETS_FILE)
@@ -1226,7 +1275,7 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
     let stdout: string
     let stderr: string
     let ended: string
-    const writtenPresets = plan.presets(originalPresets?.toString('utf8'), name)
+    const writtenPresets = plan.presets(originalPresets?.toString('utf8'), name, identifier)
     await writeRestoreRecord(options.restoreDir, {
       format: 1, projectDir: options.projectDir, preset: plan.preset,
       presets: { original: originalPresets?.toString('base64') ?? null, written: writtenPresets },
@@ -1280,6 +1329,7 @@ async function runPackagedExport(options: ExportOptions, plan: PackagedExportPla
     const warnings = [...new Set(lines.filter(line => line.startsWith('WARNING:')).map(line => line.slice('WARNING:'.length).trim()))]
     return {
       name,
+      identifier,
       entry: target.entry,
       bytes: entry.isFile() ? entry.size : await folderBytes(options.outputDir),
       warnings: [...blenderNote === undefined ? [] : [blenderNote], ...warnings].slice(0, EXPORT_WARNINGS),
@@ -1299,7 +1349,10 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
     preset: DESKTOP_EXPORT_PRESETS[options.platform],
     label: PLATFORM_NAMES[options.platform],
     formats: DESKTOP_TEXTURE_FORMATS[options.platform],
-    presets: (original, name) => withDesktopPreset(original, options.platform, options.template, name ?? desktopFileName(name)),
+    presets: (original, name, identifier) => withDesktopPreset(
+      original, options.platform, options.template, name ?? desktopFileName(name), identifier,
+    ),
+    ...options.platform === 'macos' ? { identifier: { platform: 'macos', earlierBuild: dir => holdsEntry(dir, '.zip') } as const } : {},
     target: (name) => {
       const file = `${desktopFileName(name)}.zip`
       return { path: file, entry: file, required: file }
@@ -1311,7 +1364,8 @@ export async function exportDesktop(options: DesktopExportOptions): Promise<Godo
 /**
  * Export a project for one mobile platform, as {@link runPackagedExport} runs an export: for Android, one signed APK
  * file named after the game, whose version code counts minutes ({@link androidVersionCode}); for iOS, an Xcode project
- * named {@link iosBinaryName} with the files it builds from. Both take their identifiers from the game's name.
+ * named {@link iosBinaryName} with the files it builds from. Each carries the identifier that the project keeps for its
+ * platform ({@link projectAppIdentifier}).
  * @param options - process parameters, project, platform, template, output folder, and the platform's signing.
  * @returns the build.
  * @throws {GodotExportError} when the process ends without writing the APK file or the Xcode project.
@@ -1324,9 +1378,10 @@ export async function exportMobile(options: MobileExportOptions): Promise<GodotM
   }
   if (options.platform === 'android') {
     const versionCode = androidVersionCode(options.now)
-    const { name, entry, bytes, warnings } = await runPackagedExport(options, {
+    const { identifier, entry, bytes, warnings } = await runPackagedExport(options, {
       ...common,
-      presets: (original, game) => withMobilePreset(original, options.template, { platform: 'android', packageName: androidPackageName(game ?? ''), versionCode }),
+      identifier: { platform: 'android', earlierBuild: dir => holdsEntry(dir, '.apk') },
+      presets: (original, game, packageName) => withMobilePreset(original, options.template, { platform: 'android', packageName: packageName ?? nameIdentifier('android', game ?? ''), versionCode }),
       target: (game) => {
         const file = `${desktopFileName(game)}.apk`
         return { path: file, entry: file, required: file }
@@ -1334,15 +1389,16 @@ export async function exportMobile(options: MobileExportOptions): Promise<GodotM
       env: options.env,
     })
     return {
-      projectDir: options.projectDir, platform: 'android', outputDir: options.outputDir, entry, bytes, identifier: androidPackageName(name ?? ''),
+      projectDir: options.projectDir, platform: 'android', outputDir: options.outputDir, entry, bytes, identifier: identifier as string,
       signing: { keystore: options.keystore, created: options.keystoreCreated }, warnings,
     }
   }
   const team = options.appleTeamId
-  const { name, entry, bytes, warnings } = await runPackagedExport(options, {
+  const { identifier, entry, bytes, warnings } = await runPackagedExport(options, {
     ...common,
-    presets: (original, game) => withMobilePreset(original, options.template, {
-      platform: 'ios', bundleIdentifier: bundleIdentifier(game ?? ''), teamId: team ?? UNSET_TEAM_ID,
+    identifier: { platform: 'ios', earlierBuild: dir => holdsEntry(dir, '.xcodeproj') },
+    presets: (original, game, bundle) => withMobilePreset(original, options.template, {
+      platform: 'ios', bundleIdentifier: bundle ?? nameIdentifier('ios', game ?? ''), teamId: team ?? UNSET_TEAM_ID,
     }),
     target: (game) => {
       const binary = iosBinaryName(game)
@@ -1352,7 +1408,7 @@ export async function exportMobile(options: MobileExportOptions): Promise<GodotM
     ...team === undefined ? { finish: target => removeTeam(options.outputDir, target.entry.slice(0, -'.xcodeproj'.length), UNSET_TEAM_ID) } : {},
   })
   return {
-    projectDir: options.projectDir, platform: 'ios', outputDir: options.outputDir, entry, bytes, identifier: bundleIdentifier(name ?? ''),
+    projectDir: options.projectDir, platform: 'ios', outputDir: options.outputDir, entry, bytes, identifier: identifier as string,
     ...team === undefined ? {} : { appleTeamId: team }, warnings: warnings.filter(warning => warning !== IOS_SPLASH_SETTING_WARNING),
   }
 }

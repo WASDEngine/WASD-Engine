@@ -12,10 +12,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { GodotDesktopExport, GodotDesktopPlatform, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { ReleaseFolders } from '../src/folders.ts'
 import { PREVIEW_DIR } from '../src/preview.ts'
+import { accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView } from '../src/game-link.ts'
 import {
-  accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView, releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal,
-  type ReleaseDependencies, type SiteAccess,
+  releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal, type ReleaseDependencies,
 } from '../src/release.ts'
+import type { SiteAccess } from '../src/site-client.ts'
 
 const ORIGIN = 'https://site.test'
 const ACCESS: SiteAccess = { origin: ORIGIN, token: 'wasd_token', account: 'account-1' }

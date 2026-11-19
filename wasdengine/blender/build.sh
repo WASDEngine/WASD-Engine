@@ -37,31 +37,8 @@ blender_commit=e13b728c6880d3084d9d57c30031ed5df8b39dee
 minimum_macos=13.0
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-
-log() { printf 'build.sh: %s\n' "$*" >&2; }
-die() {
-  printf 'build.sh: error: %s\n' "$*" >&2
-  exit 1
-}
-usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"; }
-
-cleanup_paths=()
-# shellcheck disable=SC2317 # Invoked by the EXIT trap.
-cleanup() {
-  local path
-  for path in ${cleanup_paths[@]+"${cleanup_paths[@]}"}; do
-    rm -rf -- "$path"
-  done
-}
-trap cleanup EXIT
-
-# Prints the value of option $1 from "$@", or fails when it is missing.
-option_value() {
-  if [ "$#" -lt 2 ] || [ -z "$2" ]; then
-    die "$1 needs a value; run with --help for usage"
-  fi
-  printf '%s' "$2"
-}
+# shellcheck source=../lib.sh
+source "$script_dir/../lib.sh"
 
 out_dir=
 key=darwin-arm64
@@ -116,12 +93,6 @@ case "$key" in
 esac
 python_name=cpython-$python_version+$python_release-$triple-install_only_stripped.tar.gz
 python_url=$python_url_base/cpython-$python_version%2B$python_release-$triple-install_only_stripped.tar.gz
-
-# Creates directory $1 when missing and prints its absolute physical path.
-absolute_dir() {
-  mkdir -p -- "$1" || die "cannot create directory $1"
-  (cd -- "$1" && pwd -P)
-}
 
 tools=(curl tar)
 if [ "$platform" = darwin ]; then

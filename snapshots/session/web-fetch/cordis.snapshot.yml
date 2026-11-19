@@ -20,6 +20,8 @@
 
 - id: web
   name: '@deepseek-ai/dsh-web'
+  config:
+    fetchProvider: http
 
 - id: web-fetch-http
   name: '@deepseek-ai/dsh-web-fetch-http'

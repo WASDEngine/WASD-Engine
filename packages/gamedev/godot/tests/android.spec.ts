@@ -3,7 +3,7 @@ import { chmod, mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { delimiter, join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  ANDROID_KEY_FILE, ANDROID_KEYSTORE_FILE, androidExportEnvironment, androidPackageName, ensureAndroidKeystore, findAndroidToolchain,
+  ANDROID_KEY_FILE, ANDROID_KEYSTORE_FILE, androidExportEnvironment, ensureAndroidKeystore, findAndroidToolchain,
   GodotAndroidToolchainError, javaCandidates, sdkCandidates, type AndroidKeystoreOptions,
 } from '../src/android.ts'
 import { scratch, subprocessFixture, type Scratch, type SubprocessFixture } from './helpers.ts'
@@ -36,23 +36,6 @@ async function windowsSdk(folder: string, buildTools: readonly string[] = ['36.0
   for (const version of buildTools) await touch(join(folder, 'build-tools', version, 'apksigner.bat'))
   return folder
 }
-
-describe('androidPackageName', () => {
-  it('makes a package name Android takes from any game name', () => {
-    expect(androidPackageName('Tiny Farm')).toBe('com.wasdengine.game.tiny_farm')
-    expect(androidPackageName('  Café -- Crème!  ')).toBe('com.wasdengine.game.cafe_creme')
-    expect(androidPackageName('3D Racer')).toBe('com.wasdengine.game.game_3d_racer')
-    expect(androidPackageName('🚀 !!')).toBe('com.wasdengine.game.game')
-  })
-
-  it('gives games whose names differ only in letters without an ASCII form different package names', () => {
-    expect(androidPackageName('游戏')).toBe('com.wasdengine.game.game_847c5f68')
-    expect(androidPackageName(' 游戏 ')).toBe('com.wasdengine.game.game_847c5f68')
-    expect(androidPackageName('Space 射击')).toBe('com.wasdengine.game.space_5ef2fcce')
-    expect(androidPackageName('Space 冒险')).toBe('com.wasdengine.game.space_2b34eb87')
-    expect(androidPackageName('Привет мир')).toBe('com.wasdengine.game.game_830d1964')
-  })
-})
 
 describe('sdkCandidates and javaCandidates', () => {
   it('tries the SDK environment variables first, then where Android Studio installs the SDK', () => {

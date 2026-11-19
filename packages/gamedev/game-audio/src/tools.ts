@@ -7,9 +7,8 @@
  * model, or agents connected through WASD Engine's MCP server, whose picture travels as image bytes.
  * @module @deepseek-ai/dsh-game-audio/src/tools
  */
-import type { Stats } from 'node:fs'
-import { stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
+/* jscpd:ignore-start -- the asset tools import the same harness packages. */
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -17,6 +16,7 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
+/* jscpd:ignore-end */
 import { AUDIO_CATEGORIES, audioCategoryOf, audioFormatOf, type AudioCategory } from './audio/formats.ts'
 import type { AudioProbe } from './audio/probe.ts'
 import { describeReview, describeSearch, type ListedFolder, type ListedSound } from './describe.ts'
@@ -26,7 +26,9 @@ import { playedLoop } from './loop.ts'
 import { parseReviewJson } from './result.ts'
 import { NAME_ORDER, scanSounds, type SoundFile, type SoundScanLimits } from './scan.ts'
 import type { AudioMeasureRequest, AudioMeasureResult, AudioPicture, AudioReveal } from './types.ts'
-
+import {
+  ATTACHED_IMAGE_SCHEMA, checkedInteger as integerWithin, folderRows, pathFolder, pathName, pathWithin, statOf, windowPath,
+} from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** The message of an `audio_review` call that no window answered. */
 export const NO_WINDOW_MESSAGE = 'No WASD Engine window is open to decode the sound. Ask the user to open WASD Engine\'s window, then call audio_review again.'
@@ -147,20 +149,6 @@ const SEARCH_SCHEMA = {
   },
 } as const
 
-const IMAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    attachmentId: STRING,
-    mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-    bytes: INTEGER,
-    width: INTEGER,
-    height: INTEGER,
-    name: { type: 'string' },
-    originalDimensions: { type: 'object', additionalProperties: false, properties: { width: INTEGER, height: INTEGER } },
-  },
-} as const
-
 const REVIEW_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -173,7 +161,7 @@ const REVIEW_SCHEMA = {
     godot: { type: 'json', description: 'How Godot imports the sound.' },
     measurements: { type: 'json', required: true, description: 'What the window measured.' },
     picture: { type: 'json', description: 'The layout of the waveform and spectrogram picture.' },
-    images: { type: 'array', required: true, items: IMAGE_SCHEMA },
+    images: { type: 'array', required: true, items: ATTACHED_IMAGE_SCHEMA },
     pictureOmitted: { type: 'boolean', description: 'The caller\'s model does not accept images, so no picture was drawn.' },
     shown: BOOLEAN,
   },
@@ -190,9 +178,7 @@ function fail(message: string, code: string): never {
 }
 
 function checkedInteger(value: number | undefined, fallback: number, name: string, min: number, max: number): number {
-  const chosen = value ?? fallback
-  if (!Number.isInteger(chosen) || chosen < min || chosen > max) fail(`${name} must be an integer from ${String(min)} to ${String(max)}.`, AUDIO_ERROR.argument)
-  return chosen
+  return integerWithin(value, fallback, name, min, max, message => fail(message, AUDIO_ERROR.argument))
 }
 
 /**
@@ -204,34 +190,9 @@ function checkedInteger(value: number | undefined, fallback: number, name: strin
  */
 export function insideProject(project: string, path: string): { readonly absolute: string; readonly path: string } {
   const absolute = resolve(project, path.trim())
-  const steps = relative(project, absolute)
-  const outside = steps === '..' || steps.startsWith(`..${sep}`) || isAbsolute(steps)
-  if (outside) fail(`${path} is not inside the project folder ${project}.`, AUDIO_ERROR.outside)
-  return { absolute, path: steps.split(sep).join('/') }
-}
-
-/**
- * The path a window reads a sound at. The window resolves a Session's relative paths against the folder in the
- * Session's header, which stays the project folder when an agent's working directory moves below it, as after a
- * `working_directory` change or for a subagent started in a subfolder.
- * @param root - the folder in the Session's header, or undefined when the header has none.
- * @param absolute - absolute path of the sound.
- * @returns the `/`-separated path relative to `root` for a sound inside it, and the absolute path otherwise.
- */
-export function windowPath(root: string | undefined, absolute: string): string {
-  if (root === undefined) return absolute
-  const inside = relative(root, absolute)
-  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return absolute
-  return inside.split(sep).join('/')
-}
-
-function folderOf(path: string): string {
-  const slash = path.lastIndexOf('/')
-  return slash < 0 ? '' : path.slice(0, slash)
-}
-
-function nameOf(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
+  const inside = pathWithin(project, absolute)
+  if (inside === undefined) fail(`${path} is not inside the project folder ${project}.`, AUDIO_ERROR.outside)
+  return { absolute, path: inside }
 }
 
 /**
@@ -244,7 +205,7 @@ function nameOf(path: string): string {
 function rankSounds(sounds: readonly ListedSound[], query: string): ListedSound[] {
   const rank = (sound: ListedSound): number => {
     const path = sound.path.toLowerCase()
-    const name = nameOf(path)
+    const name = pathName(path)
     if (name.startsWith(query)) return 0
     if (name.includes(query)) return 1
     if (path.includes(query)) return 2
@@ -265,15 +226,6 @@ function emptyCounts(): Record<AudioCategory, number> {
 
 function asJson(value: object): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue
-}
-
-async function statOf(path: string): Promise<Stats | undefined> {
-  try {
-    return await stat(path)
-  } catch {
-    // ENOENT, ENOTDIR, or EACCES: nothing readable at the path.
-    return undefined
-  }
 }
 
 function renderReview(value: ReviewValue): ContentBlock[] {
@@ -368,15 +320,12 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
       const byFolder = new Map<string, Record<AudioCategory, number>>()
       for (const sound of matching) {
         counts[sound.kind] += 1
-        const key = folderOf(sound.path)
+        const key = pathFolder(sound.path)
         const entry = byFolder.get(key) ?? emptyCounts()
         entry[sound.kind] += 1
         byFolder.set(key, entry)
       }
-      const folders: ListedFolder[] = [...byFolder.entries()]
-        .sort(([left], [right]) => NAME_ORDER.compare(left, right))
-        .slice(0, LISTED_FOLDERS)
-        .map(([path, entry]) => ({ path, ...entry }))
+      const folders: ListedFolder[] = folderRows(byFolder, NAME_ORDER, LISTED_FOLDERS)
       return {
         project,
         query,
@@ -443,7 +392,7 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
         if (sent === target.path || !(error instanceof HarnessError)) throw error
         throw new HarnessError(error.message.replaceAll(sent, target.path), error.code, { cause: error })
       }
-      const kept = answer.picture === undefined ? [] : await surface.keep(exec, answer.picture, nameOf(target.path))
+      const kept = answer.picture === undefined ? [] : await surface.keep(exec, answer.picture, pathName(target.path))
       const { category, source } = audioCategoryOf(target.path, answer.measurements.seconds)
       const shown = args.show === true
       if (shown) {
@@ -466,3 +415,5 @@ export function audioToolDefinitions(host: AudioToolHost, surface: AudioToolSurf
     },
   })]
 }
+
+export { windowPath }

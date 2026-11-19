@@ -17,7 +17,7 @@
  * plus its `WASD_*` entries.
  * @module @deepseek-ai/dsh-wasd-plugins/src/library-process
  */
-import { execFile, spawn } from 'node:child_process'
+import { execFile, spawn, type ExecFileOptions } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -73,18 +73,28 @@ export function unpackCommand(
  */
 export function systemUnpack(system: NodeJS.Platform): (archive: string, folder: string, signal: AbortSignal) => Promise<void> {
   const command = unpackCommand(system, process.env)
-  return (archive, folder, signal) => new Promise((resolve, reject) => {
-    if (command === undefined) {
-      reject(new Error('this system has no ZIP tool the library uses'))
-      return
-    }
+  return async (archive, folder, signal) => {
+    if (command === undefined) throw new Error('this system has no ZIP tool the library uses')
     const [program, args] = command(archive, folder)
-    execFile(program, [...args], { signal, windowsHide: true, maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => {
+    await runToEnd(program, args, { signal, windowsHide: true })
+  }
+}
+
+/**
+ * Run a program to its end.
+ * @param program - the program.
+ * @param args - its arguments.
+ * @param options - how it runs.
+ * @throws {Error} when it fails, with the end of what it wrote to standard error, else with why it failed.
+ */
+function runToEnd(program: string, args: readonly string[], options: ExecFileOptions): Promise<void> {
+  return new Promise((resolve, reject) => {
+    execFile(program, [...args], { ...options, maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error === null) {
         resolve()
         return
       }
-      const output = stderr.trim().slice(-MAX_ERROR_OUTPUT)
+      const output = String(stderr).trim().slice(-MAX_ERROR_OUTPUT)
       reject(new Error(output === '' ? error.message : output))
     })
   })
@@ -152,19 +162,10 @@ async function openApplication(command: GameCommand): Promise<void> {
 }
 
 /** Run `open` for a macOS game whose entries the caller chose. */
-function openWith(command: GameCommand): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const [program, args] = macosOpen(command)
-    // `open` hands the game its own environment, so it gets none, and the game gets the user session's from launchd.
-    execFile(program, [...args], { cwd: command.cwd, env: {}, maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => {
-      if (error === null) {
-        resolve()
-        return
-      }
-      const output = stderr.trim().slice(-MAX_ERROR_OUTPUT)
-      reject(new Error(output === '' ? error.message : output))
-    })
-  })
+async function openWith(command: GameCommand): Promise<void> {
+  const [program, args] = macosOpen(command)
+  // `open` hands the game its own environment, so it gets none, and the game gets the user session's from launchd.
+  await runToEnd(program, args, { cwd: command.cwd, env: {} })
 }
 
 /** Start a Windows game detached from the app's process, without standard streams. */

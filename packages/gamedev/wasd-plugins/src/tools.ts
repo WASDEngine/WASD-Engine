@@ -195,6 +195,19 @@ const NUMBER = { type: 'number', required: true } as const
 const BOOLEAN = { type: 'boolean', required: true } as const
 const WARNINGS = { type: 'array', required: true, items: { type: 'string' } } as const
 
+/**
+ * The builds of an export tool's output: one per platform, with its file and size, and `more` fields.
+ * @param more - the fields a platform's build adds.
+ * @returns the schema of the builds.
+ */
+function buildsSchema<P extends Record<string, unknown>>(more: P) {
+  return {
+    type: 'array',
+    required: true,
+    items: { type: 'object', additionalProperties: false, properties: { platform: STRING, file: STRING, bytes: INTEGER, ...more } },
+  } as const
+}
+
 const PROJECT = {
   type: 'string',
   description: 'Folder containing project.godot, relative to the working directory. Default: the nearest one.',
@@ -571,7 +584,7 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
         additionalProperties: false,
         properties: {
           projectDir: STRING,
-          builds: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, file: STRING, bytes: INTEGER } } },
+          builds: buildsSchema({}),
           warnings: WARNINGS,
         },
       },
@@ -604,18 +617,9 @@ export function wasdToolDefinitions(host: WasdToolHost, lengths: PreviewLengths,
         additionalProperties: false,
         properties: {
           projectDir: STRING,
-          builds: {
-            type: 'array',
-            required: true,
-            items: {
-              type: 'object',
-              additionalProperties: false,
-              properties: {
-                platform: STRING, file: STRING, bytes: INTEGER, identifier: STRING,
-                keystore: { type: 'string' }, keystoreCreated: { type: 'boolean' }, appleTeamId: { type: 'string' },
-              },
-            },
-          },
+          builds: buildsSchema({
+            identifier: STRING, keystore: { type: 'string' }, keystoreCreated: { type: 'boolean' }, appleTeamId: { type: 'string' },
+          }),
           failures: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: { platform: STRING, error: STRING } } },
           warnings: WARNINGS,
         },

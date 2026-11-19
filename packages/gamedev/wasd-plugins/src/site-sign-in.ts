@@ -7,7 +7,7 @@
  * @module @deepseek-ai/dsh-wasd-plugins/src/site-sign-in
  */
 import { z } from 'zod'
-import type { SiteAccess } from './release.ts'
+import { SiteClient, type SiteAccess } from './site-client.ts'
 
 /** The site's answer: the link and when it stops working. */
 const LinkJson = z.object({ url: z.string(), expires_at: z.string() })
@@ -28,13 +28,8 @@ export async function signInLink(
   access: SiteAccess, next: string, fetchUrl: typeof fetch, signal: AbortSignal,
 ): Promise<string | undefined> {
   if (!SITE_PATH.test(next)) throw new Error('A sign-in link opens only a path on the WASD Engine site.')
-  const response = await fetchUrl(new URL('/api/v1/app/sign-in-links', access.origin), {
-    method: 'POST',
-    redirect: 'error',
-    signal,
-    headers: { 'x-dsh-auth-token': access.token, 'content-type': 'application/json' },
-    body: JSON.stringify({ next }),
-  })
+  const site = new SiteClient(access, fetchUrl, signal, { error: message => new Error(message), again: 'open the page again' })
+  const response = await site.call('POST', '/api/v1/app/sign-in-links', { data: JSON.stringify({ next }), type: 'application/json' })
   if (response.status === 401) {
     await response.body?.cancel()
     return undefined

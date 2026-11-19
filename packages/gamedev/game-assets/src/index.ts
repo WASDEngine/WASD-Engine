@@ -20,7 +20,7 @@ import type {} from '@deepseek-ai/dsh-api-gateway'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import type {} from '@deepseek-ai/dsh-fs'
-import type {} from '@deepseek-ai/dsh-game-mcp'
+import { modelSeesImages } from '@deepseek-ai/dsh-game-mcp/kit'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
@@ -77,14 +77,7 @@ export const Config: z<Partial<Config>, Config> = z.object({
  */
 function sessionImages(ctx: Context): AssetToolSurface {
   return {
-    async seesImages(exec) {
-      const attachments = ctx.get('attachments')
-      const llm = ctx.get('llm')
-      const route = exec.agent?.model.current()
-      if (attachments === undefined || llm === undefined || route === undefined) return false
-      const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-      return info.inputModalities?.includes('image') === true
-    },
+    seesImages: exec => modelSeesImages(ctx, exec),
     async keep(_exec, images, imageName) {
       const attachments = ctx.get('attachments')
       if (attachments === undefined) return []

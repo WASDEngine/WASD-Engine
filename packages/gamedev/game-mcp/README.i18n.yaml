@@ -41,6 +41,9 @@
 /deepseek-ai-dsh-game-mcp/use-this-package/provide-tools:
   en: e0d04b290fb5bae5
   zh: 70741adf369e6e27
+/deepseek-ai-dsh-game-mcp/use-this-package/helpers-for-game-tool-plugins:
+  en: a9c97c181fdc8886
+  zh: 7a92cd76659074f4
 /deepseek-ai-dsh-game-mcp/use-this-package/long-calls:
   en: 657bca21a4f7cded
   zh: 1fea7f3492ad2621
@@ -51,8 +54,8 @@
   en: 5c11d33b621e3440
   zh: c303cecee1118abd
 /deepseek-ai-dsh-game-mcp/understand-the-implementation:
-  en: f2e53216283a10e4
-  zh: 90ddab1702e94b64
+  en: 3fbc189e5747e60d
+  zh: 24964f7bbe5642ff
 /deepseek-ai-dsh-game-mcp/further-exploration:
   en: 1a07bf592f9be374
   zh: 51ba9e326a697e4f

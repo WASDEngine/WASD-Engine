@@ -12876,6 +12876,9 @@ importers:
 
   packages/gamedev/game-addons:
     dependencies:
+      '@deepseek-ai/dsh-app-mcp':
+        specifier: workspace:*
+        version: link:../app-mcp
       '@deepseek-ai/dsh-atomic-write':
         specifier: workspace:*
         version: link:../../util/atomic-write
@@ -12916,9 +12919,6 @@ importers:
       '@deepseek-ai/dsh-api-workspace-controller':
         specifier: workspace:*
         version: link:../../api/workspace-controller
-      '@deepseek-ai/dsh-app-mcp':
-        specifier: workspace:*
-        version: link:../app-mcp
       '@deepseek-ai/dsh-blender':
         specifier: workspace:*
         version: link:../blender
@@ -13814,6 +13814,9 @@ importers:
       '@deepseek-ai/dsh-client-test-runtime':
         specifier: workspace:*
         version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-game-assets':
+        specifier: workspace:*
+        version: link:../ui-game-assets
       '@deepseek-ai/dsh-client-ui-primitives':
         specifier: workspace:*
         version: link:../../client/ui-primitives
@@ -13985,6 +13988,9 @@ importers:
       '@deepseek-ai/dsh-brand':
         specifier: workspace:*
         version: link:../../util/brand
+      '@deepseek-ai/dsh-game-mcp':
+        specifier: workspace:*
+        version: link:../game-mcp
       '@deepseek-ai/dsh-lazy-require':
         specifier: workspace:*
         version: link:../../util/lazy-require
@@ -14076,9 +14082,6 @@ importers:
       '@deepseek-ai/dsh-deepseek-account':
         specifier: workspace:*
         version: link:../../credentials/deepseek-account
-      '@deepseek-ai/dsh-game-mcp':
-        specifier: workspace:*
-        version: link:../game-mcp
       '@deepseek-ai/dsh-godot':
         specifier: workspace:*
         version: link:../godot

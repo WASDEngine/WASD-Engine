@@ -78,7 +78,7 @@ The tab adds no Host service: it lists the workspace with `workspaceFiles.list`,
 | [`src/client/SoundList.tsx`](src/client/SoundList.tsx) | The list with its folder headings and keyboard movement |
 | [`src/client/SoundPlayer.tsx`](src/client/SoundPlayer.tsx) | Reading and decoding the selected sound, the waveform, the controls, and the details |
 | [`src/client/source.ts`](src/client/source.ts) | One Session's walk, header probes, and choices |
-| [`src/client/scan.ts`](src/client/scan.ts) | The workspace walk |
+| [`src/client/scan.ts`](src/client/scan.ts) | The sound walk over the Assets tab's project walk (`@deepseek-ai/dsh-client-ui-game-assets/client/project-tab`), which also gives the walk state, the Sessions' states, the reveal, and the file re-reads |
 | [`src/client/rows.ts`](src/client/rows.ts) | The list rows: kinds, filter, search, folders, and arrow movement |
 | [`src/client/read.ts`](src/client/read.ts) | Complete and windowed reads |
 | [`src/client/decode.ts`](src/client/decode.ts) | Decoding, the measurements, and the picture |

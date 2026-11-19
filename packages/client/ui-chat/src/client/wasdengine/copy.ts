@@ -4,6 +4,7 @@
  * restart closed name WASD Engine instead of DeepSeek or DSH, and the Chinese running status of every
  * Turn does not use DeepSeek's Chinese company name.
  */
+import { brandDictionaries } from '@deepseek-ai/dsh-client-locale/brand'
 import { WASDENGINE_CHAT_COPY } from './locales.ts'
 
 /**
@@ -15,16 +16,5 @@ import { WASDENGINE_CHAT_COPY } from './locales.ts'
  * @throws when a language has no failure copy, or the copy names a message its dictionary lacks.
  */
 export function brandChatDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    const overrides = WASDENGINE_CHAT_COPY[language]
-    if (overrides === undefined) throw new Error(`WASD Engine chat copy: ${language} has no failure copy`)
-    const copy: Record<string, string> = { ...messages }
-    for (const [key, message] of Object.entries(overrides)) {
-      if (!(key in copy)) throw new Error(`WASD Engine chat copy: ${language} has no message ${key}`)
-      copy[key] = message
-    }
-    branded[language] = copy
-  }
-  return branded as T
+  return brandDictionaries('chat', dictionaries, { copy: WASDENGINE_CHAT_COPY, requiredCopy: 'failure copy' })
 }

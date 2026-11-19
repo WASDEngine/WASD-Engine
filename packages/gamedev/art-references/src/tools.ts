@@ -18,6 +18,7 @@ import { modelCopy, UnreadableImage, type FramesLayout } from './images.ts'
 import { parseWebUrl, WebRequestError } from './net.ts'
 import { prepareReference, saveReferences, subjectFolder, REFERENCES_FOLDER, type PreparedReference } from './save.ts'
 import type { ModelImage, ReferenceImageInfo } from './types.ts'
+import { ATTACHED_IMAGE_SCHEMA } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** Longest search query. */
 export const MAX_QUERY_CHARACTERS = 200
@@ -81,20 +82,6 @@ export interface ReferenceToolSurface {
 const STRING = { type: 'string', required: true } as const
 const INTEGER = { type: 'integer', required: true } as const
 
-const IMAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    attachmentId: STRING,
-    mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-    bytes: INTEGER,
-    width: INTEGER,
-    height: INTEGER,
-    name: { type: 'string' },
-    originalDimensions: { type: 'object', additionalProperties: false, properties: { width: INTEGER, height: INTEGER } },
-  },
-} as const
-
 const FORMAT = { type: 'string', enum: ['png', 'jpeg', 'webp', 'gif', 'avif'], required: true } as const
 
 const CANDIDATE_SCHEMA = {
@@ -127,7 +114,7 @@ const SEARCH_SCHEMA = {
     pagesRead: INTEGER,
     unusable: INTEGER,
     duplicates: INTEGER,
-    images: { type: 'array', required: true, items: IMAGE_SCHEMA },
+    images: { type: 'array', required: true, items: ATTACHED_IMAGE_SCHEMA },
     imagesOmitted: { type: 'boolean', description: 'The caller\'s model does not accept images, so the sheet was not attached.' },
   },
 } as const
@@ -166,7 +153,7 @@ const SAVE_SCHEMA = {
       required: true,
       items: { type: 'object', additionalProperties: false, properties: { image: STRING, reason: STRING } },
     },
-    images: { type: 'array', required: true, items: IMAGE_SCHEMA },
+    images: { type: 'array', required: true, items: ATTACHED_IMAGE_SCHEMA },
     imagesOmitted: { type: 'boolean' },
   },
 } as const

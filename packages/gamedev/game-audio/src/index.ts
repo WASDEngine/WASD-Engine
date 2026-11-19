@@ -17,7 +17,7 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 import { scopeTarget } from '@deepseek-ai/dsh-scope'
 import { deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-attachment'
-import type {} from '@deepseek-ai/dsh-game-mcp'
+import { modelSeesImages } from '@deepseek-ai/dsh-game-mcp/kit'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
@@ -163,14 +163,7 @@ function isSubagentTrees(service: unknown): service is SubagentTrees {
  */
 function sessionPictures(ctx: Context): AudioToolSurface {
   return {
-    async seesImages(exec) {
-      const attachments = ctx.get('attachments')
-      const llm = ctx.get('llm')
-      const route = exec.agent?.model.current()
-      if (attachments === undefined || llm === undefined || route === undefined) return false
-      const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-      return info.inputModalities?.includes('image') === true
-    },
+    seesImages: exec => modelSeesImages(ctx, exec),
     async keep(_exec, picture, imageName) {
       const attachments = ctx.get('attachments')
       if (attachments === undefined) return []

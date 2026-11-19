@@ -51,6 +51,9 @@
     },
     {
       "path": "../godot/tsconfig.host.json"
+    },
+    {
+      "path": "../app-mcp"
     }
   ]
 }

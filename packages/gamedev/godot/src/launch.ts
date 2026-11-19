@@ -145,12 +145,13 @@ export interface ProjectWindow {
 const DISPLAY_DEFAULTS = { viewportWidth: 1152, viewportHeight: 648, stretch: 'disabled' } as const
 
 /**
- * Read the window settings from `project.godot` text, with Godot's defaults for absent ones.
+ * The settings of one section of `project.godot` text.
  * @param text - complete file content.
- * @returns the window size and stretch mode a run without a window size starts with.
+ * @param name - the section, such as `display`.
+ * @yields each setting's key and its raw value text after `=`.
+ * @returns the settings, in file order.
  */
-export function parseProjectWindow(text: string): ProjectWindow {
-  const values = new Map<string, string>()
+export function* sectionSettings(text: string, name: string): Generator<readonly [string, string]> {
   let section = ''
   for (const raw of text.split(/\r?\n/u)) {
     const line = raw.trim()
@@ -160,8 +161,17 @@ export function parseProjectWindow(text: string): ProjectWindow {
       continue
     }
     const separator = line.indexOf('=')
-    if (section === 'display' && separator >= 0) values.set(line.slice(0, separator).trim(), line.slice(separator + 1).trim())
+    if (section === name && separator >= 0) yield [line.slice(0, separator).trim(), line.slice(separator + 1).trim()]
   }
+}
+
+/**
+ * Read the window settings from `project.godot` text, with Godot's defaults for absent ones.
+ * @param text - complete file content.
+ * @returns the window size and stretch mode a run without a window size starts with.
+ */
+export function parseProjectWindow(text: string): ProjectWindow {
+  const values = new Map<string, string>(sectionSettings(text, 'display'))
   const integer = (key: string, fallback: number): number => {
     const value = Number(values.get(key))
     return Number.isInteger(value) && value > 0 ? value : fallback

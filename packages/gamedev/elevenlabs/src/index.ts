@@ -10,16 +10,15 @@
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  * @module @deepseek-ai/dsh-elevenlabs
  */
-import { isAbsolute, resolve } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
-import type {} from '@deepseek-ai/dsh-game-mcp'
+import { accountAccess, gatewayOrigin, sessionFiles } from '@deepseek-ai/dsh-game-mcp/kit'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-user-approval'
 import type {} from '@deepseek-ai/dsh-working-directory'
-import { AudioApi, type AudioAccess } from './api.ts'
+import { AudioApi } from './api.ts'
 import { consentPrompt } from './consent.ts'
 import { elevenLabsMcpProvider } from './mcp.ts'
 import { elevenLabsToolDefinitions, type CloneConsent, type ElevenLabsToolHost, type ElevenLabsToolSurface } from './tools.ts'
@@ -91,19 +90,11 @@ function sessionSurface(ctx: Context): ElevenLabsToolSurface {
  * @throws Error when `apiOrigin` is not an HTTP or HTTPS origin.
  */
 export function apply(ctx: Context, config: Config): void {
-  const origin = URL.canParse(config.apiOrigin) ? new URL(config.apiOrigin) : undefined
-  if (origin === undefined || !['http:', 'https:'].includes(origin.protocol) || origin.origin !== config.apiOrigin.replace(/\/$/u, '')) {
-    throw new Error(`ElevenLabs plugin: apiOrigin must be an HTTP or HTTPS origin without a path, got ${JSON.stringify(config.apiOrigin)}.`)
-  }
+  const apiOrigin = gatewayOrigin(config.apiOrigin, 'ElevenLabs')
   const api = new AudioApi({
-    apiOrigin: origin.origin,
+    apiOrigin,
     fetch: (input, init) => fetch(input, init),
-    async access(url): Promise<AudioAccess | undefined> {
-      const account = ctx.get('deepseekAccount')
-      const token = await account?.resolveToken(url)
-      if (account === undefined || token === undefined || token === '') return undefined
-      return { token, reject: () => account.rejectToken(token) }
-    },
+    access: accountAccess(ctx),
   })
   const host: ElevenLabsToolHost = {
     api,
@@ -111,13 +102,7 @@ export function apply(ctx: Context, config: Config): void {
     searchTimeoutMs: config.searchTimeoutMs,
     generationTimeoutMs: config.generationTimeoutMs,
     musicTimeoutMs: config.musicTimeoutMs,
-    async file(requested, exec) {
-      // A Windows network path (`\\host\share`, `//host/share`) would connect to another computer with the user's credentials.
-      if (/^[\\/]{2}/u.test(requested)) throw new Error(`${requested} is a network path; pass a path on this computer.`)
-      if (isAbsolute(requested)) return requested
-      if (exec.agent === undefined) throw new Error('Pass path as an absolute path.')
-      return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested)
-    },
+    file: sessionFiles(ctx),
   }
   for (const definition of elevenLabsToolDefinitions(host, sessionSurface(ctx))) ctx.tools.register(definition)
   // Agents connected through WASD Engine's MCP server get the same tools.

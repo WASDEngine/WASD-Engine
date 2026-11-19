@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { untilAborted } from './abort.ts'
 import { describeExit } from './output.ts'
 import type { GodotRuntimeInstallProgress, GodotRuntimeView } from './types.ts'
+import { unpackedFolder } from '@deepseek-ai/dsh-app-mcp'
 
 /** Runtime fields of the plugin configuration. */
 export interface RuntimeSettings {
@@ -123,7 +124,7 @@ export class GodotRuntimeError extends Error {
  * @returns the package's `libgodot` folder.
  */
 export function bundledRuntimeRoot(packageRoot: string): string {
-  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'libgodot')
+  return unpackedFolder(packageRoot, 'libgodot')
 }
 
 /** Message for a Host where nothing resolves. */

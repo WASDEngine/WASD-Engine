@@ -9,17 +9,16 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: the ctx.remote merge with the `workspaceFiles` namespace and the forwarded events, the `file` resource
-// protocol, the sessions service, the workspace's Session navigation, and the right Sidebar's registry and navigation.
+// protocol, the sessions service, and the right Sidebar's registry.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
+import { revealTab, sessionStates } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
 import { probeAudio } from '@deepseek-ai/dsh-game-audio/audio'
-import type { AudioReveal } from '@deepseek-ai/dsh-game-audio/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
@@ -37,7 +36,8 @@ export type { GameAudioLocaleKey } from './locales.ts'
 export type { PlaybackState } from './playback.ts'
 export type { ReadBytes, SoundFile } from './read.ts'
 export type { ListRow, SoundItem } from './rows.ts'
-export type { ListFolder, ScanLimits, SoundEntry, SoundScan } from './scan.ts'
+export type { ListFolder } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
+export type { ScanLimits, SoundEntry, SoundScan } from './scan.ts'
 export type { KindFilter, ProbeEntry, ScanState, ViewState } from './source.ts'
 
 /** Registry id of the Audio tab type, also its slot key. */
@@ -46,8 +46,7 @@ export const TAB_ID = '@deepseek-ai/dsh-client-ui-game-audio'
 /** Kind of the Audio tab. */
 export const TAB_KIND = 'audio'
 
-/** How long a reveal waits for its Session to come on screen, in milliseconds. */
-export const REVEAL_WAIT_MS = 10_000
+export { REVEAL_WAIT_MS } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
@@ -131,31 +130,13 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     }
     return await probeAudio(windowReader(bytesOf(sessionId), sound.path, signal), size)
   }
-  // Each Session's state with the release of its Session-scope effect; both end with the Session or this plugin.
-  const sources = new Map<SessionId, { readonly source: AudioSource; readonly release: () => void }>()
-  ctx.effect(() => () => {
-    for (const { release } of [...sources.values()]) release()
-    sources.clear()
-  }, 'ui-game-audio: Session state')
-  const sourceOf = (sessionId: SessionId): AudioSource => {
-    const known = sources.get(sessionId)
-    if (known !== undefined) return known.source
-    const binding = ctx.sessions.binding(sessionId)
-    if (binding === undefined) throw new Error(`ui-game-audio: Session ${sessionId} is not retained`)
-    const source = new AudioSource(
-      (path, signal) => ctx.remote.workspaceFiles.list(sessionId, path, signal),
-      probeOf(sessionId),
-      limits,
-      () => Date.now(),
-      (error) => { ctx.logger.warn('ui-game-audio: the project walk failed', error) },
-    )
-    const dispose = binding.ctx.effect(() => () => {
-      source.close()
-      if (sources.get(sessionId)?.source === source) sources.delete(sessionId)
-    }, 'ui-game-audio: release Session state')
-    sources.set(sessionId, { source, release: () => { void dispose() } })
-    return source
-  }
+  const sourceOf = sessionStates(ctx, 'ui-game-audio', sessionId => new AudioSource(
+    (path, signal) => ctx.remote.workspaceFiles.list(sessionId, path, signal),
+    probeOf(sessionId),
+    limits,
+    () => Date.now(),
+    (error) => { ctx.logger.warn('ui-game-audio: the project walk failed', error) },
+  ))
   const tabFace = (scopeKey: string): AudioTabInjected => {
     const sessionId = brandString<SessionId>(scopeKey)
     const source = sourceOf(sessionId)
@@ -219,54 +200,6 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   ctx.effect(() => () => { revealing?.() }, 'ui-game-audio: stop the waiting reveal')
   ctx.effect(() => ctx.remote.$on('game-audio/reveal', (reveal) => {
     revealing?.()
-    revealing = revealSound(ctx, reveal)
+    revealing = revealTab(ctx, reveal.sessionId, TAB_KIND, { path: reveal.path }, 'ui-game-audio: the Audio tab could not be opened for an agent')
   }), 'ui-game-audio: reveal sounds')
-}
-
-/** How often a reveal tries again while the Session's sidebar surface is not mounted yet, in milliseconds. */
-const REVEAL_RETRY_MS = 50
-
-/**
- * Open a sound in its Session's Audio tab: at once when the Session is on screen, or after the window shows it. The
- * sidebar reports a Session on screen in the render before its surface takes commands, so an open that finds no
- * surface tries again until {@link REVEAL_WAIT_MS} has passed.
- * @param ctx - the browser plugin context.
- * @param reveal - the Session and the sound.
- * @returns a function that stops the reveal if it has not opened the tab yet.
- */
-function revealSound(ctx: Context, reveal: AudioReveal): () => void {
-  const sidebar = ctx.get('sidebarRight')
-  if (sidebar === undefined) return () => {}
-  const deadline = Date.now() + REVEAL_WAIT_MS
-  let retry: ReturnType<typeof setTimeout> | undefined
-  const open = (): void => {
-    retry = undefined
-    if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
-    try {
-      sidebar.openTab(TAB_KIND, { params: { path: reveal.path } })
-    } catch (error) {
-      // Error: the Session's surface mounts in the render after it came on screen; another try follows shortly.
-      if (Date.now() < deadline) retry = setTimeout(open, REVEAL_RETRY_MS)
-      else ctx.logger.warn('ui-game-audio: the Audio tab could not be opened for an agent', error)
-    }
-  }
-  if (sidebar.mounted.getSnapshot() === reveal.sessionId) {
-    open()
-    return () => { clearTimeout(retry) }
-  }
-  const workspace = ctx.get('uiWorkspace')
-  if (workspace === undefined) return () => {}
-  const stop = sidebar.mounted.subscribe(() => {
-    if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
-    stop()
-    clearTimeout(timer)
-    open()
-  })
-  const timer = setTimeout(stop, REVEAL_WAIT_MS)
-  workspace.openSession(reveal.sessionId)
-  return () => {
-    stop()
-    clearTimeout(timer)
-    clearTimeout(retry)
-  }
 }

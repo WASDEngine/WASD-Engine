@@ -191,7 +191,10 @@ describe('GIMP packaging hooks', () => {
     const worker = await readFile(new URL('../../../packages/gamedev/gimp/src/worker.ts', import.meta.url), 'utf8')
     expect(worker).toContain("bundledRoot: shippedRuntimeRoot(fileURLToPath(new URL('..', import.meta.url)))")
     const lookup = await readFile(new URL('../../../packages/gamedev/app-mcp/src/shipped-runtime.ts', import.meta.url), 'utf8')
-    expect(/export function shippedRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(lookup)).toBe(true)
+    const delegates = /export function shippedRuntimeRoot\([^)]*\): string \{\n\s*return unpackedFolder\(packageRoot, 'runtime'\)/u
+    const joins = /export function unpackedFolder\([^)]*\): string \{\n\s*return path\.join\([^\n]*app\.asar\.unpacked[^\n]*, folder\)/u
+    expect(delegates.test(lookup)).toBe(true)
+    expect(joins.test(lookup)).toBe(true)
     const build = await readFile(new URL('../../../wasdengine/gimp/build.sh', import.meta.url), 'utf8')
     const version = /^version=(\S+)$/mu.exec(build)?.[1]
     expect(GIMP_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/gimp-${String(version)}/manifest.json`)

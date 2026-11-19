@@ -134,6 +134,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 - `replyParser(app)` 返回一个按 Zod schema 校验工作进程回复的函数；不匹配时抛出 `WorkerReplyError`，其消息以 `The <app> worker sent an unexpected <method> reply:` 开头并指明每处不匹配。
 - `withSetupNotes(dependencies, result)` 把待报告的安装说明放在结果文本之前，每条之后跟一个空行；`takeNotes` 每条说明只交出一次。
 - `formatBytes(bytes)` 把文件或内存大小写成 `512 bytes`、`2.0 KiB`、`5.0 MiB` 或 `1.5 GiB`。
+- `listFolderFiles(root, limit)` 列出文件夹及其子文件夹中的文件：相对于该文件夹、以 `/` 分隔、按名称排序的路径，至多 `limit` 个，并以 `totalFiles` 给出文件总数；不存在的文件夹不含任何文件。Blender 与 Godot 服务器用它报告脚本运行写出的文件。
 - `processLimit(options, machine)` 返回一台电脑上同一类进程同时运行的上限：取 `options.max`、电脑内存除以 `options.memoryBytes` 并四舍五入的整数、逻辑处理器数除以 `options.cores` 并向下取整的整数三者中最小的一个，且至少为 1；`memoryBytes` 或 `cores` 为 0 时不计入该项。内存的商四舍五入，使标称 16 GB、操作系统报告略少的电脑仍按 16 GiB 得到上限。`memoryShortage(requiredBytes, available)` 读取可用内存，不足 `requiredBytes` 时返回 `{ availableBytes, requiredBytes }`；`lowMemoryMessage(what, shortage)` 是拒绝此类启动时面向模型的消息。Godot 插件把它们用于游戏运行。
 - `executePythonTool(dependencies, { app, title, description })` 是以 Python 脚本驱动的应用程序的 `execute_python` 工具；[模型体验](#model-experience)展示其声明与结果文本。
 - `AGENT_IMAGE_MAX_EDGE`（1,568 像素）与 `AGENT_IMAGE_MAX_BYTES`（3 MiB，其 base64 形式正好占满单张图像可用的 4 MiB）规定工具向工作进程请求的图像大小。
@@ -143,7 +144,7 @@ Blender、GIMP 与 SuperCollider 包依赖本库构建各自的 MCP 服务器；
 
 服务器通过 `SetupHost`（setup host，安装环境宿主）查找其应用程序：服务器进程的平台、环境与主目录，判断用户可执行的普通文件的 `isExecutable`，把缺失或不可访问的目录列为空的 `listDirectory`，以及 `makeDirectory`。`nodeSetupHost()` 把它绑定到本机；测试传入假的 host。`firstExecutable(candidates, host)` 返回第一个通过 `isExecutable` 的候选路径；`newestFirst` 按名称中的数字从新到旧排序，因此 `Blender 4.10` 排在 `Blender 4.2` 之前，`GIMP 3.0.1` 排在 `GIMP 3.0` 之前。`CommandArgv` 表示一个绝对路径的可执行程序及其参数。
 
-Desktop 应用随附在插件包中的运行时位于包的 `runtime/<platform>-<arch>/` 文件夹，该文件夹由 `shippedRuntimeRoot(packageRoot)` 给出；位于 `app.asar` 内的包从 `app.asar.unpacked` 读取。`readShippedRuntime(root, host, schema, invalid)` 通过 `ShippedRuntimeHost`（带有 `arch` 与 `readTextFile` 的 setup host，`nodeShippedRuntimeHost()` 把它绑定到本机）读取该文件夹中对应宿主平台与架构的 `runtime.json`。文件不存在时它不返回任何内容，否则返回文件夹、记录，以及解析记录中路径的 `resolve` 函数；记录不是 JSON、不符合 schema，或描述的是其他平台或架构时，以 `invalid` 构造的错误失败。运行时的 schema 展开 `ShippedRuntimeFields`（每条记录都有的 `format`、`version`、`platform` 与 `arch`），并把其中的路径声明为 `ShippedRuntimePath`，即不含 `.` 或 `..` 段、以 `/` 分隔的相对路径。应用随附运行时的归档而非其文件时，`readPackedRuntime` 以同样的方式读取该文件夹的 `archive.json`，返回归档的路径、大小与 SHA-256 以及其 `runtime.json` 的字段，供服务器解包。`unpackPackedRuntime(packed, program, dataRoot, host, signal, failures)` 把它解包到 `<dataRoot>/runtime/<version>`（由 `unpackedRuntimeDirectory` 给出；即使用户名很长，运行时最深的文件也能留在 Windows 的路径长度限制之内），除非该文件夹已有一个包含归档全部字段的 `runtime.json`，且记录的 `program` 是可执行文件。它运行 `findTar` 找到的 `tar`（Windows 上是 `%SystemRoot%\System32` 中 Windows 自带的 `tar.exe`，其他系统上先是 `/usr/bin/tar`，再是 `PATH` 上的 `tar`），在一个 `.partial-<8 位十六进制数字>` 同级文件夹中解包：归档作为 tar 的标准输入，参数中不含任何路径，因为 Windows 的 `tar.exe` 以 ANSI 代码页读取参数，而 ANSI 代码页无法容纳用户配置文件夹路径中的所有字符；随后检查解包出的 `runtime.json`，再用 `moveIntoPlace` 把该文件夹重命名到位：`moveIntoPlace` 会替换原位置上程序不可执行的文件夹，并接受并发服务器先移到位的可用文件夹；无论成败，同级文件夹都会被删除。运行时就位后（无论是找到的还是刚解包的），它会删除 `<dataRoot>/runtime/` 中的其他所有条目，例如早期应用解包的其他运行时版本的文件夹，但保留其自身版本的 `.partial-` 与 `.stale-` 同级文件夹，因为并发的解包可能仍在使用它们；无法删除的条目（例如 Windows 上含有正在使用的文件的文件夹）会保留下来，不会导致调用失败，之后的调用会再删除它。归档或 tar 缺失、tar 失败，或归档中是另一个运行时时，以 `failures.invalid` 构造的错误失败；文件夹无法移到位时，以 `failures.moveFailed` 构造的错误失败。解包需要一个 `RuntimeUnpackHost`，即带有 `rename`、`remove` 与 `run` 的 `ShippedRuntimeHost`，`nodeRuntimeUnpackHost(outputLimit)` 把它绑定到本机；它的 `run` 是 `runCommand`，后者不经 shell、不开窗口地运行命令，把 `stdinFile` 指定的文件作为命令的标准输入，并保留输出的末尾。`findOnPath(name, host)` 在 `PATH` 的绝对路径条目中查找程序，Windows 上带 `.exe`。Blender 与 GIMP 服务器以这两种方式读取各自的运行时，并以这种方式解包。
+Desktop 应用随附在插件包中的运行时位于包的 `runtime/<platform>-<arch>/` 文件夹，该文件夹由 `shippedRuntimeRoot(packageRoot)` 给出；位于 `app.asar` 内的包从 `app.asar.unpacked` 读取；`unpackedFolder(packageRoot, folder)` 给出应用保存在那里的其他文件夹，例如 Godot 插件的运行时和导出模板，以及附加组件的归档。`readShippedRuntime(root, host, schema, invalid)` 通过 `ShippedRuntimeHost`（带有 `arch` 与 `readTextFile` 的 setup host，`nodeShippedRuntimeHost()` 把它绑定到本机）读取该文件夹中对应宿主平台与架构的 `runtime.json`。文件不存在时它不返回任何内容，否则返回文件夹、记录，以及解析记录中路径的 `resolve` 函数；记录不是 JSON、不符合 schema，或描述的是其他平台或架构时，以 `invalid` 构造的错误失败。运行时的 schema 展开 `ShippedRuntimeFields`（每条记录都有的 `format`、`version`、`platform` 与 `arch`），并把其中的路径声明为 `ShippedRuntimePath`，即不含 `.` 或 `..` 段、以 `/` 分隔的相对路径。应用随附运行时的归档而非其文件时，`readPackedRuntime` 以同样的方式读取该文件夹的 `archive.json`，返回归档的路径、大小与 SHA-256 以及其 `runtime.json` 的字段，供服务器解包。`unpackPackedRuntime(packed, program, dataRoot, host, signal, failures)` 把它解包到 `<dataRoot>/runtime/<version>`（由 `unpackedRuntimeDirectory` 给出；即使用户名很长，运行时最深的文件也能留在 Windows 的路径长度限制之内），除非该文件夹已有一个包含归档全部字段的 `runtime.json`，且记录的 `program` 是可执行文件。它运行 `findTar` 找到的 `tar`（Windows 上是 `%SystemRoot%\System32` 中 Windows 自带的 `tar.exe`，其他系统上先是 `/usr/bin/tar`，再是 `PATH` 上的 `tar`），在一个 `.partial-<8 位十六进制数字>` 同级文件夹中解包：归档作为 tar 的标准输入，参数中不含任何路径，因为 Windows 的 `tar.exe` 以 ANSI 代码页读取参数，而 ANSI 代码页无法容纳用户配置文件夹路径中的所有字符；随后检查解包出的 `runtime.json`，再用 `moveIntoPlace` 把该文件夹重命名到位：`moveIntoPlace` 会替换原位置上程序不可执行的文件夹，并接受并发服务器先移到位的可用文件夹；无论成败，同级文件夹都会被删除。运行时就位后（无论是找到的还是刚解包的），它会删除 `<dataRoot>/runtime/` 中的其他所有条目，例如早期应用解包的其他运行时版本的文件夹，但保留其自身版本的 `.partial-` 与 `.stale-` 同级文件夹，因为并发的解包可能仍在使用它们；无法删除的条目（例如 Windows 上含有正在使用的文件的文件夹）会保留下来，不会导致调用失败，之后的调用会再删除它。归档或 tar 缺失、tar 失败，或归档中是另一个运行时时，以 `failures.invalid` 构造的错误失败；文件夹无法移到位时，以 `failures.moveFailed` 构造的错误失败。解包需要一个 `RuntimeUnpackHost`，即带有 `rename`、`remove` 与 `run` 的 `ShippedRuntimeHost`，`nodeRuntimeUnpackHost(outputLimit)` 把它绑定到本机；它的 `run` 是 `runCommand`，后者不经 shell、不开窗口地运行命令，把 `stdinFile` 指定的文件作为命令的标准输入，并保留输出的末尾。`findOnPath(name, host)` 在 `PATH` 的绝对路径条目中查找程序，Windows 上带 `.exe`。Blender 与 GIMP 服务器以这两种方式读取各自的运行时，并以这种方式解包。
 
 <a id="run-the-worker"></a>
 ### 运行工作进程
@@ -164,6 +165,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 - 取消排队中的请求只会把它移出队列。取消已派发的请求会停止工作进程，与超时相同，因为此时工作进程的状态未知。
 - `close(graceMs)` 发送 `shutdown` 请求并关闭 stdin。若 `graceMs` 后仍未退出，它向工作进程的进程组发送 SIGTERM，再过 `graceMs` 后发送 SIGKILL。工作进程可以在退出前回复 `shutdown` 请求。已被停止（例如因超时）的工作进程在停止时已收到 SIGKILL，因此 `close` 不再向它发送 SIGTERM，只等待它退出。
 - 在 POSIX 上，工作进程是其自身进程组的组长。工作进程退出或被停止时，客户端向该进程组中剩余的每个进程发送 SIGKILL。
+- `signalProcessGroup(child, signal)` 发送这些信号：在 POSIX 上发给工作进程及其进程组中的每个进程；Windows 没有进程组，它先用 `taskkill /T /F` 结束工作进程的进程树。Blender 服务器用它停止脚本运行。
 
 工作进程的失败是带有 `code` 的 `WorkerError`，只有 `WORKER_REMOTE` 会让工作进程继续运行。已停止的工作进程以其第一次失败拒绝后续请求；由其所有者启动新的工作进程。超出范围的预算（例如为零的 `timeoutMs`）会抛出 `RangeError`。
 
@@ -207,6 +209,8 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 
 `close()` 以 `WORKER_EXITED` 拒绝后续调用，取消正在运行的调用，等待所有调用结束，然后以 `closeGraceMs` 关闭工作进程。
 
+`untilTurn(turn, signal)` 是排队调用的等待：`turn`（一个从不拒绝的 promise）完成后它即兑现；`signal` 中止时它立即以 `abortError(signal)` 拒绝，即信号的 reason（若为 `Error`），否则为 `AbortError`。Blender 服务器用它等待先前的工作进程准备完成。
+
 ### 把随包文件复制到真实路径
 
 打包后的 Desktop 应用把包文件保存在其 `app.asar` 归档中，只有 Electron 的 `fs` 能够读取；Blender、GIMP、Godot 与 SuperCollider 需要普通文件。`materializePayload(source, dataRoot)` 通过 `file:` URL `source` 的路径读取文件（Electron 的 `app.asar` 支持会解析该路径），并返回位于 `<dataRoot>/payload/<first 16 hex digits of the content's SHA-256>/<file name>` 的副本的真实路径。
@@ -244,6 +248,7 @@ fd 3   failure   {"id": 1, "ok": false, "error": {"type": "<exception class>", "
 | [`src/supervisor.ts`](src/supervisor.ts) | 延迟启动、串行调用、状态丢失消息以及关闭 |
 | [`src/json-line-worker.ts`](src/json-line-worker.ts) | spawn、行解析、超时、取消、进程组信号以及日志尾部 |
 | [`src/materialize.ts`](src/materialize.ts) | 按内容寻址的载荷副本 |
+| [`src/folder-files.ts`](src/folder-files.ts) | 脚本运行留在其文件夹中的文件列表 |
 | [`tests/fixtures/fake-worker.mjs`](tests/fixtures/fake-worker.mjs) | 代替 Python 工作进程的协议 fixture（测试前置数据） |
 | [`tests/fixtures/source-server.ts`](tests/fixtures/source-server.ts) | 只能通过源码启动运行的 TypeScript 服务器入口 |
 | [`tests/fixtures/scoped-server.mjs`](tests/fixtures/scoped-server.mjs) | 其工具会说出调用到达的 Session 作用域的服务器 fixture |

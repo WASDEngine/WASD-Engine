@@ -10,6 +10,7 @@
  *
  * @module
  */
+import { ascii, byte, u16le, u32le } from './bytes.ts'
 
 /**
  * Read a byte window of the probed file.
@@ -65,24 +66,6 @@ export const PROBE_TAIL_BYTES = 65_536
 
 /** Chunks of a WAV or AIFF file a probe walks before it stops. */
 const MAX_CHUNKS = 64
-
-function byte(bytes: Uint8Array, index: number): number {
-  return bytes[index] ?? 0
-}
-
-function ascii(bytes: Uint8Array, offset: number, length: number): string {
-  let text = ''
-  for (let index = offset; index < offset + length; index++) text += String.fromCharCode(byte(bytes, index))
-  return text
-}
-
-function u16le(bytes: Uint8Array, offset: number): number {
-  return byte(bytes, offset) | (byte(bytes, offset + 1) << 8)
-}
-
-function u32le(bytes: Uint8Array, offset: number): number {
-  return u16le(bytes, offset) + u16le(bytes, offset + 2) * 0x10000
-}
 
 function u16be(bytes: Uint8Array, offset: number): number {
   return (byte(bytes, offset) << 8) | byte(bytes, offset + 1)

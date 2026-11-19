@@ -6,13 +6,11 @@
  * Windows and macOS and upload each build as a download of that version, which the share page offers once the site's
  * malware scan passes it; the site's answer names where the build stands in that scan. Those builds go to
  * `.wasdengine/desktop/<platform>/` and are exported before anything reaches the site, so a failed build publishes
- * nothing. Calls go to the site's games API (`/api/v1/games`) with the signed-in token in `x-dsh-auth-token`
- * and never follow redirects. A project remembers each account's game per site in `.wasdengine/game.json` from the
- * moment the site creates the game, before the upload, so later releases add versions to the same game, also after a
- * release whose upload failed or was cut off; when the site no longer has that game, the release creates a new one,
- * and another account signed in to the same site gets a game of its own. A copy of a project folder carries that link,
- * so a release from a folder that shares its game with another folder on this computer asks first (`folders.ts`). The
- * Web build itself goes to `.wasdengine/web/`, which Godot does not import because the folder is hidden.
+ * nothing. Calls go to the site's games API (`/api/v1/games`) through `site-client.ts`. A project remembers each
+ * account's game per site in its game link file (`game-link.ts`), so later releases add versions to the same game;
+ * when the site no longer has that game, the release creates a new one, and a release from a folder that shares its
+ * game with another folder on this computer asks first (`folders.ts`). The Web build itself goes to
+ * `.wasdengine/web/`, which Godot does not import because the folder is hidden.
  *
  * A release also uploads the game's preview, the still and the animated GIF that Explore and the share link show: the
  * files the release names, else the project's recorded preview (`.wasdengine/preview/`). The account's entry in the
@@ -29,19 +27,21 @@
  * fails leaves the version released and becomes a warning.
  * @module @deepseek-ai/dsh-wasd-plugins/src/release
  */
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { openAsBlob } from 'node:fs'
-import { mkdir, readFile, rm, stat } from 'node:fs/promises'
+import { readFile, rm, stat } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import type { GodotDesktopExport, GodotDesktopPlatform, GodotServerExport, GodotWebCheck, GodotWebExport } from '@deepseek-ai/dsh-godot'
 import { z } from 'zod'
 import { creditNames, type GameCredits } from './credits.ts'
 import { folderOf, type ReleaseFolders } from './folders.ts'
+import { accountGame, copyQuestion, linksTo, projectName, readLinks, rememberGame, siteGames, Visibility, type AccountGame } from './game-link.ts'
 import { MultiplayerApi } from './multiplayer-api.ts'
 import { readMultiplayerConfig, writeMultiplayerConfig, type MultiplayerConfig } from './multiplayer-project.ts'
 import { fileDigest, savedPreview, type PreviewFiles } from './preview.ts'
-import { STATE_DIR, writeWhole } from './state.ts'
-import type { WasdDownload, WasdMultiplayerMode, WasdProjectView, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
+import { STATE_DIR } from './state.ts'
+import type { WasdDownload, WasdMultiplayerMode, WasdRelease, WasdServerBuild, WasdVisibility } from './types.ts'
+import { SiteClient, type SiteAccess } from './site-client.ts'
 import { formatWebCheck } from './web-check-text.ts'
 import { writeZip } from './zip.ts'
 
@@ -52,9 +52,6 @@ export const WEB_BUILD_DIR = 'web'
 
 /** The Web check's screenshot inside {@link STATE_DIR}, beside the Web build's folder, so the build's files stay as exported. */
 export const WEB_CHECK_SCREENSHOT = 'web-check.jpg'
-
-/** The game link file inside {@link STATE_DIR}. */
-export const LINK_FILE = 'game.json'
 
 /** The desktop builds' folder inside {@link STATE_DIR}, which holds one folder per platform. */
 export const DESKTOP_BUILD_DIR = 'desktop'
@@ -76,16 +73,6 @@ export const MAX_TITLE = 80
 
 /** Image types the site takes as a game's picture, by file extension. */
 const IMAGE_TYPES: Readonly<Record<string, string>> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
-
-/** The signed-in site: its origin and the account's token. */
-export interface SiteAccess {
-  /** Origin of the WASD Engine site, such as `https://app.wasdengine.com`. */
-  readonly origin: string
-  /** The signed-in account's token. */
-  readonly token: string
-  /** {@link accountKey} of the signed-in account, when the app knows the account's ID. */
-  readonly account?: string
-}
 
 /** A release that could not finish; the message says what the user or the agent can do. */
 export class ReleaseError extends Error {
@@ -112,30 +99,6 @@ export class WebCheckRefusal extends ReleaseError {
     ].join('\n'))
   }
 }
-
-const GameRecord = z.object({ id: z.string(), slug: z.string(), title: z.string(), url: z.string(), version: z.number().int().min(0) })
-type GameRecord = z.infer<typeof GameRecord>
-// One account's game on one site; `account` is absent when the release did not know its account, `image`, `gif`, and
-// `webp` are the SHA-256 digests of the preview files the project last uploaded for the game, and `visibility` is the
-// game's as the site answered the project's latest release; absent before releases knew visibility, which made every
-// game public.
-const Visibility = z.enum(['public', 'private'])
-const AccountGame = GameRecord.extend({
-  account: z.string().optional(),
-  image: z.string().optional(),
-  gif: z.string().optional(),
-  webp: z.string().optional(),
-  visibility: Visibility.optional(),
-})
-type AccountGame = z.infer<typeof AccountGame>
-const LinkFile = z.object({
-  format: z.literal(1),
-  // The game of each site's latest release: what versions before per-account links read and write.
-  games: z.record(z.string(), GameRecord),
-  // Each account's game on each site, the latest release first.
-  accounts: z.record(z.string(), z.array(AccountGame)).optional(),
-})
-type LinkFile = z.infer<typeof LinkFile>
 
 const GameJson = z.object({
   id: z.string(),
@@ -166,199 +129,32 @@ const DownloadJson = z.object({
     status: z.enum(['pending', 'clean', 'flagged', 'failed']).default('clean'),
   }),
 })
-const ErrorJson = z.object({ error: z.object({ message: z.string() }) })
-
-function linkPath(projectDir: string): string {
-  return join(projectDir, STATE_DIR, LINK_FILE)
-}
-
-async function readLinks(projectDir: string): Promise<LinkFile> {
-  let text: string
-  try {
-    text = await readFile(linkPath(projectDir), 'utf8')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { format: 1, games: {} }
-    throw error
-  }
-  try {
-    const parsed = LinkFile.safeParse(JSON.parse(text))
-    // A damaged link file only means the next release creates a new game.
-    return parsed.success ? parsed.data : { format: 1, games: {} }
-  } catch {
-    // Not JSON: as damaged.
-    return { format: 1, games: {} }
-  }
-}
-
-/**
- * The fingerprint of an account in the link file, which a project may share through version control, so the file
- * holds no account ID.
- * @param userId - the account's ID on the site.
- * @returns the first 24 hexadecimal digits of the ID's SHA-256 digest.
- */
-export function accountKey(userId: string): string {
-  return createHash('sha256').update(userId).digest('hex').slice(0, 24)
-}
-
-// A link file written before per-account links holds one game per site, without its account.
-function siteGames(links: LinkFile, origin: string): AccountGame[] {
-  const latest = links.games[origin]
-  return links.accounts?.[origin] ?? (latest === undefined ? [] : [latest])
-}
-
-// One account's game without asking the site: its own, else one whose release did not know its account; the latest
-// release's game when the account is unknown.
-function accountGame(games: readonly AccountGame[], account: string | undefined): AccountGame | undefined {
-  return account === undefined ? games[0] : games.find(game => game.account === account) ?? games.find(game => game.account === undefined)
-}
-
-/**
- * The game a project released to on one site.
- * @param projectDir - absolute project folder.
- * @param origin - site origin.
- * @param account - {@link accountKey} of the account; undefined picks the game of the latest release.
- * @returns the remembered game, or undefined before the account's first release there.
- */
-export async function linkedGame(projectDir: string, origin: string, account?: string): Promise<GameRecord | undefined> {
-  return accountGame(siteGames(await readLinks(projectDir), origin), account)
-}
-
-async function linksTo(projectDir: string, origin: string, gameId: string): Promise<boolean> {
-  try {
-    return siteGames(await readLinks(projectDir), origin).some(game => game.id === gameId)
-  } catch {
-    // An unreadable link file links to no game.
-    return false
-  }
-}
-
-// The account's game becomes the site's latest and replaces the account's earlier game and the game's earlier entry.
-// The file is replaced whole, so an interrupted write leaves the earlier link, never a damaged one.
-async function rememberGame(projectDir: string, origin: string, record: AccountGame): Promise<void> {
-  const links = await readLinks(projectDir)
-  const replaces = (game: AccountGame) => game.id === record.id || (record.account !== undefined && game.account === record.account)
-  const others = siteGames(links, origin).filter(game => !replaces(game))
-  const latest: GameRecord = { id: record.id, slug: record.slug, title: record.title, url: record.url, version: record.version }
-  await mkdir(join(projectDir, STATE_DIR), { recursive: true })
-  await writeWhole(linkPath(projectDir), `${JSON.stringify({
-    format: 1,
-    games: { ...links.games, [origin]: latest },
-    accounts: { ...links.accounts, [origin]: [record, ...others] },
-  }, null, 2)}\n`)
-}
-
-/**
- * Read `application/config/name` from `project.godot` text.
- * @param text - complete file content.
- * @returns the project name, or undefined when it is not a plain quoted string.
- */
-export function projectName(text: string): string | undefined {
-  let section = ''
-  for (const line of text.split(/\r?\n/u)) {
-    const header = /^\[([^\]]+)\]\s*$/u.exec(line)
-    if (header !== null) {
-      section = header[1] as string
-      continue
-    }
-    const value = section === 'application' ? /^config\/name="((?:[^"\\]|\\.)*)"\s*$/u.exec(line)?.[1] : undefined
-    if (value !== undefined) return value.replace(/\\(.)/gu, '$1').trim() || undefined
-  }
-  return undefined
-}
-
-/**
- * What the Export / Share button shows for a project folder.
- * @param projectDir - absolute folder.
- * @param origin - site origin the app is signed in to, or would sign in to.
- * @param folders - which folders on this computer released each game.
- * @param account - {@link accountKey} of the signed-in account; undefined shows the game of the latest release.
- * @returns whether it is a Godot project, the account's game on that site, and the folder this one shares it with.
- */
-export async function projectView(projectDir: string, origin: string, folders: ReleaseFolders, account?: string): Promise<WasdProjectView> {
-  let godot = false
-  try {
-    godot = (await stat(join(projectDir, 'project.godot'))).isFile()
-  } catch {
-    // A folder without project.godot is not a Godot project.
-  }
-  const game = accountGame(siteGames(await readLinks(projectDir), origin), account)
-  if (game === undefined || game.version === 0) return { godot }
-  const other = await folders.sharedWith(origin, game.id, await folderOf(projectDir), dir => linksTo(dir, origin, game.id))
-  return {
-    godot,
-    game: { title: game.title, url: game.url, version: game.version, visibility: game.visibility ?? 'public' },
-    ...other === undefined ? {} : { sharedWith: other },
-  }
-}
-
-/**
- * The failure of a release from a project folder that shares its game with another folder, as a copy does, and has not
- * said which game it releases.
- * @param other - the other folder.
- * @param game - the game both folders link to.
- * @returns the question for the model to ask the user, and how to answer it.
- */
-export function copyQuestion(other: string, game: { readonly title: string; readonly url: string }): string {
-  return `This project folder and ${other} release the same game, "${game.title}" (${game.url}), as happens when one is a copy of the other. Ask the user whether this folder should release the next version of that game or start a new game, then call wasd_release_game again with new_game false for the next version of that game, or new_game true for a new game.`
-}
 
 /** The site's games API as one release calls it. */
 class SiteApi {
-  constructor(private readonly access: SiteAccess, private readonly fetchUrl: typeof fetch, private readonly signal: AbortSignal) {}
+  private readonly site: SiteClient
 
-  private async call(method: string, path: string, body?: { readonly data: BodyInit; readonly type: string }): Promise<Response> {
-    const url = new URL(path, this.access.origin)
-    try {
-      return await this.fetchUrl(url, {
-        method,
-        redirect: 'error',
-        signal: this.signal,
-        headers: { 'x-dsh-auth-token': this.access.token, ...body === undefined ? {} : { 'content-type': body.type } },
-        ...body === undefined ? {} : { body: body.data },
-      })
-    } catch (error) {
-      if (this.signal.aborted) throw error
-      throw new ReleaseError(`Cannot reach WASD Engine at ${this.access.origin}: ${(error as Error).message}`, { cause: error })
-    }
-  }
-
-  private async failure(response: Response, doing: string): Promise<ReleaseError> {
-    let message: string | undefined
-    try {
-      const parsed = ErrorJson.safeParse(await response.json())
-      if (parsed.success) message = parsed.data.error.message
-    } catch {
-      // Not a JSON error body: the status alone explains it.
-    }
-    if (response.status === 401) return new ReleaseError('The WASD Engine sign-in has expired. Ask the user to sign in to WASD Engine again, then release again.')
-    if (response.status >= 500 || message === undefined) return new ReleaseError(`WASD Engine could not ${doing} (HTTP ${response.status}). Try again later.`)
-    return new ReleaseError(`WASD Engine could not ${doing}: ${message}`)
-  }
-
-  private async json<T>(response: Response, schema: z.ZodType<T>, doing: string): Promise<T> {
-    if (!response.ok) throw await this.failure(response, doing)
-    const parsed = schema.safeParse(await response.json())
-    if (!parsed.success) throw new ReleaseError(`WASD Engine answered in an unexpected way while trying to ${doing}.`)
-    return parsed.data
+  constructor(access: SiteAccess, fetchUrl: typeof fetch, signal: AbortSignal) {
+    this.site = new SiteClient(access, fetchUrl, signal, { error: message => new ReleaseError(message), again: 'release again' })
   }
 
   async game(id: string): Promise<GameJson | undefined> {
-    const response = await this.call('GET', `/api/v1/games/${encodeURIComponent(id)}`)
+    const response = await this.site.call('GET', `/api/v1/games/${encodeURIComponent(id)}`)
     if (response.status === 404) {
       await response.body?.cancel()
       return undefined
     }
-    return (await this.json(response, z.object({ game: GameJson }), 'read the game')).game
+    return (await this.site.json(response, z.object({ game: GameJson }), 'read the game')).game
   }
 
   async create(title: string, visibility: WasdVisibility): Promise<GameJson> {
-    const response = await this.call('POST', '/api/v1/games', { data: JSON.stringify({ title, visibility }), type: 'application/json' })
-    return (await this.json(response, z.object({ game: GameJson }), 'create the game')).game
+    const response = await this.site.call('POST', '/api/v1/games', { data: JSON.stringify({ title, visibility }), type: 'application/json' })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'create the game')).game
   }
 
   async rename(id: string, title: string): Promise<GameJson> {
-    const response = await this.call('PATCH', `/api/v1/games/${encodeURIComponent(id)}`, { data: JSON.stringify({ title }), type: 'application/json' })
-    return (await this.json(response, z.object({ game: GameJson }), 'rename the game')).game
+    const response = await this.site.call('PATCH', `/api/v1/games/${encodeURIComponent(id)}`, { data: JSON.stringify({ title }), type: 'application/json' })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'rename the game')).game
   }
 
   async release(
@@ -371,39 +167,39 @@ class SiteApi {
       ...multiplayer === undefined ? {} : { multiplayer },
     })
     const query = params.size === 0 ? '' : `?${params.toString()}`
-    const response = await this.call('POST', `/api/v1/games/${encodeURIComponent(id)}/releases${query}`, { data: await openAsBlob(archive), type: 'application/zip' })
+    const response = await this.site.call('POST', `/api/v1/games/${encodeURIComponent(id)}/releases${query}`, { data: await openAsBlob(archive), type: 'application/zip' })
     if (response.status === 404) {
       await response.body?.cancel()
       return undefined
     }
-    return await this.json(response, ReleaseJson, 'store the release')
+    return await this.site.json(response, ReleaseJson, 'store the release')
   }
 
   async cover(id: string, image: string): Promise<GameJson> {
     const type = IMAGE_TYPES[extname(image).toLowerCase()] as string
-    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/cover`, { data: await openAsBlob(image), type })
-    return (await this.json(response, z.object({ game: GameJson }), 'store the preview image')).game
+    const response = await this.site.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/cover`, { data: await openAsBlob(image), type })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'store the preview image')).game
   }
 
   async gif(id: string, gif: string): Promise<GameJson> {
-    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/gif`, { data: await openAsBlob(gif), type: 'image/gif' })
-    return (await this.json(response, z.object({ game: GameJson }), 'store the preview GIF')).game
+    const response = await this.site.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/gif`, { data: await openAsBlob(gif), type: 'image/gif' })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'store the preview GIF')).game
   }
 
   async webp(id: string, webp: string): Promise<GameJson> {
-    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/webp`, { data: await openAsBlob(webp), type: 'image/webp' })
-    return (await this.json(response, z.object({ game: GameJson }), 'store the preview animation')).game
+    const response = await this.site.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/webp`, { data: await openAsBlob(webp), type: 'image/webp' })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'store the preview animation')).game
   }
 
   async credits(id: string, credits: GameCredits): Promise<void> {
-    const response = await this.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/credits`, { data: JSON.stringify(credits), type: 'application/json' })
-    await this.json(response, z.object({ game: GameJson }), 'store what the game was made with')
+    const response = await this.site.call('PUT', `/api/v1/games/${encodeURIComponent(id)}/credits`, { data: JSON.stringify(credits), type: 'application/json' })
+    await this.site.json(response, z.object({ game: GameJson }), 'store what the game was made with')
   }
 
   async download(id: string, version: number, platform: GodotDesktopPlatform, file: string): Promise<z.infer<typeof DownloadJson>> {
     const path = `/api/v1/games/${encodeURIComponent(id)}/releases/${version}/downloads/${platform}`
-    const response = await this.call('PUT', path, { data: await openAsBlob(file), type: 'application/zip' })
-    return await this.json(response, DownloadJson, `store the ${PLATFORM_NAMES[platform]} download`)
+    const response = await this.site.call('PUT', path, { data: await openAsBlob(file), type: 'application/zip' })
+    return await this.site.json(response, DownloadJson, `store the ${PLATFORM_NAMES[platform]} download`)
   }
 }
 

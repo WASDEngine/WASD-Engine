@@ -20,6 +20,7 @@ import { pipeline } from 'node:stream/promises'
 import { createInflateRaw, crc32 } from 'node:zlib'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { untilAborted } from './abort.ts'
+import { unpackedFolder } from '@deepseek-ai/dsh-app-mcp'
 
 /** One template of the plugin configuration. */
 export interface ExportTemplateSettings {
@@ -100,7 +101,7 @@ async function isFile(path: string): Promise<boolean> {
  * @returns the folder in `app.asar.unpacked` for a packaged app, and in the package itself otherwise.
  */
 export function bundledTemplatesDir(packageRoot: string): string {
-  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'templates')
+  return unpackedFolder(packageRoot, 'templates')
 }
 
 /** Resolves, and on first use downloads, one export template. */

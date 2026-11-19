@@ -5,8 +5,7 @@
  */
 export { renderModelTiles, type ModelTile, type ModelTilePlan } from './agent.ts'
 export { decodeImage, type DecodedImageFormat } from './image.ts'
-export {
-  bonesOf, describeModel, disposeObject, loadModel, ModelStage, ModelTooLargeError, morphTargetsOf, statsOf,
-  type ClipClock, type LoadedModel, type ModelSource, type ModelStats, type MorphTargets,
-} from './model.ts'
+export { bonesOf, describeModel, disposeObject, loadModel, morphTargetsOf, statsOf, type LoadedModel, type ModelSource, type ModelStats, type MorphTargets } from './model.ts'
+export { ModelTooLargeError } from './model-sizes.ts'
+export { ModelStage, type ClipClock } from './stage.ts'
 export { VoxModelTooLargeError, VoxWorkTooLargeError } from './vox.ts'

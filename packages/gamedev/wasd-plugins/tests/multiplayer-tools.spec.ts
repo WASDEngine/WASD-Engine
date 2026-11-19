@@ -12,7 +12,7 @@ import {
   MCP_SURFACE, MULTIPLAYER_MCP_INSTRUCTIONS, MULTIPLAYER_PROMPT, MULTIPLAYER_TOOLS, multiplayerMcpTools, multiplayerToolDefinitions,
   type ApprovalAnswer, type MultiplayerSurface, type MultiplayerToolHost,
 } from '../src/multiplayer-tools.ts'
-import type { SiteAccess } from '../src/release.ts'
+import type { SiteAccess } from '../src/site-client.ts'
 import { wasdMcpProvider } from '../src/tools.ts'
 import { GAME, multiplayerProject, multiplayerSite, ORIGIN, PLANS, removeProjects, TOKEN } from './multiplayer-site.ts'
 

@@ -44,7 +44,9 @@ jobs:
       - name: Lint build.sh
         run: |
           bash -n wasdengine/blender/build.sh
-          shellcheck wasdengine/blender/build.sh
+          bash -n wasdengine/lib.sh
+          (cd wasdengine/blender && shellcheck -x build.sh)
+          (cd wasdengine && shellcheck lib.sh)
 
       - name: Test runtime.py and smoke.py
         run: python3 -B -I -m unittest discover --start-directory wasdengine/blender --pattern 'test_*.py' --verbose

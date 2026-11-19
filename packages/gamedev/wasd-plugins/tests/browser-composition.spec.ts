@@ -24,7 +24,7 @@ import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import type { ApprovalOutcome, ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types'
 import WasdPlugins, { type Config } from '../src/index.ts'
 import { UNCLAIMED_MESSAGE } from '../src/browser.ts'
-import { accountKey } from '../src/release.ts'
+import { accountKey } from '../src/game-link.ts'
 import { MULTIPLAYER_PROMPT, MULTIPLAYER_TOOLS } from '../src/multiplayer-tools.ts'
 import { GAME, multiplayerProject, multiplayerSite, ORIGIN, removeProjects, TOKEN } from './multiplayer-site.ts'
 

@@ -11,6 +11,7 @@
 import { randomBytes } from 'node:crypto'
 import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { listFolderFiles } from '@deepseek-ai/dsh-app-mcp'
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { runGodotCommand } from './command.ts'
 import { importFailure, type GodotImportOutcome } from './imports.ts'
@@ -354,27 +355,6 @@ export function ownUserDataEnvironment(home: string): Readonly<Record<string, st
   }
 }
 
-/**
- * List the files in a folder and its subfolders.
- * @param root - absolute folder.
- * @returns at most {@link LISTED_RUN_FILES} paths relative to `root` in name order, and how many files it holds.
- */
-async function listRunFiles(root: string): Promise<RunFiles> {
-  let entries
-  try {
-    entries = await readdir(root, { recursive: true, withFileTypes: true })
-  } catch (error) {
-    // A script may delete the folder it was given; the run then wrote no files that remain.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { files: [], totalFiles: 0 }
-    throw error
-  }
-  const files = entries
-    .filter(entry => entry.isFile())
-    .map(entry => relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'))
-    .sort()
-  return { files: files.slice(0, LISTED_RUN_FILES), totalFiles: files.length }
-}
-
 /** The output of a run after it ended. */
 interface RunOutput {
   readonly exitCode: number | null
@@ -478,7 +458,7 @@ export async function runScript(
     issues: output.issues.slice(0, LISTED_ENGINE_ISSUES),
     totalIssues: output.issues.length,
     folder: run.folder,
-    ...await listRunFiles(join(run.folder, 'files')),
+    ...await listFolderFiles(join(run.folder, 'files'), LISTED_RUN_FILES),
   }
 }
 
@@ -537,7 +517,7 @@ export async function runScriptRuns(
             issues: output.issues.slice(0, LISTED_RUN_ISSUES),
             totalIssues: output.issues.length,
             ...lastLine === undefined ? {} : { lastLine: lastLine.length > LAST_LINE_CHARS ? `${lastLine.slice(0, LAST_LINE_CHARS)}…` : lastLine },
-            ...await listRunFiles(join(run.folder, 'files')),
+            ...await listFolderFiles(join(run.folder, 'files'), LISTED_RUN_FILES),
           }
         }, options.signal)
       } catch (error) {

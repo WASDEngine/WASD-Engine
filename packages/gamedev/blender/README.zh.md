@@ -215,7 +215,6 @@ agent 用 `render_preview` 查看场景。它从一台临时正交相机渲染�
 | [`src/environment.ts`](src/environment.ts) | 随附的运行时、uv 与 Blender 搜索、bpy 环境、后端选择和安装提示 |
 | [`src/tools.ts`](src/tools.ts) | 工具声明、工作进程请求、回复校验、结果文本和图像文件 |
 | [`src/scripts.ts`](src/scripts.ts) | `run_script` 的运行：共享的运行位置、调用与运行文件夹、进程和报告 |
-| [`src/abort.ts`](src/abort.ts) | 服务器等待的取消 |
 | [`src/instructions.ts`](src/instructions.ts) | 服务器名称和指令，以及通过 WASD Engine 的 MCP 服务器连接的 agent 读到的描述 |
 | [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | 工作进程：协议循环、每个工具对应的一个方法，以及 `run_script` 的脚本模式 |
 

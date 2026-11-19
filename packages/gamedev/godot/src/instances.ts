@@ -6,6 +6,7 @@
  * @module @deepseek-ai/dsh-godot/src/instances
  */
 import type { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
+import { delay } from './abort.ts'
 import { runGodotCommand } from './command.ts'
 import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
 import type { GodotInstanceReport, GodotInstanceSpec } from './types.ts'
@@ -39,20 +40,6 @@ function tail(text: string): string {
   return text.length > INSTANCE_OUTPUT_CHARS ? text.slice(text.length - INSTANCE_OUTPUT_CHARS) : text
 }
 
-/** Wait `ms`, or less when `signal` aborts first. */
-function delay(ms: number, signal: AbortSignal): Promise<void> {
-  if (ms <= 0 || signal.aborted) return Promise.resolve()
-  return new Promise((resolve) => {
-    const timer = setTimeout(done, ms)
-    function done(): void {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', done)
-      resolve()
-    }
-    signal.addEventListener('abort', done, { once: true })
-  })
-}
-
 /**
  * Run every instance of a group at once, each after its own delay, until each ends or the group's deadline passes. An
  * instance that cannot start stops the others, and the group ends once every instance has ended, so no process
@@ -68,7 +55,7 @@ export async function runInstanceGroup(options: InstanceGroupOptions): Promise<G
   let failure: { readonly error: unknown } | undefined
   const results = await Promise.allSettled(options.instances.map(async (instance): Promise<GodotInstanceReport> => {
     try {
-      await delay(instance.delayMs, signal)
+      if (instance.delayMs > 0) await delay(instance.delayMs, signal)
       signal.throwIfAborted()
       const remaining = Math.max(1, options.timeoutMs - (Date.now() - started))
       const outcome = await runGodotCommand({

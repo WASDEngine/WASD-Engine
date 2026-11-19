@@ -10,13 +10,12 @@ import path from 'node:path'
 import { z } from 'zod'
 import {
   AppServerOptionFields, ShippedRuntimeFields, ShippedRuntimePath, WorkerError, findOnPath, firstExecutable, moveIntoPlace, newestFirst,
-  nodeRuntimeUnpackHost, parseAppServerOptions, readPackedRuntime, readShippedRuntime, unpackPackedRuntime,
+  nodeRuntimeUnpackHost, parseAppServerOptions, readPackedRuntime, readShippedRuntime, unpackPackedRuntime, untilTurn,
 } from '@deepseek-ai/dsh-app-mcp'
 import type {
   AppWorkerDependencies, AppWorkerScope, CommandArgv, CommandOptions, CommandResult, JsonObject, PackedRuntime, RuntimeUnpackHost,
   SetupHost, ShippedRuntimeHost, WorkerReady,
 } from '@deepseek-ai/dsh-app-mcp'
-import { untilSettled } from './abort.ts'
 import type { BlenderServerOptions } from './types.ts'
 
 /** A `bpy` package version such as `5.2.3`. */
@@ -509,7 +508,7 @@ export class BlenderWorkers<W extends { readonly ready: WorkerReady }> {
     // A preparation whose wait was cancelled still keeps the later ones behind the earlier ones.
     this.preparing = previous.then(() => own.promise)
     try {
-      await untilSettled(previous, signal)
+      await untilTurn(previous, signal)
       const { host } = this.dependencies
       await host.makeDirectory(this.options.dataRoot)
       const script = await this.dependencies.workerScript()

@@ -7,7 +7,7 @@
  */
 import clsx from 'clsx'
 import { useState, type ReactNode } from 'react'
-import { fileSizeText, IconChevronRightOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { fileSizeText, IconChevronRightOutlineRegular, IconInfoOutlineRegular, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AssetDetails, ImageAssetDetails, ModelAssetDetails } from '@deepseek-ai/dsh-game-assets/types'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
@@ -245,4 +245,34 @@ export function DetailsPanel(props: DetailsPanelProps): ReactNode {
         : <ImageDetails {...props} details={props.details} />}
     </div>
   )
+}
+
+/** A view's details panel switch. */
+export interface DetailsSwitch {
+  /** Whether the panel shows: the reader turned it on and the view has details. */
+  readonly shown: boolean
+  /** The toolbar button that shows or hides the panel, disabled while the view has no details. */
+  readonly button: ReactNode
+}
+
+/**
+ * The switch of a view's details panel, off until the reader turns it on.
+ * @param available - whether the view has details yet.
+ * @param className - the view's toolbar button class.
+ * @param t - copy.
+ * @returns whether the panel shows, and its toolbar button.
+ */
+export function useDetailsSwitch(available: boolean, className: string | undefined, t: Translate): DetailsSwitch {
+  const [on, setOn] = useState(false)
+  return {
+    shown: on && available,
+    button: (
+      <Tooltip label={on ? t('details.hide') : t('details.show')} side="top" delayMs={500}>
+        <button type="button" className={className} aria-label={t('details.title')} aria-pressed={on} disabled={!available}
+          onClick={() => { setOn(value => !value) }}>
+          <IconInfoOutlineRegular size={14} />
+        </button>
+      </Tooltip>
+    ),
+  }
 }

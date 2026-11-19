@@ -15,6 +15,7 @@ import type { Stats } from 'node:fs'
 import { open, readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import type { ModelDecoder } from './formats.ts'
+import { ByteCursor, exposedFaces, mtllibOf } from './model-files.ts'
 
 /** Most distinct files counted for one model; the asset tools refuse a glTF model that names more. */
 export const MAX_NAMED_FILES = 1024
@@ -334,27 +335,6 @@ export function mtlTextures(text: string): string[] {
   return names
 }
 
-/**
- * The name of the first `mtllib` statement in a run of an OBJ file's lines: the rest of its line without the spaces and
- * tabs around it. Each line is scanned once, so a long line costs linear time.
- * @param text - whole lines of the file.
- * @returns the name, or undefined when no line names a library.
- */
-function mtllibOf(text: string): string | undefined {
-  for (const line of text.split(/[\n\r\u2028\u2029]/u)) {
-    let at = 0
-    while (line[at] === ' ' || line[at] === '\t') at++
-    if (!line.startsWith('mtllib', at)) continue
-    at += 'mtllib'.length
-    if (line[at] !== ' ' && line[at] !== '\t') continue
-    let end = line.length
-    while (end > at && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--
-    while (at < end && (line[at] === ' ' || line[at] === '\t')) at++
-    if (at < end) return line.slice(at, end)
-  }
-  return undefined
-}
-
 /** An OBJ file's first material library and its textures, as the window loads them. */
 async function objFindings(file: ModelCostFile): Promise<ModelFindings> {
   let library: string | undefined
@@ -441,33 +421,14 @@ async function daeFindings(file: ModelCostFile): Promise<ModelFindings> {
   return { named, memory: 0 }
 }
 
-/** A position in a file's bytes, read little-endian; a read past the end throws a RangeError. */
-class Cursor {
+/** A position in a file's bytes that also reads text, which the window reads in these encodings. */
+class Cursor extends ByteCursor {
   /**
    * @param data - the file.
    * @param at - where reading starts.
    */
-  constructor(readonly data: Buffer, public at = 0) {}
-
-  u8(): number {
-    return this.data.readUInt8(this.at++)
-  }
-
-  u32(): number {
-    const value = this.data.readUInt32LE(this.at)
-    this.at += 4
-    return value
-  }
-
-  u64(): number {
-    const low = this.u32()
-    return this.u32() * 0x1_0000_0000 + low
-  }
-
-  /** Move past bytes, back for a negative count, as a reader that steps by a stated size moves. */
-  skip(bytes: number): void {
-    if (this.at + bytes > this.data.byteLength) throw new RangeError('the file ends inside a record')
-    this.at += bytes
+  constructor(override readonly data: Buffer, at = 0) {
+    super(data, at)
   }
 
   /** The text of the next bytes. */
@@ -777,31 +738,6 @@ function voxMemory(data: Buffer): number {
     }
     return known * VOX_QUAD_BYTES
   })
-}
-
-/** The faces of a VOX model's voxels that border no other voxel of it, as the window's mesher finds them. */
-function exposedFaces({ x: sx, y: sy, z: sz, voxels }: { x: number; y: number; z: number; voxels: Buffer }): number {
-  if (voxels.length < 4) return 0
-  const volume = new Uint8Array(sx * sy * sz)
-  for (let at = 0; at + 3 < voxels.length; at += 4) {
-    const index = (voxels[at] ?? 0) + (voxels[at + 1] ?? 0) * sx + (voxels[at + 2] ?? 0) * sx * sy
-    if (index < volume.length) volume[index] = voxels[at + 3] ?? 0
-  }
-  let faces = 0
-  const layer = sx * sy
-  for (let index = 0; index < volume.length; index++) {
-    if (volume[index] === 0) continue
-    const x = index % sx
-    const y = Math.floor(index / sx) % sy
-    const z = Math.floor(index / layer)
-    if (x === 0 || volume[index - 1] === 0) faces++
-    if (x === sx - 1 || volume[index + 1] === 0) faces++
-    if (y === 0 || volume[index - sx] === 0) faces++
-    if (y === sy - 1 || volume[index + sx] === 0) faces++
-    if (z === 0 || volume[index - layer] === 0) faces++
-    if (z === sz - 1 || volume[index + layer] === 0) faces++
-  }
-  return faces
 }
 
 /** A VOX file's meshes; a file the window cannot mesh fails there before it allocates, and finds nothing here. */

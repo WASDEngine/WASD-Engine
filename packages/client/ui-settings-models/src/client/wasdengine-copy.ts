@@ -3,6 +3,7 @@
  * step asks for an API token from the WASD Engine account page, in the Desktop welcome window's words, instead of
  * naming the official DeepSeek provider.
  */
+import { brandDictionaries } from '@deepseek-ai/dsh-client-locale/brand'
 import { WASDENGINE_MODELS_COPY } from './wasdengine/locales.ts'
 
 /**
@@ -13,16 +14,5 @@ import { WASDENGINE_MODELS_COPY } from './wasdengine/locales.ts'
  * @throws when a language has no WASD Engine copy, or the copy names a message its dictionary lacks.
  */
 export function brandModelsDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    const overrides = WASDENGINE_MODELS_COPY[language]
-    if (overrides === undefined) throw new Error(`WASD Engine models copy: ${language} has no WASD Engine copy`)
-    const copy: Record<string, string> = { ...messages }
-    for (const [key, message] of Object.entries(overrides)) {
-      if (!(key in copy)) throw new Error(`WASD Engine models copy: ${language} has no message ${key}`)
-      copy[key] = message
-    }
-    branded[language] = copy
-  }
-  return branded as T
+  return brandDictionaries('models', dictionaries, { copy: WASDENGINE_MODELS_COPY, requiredCopy: 'WASD Engine copy' })
 }

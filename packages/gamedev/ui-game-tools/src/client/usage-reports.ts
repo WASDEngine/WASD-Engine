@@ -21,6 +21,9 @@ export interface UsageReportsMutation {
   sequence: number
 }
 
+/* jscpd:ignore-start -- the write and notice follow UploadPreference of @deepseek-ai/dsh-client-ui-settings-session-log for
+   another plugin's field; a client plugin imports no other plugin's values, and sharing the class would change that
+   upstream package. */
 /** Writes the switch without showing a value the Host has not accepted. */
 export class UsageReportsPreference {
   /** Observable state of the latest write. */
@@ -55,3 +58,4 @@ export class UsageReportsPreference {
     this.state.update((state) => { state.notice = null })
   }
 }
+/* jscpd:ignore-end */

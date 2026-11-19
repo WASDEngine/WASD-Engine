@@ -78,7 +78,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/client/SoundList.tsx`](src/client/SoundList.tsx) | 带文件夹标题和键盘移动的列表 |
 | [`src/client/SoundPlayer.tsx`](src/client/SoundPlayer.tsx) | 读取并解码所选声音、波形、控件和详细信息 |
 | [`src/client/source.ts`](src/client/source.ts) | 一个会话的遍历、文件头探测和选择 |
-| [`src/client/scan.ts`](src/client/scan.ts) | 工作区遍历 |
+| [`src/client/scan.ts`](src/client/scan.ts) | 基于素材标签页项目遍历（`@deepseek-ai/dsh-client-ui-game-assets/client/project-tab`）的声音遍历；该模块也提供遍历状态、各会话的状态、打开与文件重新读取 |
 | [`src/client/rows.ts`](src/client/rows.ts) | 列表行：类型、筛选、搜索、文件夹和方向键移动 |
 | [`src/client/read.ts`](src/client/read.ts) | 完整读取和分窗口读取 |
 | [`src/client/decode.ts`](src/client/decode.ts) | 解码、测量和图像 |

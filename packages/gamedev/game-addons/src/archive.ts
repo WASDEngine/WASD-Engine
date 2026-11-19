@@ -16,6 +16,7 @@ import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { open as openZip, type Entry, type ZipFile } from 'yauzl'
 import type { GameAddonArchive } from './types.ts'
+import { unpackedFolder } from '@deepseek-ai/dsh-app-mcp'
 
 /** Archive entries that are never installed: macOS resource forks and Finder metadata. */
 function isMetadata(name: string): boolean {
@@ -56,7 +57,7 @@ export interface LocalArchive {
  * @returns the folder in `app.asar.unpacked` for a packaged app, and in the package itself otherwise.
  */
 export function bundledArchivesDir(packageRoot: string): string {
-  return join(packageRoot.replace(/([\\/])app\.asar(?=[\\/])/u, '$1app.asar.unpacked'), 'archives')
+  return unpackedFolder(packageRoot, 'archives')
 }
 
 /** Whether a file exists with the given size; false for a missing one. */

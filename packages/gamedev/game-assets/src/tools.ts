@@ -7,9 +7,8 @@
  * connected through WASD Engine's MCP server, whose images travel as image bytes.
  * @module @deepseek-ai/dsh-game-assets/src/tools
  */
-import type { Stats } from 'node:fs'
-import { realpath, stat } from 'node:fs/promises'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { realpath } from 'node:fs/promises'
+import { isAbsolute, resolve } from 'node:path'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -25,6 +24,9 @@ import { scanProject, type ScanLimits } from './scan.ts'
 import type {
   AssetDetails, AssetDrawOptions, AssetRenderedImage, AssetRenderRequest, AssetRenderResult, AssetReveal, AssetViewDirection,
 } from './types.ts'
+import {
+  ATTACHED_IMAGE_SCHEMA, checkedInteger as integerWithin, folderRows, pathFolder, pathName, pathWithin, statOf, windowPath,
+} from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** Results `asset_search` lists when the call names no limit. */
 export const DEFAULT_LIMIT = 50
@@ -168,20 +170,6 @@ const SEARCH_SCHEMA = {
   },
 } as const
 
-const IMAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    attachmentId: STRING,
-    mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-    bytes: INTEGER,
-    width: INTEGER,
-    height: INTEGER,
-    name: { type: 'string' },
-    originalDimensions: { type: 'object', additionalProperties: false, properties: { width: INTEGER, height: INTEGER } },
-  },
-} as const
-
 const VIEW_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -190,7 +178,7 @@ const VIEW_SCHEMA = {
     requested: { type: 'string', description: 'The Blender file the call named, when the drawn model was exported from it.' },
     details: { type: 'json', required: true, description: 'What the window measured: an image\'s or a model\'s details.' },
     captions: { type: 'array', required: true, items: { type: 'string' } },
-    images: { type: 'array', required: true, items: IMAGE_SCHEMA },
+    images: { type: 'array', required: true, items: ATTACHED_IMAGE_SCHEMA },
     imagesOmitted: { type: 'boolean', description: 'The caller\'s model does not accept images, so none were drawn.' },
     shown: BOOLEAN,
   },
@@ -217,9 +205,7 @@ function fail(message: string, code: string): never {
 }
 
 function checkedInteger(value: number | undefined, fallback: number, name: string, min: number, max: number): number {
-  const chosen = value ?? fallback
-  if (!Number.isInteger(chosen) || chosen < min || chosen > max) fail(`${name} must be an integer from ${min} to ${max}.`, ASSET_ERROR.argument)
-  return chosen
+  return integerWithin(value, fallback, name, min, max, message => fail(message, ASSET_ERROR.argument))
 }
 
 /**
@@ -231,27 +217,9 @@ function checkedInteger(value: number | undefined, fallback: number, name: strin
  */
 export function workspacePath(project: string, path: string): { readonly absolute: string; readonly path: string } {
   const absolute = resolve(project, path.trim())
-  const inside = relative(project, absolute)
-  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
-    fail(`${path} is not a file inside the project folder ${project}.`, ASSET_ERROR.outside)
-  }
-  return { absolute, path: inside.split(sep).join('/') }
-}
-
-/**
- * The path a window reads a file at. The window resolves a Session's relative paths against the folder in the
- * Session's header, which stays the project folder when an agent's working directory moves below it, as for a teammate
- * started in a subfolder; a path relative to that folder also lets the window find the file's siblings and the Godot
- * resources that use it.
- * @param root - the folder in the Session's header, or undefined when the header has none.
- * @param absolute - absolute path of the file.
- * @returns the `/`-separated path relative to `root` for a file inside it, and the absolute path otherwise.
- */
-export function windowPath(root: string | undefined, absolute: string): string {
-  if (root === undefined) return absolute
-  const inside = relative(root, absolute)
-  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return absolute
-  return inside.split(sep).join('/')
+  const inside = pathWithin(project, absolute)
+  if (inside === undefined || inside === '') fail(`${path} is not a file inside the project folder ${project}.`, ASSET_ERROR.outside)
+  return { absolute, path: inside }
 }
 
 /**
@@ -263,9 +231,7 @@ export function windowPath(root: string | undefined, absolute: string): string {
  * @returns the absolute folder.
  */
 export function readRoot(header: string | undefined, project: string): string {
-  if (header === undefined) return project
-  const inside = relative(header, project)
-  return inside === '' || (inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)) ? header : project
+  return header === undefined || pathWithin(header, project) === undefined ? project : header
 }
 
 /**
@@ -282,8 +248,8 @@ async function insideByRealPath(folder: string, path: string): Promise<boolean> 
     // ENOENT, ELOOP, or EACCES: a path that does not resolve is not read.
     return false
   }
-  const inside = relative(real[0], real[1])
-  return inside !== '' && inside !== '..' && !inside.startsWith(`..${sep}`) && !isAbsolute(inside)
+  const inside = pathWithin(real[0], real[1])
+  return inside !== undefined && inside !== ''
 }
 
 /**
@@ -295,9 +261,8 @@ async function insideByRealPath(folder: string, path: string): Promise<boolean> 
  */
 export function callerPath(root: string, project: string, reported: string): string {
   const target = isAbsolute(reported) ? reported : resolve(root, reported)
-  const inside = relative(project, target)
-  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) return target
-  return inside.split(sep).join('/')
+  const inside = pathWithin(project, target)
+  return inside === undefined || inside === '' ? target : inside
 }
 
 /**
@@ -321,15 +286,6 @@ function callerDetails(details: AssetDetails, root: string, project: string): As
 /** Most distinct files one glTF model may name for the window to load with it. */
 export const MAX_GLTF_FILES = MAX_NAMED_FILES
 
-function folderOf(path: string): string {
-  const slash = path.lastIndexOf('/')
-  return slash < 0 ? '' : path.slice(0, slash)
-}
-
-function nameOf(path: string): string {
-  return path.slice(path.lastIndexOf('/') + 1)
-}
-
 /**
  * Rank assets for a query: names containing it first, then paths containing it, then paths that hold its characters
  * in order; the rest are left out.
@@ -340,7 +296,7 @@ function nameOf(path: string): string {
 function ranked<T extends ListedAsset>(assets: readonly T[], query: string): T[] {
   const score = (asset: T): number => {
     const path = asset.path.toLowerCase()
-    const name = nameOf(path)
+    const name = pathName(path)
     if (name.startsWith(query)) return 0
     if (name.includes(query)) return 1
     if (path.includes(query)) return 2
@@ -463,16 +419,13 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       const matching = query === '' ? listed : ranked(listed, query.toLowerCase())
       const counts = new Map<string, { images: number; models: number }>()
       for (const asset of matching) {
-        const key = folderOf(asset.path)
+        const key = pathFolder(asset.path)
         const entry = counts.get(key) ?? { images: 0, models: 0 }
         if (asset.kind === 'image') entry.images += 1
         else entry.models += 1
         counts.set(key, entry)
       }
-      const folders: ListedFolder[] = [...counts.entries()]
-        .sort(([left], [right]) => NAME_ORDER.compare(left, right))
-        .slice(0, LISTED_FOLDERS)
-        .map(([path, entry]) => ({ path, ...entry }))
+      const folders: ListedFolder[] = folderRows(counts, NAME_ORDER, LISTED_FOLDERS)
       return {
         project,
         query,
@@ -555,7 +508,7 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
       let requested: string | undefined
       if (isBlendFormat(format)) {
         const scan = await scanProject(project, host.scanLimits, exec.signal)
-        const exported = exportOf({ path: target.path, name: nameOf(target.path), folder: folderOf(target.path), format }, scan.assets)
+        const exported = exportOf({ path: target.path, name: pathName(target.path), folder: pathFolder(target.path), format }, scan.assets)
         if (exported === undefined) {
           fail(`${target.path} is a Blender file, which the viewer cannot read, and the project has no model of the same name exported from it. Export it as GLB beside it, or look at it with Blender's render_preview.`, ASSET_ERROR.blend)
         }
@@ -602,7 +555,7 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
         if (sent === path || !(error instanceof HarnessError)) throw error
         throw new HarnessError(error.message.replaceAll(sent, path), error.code, { cause: error })
       }
-      const kept = images && answer.images.length > 0 ? await surface.keep(exec, answer.images, nameOf(path)) : []
+      const kept = images && answer.images.length > 0 ? await surface.keep(exec, answer.images, pathName(path)) : []
       const shown = args.show === true
       if (shown) {
         const watched = host.revealTarget(agent)
@@ -627,20 +580,6 @@ export function assetToolDefinitions(host: AssetToolHost, surface: AssetToolSurf
 }
 
 /**
- * Read a path's file information.
- * @param path - absolute path.
- * @returns the information, or undefined when nothing readable is there.
- */
-async function statOf(path: string): Promise<Stats | undefined> {
-  try {
-    return await stat(path)
-  } catch {
-    // ENOENT, ENOTDIR, or EACCES: nothing readable at the path.
-    return undefined
-  }
-}
-
-/**
  * Resolve a folder filter against the project folder.
  * @param project - absolute project folder.
  * @param folder - the folder the call names.
@@ -650,9 +589,9 @@ async function statOf(path: string): Promise<Stats | undefined> {
 function workspaceFolder(project: string, folder: string): string {
   const trimmed = folder.trim().replace(/[\\/]+$/u, '')
   if (trimmed === '' || trimmed === '.') return ''
-  const absolute = resolve(project, trimmed)
-  const inside = relative(project, absolute)
-  if (inside === '') return ''
-  if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) fail(`${folder} is not a folder inside the project folder ${project}.`, ASSET_ERROR.outside)
-  return inside.split(sep).join('/')
+  const inside = pathWithin(project, resolve(project, trimmed))
+  if (inside === undefined) fail(`${folder} is not a folder inside the project folder ${project}.`, ASSET_ERROR.outside)
+  return inside
 }
+
+export { windowPath }

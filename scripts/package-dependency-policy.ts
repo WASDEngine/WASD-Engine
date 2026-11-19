@@ -62,6 +62,10 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
     'memoryShortage',
     // Formats model-facing text from its arguments alone.
     'lowMemoryMessage',
+    // Joins a package folder's path, through app.asar.unpacked in a packaged app, from its arguments alone.
+    'unpackedFolder',
+    // Lists the files of a folder the caller names when called; keeps no module state.
+    'listFolderFiles',
   ],
   '@deepseek-ai/dsh-atomic-write': ['withFileLock', 'writeFileAtomic'],
   '@deepseek-ai/dsh-computer-use/brand': ['ComputerUseProviderName'],
@@ -74,6 +78,12 @@ const SAFE_HOST_DEPENDENCY_EXPORTS = {
     'LIVESHARE_CAPABILITIES', 'LIVESHARE_PROTOCOL_VERSION', 'parseRelayFrame', 'parseShareAccessState',
     'parseTunnelWorkerCommand', 'parseTunnelWorkerEvent', 'rawText', 'sendFrame', 'unsupportedFrameRefusal',
     'viewerRequestFields', 'identityFromKey', 'identityKeyOf',
+  ],
+  '@deepseek-ai/dsh-game-mcp/kit': [
+    // A generator over the caller's set of notifiers and its signal; it keeps no module state.
+    'stateChanges',
+    // A plain schema object that tool definitions read.
+    'ATTACHED_IMAGE_SCHEMA',
   ],
   // The shipped profile templates are plain data; a consumer reads their bundle names only.
   '@deepseek-ai/dsh-official-bundles': ['PROFILE_TEMPLATES'],

@@ -183,7 +183,13 @@ describe('SuperCollider packaging hooks', () => {
 
   it('stages into the folder the SuperCollider plugin reads, from the release that build.sh builds by default', async () => {
     const environment = await readFile(new URL('../../../packages/gamedev/supercollider/src/environment.ts', import.meta.url), 'utf8')
-    expect(/export function bundledRuntimeRoot\([^)]*\): string \{\n\s*return path\.join\([^\n]*'runtime'\)/u.test(environment)).toBe(true)
+    const bundled = /export function bundledRuntimeRoot\([^)]*\): string \{\n\s*return shippedRuntimeRoot\(packageRoot\)/u
+    expect(bundled.test(environment)).toBe(true)
+    const lookup = await readFile(new URL('../../../packages/gamedev/app-mcp/src/shipped-runtime.ts', import.meta.url), 'utf8')
+    const delegates = /export function shippedRuntimeRoot\([^)]*\): string \{\n\s*return unpackedFolder\(packageRoot, 'runtime'\)/u
+    const joins = /export function unpackedFolder\([^)]*\): string \{\n\s*return path\.join\([^\n]*app\.asar\.unpacked[^\n]*, folder\)/u
+    expect(delegates.test(lookup)).toBe(true)
+    expect(joins.test(lookup)).toBe(true)
     const build = await readFile(new URL('../../../wasdengine/supercollider/build.sh', import.meta.url), 'utf8')
     const version = /^version=(\S+)$/mu.exec(build)?.[1]
     expect(SUPERCOLLIDER_MANIFEST_URL).toBe(`https://github.com/WASDEngine/WASD-Engine/releases/download/supercollider-${String(version)}/manifest.json`)

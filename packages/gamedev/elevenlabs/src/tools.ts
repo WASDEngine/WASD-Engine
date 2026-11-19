@@ -8,14 +8,13 @@
  * WASD Engine's MCP server, which confirm with their own user.
  * @module @deepseek-ai/dsh-elevenlabs/src/tools
  */
-import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, dirname, extname, resolve } from 'node:path'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { readFile } from 'node:fs/promises'
+import { basename, extname, resolve } from 'node:path'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { AudioRequestError, type AudioApi, type CloneSample, type VoiceQuery } from './api.ts'
 import { CONSENT_STATEMENT_VERSION } from './consent.ts'
 import type { ElevenLabsAudioFormat, ElevenLabsAudioKind } from './types.ts'
+import { kilobytes, namedFileSize, replaceableFile, textBlocks, writeWhole } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** Longest text one `elevenlabs_speech` call speaks. */
 export const MAX_SPEECH_CHARACTERS = 5000
@@ -138,6 +137,9 @@ const VOICES_SCHEMA = {
   },
 } as const
 
+/** The value of `elevenlabs_voices`. */
+type VoicesValue = InferValue<typeof VOICES_SCHEMA>
+
 const FILE_PROPERTIES = {
   path: { type: 'string', required: true, description: 'Absolute path of the file written.' },
   file: { type: 'string', required: true, description: 'The path as the call named it.' },
@@ -155,6 +157,9 @@ const SPEECH_SCHEMA = {
   additionalProperties: false,
   properties: { ...FILE_PROPERTIES, voiceId: STRING, characters: INTEGER },
 } as const
+
+/** The fields every generated file reports. */
+type FileValue = InferValue<typeof FILE_SCHEMA>
 
 const SOUND_EFFECT_SCHEMA = {
   type: 'object',
@@ -185,21 +190,6 @@ const DELETED_SCHEMA = {
   additionalProperties: false,
   properties: { voiceId: STRING, name: STRING, clonesUsed: INTEGER, clonesAllowed: INTEGER },
 } as const
-
-/** The value of `elevenlabs_voices`. */
-type VoicesValue = InferValue<typeof VOICES_SCHEMA>
-
-/** The fields every generated file reports. */
-type FileValue = InferValue<typeof FILE_SCHEMA>
-
-function textBlocks(text: string): ContentBlock[] {
-  return [{ type: 'text', text }]
-}
-
-function kilobytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 function seconds(durationMs: number): string {
   return `${(durationMs / 1000).toFixed(1)} s`
@@ -240,36 +230,6 @@ function formatOf(path: string, allowed: readonly ElevenLabsAudioFormat[]): Elev
 }
 
 /**
- * Whether a path holds a file, refusing one the call may not replace.
- * @throws Error when the path is a folder, or a file and `replace` is false.
- */
-async function existing(path: string, file: string, replace: boolean): Promise<boolean> {
-  let found
-  try {
-    found = await stat(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
-  }
-  if (!found.isFile()) throw new Error(`${file} is a folder; pass the path of a file.`)
-  if (!replace) throw new Error(`${file} already exists. Pass replace: true to overwrite it, or choose another path.`)
-  return true
-}
-
-/** Write a file in place of any earlier one, through a temporary file beside it. */
-async function writeAudio(path: string, data: Buffer): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.part`
-  try {
-    await writeFile(temporary, data)
-    await rename(temporary, path)
-  } catch (error) {
-    await rm(temporary, { force: true })
-    throw error
-  }
-}
-
-/**
  * Make one audio file and save it: the target is checked before the paid request, so a refused path costs nothing.
  * @returns the fields every generated file reports.
  */
@@ -289,9 +249,9 @@ async function generateFile(
   if (making.has(key)) throw new Error(`Another call is making ${file} now; wait for it, or choose another path.`)
   making.add(key)
   try {
-    const replaced = await existing(path, file, replace)
+    const replaced = await replaceableFile(path, file, replace)
     const audio = await host.api.generate(kind, { ...body, format }, exec.signal)
-    await writeAudio(path, audio.data)
+    await writeWhole(path, audio.data)
     return { path, file, format, durationMs: audio.durationMs, bytes: audio.data.byteLength, replaced }
   } finally {
     making.delete(key)
@@ -338,15 +298,7 @@ async function readSamples(host: ElevenLabsToolHost, requested: readonly string[
     const type = SAMPLE_TYPES[extname(file).toLowerCase()]
     if (type === undefined) throw new Error(`${file} must be a .wav or .mp3 recording.`)
     const path = await host.file(file, exec)
-    let size: number
-    try {
-      const found = await stat(path)
-      if (!found.isFile()) throw new Error(`${file} is not a file.`)
-      size = found.size
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`${file} does not exist.`, { cause: error })
-      throw error
-    }
+    const size = await namedFileSize(path, file)
     if (size > MAX_CLONE_SAMPLE_BYTES) throw new Error(`${file} is larger than ${MAX_CLONE_SAMPLE_BYTES / (1024 * 1024)} MB; trim it or save it as MP3.`)
     samples.push({ name: basename(file), type, data: await readFile(path) })
   }

@@ -8,16 +8,12 @@
  */
 import { BoxGeometry, BufferGeometry, DataTexture, Group, ImageLoader, InstancedMesh, Mesh, MeshLambertMaterial, MeshPhongMaterial, MeshStandardMaterial, Points, Texture } from 'three'
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
-import { exportOf } from '../src/client/AssetViewer.tsx'
-import { formatOf } from '../src/client/formats.ts'
+import { exportOf, formatOf } from '../src/client/formats.ts'
 import { relatedUrl } from '../src/client/read.ts'
 import type { AssetEntry } from '../src/client/scan.ts'
 import { checkModelImage, ImageTooLargeError, UnsizedImageError } from '../src/client/picture.ts'
-import {
-  colladaImageNames, describeModel, disposeObject, gltfDeclaredBytes, gltfJson, loadModel, ModelTooLargeError, ModelUnsizedError, mtllibOf,
-  statsOf,
-  type ModelSource,
-} from '../src/client/viewer/model.ts'
+import { describeModel, disposeObject, loadModel, statsOf, type ModelSource } from '../src/client/viewer/model.ts'
+import { colladaImageNames, gltfDeclaredBytes, gltfJson, ModelTooLargeError, ModelUnsizedError } from '../src/client/viewer/model-sizes.ts'
 import { FbxInflateError } from '../src/client/viewer/fbx.ts'
 import { VoxModelTooLargeError, VoxWorkTooLargeError } from '../src/client/viewer/vox.ts'
 import { fbx, fbxFile, pngHeader, tgaFile, voxFile } from './model-files.client.ts'
@@ -476,14 +472,6 @@ describe('loadModel: the memory of every format and its textures', () => {
     await files.settled
     expect(files.missing).toEqual(['b.png'])
     expect(route.requests).toContain('GET b.png')
-  })
-
-  it('reads an OBJ file\'s material library name a line at a time, so a crafted line costs linear time', () => {
-    expect(mtllibOf('v 0 0 0\r\n  mtllib\t mat/hero.mtl \t\nmtllib other.mtl\n')).toBe('mat/hero.mtl')
-    expect(mtllibOf('mtllib\nmtllibx a.mtl\n')).toBeUndefined()
-    const started = performance.now()
-    expect(mtllibOf(`mtllib x${' '.repeat(1_000_000)}y\n`)).toBe(`x${' '.repeat(1_000_000)}y`)
-    expect(performance.now() - started).toBeLessThan(2000)
   })
 
   it('checks an FBX file\'s embedded images and its images in files of their own, listing an embedded one it refuses', async () => {

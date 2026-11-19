@@ -10,7 +10,9 @@ import { executeToolFixture } from '@deepseek-ai/dsh-tool-testkit'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SCREENSHOTS_GITIGNORE } from '../src/captures.ts'
 import { GodotRun } from '../src/run.ts'
-import { DIGEST_ENTRIES, formatDigest, formatLogEntry, formatTree, STARTUP_ENTRIES, TEXT_BUDGET, toolLogEntry } from '../src/tools.ts'
+import { DIGEST_ENTRIES, STARTUP_ENTRIES } from '../src/tool-parts.ts'
+import { formatDigest, formatLogEntry, TEXT_BUDGET, toolLogEntry } from '../src/tool-text.ts'
+import { formatTree } from '../src/run-text.ts'
 import type { GodotVideoEncodeEvent, GodotVideoEncodeResult } from '../src/types.ts'
 import { callTool, compose, text, type Composition, type CompositionOptions } from './composition.ts'
 import { configureFake, fakeLog, fakeRequests, scratch, until } from './helpers.ts'
@@ -867,9 +869,11 @@ posix('godot_check', () => {
       const signal = new AbortController().signal
       const android = await c.godot.exportMobile({ projectDir: c.project, platform: 'android', outputDir: join(c.dir.root, 'android') }, signal)
       const keystore = join(c.dir.root, 'data', 'android', 'release.keystore')
-      expect(android).toMatchObject({ entry: 'Fake game.apk', identifier: 'com.wasdengine.game.fake_game', signing: { keystore, created: true } })
+      expect(android).toMatchObject({ entry: 'Fake game.apk', signing: { keystore, created: true } })
+      expect(android.identifier).toMatch(/^com\.wasdengine\.game\.fake_game\.[a-z]{6}$/u)
       const ios = await c.godot.exportMobile({ projectDir: c.project, platform: 'ios', outputDir: join(c.dir.root, 'ios'), appleTeamId: 'ABCDE12345' }, signal)
-      expect(ios).toMatchObject({ entry: 'Fakegame.xcodeproj', identifier: 'com.wasdengine.game.fake-game', appleTeamId: 'ABCDE12345' })
+      expect(ios).toMatchObject({ entry: 'Fakegame.xcodeproj', appleTeamId: 'ABCDE12345' })
+      expect(ios.identifier).toMatch(/^com\.wasdengine\.game\.fake-game\.[a-z]{6}$/u)
       type ExportEntry = { preset: string; env: Record<string, string> }
       const exports = (await fakeLog(c.project)).filter(entry => entry.preset !== undefined) as ExportEntry[]
       expect(exports.map(entry => entry.preset)).toEqual(['WASD Engine Android', 'WASD Engine iOS'])
@@ -879,6 +883,8 @@ posix('godot_check', () => {
       expect(existsSync(exports[0]?.env.HOME as string)).toBe(false)
       const again = await c.godot.exportMobile({ projectDir: c.project, platform: 'android', outputDir: join(c.dir.root, 'android') }, signal)
       expect(again.signing).toEqual({ keystore, created: false })
+      // Later builds keep the identifier that the first chose, so they update the installed app.
+      expect(again.identifier).toBe(android.identifier)
     } finally {
       await tools.cleanup()
     }

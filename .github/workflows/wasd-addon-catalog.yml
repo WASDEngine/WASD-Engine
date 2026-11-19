@@ -1,0 +1,57 @@
+# Install every add-on of the shipped catalog from its pinned URL and run its smoke test
+# (packages/gamedev/game-addons/tests/catalog.e2e.ts): Godot add-ons on the LibGodot runtime that the Desktop app ships,
+# Blender add-ons in a Blender worker on bpy 5.2.3. The catalog pins each archive's URL and SHA-256, and a release that
+# moves or changes breaks installs without any commit here, so this runs every week as well as on dispatch.
+#
+# Actions are pinned to full commit SHAs (the release is noted beside each).
+name: WASD add-on catalog
+
+on:
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  # Test runs never report to the telemetry endpoint the CLI profile names.
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  catalog:
+    name: Install and smoke-test every add-on
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the pnpm release that package.json's packageManager names.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage the runtimes that the Desktop app ships
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-e2e-runtimes.ts --env-out "$GITHUB_ENV"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      # The suite runs bpy offline from uv's cache, as the Blender plugin's uv environment does.
+      - name: Cache bpy 5.2.3 for the Blender add-ons
+        run: uv run --python 3.13 --no-project --with bpy==5.2.3 python -I -c 'import bpy'
+
+      - name: Install and smoke-test every add-on
+        run: pnpm exec vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts

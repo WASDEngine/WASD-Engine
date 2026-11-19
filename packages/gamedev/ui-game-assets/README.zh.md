@@ -113,14 +113,15 @@ fork 的 patch 文件 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasde
 
 2D 视图与 agent 的图片在解码图片之前先读取其文件头（[`src/client/image-size.ts`](src/client/image-size.ts)）：PNG、JPEG、GIF、WebP、BMP、ICO、AVIF、TGA、HDR 与 EXR 在文件头中给出尺寸，读取器按文件的解码器读取它：浏览器支持的格式按内容而不按文件名读取，JPEG 跳过 libjpeg 会跳过的杂散字节，GIF 的画布像浏览器一样扩展到其第一帧，HDR 文件的文件头各行按 three.js 的方式读取，EXR 文件取其最后一个数据窗口。文件头未给出读取器能读取的尺寸的图片不会被解码，并显示为无法读取；SVG 没有尺寸，其图片按显示的大小绘制。浏览器支持的格式解码到图片元素中，2D 视图自身的元素通过同一个对象 URL 与之共用。图片的动画在其解码完成后查找：自身的帧通过 `ImageDecoder` 得到，它为取得时长把每一帧解码一次，绘制该帧时再解码一次；最近一次扫描中名称引用其文件的 Godot 文件，每次读取六个，最多 400 个，每个最大 1 MiB；其文件夹列表中同名的精灵表 JSON；以及该列表中的编号图片。Godot 读取器解析区段标题、属性及其值的变体语法，然后按 id 解析 SpriteFrames、AtlasTexture、Sprite2D、Animation 与 AnimationLibrary 资源。
 
-three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载；该分块中没有任何内容导入浏览器半区的其他模块，浏览器半区的其他模块也不导入该分块同样导入的值（例如 `@deepseek-ai/dsh-util-values` 的 `assertNever`），否则打包器会把它移入第三个分块，而查看器分块需要这个分块；[`tests/bundle-split.client.spec.ts`](tests/bundle-split.client.spec.ts) 会在构建产物中检查这一点。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表是 `@deepseek-ai/dsh-game-assets/formats` 的副本，因为插件的浏览器包不能导入其他插件的值；[`tests/formats.client.spec.ts`](tests/formats.client.spec.ts) 保证两者一致。
+three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中，两个视图和 agent 的图片都在首次使用时导入它；客户端模块加载器无法加载被另一个延迟分块依赖的分块，因此第二个入口会让共享代码无法被加载；该分块中没有任何内容导入浏览器半区的其他模块，浏览器半区的其他模块也不导入该分块同样导入的值（例如 `@deepseek-ai/dsh-util-values` 的 `assertNever`），否则打包器会把它移入第三个分块，而查看器分块需要这个分块；[`tests/bundle-split.client.spec.ts`](tests/bundle-split.client.spec.ts) 会在构建产物中检查这一点。3D 舞台按需绘制：相机移动、迟到的纹理、尺寸变化或正在播放的动画会请求下一帧；标签页信息报告其不 `visible` 时，舞台不请求任何帧。格式表与 Blender 文件对应模型的查找来自 `@deepseek-ai/dsh-game-assets/formats`，agent 的资源工具也读取它，浏览器部分将其内联；它是客户端包纯净性检查对该包放行的唯一入口。
 
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Loader 行的空 Host `apply` |
 | [`src/client/index.ts`](src/client/index.ts) | `Config`、标签页类型、其座位、文案、每个 Session 的状态与 face，以及对渲染和显示请求的答复 |
-| [`src/client/formats.ts`](src/client/formats.ts) | 列出的扩展名、其类型与解码器 |
-| [`src/client/scan.ts`](src/client/scan.ts) | 项目遍历与名称排序 |
+| [`src/client/formats.ts`](src/client/formats.ts) | 资源工具列出的扩展名、其类型与解码器，以及 Blender 导出的查找 |
+| [`src/client/project-tab.ts`](src/client/project-tab.ts) | 与音频标签页共用的部分，以 `./client/project-tab` 导出：项目遍历、单个 Session 的遍历状态、各 Session 的状态、显示与文件重新读取 |
+| [`src/client/scan.ts`](src/client/scan.ts) | 基于项目遍历的素材扫描 |
 | [`src/client/tree.ts`](src/client/tree.ts) | 文件夹树、其行、要展开的文件夹与搜索 |
 | [`src/client/source.ts`](src/client/source.ts) | 单个 Session 的扫描与选择 |
 | [`src/client/walks.ts`](src/client/walks.ts) | 为一个会话绘制的图片所共用的项目遍历 |
@@ -128,7 +129,8 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/client/AssetsTab.tsx`](src/client/AssetsTab.tsx)、[`src/client/AssetPicker.tsx`](src/client/AssetPicker.tsx) | 主体、其状态、其导航与下拉列表 |
 | [`src/client/AssetViewer.tsx`](src/client/AssetViewer.tsx) | 读取、重新加载、Blender 导出与读取失败 |
 | [`src/client/ImageView.tsx`](src/client/ImageView.tsx)、[`src/client/ModelView.tsx`](src/client/ModelView.tsx) | 带动画控件的 2D 与 3D 视图 |
-| [`src/client/DetailsPanel.tsx`](src/client/DetailsPanel.tsx) | 图片或模型的详细信息 |
+| [`src/client/zoom-pan.ts`](src/client/zoom-pan.ts) | 2D 视图的缩放与平移 |
+| [`src/client/DetailsPanel.tsx`](src/client/DetailsPanel.tsx) | 图片或模型的详细信息，以及视图中显示它们的开关 |
 | [`src/client/godot.ts`](src/client/godot.ts) | Godot 文本资源读取器及其 2D 动画 |
 | [`src/client/sprites.ts`](src/client/sprites.ts)、[`src/client/animations2d.ts`](src/client/animations2d.ts)、[`src/client/frames.ts`](src/client/frames.ts) | 2D 动画：网格、序列、精灵表、Godot 与自身的帧，以及查找图片的动画 |
 | [`src/client/sprite-player.ts`](src/client/sprite-player.ts) | 当前显示的一张图片的已解码图片与动画 |
@@ -136,7 +138,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/client/agent.ts`](src/client/agent.ts)、[`src/client/render2d.ts`](src/client/render2d.ts) | 答复渲染请求：解码、测量、绘制与编码 |
 | [`src/client/answer.ts`](src/client/answer.ts) | 按请求的上限裁剪答复的详细信息 |
 | [`src/client/queue.ts`](src/client/queue.ts) | 为 agent 同时绘制的图片的顺序与数量 |
-| [`src/client/viewer/`](src/client/viewer/) | 延迟加载的 three.js 分块：图片解码器、模型加载器及其之前的内存检查（`vox.ts`、`fbx.ts`、`textures.ts`）、测量、舞台、骨架叠加，以及 agent 的模型格子 |
+| [`src/client/viewer/`](src/client/viewer/) | 延迟加载的 three.js 分块：图片解码器、模型加载器及其之前的内存检查（`model-sizes.ts`、`vox.ts`、`fbx.ts`、`textures.ts`）、测量、舞台（`stage.ts`）、骨架叠加，以及 agent 的模型格子 |
 | [`src/client/icon.tsx`](src/client/icon.tsx) | 标签页图标与 3D 模型文件图标 |
 | [`src/client/locales.ts`](src/client/locales.ts) | 八种语言的 `gameAssets` 词典 |
 

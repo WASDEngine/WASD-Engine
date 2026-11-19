@@ -25,8 +25,8 @@ import { resolveMacOSAppUpdateFeed, verifyMacOSAppUpdateConfig, writeMacOSAppUpd
 import { packageMacOSArtifacts, type DesktopPrepackagedArtifact, type MacOSArtifactOperations } from '../scripts/package-macos.ts'
 import { applyWasdengineBrand } from '../scripts/wasdengine-builder-config.mjs'
 import {
-  SHA256SUMS, mergeSha256Sums, parseFeed, publishGitHubRelease, stageGitHubRelease, uploadGitHubRelease, verifyReleaseFeeds,
-  type GhRunner, type PublishOptions, type ReleaseAsset, type StagedRelease,
+  SHA256SUMS, STAGED_RELEASE, mergeSha256Sums, parseFeed, publishGitHubRelease, readStagedRelease, stageGitHubRelease, uploadGitHubRelease,
+  verifyReleaseFeeds, type GhRunner, type PublishOptions, type ReleaseAsset, type StagedRelease,
 } from '../scripts/wasdengine-github-release.ts'
 import {
   GITHUB_UPDATE_SERVICE, githubReleaseFileUrl, githubUpdateFeedUrl, resolveWasdengineUpdateConfig, unsignedBuildCarriesUpdateFeed,
@@ -339,6 +339,36 @@ describe('WASDEngine updates through GitHub releases', () => {
       ['stable.yml', sha256(await readFile(join(root, 'staged', 'stable.yml'), 'utf8'))],
       ['nightly.yml', sha256(await readFile(join(root, 'staged', 'nightly.yml'), 'utf8'))],
     ])))
+  })
+
+  it('records the staged files for an upload elsewhere, which reads them back and checks they are there', async () => {
+    const root = await temporary()
+    await packagedWindows(join(root, 'artifacts'))
+    const staged = await stageGitHubRelease({ target: 'win-x64', unsigned: true, version: VERSION, artifactsDirectory: join(root, 'artifacts'), outputDirectory: join(root, 'staged') })
+    expect(await readStagedRelease(join(root, 'staged'))).toEqual(staged)
+    const record = join(root, 'staged', STAGED_RELEASE)
+    await writeFile(record, JSON.stringify({ ...JSON.parse(await readFile(record, 'utf8')), feeds: ['stable.yml', '../outside.yml'] }))
+    await expect(readStagedRelease(join(root, 'staged'))).rejects.toThrow('does not describe staged release files')
+    await writeFile(record, JSON.stringify({ ...JSON.parse(await readFile(record, 'utf8')), feeds: ['stable.yml', 'missing.yml'] }))
+    await expect(readStagedRelease(join(root, 'staged'))).rejects.toThrow('names missing.yml, which the folder lacks')
+  })
+
+  it('uploads with nothing but Node and its own files, so the job that may write releases installs no package', async () => {
+    const seen = new Set<string>()
+    const visit = async (path: string): Promise<void> => {
+      if (seen.has(path)) return
+      seen.add(path)
+      const source = await readFile(path, 'utf8')
+      for (const [, specifier] of source.matchAll(/^(?:import|export)[^'\n]*?from '([^']+)'/gmu)) {
+        if (specifier === undefined || specifier.startsWith('node:')) continue
+        expect(specifier.startsWith('.'), `${path} imports ${specifier}`).toBe(true)
+        await visit(join(path, '..', specifier))
+      }
+    }
+    await visit(join(import.meta.dirname, '..', 'scripts', 'wasdengine-github-release-upload.ts'))
+    expect([...seen].map(path => path.slice(join(import.meta.dirname, '..').length + 1)).sort()).toEqual([
+      join('scripts', 'wasdengine-github-release-upload.ts'), join('src', 'wasdengine-brand.ts'),
+    ].sort())
   })
 
   it('refuses a dirty build, a tag on another commit, and a published release without --published', async () => {

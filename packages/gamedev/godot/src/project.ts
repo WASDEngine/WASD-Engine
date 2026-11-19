@@ -6,7 +6,7 @@
 import type { Dirent } from 'node:fs'
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { parseProjectWindow, type ProjectWindow } from './launch.ts'
+import { parseProjectWindow, sectionSettings, type ProjectWindow } from './launch.ts'
 
 /** How many directory levels below the working directory the search for the nearest `project.godot` descends. */
 export const PROJECT_SEARCH_DEPTH = 3
@@ -73,17 +73,7 @@ function parseGodotString(value: string): string | undefined {
  * @yields each setting's key, such as `config/name`, and its raw value text after `=`.
  */
 function* applicationSettings(text: string): Generator<readonly [string, string]> {
-  let section = ''
-  for (const raw of text.split(/\r?\n/u)) {
-    const line = raw.trim()
-    const header = /^\[([^\]]+)\]$/u.exec(line)
-    if (header !== null) {
-      section = header[1] as string
-      continue
-    }
-    const separator = line.indexOf('=')
-    if (section === 'application' && separator >= 0) yield [line.slice(0, separator).trim(), line.slice(separator + 1).trim()]
-  }
+  yield* sectionSettings(text, 'application')
 }
 
 /**

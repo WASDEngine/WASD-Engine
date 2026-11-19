@@ -7,6 +7,7 @@
  * the caller refuses more memory than the viewer gives one model, counting a quad for every exposed face, which no
  * merge exceeds. The plan's own work is linear in the file and in the cells of the models it meshes.
  */
+import { ByteCursor, exposedFaces } from '@deepseek-ai/dsh-game-assets/model-files'
 
 /** The longest side of a MagicaVoxel model, in voxels. */
 export const VOX_MAX_SIDE = 256
@@ -70,25 +71,7 @@ export interface VoxPlan {
 }
 
 /** A reader over a file's bytes that throws where the loader's DataView throws, past the end. */
-class Reader {
-  private readonly view: DataView
-  at = 0
-
-  constructor(readonly data: Uint8Array) {
-    this.view = new DataView(data.buffer, data.byteOffset, data.byteLength)
-  }
-
-  u32(): number {
-    const value = this.view.getUint32(this.at, true)
-    this.at += 4
-    return value
-  }
-
-  skip(bytes: number): void {
-    if (this.at + bytes > this.data.byteLength) throw new RangeError('the VOX file ends inside a chunk')
-    this.at += bytes
-  }
-
+class Reader extends ByteCursor {
   /** A STRING: its length, then that many bytes, which the plan skips. */
   string(): void {
     this.skip(this.u32())
@@ -232,37 +215,6 @@ function sumOverMeshes(nodes: ReadonlyMap<number, VoxNode>, value: (model: numbe
     stack.pop()
   }
   return sums.get(0) as number
-}
-
-/**
- * The faces of a model that border no other voxel of it, as the mesher finds them: its voxels set into its box as the
- * mesher sets them, where a voxel outside the box may land in another cell or nowhere, then the faces of each filled
- * cell toward an empty cell or the box's edge.
- */
-function exposedFaces(model: VoxModel): number {
-  const { x: sx, y: sy, z: sz, voxels } = model
-  if (voxels.length < 4) return 0
-  const volume = new Uint8Array(sx * sy * sz)
-  for (let at = 0; at + 3 < voxels.length; at += 4) {
-    const index = (voxels[at] ?? 0) + (voxels[at + 1] ?? 0) * sx + (voxels[at + 2] ?? 0) * sx * sy
-    if (index < volume.length) volume[index] = voxels[at + 3] ?? 0
-  }
-  let faces = 0
-  const layer = sx * sy
-  for (let z = 0; z < sz; z++) {
-    for (let y = 0; y < sy; y++) {
-      for (let x = 0, index = z * layer + y * sx; x < sx; x++, index++) {
-        if (volume[index] === 0) continue
-        if (x === 0 || volume[index - 1] === 0) faces++
-        if (x === sx - 1 || volume[index + 1] === 0) faces++
-        if (y === 0 || volume[index - sx] === 0) faces++
-        if (y === sy - 1 || volume[index + sx] === 0) faces++
-        if (z === 0 || volume[index - layer] === 0) faces++
-        if (z === sz - 1 || volume[index + layer] === 0) faces++
-      }
-    }
-  }
-  return faces
 }
 
 /**

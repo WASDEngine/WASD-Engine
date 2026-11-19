@@ -10,12 +10,12 @@
 import clsx from 'clsx'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  fileSizeText, IconChevronDownOutlineRegular, IconInfoOutlineRegular, IconPauseOutlineRegular, IconPlayOutlineRegular, Menu, StateDot,
+  fileSizeText, IconChevronDownOutlineRegular, IconPauseOutlineRegular, IconPlayOutlineRegular, Menu, StateDot,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ModelAssetDetails } from '@deepseek-ai/dsh-game-assets/types'
-import { DetailsPanel, type MorphControl } from './DetailsPanel.tsx'
+import { DetailsPanel, useDetailsSwitch, type MorphControl } from './DetailsPanel.tsx'
 import type { NS } from './locales.ts'
 import { checkModelImage } from './picture.ts'
 import type { AssetFile } from './read.ts'
@@ -229,7 +229,7 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
   const [shading, setShading] = useState<'material' | 'solid' | 'wireframe'>('material')
   const [skeleton, setSkeleton] = useState(false)
   const [bone, setBone] = useState<number>()
-  const [showDetails, setShowDetails] = useState(false)
+  const detailsSwitch = useDetailsSwitch(details !== undefined, css.tool, t)
   const [morphs, setMorphs] = useState<readonly MorphControl[]>([])
   const [menuOpen, setMenuOpen] = useState(false)
   // The settings a newly loaded model takes on, read inside the load without reloading when they change; every change
@@ -474,14 +474,9 @@ export function ModelView({ asset, file, relatedUrl, maxBytes, maxDecodedPixels,
             <ResetViewGlyph />
           </button>
         </Tooltip>
-        <Tooltip label={showDetails ? t('details.hide') : t('details.show')} side="top" delayMs={500}>
-          <button type="button" className={css.tool} aria-label={t('details.title')} aria-pressed={showDetails} disabled={details === undefined}
-            onClick={() => { setShowDetails(value => !value) }}>
-            <IconInfoOutlineRegular size={14} />
-          </button>
-        </Tooltip>
+        {detailsSwitch.button}
       </div>
-      {showDetails && details !== undefined && (
+      {detailsSwitch.shown && details !== undefined && (
         <DetailsPanel
           details={details}
           t={t}

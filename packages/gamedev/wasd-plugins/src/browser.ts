@@ -19,6 +19,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import type {
   WasdBrowserCommand, WasdBrowserImage, WasdBrowserLimits, WasdBrowserOutcome, WasdBrowserRequest, WasdBrowserRequests,
 } from './types.ts'
+import { ATTACHED_IMAGE_SCHEMA, stateChanges } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** A command that ended with the page. */
 export type WasdBrowserDone = Extract<WasdBrowserOutcome, { readonly ok: true }>
@@ -107,26 +108,10 @@ export class BrowserRequestQueue {
    * @returns both lists, then again after each change, until cancelled or the plugin is disposed.
    */
   async* follow(signal: AbortSignal): AsyncIterable<WasdBrowserRequests> {
-    const ended = AbortSignal.any([signal, this.lifetime])
     const follower = randomUUID()
     this.followers.add(follower)
-    let dirty = true
-    let wake = Promise.withResolvers<void>()
-    const notify = (): void => {
-      dirty = true
-      wake.resolve()
-    }
-    this.watchers.add(notify)
-    ended.addEventListener('abort', notify, { once: true })
     try {
-      for (;;) {
-        if (ended.aborted) return
-        if (!dirty) {
-          wake = Promise.withResolvers<void>()
-          await wake.promise
-          continue
-        }
-        dirty = false
+      for await (const _change of stateChanges(this.watchers, AbortSignal.any([signal, this.lifetime]))) {
         const entries = [...this.pending.values()]
         yield {
           follower,
@@ -135,8 +120,6 @@ export class BrowserRequestQueue {
         }
       }
     } finally {
-      this.watchers.delete(notify)
-      ended.removeEventListener('abort', notify)
       this.followers.delete(follower)
       for (const entry of [...this.pending.values()]) {
         if (entry.claimedBy === follower) entry.settle({ ok: false, message: WINDOW_GONE_MESSAGE })
@@ -245,20 +228,7 @@ const PAGE_SCHEMA = { type: 'object', additionalProperties: false, properties: P
 export type BrowserPageValue = InferValue<typeof PAGE_SCHEMA>
 
 /** The stored image: the attachment reference that the attachment store returned for it. */
-export const IMAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  required: true,
-  properties: {
-    attachmentId: STRING,
-    mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-    bytes: INTEGER,
-    width: INTEGER,
-    height: INTEGER,
-    name: { type: 'string' },
-    originalDimensions: { type: 'object', additionalProperties: false, properties: { width: INTEGER, height: INTEGER } },
-  },
-} as const
+export const IMAGE_SCHEMA = { ...ATTACHED_IMAGE_SCHEMA, required: true } as const
 
 const SCREENSHOT_SCHEMA = {
   type: 'object',

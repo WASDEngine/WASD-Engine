@@ -6,6 +6,7 @@
  * monthly AI usage and its upgrade, which `/top_up` offers. The messages that replace upstream's,
  * and WASD Engine's own messages, which upstream's dictionaries lack, come from `locales/wasdengine.ts`.
  */
+import { brandDictionaries } from '@deepseek-ai/dsh-client-locale/brand'
 import { WASDENGINE_ACCOUNT_COPY, WASDENGINE_ACCOUNT_MESSAGES, type WasdengineAccountKey } from './locales/wasdengine.ts'
 
 export type { WasdengineAccountKey } from './locales/wasdengine.ts'
@@ -59,17 +60,7 @@ export function withWasdengineMessages<T extends Record<string, Record<string, s
 export function brandAccountDictionaries<T extends Record<string, Record<string, string>>>(
   dictionaries: T,
 ): WithWasdengineMessages<T> {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    const copy: Record<string, string> = {}
-    for (const [key, message] of Object.entries(messages)) {
-      copy[key] = message.replaceAll(UPSTREAM_NAME, WASDENGINE_PRODUCT_NAME)
-    }
-    for (const [key, message] of Object.entries(WASDENGINE_ACCOUNT_COPY[language] ?? {})) {
-      if (!(key in copy)) throw new Error(`WASD Engine account copy: ${language} has no message ${key}`)
-      copy[key] = message
-    }
-    branded[language] = copy
-  }
-  return withWasdengineMessages(branded as T)
+  return withWasdengineMessages(
+    brandDictionaries('account', dictionaries, { copy: WASDENGINE_ACCOUNT_COPY, rename: [UPSTREAM_NAME, WASDENGINE_PRODUCT_NAME] }),
+  )
 }

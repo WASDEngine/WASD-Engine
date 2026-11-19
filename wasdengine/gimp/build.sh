@@ -39,35 +39,18 @@ source_url=https://download.gimp.org/gimp/v3.2/gimp-3.2.8.tar.xz
 source_sha256=16a2696cadc9e03a2ef97ccb895e062f654cb2b8211fb57074db85f26646c847
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=../lib.sh
+source "$script_dir/../lib.sh"
 
-log() { printf 'build.sh: %s\n' "$*" >&2; }
-die() {
-  printf 'build.sh: error: %s\n' "$*" >&2
-  exit 1
-}
-usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"; }
-
-cleanup_paths=()
 mounts=()
-# shellcheck disable=SC2317 # Invoked by the EXIT trap.
-cleanup() {
+# shellcheck disable=SC2317 # Invoked by the EXIT trap (lib.sh's cleanup), before the paths go.
+detach_mounts() {
   local path
   for path in ${mounts[@]+"${mounts[@]}"}; do
     hdiutil detach -quiet "$path" 2>/dev/null || hdiutil detach -force -quiet "$path" 2>/dev/null || true
   done
-  for path in ${cleanup_paths[@]+"${cleanup_paths[@]}"}; do
-    rm -rf -- "$path"
-  done
 }
-trap cleanup EXIT
-
-# Prints the value of option $1 from "$@", or fails when it is missing.
-option_value() {
-  if [ "$#" -lt 2 ] || [ -z "$2" ]; then
-    die "$1 needs a value; run with --help for usage"
-  fi
-  printf '%s' "$2"
-}
+cleanup_hooks+=(detach_mounts)
 
 out_dir=
 dmg=
@@ -113,12 +96,6 @@ case "$node_platform-$(uname -m)" in
   *) die "unsupported architecture $(uname -m) on $node_platform; build on arm64 or x86_64 macOS, or on x64 Windows" ;;
 esac
 key=$node_platform-$node_arch
-
-# Creates directory $1 when missing and prints its absolute physical path.
-absolute_dir() {
-  mkdir -p -- "$1" || die "cannot create directory $1"
-  (cd -- "$1" && pwd -P)
-}
 
 if [ "$node_platform" = darwin ]; then
   for tool in curl hdiutil ditto codesign otool xattr xargs; do

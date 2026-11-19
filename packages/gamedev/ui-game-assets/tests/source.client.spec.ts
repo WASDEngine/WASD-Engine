@@ -2,8 +2,8 @@
 import type { WorkspaceDirectoryListing } from '@deepseek-ai/dsh-api-workspace-files/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { describe, expect, it, vi } from 'vitest'
-import type { ListFolder } from '../src/client/scan.ts'
-import { AssetsSource, FRESH_SCAN_MS } from '../src/client/source.ts'
+import { FRESH_SCAN_MS, type ListFolder } from '../src/client/project-tab.ts'
+import { AssetsSource } from '../src/client/source.ts'
 
 type Listing = RemoteResult<WorkspaceDirectoryListing>
 

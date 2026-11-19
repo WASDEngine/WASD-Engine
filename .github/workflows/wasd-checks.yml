@@ -1,5 +1,6 @@
 # The fork's checks on every push to main and every pull request: the build, the vitest runs that steps 3 to 7 of
-# the merge checklist name (wasdengine/FORK.md), the runtime script tests, and the documentation checks of step 10.
+# the merge checklist name (wasdengine/FORK.md), the recorded-session snapshot replays, the runtime script tests, the
+# documentation checks of step 10, and, in a job of its own, the game tools' end-to-end suites.
 # Upstream's CI targets DeepSeek's runners and secrets, so the fork deletes it; this workflow runs the part the fork
 # relies on, on macOS, where the fork is developed.
 #
@@ -119,6 +120,10 @@ jobs:
           packages/client/ui-user-questions
           scripts/client-bundle-purity.spec.ts
 
+      # Keyless: every case replays its recorded model responses through the shipped profiles, the fork's overlay included.
+      - name: Recorded-session snapshot replays
+        run: pnpm run test:snapshot
+
       - name: Runtime script tests
         run: |
           python3 -B -m unittest discover --start-directory wasdengine/libgodot --pattern 'test_*.py'
@@ -137,3 +142,54 @@ jobs:
         run: |
           node wasdengine/brand-docs.mjs --check
           pnpm run doc-sync
+
+  # The game tools' end-to-end suites against the runtimes that the Desktop app ships for macOS, LibGodot, Blender's bpy,
+  # GIMP, and SuperCollider, downloaded from their pinned releases and checked against their digests
+  # (apps/desktop/scripts/wasdengine-e2e-runtimes.ts), as step 7 of the merge checklist runs them. The suites run their
+  # workers from source, so no build is needed. A suite skips its tests when it finds no runtime, which would pass
+  # silently, so the job fails a suite that passed no test.
+  e2e:
+    name: Game tools end-to-end
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the pnpm release that package.json's packageManager names.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Stage the runtimes that the Desktop app ships
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec tsx scripts/wasdengine-e2e-runtimes.ts --env-out "$GITHUB_ENV"
+
+      - name: Run the end-to-end suites
+        run: |
+          report="$RUNNER_TEMP/e2e-report.json"
+          pnpm exec vitest run --config vitest.e2e.config.ts --reporter=default --reporter=json --outputFile.json="$report" \
+            packages/gamedev/godot/tests packages/gamedev/blender/tests packages/gamedev/gimp/tests \
+            packages/gamedev/supercollider/tests packages/gamedev/wasd-plugins/tests/multiplayer-addon.e2e.ts
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs"
+            const { testResults } = JSON.parse(readFileSync(process.argv[1], "utf8"))
+            let empty = 0
+            for (const result of testResults) {
+              const passed = result.assertionResults.filter(test => test.status === "passed").length
+              console.log(`${result.name}: ${passed} tests passed`)
+              if (passed === 0) { console.log(`::error::${result.name} passed no test: it found no runtime`); empty += 1 }
+            }
+            process.exit(empty === 0 ? 0 : 1)
+          ' "$report"

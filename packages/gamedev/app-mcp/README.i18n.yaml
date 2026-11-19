@@ -33,14 +33,14 @@
   en: ec59e9998c2ec560
   zh: afd4b2008f813e88
 /deepseek-ai-dsh-app-mcp/use-this-package/build-the-tools:
-  en: 1b7c8fc5f28fc6b9
-  zh: b53246dbc50caf41
+  en: 7d31660cd24af129
+  zh: e39d0a0a59cc68c4
 /deepseek-ai-dsh-app-mcp/use-this-package/find-the-application:
-  en: b557f702ab43853c
-  zh: 115776dd0ec00c5d
+  en: adc597c888f79e23
+  zh: 75a4e1d23f96399d
 /deepseek-ai-dsh-app-mcp/use-this-package/run-the-worker:
-  en: 06726341500636e8
-  zh: 7cfff4bd6a26a2c4
+  en: 992050516e00e93b
+  zh: 371456dc5db7b67e
 /deepseek-ai-dsh-app-mcp/use-this-package/one-worker-per-session:
   en: 38fc2664a6ef7594
   zh: 5c68ee3b5d5879ac
@@ -48,14 +48,14 @@
   en: 86220645f328f4dd
   zh: 3f8c265e73048901
 /deepseek-ai-dsh-app-mcp/use-this-package/restart-after-a-stop:
-  en: d861d4c6e3de143c
-  zh: d0654b3832f0ba31
+  en: b175bceec505201a
+  zh: 23536fb925876e2d
 /deepseek-ai-dsh-app-mcp/use-this-package/copy-shipped-files-to-real-paths:
   en: 97ae7e1c41f94bdf
   zh: 0c3387495709f95e
 /deepseek-ai-dsh-app-mcp/understand-the-implementation:
-  en: bc8c475fed145a33
-  zh: b137e635319b5315
+  en: a7ac35574daf1dd8
+  zh: 31cdfe02d5db8ead
 /deepseek-ai-dsh-app-mcp/further-exploration:
   en: 85ecbc0d02201f9b
   zh: f446fd63761ac5bd

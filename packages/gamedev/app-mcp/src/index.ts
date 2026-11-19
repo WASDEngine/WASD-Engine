@@ -83,11 +83,13 @@ export const AppMcpConfig: z<Partial<AppMcpConfig>, AppMcpConfig> = z.object({
 export { lowMemoryMessage, memoryShortage, nodeMachine, processLimit } from './machine.ts'
 export type { MachineResources, MemoryShortage, ProcessLimitOptions } from './machine.ts'
 export { materializePayload } from './materialize.ts'
-export { JsonLineWorker, WorkerError } from './json-line-worker.ts'
+export { listFolderFiles } from './folder-files.ts'
+export type { FolderFiles } from './folder-files.ts'
+export { JsonLineWorker, WorkerError, abortError, signalProcessGroup } from './json-line-worker.ts'
 export type {
   JsonLineWorkerSpec, WorkerErrorCode, WorkerErrorDetails, WorkerExit, WorkerReady, WorkerRequestOptions,
 } from './json-line-worker.ts'
-export { WorkerSupervisor } from './supervisor.ts'
+export { WorkerSupervisor, untilTurn } from './supervisor.ts'
 export { SHARED_SCOPE, WorkerPool } from './pool.ts'
 export type { AppWorkerScope, WorkerPoolFiles, WorkerPoolOptions } from './pool.ts'
 export { SESSION_SCOPE_CAPABILITY, SESSION_SCOPE_META_KEY, sessionOf } from './session-scope.ts'
@@ -107,7 +109,7 @@ export { firstExecutable, newestFirst, nodeSetupHost, runCommand } from './setup
 export type { CommandArgv, CommandOptions, CommandResult, SetupHost } from './setup-host.ts'
 export {
   ShippedRuntimeFields, ShippedRuntimePath, findOnPath, findTar, moveIntoPlace, nodeRuntimeUnpackHost, nodeShippedRuntimeHost,
-  readPackedRuntime, readShippedRuntime, shippedRuntimeRoot, unpackPackedRuntime, unpackedRuntimeDirectory,
+  readPackedRuntime, readShippedRuntime, shippedRuntimeRoot, unpackPackedRuntime, unpackedFolder, unpackedRuntimeDirectory,
 } from './shipped-runtime.ts'
 export type {
   PackedRuntime, RuntimeUnpackFailures, RuntimeUnpackHost, ShippedRuntime, ShippedRuntimeHost, UnpackedRuntime,

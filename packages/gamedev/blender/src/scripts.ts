@@ -10,13 +10,14 @@
  * takes the processes it started with it.
  * @module
  */
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
-import { dirname, join, relative, sep, win32 } from 'node:path'
-import { lowMemoryMessage, memoryShortage, processLimit, type MachineResources } from '@deepseek-ai/dsh-app-mcp'
-import { abortError } from './abort.ts'
+import { dirname, join } from 'node:path'
+import {
+  abortError, listFolderFiles, lowMemoryMessage, memoryShortage, processLimit, signalProcessGroup, type MachineResources,
+} from '@deepseek-ai/dsh-app-mcp'
 import { BLEND_FILE_VARIABLE, SCRIPT_VARIABLE, USER_RESOURCES_FOLDER, type WorkerLaunch } from './environment.ts'
 import type { BlenderServerOptions } from './types.ts'
 
@@ -198,29 +199,6 @@ function statusOf(outcome: RunOutcome): ScriptRunStatus {
 }
 
 /**
- * Stop a run's process and, on POSIX, every process of its group.
- * @param child - the run's process, which leads its group on POSIX.
- */
-function stopGroup(child: ChildProcess): void {
-  const { pid } = child
-  if (pid === undefined) return
-  /* v8 ignore start -- Windows has no process groups, and the coverage lanes run on POSIX */
-  if (process.platform === 'win32') {
-    // By its full path: a bare name would run any taskkill.exe that the working folder or PATH holds first.
-    const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
-    spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-    child.kill('SIGKILL')
-    return
-  }
-  /* v8 ignore stop */
-  try {
-    process.kill(-pid, 'SIGKILL')
-  } catch {
-    // ESRCH: no process of the group is left to stop.
-  }
-}
-
-/**
  * Run one process to its end, its time limit, or cancellation. Its standard output and standard error go together
  * into the log file, up to `logBytes`, and their end stays in memory. File descriptor 3 is a pipe that the server holds
  * open and never reads, so the worker script notices when the server is gone.
@@ -279,9 +257,9 @@ function runProcess(spec: RunSpec, signal: AbortSignal, processes: Set<ChildProc
     child.stdio[3]?.on('error', () => {})
     const timer = setTimeout(() => {
       timedOut = true
-      stopGroup(child)
+      signalProcessGroup(child, 'SIGKILL')
     }, spec.timeoutMs)
-    const onAbort = (): void => { stopGroup(child) }
+    const onAbort = (): void => { signalProcessGroup(child, 'SIGKILL') }
     signal.addEventListener('abort', onAbort, { once: true })
     const settle = (): void => {
       clearTimeout(timer)
@@ -292,7 +270,7 @@ function runProcess(spec: RunSpec, signal: AbortSignal, processes: Set<ChildProc
       settle()
       // Processes that the script left running belong to the group and would keep the output pipes open.
       /* v8 ignore else -- Windows has no process groups, and a Windows pid is reused too soon to signal it after exit */
-      if (process.platform !== 'win32') stopGroup(child)
+      if (process.platform !== 'win32') signalProcessGroup(child, 'SIGKILL')
     })
     // 'close' follows 'exit', or follows 'error' alone when the spawn failed.
     child.once('close', (exitCode: number | null, exitSignal: NodeJS.Signals | null) => {
@@ -321,27 +299,6 @@ function runProcess(spec: RunSpec, signal: AbortSignal, processes: Set<ChildProc
       })
     })
   })
-}
-
-/**
- * List the files in a folder and its subfolders.
- * @param root - absolute folder.
- * @returns at most {@link LISTED_RUN_FILES} paths relative to `root` in name order, and how many files it holds.
- */
-async function listRunFiles(root: string): Promise<RunFiles> {
-  let entries
-  try {
-    entries = await readdir(root, { recursive: true, withFileTypes: true })
-  } catch (error) {
-    // A script may delete the folder it was given; the run then wrote no files that remain.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { files: [], totalFiles: 0 }
-    throw error
-  }
-  const files = entries
-    .filter(entry => entry.isFile())
-    .map(entry => relative(root, join(entry.parentPath, entry.name)).split(sep).join('/'))
-    .sort()
-  return { files: files.slice(0, LISTED_RUN_FILES), totalFiles: files.length }
 }
 
 /**
@@ -518,7 +475,7 @@ export class BlenderScripts {
   /** Stop every running run and refuse new calls; a stopped run's call reports it as failed. */
   close(): void {
     this.closed = true
-    for (const child of this.processes) stopGroup(child)
+    for (const child of this.processes) signalProcessGroup(child, 'SIGKILL')
   }
 
   /**
@@ -559,7 +516,7 @@ export class BlenderScripts {
           durationMs: outcome.durationMs,
           ...lastLine === undefined ? {} : { lastLine: lastLine.length > LAST_LINE_CHARS ? `${lastLine.slice(0, LAST_LINE_CHARS)}…` : lastLine },
           ...outcome.cut ? { outputCut: true } : {},
-          ...await listRunFiles(join(folder, 'files')),
+          ...await listFolderFiles(join(folder, 'files'), LISTED_RUN_FILES),
         }
         return { report, outcome }
       })

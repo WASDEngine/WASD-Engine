@@ -82,9 +82,13 @@ function styleInjectionModule(
  * Everything else under @deepseek-ai/* is either a module-table entry
  * (external) or a leak the purity gate rejects. WASDEngine fork: the audio
  * tools' formats, probe, measurements, and picture (`dsh-game-audio/audio`),
- * which the Audio tab shares with the Host (wasdengine/FORK.md).
+ * which the Audio tab shares with the Host, and the asset tools' format table
+ * (`dsh-game-assets/formats`) and model file readers (`dsh-game-assets/model-files`),
+ * which the Assets tab shares, and the Assets tab's project walk, state, and
+ * reveal (`dsh-client-ui-game-assets/client/project-tab`), which the Audio tab shares
+ * (wasdengine/FORK.md).
  */
-export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|fs-patch|session|llm|tools|brand|official-bundles|deque|output-retention|typert-protocol|util-crypto|util-time|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-util-file-drag$|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-commands\/builtin$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$|@deepseek-ai\/dsh-game-audio\/audio$)/
+export const INLINE_SAFE = /^(?:@deepseek-ai\/dsh-(?:file-reference|fs-patch|session|llm|tools|brand|official-bundles|deque|output-retention|typert-protocol|util-crypto|util-time|util-values|util-workspace-path)(?:\/|$)|@deepseek-ai\/dsh-util-file-drag$|@deepseek-ai\/dsh-token-meter\/client$|@deepseek-ai\/dsh-commands\/builtin$|@deepseek-ai\/dsh-native-command\/types$|@deepseek-ai\/dsh-host-open-in-app\/shared$|@deepseek-ai\/dsh-plugin-manager\/registry$|@deepseek-ai\/dsh-agent-preset-registry\/display$|@deepseek-ai\/dsh-api-workspace-controller\/default-workspace$|@deepseek-ai\/dsh-spill-policy\/notice$|@deepseek-ai\/dsh-game-audio\/audio$|@deepseek-ai\/dsh-game-assets\/(?:formats|model-files)$|@deepseek-ai\/dsh-client-ui-game-assets\/client\/project-tab$|@deepseek-ai\/dsh-client-locale\/brand$)/
 
 /**
  * Vendored framework libraries: rescoped into @deepseek-ai, so the gate below

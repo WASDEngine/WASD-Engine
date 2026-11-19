@@ -389,7 +389,7 @@ export class JsonLineWorker {
       exited.resolve(this.exit)
       // Group members the worker left behind are orphans holding its pipes open.
       /* v8 ignore else -- Windows has no process groups, and a Windows pid is reused too soon to signal it after exit */
-      if (process.platform !== 'win32') this.signalGroup('SIGKILL')
+      if (process.platform !== 'win32') signalProcessGroup(this.child, 'SIGKILL')
     })
     // 'close' follows 'exit', or follows 'error' alone when the spawn failed.
     child.once('close', () => {
@@ -504,9 +504,9 @@ export class JsonLineWorker {
     if (await exitsWithin(this.exited, graceMs)) return
     // stop() and failStart() send SIGKILL as they stop the worker. On macOS a SIGTERM that
     // follows SIGKILL can still end the process first and become its exit signal.
-    if (this.phase !== 'stopped') this.signalGroup('SIGTERM')
+    if (this.phase !== 'stopped') signalProcessGroup(this.child, 'SIGTERM')
     if (await exitsWithin(this.exited, graceMs)) return
-    this.signalGroup('SIGKILL')
+    signalProcessGroup(this.child, 'SIGKILL')
     await this.exited
   }
 
@@ -620,7 +620,7 @@ export class JsonLineWorker {
   private failStart(error: () => Error): void {
     this.disarmStart()
     this.phase = 'stopped'
-    this.signalGroup('SIGKILL')
+    signalProcessGroup(this.child, 'SIGKILL')
     void this.drained.then(() => { this.startup.reject(error()) })
   }
 
@@ -637,7 +637,7 @@ export class JsonLineWorker {
       active.request.result.reject(rejection)
     }
     this.refuse(failure)
-    this.signalGroup('SIGKILL')
+    signalProcessGroup(this.child, 'SIGKILL')
   }
 
   /** Refuse new requests with the first failure and reject the queued ones with it. */
@@ -667,22 +667,29 @@ export class JsonLineWorker {
     this.refuse(new WorkerError('WORKER_EXITED', `${this.label}: exited ${describeExit(exit)}`, { logTail }))
   }
 
-  private signalGroup(signal: NodeJS.Signals): void {
-    const pid = this.child.pid
-    if (pid === undefined) return
-    /* v8 ignore start -- Windows has no process groups, and the coverage lanes run on POSIX */
-    if (process.platform === 'win32') {
-      // By its full path: a bare name would run any taskkill.exe that the working folder or PATH holds first.
-      const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
-      spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
-      this.child.kill(signal)
-      return
-    }
-    /* v8 ignore stop */
-    try {
-      process.kill(-pid, signal)
-    } catch {
-      // ESRCH: no process of the group is left to signal.
-    }
+}
+
+/**
+ * Signal a process and every process of the group it leads. Windows has no process groups: there the process's tree
+ * ends at once through `taskkill /T /F`, whatever the signal, and the process then gets the signal.
+ * @param child - a process that leads its own process group on POSIX, spawned with `detached: true`.
+ * @param signal - the signal for the group.
+ */
+export function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals): void {
+  const { pid } = child
+  if (pid === undefined) return
+  /* v8 ignore start -- Windows has no process groups, and the coverage lanes run on POSIX */
+  if (process.platform === 'win32') {
+    // By its full path: a bare name would run any taskkill.exe that the working folder or PATH holds first.
+    const taskkill = win32.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'taskkill.exe')
+    spawnSync(taskkill, ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true })
+    child.kill(signal)
+    return
+  }
+  /* v8 ignore stop */
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    // ESRCH: no process of the group is left to signal.
   }
 }

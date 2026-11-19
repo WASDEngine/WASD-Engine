@@ -3,7 +3,8 @@ import type { WorkspaceDirectoryEntry, WorkspaceDirectoryListing } from '@deepse
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { describe, expect, it, vi } from 'vitest'
 import { extensionOf, formatOf } from '../src/client/formats.ts'
-import { childPath, entersFolder, scanAssets, type ListFolder } from '../src/client/scan.ts'
+import { childPath, entersFolder, type ListFolder } from '../src/client/project-tab.ts'
+import { scanAssets } from '../src/client/scan.ts'
 
 const file = (name: string, size?: number): WorkspaceDirectoryEntry => ({ name, type: 'file', ...size === undefined ? {} : { size } })
 const folder = (name: string): WorkspaceDirectoryEntry => ({ name, type: 'directory' })

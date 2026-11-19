@@ -554,7 +554,7 @@ export interface GodotMobileExport {
   readonly entry: string
   /** Size in bytes of the APK file, or of every file the iOS export wrote. */
   readonly bytes: number
-  /** The app's Android package name or iOS bundle identifier, such as `com.wasdengine.game.tiny_farm`. */
+  /** The app's Android package name or iOS bundle identifier, such as `com.wasdengine.game.tiny_farm.kqzmwe`. */
   readonly identifier: string
   /** The key that signed an Android build; absent for iOS. */
   readonly signing?: GodotAndroidSigning

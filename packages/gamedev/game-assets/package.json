@@ -22,6 +22,10 @@
       "types": "./lib/types/formats.d.ts",
       "default": "./lib/types/formats.js"
     },
+    "./model-files": {
+      "types": "./lib/types/model-files.d.ts",
+      "default": "./lib/types/model-files.js"
+    },
     "./types": {
       "types": "./lib/types/types.d.ts"
     },

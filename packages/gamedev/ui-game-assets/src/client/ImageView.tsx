@@ -9,16 +9,16 @@
  * gives, drawn over it. The details list the image's size, transparency, colors, and animations.
  */
 import clsx from 'clsx'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  fileSizeText, IconChevronDownOutlineRegular, IconCloseOutlineRegular, IconInfoOutlineRegular, IconPauseOutlineRegular,
+  fileSizeText, IconChevronDownOutlineRegular, IconCloseOutlineRegular, IconPauseOutlineRegular,
   IconPlayOutlineRegular, IconPlusOutlineRegular, Menu, StateDot, Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { AssetGrid } from '@deepseek-ai/dsh-game-assets/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { AnimationSources } from './animations2d.ts'
-import { DetailsPanel } from './DetailsPanel.tsx'
+import { DetailsPanel, useDetailsSwitch } from './DetailsPanel.tsx'
 import type { NS } from './locales.ts'
 import type { AssetFile } from './read.ts'
 import type { AssetEntry } from './scan.ts'
@@ -26,6 +26,7 @@ import type { ViewRequest } from './source.ts'
 import { FALLBACK_EDGE } from './picture.ts'
 import { SpritePlayer, type SpriteState } from './sprite-player.ts'
 import { gridAnimation, gridRegions, stripGuess, type SpriteAnimation } from './sprites.ts'
+import { MAX_ZOOM, MIN_ZOOM, useZoomPan, ZOOM_STEP, type Size } from './zoom-pan.ts'
 import css from './ImageView.module.css'
 
 type Translate = PropsLocale<typeof NS>['t']
@@ -66,22 +67,8 @@ type Shown =
   | { readonly kind: 'tooLarge'; readonly width: number; readonly height: number }
   | { readonly kind: 'failed' }
 
-interface Size {
-  readonly width: number
-  readonly height: number
-}
-
-/** Space kept around a fitted image, in CSS pixels. */
-const FIT_MARGIN = 16
-/** Zoom bounds, as scale factors. */
-const MIN_ZOOM = 0.01
-const MAX_ZOOM = 64
-/** Scale factor of one zoom step from the buttons and keys. */
-const ZOOM_STEP = 1.5
 /** From this scale up, pixels draw as squares. */
 const PIXELATED_FROM = 2
-/** Distance an arrow key pans, in CSS pixels. */
-const PAN_STEP = 40
 /** Playback speeds the timeline offers. */
 const SPEEDS = [0.25, 0.5, 1, 1.5, 2] as const
 /** Most columns or rows of a sprite grid. */
@@ -90,10 +77,6 @@ const MAX_GRID = 256
 const GRID_ITEM = '\u0000grid'
 /** Id of the menu item that shows the still image. */
 const STILL_ITEM = '\u0000still'
-
-function clampZoom(zoom: number): number {
-  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
-}
 
 function clampCount(value: number): number {
   return Number.isFinite(value) ? Math.min(MAX_GRID, Math.max(1, Math.round(value))) : 1
@@ -157,7 +140,6 @@ export function ImageView({
   const [speed, setSpeed] = useState(1)
   const [menuOpen, setMenuOpen] = useState(false)
   const [speedOpen, setSpeedOpen] = useState(false)
-  const [showDetails, setShowDetails] = useState(false)
   const [, setDrawn] = useState(0)
   const handled = useRef<number>()
   useEffect(() => {
@@ -236,115 +218,9 @@ export function ImageView({
   const frameSize = current === undefined ? undefined : current.region ?? (currentPicture ?? imageSize)
   const shownSize = animation === undefined ? natural : frameSize ?? natural
 
-  const viewportRef = useRef<HTMLDivElement>(null)
-  const [viewport, setViewport] = useState<Size>()
-  useEffect(() => {
-    const element = viewportRef.current
-    if (element === null) return
-    const measure = (): void => {
-      const box = element.getBoundingClientRect()
-      setViewport(currentBox => currentBox?.width === box.width && currentBox.height === box.height
-        ? currentBox
-        : { width: box.width, height: box.height })
-    }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(element)
-    return () => { observer.disconnect() }
-  }, [])
-
-  // The zoom, `fit` or a scale, and the pan offset from the centered position, updated together from the latest state.
-  const [view, setView] = useState<{ readonly zoom: 'fit' | number; readonly x: number; readonly y: number }>({ zoom: 'fit', x: 0, y: 0 })
-  // Another animation, or the still image, shows fitted.
-  useEffect(() => { setView({ zoom: 'fit', x: 0, y: 0 }) }, [active])
-  const fitScale = shownSize === undefined || viewport === undefined
-    ? 1
-    : clampZoom(Math.min(
-      Math.max(1, viewport.width - 2 * FIT_MARGIN) / shownSize.width,
-      Math.max(1, viewport.height - 2 * FIT_MARGIN) / shownSize.height,
-    ))
-  const fitRef = useRef(fitScale)
-  useLayoutEffect(() => { fitRef.current = fitScale }, [fitScale])
-  const scale = view.zoom === 'fit' ? fitScale : view.zoom
-
-  // Zoom so the image point under `point`, relative to the stage's center, stays under it.
-  const zoomAt = useCallback((point: { readonly x: number; readonly y: number }, next: (scale: number) => number): void => {
-    setView((currentView) => {
-      const from = currentView.zoom === 'fit' ? fitRef.current : currentView.zoom
-      const target = clampZoom(next(from))
-      return {
-        zoom: target,
-        x: point.x - (point.x - currentView.x) * target / from,
-        y: point.y - (point.y - currentView.y) * target / from,
-      }
-    })
-  }, [])
-  const fit = (): void => { setView({ zoom: 'fit', x: 0, y: 0 }) }
-  const actual = (): void => { setView({ zoom: 1, x: 0, y: 0 }) }
-  // Panning leaves the fitted view at its scale.
-  const pan = (move: (currentView: { readonly x: number; readonly y: number }) => { readonly x: number; readonly y: number }): void => {
-    setView(currentView => ({ zoom: currentView.zoom === 'fit' ? fitRef.current : currentView.zoom, ...move(currentView) }))
-  }
-
-  const centered = (clientX: number, clientY: number): { x: number; y: number } => {
-    const box = viewportRef.current?.getBoundingClientRect()
-    return box === undefined ? { x: 0, y: 0 } : { x: clientX - box.left - box.width / 2, y: clientY - box.top - box.height / 2 }
-  }
-  // React's wheel listener is passive, so the zoom listener is attached here to keep the page from scrolling.
-  useEffect(() => {
-    const element = viewportRef.current
-    if (element === null) return
-    const wheel = (event: WheelEvent): void => {
-      event.preventDefault()
-      const box = element.getBoundingClientRect()
-      const perStep = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 0.05 : 0.0015
-      const factor = Math.exp(-event.deltaY * perStep)
-      zoomAt({ x: event.clientX - box.left - box.width / 2, y: event.clientY - box.top - box.height / 2 }, from => from * factor)
-    }
-    element.addEventListener('wheel', wheel, { passive: false })
-    return () => { element.removeEventListener('wheel', wheel) }
-  }, [zoomAt])
-
-  const drag = useRef<{
-    readonly pointer: number
-    readonly x: number
-    readonly y: number
-    readonly from: { readonly x: number; readonly y: number }
-  }>()
-  const [dragging, setDragging] = useState(false)
-  const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    if (event.button !== 0) return
-    event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, from: { x: view.x, y: view.y } }
-    setDragging(true)
-  }
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    const start = drag.current
-    if (start?.pointer !== event.pointerId) return
-    pan(() => ({ x: start.from.x + event.clientX - start.x, y: start.from.y + event.clientY - start.y }))
-  }
-  const endDrag = (event: PointerEvent<HTMLDivElement>): void => {
-    if (drag.current?.pointer !== event.pointerId) return
-    drag.current = undefined
-    setDragging(false)
-  }
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.altKey || event.ctrlKey || event.metaKey) return
-    const by = (x: number, y: number): void => { pan(currentView => ({ x: currentView.x + x, y: currentView.y + y })) }
-    switch (event.key) {
-      case '+':
-      case '=': zoomAt({ x: 0, y: 0 }, from => from * ZOOM_STEP); break
-      case '-': zoomAt({ x: 0, y: 0 }, from => from / ZOOM_STEP); break
-      case '0': fit(); break
-      case '1': actual(); break
-      case 'ArrowLeft': by(PAN_STEP, 0); break
-      case 'ArrowRight': by(-PAN_STEP, 0); break
-      case 'ArrowUp': by(0, PAN_STEP); break
-      case 'ArrowDown': by(0, -PAN_STEP); break
-      default: return
-    }
-    event.preventDefault()
-  }
+  const {
+    viewportRef, view, scale, box, dragging, zoomAt, fit, actual, centered, onPointerDown, onPointerMove, endDrag, onKeyDown,
+  } = useZoomPan(shownSize, active)
 
   const drawBitmap = useCallback((canvas: HTMLCanvasElement | null): void => {
     if (canvas === null || picture?.kind !== 'bitmap') return
@@ -367,12 +243,6 @@ export function ImageView({
     context.drawImage(source.source, region.x, region.y, region.width, region.height, 0, 0, canvas.width, canvas.height)
   })
 
-  const shown = shownSize ?? { width: 0, height: 0 }
-  const box: CSSProperties | undefined = shownSize === undefined || viewport === undefined ? undefined : {
-    width: `${String(shown.width * scale)}px`,
-    height: `${String(shown.height * scale)}px`,
-    transform: `translate(${String(viewport.width / 2 - shown.width * scale / 2 + view.x)}px, ${String(viewport.height / 2 - shown.height * scale / 2 + view.y)}px)`,
-  }
   const pictureClass = clsx(css.picture, scale >= PIXELATED_FROM && css.pixelated, box === undefined && css.measuring)
   const alt = t('image.alt', { name: asset.name })
   const info: readonly (readonly [key: string, text: string])[] = [
@@ -385,6 +255,7 @@ export function ImageView({
     ? gridRegions(imageSize.width, imageSize.height, grid)
     : []
   const details = sprite === undefined || player === undefined ? undefined : player.details(sprite, animations, file.data.byteLength)
+  const detailsSwitch = useDetailsSwitch(details !== undefined, css.tool, t)
   const choose = (name: string | undefined): void => {
     setActive(name)
     setFrame(0)
@@ -594,14 +465,9 @@ export function ImageView({
             <IconPlusOutlineRegular size={14} />
           </button>
         </Tooltip>
-        <Tooltip label={showDetails ? t('details.hide') : t('details.show')} side="top" delayMs={500}>
-          <button type="button" className={css.tool} aria-label={t('details.title')} aria-pressed={showDetails} disabled={details === undefined}
-            onClick={() => { setShowDetails(value => !value) }}>
-            <IconInfoOutlineRegular size={14} />
-          </button>
-        </Tooltip>
+        {detailsSwitch.button}
       </div>
-      {showDetails && details !== undefined && (
+      {detailsSwitch.shown && details !== undefined && (
         <DetailsPanel details={details} t={t} playing={active} onPlay={(name) => { choose(name) }} />
       )}
     </div>

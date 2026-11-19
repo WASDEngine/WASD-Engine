@@ -3,7 +3,7 @@
  * and hands the bytes to the image or model view. A Blender file shows a model exported from it, found by its name
  * among the project's models, or a notice when there is none.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Button, fileSizeText, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/client'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
@@ -13,9 +13,11 @@ import type { AssetsTabInjected } from './AssetsTab.tsx'
 import { ImageView } from './ImageView.tsx'
 import type { NS } from './locales.ts'
 import { ModelView } from './ModelView.tsx'
+import { useVersionedRead } from './project-tab.ts'
+import { exportOf } from './formats.ts'
 import type { AssetFile } from './read.ts'
 import type { ViewRequest } from './source.ts'
-import { NAME_ORDER, type AssetEntry } from './scan.ts'
+import type { AssetEntry } from './scan.ts'
 import css from './AssetViewer.module.css'
 
 type Translate = PropsLocale<typeof NS>['t']
@@ -41,38 +43,10 @@ export interface AssetViewerProps extends Pick<AssetsTabInjected, 'read' | 'rela
   readonly t: Translate
 }
 
-/** Where a read stands. */
-type Load =
-  | { readonly kind: 'loading' }
+/** What a settled read shows. */
+type Read =
   | { readonly kind: 'ready'; readonly file: AssetFile }
   | { readonly kind: 'failed'; readonly failure: RemoteFailure }
-
-/**
- * The model exported from a Blender file: a listed model of the same name, nearest first, in the Blender file's folder,
- * then in a folder above it, then in a folder below it, then anywhere; GLB before glTF before other formats. The agent's
- * asset tools pick the same model with their copy in `@deepseek-ai/dsh-game-assets/formats`.
- * @param blend - the Blender file.
- * @param assets - the project's assets.
- * @returns the export, or undefined when the project has none.
- */
-export function exportOf(blend: AssetEntry, assets: readonly AssetEntry[]): AssetEntry | undefined {
-  const stem = (name: string): string => name.slice(0, name.lastIndexOf('.')).toLowerCase()
-  const wanted = stem(blend.name)
-  const distance = (folder: string): number => {
-    if (folder === blend.folder) return 0
-    const above = blend.folder === '' ? undefined : blend.folder.split('/')
-    const below = folder === '' ? [] : folder.split('/')
-    if (above !== undefined && (folder === '' || blend.folder.startsWith(`${folder}/`))) return above.length - below.length
-    if (blend.folder === '' || folder.startsWith(`${blend.folder}/`)) return 100 + below.length - (above?.length ?? 0)
-    return 1000
-  }
-  const preference = (asset: AssetEntry): number => asset.format.label === 'GLB' ? 0 : asset.format.label === 'glTF' ? 1 : 2
-  return assets
-    .filter(asset => asset.format.kind === 'model' && asset.format.decoder !== 'blend' && stem(asset.name) === wanted)
-    .sort((left, right) => distance(left.folder) - distance(right.folder)
-      || preference(left) - preference(right)
-      || NAME_ORDER.compare(left.path, right.path))[0]
-}
 
 /**
  * The sentence for a failed read.
@@ -122,33 +96,16 @@ export function AssetViewer(props: AssetViewerProps): ReactNode {
 function LoadedAsset({
   asset, useResource, read, relatedUrl, fileAddress, animations, limits, visible, requested, onMissingAnimation, t,
 }: AssetViewerProps): ReactNode {
-  const resource = useResource<'file'>(fileAddress(asset.path))
-  const version = resource.status === 'live' ? resource.value?.version : undefined
-  // A read waits for the resource's first frame, so opening a file reads it once, not before and after its version arrives.
-  const waiting = resource.status === 'loading'
-  const gone = resource.status === 'failed' && resource.failure?.code === 'workspace-file/not-found'
-  const [attempt, setAttempt] = useState(0)
-  const [load, setLoad] = useState<Load>({ kind: 'loading' })
-  const loaded = useRef<{ readonly version: string; readonly attempt: number }>()
-  useEffect(() => {
-    if (waiting || gone) return
-    const known = loaded.current
-    if (known !== undefined && known.attempt === attempt && (version === undefined || known.version === version)) return
-    const controller = new AbortController()
-    // A newer version replaces the shown one once it is read; until then the shown one stays.
-    setLoad(current => current.kind === 'ready' ? current : { kind: 'loading' })
-    void read(asset.path, controller.signal).then((result) => {
-      if (controller.signal.aborted) return
-      if (result.ok) {
-        loaded.current = { version: result.value.version, attempt }
-        setLoad({ kind: 'ready', file: result.value })
-      } else {
-        loaded.current = undefined
-        setLoad({ kind: 'failed', failure: result.error })
-      }
-    })
-    return () => { controller.abort() }
-  }, [asset.path, version, waiting, gone, attempt, read])
+  const { load, gone, retry: readAgain } = useVersionedRead(
+    useResource,
+    fileAddress(asset.path),
+    async (signal): Promise<Read> => {
+      const result = await read(asset.path, signal)
+      return result.ok ? { kind: 'ready', file: result.value } : { kind: 'failed', failure: result.error }
+    },
+    settled => (settled.kind === 'ready' ? settled.file.version : undefined),
+    [asset.path, read],
+  )
 
   if (gone) {
     return <div className={css.centered} role="alert"><p className={css.message}>{t('viewer.notFound')}</p></div>
@@ -161,7 +118,7 @@ function LoadedAsset({
     return (
       <div className={css.centered} role="alert">
         <p className={css.message}>{text}</p>
-        {retry && <Button size="sm" variant="outline" onClick={() => { setAttempt(count => count + 1) }}>{t('action.retry')}</Button>}
+        {retry && <Button size="sm" variant="outline" onClick={readAgain}>{t('action.retry')}</Button>}
       </div>
     )
   }

@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerE
 import { AUDIO_ERROR, LATE_START_SECONDS, probeAudio, seamClicks, type AudioCategory, type AudioProbe } from '@deepseek-ai/dsh-game-audio/audio'
 import type { AudioMeasurements } from '@deepseek-ai/dsh-game-audio/types'
 import type {} from '@deepseek-ai/dsh-client-resources/client'
+import { useVersionedRead } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-store'
 import { Button, fileSizeText, IconPauseOutlineRegular, IconPlayOutlineRegular, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -77,9 +78,8 @@ export interface SoundPlayerProps extends PropsLocale<typeof NS> {
   readonly maxDecodedBytes: number
 }
 
-/** Where loading the selected sound stands. */
-type Load =
-  | { readonly kind: 'loading' }
+/** What loading the selected sound settled with. */
+type Read =
   | { readonly kind: 'failed'; readonly failure: RemoteFailure }
   | { readonly kind: 'undecodable'; readonly limit?: DecodeLimit }
   | { readonly kind: 'ready'; readonly buffer: AudioBuffer; readonly probe: AudioProbe | undefined; readonly bytes: number; readonly version: string }
@@ -117,45 +117,29 @@ function undecodableText(limit: DecodeLimit | undefined, t: SoundPlayerProps['t'
 export function SoundPlayer(props: SoundPlayerProps): ReactNode {
   const { item, useResource, read, fileAddress, maxDecodedSeconds, maxDecodedBytes, t } = props
   const { path, format } = item.entry
-  const resource = useResource<'file'>(fileAddress(path))
-  const version = resource.status === 'live' ? resource.value?.version : undefined
-  // A read waits for the resource's first frame, so selecting a sound reads it once, not before and after its version.
-  const waiting = resource.status === 'loading'
-  const gone = resource.status === 'failed' && resource.failure?.code === 'workspace-file/not-found'
-  const [attempt, setAttempt] = useState(0)
-  const [load, setLoad] = useState<Load>({ kind: 'loading' })
-  const current = useRef<{ readonly version: string; readonly attempt: number }>()
-  useEffect(() => {
-    if (waiting || gone) return
-    const shown = current.current
-    if (shown !== undefined && shown.attempt === attempt && (version === undefined || shown.version === version)) return
-    const controller = new AbortController()
-    // A newer version replaces the shown one once it decodes; until then the shown one stays.
-    setLoad(previous => previous.kind === 'ready' ? previous : { kind: 'loading' })
-    const run = async (): Promise<Load> => {
-      const file = await read(path, controller.signal)
-      if (!file.ok) return { kind: 'failed', failure: file.error }
-      const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
-      try {
-        const bounds = { maxSeconds: maxDecodedSeconds, maxBytes: maxDecodedBytes, name: path, signal: controller.signal }
-        const buffer = await decodeSound(file.value.data, format, bounds)
-        return { kind: 'ready', buffer, probe, bytes: file.value.data.byteLength, version: file.value.version }
-      } catch (error) {
-        if (!(error instanceof SoundError)) throw error
-        return error.code === AUDIO_ERROR.tooLarge && error.limit !== undefined ? { kind: 'undecodable', limit: error.limit } : { kind: 'undecodable' }
-      }
+  const decodeFile = async (signal: AbortSignal): Promise<Read> => {
+    const file = await read(path, signal)
+    if (!file.ok) return { kind: 'failed', failure: file.error }
+    const probe = await probeAudio(memoryReader(file.value.data), file.value.data.byteLength)
+    try {
+      const bounds = { maxSeconds: maxDecodedSeconds, maxBytes: maxDecodedBytes, name: path, signal }
+      const buffer = await decodeSound(file.value.data, format, bounds)
+      return { kind: 'ready', buffer, probe, bytes: file.value.data.byteLength, version: file.value.version }
+    } catch (error) {
+      if (!(error instanceof SoundError)) throw error
+      return error.code === AUDIO_ERROR.tooLarge && error.limit !== undefined ? { kind: 'undecodable', limit: error.limit } : { kind: 'undecodable' }
     }
-    void run().then((next) => {
-      if (controller.signal.aborted) return
-      current.current = next.kind === 'ready' ? { version: next.version, attempt } : undefined
-      setLoad(next)
-    }, (error: unknown) => {
-      if (controller.signal.aborted) return
-      current.current = undefined
-      setLoad({ kind: 'failed', failure: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}) })
-    })
-    return () => { controller.abort() }
-  }, [path, format, version, waiting, gone, attempt, read, maxDecodedSeconds, maxDecodedBytes])
+  }
+  // A newer version replaces the shown one once it decodes; until then the shown one stays.
+  const { load, gone, retry: readAgain } = useVersionedRead(
+    useResource,
+    fileAddress(path),
+    signal => decodeFile(signal).catch((error: unknown): Read => ({
+      kind: 'failed', failure: new RemoteError('gateway/internal', error instanceof Error ? error.message : String(error), {}),
+    })),
+    settled => (settled.kind === 'ready' ? settled.version : undefined),
+    [path, format, read, maxDecodedSeconds, maxDecodedBytes],
+  )
 
   const header = (
     <div className={css.header}>
@@ -181,7 +165,7 @@ export function SoundPlayer(props: SoundPlayerProps): ReactNode {
         {header}
         <div className={css.notice} role="alert">
           <span className={css.message}>{text}</span>
-          {retry && <Button size="sm" variant="outline" onClick={() => { setAttempt(count => count + 1) }}>{t('action.retry')}</Button>}
+          {retry && <Button size="sm" variant="outline" onClick={readAgain}>{t('action.retry')}</Button>}
         </div>
       </div>
     )

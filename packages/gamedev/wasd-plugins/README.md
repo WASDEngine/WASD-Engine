@@ -211,12 +211,16 @@ The multiplayer tools call the site's servers API with the same rules, and read 
 | [`src/browser.ts`](src/browser.ts) | The Browser command queue, the `browser_*` tool definitions, screenshot storage, and the `browser` prompt section |
 | [`src/client/browser.ts`](src/client/browser.ts) | The window half of the Browser: which commands a window takes, the agent's tab, and the actions on its page |
 | [`src/client/page.ts`](src/client/page.ts) | The scripts the window runs in the page: the page text and its numbered controls, finding, clicking, and filling a control |
-| [`src/release.ts`](src/release.ts) | The site API client, the game link file, and the release flow with its visibility, desktop downloads, preview upload, and server build upload |
+| [`src/release.ts`](src/release.ts) | The release flow with its visibility, desktop downloads, preview upload, and server build upload, and the site's games API |
+| [`src/game-link.ts`](src/game-link.ts) | The game link file: each account's game per site, and a project's view of it |
+| [`src/site-client.ts`](src/site-client.ts) | The site's API as every client calls it: requests, error bodies, and JSON answers |
 | [`src/preview.ts`](src/preview.ts) | The preview encoding, the preview folder, and file digests |
 | [`src/credits.ts`](src/credits.ts) | The credits: which tool names credit which tool, the project's credits file with the models that connected agents named, and the add-on record's credits |
 | [`src/state.ts`](src/state.ts) | The project's `.wasdengine` state folder, the whole-file writes of its files, the real path each project is known by, and the queue that runs each project's exports, recordings, and releases one at a time |
 | [`src/folders.ts`](src/folders.ts) | The release folders: which folders on this computer released each game |
-| [`src/multiplayer-tools.ts`](src/multiplayer-tools.ts) | The multiplayer tool definitions, their MCP wrappers, the `multiplayer` prompt section, and the provider instructions |
+| [`src/multiplayer-tools.ts`](src/multiplayer-tools.ts) | The multiplayer tool host and surfaces, the catalog of the tool groups, their MCP wrappers, the `multiplayer` prompt section, and the provider instructions |
+| [`src/multiplayer-game-tools.ts`](src/multiplayer-game-tools.ts), [`src/server-tools.ts`](src/server-tools.ts) | The tool definitions of a game's own multiplayer and of dedicated servers |
+| [`src/multiplayer-parts.ts`](src/multiplayer-parts.ts) | What the tool groups share: player limits, schemas, the sign-in and released game, and the text of servers, sizes, and plans |
 | [`src/multiplayer-api.ts`](src/multiplayer-api.ts) | The client of the site's sizes, servers, server builds, and lobby statistics |
 | [`src/multiplayer-project.ts`](src/multiplayer-project.ts) | The add-on copy, the `project.godot` edits, and `res://wasd_multiplayer.cfg` |
 | [`src/multiplayer-test.ts`](src/multiplayer-test.ts) | The local test's instances, join tickets, statistics, and size fit |

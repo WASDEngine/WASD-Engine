@@ -6,12 +6,13 @@ import { join, parse } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  androidVersionCode, bundleIdentifier, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop,
+  androidVersionCode, customBootSplash, DESKTOP_EXPORT_PRESETS, desktopFileName, EXPORT_SPLASH_PATH, exportDesktop,
   exportMobile, exportWeb, FEATURE_SCAN_BYTES, GodotExportError, LARGE_PACK_BYTES, MOBILE_EXPORT_PRESETS, packNotes, pendingExportRestores,
   replayExportRestore, textureImports, WASD_SPLASH_IMAGES, wasdSplash, WEB_EXPORT_PRESET, WEB_RENDERER_NOTE, WEB_SPLASH_FILE,
   webFeatureNotes, webNotes, withDesktopPreset, withExportSplash, withMobilePreset, withoutPreset, withTextureImports, withWebPreset,
   type WebExportOptions,
 } from '../src/export.ts'
+import { storedAppIdentifier, withAppIdentifier, type AppIdentifierPlatform } from '../src/identifiers.ts'
 import { IOS_SPLASH_SETTING_WARNING, UNSET_TEAM_ID } from '../src/ios.ts'
 import type { GodotDesktopPlatform } from '../src/types.ts'
 import { compose } from './composition.ts'
@@ -65,6 +66,19 @@ async function prepare(config: FakeGodotConfig, before?: (project: string) => Pr
     ...overrides, ...call,
   })
   return { project, outputDir, restoreDir, run: exportBuild }
+}
+
+/**
+ * Check `project.godot` as an export left it: the text before the export, keeping the identifier that the platform's
+ * first export chose, the game's name and six random letters.
+ * @returns that identifier.
+ */
+function keptIdentifier(after: string, before: string, platform: AppIdentifierPlatform): string {
+  const identifier = storedAppIdentifier(after, platform)
+  const name = platform === 'android' ? 'fake_game' : 'fake-game'
+  expect(identifier).toMatch(new RegExp(`^com\\.wasdengine\\.game\\.${name}\\.[a-z]{6}$`, 'u'))
+  expect(after).toBe(withAppIdentifier(before, platform, identifier as string))
+  return identifier as string
 }
 
 describe('withWebPreset', () => {
@@ -378,22 +392,7 @@ describe('withDesktopPreset', () => {
   })
 })
 
-describe('bundleIdentifier and desktopFileName', () => {
-  it('makes a bundle identifier macOS takes from any name', () => {
-    expect(bundleIdentifier('Tiny Farm')).toBe('com.wasdengine.game.tiny-farm')
-    expect(bundleIdentifier('Café Über Ünïcode!')).toBe('com.wasdengine.game.cafe-uber-unicode')
-    expect(bundleIdentifier('3D Racer')).toBe('com.wasdengine.game.game-3d-racer')
-    expect(bundleIdentifier('🚀 !!')).toBe('com.wasdengine.game.game')
-    expect(bundleIdentifier('x'.repeat(100))).toBe(`com.wasdengine.game.${'x'.repeat(60)}`)
-  })
-
-  it('gives games whose names differ only in letters without an ASCII form different bundle identifiers', () => {
-    expect(bundleIdentifier('游戏')).toBe('com.wasdengine.game.game-847c5f68')
-    expect(bundleIdentifier('Space 射击')).toBe('com.wasdengine.game.space-5ef2fcce')
-    expect(bundleIdentifier('Space 冒险')).toBe('com.wasdengine.game.space-2b34eb87')
-    expect(bundleIdentifier(`${'x'.repeat(100)} 游戏`)).toMatch(new RegExp(`^com\\.wasdengine\\.game\\.${'x'.repeat(60)}-[0-9a-f]{8}$`, 'u'))
-  })
-
+describe('desktopFileName', () => {
   it('names the build after the game without the characters file systems refuse', () => {
     expect(desktopFileName('Tiny Farm')).toBe('Tiny Farm')
     expect(desktopFileName('Who: Are/You? <3> "quoted" | a\\b')).toBe('Who Are You 3 quoted a b')
@@ -490,7 +489,7 @@ posix('exportDesktop', () => {
     expect(await pendingExportRestores(restoreDir)).toEqual([project])
     expect(await replayExportRestore(restoreDir, project)).toBe(true)
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
-    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'macos')
     expect(await exists(splashFile(project))).toBe(false)
     expect(await readdir(restoreDir)).toEqual([])
     expect(await replayExportRestore(restoreDir, project)).toBe(false)
@@ -507,7 +506,7 @@ posix('exportDesktop', () => {
     try {
       await until(async () => (await readdir(restoreDir)).length === 0)
       expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
-      expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+      keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'macos')
     } finally {
       await plugin.cleanup()
     }
@@ -551,7 +550,8 @@ posix('exportDesktop', () => {
     const exportEntry = log.find(entry => entry.preset !== undefined) as ExportEntry
     expect(exportEntry.preset).toBe(DESKTOP_EXPORT_PRESETS.macos)
     expect(exportEntry.presets).toContain('name="Linux"')
-    expect(exportEntry.presets).toContain('application/bundle_identifier="com.wasdengine.game.fake-game"')
+    const identifier = keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'macos')
+    expect(exportEntry.presets).toContain(`application/bundle_identifier="${identifier}"`)
     expect(textureImports(exportEntry.project)).toEqual({ s3tc_bptc: 'true', etc2_astc: 'true' })
     // Godot packed WASD Engine's boot splash, which the export then took out of the project again.
     expect(wasdSplash(settings)).toBe('dark')
@@ -562,7 +562,7 @@ posix('exportDesktop', () => {
     expect(argv.slice(0, 5)).toEqual(['--headless', '--path', project, '--export-release', DESKTOP_EXPORT_PRESETS.macos])
     expect(argv[5]).toBe(join(outputDir, 'Fake game.zip'))
     expect(await readFile(join(project, 'export_presets.cfg'), 'utf8')).toBe(original)
-    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
+    keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'macos')
   })
 
   it('keeps a preset added to export_presets.cfg during the export and takes out only its own', async () => {
@@ -686,22 +686,49 @@ posix('exportMobile', () => {
       ...common, outputDir, platform: 'android', template: '/templates/android.apk', env: ANDROID_ENV,
       keystore: '/keys/release.keystore', keystoreCreated: true, now: new Date('2026-11-16T00:00:00Z'),
     })
+    const identifier = keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'android')
     expect(exported).toEqual({
-      projectDir: project, platform: 'android', outputDir, entry: 'Fake game.apk', bytes: 4, identifier: 'com.wasdengine.game.fake_game',
+      projectDir: project, platform: 'android', outputDir, entry: 'Fake game.apk', bytes: 4, identifier,
       signing: { keystore: '/keys/release.keystore', created: true }, warnings: [],
     })
     const log = await fakeLog(project)
     const exportEntry = log.find(entry => entry.preset !== undefined) as ExportEntry & { env: Record<string, string> }
     expect(exportEntry.preset).toBe(MOBILE_EXPORT_PRESETS.android)
     expect(exportEntry.env).toMatchObject(ANDROID_ENV)
-    expect(exportEntry.presets).toContain('package/unique_name="com.wasdengine.game.fake_game"')
+    expect(exportEntry.presets).toContain(`package/unique_name="${identifier}"`)
     expect(exportEntry.presets).toContain('version/code=29913120')
     // Godot exports for Android only with ETC2/ASTC imported, and the build shows WASD Engine's boot splash.
     expect(textureImports(exportEntry.project)).toEqual({ etc2_astc: 'true' })
     expect(exportEntry.splashBytes).toBe(SPLASH.dark.length)
     expect((log[0] as { argv: string[] }).argv.slice(3, 6)).toEqual(['--export-release', MOBILE_EXPORT_PRESETS.android, join(outputDir, 'Fake game.apk')])
-    expect(await readFile(join(project, 'project.godot'), 'utf8')).toBe(settings)
     expect(await exists(join(project, 'export_presets.cfg'))).toBe(false)
+  })
+
+  it('keeps the identifier of a project\'s earlier builds, or the one its creator set, and refuses one Android rejects', async () => {
+    const run = async (common: object, outputDir: string) => await exportMobile({
+      ...common as Parameters<typeof exportMobile>[0], outputDir, platform: 'android', template: '/templates/android.apk', env: ANDROID_ENV,
+      keystore: '/keys/release.keystore', keystoreCreated: false, now: new Date('2026-11-16T00:00:00Z'),
+    })
+    // A project whose output folder holds an APK of an earlier version keeps the name's identifier, which that APK has.
+    const earlier = await prepareMobile({ export: { files: { 'Fake game.apk': 'apk!' } } })
+    const earlierOutput = join(earlier.project, '.wasdengine', 'mobile', 'android')
+    await mkdir(earlierOutput, { recursive: true })
+    await writeFile(join(earlierOutput, 'Fake game.apk'), 'old apk')
+    expect((await run(earlier.common, earlierOutput)).identifier).toBe('com.wasdengine.game.fake_game')
+    expect(storedAppIdentifier(await readFile(join(earlier.project, 'project.godot'), 'utf8'), 'android')).toBe('com.wasdengine.game.fake_game')
+    // An identifier the creator set wins.
+    const custom = await prepareMobile({ export: { files: { 'Fake game.apk': 'apk!' } } })
+    const projectFile = join(custom.project, 'project.godot')
+    await writeFile(projectFile, withAppIdentifier(await readFile(projectFile, 'utf8'), 'android', 'com.studio.fake_game'))
+    const output = join(custom.project, '.wasdengine', 'mobile', 'android')
+    expect((await run(custom.common, output)).identifier).toBe('com.studio.fake_game')
+    const entry = (await fakeLog(custom.project)).find(item => item.preset !== undefined) as ExportEntry
+    expect(entry.presets).toContain('package/unique_name="com.studio.fake_game"')
+    // A value Android rejects stops the export before Godot runs.
+    await writeFile(projectFile, (await readFile(projectFile, 'utf8')).replace('com.studio.fake_game', 'com.studio.fake-game'))
+    await expect(run(custom.common, output)).rejects.toThrow(
+      /android_package_name to "com\.studio\.fake-game", which is not an Android package name\. Set it to one, or remove the line/u,
+    )
   })
 
   it('exports an Xcode project that asks for the team when it has none, without Godot\'s stray splash warning', async () => {
@@ -714,7 +741,9 @@ posix('exportMobile', () => {
       },
     })
     const outputDir = join(project, '.wasdengine', 'mobile', 'ios')
+    const settings = await readFile(join(project, 'project.godot'), 'utf8')
     const exported = await exportMobile({ ...common, outputDir, platform: 'ios', template: '/templates/ios.zip', appleTeamId: undefined })
+    const identifier = keptIdentifier(await readFile(join(project, 'project.godot'), 'utf8'), settings, 'ios')
     const pbxprojAfter = '\t\t\t\tPRODUCT_NAME = Fakegame;\n'
     const options = '<dict>\n    <key>method</key>\n    <string>app-store</string>\n</dict>\n'
     expect(await readFile(join(outputDir, 'Fakegame.xcodeproj', 'project.pbxproj'), 'utf8')).toBe(pbxprojAfter)
@@ -722,7 +751,7 @@ posix('exportMobile', () => {
     // The size counts every file of the project, as the team's removal left them.
     expect(exported).toEqual({
       projectDir: project, platform: 'ios', outputDir, entry: 'Fakegame.xcodeproj', bytes: pbxprojAfter.length + options.length + 'pck'.length,
-      identifier: 'com.wasdengine.game.fake-game', warnings: ['Icon is small.'],
+      identifier, warnings: ['Icon is small.'],
     })
     const exportEntry = (await fakeLog(project)).find(entry => entry.preset !== undefined) as ExportEntry
     expect(exportEntry.presets).toContain(`application/app_store_team_id="${UNSET_TEAM_ID}"`)

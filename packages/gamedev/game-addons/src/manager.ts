@@ -768,6 +768,25 @@ export class GameAddonManager {
   }
 
   /**
+   * The project record of an add-on installed now.
+   * @param addon - the catalog entry.
+   * @param paths - the project folders the installation wrote.
+   * @returns the record, with the archive the installation came from when the entry has one.
+   */
+  private installedRecord(addon: GameAddon, paths: string[]): InstalledGameAddon {
+    return {
+      id: addon.id,
+      title: addon.title,
+      host: addon.host,
+      version: addon.version,
+      license: addon.license,
+      ...addon.archive === undefined ? {} : { source: addon.archive.url, sha256: addon.archive.sha256 },
+      paths,
+      installedAt: this.options.now().toISOString(),
+    }
+  }
+
+  /**
    * The locked step of a Godot installation: check the project again, then move the staged folder into place, enable
    * the add-on in `project.godot`, write its notice, and record it, or, when the project has the catalog's version in
    * place, only write lost `project.godot` entries again. A failed step undoes the steps before it.
@@ -790,16 +809,7 @@ export class GameAddonManager {
     if (staged === undefined) return undefined
     const godot = addon.godot as NonNullable<GameAddon['godot']>
     const folderPath = addonFolder(addon)
-    const installed: InstalledGameAddon = {
-      id: addon.id,
-      title: addon.title,
-      host: addon.host,
-      version: addon.version,
-      license: addon.license,
-      ...addon.archive === undefined ? {} : { source: addon.archive.url, sha256: addon.archive.sha256 },
-      paths: [folderPath],
-      installedAt: this.options.now().toISOString(),
-    }
+    const installed = this.installedRecord(addon, [folderPath])
     const root = await realpath(projectDir)
     const rollback = new Rollback()
     // The add-on folder that the installation replaced, until it moves to the add-on's backup.
@@ -870,16 +880,7 @@ export class GameAddonManager {
     if (addon.assets !== undefined) {
       await this.storeFolder(this.assetsFolder(addon), addon, this.archiveSource(addon.assets, signal), () => undefined, signal)
     }
-    const installed: InstalledGameAddon = {
-      id: addon.id,
-      title: addon.title,
-      host: addon.host,
-      version: addon.version,
-      license: addon.license,
-      ...addon.archive === undefined ? {} : { source: addon.archive.url, sha256: addon.archive.sha256 },
-      paths: [],
-      installedAt: this.options.now().toISOString(),
-    }
+    const installed = this.installedRecord(addon, [])
     const commit = await lockRecord(projectDir, async (record): Promise<CommittedInstall> => {
       this.checkConflicts(addon, await this.presenceOf(projectDir, record.entries))
       const previous = record.entries.find(item => item.id === addon.id)

@@ -9,7 +9,8 @@ import {
   AnimationMixer, Box3, OrthographicCamera, PerspectiveCamera, Scene, Vector3, WebGLRenderer, type Camera,
 } from 'three'
 import type { AssetShading, AssetViewDirection } from '@deepseek-ai/dsh-game-assets/types'
-import { applyWireframe, clayMaterial, disposeHelper, finiteBounds, gridFor, lightScene, SkeletonOverlay, type LoadedModel } from './model.ts'
+import { finiteBounds, type LoadedModel } from './model.ts'
+import { applyWireframe, clayMaterial, disposeHelper, gridFor, lightScene, SkeletonOverlay } from './stage.ts'
 
 /** Background of a tile. */
 const TILE_BACKGROUND = 0x2b2e33

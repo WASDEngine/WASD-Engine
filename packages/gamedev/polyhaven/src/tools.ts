@@ -14,6 +14,7 @@ import { ASSET_ID_PATTERN, PolyHavenRequestError, type PolyHavenApi, type Previe
 import { writeDownload } from './download.ts'
 import { downloadOptions, MAP_FORMATS, planDownload, type DownloadOptions } from './files.ts'
 import type { PolyHavenAsset, PolyHavenAssetKind } from './types.ts'
+import { ATTACHED_IMAGE_SCHEMA } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** License of every Poly Haven asset, as an SPDX identifier. */
 export const LICENSE = 'CC0-1.0'
@@ -108,20 +109,6 @@ const SEARCH_SCHEMA = {
   },
 } as const
 
-const IMAGE_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    attachmentId: STRING,
-    mediaType: { type: 'string', enum: ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], required: true },
-    bytes: INTEGER,
-    width: INTEGER,
-    height: INTEGER,
-    name: { type: 'string' },
-    originalDimensions: { type: 'object', additionalProperties: false, properties: { width: INTEGER, height: INTEGER } },
-  },
-} as const
-
 const ASSET_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -145,7 +132,7 @@ const ASSET_SCHEMA = {
     },
     maps: STRINGS,
     defaultMaps: STRINGS,
-    preview: IMAGE_SCHEMA,
+    preview: ATTACHED_IMAGE_SCHEMA,
     previewError: { type: 'string' },
   },
 } as const

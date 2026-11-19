@@ -7,13 +7,14 @@ describes runtime.json, manifest.json, and the archive layout. The script needs
 only the standard library of Python 3.8 or newer. It writes UTF-8 with LF line
 ends to stdout and stderr on every platform. Every failure prints one
 "runtime.py: error:" line on stderr and exits with status 1.
+What it shares with the other tools' runtime scripts is in ../runtime_archive.py, which it imports.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import gzip
-import hashlib
 import io
 import json
 import os
@@ -22,184 +23,45 @@ import shutil
 import sys
 import tarfile
 import tempfile
-import time
 from typing import IO, Any, Dict, List, Optional, Tuple
 
-RUNTIME_FILE = "runtime.json"
-MANIFEST_FILE = "manifest.json"
-PLATFORMS = ("darwin", "linux", "win32")
-ARCHES = ("arm64", "x64")
-# The Godot plugin (packages/gamedev/godot/src/runtime.ts) reads both files; FORMAT changes only with it.
-FORMAT = 1
+# The functions every tool's runtime script shares (../runtime_archive.py); python -I leaves this script's folder
+# off sys.path, so the folder above it goes on.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import runtime_archive as shared  # noqa: E402
+from runtime_archive import (  # noqa: E402, F401 - also this script's names for its tests
+    ARCHES,
+    ARTIFACT_KEY_PATTERN,
+    COPY_CHUNK_BYTES,
+    FORMAT,
+    MANIFEST_FILE,
+    PLATFORMS,
+    REPOSITORY_PATTERN,
+    RUNTIME_FILE,
+    SHA256_PATTERN,
+    VERSION_PATTERN,
+    archive_mtime,
+    check_format,
+    check_version,
+    json_text,
+    read_json,
+    Record,
+    require_fields,
+    require_string,
+    RuntimeToolError,
+    sha256_file,
+    sha256_stream,
+    write_text_atomic,
+)
+
 RUNTIME_FIELDS = ("format", "version", "godot", "platform", "arch", "runner", "library", "sha256")
 MANIFEST_FIELDS = ("format", "version", "godot", "artifacts")
 ARTIFACT_FIELDS = ("url", "bytes", "sha256", "runner", "library")
-# The patterns end in \Z, which rejects a trailing newline that $ accepts.
-# The version names files, a URL path segment, and the Git tag libgodot-<version>.
-VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+-]*\Z")
 # The form godot_version prints, such as 4.7.2-stable or 4.8-beta2.
 GODOT_PATTERN = re.compile(r"^[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[A-Za-z0-9_.-]+)?\Z")
-REPOSITORY_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
 FILE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*\Z")
-SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}\Z")
-ARTIFACT_KEY_PATTERN = re.compile(r"^(?:darwin|linux|win32)-(?:arm64|x64)\Z")
-COPY_CHUNK_BYTES = 1 << 20
 RUNTIME_FILE_MAX_BYTES = 64 * 1024
-
-Record = Dict[str, Any]
-
-
-class RuntimeToolError(Exception):
-    """A failure reported as one error line and exit status 1."""
-
-
-def check_version(version: str) -> None:
-    """Reject a runtime version that cannot name an archive, a URL path segment, and a Git tag.
-
-    @param version: runtime version such as 4.7.2-wasd.1.
-    @raises RuntimeToolError: when the version has other characters or a ".." sequence.
-    """
-    if VERSION_PATTERN.match(version) is None or ".." in version:
-        raise RuntimeToolError(
-            f"invalid runtime version {version!r}: use letters, digits, '.', '_', '+', and '-', "
-            "starting with a letter or digit, without '..'"
-        )
-
-
-def check_format(record: Record, where: str) -> None:
-    """Require the file format this script and the Godot plugin share.
-
-    @param record: parsed runtime.json or manifest.json object.
-    @param where: file description for error messages.
-    @raises RuntimeToolError: when the format is not FORMAT.
-    """
-    value = record["format"]
-    if isinstance(value, bool) or value != FORMAT:
-        raise RuntimeToolError(f"{where}: format must be {FORMAT}, found {value!r}")
-
-
-def archive_name(version: str, key: str) -> str:
-    """Return the archive file name of one platform.
-
-    @param version: runtime version.
-    @param key: artifact key <platform>-<arch>, with Node.js platform and architecture names.
-    @returns: libgodot-<version>-<key>.tar.gz.
-    """
-    return f"libgodot-{version}-{key}.tar.gz"
-
-
-def release_url(repository: str, version: str, file_name: str) -> str:
-    """Return the download URL of a file attached to the GitHub release libgodot-<version>.
-
-    @param repository: GitHub repository as owner/name.
-    @param version: runtime version.
-    @param file_name: release asset name.
-    @returns: https://github.com/<repository>/releases/download/libgodot-<version>/<file_name>.
-    """
-    return f"https://github.com/{repository}/releases/download/libgodot-{version}/{file_name}"
-
-
-def sha256_stream(stream: IO[bytes], sink: Optional[IO[bytes]] = None) -> str:
-    """Hash a byte stream to its end, copying every byte to sink when one is given.
-
-    @param stream: readable binary stream.
-    @param sink: optional writable binary stream.
-    @returns: lowercase hexadecimal SHA-256 digest.
-    """
-    digest = hashlib.sha256()
-    for chunk in iter(lambda: stream.read(COPY_CHUNK_BYTES), b""):
-        digest.update(chunk)
-        if sink is not None:
-            sink.write(chunk)
-    return digest.hexdigest()
-
-
-def sha256_file(path: str) -> str:
-    """Hash one file.
-
-    @param path: file path.
-    @returns: lowercase hexadecimal SHA-256 digest of the file's bytes.
-    """
-    with open(path, "rb") as stream:
-        return sha256_stream(stream)
-
-
-def json_text(value: Record) -> str:
-    """Serialize a record as this tool stores JSON files: two-space indentation and one trailing newline.
-
-    @param value: JSON-compatible record.
-    @returns: the serialized text.
-    """
-    return json.dumps(value, indent=2) + "\n"
-
-
-def write_text_atomic(path: str, text: str) -> None:
-    """Write a UTF-8 text file with mode 0644 through a temporary sibling and a rename.
-
-    @param path: destination path; its directory must exist.
-    @param text: complete file contents.
-    """
-    handle, temporary = tempfile.mkstemp(prefix=f".{os.path.basename(path)}.", dir=os.path.dirname(os.path.abspath(path)))
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(text)
-        os.chmod(temporary, 0o644)
-        os.replace(temporary, path)
-    except BaseException:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-        raise
-
-
-def read_json(path: str) -> Any:
-    """Read one JSON file.
-
-    @param path: file path.
-    @returns: the parsed value.
-    @raises RuntimeToolError: when the file is missing, unreadable, or not JSON.
-    """
-    try:
-        with open(path, encoding="utf-8") as stream:
-            return json.load(stream)
-    except OSError as error:
-        raise RuntimeToolError(f"cannot read {path}: {error.strerror}") from error
-    except ValueError as error:
-        raise RuntimeToolError(f"{path} is not valid JSON: {error}") from error
-
-
-def require_fields(value: Any, fields: Tuple[str, ...], where: str) -> Record:
-    """Require a JSON object with exactly the given fields.
-
-    @param value: parsed JSON value.
-    @param fields: field names the object must have, and no others.
-    @param where: description of the value for error messages.
-    @returns: the object.
-    @raises RuntimeToolError: when the value is not an object or its fields differ.
-    """
-    if not isinstance(value, dict):
-        raise RuntimeToolError(f"{where} must be a JSON object")
-    missing = [field for field in fields if field not in value]
-    unknown = sorted(field for field in value if field not in fields)
-    if missing or unknown:
-        details = (["missing " + ", ".join(missing)] if missing else []) + (["unknown " + ", ".join(unknown)] if unknown else [])
-        raise RuntimeToolError(f"{where} has unexpected fields ({'; '.join(details)})")
-    return value
-
-
-def require_string(record: Record, field: str, where: str, pattern: Optional[re.Pattern[str]] = None) -> str:
-    """Require a non-empty string field, optionally matching a pattern.
-
-    @param record: JSON object.
-    @param field: field name.
-    @param where: description of the object for error messages.
-    @param pattern: optional regular expression the value must match from its start.
-    @returns: the string.
-    @raises RuntimeToolError: when the field is not a non-empty string or does not match.
-    """
-    value = record[field]
-    if not isinstance(value, str) or value == "" or (pattern is not None and pattern.match(value) is None):
-        raise RuntimeToolError(f"{where}: {field} is {value!r}, which is not valid")
-    return value
 
 
 def parse_runtime(value: Any, where: str) -> Record:
@@ -267,37 +129,6 @@ def load_manifest(path: str) -> Record:
     return parse_manifest(read_json(path), path)
 
 
-def manifest_text(manifest: Record) -> str:
-    """Serialize a manifest with its artifacts sorted by key.
-
-    @param manifest: validated manifest.
-    @returns: the serialized text.
-    """
-    artifacts = manifest["artifacts"]
-    return json_text({
-        "format": FORMAT,
-        "version": manifest["version"],
-        "godot": manifest["godot"],
-        "artifacts": {key: artifacts[key] for key in sorted(artifacts)},
-    })
-
-
-def check_same_release(base: Record, other: Record, where: str) -> None:
-    """Require two manifests to describe the same runtime version and Godot version.
-
-    @param base: manifest being extended.
-    @param other: manifest merged into it.
-    @param where: description of other for error messages.
-    @raises RuntimeToolError: when either version differs.
-    """
-    for field in ("version", "godot"):
-        if base[field] != other[field]:
-            raise RuntimeToolError(
-                f"{where} has {field} {other[field]!r}, not {base[field]!r}; "
-                "one manifest holds the archives of one runtime version built from one Godot version"
-            )
-
-
 def godot_version(source: str) -> str:
     """Read the Godot version of a source tree from its version.py without running it.
 
@@ -324,20 +155,6 @@ def godot_version(source: str) -> str:
     if numbers["patch"] != "0":
         number += f".{numbers['patch']}"
     return f"{number}-{status.group(1)}" if status.group(1) else number
-
-
-def archive_mtime() -> int:
-    """Return the modification time stored in archives: SOURCE_DATE_EPOCH when set, otherwise now.
-
-    @returns: seconds since the epoch.
-    @raises RuntimeToolError: when SOURCE_DATE_EPOCH is set but is not a non-negative integer.
-    """
-    value = os.environ.get("SOURCE_DATE_EPOCH", "")
-    if value == "":
-        return int(time.time())
-    if not value.isdigit():
-        raise RuntimeToolError(f"SOURCE_DATE_EPOCH is {value!r}, not a non-negative integer")
-    return int(value)
 
 
 def write_archive(path: str, directory: str, files: List[Tuple[str, int]], mtime: int) -> None:
@@ -669,19 +486,29 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+TOOL = shared.Tool(
+    name="libgodot",
+    upstream="godot",
+    label="Godot",
+    upstream_pattern=GODOT_PATTERN,
+    runtime_file_max_bytes=RUNTIME_FILE_MAX_BYTES,
+    parse_runtime=parse_runtime,
+    is_runtime_path=lambda path: path != RUNTIME_FILE and FILE_NAME_PATTERN.match(path) is not None,
+    windows_busy_hint="; stop every game that runs from it, then retry",
+)
+archive_name = functools.partial(shared.archive_name, TOOL)
+release_url = functools.partial(shared.release_url, TOOL)
+manifest_text = functools.partial(shared.manifest_text, TOOL)
+check_same_release = functools.partial(shared.check_same_release, TOOL)
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Run one command.
 
     @param argv: arguments without the program name; None reads sys.argv.
     @returns: process exit status.
     """
-    args = build_parser().parse_args(argv)
-    try:
-        args.run(args)
-    except (RuntimeToolError, OSError) as error:
-        print(f"runtime.py: error: {error}", file=sys.stderr)
-        return 1
-    return 0
+    return shared.run(build_parser(), argv)
 
 
 if __name__ == "__main__":

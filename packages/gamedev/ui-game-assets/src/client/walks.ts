@@ -5,7 +5,7 @@
  * the running one ends and serves every caller that waited for it; callers whose tickets come before a walk started
  * share it while it runs and after it ends, until it is no longer fresh.
  */
-import { freshScanMs } from './source.ts'
+import { freshScanMs } from './project-tab.ts'
 
 /** One walk of a Session's project. */
 interface Walk<T> {

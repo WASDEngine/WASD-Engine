@@ -15,7 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-attachment'
-import type {} from '@deepseek-ai/dsh-game-mcp'
+import { modelSeesImages } from '@deepseek-ai/dsh-game-mcp/kit'
 import type {} from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
@@ -118,14 +118,7 @@ export const Config: z<Partial<Config> & Pick<Config, 'dataRoot'>, Config> = z.o
  */
 function sessionImages(ctx: Context): ReferenceToolSurface {
   return {
-    async seesImages(exec) {
-      const attachments = ctx.get('attachments')
-      const llm = ctx.get('llm')
-      const route = exec.agent?.model.current()
-      if (attachments === undefined || llm === undefined || route === undefined) return false
-      const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-      return info.inputModalities?.includes('image') === true
-    },
+    seesImages: exec => modelSeesImages(ctx, exec),
     async keep(_exec, images) {
       const attachments = ctx.get('attachments')
       if (attachments === undefined) return []

@@ -84,7 +84,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 请求附带 Host 计算的绘制开销（[`src/model-cost.ts`](src/model-cost.ts)），窗口的队列按此衡量：文件的大小，对于模型，还有随其一起加载的引用文件，以及其加载器按这些文件所述在文件之外分配的内存。文件按窗口的方式查找：glTF 或 GLB 模型的缓冲区与图片，取自窗口的加载器所读取的描述，即 GLB 文件中无论位于何处的最后一个 JSON 块（读取时不读该文件的其他块），以及任意大小的 `.gltf` 文件文本；OBJ 文件的第一个材质库及其纹理，通过每次读取一兆字节查找；Collada 文件的图片；以及 FBX 文件中独立成文件的图片。名称按窗口的方式解析，只有真实路径位于窗口所读取文件夹之内的文件才计入；网址、其他 URL 以及走出该文件夹的名称都不计入。内存包括每个纹理解码后的大小（按其 PNG、JPEG、GIF、WebP、BMP 或 TGA 文件头所述的像素计算，包括 FBX 文件内嵌的图片）；VOX 文件的网格，即每个被摆放的模型的包围盒中每个格子一个字节，每个暴露的面一个四边形；以及 FBX 文件的节点、字符串与数组，按其记录所述计算。读取模型文件开销最大：最近 64 个模型的读取结果按路径、大小与修改时间保留，同时最多读取两个模型文件，读取期间结束的调用会停止等待，但不会停止读取；其引用文件的大小与文件头每次调用都会重新读取，每次 16 个，最多 1,024 个。引用超过 1,024 个文件的 glTF 或 GLB 文件，或其本身与所引用文件合计超过 `maxPreviewBytes` 的 glTF 或 GLB 文件，会在询问任何窗口之前以 `ASSET_TOO_LARGE` 失败。Host 会把窗口详细信息中提到的文件以及窗口失败消息中的路径，重新按调用方 agent 的工作目录给出。没有窗口连接到 Host 时，调用立即以 `ASSET_NO_WINDOW` 失败，因为网关会为之后连接的窗口保留该请求；已连接的窗口都无法处理时，waterfall 到达插件自己的最后一环，以同样的错误失败。窗口自身的失败，例如模型中没有调用给出的片段名称，会连同消息传给 agent。Host 先用 [`src/result.ts`](src/result.ts) 逐字段检查每个答复，再把图片存为附件或通过 MCP 发送；结果以 JSON 保留详细信息。
 
-格式表与 Blender 导出查找位于 [`src/formats.ts`](src/formats.ts)，以 `@deepseek-ai/dsh-game-assets/formats` 导出。插件的浏览器包不能导入其他插件的值，因此素材标签页保留一份副本，并由那里的一个测试保证两者一致。
+格式表与 Blender 导出查找位于 [`src/formats.ts`](src/formats.ts)，以 `@deepseek-ai/dsh-game-assets/formats` 导出；开销估算与素材标签页查看器共用的 OBJ 材质库、二进制 FBX 与 VOX 记录以及 VOX 网格的读取代码位于 [`src/model-files.ts`](src/model-files.ts)，以 `@deepseek-ai/dsh-game-assets/model-files` 导出，因此估算计入的正是查看器读取的内容。两者都没有 Host 依赖；素材标签页的浏览器包将两者内联，它们是客户端包纯净性检查对本包放行的两个入口。
 
 | 文件 | 作用 |
 |---|---|
@@ -93,6 +93,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | [`src/model-cost.ts`](src/model-cost.ts) | 窗口绘制一个模型的开销，以及所读取模型文件的保留结果 |
 | [`src/types.ts`](src/types.ts) | 可在浏览器中使用的请求、详细信息与结果类型及两个事件，以 `./types` 导出 |
 | [`src/formats.ts`](src/formats.ts) | 列出的格式与 Blender 导出查找，以 `./formats` 导出 |
+| [`src/model-files.ts`](src/model-files.ts) | 开销估算与查看器共用的模型文件读取代码，以 `./model-files` 导出 |
 | [`src/scan.ts`](src/scan.ts) | Host 对项目文件夹的遍历，只在链接的真实路径仍位于项目之内时跟随它 |
 | [`src/tools.ts`](src/tools.ts) | 工具定义、参数检查与结果内容 |
 | [`src/describe.ts`](src/describe.ts) | 搜索结果与详细信息的文本 |

@@ -215,7 +215,6 @@ The same worker script runs under the bpy module (`<python> -I -X utf8 -B -u <sc
 | [`src/environment.ts`](src/environment.ts) | The shipped runtime, uv, and Blender search, the bpy environment, backend choice, and setup notes |
 | [`src/tools.ts`](src/tools.ts) | Tool declarations, worker requests, reply validation, result text, and image files |
 | [`src/scripts.ts`](src/scripts.ts) | `run_script` runs: the shared places, the call and run folders, the processes, and the reports |
-| [`src/abort.ts`](src/abort.ts) | Cancellation of the server's waits |
 | [`src/instructions.ts`](src/instructions.ts) | Server name and instructions, and the description that agents connected through WASD Engine's MCP server read |
 | [`py/wasd_blender_worker.py`](py/wasd_blender_worker.py) | Worker: the protocol loop, one method per tool, and the script mode of `run_script` |
 

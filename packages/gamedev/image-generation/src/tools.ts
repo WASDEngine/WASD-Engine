@@ -6,14 +6,13 @@
  * MCP server.
  * @module @deepseek-ai/dsh-image-generation/src/tools
  */
-import { randomUUID } from 'node:crypto'
-import { mkdir, open, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, rmdir, stat } from 'node:fs/promises'
 import { dirname, extname, relative } from 'node:path'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ImageApi } from './api.ts'
 import { encodeForSaving, fitForSending, MAX_READ_BYTES, MAX_SENT_TOTAL_BYTES, UnreadableImage } from './files.ts'
 import type { ImageAspectRatio, ImageFormat, ImageSize, SentImage } from './types.ts'
+import { kilobytes, namedFileSize, replaceableFile, textBlocks, writeWhole } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** Nano Banana 2.1's image shapes, width to height. */
 export const IMAGE_ASPECT_RATIOS = [
@@ -34,18 +33,6 @@ const MODEL_NAME = 'Nano Banana 2.1'
 
 /** The file type of each extension a path may end in. */
 const FORMATS: Readonly<Record<string, ImageFormat>> = { '.png': 'png', '.jpg': 'jpeg', '.jpeg': 'jpeg', '.webp': 'webp' }
-
-/**
- * Whether a path names a file on another computer or a device rather than on this computer's disks: a Windows UNC
- * path such as `\\host\share` or `//host/share`, or a device path such as `\\?\UNC\host\share` or `\\.\pipe\name`, with
- * either slash. Opening one on Windows connects to that computer with the user's credentials, so the tool refuses them
- * on every platform.
- * @param path - the path as a call names it.
- * @returns true for such a path.
- */
-export function isNetworkPath(path: string): boolean {
-  return /^[\\/]{2}/u.test(path)
-}
 
 /** How one set of tool definitions reaches its callers. */
 export interface ImageToolSurface {
@@ -94,15 +81,6 @@ const IMAGE_SCHEMA = {
 /** The value of `image_generate`. */
 type ImageValue = InferValue<typeof IMAGE_SCHEMA>
 
-function textBlocks(text: string): ContentBlock[] {
-  return [{ type: 'text', text }]
-}
-
-function kilobytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 /**
  * The supported shape closest to an image's.
  * @param width - the image's width.
@@ -137,23 +115,13 @@ interface Reservation {
 }
 
 /**
- * Refuse a path that is a folder, or a file the call may not replace.
+ * Refuse a path that is a folder, or a file the call may not replace; an empty file may be one that another call is
+ * making.
+ * @returns whether a file is there, which the call replaces.
  * @throws Error when the path is a folder, or a file and `replace` is false.
  */
-async function refuseExisting(path: string, file: string, replace: boolean): Promise<boolean> {
-  let found
-  try {
-    found = await stat(path)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
-    throw error
-  }
-  if (!found.isFile()) throw new Error(`${file} is a folder; pass the path of a file.`)
-  if (replace) return true
-  if (found.size === 0) {
-    throw new Error(`${file} already exists as an empty file, which another image_generate call may still be making. Pass replace: true to overwrite it, or choose another path.`)
-  }
-  throw new Error(`${file} already exists. Pass replace: true to overwrite it, or choose another path.`)
+function refuseExisting(path: string, file: string, replace: boolean): Promise<boolean> {
+  return replaceableFile(path, file, replace, 'image_generate')
 }
 
 /**
@@ -200,19 +168,6 @@ async function reservePath(path: string, file: string, replace: boolean): Promis
   }
 }
 
-/** Write a file in place of any earlier one, through a temporary file beside it. */
-async function writeImage(path: string, data: Buffer): Promise<void> {
-  await mkdir(dirname(path), { recursive: true })
-  const temporary = `${path}.${randomUUID()}.part`
-  try {
-    await writeFile(temporary, data)
-    await rename(temporary, path)
-  } catch (error) {
-    await rm(temporary, { force: true })
-    throw error
-  }
-}
-
 /**
  * Read the images one call sends and fit each to what the API takes.
  * @throws Error when one is missing, not an image, or they are too large together.
@@ -223,15 +178,7 @@ async function readImages(host: ImageToolHost, requested: readonly string[], exe
   let total = 0
   for (const file of requested) {
     const path = await host.file(file, exec)
-    let size: number
-    try {
-      const found = await stat(path)
-      if (!found.isFile()) throw new Error(`${file} is not a file.`)
-      size = found.size
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`${file} does not exist.`, { cause: error })
-      throw error
-    }
+    const size = await namedFileSize(path, file)
     if (size > MAX_READ_BYTES) throw new Error(`${file} is larger than ${MAX_READ_BYTES / (1024 * 1024)} MB; pass a smaller image.`)
     let image: SentImage
     try {
@@ -298,7 +245,7 @@ export function imageToolDefinitions(host: ImageToolHost, surface: ImageToolSurf
       try {
         const image = await host.api.generate({ prompt, images, aspectRatio, size }, exec.signal)
         saved = await encodeForSaving(image, format)
-        await writeImage(path, saved.data)
+        await writeWhole(path, saved.data)
       } catch (error) {
         await reservation.release()
         throw error

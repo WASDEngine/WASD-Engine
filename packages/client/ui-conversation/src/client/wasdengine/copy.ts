@@ -3,6 +3,7 @@
  * the fork changes): the hero shows WASD Engine's headline, its Workspace picker names a game
  * project, and the session-in-use error names WASD Engine instead of DSH.
  */
+import { brandDictionaries } from '@deepseek-ai/dsh-client-locale/brand'
 import { WASDENGINE_CONVERSATION_COPY } from './locales.ts'
 
 /**
@@ -13,16 +14,5 @@ import { WASDENGINE_CONVERSATION_COPY } from './locales.ts'
  * @throws when a language has no game project copy, or the copy names a message its dictionary lacks.
  */
 export function brandConversationDictionaries<T extends Record<string, Record<string, string>>>(dictionaries: T): T {
-  const branded: Record<string, Record<string, string>> = {}
-  for (const [language, messages] of Object.entries(dictionaries)) {
-    const overrides = WASDENGINE_CONVERSATION_COPY[language]
-    if (overrides === undefined) throw new Error(`WASD Engine conversation copy: ${language} has no game project copy`)
-    const copy: Record<string, string> = { ...messages }
-    for (const [key, message] of Object.entries(overrides)) {
-      if (!(key in copy)) throw new Error(`WASD Engine conversation copy: ${language} has no message ${key}`)
-      copy[key] = message
-    }
-    branded[language] = copy
-  }
-  return branded as T
+  return brandDictionaries('conversation', dictionaries, { copy: WASDENGINE_CONVERSATION_COPY, requiredCopy: 'game project copy' })
 }

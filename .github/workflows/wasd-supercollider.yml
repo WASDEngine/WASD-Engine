@@ -43,7 +43,9 @@ jobs:
       - name: Lint build.sh
         run: |
           bash -n wasdengine/supercollider/build.sh
-          shellcheck wasdengine/supercollider/build.sh
+          bash -n wasdengine/lib.sh
+          (cd wasdengine/supercollider && shellcheck -x build.sh)
+          (cd wasdengine && shellcheck lib.sh)
 
       - name: Test runtime.py
         run: python3 -B -I -m unittest discover --start-directory wasdengine/supercollider --pattern 'test_*.py' --verbose

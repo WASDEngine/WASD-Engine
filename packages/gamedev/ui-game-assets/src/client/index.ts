@@ -12,17 +12,15 @@
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 // Type-only: the ctx.remote merge with the `workspaceFiles` namespace and the forwarded events, the `file` resource
-// protocol, the sessions service and its list of Sessions with their folders, the workspace's Session navigation, and
-// the right Sidebar's registry, seats, and navigation.
+// protocol, the sessions service and its list of Sessions with their folders, and the right Sidebar's registry and seats.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-api-workspace-files/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
-import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import { brandString } from '@deepseek-ai/dsh-brand'
-import type { AssetGrid, AssetReveal } from '@deepseek-ai/dsh-game-assets/types'
+import type { AssetGrid } from '@deepseek-ai/dsh-game-assets/types'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { RemoteError, type RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
@@ -33,7 +31,8 @@ import { AssetsGlyph } from './icon.tsx'
 import { de, en, es, fr, ja, NS, pt, ru, zh } from './locales.ts'
 import { DrawQueue } from './queue.ts'
 import { readAsset, readHead, relatedUrl, type AssetFile } from './read.ts'
-import { childPath, scanAssets, type AssetScan, type ListFolder, type ScanLimits } from './scan.ts'
+import { childPath, revealTab, sessionStates, type ListFolder } from './project-tab.ts'
+import { scanAssets, type AssetScan, type ScanLimits } from './scan.ts'
 import { AssetsSource } from './source.ts'
 import { ProjectWalks } from './walks.ts'
 
@@ -41,7 +40,8 @@ export type { AssetsTabInjected, AssetsTabProps, ViewerLimits } from './AssetsTa
 export type { AssetFormat, AssetKind, ImageDecoder, ModelDecoder } from './formats.ts'
 export type { GameAssetsLocaleKey } from './locales.ts'
 export type { AssetFile } from './read.ts'
-export type { AssetEntry, AssetScan, ListFolder, ScanLimits } from './scan.ts'
+export type { ListFolder } from './project-tab.ts'
+export type { AssetEntry, AssetScan, ScanLimits } from './scan.ts'
 export type { ScanState, ViewState } from './source.ts'
 export type { SpriteAnimation, SpriteFrame } from './sprites.ts'
 export type { FolderNode, KindFilter, TreeRow } from './tree.ts'
@@ -52,8 +52,7 @@ export const TAB_ID = '@deepseek-ai/dsh-client-ui-game-assets'
 /** Kind of the Assets tab. */
 export const TAB_KIND = 'assets'
 
-/** How long a reveal waits for its Session to come on screen, in milliseconds. */
-export const REVEAL_WAIT_MS = 10_000
+export { REVEAL_WAIT_MS } from './project-tab.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-sidebar-right/client' {
   interface SidebarRightTabParamsMap {
@@ -121,30 +120,12 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
     return await readAsset(document.baseURI, root, path, maxBytes, signal)
   }
   const readOf = (sessionId: SessionId): Read => (path, maxBytes, signal) => readIn(folderOf(sessionId))(path, maxBytes, signal)
-  // Each Session's state with the release of its Session-scope effect; both end with the Session or this plugin.
-  const sources = new Map<SessionId, { readonly source: AssetsSource; readonly release: () => void }>()
-  ctx.effect(() => () => {
-    for (const { release } of [...sources.values()]) release()
-    sources.clear()
-  }, 'ui-game-assets: Session state')
-  const sourceOf = (sessionId: SessionId): AssetsSource => {
-    const known = sources.get(sessionId)
-    if (known !== undefined) return known.source
-    const binding = ctx.sessions.binding(sessionId)
-    if (binding === undefined) throw new Error(`ui-game-assets: Session ${sessionId} is not retained`)
-    const source = new AssetsSource(
-      listOf(sessionId),
-      limits,
-      () => Date.now(),
-      (error) => { ctx.logger.warn('ui-game-assets: the project scan failed', error) },
-    )
-    const dispose = binding.ctx.effect(() => () => {
-      source.close()
-      if (sources.get(sessionId)?.source === source) sources.delete(sessionId)
-    }, 'ui-game-assets: release Session state')
-    sources.set(sessionId, { source, release: () => { void dispose() } })
-    return source
-  }
+  const sourceOf = sessionStates(ctx, 'ui-game-assets', sessionId => new AssetsSource(
+    listOf(sessionId),
+    limits,
+    () => Date.now(),
+    (error) => { ctx.logger.warn('ui-game-assets: the project scan failed', error) },
+  ))
   // The project walks of the Sessions drawn for, whose Godot files an image's animations come from: the pictures drawn
   // for an agent use only a walk that started after their request arrived, so a scene the agent just wrote is in it.
   const walking = new AbortController()
@@ -262,60 +243,10 @@ export function apply(ctx: Context, config: Required<Config> = Config({})): void
   ctx.effect(() => () => { revealing?.() }, 'ui-game-assets: stop the waiting reveal')
   ctx.effect(() => ctx.remote.$on('game-assets/reveal', (reveal) => {
     revealing?.()
-    revealing = revealAsset(ctx, reveal)
+    revealing = revealTab(ctx, reveal.sessionId, TAB_KIND, {
+      path: reveal.path,
+      ...reveal.animation === undefined ? {} : { animation: reveal.animation },
+      ...reveal.grid === undefined ? {} : { grid: reveal.grid },
+    }, 'ui-game-assets: the Assets tab could not be opened for an agent')
   }), 'ui-game-assets: reveal assets')
-}
-
-/** How often a reveal tries again while the Session's sidebar surface is not mounted yet, in milliseconds. */
-const REVEAL_RETRY_MS = 50
-
-/**
- * Open an asset in its Session's Assets tab: at once when the Session is on screen, or after the window shows it. The
- * sidebar reports a Session on screen in the render before its surface takes commands, so an open that finds no
- * surface tries again until {@link REVEAL_WAIT_MS} has passed.
- * @param ctx - the browser plugin context.
- * @param reveal - the Session, the asset, and the animation to play.
- * @returns a function that stops the reveal if it has not opened the tab yet.
- */
-function revealAsset(ctx: Context, reveal: AssetReveal): () => void {
-  const sidebar = ctx.get('sidebarRight')
-  if (sidebar === undefined) return () => {}
-  const deadline = Date.now() + REVEAL_WAIT_MS
-  let retry: ReturnType<typeof setTimeout> | undefined
-  const open = (): void => {
-    retry = undefined
-    if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
-    try {
-      sidebar.openTab(TAB_KIND, {
-        params: {
-          path: reveal.path,
-          ...reveal.animation === undefined ? {} : { animation: reveal.animation },
-          ...reveal.grid === undefined ? {} : { grid: reveal.grid },
-        },
-      })
-    } catch (error) {
-      // Error: the Session's surface mounts in the render after it came on screen; another try follows shortly.
-      if (Date.now() < deadline) retry = setTimeout(open, REVEAL_RETRY_MS)
-      else ctx.logger.warn('ui-game-assets: the Assets tab could not be opened for an agent', error)
-    }
-  }
-  if (sidebar.mounted.getSnapshot() === reveal.sessionId) {
-    open()
-    return () => { clearTimeout(retry) }
-  }
-  const workspace = ctx.get('uiWorkspace')
-  if (workspace === undefined) return () => {}
-  const stop = sidebar.mounted.subscribe(() => {
-    if (sidebar.mounted.getSnapshot() !== reveal.sessionId) return
-    stop()
-    clearTimeout(timer)
-    open()
-  })
-  const timer = setTimeout(stop, REVEAL_WAIT_MS)
-  workspace.openSession(reveal.sessionId)
-  return () => {
-    stop()
-    clearTimeout(timer)
-    clearTimeout(retry)
-  }
 }

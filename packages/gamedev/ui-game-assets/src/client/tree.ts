@@ -5,7 +5,8 @@
  */
 import { rankByName } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AssetKind } from './formats.ts'
-import { compareNames, NAME_ORDER, type AssetEntry } from './scan.ts'
+import { NAME_ORDER } from './project-tab.ts'
+import { compareNames, type AssetEntry } from './scan.ts'
 
 /** One folder of the tree. */
 export interface FolderNode {

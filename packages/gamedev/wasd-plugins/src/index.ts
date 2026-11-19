@@ -57,9 +57,9 @@ import {
 import { GameLibrary } from './library.ts'
 import { startDetached, systemUnpack } from './library-process.ts'
 import { encodePreview, savePreview } from './preview.ts'
-import {
-  accountKey, DESKTOP_BUILD_DIR, linkedGame, projectView, releaseGame, STATE_DIR, WEB_BUILD_DIR, WEB_CHECK_SCREENSHOT, type SiteAccess,
-} from './release.ts'
+import { accountKey, linkedGame, projectView } from './game-link.ts'
+import { DESKTOP_BUILD_DIR, releaseGame, STATE_DIR, WEB_BUILD_DIR, WEB_CHECK_SCREENSHOT } from './release.ts'
+import type { SiteAccess } from './site-client.ts'
 import { signInLink } from './site-sign-in.ts'
 import { ProjectQueue } from './state.ts'
 import { wasdMcpProvider, wasdToolDefinitions, type PreviewRequest, type WasdToolHost } from './tools.ts'

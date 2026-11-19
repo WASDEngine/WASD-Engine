@@ -29,31 +29,8 @@ godot_repository_url=https://github.com/godotengine/godot.git
 scons_version=4.11.1
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
-
-log() { printf 'build.sh: %s\n' "$*" >&2; }
-die() {
-  printf 'build.sh: error: %s\n' "$*" >&2
-  exit 1
-}
-usage() { awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "${BASH_SOURCE[0]}"; }
-
-cleanup_paths=()
-# shellcheck disable=SC2317 # Invoked by the EXIT trap.
-cleanup() {
-  local path
-  for path in ${cleanup_paths[@]+"${cleanup_paths[@]}"}; do
-    rm -rf -- "$path"
-  done
-}
-trap cleanup EXIT
-
-# Prints the value of option $1 from "$@", or fails when it is missing.
-option_value() {
-  if [ "$#" -lt 2 ] || [ -z "$2" ]; then
-    die "$1 needs a value; run with --help for usage"
-  fi
-  printf '%s' "$2"
-}
+# shellcheck source=../lib.sh
+source "$script_dir/../lib.sh"
 
 out_dir=
 godot_ref=4.7.2-stable
@@ -137,12 +114,6 @@ native_path() {
   fi
 }
 
-# Creates directory $1 when missing and prints its absolute physical path.
-absolute_dir() {
-  mkdir -p -- "$1" || die "cannot create directory $1"
-  (cd -- "$1" && pwd -P)
-}
-
 python_cmd=()
 find_python() {
   local candidate
@@ -176,22 +147,6 @@ run_scons() {
 # otherwise skip every file of the patch and still exit with status 0.
 git_in_source() {
   GIT_CEILING_DIRECTORIES=$(native_path "$(dirname "$src")") git -C "$src" "$@"
-}
-
-apply_patches() {
-  local patch name
-  for patch in "$script_dir"/patches/*.patch; do
-    [ -f "$patch" ] || continue
-    name=${patch##*/}
-    if git_in_source apply --reverse --check "$patch" >/dev/null 2>&1; then
-      log "patch $name is already applied"
-    elif git_in_source apply --check "$patch"; then
-      git_in_source apply "$patch"
-      log "applied patch $name"
-    else
-      die "patch $name applies neither forward nor in reverse to $src; the patches are written for Godot 4.7.2-stable"
-    fi
-  done
 }
 
 windows_vswhere() {
@@ -287,7 +242,7 @@ fi
 godot=$(runtime_py godot-version --source "$(native_path "$src")")
 log "building the $node_platform-$node_arch runtime $version from Godot $godot in $src"
 
-apply_patches
+apply_patches "Godot 4.7.2-stable"
 
 stage=$out/.stage-$node_platform-$node_arch
 rm -rf -- "$stage"

@@ -349,7 +349,7 @@ Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了
 <a id="desktop-export"></a>
 ### 桌面版导出
 
-`ctx.godot.exportDesktop({ projectDir, platform, outputDir }, signal)` 为其他 Host 插件把项目导出为 `windows` 或 `macos` 版本，例如 WASD Engine 插件，其 `wasd_export_desktop` 与 `wasd_release_game` 工具会调用它。一个无窗口的 Godot 进程以预设 `WASD Engine Windows` 或 `WASD Engine macOS` 运行 `--export-release`，并在 `outputDir` 中写入一个 ZIP 文件，以去掉文件系统不接受字符的 `application/config/name` 命名，否则为 `Game.zip`：Windows 版是一个嵌入了游戏数据包并带有项目图标的 64 位 x86 `.exe`；macOS 版是游戏的通用应用包，适用于 Intel 与 Apple 芯片，经过临时签名、未经公证，其 bundle identifier 为 `com.wasdengine.game.<name>`，由游戏名称中的小写 ASCII 字母、数字和连字符组成；名称中含有没有 ASCII 形式的字母（例如中文或西里尔字母）时，末尾还会加上名称 SHA-256 的前 8 位十六进制数字，使这些游戏各有自己的标识符。预设文件、输出文件夹、`maxHeadlessProcesses` 位置、内存检查和错误行都与 Web 导出相同。
+`ctx.godot.exportDesktop({ projectDir, platform, outputDir }, signal)` 为其他 Host 插件把项目导出为 `windows` 或 `macos` 版本，例如 WASD Engine 插件，其 `wasd_export_desktop` 与 `wasd_release_game` 工具会调用它。一个无窗口的 Godot 进程以预设 `WASD Engine Windows` 或 `WASD Engine macOS` 运行 `--export-release`，并在 `outputDir` 中写入一个 ZIP 文件，以去掉文件系统不接受字符的 `application/config/name` 命名，否则为 `Game.zip`：Windows 版是一个嵌入了游戏数据包并带有项目图标的 64 位 x86 `.exe`；macOS 版是游戏的通用应用包，适用于 Intel 与 Apple 芯片，经过临时签名、未经公证，其 bundle identifier 为项目为 macOS 保留的标识符（见下文的应用标识符）。预设文件、输出文件夹、`maxHeadlessProcesses` 位置、内存检查和错误行都与 Web 导出相同。
 
 桌面版构建只打包项目已导入的 VRAM 压缩纹理格式，而编辑器在 macOS 和 x86 主机上只导入 S3TC/BPTC，除非 `project.godot` 要求更多格式；Windows 构建需要 S3TC/BPTC，通用 Mac 构建同时需要 S3TC/BPTC 与 ETC2/ASTC。因此导出在运行期间把 `project.godot` 中的 `rendering/textures/vram_compression/import_s3tc_bptc`（macOS 还有 `import_etc2_astc`）设为 `true`，让其导入步骤补上缺少的格式，之后恢复这些设置；即使 `project.godot` 在导出期间被修改，也只把这些设置恢复为原来的值。其恢复记录也包含这些设置，因此应用在桌面版导出期间退出时，下次启动或导出会恢复它们；文件仍是导出写入的内容时，恢复整个文件。补上的格式的导入文件留在项目的 `.godot` 文件夹中，可以省去下一次导出的工作。
 
@@ -362,11 +362,13 @@ Web 模板是 WASD Engine 构建的 Godot 单线程 Web 发布模板，修复了
 
 `ctx.godot.exportMobile({ projectDir, platform, outputDir, appleTeamId }, signal)` 为其他 Host 插件把项目导出为 `android` 或 `ios` 版本，例如 WASD Engine 插件，它的 `wasd_export_mobile` 工具会调用它。一个无窗口 Godot 进程以预设 `WASD Engine Android` 或 `WASD Engine iOS` 运行 `--export-release`；预设文件、输出文件夹、`maxHeadlessProcesses` 空位、内存检查、启动画面和恢复记录与桌面版导出相同。导出在运行期间开启 `import_etc2_astc`，因为没有 ETC2/ASTC 纹理时 Godot 不会导出这两个平台。结果给出构建、它的大小、应用的标识符以及最多十条说明。Godot 没有写出构建时，错误会列出 Godot 的错误行及其后续行，例如 `due to configuration errors:` 之后列出的原因。
 
-Android 导出写出一个以游戏命名的 APK 文件，命名方式与桌面版导出的 ZIP 文件相同。Godot 不经 Gradle 构建，直接用发布模板 APK 打包：只包含 64 位 ARM（`arm64-v8a`），带有网络权限，包名为 `com.wasdengine.game.<名称>`（取游戏名中的小写 ASCII 字母、数字和下划线，对没有 ASCII 形式的字母加上与 macOS bundle identifier 相同的摘要），版本号为自 1970 年起的分钟数，因此每次构建都能覆盖安装之前的版本。Godot 用 Android SDK build-tools 中的 `apksigner` 为 APK 签名，它运行在 Java 上；在编辑器设置给出 JDK 和带有 `platform-tools/adb` 的 SDK 之前，Godot 拒绝导出。插件使用 `androidJavaPath` 与 `androidSdkPath`，否则依次采用 `JAVA_HOME`、Android Studio 自带的 JDK，以及系统安装程序、Homebrew、Eclipse Adoptium、Microsoft 和 `/usr/lib/jvm` 中第一个可用的 JDK，并依次采用 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 和 Android Studio 安装 SDK 的文件夹中第一个可用的 SDK；两者缺一时，导出在下载模板之前就失败，错误会说明缺少什么，并指出 Android Studio 能同时安装两者。Godot 以导出自己的临时主文件夹运行，在其中根据 `JAVA_HOME` 与 `ANDROID_HOME` 创建编辑器设置，因此用户自己的 Godot 编辑器设置既不生效也不会被修改；导出结束后删除该文件夹。
+Android 导出写出一个以游戏命名的 APK 文件，命名方式与桌面版导出的 ZIP 文件相同。Godot 不经 Gradle 构建，直接用发布模板 APK 打包：只包含 64 位 ARM（`arm64-v8a`），带有网络权限，包名为项目为 Android 保留的包名（见下文的应用标识符），版本号为自 1970 年起的分钟数，因此每次构建都能覆盖安装之前的版本。Godot 用 Android SDK build-tools 中的 `apksigner` 为 APK 签名，它运行在 Java 上；在编辑器设置给出 JDK 和带有 `platform-tools/adb` 的 SDK 之前，Godot 拒绝导出。插件使用 `androidJavaPath` 与 `androidSdkPath`，否则依次采用 `JAVA_HOME`、Android Studio 自带的 JDK，以及系统安装程序、Homebrew、Eclipse Adoptium、Microsoft 和 `/usr/lib/jvm` 中第一个可用的 JDK，并依次采用 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 和 Android Studio 安装 SDK 的文件夹中第一个可用的 SDK；两者缺一时，导出在下载模板之前就失败，错误会说明缺少什么，并指出 Android Studio 能同时安装两者。Godot 以导出自己的临时主文件夹运行，在其中根据 `JAVA_HOME` 与 `ANDROID_HOME` 创建编辑器设置，因此用户自己的 Godot 编辑器设置既不生效也不会被修改；导出结束后删除该文件夹。
 
 这台电脑上所有游戏的 Android 构建都用同一个密钥签名，因为已安装的应用只能更新为用同一密钥签名的构建。第一次 Android 导出用 JDK 的 `keytool` 在 `dataRoot` 下生成 `android/release.keystore`，这是一个 PKCS #12 密钥库，含一个有效期 10,000 天的 2048 位 RSA 密钥；它的别名和随机密码写入旁边的 `android/release-key.json`。密码通过环境变量交给 `keytool`，两个文件都只有用户本人可读。同时开始的多次导出只生成一个密钥；密钥库缺少可读的密码文件时，导出会失败，而不是替换密钥。当 Host 的环境同时设置了 Godot 自己的三个发布密钥变量 `GODOT_ANDROID_KEYSTORE_RELEASE_PATH`、`GODOT_ANDROID_KEYSTORE_RELEASE_USER` 和 `GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD` 时，改用它们指定的密钥。密钥只通过这些变量交给 Godot，从不写入 `export_presets.cfg`。
 
-iOS 导出写出一个以游戏名中的 ASCII 字母和数字命名的 Xcode 项目（`<名称>.xcodeproj`），旁边是它构建所需的文件：数据包、适用于 iPhone 和 iOS 模拟器的 Godot 库，以及应用的资源；Mac 上的 Xcode 由它构建应用。项目的 bundle identifier 与 macOS 构建一样为 `com.wasdengine.game.<名称>`，目标设备为 iPhone 和 iPad。Godot 需要 Team ID 才能写出项目的签名设置，因此导出采用 `appleTeamId`（10 位大写字母和数字），请求中的 Team ID 不是这种形式时，无论哪个平台，导出都会在开始前失败；没有给出时，在 `security find-certificate` 只列出一个团队时采用这台 Mac 上有效的 Apple Development 证书的 Team ID，否则不设团队：此时先以占位值 `WASDNOTEAM` 导出，再把它从 `project.pbxproj` 和 `export_options.plist` 中删除，让 Xcode 询问团队。Godot 4.7.2 每次 iOS 导出都会因为已不存在的设置 `application/boot_splash/fullsize` 打印一条警告，导出会把它略去。
+iOS 导出写出一个以游戏名中的 ASCII 字母和数字命名的 Xcode 项目（`<名称>.xcodeproj`），旁边是它构建所需的文件：数据包、适用于 iPhone 和 iOS 模拟器的 Godot 库，以及应用的资源；Mac 上的 Xcode 由它构建应用。项目的 bundle identifier 为 Godot 项目为 iOS 保留的标识符（见下文的应用标识符），目标设备为 iPhone 和 iPad。Godot 需要 Team ID 才能写出项目的签名设置，因此导出采用 `appleTeamId`（10 位大写字母和数字），请求中的 Team ID 不是这种形式时，无论哪个平台，导出都会在开始前失败；没有给出时，在 `security find-certificate` 只列出一个团队时采用这台 Mac 上有效的 Apple Development 证书的 Team ID，否则不设团队：此时先以占位值 `WASDNOTEAM` 导出，再把它从 `project.pbxproj` 和 `export_options.plist` 中删除，让 Xcode 询问团队。Godot 4.7.2 每次 iOS 导出都会因为已不存在的设置 `application/boot_splash/fullsize` 打印一条警告，导出会把它略去。
+
+应用标识符，即 macOS 与 iOS 的 bundle identifier 和 Android 包名，是 Godot 项目在其 `project.godot` 中保留的标识符：`[wasd_engine]` 部分的 `export/macos_bundle_identifier`、`export/ios_bundle_identifier` 和 `export/android_package_name`，因此游戏的每次构建都能更新已安装的应用，由另一台电脑导出时也是如此。某个平台的首次导出会选定其标识符并写入该文件，导出恢复项目文件时它会保留下来：先是 `com.wasdengine.game.`，然后是游戏名中的小写 ASCII 字母和数字，词与词之间 Apple 用连字符、Android 用下划线连接，以数字开头时前面加上 `game`，名称含有没有 ASCII 形式的字母（例如中文或西里尔字母）时后面加上名称 SHA-256 的前 8 位十六进制数字，最后是一个点和六个随机小写字母，使名称相近的游戏在同一台设备上互不干扰。输出文件夹中存有之前导出的构建时（早期版本的 WASD Engine 仅按游戏名称为其应用命名），首次导出会选用由该名称得出、不带随机字母的标识符，使已安装的应用能够继续更新。创作者在那里设置的值优先；平台不接受的值会使导出在 Godot 运行之前失败。
 
 每个平台的第一次导出会像 Web 导出下载自己的模板一样下载其模板：`androidTemplateEntry` 压缩后约 99 MB，以 `templates/<sha256>.apk` 发布；`iosTemplateEntry` 压缩后约 189 MB，以 `templates/<sha256>.zip` 发布。
 
@@ -434,12 +436,17 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 宿主插件：配置、提示词部分、Remote 方法和帧路由 |
+| [`src/controller-parts.ts`](src/controller-parts.ts) | 插件根据配置构建的内容：运行时版本、提示词指南、路径检查与导出模板；以及其 Remote 失败 |
 | [`src/runtime.ts`](src/runtime.ts) | 运行时解析、托管安装和运行时视图 |
 | [`src/runs.ts`](src/runs.ts) | 每 Session 状态、运行替换、运行数上限和每次启动的准入 |
 | [`src/slots.ts`](src/slots.ts) | 同时运行的脚本检查与 Web 导出的位置 |
 | [`src/run.ts`](src/run.ts) | 单次运行：导入步骤、启动、握手、请求、日志、帧、音频采集、无人显示的游戏的帧率与呈现，以及关闭 |
 | [`src/protocol.ts`](src/protocol.ts) | harness 连接上的消息分帧与校验 |
-| [`src/tools.ts`](src/tools.ts) | 工具声明、结果文本和新错误报告 |
+| [`src/tools.ts`](src/tools.ts) | 工具宿主、调用面与措辞、注册，以及各工具组的目录 |
+| [`src/run-tools.ts`](src/run-tools.ts)、[`src/play-tools.ts`](src/play-tools.ts)、[`src/inspect-tools.ts`](src/inspect-tools.ts)、[`src/script-tools.ts`](src/script-tools.ts) | 工具声明：启动与停止、查看与操作、检查运行中的游戏，以及项目检查与脚本 |
+| [`src/tool-parts.ts`](src/tool-parts.ts) | 各工具组共用的 schema、参数限制与调用步骤，以及新错误报告 |
+| [`src/tool-text.ts`](src/tool-text.ts)、[`src/run-text.ts`](src/run-text.ts) | 结果文本：日志条目、结果与图片块；脚本运行与场景树 |
+| [`src/screenshot-capture.ts`](src/screenshot-capture.ts) | 各调用面的截图与画面，以及把它们保存为项目文件 |
 | [`src/performance.ts`](src/performance.ts) | 性能采样的回答、带脚本剖析的汇总及其文本 |
 | [`src/audio.ts`](src/audio.ts) | 音频采集的回答、Master 音量、含有声音的片段、汇总及其文本，以及 WAV 文件 |
 | [`src/check.ts`](src/check.ts) | 静态脚本检查及其之前的导入 |
@@ -448,7 +455,7 @@ Client 侧先挂载生成的 `godot` Remote，再挂载 UI；撤下时先撤 UI�
 | [`src/export.ts`](src/export.ts) | Web、桌面版、移动端与专用服务器的导出预设和导出 |
 | [`src/android.ts`](src/android.ts) | Android 导出使用的 JDK 与 Android SDK、为其构建签名的密钥，以及其 Godot 进程的环境 |
 | [`src/ios.ts`](src/ios.ts) | iOS 导出的 Apple 开发者团队：这台 Mac 证书的 Team ID，以及占位值的删除 |
-| [`src/identifiers.ts`](src/identifiers.ts) | 游戏的 Android 包名与 Apple bundle identifier 中取自游戏名称的部分 |
+| [`src/identifiers.ts`](src/identifiers.ts) | 游戏的应用标识符：项目为每个平台保留的标识符，以及由游戏名称和六个随机字母组成的新标识符 |
 | [`src/export-template.ts`](src/export-template.ts) | 从导出模板归档中下载单个模板项，用于 Web、Windows、macOS、Android、iOS 与 Linux 服务器模板 |
 | [`src/instances.ts`](src/instances.ts) | 带有各自环境的无窗口实例组 |
 | [`src/script.ts`](src/script.ts) | `godot_script` 运行与供其他插件使用的导入报告 |

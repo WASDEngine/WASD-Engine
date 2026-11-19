@@ -1,26 +1,17 @@
 /**
- * One Session's Audio tab state outside React: the latest walk of the project for sounds, what each sound's headers
- * say (its length, rate, and channels, read a few at a time after each walk), and the listener's choices (the
- * selected sound, the search text, the kind filter, and the folders folded shut). A walk keeps the previous result on
- * screen while it runs and after it fails; a second request while one runs is dropped. The state lives until the
- * Session's scope ends, so the tab shows it again when it is reopened.
+ * One Session's Audio tab state outside React: the latest walk of the project for sounds, kept as the game project tabs
+ * keep their walks (`ProjectSource` of `@deepseek-ai/dsh-client-ui-game-assets/client/project-tab`), what each sound's
+ * headers say (its length, rate, and channels, read a few at a time after each walk), and the listener's choices (the
+ * selected sound, the search text, the kind filter, and the folders folded shut). The state lives until the Session's
+ * scope ends, so the tab shows it again when it is reopened.
  */
 import type { AudioCategory, AudioProbe } from '@deepseek-ai/dsh-game-audio/audio'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { RemoteFailure } from '@deepseek-ai/dsh-typert-protocol'
-import { scanSounds, type ListFolder, type ScanLimits, type SoundEntry, type SoundScan } from './scan.ts'
+import { ProjectSource, type ListFolder, type ProjectScanState } from '@deepseek-ai/dsh-client-ui-game-assets/client/project-tab'
+import { scanSounds, type ScanLimits, type SoundEntry, type SoundScan } from './scan.ts'
 
 /** Where the walk stands. */
-export interface ScanState {
-  /** `idle` before the first walk; `scanning` while one runs; then whether the latest one succeeded. */
-  readonly status: 'idle' | 'scanning' | 'ready' | 'failed'
-  /** The latest successful walk, kept while a later one runs or after it fails. */
-  readonly scan?: SoundScan
-  /** The latest walk's failure; cleared by the next successful walk. */
-  readonly failure?: RemoteFailure
-  /** When the latest walk settled, in milliseconds since the epoch. */
-  readonly settledAt?: number
-}
+export type ScanState = ProjectScanState<SoundScan>
 
 /** Which sounds the list shows: every kind, or one. */
 export type KindFilter = 'all' | AudioCategory
@@ -51,15 +42,6 @@ export interface ProbeEntry {
  */
 export type ProbeSound = (sound: SoundEntry, signal: AbortSignal) => Promise<AudioProbe | undefined>
 
-/**
- * Walk freshness the tab accepts when it shows again, in milliseconds; a project whose walk takes longer is walked
- * again only after ten times its last walk's duration.
- */
-export const FRESH_SCAN_MS = 2000
-
-/** How many times its own duration a walk stays fresh. */
-const FRESH_SCAN_FACTOR = 10
-
 /** Header probes in flight at once. */
 const PROBES_AT_ONCE = 4
 
@@ -67,20 +49,12 @@ const PROBES_AT_ONCE = 4
 const PROBES_PER_UPDATE = 16
 
 /** One Session's Audio tab state. */
-export class AudioSource {
-  /** The walk. */
-  readonly scanState: SnapshotStore<ScanState> = createSnapshotStore<ScanState>({ status: 'idle' })
+export class AudioSource extends ProjectSource<SoundScan> {
   /** The listener's choices. */
   readonly view: SnapshotStore<ViewState> = createSnapshotStore<ViewState>({ selected: undefined, query: '', filter: 'all', closed: [] })
   /** What each sound's headers said, by workspace path. */
   readonly probes: SnapshotStore<ReadonlyMap<string, ProbeEntry>> = createSnapshotStore<ReadonlyMap<string, ProbeEntry>>(new Map())
-  private running: AbortController | undefined
   private probing: AbortController | undefined
-  private closed = false
-  /** How long the latest settled walk took, in milliseconds. */
-  private lastDuration = 0
-  /** The navigation revision each tab took last. */
-  private readonly navigations = new Map<string, number>()
 
   /**
    * @param list - the Session's bound folder listing.
@@ -90,50 +64,9 @@ export class AudioSource {
    * @param report - receives a walk or probe that threw instead of returning a Remote failure.
    */
   constructor(
-    private readonly list: ListFolder,
-    private readonly probe: ProbeSound,
-    private readonly limits: ScanLimits,
-    private readonly now: () => number,
-    private readonly report: (error: unknown) => void,
-  ) {}
-
-  /** Walk the project unless a walk runs or the source is closed. */
-  rescan(): void {
-    if (this.closed || this.running !== undefined) return
-    const walk = new AbortController()
-    this.running = walk
-    this.scanState.set({ ...this.scanState.getSnapshot(), status: 'scanning' })
-    void this.walk(walk.signal).finally(() => {
-      if (this.running === walk) this.running = undefined
-    })
-  }
-
-  /** Run one walk and publish its outcome unless it was stopped; then read the new sounds' headers. */
-  private async walk(signal: AbortSignal): Promise<void> {
-    const began = this.now()
-    let next: ScanState
-    try {
-      const outcome = await scanSounds(this.list, this.limits, signal)
-      next = outcome.ok
-        ? { status: 'ready', scan: outcome.value, settledAt: this.now() }
-        : { status: 'failed', ...this.kept(), failure: outcome.error, settledAt: this.now() }
-    } catch (error) {
-      if (signal.aborted) return
-      this.report(error)
-      next = { status: 'failed', ...this.kept(), settledAt: this.now() }
-    }
-    if (signal.aborted) return
-    this.lastDuration = this.now() - began
-    this.scanState.set(next)
-    if (next.status === 'ready' && next.scan !== undefined) this.probeAll(next.scan)
-  }
-
-  /** Walk unless the latest walk is fresh, by {@link FRESH_SCAN_MS} or ten times its duration, or one runs. */
-  refresh(): void {
-    const settledAt = this.scanState.getSnapshot().settledAt
-    const fresh = Math.max(FRESH_SCAN_MS, this.lastDuration * FRESH_SCAN_FACTOR)
-    if (settledAt !== undefined && this.now() - settledAt < fresh) return
-    this.rescan()
+    list: ListFolder, private readonly probe: ProbeSound, limits: ScanLimits, now: () => number, report: (error: unknown) => void,
+  ) {
+    super(createSnapshotStore<ScanState>({ status: 'idle' }), signal => scanSounds(list, limits, signal), now, report)
   }
 
   /**
@@ -170,30 +103,19 @@ export class AudioSource {
     this.view.set({ ...view, closed })
   }
 
-  /**
-   * Claim a tab's navigation once, so a sound an agent opened is selected once per opening.
-   * @param tabId - the tab.
-   * @param revision - the navigation's revision.
-   * @returns whether the revision is new for the tab.
-   */
-  takeNavigation(tabId: string, revision: number): boolean {
-    if (revision === 0 || this.navigations.get(tabId) === revision) return false
-    this.navigations.set(tabId, revision)
-    return true
-  }
-
   /** Stop the running walk and probes; later requests do nothing. */
-  close(): void {
-    this.closed = true
-    this.running?.abort()
-    this.running = undefined
+  override close(): void {
+    super.close()
     this.probing?.abort()
     this.probing = undefined
   }
 
-  private kept(): Pick<ScanState, 'scan'> {
-    const scan = this.scanState.getSnapshot().scan
-    return scan === undefined ? {} : { scan }
+  /**
+   * Read the new sounds' headers once a walk is published.
+   * @param scan - the walk.
+   */
+  protected override scanned(scan: SoundScan): void {
+    this.probeAll(scan)
   }
 
   /** Read the headers of the walk's sounds whose size changed or that were never read, a few at a time. */
