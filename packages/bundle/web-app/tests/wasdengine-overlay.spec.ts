@@ -57,6 +57,7 @@ const GAME_TOOLS: Readonly<Record<string, string>> = {
   'image-generation': '@deepseek-ai/dsh-image-generation',
   polyhaven: '@deepseek-ai/dsh-polyhaven',
   supercollider: '@deepseek-ai/dsh-supercollider',
+  tripo: '@deepseek-ai/dsh-tripo',
 }
 
 /** The game tool row without config: Poly Haven, which keeps no files under the harness home and runs with its defaults. */
@@ -67,6 +68,9 @@ const ELEVENLABS = 'elevenlabs'
 
 /** The other row whose only config is the WASDEngine API origin: image generation, whose images the API makes and charges. */
 const IMAGE_GENERATION = 'image-generation'
+
+/** The third row whose only config is the WASDEngine API origin: Tripo, whose 3D models the API makes and charges. */
+const TRIPO = 'tripo'
 
 /** The game tool row that reads the shipped add-on catalog and keeps the Blender add-on store, which the `blender` row names too. */
 const GAME_ADDONS = 'game-addons'
@@ -428,8 +432,8 @@ describe('WASDEngine overlay', () => {
         expect(entry.config, `${id} config`).toBeUndefined()
         continue
       }
-      if (id === ELEVENLABS || id === IMAGE_GENERATION) {
-        // The account sign-in releases its token only to the inference origin, so the audio and images go there.
+      if (id === ELEVENLABS || id === IMAGE_GENERATION || id === TRIPO) {
+        // The account sign-in releases its token only to the inference origin, so the audio, images, and models go there.
         expect(Object.keys(configOf(entry)), `${id} config keys`).toEqual(['apiOrigin'])
         expect(expression(configOf(entry).apiOrigin, `${id}.apiOrigin`), `${id}.apiOrigin`).toBe(api)
         continue
@@ -456,6 +460,7 @@ describe('WASDEngine overlay', () => {
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[GAME_ADDONS] ?? ''), 'the Plugins page can switch the game add-ons off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[ELEVENLABS] ?? ''), 'the Plugins page can switch ElevenLabs off').toBe(false)
     expect(PROTECTED_PLUGINS.has(GAME_TOOLS[IMAGE_GENERATION] ?? ''), 'the Plugins page can switch image generation off').toBe(false)
+    expect(PROTECTED_PLUGINS.has(GAME_TOOLS[TRIPO] ?? ''), 'the Plugins page can switch Tripo off').toBe(false)
   })
 
   it('mounts the Game tools tabs from a web-app dependency by its bare package name, without config', () => {
@@ -867,16 +872,18 @@ describe('gamedev preset', () => {
     expect(text).toContain('Keep an existing project\'s physics engine')
   })
 
-  it('has the persona and godot-project get each asset from a fitting download first, then from image_generate and ElevenLabs', () => {
+  it('has the persona and godot-project get each asset from a fitting download first, then from image_generate, Tripo, and ElevenLabs', () => {
     const persona = String(configOf(gameRow('persona')).prefix)
     expect(persona).toContain('The tested add-ons of game_addons and the CC0 assets of polyhaven_* are the exception: add them yourself when the game needs them.')
     expect(persona).toContain('For each asset, first look for one to download from Poly Haven or a catalog add-on, and use it when it suits the game\'s art style. '
-      + 'Otherwise generate 2D art with image_generate instead of drawing it yourself in GIMP or code, and voices, sound effects, and music with the '
-      + 'elevenlabs_* tools instead of SuperCollider.')
+      + 'Otherwise generate 2D art with image_generate instead of drawing it yourself in GIMP or code, 3D characters, creatures, and props with the '
+      + 'tripo_* tools instead of modeling them yourself in Blender or code, and voices, sound effects, and music with the elevenlabs_* tools instead '
+      + 'of SuperCollider.')
     const skill = readFileSync(join(webAppDir, 'wasdengine', 'skills', 'godot-project', 'SKILL.md'), 'utf8')
     expect(skill).toContain('Get each asset from the first source that suits the game\'s art style: download skies, textures, and models with `polyhaven_*` '
       + 'or an add-on\'s assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing '
-      + 'them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider.')
+      + 'them yourself, 3D models with `tripo_*`, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider. '
+      + 'With the `mcp__wasd_blender__` tools, build other 3D models,')
     expect(skill).toContain('Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound')
   })
 

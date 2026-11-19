@@ -13,7 +13,7 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { GameToolsController, type GameToolsState } from '../src/client/controller.ts'
 import {
   BLENDER, change, ELEVENLABS, entryId, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, OTHER, plugins,
-  POLY_HAVEN, SUPERCOLLIDER,
+  POLY_HAVEN, SUPERCOLLIDER, TRIPO,
 } from './fixtures.client.ts'
 
 function bench() {
@@ -61,6 +61,7 @@ describe('GameToolsController reads', () => {
         { moduleName: IMAGE_GENERATION.moduleName, entry: IMAGE_GENERATION, control: { kind: 'switch' } },
         { moduleName: POLY_HAVEN.moduleName, entry: POLY_HAVEN, control: { kind: 'switch' } },
         { moduleName: SUPERCOLLIDER.moduleName, entry: SUPERCOLLIDER, control: { kind: 'switch' } },
+        { moduleName: TRIPO.moduleName, entry: TRIPO, control: { kind: 'switch' } },
       ],
     })
     b.controller.changed()
@@ -99,6 +100,7 @@ describe('GameToolsController reads', () => {
         { moduleName: IMAGE_GENERATION.moduleName, entry: undefined },
         { moduleName: POLY_HAVEN.moduleName, entry: undefined },
         { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
+        { moduleName: TRIPO.moduleName, entry: undefined },
       ],
     })
   })
@@ -120,6 +122,7 @@ describe('GameToolsController reads', () => {
       { moduleName: IMAGE_GENERATION.moduleName, entry: undefined },
       { moduleName: POLY_HAVEN.moduleName, entry: undefined },
       { moduleName: SUPERCOLLIDER.moduleName, entry: undefined },
+      { moduleName: TRIPO.moduleName, entry: undefined },
     ])
   })
 

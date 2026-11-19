@@ -17,10 +17,10 @@ it('names the server wasd_blender, so the model calls mcp__wasd_blender__<tool>'
   expect(BLENDER_SERVER_NAME).toBe('wasd_blender')
 })
 
-it('tells connected agents to make the game\'s 3D models that they do not download in Blender rather than from primitives built in code', () => {
-  expect(BLENDER_GAME_MCP_DESCRIPTION).toBe('Model, texture, rig, and animate 3D assets in a headless Blender and export them as .glb files: '
-    + 'real shapes, bevels, and baked textures that primitives built in code cannot match. Make every model the player sees here unless you '
-    + 'download it, and the parts of meshes the game builds at runtime; in Godot a .glb still takes the game\'s shaders, animation, and per-instance variation.')
+it('tells connected agents to make the game\'s 3D models that they neither download nor generate in Blender rather than from primitives built in code', () => {
+  expect(BLENDER_GAME_MCP_DESCRIPTION).toBe('Model, texture, rig, and animate 3D assets in a headless Blender and export .glb files: '
+    + 'real shapes, bevels, and baked textures that code primitives cannot match. Make here each model the player sees that you '
+    + 'don\'t download or generate; in Godot a .glb still takes shaders, animation, and per-instance variation.')
 })
 
 it('keeps the instructions within 6000 characters and names only tools the server provides', () => {

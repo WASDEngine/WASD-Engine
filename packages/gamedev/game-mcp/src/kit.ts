@@ -7,7 +7,7 @@
  */
 export {
   accountAccess, ATTACHED_IMAGE_SCHEMA, checkedInteger, folderRows, gatewayOrigin, isNetworkPath, kilobytes, modelSeesImages,
-  namedFileSize, pathFolder, pathName, pathWithin, replaceableFile, sessionFiles, stateChanges, statOf, textBlocks, windowPath,
-  writeWhole, type GatewayAccess,
+  namedFileSize, pathFolder, pathName, pathWithin, replaceableFile, reservePath, sessionFiles, stateChanges, statOf, textBlocks,
+  windowPath, writeWhole, type GatewayAccess, type Reservation,
 } from './plugin-kit.ts'
 export { callFolder, PROJECT_PARAMETER, projectMcpTool, type CallFolders, type ResultImage } from './project-tools.ts'

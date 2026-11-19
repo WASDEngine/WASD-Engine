@@ -100,6 +100,16 @@ export const SUPERCOLLIDER: PluginInfo = {
   meta: { title: 'SuperCollider', description: 'Render game audio.' },
 }
 
+/** Tripo running, switchable through its patch row, with a package that declares no icon. */
+export const TRIPO: PluginInfo = {
+  entryId: entryId('tripo'),
+  moduleName: '@deepseek-ai/dsh-tripo',
+  enabled: true,
+  fiberPhase: 'active',
+  patchId: 'tripo',
+  meta: { title: 'Tripo', description: 'Make textured, rigged, and animated 3D models.' },
+}
+
 /** An unrelated Loader entry both tabs leave out. */
 export const OTHER: PluginInfo = {
   entryId: entryId('tool-web'),
@@ -116,7 +126,9 @@ export const OTHER: PluginInfo = {
  * @returns the successful answer.
  */
 export function inventory(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [
+    OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER, TRIPO,
+  ],
   managementAvailable = true,
 ): RemoteResult<PluginInventorySnapshot> {
   return { ok: true, value: { managementAvailable, entries } }
@@ -128,7 +140,9 @@ export function inventory(
  * @returns the successful answer.
  */
 export function plugins(
-  entries: readonly PluginInfo[] = [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
+  entries: readonly PluginInfo[] = [
+    OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER, TRIPO,
+  ],
 ): RemoteResult<PluginInfo[]> {
   return { ok: true, value: [...entries] }
 }

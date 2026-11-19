@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/tripo/README.md
+/:
+  en: ca82d4d8ef756f13
+  zh: 8a8bcbf75acd9c2b
+/deepseek-ai-dsh-tripo:
+  en: 519b50462577e8ae
+  zh: ad3c861f4b317ed4
+/deepseek-ai-dsh-tripo/summary:
+  en: 416be146d9dabbb5
+  zh: 3f15859e8112b4e5
+/deepseek-ai-dsh-tripo/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-tripo/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-tripo/use-this-package/default-composition:
+  en: 3abeb14653120ce5
+  zh: abeb8768b1439eb5
+/deepseek-ai-dsh-tripo/use-this-package/the-tools:
+  en: a1eed169e668fc9d
+  zh: a91b0acc35d6dd6d
+/deepseek-ai-dsh-tripo/use-this-package/prices-and-the-account:
+  en: 0cec92626b0620c3
+  zh: 7d047e037f20f744
+/deepseek-ai-dsh-tripo/use-this-package/plugin-icon:
+  en: 2ae0b2e8e0ac868c
+  zh: ec319f69ff9b0186
+/deepseek-ai-dsh-tripo/understand-the-implementation:
+  en: 0a66e10f1047fd39
+  zh: 92ef708bde617a35
+/deepseek-ai-dsh-tripo/further-exploration:
+  en: 3293399cbf101249
+  zh: 11512e6f9869aad7
+/deepseek-ai-dsh-tripo/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-tripo/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-tripo/model-experience/tool-declarations/what-the-model-sees:
+  en: fd51e25b6d6d41cc
+  zh: ffde54db829c0a7d
+/deepseek-ai-dsh-tripo/model-experience/tool-declarations/token-effect:
+  en: 05626a3a7cc6abde
+  zh: 65518f152f9753fe
+/deepseek-ai-dsh-tripo/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 2719f4e66f85f0b9
+/deepseek-ai-dsh-tripo/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-tripo/model-experience/tool-results/what-the-model-sees:
+  en: e0a8d1622fa3e255
+  zh: 6680db4e55496807
+/deepseek-ai-dsh-tripo/model-experience/tool-results/token-effect:
+  en: 06a6639a4ef81116
+  zh: b406e8a1ca41d911
+/deepseek-ai-dsh-tripo/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: 9c36aea51ad3bba1
+/deepseek-ai-dsh-tripo/known-limitations-and-deferred-work:
+  en: 32e3d1b718681182
+  zh: 4a507a96a6638f58
+/deepseek-ai-dsh-tripo/known-limitations-and-deferred-work/dev-note:
+  en: 9e4adf812e93ca07
+  zh: 1f2d752952d5b869

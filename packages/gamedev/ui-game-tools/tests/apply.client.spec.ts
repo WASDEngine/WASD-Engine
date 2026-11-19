@@ -20,7 +20,7 @@ import { PluginsGameToolsTab, type PluginsGameToolsTabInjected } from '../src/cl
 import { SettingsGameToolsTab, type SettingsGameToolsTabInjected } from '../src/client/SettingsGameToolsTab.tsx'
 import { apply as hostApply } from '../src/index.ts'
 import {
-  BLENDER, change, ELEVENLABS, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, plugins, POLY_HAVEN, SUPERCOLLIDER,
+  BLENDER, change, ELEVENLABS, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, plugins, POLY_HAVEN, SUPERCOLLIDER, TRIPO,
 } from './fixtures.client.ts'
 
 usePinnedBrowserLanguages('en-US')
@@ -148,6 +148,7 @@ describe('ui-game-tools browser plugin', () => {
         { moduleName: IMAGE_GENERATION.moduleName, entry: IMAGE_GENERATION },
         { moduleName: POLY_HAVEN.moduleName, entry: POLY_HAVEN },
         { moduleName: SUPERCOLLIDER.moduleName, entry: SUPERCOLLIDER },
+        { moduleName: TRIPO.moduleName, entry: TRIPO },
       ],
     })
     b.list.mockResolvedValueOnce(failed(true))
