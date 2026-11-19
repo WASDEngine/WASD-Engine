@@ -142,7 +142,7 @@ Session 的工作进程在其首次工具调用时启动，带有 Blender 的默
 <a id="game-add-ons"></a>
 ### 游戏扩展
 
-每个工作进程的 `execute_python` 命名空间中都有 `wasd_addons` 模块，执行的代码也可以导入它。`wasd_addons.enable("<id>")` 会从 `addonStore` 指定的存储目录启用目录中的 Blender 扩展：对于扩展，通过模块名为 `wasd`、文件夹为该存储目录的扩展仓库启用，因此它以 `bl_ext.wasd.<module>` 导入；对于 Blender 自带的扩展，例如 Rigify，则直接启用。它接受目录 id 或模块名，返回 Python 模块名；对于存储目录的 `catalog.json` 未列出或尚未下载的扩展，它会抛出 `wasd_addons.AddonError` 并说明该怎么做。当扩展的索引条目指定了设置脚本时，`enable` 随后会以扩展的模块和其资源包所在的文件夹调用脚本中的 `setup(module, assets)`，该文件夹也可由 `wasd_addons.assets("<id>")` 获得。`wasd_addons.enabled()` 列出它启用过的 id。出厂设置由 `new_scene` 加载，执行的代码也可能通过 `bpy.ops.wm.read_factory_settings` 加载；它会移除该仓库、停用所有扩展并重置扩展偏好设置，因此一个持久的 `load_factory_preferences_post` 处理程序会再次启用工作进程之前启用过的扩展并再次运行它们的设置脚本，此时启用失败的扩展不再保留。在状态丢失后启动的工作进程不启用任何扩展。
+每个工作进程的 `execute_python` 命名空间中都有 `wasd_addons` 模块，执行的代码也可以导入它。`wasd_addons.enable("<id>")` 会从 `addonStore` 指定的存储目录启用目录中的 Blender 扩展：对于扩展，通过模块名为 `wasd`、文件夹为该存储目录的扩展仓库启用，因此它以 `bl_ext.wasd.<module>` 导入；对于 Blender 自带的扩展，例如 Rigify，则直接启用。它接受目录 id 或模块名，返回 Python 模块名；对于存储目录的 `catalog.json` 未列出或尚未下载的扩展，它会抛出 `wasd_addons.AddonError` 并说明该怎么做；对于条目写有 `allowed: false` 的扩展（游戏扩展插件为用户关闭的扩展写入它），它会以条目的 `message` 抛出该错误，`wasd_addons.assets` 也以同样方式拒绝这类扩展。当扩展的索引条目指定了设置脚本时，`enable` 随后会以扩展的模块和其资源包所在的文件夹调用脚本中的 `setup(module, assets)`，该文件夹也可由 `wasd_addons.assets("<id>")` 获得。`wasd_addons.enabled()` 列出它启用过的 id。出厂设置由 `new_scene` 加载，执行的代码也可能通过 `bpy.ops.wm.read_factory_settings` 加载；它会移除该仓库、停用所有扩展并重置扩展偏好设置，因此一个持久的 `load_factory_preferences_post` 处理程序会再次启用工作进程之前启用过的扩展并再次运行它们的设置脚本，此时启用失败的扩展不再保留。在状态丢失后启动的工作进程不启用任何扩展。
 
 <a id="headless-operation"></a>
 ### 无界面运行

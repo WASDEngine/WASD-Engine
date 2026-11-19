@@ -312,18 +312,19 @@ Each tool package names `icon.svg` in the `icon` field of its `package.json`, so
 <a id="game-add-ons"></a>
 ## Game add-ons
 
-The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, and one fixed system prompt section, `game-addons`, whatever its project holds, so the cached prefix stays the same; the guides reach the model only as skills of the projects that use them.
+The `game-addons` row mounts [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.md). Its catalog holds one folder per add-on with `addon.json`, an entry that pins one release's archive URL, SHA-256, and size, and `SKILL.md`, the add-on's usage guide. The plugin loads and checks the whole catalog when it starts. Every Session sees one fixed tool, `game_addons`, and one system prompt section, `game-addons`, whatever its project holds, so the cached prefix stays the same until the user turns an add-on on or off; the guides reach the model only as skills of the projects that use them.
 
 | Step | What happens |
 |---|---|
-| Discovery | The `game-addons` section lists every catalog add-on with the stages at which it helps and when to use it; `game_addons` `search` ranks the catalog for the game's need and shows sizes, conflicts, and when to skip each one; `guide` returns a guide before installation |
+| Switches | The Add-ons dialog's switch beside each add-on writes the row's volatile `allowed` through the Settings service, without a restart; every add-on is on until the user turns it off, and one that is off leaves the section, searches, and guides, and neither the Session's agent nor a connected one can install it, read its guide, or enable it in Blender. A game that has it keeps it |
+| Discovery | The `game-addons` section lists every catalog add-on that the user has not turned off with the stages at which it helps and when to use it; `game_addons` `search` ranks the catalog for the game's need and shows sizes, conflicts, and when to skip each one; `guide` returns a guide before installation |
 | Decision | The agent installs or removes an add-on when it decides that the game needs it, without asking the user under any approval policy; the section tells it when an add-on is worth installing and to tell the user what it added, with the license |
 | Godot installation | The archive comes from the Desktop app's `archives/` folder for a bundled entry and otherwise downloads once into `<dataRoot>/archives/<sha256>.zip`, and must match its pin; one folder of it unpacks through `.wasdengine/staging/` into `res://addons/<folder>/`, together with the files of the entry's overlay folders in the catalog, such as the import settings and `retarget.gd` of the Universal Animation Library packs; `project.godot` gets the editor plugin, autoloads, and settings that the plugin's `_enable_plugin()` would add; `THIRD_PARTY_NOTICES.md` gets the license; `.wasdengine/addons.json` records the add-on; and `ctx.godot.importProject` imports the project |
 | Blender installation | The extension unpacks once into `<blenderStore>/<module>/` and its asset pack, if any, into `<dataRoot>/blender-assets/<id>/`, the store's `catalog.json` lists every catalog Blender add-on with the store copy of its setup script (`<blenderStore>/.wasd-setup/<id>/`, written at every start) and its asset folder, and the project's record lists it; a worker's `wasd_addons.enable("<id>")` enables it and runs its setup script, and does both again after factory settings load |
-| Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/`, at rank 550, and a watcher on `addons/` and `.wasdengine/` refreshes the list |
+| Guides | The skill provider `game-addons` lists, for a Session's working directory, the guide of each catalog add-on that its Godot project has installed or holds in `addons/` and that the user has not turned off, at rank 550, and a watcher on `addons/` and `.wasdengine/` and each change of `allowed` refresh the list |
 | Removal | The recorded paths, the add-on's `project.godot` entries, and its notice go; settings that another installed add-on also sets stay; the result names the files that still use the add-on |
 
-`godot_script` runs the command-line runners of the GUT and GdUnit4 add-ons, and measurements: it imports the project when it changed since its last import, then runs a SceneTree script with `--headless --script`, once or once per entry of `runs` at the same time, at a fixed frame rate with `fixed_fps`, and keeps each run's output and the files it writes to `WASD_OUTPUT_DIR` in a folder of the project's data folder. LibGodot hides the script's exit code, so a test run's result shows in what it prints or writes. The Session header's Add-ons button opens a dialog that installs and removes add-ons through the `gameAddons` Remote at the user's click; LiveShare keeps the Remote for the owner. The catalog's smoke tests run end to end in `packages/gamedev/game-addons/tests/catalog.e2e.ts`.
+`godot_script` runs the command-line runners of the GUT and GdUnit4 add-ons, and measurements: it imports the project when it changed since its last import, then runs a SceneTree script with `--headless --script`, once or once per entry of `runs` at the same time, at a fixed frame rate with `fixed_fps`, and keeps each run's output and the files it writes to `WASD_OUTPUT_DIR` in a folder of the project's data folder. LibGodot hides the script's exit code, so a test run's result shows in what it prints or writes. The Session header's Add-ons button opens a dialog that lists the catalog with each add-on's presence in the game and its switch, which calls the `gameAddons` Remote's `setAllowed`; LiveShare keeps the Remote for the owner. The catalog's smoke tests run end to end in `packages/gamedev/game-addons/tests/catalog.e2e.ts`.
 
 <a id="assets-tab"></a>
 ## Assets tab
@@ -385,7 +386,7 @@ The `.gdignore` file makes Godot skip the folder, so references are neither impo
 <a id="graphics-review"></a>
 ## Graphics review
 
-The `graphics-review` row mounts [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.md), whose `graphics_review` tool gives the Session's agent and connected agents a critique of an image of the game's graphics, such as a screenshot that `godot_screenshot` or `godot_view` saved with `save`: notes on how to make it look better and the WASD Engine tools and add-ons to consider, with no score or verdict. Its `graphics-review` system prompt section asks for one to three reviews of each piece of graphics the agent makes itself, stopping early when a review has nothing useful, and none of assets it downloads, such as from Poly Haven. The model-facing texts call the reviewer a specialized graphics expert reviewer model; it is the WASD Engine account's model route, `deepseek-account`, with a reviewer's instructions that name the game tools and the catalog add-ons.
+The `graphics-review` row mounts [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.md), whose `graphics_review` tool gives the Session's agent and connected agents a critique of an image of the game's graphics, such as a screenshot that `godot_screenshot` or `godot_view` saved with `save`: notes on how to make it look better and the WASD Engine tools and add-ons to consider, with no score or verdict. Its `graphics-review` system prompt section asks for one to three reviews of each piece of graphics the agent makes itself, stopping early when a review has nothing useful, and none of assets it downloads, such as from Poly Haven. The model-facing texts call the reviewer a specialized graphics expert reviewer model; it is the WASD Engine account's model route, `deepseek-account`, with a reviewer's instructions that name the game tools and the catalog add-ons that the user has not turned off.
 
 | Data | Channel | When |
 |---|---|---|
@@ -538,43 +539,38 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, the user's add-on switches, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**
- * The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics
- * review. The service is reachable only once its catalog loaded.
- * @returns the catalog's entries.
+ * The catalog add-ons that agents may use, in catalog order, for plugins that name them to the model, such as the
+ * graphics review; read it for each use, since the user's switches change it. The service is reachable only once its
+ * catalog loaded.
+ * @returns the entries that the user has not turned off.
  */
-catalogEntries(): readonly GameAddon[]
+allowedEntries(): readonly GameAddon[]
 
 /**
- * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
+ * The catalog with whether agents may use each add-on and, when the folder holds a Godot project, each add-on's
+ * presence there, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
- * @returns the project folder, every catalog add-on, and their icons.
- * @throws GodotProjectError when the folder has no Godot project.
+ * @returns the project folder when there is one, every catalog add-on, and their icons.
+ * @throws Error when the folder is not an absolute path.
  */
 @Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
 
 /**
- * Install an add-on that the user chose in the Add-ons dialog.
- * @param directory - absolute folder of the game project, or up to three levels above it.
+ * Turn an add-on on or off for agents, the Session's and connected ones, as the Add-ons dialog's switch asks. The
+ * choice is saved in the `allowed` setting of the plugin's profile entry and applies without a restart, to every
+ * project.
  * @param id - catalog id.
- * @param signal - cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops
- *   only the import of the project.
- * @returns the installation.
+ * @param allowed - whether agents may use the add-on.
+ * @returns once the setting is saved and applied.
+ * @throws {RemoteError} `game-addons/unknown-addon` for an id the catalog does not have, and
+ *   `game-addons/settings-unavailable` when the Host runs no Settings service or the plugin has no profile entry.
  */
-@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>
-
-/**
- * Remove an add-on that the user chose in the Add-ons dialog.
- * @param directory - absolute folder of the game project, or up to three levels above it.
- * @param id - catalog id.
- * @param signal - cancellation before the removal changes the project.
- * @returns the removal.
- */
-@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>
+@Remote async setAllowed(id: string, allowed: boolean): Promise<void>
 ```
 
 Source: [`packages/gamedev/game-addons/src/index.ts`](../../packages/gamedev/game-addons/src/index.ts)

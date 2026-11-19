@@ -29,6 +29,7 @@ async function setup() {
   dir = await scratch('skills')
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   const project = await writeProject(join(dir.root, 'game'))
+  const off = new Set<string>()
   const manager = new GameAddonManager({
     catalog,
     downloads: { cacheDir: join(dir.root, 'archives'), fetch: fakeDownloads().fetch },
@@ -37,6 +38,7 @@ async function setup() {
     importProject: () => Promise.resolve({ issues: [] }),
     now: () => new Date('2026-11-11T12:00:00Z'),
     changed: () => {},
+    allowed: id => !off.has(id),
   })
   const controller = new AbortController()
   controllers.push(controller)
@@ -44,7 +46,7 @@ async function setup() {
   const root = dir.root
   const findProject = (cwd: string) => Promise.resolve(relative(project, cwd).startsWith('..') && cwd !== root ? undefined : project)
   const { provider } = gameAddonSkillProvider(manager, findProject, { signal: controller.signal, invalidate })
-  return { manager, project, provider, invalidate, controller }
+  return { manager, project, provider, invalidate, controller, off }
 }
 
 describe('gameAddonSkillProvider', () => {
@@ -67,6 +69,18 @@ describe('gameAddonSkillProvider', () => {
     expect(camera.invocation).toEqual({ modelInvocable: true, userInvocable: true })
     const loaded = await provider.get(camera, { cwd: project })
     expect(loaded).toMatchObject({ name: 'test-camera', provider: SKILL_PROVIDER_NAME, content: '\n# test-camera\n\nUse it like this.\n' })
+  })
+
+  it('lists no guide of an add-on that the user turned off, and serves none listed before', async () => {
+    const { manager, project, provider, off } = await setup()
+    await manager.install(project, 'test-camera', {}, signal)
+    const [listed] = candidatesOf(await provider.list({ cwd: project }))
+    expect(listed?.name).toBe('test-camera')
+    off.add('test-camera')
+    expect(candidatesOf(await provider.list({ cwd: project }))).toEqual([])
+    expect(await provider.get(listed!, { cwd: project })).toBeUndefined()
+    off.delete('test-camera')
+    expect(candidatesOf(await provider.list({ cwd: project })).map(skill => skill.name)).toEqual(['test-camera'])
   })
 
   it('asks for a refresh when the project\'s record or addons folder changes outside the tools', async () => {

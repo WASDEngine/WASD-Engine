@@ -46,7 +46,7 @@ The WASDEngine overlay [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasd
 | `maxImagePixels` | `1150000` | Most pixels of the image sent |
 | `minImagePixels` | `295936` | Fewest pixels of the image sent: a smaller image, such as pixel art, is enlarged by whole pixels toward them, since the route scales a smaller image up by a fraction; the default is the account route's 544×544 |
 
-The plugin needs the `tools` and `workingDirectory` services, and the `llm` and `attachments` services to review. With the `systemPrompt` service it adds the `graphics-review` section, with the `gameAddons` service of [`@deepseek-ai/dsh-game-addons`](../game-addons/README.md) the reviewer may name every catalog add-on, with the `deepseekAccount` service of [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.md) a route that lists no model while no one is signed in asks for a sign-in, and with the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md) it offers the tool to connected agents. The Plugins page's switch turns the row off.
+The plugin needs the `tools` and `workingDirectory` services, and the `llm` and `attachments` services to review. With the `systemPrompt` service it adds the `graphics-review` section, with the `gameAddons` service of [`@deepseek-ai/dsh-game-addons`](../game-addons/README.md) the reviewer may name every catalog add-on that the user has not turned off in the Add-ons dialog, with the `deepseekAccount` service of [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.md) a route that lists no model while no one is signed in asks for a sign-in, and with the `gameMcp` service of [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.md) it offers the tool to connected agents. The Plugins page's switch turns the row off.
 
 ### The tool
 
@@ -141,7 +141,7 @@ A result is `Graphics review of <path>:` and the review in Markdown: only the no
 
 #### Token effect
 
-A review is up to about 600 words. The request itself, which never enters the conversation, carries the reviewer's instructions, about 4,400 characters plus about 200 per catalog add-on, and the image.
+A review is up to about 600 words. The request itself, which never enters the conversation, carries the reviewer's instructions, about 4,400 characters plus about 200 per catalog add-on that agents may use, and the image.
 
 #### KV Cache effect
 

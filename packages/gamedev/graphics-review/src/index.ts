@@ -7,7 +7,8 @@
  * gets the tool and a `graphics-review` system prompt section that asks for one to three reviews of each piece of
  * graphics it makes itself and none of the assets it downloads; agents connected through WASD Engine's MCP server get
  * the same tool under the provider `graphics`. With the `gameAddons`
- * service, the reviewer may name every catalog add-on; with the `deepseekAccount` service, a route that lists no model
+ * service, the reviewer may name every catalog add-on that the user has not turned off; with the `deepseekAccount`
+ * service, a route that lists no model
  * while no one is signed in asks for a sign-in.
  * @module @deepseek-ai/dsh-graphics-review
  */
@@ -69,14 +70,14 @@ export const Config: z<Partial<Config>, Config> = z.object({
 })
 
 /**
- * The catalog add-ons the reviewer may name.
+ * The catalog add-ons the reviewer may name: those that agents may use when the review starts.
  * @param ctx - context with the optional `gameAddons` service.
  * @returns the add-ons in catalog order; none without the service.
  */
 function catalogAddons(ctx: Context): readonly ReviewAddon[] {
   const addons = ctx.get('gameAddons')
   if (addons === undefined) return []
-  return addons.catalogEntries().map(entry => ({ id: entry.id, host: entry.host, useWhen: entry.useWhen }))
+  return addons.allowedEntries().map(entry => ({ id: entry.id, host: entry.host, useWhen: entry.useWhen }))
 }
 
 /**

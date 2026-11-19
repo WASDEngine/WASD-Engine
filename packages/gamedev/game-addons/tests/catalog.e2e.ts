@@ -120,6 +120,7 @@ function manager(): GameAddonManager {
     importProject: projectDir => importProject(projectDir),
     now: () => new Date(),
     changed: () => {},
+    allowed: () => true,
   })
 }
 

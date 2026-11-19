@@ -43,6 +43,13 @@ After installing one, load its guide, the skill named by its id, before using it
 ${LIST}`)
   })
 
+  it('lists only the add-ons that agents may use, and nothing when the user turned off every one', async () => {
+    const allowed = (await entries()).filter(entry => entry.id !== 'test-rig')
+    expect(sessionPrompt(allowed)).toContain('- test-camera (Godot; prototype, polish)')
+    expect(sessionPrompt(allowed)).not.toContain('test-rig')
+    expect(sessionPrompt([])).toBe('')
+  })
+
   it('tells a connected agent the same, with the whole catalog from action search instead of its lines, absolute projects, the guide action, and Blender\'s enable call', () => {
     expect(mcpInstructions()).toBe(`game_addons installs tested third-party add-ons into the user's game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with WASD Engine's Godot 4.7 and Blender 5.2. ${JUDGMENT}
 Read the whole catalog with action search before you plan a game, or pass stage for the add-ons that help at one stage: prototype makes the core game playable, content adds levels, characters, and assets, polish adds game feel and finish, and ship tests and releases the game.

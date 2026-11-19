@@ -1,8 +1,18 @@
 /**
  * Types that the game add-ons Host service shares with its browser half: catalog entries, what a project has
- * installed, and the views the Add-ons dialog shows.
+ * installed, the views the Add-ons dialog shows, and the failure codes of the `gameAddons` Remote.
  * @module @deepseek-ai/dsh-game-addons/types
  */
+import type {} from '@deepseek-ai/dsh-typert-protocol'
+
+declare module '@deepseek-ai/dsh-typert-protocol' {
+  interface RemoteErrorDetailsMap {
+    /** The id names no catalog add-on. */
+    'game-addons/unknown-addon': { readonly id: string }
+    /** The switches cannot be saved: the Host runs no Settings service, or the plugin has no profile entry. */
+    'game-addons/settings-unavailable': Record<string, never>
+  }
+}
 
 /** The application an add-on extends. */
 export type GameAddonHost = 'godot' | 'blender'
@@ -232,6 +242,8 @@ export interface GameAddonView {
   readonly assets?: GameAddonAssetsView
   /** Ids of add-ons that do the same job. */
   readonly conflicts: readonly string[]
+  /** Whether agents may use it; false once the user turned it off in the Add-ons dialog. */
+  readonly allowed: boolean
   /** How the project uses it; absent when no project was given. */
   readonly presence?: GameAddonPresence
 }
@@ -246,11 +258,14 @@ export interface GameAddonAssetsView {
   readonly homepage: string
 }
 
-/** What the Add-ons dialog shows for one game project. */
+/** What the Add-ons dialog shows for the game project of a Workspace folder. */
 export interface GameAddonsProjectView {
-  /** Absolute folder that holds `project.godot`. */
-  readonly projectDir: string
-  /** Every catalog add-on with its presence in the project, Godot add-ons first, each group by title. */
+  /** Absolute folder that holds `project.godot`; absent while the folder holds no Godot project. */
+  readonly projectDir?: string
+  /**
+   * Every catalog add-on with whether agents may use it and, when there is a project, its presence there, Godot add-ons
+   * first, each group by title.
+   */
   readonly addons: readonly GameAddonView[]
   /** Icons of the add-ons that have one, as data URLs, by id. */
   readonly icons: Readonly<Record<string, string>>

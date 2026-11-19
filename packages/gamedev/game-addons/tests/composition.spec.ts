@@ -2,8 +2,9 @@
  * The game add-ons plugin loaded into a Host composition with the real system prompt, tool runtime, executor, Agent
  * registry, skill registry, `skill` tool, and Remote registry: the system prompt lists the catalog, the Session's agent
  * installs and removes add-ons under the `ask` approval policy without a question to the user, a Session in a game
- * project sees an add-on's guide only once the add-on is installed and loads it through the `skill` tool, and the
- * plugin's tool, prompt section, guides, and game MCP provider leave with its fiber.
+ * project sees an add-on's guide only once the add-on is installed and loads it through the `skill` tool, an add-on
+ * that the user turned off stays out of the prompt, the tool, the guides, and the Blender index, and the plugin's tool,
+ * prompt section, guides, and game MCP provider leave with its fiber.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -44,8 +45,13 @@ const signal = new AbortController().signal
 /**
  * @param catalogDir - the catalog folder; the test catalog by default.
  * @param before - runs with the configuration before the plugin starts, such as to leave a store from an earlier version.
+ * @param allowed - the user's switches; every add-on is on by default.
  */
-async function compose(catalogDir?: string, before?: (config: { readonly blenderStore: string }) => Promise<void>) {
+async function compose(
+  catalogDir?: string,
+  before?: (config: { readonly blenderStore: string }) => Promise<void>,
+  allowed?: Record<string, boolean>,
+) {
   dir = await scratch('compose')
   const project = await writeProject(join(dir.root, 'work', 'game'))
   const downloads = fakeDownloads()
@@ -68,7 +74,8 @@ async function compose(catalogDir?: string, before?: (config: { readonly blender
   ctx.provide('gameMcp', { provide: (provider: { id: string }) => { providers.push(provider.id); return () => { providers.splice(providers.indexOf(provider.id), 1) } } } as never)
   const config = { catalogDir: catalogDir ?? await writeCatalog(dir.root), dataRoot: join(dir.root, 'data'), blenderStore: join(dir.root, 'data', 'blender') }
   await before?.(config)
-  const fiber = ctx.plugin(GameAddons, GameAddons.Config(config))
+  // The fiber resolves the raw configuration, which turns `allowed` into its live reference.
+  const fiber = ctx.plugin(GameAddons, { ...config, ...allowed === undefined ? {} : { allowed } })
   await fiber
   const scope = ctx.plugin(() => {})
   const route = { provider: 'test', model: 'm' }
@@ -128,18 +135,43 @@ describe('game add-ons plugin', () => {
     expect(asked).toEqual([])
   })
 
-  it('serves the Add-ons dialog: the catalog with presence, installation, and removal by Workspace folder', async () => {
-    const { ctx: context, project } = await compose()
+  it('serves the Add-ons dialog: every add-on with its switch, and its presence in the Workspace folder\'s project when there is one', async () => {
+    const { ctx: context, project, agent } = await compose()
     const workspace = join(project, '..')
+    await call(context, agent, TOOL_NAME, { action: 'install', id: 'test-rig' })
     const view = await context.gameAddons.project(workspace, signal)
     expect(view.projectDir).toBe(project)
-    expect(view.addons.map(addon => [addon.id, addon.presence?.state])).toEqual([
-      ['other-camera', 'absent'], ['test-camera', 'absent'], ['test-rig', 'absent'], ['test-trees', 'absent'],
+    expect(view.addons.map(addon => [addon.id, addon.allowed, addon.presence?.state])).toEqual([
+      ['other-camera', true, 'absent'], ['test-camera', true, 'absent'], ['test-rig', true, 'installed'], ['test-trees', true, 'absent'],
     ])
-    expect((await context.gameAddons.installAddon(workspace, 'test-rig', signal)).addon.id).toBe('test-rig')
-    expect((await context.gameAddons.project(workspace, signal)).addons.find(addon => addon.id === 'test-rig')?.presence).toEqual({ state: 'installed', version: '5.2.3' })
-    expect((await context.gameAddons.removeAddon(workspace, 'test-rig', signal)).removed).toEqual([])
+    const empty = join(dir!.root, 'empty')
+    await mkdir(empty)
+    const outside = await context.gameAddons.project(empty, signal)
+    expect(outside.projectDir).toBeUndefined()
+    expect(outside.addons.map(addon => [addon.id, addon.presence])).toEqual([
+      ['other-camera', undefined], ['test-camera', undefined], ['test-rig', undefined], ['test-trees', undefined],
+    ])
     await expect(context.gameAddons.project('relative', signal)).rejects.toThrow(/absolute path/u)
+    await expect(context.gameAddons.setAllowed('nope', false)).rejects.toMatchObject({ code: 'game-addons/unknown-addon' })
+    // Without the Loader's Settings service, a switch cannot be saved.
+    await expect(context.gameAddons.setAllowed('test-camera', false)).rejects.toMatchObject({ code: 'game-addons/settings-unavailable' })
+  })
+
+  it('keeps an add-on that the user turned off out of the prompt, the tool, the guides, the Blender index, and the graphics review\'s list', async () => {
+    const { ctx: context, project, agent, config, downloads } = await compose(undefined, undefined, { 'test-camera': false, 'test-rig': false, 'test-trees': true })
+    const entries = (await loadCatalog(config.catalogDir)).entries
+    expect(await promptSection(context)).toBe(sessionPrompt(entries.filter(entry => entry.id !== 'test-camera' && entry.id !== 'test-rig')))
+    expect(context.gameAddons.allowedEntries().map(entry => entry.id)).toEqual(['other-camera', 'test-trees'])
+    const refused = await call(context, agent, TOOL_NAME, { action: 'install', id: 'test-camera' })
+    expect(refused.isError).toBe(true)
+    expect(text(refused)).toContain('The user turned Test Camera (test-camera) off in WASD Engine\'s Add-ons dialog, so agents cannot use it.')
+    expect(downloads.requests).toEqual([])
+    // A copy that someone put into addons/ by hand gets no guide either.
+    await mkdir(join(project, 'addons', 'test_camera'), { recursive: true })
+    expect(await guideNames(context, project, agent)).toEqual([])
+    const index = JSON.parse(await readFile(join(config.blenderStore, STORE_INDEX), 'utf8')) as { addons: Record<string, Record<string, unknown>> }
+    expect(index.addons['test-rig']).toMatchObject({ allowed: false })
+    expect(index.addons['test-trees']).not.toHaveProperty('allowed')
   })
 
   it('withdraws its tool, prompt section, guides, and game MCP provider with its fiber', async () => {

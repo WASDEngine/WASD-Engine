@@ -20,6 +20,9 @@
       "path": "../../../vendor/schemastery"
     },
     {
+      "path": "../../../vendor/loader"
+    },
+    {
       "path": "../../typert/protocol"
     },
     {
@@ -54,6 +57,9 @@
     },
     {
       "path": "../app-mcp"
+    },
+    {
+      "path": "../../settings/settings"
     }
   ]
 }

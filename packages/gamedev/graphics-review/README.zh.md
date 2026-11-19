@@ -46,7 +46,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | `maxImagePixels` | `1150000` | 发送的图片最多的像素数 |
 | `minImagePixels` | `295936` | 发送的图片最少的像素数：较小的图片（例如像素画）按整数倍朝这个像素数放大，因为路由会把更小的图片按非整数倍放大；默认值是账号路由的 544×544 |
 
-插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中的每个扩展；有 [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.zh.md) 的 `deepseekAccount` 服务时，路由在无人登录时列不出模型，审查会请用户登录；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
+插件需要 `tools` 和 `workingDirectory` 服务，审查还需要 `llm` 和 `attachments` 服务。有 `systemPrompt` 服务时它添加 `graphics-review` 段落；有 [`@deepseek-ai/dsh-game-addons`](../game-addons/README.zh.md) 的 `gameAddons` 服务时，审查者可以点名目录中用户没有在「扩展」对话框中关闭的每个扩展；有 [`@deepseek-ai/dsh-deepseek-account`](../../credentials/deepseek-account/README.zh.md) 的 `deepseekAccount` 服务时，路由在无人登录时列不出模型，审查会请用户登录；有 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 的 `gameMcp` 服务时，它把工具提供给连接的 agent。「插件」页面的开关可以关闭这一行。
 
 ### 工具
 
@@ -141,7 +141,7 @@ graphics_review sends an image to a specialized graphics expert reviewer model, 
 
 #### Token 影响
 
-一次审查最多约 600 个英文单词。请求本身从不进入对话，它携带审查者的说明（约 4,400 个字符，每个目录扩展再加约 200 个字符）和图片。
+一次审查最多约 600 个英文单词。请求本身从不进入对话，它携带审查者的说明（约 4,400 个字符，每个 agent 可用的目录扩展再加约 200 个字符）和图片。
 
 #### KV Cache 影响
 

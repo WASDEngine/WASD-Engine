@@ -3,8 +3,9 @@
  * system prompt section lists the catalog, and a scripted model searches the catalog, installs an add-on without a
  * question to the user, and loads its guide through the `skill` tool. The model's skill catalog lists the guide only
  * once the add-on is in the project, while the tool declarations, apart from those of MCP servers that finish
- * connecting during the turn, stay the same in every request. The overlay points the row at a one-entry test catalog
- * whose archive the test serves in place of its pinned URL.
+ * connecting during the turn, stay the same in every request. With the add-on turned off in the row's `allowed`, as the
+ * Add-ons dialog's switch writes it, the prompt leaves it out and the model can neither find, read, nor install it. The
+ * overlay points the row at a one-entry test catalog whose archive the test serves in place of its pinned URL.
  */
 import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -30,15 +31,29 @@ const ARCHIVE = zipSync({
 const GUIDE = '---\nname: test-camera\ndescription: Test Camera 1.2.0 is installed in this project. Load before adding or changing cameras.\n---\n\n# Test Camera\n\nAdd a TestRig node and set its target.\n'
 const DONE = 'GAME_ADDONS_SCRIPT_DONE'
 
-/** The scripted turn: search, install, load the guide, then answer. */
-const SCRIPT = [
+/** One tool call of a scripted turn. */
+interface ScriptedCall { readonly name: string; readonly args: Readonly<Record<string, unknown>> }
+
+/** The scripted turn of an installation: search, install, load the guide, then answer. */
+const INSTALL_SCRIPT: readonly ScriptedCall[] = [
   { name: 'game_addons', args: { action: 'search', query: 'camera' } },
   { name: 'game_addons', args: { action: 'install', id: 'test-camera' } },
   { name: 'skill', args: { name: 'test-camera' } },
-] as const
+]
+
+/** The scripted turn of a model that tries an add-on the user turned off: search, read its guide, install, then answer. */
+const TURNED_OFF_SCRIPT: readonly ScriptedCall[] = [
+  { name: 'game_addons', args: { action: 'search', query: 'camera' } },
+  { name: 'game_addons', args: { action: 'guide', id: 'test-camera' } },
+  { name: 'game_addons', args: { action: 'install', id: 'test-camera' } },
+]
 
 class ScriptedAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
+
+  constructor(private readonly script: readonly ScriptedCall[]) {
+    super()
+  }
 
   override async listModels(provider: string) { return [{ provider, id: MODEL, name: MODEL }] }
 
@@ -48,7 +63,7 @@ class ScriptedAdapter extends LlmAdapter {
 
   override async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
-    const step = SCRIPT[options.messages.filter(message => message.role === 'tool').length]
+    const step = this.script[options.messages.filter(message => message.role === 'tool').length]
     if (step === undefined) {
       yield { type: 'block-start', index: 0, blockType: 'text' }
       yield { type: 'text-delta', index: 0, text: DONE }
@@ -88,6 +103,12 @@ function catalogs(options: GenerateOptions): string[] {
     .flatMap(block => block.type === 'text' && block.text.includes('<available_skills>') ? [block.text] : [])
 }
 
+/** The texts of a request's tool results, in order. */
+function toolResults(options: GenerateOptions): string[] {
+  return options.messages.filter(message => message.role === 'tool')
+    .map(message => message.content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n'))
+}
+
 /** The text of a request's system prompt, which its leading system-role message carries. */
 function systemPrompt(options: GenerateOptions): string {
   return options.messages.filter(message => message.role === 'system').flatMap(message => message.content)
@@ -105,7 +126,14 @@ afterEach(async () => {
   root = undefined
 })
 
-it('tells the model the catalog and lists an add-on guide only after an installation that asked nobody, with the same tools in every request', async () => {
+/**
+ * Launch the shipped Web composition with the `game-addons` row on a one-entry test catalog, and run one scripted turn
+ * in a Session of a Godot project, with a user who answers every question with no.
+ * @param script - the model's tool calls.
+ * @param allowed - the row's switches, as the Add-ons dialog writes them; none by default.
+ * @returns the model's requests, the questions the user received, and the Session's id.
+ */
+async function runTurn(script: readonly ScriptedCall[], allowed?: Readonly<Record<string, boolean>>) {
   root = await mkdtemp(join(tmpdir(), 'dsh-web-game-addons-'))
   const catalogDir = join(root, 'catalog')
   await mkdir(join(catalogDir, 'test-camera'), { recursive: true })
@@ -126,6 +154,7 @@ it('tells the model the catalog and lists an add-on guide only after an installa
     `    catalogDir: ${JSON.stringify(catalogDir)}`,
     `    dataRoot: ${JSON.stringify(join(root, 'data'))}`,
     `    blenderStore: ${JSON.stringify(join(root, 'data', 'blender'))}`,
+    ...allowed === undefined ? [] : [`    allowed: ${JSON.stringify(allowed)}`],
     '',
   ].join('\n'))
   const realFetch = globalThis.fetch
@@ -135,7 +164,7 @@ it('tells the model the catalog and lists an add-on guide only after an installa
 
   scaffold = await launchWebScaffold({ extraOverlayPath: overlay })
   const ctx = scaffold.ctx
-  const adapter = new ScriptedAdapter()
+  const adapter = new ScriptedAdapter(script)
   ctx.effect(() => ctx.llm.registerAdapter([PROVIDER], adapter), 'game add-ons scripted model')
   const questions: Array<string | undefined> = []
   ctx.effect(() => ctx.on('approval/request', (request) => {
@@ -153,7 +182,11 @@ it('tells the model the catalog and lists an add-on guide only after an installa
   })
   expect(await settled).toBe(sessionId)
   await ctx.agents.get(sessionId)?.whenIdle()
+  return { scaffold, adapter, questions }
+}
 
+it('tells the model the catalog and lists an add-on guide only after an installation that asked nobody, with the same tools in every request', async () => {
+  const { scaffold: target, adapter, questions } = await runTurn(INSTALL_SCRIPT)
   expect(adapter.requests).toHaveLength(4)
   // MCP servers may finish connecting during the turn; every other declaration stays as it was.
   const toolNames = adapter.requests.map(request => (request.tools ?? []).map(tool => tool.name).filter(name => !name.startsWith('mcp__')).sort())
@@ -171,8 +204,26 @@ it('tells the model the catalog and lists an add-on guide only after an installa
     .flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
   expect(skillResult).toContain('<skill_content name="test-camera">')
   expect(skillResult).toContain('Add a TestRig node and set its target.')
-  expect(await readFile(join(scaffold.workspaceCwd, 'addons', 'test_camera', 'plugin.cfg'), 'utf8')).toContain('Test Camera')
-  expect(await readFile(join(scaffold.workspaceCwd, 'project.godot'), 'utf8')).toContain('TestCameraManager="*res://addons/test_camera/manager.gd"')
-  expect((JSON.parse(await readFile(join(scaffold.workspaceCwd, '.wasdengine', 'addons.json'), 'utf8')) as { addons: Array<{ id: string }> }).addons.map(addon => addon.id)).toEqual(['test-camera'])
-  expect(await readFile(join(scaffold.workspaceCwd, 'THIRD_PARTY_NOTICES.md'), 'utf8')).toContain('Copyright (c) 2026 Test Author')
+  expect(await readFile(join(target.workspaceCwd, 'addons', 'test_camera', 'plugin.cfg'), 'utf8')).toContain('Test Camera')
+  expect(await readFile(join(target.workspaceCwd, 'project.godot'), 'utf8')).toContain('TestCameraManager="*res://addons/test_camera/manager.gd"')
+  expect((JSON.parse(await readFile(join(target.workspaceCwd, '.wasdengine', 'addons.json'), 'utf8')) as { addons: Array<{ id: string }> }).addons.map(addon => addon.id)).toEqual(['test-camera'])
+  expect(await readFile(join(target.workspaceCwd, 'THIRD_PARTY_NOTICES.md'), 'utf8')).toContain('Copyright (c) 2026 Test Author')
+}, 180_000)
+
+it('keeps an add-on that the user turned off out of the system prompt, and refuses it to the model without installing anything', async () => {
+  const { scaffold: target, adapter, questions } = await runTurn(TURNED_OFF_SCRIPT, { 'test-camera': false })
+  expect(adapter.requests).toHaveLength(4)
+  // The only catalog add-on is off, so the section is left out of every request.
+  for (const request of adapter.requests) expect(systemPrompt(request)).not.toContain('# Game add-ons')
+  const refusal = 'The user turned Test Camera (test-camera) off in WASD Engine\'s Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.'
+  const [search, guide, install] = toolResults(adapter.requests[3] as GenerateOptions)
+  expect(search).toContain('The user turned off every catalog add-on in WASD Engine\'s Add-ons dialog, so agents cannot use any.')
+  expect(guide).toContain(refusal)
+  expect(install).toContain(refusal)
+  for (const request of adapter.requests) for (const text of catalogs(request)) expect(text).not.toContain('test-camera')
+  expect(questions).toEqual([])
+  await expect(readFile(join(target.workspaceCwd, 'addons', 'test_camera', 'plugin.cfg'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+  // The Add-ons dialog's view shows the switch off.
+  const view = await remote<{ addons: Array<{ id: string; allowed: boolean }> }>(target, 'gameAddons/project', { directory: target.workspaceCwd })
+  expect(view.addons.map(addon => [addon.id, addon.allowed])).toEqual([['test-camera', false]])
 }, 180_000)

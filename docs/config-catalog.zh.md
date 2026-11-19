@@ -1873,7 +1873,8 @@ export type Config = LocalConfig
 ## `@deepseek-ai/dsh-game-addons`
 
 - `inject`: `tools` · `systemPrompt` · `workingDirectory` · `skills` · `typert`
-- `source`: [`packages/gamedev/game-addons/src/index.ts:43`](../packages/gamedev/game-addons/src/index.ts)
+- `refs`: `Volatile` (`@deepseek-ai/cordis`)
+- `source`: [`packages/gamedev/game-addons/src/index.ts:48`](../packages/gamedev/game-addons/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1886,6 +1887,11 @@ export interface Config {
   blenderStore: string
   /** Time limit of one archive download, including its body. */
   downloadTimeoutMs: number
+  /**
+   * Whether agents may use each catalog add-on, by id; an add-on without an entry is on. The Add-ons dialog's switches
+   * write it while the app runs, and a change applies to the next model step and tool call.
+   */
+  allowed: Volatile<Readonly<Record<string, boolean>>>
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-addons -->
@@ -2240,7 +2246,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-graphics-review`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/graphics-review/src/index.ts:34`](../packages/gamedev/graphics-review/src/index.ts)
+- `source`: [`packages/gamedev/graphics-review/src/index.ts:35`](../packages/gamedev/graphics-review/src/index.ts)
 
 ```ts config-catalog
 /** Configuration of the `graphics-review` row; every field has a default. */

@@ -3,7 +3,8 @@
  * usage guide, install or remove one in the game project, and list what the project has. One set of definitions
  * serves the Session's own agent, whose project paths are relative to its working directory, and agents connected
  * through WASD Engine's MCP server, which name projects by absolute path. The agent decides when to install or remove
- * an add-on: neither action asks the user.
+ * an add-on: neither action asks the user. An add-on that the user turned off in the Add-ons dialog is missing from
+ * searches, its guide and installation are refused, and the list marks it.
  * @module @deepseek-ai/dsh-game-addons/src/tools
  */
 import { join } from 'node:path'
@@ -86,6 +87,7 @@ const VIEW_SCHEMA = {
       properties: { license: STRING, bytes: { type: 'integer', required: true }, homepage: STRING },
     },
     conflicts: STRINGS,
+    allowed: { type: 'boolean', description: 'false when the user turned the add-on off, so agents cannot use it; absent otherwise.' },
     presence: { type: 'string', enum: ['installed', 'found', 'absent'] },
     presentVersion: { type: 'string', description: 'Version the project has, when it has the add-on.' },
   },
@@ -148,6 +150,7 @@ function viewValue(view: GameAddonView): ViewValue {
     ...view.bytes === undefined ? {} : { bytes: view.bytes },
     ...view.assets === undefined ? {} : { assets: { ...view.assets } },
     conflicts: [...view.conflicts],
+    ...view.allowed ? {} : { allowed: false },
     ...presenceFields(view.presence),
   }
 }
@@ -169,8 +172,11 @@ function presenceText(view: ViewValue): string {
   return ''
 }
 
+/** The search result when the user turned off every add-on. */
+const NONE_ALLOWED = 'The user turned off every catalog add-on in WASD Engine\'s Add-ons dialog, so agents cannot use any. Do the work without add-ons, or ask the user to turn the ones it needs on there.'
+
 function renderView(view: ViewValue): string {
-  const state = presenceText(view)
+  const state = [presenceText(view), ...view.allowed === false ? ['turned off by the user'] : []].filter(part => part !== '').join(', ')
   return [
     `- ${view.id}: ${view.title} ${view.version} (${view.host === 'godot' ? 'Godot' : 'Blender'}, ${view.license}, ${sizeText(view.bytes)}${assetsText(view)})${state === '' ? '' : ` [${state}]`}`,
     `  ${view.summary}`,
@@ -185,6 +191,7 @@ function render(value: ToolValue, wording: GameAddonToolWording): string {
   switch (value.action) {
     case 'search': {
       const addons = value.addons ?? []
+      if (value.total === 0) return NONE_ALLOWED
       if (addons.length === 0) return 'No catalog add-on matches. Search with other words, or without a query to list the whole catalog; Godot and Blender may already do this without an add-on.'
       const head = `${addons.length} of ${value.total ?? addons.length} catalog add-ons${value.projectDir === undefined ? '' : ` for ${value.projectDir}`}:`
       return `${head}\n${addons.map(renderView).join('\n')}\nRead one with action guide, or install it with action install.`
@@ -192,7 +199,8 @@ function render(value: ToolValue, wording: GameAddonToolWording): string {
     case 'list': {
       const addons = value.addons ?? []
       if (addons.length === 0) return `${value.projectDir ?? 'This project'} has no catalog add-ons. Search the catalog with action search.`
-      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; ${wording.listedGuides}:\n${addons.map(renderView).join('\n')}`
+      const off = addons.some(view => view.allowed === false) ? ', except the ones the user turned off, which agents cannot use' : ''
+      return `${value.projectDir ?? 'The project'} has ${addons.length} catalog add-on${addons.length === 1 ? '' : 's'}; ${wording.listedGuides}${off}:\n${addons.map(renderView).join('\n')}`
     }
     case 'guide': {
       const guide = value.guide
@@ -272,16 +280,16 @@ export function gameAddonToolDefinition(host: GameAddonToolHost, wording: GameAd
             ...args.host === undefined ? {} : { host: args.host },
             ...stage === undefined ? {} : { stage },
           }, projectDir)
-          return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total: manager.catalog.entries.length, addons: matches.map(viewValue) }
+          return { action: 'search', ...projectDir === undefined ? {} : { projectDir }, total: manager.allowedEntries().length, addons: matches.map(viewValue) }
         }
         case 'list': {
           const projectDir = await host.project(args.project, exec)
-          const views = await manager.search({}, projectDir)
+          const views = await manager.views(projectDir)
           return { action: 'list', projectDir, addons: views.filter(view => view.presence !== undefined && view.presence.state !== 'absent').map(viewValue) }
         }
         case 'guide': {
           const id = requireId(args.id, 'guide')
-          const addon = manager.entry(id)
+          const addon = manager.usableEntry(id)
           const projectDir = await host.project(args.project, exec).catch(() => undefined)
           const presence = projectDir === undefined ? undefined : (await manager.presence(projectDir)).get(id)
           const path = join(manager.catalog.folder(id), GUIDE_FILE)

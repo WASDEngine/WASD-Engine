@@ -202,9 +202,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'wasdPlugins/removeGame': 'owner-only', // owner deletes an installed game from the owner's computer (WASD Engine)
   'wasdPlugins/settleBrowserRequest': 'owner-only', // owner's window returns a page to the agent's Browser tool (WASD Engine)
   'wasdPlugins/siteSignInLink': 'owner-only', // owner's Play page signs the site in as the owner's account (WASD Engine)
-  'gameAddons/installAddon': 'owner-only', // owner installs third-party add-on code into a game project (WASD Engine)
   'gameAddons/project': 'owner-only', // owner reads a game project's add-ons (WASD Engine)
-  'gameAddons/removeAddon': 'owner-only', // owner deletes an add-on from a game project (WASD Engine)
+  'gameAddons/setAllowed': 'owner-only', // owner chooses which third-party add-ons agents may put into the owner's projects (WASD Engine)
   'cuaAccess/applicationIcons': 'owner-only', // owner computer-use permissions
   'cuaAccess/applications': 'owner-only', // owner computer-use permissions
   'cuaAccess/enablePersistentPtc': 'owner-only', // owner computer-use permissions

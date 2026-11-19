@@ -198,7 +198,7 @@ export async function compose(config: Partial<GraphicsReview.Config> = {}, optio
   }
   if (options.addons !== false) {
     ctx.provide('gameAddons', {
-      catalogEntries: () => [
+      allowedEntries: () => [
         { id: 'sky3d', host: 'godot', useWhen: 'A 3D game needs a sky that changes with the time of day.' },
         { id: 'sapling-tree-gen', host: 'blender', useWhen: 'A level needs trees in several variations.' },
       ],

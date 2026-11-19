@@ -1,7 +1,7 @@
 /**
  * Installing, reinstalling, and removing add-ons in a game project, the backups of what removals and replacements take
  * out, installations and removals that run at once or beside other writers of `project.godot`, changes that stay inside
- * the project, and the Blender add-on store.
+ * the project, the Blender add-on store, and add-ons that the user turned off.
  */
 import { appendFile, lstat, mkdir, readdir, readFile, readlink, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join, posix, win32 } from 'node:path'
@@ -45,6 +45,8 @@ interface Setup {
   readonly downloads: FakeDownloads
   readonly imports: string[]
   readonly changed: string[]
+  /** Ids of the add-ons the user turned off; the manager reads it at every call. */
+  readonly off: Set<string>
 }
 
 /**
@@ -71,6 +73,7 @@ async function setup(
   const downloads = fakeDownloads()
   const imports: string[] = []
   const changed: string[] = []
+  const off = new Set<string>()
   const manager = new GameAddonManager({
     catalog,
     downloads: {
@@ -85,8 +88,9 @@ async function setup(
     },
     now: () => new Date('2026-11-11T12:00:00Z'),
     changed: (projectDir) => { changed.push(projectDir) },
+    allowed: id => !off.has(id),
   })
-  return { manager, project, store, downloads, imports, changed }
+  return { manager, project, store, downloads, imports, changed, off }
 }
 
 /** Catalog files of the camera add-on's two overlay folders: one in its own folder, one beside the entries. */
@@ -470,6 +474,7 @@ describe('GameAddonManager.remove', () => {
       importProject: () => Promise.resolve({ issues: [] }),
       now: () => new Date('2026-11-12T09:45:10Z'),
       changed: () => {},
+      allowed: () => true,
     })
     await manager.install(project, 'test-camera', {}, signal)
     expect((await manager.remove(project, 'test-camera', signal)).backup).toBe(`${BACKUPS_DIR}/test-camera/2026-11-12T09-45-10.000Z`)
@@ -642,6 +647,7 @@ describe('GameAddonManager for Blender', () => {
       importProject: () => Promise.resolve({ issues: [] }),
       now: () => new Date(),
       changed: () => {},
+      allowed: () => true,
     })
     await manager.install(project, 'test-trees', {}, signal)
     expect(await tree(store)).toContain('test_trees/__init__.py')
@@ -664,7 +670,7 @@ describe('GameAddonManager for Blender', () => {
     await writeProject(second)
     await manager.install(second, 'test-trees', {}, signal)
     expect(downloads.requests).toEqual([URLS.trees, URLS.treeAssets])
-    expect(addonView(manager.catalog.get('test-trees')!)).toMatchObject({
+    expect(addonView(manager.catalog.get('test-trees')!, true)).toMatchObject({
       bytes: TREES_ARCHIVE.byteLength + TREE_ASSETS_ARCHIVE.byteLength,
       assets: { license: 'CC0-1.0', bytes: TREE_ASSETS_ARCHIVE.byteLength, homepage: 'https://assets.example.test/' },
     })
@@ -738,5 +744,42 @@ describe('GameAddonManager.search', () => {
     expect((await manager.search({ host: 'godot' }, undefined)).map(view => [view.id, view.presence, view.bytes !== undefined])).toEqual([
       ['other-camera', undefined, true], ['test-camera', undefined, true],
     ])
+  })
+})
+
+describe('GameAddonManager with add-ons that the user turned off', () => {
+  const refusal = (title: string, id: string): string => `The user turned ${title} (${id}) off in WASD Engine's Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.`
+
+  it('leaves them out of searches and guides, refuses to install them, and still removes them', async () => {
+    const { manager, project, downloads, off } = await setup()
+    await manager.install(project, 'test-rig', {}, signal)
+    off.add('test-camera')
+    off.add('test-rig')
+    expect(manager.allowed('test-camera')).toBe(false)
+    expect(manager.allowedEntries().map(addon => addon.id)).toEqual(['other-camera', 'test-trees'])
+    expect((await manager.search({}, project)).map(view => [view.id, view.allowed])).toEqual([['other-camera', true], ['test-trees', true]])
+    expect((await manager.views(project)).map(view => [view.id, view.allowed, view.presence?.state])).toEqual([
+      ['other-camera', true, 'absent'], ['test-camera', false, 'absent'], ['test-rig', false, 'installed'], ['test-trees', true, 'absent'],
+    ])
+    expect((await manager.views(undefined)).map(view => view.presence)).toEqual([undefined, undefined, undefined, undefined])
+    expect(await manager.guided(project)).toEqual([])
+    expect(() => manager.usableEntry('test-camera')).toThrow(refusal('Test Camera', 'test-camera'))
+    await expect(manager.install(project, 'test-camera', {}, signal)).rejects.toThrow(refusal('Test Camera', 'test-camera'))
+    expect(downloads.requests).toEqual([])
+    expect((await manager.remove(project, 'test-rig', signal)).id).toBe('test-rig')
+    expect((await manager.presence(project)).get('test-rig')).toEqual({ state: 'absent' })
+    off.delete('test-camera')
+    expect((await manager.install(project, 'test-camera', {}, signal)).addon.id).toBe('test-camera')
+  })
+
+  it('marks a Blender add-on that the user turned off in the store index, with the refusal that workers raise', async () => {
+    const { manager, store, off } = await setup()
+    const rig = async (): Promise<unknown> => (JSON.parse(await readFile(join(store, STORE_INDEX), 'utf8')) as { addons: Record<string, unknown> }).addons['test-rig']
+    off.add('test-rig')
+    await manager.writeStoreIndex(signal)
+    expect(await rig()).toEqual({ module: 'rigify', kind: 'core', version: '5.2.3', allowed: false, message: refusal('Test Rig', 'test-rig') })
+    off.delete('test-rig')
+    await manager.writeStoreIndex(signal)
+    expect(await rig()).toEqual({ module: 'rigify', kind: 'core', version: '5.2.3' })
   })
 })

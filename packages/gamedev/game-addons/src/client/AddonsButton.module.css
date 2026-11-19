@@ -169,23 +169,13 @@
 
 .itemAction {
   flex: none;
-  padding-top: 2px;
+  padding-top: 4px;
 }
 
-.confirm {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--dsw-alias-label-warning, #d97706);
-  font-size: 12px;
-}
-
-.confirmActions {
-  display: flex;
-  gap: 6px;
+/* An add-on that agents may not use: its switch stays as clear as the others, its description recedes. */
+.itemOff .addonIcon,
+.itemOff .itemText {
+  opacity: 0.55;
 }
 
 .status {

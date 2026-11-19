@@ -38,6 +38,8 @@ interface Setup {
   readonly downloads: string[]
   /** Every question the approval service received. */
   readonly asked: ApprovalRequest[]
+  /** Ids of the add-ons the user turned off; the manager reads it at every call. */
+  readonly off: Set<string>
 }
 
 async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<Setup> {
@@ -45,6 +47,7 @@ async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<S
   const catalog = await loadCatalog(await writeCatalog(dir.root))
   const project = await writeProject(join(dir.root, 'work', 'game'))
   const downloads = fakeDownloads()
+  const off = new Set<string>()
   const manager = new GameAddonManager({
     catalog,
     downloads: { cacheDir: join(dir.root, 'archives'), fetch: downloads.fetch },
@@ -53,6 +56,7 @@ async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<S
     importProject: () => Promise.resolve({ issues: ['res://player.gd:4: Parse Error: x'] }),
     now: () => new Date('2026-11-11T12:00:00Z'),
     changed: () => {},
+    allowed: id => !off.has(id),
   })
   ctx = new Context()
   provideWorkingDirectoryFixture(ctx, join(dir.root, 'work'))
@@ -87,7 +91,7 @@ async function setup(wording: GameAddonToolWording = SESSION_WORDING): Promise<S
     whenIdle: () => Promise.resolve(),
   }
   await ctx.agents.register(agent)
-  return { manager, project, agent, downloads: downloads.requests, asked }
+  return { manager, project, agent, downloads: downloads.requests, asked, off }
 }
 
 let calls = 0
@@ -174,6 +178,25 @@ describe('game_addons', () => {
     const again = text(await call(state, { action: 'install', id: 'test-rig' }))
     expect(again).toContain('Test Rig 5.2.3 was already installed')
     expect(again).not.toContain('Tell the user')
+    expect(state.asked).toEqual([])
+  })
+
+  it('hides an add-on that the user turned off from searches, refuses its guide and installation, and marks it in the list', async () => {
+    const state = await setup()
+    expect((await call(state, { action: 'install', id: 'test-camera' })).isError).toBe(false)
+    state.off.add('test-camera')
+    const refusal = 'The user turned Test Camera (test-camera) off in WASD Engine\'s Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.'
+    const search = text(await call(state, { action: 'search', query: 'camera smoothing' }))
+    expect(search).toContain(`1 of 3 catalog add-ons for ${state.project}:\n- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB) [not installed]\n`)
+    expect(search).not.toContain('- test-camera:')
+    const guide = await call(state, { action: 'guide', id: 'test-camera' })
+    expect(guide.isError).toBe(true)
+    expect(text(guide)).toContain(refusal)
+    expect(text(await call(state, { action: 'install', id: 'test-camera' }))).toContain(refusal)
+    expect(text(await call(state, { action: 'list' }))).toContain(`${state.project} has 1 catalog add-on; each one's guide is listed as the skill of its id, except the ones the user turned off, which agents cannot use:\n- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [installed, turned off by the user]\n`)
+    expect(text(await call(state, { action: 'remove', id: 'test-camera' }))).toContain('Removed test-camera')
+    for (const id of ['other-camera', 'test-rig', 'test-trees']) state.off.add(id)
+    expect(text(await call(state, { action: 'search' }))).toBe('The user turned off every catalog add-on in WASD Engine\'s Add-ons dialog, so agents cannot use any. Do the work without add-ons, or ask the user to turn the ones it needs on there.')
     expect(state.asked).toEqual([])
   })
 

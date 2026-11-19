@@ -1756,33 +1756,28 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
   },
   {
     key: 'gameAddons',
-    summary: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, and the `gameAddons` Remote.',
-    description: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, and the `gameAddons` Remote.',
+    summary: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, the user\'s add-on switches, and the `gameAddons` Remote.',
+    description: 'Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides\' skill provider, the user\'s add-on switches, and the `gameAddons` Remote.',
     methods: [
       {
-        signature: 'catalogEntries(): readonly GameAddon[]',
-        description: 'The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics review. The service is reachable only once its catalog loaded.',
+        signature: 'allowedEntries(): readonly GameAddon[]',
+        description: 'The catalog add-ons that agents may use, in catalog order, for plugins that name them to the model, such as the graphics review; read it for each use, since the user\'s switches change it. The service is reachable only once its catalog loaded.',
         parameters: [],
-        returns: 'the catalog\'s entries.',
+        returns: 'the entries that the user has not turned off.',
       },
       {
         signature: '@Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>',
-        description: 'The catalog with each add-on\'s presence in the game project of a folder, for the Add-ons dialog.',
+        description: 'The catalog with whether agents may use each add-on and, when the folder holds a Godot project, each add-on\'s presence there, for the Add-ons dialog.',
         parameters: [{ name: 'directory', description: 'absolute folder: the project folder or a folder up to three levels above it.' }, { name: 'signal', description: 'cancellation.' }],
-        returns: 'the project folder, every catalog add-on, and their icons.',
-        throws: ['GodotProjectError when the folder has no Godot project.'],
+        returns: 'the project folder when there is one, every catalog add-on, and their icons.',
+        throws: ['Error when the folder is not an absolute path.'],
       },
       {
-        signature: '@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>',
-        description: 'Install an add-on that the user chose in the Add-ons dialog.',
-        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops only the import of the project.' }],
-        returns: 'the installation.',
-      },
-      {
-        signature: '@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>',
-        description: 'Remove an add-on that the user chose in the Add-ons dialog.',
-        parameters: [{ name: 'directory', description: 'absolute folder of the game project, or up to three levels above it.' }, { name: 'id', description: 'catalog id.' }, { name: 'signal', description: 'cancellation before the removal changes the project.' }],
-        returns: 'the removal.',
+        signature: '@Remote async setAllowed(id: string, allowed: boolean): Promise<void>',
+        description: 'Turn an add-on on or off for agents, the Session\'s and connected ones, as the Add-ons dialog\'s switch asks. The choice is saved in the `allowed` setting of the plugin\'s profile entry and applies without a restart, to every project.',
+        parameters: [{ name: 'id', description: 'catalog id.' }, { name: 'allowed', description: 'whether agents may use the add-on.' }],
+        returns: 'once the setting is saved and applied.',
+        throws: ['{RemoteError} `game-addons/unknown-addon` for an id the catalog does not have, and `game-addons/settings-unavailable` when the Host runs no Settings service or the plugin has no profile entry.'],
       },
     ],
   },
@@ -7517,20 +7512,12 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface GameAddonIcon {\n    readonly file: string;\n    readonly source: string;\n    readonly license: string;\n    readonly copyright?: string;\n}',
   },
   {
-    name: 'GameAddonInstallResult',
-    declaration: 'export interface GameAddonInstallResult {\n    readonly addon: InstalledGameAddon;\n    readonly projectDir: string;\n    readonly unchanged: boolean;\n    readonly importIssues: readonly string[];\n    readonly notes: readonly string[];\n}',
-  },
-  {
     name: 'GameAddonPresence',
     declaration: 'export type GameAddonPresence = {\n    readonly state: \'installed\';\n    readonly version: string;\n} | {\n    readonly state: \'found\';\n    readonly version?: string;\n} | {\n    readonly state: \'absent\';\n};',
   },
   {
-    name: 'GameAddonRemoveResult',
-    declaration: 'export interface GameAddonRemoveResult {\n    readonly id: string;\n    readonly projectDir: string;\n    readonly removed: readonly string[];\n    readonly backup?: string;\n    readonly references: readonly string[];\n}',
-  },
-  {
     name: 'GameAddonsProjectView',
-    declaration: 'export interface GameAddonsProjectView {\n    readonly projectDir: string;\n    readonly addons: readonly GameAddonView[];\n    readonly icons: Readonly<Record<string, string>>;\n}',
+    declaration: 'export interface GameAddonsProjectView {\n    readonly projectDir?: string;\n    readonly addons: readonly GameAddonView[];\n    readonly icons: Readonly<Record<string, string>>;\n}',
   },
   {
     name: 'GameAddonStage',
@@ -7542,7 +7529,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'GameAddonView',
-    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly assets?: GameAddonAssetsView;\n    readonly conflicts: readonly string[];\n    readonly presence?: GameAddonPresence;\n}',
+    declaration: 'export interface GameAddonView {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly summary: string;\n    readonly useWhen: string;\n    readonly avoidWhen?: string;\n    readonly tags: readonly string[];\n    readonly stages: readonly GameAddonStage[];\n    readonly license: string;\n    readonly credit?: string;\n    readonly homepage: string;\n    readonly bytes?: number;\n    readonly assets?: GameAddonAssetsView;\n    readonly conflicts: readonly string[];\n    readonly allowed: boolean;\n    readonly presence?: GameAddonPresence;\n}',
   },
   {
     name: 'GameMcpCall',
@@ -7971,10 +7958,6 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'InstallBundleOptions',
     declaration: 'export interface InstallBundleOptions {\n    enabled?: boolean;\n    saveExact?: boolean;\n    requestId?: PluginInstallRequestId;\n    approvedBuilds?: string[];\n    registry?: Registry;\n    expected?: {\n        readonly name: string;\n        readonly version: string;\n    };\n}',
-  },
-  {
-    name: 'InstalledGameAddon',
-    declaration: 'export interface InstalledGameAddon {\n    readonly id: string;\n    readonly title: string;\n    readonly host: GameAddonHost;\n    readonly version: string;\n    readonly license: string;\n    readonly source?: string;\n    readonly sha256?: string;\n    readonly paths: readonly string[];\n    readonly installedAt: string;\n}',
   },
   {
     name: 'InstallSpecKind',

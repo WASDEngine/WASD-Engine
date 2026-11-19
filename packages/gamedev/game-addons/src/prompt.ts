@@ -1,9 +1,9 @@
 /**
  * What the agent knows about the add-on catalog before it calls `game_addons`: that it decides itself when an add-on
  * is worth installing, without asking the user first, and what the stages of a game at which add-ons help mean. The
- * Session's agent reads it as the `game-addons` system prompt section, which lists each catalog add-on with its stages
- * and when to use it; agents connected through WASD Engine's MCP server read it in the server's instructions, which
- * send them to action search for the catalog.
+ * Session's agent reads it as the `game-addons` system prompt section, which lists each add-on that the user has not
+ * turned off with its stages and when to use it; agents connected through WASD Engine's MCP server read it in the
+ * server's instructions, which send them to action search for the catalog.
  * @module @deepseek-ai/dsh-game-addons/src/prompt
  */
 import type { GameAddon } from './types.ts'
@@ -36,10 +36,11 @@ export function catalogLines(entries: readonly GameAddon[]): string {
 
 /**
  * The `game-addons` system prompt section of the Session's agent.
- * @param entries - the catalog entries, in catalog order.
- * @returns the section text.
+ * @param entries - the catalog entries that agents may use, in catalog order.
+ * @returns the section text; empty when the user turned off every add-on, which leaves the section out.
  */
 export function sessionPrompt(entries: readonly GameAddon[]): string {
+  if (entries.length === 0) return ''
   return `# Game add-ons
 
 game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. ${JUDGMENT}
