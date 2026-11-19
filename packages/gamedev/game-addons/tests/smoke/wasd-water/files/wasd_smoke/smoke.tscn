@@ -1,0 +1,50 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://wasd_smoke/smoke.gd" id="1_smoke"]
+[ext_resource type="Script" path="res://addons/wasd_water/water_3d.gd" id="2_water"]
+[ext_resource type="Script" path="res://addons/wasd_water/water_floater_3d.gd" id="3_floater"]
+
+[sub_resource type="Curve3D" id="river_curve"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, 30, 6, -40, 0, 0, 0, 0, 0, 0, 30, 6, -20, 0, 0, 0, 0, 0, 0, 30, 2, -16),
+"tilts": PackedFloat32Array(0, 0, 0)
+}
+point_count = 3
+
+[sub_resource type="BoxShape3D" id="crate_shape"]
+
+[node name="Smoke" type="Node3D"]
+script = ExtResource("1_smoke")
+
+[node name="Lagoon" type="MeshInstance3D" parent="."]
+script = ExtResource("2_water")
+preset = "tropical"
+size = Vector2(60, 60)
+wave_height = 0.5
+
+[node name="Pond" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 100, 3, 0)
+script = ExtResource("2_water")
+preset = "pond"
+shape = 1
+size = Vector2(10, 6)
+
+[node name="RiverPath" type="Path3D" parent="."]
+curve = SubResource("river_curve")
+
+[node name="River" type="MeshInstance3D" parent="."]
+script = ExtResource("2_water")
+preset = "river"
+shape = 3
+size = Vector2(4, 0)
+path = NodePath("../RiverPath")
+
+[node name="Crate" type="RigidBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 1.5, 12)
+mass = 20.0
+
+[node name="Shape" type="CollisionShape3D" parent="Crate"]
+shape = SubResource("crate_shape")
+
+[node name="Floater" type="Node3D" parent="Crate"]
+script = ExtResource("3_floater")

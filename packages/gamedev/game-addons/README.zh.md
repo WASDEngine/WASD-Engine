@@ -52,7 +52,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 目录
 
-每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。它还可以指定叠加文件夹（`godot.overlay`）：目录中的文件夹，可位于它自己的目录文件夹中，也可位于各条目旁边；安装程序会把其中的文件加入扩展文件夹，但不会替换压缩包中的文件。两个 Universal Animation Library 条目（Quaternius 的 CC0 动画包）以这种方式加入导入设置，把每个动画包导入为重定向到 Godot 人形骨架的 `AnimationLibrary`；二者都会加入 `humanoid-retarget/`，其中有骨骼映射和 `retarget.gd`，后者用来设置模型的导入，使其能播放这些片段。叠加文件会进入游戏，因此 WASD Engine 把它们贡献到公有领域（CC0-1.0），通知中的版权行也这样说明。WASD Engine 自己编写的扩展的条目没有压缩包：这样的 Godot 条目只由其叠加文件夹组成，例如 WASD Cloth 的 `wasd-cloth/addon/`（布料节点、风区、旗帜着色器与检查脚本）；这样的 Blender 扩展则给出 `blender.files`，即存放其 `blender_manifest.toml` 与 Python 包的目录文件夹，例如 WASD Cloth for Blender 的 `wasd-cloth-blender/extension/`。Blender 条目给出它的 Python 模块，以及它是扩展（来自压缩包或目录中的文件）还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。条目可以设置 `bundled`，两个 Universal Animation Library 以及带 MakeHuman 资源包的 MPFB 就这样设置：桌面应用打包时会把它的压缩包及其资源包的压缩包以 `<sha256>.zip` 放进本包位于 `app.asar` 之外的 `archives/` 文件夹，安装时直接读取，既不下载也不删除；没有这样的文件时（例如 Web 配置或源码检出），安装会像其他条目一样下载压缩包。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。
+每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。它还可以指定叠加文件夹（`godot.overlay`）：目录中的文件夹，可位于它自己的目录文件夹中，也可位于各条目旁边；安装程序会把其中的文件加入扩展文件夹，但不会替换压缩包中的文件。两个 Universal Animation Library 条目（Quaternius 的 CC0 动画包）以这种方式加入导入设置，把每个动画包导入为重定向到 Godot 人形骨架的 `AnimationLibrary`；二者都会加入 `humanoid-retarget/`，其中有骨骼映射和 `retarget.gd`，后者用来设置模型的导入，使其能播放这些片段。叠加文件会进入游戏，因此 WASD Engine 把它们贡献到公有领域（CC0-1.0），通知中的版权行也这样说明。WASD Engine 自己编写的扩展的条目没有压缩包：这样的 Godot 条目只由其叠加文件夹组成，例如 WASD Cloth 的 `wasd-cloth/addon/`（布料节点、风区、旗帜着色器与检查脚本），或 WASD Water 的 `wasd-water/addon/`（水体节点、其着色器、外观预设与泡沫纹理，以及浮体节点）；这样的 Blender 扩展则给出 `blender.files`，即存放其 `blender_manifest.toml` 与 Python 包的目录文件夹，例如 WASD Cloth for Blender 的 `wasd-cloth-blender/extension/`。Blender 条目给出它的 Python 模块，以及它是扩展（来自压缩包或目录中的文件）还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。条目可以设置 `bundled`，两个 Universal Animation Library 以及带 MakeHuman 资源包的 MPFB 就这样设置：桌面应用打包时会把它的压缩包及其资源包的压缩包以 `<sha256>.zip` 放进本包位于 `app.asar` 之外的 `archives/` 文件夹，安装时直接读取，既不下载也不删除；没有这样的文件时（例如 Web 配置或源码检出），安装会像其他条目一样下载压缩包。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。
 
 ### 工具
 
@@ -172,7 +172,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token 影响
 
-随附目录有 26 个扩展，该部分约 7,000 个字符，约 1,800 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符，用户每关闭一个扩展就去掉它的一行；所有扩展都关闭时会省略该部分。随附目录测试会把该部分限制在 8,000 个字符以内。
+随附目录有 27 个扩展，该部分约 7,300 个字符，约 1,800 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符，用户每关闭一个扩展就去掉它的一行；所有扩展都关闭时会省略该部分。随附目录测试会把该部分限制在 8,000 个字符以内。
 
 #### KV Cache 影响
 
@@ -214,7 +214,7 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### Token 影响
 
-搜索整个目录的结果约为 14,400 个字符；指南结果即指南本身；其他结果为几百个字符。
+搜索整个目录的结果约为 15,000 个字符；指南结果即指南本身；其他结果为几百个字符。
 
 #### KV Cache 影响
 

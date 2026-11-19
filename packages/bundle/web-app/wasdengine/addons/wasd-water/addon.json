@@ -1,0 +1,41 @@
+{
+  "id": "wasd-water",
+  "title": "WASD Water",
+  "host": "godot",
+  "version": "1.0.0",
+  "summary": "Water for 3D games: a node with ocean waves, light through crests, trailing foam, depth colors, refraction, caustics, mirrored scenery, and 16 looks from sea to toon and lava; rivers; floating bodies.",
+  "useWhen": "A 3D game shows water or another liquid: a sea, lake, pond, river, waterfall, pool, swamp, or lava, realistic or toon, low-poly, or retro, with waves, shore foam, things that float, or a camera that dives.",
+  "avoidWhen": "2D games, or a liquid the player never sees up close, where a flat tinted plane is enough.",
+  "tags": [
+    "water",
+    "ocean",
+    "sea",
+    "lake",
+    "river",
+    "waterfall",
+    "waves",
+    "foam",
+    "reflection",
+    "lava",
+    "buoyancy",
+    "shader",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-water",
+  "godot": {
+    "addonDir": "wasd_water",
+    "overlay": [
+      "wasd-water/addon"
+    ]
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-19"
+  }
+}
