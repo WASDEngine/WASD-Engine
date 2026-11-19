@@ -19,10 +19,6 @@
       "types": "./lib/types/index.d.ts",
       "default": "./lib/index.js"
     },
-    "./files": {
-      "types": "./lib/types/files.d.ts",
-      "default": "./lib/types/files.js"
-    },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
@@ -31,7 +27,6 @@
     "icon.svg",
     "locale/*.json",
     "lib/index.js",
-    "lib/types/**/*.js",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",

@@ -3,20 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/ui-game-tools/README.md
 /:
-  en: 0502a8e6dbc13ff7
-  zh: 72151ad2ed1377f7
+  en: 0e2691e2baccfbab
+  zh: dfc91f4eb8c6c160
 /deepseek-ai-dsh-client-ui-game-tools:
   en: c6f2b42c20fe9654
   zh: b5aa1546b3fc517e
 /deepseek-ai-dsh-client-ui-game-tools/summary:
-  en: f7da4491e89a68a2
-  zh: 965aed1e267e1aec
+  en: 39318ce135a2ecb7
+  zh: fbb569323e8604f0
 /deepseek-ai-dsh-client-ui-game-tools/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
 /deepseek-ai-dsh-client-ui-game-tools/use-this-package:
-  en: 4d4cd34c1bbe1097
-  zh: 8b9d5f046f9744f5
+  en: 00b1369e6dd0dfa5
+  zh: f27edab3e1ac09d3
 /deepseek-ai-dsh-client-ui-game-tools/use-this-package/default-composition:
   en: 959b8421dcb538a6
   zh: 551b7768a8a1a8c4
@@ -45,8 +45,8 @@
   en: ca75c51c89c2c9b0
   zh: de54f3467ef3b9be
 /deepseek-ai-dsh-client-ui-game-tools/known-limitations-and-deferred-work:
-  en: 0194414ff356ed49
-  zh: 0e00f2d2ecd4829a
+  en: 2740d40c7fcb6e3b
+  zh: 34449ea471177f98
 /deepseek-ai-dsh-client-ui-game-tools/known-limitations-and-deferred-work/dev-note:
   en: e67f633dc6fe7773
   zh: 3bb0c20c93f16f98

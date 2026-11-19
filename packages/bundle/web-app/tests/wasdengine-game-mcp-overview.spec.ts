@@ -29,7 +29,6 @@ import { imageMcpProvider } from '@deepseek-ai/dsh-image-generation/src/mcp.ts'
 import { PROFILE_TEMPLATES } from '@deepseek-ai/dsh-official-bundles'
 import { polyHavenMcpProvider } from '@deepseek-ai/dsh-polyhaven/src/mcp.ts'
 import * as SuperCollider from '@deepseek-ai/dsh-supercollider'
-import { tripoMcpProvider } from '@deepseek-ai/dsh-tripo/src/mcp.ts'
 import { MCP_SURFACE, MULTIPLAYER_MCP_INSTRUCTIONS, multiplayerMcpTools, multiplayerToolDefinitions } from '@deepseek-ai/dsh-wasd-plugins/src/multiplayer-tools.ts'
 import { wasdMcpProvider } from '@deepseek-ai/dsh-wasd-plugins/src/tools.ts'
 import { expect, it, onTestFinished } from 'vitest'
@@ -129,7 +128,6 @@ async function shippedProviders(): Promise<ReadonlyMap<string, GameMcpProvider>>
     ['@deepseek-ai/dsh-graphics-review', graphicsReviewMcpProvider(host)],
     ['@deepseek-ai/dsh-elevenlabs', elevenLabsMcpProvider(host)],
     ['@deepseek-ai/dsh-image-generation', imageMcpProvider(host)],
-    ['@deepseek-ai/dsh-tripo', tripoMcpProvider(host)],
     ['@deepseek-ai/dsh-polyhaven', polyHavenMcpProvider(host)],
     ['@deepseek-ai/dsh-game-audio', audioMcpProvider(host)],
     ['@deepseek-ai/dsh-godot', godotMcpProvider(host, () => Promise.reject(new Error('no runtime in this spec')), godotRelease())],

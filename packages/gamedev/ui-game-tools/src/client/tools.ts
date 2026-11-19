@@ -11,7 +11,6 @@ export type GameToolEntry = PluginInventorySnapshot['entries'][number]
 export const GAME_TOOL_MODULES: readonly string[] = [
   '@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-elevenlabs', '@deepseek-ai/dsh-game-addons', '@deepseek-ai/dsh-gimp',
   '@deepseek-ai/dsh-godot', '@deepseek-ai/dsh-image-generation', '@deepseek-ai/dsh-polyhaven', '@deepseek-ai/dsh-supercollider',
-  '@deepseek-ai/dsh-tripo',
 ]
 
 /** One game tool: the package its row mounts and the Loader entry mounting it in this profile. */

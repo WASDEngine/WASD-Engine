@@ -6,13 +6,13 @@
  * MCP server.
  * @module @deepseek-ai/dsh-image-generation/src/tools
  */
-import { readFile } from 'node:fs/promises'
-import { extname } from 'node:path'
+import { mkdir, open, readFile, rm, rmdir, stat } from 'node:fs/promises'
+import { dirname, extname, relative } from 'node:path'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { ImageApi } from './api.ts'
 import { encodeForSaving, fitForSending, MAX_READ_BYTES, MAX_SENT_TOTAL_BYTES, UnreadableImage } from './files.ts'
 import type { ImageAspectRatio, ImageFormat, ImageSize, SentImage } from './types.ts'
-import { kilobytes, namedFileSize, reservePath, textBlocks, writeWhole } from '@deepseek-ai/dsh-game-mcp/kit'
+import { kilobytes, namedFileSize, replaceableFile, textBlocks, writeWhole } from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** Nano Banana 2.1's image shapes, width to height. */
 export const IMAGE_ASPECT_RATIOS = [
@@ -106,6 +106,68 @@ function formatOf(path: string): ImageFormat {
   return format
 }
 
+/** A call's hold on the file it writes, taken before the image is paid for. */
+interface Reservation {
+  /** Whether the call replaces an earlier file. */
+  readonly replaced: boolean
+  /** Give the path up after the call failed: remove what the reservation made, unless another writer changed it. */
+  release(): Promise<void>
+}
+
+/**
+ * Refuse a path that is a folder, or a file the call may not replace; an empty file may be one that another call is
+ * making.
+ * @returns whether a file is there, which the call replaces.
+ * @throws Error when the path is a folder, or a file and `replace` is false.
+ */
+function refuseExisting(path: string, file: string, replace: boolean): Promise<boolean> {
+  return replaceableFile(path, file, replace, 'image_generate')
+}
+
+/**
+ * Take the path of a call's image before the image is paid for. Without `replace`, the call creates the file, empty,
+ * only when no file has the path, so two parallel calls never both pay for one path and neither overwrites a file;
+ * the finished image then takes its place. With `replace`, the path must not be a folder.
+ * @param path - the file's absolute path.
+ * @param file - the path as the call named it.
+ * @param replace - whether an existing file is overwritten.
+ * @returns the reservation.
+ * @throws Error when the path is a folder, or a file and `replace` is false.
+ */
+async function reservePath(path: string, file: string, replace: boolean): Promise<Reservation> {
+  if (replace) return { replaced: await refuseExisting(path, file, true), release: () => Promise.resolve() }
+  await refuseExisting(path, file, false)
+  const createdFolder = await mkdir(dirname(path), { recursive: true })
+  let handle
+  try {
+    handle = await open(path, 'wx')
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    // Another call or program created it since the check.
+    await refuseExisting(path, file, false)
+    throw error
+  }
+  let made
+  try {
+    made = await handle.stat()
+  } finally {
+    await handle.close()
+  }
+  return {
+    replaced: false,
+    async release() {
+      const now = await stat(path).catch(() => undefined)
+      if (now?.ino === made.ino && now.dev === made.dev && now.size === 0) await rm(path, { force: true })
+      if (createdFolder === undefined) return
+      // The folders the reservation made, deepest first, while each is empty; a folder in use stays.
+      for (let folder = dirname(path); !relative(createdFolder, folder).startsWith('..'); folder = dirname(folder)) {
+        const removed = await rmdir(folder).then(() => true, () => false)
+        if (!removed || folder === createdFolder) return
+      }
+    },
+  }
+}
+
 /**
  * Read the images one call sends and fit each to what the API takes.
  * @throws Error when one is missing, not an image, or they are too large together.
@@ -178,7 +240,7 @@ export function imageToolDefinitions(host: ImageToolHost, surface: ImageToolSurf
       const first = images[0]
       const aspectRatio = args.aspect_ratio ?? (first === undefined ? '1:1' : closestAspectRatio(first.width, first.height))
       const path = await host.file(args.path, exec)
-      const reservation = await reservePath(path, args.path, args.replace === true, 'image_generate')
+      const reservation = await reservePath(path, args.path, args.replace === true)
       let saved
       try {
         const image = await host.api.generate({ prompt, images, aspectRatio, size }, exec.signal)

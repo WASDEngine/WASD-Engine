@@ -218,7 +218,6 @@
     "@deepseek-ai/dsh-game-addons": "workspace:*",
     "@deepseek-ai/dsh-polyhaven": "workspace:*",
     "@deepseek-ai/dsh-supercollider": "workspace:*",
-    "@deepseek-ai/dsh-tripo": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-tools": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-assets": "workspace:*",
     "@deepseek-ai/dsh-client-ui-game-audio": "workspace:*",

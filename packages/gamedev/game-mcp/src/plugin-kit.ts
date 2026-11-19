@@ -6,7 +6,7 @@
  */
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { mkdir, open, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 
@@ -133,59 +133,6 @@ export async function replaceableFile(path: string, file: string, replace: boole
   if (replace) return true
   const what = maker !== undefined && found.size === 0 ? `as an empty file, which another ${maker} call may still be making` : ''
   throw new Error(`${file} already exists${what === '' ? '' : ` ${what}`}. Pass replace: true to overwrite it, or choose another path.`)
-}
-
-/** A call's hold on the file it writes, taken before it pays for what it writes there. */
-export interface Reservation {
-  /** Whether the call replaces an earlier file. */
-  readonly replaced: boolean
-  /** Give the path up after the call failed: remove what the reservation made, unless another writer changed it. */
-  release(): Promise<void>
-}
-
-/**
- * Take the path of a call's file before the call pays for what it writes there. Without `replace`, the call creates the
- * file, empty, only when no file has the path, so two parallel calls never both pay for one path and neither overwrites
- * a file; the finished file then takes its place ({@link writeWhole}). With `replace`, the path must not be a folder.
- * @param path - the file's absolute path.
- * @param file - the path as the call names it, for errors.
- * @param replace - whether an existing file is overwritten.
- * @param maker - the tool whose calls hold paths this way, named in the refusal of an empty file.
- * @returns the reservation.
- * @throws {Error} when the path is a folder, or a file and `replace` is false.
- */
-export async function reservePath(path: string, file: string, replace: boolean, maker: string): Promise<Reservation> {
-  if (replace) return { replaced: await replaceableFile(path, file, true, maker), release: () => Promise.resolve() }
-  await replaceableFile(path, file, false, maker)
-  const createdFolder = await mkdir(dirname(path), { recursive: true })
-  let handle
-  try {
-    handle = await open(path, 'wx')
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    // Another call or program created it since the check.
-    await replaceableFile(path, file, false, maker)
-    throw error
-  }
-  let made
-  try {
-    made = await handle.stat()
-  } finally {
-    await handle.close()
-  }
-  return {
-    replaced: false,
-    async release() {
-      const now = await stat(path).catch(() => undefined)
-      if (now?.ino === made.ino && now.dev === made.dev && now.size === 0) await rm(path, { force: true })
-      if (createdFolder === undefined) return
-      // The folders the reservation made, deepest first, while each is empty; a folder in use stays.
-      for (let folder = dirname(path); !relative(createdFolder, folder).startsWith('..'); folder = dirname(folder)) {
-        const removed = await rmdir(folder).then(() => true, () => false)
-        if (!removed || folder === createdFolder) return
-      }
-    },
-  }
 }
 
 /**
