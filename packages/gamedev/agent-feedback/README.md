@@ -50,7 +50,7 @@ The Plugins page lists the row as Agent feedback, and its switch turns it off wi
 
 `feedback_send` takes `kind`, one of `bug`, `missing_feature`, `confusing`, and `suggestion`; `message`, at most 4,000 characters, which keeps its lines; and `about`, the tool or part of WASD Engine it concerns, at most 120 characters. A call posts one JSON object to `POST /api/v1/feedback` on the site's origin with the account token in `x-dsh-auth-token`: the three arguments trimmed, the agent, the model, the app version, and the operating system as Node names it, such as `darwin`. A Session's call names WASD Engine's own agent, `wasd-engine`, and the display name of the model the Session runs on, as the model service describes it, else the model's id. Before it is sent, `message` and `about` lose what identifies the user or could unlock an account (`src/scrub.ts`): the home folder becomes `~`, in either slash and, on macOS and Windows, in any case; the account name, as a whole word, becomes `<user>`, unless it is a generic name such as `user` or `admin`; email addresses become `<email>`; and private key blocks, JSON Web Tokens, keys and tokens by their known forms (such as `sk-`, `ghp_`, `AKIA`, and `AIza`), the value of a `password`, `token`, or `api_key` that `:` or `=` follows, `Bearer` and `Basic` credentials, hexadecimal runs of 32 digits or more, and long runs of letters and digits that change kind on most characters become `<redacted>`.
 
-Agents connected through WASD Engine's MCP server reach the tool under the provider `feedback`, titled Feedback, without a Session. Their listing adds `model`, the name of the AI model the agent is, and leaves out `agent_id` and `agent_title`, which the provider's `prepare` sets from the client the server identified, such as `claude-code` and Claude Code, over whatever the call passed. The server refuses every call while WASD Engine is signed out.
+Agents connected through WASD Engine's MCP server reach the tool under the provider `feedback`, titled Feedback, without a Session. Their listing adds `model`, the full name of the AI model the agent is, never the application it runs in, and leaves out `agent_id` and `agent_title`, which the provider's `prepare` sets from the client the server identified, such as `claude-code` and Claude Code, over whatever the call passed. The server refuses every call while WASD Engine is signed out.
 
 A result says what was sent and that the team reads it but does not reply, says so when anything was replaced, and then lists every field the site received: kind, about, agent, model, app version, platform, and the message as sent. A call that sends nothing says why and what to do: an argument out of range, a signed-out app, a sign-in the site no longer takes, the site's own message for a refusal such as too much feedback in a day, or a site that did not answer.
 
@@ -104,7 +104,7 @@ The Session's agent sees `feedback_send` with `kind`, `message`, and `about`. Th
 
 #### Token effect
 
-The declaration comes to about 1,400 characters of JSON, and about 1,500 with `model` for a connected agent; the provider's instructions add about 500 characters to the MCP server's instructions.
+The declaration comes to about 1,400 characters of JSON, and about 1,700 with `model` for a connected agent; the provider's instructions add about 500 characters to the MCP server's instructions.
 
 #### KV Cache effect
 

@@ -37,7 +37,7 @@ export const MCP_WORDING: GodotToolWording = {
 
 /** How connected agents use the Godot tools, before the sentence that names the Godot release. */
 export const MCP_INSTRUCTIONS = `Test the user's Godot project with the godot_* tools. Pass project, the absolute path of the folder that holds project.godot, to your first Godot call; later calls default to it.
-1. godot_run starts or restarts the game and reports import and startup errors; pass screenshot to see the game in the same call. The game plays inside the WASD Engine window, where the user watches and can play it too. When you first run a game, pass model, the name of the AI model you are, so the game's page credits it.
+1. godot_run starts or restarts the game and reports import and startup errors; pass screenshot to see the game in the same call. The game plays inside the WASD Engine window, where the user watches and can play it too. When you first run a game, pass model, the full name of the AI model you are, such as Claude Opus 5.5, so the game's page credits it.
 2. godot_screenshot shows you the current frame. godot_input sends keys, text, mouse clicks and motion (in screenshot pixels), and input actions; godot_wait lets game time pass. Look again after acting: godot_input, godot_wait, and godot_eval take screenshot to show the result in the same call.
 3. godot_logs reads printed output and errors; godot_eval and godot_scene_tree inspect the running scene; godot_performance measures frame times, rendering, memory, and the time of each script; godot_audio captures and measures the game's audio mix; godot_control pauses, resumes, or steps frames.
 4. Fix the first error, then call godot_run again. godot_check finds GDScript errors without running the game, and godot_script runs a SceneTree script headless, such as a test add-on's command-line runner, once or many times at once.
@@ -60,7 +60,7 @@ const MODEL_TOOL = 'godot_run'
 
 const MODEL_PARAMETER = {
   type: 'string',
-  description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your work on the project; pass it when you first run a game.',
+  description: 'The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor. The released game\'s page credits it for your work on the project; pass it when you first run a game.',
 } as const
 
 /** The bytes and media type of each call's images, by image id. */

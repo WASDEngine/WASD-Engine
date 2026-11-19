@@ -116,10 +116,11 @@ describe('the Godot tools over WASD Engine\'s MCP server', () => {
     expect(godot.filter(tool => tool.inputSchema.properties?.model !== undefined).map(tool => tool.name)).toEqual(['godot_run'])
     expect(godot.find(tool => tool.name === 'godot_run')?.inputSchema.properties?.model).toEqual({
       type: 'string',
-      description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your '
-        + 'work on the project; pass it when you first run a game.',
+      description: 'The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 '
+        + 'for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor. '
+        + 'The released game\'s page credits it for your work on the project; pass it when you first run a game.',
     })
-    expect(MCP_INSTRUCTIONS).toContain('When you first run a game, pass model, the name of the AI model you are, so the game\'s page credits it.')
+    expect(MCP_INSTRUCTIONS).toContain('When you first run a game, pass model, the full name of the AI model you are, such as Claude Opus 5.5, so the game\'s page credits it.')
     // Connected agents build games that WASD Engine releases to browsers, so they hear what browsers lack while they build.
     expect(MCP_INSTRUCTIONS.split('\n').at(-1)).toBe('Released games play in browsers, where Godot draws with its Compatibility renderer (WebGL 2) whatever renderer the project uses, without a RenderingDevice: compute shaders, FogVolumes, volumetric fog, SDFGI, SSR, TAA, and FSR do nothing there. '
       + 'Start new games on it, with renderer/rendering_method="gl_compatibility" under [rendering] in project.godot, so they look the same everywhere. '

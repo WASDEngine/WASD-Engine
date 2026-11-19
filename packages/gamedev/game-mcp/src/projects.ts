@@ -22,8 +22,8 @@ function errorResult(text: string): McpCallResult {
 }
 
 /** What the agent reads, after a creation that named no model, about naming the model it is. */
-const MODEL_HINT = ' The game\'s page credits the AI model that makes the game: pass model, the name of the AI model you are, to godot_run when you '
-  + 'first run the game.'
+const MODEL_HINT = ' The game\'s page credits the AI model that makes the game: pass model, the full name of the AI model you are, such as Claude Opus 5.5, '
+  + 'to godot_run when you first run the game.'
 
 /**
  * Report a created game project to the `game-mcp/project-created` listeners.
@@ -109,7 +109,7 @@ export async function createGameProject(
     return errorResult('location must be a string: the absolute path of the folder to create the project in.')
   }
   if (model !== undefined && model !== null && typeof model !== 'string') {
-    return errorResult('model must be a string: the name of the AI model you are.')
+    return errorResult('model must be a string: the full name of the AI model you are, such as Claude Opus 5.5.')
   }
   const named = typeof model === 'string' && model.trim() !== '' ? model.trim() : undefined
   const requested = typeof location === 'string' ? location.trim() : ''

@@ -50,7 +50,7 @@ WASDEngine 覆盖层 [`telemetry.cordis.patch.yml`](../../bundle/web-app/wasdeng
 
 `feedback_send` 接受 `kind`，取值为 `bug`、`missing_feature`、`confusing` 和 `suggestion` 之一；`message`，最多 4,000 个字符，保留换行；以及 `about`，即反馈涉及的工具或 WASD Engine 的部分，最多 120 个字符。一次调用向网站源上的 `POST /api/v1/feedback` 发送一个 JSON 对象，`x-dsh-auth-token` 中带有账号令牌：内容为去除首尾空白的三个参数、agent、模型、应用版本，以及 Node 命名的操作系统，例如 `darwin`。会话的调用注明 WASD Engine 自己的 agent `wasd-engine`，以及会话所用模型的显示名称（取自模型服务的描述，否则为模型 id）。发送之前，`message` 和 `about` 会去掉能识别用户或可能解锁账号的内容（`src/scrub.ts`）：主文件夹变为 `~`，两种斜杠都识别，在 macOS 和 Windows 上不区分大小写；作为完整单词出现的账户名变为 `<user>`，除非它是 `user` 或 `admin` 这类通用名称；电子邮件地址变为 `<email>`；私钥块、JSON Web Token、具有已知形式的密钥和令牌（例如 `sk-`、`ghp_`、`AKIA` 和 `AIza`）、`password`、`token` 或 `api_key` 后跟 `:` 或 `=` 的值、`Bearer` 和 `Basic` 凭据、32 位以上的十六进制串，以及大多数字符都在字母和数字类别间切换的长串，都变为 `<redacted>`。
 
-通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `feedback`（标题为 Feedback）下获得该工具，无需会话。它们看到的工具列表增加了 `model`，即该 agent 所用 AI 模型的名称，并省略 `agent_id` 和 `agent_title`：提供方的 `prepare` 会用服务器识别出的客户端（例如 `claude-code` 和 Claude Code）设置这两个参数，覆盖调用传入的任何值。WASD Engine 未登录时，服务器拒绝每次调用。
+通过 WASD Engine 的 MCP 服务器连接的 agent 在提供方 `feedback`（标题为 Feedback）下获得该工具，无需会话。它们看到的工具列表增加了 `model`，即该 agent 所用 AI 模型的完整名称（不是它所在的应用），并省略 `agent_id` 和 `agent_title`：提供方的 `prepare` 会用服务器识别出的客户端（例如 `claude-code` 和 Claude Code）设置这两个参数，覆盖调用传入的任何值。WASD Engine 未登录时，服务器拒绝每次调用。
 
 结果说明发送了什么以及团队会阅读但不会回复，有内容被替换时也会说明，然后列出网站收到的每个字段：类型、涉及内容、agent、模型、应用版本、平台，以及发送的消息。未发送任何内容的调用会说明原因和应对办法：超出范围的参数、应用未登录、网站不再接受的登录、网站自己的拒绝消息（例如一天内反馈过多），或网站没有响应。
 
@@ -104,7 +104,7 @@ WASDEngine 覆盖层 [`telemetry.cordis.patch.yml`](../../bundle/web-app/wasdeng
 
 #### Token 影响
 
-声明约为 1,400 个字符的 JSON，连接的 agent 的声明带有 `model`，约为 1,500 个字符；提供方说明为 MCP 服务器的说明增加约 500 个字符。
+声明约为 1,400 个字符的 JSON，连接的 agent 的声明带有 `model`，约为 1,700 个字符；提供方说明为 MCP 服务器的说明增加约 500 个字符。
 
 #### KV Cache 影响
 

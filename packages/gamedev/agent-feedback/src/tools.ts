@@ -78,7 +78,7 @@ const PARAMETERS = {
 /** The parameters of connected agents: their model, and their client, which the server sets. */
 const CONNECTED_PARAMETERS = {
   ...PARAMETERS,
-  model: { type: 'string', description: 'The name of the AI model you are, such as Claude Opus 5.5.' },
+  model: { type: 'string', description: 'The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor.' },
   agent_id: { type: 'string', description: 'Set by WASD Engine\'s MCP server.' },
   agent_title: { type: 'string', description: 'Set by WASD Engine\'s MCP server.' },
 } as const
