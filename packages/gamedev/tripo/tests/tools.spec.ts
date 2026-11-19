@@ -183,6 +183,23 @@ describe('tripo_generate', () => {
     expect(current.api.requests.length).toBe(requests)
     expect(await files(current.work)).toEqual(['lamp.glb'])
   })
+
+  it('waits its turn while the account runs as many tasks as it may, until the call\'s time runs out', async () => {
+    const atLimit = 'This account is already running its limit of 2 3D tasks at once. Wait for one to finish, then try again.'
+    const current = await composed()
+    current.api.failures.set('/v1/3d/generate', { status: 429, message: atLimit, retryAfter: 0.01, times: 9 })
+    const waited = await callTool(current, 'tripo_generate', { prompt: 'a lamp', path: 'lamp.glb' })
+    expect(waited.isError, text(waited)).toBe(false)
+    expect(routes(current).filter(route => route.startsWith('POST')).length).toBe(10)
+
+    const hurried = await composed({ taskTimeoutMs: 2_000 })
+    hurried.api.failures.set('/v1/3d/generate', { status: 429, message: atLimit, retryAfter: 0.2 })
+    const gaveUp = await callTool(hurried, 'tripo_generate', { prompt: 'a lamp', path: 'lamp.glb' })
+    expect(gaveUp.isError).toBe(true)
+    expect(text(gaveUp)).toBe(`Error: ${atLimit}`)
+    expect(hurried.api.tasks.size).toBe(0)
+    expect(await files(hurried.work)).toEqual([])
+  })
 })
 
 describe('tripo_texture, tripo_rig, and tripo_animate', () => {
