@@ -2,8 +2,9 @@
 # fork changes). The fork ships `gamedev` and upstream's `cordis` preset only;
 # upstream-prune.txt deletes the standard, ptc, and minimal presets. `gamedev`
 # is upstream's presets/standard.patch.yml with the persona prefix, the
-# bundled skill root on skill-filesystem, and the fork's todo-continuation row
-# after tool-todo, so port upstream changes to `standard` here when merging.
+# bundled skill root on skill-filesystem, the fork's new-game-guidance row
+# after time-context, and the fork's todo-continuation row after tool-todo, so
+# port upstream changes to `standard` here when merging.
 # Like every shipped preset it publishes no name or description: the built-in
 # copy in ui-agent-preset names it in each language.
 - insert:
@@ -49,6 +50,17 @@
               maxBytes: 65536
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
+          # Fork-owned: the user's first prompt for a new game, whose project
+          # folder holds only hidden entries and system files, ends with this
+          # text; WASD Engine Plugins' browser half leaves it out of Chat.
+          - id: new-game-guidance
+            name: '@deepseek-ai/dsh-new-game-guidance'
+            config:
+              text: |-
+                * Put your effort into making what's on screen look, move and sound great
+                * People and humanoid figures should look and move like real people, with fitting animations
+                * The environment should be believable, textured, with lighting that sells the mood
+                * Work autonomously without asking me questions. Run and play the demo yourself and fix anything that looks or plays wrong before you finish
           - id: tool-bash
             name: '@deepseek-ai/dsh-tool-bash'
             disabled: !!js process.platform === 'win32'

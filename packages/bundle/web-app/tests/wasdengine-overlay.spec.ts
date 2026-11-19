@@ -8,8 +8,10 @@
  * for one, the game tool rows, the row of their Game tools tabs, the row of the Assets tab, and the rows of the Audio
  * tab and its audio tools must mount from web-app dependencies, each tool package must resolve the title, description,
  * and logo the tabs show, and the `gamedev` preset must be the default
- * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona, bundled skill root, and
- * todo continuation, whose skills the `skill` tool returns within the tool-result pruner threshold.
+ * and, beside `cordis`, the only shipped preset, named by the built-in copy, with its persona, its bundled skill root,
+ * whose skills the `skill` tool returns within the tool-result pruner threshold, its todo continuation, and its new game
+ * guidance, which the result of the game MCP server's `create_game_project` repeats without the request not to ask
+ * questions.
  * `wasdengine/FORK.md` (repository root) runs this spec after every upstream merge.
  */
 
@@ -27,6 +29,8 @@ import { createLaunchEnvironmentSnapshot, type LaunchEnvironmentLayerInput } fro
 import { HIDDEN_BUNDLES, PROFILE_TEMPLATES, PROTECTED_PLUGINS } from '@deepseek-ai/dsh-official-bundles'
 import SkillRegistry, { renderSkillContent } from '@deepseek-ai/dsh-skill'
 import * as SkillFileSystem from '@deepseek-ai/dsh-skill-filesystem'
+import GameMcpServer from '@deepseek-ai/dsh-game-mcp'
+import * as NewGameGuidance from '@deepseek-ai/dsh-new-game-guidance'
 import * as TodoContinuation from '@deepseek-ai/dsh-todo-continuation'
 
 const webAppDir = fileURLToPath(new URL('..', import.meta.url))
@@ -397,7 +401,7 @@ describe('WASDEngine overlay', () => {
     const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_MCP.id)
     expect(entry?.name).toBe(GAME_MCP.name)
     expect(entry?.disabled).toBeUndefined()
-    expect(Object.keys(configOf(entry))).toEqual(['dataRoot'])
+    expect(Object.keys(configOf(entry))).toEqual(['dataRoot', 'newGameGuidance'])
     expect(expression(configOf(entry).dataRoot, 'game-mcp.dataRoot')).toBe(`dshHomePath('${GAME_MCP.id}')`)
     expect(manifest(webAppDir).dependencies?.[GAME_MCP.name]).toBe('workspace:*')
   })
@@ -772,6 +776,34 @@ describe('gamedev preset', () => {
     expect(own).toEqual({ maxRemindersPerTurn: 5 })
     expect(TodoContinuation.Config({ maxRemindersPerTurn: 5 })).toEqual(own)
     expect(String(configOf(gameRow('persona')).prefix)).toContain('list every one with todo_write before you start')
+  })
+
+  it('ends the first prompt for a new game with the four lines of guidance, from a row right after the clock context', () => {
+    const ids = gameRows.map(entry => entry.id)
+    expect(ids.indexOf('new-game-guidance')).toBe(ids.indexOf('time-context') + 1)
+    expect(gameRow('new-game-guidance').name).toBe('@deepseek-ai/dsh-new-game-guidance')
+    const own = configOf(gameRow('new-game-guidance'))
+    expect(own).toEqual({
+      text: [
+        '* Put your effort into making what\'s on screen look, move and sound great',
+        '* People and humanoid figures should look and move like real people, with fitting animations',
+        '* The environment should be believable, textured, with lighting that sells the mood',
+        '* Work autonomously without asking me questions. Run and play the demo yourself and fix anything that looks or plays wrong before you finish',
+      ].join('\n'),
+    })
+    expect(NewGameGuidance.Config({ text: String(own.text) })).toEqual(own)
+  })
+
+  it('ends a connected agent\'s new game project with the same guidance as the recommended prompt, without the request not to ask questions', () => {
+    const entry = forkLayer('@deepseek-ai/dsh-web-app').flatMap(patch => patch.insert ?? []).find(row => row.id === GAME_MCP.id)
+    const guidance = String(configOf(entry).newGameGuidance)
+    const [intro, ...lines] = guidance.split('\n')
+    expect(intro).toBe('These additional instructions are the recommended prompt for building games with WASD Engine. Do your absolute best to follow them:')
+    // A connected agent takes the request to work without asking questions only from its user, not from a tool's result.
+    const inApp = String(configOf(gameRow('new-game-guidance')).text).split('\n')
+    expect(lines).toEqual(inApp.map(line => line.replace('Work autonomously without asking me questions. ', '')))
+    expect(lines.at(-1)).toBe('* Run and play the demo yourself and fix anything that looks or plays wrong before you finish')
+    expect(GameMcpServer.Config({ dataRoot: '/data', newGameGuidance: guidance }).newGameGuidance).toBe(guidance)
   })
 
   it('resolves its bundled skill root to valid skills inside this package', () => {

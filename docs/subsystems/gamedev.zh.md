@@ -399,7 +399,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 
 | 工具 | provider | 调用如何执行 |
 |---|---|---|
-| `search_game_tools`、`call_game_tool`、`create_game_project` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态、按名调用其中一个，或像「创建游戏项目」对话框那样通过 `gameProjectController` 创建游戏项目，不创建 Session，并接受 `model`，即 agent 自身 AI 模型的名称，用于游戏的制作信息 |
+| `search_game_tools`、`call_game_tool`、`create_game_project` | `game-mcp` | 服务器搜索各 provider 的工具及其就绪状态、按名调用其中一个，或像「创建游戏项目」对话框那样通过 `gameProjectController` 创建游戏项目，不创建 Session，并接受 `model`，即 agent 自身 AI 模型的名称，用于游戏的制作信息；新项目的结果末尾附上该行的 `newGameGuidance` |
 | `godot_*` | `godot`，经由 [`src/mcp.ts`](../../packages/gamedev/godot/src/mcp.ts) 中的 `godotMcpProvider` | Session 自身的工具定义，由 `godotToolDefinitions` 构建并改用面向绝对项目路径的措辞，为已连接 agent 的 Session 执行；截图以 PNG 字节返回，`godot_run` 还接受 `model`，即 agent 自身 AI 模型的名称，用于游戏的制作信息 |
 | `polyhaven_*` | `polyhaven`，经由 [`src/mcp.ts`](../../packages/gamedev/polyhaven/src/mcp.ts) 中的 `polyHavenMcpProvider` | Session 自身的工具定义，不需要 Session；预览图以 JPEG 字节返回，下载需要绝对路径的文件夹 |
 | `asset_search`、`asset_view` | `asset`，经由 [`src/mcp.ts`](../../packages/gamedev/game-assets/src/mcp.ts) 中的 `assetMcpProvider` | Session 自身的工具定义，用于所连接 agent 以 `project` 指定的游戏项目的 Session；由 WASD Engine 的窗口绘制图片，并以图片字节返回 |

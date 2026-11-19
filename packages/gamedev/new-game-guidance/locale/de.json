@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Hinweise für neue Spiele",
+    "description": "Gibt dem Agenten zusammen mit der ersten Anfrage für ein neues Spiel zusätzliche Hinweise mit, für einen besseren ersten Build."
+  }
+}

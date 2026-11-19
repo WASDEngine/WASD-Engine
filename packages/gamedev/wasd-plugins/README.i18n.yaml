@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/wasd-plugins/README.md
 /:
-  en: d0dd5f24b5477046
-  zh: e7306d591521c8d1
+  en: 0c00d3b46fd57e23
+  zh: a4d1215c4e33fe87
 /deepseek-ai-dsh-wasd-plugins:
   en: cb5ec703da430be8
   zh: d206a2431aaa3c7e
@@ -33,8 +33,11 @@
   en: 26ca721c546dcc92
   zh: 00038aab34d8a5db
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-first-build-tip:
-  en: e626ec2396baccdf
-  zh: 800c6fda404364cf
+  en: 743d08cf5aaa271d
+  zh: 8cf5d4a4994f9d20
+/deepseek-ai-dsh-wasd-plugins/use-this-package/the-new-game-guidance-in-chat:
+  en: 2e7717aeb33f583f
+  zh: 8f68a0c76935b8cd
 /deepseek-ai-dsh-wasd-plugins/use-this-package/the-agent-s-browser:
   en: a1fa1eb0d8ddfc6d
   zh: fc6e332fbd71c533
@@ -42,8 +45,8 @@
   en: 8946491008e43b1a
   zh: 9b6d257d520b9430
 /deepseek-ai-dsh-wasd-plugins/understand-the-implementation:
-  en: af1d4db1ba45a80c
-  zh: cde6055af74afd41
+  en: d8ec676ba7173d8d
+  zh: 2e1a2242419f5bfa
 /deepseek-ai-dsh-wasd-plugins/further-exploration:
   en: 08c3919201dc5a2d
   zh: 6d5d6f73d40196ba

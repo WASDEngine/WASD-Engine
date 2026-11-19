@@ -2,8 +2,9 @@
  * A connected agent's `create_game_project` creates a game project through the Workspace controller's game project
  * controller, as the Create game project dialog does: in the location it names, unless that is in a temporary folder,
  * or in WASD Engine's folder for game projects, without a Session, and with a result or an error that tells the agent
- * what happened; each created project is reported with the model the agent named. The calls pass no temporary folders
- * unless they test them, because the system's temporary folder holds the test's folder.
+ * what happened, where a created project's result ends with the deployment's guidance for the new game; each created
+ * project is reported with the model the agent named. The calls pass no temporary folders unless they test them, because
+ * the system's temporary folder holds the test's folder, and no guidance unless they test it.
  */
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
@@ -76,7 +77,7 @@ function text(result: McpCallResult): string {
 describe('create_game_project', () => {
   it('creates the folder in WASD Engine\'s folder for game projects with a repository, registers it, and names it', async () => {
     const commands = mountProjects()
-    const result = await createGameProject(ctx, { name: '  Space Frogs  ' }, call, [])
+    const result = await createGameProject(ctx, { name: '  Space Frogs  ' }, call, [], '')
 
     const path = join(root, 'Documents', 'WASD Engine', 'Space Frogs')
     expect(result.isError).toBeUndefined()
@@ -98,7 +99,7 @@ describe('create_game_project', () => {
   it('creates the folder in the location the call names, with the folders above it', async () => {
     mountProjects()
     const location = join(root, 'games', 'jams')
-    const result = await createGameProject(ctx, { name: 'Moon Miner', location }, call, [])
+    const result = await createGameProject(ctx, { name: 'Moon Miner', location }, call, [], '')
 
     expect(result.isError).toBeUndefined()
     expect(text(result)).toContain(`in ${join(location, 'Moon Miner')}, which WASD Engine lists`)
@@ -109,13 +110,13 @@ describe('create_game_project', () => {
   it('trims the location as the dialog does, and creates the folder in the default folder for a null, empty, or blank one', async () => {
     mountProjects()
     const location = join(root, 'jams')
-    const spaced = await createGameProject(ctx, { name: 'Moon Miner', location: `  ${location} ` }, call, [])
+    const spaced = await createGameProject(ctx, { name: 'Moon Miner', location: `  ${location} ` }, call, [], '')
     expect(spaced.isError).toBeUndefined()
     expect(text(spaced)).toContain(`in ${join(location, 'Moon Miner')}, which WASD Engine lists`)
     expect(existsSync(`${location} `)).toBe(false)
     const omitted: JsonObject[] = [{ name: 'Null', location: null }, { name: 'Empty', location: '' }, { name: 'Blank', location: '   ' }]
     for (const args of omitted) {
-      const result = await createGameProject(ctx, args, call, [])
+      const result = await createGameProject(ctx, args, call, [], '')
       expect(result.isError, JSON.stringify(args)).toBeUndefined()
     }
     const documents = join(root, 'Documents', 'WASD Engine')
@@ -124,12 +125,12 @@ describe('create_game_project', () => {
 
   it('reports each created project with the model the agent named, and says where to name it only after a call that named none', async () => {
     mountProjects()
-    const named = await createGameProject(ctx, { name: 'Named', location: root, model: '  Claude Fable 5.2 ' }, call, [])
+    const named = await createGameProject(ctx, { name: 'Named', location: root, model: '  Claude Fable 5.2 ' }, call, [], '')
     expect(named.isError).toBeUndefined()
     expect(text(named)).toMatch(/only together with session\.$/u)
     const unnamed: JsonObject[] = [{ name: 'Null', model: null }, { name: 'Empty', model: '' }, { name: 'Blank', model: '   ' }]
     for (const args of unnamed) {
-      const result = await createGameProject(ctx, { ...args, location: root }, call, [])
+      const result = await createGameProject(ctx, { ...args, location: root }, call, [], '')
       expect(result.isError, JSON.stringify(args)).toBeUndefined()
       expect(text(result).endsWith(MODEL_HINT), JSON.stringify(args)).toBe(true)
     }
@@ -141,17 +142,37 @@ describe('create_game_project', () => {
     ])
   })
 
+  it('ends a created project\'s result with the deployment\'s guidance for the new game, and a refusal\'s without it', async () => {
+    mountProjects()
+    const guidance = 'These additional instructions are the recommended prompt for building games with WASD Engine:\n* Play the game yourself'
+    const named = await createGameProject(ctx, { name: 'Named', location: root, model: 'Claude Fable 5.2' }, call, [], guidance)
+    expect(named.isError).toBeUndefined()
+    expect(named.content).toHaveLength(1)
+    expect(text(named).endsWith(`only together with session.\n\n${guidance}`)).toBe(true)
+    // The guidance follows the request to name the model, which ends the text it adds to.
+    const unnamed = await createGameProject(ctx, { name: 'Unnamed', location: root }, call, [], guidance)
+    expect(text(unnamed).endsWith(`${MODEL_HINT}\n\n${guidance}`)).toBe(true)
+
+    const taken = await createGameProject(ctx, { name: 'Named', location: root }, call, [], guidance)
+    expect(taken.isError).toBe(true)
+    expect(text(taken)).toBe(`${join(root, 'Named')} already exists; pass another name or location.`)
+    const temporary = await createGameProject(ctx, { name: 'Scratch', location: join(root, 'scratch') }, call, [root], guidance)
+    expect(temporary.isError).toBe(true)
+    expect(text(temporary)).not.toContain(guidance)
+    expect(registered).toEqual([join(root, 'Named'), join(root, 'Unnamed')])
+  })
+
   it('creates the project although a listener of its report fails', async () => {
     mountProjects()
     ctx.on('game-mcp/project-created', () => { throw new Error('the listener failed on purpose') })
-    const result = await createGameProject(ctx, { name: 'Listened', location: root }, call, [])
+    const result = await createGameProject(ctx, { name: 'Listened', location: root }, call, [], '')
     expect(result.isError).toBeUndefined()
     expect(registered).toEqual([join(root, 'Listened')])
   })
 
   it('says when the folder holds no repository because Git is missing', async () => {
     mountProjects(() => Promise.reject(Object.assign(new Error('spawn git ENOENT'), { code: 'ENOENT' })))
-    const result = await createGameProject(ctx, { name: 'No Git', location: root }, call, [])
+    const result = await createGameProject(ctx, { name: 'No Git', location: root }, call, [], '')
 
     expect(result.isError).toBeUndefined()
     expect(text(result)).toContain('The folder holds no game files yet, and no Git repository. Before you write code, plan the game')
@@ -178,11 +199,11 @@ describe('create_game_project', () => {
       [{ name: 'Taken', location: root }, `${join(root, 'Taken')} already exists; pass another name or location.`],
     ]
     for (const [args, message] of cases) {
-      const result = await createGameProject(ctx, args, call, [])
+      const result = await createGameProject(ctx, args, call, [], '')
       expect(result.isError, JSON.stringify(args)).toBe(true)
       expect(text(result)).toBe(message)
     }
-    const blocked = await createGameProject(ctx, { name: 'Game', location: join(root, 'file', 'child') }, call, [])
+    const blocked = await createGameProject(ctx, { name: 'Game', location: join(root, 'file', 'child') }, call, [], '')
     expect(blocked.isError).toBe(true)
     expect(text(blocked)).toMatch(/^WASD Engine could not create the game project: cannot create ".*file\/child": /u)
     expect(registered).toEqual([])
@@ -197,7 +218,7 @@ describe('create_game_project', () => {
     await symlink(temporary, join(root, 'tmp'), 'junction')
     const locations = [temporary, join(temporary, 'scratch'), join(root, 'tmp', 'scratch'), join(root, 'tmp', 'new', 'folders')]
     for (const location of [...locations, `  ${join(temporary, 'scratch')} `]) {
-      const result = await createGameProject(ctx, { name: 'Scratch', location }, call, [join(root, 'tmp')])
+      const result = await createGameProject(ctx, { name: 'Scratch', location }, call, [join(root, 'tmp')], '')
       expect(result.isError, location).toBe(true)
       expect(text(result)).toBe(`${location.trim()} is in a temporary folder, whose files the system may delete, so WASD Engine creates no game project `
         + 'there. Leave location out to create the project in WASD Engine\'s folder for game projects, or pass a folder that lasts. '
@@ -205,7 +226,7 @@ describe('create_game_project', () => {
     }
     expect(existsSync(join(temporary, 'new'))).toBe(false)
     // The folder for game projects is WASD Engine's own choice, so it is used wherever the Documents folder is.
-    const kept = await createGameProject(ctx, { name: 'Kept' }, call, [root])
+    const kept = await createGameProject(ctx, { name: 'Kept' }, call, [root], '')
     expect(kept.isError).toBeUndefined()
     expect(registered).toEqual([join(root, 'Documents', 'WASD Engine', 'Kept')])
   })
@@ -213,7 +234,7 @@ describe('create_game_project', () => {
   it('asks for a location when WASD Engine cannot find the Documents folder', async () => {
     const create = vi.fn()
     ctx.provide('gameProjectController', { defaults: () => Promise.resolve({ directory: null, required: false }), create } as never)
-    const result = await createGameProject(ctx, { name: 'Game' }, call, [])
+    const result = await createGameProject(ctx, { name: 'Game' }, call, [], '')
 
     expect(result.isError).toBe(true)
     expect(text(result)).toBe('WASD Engine cannot find the user\'s Documents folder, where it keeps game projects; pass location, the absolute path of the folder to create the project in.')
@@ -221,7 +242,7 @@ describe('create_game_project', () => {
   })
 
   it('refuses when WASD Engine keeps no game projects', async () => {
-    const result = await createGameProject(ctx, { name: 'Game', location: root }, call, [])
+    const result = await createGameProject(ctx, { name: 'Game', location: root }, call, [], '')
     expect(result.isError).toBe(true)
     expect(text(result)).toBe('This WASD Engine keeps no game projects, so it cannot create one.')
   })

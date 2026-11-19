@@ -501,4 +501,10 @@ describe('GameMcpServer', () => {
     expect(() => new GameMcpServer(other, GameMcpServer.Config({ dataRoot: root, temporaryFolders: [root, 'scratch'] })))
       .toThrow('temporaryFolders must hold absolute paths, got "scratch".')
   })
+
+  it('refuses new game guidance of only whitespace, and adds none by default', async () => {
+    expect(GameMcpServer.Config({ dataRoot: root }).newGameGuidance).toBe('')
+    expect(() => new GameMcpServer(ctx, GameMcpServer.Config({ dataRoot: root, newGameGuidance: ' \n\t' })))
+      .toThrow('newGameGuidance must be empty or hold more than whitespace.')
+  })
 })

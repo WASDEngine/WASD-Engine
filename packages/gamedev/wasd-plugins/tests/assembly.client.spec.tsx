@@ -2,8 +2,9 @@
 /**
  * The shipped Web client composition: WASD Engine Plugins registers the Export / Share button among the Session header actions
  * and among the New Session options, which a blank Session shows while its header has no actions, the Play and Build
- * switch in the sidebar's mode seat with the Play page as its main panel, and the first build tip among the model
- * seat's callouts; unloading the plugin removes all of them.
+ * switch in the sidebar's mode seat with the Play page as its main panel, the first build tip among the model seat's
+ * callouts, and the Chat Definition that leaves the new game guidance out of the conversation; unloading the plugin
+ * removes all of them.
  */
 import { createClientTest, webApp } from '@deepseek-ai/dsh-client-test-runtime/src/assembly/index.ts'
 import { expect } from 'vitest'
@@ -12,12 +13,13 @@ import { PlayBuildToggle } from '../src/client/PlayBuildToggle.tsx'
 import { PlayPage } from '../src/client/PlayPage.tsx'
 import { FirstBuildTip } from '../src/client/FirstBuildTip.tsx'
 import { ExportShareButton } from '../src/client/ExportShareButton.tsx'
+import { newGameGuidanceDefinition } from '../src/client/new-game-guidance.ts'
 
 const it = createClientTest({ roster: webApp })
 
 const SELF = '@deepseek-ai/dsh-wasd-plugins'
 
-it('registers the Export / Share button, the Play page and its switch, and the first build tip, and removes them on unload', async ({ mock, start }) => {
+it('registers the Export / Share button, the Play page and its switch, the first build tip, and the new game guidance Definition, and removes them on unload', async ({ mock, start }) => {
   // The tier proxies a Remote namespace that a roster module injects or the mock answers; the first build tip
   // waits for Agent Teams' namespace, which no roster module injects.
   mock.unary('agentTeams/setEnabled', undefined)
@@ -41,9 +43,14 @@ it('registers the Export / Share button, the Play page and its switch, and the f
     .filter(entry => entry.component === FirstBuildTip)
     .map(entry => entry.options.id)
   expect(tips()).toEqual(['wasd-first-build'])
+  const guidance = () => c.ctx.uiConversation.events.entries()
+    .filter(definition => definition.kind === newGameGuidanceDefinition.kind)
+    .map(definition => definition.target)
+  expect(guidance()).toEqual(['chat'])
 
   await c.unload(SELF)
   expect(placements()).toEqual([[], []])
   expect(play()).toEqual([])
   expect(tips()).toEqual([])
+  expect(guidance()).toEqual([])
 }, 60_000)

@@ -1,13 +1,15 @@
 /**
  * The server in a Loader composition, as the app mounts it: the listener starts before the other plugins have loaded,
  * and an agent that connects then gets its answers once the Loader has settled, so the instructions name the provider
- * of a plugin whose start ends after the listener's, as the game add-ons' start ends after their catalog loads.
+ * of a plugin whose start ends after the listener's, as the game add-ons' start ends after their catalog loads; and the
+ * result of a game project that a connected agent creates ends with the row's guidance for the new game.
  */
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import Loader from '@deepseek-ai/cordis-plugin-loader'
+import { GameProjectController } from '@deepseek-ai/dsh-api-workspace-controller'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import TypertRegistry from '@deepseek-ai/dsh-typert-registry'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
@@ -66,9 +68,12 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-it('answers an agent that connects while a plugin still starts once the Loader has settled, with that plugin\'s provider', async () => {
-  await ctx.loader.create({ name: 'cordis:game-mcp', config: { dataRoot: join(root, 'data'), port: 0 } })
-  await ctx.loader.create({ name: 'cordis:late-plugin' })
+/**
+ * Wait until the loaded server listens, and start connecting an agent named claude-code to it, which the test's
+ * context closes.
+ * @returns the server's views so far, which keep growing, the agent, and its connection.
+ */
+async function connectAgent(): Promise<{ views: GameMcpView[]; client: Client; connecting: Promise<void> }> {
   const server = ctx.get('gameMcp')
   if (server === undefined) throw new Error('the game MCP server is not loaded')
   const watching = new AbortController()
@@ -85,6 +90,13 @@ it('answers an agent that connects while a plugin still starts once the Loader h
   const connecting = client.connect(new StreamableHTTPClientTransport(new URL(views.at(-1)?.url as string), {
     requestInit: { headers: { Authorization: `Bearer ${token}` } },
   }))
+  return { views, client, connecting }
+}
+
+it('answers an agent that connects while a plugin still starts once the Loader has settled, with that plugin\'s provider', async () => {
+  await ctx.loader.create({ name: 'cordis:game-mcp', config: { dataRoot: join(root, 'data'), port: 0 } })
+  await ctx.loader.create({ name: 'cordis:late-plugin' })
+  const { views, client, connecting } = await connectAgent()
   // The server has the agent's first request while the late plugin still starts.
   await vi.waitFor(() => { expect(views.at(-1)?.clients).toMatchObject([{ id: 'claude-code' }]) }, { timeout: TIMEOUT })
   started.resolve(undefined)
@@ -93,4 +105,26 @@ it('answers an agent that connects while a plugin still starts once the Loader h
   expect(client.getInstructions()).toContain('\n- Late (late_*): Waves once its plugin has started.')
   expect(client.getInstructions()).toContain('\n\n## Late\n\nCall late_wave.')
   expect((await client.listTools()).tools.map(tool => tool.name)).toContain('late_wave')
+}, TIMEOUT)
+
+it('ends the result of a game project that a connected agent creates with the row\'s guidance for the new game', async () => {
+  const guidance = 'These additional instructions are the recommended prompt for building games with WASD Engine:\n* Play the game yourself'
+  // The Workspace controller's game project controller, with Git, over a registry that registers each folder.
+  ctx.provide('workspaceRegistry', {
+    create: async (path: string) => {
+      const canonical = await realpath(path)
+      return { id: 'w1', path: canonical, title: basename(canonical), sessionIds: [], createdAt: '2026-11-19T00:00:00.000Z', updatedAt: '2026-11-19T00:00:00.000Z' }
+    },
+  } as never)
+  new GameProjectController(ctx, { documentsDirectory: join(root, 'Documents'), documentsLookupTimeoutMs: 10_000, required: false }, () => Promise.resolve(''))
+  await ctx.loader.create({ name: 'cordis:game-mcp', config: { dataRoot: join(root, 'data'), port: 0, newGameGuidance: guidance } })
+  const { client, connecting } = await connectAgent()
+  await connecting
+
+  const result = await client.callTool({ name: 'create_game_project', arguments: { name: 'Space Frogs', model: 'Claude Fable 5.2' } })
+  const content = result.content as Array<{ type: string; text?: string }>
+  expect(result.isError).toBeFalsy()
+  expect(content).toHaveLength(1)
+  expect(content[0]?.text).toMatch(/^Created the game project "Space Frogs" in /u)
+  expect(content[0]?.text?.endsWith(`only together with session.\n\n${guidance}`)).toBe(true)
 }, TIMEOUT)

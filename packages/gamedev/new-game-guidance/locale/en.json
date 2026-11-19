@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "New game guidance",
+    "description": "Give the agent extra guidance together with the first prompt for a new game, for a better first build."
+  }
+}

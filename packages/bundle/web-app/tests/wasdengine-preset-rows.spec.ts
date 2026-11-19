@@ -125,9 +125,11 @@ describe('shipped agent preset rows', () => {
     }).sort()
     expect(ids).toEqual(['cordis', 'gamedev'])
     expect(rows.map(row => row.row)).toEqual(expect.arrayContaining([
-      'gamedev/todo-continuation', 'gamedev/compaction/compaction-basic', 'gamedev/planning/plan-mode',
+      'gamedev/todo-continuation', 'gamedev/new-game-guidance', 'gamedev/compaction/compaction-basic', 'gamedev/planning/plan-mode',
     ]))
-    expect(packages).toEqual(expect.arrayContaining(['@deepseek-ai/dsh-todo-continuation', '@deepseek-ai/dsh-plan-mode']))
+    expect(packages).toEqual(expect.arrayContaining([
+      '@deepseek-ai/dsh-todo-continuation', '@deepseek-ai/dsh-new-game-guidance', '@deepseek-ai/dsh-plan-mode',
+    ]))
   })
 
   it.skipIf(!packages.some(isBuilt))('load from their built packages under plain Node, resolved from this bundle', async () => {

@@ -3,7 +3,8 @@
  * preset label of each Session header and in the New Session row of a blank Session, the Multiplayer button after
  * Export / Share and Add-ons in the header, the Play and Build switch in the sidebar's mode seat with the Play page as
  * the main panel {@link PLAY_PANEL} and the game library it shows, the first build tip beside the composer's model seat,
- * and, where the Desktop Browser tabs can be driven, the window half of the agent's Browser. A Desktop window also
+ * the Chat Definition that leaves the new game guidance after a game's first prompt out of the conversation, and,
+ * where the Desktop Browser tabs can be driven, the window half of the agent's Browser. A Desktop window also
  * opens the confirmation pages the multiplayer tools ask for, and opens the game links the shell hands the app in the
  * Play page. The Export / Share button exists while the Peer may read the `wasdPlugins` Remote's project views, the
  * Multiplayer button while it may read its multiplayer views, the Play page and its switch while it may read the site
@@ -37,6 +38,7 @@ import { FirstBuildTip, type FirstBuildTipInjected } from './FirstBuildTip.tsx'
 import { desktopBridges, followGameLinks, followLibrary } from './library.ts'
 import { followLinkRequests } from './links.ts'
 import { de, en, es, fr, ja, NS, pt, ru, zh, type WasdPluginsUiKey } from './locales.ts'
+import { newGameGuidanceDefinition } from './new-game-guidance.ts'
 import {
   ExportShareButton, type ExportPlatform, type ExportShareInjected, type ExportSharePlacement, type ReleaseTarget, type ShareRequest,
 } from './ExportShareButton.tsx'
@@ -299,6 +301,8 @@ function registerUi(ctx: Context): void {
       }
     })
   })
+  // The guidance that follows the user's first prompt for a new game reaches the model but stays out of Chat.
+  ctx.inject(['uiConversation'], (scope) => { scope.uiConversation.events.register(newGameGuidanceDefinition) })
   const dismissedProjects = createDismissedProjects()
   ctx.inject(['modelDirectories', 'remote.agentTeams', 'remote.workspaceFiles'], (scope) => {
     scope.slots.inject('conversation.input.model.callout', () => scope.slots.register({

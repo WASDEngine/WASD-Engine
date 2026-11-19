@@ -1,0 +1,64 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/new-game-guidance/README.md
+/:
+  en: f59e8e2b5df7de4a
+  zh: e573cbdf3386ba8c
+/deepseek-ai-dsh-new-game-guidance:
+  en: bf52662743856a5f
+  zh: d80540ba03db48ca
+/deepseek-ai-dsh-new-game-guidance/summary:
+  en: 6f980471e3c98b1f
+  zh: e8146c9ece39cfc6
+/deepseek-ai-dsh-new-game-guidance/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-new-game-guidance/use-this-package:
+  en: cb192d41d33de9a5
+  zh: 932d430b9187c536
+/deepseek-ai-dsh-new-game-guidance/use-this-package/when-to-choose-it:
+  en: 33a6b40052b01055
+  zh: 40075333e2ddc36b
+/deepseek-ai-dsh-new-game-guidance/use-this-package/configure-it:
+  en: e428b94ef5914407
+  zh: 5e4181fee1e596cf
+/deepseek-ai-dsh-new-game-guidance/use-this-package/when-the-guidance-is-added:
+  en: f94d5283a8f5d89a
+  zh: 809e2f00662709e1
+/deepseek-ai-dsh-new-game-guidance/understand-the-implementation:
+  en: 596b36aa040e8446
+  zh: 13bbc84dde30e17a
+/deepseek-ai-dsh-new-game-guidance/understand-the-implementation/design:
+  en: 6c164314075005f8
+  zh: c0da61d8197a569e
+/deepseek-ai-dsh-new-game-guidance/understand-the-implementation/source-map:
+  en: 9de67d1b032fc65b
+  zh: 7caf8c6647ebf8cb
+/deepseek-ai-dsh-new-game-guidance/further-exploration:
+  en: a545b56001938d0b
+  zh: bff0d31c1d7a931d
+/deepseek-ai-dsh-new-game-guidance/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-new-game-guidance/model-experience/guidance-context-message:
+  en: f1b49d2050b82aaf
+  zh: ab01550f0635ac56
+/deepseek-ai-dsh-new-game-guidance/model-experience/guidance-context-message/what-the-model-sees:
+  en: 28c904a8ee2d030d
+  zh: 86bf1fb4c912b3a8
+/deepseek-ai-dsh-new-game-guidance/model-experience/guidance-context-message/what-the-model-sees/guidance:
+  en: d2e85100151f0735
+  zh: 230973d52318bb0b
+/deepseek-ai-dsh-new-game-guidance/model-experience/guidance-context-message/token-effect:
+  en: fdc678dc7598c73c
+  zh: 75324f714db7af56
+/deepseek-ai-dsh-new-game-guidance/model-experience/guidance-context-message/kv-cache-effect:
+  en: 8860fe9dbe51678f
+  zh: 55f13ffd14f2e04d
+/deepseek-ai-dsh-new-game-guidance/known-limitations-and-deferred-work:
+  en: 14a2a14cf6c16c24
+  zh: e7601cf53a71d9f3
+/deepseek-ai-dsh-new-game-guidance/known-limitations-and-deferred-work/dev-note:
+  en: e67f633dc6fe7773
+  zh: 3bb0c20c93f16f98

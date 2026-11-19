@@ -3,18 +3,18 @@
  * overview of the server instructions, with every shipped plugin, fits in the 4,096 characters that Claude Code keeps
  * and puts a fitting download before Nano Banana and ElevenLabs, a plugin's guide comes from `search_game_tools`, and
  * `create_game_project` makes the folder in WASD Engine's folder for game projects with a Git repository and its one
- * commit, as the Create game project dialog does, and registers it with no Session, the window's sidebar lists it as a
- * game project, and the project's credits hold the model the agent named.
+ * commit, as the Create game project dialog does, and registers it with no Session, its result ends with the new game
+ * guidance of WASD Engine's game tools overlay, the window's sidebar lists it as a game project, and the project's
+ * credits hold the model the agent named.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, type Browser } from 'playwright'
 import { afterEach, expect, it, onTestFailed, vi } from 'vitest'
-import type {} from '@deepseek-ai/dsh-deepseek-account'
-import type {} from '@deepseek-ai/dsh-game-mcp'
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client'
+import { listeningGameMcp, shippedNewGameGuidance, writeGameMcpPatch } from './game-mcp-support.ts'
 import { launchWebScaffold, watchConsole, type WebScaffold } from './scaffold.ts'
 import { newEnglishPage, saveFailureShot } from './support.ts'
 
@@ -39,28 +39,10 @@ afterEach(async () => {
 
 it('creates a game project for a connected agent, which the window lists as a game project with no Session', async () => {
   data = await mkdtemp(join(tmpdir(), 'dsh-game-mcp-project-'))
-  // A patch replaces the row's whole configuration: a data folder of its own, and any free port, as the installed app
-  // may hold the usual one.
-  const overlay = join(data, 'game-mcp.patch.yml')
-  await writeFile(overlay, `- id: game-mcp\n  config:\n    dataRoot: ${JSON.stringify(join(data, 'game-mcp'))}\n    port: 0\n`)
-  scaffold = await launchWebScaffold({ extraOverlayPath: overlay })
+  const guidance = shippedNewGameGuidance()
+  scaffold = await launchWebScaffold({ extraOverlayPath: await writeGameMcpPatch(data, guidance) })
   const ctx = scaffold.ctx
-  // Connected agents' calls run while someone is signed in.
-  const account = ctx.get('deepseekAccount')
-  if (account !== undefined) vi.spyOn(account, 'getState').mockResolvedValue({ status: 'credential-stored', links: { usageUrl: '', topUpUrl: '' }, attempt: null })
-  const server = ctx.get('gameMcp')
-  if (server === undefined) throw new Error('the game MCP server is not loaded')
-  const watching = new AbortController()
-  let url: string | undefined
-  for await (const view of server.watch(watching.signal)) {
-    if (view.state === 'failed') throw new Error(`the game MCP server failed: ${view.message ?? ''}`)
-    if (view.state !== 'listening') continue
-    url = view.url
-    break
-  }
-  watching.abort()
-  if (url === undefined) throw new Error('the game MCP server has no address')
-  const token = (await readFile(join(data, 'game-mcp', 'token'), 'utf8')).trim()
+  const { url, token } = await listeningGameMcp(ctx, data)
 
   browser = await chromium.launch()
   const page = await newEnglishPage(browser)
@@ -110,7 +92,8 @@ it('creates a game project for a connected agent, which the window lists as a ga
     + 'Before you write code, plan the game around the plugins that search_game_tools lists, and read the guide of each one you will use. '
     + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
     + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
-    + 'only together with session.')
+    + `only together with session.\n\n${guidance}`)
+  expect(guidance).toMatch(/^These additional instructions are the recommended prompt for building games with WASD Engine\./u)
   expect(execFileSync('git', ['-C', path, 'log', '--format=%s'], { encoding: 'utf8' }).trim()).toBe(`Create ${NAME}`)
   const workspace = ctx.workspaceRegistry.list().find(entry => entry.path === path)
   expect(workspace?.title).toBe(NAME)

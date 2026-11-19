@@ -5,6 +5,8 @@
  * when the user opens it or when a game tool call names it. A location in a temporary folder is refused, so an agent's
  * throwaway work stays out of the user's game projects. Each created project is reported through the
  * `game-mcp/project-created` event with the AI model the agent named in `model`, which the released game's page credits.
+ * The result of a call that created a project ends with the deployment's guidance for building the new game, when it
+ * sets one.
  * @module @deepseek-ai/dsh-game-mcp/src/projects
  */
 import { isAbsolute } from 'node:path'
@@ -93,11 +95,12 @@ function temporaryLocationText(location: string): string {
  * @param call - the calling agent and the call's cancellation, which stops the Documents lookup or a running Git
  *   command; a folder created before it is still registered.
  * @param temporaryFolders - absolute folders in which a `location` is refused.
- * @returns the result that names the new folder, and after a call that named no model says where to name it, or an
- *   error result that says why nothing was created.
+ * @param guidance - text that ends the result of a call that created a project, as its own paragraph; empty adds none.
+ * @returns the result that names the new folder, after a call that named no model says where to name it, and ends with
+ *   the guidance, or an error result that says why nothing was created.
  */
 export async function createGameProject(
-  ctx: Context, args: JsonObject, call: Pick<GameMcpCall, 'client' | 'signal'>, temporaryFolders: readonly string[],
+  ctx: Context, args: JsonObject, call: Pick<GameMcpCall, 'client' | 'signal'>, temporaryFolders: readonly string[], guidance: string,
 ): Promise<McpCallResult> {
   const { name, location, model } = args
   const { signal } = call
@@ -121,18 +124,14 @@ export async function createGameProject(
     }
     const { workspace, git } = await projects.create({ name, directory }, signal)
     reportCreated(ctx, { client: call.client, path: workspace.path, ...named === undefined ? {} : { model: named } })
-    return {
-      content: [{
-        type: 'text',
-        text: `Created the game project ${JSON.stringify(workspace.title)} in ${workspace.path}, which WASD Engine lists among the user's game projects. `
-          // WASD Engine may keep the game's credits in the folder at once, so the folder is not said to be empty.
-          + (git ? 'The folder holds a Git repository with one empty commit and no game files yet. ' : 'The folder holds no game files yet, and no Git repository. ')
-          + `Before you write code, plan the game around the plugins that ${SEARCH_TOOL} lists, and read the guide of each one you will use. `
-          + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
-          + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
-          + `only together with session.${named === undefined ? MODEL_HINT : ''}`,
-      }],
-    }
+    const text = `Created the game project ${JSON.stringify(workspace.title)} in ${workspace.path}, which WASD Engine lists among the user's game projects. `
+      // WASD Engine may keep the game's credits in the folder at once, so the folder is not said to be empty.
+      + (git ? 'The folder holds a Git repository with one empty commit and no game files yet. ' : 'The folder holds no game files yet, and no Git repository. ')
+      + `Before you write code, plan the game around the plugins that ${SEARCH_TOOL} lists, and read the guide of each one you will use. `
+      + 'Make the game in this folder, and write its project.godot before you install add-ons into it. '
+      + 'Where a game tool takes project, pass this folder\'s absolute path; the blender_*, gimp_*, and supercollider_* tools take project '
+      + `only together with session.${named === undefined ? MODEL_HINT : ''}`
+    return { content: [{ type: 'text', text: guidance === '' ? text : `${text}\n\n${guidance}` }] }
   } catch (error) {
     return errorResult(failureText(error))
   }

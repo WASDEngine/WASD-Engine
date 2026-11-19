@@ -223,6 +223,8 @@
     "tests/wasd-export-share-button.e2e.ts",
     "tests/game-assets.e2e.ts",
     "tests/game-mcp-project.e2e.ts",
+    "tests/game-mcp-live-agents.e2e.ts",
+    "tests/game-mcp-support.ts",
     "tests/schedule-after.e2e.ts",
     "tests/schedule-manual.e2e.ts",
     "tests/feedback-command.e2e.ts",

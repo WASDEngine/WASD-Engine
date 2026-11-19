@@ -10,8 +10,9 @@
 # `blenderStore`, which the `blender` row's `addonStore` names for its workers. A profile patch turns a row off with
 # `- id: <row>` and `disabled: true`, which the Plugins
 # page's Game tools tab writes. `ui-game-tools` mounts the tabs' browser half. `game-mcp` listens on
-# 127.0.0.1:9273 and keeps its token and the connected agents' Sessions under `dataRoot`; `ui-game-mcp` mounts its
-# browser half, the sign-in dialog's setup panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
+# 127.0.0.1:9273, keeps its token and the connected agents' Sessions under `dataRoot`, and ends the result of
+# `create_game_project` with `newGameGuidance`; `ui-game-mcp` mounts its browser half, the sign-in dialog's setup
+# panel. `wasd-plugins` is WASD Engine Plugins, WASD Engine's own features:
 # the Web export and release tools, which record under `dataRoot` which project folders released each game, the Export /
 # Share and Multiplayer buttons, the Play page and its Play and Build switch, and, in the Desktop profile, whose Browser
 # tabs the window can drive (the `ui-sidebar-browser` row's condition), the agent's `browser_*` tools and the game
@@ -89,6 +90,14 @@
       name: '@deepseek-ai/dsh-game-mcp'
       config:
         dataRoot: !!js dshHomePath('game-mcp')
+        # The lines that the gamedev preset's new-game-guidance row adds after the first prompt for a new game, without
+        # its request to work without asking questions, which a connected agent takes only from its user.
+        newGameGuidance: |-
+          These additional instructions are the recommended prompt for building games with WASD Engine. Do your absolute best to follow them:
+          * Put your effort into making what's on screen look, move and sound great
+          * People and humanoid figures should look and move like real people, with fitting animations
+          * The environment should be believable, textured, with lighting that sells the mood
+          * Run and play the demo yourself and fix anything that looks or plays wrong before you finish
     - id: ui-game-mcp
       name: '@deepseek-ai/dsh-client-ui-game-mcp'
     - id: wasd-plugins

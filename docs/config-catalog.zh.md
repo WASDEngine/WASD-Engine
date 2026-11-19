@@ -1953,7 +1953,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-game-mcp`
 
 - `inject`: `typert`
-- `source`: [`packages/gamedev/game-mcp/src/index.ts:48`](../packages/gamedev/game-mcp/src/index.ts)
+- `source`: [`packages/gamedev/game-mcp/src/index.ts:49`](../packages/gamedev/game-mcp/src/index.ts)
 
 ```ts config-catalog
 /** Plugin configuration. */
@@ -1980,6 +1980,12 @@ export interface Config {
    * outside Windows, /tmp and /var/tmp.
    */
   temporaryFolders: string[]
+  /**
+   * Text that ends the result of a `create_game_project` call that created a game project, as its own paragraph: what
+   * the deployment asks of an agent that builds a new game, such as the instructions of its recommended prompt. Empty
+   * adds none.
+   */
+  newGameGuidance: string
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-game-mcp -->
@@ -3204,6 +3210,23 @@ export interface Config {
 }
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-message-feedback -->
+
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-new-game-guidance -->
+<a id="deepseek-aidsh-new-game-guidance"></a>
+
+## `@deepseek-ai/dsh-new-game-guidance`
+
+- `inject`: `sessionProjections` · `fs`
+- `source`: [`packages/gamedev/new-game-guidance/src/index.ts:34`](../packages/gamedev/new-game-guidance/src/index.ts)
+
+```ts config-catalog
+/** Plugin configuration. */
+export interface Config {
+  /** The guidance, exactly as the model reads it after the first prompt; text that is only whitespace fails at load. */
+  text: string
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-new-game-guidance -->
 
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-office-kit -->
 <a id="deepseek-aidsh-office-kit"></a>

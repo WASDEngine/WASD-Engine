@@ -1,5 +1,5 @@
 ---
-description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web、wasd_export_desktop、wasd_export_mobile、wasd_record_preview 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版、Windows 版、macOS 版、Android 版和 iOS 版，录制其预览 GIF 与静态图，并作为带分享链接的编号版本发布到 WASD Engine 网站，可公开在探索页上或设为私密，并可附带桌面版下载；多人联机工具，借助 WASD Multiplayer 插件让游戏免费由玩家主持上线，或使用由用户在网站上确认的专用服务器上线；桌面应用中智能体的 browser_* 工具，在右侧边栏的浏览器标签页中操作；wasdPlugins Remote；会话标题栏与新会话页面上的“导出 / 分享”按钮；会话标题栏中的“多人联机”按钮；侧边栏顶部的“游玩”与“创作”切换及“游玩”页面，即应用内的 WASD Engine 网站游戏，以及桌面应用中安装、更新并启动其桌面版构建的游戏库；以及输入框推理等级选择器旁的首次构建提示。"
+description: "WASD Engine 插件，即 WASD Engine 自带且始终开启的功能：每个会话和 WASD Engine 的 MCP 服务器都提供 wasd_export_web、wasd_export_desktop、wasd_export_mobile、wasd_record_preview 与 wasd_release_game 工具，用于把 Godot 游戏导出为网页版、Windows 版、macOS 版、Android 版和 iOS 版，录制其预览 GIF 与静态图，并作为带分享链接的编号版本发布到 WASD Engine 网站，可公开在探索页上或设为私密，并可附带桌面版下载；多人联机工具，借助 WASD Multiplayer 插件让游戏免费由玩家主持上线，或使用由用户在网站上确认的专用服务器上线；桌面应用中智能体的 browser_* 工具，在右侧边栏的浏览器标签页中操作；wasdPlugins Remote；会话标题栏与新会话页面上的“导出 / 分享”按钮；会话标题栏中的“多人联机”按钮；侧边栏顶部的“游玩”与“创作”切换及“游玩”页面，即应用内的 WASD Engine 网站游戏，以及桌面应用中安装、更新并启动其桌面版构建的游戏库；输入框推理等级选择器旁的首次构建提示；以及不在对话中显示新游戏指引的 Chat Definition。"
 kind: "package-reference"
 ---
 
@@ -147,6 +147,10 @@ Godot 游戏可以通过两种方式之一上线，两种方式中玩家都需�
 
 “使用 Max + 团队协作”为会话的模型选择 Max 推理等级并启用智能体团队协作，已经开启的一项会跳过；两项只作用于该会话，新会话仍沿用已保存的默认推理等级（选择时向 `session.selectModel` 传入 `saveDefault: false`）；随后卡片确认两项均已开启，约三秒后消失。某项设置被拒绝时，卡片保持打开并显示原因。“暂不”，或卡片获得焦点时按 Escape，会在当前浏览器中隐藏该游戏项目的提示。提示通过 `workspaceFiles` Remote 跟踪文件夹的直接条目，文件夹一有内容就停止跟踪，因此首次构建写入的文件会让提示永久消失。它占用本分支为 [`@deepseek-ai/dsh-client-ui-model-selection`](../../client/ui-model-selection/README.zh.md) 的模型选择器添加的 `conversation.input.model.callout` 插槽。
 
+### Chat 中的新游戏指引
+
+`gamedev` 预设的 [`@deepseek-ai/dsh-new-game-guidance`](../new-game-guidance/README.zh.md) 会紧接在用户为新游戏发出的第一条提示之后加入指引，它判断新游戏所依据的空文件夹与首次构建提示相同；指引是一条来源类型为 `new-game-guidance` 的消息。浏览器部分注册一个 Chat Definition，在 Chat 目标上认领这些消息且不为它们构建节点，因此 Chat 显示用户写下的原始提示，而模型会在提示之后读到指引。列出模型收到的每条消息的 Trajectory 视图仍会列出该指引。
+
 <a id="the-agents-browser"></a>
 ### 智能体的浏览器
 
@@ -230,7 +234,7 @@ LiveShare 把每个方法都保留给所有者，因为发布是以所有者的�
 | [`src/zip.ts`](src/zip.ts) | 上传与网页版构建 ZIP 文件所用的流式 ZIP 写入器 |
 | [`src/exports.ts`](src/exports.ts) | 移动端构建与网页版构建 ZIP 文件所在的文件夹，以及该 ZIP 文件的打包 |
 | [`src/library.ts`](src/library.ts)、[`src/library-process.ts`](src/library-process.ts) | 游戏库：安装、更新、启动和移除，以及解压构建和启动游戏的系统工具 |
-| [`src/client/`](src/client/) | “导出 / 分享”与“多人联机”按钮、“游玩”与“创作”切换、带游戏库和游戏链接的“游玩”页面、首次构建提示、它们的文案、提示语和 Remote 挂载 |
+| [`src/client/`](src/client/) | “导出 / 分享”与“多人联机”按钮、“游玩”与“创作”切换、带游戏库和游戏链接的“游玩”页面、首次构建提示、新游戏指引的 Chat Definition、它们的文案、提示语和 Remote 挂载 |
 
 Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列表，因此重新连接的窗口能看到所有等待中的命令，同时给出已被接手、其调用仍在等待的命令 id；当两个列表都不再包含某条命令时，接手它的窗口会停止该命令。每个流都有自己的 `follower` id，窗口接手命令时会给出它；流结束时，Host 让通过该流接手的命令失败；流重新打开后，窗口通过新的 id 接手命令，接手被拒绝之后也是如此。窗口通过标签页的 `executeJavaScript`，在页面的主环境中按源代码文本运行每个页面脚本；页面文本把编号控件保存在一个按窗口随机命名的页面属性中。由于页面可以改变其脚本看到的内容，窗口会检查脚本返回的每个值。各脚本不共享代码，因此页面文本、字段填写和焦点检查都在各自的 JSON 参数中接收同一条保密字段规则 `SECRET_FIELDS`。[侧边栏浏览器](../../client/ui-sidebar-browser/README.zh.md)为标签页的 Electron `<webview>` 提供自动化接口；Web 的 iframe 载体没有该接口，因此 Web 窗口从不接手命令。
 

@@ -2,7 +2,8 @@
  * WASD Engine's MCP server for other agents on this computer, such as Claude Code or Codex: a Streamable HTTP
  * endpoint on `127.0.0.1` that requires the token in the server's data folder and offers the game tools that
  * plugins contribute through `ctx.gameMcp.provide()`, a search over them, a call by name, and the creation of a game
- * project, which opens no Session in it. The listener starts with the plugin, before the other plugins that provide game
+ * project, which opens no Session in it and whose result ends with the deployment's guidance for building the new game
+ * (`newGameGuidance`). The listener starts with the plugin, before the other plugins that provide game
  * tools have loaded, so the server answers requests only once the Loader's tree has settled, or after `readyTimeoutMs`:
  * MCP has no way to send an agent new instructions, and an agent keeps the overview it received when it connected. Games
  * that a connected agent starts run in a Session of the WASD Engine window, which the server asks the window to show.
@@ -68,6 +69,12 @@ export interface Config {
    * outside Windows, /tmp and /var/tmp.
    */
   temporaryFolders: string[]
+  /**
+   * Text that ends the result of a `create_game_project` call that created a game project, as its own paragraph: what
+   * the deployment asks of an agent that builds a new game, such as the instructions of its recommended prompt. Empty
+   * adds none.
+   */
+  newGameGuidance: string
 }
 
 /** The part of the Loader that the server waits for. */
@@ -125,6 +132,7 @@ export default class GameMcpServer extends TypertRemoteService {
     progressIntervalMs: z.natural().min(1).default(30_000),
     readyTimeoutMs: z.natural().min(1).max(MAX_TIMER_DELAY_MS).default(8_000),
     temporaryFolders: z.array(z.string()).default(systemTemporaryFolders()),
+    newGameGuidance: z.string().default(''),
   })
 
   private readonly providers: GameMcpProvider[] = []
@@ -146,13 +154,17 @@ export default class GameMcpServer extends TypertRemoteService {
 
   /**
    * @param ctx - plugin context; the listener lives as long as it.
-   * @param config - validated configuration; a relative `dataRoot` or temporary folder fails the plugin load.
+   * @param config - validated configuration; a relative `dataRoot` or temporary folder, and a `newGameGuidance` of only
+   *   whitespace, fail the plugin load.
    */
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'gameMcp', { namespace: 'gameMcp' })
     if (!isAbsolute(config.dataRoot)) throw new Error(`Game MCP plugin: dataRoot must be an absolute path, got ${JSON.stringify(config.dataRoot)}.`)
     const relative = config.temporaryFolders.find(folder => !isAbsolute(folder))
     if (relative !== undefined) throw new Error(`Game MCP plugin: temporaryFolders must hold absolute paths, got ${JSON.stringify(relative)}.`)
+    if (config.newGameGuidance !== '' && config.newGameGuidance.trim() === '') {
+      throw new Error('Game MCP plugin: newGameGuidance must be empty or hold more than whitespace.')
+    }
     this.freePlan = new FreePlan(ctx, join(config.dataRoot, FREE_PLAN_FILE), () => { this.toolsChanged() })
     this.catalog = new GameToolCatalog(() => this.providers, (message) => { ctx.logger.warn(message) }, (result) => {
       try {
@@ -167,7 +179,7 @@ export default class GameMcpServer extends TypertRemoteService {
       catalog: this.catalog,
       refusal: () => this.refusal(),
       call: (client, signal) => this.bindCall(client, signal),
-      createProject: (args, call) => createGameProject(ctx, args, call, config.temporaryFolders),
+      createProject: (args, call) => createGameProject(ctx, args, call, config.temporaryFolders, config.newGameGuidance),
       usageOffer: failure => this.freePlan.offer(failure),
       stayOnFree: () => this.freePlan.stayOnFree(),
       note: client => this.notes.note(
