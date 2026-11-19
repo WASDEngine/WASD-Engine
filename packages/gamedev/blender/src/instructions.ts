@@ -11,11 +11,12 @@ export const BLENDER_SERVER_NAME = 'wasd_blender'
 
 /**
  * What the Blender tools do and add to the game, as the overview of WASD Engine's MCP server instructions lists them for
- * connected agents: that the game's 3D models come from here rather than from primitives built in code.
+ * connected agents: that the game's 3D models that are neither downloaded nor generated come from here rather than from primitives
+ * built in code.
  */
-export const BLENDER_GAME_MCP_DESCRIPTION = 'Model, texture, rig, and animate 3D assets in a headless Blender and export them as .glb files: '
-  + 'real shapes, bevels, and baked textures that primitives built in code cannot match. Make every model the player sees here unless you '
-  + 'download it, and the parts of meshes the game builds at runtime; in Godot a .glb still takes the game\'s shaders, animation, and per-instance variation.'
+export const BLENDER_GAME_MCP_DESCRIPTION = 'Model, texture, rig, and animate 3D assets in a headless Blender and export .glb files: '
+  + 'real shapes, bevels, and baked textures that code primitives cannot match. Make here each model the player sees that you '
+  + 'don\'t download or generate; in Godot a .glb still takes shaders, animation, and per-instance variation.'
 
 /** How to use the Blender tools, at most 6000 characters. */
 export const BLENDER_INSTRUCTIONS = `Blender runs headless behind these tools: there is no window, viewport, or screenshot. Blender keeps one session for each conversation: its open scene persists between calls until new_scene or open_blend replaces it, so call scene_info before relying on earlier state. If Blender restarts after a crash or a timeout, or stops after a long pause in the calls, unsaved work is lost: save .blend files at milestones. The first result after a start names the Blender version; check API names with python_api instead of guessing, since APIs change between versions.

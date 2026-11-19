@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tripo",
+    "description": "Lässt den Agenten mit Tripo texturierte 3D-Modelle, Skelette und Animationen erstellen und als .glb-Dateien im Spielprojekt speichern; dafür wird die KI-Nutzung Ihres WASD-Engine-Tarifs verwendet."
+  }
+}

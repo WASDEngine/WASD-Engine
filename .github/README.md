@@ -58,12 +58,16 @@ WASD Engine bundles everything you need to build high-polish games in a single a
     <td><b>Nano Banana 2.1</b><br>Google's image model for game art, UI pieces, and textures. Your agent makes and edits images from your references and saves them into your project.</td>
   </tr>
   <tr>
+    <td align="center"><img src="../packages/gamedev/tripo/icon.svg" width="40" height="40" alt="Tripo icon"></td>
+    <td><b>Tripo</b><br>Textured 3D models with skeletons and animations. Your agent turns a concept image or a description into a model, rigs and animates it, and saves it into your project.</td>
+  </tr>
+  <tr>
     <td align="center"><a href="https://polyhaven.com"><img src="../packages/gamedev/polyhaven/icon.svg" width="40" height="40" alt="Poly Haven logo"></a></td>
     <td><b>Poly Haven</b><br>Thousands of free HDRI skies, PBR textures, and 3D models, all CC0. Your agent searches Poly Haven and drops the assets it picks straight into your game. Powered by <a href="https://polyhaven.com">Poly Haven</a>, which does not endorse WASD Engine.</td>
   </tr>
 </table>
 
-Godot, Blender, GIMP, and SuperCollider come with the Desktop app for macOS and Windows, so there is nothing else to install, and so do the Web export template, MPFB with its MakeHuman assets, and the catalog's character and animation packs. When you run WASD Engine from source instead, Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks, and ElevenLabs and Nano Banana run through your WASD Engine account, counted in your plan's AI usage.
+Godot, Blender, GIMP, and SuperCollider come with the Desktop app for macOS and Windows, so there is nothing else to install, and so do the Web export template, MPFB with its MakeHuman assets, and the catalog's character and animation packs. When you run WASD Engine from source instead, Blender sets itself up the first time the agent uses it, or uses the Blender you already have, and the GIMP tools use your GIMP 3. The Poly Haven tools need nothing installed and download only the assets the agent picks, and ElevenLabs, Nano Banana, and Tripo run through your WASD Engine account, counted in your plan's AI usage.
 
 When your game needs behavior trees, dialogue, inventories, or rigged characters, your agent picks a proven add-on from the [catalog](../packages/bundle/web-app/wasdengine/addons/), installs it into your project, and reads how to use it:
 

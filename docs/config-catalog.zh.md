@@ -5413,6 +5413,25 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-tool-workspace-dependencies -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-tripo -->
+<a id="deepseek-aidsh-tripo"></a>
+
+## `@deepseek-ai/dsh-tripo`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/tripo/src/index.ts:31`](../packages/gamedev/tripo/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the Tripo tools. */
+export interface Config {
+  /** Origin of the WASD Engine API, the inference origin that the account sign-in releases its token to. */
+  apiOrigin: string
+  /** Time limit of one call, which waits for Tripo's task and saves its model; a textured P2 model takes about a minute. */
+  taskTimeoutMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-tripo -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-typert-loader -->
 <a id="deepseek-aidsh-typert-loader"></a>
 

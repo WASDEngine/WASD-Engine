@@ -34,14 +34,14 @@ const CODEX = connectedAgent({ id: 'codex', title: 'Codex' })
 
 describe('tool names', () => {
   it('credits the game tools by their Session and MCP names, and only those', () => {
-    expect(['godot_run', 'mcp__wasd_blender__execute_python', 'mcp__wasd_gimp__run', 'mcp__wasd_supercollider__render', 'elevenlabs_speech', 'image_generate', 'polyhaven_download']
-      .map(sessionToolCredit)).toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven'])
+    expect(['godot_run', 'mcp__wasd_blender__execute_python', 'mcp__wasd_gimp__run', 'mcp__wasd_supercollider__render', 'elevenlabs_speech', 'image_generate', 'tripo_rig', 'polyhaven_download']
+      .map(sessionToolCredit)).toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'tripo', 'polyhaven'])
     expect(['read', 'mcp__blender__execute', 'browser_open', 'wasd_release_game', 'audio_review'].map(sessionToolCredit)).toEqual([undefined, undefined, undefined, undefined, undefined])
     expect(['godot_check', 'wasd_release_game', 'mcp__wasd_gimp__run'].map(isGameWork)).toEqual([true, true, true])
     expect(['read', 'edit', 'browser_open', 'asset_search'].map(isGameWork)).toEqual([false, false, false, false])
     expect(['godot_run', 'wasd_export_web', 'blender_execute_python', 'polyhaven_download'].map(namesProject)).toEqual([true, true, false, false])
-    expect(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'image', 'polyhaven', 'wasd', 'asset', 'audio', 'nano-banana'].map(providerToolCredit))
-      .toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven', undefined, undefined, undefined, 'nano-banana'])
+    expect(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'image', 'tripo', 'polyhaven', 'wasd', 'asset', 'audio', 'nano-banana'].map(providerToolCredit))
+      .toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'tripo', 'polyhaven', undefined, undefined, undefined, 'nano-banana'])
   })
 
   it('cleans model names and names every credit', () => {
@@ -94,10 +94,10 @@ describe('CreditsLedger', () => {
     const dir = await project()
     const ledger = new CreditsLedger()
     await Promise.all(Array.from({ length: MAX_MODEL_CREDITS + 2 }, (_, index) => ledger.add(dir, [{ name: `Model ${index}` }], [])))
-    await Promise.all(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven'].map(tool => ledger.add(dir, [], [tool as 'godot'])))
+    await Promise.all(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'tripo', 'polyhaven'].map(tool => ledger.add(dir, [], [tool as 'godot'])))
     const credits = await readCredits(dir)
     expect(credits.models).toEqual(Array.from({ length: MAX_MODEL_CREDITS }, (_, index) => ({ name: `Model ${index + 2}` })))
-    expect(credits.tools).toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'polyhaven'])
+    expect(credits.tools).toEqual(['godot', 'blender', 'gimp', 'supercollider', 'elevenlabs', 'nano-banana', 'tripo', 'polyhaven'])
   })
 
   it('changes one file in turn for two paths of one folder, so neither path loses the other\'s credits', async () => {

@@ -92,8 +92,8 @@ describe('the graphics review in the agents\' instructions', () => {
   it('gives the reviewer the tools in the agents\' order of preference, the add-ons by id, and a reply of notes and tools with no rating', () => {
     const prompt = reviewerPrompt([{ id: 'sky3d', host: 'godot', useWhen: 'A 3D game needs a day and night sky.' }])
     expect(prompt).toContain('- Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets')
-    expect(prompt).toContain('preferring an asset to download when one suits the game\'s art style, then generated 2D art over art drawn by hand or in code')
-    const order = ['- polyhaven_* (Poly Haven):', '- image_generate (Nano Banana):', '- Blender:', '- GIMP:'].map(item => prompt.indexOf(item))
+    expect(prompt).toContain('preferring an asset to download when one suits the game\'s art style, then generated 2D art and 3D models over art drawn, modeled, or built by hand or in code')
+    const order = ['- polyhaven_* (Poly Haven):', '- image_generate (Nano Banana):', '- tripo_* (Tripo):', '- Blender:', '- GIMP:'].map(item => prompt.indexOf(item))
     expect(order.every((at, index) => at > 0 && (index === 0 || at > (order[index - 1] ?? 0)))).toBe(true)
     expect(prompt).toContain('- game_addons installs tested add-ons, by id:\n  - sky3d (Godot): A 3D game needs a day and night sky.')
     expect(prompt).toContain('When the agent says what it changed since an earlier review of the same work, judge whether those changes '

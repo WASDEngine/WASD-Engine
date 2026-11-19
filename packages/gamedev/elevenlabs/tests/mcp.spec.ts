@@ -55,7 +55,7 @@ describe('the ElevenLabs tools over WASD Engine\'s MCP server', () => {
     const { client } = await connected()
     expect(client.getInstructions()).toContain(`## ElevenLabs\n\n${MCP_INSTRUCTIONS}`)
     expect(MCP_INSTRUCTIONS).toContain(CONSENT_STATEMENT)
-    expect(client.getInstructions()).toContain('\n- ElevenLabs (elevenlabs_*): Make character voices, sound effects, and music with ElevenLabs, and '
+    expect(client.getInstructions()).toContain('\n- ElevenLabs (elevenlabs_*): Make character voices, sound effects, and music, and '
       + 'clone the user\'s own voices. Prefer it to SuperCollider.\n')
     expect(MCP_INSTRUCTIONS).toContain('Prefer it to SuperCollider for every sound effect and piece of music, and use SuperCollider only when the user '
       + 'asks for it or ElevenLabs cannot make a sound.')

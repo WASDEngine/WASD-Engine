@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tripo",
+    "description": "Permet à l’agent de créer des modèles 3D texturés, des squelettes et des animations avec Tripo et de les enregistrer dans le projet de jeu en fichiers .glb, sur l’utilisation de l’IA de votre forfait WASD Engine."
+  }
+}

@@ -106,7 +106,7 @@ Windows x64 版 Desktop 应用改为随附运行时的归档文件，放在 `run
 <a id="tools"></a>
 ### 工具
 
-模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview`、`render` 以及带 `preview` 的 `execute_python` 调用另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。该服务器指令的概述用 [`src/instructions.ts`](src/instructions.ts) 中的 `BLENDER_GAME_MCP_DESCRIPTION` 向它们介绍本插件：Blender 能做出代码构建的基本体无法企及的真实形状、倒角和烘焙纹理，因此玩家看到的每个模型（agent 下载的除外），以及游戏在运行时构建的网格的各个部件，都应来自 Blender；而 Godot 中的 `.glb` 仍会使用游戏的着色器、动画和逐实例变化。
+模型以 `mcp__wasd_blender__<name>` 调用每个工具，所有路径参数都是绝对路径。结果是文本，`render_preview`、`render` 以及带 `preview` 的 `execute_python` 调用另附一张图像；调用失败时返回错误结果，其文本说明原因。通过 WASD Engine 的 MCP 服务器 [`@deepseek-ai/dsh-game-mcp`](../game-mcp/README.zh.md) 连接的 agent 以 `blender_<name>` 调用同样的工具，这些工具还接受 `session` 与 `project`（[每个对话一个 Blender 会话](#one-blender-session)）。该服务器指令的概述用 [`src/instructions.ts`](src/instructions.ts) 中的 `BLENDER_GAME_MCP_DESCRIPTION` 向它们介绍本插件：Blender 能做出代码构建的基本体无法企及的真实形状、倒角和烘焙纹理，因此玩家看到的每个模型（agent 下载或生成的除外）都应来自 Blender；而 Godot 中的 `.glb` 仍会使用着色器、动画和逐实例变化。
 
 | 工具 | 参数 | 结果 |
 |---|---|---|

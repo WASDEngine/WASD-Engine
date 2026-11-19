@@ -84,10 +84,11 @@ it('creates a game project for a connected agent, which the window lists as a ga
     expect(overview).toContain(`\n- ${plugin}: `)
   }
   expect(overview).toContain('read the whole catalog with game_addons action search')
-  // Each asset comes from a fitting download first, then from Nano Banana and ElevenLabs.
+  // Each asset comes from a fitting download first, then from Nano Banana, Tripo, and ElevenLabs.
   for (const preference of [
     'on Poly Haven and download them into the game. Look here before you make or generate an asset, and use what suits the game\'s art style.\n',
     'with Google\'s Nano Banana 2.1. Prefer it to drawing 2D art yourself.\n',
+    '- Tripo (tripo_*): Make textured, rigged, and animated 3D models. Prefer it to modeling them yourself.\n',
     'clone the user\'s own voices. Prefer it to SuperCollider.\n',
   ]) {
     expect(overview).toContain(preference)

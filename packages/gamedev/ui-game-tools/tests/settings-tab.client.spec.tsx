@@ -40,6 +40,7 @@ describe('SettingsGameToolsTab', () => {
       .toEqual([
         '@deepseek-ai/dsh-blender', '@deepseek-ai/dsh-elevenlabs', '@deepseek-ai/dsh-game-addons', '@deepseek-ai/dsh-gimp',
         '@deepseek-ai/dsh-godot', '@deepseek-ai/dsh-image-generation', '@deepseek-ai/dsh-polyhaven', '@deepseek-ai/dsh-supercollider',
+        '@deepseek-ai/dsh-tripo',
       ])
     expect(screen.queryByRole('switch')).toBeNull()
     expect(view.container.firstElementChild?.getAttribute('aria-busy')).toBe('false')

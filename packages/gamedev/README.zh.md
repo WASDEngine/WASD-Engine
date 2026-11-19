@@ -42,6 +42,7 @@ kind: "package-group"
 | [`image-generation/`](image-generation/README.zh.md) | 图像生成工具：用 Google 的 Nano Banana 2.1 根据提示词和最多 14 张用于编辑或参照的图像制作游戏美术、界面元素、概念图和贴图，以 PNG、JPEG 或 WebP 保存到游戏项目中；图像由 WASD Engine API 制作，费用计入已登录账号的套餐 |
 | [`polyhaven/`](polyhaven/README.zh.md) | Poly Haven 工具：搜索 Poly Haven 中 CC0 的 HDRI、纹理和 3D 模型资源库，显示素材的文件与预览图，并把一种格式和分辨率下载到游戏项目中，每个文件的摘要都经过校验 |
 | [`supercollider/`](supercollider/README.zh.md) | 通过 MCP 提供的 SuperCollider 工具：用 scsynth 离线渲染由 sclang 代码描述的声音与音乐，并为智能体提供电平、响度，以及按需提供的波形与声谱图图像；Desktop 应用自带不含 GUI 的 SuperCollider |
+| [`tripo/`](tripo/README.zh.md) | Tripo 工具：用 Tripo 的 P2 模型根据提示词、图像或物体的多个视图制作带贴图的 3D 模型，为其重新制作贴图、绑定骨骼并添加动画，并以 `.glb` 文件保存到游戏项目中，费用计入 WASD Engine 套餐；也通过游戏 MCP 服务器提供给连接的智能体 |
 | [`todo-continuation/`](todo-continuation/README.zh.md) | 待办续行：当模型以一条回复结束轮次，而它在该轮次写下的待办列表仍有待处理或进行中的项时，一条列出这些项的提醒会让轮次继续；每个不同的列表最多提醒一次，每个轮次的提醒数不超过配置的上限 |
 | [`ui-game-assets/`](ui-game-assets/README.zh.md) | 右侧栏的「素材」标签页：在按项目文件夹归类、带搜索与「全部 / 2D / 3D」筛选的下拉列表中列出游戏项目的图片与模型，提供可播放 2D 动画的可缩放图片视图、带动画片段时间轴、骨架以及白模和线框显示的 three.js 模型视图、详细信息面板，并通过导出的模型显示 Blender 文件；它也为智能体的素材工具绘制素材 |
 | [`ui-game-audio/`](ui-game-audio/README.zh.md) | 右侧栏的「音频」标签页：按文件夹分组并显示时长地列出项目的音效、对白和音乐，带搜索与「全部 / 音效 / 对白 / 音乐」筛选，播放时提供可拖动的波形、无缝循环、音量，以及格式、响度和峰值等详细信息；也负责 `audio_review` 背后的解码与测量 |

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tripo",
+    "description": "Permite que o agente crie modelos 3D texturizados, esqueletos e animações com o Tripo e os salve no projeto do jogo como arquivos .glb, usando o uso de IA do seu plano do WASD Engine."
+  }
+}

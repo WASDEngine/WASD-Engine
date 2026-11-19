@@ -30,8 +30,9 @@
                 game needs them. For each asset, first look for one to download from Poly
                 Haven or a catalog add-on, and use it when it suits the game's art style.
                 Otherwise generate 2D art with image_generate instead of drawing it yourself
-                in GIMP or code, and voices, sound effects, and music with the elevenlabs_*
-                tools instead of SuperCollider.
+                in GIMP or code, 3D characters, creatures, and props with the tripo_* tools
+                instead of modeling them yourself in Blender or code, and voices, sound
+                effects, and music with the elevenlabs_* tools instead of SuperCollider.
 
                 Finish the whole request before you end your turn. When it has several parts or
                 steps, list every one with todo_write before you start, keep the list current,

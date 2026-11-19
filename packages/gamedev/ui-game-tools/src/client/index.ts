@@ -1,7 +1,7 @@
 /**
  * Game tools, browser half: the Game tools tab of Settings → Built-in plugins and the Game tools tab of the Plugins
- * page. Both list Blender, ElevenLabs, GIMP, Godot, Nano Banana, Poly Haven, and SuperCollider with their package
- * logos and Loader state; the Plugins page tab also switches each tool in the profile patch through the `pluginManager`
+ * page. Both list Blender, ElevenLabs, GIMP, Godot, Nano Banana, Poly Haven, SuperCollider, and Tripo with their
+ * package logos and Loader state; the Plugins page tab also switches each tool in the profile patch through the `pluginManager`
  * Remote, and a `shell.overlay` entry shows what a switch write left to say. Neither tab reads the Host before it renders.
  * Settings → General also gets the usage reports switch of Agent feedback while the Host serves that entry.
  */
