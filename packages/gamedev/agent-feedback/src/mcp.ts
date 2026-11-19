@@ -9,7 +9,7 @@ import { feedbackToolDefinitions, SERVER_SET_PARAMETERS, type FeedbackToolHost }
 
 /** How connected agents use the feedback tool. */
 export const MCP_INSTRUCTIONS = 'feedback_send sends feedback about WASD Engine and its game tools to the team that makes it: a bug, a missing tool or capability, a confusing description, error, or result, or a suggestion. '
-  + 'Use it when WASD Engine\'s tools get in your way or the user asks you to send feedback, once for each problem, and pass model, the name of the AI model you are. '
+  + 'Use it when WASD Engine\'s tools get in your way or the user asks you to send feedback, once for each problem, and pass model, the full name of the AI model you are, such as Claude Opus 5.5. '
   + 'WASD Engine sends it as the account it is signed in to; leave out the user\'s personal information and secrets.'
 
 /** The names of the parameters the server sets. */

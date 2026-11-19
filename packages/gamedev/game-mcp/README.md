@@ -80,7 +80,7 @@ The token is 32 random bytes in base64url, created on first start in `<dataRoot>
 |---|---|---|
 | `search_game_tools` | This package | Lists the plugins with their readiness and tool counts, and the tools: every tool's first sentence without a query, or the best matches with their parameters for a query; `plugin` limits the search, and with `plugin` and no query the result also holds that plugin's guide ([server instructions](#server-instructions)) |
 | `call_game_tool` | This package | Calls a tool by `name` with `arguments`, for an agent whose tool list lacks it |
-| `create_game_project` | This package | Creates a game project as the Create game project dialog does, from `name` and an optional absolute `location`, opens no Session in it, and takes `model`, the name of the AI model the agent is, which the released game's page credits ([Create game projects](#create-game-projects)) |
+| `create_game_project` | This package | Creates a game project as the Create game project dialog does, from `name` and an optional absolute `location`, opens no Session in it, and takes `model`, the full name of the AI model the agent is, which the released game's page credits ([Create game projects](#create-game-projects)) |
 | `godot_*` | [`@deepseek-ai/dsh-godot`](../godot/README.md) | The Session's fourteen Godot tools, each with an absolute `project` parameter |
 | `blender_*` | [`@deepseek-ai/dsh-blender`](../blender/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_blender` server's tools, renamed from `mcp__wasd_blender__<tool>` |
 | `gimp_*` | [`@deepseek-ai/dsh-gimp`](../gimp/README.md) through [`@deepseek-ai/dsh-app-mcp`](../app-mcp/README.md) | The `wasd_gimp` server's tools, renamed from `mcp__wasd_gimp__<tool>` |

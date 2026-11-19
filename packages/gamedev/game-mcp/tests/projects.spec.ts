@@ -33,8 +33,8 @@ const client = { id: 'claude-code', title: 'Claude Code' }
 const call = { client, signal: new AbortController().signal }
 
 /** What a creation that named no model adds about naming it. */
-const MODEL_HINT = ' The game\'s page credits the AI model that makes the game: pass model, the name of the AI model you are, to godot_run when you '
-  + 'first run the game.'
+const MODEL_HINT = ' The game\'s page credits the AI model that makes the game: pass model, the full name of the AI model you are, such as Claude Opus 5.5, '
+  + 'to godot_run when you first run the game.'
 
 beforeEach(async () => {
   root = await realpath(await mkdtemp(join(tmpdir(), 'dsh-game-mcp-projects-')))
@@ -187,7 +187,7 @@ describe('create_game_project', () => {
       [{}, 'Pass name, the name of the game project.'],
       [{ name: 7 }, 'Pass name, the name of the game project.'],
       [{ name: 'Game', location: 7 }, 'location must be a string: the absolute path of the folder to create the project in.'],
-      [{ name: 'Game', location: root, model: 7 }, 'model must be a string: the name of the AI model you are.'],
+      [{ name: 'Game', location: root, model: 7 }, 'model must be a string: the full name of the AI model you are, such as Claude Opus 5.5.'],
       [{ name: 'a/b', location: root }, '"a/b" is not a folder name that every computer accepts. Pass a name without / \\ : * ? " < > |, control characters, or a trailing period, of at most 255 bytes.'],
       [{ name: 'con.txt', location: root }, `"con.txt" ${DEVICE_TEXT}`],
       // The text names every device name the Host refuses, the zeros and the superscript digits too.

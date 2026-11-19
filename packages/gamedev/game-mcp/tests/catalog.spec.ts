@@ -89,8 +89,9 @@ describe('GameToolCatalog.tools', () => {
       // The agent names the model it is where it starts a game, so the game's page can credit it.
       model: {
         type: 'string',
-        description: 'The name of the AI model you are, as its maker writes it, such as Claude Opus 5.5. The released game\'s page credits it for your '
-          + 'work on the project.',
+        description: 'The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 '
+          + 'for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor. '
+          + 'The released game\'s page credits it for your work on the project.',
       },
     })
     expect(create?.annotations).toBeUndefined()

@@ -37,6 +37,12 @@ describe('the feedback tool over WASD Engine\'s MCP server', () => {
     const [tool] = tools
     expect(Object.keys(tool?.inputSchema.properties ?? {}).sort()).toEqual(['about', 'kind', 'message', 'model'])
     expect(tool?.inputSchema.required).toEqual(['kind', 'message'])
+    // The agent names the model it is, not the application it runs in, which the server names.
+    expect(tool?.inputSchema.properties?.model).toEqual({
+      type: 'string',
+      description: 'The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 '
+        + 'for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor.',
+    })
     expect(text(await client.callTool({ name: 'search_game_tools', arguments: { plugin: 'feedback' } }))).toContain('- Feedback (feedback_*, ready, 1 tools)')
   }, TIMEOUT)
 

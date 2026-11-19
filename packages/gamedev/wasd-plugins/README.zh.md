@@ -261,11 +261,11 @@ Remote 的 `browserRequests` 流每次都给出尚未被接手的完整命令列
 
 #### 模型可见内容
 
-会话的智能体看到 `wasd_export_web`（可选参数 `project`、`check` 和 `zip`）、`wasd_export_desktop`（可选参数 `project` 和 `platforms`）、`wasd_export_mobile`（可选参数 `project`、`platforms` 和 `apple_team_id`，其描述说明每个平台构建什么、Android 需要 JDK 与 Android SDK，以及同一个密钥为每个 Android 构建签名）、`wasd_record_preview`（可选参数 `project`、`seconds`、`events`（其描述说明这些对象遵循 `godot_input` 的事件格式，由 Godot 插件校验）、`coordinate_space` 和 `still_at`）以及 `wasd_release_game`（可选参数 `project`、`notes`、`title`、`preview_image`、`preview_gif`、`new_game`、`visibility`、`desktop` 和 `check`，其描述说明 Web 检查打开什么、报告什么、拒绝什么，以及 `false` 留给要求按原样发布构建的用户）。录制工具的描述要求模型先让游戏进入实际玩法，并在静态图没有很好地展示游戏时重新录制；发布工具的描述说明公开游戏会列在探索页上而私密游戏不会，并要求模型先录制预览，只在用户要求时才发布（因为每次通过检查的调用都会发布一个版本），并按原样发布游戏、在同一轮中不修改它，还说明游戏页面会列出它的模型、为项目工作过的游戏工具以及项目的插件。连接的智能体看到同样的工具，参数为绝对路径，发布还有 `model` 参数，要求填写该智能体所用模型的名称；它还会在 `## WASD Engine` 下看到提供者的说明，其中要求传入 `model`、按原样发布游戏，并在检查使发布停止时告诉用户检查发现了什么，只在用户要求时才修改游戏。
+会话的智能体看到 `wasd_export_web`（可选参数 `project`、`check` 和 `zip`）、`wasd_export_desktop`（可选参数 `project` 和 `platforms`）、`wasd_export_mobile`（可选参数 `project`、`platforms` 和 `apple_team_id`，其描述说明每个平台构建什么、Android 需要 JDK 与 Android SDK，以及同一个密钥为每个 Android 构建签名）、`wasd_record_preview`（可选参数 `project`、`seconds`、`events`（其描述说明这些对象遵循 `godot_input` 的事件格式，由 Godot 插件校验）、`coordinate_space` 和 `still_at`）以及 `wasd_release_game`（可选参数 `project`、`notes`、`title`、`preview_image`、`preview_gif`、`new_game`、`visibility`、`desktop` 和 `check`，其描述说明 Web 检查打开什么、报告什么、拒绝什么，以及 `false` 留给要求按原样发布构建的用户）。录制工具的描述要求模型先让游戏进入实际玩法，并在静态图没有很好地展示游戏时重新录制；发布工具的描述说明公开游戏会列在探索页上而私密游戏不会，并要求模型先录制预览，只在用户要求时才发布（因为每次通过检查的调用都会发布一个版本），并按原样发布游戏、在同一轮中不修改它，还说明游戏页面会列出它的模型、为项目工作过的游戏工具以及项目的插件。连接的智能体看到同样的工具，参数为绝对路径，发布还有 `model` 参数，要求按模型厂商的写法填写该智能体所用模型的完整名称，例如 Claude Opus 5.5，不能是 Opus 5 这样的简称，也不能是智能体所在的应用；它还会在 `## WASD Engine` 下看到提供者的说明，其中要求每次发布都传入 `model`、按原样发布游戏，并在检查使发布停止时告诉用户检查发现了什么，只在用户要求时才修改游戏。
 
 #### Token 影响
 
-五个声明合计约 9,900 个字符的 JSON，其中 4,200 个字符属于发布工具，1,700 个字符属于录制工具；连接的智能体的发布工具为 `model` 多出约 310 个字符，提供者的说明为 MCP 服务器的说明增加约 1,450 个字符。
+五个声明合计约 9,900 个字符的 JSON，其中 4,200 个字符属于发布工具，1,700 个字符属于录制工具；连接的智能体的发布工具为 `model` 多出约 520 个字符，提供者的说明为 MCP 服务器的说明增加约 1,500 个字符。
 
 #### KV Cache 影响
 
