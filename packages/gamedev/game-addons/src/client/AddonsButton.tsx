@@ -1,20 +1,18 @@
 /**
  * The Session header's Add-ons button, after the Export / Share button: it opens a dialog that lists the curated Godot and
- * Blender add-ons with what each does, when it helps, its license, and whether the Session's game project has it, and
- * installs or removes one at the user's click. An installed add-on's guide reaches the Session's agent as a skill.
- * It shows only for a Session in a Workspace.
+ * Blender add-ons with what each does, when it helps, its license, and whether the Session's game project has it, each
+ * with a switch that says whether agents may use it. Every add-on is on until the user turns it off; one that is off
+ * stays out of every agent's reach, the Session's and those connected through MCP, in every project. It shows only for a
+ * Session in a Workspace.
  */
 import { useState } from 'react'
-import { Button, IconAppsAddOutlineRegular, IconLoadingOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconAppsAddOutlineRegular, IconLoadingOutlineRegular, Modal, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-workspace/client'
 import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { GameAddonInstallResult, GameAddonRemoveResult, GameAddonsProjectView, GameAddonView } from '../types.ts'
+import type { GameAddonsProjectView, GameAddonView } from '../types.ts'
 import type { NS } from './locales.ts'
 import css from './AddonsButton.module.css'
-
-/** Most file names a removal notice lists. */
-const LISTED_REFERENCES = 5
 
 /** A Remote call's value, or why it failed. */
 export type Outcome<T> = { readonly value: T } | { readonly error: string }
@@ -22,25 +20,18 @@ export type Outcome<T> = { readonly value: T } | { readonly error: string }
 /** Registration-side operations of the Add-ons button. */
 export interface AddonsButtonInjected {
   /**
-   * Read the catalog and what the game project of a Workspace folder has.
+   * Read the catalog with the switches and, when the Workspace folder holds a game project, what the project has.
    * @param directory - absolute Workspace folder.
-   * @returns the project view, or why it could not be read.
+   * @returns the view, or why it could not be read.
    */
   readonly readProject: (directory: string) => Promise<Outcome<GameAddonsProjectView>>
   /**
-   * Install one add-on.
-   * @param directory - absolute Workspace folder.
+   * Turn one add-on on or off for agents.
    * @param id - catalog id.
-   * @returns the installation, or why it failed.
+   * @param allowed - whether agents may use it.
+   * @returns once the Host saved and applied the switch, or why it could not.
    */
-  readonly install: (directory: string, id: string) => Promise<Outcome<GameAddonInstallResult>>
-  /**
-   * Remove one add-on.
-   * @param directory - absolute Workspace folder.
-   * @param id - catalog id.
-   * @returns the removal, or why it failed.
-   */
-  readonly remove: (directory: string, id: string) => Promise<Outcome<GameAddonRemoveResult>>
+  readonly setAllowed: (id: string, allowed: boolean) => Promise<Outcome<void>>
 }
 
 /** Props of {@link AddonsButton}. */
@@ -56,17 +47,21 @@ function sizeLabel(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** Whether the Session's game project has an add-on, installed or copied into its `addons` folder. */
+function inGame(addon: GameAddonView): boolean {
+  return addon.presence !== undefined && addon.presence.state !== 'absent'
+}
+
 /**
  * Render the Add-ons button and its dialog.
  * @param props - composed slot props.
  * @returns the button, or null when the Session belongs to no Workspace.
  */
-export function AddonsButton({ sessionId, useWorkspaces, t, readProject, install, remove }: AddonsButtonProps) {
+export function AddonsButton({ sessionId, useWorkspaces, t, readProject, setAllowed }: AddonsButtonProps) {
   const directory = useWorkspaces(state => state.items.find(workspace => workspace.sessionIds.includes(sessionId))?.path)
   const [open, setOpen] = useState(false)
   const [loaded, setLoaded] = useState<Loaded>({ state: 'loading' })
-  const [busy, setBusy] = useState<string>()
-  const [confirming, setConfirming] = useState<string>()
+  const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState<Notice>()
   if (directory === undefined) return null
 
@@ -77,34 +72,22 @@ export function AddonsButton({ sessionId, useWorkspaces, t, readProject, install
   const show = (): void => {
     setOpen(true)
     setNotice(undefined)
-    setConfirming(undefined)
     setLoaded({ state: 'loading' })
     void refresh()
   }
   const close = (): void => {
-    if (busy === undefined) setOpen(false)
+    if (!busy) setOpen(false)
   }
-  const change = async (addon: GameAddonView, action: 'install' | 'remove'): Promise<void> => {
-    setBusy(addon.id)
-    setConfirming(undefined)
+  const change = async (addon: GameAddonView, allowed: boolean): Promise<void> => {
+    setBusy(true)
     setNotice(undefined)
-    if (action === 'install') {
-      const result = await install(directory, addon.id)
-      setNotice('value' in result
-        ? { tone: 'info', text: t('addons.installedNotice', { title: addon.title }) }
-        : { tone: 'warning', text: t('addons.failed', { title: addon.title, message: result.error }) })
-    } else {
-      const result = await remove(directory, addon.id)
-      if ('value' in result) {
-        const files = result.value.references.slice(0, LISTED_REFERENCES).join(', ')
-        const removed = t('addons.removedNotice', { title: addon.title })
-        setNotice({ tone: files === '' ? 'info' : 'warning', text: files === '' ? removed : `${removed} ${t('addons.references', { files })}` })
-      } else {
-        setNotice({ tone: 'warning', text: t('addons.failed', { title: addon.title, message: result.error }) })
-      }
-    }
+    const result = await setAllowed(addon.id, allowed)
+    if ('error' in result) setNotice({ tone: 'warning', text: t('addons.failed', { title: addon.title, message: result.error }) })
+    else if (allowed) setNotice({ tone: 'info', text: t('addons.onNotice', { title: addon.title }) })
+    else setNotice({ tone: 'info', text: t(inGame(addon) ? 'addons.offInGameNotice' : 'addons.offNotice', { title: addon.title }) })
+    // The switches show what the Host accepted, so a refused change leaves them as they were.
     await refresh()
-    setBusy(undefined)
+    setBusy(false)
   }
 
   const groups = loaded.state === 'ready'
@@ -114,17 +97,15 @@ export function AddonsButton({ sessionId, useWorkspaces, t, readProject, install
     : []
 
   const row = (addon: GameAddonView) => {
-    const state = addon.presence?.state ?? 'absent'
     const meta = [
       addon.version,
       addon.license,
       addon.bytes === undefined ? t('addons.shipsWithBlender') : sizeLabel(addon.bytes),
       ...addon.assets === undefined ? [] : [t('addons.withAssets', { license: addon.assets.license })],
     ].join(' · ')
-    const working = busy === addon.id
     const icon = loaded.state === 'ready' ? loaded.view.icons[addon.id] : undefined
     return (
-      <li key={addon.id} className={css.item}>
+      <li key={addon.id} className={`${css.item ?? ''} ${addon.allowed ? '' : css.itemOff ?? ''}`}>
         {icon === undefined
           ? <span className={`${css.addonIcon ?? ''} ${css.addonLetter ?? ''}`} aria-hidden="true">{Array.from(addon.title.trim())[0]?.toUpperCase()}</span>
           : <img className={css.addonIcon} src={icon} alt="" aria-hidden="true" draggable={false} />}
@@ -132,48 +113,19 @@ export function AddonsButton({ sessionId, useWorkspaces, t, readProject, install
           <div className={css.itemHead}>
             <a className={css.itemTitle} href={addon.homepage} target="_blank" rel="noreferrer noopener">{addon.title}</a>
             <span className={css.meta}>{meta}</span>
-            {state === 'installed' && <span className={css.badge}>{t('addons.installed')}</span>}
-            {state === 'found' && <span className={css.badge}>{t('addons.found')}</span>}
+            {inGame(addon) && <span className={css.badge}>{t('addons.inGame')}</span>}
           </div>
           <p className={css.summary}>{addon.summary}</p>
           <p className={css.useWhen}>{t('addons.useWhen', { text: addon.useWhen })}</p>
           {addon.credit !== undefined && <p className={css.useWhen}>{t('addons.credit', { credit: addon.credit })}</p>}
-          {confirming === addon.id && (
-            <div className={css.confirm} role="alert">
-              <span>{t('addons.removeQuestion', { title: addon.title })}</span>
-              <div className={css.confirmActions}>
-                <Button size="sm" variant="ghost" onClick={() => { setConfirming(undefined) }}>{t('addons.cancel')}</Button>
-                <Button size="sm" variant="outline" onClick={() => { void change(addon, 'remove') }}>{t('addons.remove')}</Button>
-              </div>
-            </div>
-          )}
         </div>
         <div className={css.itemAction}>
-          {state === 'absent'
-            ? (
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={busy !== undefined}
-                aria-label={`${t('addons.install')} ${addon.title}`}
-                icon={working ? <IconLoadingOutlineRegular size={16} className={css.spinner} /> : undefined}
-                onClick={() => { void change(addon, 'install') }}
-              >
-                {working ? t('addons.working') : t('addons.install')}
-              </Button>
-            )
-            : (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== undefined || confirming === addon.id}
-                aria-label={`${t('addons.remove')} ${addon.title}`}
-                icon={working ? <IconLoadingOutlineRegular size={16} className={css.spinner} /> : undefined}
-                onClick={() => { setConfirming(addon.id) }}
-              >
-                {working ? t('addons.working') : t('addons.remove')}
-              </Button>
-            )}
+          <Switch
+            checked={addon.allowed}
+            label={t('addons.allow', { title: addon.title })}
+            disabled={busy}
+            onChange={(allowed) => { void change(addon, allowed) }}
+          />
         </div>
       </li>
     )

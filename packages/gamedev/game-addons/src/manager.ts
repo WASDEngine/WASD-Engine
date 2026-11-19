@@ -17,7 +17,9 @@
  * store, or is copied there from its catalog files when WASD Engine wrote it, and every Blender worker enables it by id;
  * its asset pack, if it has one, unpacks into the asset folder beside the store; its project keeps only the record.
  * Their archives then leave the cache. The store's index names setup scripts by their copies in the store, never by a
- * catalog file, which a worker's Python cannot read inside the Desktop app's `app.asar`.
+ * catalog file, which a worker's Python cannot read inside the Desktop app's `app.asar`. An add-on that the user turned
+ * off in the Add-ons dialog is left out of searches and refused by installations, and the store's index marks it, so
+ * workers refuse to enable it; a removal still takes it out of a project.
  * @module @deepseek-ai/dsh-game-addons/src/manager
  */
 import { createHash, randomUUID } from 'node:crypto'
@@ -128,6 +130,21 @@ interface CommittedRemoval {
   readonly backup?: string
 }
 
+/** One Blender add-on in the store index that workers read. */
+interface StoreIndexEntry {
+  readonly module: string
+  readonly kind: string
+  readonly version: string
+  /** Absolute path of the store's copy of the setup script. */
+  readonly setup?: string
+  /** Absolute folder of the asset pack. */
+  readonly assets?: string
+  /** False for an add-on that the user turned off; absent otherwise. */
+  readonly allowed?: false
+  /** The refusal that workers raise for an add-on that is off. */
+  readonly message?: string
+}
+
 /** A request that the manager refuses, with a message for the model or the user. */
 export class GameAddonError extends Error {
   override name = 'GameAddonError'
@@ -163,6 +180,12 @@ export interface GameAddonManagerOptions {
    * @param projectDir - absolute project folder.
    */
   readonly changed: (projectDir: string) => void
+  /**
+   * Whether agents may use an add-on, read at every call.
+   * @param id - catalog id.
+   * @returns false for an add-on that the user turned off in the Add-ons dialog.
+   */
+  readonly allowed: (id: string) => boolean
 }
 
 /** Options of one installation. */
@@ -460,14 +483,20 @@ class Rollback {
   }
 }
 
+/** The refusal of an add-on that the user turned off in the Add-ons dialog, for the model. */
+function turnedOffMessage(addon: GameAddon): string {
+  return `The user turned ${addon.title} (${addon.id}) off in WASD Engine's Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.`
+}
+
 /**
  * A one-line view of a catalog entry for the tools and the dialog.
  * @param addon - the catalog entry.
+ * @param allowed - whether agents may use the add-on.
  * @param presence - whether a project has the add-on (installed, found without a record, or absent) and its version;
  *   omitted outside a project.
  * @returns the view.
  */
-export function addonView(addon: GameAddon, presence?: GameAddonPresence): GameAddonView {
+export function addonView(addon: GameAddon, allowed: boolean, presence?: GameAddonPresence): GameAddonView {
   return {
     id: addon.id,
     title: addon.title,
@@ -486,20 +515,41 @@ export function addonView(addon: GameAddon, presence?: GameAddonPresence): GameA
       ? {}
       : { assets: { license: addon.assets.license, bytes: addon.assets.bytes, homepage: addon.assets.homepage } },
     conflicts: addon.conflicts ?? [],
+    allowed,
     ...presence === undefined ? {} : { presence },
   }
 }
 
 /** Installs, removes, and reports catalog add-ons in game projects. */
 export class GameAddonManager {
+  /** The last queued write of the store index; settles without a value, whatever the write's outcome. */
+  private storeIndexWrites: Promise<void> = Promise.resolve()
+
   /**
-   * @param options - catalog, downloads, Blender store, import step, clock, and change listener.
+   * @param options - catalog, downloads, Blender store, import step, clock, change listener, and the user's switches.
    */
   constructor(private readonly options: GameAddonManagerOptions) {}
 
   /** The loaded catalog. */
   get catalog(): GameAddonCatalog {
     return this.options.catalog
+  }
+
+  /**
+   * Whether agents may use an add-on.
+   * @param id - catalog id.
+   * @returns false for an add-on that the user turned off.
+   */
+  allowed(id: string): boolean {
+    return this.options.allowed(id)
+  }
+
+  /**
+   * The catalog entries that agents may use.
+   * @returns the entries the user has not turned off, in catalog order.
+   */
+  allowedEntries(): GameAddon[] {
+    return this.catalog.entries.filter(addon => this.options.allowed(addon.id))
   }
 
   /**
@@ -512,24 +562,35 @@ export class GameAddonManager {
   }
 
   /**
-   * Search the catalog, with each add-on's presence in a project when one is given.
+   * Every catalog add-on with whether agents may use it, and its presence in a project when one is given.
+   * @param projectDir - absolute project folder, or undefined.
+   * @returns the views in catalog order.
+   */
+  async views(projectDir: string | undefined): Promise<GameAddonView[]> {
+    const presence = projectDir === undefined ? undefined : await this.presence(projectDir)
+    return this.catalog.entries.map(addon => addonView(addon, this.options.allowed(addon.id), presence?.get(addon.id)))
+  }
+
+  /**
+   * Search the add-ons that agents may use, with each one's presence in a project when one is given.
    * @param query - words and filters.
    * @param projectDir - absolute project folder, or undefined.
    * @returns matching add-ons, best first.
    */
   async search(query: CatalogQuery, projectDir: string | undefined): Promise<GameAddonView[]> {
     const presence = projectDir === undefined ? undefined : await this.presence(projectDir)
-    return searchCatalog(this.catalog.entries, query).map(addon => addonView(addon, presence?.get(addon.id)))
+    return searchCatalog(this.allowedEntries(), query).map(addon => addonView(addon, true, presence?.get(addon.id)))
   }
 
   /**
-   * The add-ons whose guides apply to a project: installed ones and catalog add-ons found in its `addons` folder.
+   * The add-ons whose guides apply to a project: installed ones and catalog add-ons found in its `addons` folder that
+   * agents may use.
    * @param projectDir - absolute project folder.
    * @returns catalog ids in catalog order.
    */
   async guided(projectDir: string): Promise<string[]> {
     const presence = await this.presence(projectDir)
-    return this.catalog.entries.filter(addon => presence.get(addon.id)?.state !== 'absent').map(addon => addon.id)
+    return this.allowedEntries().filter(addon => presence.get(addon.id)?.state !== 'absent').map(addon => addon.id)
   }
 
   /**
@@ -545,6 +606,18 @@ export class GameAddonManager {
   }
 
   /**
+   * The catalog entry of an id that agents may use.
+   * @param id - catalog id.
+   * @returns the entry.
+   * @throws {GameAddonError} for an unknown id, and for an add-on that the user turned off.
+   */
+  usableEntry(id: string): GameAddon {
+    const addon = this.entry(id)
+    if (!this.options.allowed(addon.id)) throw new GameAddonError(turnedOffMessage(addon))
+    return addon
+  }
+
+  /**
    * Install one catalog add-on into a project. Installations and removals of one project take turns while they change
    * its files.
    * @param projectDir - absolute folder that holds `project.godot`.
@@ -553,11 +626,12 @@ export class GameAddonManager {
    * @param signal - cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops
    *   only the import of the project.
    * @returns the recorded add-on, the import's problems, and notes.
-   * @throws {GameAddonError} for an unknown id, a conflicting add-on, an occupied folder or autoload name, or a failed
-   *   step; a failed step is undone, and the message names what could not be put back.
+   * @throws {GameAddonError} for an unknown id, an add-on that the user turned off, a conflicting add-on, an occupied
+   *   folder or autoload name, or a failed step; a failed step is undone, and the message names what could not be put
+   *   back.
    */
   async install(projectDir: string, id: string, options: InstallOptions, signal: AbortSignal): Promise<GameAddonInstallResult> {
-    const addon = this.entry(id)
+    const addon = this.usableEntry(id)
     return addon.host === 'godot'
       ? await this.installGodot(projectDir, addon, options, signal)
       : await this.installBlender(projectDir, addon, signal)
@@ -1004,15 +1078,25 @@ export class GameAddonManager {
 
   /**
    * Write the store index that Blender workers read to enable add-ons by id: each Blender add-on's module, kind, and
-   * version, and its setup script and asset folder as absolute paths. The index names no catalog file: a worker runs
+   * version, its setup script and asset folder as absolute paths, and `allowed: false` with the refusal `message` for
+   * one that the user turned off, which workers then refuse to enable. The index names no catalog file: a worker runs
    * the setup script with its own Python, which cannot read the catalog where the Desktop app keeps it, inside
    * `app.asar`, so each setup script is first copied into the store's {@link STORE_SETUP_DIR}, like a store folder,
    * with a marker that names the SHA-256 of its path and bytes. The whole index is replaced, so a call also replaces an
-   * index that names catalog files, as earlier versions wrote it.
+   * index that names catalog files, as earlier versions wrote it. Calls write one after another, each with the switches
+   * as they are when it starts, so the last call's index stays.
    * @param signal - cancellation while a copy waits for its folder's lock.
    */
   async writeStoreIndex(signal: AbortSignal): Promise<void> {
-    const addons: Record<string, { module: string; kind: string; version: string; setup?: string; assets?: string }> = {}
+    const write = this.storeIndexWrites.then(() => this.storeIndex(signal))
+    this.storeIndexWrites = write.catch(() => {
+      // The caller of this write receives its failure; the next write starts regardless.
+    })
+    await write
+  }
+
+  private async storeIndex(signal: AbortSignal): Promise<void> {
+    const addons: Record<string, StoreIndexEntry> = {}
     for (const addon of this.catalog.entries) {
       if (addon.blender === undefined) continue
       const setup = addon.blender.setup === undefined ? undefined : await this.storeSetup(addon, addon.blender.setup, signal)
@@ -1022,6 +1106,7 @@ export class GameAddonManager {
         version: addon.version,
         ...setup === undefined ? {} : { setup },
         ...addon.assets === undefined ? {} : { assets: this.assetsFolder(addon) },
+        ...this.options.allowed(addon.id) ? {} : { allowed: false as const, message: turnedOffMessage(addon) },
       }
     }
     await writeFileAtomic(join(this.options.blenderStore, STORE_INDEX), `${JSON.stringify({ format: 1, addons }, null, 2)}\n`, { mode: 0o644 })

@@ -78,7 +78,7 @@ describe('the shipped add-on catalog', () => {
   it('bundles the asset packs and MPFB, whose archives the Desktop app ships, and no other entry', async () => {
     const catalog = await loadCatalog(CATALOG_DIR)
     expect(catalog.entries.filter(entry => entry.bundled === true).map(entry => entry.id).sort())
-      .toEqual(['kaykit-adventurers', 'mpfb', 'universal-animation-library', 'universal-animation-library-2', 'universal-base-characters'])
+      .toEqual(['mpfb', 'universal-animation-library', 'universal-animation-library-2'])
   })
 
   it('lists every entry in the system prompt section within its budget', async () => {

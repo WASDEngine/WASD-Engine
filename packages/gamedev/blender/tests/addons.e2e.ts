@@ -2,8 +2,8 @@
  * The worker's `wasd_addons` module against a real bpy: it enables an extension from the game add-on store and an add-on
  * that ships inside Blender, runs an add-on's setup script with its asset folder, names what it enabled, enables them
  * and runs the setup again after `new_scene` or executed code loaded factory settings, keeps Blender's user resources in
- * the folder the Host names, and explains an add-on it cannot enable. Runs with uv's cached bpy 5.2.3 and skips without
- * it.
+ * the folder the Host names, and explains an add-on it cannot enable, such as one that the user turned off in the
+ * Add-ons dialog. Runs with uv's cached bpy 5.2.3 and skips without it.
  */
 import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
@@ -36,6 +36,9 @@ const INIT = [
   '',
 ].join('\n')
 
+/** The refusal that the game add-ons plugin writes into the index for an add-on that the user turned off. */
+const TURNED_OFF = 'The user turned Off (turned-off) off in WASD Engine\'s Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.'
+
 describe.skipIf(!bpyCached)('wasd_addons in the Blender worker', () => {
   let root = ''
   let store = ''
@@ -63,6 +66,7 @@ describe.skipIf(!bpyCached)('wasd_addons in the Blender worker', () => {
         'rigify': { module: 'rigify', kind: 'core', version: '5.2.3' },
         'missing-ext': { module: 'missing_ext', kind: 'extension', version: '1.0.0' },
         'lost-assets': { module: 'rigify', kind: 'core', version: '5.2.3', setup, assets: join(root, 'assets', 'nowhere') },
+        'turned-off': { module: 'off_ext', kind: 'extension', version: '1.0.0', allowed: false, message: TURNED_OFF },
       },
     }))
   })
@@ -99,7 +103,10 @@ describe.skipIf(!bpyCached)('wasd_addons in the Blender worker', () => {
       await expect(python('result = bpy.utils.resource_path("USER")')).resolves.toMatchObject({ result: userResources })
       await expect(python('wasd_addons.enable("missing-ext")')).resolves.toMatchObject({ error: { type: 'AddonError', message: expect.stringContaining('missing-ext is not downloaded yet') as string } })
       await expect(python('wasd_addons.enable("nope")'))
-        .resolves.toMatchObject({ error: { type: 'AddonError', message: expect.stringContaining('the catalog has lost-assets, missing-ext, probe-ext, rigify') as string } })
+        .resolves.toMatchObject({ error: { type: 'AddonError', message: expect.stringContaining('the catalog has lost-assets, missing-ext, probe-ext, rigify, turned-off') as string } })
+      for (const call of ['wasd_addons.enable("turned-off")', 'wasd_addons.enable("off_ext")', 'wasd_addons.assets("turned-off")']) {
+        await expect(python(call)).resolves.toMatchObject({ error: { type: 'AddonError', message: TURNED_OFF } })
+      }
       await expect(python('wasd_addons.enable("lost-assets")'))
         .resolves.toMatchObject({ error: { type: 'AddonError', message: expect.stringContaining('The asset pack of lost-assets is not downloaded yet') as string } })
       await expect(python('wasd_addons.assets("rigify")')).resolves.toMatchObject({ error: { type: 'AddonError', message: 'rigify has no asset pack.' } })

@@ -42,6 +42,7 @@ describe('GameAddonManager for Blender', () => {
       importProject: () => Promise.resolve({ issues: [] }),
       now: () => new Date('2026-11-11T12:00:00Z'),
       changed: () => {},
+      allowed: () => true,
     })
     const project = await writeProject(join(dir.root, 'game'))
     // An older version of the extension that another project installed.

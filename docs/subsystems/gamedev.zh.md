@@ -312,18 +312,19 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="game-add-ons"></a>
 ## 游戏扩展
 
-`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons` 和一个固定的系统提示词部分 `game-addons`，因此已缓存的前缀保持不变；指南只会以技能形式出现在使用该扩展的项目中。
+`game-addons` 行挂载 [`@deepseek-ai/dsh-game-addons`](../../packages/gamedev/game-addons/README.zh.md)。其目录为每个扩展保存一个文件夹，内含 `addon.json` 与 `SKILL.md`：前者是固定某个发布版本的压缩包 URL、SHA-256 与大小的条目，后者是该扩展的使用指南。插件启动时加载并检查整个目录。无论项目中有什么，每个 Session 都只看到一个固定的工具 `game_addons` 和一个系统提示词部分 `game-addons`，因此在用户开启或关闭某个扩展之前，已缓存的前缀保持不变；指南只会以技能形式出现在使用该扩展的项目中。
 
 | 步骤 | 内容 |
 |---|---|
-| 发现 | `game-addons` 部分列出目录中的每个扩展、它有帮助的阶段以及何时使用它；`game_addons` 的 `search` 按游戏的需求对目录排序，并显示每个扩展的大小、冲突以及何时不用；`guide` 在安装前返回指南 |
+| 开关 | “扩展”对话框中每个扩展旁的开关会通过 Settings 服务写入该行的 volatile 字段 `allowed`，无需重启；所有扩展默认开启，直到用户将其关闭；关闭的扩展会离开该部分、搜索结果和指南，会话的 agent 和连接的 agent 都无法安装它、阅读其指南或在 Blender 中启用它。已有它的游戏会保留它 |
+| 发现 | `game-addons` 部分列出目录中用户未关闭的每个扩展、它有帮助的阶段以及何时使用它；`game_addons` 的 `search` 按游戏的需求对目录排序，并显示每个扩展的大小、冲突以及何时不用；`guide` 在安装前返回指南 |
 | 判断 | 智能体判断游戏需要某个扩展时就安装或移除它，在任何审批策略下都不询问用户；该部分告诉它何时值得安装扩展，并要求它告诉用户添加了什么以及许可证 |
 | Godot 安装 | 设置了 bundled 的条目，其压缩包来自桌面应用的 `archives/` 文件夹，其他条目的压缩包只下载一次到 `<dataRoot>/archives/<sha256>.zip`，并须与固定值一致；其中一个文件夹经 `.wasdengine/staging/` 解压到 `res://addons/<folder>/`，并一同加入条目在目录中的叠加文件夹里的文件，例如 Universal Animation Library 动画包的导入设置和 `retarget.gd`；`project.godot` 获得插件的 `_enable_plugin()` 本会添加的编辑器插件、自动加载与设置；`THIRD_PARTY_NOTICES.md` 获得许可证；`.wasdengine/addons.json` 记录该扩展；`ctx.godot.importProject` 导入项目 |
 | Blender 安装 | 扩展只解压一次到 `<blenderStore>/<module>/`，其资源包（如有）解压到 `<dataRoot>/blender-assets/<id>/`，存储目录的 `catalog.json` 列出目录中的每个 Blender 扩展及其设置脚本在存储目录中的副本（`<blenderStore>/.wasd-setup/<id>/`，每次启动时写入）和资源文件夹，项目的记录列出该扩展；工作进程的 `wasd_addons.enable("<id>")` 启用它并运行其设置脚本，加载出厂设置之后会再做一遍 |
-| 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视会刷新该列表 |
+| 指南 | 技能提供者 `game-addons` 为 Session 的工作目录列出其 Godot 项目已安装或在 `addons/` 中存在、且用户未关闭的每个目录扩展的指南，等级为 550；对 `addons/` 与 `.wasdengine/` 的监视以及 `allowed` 的每次变化都会刷新该列表 |
 | 移除 | 记录中的路径、该扩展的 `project.godot` 条目及其声明段落会被删除；另一个已安装扩展也设置的设置项会保留；结果会列出仍在使用该扩展的文件 |
 
-`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器以及测量：项目自上次导入以来有改动时，它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本，运行一次，或按 `runs` 的每个条目同时各运行一次，用 `fixed_fps` 时以固定帧率运行，并把每次运行的输出及其写入 `WASD_OUTPUT_DIR` 的文件保存在项目数据文件夹中的一个文件夹里。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印或写入的内容中。会话标题栏中的“扩展”按钮会打开一个对话框，在用户点击时通过 `gameAddons` Remote 安装和移除扩展；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
+`godot_script` 运行 GUT 与 GdUnit4 扩展的命令行运行器以及测量：项目自上次导入以来有改动时，它先导入项目，再用 `--headless --script` 运行一个 SceneTree 脚本，运行一次，或按 `runs` 的每个条目同时各运行一次，用 `fixed_fps` 时以固定帧率运行，并把每次运行的输出及其写入 `WASD_OUTPUT_DIR` 的文件保存在项目数据文件夹中的一个文件夹里。LibGodot 隐藏了脚本的退出码，因此测试运行的结果体现在其打印或写入的内容中。会话标题栏中的“扩展”按钮会打开一个对话框，列出目录中的扩展、它们是否已在游戏中以及各自的开关，开关会调用 `gameAddons` Remote 的 `setAllowed`；LiveShare 只把该 Remote 留给所有者。目录中的冒烟测试在 `packages/gamedev/game-addons/tests/catalog.e2e.ts` 中端到端运行。
 
 <a id="assets-tab"></a>
 ## 「素材」标签页
@@ -385,7 +386,7 @@ record    u32 LE image length, u16 LE width, u16 LE height, u32 LE seq, PNG or J
 <a id="graphics-review"></a>
 ## 画面审查
 
-`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 用 `save` 保存的截图）：给出让画面更好看的改进意见以及可以考虑使用的 WASD Engine 工具和扩展，不给评分或结论。它的 `graphics-review` 系统提示词段落要求对 agent 自己制作的每项画面审查一到三次，某次审查没有有用的意见时提前停止，并且不审查它下载的素材，例如来自 Poly Haven 的素材。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和目录扩展的审查者说明。
+`graphics-review` 行挂载 [`@deepseek-ai/dsh-graphics-review`](../../packages/gamedev/graphics-review/README.zh.md)，它的 `graphics_review` 工具为会话的 agent 和连接的 agent 点评游戏画面的图片（例如 `godot_screenshot` 或 `godot_view` 用 `save` 保存的截图）：给出让画面更好看的改进意见以及可以考虑使用的 WASD Engine 工具和扩展，不给评分或结论。它的 `graphics-review` 系统提示词段落要求对 agent 自己制作的每项画面审查一到三次，某次审查没有有用的意见时提前停止，并且不审查它下载的素材，例如来自 Poly Haven 的素材。面向模型的文字把审查者称为专门的画面专家审查模型；它是 WASD Engine 账号的模型路由 `deepseek-account`，配合点名游戏工具和用户未关闭的目录扩展的审查者说明。
 
 | 数据 | 通道 | 时机 |
 |---|---|---|
@@ -538,43 +539,38 @@ Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnp
 
 ### `ctx.gameAddons` — `GameAddons`
 
-Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, and the `gameAddons` Remote.
+Owner of the add-on catalog, the `game_addons` tool, the `game-addons` system prompt section, the add-on guides' skill provider, the user's add-on switches, and the `gameAddons` Remote.
 
 ```ts cordis-catalog
 /**
- * The add-ons of the shipped catalog in catalog order, for plugins that name them to the model, such as the graphics
- * review. The service is reachable only once its catalog loaded.
- * @returns the catalog's entries.
+ * The catalog add-ons that agents may use, in catalog order, for plugins that name them to the model, such as the
+ * graphics review; read it for each use, since the user's switches change it. The service is reachable only once its
+ * catalog loaded.
+ * @returns the entries that the user has not turned off.
  */
-catalogEntries(): readonly GameAddon[]
+allowedEntries(): readonly GameAddon[]
 
 /**
- * The catalog with each add-on's presence in the game project of a folder, for the Add-ons dialog.
+ * The catalog with whether agents may use each add-on and, when the folder holds a Godot project, each add-on's
+ * presence there, for the Add-ons dialog.
  * @param directory - absolute folder: the project folder or a folder up to three levels above it.
  * @param signal - cancellation.
- * @returns the project folder, every catalog add-on, and their icons.
- * @throws GodotProjectError when the folder has no Godot project.
+ * @returns the project folder when there is one, every catalog add-on, and their icons.
+ * @throws Error when the folder is not an absolute path.
  */
 @Remote async project(directory: string, signal: AbortSignal): Promise<GameAddonsProjectView>
 
 /**
- * Install an add-on that the user chose in the Add-ons dialog.
- * @param directory - absolute folder of the game project, or up to three levels above it.
+ * Turn an add-on on or off for agents, the Session's and connected ones, as the Add-ons dialog's switch asks. The
+ * choice is saved in the `allowed` setting of the plugin's profile entry and applies without a restart, to every
+ * project.
  * @param id - catalog id.
- * @param signal - cancellation; until the add-on takes its place it leaves the project as it was, afterwards it stops
- *   only the import of the project.
- * @returns the installation.
+ * @param allowed - whether agents may use the add-on.
+ * @returns once the setting is saved and applied.
+ * @throws {RemoteError} `game-addons/unknown-addon` for an id the catalog does not have, and
+ *   `game-addons/settings-unavailable` when the Host runs no Settings service or the plugin has no profile entry.
  */
-@Remote async installAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonInstallResult>
-
-/**
- * Remove an add-on that the user chose in the Add-ons dialog.
- * @param directory - absolute folder of the game project, or up to three levels above it.
- * @param id - catalog id.
- * @param signal - cancellation before the removal changes the project.
- * @returns the removal.
- */
-@Remote async removeAddon(directory: string, id: string, signal: AbortSignal): Promise<GameAddonRemoveResult>
+@Remote async setAllowed(id: string, allowed: boolean): Promise<void>
 ```
 
 Source: [`packages/gamedev/game-addons/src/index.ts`](../../packages/gamedev/game-addons/src/index.ts)

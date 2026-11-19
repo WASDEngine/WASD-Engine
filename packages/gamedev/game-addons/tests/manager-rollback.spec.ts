@@ -84,6 +84,7 @@ async function setup(beforeDownload?: () => Promise<void>): Promise<{ readonly m
     importProject: () => Promise.resolve({ issues: [] }),
     now: () => new Date('2026-11-11T12:00:00Z'),
     changed: () => {},
+    allowed: () => true,
   })
   return { manager, project: await writeProject(join(dir.root, 'game')) }
 }

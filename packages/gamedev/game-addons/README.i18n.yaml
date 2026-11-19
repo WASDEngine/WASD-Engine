@@ -3,14 +3,14 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/gamedev/game-addons/README.md
 /:
-  en: 5e5baac4acb42357
-  zh: 57f2648a6093daa6
+  en: 194342cb44812499
+  zh: b8930417a90419d1
 /deepseek-ai-dsh-game-addons:
   en: 6c333a3071931b56
   zh: 8d1ac4e994a9ef8b
 /deepseek-ai-dsh-game-addons/summary:
-  en: 0feff954cf1c31c4
-  zh: 9796dc756e7de8e5
+  en: 87bf11d30582ed6a
+  zh: 1bf6ae377da97b36
 /deepseek-ai-dsh-game-addons/table-of-contents:
   en: d152484eb41ac6b4
   zh: 09388d293f9be9cb
@@ -18,32 +18,32 @@
   en: bbff250eba0f1b89
   zh: 0a618f05cc88ee2b
 /deepseek-ai-dsh-game-addons/use-this-package/default-composition:
-  en: cafd36c6c6232618
-  zh: 57f1670b559906cb
+  en: ade6d3938c3b80fc
+  zh: 7d4a8a751e92c0a6
 /deepseek-ai-dsh-game-addons/use-this-package/the-catalog:
-  en: 73e11538e6d80ea5
-  zh: 4cae4b0fb8d43abd
+  en: 1e8dadb36dee19b9
+  zh: ce532d4c2c4b3d3e
 /deepseek-ai-dsh-game-addons/use-this-package/the-tool:
-  en: 0f69663f11f2f60f
-  zh: 8a54ea3b78ea8a73
+  en: e1b7f7305f9e6097
+  zh: 7d8648e578030b2a
 /deepseek-ai-dsh-game-addons/use-this-package/when-the-agent-installs-one:
-  en: 91c4785fb05fe06d
-  zh: e1f376d362ee4057
+  en: 7442c2fd95e7ca9b
+  zh: d02cbf9935aff6b2
 /deepseek-ai-dsh-game-addons/use-this-package/guides-as-skills:
-  en: 1bcd67ab6f2fcc71
-  zh: a5e58c65a16e8c92
+  en: e3576afab2e5f48f
+  zh: b830e7fd1f025326
 /deepseek-ai-dsh-game-addons/use-this-package/blender-add-ons:
-  en: ace9c8008d2e7917
-  zh: 32399a0b2b0fb8c8
+  en: 1c19dbdb442970e4
+  zh: a3cff16a10da970d
 /deepseek-ai-dsh-game-addons/use-this-package/the-add-ons-dialog:
-  en: ca9f80d3bb808b18
-  zh: cdec0b5d504b8b7b
+  en: 3cdd5800d045ab2e
+  zh: 650b901e069b5638
 /deepseek-ai-dsh-game-addons/use-this-package/plugin-icon:
   en: 1a073cb87733d4ed
   zh: df636a87730c8e08
 /deepseek-ai-dsh-game-addons/understand-the-implementation:
-  en: 0bada1b9ef2baaff
-  zh: ec2d6ca75c98d8cd
+  en: bc1db4079114c394
+  zh: 1cce78764ad3060f
 /deepseek-ai-dsh-game-addons/further-exploration:
   en: 0909e8ce888e818c
   zh: e19620c54268dbd2
@@ -54,8 +54,8 @@
   en: c17d2aa0c515f8f3
   zh: 36ec89a86841b76c
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/what-the-model-sees:
-  en: 6bc38e264b552c3b
-  zh: f6314236ab67d246
+  en: ce5d0295190bf527
+  zh: 3998a4ac2aba9b3a
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/what-the-model-sees/section-text:
   en: 0f7724bcd908c288
   zh: 7f4887b7d5255b7d
@@ -63,11 +63,11 @@
   en: 5b63ad52a58d21c5
   zh: de31652926e2b32b
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/token-effect:
-  en: 81127732b4f6bede
-  zh: 0370467b64e29f52
+  en: b4d56620076f9c4b
+  zh: 9855a44e49c1643d
 /deepseek-ai-dsh-game-addons/model-experience/system-prompt-section/kv-cache-effect:
-  en: e8d754802edc8c77
-  zh: e5e367352d2b0d5b
+  en: c947bcce0b285d78
+  zh: 4cb5e8863ad2c46a
 /deepseek-ai-dsh-game-addons/model-experience/tool-declaration:
   en: 5ae2356d17bdfb07
   zh: 3db1377eb0f3c532
@@ -96,17 +96,17 @@
   en: beaabb79f229692a
   zh: 8573891441963be4
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/what-the-model-sees:
-  en: 5b9cffbd01ad5e90
-  zh: 627ab5905afa140b
+  en: 8106dca0d1ede2e0
+  zh: 1dee2ce70bbfa222
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/token-effect:
-  en: 8c3417e5ae44e2c4
-  zh: 28057ebe58855ef6
+  en: 6a70620392bdde29
+  zh: 96cebb622585d8ca
 /deepseek-ai-dsh-game-addons/model-experience/tool-results/kv-cache-effect:
   en: 49b9a70497a9d6bc
   zh: 9733aea1aad0b2df
 /deepseek-ai-dsh-game-addons/known-limitations-and-deferred-work:
-  en: ca7db5d3d1f67317
-  zh: 0a081bef23fc9fbc
+  en: 7ba91a87549bc035
+  zh: c55bbb86e2164eb7
 /deepseek-ai-dsh-game-addons/known-limitations-and-deferred-work/dev-note:
-  en: 464a97f16a17d8fd
-  zh: 180c7909cbe85336
+  en: a2dcd79aafa1f3c4
+  zh: 86236f1329eed67a

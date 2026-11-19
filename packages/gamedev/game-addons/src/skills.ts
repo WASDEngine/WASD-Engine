@@ -1,9 +1,9 @@
 /**
  * The usage guides of a project's add-ons as skills. For a Session's working directory the provider finds the game
  * project as the Godot tools do, and lists the guide of each catalog add-on the project has installed or holds in its
- * `addons` folder; every other guide stays out of the model's skill catalog. A watcher on the project's `addons` and
- * `.wasdengine` folders, plus the manager's own change calls, make the next model step see an add-on that arrived or
- * left.
+ * `addons` folder, unless the user turned the add-on off; every other guide stays out of the model's skill catalog. A
+ * watcher on the project's `addons` and `.wasdengine` folders, plus the manager's own change calls and the plugin's
+ * call after a switch changed, make the next model step see an add-on that arrived, left, or was turned on or off.
  * @module @deepseek-ai/dsh-game-addons/src/skills
  */
 import { watch, type FSWatcher } from 'node:fs'
@@ -131,7 +131,7 @@ export function gameAddonSkillProvider(
       watcher.watch(projectDir)
       const presence = await manager.presence(projectDir)
       const candidates: SkillCandidate[] = []
-      for (const addon of manager.catalog.entries) {
+      for (const addon of manager.allowedEntries()) {
         const state = presence.get(addon.id)
         const header = manager.catalog.guide(addon.id)
         if (state === undefined || state.state === 'absent' || header === undefined) continue
@@ -157,7 +157,8 @@ export function gameAddonSkillProvider(
     async get(candidate: SkillCandidate): Promise<SkillDefinition | undefined> {
       const { id } = candidate.locator as GuideLocator
       const header = manager.catalog.guide(id)
-      if (header === undefined) return undefined
+      // A guide listed before the user turned its add-on off is no longer served.
+      if (header === undefined || !manager.allowed(id)) return undefined
       const path = join(manager.catalog.folder(id), GUIDE_FILE)
       const guide = parseGuide(await readFile(path, 'utf8'), path)
       return {

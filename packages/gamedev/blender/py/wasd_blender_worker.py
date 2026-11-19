@@ -1465,6 +1465,8 @@ class Addons:
         bpy.app.handlers.load_factory_preferences_post.append(wasd_addons_restore)
 
     def _entry(self, name):
+        """The id and index entry of a catalog Blender add-on that agents may use, by its id or module; an entry the
+        user turned off in WASD Engine's Add-ons dialog raises the refusal the index carries."""
         if not self.store:
             raise AddonError('This Blender has no game add-on store, so wasd_addons cannot enable add-ons.')
         try:
@@ -1473,11 +1475,15 @@ class Addons:
         except FileNotFoundError:
             raise AddonError('No game add-ons are known yet: install one in the game project with game_addons first.') from None
         if name in addons:
-            return name, addons[name]
-        for addon_id, entry in addons.items():
-            if entry.get('module') == name:
-                return addon_id, entry
-        raise AddonError(f'{name!r} is not a catalog Blender add-on; the catalog has {", ".join(sorted(addons))}.')
+            addon_id, entry = name, addons[name]
+        else:
+            found = next(((addon_id, entry) for addon_id, entry in addons.items() if entry.get('module') == name), None)
+            if found is None:
+                raise AddonError(f'{name!r} is not a catalog Blender add-on; the catalog has {", ".join(sorted(addons))}.')
+            addon_id, entry = found
+        if entry.get('allowed') is False:
+            raise AddonError(entry.get('message') or f'The user turned {addon_id} off in WASD Engine, so agents cannot use it.')
+        return addon_id, entry
 
     def _repository(self):
         repos = bpy.context.preferences.extensions.repos

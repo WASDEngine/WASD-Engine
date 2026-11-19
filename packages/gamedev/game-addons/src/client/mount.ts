@@ -34,8 +34,7 @@ function registerUi(ctx: Context): void {
   ctx.remoteAccess.whenAccess('gameAddons/project', function* () {
     const injected = (): AddonsButtonInjected => ({
       readProject: async directory => outcome(await remote.project(directory)),
-      install: async (directory, id) => outcome(await remote.installAddon(directory, id)),
-      remove: async (directory, id) => outcome(await remote.removeAddon(directory, id)),
+      setAllowed: async (id, allowed) => outcome(await remote.setAllowed(id, allowed)),
     })
     yield ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
       name: 'conversation.session.header.actions',
