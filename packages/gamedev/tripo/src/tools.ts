@@ -230,7 +230,7 @@ async function make(
 ): Promise<ResultValue> {
   const until = waitUntil(host)
   try {
-    const started = await host.api.start(await request(until), exec.signal)
+    const started = await host.api.start(await request(until), until, exec.signal)
     const done = await succeeded(host, started, until, true, exec)
     return valueOf(done, await save(host, done, target, exec))
   } catch (error) {
@@ -395,7 +395,7 @@ export function tripoToolDefinitions(host: TripoToolHost, surface: TripoToolSurf
         return await make(host, target, async (until) => {
           let rigType: RigType | undefined = args.rig_type
           if (rigType === undefined) {
-            const checked = await succeeded(host, await host.api.start({ kind: 'rig_check', taskId: args.task_id }, exec.signal), until, false, exec)
+            const checked = await succeeded(host, await host.api.start({ kind: 'rig_check', taskId: args.task_id }, until, exec.signal), until, false, exec)
             if (checked.riggable !== true || checked.rigType === undefined) {
               throw new Error('Tripo found no skeleton that fits this model. Pass rig_type to rig it with the skeleton you name, or rig it in Blender.')
             }

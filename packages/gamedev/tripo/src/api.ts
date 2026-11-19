@@ -28,8 +28,8 @@ const MAX_JSON_BYTES = 1024 * 1024
 /** How often a wait asks how its task is going. */
 export const POLL_INTERVAL_MS = 3_000
 
-/** Starts that the API answers busy (429) are tried again this many times, each after its `retry-after`. */
-const BUSY_RETRIES = 6
+/** The pause before a busy (429) start is tried again when the API names none in `retry-after`. */
+const BUSY_PAUSE_MS = 2_000
 
 /** The longest pause before a busy start is tried again. */
 const MAX_BUSY_PAUSE_MS = 10_000
@@ -211,19 +211,24 @@ export class TripoApi {
   constructor(private readonly options: TripoApiOptions) {}
 
   /**
-   * Start a task; a busy API is asked again a few times, after the pause it names.
+   * Start a task. A busy API (429), as when the account already runs as many tasks as it may at once, is asked again
+   * after the pause it names, at most {@link MAX_BUSY_PAUSE_MS}, until `until`, so a start waits for its turn.
    * @param request - the kind of task and what it starts from.
+   * @param until - the time, as `Date.now()` gives it, after which a busy start is not tried again.
    * @param signal - cancellation; a task the API started runs on, and is charged once it succeeds.
    * @returns the started task.
+   * @throws TripoRequestError with the API's busy answer when `until` comes first.
    */
-  async start(request: StartRequest, signal: AbortSignal): Promise<TripoTask> {
+  async start(request: StartRequest, until: number, signal: AbortSignal): Promise<TripoTask> {
     const body = JSON.stringify(startBody(request))
-    for (let busy = 0; ; busy += 1) {
+    for (;;) {
       try {
         return await this.read(await this.send('POST', START_PATHS[request.kind], signal, body), signal)
       } catch (error) {
-        if (!(error instanceof TripoRequestError) || error.status !== 429 || busy >= BUSY_RETRIES) throw error
-        await delay(Math.min(error.retryAfterMs ?? 2_000, MAX_BUSY_PAUSE_MS), undefined, { signal })
+        if (!(error instanceof TripoRequestError) || error.status !== 429) throw error
+        const pause = Math.min(error.retryAfterMs ?? BUSY_PAUSE_MS, MAX_BUSY_PAUSE_MS)
+        if (Date.now() + pause >= until) throw error
+        await delay(pause, undefined, { signal })
       }
     }
   }
