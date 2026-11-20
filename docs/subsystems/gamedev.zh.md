@@ -153,8 +153,9 @@ kind 5    u32 LE request id, LE f32 samples, left and right interleaved   harnes
 
 | `type` | 字段 | 发送时机 |
 |---|---|---|
-| `hello` | `protocol`（1）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale`；`wasdRuntime`，即运行时是否带有 WASD Engine 的 LibGodot 构建中的 `WASDEngineRuntime` 单例 | 最先发送，仅一次 |
+| `hello` | `protocol`（2）、`token`、`pid`、`godot`（Godot 版本字符串）、`project`（`application/config/name`）、`mainScene`、`displayServer`、`renderingDriver`、`renderingMethod`、`width`、`height`；游戏绘制到 macOS 嵌入式显示服务器的图层时，还有 `layer`：其 CAContext `context`，以及每个图层点对应的游戏窗口像素数 `scale`；`wasdRuntime`，即运行时是否带有 WASD Engine 的 LibGodot 构建中的 `WASDEngineRuntime` 单例 | 最先发送，仅一次 |
 | `status` | `frame`、`fps`、`paused`、`scene`（当前场景的 `res://` 文件，或为空）、`mouseMode`、`width`、`height`、`droppedLogs` | 每秒一次，以及当前场景或鼠标模式发生变化的那一帧 |
+| `busy` | `frame`，即最近一次开始 `_process` 的帧，以及 `ms`，即此后经过的毫秒数 | 主循环已有一秒没有进入 harness 的 `_process` 时，由 harness 的一个线程每秒发送一次；其余消息都来自主循环 |
 | `logs` | `entries`，每项含 `level`、`message`、`time_ms`，以及已知时的 `file`、`line`、`function`、`code`，和由 `function`、`file`、`line` 组成的 `backtrace` 帧 | 每个有新条目的帧；连接建立之前记录的条目在连接打开后发送 |
 | `result` | `id`、`ok`、`ok` 为 false 时的 `error`，以及该请求的结果字段 | 回答请求时 |
 
@@ -179,9 +180,9 @@ harness 日志记录器至多保留 4,000 条未发送条目，超出时丢弃�
 | `quit` | `exitCode` | `quitting` | 不等待 |
 
 - 被拒绝的请求以 `ok: false` 回答，并附带 `error` 文本；未知的 `type` 会被拒绝。
-- 没有期限的请求，在 `ctx.godot` 等待期间若 harness 连续 `requestTimeoutMs` 没有发送任何内容，仍会失败；帧、状态与日志都算作活动。`ctx.godot` 放弃一个等待、单步或输入请求时（因为其调用方已中止，或 harness 已沉默），除非运行正在停止，否则会发送带该请求 id 的 `cancel`。
+- 没有期限的请求，在 `ctx.godot` 等待期间若 harness 连续 `requestTimeoutMs` 没有发送任何内容，仍会失败；帧、状态、日志与 `busy` 都算作活动。有 `busy` 报告到达时，有期限的请求会等待主循环再次运行，而不是在期限到达时失败；一旦这些报告表明一帧已忙碌 `busyTimeoutMs`，所有等待中的请求都会失败，在另一条消息结束这一帧之前发出的请求也是如此。`ctx.godot` 放弃一个等待、单步或输入请求时（因为其调用方已中止，或 harness 已沉默或一直忙碌），除非运行正在停止，否则会发送带该请求 id 的 `cancel`。
 - 截图回答在其 JSON 结果与图像都到达后才算完整，两者顺序不限；音频回答与其采集也是如此。截图与帧以像素尺寸显示游戏窗口：根视口位于项目的拉伸模式与宽高比放置它的位置，窗口显示黑边的地方为黑色，因此在完整尺寸下，图像像素就是同一位置的窗口像素。harness 随后把图像缩小到宽度至多 `maxWidth` 像素，并以每秒实际时间至多 `fps` 帧推流，游戏暂停或 `Engine.time_scale` 为 0 时也是如此。
-- `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束，以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
+- `step` 让游戏恢复运行，运行指定的帧数，然后暂停它；`pause`、`resume` 或更新的 `step` 会以 `cancelled: true` 结束正在进行的单步，游戏在 `pause` 之后保持暂停，在其余情况下保持运行。`wait` 计入其到达之后运行的帧，而其 `seconds` 只计入未暂停的游戏时间，该时间受 `Engine.time_scale` 缩放。带 `timeoutMs` 的 `wait`、`step` 或 `input` 请求在其到达后经过这么多毫秒的实际时间时结束（一帧第一秒之后的时间不计入），以 `timedOut: true` 回答已运行的部分；以这种方式结束的单步会暂停游戏。`cancel` 以同样的方式、以 `cancelled: true` 结束 id 为 `request` 的待处理请求，并以 `cancelled` 回答是否有这样的请求在等待。运行到结束的请求把 `timedOut` 与 `cancelled` 都回答为 false。
 - `eval` 以输入 `tree`、`root` 与 `scene`（当前场景）解析 Godot `Expression`，并在 `node` 上运行；未给出 `node` 时在当前场景上运行。
 - `performance` 先在 `seconds` 内测量帧；`scriptSeconds` 为正且运行时带有 `WASDEngineRuntime` 单例时，再用 `scriptSeconds` 剖析脚本，并以 `[签名, 调用次数, 总微秒数, 自身微秒数]` 条目回答 `scripts`，引擎方法的条目紧跟在调用它的函数之后，不含 harness 自身的函数。`audio` 用 Master 总线效果链末尾的 `AudioEffectCapture` 采集该总线的混音，采集在总线音量之前，`masterVolumes` 以 `[采集的帧, 音量 dB, 是否静音]` 列出开始时以及每次变化后的音量。两者都像 `wait` 一样在其 `timeoutMs` 到达或收到 `cancel` 时提前结束，并以截至当时测得或采集到的内容作答。
 - `ctx.godot` 以 `id` 0 发送 `quit`，并且不等待其回答。

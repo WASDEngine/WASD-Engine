@@ -15,7 +15,7 @@ import { z } from 'zod'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 
 /** Harness protocol version carried by `hello`. */
-export const HARNESS_PROTOCOL_VERSION = 1
+export const HARNESS_PROTOCOL_VERSION = 2
 
 /** Largest message body (kind byte plus payload) the harness sends or accepts, in bytes. */
 export const MAX_MESSAGE_BYTES = 64 * 1024 * 1024
@@ -100,6 +100,8 @@ const Status = z.object({
 
 const Logs = z.object({ type: z.literal('logs'), entries: z.array(HarnessLogEntry) })
 
+const Busy = z.object({ type: z.literal('busy'), frame: z.number().int(), ms: z.number().nonnegative() })
+
 const Result = z.looseObject({
   type: z.literal('result'),
   id: z.number().int().nonnegative(),
@@ -107,7 +109,7 @@ const Result = z.looseObject({
   error: z.string().optional(),
 })
 
-const HarnessJson = z.discriminatedUnion('type', [Hello, Status, Logs, Result])
+const HarnessJson = z.discriminatedUnion('type', [Hello, Status, Logs, Busy, Result])
 
 /**
  * The harness's first message: identity, token, and the game's rendering facts. `layer` names the Core Animation
@@ -121,6 +123,13 @@ export type HarnessStatus = z.infer<typeof Status>
 
 /** One log entry as the harness logger records it. */
 export type HarnessLogEntry = z.infer<typeof HarnessLogEntry>
+
+/**
+ * Sent by a thread of the harness, every second while the game's main loop has not reached the harness's `_process` for
+ * a second: `frame` is the frame whose `_process` began last, and `ms` the milliseconds since. Every other message comes
+ * from the main loop.
+ */
+export type HarnessBusy = z.infer<typeof Busy>
 
 /** A request answer; fields beyond `type`, `id`, `ok`, and `error` depend on the request type. */
 export type HarnessResult = z.infer<typeof Result>

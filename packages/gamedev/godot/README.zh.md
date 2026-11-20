@@ -78,7 +78,8 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 | `importBeforeRun` | `true` | 每次运行前导入项目资源 |
 | `importTimeoutMs` | `180000` | 单个导入步骤（在运行或检查之前）以及单次 `godot_check` 脚本加载的时限 |
 | `startTimeoutMs` | `60000` | 从启动到游戏连接的时限 |
-| `requestTimeoutMs` | `15000` | 截图、求值、场景树、暂停或继续请求的时限，有请求等待时游戏可保持沉默的最长时间，以及等待、单步或 agent 的输入序列在其按每秒 10 帧所需时间之外最多可用的实际时间 |
+| `requestTimeoutMs` | `15000` | 截图、求值、场景树、暂停或继续请求的时限，有请求等待时游戏可保持沉默的最长时间，以及等待、单步或 agent 的输入序列在其按每秒 10 帧所需时间之外最多可用的实际时间；长帧的时间不计入（见[游戏运行](#game-runs)） |
+| `busyTimeoutMs` | `120000` | 游戏主循环在一帧中（例如编译着色器的第一帧）最多可停留的时间，超过后等待游戏的请求失败 |
 | `stopGraceMs` | `3000` | 被停止的游戏在被终止前用于退出的时间，也是每个 Godot 进程的终止宽限时间 |
 | `processOutputBytes` | `1048576` | 每个 Godot 进程的每个输出流保留的控制台输出字节数，至少 1024 |
 | `maxLogEntries` | `5000` | 每次运行保留的日志条目数 |
@@ -181,7 +182,7 @@ profile patch 按 id 覆盖该行。把下面的条目加入 `$DSH_HOME/profiles
 4. `running` 或 `paused`：游戏保持连接期间。
 5. `exited`、`crashed` 或 `failed`：运行结束后。以退出码 0 自行退出的游戏，或被用户或 agent 停止的游戏，结束于 `exited`。其他任何退出都结束于 `crashed`，关闭连接后仍持续运行 `stopGraceMs` 的游戏也是如此。在游戏连接之前失败的运行结束于 `failed`。崩溃与失败消息会引用进程输出的最后 20 行。
 
-停止操作会要求游戏退出，超过 `stopGraceMs` 仍在运行时终止进程；从停止开始的那一刻起，游戏不再接受新的请求，发给它的“游戏”标签页输入会被丢弃。有请求在等待时，若游戏在 `requestTimeoutMs` 内没有发送任何内容，等待中的请求会以 `The game stopped responding` 失败；运行中的游戏至少每秒报告一次状态。录制让宿主停止读取游戏的连接时（见[视图、代码与录制](#views-and-recordings)），宿主无从判断，因此这期间游戏的沉默不会让任何请求失败。宿主放弃一个等待、单步或输入序列时（因为调用方取消了它，或游戏停止了响应），会要求游戏丢弃该请求，被丢弃的输入序列会释放它仍按住的键、按钮和动作。宿主进程退出时 LibGodot runner 随之退出，harness 在与宿主的连接关闭时让游戏退出。
+停止操作会要求游戏退出，超过 `stopGraceMs` 仍在运行时终止进程；从停止开始的那一刻起，游戏不再接受新的请求，发给它的“游戏”标签页输入会被丢弃。有请求在等待时，若游戏在 `requestTimeoutMs` 内没有发送任何内容，等待中的请求会以 `The game stopped responding` 失败；运行中的游戏的主循环至少每秒报告一次状态。一帧可能让主循环停留得久得多，例如编译着色器的第一帧，或构建大型场景的脚本。这样的一帧进行到一秒后，harness 的一个线程每秒报告一次主循环忙碌：此时游戏不算沉默，即时请求会等待这一帧结束，而不是在时限到达时失败，这一帧第一秒之后的时间也不计入等待、单步或输入序列的实际时间。一帧让主循环忙碌达到 `busyTimeoutMs` 时，等待中的请求会失败，消息会指明是哪一帧并说明游戏仍在运行，这一帧持续期间发出的请求会立即失败。持续 `requestTimeoutMs` 或更久的一帧会记录一条警告，`godot_run` 会把它列入启动时的问题。录制让宿主停止读取游戏的连接时（见[视图、代码与录制](#views-and-recordings)），宿主无从判断，因此这期间游戏的沉默不会让任何请求失败。宿主放弃一个等待、单步或输入序列时（因为调用方取消了它，或游戏停止了响应或一直忙碌），会要求游戏丢弃该请求，被丢弃的输入序列会释放它仍按住的键、按钮和动作。宿主进程退出时 LibGodot runner 随之退出，harness 在与宿主的连接关闭时让游戏退出。
 
 agent 启动的运行使用 Godot 的 `Dummy` 音频驱动，除非 `godot_run` 传入 `muted: false` 或 `agentRunsMuted` 为 `false`。从“游戏”标签页启动的运行会播放音频。
 
@@ -199,7 +200,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 | 工具 | 参数 | 结果 |
 |---|---|---|
-| `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args`、`wait`、`screenshot` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及导入和启动期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败。`wait` 随后像 `godot_wait` 那样让这么多秒未暂停的游戏时间过去，游戏已暂停时则说明这一点；`screenshot: true` 另附一张截图，因此一次调用就能启动并查看游戏；无法接收图像的调用方会在游戏启动前被拒绝 |
+| `godot_run` | `project`、`scene`、`width`、`height`、`muted`、`web`、`args`、`engine_args`、`wait`、`screenshot` | 启动或重启游戏（`web: true` 时使用其 Web 构建的兼容性渲染器，并使用给出的[启动选项](#game-runs)）并等待其运行，然后报告阶段、项目、场景、窗口大小及其放大倍数、渲染器、Godot 版本、无窗口、静音与 Web 标志、启动选项，以及从导入到调用返回期间记录的最多 20 条错误和警告；游戏启动失败，或开始运行后一秒内结束，则调用失败。`wait` 随后像 `godot_wait` 那样让这么多秒未暂停的游戏时间过去，游戏已暂停时则说明这一点；`screenshot: true` 另附一张截图，因此一次调用就能启动并查看游戏；无法接收图像的调用方会在游戏启动前被拒绝 |
 | `godot_stop` | 无 | 游戏结束后返回 `Stopped the game.`，或返回 `No game was running.` |
 | `godot_screenshot` | `max_width`（默认 1280，64 到 4096）、`region`、`coordinate_space`、`path`、`replace`、`save` | 一张游戏窗口的 PNG 图像，缩小到 `max_width` 像素宽，或其中 `region` 矩形按窗口自身像素的图像，并附上图像大小、窗口大小、区域、帧号以及游戏是否暂停；给出 `path`（`.png` 文件）或 `save`（项目 `.wasdengine/screenshots` 文件夹中的新文件）时，还会把图像保存到那里，供接受图像文件的工具使用，例如 `graphics_review`；见[视图、代码与录制](#views-and-recordings) |
 | `godot_input` | `events`（最多 256 个）、`screenshot`、`coordinate_space` | 依次执行事件，其中的等待和按住按实际时间计算，然后报告事件数、帧数、秒数和当前帧；`screenshot: true` 会附加一张截图。序列在其等待时间、按每秒 10 帧计的每个等待一帧与开始的一帧，再加上 `requestTimeoutMs` 的实际时间过去后提前结束，并报告已执行的事件 |
@@ -221,7 +222,7 @@ harness 不会被复制到项目中：每次运行都通过 Godot 的 `--script`
 
 `godot_input` 接受以下事件：`key`，带 `W`、`Space`、`Left`、`Enter` 或 `Escape` 等 Godot 键名，或带 `keycode`；`text`，逐字符输入；`mouse_button`，在 `x` 与 `y` 处使用 `left`、`right`、`middle` 或滚轮按钮；`mouse_motion`；`action`，用于 `ui_accept` 等输入映射动作，可带 `strength`；`joy_button` 与 `joy_axis`，用于某个手柄 `device`；以及 `{ "wait": seconds }`，它让序列暂停这么多实际时间。按下的键或按钮会保持按下，直到对应的释放事件，或直到其 `hold` 时间（同样按实际时间计算）结束。游戏按到达顺序一次执行一个输入序列，包括“游戏”标签页的输入。agent 序列的时限从游戏收到它时开始计算，因此排在其他输入之后的序列可能在执行第一个事件之前就结束；“游戏”标签页的输入没有时限，因此排在 agent 序列之后的一批输入仍会送达其中的按键和按钮释放。鼠标坐标是当前运行最新截图的像素，插件会把它换算为窗口像素，因此在本次运行的第一张截图之前发送指针事件会失败；`coordinate_space: "window"` 则直接接受窗口像素。
 
-每个结果末尾都附有该运行自本 Session 上一次 Godot 工具调用以来记录的错误、脚本错误和着色器错误条目，最多 10 条，其余给出数量；失败消息也附带同样的报告。`godot_run` 自行报告导入和启动期间的问题，`godot_logs` 会把截至其下一个游标的所有条目标记为已报告，包括被其 `levels` 过滤掉的条目。
+每个结果末尾都附有该运行自本 Session 上一次 Godot 工具调用以来记录的错误、脚本错误和着色器错误条目，最多 10 条，其余给出数量；失败消息也附带同样的报告。`godot_run` 自行报告导入、启动及其等待和截图期间的问题，`godot_logs` 会把截至其下一个游标的所有条目标记为已报告，包括被其 `levels` 过滤掉的条目。
 
 一次运行保留其最新的 `maxLogEntries` 条日志。每个条目带有在宿主所有运行中递增的序号、来源（`game` 表示 harness 日志记录器，`process` 表示 Godot 进程的控制台输出，`import` 表示导入步骤）、级别（`stdout`、`stderr`、`warning`、`error`、`script_error` 或 `shader_error`）、消息（插件在 4,000 个字符处截断），以及 Godot 报告时提供的文件、行号、函数和脚本回溯。游戏进程的控制台输出在游戏关闭连接后进入日志；游戏启动失败时，全部输出都会进入日志。游标之后的条目已被丢弃时，`godot_logs` 会报告这一情况。
 
@@ -551,7 +552,7 @@ Released games play in browsers, where Godot draws with its Compatibility render
 
 #### 模型可见内容
 
-每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存；`godot_view` 附一张 PNG 图像 `godot-view-<frame>.png`，`godot_record` 附一张 JPEG 拼图 `godot-recording-sheet.jpg`（`sheet_frames` 为 0 时不附；Session 收不到图像时也不附，并写明 `You receive no images in this Session, so this result leaves the sheet of frames out; the saved video holds them.`），文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。把图像保存到文件的 `godot_screenshot` 或 `godot_view` 写明 `Saved the image to <path>.`；在模型不接受图像或没有附件存储的 Session 中，它不附图像块，尺寸取保存的图像的尺寸，并写明 `You receive no images in this Session, so this result leaves the image out; the saved file holds it.`。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。导入未正常结束的 `godot_check` 的结果以 `The Godot import step before the check ended abnormally (<exit>), so errors about class_name classes or imported assets may be false.` 开头，或者其中的 `ended abnormally (<exit>)` 换成 `did not finish within <seconds>`。
+每个结果包含一个最多 6,000 个字符的文本块；`godot_screenshot`，以及带 `screenshot: true` 的 `godot_input` 或 `godot_wait`，另附一个 PNG 图像块，以附件 `godot-frame-<frame>.png` 保存；`godot_view` 附一张 PNG 图像 `godot-view-<frame>.png`，`godot_record` 附一张 JPEG 拼图 `godot-recording-sheet.jpg`（`sheet_frames` 为 0 时不附；Session 收不到图像时也不附，并写明 `You receive no images in this Session, so this result leaves the sheet of frames out; the saved video holds them.`），文本写明模型收到的图像尺寸，`godot_input` 的鼠标坐标以它为准；事件或等待之后的截图失败时，文本改为给出原因。把图像保存到文件的 `godot_screenshot` 或 `godot_view` 写明 `Saved the image to <path>.`；在模型不接受图像或没有附件存储的 Session 中，它不附图像块，尺寸取保存的图像的尺寸，并写明 `You receive no images in this Session, so this result leaves the image out; the saved file holds it.`。每个结果和每条失败消息的末尾都附有本 Session 上一次 Godot 调用以来记录的错误级条目：`New errors since your last Godot call:`，最多 10 行 `[<level>, <source>] <file>:<line> (<function>): <message>` 形式的条目（省略缺失的部分和 `game` 来源），还有更多条目时附上 `… and <n> more; read them with godot_logs.`。失败以 `Error: <message>` 的形式送达模型，说明接下来应调用什么，并在崩溃或启动失败后引用进程输出的最后 20 行；没有运行时时，`godot_run` 与 `godot_check` 以下面的消息失败。在一帧让游戏主循环停留达到 `busyTimeoutMs` 时仍在等待的调用会以 `The game has spent <seconds> in its first frame without finishing it, so it answers nothing until it does. It still runs: a frame takes this long while the game compiles shaders or builds much at once, and never ends while a script loops forever.` 失败（之后的帧写作 `frame <n>`）；持续 `requestTimeoutMs` 或更久的一帧会记录警告 `The game's first frame took <seconds>, so the game showed nothing and took no input until then; a frame takes this long while the game compiles shaders or builds much at once.`，之后的帧则以 `Frame <n> of the game took <seconds>, so the game showed no new picture and took no input meanwhile;` 开头。导入未正常结束的 `godot_check` 的结果以 `The Godot import step before the check ended abnormally (<exit>), so errors about class_name classes or imported assets may be false.` 开头，或者其中的 `ended abnormally (<exit>)` 换成 `did not finish within <seconds>`。
 
 ##### 缺少运行时的消息
 

@@ -282,9 +282,9 @@ posix('starting', () => {
   })
 
   it('refuses a harness speaking another protocol', async () => {
-    const { run } = await start({ game: { protocol: 2 } })
+    const { run } = await start({ game: { protocol: 1 } })
     await run.started()
-    expect(run.view()).toMatchObject({ phase: 'failed', message: 'The game harness speaks protocol 2; this Host speaks 1.' })
+    expect(run.view()).toMatchObject({ phase: 'failed', message: 'The game harness speaks protocol 1; this Host speaks 2.' })
   })
 
   it('reports the layer of a windowless game and ignores one that a windowed game names', async () => {
@@ -438,6 +438,53 @@ posix('messages and requests', () => {
     const frozen = await running({ game: { freezeOn: 'wait' } }, { requestTimeoutMs: 200 })
     await expect(frozen.run.wait({ seconds: 5 }, signal)).rejects.toThrow(/The game stopped responding: it sent nothing for/u)
     await until(async () => (await fakeRequests(frozen.project)).some(request => request.type === 'cancel'))
+  })
+
+  it('waits through a frame that the game reports busy, with its instantaneous requests, and warns of the long frame', async () => {
+    // The frame ends between two checks of the evaluation's deadline, at 600 and 800 ms.
+    const { run } = await running({ game: { busy: { on: 'wait', ms: 700 } } }, { requestTimeoutMs: 200 })
+    // The game runs past its first frame.
+    await tick(100)
+    const waited = run.wait({ seconds: 0.05 }, signal)
+    const value = run.evaluate('x', undefined, signal)
+    expect(await waited).toMatchObject({ seconds: 0.05, timedOut: false, cancelled: false })
+    expect(await value).toEqual({ value: 'x', valueType: 'String' })
+    expect(run.logs.filter(entry => entry.level === 'warning').map(entry => entry.message)).toEqual([
+      expect.stringMatching(new RegExp('^Frame \\d+ of the game took 0\\.\\d s, so the game showed no new picture and took no input meanwhile; '
+        + 'a frame takes this long while the game compiles shaders or builds much at once\\.$', 'u')),
+    ])
+  })
+
+  it('warns of no busy frame shorter than requestTimeoutMs', async () => {
+    const { run } = await running({ game: { busy: { on: 'wait', ms: 300 } } })
+    expect(await run.wait({ seconds: 0.05 }, signal)).toMatchObject({ seconds: 0.05, timedOut: false })
+    expect(run.logs.filter(entry => entry.level === 'warning')).toEqual([])
+  })
+
+  it('fails the waiting requests once the game reports one frame busy for busyTimeoutMs, and asks it to drop them', async () => {
+    const { run, project } = await running({ game: { busy: { on: 'wait' } } }, { requestTimeoutMs: 200, busyTimeoutMs: 700 })
+    // The game runs past its first frame.
+    await tick(100)
+    const sent = Date.now()
+    await expect(run.wait({ seconds: 5 }, signal)).rejects.toThrow(new RegExp('^The game has spent 0\\.\\d s in frame \\d+ without finishing it, '
+      + 'so it answers nothing until it does\\. It still runs: a frame takes this long while the game compiles shaders or builds much at once, '
+      + 'and never ends while a script loops forever\\.$', 'u'))
+    expect(Date.now() - sent).toBeGreaterThanOrEqual(650)
+    await until(async () => (await fakeRequests(project)).some(request => request.type === 'cancel'))
+    // A request while the same frame lasts fails at once.
+    const asked = Date.now()
+    await expect(run.evaluate('x', undefined, signal)).rejects.toThrow(/^The game has spent \d+(\.\d)? s in frame \d+ without finishing it/u)
+    expect(Date.now() - asked).toBeLessThan(150)
+  })
+
+  it('names the first frame of a game that is busy before it drew anything, and warns once that frame ends', async () => {
+    const stuck = await running({ game: { busy: {} } }, { requestTimeoutMs: 200, busyTimeoutMs: 500 })
+    await expect(stuck.run.screenshot(320, signal)).rejects.toThrow(/^The game has spent 0\.\d s in its first frame without finishing it/u)
+    const slow = await running({ game: { busy: { ms: 700 } } }, { requestTimeoutMs: 200 })
+    expect((await slow.run.screenshot(320, signal)).meta).toMatchObject({ format: 'png', frame: 1 })
+    expect(slow.run.logs.filter(entry => entry.level === 'warning').map(entry => entry.message)).toEqual([
+      expect.stringMatching(/^The game's first frame took 0\.\d s, so the game showed nothing and took no input until then; /u),
+    ])
   })
 
   it('stops reading the game while a hold lasts, without failing the requests that wait for it, and reads again after', async () => {

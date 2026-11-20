@@ -140,6 +140,7 @@ export function runSpec(fakeGodot: string, project: string, overrides: Partial<G
     importTimeoutMs: 10_000,
     startTimeoutMs: 10_000,
     requestTimeoutMs: 5000,
+    busyTimeoutMs: 30_000,
     stopGraceMs: 1000,
     outputBytes: 64 * 1024,
     maxLogEntries: 100,

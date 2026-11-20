@@ -2082,9 +2082,16 @@ export interface Config {
   startTimeoutMs: number
   /**
    * Deadline of instantaneous game requests, the longest silence of a running game while a request waits, and the
-   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds.
+   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds. A game
+   * whose main loop is busy in one frame says so while it lasts, so it is not silent, and its instantaneous requests wait
+   * until the frame ends.
    */
   requestTimeoutMs: number
+  /**
+   * Longest time that a game's main loop may spend in one frame, such as a first frame that compiles shaders, before the
+   * requests that wait for the game fail, in milliseconds.
+   */
+  busyTimeoutMs: number
   /** Grace between asking a game to quit and terminating it, in milliseconds. */
   stopGraceMs: number
   /** Bytes of process output kept per stream for diagnostics. */

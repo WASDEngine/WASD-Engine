@@ -25,7 +25,7 @@ import { PerformanceReply } from './performance.ts'
 import type { GodotProject } from './project.ts'
 import {
   encodeJsonMessage, HarnessDecoder, HARNESS_PROTOCOL_VERSION, MAX_MESSAGE_BYTES,
-  type HarnessFrame, type HarnessHello, type HarnessJsonMessage, type HarnessLogEntry, type HarnessMessage,
+  type HarnessBusy, type HarnessFrame, type HarnessHello, type HarnessJsonMessage, type HarnessLogEntry, type HarnessMessage,
   type HarnessRecordFrame, type HarnessResult, type HarnessStatus,
 } from './protocol.ts'
 import { launcherArgv, type ResolvedGodotRuntime } from './runtime.ts'
@@ -108,9 +108,15 @@ export interface GodotRunSpec {
   readonly startTimeoutMs: number
   /**
    * Deadline for instantaneous requests, the longest harness silence while any request waits, and the real time
-   * that a wait, a step, or an agent input sequence may take beyond the time it needs.
+   * that a wait, a step, or an agent input sequence may take beyond the time it needs. A game whose harness reports
+   * its main loop busy is not silent, and its instantaneous requests wait until the main loop runs again.
    */
   readonly requestTimeoutMs: number
+  /**
+   * Longest time that the game's main loop may stay in one frame, as the harness reports it, before every request that
+   * waits for the game fails.
+   */
+  readonly busyTimeoutMs: number
   /** Grace after `quit` or a closed connection before the process is terminated; also the subprocess termination grace. */
   readonly stopGraceMs: number
   /** Collected bytes kept per process output stream. */
@@ -335,6 +341,12 @@ export type EvalReply = z.infer<typeof EvalReply>
 /** A scene tree description. */
 export type TreeReply = z.infer<typeof TreeReply>
 
+/** A frame in which the game's main loop is busy, and the real time from which, by the Host's clock. */
+interface BusyFrame {
+  readonly frame: number
+  readonly since: number
+}
+
 interface ProcessExit {
   readonly exitCode: number | null
   readonly signal: NodeJS.Signals | null
@@ -485,6 +497,8 @@ export class GodotRun {
   private lingered = false
   private finished = false
   private lastActivity = 0
+  /** Where the game's main loop is busy while the harness reports it; any other message from the game ends it. */
+  private busy: BusyFrame | undefined
   private silenceTimer: NodeJS.Timeout | undefined
   private disconnectTimer: NodeJS.Timeout | undefined
   /** Views that show the run's picture, such as Game tabs. */
@@ -1062,7 +1076,7 @@ export class GodotRun {
           message = decoder.next()
         } catch (error) {
           socket.destroy()
-          if (authenticated) this.logHost(`The game harness sent an invalid message: ${(error as Error).message}`)
+          if (authenticated) this.logHost('error', `The game harness sent an invalid message: ${(error as Error).message}`)
           return
         }
         if (message === undefined) return
@@ -1109,6 +1123,9 @@ export class GodotRun {
   }
 
   private dispatch(message: HarnessMessage): void {
+    // Every message but `busy` comes from the game's main loop, which therefore runs again.
+    const busy = this.busy
+    if (busy !== undefined && (message.kind !== 'json' || message.message.type !== 'busy')) this.endBusy(busy)
     switch (message.kind) {
       case 'frame':
         for (const sink of this.frameSinks) sink.frame(message.frame)
@@ -1133,6 +1150,9 @@ export class GodotRun {
       case 'status':
         this.receiveStatus(message)
         return
+      case 'busy':
+        this.receiveBusy(message)
+        return
       case 'logs':
         this.receiveLogs(message.entries)
         return
@@ -1153,6 +1173,24 @@ export class GodotRun {
     this.currentScene = status.scene === '' ? undefined : status.scene
     this.phase = status.paused ? 'paused' : 'running'
     this.bump()
+  }
+
+  private receiveBusy(busy: HarnessBusy): void {
+    this.busy = { frame: busy.frame, since: Date.now() - busy.ms }
+  }
+
+  /**
+   * Note that the game's main loop runs again, and log as a warning a frame that kept it busy for `requestTimeoutMs`
+   * or longer, which players would wait through.
+   */
+  private endBusy({ frame, since }: BusyFrame): void {
+    this.busy = undefined
+    const took = Date.now() - since
+    if (took < this.spec.requestTimeoutMs) return
+    const what = frame <= 1
+      ? `The game's first frame took ${formatSeconds(took)}, so the game showed nothing and took no input until then`
+      : `Frame ${frame} of the game took ${formatSeconds(took)}, so the game showed no new picture and took no input meanwhile`
+    this.logHost('warning', `${what}; a frame takes this long while the game compiles shaders or builds much at once.`)
   }
 
   /** Apply the pause state a request answer reported, before the next status message. */
@@ -1210,8 +1248,8 @@ export class GodotRun {
     else if (entry.level === 'warning') this.warningCount += 1
   }
 
-  private logHost(message: string): void {
-    this.append('process', { level: 'error', message })
+  private logHost(level: 'error' | 'warning', message: string): void {
+    this.append('process', { level, message })
     this.emit({ type: 'logs' })
     this.bump()
   }
@@ -1273,10 +1311,16 @@ export class GodotRun {
     if (options.stop?.aborted === true) queueMicrotask(stop)
     else options.stop?.addEventListener('abort', stop, { once: true })
     if (options.bounded) {
-      timer = setTimeout(() => {
+      const expire = (): void => {
+        // A game whose main loop is busy answers once it runs again; `busyTimeoutMs` bounds the wait meanwhile.
+        if (this.busy !== undefined) {
+          timer = setTimeout(expire, this.spec.requestTimeoutMs)
+          return
+        }
         this.settle(id, entry)
         reject(new GodotRequestError(`The game did not answer ${type} within ${formatSeconds(this.spec.requestTimeoutMs)}.`))
-      }, this.spec.requestTimeoutMs)
+      }
+      timer = setTimeout(expire, this.spec.requestTimeoutMs)
     }
     if (options.background !== true) {
       // Lifting the cap first lets the request run at the game's own frame rate.
@@ -1358,23 +1402,41 @@ export class GodotRun {
   }
 
   /**
-   * Fail every waiting request once the harness has sent nothing for `requestTimeoutMs`; while the Host holds reading
-   * the connection, it cannot tell, and checks again later.
+   * Fail every waiting request once the harness has sent nothing for `requestTimeoutMs`, or once it has reported the
+   * game's main loop busy in one frame for `busyTimeoutMs`; while the Host holds reading the connection, it cannot
+   * tell, and checks again later.
    */
   private armSilence(): void {
     if (this.silenceTimer !== undefined) return
-    const waitMs = this.readHolds.size > 0
-      ? this.spec.requestTimeoutMs
-      : Math.max(0, this.spec.requestTimeoutMs - (Date.now() - this.lastActivity))
+    const waitMs = this.readHolds.size > 0 ? this.spec.requestTimeoutMs : this.unresponsiveIn(Date.now())
     this.silenceTimer = setTimeout(() => {
       this.silenceTimer = undefined
-      const silent = Date.now() - this.lastActivity
-      if (silent >= this.spec.requestTimeoutMs && this.readHolds.size === 0) {
-        this.rejectPending(new GodotRequestError(`The game stopped responding: it sent nothing for ${formatSeconds(silent)}.`))
+      const now = Date.now()
+      if (this.readHolds.size === 0 && this.unresponsiveIn(now) === 0) {
+        this.rejectPending(new GodotRequestError(this.unresponsive(now)))
         return
       }
       this.armSilence()
     }, waitMs)
+  }
+
+  /** Milliseconds from `now` until the game has been silent for `requestTimeoutMs` or busy for `busyTimeoutMs`. */
+  private unresponsiveIn(now: number): number {
+    const silence = this.spec.requestTimeoutMs - (now - this.lastActivity)
+    const busy = this.busy === undefined ? silence : this.spec.busyTimeoutMs - (now - this.busy.since)
+    return Math.max(0, Math.min(silence, busy))
+  }
+
+  /** Say why the game no longer answers at `now`, once {@link GodotRun.unresponsiveIn} reached 0. */
+  private unresponsive(now: number): string {
+    const silent = now - this.lastActivity
+    if (this.busy === undefined || silent >= this.spec.requestTimeoutMs) {
+      return `The game stopped responding: it sent nothing for ${formatSeconds(silent)}.`
+    }
+    const { frame, since } = this.busy
+    const where = frame <= 1 ? 'its first frame' : `frame ${frame}`
+    return `The game has spent ${formatSeconds(now - since)} in ${where} without finishing it, so it answers nothing until it does. `
+      + 'It still runs: a frame takes this long while the game compiles shaders or builds much at once, and never ends while a script loops forever.'
   }
 
   private setStreaming(on: boolean): void {

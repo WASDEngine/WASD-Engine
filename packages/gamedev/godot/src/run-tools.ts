@@ -128,14 +128,14 @@ export function runTools(host: GodotToolHost, surface: GodotToolSurface): ToolDe
           clearTimeout(timer)
           exec.signal.throwIfAborted()
           const view = run.view()
-          const issues = run.logs.filter(entry => isErrorEntry(entry) || entry.level === 'warning').map(toolLogEntry)
-          session.digestCursor = Math.max(session.digestCursor, run.logs.lastSeq)
-          // The failure of a run that has ended, read afresh each time, since the game can end during the wait.
+          // The failure of a run that has ended, read afresh each time, since the game can end during the wait. It lists
+          // the run's problems, so the report of new errors does not repeat them.
           const ended = (): Error | undefined => {
             if (!run.terminal) return undefined
             const now = run.view()
             const listed = run.logs.filter(entry => isErrorEntry(entry) || entry.level === 'warning').map(toolLogEntry)
               .slice(0, STARTUP_ENTRIES).map(formatLogEntry).join('\n')
+            session.digestCursor = Math.max(session.digestCursor, run.logs.lastSeq)
             return new Error(`The game did not keep running (${now.phase}).${now.message === undefined ? '' : `\n${now.message}`}${listed === '' ? '' : `\nErrors and warnings:\n${listed}`}`)
           }
           const failure = ended()
@@ -154,6 +154,10 @@ export function runTools(host: GodotToolHost, surface: GodotToolSurface): ToolDe
               }
             }
           }
+          const shot = target === undefined ? {} : await screenshotAfter(target, session, run, exec.signal)
+          // The issues include what the game logged during the wait and the screenshot, such as a long first frame.
+          const issues = run.logs.filter(entry => isErrorEntry(entry) || entry.level === 'warning').map(toolLogEntry)
+          session.digestCursor = Math.max(session.digestCursor, run.logs.lastSeq)
           // A started run that has not ended connected once, so the game reported its window, renderer, and version.
           return {
             runId: view.runId,
@@ -174,7 +178,7 @@ export function runTools(host: GodotToolHost, surface: GodotToolSurface): ToolDe
             issues: issues.slice(0, STARTUP_ENTRIES),
             moreIssues: Math.max(0, issues.length - STARTUP_ENTRIES),
             ...waited === undefined ? {} : { waited },
-            ...target === undefined ? {} : await screenshotAfter(target, session, run, exec.signal),
+            ...shot,
           }
         })
       },

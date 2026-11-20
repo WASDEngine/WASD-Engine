@@ -140,7 +140,7 @@ async function runGame(section) {
     mouseMode: 0, width: state.width, height: state.height, droppedLogs: 0,
   })
   const hello = {
-    type: 'hello', protocol: section.protocol ?? 1, token: section.token ?? token, pid: process.pid, godot: '4.7.2-stable (fake)',
+    type: 'hello', protocol: section.protocol ?? 2, token: section.token ?? token, pid: process.pid, godot: '4.7.2-stable (fake)',
     project: 'Fake', mainScene: 'res://main.tscn', displayServer: section.displayServer ?? 'headless',
     renderingDriver: 'fake', renderingMethod: 'forward_plus', width: state.width, height: state.height,
     ...section.layer === undefined ? {} : { layer: section.layer },
@@ -167,6 +167,26 @@ async function runGame(section) {
     default: json(hello)
   }
   if (section.status !== false) json(status())
+  // `busy` holds the main loop in one frame, as a long frame of a real game does: from the start, or with `on` from the
+  // arrival of a request of that type, for `ms` milliseconds or, without them, until the process ends. Meanwhile the
+  // game sends `busy` every 40 ms and nothing else, and handles the requests that arrive once the frame ends.
+  let busyUntil
+  const beBusy = () => {
+    state.frozen = true
+    const since = Date.now()
+    const reporter = setInterval(() => json({ type: 'busy', frame: state.frame, ms: Date.now() - since }), 40)
+    busyUntil = new Promise((resolve) => {
+      if (section.busy.ms === undefined) return
+      setTimeout(() => {
+        clearInterval(reporter)
+        state.frozen = false
+        busyUntil = undefined
+        json(status())
+        resolve()
+      }, section.busy.ms)
+    })
+  }
+  if (section.busy !== undefined && section.busy.on === undefined) beBusy()
   if (section.repeatHello) json(hello)
   if (section.logs !== undefined) json({ type: 'logs', entries: section.logs })
   if (section.garbageAfterHello) send(9, Buffer.from('?'))
@@ -219,6 +239,11 @@ async function runGame(section) {
   }
   const handle = async (message) => {
     record({ request: message })
+    if (section.busy?.on === message.type && !state.busied) {
+      state.busied = true
+      beBusy()
+    }
+    if (busyUntil !== undefined) await busyUntil
     if (section.logsOn?.[message.type] !== undefined) json({ type: 'logs', entries: section.logsOn[message.type] })
     const behavior = section.replies?.[message.type]
     if (section.exitOn?.type === message.type) return exitNow(section.exitOn)

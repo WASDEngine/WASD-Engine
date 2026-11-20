@@ -10,7 +10,9 @@
  * cleanly when they quit by themselves while their reads of frames from the GPU are in flight, or after turning VSync off
  * on the Compatibility renderer; values and printed lines too large for a message, which the game bounds and survives;
  * engine method timing only on request and only where the runtime does it safely, also in a game whose scripts run on
- * worker threads; and a hidden game with `--fixed-fps`, which the harness holds to the hidden frame rate.
+ * worker threads; a hidden game with `--fixed-fps`, which the harness holds to the hidden frame rate; and a game whose
+ * frames block its main loop for seconds, which the harness reports busy, so calls wait for such a frame up to the busy
+ * limit and the run warns of it.
  *
  * Set WASD_LIBGODOT_DIR to a folder holding `godot_runner` and the LibGodot library under the name that
  * `wasdengine/libgodot/build.sh` installs: `libgodot.<macos|linuxbsd|windows>.editor.<arm64|x86_64>.<dylib|so|dll>`.
@@ -203,6 +205,20 @@ const THREADS_PROJECT = {
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 /** The first item of a Session's follow stream: the run and its logs as they are, without a request to the game. */
+// A game whose main loop blocks for STALL_MS in its first frame, as a first frame that compiles shaders does, and in a
+// later frame after a K press, or for twice as long after an L press.
+const STALL_MS = 5000
+const STALL_PROJECT = {
+  'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="StallTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
+  'main.gd': [
+    'extends Node2D', 'var stall_ms := 0', 'func _ready():', `\tOS.delay_msec(${STALL_MS})`, 'func _unhandled_input(event):',
+    '\tif event is InputEventKey and event.pressed and event.keycode == KEY_K:', `\t\tstall_ms = ${STALL_MS}`,
+    '\telif event is InputEventKey and event.pressed and event.keycode == KEY_L:', `\t\tstall_ms = ${STALL_MS * 2}`,
+    'func _process(_delta):', '\tif stall_ms > 0:', '\t\tvar ms := stall_ms', '\t\tstall_ms = 0', '\t\tOS.delay_msec(ms)', '',
+  ].join('\n'),
+  'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
+}
+
 async function snapshot(c: Composition): Promise<Extract<GodotFollowItem, { type: 'snapshot' }>> {
   const following = new AbortController()
   try {
@@ -892,6 +908,47 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const value = measured.value as { fps: number; context: { refreshRate: number; presenting: boolean } }
     expect(value.context.presenting).toBe(false)
     expect(value.fps).toBeLessThan(Math.max(60, value.context.refreshRate) * 1.25)
+    expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
+  }, 240_000)
+})
+
+describe.skipIf(runner === undefined || library === undefined || !existsSync(runner) || !existsSync(library))('a game whose frames block its main loop on the real LibGodot runner', () => {
+  let c: Composition
+  const press = (key: string): ReturnType<typeof callTool> => callTool(c, 'godot_input', { events: [{ kind: 'key', key, pressed: true }, { kind: 'key', key, pressed: false }] })
+
+  beforeAll(async () => {
+    c = await compose({
+      game: {},
+      config: {
+        runnerPath: runner as string, libgodotPath: library as string, importBeforeRun: true,
+        startTimeoutMs: 60_000, requestTimeoutMs: 2000, busyTimeoutMs: STALL_MS + 2000, stopGraceMs: 3000,
+      },
+    })
+    for (const [name, content] of Object.entries(STALL_PROJECT)) await writeFile(join(c.project, name), content)
+  }, 60_000)
+
+  afterAll(async () => { await c?.cleanup() }, 30_000)
+
+  it('waits through frames longer than requestTimeoutMs, fails a call at the busy limit, and warns of each long frame', async () => {
+    // The first frame outlasts requestTimeoutMs; the start, its wait, and its screenshot wait for it.
+    const started = await callTool(c, 'godot_run', { width: 640, height: 360, wait: 1, screenshot: true })
+    expect(started.isError, text(started)).toBe(false)
+    expect(started.value).toMatchObject({ waited: { timedOut: false }, screenshot: { windowWidth: 640, windowHeight: 360 } })
+    expect(text(started)).toMatch(/\[warning, process\] The game's first frame took [5-9](\.\d)? s, so the game showed nothing/u)
+    // A later frame as long, during a wait.
+    expect((await press('K')).isError).toBe(false)
+    const waited = await callTool(c, 'godot_wait', { seconds: 1 })
+    expect(waited.isError, text(waited)).toBe(false)
+    expect(text(waited)).toMatch(/^Waited \d+ frames/u)
+    // A frame longer than the busy limit fails the wait, which the game then drops, and leaves the game running.
+    expect((await press('L')).isError).toBe(false)
+    const stuck = await callTool(c, 'godot_wait', { seconds: 1 })
+    expect(text(stuck)).toMatch(/^Error: The game has spent 7(\.\d)? s in frame \d+ without finishing it, so it answers nothing/u)
+    await new Promise(resolve => setTimeout(resolve, STALL_MS))
+    expect(text(await callTool(c, 'godot_eval', { expression: 'get_tree().paused' }))).toBe('bool: false')
+    const logs = text(await callTool(c, 'godot_logs', { levels: ['warning'] }))
+    expect(logs).toMatch(/Frame \d+ of the game took [5-9](\.\d)? s, so the game showed no new picture and took no input meanwhile; /u)
+    expect(logs).toMatch(/Frame \d+ of the game took 1\d(\.\d)? s, so the game showed no new picture/u)
     expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
   }, 240_000)
 })

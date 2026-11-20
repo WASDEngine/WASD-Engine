@@ -90,6 +90,17 @@ posix('godot_run and godot_stop', () => {
     expect(plain.content.some(block => block.type === 'image')).toBe(false)
   })
 
+  it('waits through a long first frame and lists it among the problems of the start', async () => {
+    // The game reports its status every 40 ms once the frame ends, so its silence fails nothing.
+    const c = await setup({ game: { game: { busy: { ms: 700 }, statusIntervalMs: 40 } }, config: { requestTimeoutMs: 200 } })
+    const result = await callTool(c, 'godot_run', { wait: 0.05, screenshot: true })
+    expect(result.isError, text(result)).toBe(false)
+    expect(value(result)).toMatchObject({ waited: { seconds: 0.05, timedOut: false }, screenshot: { width: 320, height: 180 } })
+    expect(text(result)).toMatch(new RegExp('\n\nErrors and warnings logged while importing and starting:\n\\[warning, process\\] '
+      + 'The game\'s first frame took 0\\.\\d s, so the game showed nothing and took no input until then; ', 'u'))
+    expect(text(result)).not.toContain('New errors since your last Godot call')
+  })
+
   it('says when the wait after the start ended at its real-time limit', async () => {
     const c = await setup({ game: { game: { replies: { wait: 'timedOut' } } } })
     const result = await callTool(c, 'godot_run', { wait: 1 })

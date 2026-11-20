@@ -35,6 +35,12 @@ extends SceneTree
 ## server, `hello` also carries `layer`: the CAContext id through which another process of the login session can display
 ## that layer with a CALayerHost, and the game window pixels per layer point (`scale`).
 ##
+## Every message comes from the main loop except `busy`: while the main loop has not reached the harness's `_process` for
+## BUSY_REPORT_MS, as in a frame that compiles shaders, builds a large scene, or runs a long `_ready`, a thread of the
+## harness sends `busy` every BUSY_REPORT_MS with the frame whose `_process` began last (`frame`) and the milliseconds
+## since (`ms`), so the Host can tell such a frame from a game that stopped. A mutex guards the connection and the
+## waiting messages, which both threads use.
+##
 ## Screenshots and streamed frames show the game window at its pixel size, scaled down to `maxWidth`: the root
 ## viewport where the project's stretch settings place it, and black where the window shows bars around it. At
 ## full size, image pixel (x, y) is window pixel (x, y), the unit of input event coordinates. Frames stream at
@@ -65,7 +71,8 @@ extends SceneTree
 ## does not hold them up.
 ##
 ## A `wait`, `step`, or `input` request ends early once its optional `timeoutMs` of real time has passed since it
-## arrived, or on a `cancel` request whose `request` is its id; a pending step also ends on `pause`, `resume`, or
+## arrived, not counting the time of a frame beyond BUSY_REPORT_MS, through which the Host waits as `busy` reports it,
+## or on a `cancel` request whose `request` is its id; a pending step also ends on `pause`, `resume`, or
 ## a newer `step`. An early end answers with the usual fields for the part that ran, plus `timedOut: true` after
 ## the timeout or `cancelled: true` otherwise; a request that runs to its end answers both as false. A step that
 ## times out or is cancelled pauses the game, and one that `resume` or a newer step ends leaves it running. An
@@ -115,7 +122,7 @@ extends SceneTree
 ## as kind 5. Like a `wait`, it ends early at its `timeoutMs` or on `cancel`, which answer `timedOut` or `cancelled`
 ## with the audio captured until then.
 
-const PROTOCOL_VERSION := 1
+const PROTOCOL_VERSION := 2
 const KIND_JSON := 1
 const KIND_FRAME := 2
 const KIND_IMAGE := 3
@@ -125,6 +132,8 @@ const MAX_PENDING_LOGS := 4000
 const UNKNOWN_REFRESH_FPS := 60  # frame rate of a game that does not present, on a screen that reports no refresh rate
 const MAX_MESSAGE_BYTES := 64 * 1024 * 1024  # largest message body, the kind byte included, that either side accepts
 const LOG_BATCH_BYTES := 8 * 1024 * 1024  # bytes of entries that one logs message carries at most
+const BUSY_REPORT_MS := 1000  # milliseconds without `_process` after which, and between which, the harness sends `busy`
+const BUSY_CHECK_MS := 100  # milliseconds between two looks of the heartbeat thread at the main loop
 # Characters of a log entry's message, and of its code, that it keeps with the marker of a longer one; the Host keeps as
 # many (MAX_LOG_MESSAGE_CHARS of src/run.ts), so the marker reaches it.
 const LOG_MAX_CHARS := 4000
@@ -481,6 +490,14 @@ var _connected := false
 var _outbox: Array[PackedByteArray] = []  # messages waiting for the connection, oldest first
 var _outbox_offset := 0  # bytes of the first waiting message already sent
 var _outbox_bytes := 0  # bytes still to send
+# Guards the connection, `_connected`, the waiting messages, and the main loop's progress below, which the heartbeat
+# thread reads.
+var _io := Mutex.new()
+var _heartbeat: Thread = null  # the thread that sends `busy`, from the hello on
+var _beating := false  # false stops the heartbeat thread
+var _main_ms := 0  # ticks in milliseconds when the main loop last reached `_process`
+var _main_frame := 0  # the frame whose `_process` began then
+var _busy_sent_ms := 0  # ticks in milliseconds of the latest `busy` message
 var _hello_sent := false
 var _port := 0
 var _token := ""
@@ -518,6 +535,7 @@ var _lossless_test_delay := LOSSLESS_TEST_DELAY
 
 var _frame := 0
 var _frame_seconds := 0.0  # game time that the nodes ran in the frame of the latest _process
+var _process_at := 0.0  # real time in seconds when the latest connected _process began, 0 before the first
 # Input sequences in arrival order; the first one runs. {id, sequence, events, index, frames, started,
 # wait_until, deadline, pressed: {press identity: press event}}; times are real seconds.
 var _actions: Array[Dictionary] = []
@@ -580,6 +598,7 @@ func _initialize() -> void:
 
 
 func _finalize() -> void:
+	_stop_heartbeat()
 	if _audio != null:
 		_audio.detach()
 	_wait_for_encodings()
@@ -598,6 +617,8 @@ func _process(delta: float) -> bool:
 	_frame += 1
 	if _poll_connection():
 		var now := Time.get_ticks_usec() / USEC_PER_SECOND
+		# Before the requests that arrive now, which have spent no time yet.
+		_spare_deadlines(now)
 		_receive(now)
 		_release_holds(now)
 		_advance_actions(now)
@@ -620,8 +641,12 @@ func _process(delta: float) -> bool:
 func _poll_connection() -> bool:
 	if _port <= 0:
 		return false
+	_io.lock()
+	_main_ms = Time.get_ticks_msec()
+	_main_frame = _frame
 	_peer.poll()
 	var status := _peer.get_status()
+	var connected := false
 	if status == StreamPeerTCP.STATUS_CONNECTED:
 		if not _connected:
 			_connected = true
@@ -629,12 +654,51 @@ func _poll_connection() -> bool:
 		if not _hello_sent:
 			_hello_sent = true
 			_send_json(_hello())
+			_start_heartbeat()
 		_flush_outbox()
-		return _connected
-	if _connected and (status == StreamPeerTCP.STATUS_NONE or status == StreamPeerTCP.STATUS_ERROR):
+		connected = _connected
+	elif _connected and (status == StreamPeerTCP.STATUS_NONE or status == StreamPeerTCP.STATUS_ERROR):
 		# The Host closed the connection: nothing else can observe or stop this game.
 		quit()
-	return false
+	_io.unlock()
+	return connected
+
+
+## Starts the heartbeat thread; the main loop calls this once, holding `_io`, after it sent hello.
+func _start_heartbeat() -> void:
+	_heartbeat = Thread.new()
+	_beating = true
+	if _heartbeat.start(_beat) != OK:
+		_beating = false
+		_heartbeat = null
+
+
+## Stops the heartbeat thread and waits for it to end.
+func _stop_heartbeat() -> void:
+	if _heartbeat == null:
+		return
+	_io.lock()
+	_beating = false
+	_io.unlock()
+	_heartbeat.wait_to_finish()
+	_heartbeat = null
+
+
+## Runs on the heartbeat thread until `_beating` turns false: sends `busy` while the main loop has not reached
+## `_process` for BUSY_REPORT_MS, once every BUSY_REPORT_MS. It touches only the harness's own state, under `_io`, and
+## nothing of the engine's but the clock, so a main loop that is busy anywhere never holds it up.
+func _beat() -> void:
+	while true:
+		_io.lock()
+		if not _beating:
+			_io.unlock()
+			return
+		var now := Time.get_ticks_msec()
+		if _connected and now - _main_ms >= BUSY_REPORT_MS and now - _busy_sent_ms >= BUSY_REPORT_MS:
+			_busy_sent_ms = now
+			_send_json({"type": "busy", "frame": _main_frame, "ms": now - _main_ms})
+		_io.unlock()
+		OS.delay_msec(BUSY_CHECK_MS)
 
 
 func _hello() -> Dictionary:
@@ -665,16 +729,20 @@ func _window_size() -> Vector2i:
 
 
 func _receive(now: float) -> void:
+	_io.lock()
 	var available := _peer.get_available_bytes()
 	if available > 0:
 		var chunk := _peer.get_data(available)
 		if chunk[0] == OK:
 			_rx.append_array(chunk[1])
+	_io.unlock()
 	while _rx.size() >= 4:
 		var length := _rx.decode_u32(0)
 		if length < 1 or length > MAX_MESSAGE_BYTES:
 			push_error("WASD Engine harness: invalid message length %d from the Host." % length)
+			_io.lock()
 			_peer.disconnect_from_host()
+			_io.unlock()
 			return
 		if _rx.size() < 4 + length:
 			return
@@ -841,6 +909,20 @@ func _deadline(id, message: Dictionary, now: float) -> float:
 		_reply_error(id, "timeoutMs must be a positive number of milliseconds")
 		return -1.0
 	return now + float(timeout) / 1000.0
+
+
+## Moves the deadlines of the pending waits, steps, and input sequences by the real time that the previous frame took
+## beyond BUSY_REPORT_MS, during which the harness reported the main loop busy, so such a frame uses up none of the time
+## that they allow.
+func _spare_deadlines(now: float) -> void:
+	var busy := now - _process_at - BUSY_REPORT_MS / 1000.0
+	var first := _process_at == 0.0
+	_process_at = now
+	if first or busy <= 0.0:
+		return
+	for pending in _waits + _actions:
+		if pending["deadline"] > 0.0:
+			pending["deadline"] += busy
 
 
 func _pending_wait(id, kind: String, frames: int, seconds: float, deadline: float) -> Dictionary:
@@ -1440,11 +1522,15 @@ func _finish_record_frames(frames: Array) -> void:
 
 ## Sends the waiting messages, waiting for the connection; a game-frame recording does this rather than skip a frame.
 func _flush_outbox_waiting() -> void:
+	_io.lock()
 	while _connected and _outbox_bytes > RECORD_MAX_OUTBOX:
 		_peer.poll()
 		_flush_outbox()
 		if _outbox_bytes > RECORD_MAX_OUTBOX:
+			_io.unlock()
 			OS.delay_msec(1)
+			_io.lock()
+	_io.unlock()
 
 
 ## Prepares a captured frame now, or after the frame that the worker prepares.
@@ -2588,32 +2674,40 @@ func _too_large(what: String, bytes: int) -> String:
 
 
 ## Queues one message and sends as much as the connection takes now. Returns false, sending nothing, without a
-## connection and for a payload larger than MAX_MESSAGE_BYTES, which the Host would refuse.
+## connection and for a payload larger than MAX_MESSAGE_BYTES, which the Host would refuse. Both threads use it.
 func _send(kind: int, payload: PackedByteArray) -> bool:
-	if not _connected:
-		return false
-	if not _fits(payload.size()):
-		push_warning("WASD Engine harness: dropped a message of kind %d: %s" % [kind, _too_large("it", payload.size())])
-		return false
+	var fits := _fits(payload.size())
 	var message := PackedByteArray()
-	message.resize(5)
-	message.encode_u32(0, payload.size() + 1)
-	message[4] = kind
-	message.append_array(payload)
-	_outbox.append(message)
-	_outbox_bytes += message.size()
-	_flush_outbox()
-	return true
+	if fits:
+		message.resize(5)
+		message.encode_u32(0, payload.size() + 1)
+		message[4] = kind
+		message.append_array(payload)
+	_io.lock()
+	var queued := _connected and fits
+	if queued:
+		_outbox.append(message)
+		_outbox_bytes += message.size()
+		_flush_outbox()
+	elif _connected:
+		push_warning("WASD Engine harness: dropped a message of kind %d: %s" % [kind, _too_large("it", payload.size())])
+	_io.unlock()
+	return queued
 
 
-## Sends waiting messages, in order, as far as the connection takes them without waiting for it.
+## Sends waiting messages, in order, as far as the connection takes them without waiting for it; callers hold `_io`. A
+## failed write quits the game, since nothing else can observe or stop it then; the heartbeat thread leaves the quit to
+## the main loop.
 func _flush_outbox() -> void:
 	while _connected and not _outbox.is_empty():
 		var message: PackedByteArray = _outbox[0]
 		var result := _peer.put_partial_data(message if _outbox_offset == 0 else message.slice(_outbox_offset))
 		if result[0] != OK:
 			_connected = false
-			quit()
+			if OS.get_thread_caller_id() == OS.get_main_thread_id():
+				quit()
+			else:
+				quit.call_deferred()
 			return
 		var sent: int = result[1]
 		_outbox_offset += sent
@@ -2624,7 +2718,8 @@ func _flush_outbox() -> void:
 		_outbox_offset = 0
 
 
-## Sends every waiting message, waiting for the connection; the harness does this only as it exits.
+## Sends every waiting message, waiting for the connection; the harness does this only as it exits, after the heartbeat
+## thread ended.
 func _drain_outbox() -> void:
 	for message in _outbox:
 		if not _connected:

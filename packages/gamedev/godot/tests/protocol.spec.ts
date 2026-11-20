@@ -11,7 +11,7 @@ function message(kind: number, payload: Buffer): Buffer {
 }
 
 const hello = {
-  type: 'hello', protocol: 1, token: 't', pid: 7, godot: '4.7.2', project: 'P', mainScene: 'res://main.tscn',
+  type: 'hello', protocol: 2, token: 't', pid: 7, godot: '4.7.2', project: 'P', mainScene: 'res://main.tscn',
   displayServer: 'embedded', renderingDriver: 'metal', renderingMethod: 'forward_plus', width: 640, height: 360,
 }
 
@@ -70,14 +70,17 @@ describe('HarnessDecoder', () => {
     expect(decode(decoder, Buffer.alloc(0))).toEqual([])
   })
 
-  it('validates status, logs, and results', () => {
+  it('validates status, logs, busy reports, and results', () => {
     const decoder = new HarnessDecoder(MAX_MESSAGE_BYTES)
     const status = { type: 'status', frame: 1, fps: 60, paused: false, scene: '', mouseMode: 0, width: 1, height: 1, droppedLogs: 0 }
     const logs = { type: 'logs', entries: [{ level: 'script_error', message: 'm', file: 'res://a.gd', line: 2, function: 'f', backtrace: [{ function: 'f', file: 'res://a.gd', line: 2 }], time_ms: 1 }] }
+    const busy = { type: 'busy', frame: 1, ms: 1003 }
     const result = { type: 'result', id: 4, ok: true, value: 3 }
-    const decoded = decode(decoder, Buffer.concat([status, logs, result].map(value => message(1, Buffer.from(JSON.stringify(value))))))
-    expect(decoded.map(entry => entry.kind === 'json' && entry.message.type)).toEqual(['status', 'logs', 'result'])
-    expect(decoded[2]).toMatchObject({ message: { value: 3 } })
+    const messages = [status, logs, busy, result].map(value => message(1, Buffer.from(JSON.stringify(value))))
+    const decoded = decode(decoder, Buffer.concat(messages))
+    expect(decoded.map(entry => entry.kind === 'json' && entry.message.type)).toEqual(['status', 'logs', 'busy', 'result'])
+    expect(decoded[2]).toMatchObject({ message: { frame: 1, ms: 1003 } })
+    expect(decoded[3]).toMatchObject({ message: { value: 3 } })
   })
 
   it('accepts a hello that names a layer and refuses one with an impossible context or scale', () => {
@@ -125,6 +128,8 @@ describe('HarnessDecoder', () => {
     ['a short recording frame header', message(4, Buffer.alloc(15))],
     ['JSON that does not parse', message(1, Buffer.from('{'))],
     ['an unknown JSON message', message(1, Buffer.from('{"type":"other"}'))],
+    ['a busy report without its milliseconds', message(1, Buffer.from('{"type":"busy","frame":1}'))],
+    ['a busy report with negative milliseconds', message(1, Buffer.from('{"type":"busy","frame":1,"ms":-1}'))],
   ])('rejects %s', (_case, bytes) => {
     expect(() => decode(new HarnessDecoder(MAX_MESSAGE_BYTES), bytes)).toThrow(HarnessProtocolError)
   })

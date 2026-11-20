@@ -113,9 +113,16 @@ export interface Config {
   startTimeoutMs: number
   /**
    * Deadline of instantaneous game requests, the longest silence of a running game while a request waits, and the
-   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds.
+   * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds. A game
+   * whose main loop is busy in one frame says so while it lasts, so it is not silent, and its instantaneous requests wait
+   * until the frame ends.
    */
   requestTimeoutMs: number
+  /**
+   * Longest time that a game's main loop may spend in one frame, such as a first frame that compiles shaders, before the
+   * requests that wait for the game fail, in milliseconds.
+   */
+  busyTimeoutMs: number
   /** Grace between asking a game to quit and terminating it, in milliseconds. */
   stopGraceMs: number
   /** Bytes of process output kept per stream for diagnostics. */
@@ -301,6 +308,7 @@ export default class GodotController extends TypertRemoteService {
     importTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(180_000),
     startTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(60_000),
     requestTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(15_000),
+    busyTimeoutMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(120_000),
     stopGraceMs: z.number().step(1).min(1).max(MAX_TIMER_MS).default(3000),
     processOutputBytes: z.number().step(1).min(1024).default(1024 * 1024),
     maxLogEntries: z.number().step(1).min(1).default(5000),
@@ -1068,6 +1076,7 @@ export default class GodotController extends TypertRemoteService {
       importTimeoutMs: config.importTimeoutMs,
       startTimeoutMs: config.startTimeoutMs,
       requestTimeoutMs: config.requestTimeoutMs,
+      busyTimeoutMs: config.busyTimeoutMs,
       stopGraceMs: config.stopGraceMs,
       outputBytes: config.processOutputBytes,
       maxLogEntries: config.maxLogEntries,
