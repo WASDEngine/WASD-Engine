@@ -659,6 +659,22 @@ describe.skipIf(shipped?.bpy !== BPY_VERSION)('shipped bpy runtime worker', () =
     runtime: 'the bpy module that WASD Engine ships',
   })
 
+  it('hands the Python processes that executed code starts the environment that keeps them from writing bytecode', async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), 'dsh-blender-e2e-'))
+    onTestFinished(async () => { await rm(dataRoot, { recursive: true, force: true }) })
+    const launch = await resolveWorkerLaunch({ ...OPTIONS, backend: 'bpy', dataRoot }, WORKER, BUNDLED_ROOT, host, new AbortController().signal)
+    const worker = await JsonLineWorker.start({
+      argv: launch.argv, cwd: dataRoot, env: launch.env, readyTimeoutMs: 120_000, logTailBytes: 64 * 1024,
+    })
+    try {
+      // A child that runs to its end and imports modules the worker never compiled; the next test finds no bytecode.
+      const code = 'import subprocess, sys\nresult = subprocess.run([sys.executable, "-c", "import json, linecache, encodings.idna"]).returncode'
+      await expect(worker.request('execute_python', { code }, { timeoutMs: 120_000 })).resolves.toMatchObject({ result: 0 })
+    } finally {
+      await worker.close(3000)
+    }
+  }, 240_000)
+
   it('leaves every file and folder of the runtime as it found them', async () => {
     expect(await treeState(shipped!.directory)).toEqual(before)
   })

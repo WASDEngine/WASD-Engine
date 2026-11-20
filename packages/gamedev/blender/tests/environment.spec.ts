@@ -466,11 +466,12 @@ describe('resolveWorkerLaunch', () => {
     expect((await resolveWorkerLaunch(OPTIONS, SCRIPT, BUNDLED, host, signal)).notes).toEqual([])
   })
 
-  it('runs the shipped bpy runtime first, without uv and without writing bytecode into it', async () => {
+  it('runs the shipped bpy runtime first, without uv and without writing bytecode into it, nor letting a Python it starts', async () => {
     for (const backend of ['auto', 'bpy'] as const) {
       const host = shippedHost(SHIPPED_RECORD, [SHIPPED_PYTHON, '/usr/bin/uv', APP])
       await expect(resolveWorkerLaunch({ ...OPTIONS, backend }, SCRIPT, BUNDLED, host, signal)).resolves.toEqual({
-        backend: 'bpy', shipped: true, argv: [SHIPPED_PYTHON, '-I', '-X', 'utf8', '-B', '-u', SCRIPT], env: { PATH: '/usr/bin:/bin' }, notes: [],
+        backend: 'bpy', shipped: true, argv: [SHIPPED_PYTHON, '-I', '-X', 'utf8', '-B', '-u', SCRIPT],
+        env: { PATH: '/usr/bin:/bin', PYTHONDONTWRITEBYTECODE: '1' }, notes: [],
         repair: `If the bpy runtime that WASD Engine ships in ${SHIPPED} is damaged, reinstall WASD Engine.`,
       })
       expect(host.commands).toEqual([])
