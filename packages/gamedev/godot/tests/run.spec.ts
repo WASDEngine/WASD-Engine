@@ -441,8 +441,8 @@ posix('messages and requests', () => {
   })
 
   it('waits through a frame that the game reports busy, with its instantaneous requests, and warns of the long frame', async () => {
-    // The frame ends between two checks of the evaluation's deadline, at 600 and 800 ms.
-    const { run } = await running({ game: { busy: { on: 'wait', ms: 700 } } }, { requestTimeoutMs: 200 })
+    // The frame outlasts the evaluation's first deadline, at 1 s.
+    const { run } = await running({ game: { busy: { on: 'wait', ms: 1500 } } }, { requestTimeoutMs: 1000 })
     // The game runs past its first frame.
     await tick(100)
     const waited = run.wait({ seconds: 0.05 }, signal)
@@ -450,7 +450,7 @@ posix('messages and requests', () => {
     expect(await waited).toMatchObject({ seconds: 0.05, timedOut: false, cancelled: false })
     expect(await value).toEqual({ value: 'x', valueType: 'String' })
     expect(run.logs.filter(entry => entry.level === 'warning').map(entry => entry.message)).toEqual([
-      expect.stringMatching(new RegExp('^Frame \\d+ of the game took 0\\.\\d s, so the game showed no new picture and took no input meanwhile; '
+      expect.stringMatching(new RegExp('^Frame \\d+ of the game took \\d+(\\.\\d)? s, so the game showed no new picture and took no input meanwhile; '
         + 'a frame takes this long while the game compiles shaders or builds much at once\\.$', 'u')),
     ])
   })
@@ -461,29 +461,42 @@ posix('messages and requests', () => {
     expect(run.logs.filter(entry => entry.level === 'warning')).toEqual([])
   })
 
+  it('gives an instantaneous request requestTimeoutMs from the end of a busy frame that it waited through', async () => {
+    // The frame ends at 0.7 s and the evaluation's answer follows 0.4 s later, past its first deadline at 1 s.
+    const { run } = await running({ game: { busy: { on: 'wait', ms: 700 }, replies: { eval: 'slow:400' } } }, { requestTimeoutMs: 1000 })
+    // The game runs past its first frame.
+    await tick(100)
+    const waited = run.wait({ seconds: 0.05 }, signal)
+    const sent = Date.now()
+    expect(await run.evaluate('x', undefined, signal)).toEqual({ value: 'x', valueType: 'String' })
+    expect(Date.now() - sent).toBeGreaterThanOrEqual(1000)
+    expect(await waited).toMatchObject({ seconds: 0.05, timedOut: false })
+  })
+
   it('fails the waiting requests once the game reports one frame busy for busyTimeoutMs, and asks it to drop them', async () => {
-    const { run, project } = await running({ game: { busy: { on: 'wait' } } }, { requestTimeoutMs: 200, busyTimeoutMs: 700 })
+    const { run, project } = await running({ game: { busy: { on: 'wait' } } }, { requestTimeoutMs: 1000, busyTimeoutMs: 2000 })
     // The game runs past its first frame.
     await tick(100)
     const sent = Date.now()
-    await expect(run.wait({ seconds: 5 }, signal)).rejects.toThrow(new RegExp('^The game has spent 0\\.\\d s in frame \\d+ without finishing it, '
+    await expect(run.wait({ seconds: 5 }, signal)).rejects.toThrow(new RegExp('^The game has spent \\d+(\\.\\d)? s in frame \\d+ without finishing it, '
       + 'so it answers nothing until it does\\. It still runs: a frame takes this long while the game compiles shaders or builds much at once, '
       + 'and never ends while a script loops forever\\.$', 'u'))
-    expect(Date.now() - sent).toBeGreaterThanOrEqual(650)
+    expect(Date.now() - sent).toBeGreaterThanOrEqual(1950)
     await until(async () => (await fakeRequests(project)).some(request => request.type === 'cancel'))
     // A request while the same frame lasts fails at once.
     const asked = Date.now()
     await expect(run.evaluate('x', undefined, signal)).rejects.toThrow(/^The game has spent \d+(\.\d)? s in frame \d+ without finishing it/u)
-    expect(Date.now() - asked).toBeLessThan(150)
+    expect(Date.now() - asked).toBeLessThan(500)
   })
 
   it('names the first frame of a game that is busy before it drew anything, and warns once that frame ends', async () => {
-    const stuck = await running({ game: { busy: {} } }, { requestTimeoutMs: 200, busyTimeoutMs: 500 })
-    await expect(stuck.run.screenshot(320, signal)).rejects.toThrow(/^The game has spent 0\.\d s in its first frame without finishing it/u)
-    const slow = await running({ game: { busy: { ms: 700 } } }, { requestTimeoutMs: 200 })
+    const stuck = await running({ game: { busy: {} } }, { requestTimeoutMs: 1000, busyTimeoutMs: 1500 })
+    await expect(stuck.run.screenshot(320, signal))
+      .rejects.toThrow(/^The game has spent \d+(\.\d)? s in its first frame without finishing it/u)
+    const slow = await running({ game: { busy: { ms: 1500 } } }, { requestTimeoutMs: 1000 })
     expect((await slow.run.screenshot(320, signal)).meta).toMatchObject({ format: 'png', frame: 1 })
     expect(slow.run.logs.filter(entry => entry.level === 'warning').map(entry => entry.message)).toEqual([
-      expect.stringMatching(/^The game's first frame took 0\.\d s, so the game showed nothing and took no input until then; /u),
+      expect.stringMatching(/^The game's first frame took \d+(\.\d)? s, so the game showed nothing and took no input until then; /u),
     ])
   })
 

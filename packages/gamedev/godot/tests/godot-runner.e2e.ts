@@ -206,15 +206,17 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 
 /** The first item of a Session's follow stream: the run and its logs as they are, without a request to the game. */
 // A game whose main loop blocks for STALL_MS in its first frame, as a first frame that compiles shaders does, and in a
-// later frame after a K press, or for twice as long after an L press.
+// later frame after a K press, half a second after an M press, or for twice as long after an L press.
 const STALL_MS = 5000
 const STALL_PROJECT = {
   'project.godot': 'config_version=5\n\n[application]\n\nconfig/name="StallTest"\nrun/main_scene="res://main.tscn"\nconfig/features=PackedStringArray("4.7")\n',
   'main.gd': [
-    'extends Node2D', 'var stall_ms := 0', 'func _ready():', `\tOS.delay_msec(${STALL_MS})`, 'func _unhandled_input(event):',
+    'extends Node2D', 'var stall_ms := 0', 'var stall_at := 0', 'func _ready():', `\tOS.delay_msec(${STALL_MS})`, 'func _unhandled_input(event):',
     '\tif event is InputEventKey and event.pressed and event.keycode == KEY_K:', `\t\tstall_ms = ${STALL_MS}`,
+    '\telif event is InputEventKey and event.pressed and event.keycode == KEY_M:', '\t\tstall_at = Time.get_ticks_msec() + 500',
     '\telif event is InputEventKey and event.pressed and event.keycode == KEY_L:', `\t\tstall_ms = ${STALL_MS * 2}`,
-    'func _process(_delta):', '\tif stall_ms > 0:', '\t\tvar ms := stall_ms', '\t\tstall_ms = 0', '\t\tOS.delay_msec(ms)', '',
+    'func _process(_delta):', '\tif stall_at > 0 and Time.get_ticks_msec() >= stall_at:', '\t\tstall_at = 0', `\t\tstall_ms = ${STALL_MS}`,
+    '\tif stall_ms > 0:', '\t\tvar ms := stall_ms', '\t\tstall_ms = 0', '\t\tOS.delay_msec(ms)', '',
   ].join('\n'),
   'main.tscn': '[gd_scene format=3]\n\n[ext_resource type="Script" path="res://main.gd" id="1"]\n\n[node name="Main" type="Node2D"]\nscript = ExtResource("1")\n',
 }
@@ -940,6 +942,12 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
     const waited = await callTool(c, 'godot_wait', { seconds: 1 })
     expect(waited.isError, text(waited)).toBe(false)
     expect(text(waited)).toMatch(/^Waited \d+ frames/u)
+    // A frame as long inside a performance sample delays its script profiling past the sample's real-time limit (2 s of
+    // frames, 2 s of scripts, and requestTimeoutMs), which the frame does not use up.
+    expect((await press('M')).isError).toBe(false)
+    const measured = await callTool(c, 'godot_performance', { seconds: 2 })
+    expect(measured.isError, text(measured)).toBe(false)
+    expect(measured.value).toMatchObject({ timedOut: false })
     // A frame longer than the busy limit fails the wait, which the game then drops, and leaves the game running.
     expect((await press('L')).isError).toBe(false)
     const stuck = await callTool(c, 'godot_wait', { seconds: 1 })

@@ -109,7 +109,8 @@ export interface GodotRunSpec {
   /**
    * Deadline for instantaneous requests, the longest harness silence while any request waits, and the real time
    * that a wait, a step, or an agent input sequence may take beyond the time it needs. A game whose harness reports
-   * its main loop busy is not silent, and its instantaneous requests wait until the main loop runs again.
+   * its main loop busy is not silent, and its instantaneous requests wait until the main loop runs again, then for
+   * `requestTimeoutMs` more.
    */
   readonly requestTimeoutMs: number
   /**
@@ -499,6 +500,8 @@ export class GodotRun {
   private lastActivity = 0
   /** Where the game's main loop is busy while the harness reports it; any other message from the game ends it. */
   private busy: BusyFrame | undefined
+  /** When, by the Host's clock, the latest busy frame ended; 0 before any. */
+  private busyEndedAt = 0
   private silenceTimer: NodeJS.Timeout | undefined
   private disconnectTimer: NodeJS.Timeout | undefined
   /** Views that show the run's picture, such as Game tabs. */
@@ -1185,7 +1188,8 @@ export class GodotRun {
    */
   private endBusy({ frame, since }: BusyFrame): void {
     this.busy = undefined
-    const took = Date.now() - since
+    this.busyEndedAt = Date.now()
+    const took = this.busyEndedAt - since
     if (took < this.spec.requestTimeoutMs) return
     const what = frame <= 1
       ? `The game's first frame took ${formatSeconds(took)}, so the game showed nothing and took no input until then`
@@ -1311,10 +1315,17 @@ export class GodotRun {
     if (options.stop?.aborted === true) queueMicrotask(stop)
     else options.stop?.addEventListener('abort', stop, { once: true })
     if (options.bounded) {
+      const sentAt = Date.now()
       const expire = (): void => {
         // A game whose main loop is busy answers once it runs again; `busyTimeoutMs` bounds the wait meanwhile.
         if (this.busy !== undefined) {
           timer = setTimeout(expire, this.spec.requestTimeoutMs)
+          return
+        }
+        // A request still has `requestTimeoutMs` from the end of a busy frame that it waited through.
+        const left = Math.max(sentAt, this.busyEndedAt) + this.spec.requestTimeoutMs - Date.now()
+        if (left > 0) {
+          timer = setTimeout(expire, left)
           return
         }
         this.settle(id, entry)

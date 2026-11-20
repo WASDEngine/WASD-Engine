@@ -2082,7 +2082,7 @@ export interface Config {
    * Deadline of instantaneous game requests, the longest silence of a running game while a request waits, and the
    * real time that a wait, a step, or an agent input sequence may take beyond the time it needs, in milliseconds. A game
    * whose main loop is busy in one frame says so while it lasts, so it is not silent, and its instantaneous requests wait
-   * until the frame ends.
+   * until the frame ends, then for `requestTimeoutMs` more.
    */
   requestTimeoutMs: number
   /**

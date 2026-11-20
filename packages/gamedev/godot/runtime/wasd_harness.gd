@@ -72,7 +72,8 @@ extends SceneTree
 ##
 ## A `wait`, `step`, or `input` request ends early once its optional `timeoutMs` of real time has passed since it
 ## arrived, not counting the time of a frame beyond BUSY_REPORT_MS, through which the Host waits as `busy` reports it,
-## or on a `cancel` request whose `request` is its id; a pending step also ends on `pause`, `resume`, or
+## or on a `cancel` request whose `request` is its id; that time of a long frame does not count against the
+## `timeoutMs` of `eval` code, a `performance` sample, or an `audio` capture either; a pending step also ends on `pause`, `resume`, or
 ## a newer `step`. An early end answers with the usual fields for the part that ran, plus `timedOut: true` after
 ## the timeout or `cancelled: true` otherwise; a request that runs to its end answers both as false. A step that
 ## times out or is cancelled pauses the game, and one that `resume` or a newer step ends leaves it running. An
@@ -911,9 +912,9 @@ func _deadline(id, message: Dictionary, now: float) -> float:
 	return now + float(timeout) / 1000.0
 
 
-## Moves the deadlines of the pending waits, steps, and input sequences by the real time that the previous frame took
-## beyond BUSY_REPORT_MS, during which the harness reported the main loop busy, so such a frame uses up none of the time
-## that they allow.
+## Moves the deadlines of the pending waits, steps, input sequences, `eval` code, performance sample, and audio capture
+## by the real time that the previous frame took beyond BUSY_REPORT_MS, during which the harness reported the main loop
+## busy, so such a frame uses up none of the time that they allow.
 func _spare_deadlines(now: float) -> void:
 	var busy := now - _process_at - BUSY_REPORT_MS / 1000.0
 	var first := _process_at == 0.0
@@ -923,6 +924,13 @@ func _spare_deadlines(now: float) -> void:
 	for pending in _waits + _actions:
 		if pending["deadline"] > 0.0:
 			pending["deadline"] += busy
+	for id in _evals.keys():
+		if _evals[id] > 0.0:
+			_evals[id] += busy
+	if not _sample.is_empty() and float(_sample["deadline"]) > 0.0:
+		_sample["deadline"] = float(_sample["deadline"]) + busy
+	if _audio != null and _audio.deadline > 0.0:
+		_audio.deadline += busy
 
 
 func _pending_wait(id, kind: String, frames: int, seconds: float, deadline: float) -> Dictionary:
