@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-image-generation",
   "description": "Image generation for the agent: game art, UI pieces, and textures made by Google's Nano Banana 2.1, saved into the game project and charged to the WASD Engine plan",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "icon": "./icon.svg",
   "publishConfig": {
     "access": "public"
