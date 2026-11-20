@@ -627,7 +627,8 @@ result = errors`
         await new Promise<void>((resolve) => { replies.once('data', () => { resolve() }) })
         if (busy) {
           // A call that never returns, and a process it starts, which must end with the worker; under uv, uv leads the group.
-          const started = leadsGroup ? 'import subprocess\nsubprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)"])\n' : ''
+          // The child runs with -B as the worker does, so it writes no bytecode into the runtime the next test checks.
+          const started = leadsGroup ? 'import subprocess\nsubprocess.Popen([sys.executable, "-B", "-c", "import time; time.sleep(300)"])\n' : ''
           const code = `import sys, time\n${started}sys.__stderr__.write("busy\\n")\nsys.__stderr__.flush()\nwhile True:\n    time.sleep(0.05)`
           child.stdin.write(`${JSON.stringify({ id: 1, method: 'execute_python', params: { code } })}\n`)
           await vi.waitFor(() => { expect(stderr).toContain('busy\n') }, { timeout: 60_000 })

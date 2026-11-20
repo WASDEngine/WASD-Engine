@@ -23,7 +23,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { GodotFollowItem, GodotRunView } from '../src/types.ts'
 import { callTool, compose, text, type Composition } from './composition.ts'
 
@@ -524,8 +524,10 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
       expect(text(measured)).toContain('Scripts: this Godot runtime has no script profiler;')
       return
     }
-    // WASD Engine's runtime takes GPU timestamps on Metal, as Vulkan does elsewhere.
-    expect(value.gpuMs?.mean, text(measured)).toBeGreaterThan(0)
+    // WASD Engine's runtime takes GPU timestamps on Metal, as Vulkan does elsewhere, on a GPU that keeps them: a virtual
+    // machine's paravirtual Metal device, such as a CI runner's, takes none.
+    const adapter = /renderer on ([^;\n]+)/u.exec(text(measured))?.[1] ?? ''
+    if (!/paravirtual/iu.test(adapter)) expect(value.gpuMs?.mean, text(measured)).toBeGreaterThan(0)
     expect(value.scriptProfile?.frames).toBeGreaterThan(10)
     const scripts = value.scriptProfile?.scripts ?? []
     expect(scripts.map(script => script.path)).toEqual(expect.arrayContaining(['res://player.gd', 'res://counter.gd']))
@@ -899,11 +901,14 @@ describe.skipIf(runner === undefined || library === undefined || !existsSync(run
       expect(text(await callTool(c, 'godot_stop'))).toBe('Stopped the game.')
       return
     }
-    // Godot applies no frame limit to a game with --fixed-fps, so such a game ran as fast as it could draw.
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    const hidden = (await snapshot(c)).run as GodotRunView
-    expect(hidden.fps).toBeGreaterThan(4)
-    expect(hidden.fps).toBeLessThanOrEqual(13)
+    // Godot applies no frame limit to a game with --fixed-fps, so such a game ran as fast as it could draw, until the
+    // hidden cap takes it after hiddenDelayMs. Its first frames compile its shaders, which take many seconds on a
+    // machine that never ran it, such as a CI runner, so the rate settles in the cap's range only then.
+    await vi.waitFor(async () => {
+      const hidden = (await snapshot(c)).run as GodotRunView
+      expect(hidden.fps).toBeGreaterThan(4)
+      expect(hidden.fps).toBeLessThanOrEqual(13)
+    }, { timeout: 120_000, interval: 1000 })
     // A request lifts the hidden cap; the game, which no Game tab displays, still presents nothing and draws at most at
     // the display's refresh rate.
     const measured = await callTool(c, 'godot_performance', { seconds: 1, scripts: false })
