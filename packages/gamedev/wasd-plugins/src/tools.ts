@@ -21,7 +21,7 @@ import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext }
 import { IMAGE_SCHEMA, type StoredScreenshot } from './browser.ts'
 import { MAX_MODEL_NAME } from './credits.ts'
 import { MOBILE_PLATFORM_NAMES, MOBILE_PLATFORMS } from './exports.ts'
-import { DESKTOP_PLATFORMS, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, WebCheckRefusal, type ReleaseRequest } from './release.ts'
+import { DESKTOP_PLATFORMS, MAX_DESCRIPTION, MAX_NOTES, MAX_TITLE, PLATFORM_NAMES, WebCheckRefusal, type ReleaseRequest } from './release.ts'
 import type {
   WasdDesktopExport, WasdDesktopPlatform, WasdDownloadStatus, WasdMobileExport, WasdMobilePlatform, WasdRelease, WasdWebZip,
 } from './types.ts'
@@ -703,6 +703,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
       project: PROJECT,
       notes: { type: 'string', description: `What changed in this version, shown on the game page; at most ${MAX_NOTES} characters.` },
       title: { type: 'string', description: `Game title for the first release, or a new title for the game; at most ${MAX_TITLE} characters. Default: the project's name.` },
+      description: { type: 'string', description: `What the game is, shown on its page and on Explore and read by search engines: two to four sentences on what kind of game it is, its goal, and how to play it, with its controls; at most ${MAX_DESCRIPTION} characters. Give it on the first release, when the result says the game has none, and when the game changes what it is. Default: the game keeps its description.` },
       preview_image: { type: 'string', description: 'PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.' },
       preview_gif: { type: 'string', description: 'Animated GIF that link previews of the share link show, and that Explore and the game\'s page then play in place of the recorded animation, relative to the working directory. Default: the GIF that wasd_record_preview saved, with its animation.' },
       new_game: { type: 'boolean', description: 'true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.' },
@@ -764,6 +765,7 @@ function releaseDefinition(host: WasdToolHost, audience: WasdToolAudience): Tool
         projectDir,
         ...args.notes === undefined ? {} : { notes: args.notes },
         ...args.title === undefined ? {} : { title: args.title },
+        ...args.description === undefined ? {} : { description: args.description },
         ...previewImage === undefined ? {} : { previewImage },
         ...previewGif === undefined ? {} : { previewGif },
         ...args.new_game === undefined ? {} : { newGame: args.new_game },
@@ -943,7 +945,7 @@ export function wasdMcpProvider(
   definitions: readonly ToolDefinition[], credits: ConnectedCredits, multiplayer: readonly GameMcpTool[] = [], multiplayerInstructions = '',
 ): GameMcpProvider {
   const tools = [...definitions.map(definition => mcpTool(definition, credits)), ...multiplayer]
-  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the full name of the AI model you are, such as Claude Opus 5.5, with every release, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, and pass notes that say what changed. Release the game as it is: wasd_release_game first checks the Web build in a browser and publishes nothing when the game does not start, crashes, stops answering, or prints errors there; then tell the user what the check found, and change the game only when they ask. Releasing needs WASD Engine to be signed in.'
+  const release = 'wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game\'s preview, a short animation, a GIF, and a still of the running game, which Explore, the game\'s page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game\'s next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game\'s page credits what made the game: pass model, the full name of the AI model you are, such as Claude Opus 5.5, with every release, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, pass notes that say what changed, and on a game\'s first release pass description, what the game is and how to play it. Release the game as it is: wasd_release_game first checks the Web build in a browser and publishes nothing when the game does not start, crashes, stops answering, or prints errors there; then tell the user what the check found, and change the game only when they ask. Releasing needs WASD Engine to be signed in.'
   return {
     id: 'wasd',
     title: 'WASD Engine',

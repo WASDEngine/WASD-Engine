@@ -71,6 +71,12 @@ export const MAX_NOTES = 1000
 /** Longest game title the site keeps. */
 export const MAX_TITLE = 80
 
+/** Longest game description the site keeps. */
+export const MAX_DESCRIPTION = 2000
+
+/** What a release's result says of a game the site describes with nothing. */
+export const NO_DESCRIPTION_NOTE = 'The game has no description, so its page, Explore, and search engines say little about it. Pass description with the next release: two to four sentences on what kind of game it is, its goal, and how to play it.'
+
 /** Image types the site takes as a game's picture, by file extension. */
 const IMAGE_TYPES: Readonly<Record<string, string>> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' }
 
@@ -104,6 +110,8 @@ const GameJson = z.object({
   id: z.string(),
   slug: z.string(),
   title: z.string(),
+  // Absent from sites that keep no description of a game.
+  description: z.string().optional(),
   url: z.string(),
   latest_version: z.number().int(),
   cover_url: z.string().nullish(),
@@ -147,14 +155,15 @@ class SiteApi {
     return (await this.site.json(response, z.object({ game: GameJson }), 'read the game')).game
   }
 
-  async create(title: string, visibility: WasdVisibility): Promise<GameJson> {
-    const response = await this.site.call('POST', '/api/v1/games', { data: JSON.stringify({ title, visibility }), type: 'application/json' })
+  async create(title: string, visibility: WasdVisibility, description: string | undefined): Promise<GameJson> {
+    const body = { title, visibility, ...description === undefined ? {} : { description } }
+    const response = await this.site.call('POST', '/api/v1/games', { data: JSON.stringify(body), type: 'application/json' })
     return (await this.site.json(response, z.object({ game: GameJson }), 'create the game')).game
   }
 
-  async rename(id: string, title: string): Promise<GameJson> {
-    const response = await this.site.call('PATCH', `/api/v1/games/${encodeURIComponent(id)}`, { data: JSON.stringify({ title }), type: 'application/json' })
-    return (await this.site.json(response, z.object({ game: GameJson }), 'rename the game')).game
+  async update(id: string, changes: GameChanges): Promise<GameJson> {
+    const response = await this.site.call('PATCH', `/api/v1/games/${encodeURIComponent(id)}`, { data: JSON.stringify(changes), type: 'application/json' })
+    return (await this.site.json(response, z.object({ game: GameJson }), 'update the game')).game
   }
 
   async release(
@@ -219,6 +228,12 @@ async function ownedGame(api: SiteApi, games: readonly AccountGame[], account: s
   return undefined
 }
 
+/** The title and description a release gives an existing game, each only when it differs from the site's. */
+interface GameChanges {
+  readonly title?: string
+  readonly description?: string
+}
+
 /** What a release reads and changes. */
 export interface ReleaseRequest {
   /** Absolute folder holding `project.godot`. */
@@ -227,6 +242,11 @@ export interface ReleaseRequest {
   readonly notes?: string
   /** Title for a new game, or a new title for the existing one; at most {@link MAX_TITLE} characters. */
   readonly title?: string
+  /**
+   * What the game is, for its page, Explore, and search engines; at most {@link MAX_DESCRIPTION} characters. Undefined
+   * keeps the game's description.
+   */
+  readonly description?: string
   /** Absolute path of a PNG, JPEG, or WebP picture of the game. Default: the still of the project's recorded preview. */
   readonly previewImage?: string
   /** Absolute path of an animated GIF of the game. Default: the GIF of the project's recorded preview. */
@@ -504,6 +524,10 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   if (notes.length > MAX_NOTES) throw new ReleaseError(`notes must be at most ${MAX_NOTES} characters.`)
   const title = request.title?.trim()
   if (title !== undefined && (title === '' || title.length > MAX_TITLE)) throw new ReleaseError(`title must be 1 to ${MAX_TITLE} characters.`)
+  const description = request.description?.trim()
+  if (description !== undefined && (description === '' || description.length > MAX_DESCRIPTION)) {
+    throw new ReleaseError(`description must be 1 to ${MAX_DESCRIPTION} characters.`)
+  }
   if (request.previewImage !== undefined && IMAGE_TYPES[extname(request.previewImage).toLowerCase()] === undefined) {
     throw new ReleaseError('preview_image must be a PNG, JPEG, or WebP file.')
   }
@@ -549,7 +573,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   const inherited = game?.visibility ?? accountGame(siteLinks, access.account)?.visibility ?? 'public'
   const create = async (): Promise<GameJson> => {
     const name = title ?? projectName(await readFile(join(request.projectDir, 'project.godot'), 'utf8')) ?? basename(request.projectDir)
-    const created = await api.create(name.slice(0, MAX_TITLE), request.visibility ?? inherited)
+    const created = await api.create(name.slice(0, MAX_TITLE), request.visibility ?? inherited, description)
     // Linked before the upload: when the upload fails, or the call ends while the site still stores the build, the
     // next release adds its version to this game instead of creating another.
     await remember(created, created.latest_version)
@@ -594,7 +618,13 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     if (checked !== undefined && 'webCheck' in checked && checked.webCheck.problems.length > 0) {
       throw new WebCheckRefusal(checked.webCheck, exported.warnings)
     }
-    if (game !== undefined && title !== undefined && game.title !== title) game = await api.rename(game.id, title)
+    if (game !== undefined) {
+      const changes: GameChanges = {
+        ...title === undefined || game.title === title ? {} : { title },
+        ...description === undefined || game.description === description ? {} : { description },
+      }
+      if (Object.keys(changes).length > 0) game = await api.update(game.id, changes)
+    }
     game ??= await create()
     const warnings = [...exported.warnings]
     const saved = await savedPreview(request.projectDir)
@@ -627,6 +657,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
     const prior = siteLinks.find(entry => entry.id === released.game.id)
     const uploaded: PreviewDigests = prior === undefined ? {} : { image: prior.image, gif: prior.gif, webp: prior.webp }
     await remember(released.game, released.release.version, uploaded)
+    if (released.game.description === '') warnings.push(NO_DESCRIPTION_NOTE)
     if (multiplayer !== undefined) multiplayer = await pointConfig(request.projectDir, multiplayer, released.game.id, access.origin)
     let serverBuild: WasdServerBuild | undefined
     if (multiplayer?.mode === 'dedicated') {

@@ -19,7 +19,7 @@
 <p align="center">
   <a href="https://github.com/WASDEngine/WASD-Engine/releases/latest"><b>Download for macOS or Windows</b></a>
   &nbsp;·&nbsp;
-  <a href="https://app.wasdengine.com">Website</a>
+  <a href="https://wasdengine.com">Website</a>
   &nbsp;·&nbsp;
   <a href="#run-from-source">Run from source</a>
 </p>
@@ -134,7 +134,7 @@ To connect one, sign in to WASD Engine: the introduction that follows ends with 
 | 2D & 3D assets, music, SFX, and more | Create AAA-quality games | For the most ambitious creators |
 | Bring your own AI | Bring your own AI | Bring your own AI |
 
-New accounts start on a waitlist: [join it](https://app.wasdengine.com/signup), or see the [website](https://app.wasdengine.com) for current plans.
+New accounts start on a waitlist: [join it](https://wasdengine.com/signup), or see the [website](https://wasdengine.com) for current plans.
 
 ## Under the hood
 

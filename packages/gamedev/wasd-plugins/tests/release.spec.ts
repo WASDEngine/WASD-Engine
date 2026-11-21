@@ -14,7 +14,7 @@ import { ReleaseFolders } from '../src/folders.ts'
 import { PREVIEW_DIR } from '../src/preview.ts'
 import { accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView } from '../src/game-link.ts'
 import {
-  releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal, type ReleaseDependencies,
+  NO_DESCRIPTION_NOTE, releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal, type ReleaseDependencies,
 } from '../src/release.ts'
 import type { SiteAccess } from '../src/site-client.ts'
 
@@ -25,6 +25,7 @@ interface SiteGame {
   id: string
   slug: string
   title: string
+  description: string
   owner: string
   versions: number
   visibility: 'public' | 'private'
@@ -61,7 +62,9 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
     id: game.id, slug: game.slug, title: game.title, url: `${ORIGIN}/games/${game.slug}`, latest_version: game.versions,
     cover_url: game.cover === undefined ? null : `https://files.test/${game.cover}`,
     gif_url: game.gif === undefined ? null : `https://files.test/${game.gif}`,
-    ...options.legacy === true ? {} : { webp_url: game.webp === undefined ? null : `https://files.test/${game.webp}`, visibility: game.visibility },
+    ...options.legacy === true
+      ? {}
+      : { description: game.description, webp_url: game.webp === undefined ? null : `https://files.test/${game.webp}`, visibility: game.visibility },
   })
   const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
   const fetchSite: typeof fetch = async (input, init) => {
@@ -95,9 +98,9 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
     const game = match?.[1] === undefined ? undefined : games.get(match[1])
     if (match?.[1] !== undefined && (game === undefined || game.owner !== token)) return json(404, { error: { message: 'No such game.' } })
     if (method === 'POST' && match?.[1] === undefined) {
-      const { title, visibility } = JSON.parse(init?.body as string) as { title: string; visibility?: 'public' | 'private' }
+      const { title, description, visibility } = JSON.parse(init?.body as string) as { title: string; description?: string; visibility?: 'public' | 'private' }
       const created: SiteGame = {
-        id: `game-${next}`, slug: `${title.toLowerCase().replaceAll(' ', '-')}-${next}`, title, owner: token, versions: 0,
+        id: `game-${next}`, slug: `${title.toLowerCase().replaceAll(' ', '-')}-${next}`, title, description: description ?? '', owner: token, versions: 0,
         visibility: options.legacy === true ? 'public' : visibility ?? 'public', downloads: [],
       }
       next++
@@ -106,7 +109,9 @@ function siteWith(options: SiteOptions, ...tokens: string[]) {
     }
     if (method === 'GET' && game !== undefined && match?.[2] === undefined) return json(200, { game: gameJson(game) })
     if (method === 'PATCH' && game !== undefined) {
-      game.title = (JSON.parse(init?.body as string) as { title: string }).title
+      const changes = JSON.parse(init?.body as string) as { title?: string; description?: string }
+      game.title = changes.title ?? game.title
+      game.description = changes.description ?? game.description
       return json(200, { game: gameJson(game) })
     }
     if (method === 'POST' && game !== undefined && match?.[2] === '/releases') {
@@ -242,7 +247,7 @@ describe('releaseGame', () => {
     const deps = dependencies(server.fetch, undefined, undefined, scratch)
     const first = await releaseGame({ projectDir: dir, notes: 'First playable' }, deps, signal)
     expect(first).toMatchObject({ title: 'Defenders of the Wall', version: 1, gameUrl: gameUrl(1), url: `${gameUrl(1)}?v=1` })
-    expect(first.warnings).toEqual(['Renders with the Compatibility renderer.'])
+    expect(first.warnings).toEqual(['Renders with the Compatibility renderer.', NO_DESCRIPTION_NOTE])
     expect(deps.exports).toEqual([join(dir, STATE_DIR, 'web')])
     const upload = server.calls.find(call => call.path.endsWith('/releases'))
     expect(upload?.notes).toBe('First playable')
@@ -425,6 +430,30 @@ describe('releaseGame', () => {
     expect(server.games.get('game-1')?.versions).toBe(1)
   })
 
+  it('describes the game on its first release, keeps the description until a release gives a new one, and asks for one when the game has none', async () => {
+    const dir = await project()
+    const server = site()
+    const deps = dependencies(server.fetch)
+    const first = await releaseGame({ projectDir: dir, description: '  A tower defense game: hold the wall with WASD and Space.  ' }, deps, signal)
+    expect(server.games.get('game-1')?.description).toBe('A tower defense game: hold the wall with WASD and Space.')
+    expect(first.warnings).not.toContain(NO_DESCRIPTION_NOTE)
+    const kept = await releaseGame({ projectDir: dir }, deps, signal)
+    expect(kept.warnings).not.toContain(NO_DESCRIPTION_NOTE)
+    await releaseGame({ projectDir: dir, description: 'A tower defense game: hold the wall with WASD and Space.' }, deps, signal)
+    expect(server.calls.filter(call => call.method === 'PATCH')).toHaveLength(0)
+    await releaseGame({ projectDir: dir, description: 'Hold the wall with a friend.' }, deps, signal)
+    expect(server.games.get('game-1')?.description).toBe('Hold the wall with a friend.')
+    expect(server.calls.filter(call => call.method === 'PATCH')).toHaveLength(1)
+
+    const other = await project('Other')
+    const undescribed = await releaseGame({ projectDir: other }, deps, signal)
+    expect(undescribed.warnings).toContain(NO_DESCRIPTION_NOTE)
+    // A site that keeps no description asks for none.
+    const legacy = siteWith({ legacy: true })
+    const old = await releaseGame({ projectDir: await project('Old') }, dependencies(legacy.fetch), signal)
+    expect(old.warnings).not.toContain(NO_DESCRIPTION_NOTE)
+  })
+
   it('renames the game when a title is given, and creates a new game when the site no longer has the old one', async () => {
     const dir = await project()
     const server = site()
@@ -595,6 +624,8 @@ describe('releaseGame', () => {
     const deps = dependencies(server.fetch)
     await expect(releaseGame({ projectDir: dir, notes: 'x'.repeat(1001) }, deps, signal)).rejects.toThrow(/notes must be at most 1000/u)
     await expect(releaseGame({ projectDir: dir, title: ' ' }, deps, signal)).rejects.toThrow(/title must be 1 to 80/u)
+    await expect(releaseGame({ projectDir: dir, description: ' ' }, deps, signal)).rejects.toThrow(/description must be 1 to 2000/u)
+    await expect(releaseGame({ projectDir: dir, description: 'x'.repeat(2001) }, deps, signal)).rejects.toThrow(/description must be 1 to 2000/u)
     await expect(releaseGame({ projectDir: dir, previewImage: join(dir, 'cover.gif') }, deps, signal)).rejects.toThrow(/preview_image must be a PNG, JPEG, or WebP/u)
     await expect(releaseGame({ projectDir: dir, previewGif: join(dir, 'clip.mp4') }, deps, signal)).rejects.toThrow(/preview_gif must be a GIF/u)
     await expect(releaseGame({ projectDir: dir, previewGif: join(dir, 'missing.gif') }, deps, signal)).rejects.toThrow(/preview_gif .*missing\.gif is not a file/u)
@@ -711,7 +742,7 @@ describe('releaseGame', () => {
     const other = await project('Other')
     const failing = await releaseGame({ projectDir: other }, { ...deps, recordPreview: () => Promise.reject(new Error('The game did not keep running (crashed).')) }, signal)
     expect([...server.games.values()].find(game => game.title === 'Other')?.gif).toBeUndefined()
-    expect(failing.warnings.at(-1)).toBe('The game has no preview GIF: recording one failed: The game did not keep running (crashed).')
+    expect(failing.warnings).toContain('The game has no preview GIF: recording one failed: The game did not keep running (crashed).')
   })
 })
 
