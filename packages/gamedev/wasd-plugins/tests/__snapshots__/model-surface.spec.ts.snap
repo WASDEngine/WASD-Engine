@@ -1,0 +1,357 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`pins the tool declarations a Session's agent reads > session tool declarations 1`] = `
+[
+  {
+    "description": "Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project's .wasdengine/web folder, which any static web server can serve, and with zip also one ZIP file of it for game sites such as itch.io. The Web build renders with the Compatibility renderer, which has no RenderingDevice, so the result names the project files that use features Web builds lack. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, the errors the build printed, the problems that would stop a release, and a screenshot of the page. The first export downloads Godot's Web template, about 10 MB. To publish the game on WASD Engine for others to play, call wasd_release_game instead.",
+    "name": "wasd_export_web",
+    "parameters": {
+      "properties": {
+        "check": {
+          "description": "false skips the Web check, which opens the exported build in a browser of WASD Engine's own, watches the game start and run for a short while without input, and reports how long it took to start, how long the page froze, its frame rate and draw calls, and the errors and warnings it printed, with what they mean for players and a screenshot of the page. Default: true.",
+          "type": "boolean",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "zip": {
+          "description": "true also packs the build into one ZIP file named after the game, with index.html at its root, in the project's .wasdengine/web-zip folder: the file game sites such as itch.io take as an HTML5 game. Default: false.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Export the Godot game for desktop computers with the built-in Godot, one ZIP file per platform in the project's .wasdengine/desktop folder: windows holds one .exe with the whole game for 64-bit Windows, and macos holds the game's Mac app for Intel and Apple silicon Macs, signed ad hoc. The user can share the files or upload them anywhere. The first export for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. To offer the builds as downloads on the game's WASD Engine page, pass desktop to wasd_release_game instead.",
+    "name": "wasd_export_desktop",
+    "parameters": {
+      "properties": {
+        "platforms": {
+          "description": "The platforms to build for. Default: both, ["windows", "macos"].",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Export the Godot game for phones and tablets with the built-in Godot, into the project's .wasdengine/mobile folder: android builds one APK file for Android phones and tablets with 64-bit ARM processors, signed and ready to install, and ios builds an Xcode project, which Xcode on a Mac turns into the iPhone and iPad app. An Android export needs a Java runtime and the Android SDK on this computer, which Android Studio installs, and signs every Android build of this computer's games with one key, which the first Android export creates. A platform that cannot build is reported while the other still builds. The first export for each platform downloads its Godot template, about 99 MB for Android and 189 MB for iOS.",
+    "name": "wasd_export_mobile",
+    "parameters": {
+      "properties": {
+        "apple_team_id": {
+          "description": "The Apple Developer Team ID, 10 capital letters and digits such as ABCDE12345, that the iOS Xcode project signs with, when the user gives one. Default: the one team of this Mac's Apple Development certificates; without one, Xcode asks for the team.",
+          "type": "string",
+        },
+        "platforms": {
+          "description": "The platforms to build for. Default: both, ["android", "ios"].",
+          "items": {
+            "enum": [
+              "android",
+              "ios",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Record the game's preview for WASD Engine: a few seconds of the running game as an animation that Explore and the game's page play and a GIF that link previews of its share link show, and a still image, which wasd_release_game uploads. First start the game with godot_run and bring it to its gameplay, such as past its title menu; events then play from the start of the recording, as godot_input takes them, so the clip shows the game in action. Without a running game, the recording starts the game and records its first seconds. The result shows the still: when it does not show the game well, record again. Each recording replaces the project's previous preview in its .wasdengine/preview folder.",
+    "name": "wasd_record_preview",
+    "parameters": {
+      "properties": {
+        "coordinate_space": {
+          "description": "Unit of the events' x, y, dx, dy: pixels of the latest godot_screenshot (default) or of the game window.",
+          "enum": [
+            "screenshot",
+            "window",
+          ],
+          "type": "string",
+        },
+        "events": {
+          "description": "Input played in order from the start of the recording, in the event format of godot_input: keys, typed text, mouse buttons and motion, input actions, joypad events, and { "wait": seconds }. What still plays when the clip ends is released.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "seconds": {
+          "description": "Length of the clip in seconds, from 1 to 10. Default: 4.",
+          "type": "number",
+        },
+        "still_at": {
+          "description": "Seconds into the clip at which the still is taken. Default: the middle.",
+          "type": "number",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Release the Godot game on WASD Engine: export it for the Web, upload the build as the game's next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine's Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game's page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game's page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game's page credits what made the game: your model, the game tools that worked on the project, and its add-ons. A game set up for a dedicated server also gets its server build stored with the version, and its servers switch to it. Before anything is uploaded, a Web check opens the build in a browser: when the game does not start, crashes, stops answering, or prints errors there, the call publishes nothing and fails with what the check saw and a screenshot of the page. Every call that passes publishes a new version, so call it only when the user asks to release, publish, or share the game, and release the game as it is: do not change it in the same turn.",
+    "name": "wasd_release_game",
+    "parameters": {
+      "properties": {
+        "check": {
+          "description": "false releases without the Web check, which otherwise opens the build in a browser of WASD Engine's own before anything is uploaded and stops the release when the game does not start, crashes, stops answering, or prints errors there. Pass false only when the user, told what the check found, asks to release the build as it is. Default: true.",
+          "type": "boolean",
+        },
+        "description": {
+          "description": "What the game is, shown on its page and on Explore and read by search engines: two to four sentences on what kind of game it is, its goal, and how to play it, with its controls; at most 2000 characters. Give it on the first release, when the result says the game has none, and when the game changes what it is. Default: the game keeps its description.",
+          "type": "string",
+        },
+        "desktop": {
+          "description": "Also build the game for these desktop platforms and offer each build as a download of this version on the game's page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "new_game": {
+          "description": "true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.",
+          "type": "boolean",
+        },
+        "notes": {
+          "description": "What changed in this version, shown on the game page; at most 1000 characters.",
+          "type": "string",
+        },
+        "preview_gif": {
+          "description": "Animated GIF that link previews of the share link show, and that Explore and the game's page then play in place of the recorded animation, relative to the working directory. Default: the GIF that wasd_record_preview saved, with its animation.",
+          "type": "string",
+        },
+        "preview_image": {
+          "description": "PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.",
+          "type": "string",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "title": {
+          "description": "Game title for the first release, or a new title for the game; at most 80 characters. Default: the project's name.",
+          "type": "string",
+        },
+        "visibility": {
+          "description": "public lists the game on WASD Engine's Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game's current visibility; a new game is public.",
+          "enum": [
+            "public",
+            "private",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+]
+`;
+
+exports[`pins the tool declarations and instructions connected agents read > connected instructions 1`] = `"wasd_export_web builds the Godot project for the Web into its .wasdengine/web folder, wasd_export_desktop builds it for Windows and macOS into its .wasdengine/desktop folder, and wasd_export_mobile builds it for Android and iOS into its .wasdengine/mobile folder. wasd_record_preview records the game's preview, a short animation, a GIF, and a still of the running game, which Explore, the game's page, and link previews of the share link show: start the game with godot_run, bring it to its gameplay, then record with events that play it. wasd_release_game builds the project and publishes the build as the game's next numbered version on WASD Engine with the recorded preview, and returns the share link, where anyone with the link can play the game, pick earlier versions, and comment; visibility public also lists the game on Explore, private keeps it off, and desktop adds Windows and macOS downloads. The game's page credits what made the game: pass model, the full name of the AI model you are, such as Claude Opus 5.5, with every release, and it lists the game tools and add-ons that worked on the project. Release only when the user asks to, pass notes that say what changed, and on a game's first release pass description, what the game is and how to play it. Release the game as it is: wasd_release_game first checks the Web build in a browser and publishes nothing when the game does not start, crashes, stops answering, or prints errors there; then tell the user what the check found, and change the game only when they ask. Releasing needs WASD Engine to be signed in."`;
+
+exports[`pins the tool declarations and instructions connected agents read > connected tool declarations 1`] = `
+[
+  {
+    "description": "Export the Godot project for the Web with the built-in Godot: a single-threaded HTML5 build (index.html, index.js, index.wasm, index.pck) in the project's .wasdengine/web folder, which any static web server can serve, and with zip also one ZIP file of it for game sites such as itch.io. The Web build renders with the Compatibility renderer, which has no RenderingDevice, so the result names the project files that use features Web builds lack. Then a Web check opens the build in a browser and reports what players would meet: freezes, frame rate, the errors the build printed, the problems that would stop a release, and a screenshot of the page. The first export downloads Godot's Web template, about 10 MB. To publish the game on WASD Engine for others to play, call wasd_release_game instead.",
+    "name": "wasd_export_web",
+    "parameters": {
+      "properties": {
+        "check": {
+          "description": "false skips the Web check, which opens the exported build in a browser of WASD Engine's own, watches the game start and run for a short while without input, and reports how long it took to start, how long the page froze, its frame rate and draw calls, and the errors and warnings it printed, with what they mean for players and a screenshot of the page. Default: true.",
+          "type": "boolean",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "zip": {
+          "description": "true also packs the build into one ZIP file named after the game, with index.html at its root, in the project's .wasdengine/web-zip folder: the file game sites such as itch.io take as an HTML5 game. Default: false.",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Export the Godot game for desktop computers with the built-in Godot, one ZIP file per platform in the project's .wasdengine/desktop folder: windows holds one .exe with the whole game for 64-bit Windows, and macos holds the game's Mac app for Intel and Apple silicon Macs, signed ad hoc. The user can share the files or upload them anywhere. The first export for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. To offer the builds as downloads on the game's WASD Engine page, pass desktop to wasd_release_game instead.",
+    "name": "wasd_export_desktop",
+    "parameters": {
+      "properties": {
+        "platforms": {
+          "description": "The platforms to build for. Default: both, ["windows", "macos"].",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Export the Godot game for phones and tablets with the built-in Godot, into the project's .wasdengine/mobile folder: android builds one APK file for Android phones and tablets with 64-bit ARM processors, signed and ready to install, and ios builds an Xcode project, which Xcode on a Mac turns into the iPhone and iPad app. An Android export needs a Java runtime and the Android SDK on this computer, which Android Studio installs, and signs every Android build of this computer's games with one key, which the first Android export creates. A platform that cannot build is reported while the other still builds. The first export for each platform downloads its Godot template, about 99 MB for Android and 189 MB for iOS.",
+    "name": "wasd_export_mobile",
+    "parameters": {
+      "properties": {
+        "apple_team_id": {
+          "description": "The Apple Developer Team ID, 10 capital letters and digits such as ABCDE12345, that the iOS Xcode project signs with, when the user gives one. Default: the one team of this Mac's Apple Development certificates; without one, Xcode asks for the team.",
+          "type": "string",
+        },
+        "platforms": {
+          "description": "The platforms to build for. Default: both, ["android", "ios"].",
+          "items": {
+            "enum": [
+              "android",
+              "ios",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Record the game's preview for WASD Engine: a few seconds of the running game as an animation that Explore and the game's page play and a GIF that link previews of its share link show, and a still image, which wasd_release_game uploads. First start the game with godot_run and bring it to its gameplay, such as past its title menu; events then play from the start of the recording, as godot_input takes them, so the clip shows the game in action. Without a running game, the recording starts the game and records its first seconds. The result shows the still: when it does not show the game well, record again. Each recording replaces the project's previous preview in its .wasdengine/preview folder.",
+    "name": "wasd_record_preview",
+    "parameters": {
+      "properties": {
+        "coordinate_space": {
+          "description": "Unit of the events' x, y, dx, dy: pixels of the latest godot_screenshot (default) or of the game window.",
+          "enum": [
+            "screenshot",
+            "window",
+          ],
+          "type": "string",
+        },
+        "events": {
+          "description": "Input played in order from the start of the recording, in the event format of godot_input: keys, typed text, mouse buttons and motion, input actions, joypad events, and { "wait": seconds }. What still plays when the clip ends is released.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object",
+          },
+          "type": "array",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "seconds": {
+          "description": "Length of the clip in seconds, from 1 to 10. Default: 4.",
+          "type": "number",
+        },
+        "still_at": {
+          "description": "Seconds into the clip at which the still is taken. Default: the middle.",
+          "type": "number",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Release the Godot game on WASD Engine: export it for the Web, upload the build as the game's next version (1, 2, 3, ...) with its preview, and return its share link, where anyone with the link can play it in a browser, switch to earlier versions, and comment. A public game is also listed on WASD Engine's Explore page; a private one is not, so only people with its link find it. With desktop, the release also builds the game for Windows and macOS and offers each build as a download on the game's page. The preview is the animation, GIF, and still that wasd_record_preview saved, unless preview_gif or preview_image name other files; record it first, so Explore, the game's page, and the share link show the game in action. A game that has no preview on WASD Engine yet and none to upload gets the first seconds of the game recorded without input. The first release creates the game, titled from project.godot unless title is given; later releases add versions to it, unless new_game starts a new game. The game's page credits what made the game: your model, the game tools that worked on the project, and its add-ons. A game set up for a dedicated server also gets its server build stored with the version, and its servers switch to it. Before anything is uploaded, a Web check opens the build in a browser: when the game does not start, crashes, stops answering, or prints errors there, the call publishes nothing and fails with what the check saw and a screenshot of the page. Every call that passes publishes a new version, so call it only when the user asks to release, publish, or share the game, and release the game as it is: do not change it in the same turn.",
+    "name": "wasd_release_game",
+    "parameters": {
+      "properties": {
+        "check": {
+          "description": "false releases without the Web check, which otherwise opens the build in a browser of WASD Engine's own before anything is uploaded and stops the release when the game does not start, crashes, stops answering, or prints errors there. Pass false only when the user, told what the check found, asks to release the build as it is. Default: true.",
+          "type": "boolean",
+        },
+        "description": {
+          "description": "What the game is, shown on its page and on Explore and read by search engines: two to four sentences on what kind of game it is, its goal, and how to play it, with its controls; at most 2000 characters. Give it on the first release, when the result says the game has none, and when the game changes what it is. Default: the game keeps its description.",
+          "type": "string",
+        },
+        "desktop": {
+          "description": "Also build the game for these desktop platforms and offer each build as a download of this version on the game's page: windows, one .exe for 64-bit Windows, and macos, a Mac app for Intel and Apple silicon. The first build for each platform downloads its Godot template, about 38 MB for Windows and 123 MB for macOS. Default: none.",
+          "items": {
+            "enum": [
+              "windows",
+              "macos",
+            ],
+            "type": "string",
+          },
+          "type": "array",
+        },
+        "model": {
+          "description": "The full name of the AI model you are, as its maker writes it, with its family and whole version, such as Claude Opus 5.5 for the model id claude-opus-5-5, not Opus 5.5 or Opus 5; never the application you run in, such as Claude Code or Cursor. At most 60 characters. The game's page credits it beside the game tools and add-ons that made the game. Pass it with every release; without it, the page credits the model you named for this project before, else your application's name.",
+          "type": "string",
+        },
+        "new_game": {
+          "description": "true releases the build as version 1 of a new game, which the project releases to from then on. false adds the version to the game the project released to before, also when another project folder on this computer releases that game, as a copy does. Leave it out unless the user chose; such a folder then fails with the question to ask the user.",
+          "type": "boolean",
+        },
+        "notes": {
+          "description": "What changed in this version, shown on the game page; at most 1000 characters.",
+          "type": "string",
+        },
+        "preview_gif": {
+          "description": "Animated GIF that link previews of the share link show, and that Explore and the game's page then play in place of the recorded animation, relative to the working directory. Default: the GIF that wasd_record_preview saved, with its animation.",
+          "type": "string",
+        },
+        "preview_image": {
+          "description": "PNG, JPEG, or WebP picture that Explore shows for the game, relative to the working directory; 16:9 fits best. Default: the still that wasd_record_preview saved.",
+          "type": "string",
+        },
+        "project": {
+          "description": "Folder containing project.godot, relative to the working directory. Default: the nearest one.",
+          "type": "string",
+        },
+        "title": {
+          "description": "Game title for the first release, or a new title for the game; at most 80 characters. Default: the project's name.",
+          "type": "string",
+        },
+        "visibility": {
+          "description": "public lists the game on WASD Engine's Explore page; private keeps it off Explore, so only people with its link can find it. The choice applies to the whole game from this version on. Default: the game's current visibility; a new game is public.",
+          "enum": [
+            "public",
+            "private",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+]
+`;

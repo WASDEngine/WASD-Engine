@@ -74,6 +74,27 @@ export const MAX_TITLE = 80
 /** Longest game description the site keeps. */
 export const MAX_DESCRIPTION = 2000
 
+/** The format characters the site keeps in a description: the zero-width joiner and non-joiner, and flags' tag characters. */
+const KEPT_FORMAT = /[\u200c\u200d\u{E0020}-\u{E007F}]/u
+
+/** Any control, format, surrogate, private-use, or unassigned character. */
+const OTHER = /\p{C}/u
+
+/**
+ * A description as the site stores it: NFC, line breaks as LF, tabs as spaces, no other control or format character
+ * but those {@link KEPT_FORMAT} names, no spaces at line ends, at most one blank line in a row, trimmed. A release
+ * compares the site's copy with this, so it sends a description only when it changed.
+ * @param text - the description as given.
+ * @returns the description as the site keeps it.
+ */
+export function siteDescription(text: string): string {
+  const kept = [...text.normalize('NFC').replace(/\r\n?/gu, '\n')]
+    .filter(char => char === '\n' || char === '\t' || !OTHER.test(char) || KEPT_FORMAT.test(char))
+    .map(char => char === '\t' ? ' ' : char)
+    .join('')
+  return kept.split('\n').map(line => line.trimEnd()).join('\n').replace(/\n{3,}/gu, '\n\n').trim()
+}
+
 /** What a release's result says of a game the site describes with nothing. */
 export const NO_DESCRIPTION_NOTE = 'The game has no description, so its page, Explore, and search engines say little about it. Pass description with the next release: two to four sentences on what kind of game it is, its goal, and how to play it.'
 
@@ -524,8 +545,8 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   if (notes.length > MAX_NOTES) throw new ReleaseError(`notes must be at most ${MAX_NOTES} characters.`)
   const title = request.title?.trim()
   if (title !== undefined && (title === '' || title.length > MAX_TITLE)) throw new ReleaseError(`title must be 1 to ${MAX_TITLE} characters.`)
-  const description = request.description?.trim()
-  if (description !== undefined && (description === '' || description.length > MAX_DESCRIPTION)) {
+  const description = request.description === undefined ? undefined : siteDescription(request.description)
+  if (description !== undefined && (description === '' || [...description].length > MAX_DESCRIPTION)) {
     throw new ReleaseError(`description must be 1 to ${MAX_DESCRIPTION} characters.`)
   }
   if (request.previewImage !== undefined && IMAGE_TYPES[extname(request.previewImage).toLowerCase()] === undefined) {

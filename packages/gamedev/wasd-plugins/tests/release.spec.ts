@@ -14,7 +14,7 @@ import { ReleaseFolders } from '../src/folders.ts'
 import { PREVIEW_DIR } from '../src/preview.ts'
 import { accountKey, copyQuestion, LINK_FILE, linkedGame, projectName, projectView } from '../src/game-link.ts'
 import {
-  NO_DESCRIPTION_NOTE, releaseGame, ReleaseError, STATE_DIR, WebCheckRefusal, type ReleaseDependencies,
+  NO_DESCRIPTION_NOTE, releaseGame, ReleaseError, siteDescription, STATE_DIR, WebCheckRefusal, type ReleaseDependencies,
 } from '../src/release.ts'
 import type { SiteAccess } from '../src/site-client.ts'
 
@@ -430,6 +430,12 @@ describe('releaseGame', () => {
     expect(server.games.get('game-1')?.versions).toBe(1)
   })
 
+  it('cleans a description as the site does', () => {
+    expect(siteDescription('  e\u0301t\u00e9 \r\n\r\n\r\nnext\tline\u202e  ')).toBe('\u00e9t\u00e9\n\nnext line')
+    expect(siteDescription('\u{1F468}\u200d\u{1F469} \u{1F3F4}\u{E0067}\u{E0062}\u{E007F}')).toBe('\u{1F468}\u200d\u{1F469} \u{1F3F4}\u{E0067}\u{E0062}\u{E007F}')
+    expect(siteDescription(' \n\u0000 ')).toBe('')
+  })
+
   it('describes the game on its first release, keeps the description until a release gives a new one, and asks for one when the game has none', async () => {
     const dir = await project()
     const server = site()
@@ -444,6 +450,14 @@ describe('releaseGame', () => {
     await releaseGame({ projectDir: dir, description: 'Hold the wall with a friend.' }, deps, signal)
     expect(server.games.get('game-1')?.description).toBe('Hold the wall with a friend.')
     expect(server.calls.filter(call => call.method === 'PATCH')).toHaveLength(1)
+
+    // The site keeps a description cleaned, so a release that gives the same text again changes nothing there.
+    const messy = 'Hold the wall  \r\nwith a friend.\t\n\n\n\nWASD moves; Space\u0007 swings. \u200d '
+    await releaseGame({ projectDir: dir, description: messy }, deps, signal)
+    expect(server.games.get('game-1')?.description).toBe('Hold the wall\nwith a friend.\n\nWASD moves; Space swings. \u200d')
+    expect(server.calls.filter(call => call.method === 'PATCH')).toHaveLength(2)
+    await releaseGame({ projectDir: dir, description: messy }, deps, signal)
+    expect(server.calls.filter(call => call.method === 'PATCH')).toHaveLength(2)
 
     const other = await project('Other')
     const undescribed = await releaseGame({ projectDir: other }, deps, signal)

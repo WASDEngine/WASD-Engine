@@ -141,6 +141,15 @@ afterEach(async () => {
 })
 
 describe('wasdToolDefinitions', () => {
+  it('passes a description to the release as given, for both kinds of agent', async () => {
+    for (const audience of ['session', 'connected'] as const) {
+      const stub = host()
+      const release = wasdToolDefinitions(stub, LENGTHS, audience).find(definition => definition.name === 'wasd_release_game')!
+      await release.execute({ project: 'neon', description: 'A neon racer: steer with A and D.' }, exec)
+      expect(stub.calls).toEqual([['release', { projectDir: '/work/neon', description: 'A neon racer: steer with A and D.' }]])
+    }
+  })
+
   it('releases with notes, title, and preview files relative to the working directory, and renders the links', async () => {
     const stub = host()
     const release = wasdToolDefinitions(stub, LENGTHS).find(definition => definition.name === 'wasd_release_game')!
