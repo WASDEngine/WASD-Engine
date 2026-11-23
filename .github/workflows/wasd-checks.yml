@@ -1,6 +1,7 @@
 # The fork's checks on every push to main and every pull request: the build, the vitest runs that steps 3 to 7 of
 # the merge checklist name (wasdengine/FORK.md), the recorded-session snapshot replays, the runtime script tests, the
-# documentation checks of step 10, and, in a job of its own, the game tools' end-to-end suites.
+# documentation checks of step 10, and, in jobs of their own, the hygiene gates and lint of step 8 and the game tools'
+# end-to-end suites.
 # Upstream's CI targets DeepSeek's runners and secrets, so the fork deletes it; this workflow runs the part the fork
 # relies on, on macOS, where the fork is developed.
 #
@@ -142,6 +143,51 @@ jobs:
         run: |
           node wasdengine/brand-docs.mjs --check
           pnpm run doc-sync
+
+  # The hygiene gates and lint of step 8 of the merge checklist, apart from the tests so that neither stops the other.
+  # The publint and node-next-types gates read the built packages, so the job builds the fork too.
+  static:
+    name: Lint and package gates
+    runs-on: macos-15
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Installs the pnpm release that package.json's packageManager names.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        id: install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      # The optional dependency imports and plugin entry exports gates outgrow Node's default heap on the 7 GB
+      # runner, so, as in the documentation checks, each gate gets a 4 GB heap, and they run one at a time to fit.
+      - name: Hygiene gates
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+          DSH_GATE_CONCURRENCY: '1'
+        run: pnpm run hygiene
+
+      # Lint compiles the Host declarations its type-aware rules read, so it also runs after a failed build or hygiene
+      # gate. Its type-aware checker peaks near 5.5 GB of the runner's 7 GB.
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm run lint
 
   # The game tools' end-to-end suites against the runtimes that the Desktop app ships for macOS, LibGodot, Blender's bpy,
   # GIMP, and SuperCollider, downloaded from their pinned releases and checked against their digests
