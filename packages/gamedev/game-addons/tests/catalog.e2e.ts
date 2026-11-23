@@ -3,10 +3,13 @@
  * Godot project and imports the project with the LibGodot runtime, or unpacks it into the Blender add-on store; every
  * script of a Godot add-on passes `godot_check`'s script loader in the order that a whole-project check uses and in the
  * reverse one; then the add-on's smoke test runs on Godot 4.7.2 (headless, or rendering without a window, after its
- * prepare script between two imports of its files when it has one) or in a real
+ * prepare script between two imports of its files when it has one, and beside the add-ons it asks for) or in a real
  * Blender worker after `wasd_addons.enable`, and a removal takes the add-on's plugin, autoloads, and settings out of
  * `project.godot` again (Godot rewrites the file when an editor plugin saves project settings during the import, so its
- * bytes may differ).
+ * bytes may differ). An installed Godot add-on's own files raise only the notes of the Web export's feature scan that
+ * its smoke test names, and its guide then says what the add-on does on the Web; no folder that a `.gdignore` file
+ * hides from Godot holds a script, scene, resource, or shader, which an export would leave out; and no two add-ons
+ * that install together declare the same global class, which would stop both from loading.
  * Godot add-ons need `WASD_LIBGODOT_DIR`, an installed runtime folder; Blender add-ons need uv's cached bpy 5.2.3; the
  * archives download from their pinned URLs, into `WASD_ADDON_ARCHIVES` when it is set so that later runs reuse them.
  */
@@ -20,6 +23,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { JsonLineWorker } from '@deepseek-ai/dsh-app-mcp'
 import { ADDON_STORE_VARIABLE, childEnvironment, findUv, nodeBlenderSetupHost } from '@deepseek-ai/dsh-blender/src/environment.ts'
 import { CHECK_SCRIPT_LIMIT } from '@deepseek-ai/dsh-godot/src/check.ts'
+import { webFeatureNotes } from '@deepseek-ai/dsh-godot/src/export.ts'
 import { parseEngineOutput } from '@deepseek-ai/dsh-godot/src/output.ts'
 import { listProjectFiles, toResPath } from '@deepseek-ai/dsh-godot/src/project.ts'
 import { parseGodotJson } from '@deepseek-ai/dsh-godot/src/protocol.ts'
@@ -126,6 +130,47 @@ function manager(): GameAddonManager {
 
 const signal = new AbortController().signal
 
+/** The global classes that each installed Godot add-on declares, by add-on id. */
+const globalClasses = new Map<string, readonly string[]>()
+
+/** The `class_name` declarations of scripts, given as `res://` paths of a project. */
+async function declaredClasses(project: string, scripts: readonly string[]): Promise<string[]> {
+  const names: string[] = []
+  for (const script of scripts) {
+    const text = await readFile(join(project, script.slice('res://'.length)), 'utf8')
+    for (const match of text.matchAll(/^[ \t]*class_name[ \t]+([A-Za-z_]\w*)/gmu)) names.push(match[1] as string)
+  }
+  return names
+}
+
+/** File name endings of what a game loads by path: an export leaves these out of a folder that Godot ignores. */
+const LOADED_BY_GAMES = /\.(?:gd|gdshader|gdshaderinc|tscn|scn|tres|res|material|shader)$/u
+
+/**
+ * The files of an installed add-on that a game loads by path and that lie in a folder with a `.gdignore` file. Godot
+ * neither imports nor exports such a folder, so these load in the editor and are missing from every exported game.
+ */
+async function hiddenFromExports(project: string, addonDir: string): Promise<string[]> {
+  const folder = join(project, 'addons', addonDir)
+  const entries = await readdir(folder, { recursive: true, withFileTypes: true })
+  const ignored = entries.filter(entry => entry.isFile() && entry.name === '.gdignore').map(entry => entry.parentPath)
+  return entries
+    .filter(entry => entry.isFile() && LOADED_BY_GAMES.test(entry.name) && ignored.some(hidden => entry.parentPath === hidden || entry.parentPath.startsWith(`${hidden}/`)))
+    .map(entry => join(entry.parentPath, entry.name).slice(folder.length + 1))
+    .sort()
+}
+
+/**
+ * The errors a Godot run printed: each different line that starts with `ERROR:`, `SCRIPT ERROR:`, or their `USER`
+ * forms, without those that hold one of the parts a smoke test allows. A game that prints one in a browser is not
+ * released. What Godot reports while it shuts down, about resources that a scene left in use, does not count: a
+ * game in a browser never gets there.
+ */
+function printedErrors(output: string, allowed: readonly string[]): string[] {
+  const lines = output.split('\n').map(line => line.trim()).filter(line => /^(?:USER )?(?:SCRIPT )?ERROR:/u.test(line))
+  return [...new Set(lines)].filter(line => !/\bat exit\b/u.test(line) && !allowed.some(part => line.includes(part)))
+}
+
 /** Whether `project.godot` enables an add-on as its entry says. */
 async function enabled(project: string, entry: GameAddon): Promise<{ plugin: boolean; autoloads: boolean[]; settings: boolean[] }> {
   const file = new ProjectFile(await readFile(join(project, 'project.godot'), 'utf8'))
@@ -152,8 +197,18 @@ describe('the shipped catalog on Godot 4.7.2', () => {
         autoloads: (entry.godot?.autoloads ?? []).map(() => true),
         settings: (entry.godot?.settings ?? []).map(() => true),
       })
+      expect(await hiddenFromExports(project, entry.godot?.addonDir ?? ''), `${entry.id} files that a .gdignore keeps out of exported games`).toEqual([])
       const scripts = (await listProjectFiles(project, '.gd', CHECK_SCRIPT_LIMIT, signal)).files.map(file => toResPath(project, file))
       for (const order of [scripts, [...scripts].reverse()]) expect(await checkErrors(project, order), `${entry.id} godot_check errors`).toEqual([])
+      globalClasses.set(entry.id, await declaredClasses(project, scripts))
+      const webNotes = await webFeatureNotes(project, signal)
+      const expectedNotes = spec.webNotes ?? []
+      expect(webNotes.length, `${entry.id} Web feature notes of its own files\n${webNotes.join('\n')}`).toBe(expectedNotes.length)
+      expectedNotes.forEach((phrase, index) => { expect(webNotes[index], `${entry.id} Web feature note`).toContain(phrase) })
+      if (expectedNotes.length > 0) expect(await readFile(join(CATALOG_DIR, entry.id, 'SKILL.md'), 'utf8'), `${entry.id} guide on the Web`).toMatch(/\bWeb\b/u)
+      // The add-ons a smoke test asks for come after the checks above, which are of this add-on's files alone.
+      const beside = spec.with ?? []
+      for (const other of beside) await addons.install(project, other, {}, signal)
       await cp(join(SMOKE_DIR, spec.files ?? entry.id, 'files'), project, { recursive: true })
       const timeoutMs = spec.timeoutSeconds * 1000
       if (spec.prepare !== undefined) {
@@ -171,6 +226,8 @@ describe('the shipped catalog on Godot 4.7.2', () => {
       for (const marker of spec.expect) expect(ran.output, `${entry.id} output`).toContain(marker)
       expect(ran.output, `${entry.id} output`).not.toContain('SMOKE_FAIL')
       expect(ran.code, `${entry.id} exit code\n${ran.output.slice(-2000)}`).toBe(spec.exitCode ?? 0)
+      expect(printedErrors(ran.output, spec.errors ?? []), `${entry.id} errors that its smoke test printed`).toEqual([])
+      for (const other of beside.toReversed()) await addons.remove(project, other, signal)
       const removed = await addons.remove(project, entry.id, signal)
       expect(removed.removed).toEqual([`addons/${entry.godot?.addonDir ?? ''}`])
       expect(await enabled(project, entry), `${entry.id} project.godot after removal`).toEqual({
@@ -181,6 +238,16 @@ describe('the shipped catalog on Godot 4.7.2', () => {
       expect(existsSync(join(project, NOTICES_FILE)), `${entry.id} notices after removal`).toBe(false)
     }, 600_000)
   }
+
+  it('no two add-ons that install together declare the same global class', () => {
+    const owners = new Map<string, string[]>()
+    for (const [id, names] of globalClasses) for (const name of new Set(names)) owners.set(name, [...owners.get(name) ?? [], id])
+    const apart = (left: string, right: string): boolean =>
+      (catalog.get(left)?.conflicts ?? []).includes(right) || (catalog.get(right)?.conflicts ?? []).includes(left)
+    const clashes = [...owners].flatMap(([name, ids]) =>
+      ids.flatMap((left, index) => ids.slice(index + 1).filter(right => !apart(left, right)).map(right => `${name}: ${left} and ${right}`)))
+    expect(clashes).toEqual([])
+  })
 })
 
 const blenderAddons = catalog.entries.filter(addon => addon.host === 'blender')

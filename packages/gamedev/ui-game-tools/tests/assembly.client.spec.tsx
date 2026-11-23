@@ -11,7 +11,8 @@ import { ok } from '@deepseek-ai/dsh-remote-mock'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { expect, onTestFinished, vi } from 'vitest'
 import {
-  BLENDER, BLENDER_ICON, ELEVENLABS, GAME_ADDONS, GIMP, GIMP_ICON, GODOT, IMAGE_GENERATION, OTHER, POLY_HAVEN, SUPERCOLLIDER,
+  AMBIENTCG, BLENDER, BLENDER_ICON, ELEVENLABS, GAME_ADDONS, GIMP, GIMP_ICON, GODOT, IMAGE_GENERATION, OTHER, POLY_HAVEN,
+  SUPERCOLLIDER,
 } from './fixtures.client.ts'
 
 usePinnedBrowserLanguages('en-US')
@@ -22,7 +23,7 @@ const it = createClientTest({ roster: webApp.without(['@deepseek-ai/dsh-client-u
 
 const SNAPSHOT: PluginInventorySnapshot = {
   managementAvailable: true,
-  entries: [OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
+  entries: [OTHER, AMBIENTCG, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER],
 }
 
 it('opens Built-in plugins on the Game tools tab with each tool and its logo', async ({ mock, remote, start }) => {
@@ -52,12 +53,12 @@ it('opens Built-in plugins on the Game tools tab with each tool and its logo', a
   const list = await screen.findByRole('list', { name: 'Game tools' })
   const cards = within(list).getAllByRole('listitem')
   expect(cards.map(card => card.getAttribute('data-game-tool'))).toEqual([
-    BLENDER.moduleName, ELEVENLABS.moduleName, GAME_ADDONS.moduleName, GIMP.moduleName, GODOT.moduleName,
+    AMBIENTCG.moduleName, BLENDER.moduleName, ELEVENLABS.moduleName, GAME_ADDONS.moduleName, GIMP.moduleName, GODOT.moduleName,
     IMAGE_GENERATION.moduleName, POLY_HAVEN.moduleName, SUPERCOLLIDER.moduleName,
   ])
   expect(cards.map(card => card.querySelector('img')?.getAttribute('src')))
-    .toEqual([BLENDER_ICON, undefined, undefined, GIMP_ICON, undefined, undefined, undefined, undefined])
-  expect(within(cards[3]!).getByText('Off')).toBeTruthy()
+    .toEqual([undefined, BLENDER_ICON, undefined, undefined, GIMP_ICON, undefined, undefined, undefined, undefined])
+  expect(within(cards[4]!).getByText('Off')).toBeTruthy()
   expect(within(list).queryByRole('switch')).toBeNull()
   expect(mock.log.calls('pluginInventory/list')).toHaveLength(1)
 }, 60_000)
@@ -66,7 +67,7 @@ it('switches a tool from the Plugins page Game tools tab, and its toast stays wh
   remote.pluginInventory.list.mockResolvedValue(ok(SNAPSHOT))
   remote.pluginManager.listBundles.mockResolvedValue(ok([]))
   remote.pluginManager.listPlugins.mockResolvedValue(
-    ok([OTHER, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER]),
+    ok([OTHER, AMBIENTCG, BLENDER, ELEVENLABS, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, POLY_HAVEN, SUPERCOLLIDER]),
   )
   remote.pluginManager.setPluginEnabled.mockResolvedValue(ok({
     changed: true, application: 'restart-required', restartReason: 'no-hmr', stage: 'enable', target: GIMP.entryId, enabled: true,

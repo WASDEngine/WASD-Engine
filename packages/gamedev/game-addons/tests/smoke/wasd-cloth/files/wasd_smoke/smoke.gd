@@ -7,7 +7,8 @@ extends SceneTree
 ## edges kept their length, the tablecloth rests on the table, the cape has its chains and colliders and swung, the
 ## wind blows, the flag has its fabric's settings and the custom sheet its own, the sail went the way of the zone's
 ## world direction, and the curtain and the awning were built again where they rest, pinned anew, the curtain's pins
-## following the pole.
+## following the pole. Three ropes: one between two places keeps its length and sags, one with a free end is blown
+## downwind with what hangs on it and answers a push, and one over the ground comes to lie on it.
 
 const SECONDS := 3.0
 
@@ -28,9 +29,20 @@ var curtain_rest := Transform3D()
 var pole_at_change := Transform3D()
 
 
+## The ropes, and the free rope's end before and after its push.
+var tied_rope: WasdRope3D
+var free_rope: WasdRope3D
+var ground_rope: WasdRope3D
+var rope_load: Node3D
+var pushed_from := Vector3.ZERO
+var pushed_to := Vector3.ZERO
+const PUSH_TICK := 120
+
+
 func _initialize() -> void:
 	scene = (load("res://wasd_smoke/smoke.tscn") as PackedScene).instantiate()
 	root.add_child(scene)
+	add_ropes()
 	# The scene's root sits at the origin, so the curtain's transform is where it rests in the world.
 	curtain_rest = (scene.get_node("Curtain") as Node3D).transform
 	var skeleton := scene.get_node("Hero/Skeleton3D") as Skeleton3D
@@ -67,6 +79,11 @@ func _physics_process(delta: float) -> bool:
 		# A sheet hanging in still air keeps its plane; a nudge across it lets the cloth fold where it is free.
 		var curtain := scene.get_node("Curtain") as WasdClothSheet3D
 		curtain.apply_impulse(curtain.point_at(curtain.grid_size().x, 0), Vector3(0.002, 0, 0))
+	if ticks == PUSH_TICK:
+		pushed_from = free_rope.get_point(free_rope.point_count() - 1)
+		free_rope.push(Vector3(0, 0, -6.0))
+	elif ticks == PUSH_TICK + 12:
+		pushed_to = free_rope.get_point(free_rope.point_count() - 1)
 	if ticks * delta >= SECONDS - 1.0:
 		sail_drift += bottom_z(scene.get_node("Sail") as WasdClothSheet3D)
 		sail_samples += 1
@@ -74,6 +91,89 @@ func _physics_process(delta: float) -> bool:
 		return false
 	finish(flag)
 	return true
+
+
+## Three ropes in the main wind zone, away from the cloth: one tied between two places 3 m apart, one with a free end
+## and a load on it, and one that hangs 1 m over a floor of its own and is 3 m long.
+func add_ropes() -> void:
+	var far_end := Node3D.new()
+	far_end.position = Vector3(-17.0, 6.0, 20.0)
+	scene.add_child(far_end)
+	tied_rope = WasdRope3D.new()
+	tied_rope.length = 3.6
+	tied_rope.end_target = far_end
+	tied_rope.position = Vector3(-20.0, 6.0, 20.0)
+	scene.add_child(tied_rope)
+	rope_load = Node3D.new()
+	scene.add_child(rope_load)
+	free_rope = WasdRope3D.new()
+	free_rope.look = "cable"
+	free_rope.length = 2.0
+	free_rope.segments = 10
+	free_rope.hanging = rope_load
+	free_rope.position = Vector3(-24.0, 6.0, 20.0)
+	scene.add_child(free_rope)
+	var ground := StaticBody3D.new()
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(6.0, 1.0, 6.0)
+	shape.shape = box
+	ground.add_child(shape)
+	ground.collision_layer = 8
+	ground.position = Vector3(-30.0, 2.5, 20.0)
+	scene.add_child(ground)
+	ground_rope = WasdRope3D.new()
+	ground_rope.length = 3.0
+	ground_rope.segments = 24
+	ground_rope.thickness = 0.06
+	ground_rope.ground_mask = 8
+	ground_rope.wind_response = 0.0
+	ground_rope.position = Vector3(-30.0, 4.0, 20.0)
+	scene.add_child(ground_rope)
+
+
+## The summed distance between a rope's points.
+func rope_run(rope: WasdRope3D) -> float:
+	var total := 0.0
+	for index in rope.point_count() - 1:
+		total += rope.get_point(index).distance_to(rope.get_point(index + 1))
+	return total
+
+
+func check_ropes() -> void:
+	for rope: WasdRope3D in [tied_rope, free_rope, ground_rope]:
+		var bad := 0
+		for index in rope.point_count():
+			var p := rope.get_point(index)
+			if not (is_finite(p.x) and is_finite(p.y) and is_finite(p.z)):
+				bad += 1
+		check(bad == 0, "a rope has %d points that are not numbers" % bad)
+		check(rope.point_count() == rope.segments + 1, "a rope of %d segments has %d points" % [rope.segments, rope.point_count()])
+	# Tied at both ends, 0.6 m longer than the way between them: it keeps its length, holds its ends, and sags.
+	check(absf(rope_run(tied_rope) / tied_rope.length - 1.0) < 0.03, "the tied rope is %.3f m long instead of %.1f" % [rope_run(tied_rope), tied_rope.length])
+	check(tied_rope.get_point(0).distance_to(Vector3(-20.0, 6.0, 20.0)) < 0.001 and tied_rope.get_point(tied_rope.point_count() - 1).distance_to(Vector3(-17.0, 6.0, 20.0)) < 0.001, "the tied rope left its ends")
+	var lowest := INF
+	for index in tied_rope.point_count():
+		lowest = minf(lowest, tied_rope.get_point(index).y)
+	check(lowest < 5.4 and lowest > 4.6, "the tied rope's lowest point is at %.2f, not between 4.6 and 5.4" % lowest)
+	check(tied_rope.get_position_at(0.5).y < 5.5, "get_position_at(0.5) is not in the sag: %s" % tied_rope.get_position_at(0.5))
+	# A free end: the rope keeps its length, the wind (toward +X, +Z) carries its end downwind, and its load is there.
+	var end := free_rope.get_point(free_rope.point_count() - 1)
+	check(absf(rope_run(free_rope) / free_rope.length - 1.0) < 0.03, "the free rope is %.3f m long instead of %.1f" % [rope_run(free_rope), free_rope.length])
+	check(end.y < 4.6 and end.x > -24.0 + 0.02, "the free rope's end is at %s: not hanging downwind of (-24, 6, 20)" % end)
+	check(rope_load.global_position.distance_to(end) < 0.001, "the load is at %s and the rope's end at %s" % [rope_load.global_position, end])
+	check(pushed_to.z < pushed_from.z - 0.1, "a push toward -Z moved the free end from z %.3f to %.3f" % [pushed_from.z, pushed_to.z])
+	# Over a floor whose top is at 3.0: a third of the rope hangs and the rest lies on it, none under it.
+	var resting := 0
+	var under := 0
+	for index in ground_rope.point_count():
+		var p := ground_rope.get_point(index)
+		if p.y < 3.0 + 0.03 - 0.005:
+			under += 1
+		elif p.y < 3.0 + 0.03 + 0.01:
+			resting += 1
+	check(under == 0 and resting >= 12, "%d points of the rope over the floor lie on it and %d are under it" % [resting, under])
+	check(absf(rope_run(ground_rope) / ground_rope.length - 1.0) < 0.05, "the rope on the floor is %.3f m long instead of %.1f" % [rope_run(ground_rope), ground_rope.length])
 
 
 ## Changes the curtain and the awning while they hang: the curtain gets a new size, cell, pinned edge, pin rows, and
@@ -226,6 +326,7 @@ func finish(flag: WasdClothSheet3D) -> void:
 	var awning_placement := Transform3D(Basis(), Vector3(14, 60, 0))
 	check_rebuilt(awning, Vector2i(17, 17), awning_placement, func(_column: int, row: int) -> bool: return row < 1)
 	check(awning.get_point_transform(awning.point_at(8, 17)).y < 59.9, "the awning's free edge does not hang below its pinned edge")
+	check_ropes()
 	if failures.is_empty():
 		print("SMOKE_PASS wasd-cloth")
 	else:

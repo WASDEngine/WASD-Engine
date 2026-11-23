@@ -82,14 +82,14 @@ The Game tools tabs of Settings › Built-in plugins and the Plugins page ([`ui-
 <details>
 <summary>Implementation internals — click to expand</summary>
 
-The plugin reads three endpoints of the API and downloads files from the URLs they name. `GET /assets?type=all` returns every asset, about 2.5 MB for 2,400 assets; the list stays in memory for `catalogMaxAgeMs`, and a refresh that fails answers with the list read last. `GET /search?q=<query>&t=<type>` returns every matching id in ranked order; the plugin joins the ids with the list, drops ids the list lacks, then filters by category and pages. `GET /files/<id>` returns the asset's files by group (a map, a format, or `hdri`), resolution, and format, each with its URL, size, MD5 digest, and the files it references; an entry that is not a file three levels down, such as an HDRI's single tonemapped image, is left out, and so is a file whose references cannot all be read. JSON responses are read up to 64 MiB and preview images up to 8 MiB. The plugin fetches only the configured `apiUrl`'s host, over its protocol, and HTTPS hosts of `polyhaven.com` and `polyhaven.org`, and follows at most five redirects itself, each to such a host, so neither a file tree nor a redirect sends a request elsewhere. HTTP 429 becomes a message that says when to try again.
+The plugin reads three endpoints of the API and downloads files from the URLs they name. `GET /assets?type=all` returns every asset, about 2.5 MB for 2,400 assets; the list stays in memory for `catalogMaxAgeMs`, and a refresh that fails answers with the list read last. `GET /search?q=<query>&t=<type>` returns every matching id in ranked order; the plugin joins the ids with the list, drops ids the list lacks, then filters by category and pages. `GET /files/<id>` returns the asset's files by group (a map, a format, or `hdri`), resolution, and format, each with its URL, size, MD5 digest, and the files it references; an entry that is not a file three levels down, such as an HDRI's single tonemapped image, is left out, and so is a file whose references cannot all be read. JSON responses are read up to 64 MiB and preview images up to 8 MiB. The plugin fetches only the configured `apiUrl`'s host, over its protocol, and HTTPS hosts of `polyhaven.com` and `polyhaven.org`, and follows at most five redirects itself, each to such a host, so neither a file tree nor a redirect sends a request elsewhere. HTTP 429 becomes a message that says when to try again. These requests, the preview images of both callers, the tools as connected agents call them, and the writing of files whole or not at all come from the game tools kit ([`asset-library.ts`](../game-mcp/src/asset-library.ts)), which the ambientCG plugin shares.
 
 | File | Role |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Config, tool registration, the Session's preview attachments, and the game MCP provider |
-| [`src/api.ts`](src/api.ts) | The API client: the cached asset list, the search, file trees, preview images, and file requests |
+| [`src/api.ts`](src/api.ts) | The API client: the cached asset list, the search, and file trees, on the kit's client, which fetches preview images and files |
 | [`src/files.ts`](src/files.ts) | The formats and resolutions an asset offers, and the files of one download with their paths checked |
-| [`src/download.ts`](src/download.ts) | Writing a download's files: temporary files, digests, and conflicts |
+| [`src/download.ts`](src/download.ts) | Fetching a download's files with their sizes and digests checked, for the kit to write whole |
 | [`src/tools.ts`](src/tools.ts) | The tool definitions and their result text |
 | [`src/mcp.ts`](src/mcp.ts) | The tools for connected agents and the provider's instructions |
 
@@ -100,9 +100,10 @@ The plugin reads three endpoints of the API and downloads files from the URLs th
 <a id="further-exploration"></a>
 ## Further Exploration
 
-These pages cover the MCP server that offers the tools to other agents and how the game tools connect.
+These pages cover the sibling library plugin, the MCP server that offers the tools to other agents, and how the game tools connect.
 
-- [game-mcp](../game-mcp/README.md) — the MCP server for agents on this computer.
+- [ambientcg](../ambientcg/README.md) — ambientCG's PBR materials, decals, and HDRIs, with the same three tools.
+- [game-mcp](../game-mcp/README.md) — the MCP server for agents on this computer, and the kit both library plugins share.
 - [Game tools subsystem page](../../../docs/subsystems/gamedev.md) — the game tools, their rows, and the MCP server.
 - [Poly Haven API](https://api.polyhaven.com/api-docs/swagger.json) — the endpoints this package reads.
 

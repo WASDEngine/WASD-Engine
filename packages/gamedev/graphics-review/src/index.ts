@@ -69,15 +69,21 @@ export const Config: z<Partial<Config>, Config> = z.object({
   minImagePixels: z.natural().default(544 * 544),
 })
 
+/** Catalog categories whose add-ons change nothing an image shows, which the reviewer does not read. */
+const UNSEEN_CATEGORIES: ReadonlySet<string> = new Set(['gameplay', 'kits', 'testing'])
+
 /**
- * The catalog add-ons the reviewer may name: those that agents may use when the review starts.
+ * The catalog add-ons the reviewer may name: those that agents may use when the review starts and that change what a
+ * game looks like, each with its cue, so the reviewer's prompt stays short as the catalog grows.
  * @param ctx - context with the optional `gameAddons` service.
  * @returns the add-ons in catalog order; none without the service.
  */
 function catalogAddons(ctx: Context): readonly ReviewAddon[] {
   const addons = ctx.get('gameAddons')
   if (addons === undefined) return []
-  return addons.allowedEntries().map(entry => ({ id: entry.id, host: entry.host, useWhen: entry.useWhen }))
+  return addons.allowedEntries()
+    .filter(entry => !UNSEEN_CATEGORIES.has(entry.category))
+    .map(entry => ({ id: entry.id, host: entry.host, cue: entry.cue }))
 }
 
 /**

@@ -29,6 +29,23 @@ export interface ResultImage {
 }
 
 /**
+ * The arguments a tool declares, to which a server tool adds its own, such as `project`.
+ * @param definition - the tool.
+ * @returns each argument's schema by its name, and the names of the required arguments.
+ */
+export function declaredArguments(definition: ToolDefinition): {
+  readonly properties: Readonly<Record<string, JsonObject>>
+  readonly required: readonly string[]
+} {
+  // `defineTool` writes an object schema whose properties describe the arguments.
+  const { properties, required = [] } = definition.parameters as {
+    readonly properties: Readonly<Record<string, JsonObject>>
+    readonly required?: readonly string[]
+  }
+  return { properties, required }
+}
+
+/**
  * Offer a plugin tool to connected agents with `project` as its first argument.
  * @param definition - the tool.
  * @param folders - where the call's folder is kept for {@link callFolder}.
@@ -38,11 +55,7 @@ export interface ResultImage {
 export function projectMcpTool(
   definition: ToolDefinition, folders: CallFolders, images: (exec: ToolRunContext) => readonly ResultImage[],
 ): GameMcpTool {
-  // `defineTool` writes an object schema whose properties describe the arguments.
-  const { properties, required = [] } = definition.parameters as {
-    readonly properties: Readonly<Record<string, JsonObject>>
-    readonly required?: readonly string[]
-  }
+  const { properties, required } = declaredArguments(definition)
   return {
     name: definition.name,
     definition,

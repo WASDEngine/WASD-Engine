@@ -1,0 +1,62 @@
+{
+  "id": "road-generator",
+  "title": "Road Generator",
+  "host": "godot",
+  "version": "0.9.5",
+  "category": "environment",
+  "cue": "roads with lanes, markings, crossings, traffic that follows",
+  "summary": "Roads built from points: lanes with markings, shoulders, slopes and bends, crossings where roads meet, collision, and lanes that traffic follows.",
+  "useWhen": "A 3D game needs real roads: a street grid, a highway, a race or delivery route, a town with crossings, or traffic that drives in lanes. A few points in code give a road mesh with markings and collision that a hand-built mesh would take hours to match.",
+  "avoidWhen": "The track is one closed circuit of a kit's own pieces, as in starter-kit-racing, a dirt path that a terrain texture or a CSG ribbon shows well enough, or a 2D game.",
+  "tags": [
+    "road",
+    "street",
+    "highway",
+    "intersection",
+    "lane",
+    "traffic",
+    "city",
+    "racing",
+    "level-design",
+    "3d"
+  ],
+  "stages": [
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2024 Moo-Ack! Productions",
+  "homepage": "https://github.com/TheDuckCow/godot-road-generator",
+  "archive": {
+    "url": "https://github.com/TheDuckCow/godot-road-generator/archive/refs/tags/0.9.5.zip",
+    "sha256": "ff19ee8c364c4a23a437211d542ce52bf23525e8c950c3e46213249c836472ec",
+    "bytes": 16469993,
+    "root": "godot-road-generator-0.9.5/addons/road-generator",
+    "exclude": [
+      "plugin.gd",
+      "plugin.gd.uid",
+      "plugin.cfg",
+      "ui",
+      "scene",
+      "resources/gizmo",
+      "resources/road_texture_template.afdesign",
+      "resources/rp_gizmo_edgenext.tres",
+      "resources/rp_gizmo_edgeprior.tres",
+      "resources/rp_gizmo_fullpiece.tres",
+      "custom_containers",
+      "README.md"
+    ]
+  },
+  "godot": {
+    "addonDir": "road-generator"
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/TheDuckCow/godot-road-generator/0.9.5/addons/road-generator/resources/road_manager.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2024 Moo-Ack! Productions"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -1,0 +1,1 @@
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "with": ["wasd-character", "wasd-materials"], "expect": ["SMOKE_PASS wasd-face"], "timeoutSeconds": 150 }

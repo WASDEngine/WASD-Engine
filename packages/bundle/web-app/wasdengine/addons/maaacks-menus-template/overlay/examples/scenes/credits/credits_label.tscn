@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://bfvsqg5fi2ja0"]
+
+[ext_resource type="Script" uid="uid://cc2wtqasev7le" path="res://addons/maaacks_menus_template/base/nodes/labels/credits_label.gd" id="1_mkjgh"]
+
+[node name="CreditsLabel" type="RichTextLabel" unique_id=525943618]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+size_flags_horizontal = 3
+size_flags_vertical = 5
+bbcode_enabled = true
+text = "[font_size=48]Credits[/font_size]
+
+[font_size=32]Made with[/font_size]
+
+Godot Engine
+by Juan Linietsky, Ariel Manzur, and contributors
+MIT License
+
+Maaack's Menus Template
+by Marek Belski and contributors
+MIT License
+"
+fit_content = true
+scroll_active = false
+horizontal_alignment = 1
+script = ExtResource("1_mkjgh")
+auto_update = false
+max_image_width = 80

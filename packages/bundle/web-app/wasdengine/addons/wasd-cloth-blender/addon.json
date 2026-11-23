@@ -3,6 +3,8 @@
   "title": "WASD Cloth for Blender",
   "host": "blender",
   "version": "1.0.0",
+  "category": "physics",
+  "cue": "drape, bake wind loops, add cape and skirt chains",
   "summary": "Cloth made with Blender's Cloth modifier from scripts: drapes settled onto props, wind loops baked into shape keys, and bone chains for capes and skirts.",
   "useWhen": "Props need draped fabric (tablecloths, sheets, tarps), a flag or sail needs a looping wind animation, or a character's cape, skirt, or coat needs bone chains for wasd-cloth.",
   "avoidWhen": "Cloth that the player pushes while the game runs: use wasd-cloth's soft-body sheets in Godot.",
@@ -25,6 +27,12 @@
     "module": "wasd_cloth",
     "kind": "extension",
     "files": "wasd-cloth-blender/extension"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/shirt.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
   },
   "verified": {
     "bpy": "5.2.3",

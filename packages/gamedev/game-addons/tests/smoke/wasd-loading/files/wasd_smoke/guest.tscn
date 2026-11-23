@@ -1,0 +1,14 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Shader" path="res://wasd_smoke/guest.gdshader" id="shader"]
+[ext_resource type="Script" path="res://wasd_smoke/guest.gd" id="script"]
+
+[sub_resource type="ShaderMaterial" id="paint"]
+shader = ExtResource("shader")
+
+[sub_resource type="SphereMesh" id="ball"]
+
+[node name="Guest" type="MeshInstance3D"]
+mesh = SubResource("ball")
+surface_material_override/0 = SubResource("paint")
+script = ExtResource("script")

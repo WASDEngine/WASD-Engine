@@ -63,6 +63,14 @@ func _physics_process(delta: float) -> void:
 	_step(delta)
 
 
+## Takes a wind in m/s along the world's axes as this zone's direction and speed. WASD Weather calls it on every
+## zone the game has put in the group "wasd_wind", so that flags and capes fly harder in a storm.
+func set_wind(wind: Vector3) -> void:
+	if wind.length() > 0.01:
+		direction = wind.normalized()
+	speed = wind.length()
+
+
 ## Wind velocity of this zone now, in m/s.
 func velocity() -> Vector3:
 	return _current

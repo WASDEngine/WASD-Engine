@@ -1,0 +1,48 @@
+{
+  "id": "trail-renderer",
+  "title": "TrailRenderer",
+  "host": "godot",
+  "version": "2026.01.30+b08e01e",
+  "category": "rendering",
+  "cue": "ribbon trails: sword swings, tracers, speed streaks",
+  "summary": "Ribbon trails and lines built as meshes: a TrailRenderer leaves a fading ribbon behind whatever moves, and a LineRenderer draws a ribbon through points set from code.",
+  "useWhen": "Motion should leave a mark: sword and claw swings, bullet tracers, missile smoke, speed streaks behind cars and dashes, magic ribbons, lightning, lasers, and ropes drawn as ribbons. Particle trails draw nothing in Web builds; these do.",
+  "avoidWhen": "A puff of particles or a stretched sprite is enough, or the game is 2D, where Line2D does this.",
+  "tags": [
+    "trail",
+    "ribbon",
+    "line",
+    "vfx",
+    "sword",
+    "tracer",
+    "streak",
+    "3d"
+  ],
+  "stages": [
+    "polish",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2024 Hyrdaboo",
+  "homepage": "https://github.com/Hyrdaboo/TrailRenderer",
+  "archive": {
+    "url": "https://github.com/Hyrdaboo/TrailRenderer/archive/b08e01e2b62e4b19b2ba2cb2731f01011b624eba.zip",
+    "sha256": "11be1f693a8554ed58286d65bb6c009e513cd704de0b031d36e8b6b60252dc1d",
+    "bytes": 28621377,
+    "root": "TrailRenderer-b08e01e2b62e4b19b2ba2cb2731f01011b624eba/addons/TrailRenderer",
+    "exclude": [
+      "Samples",
+      "Runtime/TrailRenderer.cs",
+      "Runtime/LineRenderer.cs",
+      "Runtime/TrailRenderer.cs.uid",
+      "Runtime/LineRenderer.cs.uid"
+    ]
+  },
+  "godot": {
+    "addonDir": "TrailRenderer"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

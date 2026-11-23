@@ -1,0 +1,74 @@
+{
+  "id": "lite-terrain",
+  "title": "LiteTerrain",
+  "host": "godot",
+  "version": "2.0+ce0a29d",
+  "category": "environment",
+  "cue": "endless landscape from a seed: hills, biomes, LOD",
+  "summary": "A whole landscape from one node and a seed: meadows, desert, salt flats, canyons, and mountains with grass, rock, snow, distance haze, level of detail, and collision that follows moving bodies.",
+  "useWhen": "The game needs a large natural outdoor world to roam, drive, or fly over: open-world exploration, survival, racing across country, or a wide backdrop, with ground that looks finished from the first run, in Web builds too.",
+  "avoidWhen": "The level is a designed place with specific hills, paths, and coastlines, which a Blender landscape or modelled ground gives; it is small or indoors; or the game is 2D.",
+  "tags": [
+    "terrain",
+    "landscape",
+    "procedural",
+    "open-world",
+    "biomes",
+    "lod",
+    "environment",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2026 MrKrob00",
+  "homepage": "https://github.com/MrKrob00/LiteTerrain",
+  "archive": {
+    "url": "https://github.com/MrKrob00/LiteTerrain/archive/ce0a29db960d6315255a1e72206887051204ff2e.zip",
+    "sha256": "42f73a01cc2f0fa7f755aa1ce3c7e437a03981178182454c1f7abce191c74236",
+    "bytes": 502400,
+    "root": "LiteTerrain-ce0a29db960d6315255a1e72206887051204ff2e/addons/lite_terrain"
+  },
+  "godot": {
+    "addonDir": "lite_terrain",
+    "settings": [
+      {
+        "section": "shader_globals",
+        "key": "world_haze",
+        "value": "{\"type\": \"color\", \"value\": Color(0.86, 0.8, 0.7, 1)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "haze_range",
+        "value": "{\"type\": \"vec4\", \"value\": Vector4(150, 750, 0.85, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sun_dir",
+        "value": "{\"type\": \"vec4\", \"value\": Vector4(0.836, 0.402, 0.374, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "ground_amb",
+        "value": "{\"type\": \"vec4\", \"value\": Vector4(0.24, 0.22, 0.19, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "ground_sun",
+        "value": "{\"type\": \"vec4\", \"value\": Vector4(1, 0.93, 0.8, 0)}"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/MrKrob00/LiteTerrain/ce0a29db960d6315255a1e72206887051204ff2e/addons/lite_terrain/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2026 MrKrob00"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

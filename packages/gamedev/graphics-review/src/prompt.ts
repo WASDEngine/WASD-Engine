@@ -19,8 +19,8 @@ export interface ReviewAddon {
   readonly id: string
   /** The application it runs in. */
   readonly host: 'godot' | 'blender'
-  /** When it helps. */
-  readonly useWhen: string
+  /** What it is for, in a few words. */
+  readonly cue: string
 }
 
 /** What a review does, which every surface's text starts from. */
@@ -62,8 +62,8 @@ export function sessionPrompt(godot: boolean): string {
 }
 
 /** What the plugin adds, as the overview of WASD Engine's MCP server instructions lists it. */
-export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model for graphics you make, not downloads such as Poly Haven\'s. '
-  + 'Review each piece two to four times, each time with a new image of the result: act on its notes, and stop early when a review has '
+export const MCP_DESCRIPTION = 'A specialized graphics expert reviewer model for graphics you make, not downloads. '
+  + 'Review each piece two to four times, each with a new image of the result: act on its notes, and stop early when a review has '
   + 'nothing useful.'
 
 /** The plugin's guide for connected agents, which name every file by absolute path. */
@@ -80,7 +80,7 @@ export function reviewerPrompt(addons: readonly ReviewAddon[]): string {
   const catalog = addons.length === 0
     ? ''
     : '\n- game_addons installs tested add-ons, by id:\n'
-      + addons.map(addon => `  - ${addon.id} (${addon.host === 'godot' ? 'Godot' : 'Blender'}): ${addon.useWhen}`).join('\n')
+      + addons.map(addon => `  - ${addon.id} (${addon.host === 'godot' ? 'Godot' : 'Blender'}): ${addon.cue}`).join('\n')
   return `You review the graphics of games that an AI agent makes with WASD Engine, a game development app: each game is a Godot 4.7 project, and the agent also has a headless Blender, a headless GIMP, image generation, and a catalog of tested add-ons. The agent sends you one image of its work with what it shows and the look it is going for. Review it as a senior game art director and technical artist reviews a teammate's work: specific, honest, and practical, so that the next version looks clearly better.
 
 Judge the image for what it is: a game screenshot, a close view of one model, a render, a texture, a sprite or sprite sheet, concept art, or a UI mockup. Look at:
@@ -95,11 +95,12 @@ Judge the image for what it is: a game screenshot, a close view of one model, a 
 
 For each note, say how to make the change with WASD Engine's tools, preferring an asset to download when one suits the game's art style, then generated 2D art over art drawn by hand or in code:
 - polyhaven_* (Poly Haven): free CC0 HDRI skies, PBR textures, and models, the first choice when one suits the game's art style.
+- ambientcg_* (ambientCG): more than 2,000 free CC0 PBR materials, with decals, leaf atlases, and HDRI skies, for surfaces that Poly Haven lacks.
 - image_generate (Nano Banana): concept art, sprites, textures, UI pieces, icons, and backgrounds, made from references. Prefer it to painting 2D art in GIMP or drawing it in code.
 - Blender: model, sculpt, bevel, UV-unwrap, texture, rig, and animate 3D assets, bake procedural materials into image textures, and export .glb files. Prefer it for every 3D model the player sees that no download provides, and for the parts of meshes that the game builds at runtime, over primitives and meshes built in code.
 - GIMP: edit, recolor, cut out, and clean up textures and sprites, make textures seamless, and build sprite sheets.
 - reference_search: references for a style or subject before redoing art.
-- Godot: WorldEnvironment (sky, fog, volumetric fog, glow, SSAO, SSIL, SDFGI, tonemapping, adjustments), lights and shadows, StandardMaterial3D and shaders, particles, decals, MultiMesh, CanvasItem shaders and lights, texture filtering, and camera settings.${catalog}
+- Godot: WorldEnvironment (sky, fog, glow, SSAO, tonemapping, adjustments), lights and shadows, StandardMaterial3D and shaders, particles, MultiMesh, CanvasItem shaders and lights, texture filtering, and camera settings. Released games play in browsers, which draw no volumetric fog, SSR, SSIL, SDFGI, depth of field, Decal nodes, or particle trails: do not suggest those.${catalog}
 Name the tool or add-on and what to do with it. Suggest only what fits this image and this game.
 
 When the agent says what it changed since an earlier review of the same work, judge whether those changes worked, and do not repeat a note it says it cannot act on, such as the face of a stock character it cannot remodel; repeat an earlier note only when the image still clearly suffers from it and the agent can change it.

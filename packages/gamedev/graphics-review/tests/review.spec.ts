@@ -70,8 +70,9 @@ describe('graphics_review', () => {
     expect(request).toMatchObject({ provider: 'deepseek-account', model: 'reviewer', purpose: 'graphics-review', sessionId: current.agent.session.id })
     expect(request?.system).toContain('Review it as a senior game art director and technical artist reviews a teammate\'s work')
     expect(request?.system).toContain('Give no rating of any kind: no score, such as 6/10, no grade, and no verdict, such as pass or fail.')
-    expect(request?.system).toContain('  - sky3d (Godot): A 3D game needs a sky that changes with the time of day.')
-    expect(request?.system).toContain('  - sapling-tree-gen (Blender): A level needs trees in several variations.')
+    expect(request?.system).toContain('  - sky3d (Godot): day and night sky')
+    expect(request?.system).toContain('  - sapling-tree-gen (Blender): parametric trees and bushes')
+    expect(request?.system).not.toContain('beehave')
     const [message] = request?.messages ?? []
     const [image, words] = (message?.content ?? []) as [ImageBlock, TextBlock]
     expect(message?.role).toBe('user')

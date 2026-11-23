@@ -1,0 +1,70 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/gamedev/ambientcg/README.md
+/:
+  en: 62bb8d570429917d
+  zh: 1765e0885ef5d176
+/deepseek-ai-dsh-ambientcg:
+  en: 6ddca007ed224468
+  zh: 6863119af7173f7f
+/deepseek-ai-dsh-ambientcg/summary:
+  en: 1ae0e68c2fbea2f6
+  zh: b581e4f6534b76d3
+/deepseek-ai-dsh-ambientcg/table-of-contents:
+  en: d152484eb41ac6b4
+  zh: 09388d293f9be9cb
+/deepseek-ai-dsh-ambientcg/use-this-package:
+  en: bbff250eba0f1b89
+  zh: 0a618f05cc88ee2b
+/deepseek-ai-dsh-ambientcg/use-this-package/default-composition:
+  en: 0f8f64eb29abd373
+  zh: ff46ddd7815ae1a9
+/deepseek-ai-dsh-ambientcg/use-this-package/the-tools:
+  en: 46a1bdc52b7846b6
+  zh: da4de77ad1fabe30
+/deepseek-ai-dsh-ambientcg/use-this-package/ambientcg-s-terms:
+  en: 4a695b51265b8559
+  zh: 7ff7a87b3d556185
+/deepseek-ai-dsh-ambientcg/use-this-package/plugin-icon:
+  en: 45ea6086fa3a8373
+  zh: 127c3e77688fc74e
+/deepseek-ai-dsh-ambientcg/understand-the-implementation:
+  en: 3b1daef0e2b508e5
+  zh: 4a97c74461336bc2
+/deepseek-ai-dsh-ambientcg/further-exploration:
+  en: b6710040e9d7ad1a
+  zh: 9e9a48d3f01512b6
+/deepseek-ai-dsh-ambientcg/model-experience:
+  en: 215e7ba838619b7b
+  zh: a311da3843709f90
+/deepseek-ai-dsh-ambientcg/model-experience/tool-declarations:
+  en: 4569c30d38d0009c
+  zh: 3db1377eb0f3c532
+/deepseek-ai-dsh-ambientcg/model-experience/tool-declarations/what-the-model-sees:
+  en: 62ab4dbc0dd13215
+  zh: 0f04482d1777de82
+/deepseek-ai-dsh-ambientcg/model-experience/tool-declarations/token-effect:
+  en: e0cff228e97d8df5
+  zh: c5e4f0a96962ab7b
+/deepseek-ai-dsh-ambientcg/model-experience/tool-declarations/kv-cache-effect:
+  en: 0c34b7e6e0e2f470
+  zh: 84fc57496e929860
+/deepseek-ai-dsh-ambientcg/model-experience/tool-results:
+  en: beaabb79f229692a
+  zh: 8573891441963be4
+/deepseek-ai-dsh-ambientcg/model-experience/tool-results/what-the-model-sees:
+  en: 183857422f122bd3
+  zh: 710b0cd7f5ad87de
+/deepseek-ai-dsh-ambientcg/model-experience/tool-results/token-effect:
+  en: 347bcbf242d918be
+  zh: e363b74c0c24f421
+/deepseek-ai-dsh-ambientcg/model-experience/tool-results/kv-cache-effect:
+  en: 49b9a70497a9d6bc
+  zh: 9c36aea51ad3bba1
+/deepseek-ai-dsh-ambientcg/known-limitations-and-deferred-work:
+  en: 401b00337588ae99
+  zh: 31d3b3d3afcec914
+/deepseek-ai-dsh-ambientcg/known-limitations-and-deferred-work/dev-note:
+  en: 15e03461cb0c742f
+  zh: 98374222d9b7054e

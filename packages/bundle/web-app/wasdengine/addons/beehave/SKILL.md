@@ -109,7 +109,7 @@ Add the player node to the group `player`. Child order is priority: the first ch
 
 ## Pitfalls
 
-- When the game runs from the editor build without the editor debugger (as `godot_run` does), Beehave logs `Can't send message. No active debugger` errors from `beehave/debug/debugger_messages.gd` and one `Capture not registered: 'beehave'` at exit. They are harmless (exported games do not send these messages); do not try to fix them.
+- WASD Engine changed `debug/debugger_messages.gd` so that Beehave sends its debugger messages only while a debugger is attached; the add-on's own file logged `Can't send message. No active debugger` on every tick of a `godot_run`. One `Capture not registered: 'beehave'` line at exit remains and is harmless.
 - `process_thread = 0` (IDLE) set in a `.tscn` is reset to PHYSICS in `_ready`; to tick in `_process`, set `tree.process_thread = BeehaveTree.ProcessThread.IDLE` in code after the tree is ready.
 - Setting MANUAL also sets `enabled = false`; after switching back to PHYSICS or IDLE, call `enable()`.
 - `blackboard.keys()` returns blackboard names, not value keys. `has_value` is false for a key set to null.

@@ -3,6 +3,8 @@
   "title": "LDtk Importer",
   "host": "godot",
   "version": "2.0.1",
+  "category": "two-d",
+  "cue": "imports LDtk levels as scenes",
   "summary": "Imports LDtk projects (.ldtk) as scenes: an LDTKWorld with LDTKLevel scenes, a TileMapLayer per tile or IntGrid layer, and entity data with typed fields.",
   "useWhen": "The user designs levels in the LDtk level editor and wants the saved .ldtk project, with its PNG tilesets, to become Godot scenes with TileMapLayers and entity data that reimport whenever the project is saved.",
   "avoidWhen": "Levels are painted with Godot's TileMapLayer editor or come from Tiled, or the LDtk project saves levels to separate files and uses tileset overrides, which 2.0.1 mishandles.",

@@ -92,6 +92,6 @@ dome_path = NodePath("../SkyDome")
 
 - The default day lasts 15 real minutes and time runs from the start. Set `minutes_per_day` and `game_time_enabled` deliberately.
 - Sky3D replaces a `PhysicalSkyMaterial` sky with its own shader. Do not assign your own sky, a second WorldEnvironment, or light rotations.
-- Web exports use the Compatibility renderer. Sky3D renders there, but the ground looks brighter. Its README suggests `sky.sky_contribution = 0.75` and `sky.sky.fog_density = 0.01` to match Forward+.
+- Web builds draw with the Compatibility renderer, where Sky3D looks different, measured against Forward+ on one scene: by day its sky is darker (0.46 of full brightness against 0.71) and walls that face the sun burn out to white; toward dusk the ground goes nearly black (0.03 against 0.11), because the sky's light is lost there. `sky3d.sun_energy = 0.35` brings sunlit walls back by day. Its clouds draw and it holds 60 fps. For a game released to the Web, the `wasd-look` add-on runs a day that shows the same picture there as on desktop.
 - The star map texture is licensed CC BY 4.0. Put this line in the game's credits: "The Milky Way panorama by ESO/S. Brunier, licensed under CC BY 4.0, used in original and modified forms."
 - Sky3D is for 3D scenes only. Do not use it in a 2D game.

@@ -119,7 +119,7 @@ agent 会在一次性文件夹中测试和试验，例如 Claude Code 位于 `/t
 
 ### 游戏工具插件的辅助函数
 
-`@deepseek-ai/dsh-game-mcp/kit` 收录提供游戏工具的插件共用的部分：`accountAccess` 与 `gatewayOrigin` 用于以已登录账号调用网关，`sessionFiles` 给出调用的文件所在的文件夹，`pathWithin`、`windowPath`、`pathFolder` 与 `pathName` 给出路径所在的位置，`statOf`、`namedFileSize`、`replaceableFile` 与 `writeWhole` 用于调用读写的文件，`textBlocks`、`kilobytes`、`folderRows`、`ATTACHED_IMAGE_SCHEMA` 与 `modelSeesImages` 用于工具结果，`checkedInteger` 用于参数，`stateChanges` 用于每次变化时唤醒的流，`projectMcpTool`、`callFolder` 与 `PROJECT_PARAMETER` 用于已连接 agent 以游戏项目文件夹调用的工具。该 kit 只导入 Node 内置模块与类型，因此把本包列为开发依赖的插件打包 kit 时不会带上本插件的服务器与 MCP SDK；[`tests/kit.spec.ts`](tests/kit.spec.ts) 检查其导入。本包的主入口不导出 kit。
+`@deepseek-ai/dsh-game-mcp/kit` 收录提供游戏工具的插件共用的部分：`accountAccess` 与 `gatewayOrigin` 用于以已登录账号调用网关，`sessionFiles` 给出调用的文件所在的文件夹，`pathWithin`、`windowPath`、`pathFolder` 与 `pathName` 给出路径所在的位置，`statOf`、`namedFileSize`、`replaceableFile` 与 `writeWhole` 用于调用读写的文件，`textBlocks`、`kilobytes`、`folderRows`、`ATTACHED_IMAGE_SCHEMA` 与 `modelSeesImages` 用于工具结果，`checkedInteger` 用于参数，`stateChanges` 用于每次变化时唤醒的流，`projectMcpTool`、`callFolder` 与 `PROJECT_PARAMETER` 用于已连接 agent 以游戏项目文件夹调用的工具；对于从资源库下载的插件（Poly Haven、ambientCG），还有 `AssetLibraryHttp` 与 `AssetLibraryRequestError` 用于只发往该资源库主机的请求，`AssetLibraryClient` 是各资源库自己的客户端所继承的客户端，提供预览图与下载，`saveBody` 用于把响应连同其摘要流式写入文件，`sessionPreviews`、`shownPreview` 与 `connectedLibraryTools` 用于预览图和两类调用方各自的工具，`downloadFolders` 给出下载写入的文件夹，`writeAssetFiles` 用于要么全部写入要么一个也不写入的文件，`WRITTEN_FILES_SCHEMA` 与 `savedCounts` 用于下载结果中的这些文件。该 kit 只导入 Node 内置模块与类型，因此把本包列为开发依赖的插件打包 kit 时不会带上本插件的服务器与 MCP SDK；[`tests/kit.spec.ts`](tests/kit.spec.ts) 检查其导入。本包的主入口不导出 kit。
 
 ### 长时间调用
 
@@ -160,7 +160,7 @@ MCP 没有能更改 agent 连接时所收到指令的消息：指令只在对 `i
 | [`src/projects.ts`](src/projects.ts) | `create_game_project`：其参数、默认位置，以及通过 `gameProjectController` 的创建 |
 | [`src/clients.ts`](src/clients.ts) | agent 身份与已见过的 agent |
 | [`src/sessions.ts`](src/sessions.ts) | 已连接 agent 的 Session 与 `sessions.json` |
-| [`src/kit.ts`](src/kit.ts)、[`src/plugin-kit.ts`](src/plugin-kit.ts)、[`src/project-tools.ts`](src/project-tools.ts) | 供游戏工具插件使用的 `/kit` 入口：网关访问、调用的文件、结果的组成部分，以及以游戏项目文件夹为参数的工具 |
+| [`src/kit.ts`](src/kit.ts)、[`src/plugin-kit.ts`](src/plugin-kit.ts)、[`src/project-tools.ts`](src/project-tools.ts)、[`src/asset-library.ts`](src/asset-library.ts) | 供游戏工具插件使用的 `/kit` 入口：网关访问、调用的文件、结果的组成部分、以游戏项目文件夹为参数的工具，以及资源库插件共用的部分 |
 | [`src/temporary-folders.ts`](src/temporary-folders.ts) | 默认的临时文件夹，以及某个路径是否位于其中 |
 | [`src/token.ts`](src/token.ts)、[`src/prompt.ts`](src/prompt.ts) | 令牌文件与校验，以及设置提示词 |
 | [`src/provider.ts`](src/provider.ts)、[`src/types.ts`](src/types.ts) | provider 契约与 `game-mcp/tool-result`、`game-mcp/project-created` 事件、浏览器安全的视图类型与 `game-mcp/reveal` 事件 |

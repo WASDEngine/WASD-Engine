@@ -3,6 +3,8 @@
   "title": "Gaea",
   "host": "godot",
   "version": "2.0.0-beta6",
+  "category": "environment",
+  "cue": "procedural maps for TileMapLayer and GridMap",
   "summary": "Procedural generation graphs of noise, walkers, filters and mappers, run from a seed and drawn into TileMapLayer or GridMap; graphs are .tres resources.",
   "useWhen": "A 2D or 3D grid game needs procedural maps such as islands, caves or dungeons, generated from a seed into TileMapLayer or GridMap, and a node pipeline written as a .tres graph fits the job.",
   "avoidWhen": "One noise threshold or a simple random walk is enough: a short script with FastNoiseLite and TileMapLayer.set_cell() does it without a graph.",

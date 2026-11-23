@@ -3,6 +3,8 @@
   "title": "GUT",
   "host": "godot",
   "version": "9.7.1",
+  "category": "testing",
+  "cue": "unit tests in GDScript",
   "summary": "Godot Unit Test: test scripts that extend GutTest, with asserts, signal watching, frame waits, doubles and stubs, run headless by a command-line runner.",
   "useWhen": "The game has rules or systems worth checking automatically (damage, inventory, save data, state machines, level generation) and you want tests that run headless with godot_script after each change.",
   "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead.",

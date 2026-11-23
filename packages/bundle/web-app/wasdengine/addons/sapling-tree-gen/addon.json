@@ -3,6 +3,8 @@
   "title": "Sapling Tree Gen",
   "host": "blender",
   "version": "1.0.0",
+  "category": "environment",
+  "cue": "parametric trees and bushes",
   "summary": "Parametric trees and bushes (Weber-Penn method): 29 species presets, seeds, leaves, optional armature and wind, baked to meshes for .glb export.",
   "useWhen": "A level needs trees, bushes or palms in several variations and modelling each by hand would be slow; generate them by preset and seed and keep them low-poly.",
   "avoidWhen": "A few stylized blob trees built from cones and spheres are enough.",

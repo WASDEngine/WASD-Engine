@@ -1,0 +1,43 @@
+{
+  "id": "wasd-bake-blender",
+  "title": "WASD Bake for Blender",
+  "host": "blender",
+  "version": "1.0.0",
+  "category": "assets",
+  "cue": "bake materials, occlusion, and high-poly detail to textures",
+  "summary": "Texture baking in one call: node materials become color, roughness, metal, and normal images with shaded creases; a detailed model's surface goes onto a simple one; occlusion goes into vertex colors.",
+  "useWhen": "A model made in Blender has materials built from nodes, which glTF cannot carry and Godot shows white, or should have shaded creases, or a detailed sculpt should become a light model that keeps its look. One call unwraps, bakes, and leaves one material that exports whole.",
+  "avoidWhen": "The model already has image textures on a UV map without overlaps, such as a Poly Haven texture, and needs no crease shading.",
+  "tags": [
+    "bake",
+    "texture",
+    "ambient-occlusion",
+    "normal-map",
+    "uv",
+    "material",
+    "low-poly",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "GPL-3.0-or-later",
+  "copyright": "Copyright 2026 WASD Engine contributors",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-bake-blender",
+  "blender": {
+    "module": "wasd_bake",
+    "kind": "extension",
+    "files": "wasd-bake-blender/extension"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/layers.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "bpy": "5.2.3",
+    "date": "2026-11-21"
+  }
+}

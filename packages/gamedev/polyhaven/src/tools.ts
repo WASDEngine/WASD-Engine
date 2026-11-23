@@ -10,11 +10,13 @@ import type { AttachmentId, ImageAttachmentRef } from '@deepseek-ai/dsh-attachme
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type InferValue, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
-import { ASSET_ID_PATTERN, PolyHavenRequestError, type PolyHavenApi, type PreviewImage } from './api.ts'
+import { ASSET_ID_PATTERN, type PolyHavenApi } from './api.ts'
 import { writeDownload } from './download.ts'
 import { downloadOptions, MAP_FORMATS, planDownload, type DownloadOptions } from './files.ts'
 import type { PolyHavenAsset, PolyHavenAssetKind } from './types.ts'
-import { ATTACHED_IMAGE_SCHEMA } from '@deepseek-ai/dsh-game-mcp/kit'
+import {
+  AssetLibraryRequestError, ATTACHED_IMAGE_SCHEMA, savedCounts, shownPreview, WRITTEN_FILES_SCHEMA, type PreviewSurface,
+} from '@deepseek-ai/dsh-game-mcp/kit'
 
 /** License of every Poly Haven asset, as an SPDX identifier. */
 export const LICENSE = 'CC0-1.0'
@@ -65,17 +67,7 @@ export interface PolyHavenToolHost {
 }
 
 /** How one set of tool definitions shows preview images to its callers. */
-export interface PolyHavenToolSurface {
-  /**
-   * Show one asset's preview image to the caller of a call.
-   * @param exec - the call's execution.
-   * @param load - downloads the image; called only when the caller can see images.
-   * @param name - display name of the image.
-   * @returns the stored image that the result carries, or undefined when the caller cannot see images or the image
-   * reaches the caller another way.
-   */
-  preview(exec: ToolRunContext, load: (signal: AbortSignal) => Promise<PreviewImage>, name: string): Promise<ImageAttachmentRef | undefined>
-}
+export type PolyHavenToolSurface = PreviewSurface<ImageAttachmentRef>
 
 const STRING = { type: 'string', required: true } as const
 const INTEGER = { type: 'integer', required: true } as const
@@ -149,15 +141,7 @@ const DOWNLOAD_SCHEMA = {
     directory: STRING,
     entry: { type: 'string', description: 'The file that opens the asset, relative to directory.' },
     maps: STRINGS,
-    files: {
-      type: 'array',
-      required: true,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: { path: STRING, bytes: INTEGER, status: { type: 'string', enum: ['downloaded', 'replaced', 'unchanged'], required: true } },
-      },
-    },
+    files: WRITTEN_FILES_SCHEMA,
     totalBytes: INTEGER,
     downloadedBytes: INTEGER,
     page: STRING,
@@ -304,7 +288,7 @@ async function filesOf(host: PolyHavenToolHost, asset: PolyHavenAsset, signal: A
   try {
     return await host.api.files(asset.id, signal)
   } catch (error) {
-    if (error instanceof PolyHavenRequestError && error.status === 404) throw new Error(`Poly Haven lists ${asset.id} but has no files for it.`, { cause: error })
+    if (error instanceof AssetLibraryRequestError && error.status === 404) throw new Error(`Poly Haven lists ${asset.id} but has no files for it.`, { cause: error })
     throw error
   }
 }
@@ -377,10 +361,7 @@ function renderAsset(value: AssetValue): string {
 }
 
 function renderDownload(value: DownloadValue): string {
-  const counts = (['downloaded', 'replaced', 'unchanged'] as const)
-    .map(status => [status, value.files.filter(file => file.status === status).length] as const)
-    .filter(([, count]) => count > 0)
-    .map(([status, count]) => `${count} ${status === 'unchanged' ? 'already in place' : status}`)
+  const counts = savedCounts(value.files)
   const listed = value.files.map(file => file.path)
   const note = FORMAT_NOTES[value.maps.length > 0 ? 'maps' : value.format === 'exr' ? 'hdr' : value.format]
   return [
@@ -473,17 +454,10 @@ export function polyHavenToolDefinitions(host: PolyHavenToolHost, surface: PolyH
     async execute(args, exec) {
       const asset = await findAsset(host, args.id, exec.signal)
       const options = downloadOptions(asset.kind, await filesOf(host, asset, exec.signal))
-      let preview: ImageAttachmentRef | undefined
-      let previewError: string | undefined
       const thumbnail = asset.thumbnailUrl
-      if (args.preview !== false && thumbnail !== undefined) {
-        try {
-          preview = await surface.preview(exec, signal => host.api.image(previewUrl(thumbnail), signal), `polyhaven-${asset.id}.jpg`)
-        } catch (error) {
-          exec.signal.throwIfAborted()
-          previewError = error instanceof Error ? error.message : String(error)
-        }
-      }
+      const shown = args.preview === false || thumbnail === undefined
+        ? {}
+        : await shownPreview(surface, exec, signal => host.api.image(previewUrl(thumbnail), signal), `polyhaven-${asset.id}.jpg`)
       return {
         ...summaryOf(asset),
         license: LICENSE,
@@ -496,8 +470,7 @@ export function polyHavenToolDefinitions(host: PolyHavenToolHost, surface: PolyH
         })),
         maps: [...options.maps],
         defaultMaps: [...options.defaultMaps],
-        ...preview === undefined ? {} : { preview },
-        ...previewError === undefined ? {} : { previewError },
+        ...shown,
       }
     },
   }), defineTool({

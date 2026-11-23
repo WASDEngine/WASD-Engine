@@ -1,0 +1,52 @@
+{
+  "id": "sofluffy",
+  "title": "SO FLUFFY",
+  "host": "godot",
+  "version": "2024.02.13+09af7e6",
+  "category": "rendering",
+  "cue": "fur on any mesh: animals, mascots, moss, rugs; it bounces",
+  "summary": "Shell fur on any mesh: a Fur node grows strands with length, density, curls, a color gradient along each strand, and springy physics that makes the fur swing when its owner moves.",
+  "useWhen": "A hero creature, pet, mascot, or monster should look furry from near, or a rug, moss, or a pom-pom should be soft: one or two such things on screen, where their fur is what the player looks at.",
+  "avoidWhen": "Many furry things at once or far from the camera, where a fur texture reads the same: every shell draws the mesh again, 16 to 48 times.",
+  "tags": [
+    "fur",
+    "hair",
+    "shell",
+    "creature",
+    "animal",
+    "fluffy",
+    "moss",
+    "shader",
+    "3d"
+  ],
+  "stages": [
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2024 Max Muermann",
+  "homepage": "https://github.com/maxvolumedev/sofluffy",
+  "archive": {
+    "url": "https://github.com/maxvolumedev/sofluffy/archive/09af7e68c17db7b85a4780220b28dc015da28a91.zip",
+    "sha256": "027831e6eab870fd7537fe86e399ece9c7b5bbff5231679f0ef1b5164353a644",
+    "bytes": 19163,
+    "root": "sofluffy-09af7e68c17db7b85a4780220b28dc015da28a91/addons/so_fluffy",
+    "exclude": [
+      "so_fluffy_plugin.gd",
+      "plugin.cfg",
+      "README.md"
+    ]
+  },
+  "godot": {
+    "addonDir": "so_fluffy"
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/maxvolumedev/sofluffy/09af7e68c17db7b85a4780220b28dc015da28a91/addons/so_fluffy/icon.svg",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2024 Max Muermann"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

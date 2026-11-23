@@ -1,0 +1,68 @@
+{
+  "id": "maaacks-menus-template",
+  "title": "Maaack's Menus Template",
+  "host": "godot",
+  "version": "1.7.2",
+  "category": "interface",
+  "cue": "main menu, options, key rebinding, pause, credits",
+  "summary": "The menus every finished game has: a main menu, options for audio, video, and key or gamepad rebinding that are saved, a pause menu, scrolling credits, and an opening screen for logos.",
+  "useWhen": "The game should start from a main menu and offer options, pause, and credits: add it once the game is playable, at the latest before a release, instead of building these screens and saved settings by hand.",
+  "avoidWhen": "The game is a jam-sized toy that starts straight into play and needs no settings, or its menus are part of the world and built from its own art.",
+  "tags": [
+    "menu",
+    "main-menu",
+    "options",
+    "settings",
+    "pause",
+    "credits",
+    "rebinding",
+    "ui",
+    "2d",
+    "3d"
+  ],
+  "stages": [
+    "polish",
+    "ship"
+  ],
+  "license": "MIT AND CC-BY-4.0",
+  "copyright": "Copyright (c) 2022-present Marek Belski; Godot Engine logo Copyright (c) 2017 Andrea Calabró",
+  "credit": "When the game shows the opening screen's Godot Engine logo: Godot Engine logo by Andrea Calabró, licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/).",
+  "homepage": "https://github.com/Maaack/Godot-Menus-Template",
+  "archive": {
+    "url": "https://github.com/Maaack/Godot-Menus-Template/archive/refs/tags/v1.7.2.zip",
+    "sha256": "99b16000c580457a9a564de3ead3200af1a06199e24352465bbb1d228b18ee9b",
+    "bytes": 7166164,
+    "root": "Godot-Menus-Template-1.7.2/addons/maaacks_menus_template",
+    "exclude": [
+      "ATTRIBUTION.md",
+      "README.md",
+      "assets",
+      "docs",
+      "examples/ATTRIBUTION.md",
+      "examples/assets/git_logo",
+      "examples/assets/plugin_logo",
+      "examples/scenes/credits/credits_label.tscn",
+      "installer",
+      "media",
+      "plugin.cfg",
+      "plugin.gd",
+      "plugin.gd.uid"
+    ]
+  },
+  "godot": {
+    "addonDir": "maaacks_menus_template",
+    "autoloads": [
+      {
+        "name": "MenusStartUp",
+        "path": "res://addons/maaacks_menus_template/base/nodes/config/start_up/start_up.tscn"
+      }
+    ],
+    "overlay": [
+      "maaacks-menus-template/overlay"
+    ]
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

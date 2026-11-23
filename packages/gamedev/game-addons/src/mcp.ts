@@ -1,7 +1,7 @@
 /**
  * The `game_addons` tool for agents connected through WASD Engine's MCP server: the Session's own definition with
- * projects named by absolute path, a description that asks for the whole catalog before a game is planned, and the
- * catalog in the server's instructions, whose overview says what the add-ons add. Connected agents have no WASD Engine
+ * projects named by absolute path, a description that asks for the catalog's index before a game is planned, and the
+ * add-on judgment in the server's instructions, whose overview says what the add-ons add. Connected agents have no WASD Engine
  * skills, so they read an add-on's guide with the `guide` action, as the install and list results say. They decide
  * when to install an add-on as the Session's agent does; WASD Engine asks nobody, and their own harness applies its own
  * approval rules.
@@ -26,12 +26,12 @@ export const MCP_WORDING: GameAddonToolWording = {
  * What the add-ons add, when to read the catalog, and when to install, as the server instructions list it: an
  * installation needs the project's project.godot, which a new game project's folder does not have yet.
  */
-export const MCP_DESCRIPTION = 'Curated add-ons, tested with WASD Engine\'s Godot and Blender, that do common game jobs better than new code: '
-  + 'cameras, sky, scattering, terrain, dialogue, inventories, AI, trees, humans, rigs, cloth, and animations. Before you plan a game, '
-  + 'read the whole catalog with game_addons action search; install what fits once project.godot exists.'
+export const MCP_DESCRIPTION = 'Curated, tested add-ons that do common game jobs better than new code: '
+  + 'lighting, materials, effects, terrain, water, roads, characters, physics, AI, cameras, menus, and HUD. Before you plan a game, '
+  + 'read the catalog\'s index with game_addons action search; install what fits once project.godot exists.'
 
 /** The sentence that the tool's description adds for connected agents, which have no catalog in a system prompt. */
-const CATALOG_FIRST = 'Before you plan a game, read the whole catalog with action search and no query.'
+const CATALOG_FIRST = 'Before you plan a game, read the catalog\'s index with action search and no query.'
 
 /**
  * The add-on provider of WASD Engine's MCP server.

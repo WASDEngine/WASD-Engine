@@ -117,6 +117,7 @@ To build or change a graph at runtime, read [references/graph-api.md](references
 ## Pitfalls
 
 - Web exports are single-threaded: give every generator a `GaeaTaskPool` with `multithreaded = false`, as above. Generation then runs inside `generate()`, and `generation_finished` fires at the end of the frame.
+- The Web export's notes name `addons/gaea/editor/panel/right_panel/right_panel.tscn` for SSIL. It is an editor panel that games never load: nothing to fix.
 - Set `random_seed_on_generate = false`, or every `generate()` picks a new seed.
 - Keep `save_version = 5`. The parameter name must match in the node's `arguments.name`, the `_parameters` key, and its `"name"`.
 - Exported node properties in a `.tscn` need `node_paths=PackedStringArray(...)` in the node header.

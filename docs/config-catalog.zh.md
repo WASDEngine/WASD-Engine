@@ -250,6 +250,33 @@ export interface Config {
 ```
 <!-- END GENERATED config-catalog:@deepseek-ai/dsh-agent-tool-presentation -->
 
+<!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-ambientcg -->
+<a id="deepseek-aidsh-ambientcg"></a>
+
+## `@deepseek-ai/dsh-ambientcg`
+
+- `inject`: `tools` · `workingDirectory`
+- `source`: [`packages/gamedev/ambientcg/src/index.ts:35`](../packages/gamedev/ambientcg/src/index.ts)
+
+```ts config-catalog
+/** Deployment configuration of the ambientCG tools. */
+export interface Config {
+  /** Base URL of the ambientCG API. */
+  apiUrl: string
+  /** `User-Agent` of every request, which names the software to ambientCG. */
+  userAgent: string
+  /** Time limit of one `ambientcg_search` or `ambientcg_asset` call. */
+  requestTimeoutMs: number
+  /** Time limit of one `ambientcg_download` call. */
+  downloadTimeoutMs: number
+  /** Largest size of the archive of one `ambientcg_download` call, and of the pictures it unpacks, in bytes. */
+  maxDownloadBytes: number
+  /** How long search pages, assets, and the categories stay in memory before they are read again; 0 reads them every time. */
+  catalogMaxAgeMs: number
+}
+```
+<!-- END GENERATED config-catalog:@deepseek-ai/dsh-ambientcg -->
+
 <!-- BEGIN GENERATED config-catalog:@deepseek-ai/dsh-api-gateway -->
 <a id="deepseek-aidsh-api-gateway"></a>
 
@@ -3499,7 +3526,7 @@ export interface Config {
 ## `@deepseek-ai/dsh-polyhaven`
 
 - `inject`: `tools` · `workingDirectory`
-- `source`: [`packages/gamedev/polyhaven/src/index.ts:32`](../packages/gamedev/polyhaven/src/index.ts)
+- `source`: [`packages/gamedev/polyhaven/src/index.ts:33`](../packages/gamedev/polyhaven/src/index.ts)
 
 ```ts config-catalog
 /** Deployment configuration of the Poly Haven tools. */

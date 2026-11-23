@@ -65,10 +65,11 @@ it('creates a game project for a connected agent, which the window lists as a ga
   for (const plugin of ['Godot (godot_*)', 'Blender (blender_*)', 'Game add-ons (game_*)', 'Graphics review (graphics_*)', 'GIMP (gimp_*)', 'SuperCollider (supercollider_*)']) {
     expect(overview).toContain(`\n- ${plugin}: `)
   }
-  expect(overview).toContain('read the whole catalog with game_addons action search')
+  expect(overview).toContain('read the catalog\'s index with game_addons action search')
   // Each asset comes from a fitting download first, then from Nano Banana and ElevenLabs.
   for (const preference of [
-    'on Poly Haven and download them into the game. Look here before you make or generate an asset, and use what suits the game\'s art style.\n',
+    'and 3D models and download them into the game. Look here before you make or generate an asset, and use what suits the game\'s art style.\n',
+    'and HDRI skies and download their maps into the game.\n',
     'with Google\'s Nano Banana 2.1. Prefer it to drawing 2D art yourself.\n',
     'clone the user\'s own voices. Prefer it to SuperCollider.\n',
   ]) {

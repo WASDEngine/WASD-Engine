@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { Context } from '@deepseek-ai/cordis'
 import { feedbackMcpProvider } from '@deepseek-ai/dsh-agent-feedback/src/mcp.ts'
 import { bundlePatchPaths, composeEntries, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
+import { ambientCgMcpProvider } from '@deepseek-ai/dsh-ambientcg/src/mcp.ts'
 import { referenceMcpProvider } from '@deepseek-ai/dsh-art-references/src/mcp.ts'
 import * as Blender from '@deepseek-ai/dsh-blender'
 import { elevenLabsMcpProvider } from '@deepseek-ai/dsh-elevenlabs/src/mcp.ts'
@@ -129,6 +130,7 @@ async function shippedProviders(): Promise<ReadonlyMap<string, GameMcpProvider>>
     ['@deepseek-ai/dsh-elevenlabs', elevenLabsMcpProvider(host)],
     ['@deepseek-ai/dsh-image-generation', imageMcpProvider(host)],
     ['@deepseek-ai/dsh-polyhaven', polyHavenMcpProvider(host)],
+    ['@deepseek-ai/dsh-ambientcg', ambientCgMcpProvider(host)],
     ['@deepseek-ai/dsh-game-audio', audioMcpProvider(host)],
     ['@deepseek-ai/dsh-godot', godotMcpProvider(host, () => Promise.reject(new Error('no runtime in this spec')), godotRelease())],
     ['@deepseek-ai/dsh-game-assets', assetMcpProvider(host)],

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ambientCG",
+    "description": "Permite que o agente encontre materiais PBR, decalques e céus HDRI gratuitos com licença CC0 no ambientCG e baixe seus mapas de textura no projeto do jogo."
+  }
+}

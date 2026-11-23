@@ -1,0 +1,50 @@
+{
+  "id": "wasd-character",
+  "title": "WASD Character",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "characters",
+  "cue": "third-person character: run, jump, stairs, clips, camera",
+  "summary": "A third-person character in one node: camera-relative movement, a forgiving jump, stairs taken in stride, feet placed on steps and slopes, animations paced so feet do not slide, and an orbit camera.",
+  "useWhen": "The player, an enemy, or a companion is a character on foot in a 3D game: a third-person adventure, an action or exploration game, a platformer with a humanoid. With universal-animation-library a retargeted human walks, runs, and jumps with no animation code.",
+  "avoidWhen": "A first-person game, which starter-kit-fps starts, a vehicle, or a 2D game; or a character that moves on a grid or by clicks, which a few lines do.",
+  "tags": [
+    "character",
+    "controller",
+    "third-person",
+    "player",
+    "movement",
+    "jump",
+    "stairs",
+    "foot-ik",
+    "animation",
+    "camera",
+    "orbit-camera",
+    "locomotion",
+    "npc",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-character",
+  "godot": {
+    "addonDir": "wasd_character",
+    "overlay": [
+      "wasd-character/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/person-standing.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

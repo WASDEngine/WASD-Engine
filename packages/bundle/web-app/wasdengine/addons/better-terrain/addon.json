@@ -3,6 +3,8 @@
   "title": "Better Terrain",
   "host": "godot",
   "version": "1.1",
+  "category": "two-d",
+  "cue": "autotiling rules for TileMapLayer",
   "summary": "Autotiling for TileMapLayer: terrain rules in TileSet metadata, defined from code or .tres text, and an API that paints cells and re-solves tiles at runtime.",
   "useWhen": "A 2D tile game needs walls, paths, platforms or ground whose edge and corner tiles match automatically, especially when cells change at runtime through digging, building, destruction or procedural levels.",
   "avoidWhen": "The map is drawn once by hand and never changes, or Godot's built-in TileSet terrains already pick the right tiles.",

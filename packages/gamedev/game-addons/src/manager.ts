@@ -32,6 +32,7 @@ import { searchCatalog, type CatalogQuery, type GameAddonCatalog } from './catal
 import { standardLicenseText } from './licenses.ts'
 import { NOTICES_FILE, noticeSection, readNotice, removeNotice, writeNotice } from './notices.ts'
 import { projectEntry, projectFolder, readProjectText } from './paths.ts'
+import { PROJECT_ROOT_SKIPPED, rebaseProjectPaths } from './project-root.ts'
 import { dictionaryEntries, dictionaryLiteral, ProjectFile, revertEdit, type DictionaryEntry } from './project-file.ts'
 import { lockRecord, readRecord, RECORD_FILE, SETTINGS_FILE, STATE_DIR, type HeldRecord, type SettingBefore } from './record.ts'
 import type {
@@ -502,6 +503,8 @@ export function addonView(addon: GameAddon, allowed: boolean, presence?: GameAdd
     title: addon.title,
     host: addon.host,
     version: addon.version,
+    category: addon.category,
+    cue: addon.cue,
     summary: addon.summary,
     useWhen: addon.useWhen,
     ...addon.avoidWhen === undefined ? {} : { avoidWhen: addon.avoidWhen },
@@ -510,7 +513,9 @@ export function addonView(addon: GameAddon, allowed: boolean, presence?: GameAdd
     license: addon.license,
     ...addon.credit === undefined ? {} : { credit: addon.credit },
     homepage: addon.homepage,
-    ...addon.archive === undefined ? {} : { bytes: addon.archive.bytes + (addon.assets?.bytes ?? 0) },
+    ...addon.archive === undefined
+      ? { shipsWith: addon.blender?.kind === 'core' ? 'blender' as const : 'app' as const }
+      : { bytes: addon.archive.bytes + (addon.assets?.bytes ?? 0) },
     ...addon.assets === undefined
       ? {}
       : { assets: { license: addon.assets.license, bytes: addon.assets.bytes, homepage: addon.assets.homepage } },
@@ -799,8 +804,10 @@ export class GameAddonManager {
   }
 
   /**
-   * Download a Godot add-on's archive and unpack its folder into a new staging folder of the project, with its license
-   * file and the files of its overlay folders; an add-on without an archive is its overlay folders' files alone.
+   * Download a Godot add-on's archive and unpack its folder into a new staging folder of the project, without the
+   * paths its entry leaves out, with its license file and the files of its overlay folders; an add-on without an
+   * archive is its overlay folders' files alone. A project archive, such as a starter kit, loses its `project.godot`
+   * and gets its `res://` paths rewritten to the add-on folder.
    * @returns the staged folder; on failure nothing of it is left.
    */
   private async stage(projectDir: string, addon: GameAddon, signal: AbortSignal): Promise<StagedAddon> {
@@ -814,7 +821,11 @@ export class GameAddonManager {
       if (archive === undefined || archivePath === undefined) {
         await mkdir(folder, { recursive: true })
       } else {
-        const files = await unpackFolder(archivePath, archive.root, folder, signal)
+        const files = await unpackFolder(archivePath, archive.root, folder, signal, {
+          ...archive.exclude === undefined ? {} : { exclude: archive.exclude },
+          ...archive.projectRoot === true ? { skip: PROJECT_ROOT_SKIPPED } : {},
+        })
+        if (archive.projectRoot === true) await rebaseProjectPaths(folder, files, `res://addons/${godot.addonDir}/`, signal)
         licenseText = await this.licenseText(addon, archivePath, folder, files)
         const rootPrefix = archive.root === '' ? '' : `${archive.root}/`
         const licenseOutside = archive.license !== undefined && !archive.license.startsWith(rootPrefix)

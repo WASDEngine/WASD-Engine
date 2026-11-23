@@ -1,0 +1,41 @@
+{
+  "id": "active-ragdoll",
+  "title": "Active Ragdoll",
+  "host": "godot",
+  "version": "0.2.0",
+  "category": "physics",
+  "cue": "physical hit reactions, stumbles, knock-downs, getting up",
+  "summary": "Active ragdolls for humanoid skeletons: muscles drive physical bones toward the animation, so characters flinch, stagger, fall, lie hurt, and get up along a clip.",
+  "useWhen": "Characters must react to hits and shoves with their bodies: flinch, stagger and step to catch themselves, get knocked down, lie hurt, or get up, instead of only playing a clip or going limp.",
+  "avoidWhen": "The body only has to fall limp once, which drop-in-ragdoll does with less setup, or the skeleton does not use Godot's humanoid bone names.",
+  "tags": [
+    "ragdoll",
+    "physics",
+    "hit",
+    "reaction",
+    "stagger",
+    "character",
+    "humanoid",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2026 Danil Khmyrov",
+  "homepage": "https://github.com/DanilKhmyrov/godot-active-ragdoll",
+  "archive": {
+    "url": "https://github.com/DanilKhmyrov/godot-active-ragdoll/archive/refs/tags/v0.2.0.zip",
+    "sha256": "d274bf7d142ab926665289068bff706488379a3a27f01172a68983aa11fd28bf",
+    "bytes": 37800,
+    "root": "godot-active-ragdoll-0.2.0/addons/active_ragdoll"
+  },
+  "godot": {
+    "addonDir": "active_ragdoll"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

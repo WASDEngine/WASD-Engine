@@ -1,0 +1,1 @@
+{ "run": "render", "path": "res://wasd_smoke/smoke.tscn", "expect": ["SMOKE_PASS simple-grass-textured"], "timeoutSeconds": 120 }

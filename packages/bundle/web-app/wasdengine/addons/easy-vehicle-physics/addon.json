@@ -1,0 +1,74 @@
+{
+  "id": "easy-vehicle-physics",
+  "title": "Easy Vehicle Physics",
+  "host": "godot",
+  "version": "2025.08.17+c392257",
+  "category": "physics",
+  "cue": "drivable cars: suspension, gears, grip, drift, four presets",
+  "summary": "Cars that drive like cars: ray-cast wheels with suspension, an engine with gears, tire grip by surface, steering and stability assists, and four tuned vehicles: arcade, simcade, drift, monster truck.",
+  "useWhen": "The player or traffic drives cars that should accelerate through gears, lean, slide, and drift: a racing or driving game, an open world with roads, a stunt or delivery game. Tuning Godot's VehicleBody3D to this standard takes days.",
+  "avoidWhen": "A kart or toy car on a small track is enough, which starter-kit-racing gives with its track pieces, or the vehicles only follow paths without physics.",
+  "tags": [
+    "vehicle",
+    "car",
+    "driving",
+    "racing",
+    "drift",
+    "suspension",
+    "physics",
+    "truck",
+    "3d"
+  ],
+  "stages": [
+    "prototype",
+    "content"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2024 David Shoemaker; portions Copyright (c) 2021 Dechode and Copyright (c) 2024 Baron Wittman",
+  "credit": "Car models: Kenney Car Kit, CC0.",
+  "homepage": "https://github.com/DAShoe1/Godot-Easy-Vehicle-Physics",
+  "archive": {
+    "url": "https://github.com/DAShoe1/Godot-Easy-Vehicle-Physics/archive/c392257f54f6ca537dc10bc5badad0c060f18982.zip",
+    "sha256": "df7343e129ba109c0bfec8faa9849f095597369ab927b5756bf0fd5a5964fb3d",
+    "bytes": 415193,
+    "root": "Godot-Easy-Vehicle-Physics-c392257f54f6ca537dc10bc5badad0c060f18982/addons/gevp",
+    "exclude": [
+      "scripts/wheel.gd",
+      "scenes/demo_arcade.tscn",
+      "scenes/demo_monster_truck.tscn",
+      "scenes/demo_simcade.tscn",
+      "scenes/demo_drift.tscn",
+      "scenes/track.tscn",
+      "scenes/smoke_effect.tscn",
+      "scenes/vehicle_controller.tscn",
+      "scripts/vehicle_controllergd.gd",
+      "scripts/wheel_smoke.gd",
+      "scripts/debug.gd",
+      "scripts/debug_ui.gd",
+      "scripts/gui.gd",
+      "scripts/camera.gd",
+      "README.md",
+      "icon.png",
+      "icon.png.import"
+    ]
+  },
+  "godot": {
+    "addonDir": "gevp",
+    "overlay": [
+      "easy-vehicle-physics/overlay"
+    ]
+  },
+  "icon": {
+    "file": "icon.png",
+    "source": "https://raw.githubusercontent.com/DAShoe1/Godot-Easy-Vehicle-Physics/c392257f54f6ca537dc10bc5badad0c060f18982/addons/gevp/icon.png",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2024 David Shoemaker"
+  },
+  "conflicts": [
+    "starter-kit-racing"
+  ],
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

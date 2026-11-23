@@ -1,0 +1,115 @@
+{
+  "id": "simple-grass-textured",
+  "title": "SimpleGrassTextured",
+  "host": "godot",
+  "version": "2.1.1",
+  "category": "environment",
+  "cue": "fields of textured grass that sway and part underfoot",
+  "summary": "Dense textured grass as one MultiMesh: tufts placed from code, a wind that sways them, and an optional mode in which characters and objects push the grass aside.",
+  "useWhen": "Ground needs thick grass, reeds, wheat, or flowers that sway in the wind: meadows, lawns, fields, and riverbanks in a 3D game, thousands of tufts in a couple of draw calls, in Web builds too.",
+  "avoidWhen": "The ground is lite-terrain's, which raises its own grass; the plants are whole models such as bushes and trees, which protonscatter places; or the game is 2D.",
+  "tags": [
+    "grass",
+    "foliage",
+    "wind",
+    "meadow",
+    "multimesh",
+    "environment",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "MIT",
+  "copyright": "Copyright (c) 2023 IcterusGames",
+  "homepage": "https://github.com/IcterusGames/SimpleGrassTextured",
+  "archive": {
+    "url": "https://github.com/IcterusGames/SimpleGrassTextured/archive/refs/tags/v2.1.1.zip",
+    "sha256": "3303876de4d516e366ff101effc0fa7181e6cedbd54cdd0e9379454a48c69e2e",
+    "bytes": 372051,
+    "root": "SimpleGrassTextured-2.1.1/addons/simplegrasstextured",
+    "exclude": [
+      "plugin.gd",
+      "plugin.gd.uid",
+      "plugin.cfg",
+      "gui",
+      "sgt_inspector.gd",
+      "sgt_inspector.gd.uid",
+      "default_mesh_builder.gd",
+      "default_mesh_builder.gd.uid",
+      "materials/.gdignore",
+      "shaders/.gdignore"
+    ]
+  },
+  "godot": {
+    "addonDir": "simplegrasstextured",
+    "autoloads": [
+      {
+        "name": "SimpleGrass",
+        "path": "res://addons/simplegrasstextured/singleton.tscn"
+      }
+    ],
+    "settings": [
+      {
+        "section": "layer_names",
+        "key": "3d_render/layer_17",
+        "value": "\"SimpleGrassTextured interactive layer\""
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_legacy_renderer",
+        "value": "{\"type\": \"int\", \"value\": 0}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_player_position",
+        "value": "{\"type\": \"vec3\", \"value\": Vector3(1e+06, 1e+06, 1e+06)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_player_mov",
+        "value": "{\"type\": \"vec3\", \"value\": Vector3(0, 0, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_normal_displacement",
+        "value": "{\"type\": \"sampler2D\", \"value\": \"res://addons/simplegrasstextured/images/normal.png\"}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_motion_texture",
+        "value": "{\"type\": \"sampler2D\", \"value\": \"res://addons/simplegrasstextured/images/motion.png\"}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_wind_direction",
+        "value": "{\"type\": \"vec3\", \"value\": Vector3(1, 0, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_wind_movement",
+        "value": "{\"type\": \"vec3\", \"value\": Vector3(0, 0, 0)}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_wind_strength",
+        "value": "{\"type\": \"float\", \"value\": 0.15}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_wind_turbulence",
+        "value": "{\"type\": \"float\", \"value\": 1.0}"
+      },
+      {
+        "section": "shader_globals",
+        "key": "sgt_wind_pattern",
+        "value": "{\"type\": \"sampler2D\", \"value\": \"res://addons/simplegrasstextured/images/wind_pattern.png\"}"
+      }
+    ]
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

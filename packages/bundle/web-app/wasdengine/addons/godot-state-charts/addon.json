@@ -3,6 +3,8 @@
   "title": "Godot State Charts",
   "host": "godot",
   "version": "0.22.5",
+  "category": "gameplay",
+  "cue": "state charts built from nodes",
   "summary": "Hierarchical state machines built from nodes: compound, parallel and history states, event and timed transitions with guards, and enter/exit/process signals.",
   "useWhen": "A player, enemy, menu or game flow has many modes with nested or parallel sub-states (grounded/airborne, armed/unarmed, pause) or needs delayed and guarded transitions that a flat enum state machine handles badly.",
   "avoidWhen": "Two or three states with simple switches; an enum and a match statement in the script are enough.",

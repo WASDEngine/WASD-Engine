@@ -23,7 +23,13 @@ export const SMOKE_DIR = fileURLToPath(new URL('./smoke/', import.meta.url))
  * A Godot smoke test copies the `files/` folder of its own smoke folder, or of the one `files` names, into the project.
  * Its `prepare` script, such as a helper of the add-on that an agent runs with `godot_script`, runs with its arguments
  * after an import of those files and before the next one. The run must print every `expect` marker, no `SMOKE_FAIL`,
- * and end with `exitCode` (default 0).
+ * and end with `exitCode` (default 0). A Godot run must also print no error, a line that starts with `ERROR:` or
+ * `SCRIPT ERROR:`, since an error that a game prints in a browser stops its release; what Godot reports while it
+ * shuts down about resources left in use does not count, and `errors` holds a part of each other error line that
+ * the run may print because a game does not meet it, such as one that only quitting brings. `webNotes` holds
+ * one phrase of each note that the Web export's feature scan raises about the add-on's own files, in the scan's
+ * order; without it the files must raise none. `with` names other Godot add-ons of the catalog that the suite
+ * installs beside the add-on once its own files are checked, for a smoke test of what the add-ons do together.
  */
 export const SmokeSpec = z.strictObject({
   run: z.enum(['scene', 'render', 'script', 'blender']),
@@ -35,4 +41,7 @@ export const SmokeSpec = z.strictObject({
   exitCode: z.number().int().exactOptional(),
   timeoutSeconds: z.number().int().min(1).max(600),
   importTwice: z.boolean().exactOptional(),
+  errors: z.array(z.string().min(1)).min(1).exactOptional(),
+  webNotes: z.array(z.string().min(1)).min(1).exactOptional(),
+  with: z.array(z.string().min(1)).min(1).exactOptional(),
 })

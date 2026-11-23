@@ -109,8 +109,8 @@ describe('game_addons', () => {
   it('tells the model what kinds of add-ons there are and to install what the game needs without asking the user', async () => {
     await setup()
     expect(ctx!.tools.get(TOOL_NAME)?.description).toBe(
-      'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: cameras, dialogue, behavior trees, state charts, inventories, unit tests, tile terrain, procedural maps, importers for Tiled, LDtk, and sprite editors, screen shake, sky, scattering, and for Blender rigging, humans, trees, landscapes, and VRM. '
-      + 'action search finds add-ons for a need and says when each helps, when to skip it, and whether the project has it; guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
+      'Curated third-party add-ons for the game, each pinned to a version tested with this Godot (GDScript only, so Web releases keep working) or Blender: lighting, sky, weather, terrain, water, grass, scattering, roads, and dungeons; materials, effects, light shafts, mirrors, trails, fur, surface marks, and screen looks; humans, rigs, animations, a character controller, and crowds; cloth, ropes, ragdolls, vehicles, and destruction; AI, state charts, dialogue, and inventories; cameras and shake; menus, HUD, loading screens, and button prompts; 2D levels; starter kits; texture baking; and tests. '
+      + 'action search without words gives the catalog\'s index, a few words on every add-on by category; with an add-on\'s id, a category, or words it says when each match helps, when to skip it, and whether the project has it. guide shows an add-on\'s usage guide; install adds one to the project; remove takes one out of the project; list shows the project\'s add-ons. '
       + 'Install an add-on yourself, without asking the user first, when the game needs what it does and Godot or Blender alone would take much longer; then tell the user what you added and its license.',
     )
   })
@@ -120,7 +120,7 @@ describe('game_addons', () => {
     const result = await call(state, { action: 'search', query: 'camera smoothing' })
     expect(result.isError).toBe(false)
     expect(text(result)).toBe([
-      '2 of 4 catalog add-ons for ' + state.project + ':',
+      '2 matching add-ons for ' + state.project + ':',
       '- test-camera: Test Camera 1.2.0 (Godot, MIT, 1 KB) [not installed]',
       '  Virtual cameras that follow and frame targets.',
       '  Use when: The camera must follow a moving target with smoothing.',
@@ -133,8 +133,37 @@ describe('game_addons', () => {
       '  Required credit: Other Camera by Other',
       'Read one with action guide, or install it with action install.',
     ].join('\n'))
-    expect(await call(state, { action: 'search', query: 'zzz' })).toMatchObject({ isError: false })
+    expect(text(await call(state, { action: 'search', query: 'zzz' }))).toBe('No catalog add-on matches. Search with other words, or without a query for the catalog\'s index; Godot and Blender may already do this without an add-on.')
     expect(text(await call(state, { action: 'search', host: 'blender', project: 'elsewhere' }))).toContain('- test-rig: Test Rig 5.2.3 (Blender, GPL-2.0-or-later, ships inside Blender)\n')
+  })
+
+  it('gives the catalog\'s index for a search without words or filters, with what the project has', async () => {
+    const state = await setup()
+    expect((await call(state, { action: 'install', id: 'test-camera' })).isError).toBe(false)
+    expect(text(await call(state, { action: 'search' }))).toBe([
+      `The catalog's 4 add-ons for ${state.project}, under their categories, with what each is for:`,
+      'Environment: lighting, sky, weather, terrain, water, grass, trees, scattering, roads, dungeons, level layout (environment)',
+      '- test-trees (Blender): procedural low-poly trees',
+      'Characters: humans, rigs, animation clips, movement, faces, crowds (characters)',
+      '- test-rig (Blender): control rigs for characters',
+      'Camera and game feel (camera)',
+      '- other-camera: another camera add-on',
+      '- test-camera: cameras that follow and frame targets [installed]',
+      'Search with an add-on\'s id, a category, or words for when it helps, when to skip it, its size, license, and conflicts; read its guide with action guide, or install it with action install.',
+    ].join('\n'))
+    // Blank words are no words.
+    expect(text(await call(state, { action: 'search', query: '  ' }))).toContain('under their categories')
+  })
+
+  it('describes one add-on for its id, and a category\'s add-ons for the category', async () => {
+    const state = await setup()
+    const named = text(await call(state, { action: 'search', query: 'other-camera' }))
+    expect(named).toContain(`1 matching add-on for ${state.project}:\n- other-camera: Other Camera 0.1`)
+    expect(named).not.toContain('- test-camera:')
+    const category = text(await call(state, { action: 'search', category: 'camera' }))
+    expect(category).toContain(`2 matching add-ons for ${state.project}:`)
+    expect(category).not.toContain('test-trees')
+    expect(text(await call(state, { action: 'search', category: 'testing' }))).toContain('No catalog add-on matches.')
   })
 
   it('shows a guide, noting when the project does not have the add-on yet', async () => {
@@ -187,7 +216,7 @@ describe('game_addons', () => {
     state.off.add('test-camera')
     const refusal = 'The user turned Test Camera (test-camera) off in WASD Engine\'s Add-ons dialog, so agents cannot use it. Do the work without it, or ask the user to turn it on there.'
     const search = text(await call(state, { action: 'search', query: 'camera smoothing' }))
-    expect(search).toContain(`1 of 3 catalog add-ons for ${state.project}:\n- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB) [not installed]\n`)
+    expect(search).toContain(`1 matching add-on for ${state.project}:\n- other-camera: Other Camera 0.1 (Godot, MIT, 1 KB) [not installed]\n`)
     expect(search).not.toContain('- test-camera:')
     const guide = await call(state, { action: 'guide', id: 'test-camera' })
     expect(guide.isError).toBe(true)

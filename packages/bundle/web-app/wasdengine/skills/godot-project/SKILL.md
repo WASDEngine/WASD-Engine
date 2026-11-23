@@ -7,7 +7,7 @@ description: Create, edit, run, test, or export a Godot 4 game (project.godot, .
 
 ## Find the engine
 
-When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only some exports need one (see Export). Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools. Before building a camera rig, dialogue, cloth, water, behavior trees, state charts, an inventory, or tile terrain, search `game_addons` for a tested add-on. The system prompt names the built-in release; `godot_run` reports its full version. If a tool reports no installed Godot runtime, give the user its message instead of searching for Godot.
+When the `godot_*` tools are available, Godot is built in: `godot_check` and `godot_run` run it, so writing, checking, running, and playing a game need no Godot editor or `godot` command. Do not look for one, download one, or ask the user for one; only some exports need one. Start a new game by writing `project.godot`, a main scene, and its scripts with the file tools, then check and run it with the tools. Before building what the add-on index lists, such as terrain, water, cloth, a camera, dialogue, or menus, or a genre with a starter kit, search `game_addons`; for a 3D game's look, load `game-look` first. The system prompt names the built-in release; `godot_run` reports its full version. If a tool reports no installed Godot runtime, give the user its message instead of searching for Godot.
 
 Without the `godot_*` tools, run `godot --version`, then try `godot4` and, on macOS, `/Applications/Godot.app/Contents/MacOS/Godot`; if none exists, ask the user for the editor executable instead of downloading one.
 
@@ -60,13 +60,13 @@ Only when the `godot_*` tools are missing, check with the editor you found, writ
    `godot --headless --path <project-dir> --check-only --script res://path/to/script.gd`
 3. Run the main scene briefly and read every `SCRIPT ERROR`, `ERROR`, and `WARNING` line:
    `godot --headless --path <project-dir> --quit-after 120`
-4. If the project has a test addon such as `addons/gut` or `addons/gdUnit4`, run its command-line runner as its README describes.
+4. With a test addon such as `addons/gut` or `addons/gdUnit4`, run its command-line runner as its README describes.
 
-Fix the first reported error at its file and line, then repeat until the run is clean.
+Fix the first reported error, then repeat until the run is clean.
 
 ## Models, textures, and audio
 
-Get each asset from the first source that suits the game's art style: download skies, textures, and models with `polyhaven_*` or an add-on's assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider. With the `mcp__wasd_blender__` tools, build 3D models, texture them as the Blender instructions describe, and export `.glb` files with `mcp__wasd_blender__export_gltf` (no Draco compression). With the `mcp__wasd_gimp__` tools, edit textures and sprites and export PNG files; for hand-drawn detail on a model, edit its texture PNG there, then `image.reload()` it in Blender and export again. Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound, rendering `.wav` effects or `.ogg` music with `mcp__wasd_supercollider__render_audio`. Keep each `.blend`, `.xcf`, and `.scd` source beside its output, and record the source and license of every third-party asset.
+Get each asset from the first source that suits the game's art style: download skies, textures, and models with `polyhaven_*` or `ambientcg_*`, or an add-on's assets with `game_addons`; otherwise generate 2D art, UI pieces, and tiling textures with `image_generate` instead of drawing them yourself, and voices, effects, and music with `elevenlabs_*` instead of SuperCollider. With the `mcp__wasd_blender__` tools, build 3D models, texture them as the Blender instructions describe, and export `.glb` files with `mcp__wasd_blender__export_gltf` (no Draco compression). With the `mcp__wasd_gimp__` tools, edit textures and sprites and export PNG files; for hand-drawn detail on a model, edit its texture PNG there, then `image.reload()` it in Blender and export again. Use the `mcp__wasd_supercollider__` tools only when the user asks for them or ElevenLabs cannot make a sound, rendering `.wav` effects or `.ogg` music with `mcp__wasd_supercollider__render_audio`. Keep each `.blend`, `.xcf`, and `.scd` source beside its output, and record the source and license of every third-party asset.
 
 ## Export
 

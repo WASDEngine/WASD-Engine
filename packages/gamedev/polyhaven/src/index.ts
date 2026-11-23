@@ -7,9 +7,10 @@
  * Function plugin: named exports `name`, `inject`, `Config`, and `apply`.
  * @module @deepseek-ai/dsh-polyhaven
  */
-import { isAbsolute, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { downloadFolders, sessionPreviews } from '@deepseek-ai/dsh-game-mcp/kit'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import type {} from '@deepseek-ai/dsh-attachment'
 import type {} from '@deepseek-ai/dsh-game-mcp'
@@ -18,7 +19,7 @@ import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-working-directory'
 import { PolyHavenApi } from './api.ts'
 import { polyHavenMcpProvider } from './mcp.ts'
-import { polyHavenToolDefinitions, type PolyHavenToolHost, type PolyHavenToolSurface } from './tools.ts'
+import { polyHavenToolDefinitions, type PolyHavenToolHost } from './tools.ts'
 
 export type * from './types.ts'
 
@@ -55,28 +56,6 @@ export const Config: z<Partial<Config>, Config> = z.object({
 })
 
 /**
- * The previews of the Session's own tools: each image becomes an attachment that the Session's model receives, and
- * a model that does not accept images gets none.
- * @param ctx - plugin context with the optional attachment and model services.
- * @returns the preview surface.
- */
-function sessionPreviews(ctx: Context): PolyHavenToolSurface {
-  return {
-    async preview(exec, load, imageName) {
-      const attachments = ctx.get('attachments')
-      const llm = ctx.get('llm')
-      const route = exec.agent?.model.current()
-      if (attachments === undefined || llm === undefined || route === undefined) return undefined
-      const info = await llm.resolveModelInfo(route.provider, route.model, exec.signal)
-      if (info.inputModalities?.includes('image') !== true) return undefined
-      const image = await load(exec.signal)
-      const [stored] = await attachments.saveImages([{ data: image.data, mediaType: image.mediaType, name: imageName }])
-      return stored
-    },
-  }
-}
-
-/**
  * Register the Poly Haven tools for this plugin's lifetime, and offer them to WASD Engine's MCP server while it runs.
  * @param ctx - plugin context with the tool registry and the working directory service.
  * @param config - validated configuration.
@@ -91,20 +70,16 @@ export function apply(ctx: Context, config: Config): void {
     fetch: (input, init) => fetch(input, init),
     now: () => Date.now(),
   })
+  const folder = downloadFolders(ctx)
   const host: PolyHavenToolHost = {
     api,
     maxDownloadBytes: config.maxDownloadBytes,
     requestTimeoutMs: config.requestTimeoutMs,
     downloadTimeoutMs: config.downloadTimeoutMs,
-    async directory(requested, id, exec) {
-      // A Windows network path (`\\host\share`, `//host/share`) would connect to another computer with the user's credentials.
-      if (requested !== undefined && /^[\\/]{2}/u.test(requested)) throw new Error(`${requested} is a network path; pass a folder on this computer.`)
-      if (requested !== undefined && isAbsolute(requested)) return requested
-      if (exec.agent === undefined) throw new Error('Pass directory as an absolute path.')
-      return resolve(await ctx.workingDirectory.ensure(exec.agent, exec.signal), requested ?? join('assets', 'polyhaven', id))
-    },
+    directory: (requested, id, exec) => folder(requested, join('assets', 'polyhaven', id), exec),
   }
-  for (const definition of polyHavenToolDefinitions(host, sessionPreviews(ctx))) ctx.tools.register(definition)
+  // Each preview becomes an attachment that the Session's model receives; a model that does not accept images gets none.
+  for (const definition of polyHavenToolDefinitions(host, sessionPreviews(ctx, () => ctx.get('attachments')))) ctx.tools.register(definition)
   // Agents connected through WASD Engine's MCP server get the same tools.
   ctx.inject(['gameMcp'], (inner) => {
     inner.effect(() => inner.gameMcp.provide(polyHavenMcpProvider(host)), 'polyhaven: game MCP tools')

@@ -1,0 +1,65 @@
+{
+  "id": "wasd-fx",
+  "title": "WASD FX",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "rendering",
+  "cue": "effects by name: explosion, fire, smoke, hit flash, dissolve",
+  "summary": "Eighteen effects in one line each: explosions, sparks, impacts, muzzle flashes, magic, pickups, fire, smoke, steam, embers. Also a hit flash, an outline, and a dissolve on any thing. No setup.",
+  "useWhen": "Something in a 3D game hits, breaks, burns, fires, lands, is picked up, or casts a spell and should show it: WasdFx.play(\"explosion\", position) from any script. Also fires and smoke that keep running, a flash on what is hit, an outline round what is selected, and a thing that dissolves away.",
+  "avoidWhen": "A 2D game, or an effect that must follow a path, such as a sword's trail (Trail Renderer). For beams, halos, and fog use WASD Light.",
+  "tags": [
+    "vfx",
+    "effects",
+    "particles",
+    "explosion",
+    "fire",
+    "smoke",
+    "sparks",
+    "impact",
+    "muzzle-flash",
+    "magic",
+    "pickup",
+    "splash",
+    "shockwave",
+    "confetti",
+    "blood",
+    "torch",
+    "steam",
+    "embers",
+    "hit-flash",
+    "outline",
+    "highlight",
+    "dissolve",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-fx",
+  "godot": {
+    "addonDir": "wasd_fx",
+    "overlay": [
+      "wasd-fx/addon"
+    ],
+    "autoloads": [
+      {
+        "name": "WasdFx",
+        "path": "res://addons/wasd_fx/fx.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/sparkles.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -21,6 +21,29 @@ const PRUNER_THRESHOLD = 8192
 const DESCRIPTION_LIMIT = 500
 /** Characters of the Game add-ons section that every request carries; a catalog past it needs a shorter listing. */
 const SECTION_BUDGET = 8000
+/**
+ * Entries whose own image may not stand in the dialog: a trademark logo (Extra Import Hints, GdUnit4, YATI), the Kenney
+ * wordmark (the three starter kits), listing art without a license (VRM), or a logo under a license that forbids
+ * changes, such as scaling it to an icon (Maaack's Menus Template, CC BY-NC-ND).
+ */
+const NO_USABLE_IMAGE: readonly string[] = [
+  'extra-import-hints',
+  'gdunit4',
+  'maaacks-menus-template',
+  'starter-kit-3d-platformer',
+  'starter-kit-fps',
+  'starter-kit-racing',
+  'vrm',
+  'yati',
+]
+/** Entries whose repository holds no icon at the pinned version. */
+const NO_IMAGE_PUBLISHED: readonly string[] = [
+  'active-ragdoll',
+  'mirror3d',
+  'simple-grass-textured',
+  'trail-renderer',
+  'voronoi-shatter',
+]
 
 describe('the shipped add-on catalog', () => {
   it('loads, with each entry verified on Godot 4.7.2 or bpy 5.2.3 and a smoke test of its own', async () => {
@@ -35,16 +58,17 @@ describe('the shipped add-on catalog', () => {
       expect(spec.run === 'blender', `${entry.id} smoke runner`).toBe(entry.host === 'blender')
       expect(spec.expect.join('\n'), `${entry.id} smoke markers`).toContain(`SMOKE_PASS ${entry.id}`)
       if (spec.files !== undefined) expect(smokes.has(spec.files), `${entry.id} smoke files from ${spec.files}`).toBe(true)
+      // A smoke test may ask for other add-ons beside its own: Godot ones, since they share its project.
+      for (const other of spec.with ?? []) expect([entry.host, other === entry.id ? undefined : catalog.get(other)?.host], `${entry.id} smoke test with ${other}`).toEqual(['godot', 'godot'])
     }
     expect([...smokes].filter(id => catalog.get(id) === undefined), 'smoke tests without an entry').toEqual([])
   })
 
   it('gives the Add-ons dialog an icon for each entry that may use one, each with its notice in ICONS.md', async () => {
     const catalog = await loadCatalog(CATALOG_DIR)
-    // Their own icons are trademark logos (Extra Import Hints, GdUnit4, YATI) or listing art without a license (VRM), and
-    // WASD Engine's own add-ons (WASD Cloth, WASD Water) have none until a designer draws one, so the dialog shows a letter tile.
+    // The entries of the two lists above show a letter tile; every other entry has an icon.
     expect(catalog.entries.filter(entry => entry.icon === undefined).map(entry => entry.id).sort())
-      .toEqual(['extra-import-hints', 'gdunit4', 'vrm', 'wasd-cloth', 'wasd-cloth-blender', 'wasd-water', 'yati'])
+      .toEqual([...NO_USABLE_IMAGE, ...NO_IMAGE_PUBLISHED].sort())
     const withIcons = catalog.entries.filter(entry => entry.icon !== undefined).map(entry => entry.id)
     expect(Object.keys(catalog.icons).sort()).toEqual(withIcons.sort())
     const notices = await readFile(join(CATALOG_DIR, ICON_NOTICES), 'utf8')
@@ -54,6 +78,21 @@ describe('the shipped add-on catalog', () => {
       if (icon.license !== 'CC0-1.0' && icon.license !== 'Unlicense') expect(icon.copyright, `${entry.id} icon copyright`).toBeDefined()
       expect(notices, `${entry.id} icon notice`).toContain(`| ${entry.title} | \`${entry.id}/${icon.file}\` | ${icon.license} | ${icon.copyright ?? '—'} | <${icon.source}> |`)
     }
+  })
+
+  it("gives WASD Engine's own add-ons a Lucide icon each, with a stroke color of its own", async () => {
+    const catalog = await loadCatalog(CATALOG_DIR)
+    const own = catalog.entries.filter(entry => entry.id.startsWith('wasd-'))
+    expect(own.length).toBeGreaterThan(0)
+    // One icon of a released Lucide version, named by the address its file is read from.
+    const lucide = /^https:\/\/raw\.githubusercontent\.com\/lucide-icons\/lucide\/\d+\.\d+\.\d+\/icons\/[a-z0-9-]+\.svg$/u
+    for (const entry of own) {
+      expect(entry.icon, entry.id).toMatchObject({ file: 'icon.svg', license: 'ISC' })
+      expect(entry.icon?.source, entry.id).toMatch(lucide)
+      // The dialog draws an icon as an image, where currentColor is black and would vanish on the dark theme.
+      expect(await readFile(join(catalog.folder(entry.id), 'icon.svg'), 'utf8'), entry.id).toMatch(/stroke="#[0-9a-f]{6}"/u)
+    }
+    expect(new Set(own.map(entry => entry.icon?.source)).size).toBe(own.length)
   })
 
   it('returns each guide through the skill tool within the pruner threshold, under a name no bundled skill takes', async () => {
@@ -84,7 +123,7 @@ describe('the shipped add-on catalog', () => {
   it('lists every entry in the system prompt section within its budget', async () => {
     const catalog = await loadCatalog(CATALOG_DIR)
     const section = sessionPrompt(catalog.entries)
-    for (const entry of catalog.entries) expect(section, entry.id).toContain(`\n- ${entry.id} (`)
+    for (const entry of catalog.entries) expect(section, entry.id).toContain(`\n- ${entry.id}${entry.host === 'blender' ? ' (Blender)' : ''}: ${entry.cue}`)
     expect(section.length).toBeLessThanOrEqual(SECTION_BUDGET)
   })
 })

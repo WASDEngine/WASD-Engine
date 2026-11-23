@@ -3,6 +3,8 @@
   "title": "Dialogue Manager",
   "host": "godot",
   "version": "4.2.0",
+  "category": "gameplay",
+  "cue": "branching dialogue from text files, with a balloon",
   "summary": "Branching dialogue written as .dialogue text files with characters, choices, conditions, variables and function calls, plus a ready-made dialogue balloon UI.",
   "useWhen": "The game has NPC conversations, branching choices, quests, shops or story scenes whose lines depend on game state, or more dialogue than fits comfortably in GDScript arrays.",
   "avoidWhen": "Only a few fixed lines, signs or tooltips; a Label or a short array of strings in GDScript is simpler.",

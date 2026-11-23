@@ -3,6 +3,8 @@
   "title": "VRM Add-on for Blender",
   "host": "blender",
   "version": "4.10.4",
+  "category": "characters",
+  "cue": "import and export VRM avatars",
   "summary": "Imports and exports VRM 0.x and 1.0 humanoid avatars (.vrm): humanoid bone mapping, metadata, expressions, spring bones and MToon materials.",
   "useWhen": "The game or its tools use VRM avatars (VRoid-style characters): read .vrm files into Blender to fix or convert them to .glb, or turn a rigged humanoid into a .vrm.",
   "avoidWhen": "Godot only needs a skinned .glb: export glTF directly; VRM adds nothing unless something expects .vrm files.",

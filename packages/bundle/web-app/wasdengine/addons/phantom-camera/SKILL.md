@@ -103,4 +103,5 @@ Run with `godot_run`, move the player with `godot_input`, then `godot_eval`: `sc
 - A 3D camera with both a follow mode and a look-at mode prints a "not been fully tested" warning; SIMPLE follow with SIMPLE look-at works.
 - 2D limits and dead zones assume the screen is `display/window/size/viewport_width`×`viewport_height`. With the default stretch mode (disabled) and another window size, such as a `godot_run` size, the camera clamps to the wrong spot; set `window/stretch/mode="canvas_items"` under `[display]`.
 - 2D and 3D phantom cameras in one scene must use different `host_layers`, or the hosts error.
-- The plugin's editor viewfinder, gizmos and updater do not exist at runtime; configure everything in `.tscn` text or code.
+- The plugin's editor viewfinder, gizmos and updater do not exist at runtime; configure everything in `.tscn` text or code. The installation leaves out the add-on's example scenes.
+- Depth of field in a 3D phantom camera's `attributes` draws nothing in Web builds; the Web export's notes name `phantom_camera_host.gd` for the code that applies it.

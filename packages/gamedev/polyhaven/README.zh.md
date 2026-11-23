@@ -82,14 +82,14 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 <details>
 <summary>实现细节——点击展开</summary>
 
-插件读取 API 的三个端点，并从它们给出的 URL 下载文件。`GET /assets?type=all` 返回全部素材，2,400 个素材约 2.5 MB；列表在内存中保留 `catalogMaxAgeMs`，刷新失败时用上一次读取的列表作答。`GET /search?q=<query>&t=<type>` 按排序返回全部匹配的 id；插件把这些 id 与列表对应起来，丢弃列表中没有的 id，然后按分类过滤并分页。`GET /files/<id>` 按组（一种贴图、一种格式或 `hdri`）、分辨率和格式返回素材的文件，每个文件都带有 URL、大小、MD5 摘要和它引用的文件；不在第三层的条目，例如 HDRI 的单张色调映射图像，会被略去，引用无法全部读取的文件也会被略去。JSON 响应最多读取 64 MiB，预览图最多 8 MiB。插件只访问所配置 `apiUrl` 的主机（使用其协议）以及 `polyhaven.com` 和 `polyhaven.org` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此文件树和重定向都不会把请求发往别处。HTTP 429 会变成说明何时重试的消息。
+插件读取 API 的三个端点，并从它们给出的 URL 下载文件。`GET /assets?type=all` 返回全部素材，2,400 个素材约 2.5 MB；列表在内存中保留 `catalogMaxAgeMs`，刷新失败时用上一次读取的列表作答。`GET /search?q=<query>&t=<type>` 按排序返回全部匹配的 id；插件把这些 id 与列表对应起来，丢弃列表中没有的 id，然后按分类过滤并分页。`GET /files/<id>` 按组（一种贴图、一种格式或 `hdri`）、分辨率和格式返回素材的文件，每个文件都带有 URL、大小、MD5 摘要和它引用的文件；不在第三层的条目，例如 HDRI 的单张色调映射图像，会被略去，引用无法全部读取的文件也会被略去。JSON 响应最多读取 64 MiB，预览图最多 8 MiB。插件只访问所配置 `apiUrl` 的主机（使用其协议）以及 `polyhaven.com` 和 `polyhaven.org` 的 HTTPS 主机，并自行跟随最多五次重定向，每次都只到这样的主机，因此文件树和重定向都不会把请求发往别处。HTTP 429 会变成说明何时重试的消息。这些请求、两类调用方的预览图、连接的 agent 调用的工具，以及要么全部写入要么一个也不写入的文件写入，都来自游戏工具 kit（[`asset-library.ts`](../game-mcp/src/asset-library.ts)），ambientCG 插件与本插件共用它。
 
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | Config、工具注册、会话的预览图附件，以及游戏 MCP 提供方 |
-| [`src/api.ts`](src/api.ts) | API 客户端：缓存的素材列表、搜索、文件树、预览图和文件请求 |
+| [`src/api.ts`](src/api.ts) | API 客户端：缓存的素材列表、搜索和文件树，建立在 kit 的客户端之上，由后者获取预览图和文件 |
 | [`src/files.ts`](src/files.ts) | 素材提供的格式和分辨率，以及一次下载的文件及其路径检查 |
-| [`src/download.ts`](src/download.ts) | 写入一次下载的文件：临时文件、摘要和冲突 |
+| [`src/download.ts`](src/download.ts) | 取得一次下载的文件并校验其大小和摘要，交给 kit 整体写入 |
 | [`src/tools.ts`](src/tools.ts) | 工具定义及其结果文本 |
 | [`src/mcp.ts`](src/mcp.ts) | 面向连接的 agent 的工具，以及提供方的说明 |
 
@@ -100,9 +100,10 @@ Poly Haven 的素材采用 CC0 许可，游戏可以使用它们，包括商业�
 <a id="further-exploration"></a>
 ## 进一步探索
 
-这些页面介绍把工具提供给其他 agent 的 MCP 服务器，以及游戏工具之间的连接方式。
+这些页面介绍同类的资源库插件、把工具提供给其他 agent 的 MCP 服务器，以及游戏工具之间的连接方式。
 
-- [game-mcp](../game-mcp/README.zh.md)——面向本机 agent 的 MCP 服务器。
+- [ambientcg](../ambientcg/README.zh.md)——ambientCG 的 PBR 材质、贴花和 HDRI，带同样的三个工具。
+- [game-mcp](../game-mcp/README.zh.md)——面向本机 agent 的 MCP 服务器，以及两个资源库插件共用的 kit。
 - [游戏工具子系统页面](../../../docs/subsystems/gamedev.zh.md)——游戏工具、它们的行以及 MCP 服务器。
 - [Poly Haven API](https://api.polyhaven.com/api-docs/swagger.json)——本包读取的端点。
 

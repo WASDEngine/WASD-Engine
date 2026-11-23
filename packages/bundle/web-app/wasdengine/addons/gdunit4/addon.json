@@ -3,6 +3,8 @@
   "title": "GdUnit4",
   "host": "godot",
   "version": "6.2.3",
+  "category": "testing",
+  "cue": "unit tests with mocks and a scene runner",
   "summary": "Unit testing: test suites that extend GdUnitTestSuite, with fluent asserts, signal asserts, a scene runner, mocks and spies, run headless from the command line.",
   "useWhen": "The game has rules or systems worth checking automatically, including scenes driven frame by frame or with simulated input actions, and you want tests that run headless with godot_script after each change.",
   "avoidWhen": "A one-off check is enough: print the values in a game run or read them with godot_eval instead.",

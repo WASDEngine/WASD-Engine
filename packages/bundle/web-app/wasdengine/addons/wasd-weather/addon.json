@@ -1,0 +1,49 @@
+{
+  "id": "wasd-weather",
+  "title": "WASD Weather",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "environment",
+  "cue": "weather by name: rain, storm, snow, fog, wind, puddles",
+  "summary": "Weather in one node: rain, drizzle, storms with lightning, snow, blizzards, and fog, a wind that everything shares, and what weather leaves behind: snow on what faces up, wet ground, puddles.",
+  "useWhen": "A 3D game has weather or a mood that weather sets: rain on a city, a storm at sea, snow over a village, fog on a moor, weather that changes while the game runs, or ground that should end up wet or snowed in. With WASD Look in the scene the sky and the fog follow the weather.",
+  "avoidWhen": "A 2D game, or a scene that is always indoors. Rain and snow do not know roofs: set `sheltered` while the camera is under one.",
+  "tags": [
+    "weather",
+    "rain",
+    "snow",
+    "storm",
+    "lightning",
+    "fog",
+    "wind",
+    "puddles",
+    "wet",
+    "blizzard",
+    "atmosphere",
+    "environment",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-weather",
+  "godot": {
+    "addonDir": "wasd_weather",
+    "overlay": [
+      "wasd-weather/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/cloud-rain-wind.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

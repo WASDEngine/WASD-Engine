@@ -12,8 +12,8 @@ import { TestRemote } from '@deepseek-ai/dsh-client-test-runtime'
 import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { GameToolsController, type GameToolsState } from '../src/client/controller.ts'
 import {
-  BLENDER, change, ELEVENLABS, entryId, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, OTHER, plugins,
-  POLY_HAVEN, SUPERCOLLIDER,
+  AMBIENTCG, BLENDER, change, ELEVENLABS, entryId, failed, GAME_ADDONS, GIMP, GODOT, IMAGE_GENERATION, inventory, OTHER,
+  plugins, POLY_HAVEN, SUPERCOLLIDER,
 } from './fixtures.client.ts'
 
 function bench() {
@@ -53,6 +53,7 @@ describe('GameToolsController reads', () => {
     expect(b.state().snapshot).toEqual({
       managed: true,
       tools: [
+        { moduleName: AMBIENTCG.moduleName, entry: AMBIENTCG, control: { kind: 'switch' } },
         { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
         { moduleName: ELEVENLABS.moduleName, entry: ELEVENLABS, control: { kind: 'switch' } },
         { moduleName: GAME_ADDONS.moduleName, entry: GAME_ADDONS, control: { kind: 'switch' } },
@@ -91,6 +92,7 @@ describe('GameToolsController reads', () => {
     expect(b.state().snapshot).toEqual({
       managed: false,
       tools: [
+        { moduleName: AMBIENTCG.moduleName, entry: undefined },
         { moduleName: BLENDER.moduleName, entry: undefined },
         { moduleName: ELEVENLABS.moduleName, entry: undefined },
         { moduleName: GAME_ADDONS.moduleName, entry: undefined },
@@ -112,6 +114,7 @@ describe('GameToolsController reads', () => {
     b.face.load()
     await vi.waitFor(() => { expect(b.state().snapshot).not.toBeNull() })
     expect(b.state().snapshot?.tools).toEqual([
+      { moduleName: AMBIENTCG.moduleName, entry: undefined },
       { moduleName: BLENDER.moduleName, entry: BLENDER, control: { kind: 'switch' } },
       { moduleName: ELEVENLABS.moduleName, entry: undefined },
       { moduleName: GAME_ADDONS.moduleName, entry: undefined },

@@ -1,0 +1,87 @@
+{
+  "id": "starter-kit-racing",
+  "title": "Starter Kit Racing",
+  "host": "godot",
+  "version": "2026.08.21+2f2e5f2",
+  "category": "kits",
+  "cue": "arcade racing: drifting trucks, track pieces, camera",
+  "summary": "Kenney's arcade racing kit: trucks and a motorcycle that drift, lean, and leave tire smoke, a chase camera that zooms with speed, engine and skid sounds, and a track built from GridMap pieces.",
+  "useWhen": "A new 3D game is an arcade racer, kart game, or driving toy, and should start from vehicles that already feel good and a track that can be laid out from pieces.",
+  "avoidWhen": "The cars need real suspension, gears, and tire grip, which a VehicleBody3D setup gives, or the game is not about driving.",
+  "tags": [
+    "racing",
+    "driving",
+    "vehicle",
+    "arcade",
+    "starter",
+    "kit",
+    "gridmap",
+    "kenney",
+    "3d"
+  ],
+  "stages": [
+    "prototype"
+  ],
+  "license": "MIT AND CC0-1.0",
+  "copyright": "Copyright (c) 2023 Kenney",
+  "homepage": "https://github.com/KenneyNL/Starter-Kit-Racing",
+  "archive": {
+    "url": "https://github.com/KenneyNL/Starter-Kit-Racing/archive/2f2e5f2646dda89cb21d4e8539bab60c6e955dc8.zip",
+    "sha256": "f51fcbe845c391d041f94b561455c2d947e77ebbc62bdf0b426b037c5be16c63",
+    "bytes": 1538996,
+    "root": "Starter-Kit-Racing-2f2e5f2646dda89cb21d4e8539bab60c6e955dc8",
+    "exclude": [
+      ".gitattributes",
+      ".gitignore",
+      "README.md",
+      "icon.png",
+      "icon.png.import",
+      "screenshots",
+      "splash-screen.png",
+      "splash-screen.png.import",
+      "vector",
+      "models/collision-track-corner.fbx",
+      "models/collision-track-corner.fbx.import",
+      "models/collision-track-straight.fbx",
+      "models/collision-track-straight.fbx.import"
+    ],
+    "projectRoot": true
+  },
+  "godot": {
+    "addonDir": "starter_kit_racing",
+    "settings": [
+      {
+        "section": "input",
+        "key": "forward",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":87,\"key_label\":0,\"unicode\":119,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":5,\"axis_value\":1.0,\"script\":null), Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194320,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "left",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":65,\"key_label\":0,\"unicode\":97,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":0,\"axis_value\":-1.0,\"script\":null), Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194319,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "right",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":68,\"key_label\":0,\"unicode\":100,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":0,\"axis_value\":1.0,\"script\":null), Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194321,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "back",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":83,\"key_label\":0,\"unicode\":115,\"location\":0,\"echo\":false,\"script\":null), Object(InputEventJoypadMotion,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"axis\":4,\"axis_value\":1.0,\"script\":null), Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":4194322,\"key_label\":0,\"unicode\":0,\"location\":0,\"echo\":false,\"script\":null)]}"
+      },
+      {
+        "section": "input",
+        "key": "bounce",
+        "value": "{\"deadzone\": 0.5, \"events\": [Object(InputEventKey,\"resource_local_to_scene\":false,\"resource_name\":\"\",\"device\":-1,\"window_id\":0,\"alt_pressed\":false,\"shift_pressed\":false,\"ctrl_pressed\":false,\"meta_pressed\":false,\"pressed\":false,\"keycode\":0,\"physical_keycode\":32,\"key_label\":0,\"unicode\":32,\"location\":0,\"echo\":false,\"script\":null)]}"
+      }
+    ]
+  },
+  "conflicts": [
+    "easy-vehicle-physics"
+  ],
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

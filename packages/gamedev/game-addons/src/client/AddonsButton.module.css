@@ -1,4 +1,4 @@
-/* Session header Add-ons button and dialog: a compact control after the Export / Share button, and a scrolling catalog list. */
+/* Session header Add-ons button and dialog: a compact control after the Export / Share button, and a scrolling catalog list under a search field. */
 
 .trigger {
   display: inline-flex;
@@ -52,6 +52,33 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* The search field stays at the top while the list scrolls under it. Its bar paints the dialog's surface over the rows;
+ * the margins take back the padding, which shows only as air above and below the field once it sticks. */
+.searchBar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  margin: -12px 0 -8px;
+  padding: 12px 0 8px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.search {
+  display: flex;
+}
+
+.search input {
+  font-size: 13px;
+}
+
+@media (pointer: coarse) {
+  /* A smaller size makes a phone's browser zoom into the field. */
+  .search input {
+    font-size: 16px;
+  }
 }
 
 .group {
@@ -153,6 +180,12 @@
   line-height: 18px;
 }
 
+/* A neutral fact about the add-on, in the shape of the badge that marks the game's own. */
+.badgeHost {
+  background: var(--dsw-alias-bg-module-platform, rgb(127 127 127 / 12%));
+  color: var(--dsw-alias-label-secondary);
+}
+
 .summary {
   margin: 0;
   color: var(--dsw-alias-label-secondary);
@@ -191,6 +224,16 @@
   margin: 0;
   color: var(--dsw-alias-label-warning, #d97706);
   font-size: 13px;
+}
+
+/* What a switch changed stays in sight at the bottom of the list, however far down the list goes. */
+.notice {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: -8px 0;
+  padding: 8px 0;
+  background: var(--dsw-alias-bg-layer-2);
 }
 
 .spinner {

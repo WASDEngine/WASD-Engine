@@ -1,0 +1,50 @@
+{
+  "id": "wasd-face",
+  "title": "WASD Face",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "characters",
+  "cue": "faces: blinking, eyes that follow, a mouth moved by voice",
+  "summary": "A character's face in one node: blinks, eyes and a head that turn to what they look at, a mouth that follows any voice recording's loudness, and expressions, on models with face shapes or eye bones.",
+  "useWhen": "A character is seen up close or speaks: a hero in third person, a shopkeeper, a companion, anyone in a dialogue or a cutscene. Works on MPFB humans given a face as the mpfb guide says, on VRM models, on models with ARKit's shapes, and on any model with blink and mouth blend shapes or eye bones.",
+  "avoidWhen": "Characters seen only from afar or in a crowd; a model with neither face blend shapes nor eye bones, which it cannot move; or lip sync by phoneme, which needs visemes made for each line.",
+  "tags": [
+    "face",
+    "facial-animation",
+    "blink",
+    "eyes",
+    "look-at",
+    "lip-sync",
+    "mouth",
+    "voice",
+    "dialogue",
+    "expressions",
+    "blend-shapes",
+    "npc",
+    "cutscene",
+    "3d"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-face",
+  "godot": {
+    "addonDir": "wasd_face",
+    "overlay": [
+      "wasd-face/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/face-slightly-smiling.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-22"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "id": "wasd-decals",
+  "title": "WASD Decals",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "rendering",
+  "cue": "marks without textures: bullet holes, scorch, footprints",
+  "summary": "Marks that draw in Web builds, where Decal nodes do not: bullet holes, scorch marks, splats, cracks, and footprints drawn in code with no texture, a footprint trail, and a soft blob shadow.",
+  "useWhen": "Shots, explosions, spills, impacts, or steps should leave marks on floors and walls, a character should leave footprints or needs footstep timing, or a character, pickup, or flying enemy needs a round shadow that shows where it is over the ground.",
+  "avoidWhen": "The mark must wrap around curved or uneven geometry, which only a Decal node on the Forward+ or Mobile renderer does, or the sun's real shadow is enough.",
+  "tags": [
+    "decal",
+    "bullet-hole",
+    "scorch",
+    "splat",
+    "footprint",
+    "blob-shadow",
+    "shadow",
+    "vfx",
+    "3d",
+    "footprints",
+    "blood",
+    "crack",
+    "footsteps"
+  ],
+  "stages": [
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-decals",
+  "godot": {
+    "addonDir": "wasd_decals",
+    "overlay": [
+      "wasd-decals/addon"
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/footprints.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

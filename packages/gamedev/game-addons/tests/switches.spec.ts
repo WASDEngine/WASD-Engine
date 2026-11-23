@@ -72,7 +72,7 @@ it('saves a switch without remounting the plugin, applies it at once, and keeps 
     ctx = await start()
     const addons = ctx.get('gameAddons')!
     expect(addons.allowedEntries().map(entry => entry.id)).toEqual(['other-camera', 'test-camera', 'test-rig', 'test-trees'])
-    expect(await section(ctx)).toContain('- test-camera (Godot;')
+    expect(await section(ctx)).toContain('- test-camera: ')
     const entry = ctx.configEditor.entries().find(row => row.options.id === 'game-addons')!
     const fiber = entry.fiber
 

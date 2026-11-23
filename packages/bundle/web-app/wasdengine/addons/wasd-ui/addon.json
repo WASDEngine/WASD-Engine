@@ -1,0 +1,57 @@
+{
+  "id": "wasd-ui",
+  "title": "WASD UI",
+  "host": "godot",
+  "version": "1.0.0",
+  "category": "interface",
+  "cue": "styled menus and HUD: themes, bars, damage numbers, toasts",
+  "summary": "Six looks for every control in the game, so no menu ships in Godot's gray, and a HUD's pieces: bars, floating damage numbers, toasts, key prompts, a crosshair, a radar, a hurt flash, and fades.",
+  "useWhen": "The game has any menu, settings screen, or HUD: health and stamina bars, damage numbers, pickup and checkpoint messages, an interaction prompt, a crosshair, a radar. Install it with the first control, so every screen is styled from the start.",
+  "avoidWhen": "The interface is drawn entirely from the game's own art, with its own Theme and textures.",
+  "tags": [
+    "ui",
+    "hud",
+    "theme",
+    "menu",
+    "health-bar",
+    "damage-numbers",
+    "toast",
+    "notification",
+    "crosshair",
+    "radar",
+    "minimap",
+    "prompt",
+    "fade",
+    "interface"
+  ],
+  "stages": [
+    "prototype",
+    "content",
+    "polish"
+  ],
+  "license": "CC0-1.0",
+  "copyright": "WASD Engine contributors, dedicated to the public domain",
+  "homepage": "https://github.com/WASDEngine/WASD-Engine/tree/main/packages/bundle/web-app/wasdengine/addons/wasd-ui",
+  "godot": {
+    "addonDir": "wasd_ui",
+    "overlay": [
+      "wasd-ui/addon"
+    ],
+    "autoloads": [
+      {
+        "name": "WasdUi",
+        "path": "res://addons/wasd_ui/ui.gd"
+      }
+    ]
+  },
+  "icon": {
+    "file": "icon.svg",
+    "source": "https://raw.githubusercontent.com/lucide-icons/lucide/1.77.0/icons/layout-dashboard.svg",
+    "license": "ISC",
+    "copyright": "Copyright (c) 2026 Lucide Icons and Contributors"
+  },
+  "verified": {
+    "godot": "4.7.2",
+    "date": "2026-11-21"
+  }
+}

@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-该插件为智能体提供经过 WASD Engine 的 Godot 4.7.2 与 Blender 5.2.3 测试的第三方 Godot 扩展和 Blender 扩展。系统提示词会列出每个扩展、它有帮助的游戏阶段以及何时使用它。游戏需要时，智能体会用 `game_addons` 工具安装扩展而无需征求同意，并告诉用户；只有在安装之后，扩展的指南才会成为该项目会话的技能。通过 WASD Engine 的 MCP 服务器连接的智能体也能使用同一个工具。在会话标题栏的“扩展”对话框中，用户可以为所有智能体关闭任意扩展；所有扩展默认开启。
+该插件为智能体提供经过 WASD Engine 的 Godot 4.7.2 与 Blender 5.2.3 测试的第三方 Godot 扩展和 Blender 扩展。系统提示词会按类别列出每个扩展，并用几个词说明其用途；搜索可以得知何时使用它。游戏需要时，智能体会用 `game_addons` 工具安装扩展而无需征求同意，并告诉用户；只有在安装之后，扩展的指南才会成为该项目会话的技能。通过 WASD Engine 的 MCP 服务器连接的智能体也能使用同一个工具。在会话标题栏的“扩展”对话框中，用户可以为所有智能体关闭任意扩展；所有扩展默认开启。
 
 ## 目录
 
@@ -52,13 +52,13 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 目录
 
-每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。它还可以指定叠加文件夹（`godot.overlay`）：目录中的文件夹，可位于它自己的目录文件夹中，也可位于各条目旁边；安装程序会把其中的文件加入扩展文件夹，但不会替换压缩包中的文件。两个 Universal Animation Library 条目（Quaternius 的 CC0 动画包）以这种方式加入导入设置，把每个动画包导入为重定向到 Godot 人形骨架的 `AnimationLibrary`；二者都会加入 `humanoid-retarget/`，其中有骨骼映射和 `retarget.gd`，后者用来设置模型的导入，使其能播放这些片段。叠加文件会进入游戏，因此 WASD Engine 把它们贡献到公有领域（CC0-1.0），通知中的版权行也这样说明。WASD Engine 自己编写的扩展的条目没有压缩包：这样的 Godot 条目只由其叠加文件夹组成，例如 WASD Cloth 的 `wasd-cloth/addon/`（布料节点、风区、旗帜着色器与检查脚本），或 WASD Water 的 `wasd-water/addon/`（水体节点、其着色器、外观预设与泡沫纹理，以及浮体节点）；这样的 Blender 扩展则给出 `blender.files`，即存放其 `blender_manifest.toml` 与 Python 包的目录文件夹，例如 WASD Cloth for Blender 的 `wasd-cloth-blender/extension/`。Blender 条目给出它的 Python 模块，以及它是扩展（来自压缩包或目录中的文件）还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。条目可以设置 `bundled`，两个 Universal Animation Library 以及带 MakeHuman 资源包的 MPFB 就这样设置：桌面应用打包时会把它的压缩包及其资源包的压缩包以 `<sha256>.zip` 放进本包位于 `app.asar` 之外的 `archives/` 文件夹，安装时直接读取，既不下载也不删除；没有这样的文件时（例如 Web 配置或源码检出），安装会像其他条目一样下载压缩包。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。
+每个条目固定一个发布版本：压缩包的 URL、SHA-256 与大小，压缩包中要安装的文件夹，SPDX 许可证、版权行，以及许可证要求的署名（如有）。条目还记录它扩展的应用、它的类别和一条最多 60 个字符的提示（智能体在搜索之前只读到这两项）、何时使用它以及何时只用 Godot 或 Blender 就足够、搜索标签、它有帮助的开发阶段（`prototype`、`content`、`polish`、`ship`）、与之冲突的扩展，以及验证时使用的运行时版本。Godot 条目会给出它在 `res://addons/` 下的文件夹、编辑器插件，以及其 `_enable_plugin()` 添加的自动加载与项目设置，因为安装程序无法点击编辑器中的插件开关。它还可以指定叠加文件夹（`godot.overlay`）：目录中的文件夹，可位于它自己的目录文件夹中，也可位于各条目旁边；安装程序会把其中的文件加入扩展文件夹，但不会替换压缩包中的文件。条目可以把压缩包文件夹中的某些路径排除在安装之外（`archive.exclude`）：演示、示例场景、截图、C# 文件，以及只有 Godot 编辑器才能使用的编辑器插件，这些都不应被游戏打包；压缩包中不存在的路径会使安装失败，因此条目不会在不知不觉中与其压缩包不再相符。叠加文件可以放在被排除文件原来的位置：Starter Kit FPS 的 `objects/player.gd` 在 Web 构建中只在点击之后才捕获鼠标，Maaack's Menus Template 的制作人员名单标签以中性文本取代模板的占位内容，Controller Icons 的 `ControllerIcons.gd` 不再向浏览器查询键盘布局（那会在浏览器中打印错误），Easy Vehicle Physics 的 `scripts/wheel.gd` 在所属分组没有指明表面的地面上照常行驶，而不是报错停下。这样的文件是压缩包中文件的修改副本，沿用压缩包的许可证。起始套件是一个完整的 Godot 项目，而不是扩展文件夹（`archive.projectRoot`）：安装程序会排除它的 `project.godot`、`.godot` 文件夹和 `export_presets.cfg`，把其余内容解压到条目在 `res://addons/` 下的文件夹中，并把其场景、脚本、资源、着色器以及 `.cfg` 和 `.json` 文件中的 `res://` 路径改写到该文件夹，套件的输入动作和自动加载则来自条目的 `settings` 和 `autoloads`。两个 Universal Animation Library 条目（Quaternius 的 CC0 动画包）以这种方式加入导入设置，把每个动画包导入为重定向到 Godot 人形骨架的 `AnimationLibrary`；二者都会加入 `humanoid-retarget/`，其中有骨骼映射和 `retarget.gd`，后者用来设置模型的导入，使其能播放这些片段。叠加文件会进入游戏，因此 WASD Engine 把自己编写的叠加文件贡献到公有领域（CC0-1.0），通知中的版权行也这样说明。WASD Engine 自己编写的扩展的条目没有压缩包：这样的 Godot 条目只由其叠加文件夹组成，例如 WASD Cloth 的 `wasd-cloth/addon/`（布料节点、风区、旗帜着色器与检查脚本），或 WASD Water 的 `wasd-water/addon/`（水体节点、其着色器、外观预设与泡沫纹理，以及浮体节点），或 WASD Post 的 `wasd-post/addon/`（屏幕处理通道、其着色器与外观预设）；这样的 Blender 扩展则给出 `blender.files`，即存放其 `blender_manifest.toml` 与 Python 包的目录文件夹，例如 WASD Cloth for Blender 的 `wasd-cloth-blender/extension/`。Blender 条目给出它的 Python 模块，以及它是扩展（来自压缩包或目录中的文件）还是 Blender 自带的扩展。它还可以固定一个资源包（`assets`：URL、SHA-256、大小、文件夹、SPDX 许可证和页面），并在其目录文件夹中指定一个设置脚本（`blender.setup`），Blender 工作进程启用扩展后会调用其中的 `setup(module, assets)`；MPFB 的脚本会让 MPFB 使用 MakeHuman 的 CC0 系统资源。条目可以设置 `bundled`，两个 Universal Animation Library 以及带 MakeHuman 资源包的 MPFB 就这样设置：桌面应用打包时会把它的压缩包及其资源包的压缩包以 `<sha256>.zip` 放进本包位于 `app.asar` 之外的 `archives/` 文件夹，安装时直接读取，既不下载也不删除；没有这样的文件时（例如 Web 配置或源码检出），安装会像其他条目一样下载压缩包。随附的目录只收录 GDScript 编写的 Godot 扩展，因此 Web 发布仍可正常工作，以及其运算符无需窗口即可运行的 Blender 扩展。每个条目在 [`tests/smoke/`](tests/smoke/) 中都有一个冒烟测试，由端到端测试套件运行；该套件还会用 `godot_check` 的脚本加载器，按整个项目检查的顺序及其逆序加载 Godot 条目的每个脚本，结果必须没有错误。Godot 冒烟测试的运行也不得打印任何错误，即以 `ERROR:` 或 `SCRIPT ERROR:` 开头的行，因为在浏览器中打印错误的游戏不会被发布；Godot 在关闭时报告的、关于场景仍占用的资源的内容不计在内，对于运行会打印而游戏不会遇到的其他错误行，冒烟测试在 `errors` 中各列出其中一段，例如 Beehave 的冒烟测试列出其调试器在游戏退出时打印的那一行。套件还会对每个已安装的 Godot 条目运行 Web 导出的功能扫描：条目自身的文件只能引出其冒烟测试列出的说明（`webNotes`），此时其指南要说明该扩展在 Web 构建中的表现。若两个互不冲突的条目声明了同名的全局类，套件也会失败，因为这会使二者在同一个项目中都无法加载。
 
 ### 工具
 
 | 动作 | 作用 |
 |---|---|
-| `search` | 为 `query` 对目录中的扩展排序，或列出全部扩展，可以只看某个 `host`（`godot` 或 `blender`）或 `stage`。每个扩展会显示其 id、版本、许可证、下载大小、摘要、何时使用、何时不必使用、与之冲突的扩展、要求的署名，以及项目中是否已有它 |
+| `search` | 不带查询词和筛选条件时，显示目录索引：每个扩展列在其类别之下，附带提示以及项目中是否已有它。带 `query`（扩展的 id 或查询词）、`category`、`host`（`godot` 或 `blender`）或 `stage` 时，对匹配的扩展排序，显示最佳的 8 个以及匹配总数；查询为某个 id 时只显示该扩展。每个匹配项会显示其 id、版本、许可证、下载大小（无需下载时则说明它是 Blender 自带还是随 WASD Engine 提供）、摘要、何时使用、何时不必使用、与之冲突的扩展、要求的署名，以及项目中是否已有它 |
 | `guide` | 返回扩展的使用指南，并注明项目中尚未安装该扩展的情况 |
 | `install` | 把 `id` 安装到项目中；`replace` 会替换 `addons/` 中已有但没有 WASD Engine 记录的副本 |
 | `remove` | 从项目中移除 `id`，把它的文件夹保留在备份中，并列出仍在使用它的项目文件 |
@@ -67,7 +67,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 `project` 指定包含 `project.godot` 的文件夹，相对于工作目录；省略时会像 Godot 工具那样使用最近的项目。用户关闭的扩展不会出现在 `search` 中，其计数只包括智能体可以使用的扩展；`guide` 和 `install` 会拒绝它，消息会告诉智能体不用它完成工作，或请用户在“扩展”对话框中开启它；项目中有它时，`list` 仍会列出它并标明已关闭；`remove` 仍可将其移出。所有扩展都关闭时，`search` 会说明这一点。一次 Godot 安装依次执行以下步骤：
 
 1. 若缓存中没有固定的压缩包则下载，并检查其大小和 SHA-256。没有压缩包的扩展不下载任何内容。
-2. 把扩展的文件夹解压到 `.wasdengine/` 下的暂存文件夹中；若许可证文件在压缩包中位于该文件夹之外，则一并加入，并加入条目叠加文件夹中的文件；没有压缩包的扩展只由这些文件组成。
+2. 把扩展的文件夹解压到 `.wasdengine/` 下的暂存文件夹中，不含条目排除的路径；若许可证文件在压缩包中位于该文件夹之外，则一并加入，并加入条目叠加文件夹中的文件；项目压缩包还会去掉 `project.godot`、导入缓存和导出预设，并把 `res://` 路径改写到扩展的文件夹；没有压缩包的扩展只由其叠加文件组成。
 3. 获取项目记录的锁 `.wasdengine/addons.json.lock`，并再次检查项目。
 4. 把文件夹移动到 `res://addons/<folder>/`。
 5. 启用编辑器插件，并把其自动加载和设置写入此刻读取的 `project.godot`，其他行保持不变。值为 Dictionary 的设置（例如 Extra Import Hints 的 `[importer_defaults] scene`）会把该扩展的条目合并到项目自己的值中，该设置此前的值（或项目原本没有它）记录在记录旁的 `.wasdengine/addon-settings.json` 中。
@@ -83,9 +83,9 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### 智能体何时安装扩展
 
-由智能体判断何时值得安装某个扩展。插件在系统提示词中 Godot 游戏部分的位置添加 `game-addons` 部分。它告诉智能体：当手头的工作需要某个扩展的功能，而只用 Godot 或 Blender 会耗时更长或效果更差时，在该扩展有帮助的游戏阶段直接安装它，无需先征求用户同意；当引擎自带的节点和工具或一小段脚本就能完成时则不用它，也绝不因为以后可能用到而预先安装；安装之后，在使用扩展前先加载其指南，并告诉用户它添加了什么、为什么添加，以及许可证和许可证要求的署名。随后用户未关闭的每个扩展占一行：其 id、应用、有帮助的阶段以及何时使用它。该部分在每个模型步骤读取开关，所有扩展都关闭时会被省略。
+由智能体判断何时值得安装某个扩展。插件在系统提示词中 Godot 游戏部分的位置添加 `game-addons` 部分。它告诉智能体：当手头的工作需要某个扩展的功能，而只用 Godot 或 Blender 会耗时更长或效果更差时，在该扩展有帮助的游戏阶段直接安装它，无需先征求用户同意；当引擎自带的节点和工具或一小段脚本就能完成时则不用它，也绝不因为以后可能用到而预先安装；安装之后，在使用扩展前先加载其指南，并告诉用户它添加了什么、为什么添加，以及许可证和许可证要求的署名。随后是目录索引：每个类别一个标题，其下用户未关闭的每个扩展占一行，包含其 id、Blender 扩展的 `(Blender)` 标记以及它的提示。该部分要求智能体在自己动手实现某个已列出扩展的功能之前，先用 id、类别或查询词搜索，读到该扩展何时有帮助、何时不必使用，以及它的大小、许可证和冲突。该部分在每个模型步骤读取开关，所有扩展都关闭时会被省略。
 
-在任何审批策略下，`install` 和 `remove` 都不询问任何人，这与其他游戏工具相同，会话的权限模式也不限制它们。用户在“扩展”对话框中的点击会以同样的方式更改项目。连接的智能体会在 MCP 服务器的说明中读到相同的判断规则，但说明不列出任何扩展：说明的概述、指南和该工具的描述都会要求它们在规划游戏之前用 `action: search` 读完整个目录，并由其自身的运行框架决定是否询问其用户。
+在任何审批策略下，`install` 和 `remove` 都不询问任何人，这与其他游戏工具相同，会话的权限模式也不限制它们。用户在“扩展”对话框中的点击会以同样的方式更改项目。连接的智能体会在 MCP 服务器的说明中读到相同的判断规则，但说明不列出任何扩展：说明的概述、指南和该工具的描述都会要求它们在规划游戏之前用 `action: search` 读目录索引，并由其自身的运行框架决定是否询问其用户。
 
 ### 以技能形式提供的指南
 
@@ -97,7 +97,7 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 ### “扩展”对话框
 
-浏览器端会在工作区中每个会话标题栏的“导出 / 分享”按钮之后注册一个“扩展”按钮。它的对话框列出目录中的 Godot 与 Blender 扩展，以及各自的图标、版本、许可证、大小、资源包、摘要、用途、要求的署名、会话项目中是否已有它，以及表示智能体能否使用它的开关；没有 Godot 项目的工作区文件夹会显示列表和开关，但不显示是否已有。每个图标是条目目录文件夹中不超过 16 KiB 的 `icon.png` 或 `icon.svg`，由条目的 `icon` 指定，并记录其来源 URL、许可证和版权行；目录各文件夹旁的 `ICONS.md` 列出所有图标及许可证全文。目录只读取一次每个图标并转换为 data URL，拒绝含脚本或外部引用的 SVG；`project` Remote 把图标与视图并列返回，因此工具结果从不包含图标。没有图标的扩展显示一个带有其标题首字母的方块。开关会调用 `gameAddons` Remote 的 `setAllowed`，它通过 Settings 服务的一次路径编辑设置 `allowed.<id>`：编辑写入该行的 profile 补丁，无需重启即可生效，适用于所有项目和所有智能体，包括会话的智能体和连接的智能体。开关显示 Host 接受的值，因此被拒绝的写入会让开关保持原样，并通过提示说明原因；保存一次更改时，所有开关都会等待；更改后的提示会说明智能体那边有什么变化，对于会话的游戏中已有的扩展，还会说明游戏会保留它，直到智能体将其移除。对话框既不安装也不移除扩展，这些由智能体完成。对话框通过 Remote 的 `project` 读取列表，它接收工作区文件夹；LiveShare 把这两个端点都归类为仅所有者可用。
+浏览器端会在工作区中每个会话标题栏的“导出 / 分享”按钮之后注册一个“扩展”按钮。它的对话框按目录的类别列出目录中的扩展，类别的顺序与智能体读到的索引相同，每个扩展带有图标、Blender 扩展的标记、版本、许可证、大小（无需下载时则是它的来处：Blender 自带，或对 WASD Engine 自己编写的扩展而言随 WASD Engine 提供）、资源包、摘要、用途、要求的署名、会话项目中是否已有它，以及表示智能体能否使用它的开关；没有 Godot 项目的工作区文件夹会显示列表和开关，但不显示是否已有。列表上方有一个搜索框，对话框打开时焦点在其中（手机上除外）；它把列表缩小到标题、id、所属应用、提示语、摘要、用途、搜索词或类别标题中包含所输入每个词的扩展，并在列表滚动时留在原位。每个图标是条目目录文件夹中不超过 16 KiB 的 `icon.png` 或 `icon.svg`，由条目的 `icon` 指定，并记录其来源 URL、许可证和版权行；目录各文件夹旁的 `ICONS.md` 列出所有图标及许可证全文。目录只读取一次每个图标并转换为 data URL，拒绝含脚本或外部引用的 SVG；`project` Remote 把图标与视图并列返回，因此工具结果从不包含图标。WASD Engine 自有扩展显示来自 [Lucide](https://lucide.dev) 的图标，每个图标对应该扩展的用途；以图片形式绘制的图标不会采用页面的文字颜色，因此每个文件都把描边颜色设为 WASD Engine 的紫色。没有图标的扩展显示一个方块，其中是标题的首字母；WASD Engine 自有扩展的标题以“WASD”开头，方块显示其后的首字母。开关会调用 `gameAddons` Remote 的 `setAllowed`，它通过 Settings 服务的一次路径编辑设置 `allowed.<id>`：编辑写入该行的 profile 补丁，无需重启即可生效，适用于所有项目和所有智能体，包括会话的智能体和连接的智能体。开关显示 Host 接受的值，因此被拒绝的写入会让开关保持原样，并通过提示说明原因；保存一次更改时，所有开关都会等待；更改后的提示始终显示在列表底部，它会说明智能体那边有什么变化，对于会话的游戏中已有的扩展，还会说明游戏会保留它，直到智能体将其移除。对话框既不安装也不移除扩展，这些由智能体完成。对话框通过 Remote 的 `project` 读取列表，它接收工作区文件夹；LiveShare 把这两个端点都归类为仅所有者可用。
 
 <a id="plugin-icon"></a>
 ### 插件图标
@@ -115,20 +115,21 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 | 文件 | 作用 |
 |---|---|
 | [`src/index.ts`](src/index.ts) | 配置、目录加载、工具、提示词部分、技能提供者与游戏 MCP 注册、`gameAddons` Remote，以及开关的写入及其对指南和 Blender 索引的影响 |
-| [`src/catalog.ts`](src/catalog.ts) | 条目校验、指南 frontmatter 和搜索排序 |
+| [`src/catalog.ts`](src/catalog.ts) | 条目校验、类别、指南 frontmatter 和搜索排序 |
 | [`src/manager.ts`](src/manager.ts) | 项目中的状态、安装、移除、引用查找、Blender 存储，以及对用户关闭的扩展的拒绝 |
-| [`src/archive.ts`](src/archive.ts) | 固定版本的下载缓存，以及用 yauzl 逐个文件解压压缩包中的一个文件夹 |
+| [`src/archive.ts`](src/archive.ts) | 固定版本的下载缓存，以及用 yauzl 逐个文件解压压缩包中的一个文件夹，不含条目排除的路径 |
+| [`src/project-root.ts`](src/project-root.ts) | 安装时从不取自项目压缩包的内容，以及把其 `res://` 路径改写到扩展文件夹 |
 | [`src/project-file.ts`](src/project-file.ts) | 保持其他行不变的 `project.godot` 编辑，以及保留他人此后更改的撤销 |
 | [`src/record.ts`](src/record.ts) | `.wasdengine/addons.json` 及其文件锁（每次安装和移除在更改项目期间都持有该锁），以及 `.wasdengine/addon-settings.json`，即安装所更改的设置此前的值 |
 | [`src/paths.ts`](src/paths.ts) | 记录路径的规则，以及经过解析、使任何更改都不离开项目的项目路径 |
 | [`src/notices.ts`](src/notices.ts) | `THIRD_PARTY_NOTICES.md` 中的标记段落 |
 | [`src/skills.ts`](src/skills.ts) | 指南的技能提供者与文件夹监视器 |
 | [`src/tools.ts`](src/tools.ts) | `game_addons` 定义及其结果文本 |
-| [`src/prompt.ts`](src/prompt.ts) | `game-addons` 系统提示词部分与提供者说明：何时安装扩展，以及每个目录扩展一行 |
+| [`src/prompt.ts`](src/prompt.ts) | `game-addons` 系统提示词部分与提供者说明：何时安装扩展，以及按类别排列的目录索引 |
 | [`src/mcp.ts`](src/mcp.ts) | 面向连接智能体的工具与提供者 |
 | [`src/client/`](src/client/) | “扩展”按钮与对话框 |
 
-搜索会按每个查询词在字段中匹配到的最佳位置计分：词作为某个字段单词的开头时，id 或标题计 3 分，标签计 2 分，摘要或用途计 1 分。常见词不计分。五个字母及以上的词，若以某个四个字母及以上的字段单词开头，也算匹配，因此 `characters` 能匹配标签 `character`。解压时先读取压缩包目录，再以约 8 MB 为一批解压条目，各批之间稍作停顿，以独占创建方式写入每个文件，并跳过 `__MACOSX` 与 `.DS_Store` 条目。
+查询恰为某个扩展的 id 时，只返回该扩展。否则搜索会按每个查询词在字段中匹配到的最佳位置计分：词作为某个字段单词的开头时，id 或标题计 3 分，标签或提示计 2 分，摘要或用途计 1 分。常见词不计分。五个字母及以上的词，若以某个四个字母及以上的字段单词开头，也算匹配，因此 `characters` 能匹配标签 `character`。解压时先读取压缩包目录，再以约 8 MB 为一批解压条目，各批之间稍作停顿，以独占创建方式写入每个文件，并跳过 `__MACOSX` 与 `.DS_Store` 条目。
 
 </details>
 
@@ -151,28 +152,32 @@ WASDEngine 覆盖层 [`game-tools.cordis.patch.yml`](../../bundle/web-app/wasden
 
 #### 模型看到的内容
 
-会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后用户未关闭的每个扩展占一行，Godot 扩展在前，格式同下面的目录行。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则，但没有各行：指南让它用 `action: search` 读完整个目录，或读某个 `stage` 的扩展（指南解释各阶段名称），并以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。因此连接的智能体只从这次搜索读一次目录，搜索结果还给出每个扩展的大小、许可证以及何时跳过它。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比新写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读完整个目录，并在 `project.godot` 存在之后安装合适的扩展：安装需要它，而新游戏项目的文件夹里还没有它。
+会话的智能体会在 Godot 游戏部分之前看到 `game-addons` 部分：先是下面的部分文本，然后是目录索引：每个收录了扩展的类别一个标题，其下用户未关闭的每个扩展占一行，Godot 扩展在前，格式同下面的索引行；标题列出该类别随附条目所涵盖的内容，末尾的括号中是该类别的搜索值。连接的智能体会在 MCP 服务器说明的 `## Game add-ons` 之下读到相同的判断规则，但没有索引：指南让它用不带查询的 `action: search` 读同一份索引，用扩展的 id、类别或查询词搜索以了解细节，并以绝对路径的 `project`、`guide` 动作和 Blender 的 `wasd_addons.enable` 调用代替指南技能。指南的末尾是构建 3D 游戏观感的顺序：先写下观感，然后依次是光照、表面、世界、角色、动态、反馈和界面，最后才是一种屏幕风格，以及用来检查的截图。它只列出步骤，不提任何扩展，因此无论用户关闭了哪些扩展都成立；会话的智能体在随附的 `game-look` 技能中读到同样的顺序，该技能还列出每一步的扩展。因此连接的智能体只从这次搜索读一次索引。Claude Code 的模型只能通过 `search_game_tools` 读到这份指南；在它之前，说明的概述会列出该 provider 的描述：精选扩展能比新写的代码更好地完成常见的游戏工作，并附有示例，还要求在规划游戏之前用 `game_addons` 的 `action: search` 读目录索引，并在 `project.godot` 存在之后安装合适的扩展：安装需要它，而新游戏项目的文件夹里还没有它。
 
 ##### 部分文本
 
 ```markdown
 # Game add-ons
 
-game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later. action search shows each add-on's download size, conflicts, and when to skip it.
-After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
+game_addons installs tested third-party add-ons into the game project: Godot add-ons written in GDScript and Blender add-ons that run without a window, each pinned to a version tested with the built-in Godot and Blender. Decide yourself when one is worth it; you do not need to ask the user first. Install an add-on when the work at hand needs what it does and building that with plain Godot or Blender would take much longer or turn out worse, at the stage of the game where it helps. Skip it when Godot's own nodes, Blender's own tools, or a short script do the job, and do not install one in case it is needed later.
+Before you build what a listed add-on does, read about it: action search with an add-on's id, a category, or words shows when it helps, when to skip it, its download size, license, and conflicts. After installing one, load its guide, the skill named by its id, before using it, and tell the user what you added and why, with its license and any credit it requires. Remove an add-on only when the game no longer uses it.
 
-Each add-on below shows its id, its application, the stages at which it helps (prototype makes the core game playable, content adds levels, characters, and assets, polish adds game feel and finish, and ship tests and releases the game), and when to use it:
+Every add-on, under its category, with what it is for:
 ```
 
-##### 目录行
+##### 索引行
 
 ```markdown
-- beehave (Godot; prototype, content): Enemies or NPCs need layered decisions such as patrol, chase, attack, flee and cooldowns that would become a tangle of if-statements or one large state machine script.
+Characters: humans, rigs, animation clips, movement, faces, crowds (characters)
+- universal-animation-library: 45 humanoid clips: move, jump, fight, die; retargeting
+- mpfb (Blender): realistic rigged humans: skin, hair, clothes, a face
+Game systems: AI, state, dialogue, inventories (gameplay)
+- beehave: behavior trees for NPC and enemy AI
 ```
 
 #### Token 影响
 
-随附目录有 27 个扩展，该部分约 7,300 个字符，约 1,800 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 180 至 270 个字符，用户每关闭一个扩展就去掉它的一行；所有扩展都关闭时会省略该部分。随附目录测试会把该部分限制在 8,000 个字符以内。
+随附目录有 56 个扩展，该部分约 5,500 个字符，约 1,370 个 token，出现在每个会话的每个请求中，无论会话是否有 Godot 项目。每新增一个条目会增加一行，约 30 至 90 个字符，用户每关闭一个扩展就去掉它的一行；所有扩展都关闭时会省略该部分。随附目录测试会把该部分限制在 8,000 个字符以内，约可容纳 90 个条目。
 
 #### KV Cache 影响
 
@@ -182,11 +187,11 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### 模型看到的内容
 
-会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，描述末尾还有一句 `Before you plan a game, read the whole catalog with action search and no query.`，因为它的系统提示词中没有目录部分。
+会话的智能体会看到 `game_addons`，带有 `action`（`search`、`guide`、`install`、`remove` 或 `list`）以及可选的 `query`、`category`、`host`、`stage`、`id`、`replace` 和 `project`。描述会列出目录收录的扩展类别，说明不带查询词的搜索给出索引、带 id、类别或查询词的搜索给出细节，并告诉模型：当游戏需要某个扩展的功能、而只用 Godot 或 Blender 会耗时更长时，无需先征求用户同意即可自行安装，然后告诉用户它添加了什么及其许可证。连接的智能体看到的是同一个工具，其中 `project` 为绝对路径，描述末尾还有一句 `Before you plan a game, read the catalog's index with action search and no query.`，因为它的系统提示词中没有目录部分。
 
 #### Token 影响
 
-该声明约为 2,300 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 1,500 个字符；它们不列出任何扩展，因为连接的智能体用 `action: search` 读完整个目录。
+该声明约为 3,000 个字符的 JSON。提供者说明会为 MCP 服务器的说明增加约 1,500 个字符；它们不列出任何扩展，因为连接的智能体用 `action: search` 读索引。
 
 #### KV Cache 影响
 
@@ -210,11 +215,11 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 
 #### 模型看到的内容
 
-搜索会列出匹配的扩展，每个约 300 至 600 个字符。安装结果会写明版本、许可证、安装路径、指南的技能名称（对没有技能的连接智能体，则改为可显示指南的 `guide` 动作）、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。列表会标出用户关闭的扩展，对这类扩展的 guide 或 install 会失败，并给出约 180 个字符的说明。
+不带查询词和筛选条件的搜索会列出索引，每个扩展一行，约 30 至 100 个字符，项目已有的扩展带 `[installed]` 或其他备注。带 id、类别或查询词的搜索最多列出 8 个匹配项，每个约 300 至 600 个字符，匹配更多时会说明匹配总数。安装结果会写明版本、许可证、安装路径、指南的技能名称（对没有技能的连接智能体，则改为可显示指南的 `guide` 动作）、诸如要求的署名或跳过导入之类的备注，以及最多 20 个导入问题，并请模型告诉用户它添加了该扩展、原因及其许可证；项目已有该版本时不提此请求。移除结果会写明移出的路径、保留它们的备份，以及最多 20 个仍在使用该扩展的文件。列表会标出用户关闭的扩展，对这类扩展的 guide 或 install 会失败，并给出约 180 个字符的说明。
 
 #### Token 影响
 
-搜索整个目录的结果约为 15,000 个字符；指南结果即指南本身；其他结果为几百个字符。
+整个目录的索引约为 3,000 个字符，带查询词的搜索最多约 5,000 个字符；指南结果即指南本身；其他结果为几百个字符。
 
 #### KV Cache 影响
 
@@ -230,14 +235,19 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 - **开关作用于所有项目** — 开关属于 profile，因此关闭的扩展在每个游戏中都是关闭的；关闭它不会把它从已有它的游戏中移除，而智能体修改使用它的代码时将看不到它的指南。
 - **开关会复制整行** — 与每次 Settings 写入一样，开关写入会把整个 `game-addons` 行的配置保存到 profile 补丁中，因此只要该 profile 的补丁中保留这一行，之后在 bundle 覆盖层中对该行其他字段的更改就不会影响这个 profile。
 - **Blender 工作进程保留已启用的扩展** — 在用户关闭某个扩展之前就已启用它的工作进程，会一直保留它，直到加载出厂设置或工作进程停止；只有更改之后的 `enable` 和 `assets` 调用会拒绝它。
-- **每个请求都带有目录** — 每个会话的系统提示词都会列出整个目录，没有 Godot 项目的会话也不例外；目录超出该部分 8,000 个字符的预算时，需要更短的列表。
+- **每个请求都带有索引** — 每个会话的系统提示词都会列出目录索引，没有 Godot 项目的会话也不例外；目录超过约 90 个条目时会超出该部分 8,000 个字符的预算，届时需要只列类别的索引。
+- **智能体起初只知道一条提示** — 索引只给每个扩展六到十个词，因此不先搜索就动手实现的智能体可能会错过合适的扩展；该部分要求先搜索。
+- **套件按文本改写路径** — 起始套件的 `res://` 路径在其场景、脚本、资源、着色器以及 `.cfg` 和 `.json` 文件中写明的位置被改写；套件代码用若干部分拼出的路径必须从被改写的 `res://` 开始，Starter Kit FPS 的 `Audio.play("sounds/land.ogg")` 即是如此。套件的冒烟测试会从扩展文件夹运行其关卡，以证明这一点。
+- **修改副本在更新时需留意** — 取代被排除的压缩包文件的叠加文件（例如 Starter Kit FPS 的玩家脚本、Controller Icons 的 `ControllerIcons.gd` 和 Easy Vehicle Physics 的 `scripts/wheel.gd`）是某个上游版本的副本；固定新版本时需要重新做这处修改。
+- **不安装的编辑器插件** — 若扩展的编辑器插件只提供笔刷、停靠面板或设置向导，条目会排除该插件，并声明其 `_enable_plugin()` 会添加的内容；扩展的指南则说明如何用代码完成编辑器所做的事。
 - **固定的上游压缩包** — 压缩包从各项目的发布或标签 URL 下载。若 GitHub 用不同的字节重新生成了标签压缩包，SHA-256 检查会失败，直到重新固定该条目。
 - **不收录仅限编辑器的扩展** — 智能体无法使用编辑器的停靠面板、笔刷或控件，因此目录不收录只能通过编辑器界面使用的扩展。
 - **不收录 GDExtension 扩展** — WASD Engine 的 Web 发布不加载 GDExtension，因此目录不收录 Terrain3D 或 LimboAI 等编译型扩展。
 - **声明文件留在项目中** — `THIRD_PARTY_NOTICES.md` 不属于导出的游戏；附带扩展的游戏需自行为其署名。
 - **Blender 存储只保留一个版本** — 所有项目都使用目录中 Blender 扩展的版本；目录中的较新版本会为所有项目替换已存储的版本。
 - **手工复制的副本** — 在 `addons/` 中发现的目录扩展副本会得到目录中的指南，而该指南可能与其版本不符。
-- **开发用扩展会被打包** — Web 导出会打包所有资源，因此 GUT 这类测试扩展（约 3 MB）在被移除之前会随发布的游戏一起发布。
+- **开发用扩展会被打包** — Web 导出会打包所有资源，因此 GUT 这类测试扩展（约 3 MB）在被移除之前会随发布的游戏一起发布。条目的 `archive.exclude` 能把演示和示例排除在项目之外（例如 ProtonScatter 的 12 MB 演示），但不能排除扩展需要的文件。
+- **Web 扫描按文本匹配** — 只要扩展的文件写明了浏览器缺少的功能，Web 导出就会点名该文件，即使相关代码在游戏中从不运行（例如编辑器面板的预览）；条目的冒烟测试会列出这些说明，其指南会解释它们的含义。
 - **编辑器设置** — 编辑器插件在导入步骤中使用用户的 Godot 编辑器设置加载；Importality 会在其中的 `editor_settings-4.7.tres` 里添加空的 `importality/*` 键。
 - **无界面运行时崩溃的扩展** — Sprite Sheet Generator 2.2.3 在写出精灵图之后会以段错误结束无界面的 Blender，因此目录不收录它；智能体改用 `bpy` 渲染精灵帧。
 - **`project.godot` 的其他写入者** — 安装或移除在持有记录的锁时，会在片刻之内读取并写入 `project.godot`，但 Godot 编辑器、智能体的文件工具和其他程序不获取该锁，因此它们在这次读取与写入之间保存的更改会丢失。
@@ -254,6 +264,6 @@ Each add-on below shows its id, its application, the stages at which it helps (p
 <details>
 <summary>维护者工作背景 — 点击展开</summary>
 
-添加或更新条目时，先固定发布版本的压缩包与 SHA-256，再阅读其 `plugin.gd`，了解 `_enable_plugin()` 添加了什么。若扩展包自身的下载链接会过期（例如 itch.io 的链接），请改为固定 WASD Engine 某个 GitHub 发布中的副本。指南须在目录内容测试检查的大小之内，并在 `tests/smoke/<id>/` 下添加冒烟测试。设置 `WASD_LIBGODOT_DIR` 为已安装的运行时文件夹并缓存 uv 的 bpy 5.2.3 后，运行 `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts`；`WASD_ADDON_ARCHIVES` 可在多次运行之间保留下载的文件。冒烟测试可以复制另一个冒烟测试文件夹中的文件（`files`），并在两次导入之间运行一个 `prepare` 脚本，就像动画包运行 `retarget.gd` 那样；`tests/smoke/universal-animation-library/rigs.py` 用 MPFB 和 Rigify 生成它们的骨架。条目的叠加文件改变时，请修改其 `version`，因为再次安装同一版本不会更新项目中的副本。
+添加或更新条目时，先固定发布版本的压缩包与 SHA-256，再阅读其 `plugin.gd`，了解 `_enable_plugin()` 添加了什么。若项目没有发布版本，或其最新发布缺少条目所需的主分支上的工作，就固定某次提交的压缩包，并在 `version` 末尾加上 `+` 和该提交的前七个字符。为条目设置 `category` 和一条用几个词说明扩展用途的 `cue`，因为智能体是否继续了解它取决于这一行；若条目带来了类别标题未列出的内容，就修改 `CATEGORY_TITLES` 中该类别的标题。用 `archive.exclude` 排除游戏不应打包的内容，并运行测试套件：若被排除的路径仍被扩展自身的文件需要，套件会失败。压缩包中位于游戏要加载的文件夹里的 `.gdignore` 文件也要排除：Godot 既不导入也不导出这样的文件夹，其中的着色器与资源在编辑器中可以加载，却不会出现在任何导出的游戏里。套件会因此失败，SimpleGrassTextured 的着色器与材质文件夹就是这样发现的，此前只有对导出游戏的 Web 检查显示过这个问题。若扩展包自身的下载链接会过期（例如 itch.io 的链接），请改为固定 WASD Engine 某个 GitHub 发布中的副本。指南须在目录内容测试检查的大小之内，并在 `tests/smoke/<id>/` 下添加冒烟测试。测试绘制内容时以 `render` 方式运行，并用 `override.cfg` 选择 Web 构建所用的兼容性渲染器，等待时按实际时钟计时，因为这种运行不受显示器帧率限制。在指南说明扩展在 Web 构建中的表现之前，先用 `wasd_export_web` 导出包含它的项目并阅读 Web 检查的结果：Maaack's Scene Loader 没有收录进目录，因为它的加载画面在那里从不出现，单线程构建会在一个阻塞步骤中加载完场景。设置 `WASD_LIBGODOT_DIR` 为已安装的运行时文件夹并缓存 uv 的 bpy 5.2.3 后，运行 `vitest run --config vitest.e2e.config.ts packages/gamedev/game-addons/tests/catalog.e2e.ts`；`WASD_ADDON_ARCHIVES` 可在多次运行之间保留下载的文件。冒烟测试可以复制另一个冒烟测试文件夹中的文件（`files`），在两次导入之间运行一个 `prepare` 脚本，就像动画包运行 `retarget.gd` 那样，还可以指定与自身一同安装的其他 Godot 扩展（`with`），用于测试它们配合时的表现，例如 WASD Face 指定了 WASD Character，并为后者的角色添加面部；`tests/smoke/universal-animation-library/rigs.py` 用 MPFB 和 Rigify 生成它们的骨架。条目的叠加文件改变时，请修改其 `version`，因为再次安装同一版本不会更新项目中的副本。
 
 </details>
