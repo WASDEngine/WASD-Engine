@@ -88,6 +88,7 @@ const OTHER = /\p{C}/u
  * @returns the description as the site keeps it.
  */
 export function siteDescription(text: string): string {
+  // oxlint-disable-next-line typescript/no-misused-spread -- the site keeps or drops each code point, so this filters code points.
   const kept = [...text.normalize('NFC').replace(/\r\n?/gu, '\n')]
     .filter(char => char === '\n' || char === '\t' || !OTHER.test(char) || KEPT_FORMAT.test(char))
     .map(char => char === '\t' ? ' ' : char)
@@ -546,6 +547,7 @@ export async function releaseGame(request: ReleaseRequest, dependencies: Release
   const title = request.title?.trim()
   if (title !== undefined && (title === '' || title.length > MAX_TITLE)) throw new ReleaseError(`title must be 1 to ${MAX_TITLE} characters.`)
   const description = request.description === undefined ? undefined : siteDescription(request.description)
+  // oxlint-disable-next-line typescript/no-misused-spread -- the site counts a description's characters as code points.
   if (description !== undefined && (description === '' || [...description].length > MAX_DESCRIPTION)) {
     throw new ReleaseError(`description must be 1 to ${MAX_DESCRIPTION} characters.`)
   }
