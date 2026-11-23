@@ -24,7 +24,7 @@
     },
     "./client/project-tab": {
       "types": "./lib/types/client/project-tab.d.ts",
-      "default": "./lib/types/client/project-tab.js"
+      "default": "./lib/project-tab.js"
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json",
@@ -84,7 +84,7 @@
     "lib/index.js",
     "lib/client.js",
     "lib/client.*.js",
-    "lib/types/**/*.js",
+    "lib/project-tab.js",
     "lib/types/**/*.d.ts",
     "lib/types/**/*.d.ts.map",
     "lib/**/*.js.map",

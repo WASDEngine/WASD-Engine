@@ -119,7 +119,7 @@ three.js and its loaders are in one lazily loaded chunk, `client.viewer.js`, whi
 | [`src/index.ts`](src/index.ts) | Empty Host `apply` of the Loader row |
 | [`src/client/index.ts`](src/client/index.ts) | `Config`, the tab type, its seats, its copy, each Session's state and face, and the answers to render and reveal requests |
 | [`src/client/formats.ts`](src/client/formats.ts) | The asset tools' listed extensions, their kind and decoder, and the Blender export lookup |
-| [`src/client/project-tab.ts`](src/client/project-tab.ts) | What the Audio tab shares, exported as `./client/project-tab`: the project walk, one Session's walk state, the Sessions' states, the reveal, and the file re-reads |
+| [`src/client/project-tab.ts`](src/client/project-tab.ts) | What the Audio tab shares, exported as `./client/project-tab` from its own bundle, `lib/project-tab.js`: the project walk, one Session's walk state, the Sessions' states, the reveal, and the file re-reads |
 | [`src/client/scan.ts`](src/client/scan.ts) | The asset scan over the project walk |
 | [`src/client/tree.ts`](src/client/tree.ts) | The folder tree, its rows, the folders to open, and search |
 | [`src/client/source.ts`](src/client/source.ts) | One Session's scan and choices |
