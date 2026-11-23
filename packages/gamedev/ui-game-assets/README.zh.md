@@ -120,7 +120,7 @@ three.js 及其加载器位于一个延迟加载的分块 `client.viewer.js` 中
 | [`src/index.ts`](src/index.ts) | Loader 行的空 Host `apply` |
 | [`src/client/index.ts`](src/client/index.ts) | `Config`、标签页类型、其座位、文案、每个 Session 的状态与 face，以及对渲染和显示请求的答复 |
 | [`src/client/formats.ts`](src/client/formats.ts) | 资源工具列出的扩展名、其类型与解码器，以及 Blender 导出的查找 |
-| [`src/client/project-tab.ts`](src/client/project-tab.ts) | 与音频标签页共用的部分，以 `./client/project-tab` 导出：项目遍历、单个 Session 的遍历状态、各 Session 的状态、显示与文件重新读取 |
+| [`src/client/project-tab.ts`](src/client/project-tab.ts) | 与音频标签页共用的部分，以 `./client/project-tab` 从其单独的打包文件 `lib/project-tab.js` 导出：项目遍历、单个 Session 的遍历状态、各 Session 的状态、显示与文件重新读取 |
 | [`src/client/scan.ts`](src/client/scan.ts) | 基于项目遍历的素材扫描 |
 | [`src/client/tree.ts`](src/client/tree.ts) | 文件夹树、其行、要展开的文件夹与搜索 |
 | [`src/client/source.ts`](src/client/source.ts) | 单个 Session 的扫描与选择 |

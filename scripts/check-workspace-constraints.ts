@@ -272,8 +272,11 @@ const packageFileExtras: Readonly<Record<string, readonly string[]>> = {
   '@deepseek-ai/dsh-supercollider': ['sc/*.sc'],
   // WASDEngine fork: the WASD Multiplayer add-on that wasd_multiplayer_setup copies into game projects (wasdengine/FORK.md).
   '@deepseek-ai/dsh-wasd-plugins': ['addon/wasd_multiplayer'],
-  // WASDEngine fork: the Assets tab loads three.js as a lazy client chunk (wasdengine/FORK.md).
-  '@deepseek-ai/dsh-client-ui-game-assets': ['lib/client.*.js'],
+  // WASDEngine fork: the Assets tab loads three.js as a lazy client chunk. Its project tab entry, which the Audio tab
+  // inlines, and the locale's brand entry are bundles of their own, so neither package publishes its compiled modules,
+  // some of which import style sheets (wasdengine/FORK.md).
+  '@deepseek-ai/dsh-client-ui-game-assets': ['lib/client.*.js', 'lib/project-tab.js'],
+  '@deepseek-ai/dsh-client-locale': ['lib/brand.js'],
   // The headless entry and its startup row share the JSON projection code
   // through a hashed tsdown chunk; both import it by relative path.
   '@deepseek-ai/dsh-headless': ['lib/json-stream-*.js'],
